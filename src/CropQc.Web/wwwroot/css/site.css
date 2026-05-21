@@ -35,8 +35,18 @@ tr:last-child td { border-bottom: 0; }
 .status.review { background: #fff0d6; color: #8a4b00; }
 .notice { margin: 0 0 16px; padding: 10px 12px; border-radius: 4px; border: 1px solid #d9e1e8; background: white; }
 .notice.warning { background: #fff8e1; border-color: #ffe0a3; }
+.notice.success { background: #e8f5e9; border-color: #b8dfbd; }
+.notice.error { background: #fde8e8; border-color: #f4bbbb; }
 .grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
 .panel { background: white; border: 1px solid #d9e1e8; border-radius: 6px; padding: 16px; }
+.panel h3 { margin: 0 0 12px; font-size: 17px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 12px; margin-top: 14px; }
+.form-grid h2, .form-grid h3, .form-grid button, .form-grid .wide { grid-column: 1 / -1; }
+.qc-grid-wrap { margin-bottom: 12px; }
+.qc-grid th, .qc-grid td { white-space: normal; }
+.qc-grid input, .qc-grid select { width: 100%; min-width: 88px; }
+.qc-grid .number-input { min-width: 92px; }
+.qc-grid .defect-select { height: 92px; min-width: 180px; }
 .list { margin: 0; padding-left: 18px; }
 .muted { color: #66717c; }
 @media (max-width: 1100px) {

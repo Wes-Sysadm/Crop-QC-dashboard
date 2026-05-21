@@ -65,6 +65,7 @@ public sealed class ReceiptDetailViewModel
     public ReceiptListItemViewModel? Receipt { get; set; }
     public IReadOnlyList<SampleListItemViewModel> Samples { get; set; } = [];
     public IReadOnlyList<PhotoGroupViewModel> PhotoGroups { get; set; } = [];
+    public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
 }
 
 public sealed class SampleListItemViewModel
@@ -92,20 +93,63 @@ public sealed class SampleDetailViewModel
     public IReadOnlyList<FruitReadingRowViewModel> FruitRows { get; set; } = [];
     public IReadOnlyList<PhotoGroupViewModel> PhotoGroups { get; set; } = [];
     public ReadinessViewModel Readiness { get; set; } = new();
+    public IReadOnlyList<Grade> Grades { get; set; } = [];
+    public IReadOnlyList<StarchScaleValue> StarchScaleValues { get; set; } = [];
+    public IReadOnlyList<DefectType> DefectTypes { get; set; } = [];
+    public SaveFruitReadingsForm FruitReadingForm { get; set; } = new();
+    public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
 }
 
-public sealed record FruitReadingRowViewModel(
-    int RowNumber,
-    decimal? Pressure1Lbs,
-    decimal? Pressure2Lbs,
-    decimal? PressureAverageLbs,
-    decimal? WeightGrams,
-    string? Grade,
-    string? Starch,
-    int? SizeCategory,
-    string SizeStatus,
-    bool IsCompleted,
-    IReadOnlyList<string> Defects);
+public sealed class FruitReadingRowViewModel
+{
+    public int RowNumber { get; set; }
+    public decimal? Pressure1Lbs { get; set; }
+    public decimal? Pressure2Lbs { get; set; }
+    public decimal? PressureAverageLbs { get; set; }
+    public decimal? WeightGrams { get; set; }
+    public int? GradeId { get; set; }
+    public string? Grade { get; set; }
+    public int? StarchScaleValueId { get; set; }
+    public string? Starch { get; set; }
+    public int? SizeCategory { get; set; }
+    public string SizeStatus { get; set; } = "";
+    public bool IsCompleted { get; set; }
+    public IReadOnlyList<int> DefectTypeIds { get; set; } = [];
+    public IReadOnlyList<string> Defects { get; set; } = [];
+    public string? OtherDefectNotes { get; set; }
+}
+
+public sealed class SaveFruitReadingsForm
+{
+    public long SampleId { get; set; }
+    public List<FruitReadingEditRow> Rows { get; set; } = [];
+}
+
+public sealed class FruitReadingEditRow
+{
+    public int RowNumber { get; set; }
+    public decimal? Pressure1Lbs { get; set; }
+    public decimal? Pressure2Lbs { get; set; }
+    public decimal? WeightGrams { get; set; }
+    public int? GradeId { get; set; }
+    public int? StarchScaleValueId { get; set; }
+    public List<int> DefectTypeIds { get; set; } = [];
+    public string? OtherDefectNotes { get; set; }
+}
+
+public sealed class AddPhotoMetadataForm
+{
+    public long? ReceiptId { get; set; }
+    public long? QcSampleId { get; set; }
+    public string PhotoType { get; set; } = "";
+    public string PhotoSource { get; set; } = "Manual Upload";
+    public string FileName { get; set; } = "";
+    public string ContentType { get; set; } = "image/jpeg";
+    public long? FileSizeBytes { get; set; }
+    public string SharePointDriveId { get; set; } = "placeholder-drive";
+    public string SharePointItemId { get; set; } = "placeholder-item";
+    public string? WebUrl { get; set; }
+}
 
 public sealed record PhotoMetadataViewModel(string PhotoType, string PhotoSource, string FileName, string ContentType, long? FileSizeBytes, string? WebUrl, DateTimeOffset CapturedAt);
 public sealed record PhotoGroupViewModel(string PhotoType, IReadOnlyList<PhotoMetadataViewModel> Photos);
