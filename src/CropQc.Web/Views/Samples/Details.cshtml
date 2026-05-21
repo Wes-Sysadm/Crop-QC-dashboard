@@ -29,7 +29,7 @@
         <p>@Model.Sample.Warehouse | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Sample size: @Model.Sample.ActualSampleSize</p>
         <p>@StarchSummary(Model.Readiness)</p>
         <p>
-            <a class="button" href="/Samples/@Model.Sample.Id/Starch">Open Starch Test</a>
+            <a class="button" href="/Samples/@Model.Sample.Id/Starch">Starch Input</a>
             <a href="/Receipts/@Model.Sample.ReceiptId">Back to receipt</a>
         </p>
     </section>
@@ -127,7 +127,7 @@
                 </tbody>
             </table>
         </div>
-        <p class="muted">Blank rows are ignored. Use the separate Starch Test page after fruit is cut.</p>
+        <p class="muted">Blank rows are ignored. Use the separate Starch Input page after fruit is cut.</p>
         <button type="submit">Save QC Rows</button>
     </form>
 

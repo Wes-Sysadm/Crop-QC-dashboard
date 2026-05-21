@@ -23,6 +23,7 @@ h2 { margin: 28px 0 12px; font-size: 20px; }
 label { font-size: 12px; font-weight: 700; color: #4a5968; text-transform: uppercase; }
 input, select, button { height: 36px; border: 1px solid #b9c5d0; border-radius: 4px; padding: 6px 9px; font: inherit; }
 button, .button { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 7px 12px; border-radius: 4px; border: 1px solid #235a97; background: #235a97; color: white; font-weight: 700; cursor: pointer; }
+.secondary-button { min-height: 30px; background: white; color: #235a97; }
 button:disabled { background: #d2d8de; border-color: #c0c8d0; color: #66717c; cursor: not-allowed; }
 .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
 .table-wrap { overflow-x: auto; background: white; border: 1px solid #d9e1e8; border-radius: 6px; }
@@ -59,10 +60,11 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 .inline-action { display: block; margin-top: 4px; font-size: 12px; font-weight: 700; }
 .starch-workspace { display: grid; grid-template-columns: minmax(360px, 520px) minmax(520px, 1fr); gap: 18px; align-items: start; }
 .tray-map { display: grid; grid-template-columns: repeat(5, minmax(64px, 1fr)); gap: 10px; }
-.tray-position { display: grid; align-content: center; justify-items: center; min-height: 82px; padding: 8px; border: 2px solid #d9e1e8; background: white; color: #263747; }
+.tray-position { display: grid; align-content: center; justify-items: center; min-height: 94px; padding: 8px; border: 2px solid #d9e1e8; background: white; color: #263747; }
 .tray-position:hover, .tray-position:focus { border-color: #235a97; outline: 0; }
 .tray-number { font-size: 22px; font-weight: 800; }
 .tray-value { font-size: 12px; font-weight: 700; text-align: center; white-space: normal; }
+.tray-status { font-size: 11px; font-weight: 800; text-align: center; text-transform: uppercase; white-space: normal; }
 .complete-starch { background: #dff1e0; border-color: #9ac99d; }
 .missing-starch { background: #fff8e1; border-color: #f0c96a; }
 .not-sampled { background: #edf2f6; border-color: #d2d8de; color: #66717c; }
