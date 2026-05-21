@@ -1,0 +1,88 @@
+namespace CropQc.Data.Entities;
+
+public sealed class Warehouse
+{
+    public int Id { get; set; }
+    public required string Code { get; set; }
+    public required string Name { get; set; }
+    public bool IsActive { get; set; } = true;
+    public ICollection<Room> Rooms { get; } = new List<Room>();
+    public ICollection<Receipt> Receipts { get; } = new List<Receipt>();
+}
+
+public sealed class Room
+{
+    public int Id { get; set; }
+    public int WarehouseId { get; set; }
+    public Warehouse Warehouse { get; set; } = null!;
+    public required string Code { get; set; }
+    public required string Name { get; set; }
+    public int CapacityBins { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public sealed class FruitProfile
+{
+    public int Id { get; set; }
+    public required string Name { get; set; }
+    public string? Description { get; set; }
+    public required string VarietyCode { get; set; }
+    public required string FruitType { get; set; }
+    public required string ProductionType { get; set; }
+    public bool IsOrganic { get; set; }
+    public bool IsActive { get; set; } = true;
+    public ICollection<Receipt> Receipts { get; } = new List<Receipt>();
+}
+
+public sealed class SampleType
+{
+    public int Id { get; set; }
+    public required string Name { get; set; }
+    public bool IsActive { get; set; } = true;
+    public ICollection<QcSample> Samples { get; } = new List<QcSample>();
+}
+
+public sealed class Grade
+{
+    public int Id { get; set; }
+    public required string Code { get; set; }
+    public required string Name { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public sealed class DefectType
+{
+    public int Id { get; set; }
+    public required string Name { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public sealed class StarchScale
+{
+    public int Id { get; set; }
+    public required string Name { get; set; }
+    public string? FruitType { get; set; }
+    public int? FruitProfileId { get; set; }
+    public FruitProfile? FruitProfile { get; set; }
+    public bool IsActive { get; set; } = true;
+    public ICollection<StarchScaleValue> Values { get; } = new List<StarchScaleValue>();
+}
+
+public sealed class StarchScaleValue
+{
+    public int Id { get; set; }
+    public int StarchScaleId { get; set; }
+    public StarchScale StarchScale { get; set; } = null!;
+    public decimal Value { get; set; }
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public sealed class FruitSizeConversionThreshold
+{
+    public int Id { get; set; }
+    public required string FruitType { get; set; }
+    public int SizeCategory { get; set; }
+    public decimal MinimumWeightGrams { get; set; }
+    public bool IsActive { get; set; } = true;
+}
