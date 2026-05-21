@@ -1,6 +1,6 @@
 @model StarchTestViewModel
 @{
-    ViewData["Title"] = Model.Sample is null ? "Starch Test" : $"Starch Test - {Model.Sample.DisplayReceiptId}";
+    ViewData["Title"] = Model.Sample is null ? "Starch Input" : $"Starch Input - {Model.Sample.DisplayReceiptId}";
 }
 
 <h1>@ViewData["Title"]</h1>
@@ -22,7 +22,8 @@
     <section class="panel">
         <h2>@Model.Sample.DisplayReceiptId</h2>
         <div class="detail-grid">
-            <div><strong>Receipt:</strong> @Model.Receipt.CompuTechReceiptId</div>
+            <div><strong>Display receipt ID:</strong> @Model.Sample.DisplayReceiptId</div>
+            <div><strong>Original receipt ID:</strong> @Model.Receipt.CompuTechReceiptId</div>
             <div><strong>Grower:</strong> @Model.Receipt.GrowerName</div>
             <div><strong>Lot:</strong> @Model.Receipt.LotCode</div>
             <div><strong>Variety:</strong> @Model.Receipt.VarietyCode</div>
@@ -45,16 +46,17 @@
                         <button type="button"
                                 class="tray-position @TrayClass(row)"
                                 data-row-number="@row.RowNumber"
-                                aria-label="Fruit @row.RowNumber starch @TrayLabel(row)">
+                                aria-label="Fruit @row.RowNumber @TrayStatus(row)">
                             <span class="tray-number">@row.RowNumber</span>
                             <span class="tray-value">@TrayLabel(row)</span>
+                            <span class="tray-status">@TrayStatus(row)</span>
                         </button>
                     }
                 </div>
             </section>
 
             <section class="panel">
-                <h2>Starch Entry</h2>
+                <h2>Starch Input</h2>
                 <p class="muted">Only completed fruit rows from the main QC grid require starch. Unsampled rows are shown for tray position context.</p>
                 <div class="table-wrap">
                     <table>
@@ -89,7 +91,7 @@
                         </tbody>
                     </table>
                 </div>
-                <button type="submit">Save Starch Test</button>
+                <button type="submit">Save Starch Input</button>
             </section>
         </div>
     </form>
@@ -150,9 +152,19 @@
     {
         if (!row.IsCompleted)
         {
-            return "Not sampled";
+            return "--";
         }
 
-        return string.IsNullOrWhiteSpace(row.Starch) ? "Missing" : row.Starch;
+        return string.IsNullOrWhiteSpace(row.Starch) ? "--" : row.Starch;
+    }
+
+    private static string TrayStatus(FruitReadingRowViewModel row)
+    {
+        if (!row.IsCompleted)
+        {
+            return "Not Sampled";
+        }
+
+        return row.StarchScaleValueId is null ? "Missing Starch" : "Starch Complete";
     }
 }
