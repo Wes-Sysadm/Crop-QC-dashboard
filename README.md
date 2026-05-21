@@ -27,6 +27,18 @@ Later phases will add storage inventory, room controller imports, Mexico qualifi
 - `scripts` - Operational and developer scripts.
 - `tests` - Test projects will be added as implementation begins.
 
+## Local Development
+
+See [docs/local-dev-setup.md](docs/local-dev-setup.md) for Windows PowerShell instructions to restore packages, build, apply EF Core migrations to LocalDB or SQL Server Express, run the API, run the web dashboard, run tests, and smoke-test the MVP 1 Receiving/QC workflow.
+
+Common helper scripts:
+
+- `scripts/dev-build.ps1`
+- `scripts/dev-test.ps1`
+- `scripts/dev-update-db.ps1`
+- `scripts/dev-run-api.ps1`
+- `scripts/dev-run-web.ps1`
+
 ## Current Status
 
 This repository is intentionally a skeleton. Business logic for storage, Mexico qualification, packout, pool closing, and analytics has not been implemented.
