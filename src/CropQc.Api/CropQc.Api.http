@@ -1,0 +1,6 @@
+@CropQc.Api_HostAddress = http://localhost:5276
+
+GET {{CropQc.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
