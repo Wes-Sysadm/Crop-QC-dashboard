@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CropQc.Web.Controllers;
 
+[Route("[controller]")]
 public sealed class SamplesController(IDashboardDataService dataService) : Controller
 {
     [HttpGet("{id:long}")]

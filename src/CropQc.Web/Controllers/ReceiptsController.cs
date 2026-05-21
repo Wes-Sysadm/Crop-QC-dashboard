@@ -4,13 +4,14 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CropQc.Web.Controllers;
 
+[Route("[controller]")]
 public sealed class ReceiptsController(IDashboardDataService dataService) : Controller
 {
-    [HttpGet]
+    [HttpGet("")]
     public async Task<IActionResult> Index([FromQuery] ReceiptSearchForm search, CancellationToken cancellationToken) =>
         View(await dataService.SearchReceiptsAsync(search, cancellationToken));
 
-    [HttpPost]
+    [HttpPost("Create")]
     public async Task<IActionResult> Create(CreateReceiptForm form, CancellationToken cancellationToken)
     {
         var error = await dataService.CreateReceiptAsync(form, cancellationToken);
