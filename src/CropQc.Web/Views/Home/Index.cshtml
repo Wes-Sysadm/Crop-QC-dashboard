@@ -41,7 +41,13 @@
                 <td><a href="/Samples/@sample.Id">@sample.DisplayReceiptId</a></td>
                 <td>@sample.Warehouse</td>
                 <td><span class="status @StatusClass(sample.Status)">@sample.Status</span></td>
-                <td>@sample.StarchStatus</td>
+                <td>
+                    @sample.StarchStatus
+                    @if (!sample.StarchStatus.Contains("complete", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <a class="inline-action" href="/Samples/@sample.Id/Starch">Starch Input</a>
+                    }
+                </td>
                 <td>@sample.PhotoStatus</td>
                 <td>@sample.EmailStatus</td>
                 <td><span class="status @(sample.IsReady ? "ready" : "missing")">@(sample.IsReady ? "Ready" : "Missing")</span></td>

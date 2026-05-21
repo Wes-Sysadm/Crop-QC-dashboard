@@ -1,0 +1,177 @@
+@model StarchTestViewModel
+@{
+    ViewData["Title"] = Model.Sample is null ? "Starch Input" : $"Starch Input - {Model.Sample.DisplayReceiptId}";
+    var trayPositions = Enumerable.Range(0, 5)
+        .SelectMany(trayRow => Enumerable.Range(0, 5).Select(trayColumn => trayColumn * 5 + trayRow + 1))
+        .ToList();
+}
+
+<h1>@ViewData["Title"]</h1>
+@if (TempData["Success"] is string success)
+{
+    <p class="notice success">@success</p>
+}
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+
+@if (Model.Sample is not null && Model.Receipt is not null)
+{
+    <section class="panel">
+        <h2>@Model.Sample.DisplayReceiptId</h2>
+        <div class="detail-grid">
+            <div><strong>Display receipt ID:</strong> @Model.Sample.DisplayReceiptId</div>
+            <div><strong>Original receipt ID:</strong> @Model.Receipt.CompuTechReceiptId</div>
+            <div><strong>Grower:</strong> @Model.Receipt.GrowerName</div>
+            <div><strong>Lot:</strong> @Model.Receipt.LotCode</div>
+            <div><strong>Variety:</strong> @Model.Receipt.VarietyCode</div>
+            <div><strong>Warehouse:</strong> @Model.Receipt.Warehouse</div>
+            <div><strong>Room:</strong> @Model.Receipt.Room</div>
+            <div><strong>Sample time:</strong> @Model.Sample.SampleTakenAt.LocalDateTime</div>
+            <div><strong>Starch:</strong> @StarchSummary(Model.Readiness)</div>
+        </div>
+        <p>
+            <a href="/Receipts/@Model.Sample.ReceiptId">Back to receipt detail</a>
+            <a class="inline-action" href="/Samples/@Model.Sample.Id">Back to sample detail</a>
+        </p>
+    </section>
+
+    <form method="post" action="/Samples/@Model.Sample.Id/Starch">
+        <input type="hidden" name="SampleId" value="@Model.Sample.Id" />
+        <div class="starch-workspace">
+            <section class="panel">
+                <h2>Tray Map</h2>
+                <div class="tray-map" aria-label="Starch tray map">
+                    @foreach (var position in trayPositions)
+                    {
+                        var fruit = Model.FruitRows.Single(row => row.RowNumber == position);
+                        <button type="button"
+                                class="tray-position @TrayClass(fruit)"
+                                data-row-number="@fruit.RowNumber"
+                                aria-label="Fruit @fruit.RowNumber @TrayStatus(fruit)">
+                            <span class="tray-number">@fruit.RowNumber</span>
+                            <span class="tray-value">@TrayLabel(fruit)</span>
+                            <span class="tray-status">@TrayStatus(fruit)</span>
+                        </button>
+                    }
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>Starch Input</h2>
+                <p class="muted">Only completed fruit rows from the main QC grid require starch. Unsampled rows are shown for tray position context.</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fruit</th>
+                                <th>QC Row Status</th>
+                                <th>Starch Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @for (var i = 0; i < Model.FruitRows.Count; i++)
+                        {
+                            var row = Model.FruitRows[i];
+                            <tr id="starch-row-@row.RowNumber" class="starch-entry-row @TrayClass(row)">
+                                <td>
+                                    @row.RowNumber
+                                    <input type="hidden" name="Rows[@i].RowNumber" value="@row.RowNumber" />
+                                </td>
+                                <td>@(row.IsCompleted ? "Completed fruit row" : "Not sampled")</td>
+                                <td>
+                                    <select class="starch-input" name="Rows[@i].StarchScaleValueId" data-row-number="@row.RowNumber" disabled="@(!row.IsCompleted ? "disabled" : null)">
+                                        <option value="">--</option>
+                                        @foreach (var starch in Model.StarchScaleValues)
+                                        {
+                                            <option value="@starch.Id" selected="@(row.StarchScaleValueId == starch.Id ? "selected" : null)">@starch.Value.ToString("0.0")</option>
+                                        }
+                                    </select>
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+                <button type="submit">Save Starch Input</button>
+            </section>
+        </div>
+    </form>
+}
+
+<script>
+    (() => {
+        function clearHighlights() {
+            for (const row of document.querySelectorAll(".starch-entry-row")) {
+                row.classList.remove("highlight-row");
+            }
+            for (const position of document.querySelectorAll(".tray-position")) {
+                position.classList.remove("highlight-position");
+            }
+        }
+
+        for (const position of document.querySelectorAll(".tray-position")) {
+            position.addEventListener("click", () => {
+                const rowNumber = position.dataset.rowNumber;
+                const targetRow = document.getElementById(`starch-row-${rowNumber}`);
+                const input = document.querySelector(`.starch-input[data-row-number="${rowNumber}"]`);
+                clearHighlights();
+                position.classList.add("highlight-position");
+                targetRow?.classList.add("highlight-row");
+                targetRow?.scrollIntoView({ block: "center", behavior: "smooth" });
+                if (input && !input.disabled) {
+                    input.focus();
+                }
+            });
+        }
+    })();
+</script>
+
+@functions {
+    private static string StarchSummary(ReadinessViewModel readiness)
+    {
+        if (readiness.CompletedFruitCount == 0)
+        {
+            return "No completed fruit rows yet.";
+        }
+
+        return readiness.StarchMissingCount == 0
+            ? "Starch Complete"
+            : $"{readiness.StarchMissingCount} of {readiness.CompletedFruitCount} completed rows missing starch";
+    }
+
+    private static string TrayClass(FruitReadingRowViewModel row)
+    {
+        if (!row.IsCompleted)
+        {
+            return "not-sampled";
+        }
+
+        return row.StarchScaleValueId is null ? "missing-starch" : "complete-starch";
+    }
+
+    private static string TrayLabel(FruitReadingRowViewModel row)
+    {
+        if (!row.IsCompleted)
+        {
+            return "--";
+        }
+
+        return string.IsNullOrWhiteSpace(row.Starch) ? "--" : row.Starch;
+    }
+
+    private static string TrayStatus(FruitReadingRowViewModel row)
+    {
+        if (!row.IsCompleted)
+        {
+            return "Not Sampled";
+        }
+
+        return row.StarchScaleValueId is null ? "Missing Starch" : "Starch Complete";
+    }
+}

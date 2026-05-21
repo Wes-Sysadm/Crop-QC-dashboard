@@ -20,6 +20,19 @@ public sealed class SamplesController(IDashboardDataService dataService) : Contr
         return RedirectToAction(nameof(Details), new { id });
     }
 
+    [HttpGet("{id:long}/Starch")]
+    public async Task<IActionResult> Starch(long id, CancellationToken cancellationToken) =>
+        View(await dataService.GetStarchTestAsync(id, cancellationToken));
+
+    [HttpPost("{id:long}/Starch")]
+    public async Task<IActionResult> SaveStarch(long id, SaveStarchTestForm form, CancellationToken cancellationToken)
+    {
+        form.SampleId = id;
+        var error = await dataService.SaveStarchTestAsync(form, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Starch test saved.";
+        return RedirectToAction(nameof(Starch), new { id });
+    }
+
     [HttpPost("{id:long}/photos")]
     public async Task<IActionResult> AddPhoto(long id, AddPhotoMetadataForm form, CancellationToken cancellationToken)
     {

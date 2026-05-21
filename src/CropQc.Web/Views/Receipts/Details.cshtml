@@ -40,13 +40,24 @@
         <h2>Linked Samples</h2>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Sample</th><th>Status</th><th>Ready</th><th>Time</th></tr></thead>
+                <thead><tr><th>Sample</th><th>Status</th><th>Starch</th><th>Ready</th><th>Time</th></tr></thead>
                 <tbody>
                 @foreach (var sample in Model.Samples)
                 {
                     <tr>
                         <td><a href="/Samples/@sample.Id">@sample.DisplayReceiptId</a></td>
                         <td>@sample.Status</td>
+                        <td>
+                            @if (sample.StarchStatus.Contains("complete", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="status ready">Starch Complete</span>
+                            }
+                            else
+                            {
+                                <span class="status pending">@sample.StarchStatus</span>
+                                <a class="button secondary-button" href="/Samples/@sample.Id/Starch">Starch Input</a>
+                            }
+                        </td>
                         <td><span class="status @(sample.IsReady ? "ready" : "missing")">@(sample.IsReady ? "Ready" : "Missing")</span></td>
                         <td>@sample.SampleTakenAt.LocalDateTime</td>
                     </tr>
