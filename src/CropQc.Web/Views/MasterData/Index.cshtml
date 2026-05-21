@@ -1,0 +1,52 @@
+@model MasterDataPageViewModel
+@{
+    ViewData["Title"] = Model.Title;
+    var links = new[]
+    {
+        ("Warehouses", "/MasterData/warehouses"),
+        ("Rooms", "/MasterData/rooms"),
+        ("Fruit profiles / variety codes", "/MasterData/fruit-profiles"),
+        ("Grades", "/MasterData/grades"),
+        ("Defects", "/MasterData/defects"),
+        ("Sample types", "/MasterData/sample-types"),
+        ("Starch scale values", "/MasterData/starch-scale-values"),
+        ("Size thresholds", "/MasterData/size-thresholds")
+    };
+}
+
+<h1>@Model.Title</h1>
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+
+<nav class="toolbar">
+@foreach (var link in links)
+{
+    <a class="button" href="@link.Item2">@link.Item1</a>
+}
+</nav>
+
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+            @foreach (var column in Model.Columns)
+            {
+                <th>@column</th>
+            }
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var row in Model.Rows)
+        {
+            <tr>
+            @foreach (var cell in row)
+            {
+                <td>@cell</td>
+            }
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>

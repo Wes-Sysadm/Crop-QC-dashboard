@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CropQc.Shared\CropQc.Shared.csproj" />
+    <ProjectReference Include="..\CropQc.Data\CropQc.Data.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

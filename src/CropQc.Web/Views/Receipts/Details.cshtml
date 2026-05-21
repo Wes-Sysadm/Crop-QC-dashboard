@@ -1,0 +1,43 @@
+@model ReceiptDetailViewModel
+@{
+    ViewData["Title"] = "Receipt Detail";
+}
+
+<h1>Receipt Detail</h1>
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+@if (Model.Receipt is not null)
+{
+    <section class="panel">
+        <h2>@Model.Receipt.CompuTechReceiptId</h2>
+        <p>@Model.Receipt.CropYear | @Model.Receipt.ReceivedAt.LocalDateTime | @Model.Receipt.Warehouse / @Model.Receipt.Room | @Model.Receipt.GrowerName | @Model.Receipt.LotCode | @Model.Receipt.VarietyCode | @Model.Receipt.BinCount bins</p>
+    </section>
+}
+
+<div class="grid-two">
+    <section>
+        <h2>Linked Samples</h2>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Sample</th><th>Status</th><th>Ready</th><th>Time</th></tr></thead>
+                <tbody>
+                @foreach (var sample in Model.Samples)
+                {
+                    <tr>
+                        <td><a href="/Samples/@sample.Id">@sample.DisplayReceiptId</a></td>
+                        <td>@sample.Status</td>
+                        <td><span class="status @(sample.IsReady ? "ready" : "missing")">@(sample.IsReady ? "Ready" : "Missing")</span></td>
+                        <td>@sample.SampleTakenAt.LocalDateTime</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+    <section>
+        <h2>Receipt Photos</h2>
+        @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
+    </section>
+</div>

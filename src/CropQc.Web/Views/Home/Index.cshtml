@@ -1,0 +1,61 @@
+@model HomeDashboardViewModel
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<h1>Dashboard</h1>
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+
+<section class="cards">
+@foreach (var card in Model.Cards)
+{
+    <a class="card @card.CssClass" href="@card.Href">
+        <span class="count">@card.Count</span>
+        <span class="label">@card.Label</span>
+    </a>
+}
+</section>
+
+<h2>Today's Receiving Samples</h2>
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Sample</th>
+                <th>Warehouse</th>
+                <th>Status</th>
+                <th>Starch</th>
+                <th>Photos</th>
+                <th>Email</th>
+                <th>Ready</th>
+                <th>Sample Time</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var sample in Model.TodaySamples)
+        {
+            <tr>
+                <td><a href="/Samples/@sample.Id">@sample.DisplayReceiptId</a></td>
+                <td>@sample.Warehouse</td>
+                <td><span class="status @StatusClass(sample.Status)">@sample.Status</span></td>
+                <td>@sample.StarchStatus</td>
+                <td>@sample.PhotoStatus</td>
+                <td>@sample.EmailStatus</td>
+                <td><span class="status @(sample.IsReady ? "ready" : "missing")">@(sample.IsReady ? "Ready" : "Missing")</span></td>
+                <td>@sample.SampleTakenAt.LocalDateTime</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@functions {
+    private static string StatusClass(string status) =>
+        status.Contains("review", StringComparison.OrdinalIgnoreCase) ? "review" :
+        status.Contains("ready", StringComparison.OrdinalIgnoreCase) ? "ready" :
+        status.Contains("sent", StringComparison.OrdinalIgnoreCase) ? "sent" :
+        status.Contains("pending", StringComparison.OrdinalIgnoreCase) ? "pending" : "";
+}

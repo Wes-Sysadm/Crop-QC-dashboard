@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] - Crop QC Dashboard</title>
+    <link rel="stylesheet" href="~/css/site.css" />
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="/">Crop QC Dashboard</a>
+        <nav>
+            <a href="/">Dashboard</a>
+            <a href="/DailyQc">Daily QC</a>
+            <a href="/Receipts">Receipts</a>
+            <a href="/MasterData">Master Data</a>
+        </nav>
+    </header>
+    <main class="page">
+        @RenderBody()
+    </main>
+</body>
+</html>
