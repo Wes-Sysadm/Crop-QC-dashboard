@@ -247,6 +247,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
             entity.Property(x => x.MessageId).HasMaxLength(500);
             entity.Property(x => x.ResendReason).HasMaxLength(1000);
+            entity.Property(x => x.OverrideReason).HasMaxLength(1000);
             entity.Property(x => x.ReportSnapshotReference).HasMaxLength(1000);
             entity.HasIndex(x => x.ReceiptId);
             entity.HasIndex(x => x.QcSampleId);

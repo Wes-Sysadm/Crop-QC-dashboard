@@ -85,6 +85,7 @@ public sealed class SampleListItemViewModel
     public int? ActualSampleSize { get; set; }
     public bool IsReady { get; set; }
     public IReadOnlyList<string> MissingItems { get; set; } = [];
+    public IReadOnlyList<ReadinessChecklistItem> Checklist { get; set; } = [];
 }
 
 public sealed class SampleDetailViewModel
@@ -101,6 +102,8 @@ public sealed class SampleDetailViewModel
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
 }
 
+public sealed record ReadinessChecklistItem(string Category, string Label, string Status, string CssClass);
+
 public sealed class StarchTestViewModel
 {
     public string? DataWarning { get; set; }
@@ -109,6 +112,8 @@ public sealed class StarchTestViewModel
     public IReadOnlyList<FruitReadingRowViewModel> FruitRows { get; set; } = [];
     public IReadOnlyList<StarchScaleValue> StarchScaleValues { get; set; } = [];
     public ReadinessViewModel Readiness { get; set; } = new();
+    public IReadOnlyList<PhotoGroupViewModel> PhotoGroups { get; set; } = [];
+    public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
     public SaveStarchTestForm StarchForm { get; set; } = new();
 }
 
@@ -175,6 +180,23 @@ public sealed class AddPhotoMetadataForm
     public string? WebUrl { get; set; }
 }
 
+public sealed class OverrideSendViewModel
+{
+    public string? DataWarning { get; set; }
+    public SampleListItemViewModel? Sample { get; set; }
+    public ReceiptListItemViewModel? Receipt { get; set; }
+    public ReadinessViewModel Readiness { get; set; } = new();
+    public IReadOnlyList<ReadinessChecklistItem> Checklist { get; set; } = [];
+    public OverrideSendForm Form { get; set; } = new();
+}
+
+public sealed class OverrideSendForm
+{
+    public long SampleId { get; set; }
+    public string OverrideReason { get; set; } = "";
+    public bool ConfirmOverride { get; set; }
+}
+
 public sealed class PhotoPlaceholderFormViewModel
 {
     public string FormAction { get; set; } = "";
@@ -193,6 +215,7 @@ public sealed class ReadinessViewModel
 {
     public bool IsReady { get; set; }
     public IReadOnlyList<string> MissingItems { get; set; } = [];
+    public IReadOnlyList<ReadinessChecklistItem> Checklist { get; set; } = [];
     public int CompletedFruitCount { get; set; }
     public int StarchMissingCount { get; set; }
     public bool HasBinTruck { get; set; }

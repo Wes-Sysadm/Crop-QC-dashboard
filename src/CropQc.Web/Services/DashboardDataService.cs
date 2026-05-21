@@ -17,6 +17,8 @@ public interface IDashboardDataService
     Task<string?> SaveFruitReadingsAsync(SaveFruitReadingsForm form, CancellationToken cancellationToken);
     Task<StarchTestViewModel> GetStarchTestAsync(long id, CancellationToken cancellationToken);
     Task<string?> SaveStarchTestAsync(SaveStarchTestForm form, CancellationToken cancellationToken);
+    Task<OverrideSendViewModel> GetOverrideSendAsync(long id, CancellationToken cancellationToken);
+    Task<string?> LogOverrideSendAsync(OverrideSendForm form, CancellationToken cancellationToken);
     Task<string?> AddPhotoMetadataAsync(AddPhotoMetadataForm form, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, CancellationToken cancellationToken);
 }
@@ -250,7 +252,10 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
 
             var rowModels = await GetFruitReadingRowsAsync(id, cancellationToken);
 
-            var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.QcSampleId == id).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
+            var photos = await dbContext.QcPhotos.AsNoTracking()
+                .Where(x => x.QcSampleId == id && (x.PhotoType == "SampleBeforeCutting" || x.PhotoType == "CutFruit" || x.PhotoType == "Other"))
+                .OrderByDescending(x => x.CapturedAt)
+                .ToListAsync(cancellationToken);
             var grades = await dbContext.Grades.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Id).ToListAsync(cancellationToken);
             var defectTypes = await dbContext.DefectTypes.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync(cancellationToken);
             return new SampleDetailViewModel
@@ -405,6 +410,7 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
 
             var rowModels = await GetFruitReadingRowsAsync(id, cancellationToken);
             var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+            var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.QcSampleId == id && (x.PhotoType == "FruitAfterStarch" || x.PhotoType == "Other")).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
             return new StarchTestViewModel
             {
                 Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
@@ -412,6 +418,14 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
                 FruitRows = rowModels,
                 StarchScaleValues = await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken),
                 Readiness = readiness,
+                PhotoGroups = GroupPhotos(photos),
+                AddPhotoForm = new AddPhotoMetadataForm
+                {
+                    QcSampleId = sample.Id,
+                    PhotoType = "FruitAfterStarch",
+                    PhotoSource = "Upload File",
+                    ContentType = "image/jpeg"
+                },
                 StarchForm = new SaveStarchTestForm
                 {
                     SampleId = sample.Id,
@@ -466,6 +480,73 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await RefreshSampleStatusesAsync(sample, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
+    public async Task<OverrideSendViewModel> GetOverrideSendAsync(long id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var sample = await QuerySamples().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+            if (sample is null)
+            {
+                return new OverrideSendViewModel { DataWarning = "QC sample not found." };
+            }
+
+            var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+            return new OverrideSendViewModel
+            {
+                Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
+                Receipt = ReceiptListItem(sample.Receipt),
+                Readiness = readiness,
+                Checklist = readiness.Checklist,
+                Form = new OverrideSendForm { SampleId = sample.Id }
+            };
+        }
+        catch
+        {
+            return new OverrideSendViewModel { DataWarning = DataWarning };
+        }
+    }
+
+    public async Task<string?> LogOverrideSendAsync(OverrideSendForm form, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(form.OverrideReason))
+        {
+            return "Override reason is required.";
+        }
+
+        if (!form.ConfirmOverride)
+        {
+            return "Confirm the override before logging it.";
+        }
+
+        var sample = await QuerySamples().SingleOrDefaultAsync(x => x.Id == form.SampleId, cancellationToken);
+        if (sample is null)
+        {
+            return "QC sample not found.";
+        }
+
+        var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+        dbContext.QcSummaryEmailLogs.Add(new QcSummaryEmailLog
+        {
+            ReceiptId = sample.ReceiptId,
+            QcSampleId = sample.Id,
+            FromAddress = "HL@fruitandland.com",
+            ToAddress = "QC@fruitandland.com",
+            ReplyToAddress = sample.TakenByUser?.Email,
+            Subject = $"QC Summary Override Placeholder - {sample.GetDisplayReceiptId()}",
+            Status = "OverrideLogged",
+            SentAt = null,
+            IsResend = false,
+            IsOverride = true,
+            OverrideReason = form.OverrideReason.Trim(),
+            MissingItemsSnapshot = string.Join(Environment.NewLine, readiness.MissingItems),
+            EmailBodySnapshot = "Override send placeholder logged; no email was sent.",
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
     }
@@ -583,7 +664,8 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
                 SampleTakenAt = sample.SampleTakenAt,
                 ActualSampleSize = sample.ActualSampleSize,
                 IsReady = readiness.IsReady,
-                MissingItems = readiness.MissingItems
+                MissingItems = readiness.MissingItems,
+                Checklist = readiness.Checklist
             });
         }
 
@@ -634,6 +716,9 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
         var samplePhotos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.QcSampleId == sampleId).Select(x => x.PhotoType).ToListAsync(cancellationToken);
         var missing = new List<string>();
         var invalidRows = completedRows.Count(x => x.Pressure1Lbs is null || x.Pressure2Lbs is null || x.WeightGrams is null || x.GradeId is null);
+        var pressureMissing = completedRows.Count(x => x.Pressure1Lbs is null || x.Pressure2Lbs is null);
+        var weightMissing = completedRows.Count(x => x.WeightGrams is null);
+        var gradeMissing = completedRows.Count(x => x.GradeId is null);
         var starchMissing = completedRows.Count(x => x.StarchScaleValueId is null);
 
         if (completedRows.Count == 0) missing.Add("At least one completed fruit row is required.");
@@ -648,10 +733,24 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
         if (!hasCutFruit) missing.Add("Cut fruit photo is required.");
         if (!hasFruitAfterStarch) missing.Add("Fruit after starch photo is required.");
 
+        var checklist = new List<ReadinessChecklistItem>
+        {
+            ChecklistItem("Required data", "At least one completed fruit row", completedRows.Count > 0, "Missing"),
+            ChecklistItem("Required data", "Pressure 1 and Pressure 2 for every completed fruit row", completedRows.Count == 0 || pressureMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing"),
+            ChecklistItem("Required data", "Weight for every completed fruit row", completedRows.Count == 0 || weightMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing"),
+            ChecklistItem("Required data", "Grade for every completed fruit row", completedRows.Count == 0 || gradeMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing"),
+            ChecklistItem("Required data", "Starch for every completed fruit row", completedRows.Count == 0 || starchMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing"),
+            ChecklistItem("Required photos", "At least one BinTruck photo on the receipt", hasBinTruck, "Missing"),
+            ChecklistItem("Required photos", "SampleBeforeCutting photo on the sample", hasSampleBeforeCutting, "Missing"),
+            ChecklistItem("Required photos", "CutFruit photo on the sample", hasCutFruit, "Missing"),
+            ChecklistItem("Required photos", "FruitAfterStarch photo on the starch page/sample", hasFruitAfterStarch, "Missing")
+        };
+
         return new ReadinessViewModel
         {
             IsReady = missing.Count == 0,
             MissingItems = missing,
+            Checklist = checklist,
             CompletedFruitCount = completedRows.Count,
             StarchMissingCount = starchMissing,
             HasBinTruck = hasBinTruck,
@@ -720,6 +819,10 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
 
     private static string YesNo(bool value) => value ? "Yes" : "No";
     private static IReadOnlyList<string> Row(params string[] values) => values;
+    private static ReadinessChecklistItem ChecklistItem(string category, string label, bool complete, string incompleteStatus) =>
+        complete
+            ? new(category, label, "Complete", "ready")
+            : new(category, label, incompleteStatus, incompleteStatus == "Not applicable" ? "" : "missing");
     private static IReadOnlyList<(string Label, string Href)> MasterDataLinks() =>
     [
         ("Warehouses", "/MasterData/warehouses"),

@@ -123,6 +123,9 @@ public sealed class QcSummaryEmailLog
     public DateTimeOffset? SentAt { get; set; }
     public bool IsResend { get; set; }
     public string? ResendReason { get; set; }
+    public bool IsOverride { get; set; }
+    public string? OverrideReason { get; set; }
+    public string? MissingItemsSnapshot { get; set; }
     public string? EmailBodySnapshot { get; set; }
     public string? ReportSnapshotReference { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

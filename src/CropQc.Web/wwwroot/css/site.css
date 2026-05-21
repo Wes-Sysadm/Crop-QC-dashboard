@@ -22,6 +22,7 @@ h2 { margin: 28px 0 12px; font-size: 20px; }
 .field { display: grid; gap: 4px; min-width: 150px; }
 label { font-size: 12px; font-weight: 700; color: #4a5968; text-transform: uppercase; }
 input, select, button { height: 36px; border: 1px solid #b9c5d0; border-radius: 4px; padding: 6px 9px; font: inherit; }
+textarea { width: 100%; min-height: 96px; border: 1px solid #b9c5d0; border-radius: 4px; padding: 8px 9px; font: inherit; resize: vertical; }
 button, .button { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 7px 12px; border-radius: 4px; border: 1px solid #235a97; background: #235a97; color: white; font-weight: 700; cursor: pointer; }
 .secondary-button { min-height: 30px; background: white; color: #235a97; }
 button:disabled { background: #d2d8de; border-color: #c0c8d0; color: #66717c; cursor: not-allowed; }
@@ -45,6 +46,14 @@ tr:last-child td { border-bottom: 0; }
 .panel h3 { margin: 0 0 12px; font-size: 17px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 12px; margin-top: 14px; }
 .form-grid h2, .form-grid h3, .form-grid button, .form-grid .wide { grid-column: 1 / -1; }
+.checkbox-field { display: flex; align-items: center; gap: 9px; color: #2f4050; font-size: 14px; font-weight: 700; text-transform: none; }
+.checkbox-field input { width: 18px; height: 18px; flex: 0 0 auto; }
+.readiness-checklist { display: grid; grid-template-columns: repeat(2, minmax(240px, 1fr)); gap: 12px; margin: 12px 0; }
+.checklist-group { border: 1px solid #d9e1e8; border-radius: 6px; background: #fbfcfd; padding: 12px; }
+.checklist-group h3 { margin: 0 0 8px; font-size: 14px; color: #2f4050; }
+.checklist-list { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.checklist-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; white-space: normal; }
+.compact-list { margin: 5px 0 0; padding-left: 18px; color: #4a5968; white-space: normal; }
 .qc-grid-wrap { margin-bottom: 12px; }
 .qc-grid th, .qc-grid td { white-space: normal; }
 .qc-grid input, .qc-grid select { width: 100%; min-width: 88px; }
@@ -88,6 +97,7 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     .cards { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
     .grid-two { grid-template-columns: 1fr; }
     .detail-grid { grid-template-columns: 1fr; }
+    .readiness-checklist { grid-template-columns: 1fr; }
     .tray-map { grid-template-columns: repeat(5, minmax(58px, 1fr)); gap: 8px; }
     .tray-position { min-height: 92px; padding: 6px; }
 }

@@ -59,6 +59,7 @@
                     }
                     else
                     {
+                        @await Html.PartialAsync("_ReadinessChecklist", sample.Checklist)
                         <ul class="list">
                         @foreach (var item in sample.MissingItems)
                         {
@@ -68,7 +69,17 @@
                     }
                 </td>
                 <td>@sample.EmailStatus</td>
-                <td><button type="button" disabled="@(sample.IsReady ? null : "disabled")">Send</button></td>
+                <td>
+                    @if (sample.IsReady)
+                    {
+                        <button type="button">Send Placeholder</button>
+                    }
+                    else
+                    {
+                        <button type="button" disabled>Send Placeholder</button>
+                        <a class="inline-action" href="/Samples/@sample.Id/OverrideSend">Override Send</a>
+                    }
+                </td>
             </tr>
         }
         </tbody>

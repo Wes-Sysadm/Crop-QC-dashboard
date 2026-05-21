@@ -40,6 +40,7 @@
     <p><span class="status @(Model.Readiness.IsReady ? "ready" : "missing")">@(Model.Readiness.IsReady ? "Ready to Send" : "Missing Required Data")</span></p>
     <p>Completed fruit: @Model.Readiness.CompletedFruitCount | Starch missing: @Model.Readiness.StarchMissingCount</p>
     <p>Photos: Bin/truck @YesNo(Model.Readiness.HasBinTruck), before cutting @YesNo(Model.Readiness.HasSampleBeforeCutting), cut fruit @YesNo(Model.Readiness.HasCutFruit), after starch @YesNo(Model.Readiness.HasFruitAfterStarch)</p>
+    @await Html.PartialAsync("_ReadinessChecklist", Model.Readiness.Checklist)
     @if (Model.Readiness.MissingItems.Count > 0)
     {
         <ul class="list">
@@ -56,6 +57,10 @@
     else
     {
         <button type="button" disabled>Send QC Summary Placeholder</button>
+        @if (Model.Sample is not null)
+        {
+            <a class="button secondary-button" href="/Samples/@Model.Sample.Id/OverrideSend">Override Send With Missing Data - Manager/Admin Override Placeholder</a>
+        }
     }
 </section>
 
@@ -143,7 +148,7 @@
                 FormAction = $"/Samples/{Model.Sample.Id}/photos",
                 Title = "Add Sample Photo",
                 DefaultPhotoType = Model.AddPhotoForm.PhotoType,
-                PhotoTypes = ["SampleBeforeCutting", "CutFruit", "FruitAfterStarch", "Other"],
+                PhotoTypes = ["SampleBeforeCutting", "CutFruit", "Other"],
                 CropYear = Model.Sample.CropYear,
                 Warehouse = Model.Sample.Warehouse,
                 ReceiptId = Model.Sample.ReceiptIdText

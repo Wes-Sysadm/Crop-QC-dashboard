@@ -41,6 +41,13 @@
         </p>
     </section>
 
+    <section class="panel">
+        <h2>Starch Readiness</h2>
+        <p>Completed fruit rows: @Model.Readiness.CompletedFruitCount | Rows missing starch: @Model.Readiness.StarchMissingCount</p>
+        <p>FruitAfterStarch photo: <span class="status @(Model.Readiness.HasFruitAfterStarch ? "ready" : "missing")">@(Model.Readiness.HasFruitAfterStarch ? "Complete" : "Missing")</span></p>
+        <p class="muted">The after-starch photo is required before the normal QC Summary send can be used.</p>
+    </section>
+
     <form method="post" action="/Samples/@Model.Sample.Id/Starch">
         <input type="hidden" name="SampleId" value="@Model.Sample.Id" />
         <section class="panel tray-panel">
@@ -66,7 +73,7 @@
             </div>
         </section>
 
-            <section class="panel starch-input-panel">
+        <section class="panel starch-input-panel">
                 <h2>Starch Input</h2>
                 <p class="muted">Only completed fruit rows from the main QC grid require starch. Unsampled rows are shown for tray position context.</p>
                 <div class="table-wrap">
@@ -103,8 +110,28 @@
                     </table>
                 </div>
                 <button type="submit">Save Starch Input</button>
-            </section>
+        </section>
     </form>
+
+    <section>
+        <h2>After-Starch Photo</h2>
+        <div class="grid-two">
+            <div class="panel">
+                <h3>Photo Metadata</h3>
+                @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
+            </div>
+            @await Html.PartialAsync("_PhotoPlaceholderForm", new PhotoPlaceholderFormViewModel
+            {
+                FormAction = $"/Samples/{Model.Sample.Id}/Starch/photos",
+                Title = "Add After-Starch Photo",
+                DefaultPhotoType = "FruitAfterStarch",
+                PhotoTypes = ["FruitAfterStarch", "Other"],
+                CropYear = Model.Sample.CropYear,
+                Warehouse = Model.Sample.Warehouse,
+                ReceiptId = Model.Sample.ReceiptIdText
+            })
+        </div>
+    </section>
 }
 
 <script>

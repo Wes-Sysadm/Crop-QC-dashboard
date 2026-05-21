@@ -104,6 +104,9 @@ public sealed record CreateEmailLogRequest(
     DateTimeOffset? SentAt,
     bool IsResend,
     string? ResendReason,
+    bool IsOverride,
+    string? OverrideReason,
+    string? MissingItemsSnapshot,
     string? EmailBodySnapshot,
     string? ReportSnapshotReference);
 
@@ -121,6 +124,9 @@ public sealed record QcSummaryEmailLogDto(
     DateTimeOffset? SentAt,
     bool IsResend,
     string? ResendReason,
+    bool IsOverride,
+    string? OverrideReason,
+    string? MissingItemsSnapshot,
     string? EmailBodySnapshot,
     string? ReportSnapshotReference,
     DateTimeOffset CreatedAt);
