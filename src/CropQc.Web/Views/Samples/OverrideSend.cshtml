@@ -1,0 +1,54 @@
+@model OverrideSendViewModel
+@{
+    ViewData["Title"] = Model.Sample is null ? "Override Send" : $"Override Send - {Model.Sample.DisplayReceiptId}";
+}
+
+<h1>@ViewData["Title"]</h1>
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+
+@if (Model.Sample is not null && Model.Receipt is not null)
+{
+    <section class="panel">
+        <h2>Manager/Admin Override Placeholder</h2>
+        <p>@Model.Sample.DisplayReceiptId | @Model.Receipt.GrowerName | @Model.Receipt.LotCode | @Model.Receipt.VarietyCode</p>
+        <p class="notice warning">This logs an override placeholder only. No QC Summary email will be sent.</p>
+        <p>
+            <a href="/Samples/@Model.Sample.Id">Back to sample detail</a>
+            <a class="inline-action" href="/Receipts/@Model.Sample.ReceiptId">Back to receipt detail</a>
+        </p>
+    </section>
+
+    <section class="panel">
+        <h2>Missing Items Being Overridden</h2>
+        @await Html.PartialAsync("_ReadinessChecklist", Model.Checklist)
+        @if (Model.Readiness.MissingItems.Count > 0)
+        {
+            <ul class="list">
+            @foreach (var item in Model.Readiness.MissingItems)
+            {
+                <li>@item</li>
+            }
+            </ul>
+        }
+    </section>
+
+    <form class="panel form-grid" method="post" action="/Samples/@Model.Sample.Id/OverrideSend">
+        <h2>Confirm Override</h2>
+        <input type="hidden" name="SampleId" value="@Model.Sample.Id" />
+        <label class="field wide">Override reason
+            <textarea name="OverrideReason" required rows="4"></textarea>
+        </label>
+        <label class="checkbox-field wide">
+            <input name="ConfirmOverride" type="checkbox" value="true" required />
+            I confirm this should be logged as an override placeholder with missing data.
+        </label>
+        <button type="submit">Log Override Placeholder</button>
+    </form>
+}

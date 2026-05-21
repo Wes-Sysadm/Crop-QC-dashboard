@@ -41,28 +41,39 @@
         </p>
     </section>
 
+    <section class="panel">
+        <h2>Starch Readiness</h2>
+        <p>Completed fruit rows: @Model.Readiness.CompletedFruitCount | Rows missing starch: @Model.Readiness.StarchMissingCount</p>
+        <p>FruitAfterStarch photo: <span class="status @(Model.Readiness.HasFruitAfterStarch ? "ready" : "missing")">@(Model.Readiness.HasFruitAfterStarch ? "Complete" : "Missing")</span></p>
+        <p class="muted">The after-starch photo is required before the normal QC Summary send can be used.</p>
+    </section>
+
     <form method="post" action="/Samples/@Model.Sample.Id/Starch">
         <input type="hidden" name="SampleId" value="@Model.Sample.Id" />
-        <div class="starch-workspace">
-            <section class="panel">
-                <h2>Tray Map</h2>
-                <div class="tray-map" aria-label="Starch tray map">
-                    @foreach (var position in trayPositions)
-                    {
-                        var fruit = Model.FruitRows.Single(row => row.RowNumber == position);
-                        <button type="button"
-                                class="tray-position @TrayClass(fruit)"
-                                data-row-number="@fruit.RowNumber"
-                                aria-label="Fruit @fruit.RowNumber @TrayStatus(fruit)">
-                            <span class="tray-number">@fruit.RowNumber</span>
-                            <span class="tray-value">@TrayLabel(fruit)</span>
-                            <span class="tray-status">@TrayStatus(fruit)</span>
-                        </button>
-                    }
-                </div>
-            </section>
+        <section class="panel tray-panel">
+            <h2>Tray Map</h2>
+            <div class="tray-legend" aria-label="Tray status legend">
+                <span><span class="legend-swatch not-sampled"></span>Not Sampled</span>
+                <span><span class="legend-swatch missing-starch"></span>Missing Starch</span>
+                <span><span class="legend-swatch complete-starch"></span>Starch Complete</span>
+            </div>
+            <div class="tray-map" aria-label="Starch tray map">
+                @foreach (var position in trayPositions)
+                {
+                    var fruit = Model.FruitRows.Single(row => row.RowNumber == position);
+                    <button type="button"
+                            class="tray-position @TrayClass(fruit)"
+                            data-row-number="@fruit.RowNumber"
+                            aria-label="Fruit @fruit.RowNumber @TrayStatus(fruit)">
+                        <span class="tray-number">@fruit.RowNumber</span>
+                        <span class="tray-value">@TrayLabel(fruit)</span>
+                        <span class="tray-status">@TrayStatus(fruit)</span>
+                    </button>
+                }
+            </div>
+        </section>
 
-            <section class="panel">
+        <section class="panel starch-input-panel">
                 <h2>Starch Input</h2>
                 <p class="muted">Only completed fruit rows from the main QC grid require starch. Unsampled rows are shown for tray position context.</p>
                 <div class="table-wrap">
@@ -99,9 +110,28 @@
                     </table>
                 </div>
                 <button type="submit">Save Starch Input</button>
-            </section>
-        </div>
+        </section>
     </form>
+
+    <section>
+        <h2>After-Starch Photo</h2>
+        <div class="grid-two">
+            <div class="panel">
+                <h3>Photo Metadata</h3>
+                @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
+            </div>
+            @await Html.PartialAsync("_PhotoPlaceholderForm", new PhotoPlaceholderFormViewModel
+            {
+                FormAction = $"/Samples/{Model.Sample.Id}/Starch/photos",
+                Title = "Add After-Starch Photo",
+                DefaultPhotoType = "FruitAfterStarch",
+                PhotoTypes = ["FruitAfterStarch", "Other"],
+                CropYear = Model.Sample.CropYear,
+                Warehouse = Model.Sample.Warehouse,
+                ReceiptId = Model.Sample.ReceiptIdText
+            })
+        </div>
+    </section>
 }
 
 <script>

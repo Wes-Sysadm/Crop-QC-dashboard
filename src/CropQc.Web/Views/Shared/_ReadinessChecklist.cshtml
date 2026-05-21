@@ -1,0 +1,19 @@
+@model IReadOnlyList<ReadinessChecklistItem>
+
+<div class="readiness-checklist">
+@foreach (var group in Model.GroupBy(x => x.Category))
+{
+    <div class="checklist-group">
+        <h3>@group.Key</h3>
+        <ul class="checklist-list">
+        @foreach (var item in group)
+        {
+            <li>
+                <span>@item.Label</span>
+                <span class="status @item.CssClass">@item.Status</span>
+            </li>
+        }
+        </ul>
+    </div>
+}
+</div>

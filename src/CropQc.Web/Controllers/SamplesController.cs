@@ -33,13 +33,49 @@ public sealed class SamplesController(IDashboardDataService dataService) : Contr
         return RedirectToAction(nameof(Starch), new { id });
     }
 
+    [HttpPost("{id:long}/Starch/photos")]
+    public async Task<IActionResult> AddStarchPhoto(long id, AddPhotoMetadataForm form, CancellationToken cancellationToken)
+    {
+        form.QcSampleId = id;
+        form.ReceiptId = null;
+        var error = IsAllowedPhotoType(form.PhotoType, "FruitAfterStarch", "Other")
+            ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
+            : "Only after-starch photos can be added from the Starch Input page.";
+        TempData[error is null ? "Success" : "Error"] = error ?? "Photo metadata added.";
+        return RedirectToAction(nameof(Starch), new { id });
+    }
+
+    [HttpGet("{id:long}/OverrideSend")]
+    public async Task<IActionResult> OverrideSend(long id, CancellationToken cancellationToken) =>
+        View(await dataService.GetOverrideSendAsync(id, cancellationToken));
+
+    [HttpPost("{id:long}/OverrideSend")]
+    public async Task<IActionResult> LogOverrideSend(long id, OverrideSendForm form, CancellationToken cancellationToken)
+    {
+        form.SampleId = id;
+        var error = await dataService.LogOverrideSendAsync(form, cancellationToken);
+        if (error is not null)
+        {
+            TempData["Error"] = error;
+            return RedirectToAction(nameof(OverrideSend), new { id });
+        }
+
+        TempData["Success"] = "Override send placeholder logged. No email was sent.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
     [HttpPost("{id:long}/photos")]
     public async Task<IActionResult> AddPhoto(long id, AddPhotoMetadataForm form, CancellationToken cancellationToken)
     {
         form.QcSampleId = id;
         form.ReceiptId = null;
-        var error = await dataService.AddPhotoMetadataAsync(form, cancellationToken);
+        var error = IsAllowedPhotoType(form.PhotoType, "SampleBeforeCutting", "CutFruit", "Other")
+            ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
+            : "Fruit after starch photos must be added from the Starch Input page.";
         TempData[error is null ? "Success" : "Error"] = error ?? "Photo metadata added.";
         return RedirectToAction(nameof(Details), new { id });
     }
+
+    private static bool IsAllowedPhotoType(string photoType, params string[] allowedTypes) =>
+        allowedTypes.Any(x => string.Equals(x, photoType, StringComparison.OrdinalIgnoreCase));
 }

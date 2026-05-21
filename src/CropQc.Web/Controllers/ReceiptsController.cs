@@ -50,8 +50,13 @@ public sealed class ReceiptsController(IDashboardDataService dataService) : Cont
     {
         form.ReceiptId = id;
         form.QcSampleId = null;
-        var error = await dataService.AddPhotoMetadataAsync(form, cancellationToken);
+        var error = IsAllowedPhotoType(form.PhotoType, "BinTruck", "Other")
+            ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
+            : "Only bin/truck photos can be added from the receipt detail page.";
         TempData[error is null ? "Success" : "Error"] = error ?? "Photo metadata added.";
         return RedirectToAction(nameof(Details), new { id });
     }
+
+    private static bool IsAllowedPhotoType(string photoType, params string[] allowedTypes) =>
+        allowedTypes.Any(x => string.Equals(x, photoType, StringComparison.OrdinalIgnoreCase));
 }

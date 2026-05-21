@@ -45,6 +45,9 @@ public sealed class QcSummaryEmailLogService(CropQcDbContext dbContext, IAuditSe
             SentAt = request.SentAt,
             IsResend = request.IsResend,
             ResendReason = request.ResendReason,
+            IsOverride = request.IsOverride,
+            OverrideReason = request.OverrideReason,
+            MissingItemsSnapshot = request.MissingItemsSnapshot,
             EmailBodySnapshot = request.EmailBodySnapshot,
             ReportSnapshotReference = request.ReportSnapshotReference,
             CreatedAt = DateTimeOffset.UtcNow
@@ -77,6 +80,9 @@ public sealed class QcSummaryEmailLogService(CropQcDbContext dbContext, IAuditSe
         log.SentAt,
         log.IsResend,
         log.ResendReason,
+        log.IsOverride,
+        log.OverrideReason,
+        log.MissingItemsSnapshot,
         log.EmailBodySnapshot,
         log.ReportSnapshotReference,
         log.CreatedAt);
