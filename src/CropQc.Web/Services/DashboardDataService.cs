@@ -443,7 +443,7 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
 
         if (string.IsNullOrWhiteSpace(form.PhotoType) || string.IsNullOrWhiteSpace(form.PhotoSource) || string.IsNullOrWhiteSpace(form.FileName) || string.IsNullOrWhiteSpace(form.ContentType) || string.IsNullOrWhiteSpace(form.SharePointDriveId) || string.IsNullOrWhiteSpace(form.SharePointItemId))
         {
-            return "Photo type, source, file name, content type, placeholder drive ID, and placeholder item ID are required.";
+            return "Photo type, source, file name, content type, target folder, and file reference are required.";
         }
 
         if (form.ReceiptId is not null && !await dbContext.Receipts.AnyAsync(x => x.Id == form.ReceiptId, cancellationToken))
@@ -535,6 +535,7 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
             {
                 Id = sample.Id,
                 ReceiptId = sample.ReceiptId,
+                CropYear = sample.Receipt.CropYear,
                 ReceiptIdText = sample.Receipt.CompuTechReceiptId,
                 DisplayReceiptId = sample.SampleSequenceNumber <= 1 ? sample.Receipt.CompuTechReceiptId : $"{sample.Receipt.CompuTechReceiptId}({sample.SampleSequenceNumber})",
                 Warehouse = sample.Receipt.Warehouse.Code,

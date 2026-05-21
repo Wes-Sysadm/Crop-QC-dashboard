@@ -60,40 +60,16 @@
         @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
         @if (Model.Receipt is not null)
         {
-            <form class="panel form-grid" method="post" action="/Receipts/@Model.Receipt.Id/photos">
-                <h3>Add Bin/Truck Photo Metadata</h3>
-                <label class="field">Photo type
-                    <select name="PhotoType">
-                        <option value="BinTruck" selected>BinTruck</option>
-                        <option value="Other">Other</option>
-                    </select>
-                </label>
-                <label class="field">Photo source
-                    <select name="PhotoSource">
-                        <option selected>Manual Upload</option>
-                        <option>USB Camera</option>
-                    </select>
-                </label>
-                <label class="field">File name
-                    <input name="FileName" value="@Model.AddPhotoForm.FileName" required />
-                </label>
-                <label class="field">Content type
-                    <input name="ContentType" value="@Model.AddPhotoForm.ContentType" required />
-                </label>
-                <label class="field">File size bytes
-                    <input name="FileSizeBytes" type="number" min="0" />
-                </label>
-                <label class="field">Placeholder drive ID
-                    <input name="SharePointDriveId" value="@Model.AddPhotoForm.SharePointDriveId" required />
-                </label>
-                <label class="field">Placeholder item ID
-                    <input name="SharePointItemId" value="@Model.AddPhotoForm.SharePointItemId" required />
-                </label>
-                <label class="field wide">Optional URL
-                    <input name="WebUrl" type="url" />
-                </label>
-                <button type="submit">Add Photo Metadata</button>
-            </form>
+            @await Html.PartialAsync("_PhotoPlaceholderForm", new PhotoPlaceholderFormViewModel
+            {
+                FormAction = $"/Receipts/{Model.Receipt.Id}/photos",
+                Title = "Add Bin/Truck Photo",
+                DefaultPhotoType = "BinTruck",
+                PhotoTypes = ["BinTruck", "Other"],
+                CropYear = Model.Receipt.CropYear,
+                Warehouse = Model.Receipt.Warehouse,
+                ReceiptId = Model.Receipt.CompuTechReceiptId
+            })
         }
     </section>
 </div>

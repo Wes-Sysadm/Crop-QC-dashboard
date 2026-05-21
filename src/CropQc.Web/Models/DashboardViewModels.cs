@@ -72,6 +72,7 @@ public sealed class SampleListItemViewModel
 {
     public long Id { get; set; }
     public long ReceiptId { get; set; }
+    public int CropYear { get; set; }
     public string DisplayReceiptId { get; set; } = "";
     public string ReceiptIdText { get; set; } = "";
     public string Warehouse { get; set; } = "";
@@ -142,13 +143,24 @@ public sealed class AddPhotoMetadataForm
     public long? ReceiptId { get; set; }
     public long? QcSampleId { get; set; }
     public string PhotoType { get; set; } = "";
-    public string PhotoSource { get; set; } = "Manual Upload";
+    public string PhotoSource { get; set; } = "Upload File";
     public string FileName { get; set; } = "";
     public string ContentType { get; set; } = "image/jpeg";
     public long? FileSizeBytes { get; set; }
     public string SharePointDriveId { get; set; } = "placeholder-drive";
     public string SharePointItemId { get; set; } = "placeholder-item";
     public string? WebUrl { get; set; }
+}
+
+public sealed class PhotoPlaceholderFormViewModel
+{
+    public string FormAction { get; set; } = "";
+    public string Title { get; set; } = "Add Photo";
+    public string DefaultPhotoType { get; set; } = "";
+    public IReadOnlyList<string> PhotoTypes { get; set; } = [];
+    public int CropYear { get; set; }
+    public string Warehouse { get; set; } = "";
+    public string ReceiptId { get; set; } = "";
 }
 
 public sealed record PhotoMetadataViewModel(string PhotoType, string PhotoSource, string FileName, string ContentType, long? FileSizeBytes, string? WebUrl, DateTimeOffset CapturedAt);

@@ -1,6 +1,8 @@
 @model SampleDetailViewModel
+@using System.Text.Json
 @{
     ViewData["Title"] = "QC Sample Detail";
+    var defectOptionsJson = JsonSerializer.Serialize(Model.DefectTypes.Select(x => new { id = x.Id, name = x.Name }));
 }
 
 <h1>QC Sample Detail</h1>
@@ -68,7 +70,6 @@
                         <th>Avg</th>
                         <th>Weight g</th>
                         <th>Grade</th>
-                        <th>Starch</th>
                         <th>Defects</th>
                         <th>Other notes</th>
                         <th>Size</th>
@@ -80,10 +81,11 @@
                 @for (var i = 0; i < Model.FruitRows.Count; i++)
                 {
                     var row = Model.FruitRows[i];
-                    <tr>
+                    <tr class="fruit-row" data-row-index="@i">
                         <td>
                             @row.RowNumber
                             <input type="hidden" name="Rows[@i].RowNumber" value="@row.RowNumber" />
+                            <input type="hidden" name="Rows[@i].StarchScaleValueId" value="@row.StarchScaleValueId" />
                         </td>
                         <td><input class="number-input" name="Rows[@i].Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /></td>
                         <td><input class="number-input" name="Rows[@i].Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /></td>
@@ -99,23 +101,21 @@
                             </select>
                         </td>
                         <td>
-                            <select name="Rows[@i].StarchScaleValueId">
-                                <option value="">--</option>
-                                @foreach (var starch in Model.StarchScaleValues)
+                            <div class="selected-defects" data-row-index="@i"></div>
+                            <div class="defect-hidden-inputs" data-row-index="@i">
+                                @foreach (var defectId in row.DefectTypeIds)
                                 {
-                                    <option value="@starch.Id" selected="@(row.StarchScaleValueId == starch.Id ? "selected" : null)">@starch.Value.ToString("0.0")</option>
+                                    <input type="hidden" name="Rows[@i].DefectTypeIds" value="@defectId" />
                                 }
-                            </select>
-                        </td>
-                        <td>
-                            <select class="defect-select" name="Rows[@i].DefectTypeIds" multiple size="4">
+                            </div>
+                            <div class="defect-palette" aria-label="Available defects for row @row.RowNumber">
                                 @foreach (var defect in Model.DefectTypes)
                                 {
-                                    <option value="@defect.Id" selected="@(row.DefectTypeIds.Contains(defect.Id) ? "selected" : null)">@defect.Name</option>
+                                    <button type="button" class="chip chip-action" data-defect-id="@defect.Id" data-defect-name="@defect.Name" title="Double-click to add @defect.Name">@defect.Name</button>
                                 }
-                            </select>
+                            </div>
                         </td>
-                        <td><input name="Rows[@i].OtherDefectNotes" value="@row.OtherDefectNotes" /></td>
+                        <td><input class="other-notes" name="Rows[@i].OtherDefectNotes" value="@row.OtherDefectNotes" disabled="@(!row.Defects.Contains("Other") ? "disabled" : null)" /></td>
                         <td>@row.SizeCategory</td>
                         <td>@row.SizeStatus</td>
                         <td>@YesNo(row.IsCompleted)</td>
@@ -124,8 +124,30 @@
                 </tbody>
             </table>
         </div>
-        <p class="muted">Blank rows are ignored. Starch can be saved later, but readiness stays blocked until every completed row has starch.</p>
-        <button type="submit">Save Fruit Rows</button>
+        <p class="muted">Blank rows are ignored. Starch is handled in the separate Starch Test section below.</p>
+
+        <section class="panel starch-panel">
+            <h2>Starch Test</h2>
+            <p class="muted">Enter starch values after cutting. Readiness stays blocked until every completed fruit row has starch.</p>
+            <div class="starch-grid">
+            @for (var i = 0; i < Model.FruitRows.Count; i++)
+            {
+                var row = Model.FruitRows[i];
+                <label class="field starch-field @(row.IsCompleted ? "" : "muted-field")">
+                    Row @row.RowNumber
+                    <select class="starch-select" data-row-index="@i" @(row.IsCompleted ? "" : "disabled")>
+                        <option value="">--</option>
+                        @foreach (var starch in Model.StarchScaleValues)
+                        {
+                            <option value="@starch.Id" selected="@(row.StarchScaleValueId == starch.Id ? "selected" : null)">@starch.Value.ToString("0.0")</option>
+                        }
+                    </select>
+                </label>
+            }
+            </div>
+        </section>
+
+        <button type="submit">Save QC Rows and Starch</button>
     </form>
 
     <section>
@@ -135,45 +157,97 @@
                 <h3>Photo Metadata</h3>
                 @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
             </div>
-            <form class="panel form-grid" method="post" action="/Samples/@Model.Sample.Id/photos">
-                <h3>Add Photo Metadata</h3>
-                <label class="field">Photo type
-                    <select name="PhotoType">
-                        <option value="SampleBeforeCutting" selected="@(Model.AddPhotoForm.PhotoType == "SampleBeforeCutting" ? "selected" : null)">SampleBeforeCutting</option>
-                        <option value="CutFruit">CutFruit</option>
-                        <option value="FruitAfterStarch">FruitAfterStarch</option>
-                        <option value="Other">Other</option>
-                    </select>
-                </label>
-                <label class="field">Photo source
-                    <select name="PhotoSource">
-                        <option selected>Manual Upload</option>
-                        <option>USB Camera</option>
-                    </select>
-                </label>
-                <label class="field">File name
-                    <input name="FileName" required />
-                </label>
-                <label class="field">Content type
-                    <input name="ContentType" value="@Model.AddPhotoForm.ContentType" required />
-                </label>
-                <label class="field">File size bytes
-                    <input name="FileSizeBytes" type="number" min="0" />
-                </label>
-                <label class="field">Placeholder drive ID
-                    <input name="SharePointDriveId" value="@Model.AddPhotoForm.SharePointDriveId" required />
-                </label>
-                <label class="field">Placeholder item ID
-                    <input name="SharePointItemId" value="@Model.AddPhotoForm.SharePointItemId" required />
-                </label>
-                <label class="field wide">Optional URL
-                    <input name="WebUrl" type="url" />
-                </label>
-                <button type="submit">Add Photo Metadata</button>
-            </form>
+            @await Html.PartialAsync("_PhotoPlaceholderForm", new PhotoPlaceholderFormViewModel
+            {
+                FormAction = $"/Samples/{Model.Sample.Id}/photos",
+                Title = "Add Sample Photo",
+                DefaultPhotoType = Model.AddPhotoForm.PhotoType,
+                PhotoTypes = ["SampleBeforeCutting", "CutFruit", "FruitAfterStarch", "Other"],
+                CropYear = Model.Sample.CropYear,
+                Warehouse = Model.Sample.Warehouse,
+                ReceiptId = Model.Sample.ReceiptIdText
+            })
         </div>
     </section>
 }
+
+<script>
+    (() => {
+        const defects = @Html.Raw(defectOptionsJson);
+
+        function findDefectName(id) {
+            return defects.find(defect => defect.id === Number(id))?.name ?? `Defect ${id}`;
+        }
+
+        function syncOtherNotes(row) {
+            const hasOther = Array.from(row.querySelectorAll(".defect-hidden-inputs input"))
+                .some(input => findDefectName(input.value) === "Other");
+            const notes = row.querySelector(".other-notes");
+            if (!notes) return;
+            notes.disabled = !hasOther;
+            if (!hasOther) notes.value = "";
+        }
+
+        function renderSelectedDefects(row) {
+            const rowIndex = row.dataset.rowIndex;
+            const target = row.querySelector(".selected-defects");
+            const hiddenInputs = row.querySelector(".defect-hidden-inputs");
+            target.innerHTML = "";
+            for (const input of hiddenInputs.querySelectorAll("input")) {
+                const chip = document.createElement("span");
+                chip.className = "chip selected-chip";
+                chip.textContent = findDefectName(input.value);
+
+                const removeButton = document.createElement("button");
+                removeButton.type = "button";
+                removeButton.className = "chip-remove";
+                removeButton.textContent = "x";
+                removeButton.setAttribute("aria-label", `Remove ${chip.textContent} from row ${Number(rowIndex) + 1}`);
+                removeButton.addEventListener("click", () => {
+                    input.remove();
+                    renderSelectedDefects(row);
+                    syncOtherNotes(row);
+                });
+
+                chip.appendChild(removeButton);
+                target.appendChild(chip);
+            }
+
+            syncOtherNotes(row);
+        }
+
+        function addDefect(row, button) {
+            const rowIndex = row.dataset.rowIndex;
+            const hiddenInputs = row.querySelector(".defect-hidden-inputs");
+            const defectId = button.dataset.defectId;
+            if (hiddenInputs.querySelector(`input[value="${defectId}"]`)) {
+                return;
+            }
+
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = `Rows[${rowIndex}].DefectTypeIds`;
+            input.value = defectId;
+            hiddenInputs.appendChild(input);
+            renderSelectedDefects(row);
+        }
+
+        for (const row of document.querySelectorAll(".fruit-row")) {
+            renderSelectedDefects(row);
+            for (const button of row.querySelectorAll(".chip-action")) {
+                button.addEventListener("dblclick", () => addDefect(row, button));
+                button.addEventListener("click", () => addDefect(row, button));
+            }
+        }
+
+        for (const select of document.querySelectorAll(".starch-select")) {
+            const hiddenInput = document.querySelector(`input[name="Rows[${select.dataset.rowIndex}].StarchScaleValueId"]`);
+            select.addEventListener("change", () => {
+                hiddenInput.value = select.value;
+            });
+        }
+    })();
+</script>
 
 @functions {
     private static string YesNo(bool value) => value ? "Yes" : "No";
