@@ -101,6 +101,17 @@ public sealed class SampleDetailViewModel
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
 }
 
+public sealed class StarchTestViewModel
+{
+    public string? DataWarning { get; set; }
+    public SampleListItemViewModel? Sample { get; set; }
+    public ReceiptListItemViewModel? Receipt { get; set; }
+    public IReadOnlyList<FruitReadingRowViewModel> FruitRows { get; set; } = [];
+    public IReadOnlyList<StarchScaleValue> StarchScaleValues { get; set; } = [];
+    public ReadinessViewModel Readiness { get; set; } = new();
+    public SaveStarchTestForm StarchForm { get; set; } = new();
+}
+
 public sealed class FruitReadingRowViewModel
 {
     public int RowNumber { get; set; }
@@ -136,6 +147,18 @@ public sealed class FruitReadingEditRow
     public int? StarchScaleValueId { get; set; }
     public List<int> DefectTypeIds { get; set; } = [];
     public string? OtherDefectNotes { get; set; }
+}
+
+public sealed class SaveStarchTestForm
+{
+    public long SampleId { get; set; }
+    public List<StarchTestEditRow> Rows { get; set; } = [];
+}
+
+public sealed class StarchTestEditRow
+{
+    public int RowNumber { get; set; }
+    public int? StarchScaleValueId { get; set; }
 }
 
 public sealed class AddPhotoMetadataForm
