@@ -90,6 +90,8 @@ Apply EF Core migrations:
 dotnet ef database update --project .\src\CropQc.Data\CropQc.Data.csproj --startup-project .\src\CropQc.Api\CropQc.Api.csproj
 ```
 
+The local seed data includes the MVP 1 warehouse list and the initial operational room list needed for receipt entry. Room `CapacityBins` values are currently seeded as `0` placeholders and must be updated later before any capacity reporting is used.
+
 Helper script:
 
 ```powershell

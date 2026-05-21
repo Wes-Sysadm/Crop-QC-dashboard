@@ -29,7 +29,7 @@ Seeded password policy:
 ## Master Data
 
 - `Warehouses` stores EBS, DH, McDougall, and WP.
-- `Rooms` stores admin-editable rooms per warehouse, including room code, max bin capacity, and active status.
+- `Rooms` stores admin-editable rooms per warehouse, including room code, max bin capacity, and active status. The initial operational room list is seeded for MVP 1 receipt testing.
 - `FruitProfiles` stores variety name/description, variety code, fruit type, production type, organic flag, and active status.
 - `SampleTypes` stores Receiving Sample, Door Sample, and Line QC Sample.
 - `Grades` stores W1, W2, W3, W4, WF, US1, US2, and USF.
@@ -113,6 +113,7 @@ Initial seed data includes:
 
 - Roles: Admin, Manager, QC User, Viewer.
 - Warehouses: EBS, DH, McDougall, WP.
+- Rooms: initial WP, EBS Lamb Street, EBS Evans Street, EBS Bluemountain, DH, and McDougall receiving room list. Seeded `CapacityBins` values are temporary `0` placeholders until actual max capacities are confirmed; update them before using any future capacity reporting.
 - Grades: W1, W2, W3, W4, WF, US1, US2, USF.
 - Defects: Bruise, Sunburn, Bitter Pit, Scald, Decay, Puncture, Watercore, Limb Rub, Stem Bowl Crack, Internal Browning, Other.
 - Sample types: Receiving Sample, Door Sample, Line QC Sample.
