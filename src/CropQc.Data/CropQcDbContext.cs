@@ -311,6 +311,8 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             new Warehouse { Id = 3, Code = "McDougall", Name = "McDougall", IsActive = true },
             new Warehouse { Id = 4, Code = "WP", Name = "WP", IsActive = true });
 
+        SeedRooms(modelBuilder);
+
         modelBuilder.Entity<Grade>().HasData(
             new Grade { Id = 1, Code = "W1", Name = "W1", IsActive = true },
             new Grade { Id = 2, Code = "W2", Name = "W2", IsActive = true },
@@ -342,6 +344,84 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         SeedFruitProfiles(modelBuilder);
         SeedStarchScale(modelBuilder);
         SeedSizeThresholds(modelBuilder);
+    }
+
+    private static void SeedRooms(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Room>().HasData(
+            new Room { Id = 1, WarehouseId = 4, Code = "WP-4", Name = "Room 4", CapacityBins = 0, IsActive = true },
+            new Room { Id = 2, WarehouseId = 4, Code = "WP-5", Name = "Room 5", CapacityBins = 0, IsActive = true },
+            new Room { Id = 3, WarehouseId = 4, Code = "WP-6", Name = "Room 6", CapacityBins = 0, IsActive = true },
+            new Room { Id = 4, WarehouseId = 4, Code = "WP-7", Name = "Room 7", CapacityBins = 0, IsActive = true },
+            new Room { Id = 5, WarehouseId = 4, Code = "WP-8", Name = "Room 8", CapacityBins = 0, IsActive = true },
+
+            new Room { Id = 6, WarehouseId = 1, Code = "LAMB-13", Name = "Lamb Street 13", CapacityBins = 0, IsActive = true },
+            new Room { Id = 7, WarehouseId = 1, Code = "LAMB-14", Name = "Lamb Street 14", CapacityBins = 0, IsActive = true },
+            new Room { Id = 8, WarehouseId = 1, Code = "LAMB-15", Name = "Lamb Street 15", CapacityBins = 0, IsActive = true },
+            new Room { Id = 9, WarehouseId = 1, Code = "LAMB-16", Name = "Lamb Street 16", CapacityBins = 0, IsActive = true },
+            new Room { Id = 10, WarehouseId = 1, Code = "LAMB-17", Name = "Lamb Street 17", CapacityBins = 0, IsActive = true },
+
+            new Room { Id = 11, WarehouseId = 1, Code = "EVANS-1", Name = "Evans Street 1", CapacityBins = 0, IsActive = true },
+            new Room { Id = 12, WarehouseId = 1, Code = "EVANS-2", Name = "Evans Street 2", CapacityBins = 0, IsActive = true },
+            new Room { Id = 13, WarehouseId = 1, Code = "EVANS-3", Name = "Evans Street 3", CapacityBins = 0, IsActive = true },
+            new Room { Id = 14, WarehouseId = 1, Code = "EVANS-4", Name = "Evans Street 4", CapacityBins = 0, IsActive = true },
+            new Room { Id = 15, WarehouseId = 1, Code = "EVANS-5", Name = "Evans Street 5", CapacityBins = 0, IsActive = true },
+            new Room { Id = 16, WarehouseId = 1, Code = "EVANS-6", Name = "Evans Street 6", CapacityBins = 0, IsActive = true },
+            new Room { Id = 17, WarehouseId = 1, Code = "EVANS-7", Name = "Evans Street 7", CapacityBins = 0, IsActive = true },
+            new Room { Id = 18, WarehouseId = 1, Code = "EVANS-8", Name = "Evans Street 8", CapacityBins = 0, IsActive = true },
+            new Room { Id = 19, WarehouseId = 1, Code = "EVANS-9", Name = "Evans Street 9", CapacityBins = 0, IsActive = true },
+            new Room { Id = 20, WarehouseId = 1, Code = "EVANS-10", Name = "Evans Street 10", CapacityBins = 0, IsActive = true },
+            new Room { Id = 21, WarehouseId = 1, Code = "EVANS-11", Name = "Evans Street 11", CapacityBins = 0, IsActive = true },
+            new Room { Id = 22, WarehouseId = 1, Code = "EVANS-12", Name = "Evans Street 12", CapacityBins = 0, IsActive = true },
+            new Room { Id = 23, WarehouseId = 1, Code = "EVANS-BKT", Name = "Evans Street BKT", CapacityBins = 0, IsActive = true },
+            new Room { Id = 24, WarehouseId = 1, Code = "EVANS-BACKSIDE", Name = "Evans Street Backside", CapacityBins = 0, IsActive = true },
+            new Room { Id = 25, WarehouseId = 1, Code = "EVANS-HALLWAY1", Name = "Evans Street Hallway 1", CapacityBins = 0, IsActive = true },
+            new Room { Id = 26, WarehouseId = 1, Code = "EVANS-HALLWAY2", Name = "Evans Street Hallway 2", CapacityBins = 0, IsActive = true },
+
+            new Room { Id = 27, WarehouseId = 1, Code = "BM-1", Name = "Bluemountain 1", CapacityBins = 0, IsActive = true },
+            new Room { Id = 28, WarehouseId = 1, Code = "BM-2", Name = "Bluemountain 2", CapacityBins = 0, IsActive = true },
+            new Room { Id = 29, WarehouseId = 1, Code = "BM-3", Name = "Bluemountain 3", CapacityBins = 0, IsActive = true },
+            new Room { Id = 30, WarehouseId = 1, Code = "BM-4", Name = "Bluemountain 4", CapacityBins = 0, IsActive = true },
+            new Room { Id = 31, WarehouseId = 1, Code = "BM-5", Name = "Bluemountain 5", CapacityBins = 0, IsActive = true },
+            new Room { Id = 32, WarehouseId = 1, Code = "BM-6", Name = "Bluemountain 6", CapacityBins = 0, IsActive = true },
+
+            new Room { Id = 33, WarehouseId = 2, Code = "DH-1", Name = "Room 1", CapacityBins = 0, IsActive = true },
+            new Room { Id = 34, WarehouseId = 2, Code = "DH-2", Name = "Room 2", CapacityBins = 0, IsActive = true },
+            new Room { Id = 35, WarehouseId = 2, Code = "DH-3", Name = "Room 3", CapacityBins = 0, IsActive = true },
+            new Room { Id = 36, WarehouseId = 2, Code = "DH-4", Name = "Room 4", CapacityBins = 0, IsActive = true },
+            new Room { Id = 37, WarehouseId = 2, Code = "DH-5", Name = "Room 5", CapacityBins = 0, IsActive = true },
+            new Room { Id = 38, WarehouseId = 2, Code = "DH-6", Name = "Room 6", CapacityBins = 0, IsActive = true },
+            new Room { Id = 39, WarehouseId = 2, Code = "DH-7", Name = "Room 7", CapacityBins = 0, IsActive = true },
+            new Room { Id = 40, WarehouseId = 2, Code = "DH-8", Name = "Room 8", CapacityBins = 0, IsActive = true },
+            new Room { Id = 41, WarehouseId = 2, Code = "DH-9", Name = "Room 9", CapacityBins = 0, IsActive = true },
+            new Room { Id = 42, WarehouseId = 2, Code = "DH-10", Name = "Room 10", CapacityBins = 0, IsActive = true },
+            new Room { Id = 43, WarehouseId = 2, Code = "DH-11", Name = "Room 11", CapacityBins = 0, IsActive = true },
+            new Room { Id = 44, WarehouseId = 2, Code = "DH-12", Name = "Room 12", CapacityBins = 0, IsActive = true },
+            new Room { Id = 45, WarehouseId = 2, Code = "DH-13", Name = "Room 13", CapacityBins = 0, IsActive = true },
+            new Room { Id = 46, WarehouseId = 2, Code = "DH-14", Name = "Room 14", CapacityBins = 0, IsActive = true },
+            new Room { Id = 47, WarehouseId = 2, Code = "DH-15", Name = "Room 15", CapacityBins = 0, IsActive = true },
+            new Room { Id = 48, WarehouseId = 2, Code = "DH-16", Name = "Room 16", CapacityBins = 0, IsActive = true },
+            new Room { Id = 49, WarehouseId = 2, Code = "DH-17", Name = "Room 17", CapacityBins = 0, IsActive = true },
+            new Room { Id = 50, WarehouseId = 2, Code = "DH-18", Name = "Room 18", CapacityBins = 0, IsActive = true },
+            new Room { Id = 51, WarehouseId = 2, Code = "DH-19", Name = "Room 19", CapacityBins = 0, IsActive = true },
+            new Room { Id = 52, WarehouseId = 2, Code = "DH-20", Name = "Room 20", CapacityBins = 0, IsActive = true },
+            new Room { Id = 53, WarehouseId = 2, Code = "DH-21", Name = "Room 21", CapacityBins = 0, IsActive = true },
+            new Room { Id = 54, WarehouseId = 2, Code = "DH-22", Name = "Room 22", CapacityBins = 0, IsActive = true },
+
+            new Room { Id = 55, WarehouseId = 3, Code = "MCD-3", Name = "Room 3", CapacityBins = 0, IsActive = true },
+            new Room { Id = 56, WarehouseId = 3, Code = "MCD-4", Name = "Room 4", CapacityBins = 0, IsActive = true },
+            new Room { Id = 57, WarehouseId = 3, Code = "MCD-5", Name = "Room 5", CapacityBins = 0, IsActive = true },
+            new Room { Id = 58, WarehouseId = 3, Code = "MCD-6", Name = "Room 6", CapacityBins = 0, IsActive = true },
+            new Room { Id = 59, WarehouseId = 3, Code = "MCD-7", Name = "Room 7", CapacityBins = 0, IsActive = true },
+            new Room { Id = 60, WarehouseId = 3, Code = "MCD-8", Name = "Room 8", CapacityBins = 0, IsActive = true },
+            new Room { Id = 61, WarehouseId = 3, Code = "MCD-9", Name = "Room 9", CapacityBins = 0, IsActive = true },
+            new Room { Id = 62, WarehouseId = 3, Code = "MCD-10", Name = "Room 10", CapacityBins = 0, IsActive = true },
+            new Room { Id = 63, WarehouseId = 3, Code = "MCD-11", Name = "Room 11", CapacityBins = 0, IsActive = true },
+            new Room { Id = 64, WarehouseId = 3, Code = "MCD-12", Name = "Room 12", CapacityBins = 0, IsActive = true },
+            new Room { Id = 65, WarehouseId = 3, Code = "MCD-13", Name = "Room 13", CapacityBins = 0, IsActive = true },
+            new Room { Id = 66, WarehouseId = 3, Code = "MCD-14", Name = "Room 14", CapacityBins = 0, IsActive = true },
+            new Room { Id = 67, WarehouseId = 3, Code = "MCD-15", Name = "Room 15", CapacityBins = 0, IsActive = true },
+            new Room { Id = 68, WarehouseId = 3, Code = "MCD-16", Name = "Room 16", CapacityBins = 0, IsActive = true });
     }
 
     private static void SeedFruitProfiles(ModelBuilder modelBuilder)
