@@ -1,0 +1,29 @@
+@model IReadOnlyList<PhotoGroupViewModel>
+
+@if (Model.Count == 0)
+{
+    <p class="muted">No photo metadata recorded.</p>
+}
+@foreach (var group in Model)
+{
+    <div class="panel">
+        <h2>@group.PhotoType</h2>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>File</th><th>Source</th><th>Type</th><th>Size</th><th>Captured</th></tr></thead>
+                <tbody>
+                @foreach (var photo in group.Photos)
+                {
+                    <tr>
+                        <td>@if (photo.WebUrl is not null){<a href="@photo.WebUrl">@photo.FileName</a>}else{@photo.FileName}</td>
+                        <td>@photo.PhotoSource</td>
+                        <td>@photo.ContentType</td>
+                        <td>@photo.FileSizeBytes</td>
+                        <td>@photo.CapturedAt.LocalDateTime</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

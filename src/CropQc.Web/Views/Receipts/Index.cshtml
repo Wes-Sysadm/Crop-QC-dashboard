@@ -1,0 +1,71 @@
+@model ReceiptListViewModel
+@{
+    ViewData["Title"] = "Receipts";
+}
+
+<h1>Receipts</h1>
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+@if (TempData["Error"] is not null)
+{
+    <p class="notice warning">@TempData["Error"]</p>
+}
+
+<form class="toolbar" method="get">
+    <div class="field"><label>Crop Year</label><input name="CropYear" value="@Model.Search.CropYear" /></div>
+    <div class="field"><label>Receipt ID</label><input name="ReceiptId" value="@Model.Search.ReceiptId" /></div>
+    <div class="field"><label>Grower</label><input name="Grower" value="@Model.Search.Grower" /></div>
+    <div class="field"><label>Lot</label><input name="Lot" value="@Model.Search.Lot" /></div>
+    <button type="submit">Search</button>
+</form>
+
+<h2>Add Receipt</h2>
+<form class="toolbar" method="post" action="/Receipts/Create">
+    <div class="field"><label>Crop Year</label><input name="CropYear" value="@DateTimeOffset.Now.Year" required /></div>
+    <div class="field"><label>Received At</label><input name="ReceivedAt" type="datetime-local" value="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")" required /></div>
+    <div class="field"><label>Receipt ID</label><input name="CompuTechReceiptId" required /></div>
+    <div class="field"><label>Warehouse</label><select name="WarehouseId" required><option value="">Select</option>@foreach (var item in Model.Warehouses){<option value="@item.Id">@item.Code</option>}</select></div>
+    <div class="field"><label>Room</label><select name="RoomId" required><option value="">Select</option>@foreach (var item in Model.Rooms){<option value="@item.Id">@item.Code</option>}</select></div>
+    <div class="field"><label>Variety</label><select name="FruitProfileId" required><option value="">Select</option>@foreach (var item in Model.FruitProfiles){<option value="@item.Id">@item.VarietyCode - @item.Name</option>}</select></div>
+    <div class="field"><label>Grower</label><input name="GrowerName" required /></div>
+    <div class="field"><label>Lot</label><input name="LotCode" required /></div>
+    <div class="field"><label>Bin Count</label><input name="BinCount" type="number" min="1" required /></div>
+    <button type="submit">Add Receipt</button>
+</form>
+
+<h2>Receipt Results</h2>
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Crop Year</th>
+                <th>Received</th>
+                <th>Receipt ID</th>
+                <th>Warehouse</th>
+                <th>Room</th>
+                <th>Grower</th>
+                <th>Lot</th>
+                <th>Variety</th>
+                <th>Bins</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var receipt in Model.Receipts)
+        {
+            <tr>
+                <td>@receipt.CropYear</td>
+                <td>@receipt.ReceivedAt.LocalDateTime</td>
+                <td><a href="/Receipts/@receipt.Id">@receipt.CompuTechReceiptId</a></td>
+                <td>@receipt.Warehouse</td>
+                <td>@receipt.Room</td>
+                <td>@receipt.GrowerName</td>
+                <td>@receipt.LotCode</td>
+                <td>@receipt.VarietyCode</td>
+                <td>@receipt.BinCount</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>

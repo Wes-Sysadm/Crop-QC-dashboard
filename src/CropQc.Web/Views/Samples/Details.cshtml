@@ -1,0 +1,80 @@
+@model SampleDetailViewModel
+@{
+    ViewData["Title"] = "QC Sample Detail";
+}
+
+<h1>QC Sample Detail</h1>
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+@if (Model.Sample is not null)
+{
+    <section class="panel">
+        <h2>@Model.Sample.DisplayReceiptId</h2>
+        <p>@Model.Sample.Warehouse | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Sample size: @Model.Sample.ActualSampleSize</p>
+    </section>
+}
+
+<section class="panel">
+    <h2>Summary Readiness</h2>
+    <p><span class="status @(Model.Readiness.IsReady ? "ready" : "missing")">@(Model.Readiness.IsReady ? "Ready to Send" : "Missing Required Data")</span></p>
+    <p>Completed fruit: @Model.Readiness.CompletedFruitCount | Starch missing: @Model.Readiness.StarchMissingCount</p>
+    <p>Photos: Bin/truck @YesNo(Model.Readiness.HasBinTruck), before cutting @YesNo(Model.Readiness.HasSampleBeforeCutting), cut fruit @YesNo(Model.Readiness.HasCutFruit), after starch @YesNo(Model.Readiness.HasFruitAfterStarch)</p>
+    @if (Model.Readiness.MissingItems.Count > 0)
+    {
+        <ul class="list">
+        @foreach (var item in Model.Readiness.MissingItems)
+        {
+            <li>@item</li>
+        }
+        </ul>
+    }
+    <button type="button" disabled>Send QC Summary</button>
+</section>
+
+<h2>25-Row QC Grid</h2>
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Row</th>
+                <th>P1 lbs</th>
+                <th>P2 lbs</th>
+                <th>Avg</th>
+                <th>Weight g</th>
+                <th>Grade</th>
+                <th>Starch</th>
+                <th>Size</th>
+                <th>Size Status</th>
+                <th>Completed</th>
+                <th>Defects</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var row in Model.FruitRows)
+        {
+            <tr>
+                <td>@row.RowNumber</td>
+                <td>@row.Pressure1Lbs</td>
+                <td>@row.Pressure2Lbs</td>
+                <td>@row.PressureAverageLbs</td>
+                <td>@row.WeightGrams</td>
+                <td>@row.Grade</td>
+                <td>@row.Starch</td>
+                <td>@row.SizeCategory</td>
+                <td>@row.SizeStatus</td>
+                <td>@YesNo(row.IsCompleted)</td>
+                <td>@string.Join(", ", row.Defects)</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+<h2>Sample Photos</h2>
+@await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
+
+@functions {
+    private static string YesNo(bool value) => value ? "Yes" : "No";
+}
