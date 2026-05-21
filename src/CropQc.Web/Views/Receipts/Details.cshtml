@@ -4,6 +4,18 @@
 }
 
 <h1>Receipt Detail</h1>
+@if (TempData["Success"] is string success)
+{
+    <p class="notice success">@success</p>
+}
+@if (TempData["Warning"] is string warning)
+{
+    <p class="notice warning">@warning</p>
+}
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
 @if (Model.DataWarning is not null)
 {
     <p class="notice warning">@Model.DataWarning</p>
@@ -13,6 +25,13 @@
     <section class="panel">
         <h2>@Model.Receipt.CompuTechReceiptId</h2>
         <p>@Model.Receipt.CropYear | @Model.Receipt.ReceivedAt.LocalDateTime | @Model.Receipt.Warehouse / @Model.Receipt.Room | @Model.Receipt.GrowerName | @Model.Receipt.LotCode | @Model.Receipt.VarietyCode | @Model.Receipt.BinCount bins</p>
+        @if (Model.Samples.Any())
+        {
+            <p class="notice warning">This receipt already has a receiving sample. Creating another will assign the next sample sequence, such as @(Model.Receipt.CompuTechReceiptId)(2), and mark it Needs Review.</p>
+        }
+        <form method="post" action="/Receipts/@Model.Receipt.Id/samples">
+            <button type="submit">Create Receiving Sample</button>
+        </form>
     </section>
 }
 
@@ -39,5 +58,42 @@
     <section>
         <h2>Receipt Photos</h2>
         @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
+        @if (Model.Receipt is not null)
+        {
+            <form class="panel form-grid" method="post" action="/Receipts/@Model.Receipt.Id/photos">
+                <h3>Add Bin/Truck Photo Metadata</h3>
+                <label class="field">Photo type
+                    <select name="PhotoType">
+                        <option value="BinTruck" selected>BinTruck</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </label>
+                <label class="field">Photo source
+                    <select name="PhotoSource">
+                        <option selected>Manual Upload</option>
+                        <option>USB Camera</option>
+                    </select>
+                </label>
+                <label class="field">File name
+                    <input name="FileName" value="@Model.AddPhotoForm.FileName" required />
+                </label>
+                <label class="field">Content type
+                    <input name="ContentType" value="@Model.AddPhotoForm.ContentType" required />
+                </label>
+                <label class="field">File size bytes
+                    <input name="FileSizeBytes" type="number" min="0" />
+                </label>
+                <label class="field">Placeholder drive ID
+                    <input name="SharePointDriveId" value="@Model.AddPhotoForm.SharePointDriveId" required />
+                </label>
+                <label class="field">Placeholder item ID
+                    <input name="SharePointItemId" value="@Model.AddPhotoForm.SharePointItemId" required />
+                </label>
+                <label class="field wide">Optional URL
+                    <input name="WebUrl" type="url" />
+                </label>
+                <button type="submit">Add Photo Metadata</button>
+            </form>
+        }
     </section>
 </div>

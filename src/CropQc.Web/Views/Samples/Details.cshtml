@@ -4,6 +4,18 @@
 }
 
 <h1>QC Sample Detail</h1>
+@if (TempData["Success"] is string success)
+{
+    <p class="notice success">@success</p>
+}
+@if (TempData["Warning"] is string warning)
+{
+    <p class="notice warning">@warning</p>
+}
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
 @if (Model.DataWarning is not null)
 {
     <p class="notice warning">@Model.DataWarning</p>
@@ -13,6 +25,7 @@
     <section class="panel">
         <h2>@Model.Sample.DisplayReceiptId</h2>
         <p>@Model.Sample.Warehouse | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Sample size: @Model.Sample.ActualSampleSize</p>
+        <p><a href="/Receipts/@Model.Sample.ReceiptId">Back to receipt</a></p>
     </section>
 }
 
@@ -30,50 +43,137 @@
         }
         </ul>
     }
-    <button type="button" disabled>Send QC Summary</button>
+    @if (Model.Readiness.IsReady)
+    {
+        <button type="button">Send QC Summary Placeholder</button>
+    }
+    else
+    {
+        <button type="button" disabled>Send QC Summary Placeholder</button>
+    }
 </section>
 
-<h2>25-Row QC Grid</h2>
-<div class="table-wrap">
-    <table>
-        <thead>
-            <tr>
-                <th>Row</th>
-                <th>P1 lbs</th>
-                <th>P2 lbs</th>
-                <th>Avg</th>
-                <th>Weight g</th>
-                <th>Grade</th>
-                <th>Starch</th>
-                <th>Size</th>
-                <th>Size Status</th>
-                <th>Completed</th>
-                <th>Defects</th>
-            </tr>
-        </thead>
-        <tbody>
-        @foreach (var row in Model.FruitRows)
-        {
-            <tr>
-                <td>@row.RowNumber</td>
-                <td>@row.Pressure1Lbs</td>
-                <td>@row.Pressure2Lbs</td>
-                <td>@row.PressureAverageLbs</td>
-                <td>@row.WeightGrams</td>
-                <td>@row.Grade</td>
-                <td>@row.Starch</td>
-                <td>@row.SizeCategory</td>
-                <td>@row.SizeStatus</td>
-                <td>@YesNo(row.IsCompleted)</td>
-                <td>@string.Join(", ", row.Defects)</td>
-            </tr>
-        }
-        </tbody>
-    </table>
-</div>
+@if (Model.Sample is not null)
+{
+    <form method="post" action="/Samples/@Model.Sample.Id/rows">
+        <input type="hidden" name="SampleId" value="@Model.Sample.Id" />
+        <h2>25-Row QC Grid</h2>
+        <div class="table-wrap qc-grid-wrap">
+            <table class="qc-grid">
+                <thead>
+                    <tr>
+                        <th>Row</th>
+                        <th>P1 lbs</th>
+                        <th>P2 lbs</th>
+                        <th>Avg</th>
+                        <th>Weight g</th>
+                        <th>Grade</th>
+                        <th>Starch</th>
+                        <th>Defects</th>
+                        <th>Other notes</th>
+                        <th>Size</th>
+                        <th>Size Status</th>
+                        <th>Completed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @for (var i = 0; i < Model.FruitRows.Count; i++)
+                {
+                    var row = Model.FruitRows[i];
+                    <tr>
+                        <td>
+                            @row.RowNumber
+                            <input type="hidden" name="Rows[@i].RowNumber" value="@row.RowNumber" />
+                        </td>
+                        <td><input class="number-input" name="Rows[@i].Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /></td>
+                        <td><input class="number-input" name="Rows[@i].Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /></td>
+                        <td>@row.PressureAverageLbs</td>
+                        <td><input class="number-input" name="Rows[@i].WeightGrams" type="number" step="0.0001" min="0" value="@row.WeightGrams" /></td>
+                        <td>
+                            <select name="Rows[@i].GradeId">
+                                <option value="">--</option>
+                                @foreach (var grade in Model.Grades)
+                                {
+                                    <option value="@grade.Id" selected="@(row.GradeId == grade.Id ? "selected" : null)">@grade.Code</option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <select name="Rows[@i].StarchScaleValueId">
+                                <option value="">--</option>
+                                @foreach (var starch in Model.StarchScaleValues)
+                                {
+                                    <option value="@starch.Id" selected="@(row.StarchScaleValueId == starch.Id ? "selected" : null)">@starch.Value.ToString("0.0")</option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <select class="defect-select" name="Rows[@i].DefectTypeIds" multiple size="4">
+                                @foreach (var defect in Model.DefectTypes)
+                                {
+                                    <option value="@defect.Id" selected="@(row.DefectTypeIds.Contains(defect.Id) ? "selected" : null)">@defect.Name</option>
+                                }
+                            </select>
+                        </td>
+                        <td><input name="Rows[@i].OtherDefectNotes" value="@row.OtherDefectNotes" /></td>
+                        <td>@row.SizeCategory</td>
+                        <td>@row.SizeStatus</td>
+                        <td>@YesNo(row.IsCompleted)</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <p class="muted">Blank rows are ignored. Starch can be saved later, but readiness stays blocked until every completed row has starch.</p>
+        <button type="submit">Save Fruit Rows</button>
+    </form>
 
-<h2>Sample Photos</h2>
-@await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
+    <section>
+        <h2>Sample Photos</h2>
+        <div class="grid-two">
+            <div class="panel">
+                <h3>Photo Metadata</h3>
+                @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
+            </div>
+            <form class="panel form-grid" method="post" action="/Samples/@Model.Sample.Id/photos">
+                <h3>Add Photo Metadata</h3>
+                <label class="field">Photo type
+                    <select name="PhotoType">
+                        <option value="SampleBeforeCutting" selected="@(Model.AddPhotoForm.PhotoType == "SampleBeforeCutting" ? "selected" : null)">SampleBeforeCutting</option>
+                        <option value="CutFruit">CutFruit</option>
+                        <option value="FruitAfterStarch">FruitAfterStarch</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </label>
+                <label class="field">Photo source
+                    <select name="PhotoSource">
+                        <option selected>Manual Upload</option>
+                        <option>USB Camera</option>
+                    </select>
+                </label>
+                <label class="field">File name
+                    <input name="FileName" required />
+                </label>
+                <label class="field">Content type
+                    <input name="ContentType" value="@Model.AddPhotoForm.ContentType" required />
+                </label>
+                <label class="field">File size bytes
+                    <input name="FileSizeBytes" type="number" min="0" />
+                </label>
+                <label class="field">Placeholder drive ID
+                    <input name="SharePointDriveId" value="@Model.AddPhotoForm.SharePointDriveId" required />
+                </label>
+                <label class="field">Placeholder item ID
+                    <input name="SharePointItemId" value="@Model.AddPhotoForm.SharePointItemId" required />
+                </label>
+                <label class="field wide">Optional URL
+                    <input name="WebUrl" type="url" />
+                </label>
+                <button type="submit">Add Photo Metadata</button>
+            </form>
+        </div>
+    </section>
+}
 
 @functions {
     private static string YesNo(bool value) => value ? "Yes" : "No";
