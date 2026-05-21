@@ -88,6 +88,16 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
     {
         try
         {
+            if (search.WarehouseId is not null && search.RoomId is not null)
+            {
+                var roomMatchesWarehouse = await dbContext.Rooms.AsNoTracking()
+                    .AnyAsync(x => x.Id == search.RoomId && x.WarehouseId == search.WarehouseId, cancellationToken);
+                if (!roomMatchesWarehouse)
+                {
+                    search.RoomId = null;
+                }
+            }
+
             var query = dbContext.Receipts.AsNoTracking().Include(x => x.Warehouse).Include(x => x.Room).Include(x => x.FruitProfile).AsQueryable();
             if (search.CropYear is not null) query = query.Where(x => x.CropYear == search.CropYear);
             if (!string.IsNullOrWhiteSpace(search.ReceiptId)) query = query.Where(x => x.CompuTechReceiptId.Contains(search.ReceiptId));
@@ -103,7 +113,7 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
                 Search = search,
                 Receipts = receipts.Select(ReceiptListItem).ToList(),
                 Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
-                Rooms = await dbContext.Rooms.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
+                Rooms = await dbContext.Rooms.AsNoTracking().OrderBy(x => x.WarehouseId).ThenBy(x => x.Code).ToListAsync(cancellationToken),
                 FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken)
             };
         }
@@ -118,6 +128,17 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
         if (string.IsNullOrWhiteSpace(form.CompuTechReceiptId) || string.IsNullOrWhiteSpace(form.GrowerName) || string.IsNullOrWhiteSpace(form.LotCode) || form.BinCount <= 0)
         {
             return "Receipt ID, grower, lot, and bin count are required.";
+        }
+
+        var room = await dbContext.Rooms.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.RoomId, cancellationToken);
+        if (room is null)
+        {
+            return "Selected room was not found.";
+        }
+
+        if (room.WarehouseId != form.WarehouseId)
+        {
+            return "Selected room does not belong to the selected warehouse.";
         }
 
         var now = DateTimeOffset.UtcNow;

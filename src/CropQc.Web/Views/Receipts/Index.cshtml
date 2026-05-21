@@ -1,6 +1,8 @@
 @model ReceiptListViewModel
+@using System.Text.Json
 @{
     ViewData["Title"] = "Receipts";
+    var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, code = x.Code }));
 }
 
 <h1>Receipts</h1>
@@ -18,6 +20,22 @@
     <div class="field"><label>Receipt ID</label><input name="ReceiptId" value="@Model.Search.ReceiptId" /></div>
     <div class="field"><label>Grower</label><input name="Grower" value="@Model.Search.Grower" /></div>
     <div class="field"><label>Lot</label><input name="Lot" value="@Model.Search.Lot" /></div>
+    <div class="field">
+        <label>Warehouse</label>
+        <select id="searchWarehouseId" name="WarehouseId">
+            <option value="">All</option>
+            @foreach (var item in Model.Warehouses)
+            {
+                <option value="@item.Id" selected="@(Model.Search.WarehouseId == item.Id ? "selected" : null)">@item.Code</option>
+            }
+        </select>
+    </div>
+    <div class="field">
+        <label>Room</label>
+        <select id="searchRoomId" name="RoomId" data-selected-room-id="@Model.Search.RoomId">
+            <option value="">All</option>
+        </select>
+    </div>
     <button type="submit">Search</button>
 </form>
 
@@ -26,8 +44,8 @@
     <div class="field"><label>Crop Year</label><input name="CropYear" value="@DateTimeOffset.Now.Year" required /></div>
     <div class="field"><label>Received At</label><input name="ReceivedAt" type="datetime-local" value="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")" required /></div>
     <div class="field"><label>Receipt ID</label><input name="CompuTechReceiptId" required /></div>
-    <div class="field"><label>Warehouse</label><select name="WarehouseId" required><option value="">Select</option>@foreach (var item in Model.Warehouses){<option value="@item.Id">@item.Code</option>}</select></div>
-    <div class="field"><label>Room</label><select name="RoomId" required><option value="">Select</option>@foreach (var item in Model.Rooms){<option value="@item.Id">@item.Code</option>}</select></div>
+    <div class="field"><label>Warehouse</label><select id="addWarehouseId" name="WarehouseId" required><option value="">Select</option>@foreach (var item in Model.Warehouses){<option value="@item.Id">@item.Code</option>}</select></div>
+    <div class="field"><label>Room</label><select id="addRoomId" name="RoomId" required disabled><option value="">Select warehouse first</option></select></div>
     <div class="field"><label>Variety</label><select name="FruitProfileId" required><option value="">Select</option>@foreach (var item in Model.FruitProfiles){<option value="@item.Id">@item.VarietyCode - @item.Name</option>}</select></div>
     <div class="field"><label>Grower</label><input name="GrowerName" required /></div>
     <div class="field"><label>Lot</label><input name="LotCode" required /></div>
@@ -69,3 +87,65 @@
         </tbody>
     </table>
 </div>
+
+<script>
+    (() => {
+        const rooms = @Html.Raw(roomOptionsJson);
+
+        function configureRoomFilter(warehouseSelectId, roomSelectId, emptyText, resetOnWarehouseChange) {
+            const warehouseSelect = document.getElementById(warehouseSelectId);
+            const roomSelect = document.getElementById(roomSelectId);
+            if (!warehouseSelect || !roomSelect) {
+                return;
+            }
+
+            function populateRoomOptions(keepSelection) {
+                const warehouseId = Number(warehouseSelect.value);
+                const selectedRoomId = keepSelection ? roomSelect.dataset.selectedRoomId : "";
+                roomSelect.innerHTML = "";
+
+                const defaultOption = document.createElement("option");
+                defaultOption.value = "";
+                defaultOption.textContent = warehouseId ? emptyText : "Select warehouse first";
+                roomSelect.appendChild(defaultOption);
+
+                if (!warehouseId) {
+                    roomSelect.value = "";
+                    roomSelect.disabled = true;
+                    roomSelect.dataset.selectedRoomId = "";
+                    return;
+                }
+
+                for (const room of rooms.filter(item => item.warehouseId === warehouseId)) {
+                    const option = document.createElement("option");
+                    option.value = room.id;
+                    option.textContent = room.code;
+                    if (selectedRoomId && Number(selectedRoomId) === room.id) {
+                        option.selected = true;
+                    }
+
+                    roomSelect.appendChild(option);
+                }
+
+                roomSelect.disabled = false;
+                if (!keepSelection || !Array.from(roomSelect.options).some(option => option.selected && option.value)) {
+                    roomSelect.value = "";
+                }
+
+                roomSelect.dataset.selectedRoomId = roomSelect.value;
+            }
+
+            populateRoomOptions(true);
+            warehouseSelect.addEventListener("change", () => {
+                if (resetOnWarehouseChange) {
+                    roomSelect.dataset.selectedRoomId = "";
+                }
+
+                populateRoomOptions(false);
+            });
+        }
+
+        configureRoomFilter("searchWarehouseId", "searchRoomId", "All", true);
+        configureRoomFilter("addWarehouseId", "addRoomId", "Select", true);
+    })();
+</script>
