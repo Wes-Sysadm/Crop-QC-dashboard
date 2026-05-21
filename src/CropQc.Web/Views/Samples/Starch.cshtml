@@ -1,6 +1,9 @@
 @model StarchTestViewModel
 @{
     ViewData["Title"] = Model.Sample is null ? "Starch Input" : $"Starch Input - {Model.Sample.DisplayReceiptId}";
+    var trayPositions = Enumerable.Range(0, 5)
+        .SelectMany(trayRow => Enumerable.Range(0, 5).Select(trayColumn => trayColumn * 5 + trayRow + 1))
+        .ToList();
 }
 
 <h1>@ViewData["Title"]</h1>
@@ -41,15 +44,16 @@
             <section class="panel">
                 <h2>Tray Map</h2>
                 <div class="tray-map" aria-label="Starch tray map">
-                    @foreach (var row in Model.FruitRows)
+                    @foreach (var position in trayPositions)
                     {
+                        var fruit = Model.FruitRows.Single(row => row.RowNumber == position);
                         <button type="button"
-                                class="tray-position @TrayClass(row)"
-                                data-row-number="@row.RowNumber"
-                                aria-label="Fruit @row.RowNumber @TrayStatus(row)">
-                            <span class="tray-number">@row.RowNumber</span>
-                            <span class="tray-value">@TrayLabel(row)</span>
-                            <span class="tray-status">@TrayStatus(row)</span>
+                                class="tray-position @TrayClass(fruit)"
+                                data-row-number="@fruit.RowNumber"
+                                aria-label="Fruit @fruit.RowNumber @TrayStatus(fruit)">
+                            <span class="tray-number">@fruit.RowNumber</span>
+                            <span class="tray-value">@TrayLabel(fruit)</span>
+                            <span class="tray-status">@TrayStatus(fruit)</span>
                         </button>
                     }
                 </div>
