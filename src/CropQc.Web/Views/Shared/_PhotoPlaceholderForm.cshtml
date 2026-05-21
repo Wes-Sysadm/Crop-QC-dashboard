@@ -1,0 +1,205 @@
+@model PhotoPlaceholderFormViewModel
+@{
+    var instanceId = $"photo-{Guid.NewGuid():N}";
+    var defaultPhotoType = string.IsNullOrWhiteSpace(Model.DefaultPhotoType)
+        ? Model.PhotoTypes.FirstOrDefault() ?? "Other"
+        : Model.DefaultPhotoType;
+}
+
+<form class="panel form-grid photo-workflow" method="post" action="@Model.FormAction" id="@instanceId"
+      data-crop-year="@Model.CropYear"
+      data-warehouse="@Model.Warehouse"
+      data-receipt-id="@Model.ReceiptId">
+    <h3>@Model.Title</h3>
+    <label class="field">Photo type
+        <select name="PhotoType" class="photo-type">
+            @foreach (var photoType in Model.PhotoTypes)
+            {
+                <option value="@photoType" selected="@(photoType == defaultPhotoType ? "selected" : null)">@photoType</option>
+            }
+        </select>
+    </label>
+    <label class="field">Photo source
+        <select name="PhotoSource" class="photo-source">
+            <option value="Upload File" selected>Upload File</option>
+            <option value="USB Camera">USB Camera</option>
+        </select>
+    </label>
+
+    <input type="hidden" name="FileName" class="photo-file-name" required />
+    <input type="hidden" name="ContentType" class="photo-content-type" required />
+    <input type="hidden" name="FileSizeBytes" class="photo-file-size" />
+    <input type="hidden" name="SharePointDriveId" class="photo-drive-id" required />
+    <input type="hidden" name="SharePointItemId" class="photo-item-id" required />
+    <input type="hidden" name="WebUrl" class="photo-web-url" />
+
+    <div class="source-panel upload-panel wide">
+        <input type="file" accept="image/*" class="photo-file-input" hidden />
+        <button type="button" class="upload-zone">
+            <span>Drop photo here or click to browse</span>
+        </button>
+        <div class="photo-preview" aria-live="polite">
+            <span>No photo selected</span>
+        </div>
+    </div>
+
+    <div class="source-panel camera-panel wide" hidden>
+        <div class="camera-placeholder">USB camera preview will appear here.</div>
+        <div class="button-row">
+            <button type="button" class="camera-start">Start Camera Preview</button>
+            <button type="button" class="camera-capture">Capture Photo</button>
+        </div>
+    </div>
+
+    <div class="metadata-summary wide" aria-live="polite">
+        <div><strong>Target folder:</strong> <span class="target-folder"></span></div>
+        <div><strong>Generated file:</strong> <span class="generated-file"></span></div>
+        <div><strong>Selected file:</strong> <span class="selected-file">None</span></div>
+        <div><strong>File size:</strong> <span class="selected-size">0 bytes</span></div>
+        <div><strong>Content type:</strong> <span class="selected-content-type">image/jpeg</span></div>
+    </div>
+
+    <p class="muted wide">This saves photo metadata only. Real SharePoint upload and USB camera capture will be connected later.</p>
+    <button type="submit">Add Photo Metadata</button>
+</form>
+
+<script>
+    (() => {
+        const form = document.getElementById("@instanceId");
+        if (!form) return;
+
+        const photoType = form.querySelector(".photo-type");
+        const photoSource = form.querySelector(".photo-source");
+        const fileInput = form.querySelector(".photo-file-input");
+        const uploadPanel = form.querySelector(".upload-panel");
+        const cameraPanel = form.querySelector(".camera-panel");
+        const uploadZone = form.querySelector(".upload-zone");
+        const preview = form.querySelector(".photo-preview");
+        const fileNameInput = form.querySelector(".photo-file-name");
+        const contentTypeInput = form.querySelector(".photo-content-type");
+        const fileSizeInput = form.querySelector(".photo-file-size");
+        const driveIdInput = form.querySelector(".photo-drive-id");
+        const itemIdInput = form.querySelector(".photo-item-id");
+        const webUrlInput = form.querySelector(".photo-web-url");
+        const targetFolder = form.querySelector(".target-folder");
+        const generatedFile = form.querySelector(".generated-file");
+        const selectedFile = form.querySelector(".selected-file");
+        const selectedSize = form.querySelector(".selected-size");
+        const selectedContentType = form.querySelector(".selected-content-type");
+        const cameraStart = form.querySelector(".camera-start");
+        const cameraCapture = form.querySelector(".camera-capture");
+        let selectedUploadFile = null;
+
+        function pad(value) {
+            return value.toString().padStart(2, "0");
+        }
+
+        function clean(value) {
+            return (value || "Unknown").toString().replace(/[^A-Za-z0-9_-]/g, "");
+        }
+
+        function formatBytes(value) {
+            if (!value) return "0 bytes";
+            if (value < 1024) return `${value} bytes`;
+            if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+            return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+        }
+
+        function buildMetadata(file) {
+            const now = new Date();
+            const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+            const timePart = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+            const type = clean(photoType.value);
+            const receiptId = clean(form.dataset.receiptId);
+            const extension = file?.name?.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : ".jpg";
+            const folder = `CropQc/${form.dataset.cropYear}/${clean(form.dataset.warehouse)}/Receipt-${receiptId}/${type}/`;
+            const generated = `${receiptId}_${type}_${datePart}_${timePart}${extension}`;
+
+            fileNameInput.value = file?.name || generated;
+            contentTypeInput.value = file?.type || "image/jpeg";
+            fileSizeInput.value = file?.size ?? 0;
+            driveIdInput.value = folder;
+            itemIdInput.value = generated;
+            webUrlInput.value = `${folder}${generated}`;
+
+            targetFolder.textContent = folder;
+            generatedFile.textContent = generated;
+            selectedFile.textContent = file?.name || generated;
+            selectedSize.textContent = formatBytes(file?.size ?? 0);
+            selectedContentType.textContent = file?.type || "image/jpeg";
+        }
+
+        function showPreview(file) {
+            preview.innerHTML = "";
+            if (!file) {
+                preview.appendChild(document.createTextNode("No photo selected"));
+                return;
+            }
+
+            if (file.type.startsWith("image/")) {
+                const image = document.createElement("img");
+                image.alt = "Selected photo preview";
+                image.src = URL.createObjectURL(file);
+                preview.appendChild(image);
+            } else {
+                preview.appendChild(document.createTextNode(file.name));
+            }
+        }
+
+        function setUploadFile(file) {
+            selectedUploadFile = file;
+            buildMetadata(file);
+            showPreview(file);
+        }
+
+        function syncSource() {
+            const isCamera = photoSource.value === "USB Camera";
+            uploadPanel.hidden = isCamera;
+            cameraPanel.hidden = !isCamera;
+            buildMetadata(isCamera ? null : selectedUploadFile);
+            if (isCamera) {
+                preview.innerHTML = "";
+                preview.appendChild(document.createTextNode("No photo selected"));
+            }
+        }
+
+        photoType.addEventListener("change", () => buildMetadata(photoSource.value === "USB Camera" ? null : selectedUploadFile));
+        photoSource.addEventListener("change", syncSource);
+        uploadZone.addEventListener("click", () => fileInput.click());
+        uploadZone.addEventListener("dragover", event => {
+            event.preventDefault();
+            uploadZone.classList.add("drag-over");
+        });
+        uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("drag-over"));
+        uploadZone.addEventListener("drop", event => {
+            event.preventDefault();
+            uploadZone.classList.remove("drag-over");
+            const file = event.dataTransfer.files?.[0];
+            if (file) setUploadFile(file);
+        });
+        fileInput.addEventListener("change", () => {
+            const file = fileInput.files?.[0];
+            if (file) setUploadFile(file);
+        });
+
+        cameraStart.addEventListener("click", () => {
+            form.querySelector(".camera-placeholder").textContent = "USB camera preview will appear here.";
+        });
+        cameraCapture.addEventListener("click", () => {
+            buildMetadata(null);
+        });
+        form.addEventListener("submit", event => {
+            if (photoSource.value === "Upload File" && !selectedUploadFile) {
+                event.preventDefault();
+                uploadZone.focus();
+                uploadZone.classList.add("drag-over");
+                return;
+            }
+
+            buildMetadata(photoSource.value === "USB Camera" ? null : selectedUploadFile);
+        });
+
+        buildMetadata(null);
+        syncSource();
+    })();
+</script>
