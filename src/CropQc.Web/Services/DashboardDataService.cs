@@ -12,7 +12,10 @@ public interface IDashboardDataService
     Task<ReceiptListViewModel> SearchReceiptsAsync(ReceiptSearchForm search, CancellationToken cancellationToken);
     Task<string?> CreateReceiptAsync(CreateReceiptForm form, CancellationToken cancellationToken);
     Task<ReceiptDetailViewModel> GetReceiptDetailAsync(long id, CancellationToken cancellationToken);
+    Task<(long? SampleId, int? SampleSequenceNumber, string? Warning, string? Error)> CreateReceivingSampleAsync(long receiptId, CancellationToken cancellationToken);
     Task<SampleDetailViewModel> GetSampleDetailAsync(long id, CancellationToken cancellationToken);
+    Task<string?> SaveFruitReadingsAsync(SaveFruitReadingsForm form, CancellationToken cancellationToken);
+    Task<string?> AddPhotoMetadataAsync(AddPhotoMetadataForm form, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, CancellationToken cancellationToken);
 }
 
@@ -94,10 +97,11 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
             if (search.RoomId is not null) query = query.Where(x => x.RoomId == search.RoomId);
             if (search.FruitProfileId is not null) query = query.Where(x => x.FruitProfileId == search.FruitProfileId);
 
+            var receipts = await query.OrderByDescending(x => x.ReceivedAt).Take(200).ToListAsync(cancellationToken);
             return new ReceiptListViewModel
             {
                 Search = search,
-                Receipts = await query.OrderByDescending(x => x.ReceivedAt).Take(200).Select(x => ReceiptListItem(x)).ToListAsync(cancellationToken),
+                Receipts = receipts.Select(ReceiptListItem).ToList(),
                 Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
                 Rooms = await dbContext.Rooms.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
                 FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken)
@@ -152,13 +156,63 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
             {
                 Receipt = ReceiptListItem(receipt),
                 Samples = await EnrichSamplesAsync(samples, cancellationToken),
-                PhotoGroups = GroupPhotos(photos)
+                PhotoGroups = GroupPhotos(photos),
+                AddPhotoForm = new AddPhotoMetadataForm
+                {
+                    ReceiptId = receipt.Id,
+                    PhotoType = "BinTruck",
+                    PhotoSource = "Manual Upload",
+                    ContentType = "image/jpeg"
+                }
             };
         }
         catch
         {
             return new ReceiptDetailViewModel { DataWarning = DataWarning };
         }
+    }
+
+    public async Task<(long? SampleId, int? SampleSequenceNumber, string? Warning, string? Error)> CreateReceivingSampleAsync(long receiptId, CancellationToken cancellationToken)
+    {
+        var receiptExists = await dbContext.Receipts.AnyAsync(x => x.Id == receiptId, cancellationToken);
+        if (!receiptExists)
+        {
+            return (null, null, null, "Receipt not found.");
+        }
+
+        var receivingSampleType = await dbContext.SampleTypes
+            .OrderBy(x => x.Id)
+            .FirstOrDefaultAsync(x => x.Name == "Receiving Sample", cancellationToken);
+        if (receivingSampleType is null)
+        {
+            return (null, null, null, "Receiving Sample type is not configured.");
+        }
+
+        var existingReceivingSampleCount = await dbContext.QcSamples
+            .CountAsync(x => x.ReceiptId == receiptId && x.SampleTypeId == receivingSampleType.Id, cancellationToken);
+        var nextSequenceNumber = existingReceivingSampleCount + 1;
+        var now = DateTimeOffset.UtcNow;
+        var sample = new QcSample
+        {
+            ReceiptId = receiptId,
+            SampleTypeId = receivingSampleType.Id,
+            SampleSequenceNumber = nextSequenceNumber,
+            Status = nextSequenceNumber > 1 ? "Needs Review" : "Data Entry In Progress",
+            StarchStatus = "Starch Pending",
+            PhotoStatus = "Photo Pending",
+            EmailStatus = "Not Sent",
+            SampleTakenAt = now,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        dbContext.QcSamples.Add(sample);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var warning = nextSequenceNumber > 1
+            ? "A receiving sample already exists for this receipt. The new sample was created with the next sequence number and marked Needs Review."
+            : null;
+        return (sample.Id, nextSequenceNumber, warning, null);
     }
 
     public async Task<SampleDetailViewModel> GetSampleDetailAsync(long id, CancellationToken cancellationToken)
@@ -183,24 +237,240 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
                 {
                     var row = rows.SingleOrDefault(x => x.RowNumber == rowNumber);
                     return row is null
-                        ? new FruitReadingRowViewModel(rowNumber, null, null, null, null, null, null, null, "", false, [])
-                        : new FruitReadingRowViewModel(row.RowNumber, row.Pressure1Lbs, row.Pressure2Lbs, Average(row.Pressure1Lbs, row.Pressure2Lbs), row.WeightGrams, row.Grade?.Code, row.StarchScaleValue?.Value.ToString("0.0"), row.SizeCategory, row.SizeStatus, row.IsCompleted, row.Defects.Select(x => x.DefectType.Name).OrderBy(x => x).ToList());
+                        ? new FruitReadingRowViewModel { RowNumber = rowNumber }
+                        : new FruitReadingRowViewModel
+                        {
+                            RowNumber = row.RowNumber,
+                            Pressure1Lbs = row.Pressure1Lbs,
+                            Pressure2Lbs = row.Pressure2Lbs,
+                            PressureAverageLbs = Average(row.Pressure1Lbs, row.Pressure2Lbs),
+                            WeightGrams = row.WeightGrams,
+                            GradeId = row.GradeId,
+                            Grade = row.Grade?.Code,
+                            StarchScaleValueId = row.StarchScaleValueId,
+                            Starch = row.StarchScaleValue?.Value.ToString("0.0"),
+                            SizeCategory = row.SizeCategory,
+                            SizeStatus = row.SizeStatus,
+                            IsCompleted = row.IsCompleted,
+                            DefectTypeIds = row.Defects.Select(x => x.DefectTypeId).ToList(),
+                            Defects = row.Defects.Select(x => x.DefectType.Name).OrderBy(x => x).ToList(),
+                            OtherDefectNotes = row.Defects.FirstOrDefault(x => x.DefectType.Name == "Other")?.Notes
+                        };
                 })
                 .ToList();
 
             var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.QcSampleId == id).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
+            var grades = await dbContext.Grades.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+            var starchScaleValues = await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken);
+            var defectTypes = await dbContext.DefectTypes.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync(cancellationToken);
             return new SampleDetailViewModel
             {
                 Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
                 FruitRows = rowModels,
                 PhotoGroups = GroupPhotos(photos),
-                Readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken)
+                Readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken),
+                Grades = grades,
+                StarchScaleValues = starchScaleValues,
+                DefectTypes = defectTypes,
+                FruitReadingForm = new SaveFruitReadingsForm
+                {
+                    SampleId = sample.Id,
+                    Rows = rowModels.Select(row => new FruitReadingEditRow
+                    {
+                        RowNumber = row.RowNumber,
+                        Pressure1Lbs = row.Pressure1Lbs,
+                        Pressure2Lbs = row.Pressure2Lbs,
+                        WeightGrams = row.WeightGrams,
+                        GradeId = row.GradeId,
+                        StarchScaleValueId = row.StarchScaleValueId,
+                        DefectTypeIds = row.DefectTypeIds.ToList(),
+                        OtherDefectNotes = row.OtherDefectNotes
+                    }).ToList()
+                },
+                AddPhotoForm = new AddPhotoMetadataForm
+                {
+                    QcSampleId = sample.Id,
+                    PhotoType = "SampleBeforeCutting",
+                    PhotoSource = "Manual Upload",
+                    ContentType = "image/jpeg"
+                }
             };
         }
         catch
         {
             return new SampleDetailViewModel { DataWarning = DataWarning };
         }
+    }
+
+    public async Task<string?> SaveFruitReadingsAsync(SaveFruitReadingsForm form, CancellationToken cancellationToken)
+    {
+        var sample = await dbContext.QcSamples
+            .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
+            .SingleOrDefaultAsync(x => x.Id == form.SampleId, cancellationToken);
+        if (sample is null)
+        {
+            return "QC sample not found.";
+        }
+
+        if (form.Rows.Count == 0)
+        {
+            return "At least one grid row must be submitted.";
+        }
+
+        var rowsByNumber = form.Rows.GroupBy(x => x.RowNumber).ToList();
+        if (rowsByNumber.Any(x => x.Key is < 1 or > 25) || rowsByNumber.Any(x => x.Count() > 1))
+        {
+            return "Rows must be unique and numbered 1 through 25.";
+        }
+
+        var validGradeIds = await dbContext.Grades.AsNoTracking().Select(x => x.Id).ToListAsync(cancellationToken);
+        var validStarchIds = await dbContext.StarchScaleValues.AsNoTracking().Select(x => x.Id).ToListAsync(cancellationToken);
+        var defectTypes = await dbContext.DefectTypes.AsNoTracking().ToListAsync(cancellationToken);
+        var validDefectIds = defectTypes.Select(x => x.Id).ToHashSet();
+        var otherDefectId = defectTypes.FirstOrDefault(x => x.Name == "Other")?.Id;
+        var thresholds = await dbContext.FruitSizeConversionThresholds.AsNoTracking()
+            .Where(x => x.FruitType == sample.Receipt.FruitProfile.FruitType && x.IsActive)
+            .ToListAsync(cancellationToken);
+        var existingRows = await dbContext.QcFruitReadings
+            .Include(x => x.Defects)
+            .Where(x => x.QcSampleId == sample.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var submittedRow in form.Rows.OrderBy(x => x.RowNumber))
+        {
+            var selectedDefectIds = submittedRow.DefectTypeIds.Distinct().ToList();
+            if (submittedRow.GradeId is not null && !validGradeIds.Contains(submittedRow.GradeId.Value))
+            {
+                return $"Row {submittedRow.RowNumber} has an invalid grade.";
+            }
+
+            if (submittedRow.StarchScaleValueId is not null && !validStarchIds.Contains(submittedRow.StarchScaleValueId.Value))
+            {
+                return $"Row {submittedRow.RowNumber} has an invalid starch value.";
+            }
+
+            if (selectedDefectIds.Any(x => !validDefectIds.Contains(x)))
+            {
+                return $"Row {submittedRow.RowNumber} has an invalid defect.";
+            }
+
+            var isBlank = submittedRow.Pressure1Lbs is null
+                && submittedRow.Pressure2Lbs is null
+                && submittedRow.WeightGrams is null
+                && submittedRow.GradeId is null
+                && submittedRow.StarchScaleValueId is null
+                && selectedDefectIds.Count == 0
+                && string.IsNullOrWhiteSpace(submittedRow.OtherDefectNotes);
+            var isCompleted = submittedRow.Pressure1Lbs is not null
+                && submittedRow.Pressure2Lbs is not null
+                && submittedRow.WeightGrams is not null
+                && submittedRow.GradeId is not null;
+            if (!isBlank && !isCompleted)
+            {
+                return $"Row {submittedRow.RowNumber} is partially entered. Completed rows require Pressure 1, Pressure 2, weight, and grade.";
+            }
+
+            var reading = existingRows.SingleOrDefault(x => x.RowNumber == submittedRow.RowNumber);
+            if (reading is null)
+            {
+                reading = new QcFruitReading
+                {
+                    QcSampleId = sample.Id,
+                    RowNumber = submittedRow.RowNumber,
+                    SizeStatus = "NotCalculated",
+                    CreatedAt = DateTimeOffset.UtcNow
+                };
+                dbContext.QcFruitReadings.Add(reading);
+            }
+
+            var size = CalculateSize(submittedRow.WeightGrams, thresholds);
+            reading.Pressure1Lbs = submittedRow.Pressure1Lbs;
+            reading.Pressure1Source = submittedRow.Pressure1Lbs is null ? null : "Manual";
+            reading.Pressure2Lbs = submittedRow.Pressure2Lbs;
+            reading.Pressure2Source = submittedRow.Pressure2Lbs is null ? null : "Manual";
+            reading.WeightGrams = submittedRow.WeightGrams;
+            reading.GradeId = submittedRow.GradeId;
+            reading.StarchScaleValueId = submittedRow.StarchScaleValueId;
+            reading.SizeCategory = size.SizeCategory;
+            reading.SizeStatus = size.SizeStatus;
+            reading.IsCompleted = isCompleted;
+            reading.UpdatedAt = DateTimeOffset.UtcNow;
+
+            dbContext.QcFruitDefects.RemoveRange(reading.Defects);
+            foreach (var defectTypeId in selectedDefectIds)
+            {
+                reading.Defects.Add(new QcFruitDefect
+                {
+                    DefectTypeId = defectTypeId,
+                    Notes = defectTypeId == otherDefectId ? submittedRow.OtherDefectNotes?.Trim() : null
+                });
+            }
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await RefreshSampleStatusesAsync(sample, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
+    public async Task<string?> AddPhotoMetadataAsync(AddPhotoMetadataForm form, CancellationToken cancellationToken)
+    {
+        if ((form.ReceiptId is null && form.QcSampleId is null) || (form.ReceiptId is not null && form.QcSampleId is not null))
+        {
+            return "Photo metadata must attach to either a receipt or a QC sample.";
+        }
+
+        if (string.IsNullOrWhiteSpace(form.PhotoType) || string.IsNullOrWhiteSpace(form.PhotoSource) || string.IsNullOrWhiteSpace(form.FileName) || string.IsNullOrWhiteSpace(form.ContentType) || string.IsNullOrWhiteSpace(form.SharePointDriveId) || string.IsNullOrWhiteSpace(form.SharePointItemId))
+        {
+            return "Photo type, source, file name, content type, placeholder drive ID, and placeholder item ID are required.";
+        }
+
+        if (form.ReceiptId is not null && !await dbContext.Receipts.AnyAsync(x => x.Id == form.ReceiptId, cancellationToken))
+        {
+            return "Receipt not found.";
+        }
+
+        var sample = form.QcSampleId is null
+            ? null
+            : await dbContext.QcSamples.Include(x => x.Receipt).SingleOrDefaultAsync(x => x.Id == form.QcSampleId, cancellationToken);
+        if (form.QcSampleId is not null && sample is null)
+        {
+            return "QC sample not found.";
+        }
+
+        dbContext.QcPhotos.Add(new QcPhoto
+        {
+            ReceiptId = form.ReceiptId,
+            QcSampleId = form.QcSampleId,
+            PhotoType = form.PhotoType.Trim(),
+            PhotoSource = form.PhotoSource.Trim(),
+            FileName = form.FileName.Trim(),
+            ContentType = form.ContentType.Trim(),
+            FileSizeBytes = form.FileSizeBytes,
+            SharePointDriveId = form.SharePointDriveId.Trim(),
+            SharePointItemId = form.SharePointItemId.Trim(),
+            WebUrl = string.IsNullOrWhiteSpace(form.WebUrl) ? null : form.WebUrl.Trim(),
+            CapturedAt = DateTimeOffset.UtcNow
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (sample is not null)
+        {
+            await RefreshSampleStatusesAsync(sample, cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        else if (form.ReceiptId is not null)
+        {
+            var receiptSamples = await dbContext.QcSamples.Where(x => x.ReceiptId == form.ReceiptId).ToListAsync(cancellationToken);
+            foreach (var receiptSample in receiptSamples)
+            {
+                await RefreshSampleStatusesAsync(receiptSample, cancellationToken);
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        return null;
     }
 
     public async Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, CancellationToken cancellationToken)
@@ -294,6 +564,42 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
             HasCutFruit = hasCutFruit,
             HasFruitAfterStarch = hasFruitAfterStarch
         };
+    }
+
+    private async Task RefreshSampleStatusesAsync(QcSample sample, CancellationToken cancellationToken)
+    {
+        var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+        sample.ActualSampleSize = readiness.CompletedFruitCount;
+        sample.StarchStatus = readiness.CompletedFruitCount > 0 && readiness.StarchMissingCount == 0
+            ? "Starch Complete"
+            : "Starch Pending";
+        sample.PhotoStatus = readiness.HasBinTruck && readiness.HasSampleBeforeCutting && readiness.HasCutFruit && readiness.HasFruitAfterStarch
+            ? "Photos Complete"
+            : "Photo Pending";
+        if (!sample.Status.Contains("Needs Review", StringComparison.OrdinalIgnoreCase) && sample.EmailStatus != "Sent")
+        {
+            sample.Status = readiness.IsReady
+                ? "Ready to Send"
+                : readiness.StarchMissingCount > 0 ? "Starch Pending"
+                : sample.PhotoStatus == "Photo Pending" ? "Photo Pending"
+                : "Data Entry In Progress";
+        }
+
+        sample.UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    private static (int? SizeCategory, string SizeStatus) CalculateSize(decimal? weightGrams, IEnumerable<FruitSizeConversionThreshold> thresholds)
+    {
+        if (weightGrams is null)
+        {
+            return (null, "NotCalculated");
+        }
+
+        var match = thresholds
+            .Where(x => x.IsActive)
+            .OrderByDescending(x => x.MinimumWeightGrams)
+            .FirstOrDefault(x => weightGrams.Value >= x.MinimumWeightGrams);
+        return match is null ? (null, "Undersized") : (match.SizeCategory, "Sized");
     }
 
     private static ReceiptListItemViewModel ReceiptListItem(Receipt receipt) => new(
