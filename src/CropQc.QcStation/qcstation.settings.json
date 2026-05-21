@@ -1,0 +1,9 @@
+{
+  "StationName": "QC-STATION-TEST",
+  "WarehouseCode": "WP",
+  "FtaMode": "Mock",
+  "FtaDllPath": ".\\fta",
+  "ComPort": null,
+  "ApiBaseUrl": "https://localhost:7001",
+  "LocalDataPath": ".\\data"
+}
