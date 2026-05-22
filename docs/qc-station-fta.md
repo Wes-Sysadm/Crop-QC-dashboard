@@ -40,6 +40,7 @@ The current settings fields are:
 - `WarehouseCode`
 - `FtaMode`: `Mock` or `RealDll`
 - `FtaDllPath`
+- `FtaDllFileName`
 - `ComPort`
 - `ApiBaseUrl`
 - `LocalDataPath`
@@ -66,11 +67,23 @@ Real DLL mode is isolated in `FtaDllPressureReader`. This is the only class that
 Expected DLL files later:
 
 ```text
+FTA_dll.dll
 FTA_DLL.dll
 borlndmm.dll
 ```
 
-Place both files in the configured `FtaDllPath`. If either file is missing, the harness reports a clear error and does not crash.
+Place the main FTA DLL in the configured `FtaDllPath`. `FtaDllFileName` is checked first and defaults to `FTA_dll.dll`. If that configured file is not found, the harness also checks the alternate `FTA_DLL.dll` name.
+
+`FTA_dll.dll` or `FTA_DLL.dll` is required. `borlndmm.dll` is warning-only for now because the current FTA computer may not have it in `C:\Program Files\FTADLL`. If the main DLL exists, the harness attempts a safe load check. If the load fails because of a missing dependency or bitness mismatch, the harness reports the actual loader error instead of crashing.
+
+Real DLL status messages show:
+
+- DLL folder used
+- main DLL file used
+- whether the main DLL was found
+- whether the main DLL load check passed
+- whether `borlndmm.dll` was found
+- whether RealDll mode is ready for actual function calls
 
 The vendor function declarations and calls are intentionally TODOs until the actual DLL can be tested on the QC computer connected to the GUSS/FTA.
 
@@ -106,7 +119,8 @@ Real hardware testing must happen on the QC computer connected to the GUSS/FTA.
 Before production use, test and confirm:
 
 - Correct `FTA_DLL.dll` function names and calling conventions.
-- Whether `borlndmm.dll` must be loaded before `FTA_DLL.dll`.
+- Whether `FTA_dll.dll` or `FTA_DLL.dll` is the final deployed file name.
+- Whether `borlndmm.dll` must be loaded before the main FTA DLL.
 - Required bitness, such as x86 versus x64.
 - COM port or other device connection requirements.
 - Initialize/status/read/cancel/home command behavior.

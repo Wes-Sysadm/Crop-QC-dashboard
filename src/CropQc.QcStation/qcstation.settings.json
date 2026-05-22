@@ -3,6 +3,7 @@
   "WarehouseCode": "WP",
   "FtaMode": "Mock",
   "FtaDllPath": ".\\fta",
+  "FtaDllFileName": "FTA_dll.dll",
   "ComPort": null,
   "ApiBaseUrl": "https://localhost:7001",
   "LocalDataPath": ".\\data"
