@@ -18,6 +18,7 @@ public interface IFtaStationService
     Task<PressureReading?> DemoStyleAutoReadingAsync(CancellationToken cancellationToken = default);
     Task<PressureReading?> DemoStyleManualButtonReadingAsync(CancellationToken cancellationToken = default);
     Task<PressureReading?> GetLatestPressureReadingAsync(CancellationToken cancellationToken = default);
+    Task<PressureReading?> PollLatestPressureReadingAsync(CancellationToken cancellationToken = default);
     Task<FtaDeviceStatus> CancelReadingAsync(CancellationToken cancellationToken = default);
     Task<FtaDeviceStatus> ReturnProbeHomeAsync(CancellationToken cancellationToken = default);
     Task<FtaDeviceStatus> QuitAsync(CancellationToken cancellationToken = default);
