@@ -142,7 +142,18 @@ The harness checks these status bits:
 - bit 1: new firmness reading available
 - bit 3: interface connected
 - bit 5: probe at top
+- bit 6: probe at bottom
 - bit 7: FTA responded
+- bit 8: new mass reading
+- bit 9: scale attached/can measure mass
+
+Use the `FTA Diagnostic Status` command before and after a reading attempt when troubleshooting the physical station. It displays the raw `FTAStatus` value and `FTABitStatus` values for bits 1, 3, 5, 6, 7, 8, and 9.
+
+The `Start Pressure Reading` command also captures diagnostic status before and after `FTADoFirmnessReading`. If the call returns but bit 1 is still false, the harness logs:
+
+```text
+FTADoFirmnessReading call returned, but no new reading detected yet. Confirm FTA setup COM port and probe state.
+```
 
 The actual calling convention and pressure units still need to be confirmed on the physical FTA computer. If the vendor DLL rejects the first binding/call test, check the SDK headers and update only `FtaDllPressureReader`.
 
@@ -169,9 +180,11 @@ On the physical QC computer connected to the GUSS/FTA:
 2. Select `Initialize FTA`.
 3. Select `Open FTA Setup` if the serial/USB settings need to be selected or confirmed.
 4. Select `Check Status` and confirm bit 3 and/or bit 7 show that the FTA is connected/responding.
-5. Select `Start Pressure Reading`.
-6. Physically run the fruit firmness test on the FTA.
-7. Select `Get Latest Reading`.
+5. Select `FTA Diagnostic Status` to capture the baseline raw status and bit values.
+6. Select `Start Pressure Reading`.
+7. Physically run the fruit firmness test on the FTA.
+8. Select `FTA Diagnostic Status` again if there is no beep or no new reading.
+9. Select `Get Latest Reading`.
 
 If `Get Latest Reading` says no new firmness reading is available, bit 1 was not set yet. Run the physical test cycle again or check the FTA setup/status.
 
@@ -194,6 +207,7 @@ Available commands:
 
 - Initialize FTA
 - Open FTA Setup
+- FTA Diagnostic Status
 - Check Status
 - Start Pressure Reading
 - Get Latest Reading
