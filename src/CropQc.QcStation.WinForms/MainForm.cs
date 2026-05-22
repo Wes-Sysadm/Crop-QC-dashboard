@@ -24,6 +24,17 @@ public sealed class MainForm : Form
     private readonly RadioButton pressure1TargetRadio = new() { Text = "Pressure 1", AutoSize = true };
     private readonly RadioButton pressure2TargetRadio = new() { Text = "Pressure 2", AutoSize = true };
     private readonly RadioButton autoAdvanceTargetRadio = new() { Text = "Auto-advance", AutoSize = true, Checked = true };
+    private readonly TextBox currentFruitTextBox = CreateReadOnlyTextBox();
+    private readonly TextBox currentTargetTextBox = CreateReadOnlyTextBox();
+    private readonly TextBox continuousStatusTextBox = CreateReadOnlyTextBox();
+    private readonly ListView fruitPressureGrid = new()
+    {
+        Dock = DockStyle.Fill,
+        View = View.Details,
+        FullRowSelect = true,
+        GridLines = true,
+        HeaderStyle = ColumnHeaderStyle.Nonclickable
+    };
     private readonly ListView readingHistoryList = new()
     {
         Dock = DockStyle.Fill,
@@ -41,6 +52,8 @@ public sealed class MainForm : Form
         WordWrap = false
     };
     private int renderedLogCount;
+    private CancellationTokenSource? continuousCaptureCts;
+    private bool isContinuousCaptureRunning;
 
     public MainForm(IFtaStationService stationService, string settingsPath)
     {
@@ -149,7 +162,7 @@ public sealed class MainForm : Form
             AutoSize = true,
             Padding = new Padding(4, 8, 4, 4),
             Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold),
-            Text = "Recommended workflow: Click Start Manual Reading, then press and hold the green FTA button until the probe completes the test. Auto firmness reading is experimental and is not supported on the current unit."
+            Text = "Recommended workflow: Click Start Continuous Manual Capture once, then press and hold the green FTA button for each test. Readings auto-fill Pressure 1, Pressure 2, then advance to the next fruit. Auto firmness reading is experimental and is not supported on the current unit."
         };
 
     private Control BuildButtonPanel()
@@ -174,6 +187,8 @@ public sealed class MainForm : Form
         AddCommand(flow, "Initialize FTA With Config Path", () => stationService.InitializeWithConfigPathAsync());
         AddCommand(flow, "Open FTA Setup", () => stationService.OpenSetupAsync());
         AddCommand(flow, "FTA Diagnostic Status", () => stationService.DiagnosticStatusAsync());
+        AddContinuousButton(flow, "Start Continuous Manual Capture", StartContinuousManualCapture);
+        AddContinuousButton(flow, "Stop Continuous Capture", StopContinuousCapture);
         AddCommand(flow, "Start Manual/Button Firmness Reading - Recommended", () => stationService.StartPressureReadingAsync());
         AddReadingCommand(flow, "Start Auto Firmness Reading - Experimental", () => stationService.StartAutoFirmnessReadingAsync());
         AddReadingCommand(flow, "Start And Wait Manual/Button Reading - Recommended", () => stationService.StartAndWaitManualFirmnessReadingAsync());
@@ -208,16 +223,18 @@ public sealed class MainForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            ColumnCount = 3,
             RowCount = 1,
             Padding = new Padding(10)
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 430));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 400));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         group.Controls.Add(root);
 
         root.Controls.Add(BuildCaptureFieldsPanel(), 0, 0);
-        root.Controls.Add(BuildReadingHistoryPanel(), 1, 0);
+        root.Controls.Add(BuildFruitPressureGridPanel(), 1, 0);
+        root.Controls.Add(BuildReadingHistoryPanel(), 2, 0);
 
         return group;
     }
@@ -239,6 +256,9 @@ public sealed class MainForm : Form
         AddCaptureRow(panel, "Pressure 2", pressure2TextBox, 2);
         AddCaptureRow(panel, "Average pressure", averagePressureTextBox, 3);
         AddCaptureRow(panel, "Last captured", lastCapturedTextBox, 4);
+        AddCaptureRow(panel, "Current fruit", currentFruitTextBox, 5);
+        AddCaptureRow(panel, "Current target", currentTargetTextBox, 6);
+        AddCaptureRow(panel, "Continuous status", continuousStatusTextBox, 7);
 
         var targetPanel = new FlowLayoutPanel
         {
@@ -249,7 +269,7 @@ public sealed class MainForm : Form
         targetPanel.Controls.Add(pressure1TargetRadio);
         targetPanel.Controls.Add(pressure2TargetRadio);
         targetPanel.Controls.Add(autoAdvanceTargetRadio);
-        AddCaptureRow(panel, "Capture target", targetPanel, 5);
+        AddCaptureRow(panel, "Capture target", targetPanel, 8);
 
         var buttons = new FlowLayoutPanel
         {
@@ -264,12 +284,12 @@ public sealed class MainForm : Form
         var clearButton = CreateButton("Clear Test Fruit");
         clearButton.Click += (_, _) =>
         {
-            testFruitCapture.Clear();
+            testFruitCapture.ClearCurrentFruit();
             RefreshCaptureDisplay();
             AppendLog("Local test fruit cleared.");
         };
         buttons.Controls.Add(clearButton);
-        AddCaptureRow(panel, "", buttons, 6);
+        AddCaptureRow(panel, "", buttons, 9);
 
         var note = new Label
         {
@@ -277,7 +297,7 @@ public sealed class MainForm : Form
             MaximumSize = new Size(390, 0),
             Text = "This panel is local-only. It prepares the operator flow for mapping FTA readings into QC sample rows later, but it does not save to Azure SQL or the web workflow."
         };
-        AddCaptureRow(panel, "", note, 7);
+        AddCaptureRow(panel, "", note, 10);
 
         fruitNumberInput.ValueChanged += (_, _) => testFruitCapture.FruitNumber = (int)fruitNumberInput.Value;
 
@@ -327,6 +347,35 @@ public sealed class MainForm : Form
         return panel;
     }
 
+    private Control BuildFruitPressureGridPanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 2,
+            ColumnCount = 1
+        };
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        panel.Controls.Add(new Label
+        {
+            Text = "25-Fruit Pressure Grid",
+            AutoSize = true,
+            Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold),
+            Margin = new Padding(0, 0, 0, 6)
+        }, 0, 0);
+
+        fruitPressureGrid.Columns.Add("Fruit", 55);
+        fruitPressureGrid.Columns.Add("Pressure 1", 85);
+        fruitPressureGrid.Columns.Add("Pressure 2", 85);
+        fruitPressureGrid.Columns.Add("Average", 75);
+        fruitPressureGrid.Columns.Add("Status", 90);
+        panel.Controls.Add(fruitPressureGrid, 0, 1);
+
+        return panel;
+    }
+
     private Control BuildLogPanel()
     {
         var group = new GroupBox
@@ -369,6 +418,13 @@ public sealed class MainForm : Form
         flow.Controls.Add(button);
     }
 
+    private void AddContinuousButton(FlowLayoutPanel flow, string text, Action command)
+    {
+        var button = CreateButton(text);
+        button.Click += (_, _) => command();
+        flow.Controls.Add(button);
+    }
+
     private static Button CreateButton(string text) =>
         new()
         {
@@ -398,6 +454,110 @@ public sealed class MainForm : Form
         CaptureReading(reading, GetSelectedCaptureTarget());
     }
 
+    private void StartContinuousManualCapture()
+    {
+        if (isContinuousCaptureRunning)
+        {
+            AppendLog("Continuous capture is already running.");
+            return;
+        }
+
+        if (testFruitCapture.IsSampleComplete)
+        {
+            AppendLog("Continuous capture was not started because the local 25-fruit sample is already complete.");
+            return;
+        }
+
+        continuousCaptureCts = new CancellationTokenSource();
+        isContinuousCaptureRunning = true;
+        continuousStatusTextBox.Text = "Armed";
+        AppendLog("Continuous capture started.");
+        AppendLog($"Current target: Fruit {testFruitCapture.FruitNumber} {testFruitCapture.CurrentTargetSlot}.");
+        AppendLog("Continuous capture armed. Press and hold the green FTA button for each test.");
+        _ = RunContinuousManualCaptureAsync(continuousCaptureCts.Token);
+        RefreshCaptureDisplay();
+    }
+
+    private void StopContinuousCapture()
+    {
+        if (!isContinuousCaptureRunning)
+        {
+            AppendLog("Continuous capture is not running.");
+            return;
+        }
+
+        continuousCaptureCts?.Cancel();
+        AppendLog("Continuous capture stop requested.");
+    }
+
+    private async Task RunContinuousManualCaptureAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ArmContinuousManualReadingAsync(cancellationToken);
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var reading = await stationService.PollLatestPressureReadingAsync(cancellationToken);
+                RenderNewServiceLogEntries();
+
+                if (reading is not null && testFruitCapture.ShouldCaptureReading(reading))
+                {
+                    AppendLog("Continuous capture reading detected.");
+                    CaptureReading(reading, PressureCaptureTarget.AutoAdvance, syncFruitFromInput: false);
+                    AppendLog($"Auto-advanced target: Fruit {testFruitCapture.FruitNumber} {testFruitCapture.CurrentTargetSlot}.");
+
+                    if (testFruitCapture.IsSampleComplete)
+                    {
+                        AppendLog("Continuous capture completed Fruit 25 Pressure 2. Local sample capture is complete.");
+                        break;
+                    }
+
+                    await WaitForReadingResetAsync(cancellationToken);
+                    await ArmContinuousManualReadingAsync(cancellationToken);
+                }
+
+                await Task.Delay(500, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog("Continuous capture stopped.");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"Continuous capture stopped because of an error: {ex.Message}");
+        }
+        finally
+        {
+            isContinuousCaptureRunning = false;
+            continuousCaptureCts?.Dispose();
+            continuousCaptureCts = null;
+            continuousStatusTextBox.Text = testFruitCapture.IsSampleComplete ? "Sample complete" : "Stopped";
+            RefreshStatusDisplay();
+            RefreshCaptureDisplay();
+        }
+    }
+
+    private async Task ArmContinuousManualReadingAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var status = await stationService.StartPressureReadingAsync(cancellationToken);
+        RenderNewServiceLogEntries();
+        if (!status.IsInitialized)
+        {
+            throw new InvalidOperationException(status.ErrorMessage ?? status.StatusMessage);
+        }
+
+        AppendLog($"Re-armed for next test. Current target: Fruit {testFruitCapture.FruitNumber} {testFruitCapture.CurrentTargetSlot}.");
+    }
+
+    private async Task WaitForReadingResetAsync(CancellationToken cancellationToken)
+    {
+        // FTAReadMaxFirmness resets the new-reading bit per SDK. Give the DLL/UI
+        // message loop a short breath before accepting another reading event.
+        await Task.Delay(500, cancellationToken);
+    }
+
     private Task CaptureLatestReadingAsync(PressureCaptureTarget target)
     {
         var reading = stationService.LatestReading;
@@ -411,11 +571,16 @@ public sealed class MainForm : Form
         return Task.CompletedTask;
     }
 
-    private void CaptureReading(PressureReading reading, PressureCaptureTarget target)
+    private void CaptureReading(PressureReading reading, PressureCaptureTarget target, bool syncFruitFromInput = true)
     {
-        testFruitCapture.FruitNumber = (int)fruitNumberInput.Value;
+        if (syncFruitFromInput)
+        {
+            testFruitCapture.FruitNumber = (int)fruitNumberInput.Value;
+        }
+
+        var capturedFruit = testFruitCapture.FruitNumber;
         var slot = testFruitCapture.Capture(reading, target);
-        AppendLog($"Captured {reading.ReadingValueLbs:0.00} lbs into Fruit {testFruitCapture.FruitNumber} {slot}.");
+        AppendLog($"Captured {reading.ReadingValueLbs:0.00} lbs into Fruit {capturedFruit} {slot}.");
         RefreshCaptureDisplay();
     }
 
@@ -505,12 +670,41 @@ public sealed class MainForm : Form
 
     private void RefreshCaptureDisplay()
     {
+        if ((int)fruitNumberInput.Value != testFruitCapture.FruitNumber)
+        {
+            fruitNumberInput.Value = testFruitCapture.FruitNumber;
+        }
+
         pressure1TextBox.Text = FormatPressure(testFruitCapture.Pressure1Lbs);
         pressure2TextBox.Text = FormatPressure(testFruitCapture.Pressure2Lbs);
         averagePressureTextBox.Text = FormatPressure(testFruitCapture.AveragePressureLbs);
         lastCapturedTextBox.Text = testFruitCapture.LastCapturedReading is null
             ? "(none)"
             : $"{testFruitCapture.LastCapturedReading.ReadingValueLbs:0.00} lbs ({testFruitCapture.LastCapturedReading.Source})";
+        currentFruitTextBox.Text = testFruitCapture.FruitNumber.ToString();
+        currentTargetTextBox.Text = testFruitCapture.CurrentTargetSlot;
+        continuousStatusTextBox.Text = isContinuousCaptureRunning
+            ? "Continuous capture armed"
+            : testFruitCapture.IsSampleComplete
+                ? "Sample complete"
+                : string.IsNullOrWhiteSpace(continuousStatusTextBox.Text) ? "Stopped" : continuousStatusTextBox.Text;
+
+        fruitPressureGrid.BeginUpdate();
+        fruitPressureGrid.Items.Clear();
+        foreach (var row in testFruitCapture.Rows)
+        {
+            var item = new ListViewItem(row.FruitNumber.ToString());
+            item.SubItems.Add(FormatPressure(row.Pressure1Lbs));
+            item.SubItems.Add(FormatPressure(row.Pressure2Lbs));
+            item.SubItems.Add(FormatPressure(row.AveragePressureLbs));
+            item.SubItems.Add(row.Status);
+            if (row.FruitNumber == testFruitCapture.FruitNumber)
+            {
+                item.BackColor = Color.LightYellow;
+            }
+            fruitPressureGrid.Items.Add(item);
+        }
+        fruitPressureGrid.EndUpdate();
 
         readingHistoryList.BeginUpdate();
         readingHistoryList.Items.Clear();

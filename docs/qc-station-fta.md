@@ -46,7 +46,7 @@ Run it in x86 mode with:
 
 Use the WinForms harness for real FTA hardware testing. The console harness remains useful for mock mode, command-line diagnostics, and non-UI development, but the FTA DLL may expect a Windows UI message pump.
 
-Real hardware testing confirmed the WinForms x86 harness is the correct harness for this unit. The working operator flow is manual/button firmness reading: click the manual reading command, then press and hold the green FTA button until the probe completes the test. Auto firmness reading did not move the probe on the current unit and should be treated as experimental.
+Real hardware testing confirmed the WinForms x86 harness is the correct harness for this unit. The working operator flow is manual/button firmness reading: start continuous manual capture once, then press and hold the green FTA button for each physical test. Auto firmness reading did not move the probe on the current unit and should be treated as experimental.
 
 ## Running RealDll Mode as x86
 
@@ -165,7 +165,7 @@ The SDK behavior used by the harness is:
 
 On the real FTA computer, `FTAInit` makes the FTA beep. That confirms the DLL is communicating with hardware. With the WinForms x86 harness and `FtaWorkingDirectory` set to `C:\Program Files (x86)\FTAWin`, diagnostic status now shows interface connected, probe at top, and FTA responded.
 
-On the current unit, `FTADoAutoFirmnessReading` does not move the probe. `FTADoFirmnessReading` works when the operator presses and holds the green FTA button during the manual/button reading workflow.
+On the current unit, `FTADoAutoFirmnessReading` does not move the probe. `FTADoFirmnessReading` works when the operator presses and holds the green FTA button during the manual/button reading workflow. After each completed test, the FTA beeps and is ready for the next physical test.
 
 The FTA has also been observed in Windows as a HID USB Input Device:
 
@@ -256,7 +256,9 @@ If `FTAInit` beeps but firmness commands do not move the probe, compare behavior
 
 The harness keeps the two SDK reading styles separate:
 
-- `Start Manual/Button Firmness Reading` calls `FTADoFirmnessReading()` and returns immediately after the DLL call. This is the basic manual/button command.
+- `Start Continuous Manual Capture` calls the manual/button command, continuously polls for new readings, captures each valid firmness value, auto-fills Pressure 1 / Pressure 2, advances to the next fruit, and re-arms the FTA for the next physical test. This is the recommended working workflow.
+- `Stop Continuous Capture` stops the continuous polling/re-arm loop.
+- `Start Manual/Button Firmness Reading` calls `FTADoFirmnessReading()` and returns immediately after the DLL call. This is the basic manual/button diagnostic command.
 - `Start And Wait Manual/Button Reading` calls `FTADoFirmnessReading()`, tells the operator to press and hold the green FTA button, then polls bit 1 for up to 60 seconds and reads `FTAReadMaxFirmness()` when available. This is the recommended working workflow.
 - `Start Manual Reading and Capture` in the local two-pressure panel starts the recommended manual/button workflow, waits for a reading, and places it into the selected local pressure slot.
 - `Start Auto Firmness Reading` calls `FTADoAutoFirmnessReading()`, captures diagnostics before and after the call, then polls bit 1 for up to 60 seconds and reads `FTAReadMaxFirmness()` when available. This is experimental and did not work on the current unit.
@@ -279,11 +281,12 @@ On the physical QC computer connected to the GUSS/FTA:
 
 3. Select `Initialize FTA`.
 4. Select `FTA Diagnostic Status` and confirm the DLL path, config path, process architecture, and status bits.
-5. In the local two-pressure capture panel, set the fruit number and capture target.
-6. Select `Start Manual Reading and Capture`.
-7. Press and hold the green FTA button until the probe completes the test.
-8. Repeat for the second pressure slot, or use `Auto-advance` so the first reading goes to Pressure 1 and the second reading goes to Pressure 2.
-9. Select `FTA Diagnostic Status` again if there is no beep, no probe movement, or no new reading.
+5. Select `Start Continuous Manual Capture`.
+6. Press and hold the green FTA button until the probe completes the test.
+7. Let the harness capture the value, auto-fill the current target, and re-arm for the next test.
+8. Repeat the physical green-button test cycle. The harness fills Fruit 1 Pressure 1, Fruit 1 Pressure 2, Fruit 2 Pressure 1, Fruit 2 Pressure 2, and continues through Fruit 25 Pressure 2.
+9. Select `Stop Continuous Capture` when done or if troubleshooting is needed.
+10. Select `FTA Diagnostic Status` again if there is no beep, no probe movement, or no new reading.
 
 If `Get Latest Reading` says no new firmness reading is available, bit 1 was not set yet. Run the physical test cycle again or check the FTA setup/status.
 
@@ -311,6 +314,8 @@ Available commands:
 - Open FTA Setup
 - FTA Diagnostic Status
 - Check Status
+- Start Continuous Manual Capture
+- Stop Continuous Capture
 - Start Manual/Button Firmness Reading - Recommended
 - Start Auto Firmness Reading - Experimental
 - Start And Wait Manual/Button Reading - Recommended
@@ -326,7 +331,7 @@ Available commands:
 
 The WinForms harness exposes the same hardware commands as buttons, plus status/config labels for station name, warehouse, FTA mode, DLL path, DLL file, initialization mode, config path, current working directory, process architecture, OS architecture, and last pressure reading. Its log box auto-scrolls and keeps timestamped entries visible during hardware tests.
 
-The WinForms harness also includes a local-only two-pressure capture panel for one fruit. It tracks fruit number, Pressure 1, Pressure 2, average pressure, last captured reading, capture target, and a local reading history. This prepares the operator flow for mapping readings into QC sample rows later, but it does not write to Azure SQL or update the web QC workflow yet.
+The WinForms harness also includes a local-only 25-fruit pressure grid. It tracks fruit number, Pressure 1, Pressure 2, average pressure, current target, last captured reading, capture target, local row status, and reading history. Continuous Manual Capture is the primary workflow: the operator starts it once, then runs each physical FTA test with the green button while the harness captures readings and advances through P1/P2 for each fruit. This prepares the operator flow for mapping readings into QC sample rows later, but it does not write to Azure SQL or update the web QC workflow yet.
 
 ## Hardware Testing Still Required
 

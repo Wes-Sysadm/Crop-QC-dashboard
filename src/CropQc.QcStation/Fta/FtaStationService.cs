@@ -105,6 +105,18 @@ public sealed class FtaStationService(
         return LatestReading;
     }
 
+    public async Task<PressureReading?> PollLatestPressureReadingAsync(CancellationToken cancellationToken = default)
+    {
+        var reading = await pressureReader.GetLatestPressureReadingAsync(cancellationToken);
+        if (reading is not null)
+        {
+            LatestReading = reading;
+            Log($"Continuous capture detected reading: {reading.ReadingValueLbs:0.00} lbs ({reading.Source}).");
+        }
+
+        return reading;
+    }
+
     public async Task<FtaDeviceStatus> CancelReadingAsync(CancellationToken cancellationToken = default)
     {
         Log("Cancel started.");
