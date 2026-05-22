@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using CropQc.QcStation.Api;
 using CropQc.QcStation.Fta;
 using CropQc.Shared;
 
@@ -9,7 +10,27 @@ public sealed class MainForm : Form
     private readonly IFtaStationService stationService;
     private readonly string settingsPath;
     private readonly TestFruitPressureCapture testFruitCapture = new();
+    private QcStationApiClient? apiClient;
+    private QcStationSampleDetail? selectedSample;
+    private bool hasUnsavedPressureChanges;
     private readonly Dictionary<string, Label> valueLabels = [];
+    private readonly TextBox apiBaseUrlTextBox = new() { Width = 260 };
+    private readonly TextBox warehouseFilterTextBox = new() { Width = 80 };
+    private readonly TextBox apiStatusTextBox = CreateReadOnlyTextBox(260);
+    private readonly TextBox selectedSampleTextBox = CreateReadOnlyTextBox(260);
+    private readonly TextBox sampleContextTextBox = CreateReadOnlyTextBox(520);
+    private readonly TextBox unsavedChangesTextBox = CreateReadOnlyTextBox(120);
+    private readonly TextBox lastSaveResultTextBox = CreateReadOnlyTextBox(260);
+    private readonly CheckBox autoSaveCompletedFruitCheckBox = new() { Text = "Auto-save after each completed fruit", AutoSize = true };
+    private readonly ListView sampleListView = new()
+    {
+        Dock = DockStyle.Fill,
+        View = View.Details,
+        FullRowSelect = true,
+        GridLines = true,
+        HeaderStyle = ColumnHeaderStyle.Nonclickable,
+        Height = 115
+    };
     private readonly NumericUpDown fruitNumberInput = new()
     {
         Minimum = 1,
@@ -61,12 +82,15 @@ public sealed class MainForm : Form
         this.settingsPath = settingsPath;
 
         Text = $"{ProjectInfo.Name} QC Station WinForms FTA Harness";
-        Width = 1260;
-        Height = 920;
-        MinimumSize = new Size(1040, 760);
+        Width = 1380;
+        Height = 1000;
+        MinimumSize = new Size(1120, 820);
+        apiBaseUrlTextBox.Text = stationService.Configuration.ApiBaseUrl;
+        warehouseFilterTextBox.Text = stationService.Configuration.WarehouseCode;
 
         BuildLayout();
         RefreshStatusDisplay();
+        RefreshSampleStatusDisplay();
         RefreshCaptureDisplay();
         AppendLog($"Settings: {settingsPath}");
         AppendLog("WinForms harness started on STA thread with a Windows message loop.");
@@ -78,9 +102,10 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 5,
+            RowCount = 6,
             Padding = new Padding(10)
         };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -89,10 +114,11 @@ public sealed class MainForm : Form
         Controls.Add(root);
 
         root.Controls.Add(BuildStatusPanel(), 0, 0);
-        root.Controls.Add(BuildGuidancePanel(), 0, 1);
-        root.Controls.Add(BuildButtonPanel(), 0, 2);
-        root.Controls.Add(BuildPressureCapturePanel(), 0, 3);
-        root.Controls.Add(BuildLogPanel(), 0, 4);
+        root.Controls.Add(BuildSampleSelectionPanel(), 0, 1);
+        root.Controls.Add(BuildGuidancePanel(), 0, 2);
+        root.Controls.Add(BuildButtonPanel(), 0, 3);
+        root.Controls.Add(BuildPressureCapturePanel(), 0, 4);
+        root.Controls.Add(BuildLogPanel(), 0, 5);
     }
 
     private Control BuildStatusPanel()
@@ -165,6 +191,86 @@ public sealed class MainForm : Form
             Text = "Recommended workflow: Click Start Continuous Manual Capture once, then press and hold the green FTA button for each test. Readings auto-fill Pressure 1, Pressure 2, then advance to the next fruit. Auto firmness reading is experimental and is not supported on the current unit."
         };
 
+    private Control BuildSampleSelectionPanel()
+    {
+        var group = new GroupBox
+        {
+            Dock = DockStyle.Top,
+            Text = "Dashboard Sample Selection",
+            AutoSize = true
+        };
+
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(10),
+            AutoSize = true
+        };
+        group.Controls.Add(root);
+
+        var controls = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            WrapContents = true
+        };
+        controls.Controls.Add(new Label { Text = "ApiBaseUrl", AutoSize = true, Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold), Margin = new Padding(0, 8, 4, 4) });
+        controls.Controls.Add(apiBaseUrlTextBox);
+        controls.Controls.Add(new Label { Text = "Warehouse", AutoSize = true, Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold), Margin = new Padding(8, 8, 4, 4) });
+        controls.Controls.Add(warehouseFilterTextBox);
+        AddSampleButton(controls, "Refresh Today's Samples", RefreshTodaySamplesAsync);
+        AddSampleButton(controls, "Select Sample", SelectCurrentSampleAsync);
+        AddSampleButton(controls, "Save Pressures to Dashboard", SavePressuresToDashboardAsync);
+        controls.Controls.Add(autoSaveCompletedFruitCheckBox);
+        root.Controls.Add(controls, 0, 0);
+
+        var status = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            WrapContents = true
+        };
+        AddLabeledControl(status, "API status", apiStatusTextBox);
+        AddLabeledControl(status, "Selected sample", selectedSampleTextBox);
+        AddLabeledControl(status, "Unsaved", unsavedChangesTextBox);
+        AddLabeledControl(status, "Last save", lastSaveResultTextBox);
+        AddLabeledControl(status, "Context", sampleContextTextBox);
+        root.Controls.Add(status, 0, 1);
+
+        sampleListView.Columns.Add("Display ID", 105);
+        sampleListView.Columns.Add("Warehouse", 80);
+        sampleListView.Columns.Add("Grower", 150);
+        sampleListView.Columns.Add("Lot", 100);
+        sampleListView.Columns.Add("Variety", 80);
+        sampleListView.Columns.Add("Status", 130);
+        sampleListView.Columns.Add("Starch", 105);
+        sampleListView.Columns.Add("Email", 90);
+        root.Controls.Add(sampleListView, 0, 2);
+
+        sampleListView.DoubleClick += async (_, _) => await SelectCurrentSampleAsync();
+        apiStatusTextBox.Text = "Not connected";
+        selectedSampleTextBox.Text = "(none)";
+        unsavedChangesTextBox.Text = "No";
+        lastSaveResultTextBox.Text = "(none)";
+        sampleContextTextBox.Text = "(none)";
+
+        return group;
+    }
+
+    private static void AddLabeledControl(FlowLayoutPanel panel, string label, Control control)
+    {
+        panel.Controls.Add(new Label
+        {
+            Text = label,
+            AutoSize = true,
+            Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold),
+            Margin = new Padding(8, 8, 4, 4)
+        });
+        panel.Controls.Add(control);
+    }
+
     private Control BuildButtonPanel()
     {
         var group = new GroupBox
@@ -217,7 +323,7 @@ public sealed class MainForm : Form
         var group = new GroupBox
         {
             Dock = DockStyle.Fill,
-            Text = "Local Two-Pressure Capture Test - Not Saved"
+            Text = "QC Sample Pressure Capture"
         };
 
         var root = new TableLayoutPanel
@@ -295,7 +401,7 @@ public sealed class MainForm : Form
         {
             AutoSize = true,
             MaximumSize = new Size(390, 0),
-            Text = "This panel is local-only. It prepares the operator flow for mapping FTA readings into QC sample rows later, but it does not save to Azure SQL or the web workflow."
+            Text = "Capture is local until saved. Save Pressures to Dashboard updates only Pressure 1 and Pressure 2 on the selected sample."
         };
         AddCaptureRow(panel, "", note, 10);
 
@@ -425,6 +531,13 @@ public sealed class MainForm : Form
         flow.Controls.Add(button);
     }
 
+    private void AddSampleButton(FlowLayoutPanel flow, string text, Func<Task> command)
+    {
+        var button = CreateButton(text);
+        button.Click += async (_, _) => await RunCommandAsync(text, command);
+        flow.Controls.Add(button);
+    }
+
     private static Button CreateButton(string text) =>
         new()
         {
@@ -434,11 +547,11 @@ public sealed class MainForm : Form
             Padding = new Padding(8, 5, 8, 5)
         };
 
-    private static TextBox CreateReadOnlyTextBox() =>
+    private static TextBox CreateReadOnlyTextBox(int width = 220) =>
         new()
         {
             ReadOnly = true,
-            Width = 220
+            Width = width
         };
 
     private async Task StartManualReadingAndCaptureAsync()
@@ -452,6 +565,93 @@ public sealed class MainForm : Form
         }
 
         CaptureReading(reading, GetSelectedCaptureTarget());
+    }
+
+    private async Task RefreshTodaySamplesAsync()
+    {
+        apiClient = QcStationApiClient.Create(apiBaseUrlTextBox.Text);
+        apiStatusTextBox.Text = "Loading...";
+        sampleListView.Items.Clear();
+        try
+        {
+            var samples = await apiClient.GetTodaySamplesAsync(warehouseFilterTextBox.Text);
+            foreach (var sample in samples)
+            {
+                var item = new ListViewItem(sample.DisplayReceiptId) { Tag = sample };
+                item.SubItems.Add(sample.WarehouseCode);
+                item.SubItems.Add(sample.GrowerName);
+                item.SubItems.Add(sample.LotCode);
+                item.SubItems.Add(sample.VarietyCode);
+                item.SubItems.Add(sample.Status);
+                item.SubItems.Add(sample.StarchStatus);
+                item.SubItems.Add(sample.EmailStatus);
+                sampleListView.Items.Add(item);
+            }
+
+            apiStatusTextBox.Text = $"Loaded {samples.Count} samples";
+            AppendLog($"Loaded {samples.Count} samples from dashboard API.");
+        }
+        catch (Exception ex)
+        {
+            apiStatusTextBox.Text = "API error";
+            AppendLog($"Refresh today's samples failed: {ex.Message}");
+        }
+    }
+
+    private async Task SelectCurrentSampleAsync()
+    {
+        if (sampleListView.SelectedItems.Count == 0 || sampleListView.SelectedItems[0].Tag is not QcStationSampleListItem sample)
+        {
+            AppendLog("Select Sample requested, but no sample is selected.");
+            return;
+        }
+
+        apiClient ??= QcStationApiClient.Create(apiBaseUrlTextBox.Text);
+        selectedSample = await apiClient.GetSampleDetailAsync(sample.SampleId);
+        if (selectedSample is null)
+        {
+            apiStatusTextBox.Text = "Sample not found";
+            AppendLog($"Sample {sample.SampleId} was not found by the API.");
+            return;
+        }
+
+        LoadSelectedSampleIntoCaptureGrid();
+        hasUnsavedPressureChanges = false;
+        RefreshSampleStatusDisplay();
+        RefreshCaptureDisplay();
+        AppendLog($"Selected sample {selectedSample.DisplayReceiptId} from dashboard API.");
+    }
+
+    private void LoadSelectedSampleIntoCaptureGrid()
+    {
+        testFruitCapture.LoadRows(selectedSample!.FruitReadings.Select(row => new FruitPressureCaptureRow(
+            row.RowNumber,
+            row.Pressure1Lbs,
+            row.Pressure2Lbs,
+            row.PressureAverageLbs,
+            row.Pressure1Lbs is null ? "Missing P1" : row.Pressure2Lbs is null ? "Missing P2" : "Complete")));
+    }
+
+    private async Task SavePressuresToDashboardAsync()
+    {
+        if (selectedSample is null)
+        {
+            AppendLog("Save requested, but no dashboard sample is selected.");
+            return;
+        }
+
+        apiClient ??= QcStationApiClient.Create(apiBaseUrlTextBox.Text);
+        var rows = testFruitCapture.Rows
+            .Where(row => row.Pressure1Lbs is not null || row.Pressure2Lbs is not null)
+            .Select(row => new QcStationPressureRowUpdate(row.FruitNumber, row.Pressure1Lbs, row.Pressure2Lbs))
+            .ToList();
+
+        selectedSample = await apiClient.SavePressuresAsync(selectedSample.SampleId, rows);
+        hasUnsavedPressureChanges = false;
+        lastSaveResultTextBox.Text = $"Saved {rows.Count} rows at {DateTime.Now:HH:mm:ss}";
+        RefreshSampleStatusDisplay();
+        RefreshCaptureDisplay();
+        AppendLog($"Saved {rows.Count} pressure rows to dashboard sample {selectedSample?.DisplayReceiptId}.");
     }
 
     private void StartContinuousManualCapture()
@@ -503,7 +703,11 @@ public sealed class MainForm : Form
                 if (reading is not null && testFruitCapture.ShouldCaptureReading(reading))
                 {
                     AppendLog("Continuous capture reading detected.");
-                    CaptureReading(reading, PressureCaptureTarget.AutoAdvance, syncFruitFromInput: false);
+                    var capture = CaptureReading(reading, PressureCaptureTarget.AutoAdvance, syncFruitFromInput: false);
+                    if (autoSaveCompletedFruitCheckBox.Checked && capture.TargetSlot == "Pressure 2")
+                    {
+                        await SavePressuresToDashboardAsync();
+                    }
                     AppendLog($"Auto-advanced target: Fruit {testFruitCapture.FruitNumber} {testFruitCapture.CurrentTargetSlot}.");
 
                     if (testFruitCapture.IsSampleComplete)
@@ -571,7 +775,7 @@ public sealed class MainForm : Form
         return Task.CompletedTask;
     }
 
-    private void CaptureReading(PressureReading reading, PressureCaptureTarget target, bool syncFruitFromInput = true)
+    private CapturedPressureHistoryEntry CaptureReading(PressureReading reading, PressureCaptureTarget target, bool syncFruitFromInput = true)
     {
         if (syncFruitFromInput)
         {
@@ -580,8 +784,11 @@ public sealed class MainForm : Form
 
         var capturedFruit = testFruitCapture.FruitNumber;
         var slot = testFruitCapture.Capture(reading, target);
+        hasUnsavedPressureChanges = true;
         AppendLog($"Captured {reading.ReadingValueLbs:0.00} lbs into Fruit {capturedFruit} {slot}.");
         RefreshCaptureDisplay();
+        RefreshSampleStatusDisplay();
+        return new CapturedPressureHistoryEntry(reading.CapturedAt, reading.ReadingValueLbs, reading.Source, capturedFruit, slot);
     }
 
     private PressureCaptureTarget GetSelectedCaptureTarget()
@@ -666,6 +873,15 @@ public sealed class MainForm : Form
         SetValue("ProcessArchitecture", RuntimeInformation.ProcessArchitecture.ToString());
         SetValue("OSArchitecture", RuntimeInformation.OSArchitecture.ToString());
         SetValue("LastPressureReading", FormatReading(stationService.LatestReading));
+    }
+
+    private void RefreshSampleStatusDisplay()
+    {
+        selectedSampleTextBox.Text = selectedSample is null ? "(none)" : selectedSample.DisplayReceiptId;
+        unsavedChangesTextBox.Text = hasUnsavedPressureChanges ? "Yes" : "No";
+        sampleContextTextBox.Text = selectedSample is null
+            ? "(none)"
+            : $"{selectedSample.WarehouseCode} {selectedSample.RoomCode} | {selectedSample.GrowerName} | Lot {selectedSample.LotCode} | {selectedSample.VarietyCode}";
     }
 
     private void RefreshCaptureDisplay()

@@ -65,6 +65,34 @@ public sealed class TestFruitPressureCapture
         return slot;
     }
 
+    public void SetPressures(int rowNumber, decimal? pressure1Lbs, decimal? pressure2Lbs)
+    {
+        if (rowNumber is < 1 or > MaxFruitCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(rowNumber), "Row number must be between 1 and 25.");
+        }
+
+        pressure1Values[rowNumber] = pressure1Lbs;
+        pressure2Values[rowNumber] = pressure2Lbs;
+        if (rowNumber == FruitNumber)
+        {
+            SyncCurrentTargetToFruit();
+        }
+    }
+
+    public void LoadRows(IEnumerable<FruitPressureCaptureRow> rows)
+    {
+        Clear();
+        foreach (var row in rows)
+        {
+            SetPressures(row.FruitNumber, row.Pressure1Lbs, row.Pressure2Lbs);
+        }
+
+        var next = Rows.FirstOrDefault(row => row.Status != "Complete");
+        FruitNumber = next?.FruitNumber ?? MaxFruitCount;
+        CurrentTargetSlot = next is null ? "Sample Complete" : next.Status == "Missing P1" ? "Pressure 1" : "Pressure 2";
+    }
+
     public bool ShouldCaptureReading(PressureReading reading) =>
         LastCapturedReading is null || LastCapturedReading.ReadingId != reading.ReadingId;
 

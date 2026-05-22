@@ -1,0 +1,142 @@
+using CropQc.Api.Dtos;
+using CropQc.Data;
+using CropQc.Data.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace CropQc.Api.Services;
+
+public interface IQcStationApiService
+{
+    Task<IReadOnlyList<QcStationSampleListItemDto>> GetTodaySamplesAsync(string? warehouseCode, CancellationToken cancellationToken);
+    Task<QcStationSampleDetailDto?> GetSampleDetailAsync(long sampleId, CancellationToken cancellationToken);
+    Task<(QcStationSampleDetailDto? Sample, string? Error)> UpdatePressuresAsync(long sampleId, UpdateQcStationPressuresRequest request, CancellationToken cancellationToken);
+}
+
+public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService auditService) : IQcStationApiService
+{
+    public async Task<IReadOnlyList<QcStationSampleListItemDto>> GetTodaySamplesAsync(string? warehouseCode, CancellationToken cancellationToken)
+    {
+        var today = DateTimeOffset.UtcNow.Date;
+        var query = dbContext.QcSamples.AsNoTracking()
+            .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
+            .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
+            .Where(x => x.SampleTakenAt.Date == today);
+
+        if (!string.IsNullOrWhiteSpace(warehouseCode))
+        {
+            query = query.Where(x => x.Receipt.Warehouse.Code == warehouseCode);
+        }
+
+        return await query
+            .OrderByDescending(x => x.SampleTakenAt)
+            .Select(x => new QcStationSampleListItemDto(
+                x.Id,
+                x.ReceiptId,
+                x.SampleSequenceNumber <= 1 ? x.Receipt.CompuTechReceiptId : x.Receipt.CompuTechReceiptId + "(" + x.SampleSequenceNumber + ")",
+                x.Receipt.Warehouse.Code,
+                x.Receipt.GrowerName,
+                x.Receipt.LotCode,
+                x.Receipt.FruitProfile.VarietyCode,
+                x.Status,
+                x.StarchStatus,
+                x.EmailStatus,
+                x.SampleTakenAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<QcStationSampleDetailDto?> GetSampleDetailAsync(long sampleId, CancellationToken cancellationToken)
+    {
+        var sample = await dbContext.QcSamples.AsNoTracking()
+            .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
+            .Include(x => x.Receipt).ThenInclude(x => x.Room)
+            .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
+            .Include(x => x.FruitReadings)
+            .SingleOrDefaultAsync(x => x.Id == sampleId, cancellationToken);
+
+        return sample is null ? null : ToDetailDto(sample);
+    }
+
+    public async Task<(QcStationSampleDetailDto? Sample, string? Error)> UpdatePressuresAsync(long sampleId, UpdateQcStationPressuresRequest request, CancellationToken cancellationToken)
+    {
+        var sample = await dbContext.QcSamples
+            .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
+            .Include(x => x.Receipt).ThenInclude(x => x.Room)
+            .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
+            .Include(x => x.FruitReadings)
+            .SingleOrDefaultAsync(x => x.Id == sampleId, cancellationToken);
+
+        if (sample is null)
+        {
+            return (null, "QC sample not found.");
+        }
+
+        if (request.Rows is null || request.Rows.Count == 0)
+        {
+            return (ToDetailDto(sample), null);
+        }
+
+        var existingRows = sample.FruitReadings.ToDictionary(x => x.RowNumber);
+        foreach (var row in request.Rows)
+        {
+            if (row.RowNumber is < 1 or > 25)
+            {
+                return (null, $"RowNumber {row.RowNumber} must be between 1 and 25.");
+            }
+
+            if (!existingRows.TryGetValue(row.RowNumber, out var reading))
+            {
+                reading = new QcFruitReading
+                {
+                    QcSampleId = sampleId,
+                    RowNumber = row.RowNumber,
+                    SizeStatus = SizeCalculationService.NotCalculated,
+                    CreatedAt = DateTimeOffset.UtcNow
+                };
+                dbContext.QcFruitReadings.Add(reading);
+                sample.FruitReadings.Add(reading);
+                existingRows[row.RowNumber] = reading;
+            }
+
+            ApplyPressureOnlyUpdate(reading, row);
+        }
+
+        sample.UpdatedAt = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditService.RecordAsync("Edit", nameof(QcFruitReading), sampleId.ToString(), afterValuesJson: "QC Station pressure-only update.", cancellationToken: cancellationToken);
+        return (ToDetailDto(sample), null);
+    }
+
+    public static void ApplyPressureOnlyUpdate(QcFruitReading reading, UpdateQcStationPressureRowRequest row)
+    {
+        reading.Pressure1Lbs = row.Pressure1Lbs;
+        reading.Pressure1Source = row.Pressure1Lbs is null ? null : "FTA";
+        reading.Pressure2Lbs = row.Pressure2Lbs;
+        reading.Pressure2Source = row.Pressure2Lbs is null ? null : "FTA";
+        reading.IsCompleted = reading.Pressure1Lbs is not null
+            && reading.Pressure2Lbs is not null
+            && reading.WeightGrams is not null
+            && reading.GradeId is not null;
+        reading.UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    private static QcStationSampleDetailDto ToDetailDto(QcSample sample) =>
+        new(
+            sample.Id,
+            sample.ReceiptId,
+            sample.GetDisplayReceiptId(),
+            sample.Receipt.CompuTechReceiptId,
+            sample.Receipt.GrowerName,
+            sample.Receipt.LotCode,
+            sample.Receipt.FruitProfile.Name,
+            sample.Receipt.FruitProfile.VarietyCode,
+            sample.Receipt.Warehouse.Code,
+            sample.Receipt.Room.Code,
+            sample.Status,
+            sample.StarchStatus,
+            sample.EmailStatus,
+            sample.SampleTakenAt,
+            sample.FruitReadings
+                .OrderBy(x => x.RowNumber)
+                .Select(QcFruitReadingService.ToDto)
+                .ToList());
+}

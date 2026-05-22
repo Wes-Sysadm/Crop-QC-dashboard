@@ -57,6 +57,44 @@ public sealed record QcFruitReadingDto(
     string SizeStatus,
     bool IsCompleted);
 
+public sealed record QcStationSampleListItemDto(
+    long SampleId,
+    long ReceiptId,
+    string DisplayReceiptId,
+    string WarehouseCode,
+    string GrowerName,
+    string LotCode,
+    string VarietyCode,
+    string Status,
+    string StarchStatus,
+    string EmailStatus,
+    DateTimeOffset SampleTakenAt);
+
+public sealed record QcStationSampleDetailDto(
+    long SampleId,
+    long ReceiptId,
+    string DisplayReceiptId,
+    string OriginalReceiptId,
+    string GrowerName,
+    string LotCode,
+    string VarietyName,
+    string VarietyCode,
+    string WarehouseCode,
+    string RoomCode,
+    string Status,
+    string StarchStatus,
+    string EmailStatus,
+    DateTimeOffset SampleTakenAt,
+    IReadOnlyList<QcFruitReadingDto> FruitReadings);
+
+public sealed record UpdateQcStationPressureRowRequest(
+    int RowNumber,
+    decimal? Pressure1Lbs,
+    decimal? Pressure2Lbs);
+
+public sealed record UpdateQcStationPressuresRequest(
+    IReadOnlyList<UpdateQcStationPressureRowRequest>? Rows);
+
 public sealed record CreateQcFruitDefectRequest(int DefectTypeId, string? Notes);
 public sealed record QcFruitDefectDto(long Id, long QcFruitReadingId, int DefectTypeId, string? Notes);
 

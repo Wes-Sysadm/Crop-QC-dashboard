@@ -16,6 +16,7 @@ builder.Services.AddScoped<IQcFruitReadingService, QcFruitReadingService>();
 builder.Services.AddScoped<IQcPhotoService, QcPhotoService>();
 builder.Services.AddScoped<IQcSummaryService, QcSummaryService>();
 builder.Services.AddScoped<IQcSummaryEmailLogService, QcSummaryEmailLogService>();
+builder.Services.AddScoped<IQcStationApiService, QcStationApiService>();
 
 var app = builder.Build();
 
