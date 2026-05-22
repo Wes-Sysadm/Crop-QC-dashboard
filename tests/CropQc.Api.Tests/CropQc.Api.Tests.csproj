@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CropQc.Api\CropQc.Api.csproj" />
+    <ProjectReference Include="..\..\src\CropQc.QcStation\CropQc.QcStation.csproj" />
   </ItemGroup>
 
 </Project>
