@@ -46,6 +46,8 @@ Run it in x86 mode with:
 
 Use the WinForms harness for real FTA hardware testing. The console harness remains useful for mock mode, command-line diagnostics, and non-UI development, but the FTA DLL may expect a Windows UI message pump.
 
+Real hardware testing confirmed the WinForms x86 harness is the correct harness for this unit. The working operator flow is manual/button firmness reading: click the manual reading command, then press and hold the green FTA button until the probe completes the test. Auto firmness reading did not move the probe on the current unit and should be treated as experimental.
+
 ## Running RealDll Mode as x86
 
 The FTA-connected computer reported this load error:
@@ -161,7 +163,9 @@ The SDK behavior used by the harness is:
 - `FTAReadLastFirmness` returns the last firmness reading when bit 1 is true and does not reset bit 1.
 - Reading when bit 1 is not true returns `-1`.
 
-On the real FTA computer, `FTAInit` makes the FTA beep. That confirms the DLL is communicating with hardware. If `FTADoFirmnessReading` returns without crashing but there is no beep and no reading, try `Start Auto Firmness Reading`.
+On the real FTA computer, `FTAInit` makes the FTA beep. That confirms the DLL is communicating with hardware. With the WinForms x86 harness and `FtaWorkingDirectory` set to `C:\Program Files (x86)\FTAWin`, diagnostic status now shows interface connected, probe at top, and FTA responded.
+
+On the current unit, `FTADoAutoFirmnessReading` does not move the probe. `FTADoFirmnessReading` works when the operator presses and holds the green FTA button during the manual/button reading workflow.
 
 The FTA has also been observed in Windows as a HID USB Input Device:
 
@@ -226,19 +230,21 @@ C:\Program Files\FTADLL\FTA_DLL.CFG
 
 If the FTA is not responding, run the setup dialog on the QC computer, confirm the COM/USB setting, then initialize and check status again.
 
-To test `FTAInit2`, set the QC Station config like this:
+The confirmed working RealDll configuration for the current FTA unit is:
 
 ```json
 {
   "FtaMode": "RealDll",
   "FtaDllPath": "C:\\Windows\\SysWOW64",
   "FtaDllFileName": "FTA_DLL.dll",
-  "FtaInitializationMode": "FTAInit2",
+  "FtaInitializationMode": "FTAInit",
   "FtaConfigPath": "C:\\Program Files\\FTADLL\\FTA_DLL.CFG",
   "FtaReadingTimeoutSeconds": 60,
-  "FtaWorkingDirectory": "C:\\Program Files\\FTADLL"
+  "FtaWorkingDirectory": "C:\\Program Files (x86)\\FTAWin"
 }
 ```
+
+`FTAInit2` remains available for diagnostics and comparison with the vendor demo. To test `FTAInit2`, set `FtaInitializationMode` to `FTAInit2` and set `FtaConfigPath` to the config path being compared.
 
 With `FtaInitializationMode` set to `FTAInit2`, the normal `Initialize FTA` command calls `FTAInit2` automatically. The `Initialize FTA With Config Path` command also calls `FTAInit2` directly, regardless of the configured initialization mode.
 
@@ -250,14 +256,15 @@ If `FTAInit` beeps but firmness commands do not move the probe, compare behavior
 
 The harness keeps the two SDK reading styles separate:
 
-- `Start Manual/Button Firmness Reading` calls `FTADoFirmnessReading()` and returns immediately after the DLL call. Use this to confirm the basic SDK command can be invoked.
-- `Start And Wait Manual/Button Reading` calls `FTADoFirmnessReading()`, tells the operator to press the FTA front/init button or run the physical test, then polls bit 1 for up to 60 seconds and reads `FTAReadMaxFirmness()` when available.
-- `Start Auto Firmness Reading` calls `FTADoAutoFirmnessReading()`, captures diagnostics before and after the call, then polls bit 1 for up to 60 seconds and reads `FTAReadMaxFirmness()` when available.
+- `Start Manual/Button Firmness Reading` calls `FTADoFirmnessReading()` and returns immediately after the DLL call. This is the basic manual/button command.
+- `Start And Wait Manual/Button Reading` calls `FTADoFirmnessReading()`, tells the operator to press and hold the green FTA button, then polls bit 1 for up to 60 seconds and reads `FTAReadMaxFirmness()` when available. This is the recommended working workflow.
+- `Start Manual Reading and Capture` in the local two-pressure panel starts the recommended manual/button workflow, waits for a reading, and places it into the selected local pressure slot.
+- `Start Auto Firmness Reading` calls `FTADoAutoFirmnessReading()`, captures diagnostics before and after the call, then polls bit 1 for up to 60 seconds and reads `FTAReadMaxFirmness()` when available. This is experimental and did not work on the current unit.
 - `Demo-Style Poll Reading` only polls `FTAStatus()` and reads `FTAReadMaxFirmness()` when `FTAStatus > 0` and status bit 1 is set.
 - `Demo-Style Auto Reading` calls `FTADoAutoFirmnessReading()`, then uses demo-style polling.
 - `Demo-Style Manual/Button Reading` calls `FTADoFirmnessReading()`, tells the operator to press the physical FTA button, then uses demo-style polling.
 
-If auto mode beeps and manual/button mode does not, the next physical troubleshooting step is to confirm the saved FTA setup, COM/USB selection, and probe state.
+If manual/button mode stops working, the next physical troubleshooting step is to confirm the saved FTA setup, COM/USB selection, working directory, and probe state.
 
 ## Basic RealDll Test Sequence
 
@@ -270,12 +277,13 @@ On the physical QC computer connected to the GUSS/FTA:
    .\scripts\dev-run-qcstation-winforms-x86.ps1
    ```
 
-3. Select `Initialize FTA With Config Path`.
+3. Select `Initialize FTA`.
 4. Select `FTA Diagnostic Status` and confirm the DLL path, config path, process architecture, and status bits.
-5. Select `Start Auto Firmness Reading`.
-6. If there is no probe movement, select `Start And Wait Manual/Button Reading`, then press the FTA front/init button or run the physical firmness test.
-7. Select `Get Latest Reading` if a separate latest-read check is needed.
-8. Select `FTA Diagnostic Status` again if there is no beep, no probe movement, or no new reading.
+5. In the local two-pressure capture panel, set the fruit number and capture target.
+6. Select `Start Manual Reading and Capture`.
+7. Press and hold the green FTA button until the probe completes the test.
+8. Repeat for the second pressure slot, or use `Auto-advance` so the first reading goes to Pressure 1 and the second reading goes to Pressure 2.
+9. Select `FTA Diagnostic Status` again if there is no beep, no probe movement, or no new reading.
 
 If `Get Latest Reading` says no new firmness reading is available, bit 1 was not set yet. Run the physical test cycle again or check the FTA setup/status.
 
@@ -303,11 +311,11 @@ Available commands:
 - Open FTA Setup
 - FTA Diagnostic Status
 - Check Status
-- Start Manual/Button Firmness Reading
-- Start Auto Firmness Reading
-- Start And Wait Manual/Button Reading
+- Start Manual/Button Firmness Reading - Recommended
+- Start Auto Firmness Reading - Experimental
+- Start And Wait Manual/Button Reading - Recommended
 - Demo-Style Poll Reading
-- Demo-Style Auto Reading
+- Demo-Style Auto Reading - Experimental
 - Demo-Style Manual/Button Reading
 - Get Latest Reading
 - Cancel
@@ -317,6 +325,8 @@ Available commands:
 - Clear Log
 
 The WinForms harness exposes the same hardware commands as buttons, plus status/config labels for station name, warehouse, FTA mode, DLL path, DLL file, initialization mode, config path, current working directory, process architecture, OS architecture, and last pressure reading. Its log box auto-scrolls and keeps timestamped entries visible during hardware tests.
+
+The WinForms harness also includes a local-only two-pressure capture panel for one fruit. It tracks fruit number, Pressure 1, Pressure 2, average pressure, last captured reading, capture target, and a local reading history. This prepares the operator flow for mapping readings into QC sample rows later, but it does not write to Azure SQL or update the web QC workflow yet.
 
 ## Hardware Testing Still Required
 
