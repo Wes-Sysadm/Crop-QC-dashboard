@@ -1,5 +1,7 @@
 namespace CropQc.QcStation.Fta;
 
+using System.Runtime.InteropServices;
+
 public sealed class FtaDllPressureReader(StationConfiguration configuration, INativeDllLoader? nativeDllLoader = null) : IFtaDevice, IFtaPressureReader
 {
     public const string DefaultFtaDllFileName = "FTA_dll.dll";
@@ -30,7 +32,7 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         {
             isInitialized = false;
             isConnected = false;
-            errorMessage = lastProbe.LoadErrorMessage;
+            errorMessage = BuildLoadErrorMessage(lastProbe);
             return Task.FromResult(Status("FTA DLL load failed.", errorMessage));
         }
 
@@ -57,7 +59,7 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         if (!lastProbe.MainDllLoaded)
         {
             isConnected = false;
-            errorMessage = lastProbe.LoadErrorMessage;
+            errorMessage = BuildLoadErrorMessage(lastProbe);
             return Task.FromResult(Status("FTA DLL load failed.", errorMessage));
         }
 
@@ -112,11 +114,11 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
 
         if (!mainDllFound)
         {
-            return new DllProbeResult(dllFolder, mainDllFileName, mainDllPath, false, false, borlandMemoryManagerFound, null);
+            return new DllProbeResult(dllFolder, mainDllFileName, mainDllPath, false, false, borlandMemoryManagerFound, null, false);
         }
 
         var loadResult = nativeDllLoader.TryLoad(mainDllPath);
-        return new DllProbeResult(dllFolder, mainDllFileName, mainDllPath, true, loadResult.Loaded, borlandMemoryManagerFound, loadResult.ErrorMessage);
+        return new DllProbeResult(dllFolder, mainDllFileName, mainDllPath, true, loadResult.Loaded, borlandMemoryManagerFound, loadResult.ErrorMessage, loadResult.IsArchitectureMismatch);
     }
 
     private string ResolveMainDllFileName(string dllFolder)
@@ -157,8 +159,30 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
                 $"Main DLL found: {YesNo(probe.MainDllFound)}",
                 $"Main DLL load check: {YesNo(probe.MainDllLoaded)}",
                 $"{BorlandMemoryManagerFileName} found: {YesNo(probe.BorlandMemoryManagerFound)}",
+                $"Process architecture: {RuntimeInformation.ProcessArchitecture}",
+                $"OS architecture: {RuntimeInformation.OSArchitecture}",
                 "Ready for actual function calls: No; vendor P/Invoke bindings are not implemented yet");
         return new(isInitialized, isConnected, isReading, detail, error);
+    }
+
+    private static string? BuildLoadErrorMessage(DllProbeResult probe)
+    {
+        if (string.IsNullOrWhiteSpace(probe.LoadErrorMessage))
+        {
+            return null;
+        }
+
+        if (!probe.IsArchitectureMismatch)
+        {
+            return probe.LoadErrorMessage;
+        }
+
+        return string.Join(" ",
+            probe.LoadErrorMessage,
+            "This usually means a 32-bit/64-bit mismatch.",
+            $"Current process architecture: {RuntimeInformation.ProcessArchitecture}.",
+            $"OS architecture: {RuntimeInformation.OSArchitecture}.",
+            "The FTA_dll.dll is likely 32-bit; run the QC Station as x86 for RealDll testing.");
     }
 
     private static string YesNo(bool value) => value ? "Yes" : "No";
@@ -170,5 +194,6 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         bool MainDllFound,
         bool MainDllLoaded,
         bool BorlandMemoryManagerFound,
-        string? LoadErrorMessage);
+        string? LoadErrorMessage,
+        bool IsArchitectureMismatch);
 }
