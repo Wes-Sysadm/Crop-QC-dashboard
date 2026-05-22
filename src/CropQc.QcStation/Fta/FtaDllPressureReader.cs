@@ -104,6 +104,20 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         return Task.FromResult(Status(statusSnapshot.Message, errorMessage));
     }
 
+    public Task<FtaDeviceStatus> DiagnosticStatusAsync(CancellationToken cancellationToken = default)
+    {
+        var readyStatus = EnsureReadyForFunctionCall();
+        if (readyStatus is not null)
+        {
+            return Task.FromResult(readyStatus);
+        }
+
+        var statusSnapshot = ReadStatusSnapshot("FTA Diagnostic Status.");
+        isConnected = statusSnapshot.InterfaceConnected || statusSnapshot.FtaResponded;
+        LastStatusMessage = statusSnapshot.Message;
+        return Task.FromResult(Status(statusSnapshot.Message, errorMessage));
+    }
+
     public Task<FtaDeviceStatus> OpenSetupAsync(CancellationToken cancellationToken = default)
     {
         var readyStatus = EnsureReadyForFunctionCall();
@@ -136,9 +150,18 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
 
         try
         {
+            var beforeSnapshot = ReadStatusSnapshot("Before FTADoFirmnessReading.");
             bindings!.FTADoFirmnessReading();
+            var afterSnapshot = ReadStatusSnapshot("After FTADoFirmnessReading.");
             isReading = true;
-            LastStatusMessage = "FTADoFirmnessReading completed. Waiting for new firmness reading bit 1.";
+            var waitingMessage = afterSnapshot.NewFirmnessAvailable
+                ? null
+                : "FTADoFirmnessReading call returned, but no new reading detected yet. Confirm FTA setup COM port and probe state.";
+            LastStatusMessage = string.Join(" | ",
+                "FTADoFirmnessReading completed.",
+                beforeSnapshot.Message,
+                afterSnapshot.Message,
+                waitingMessage).TrimEnd(' ', '|');
             return Task.FromResult(Status(LastStatusMessage, errorMessage));
         }
         catch (Exception ex)
@@ -414,18 +437,24 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
             var bit1 = bindings.FTABitStatus(1) != 0;
             var bit3 = bindings.FTABitStatus(3) != 0;
             var bit5 = bindings.FTABitStatus(5) != 0;
+            var bit6 = bindings.FTABitStatus(6) != 0;
             var bit7 = bindings.FTABitStatus(7) != 0;
-            return new FtaStatusSnapshot(statusWord, bit1, bit3, bit5, bit7, string.Join(" | ",
+            var bit8 = bindings.FTABitStatus(8) != 0;
+            var bit9 = bindings.FTABitStatus(9) != 0;
+            return new FtaStatusSnapshot(statusWord, bit1, bit3, bit5, bit6, bit7, bit8, bit9, string.Join(" | ",
                 prefix,
-                $"FTAStatus: {statusWord}",
-                $"bit 1 new firmness: {YesNo(bit1)}",
-                $"bit 3 interface connected: {YesNo(bit3)}",
-                $"bit 5 probe at top: {YesNo(bit5)}",
-                $"bit 7 FTA responded: {YesNo(bit7)}"));
+                $"FTAStatus raw value: {statusWord}",
+                $"FTABitStatus(1) new firmness: {YesNo(bit1)}",
+                $"FTABitStatus(3) interface connected: {YesNo(bit3)}",
+                $"FTABitStatus(5) probe at top: {YesNo(bit5)}",
+                $"FTABitStatus(6) probe at bottom: {YesNo(bit6)}",
+                $"FTABitStatus(7) FTA responded: {YesNo(bit7)}",
+                $"FTABitStatus(8) new mass reading: {YesNo(bit8)}",
+                $"FTABitStatus(9) scale attached/can measure mass: {YesNo(bit9)}"));
         }
         catch (Exception ex)
         {
-            return new FtaStatusSnapshot(null, false, false, false, false, $"{prefix} Status read failed: {ex.Message}");
+            return new FtaStatusSnapshot(null, false, false, false, false, false, false, false, $"{prefix} Status read failed: {ex.Message}");
         }
     }
 
@@ -462,7 +491,16 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         bool IsArchitectureMismatch,
         IntPtr NativeLibraryHandle);
 
-    private sealed record FtaStatusSnapshot(int? StatusWord, bool NewFirmnessAvailable, bool InterfaceConnected, bool ProbeAtTop, bool FtaResponded, string Message);
+    private sealed record FtaStatusSnapshot(
+        int? StatusWord,
+        bool NewFirmnessAvailable,
+        bool InterfaceConnected,
+        bool ProbeAtTop,
+        bool ProbeAtBottom,
+        bool FtaResponded,
+        bool NewMassReading,
+        bool ScaleAttachedCanMeasureMass,
+        string Message);
 
     private sealed record FtaNativeBindings(
         FTAInit FTAInit,

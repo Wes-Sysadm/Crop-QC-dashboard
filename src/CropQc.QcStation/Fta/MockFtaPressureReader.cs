@@ -33,6 +33,21 @@ public sealed class MockFtaPressureReader(string stationName) : IFtaDevice, IFta
         return Task.FromResult(CurrentStatus(LastStatusMessage));
     }
 
+    public Task<FtaDeviceStatus> DiagnosticStatusAsync(CancellationToken cancellationToken = default)
+    {
+        LastStatusMessage = string.Join(" | ",
+            "Mock diagnostic status.",
+            "FTAStatus raw value: 0",
+            "FTABitStatus(1) new firmness: No",
+            $"FTABitStatus(3) interface connected: {YesNo(isConnected)}",
+            "FTABitStatus(5) probe at top: Yes",
+            "FTABitStatus(6) probe at bottom: No",
+            $"FTABitStatus(7) FTA responded: {YesNo(isConnected)}",
+            "FTABitStatus(8) new mass reading: No",
+            "FTABitStatus(9) scale attached/can measure mass: No");
+        return Task.FromResult(CurrentStatus(LastStatusMessage));
+    }
+
     public Task<FtaDeviceStatus> StartPressureReadingAsync(CancellationToken cancellationToken = default)
     {
         if (!isInitialized || !isConnected)
@@ -81,4 +96,6 @@ public sealed class MockFtaPressureReader(string stationName) : IFtaDevice, IFta
 
     private FtaDeviceStatus CurrentStatus(string message, string? errorMessage = null) =>
         new(isInitialized, isConnected, isReading, message, errorMessage);
+
+    private static string YesNo(bool value) => value ? "Yes" : "No";
 }

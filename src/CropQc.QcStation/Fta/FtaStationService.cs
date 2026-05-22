@@ -24,6 +24,12 @@ public sealed class FtaStationService(
         return LogStatus("Check Status", await device.CheckStatusAsync(cancellationToken));
     }
 
+    public async Task<FtaDeviceStatus> DiagnosticStatusAsync(CancellationToken cancellationToken = default)
+    {
+        Log("FTA Diagnostic Status started.");
+        return LogStatus("FTA Diagnostic Status", await device.DiagnosticStatusAsync(cancellationToken));
+    }
+
     public async Task<FtaDeviceStatus> OpenSetupAsync(CancellationToken cancellationToken = default)
     {
         Log("Open FTA Setup started.");
