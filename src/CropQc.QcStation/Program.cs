@@ -35,23 +35,30 @@ while (!exit)
             await stationService.StartPressureReadingAsync();
             break;
         case "6":
-            await stationService.GetLatestPressureReadingAsync();
+            await stationService.StartAutoFirmnessReadingAsync();
             break;
         case "7":
-            await stationService.CancelReadingAsync();
+            Console.WriteLine("Press the FTA front/init button or run the physical firmness test when prompted by the FTA.");
+            await stationService.StartAndWaitManualFirmnessReadingAsync();
             break;
         case "8":
-            await stationService.ReturnProbeHomeAsync();
+            await stationService.GetLatestPressureReadingAsync();
             break;
         case "9":
-            await stationService.QuitAsync();
+            await stationService.CancelReadingAsync();
             break;
         case "10":
+            await stationService.ReturnProbeHomeAsync();
+            break;
+        case "11":
+            await stationService.QuitAsync();
+            break;
+        case "12":
             Console.Write("Manual mock pressure lbs, blank for generated test value: ");
             var input = Console.ReadLine();
             stationService.UseMockReading(decimal.TryParse(input, out var manualValue) ? manualValue : null);
             break;
-        case "11":
+        case "13":
             stationService.ClearLog();
             break;
         case "0":
@@ -84,13 +91,15 @@ static void RenderStatus(IFtaStationService stationService)
     Console.WriteLine("2. Open FTA Setup");
     Console.WriteLine("3. FTA Diagnostic Status");
     Console.WriteLine("4. Check Status");
-    Console.WriteLine("5. Start Pressure Reading");
-    Console.WriteLine("6. Get Latest Reading");
-    Console.WriteLine("7. Cancel");
-    Console.WriteLine("8. Return Probe Home");
-    Console.WriteLine("9. Quit/Disconnect FTA");
-    Console.WriteLine("10. Use Mock Reading");
-    Console.WriteLine("11. Clear Log");
+    Console.WriteLine("5. Start Manual/Button Firmness Reading");
+    Console.WriteLine("6. Start Auto Firmness Reading");
+    Console.WriteLine("7. Start And Wait Manual/Button Reading");
+    Console.WriteLine("8. Get Latest Reading");
+    Console.WriteLine("9. Cancel");
+    Console.WriteLine("10. Return Probe Home");
+    Console.WriteLine("11. Quit/Disconnect FTA");
+    Console.WriteLine("12. Use Mock Reading");
+    Console.WriteLine("13. Clear Log");
     Console.WriteLine("0. Exit");
     Console.WriteLine();
     Console.WriteLine("Log");

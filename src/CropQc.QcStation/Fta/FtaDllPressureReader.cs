@@ -7,6 +7,8 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
     public const string DefaultFtaDllFileName = "FTA_dll.dll";
     public const string AlternateFtaDllFileName = "FTA_DLL.dll";
     public const string BorlandMemoryManagerFileName = "borlndmm.dll";
+    private static readonly TimeSpan FirmnessReadingTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan FirmnessReadingPollInterval = TimeSpan.FromMilliseconds(250);
 
     private bool isInitialized;
     private bool isConnected;
@@ -53,7 +55,7 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
             bindings!.FTAInit();
             isInitialized = true;
             var statusSnapshot = ReadStatusSnapshot("FTAInit completed.");
-            isConnected = statusSnapshot.InterfaceConnected || statusSnapshot.FtaResponded;
+            isConnected = statusSnapshot.IsInterfaceConnected || statusSnapshot.HasFtaResponded;
             errorMessage = lastProbe.BorlandMemoryManagerFound
                 ? null
                 : $"{BorlandMemoryManagerFileName} was not found in {lastProbe.DllFolder}. This is warning-only.";
@@ -96,7 +98,7 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         }
 
         var statusSnapshot = ReadStatusSnapshot("FTA status check completed.");
-        isConnected = statusSnapshot.InterfaceConnected || statusSnapshot.FtaResponded;
+        isConnected = statusSnapshot.IsInterfaceConnected || statusSnapshot.HasFtaResponded;
         errorMessage = lastProbe.BorlandMemoryManagerFound
             ? null
             : $"{BorlandMemoryManagerFileName} missing; warning only.";
@@ -113,7 +115,7 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         }
 
         var statusSnapshot = ReadStatusSnapshot("FTA Diagnostic Status.");
-        isConnected = statusSnapshot.InterfaceConnected || statusSnapshot.FtaResponded;
+        isConnected = statusSnapshot.IsInterfaceConnected || statusSnapshot.HasFtaResponded;
         LastStatusMessage = statusSnapshot.Message;
         return Task.FromResult(Status(statusSnapshot.Message, errorMessage));
     }
@@ -154,7 +156,7 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
             bindings!.FTADoFirmnessReading();
             var afterSnapshot = ReadStatusSnapshot("After FTADoFirmnessReading.");
             isReading = true;
-            var waitingMessage = afterSnapshot.NewFirmnessAvailable
+            var waitingMessage = afterSnapshot.HasNewFirmness
                 ? null
                 : "FTADoFirmnessReading call returned, but no new reading detected yet. Confirm FTA setup COM port and probe state.";
             LastStatusMessage = string.Join(" | ",
@@ -169,6 +171,78 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
             errorMessage = $"FTADoFirmnessReading failed: {ex.Message}";
             LastStatusMessage = errorMessage;
             return Task.FromResult(Status("FTA pressure reading start failed.", errorMessage));
+        }
+    }
+
+    public async Task<PressureReading?> StartAutoFirmnessReadingAsync(CancellationToken cancellationToken = default)
+    {
+        var readyStatus = EnsureReadyForFunctionCall();
+        if (readyStatus is not null)
+        {
+            LastStatusMessage = readyStatus.ErrorMessage ?? readyStatus.StatusMessage;
+            return null;
+        }
+
+        try
+        {
+            var beforeSnapshot = ReadStatusSnapshot("Before FTADoAutoFirmnessReading.");
+            bindings!.FTADoAutoFirmnessReading();
+            var afterSnapshot = ReadStatusSnapshot("After FTADoAutoFirmnessReading.");
+            isReading = true;
+            var reading = await WaitForMaxFirmnessReadingAsync("auto firmness", cancellationToken);
+            LastStatusMessage = string.Join(" | ",
+                "FTADoAutoFirmnessReading completed.",
+                beforeSnapshot.Message,
+                afterSnapshot.Message,
+                LastStatusMessage).TrimEnd(' ', '|');
+            return reading;
+        }
+        catch (OperationCanceledException)
+        {
+            LastStatusMessage = "Auto firmness reading wait was cancelled.";
+            return null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"FTADoAutoFirmnessReading failed: {ex.Message}";
+            LastStatusMessage = errorMessage;
+            return null;
+        }
+    }
+
+    public async Task<PressureReading?> StartAndWaitManualFirmnessReadingAsync(CancellationToken cancellationToken = default)
+    {
+        var readyStatus = EnsureReadyForFunctionCall();
+        if (readyStatus is not null)
+        {
+            LastStatusMessage = readyStatus.ErrorMessage ?? readyStatus.StatusMessage;
+            return null;
+        }
+
+        try
+        {
+            var beforeSnapshot = ReadStatusSnapshot("Before FTADoFirmnessReading.");
+            bindings!.FTADoFirmnessReading();
+            var afterSnapshot = ReadStatusSnapshot("After FTADoFirmnessReading.");
+            isReading = true;
+            var reading = await WaitForMaxFirmnessReadingAsync("manual/button firmness", cancellationToken);
+            LastStatusMessage = string.Join(" | ",
+                "FTADoFirmnessReading completed. Press the FTA front/init button or run the physical firmness test.",
+                beforeSnapshot.Message,
+                afterSnapshot.Message,
+                LastStatusMessage).TrimEnd(' ', '|');
+            return reading;
+        }
+        catch (OperationCanceledException)
+        {
+            LastStatusMessage = "Manual/button firmness reading wait was cancelled.";
+            return null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"FTADoFirmnessReading failed: {ex.Message}";
+            LastStatusMessage = errorMessage;
+            return null;
         }
     }
 
@@ -401,6 +475,8 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         if (error is not null) return error;
         var doFirmnessReading = Bind<FTADoFirmnessReading>(nativeLibraryHandle, nameof(FTADoFirmnessReading), out error);
         if (error is not null) return error;
+        var doAutoFirmnessReading = Bind<FTADoAutoFirmnessReading>(nativeLibraryHandle, nameof(FTADoAutoFirmnessReading), out error);
+        if (error is not null) return error;
         var readMaxFirmness = Bind<FTAReadMaxFirmness>(nativeLibraryHandle, nameof(FTAReadMaxFirmness), out error);
         if (error is not null) return error;
         var readLastFirmness = Bind<FTAReadLastFirmness>(nativeLibraryHandle, nameof(FTAReadLastFirmness), out error);
@@ -412,7 +488,7 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         var quit = Bind<FTAQuit>(nativeLibraryHandle, nameof(FTAQuit), out error);
         if (error is not null) return error;
 
-        nativeBindings = new FtaNativeBindings(init!, setup!, status!, bitStatus!, doFirmnessReading!, readMaxFirmness!, readLastFirmness!, cancel!, back!, quit!);
+        nativeBindings = new FtaNativeBindings(init!, setup!, status!, bitStatus!, doFirmnessReading!, doAutoFirmnessReading!, readMaxFirmness!, readLastFirmness!, cancel!, back!, quit!);
         return null;
     }
 
@@ -434,28 +510,61 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         try
         {
             var statusWord = bindings!.FTAStatus();
-            var bit1 = bindings.FTABitStatus(1) != 0;
-            var bit3 = bindings.FTABitStatus(3) != 0;
-            var bit5 = bindings.FTABitStatus(5) != 0;
-            var bit6 = bindings.FTABitStatus(6) != 0;
-            var bit7 = bindings.FTABitStatus(7) != 0;
-            var bit8 = bindings.FTABitStatus(8) != 0;
-            var bit9 = bindings.FTABitStatus(9) != 0;
-            return new FtaStatusSnapshot(statusWord, bit1, bit3, bit5, bit6, bit7, bit8, bit9, string.Join(" | ",
+            var bit1 = bindings.FTABitStatus(1);
+            var bit2 = bindings.FTABitStatus(2);
+            var bit3 = bindings.FTABitStatus(3);
+            var bit5 = bindings.FTABitStatus(5);
+            var bit6 = bindings.FTABitStatus(6);
+            var bit7 = bindings.FTABitStatus(7);
+            var bit8 = bindings.FTABitStatus(8);
+            var bit9 = bindings.FTABitStatus(9);
+            return new FtaStatusSnapshot(statusWord, bit1, bit2, bit3, bit5, bit6, bit7, bit8, bit9, string.Join(" | ",
                 prefix,
-                $"FTAStatus raw value: {statusWord}",
-                $"FTABitStatus(1) new firmness: {YesNo(bit1)}",
-                $"FTABitStatus(3) interface connected: {YesNo(bit3)}",
-                $"FTABitStatus(5) probe at top: {YesNo(bit5)}",
-                $"FTABitStatus(6) probe at bottom: {YesNo(bit6)}",
-                $"FTABitStatus(7) FTA responded: {YesNo(bit7)}",
-                $"FTABitStatus(8) new mass reading: {YesNo(bit8)}",
-                $"FTABitStatus(9) scale attached/can measure mass: {YesNo(bit9)}"));
+                FormatStatusWord(statusWord),
+                FormatBitStatus(1, "new firmness", bit1),
+                FormatBitStatus(2, "new size", bit2),
+                FormatBitStatus(3, "interface connected", bit3),
+                FormatBitStatus(5, "probe at top", bit5),
+                FormatBitStatus(6, "probe at bottom", bit6),
+                FormatBitStatus(7, "FTA responded", bit7),
+                FormatBitStatus(8, "new mass", bit8),
+                FormatBitStatus(9, "can measure mass", bit9)));
         }
         catch (Exception ex)
         {
-            return new FtaStatusSnapshot(null, false, false, false, false, false, false, false, $"{prefix} Status read failed: {ex.Message}");
+            return new FtaStatusSnapshot(null, 0, 0, 0, 0, 0, 0, 0, 0, $"{prefix} Status read failed: {ex.Message}");
         }
+    }
+
+    private async Task<PressureReading?> WaitForMaxFirmnessReadingAsync(string readingMode, CancellationToken cancellationToken)
+    {
+        var timeoutAt = DateTimeOffset.UtcNow.Add(FirmnessReadingTimeout);
+        while (DateTimeOffset.UtcNow < timeoutAt)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var bit1Raw = bindings!.FTABitStatus(1);
+            if (bit1Raw != 0)
+            {
+                var maxFirmness = bindings.FTAReadMaxFirmness();
+                if (maxFirmness == -1f)
+                {
+                    LastStatusMessage = $"FTAReadMaxFirmness returned -1 after {readingMode} bit 1 became available; no valid firmness reading is available.";
+                    isReading = false;
+                    return null;
+                }
+
+                latestReading = PressureReading.Success((decimal)maxFirmness, PressureReadingSource.FTA, configuration.StationName);
+                isReading = false;
+                LastStatusMessage = $"{readingMode} reading detected. FTAReadMaxFirmness returned {maxFirmness:0.00} lbs.";
+                return latestReading;
+            }
+
+            await Task.Delay(FirmnessReadingPollInterval, cancellationToken);
+        }
+
+        isReading = false;
+        LastStatusMessage = $"No {readingMode} reading detected after {FirmnessReadingTimeout.TotalSeconds:0} seconds.";
+        return null;
     }
 
     private static string? BuildLoadErrorMessage(DllProbeResult probe)
@@ -480,6 +589,14 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
 
     private static string YesNo(bool value) => value ? "Yes" : "No";
 
+    private static string FormatStatusWord(int statusWord) =>
+        statusWord < 0
+            ? $"FTAStatus raw value: {statusWord} (negative/suspicious; raw status word was not decoded)"
+            : $"FTAStatus raw value: {statusWord}";
+
+    private static string FormatBitStatus(int bit, string label, int rawValue) =>
+        $"FTABitStatus({bit}) {label}: raw {rawValue}, {(rawValue != 0 ? "Yes" : "No")}";
+
     private sealed record DllProbeResult(
         string DllFolder,
         string MainDllFileName,
@@ -493,14 +610,20 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
 
     private sealed record FtaStatusSnapshot(
         int? StatusWord,
-        bool NewFirmnessAvailable,
-        bool InterfaceConnected,
-        bool ProbeAtTop,
-        bool ProbeAtBottom,
-        bool FtaResponded,
-        bool NewMassReading,
-        bool ScaleAttachedCanMeasureMass,
-        string Message);
+        int NewFirmnessRaw,
+        int NewSizeRaw,
+        int InterfaceConnectedRaw,
+        int ProbeAtTopRaw,
+        int ProbeAtBottomRaw,
+        int FtaRespondedRaw,
+        int NewMassReadingRaw,
+        int ScaleAttachedCanMeasureMassRaw,
+        string Message)
+    {
+        public bool HasNewFirmness => NewFirmnessRaw != 0;
+        public bool IsInterfaceConnected => InterfaceConnectedRaw != 0;
+        public bool HasFtaResponded => FtaRespondedRaw != 0;
+    }
 
     private sealed record FtaNativeBindings(
         FTAInit FTAInit,
@@ -508,6 +631,7 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         FTAStatus FTAStatus,
         FTABitStatus FTABitStatus,
         FTADoFirmnessReading FTADoFirmnessReading,
+        FTADoAutoFirmnessReading FTADoAutoFirmnessReading,
         FTAReadMaxFirmness FTAReadMaxFirmness,
         FTAReadLastFirmness FTAReadLastFirmness,
         FTACancel FTACancel,
@@ -528,6 +652,9 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void FTADoFirmnessReading();
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void FTADoAutoFirmnessReading();
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate float FTAReadMaxFirmness();

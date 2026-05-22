@@ -64,6 +64,24 @@ public sealed class MockFtaPressureReader(string stationName) : IFtaDevice, IFta
         return Task.FromResult(CurrentStatus(LastStatusMessage));
     }
 
+    public async Task<PressureReading?> StartAutoFirmnessReadingAsync(CancellationToken cancellationToken = default)
+    {
+        await StartPressureReadingAsync(cancellationToken);
+        LastStatusMessage = latestReading is null
+            ? LastStatusMessage
+            : $"Mock auto firmness reading captured: {latestReading.ReadingValueLbs:0.00} lbs.";
+        return latestReading;
+    }
+
+    public async Task<PressureReading?> StartAndWaitManualFirmnessReadingAsync(CancellationToken cancellationToken = default)
+    {
+        await StartPressureReadingAsync(cancellationToken);
+        LastStatusMessage = latestReading is null
+            ? LastStatusMessage
+            : $"Mock manual/button firmness reading captured: {latestReading.ReadingValueLbs:0.00} lbs.";
+        return latestReading;
+    }
+
     public Task<PressureReading?> GetLatestPressureReadingAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(latestReading);
 
