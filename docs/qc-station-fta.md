@@ -14,7 +14,7 @@ The POC gives the QC Station project a safe place to test:
 
 ## Project
 
-The harness lives in:
+The original console harness lives in:
 
 ```powershell
 src\CropQc.QcStation
@@ -31,6 +31,20 @@ The app uses `src\CropQc.QcStation\qcstation.settings.json` by default. You can 
 ```powershell
 dotnet run --project .\src\CropQc.QcStation\CropQc.QcStation.csproj -- .\path\to\qcstation.settings.json
 ```
+
+The Windows Forms hardware test harness lives in:
+
+```powershell
+src\CropQc.QcStation.WinForms
+```
+
+Run it in x86 mode with:
+
+```powershell
+.\scripts\dev-run-qcstation-winforms-x86.ps1
+```
+
+Use the WinForms harness for real FTA hardware testing. The console harness remains useful for mock mode, command-line diagnostics, and non-UI development, but the FTA DLL may expect a Windows UI message pump.
 
 ## Running RealDll Mode as x86
 
@@ -56,6 +70,8 @@ dotnet run --project .\src\CropQc.QcStation\CropQc.QcStation.csproj --configurat
 
 The QC Station project supports `AnyCPU`, `x86`, and `x64` platforms. Normal solution builds remain unchanged; RealDll hardware testing should use x86 until the vendor DLL bitness is confirmed.
 
+The WinForms harness also supports x86. It runs on an STA thread with a real Windows message loop. During reading waits it keeps the UI responsive and allows pending Windows messages to be processed, which may matter because the SDK says `FTAInit` installs an FTA interface and shows a tray icon. The vendor FTAwin software and vendor demos are GUI-based, and FTAwin works on the same machine where the console harness can initialize but cannot move the probe.
+
 ## Configuration
 
 The current settings fields are:
@@ -68,6 +84,7 @@ The current settings fields are:
 - `FtaInitializationMode`: `FTAInit` or `FTAInit2`
 - `FtaConfigPath`
 - `FtaReadingTimeoutSeconds`
+- `FtaWorkingDirectory`
 - `ComPort`
 - `ApiBaseUrl`
 - `LocalDataPath`
@@ -215,14 +232,17 @@ To test `FTAInit2`, set the QC Station config like this:
 {
   "FtaMode": "RealDll",
   "FtaDllPath": "C:\\Windows\\SysWOW64",
-  "FtaDllFileName": "FTA_dll.dll",
+  "FtaDllFileName": "FTA_DLL.dll",
   "FtaInitializationMode": "FTAInit2",
   "FtaConfigPath": "C:\\Program Files\\FTADLL\\FTA_DLL.CFG",
-  "FtaReadingTimeoutSeconds": 60
+  "FtaReadingTimeoutSeconds": 60,
+  "FtaWorkingDirectory": "C:\\Program Files\\FTADLL"
 }
 ```
 
 With `FtaInitializationMode` set to `FTAInit2`, the normal `Initialize FTA` command calls `FTAInit2` automatically. The `Initialize FTA With Config Path` command also calls `FTAInit2` directly, regardless of the configured initialization mode.
+
+When `FtaWorkingDirectory` is configured and the directory exists, the FTA reader sets the process current directory before probing/calling the DLL. This helps test whether the vendor DLL expects to run from `C:\Program Files\FTADLL` while loading supporting files.
 
 If `FTAInit` beeps but firmness commands do not move the probe, compare behavior against the original vendor app and watch the config timestamps before and after opening `FTASetup()` or changing settings in the vendor software. A changed timestamp may reveal which config file the working vendor path actually uses.
 
@@ -243,23 +263,23 @@ If auto mode beeps and manual/button mode does not, the next physical troublesho
 
 On the physical QC computer connected to the GUSS/FTA:
 
-1. Run the QC Station as x86:
+1. Close FTAwin so only one process is talking to the FTA.
+2. Run the WinForms QC Station as x86:
 
    ```powershell
-   .\scripts\dev-run-qcstation-x86.ps1
+   .\scripts\dev-run-qcstation-winforms-x86.ps1
    ```
 
-2. Select `Initialize FTA`.
-3. If testing the vendor demo initialization path, select `Initialize FTA With Config Path`.
-4. Select `Open FTA Setup` if the serial/USB settings need to be selected or confirmed.
-5. Select `Check Status` and confirm bit 3 and/or bit 7 show that the FTA is connected/responding.
-6. Select `FTA Diagnostic Status` to capture the baseline raw status and bit values.
-7. Select `Demo-Style Auto Reading`.
-8. If auto mode does not produce a reading, select `Demo-Style Manual/Button Reading`, then press the FTA front/init button or run the physical firmness test.
-9. Select `FTA Diagnostic Status` again if there is no beep, no probe movement, or no new reading.
-10. Select `Get Latest Reading` if a separate latest-read check is needed.
+3. Select `Initialize FTA With Config Path`.
+4. Select `FTA Diagnostic Status` and confirm the DLL path, config path, process architecture, and status bits.
+5. Select `Start Auto Firmness Reading`.
+6. If there is no probe movement, select `Start And Wait Manual/Button Reading`, then press the FTA front/init button or run the physical firmness test.
+7. Select `Get Latest Reading` if a separate latest-read check is needed.
+8. Select `FTA Diagnostic Status` again if there is no beep, no probe movement, or no new reading.
 
 If `Get Latest Reading` says no new firmness reading is available, bit 1 was not set yet. Run the physical test cycle again or check the FTA setup/status.
+
+If the WinForms harness works but the console harness does not, the FTA DLL likely depends on the UI message loop/tray-interface behavior created by `FTAInit` or `FTAInit2`.
 
 ## Test Screen Commands
 
@@ -295,6 +315,8 @@ Available commands:
 - Quit/Disconnect FTA
 - Use Mock Reading
 - Clear Log
+
+The WinForms harness exposes the same hardware commands as buttons, plus status/config labels for station name, warehouse, FTA mode, DLL path, DLL file, initialization mode, config path, current working directory, process architecture, OS architecture, and last pressure reading. Its log box auto-scrolls and keeps timestamped entries visible during hardware tests.
 
 ## Hardware Testing Still Required
 
