@@ -5,7 +5,8 @@ namespace CropQc.QcStation.Fta;
 public sealed class FtaDllPressureReader(
     StationConfiguration configuration,
     INativeDllLoader? nativeDllLoader = null,
-    IFtaEnvironmentDiagnostics? environmentDiagnostics = null) : IFtaDevice, IFtaPressureReader
+    IFtaEnvironmentDiagnostics? environmentDiagnostics = null,
+    IFtaMessagePump? messagePump = null) : IFtaDevice, IFtaPressureReader
 {
     public const string DefaultFtaDllFileName = "FTA_dll.dll";
     public const string AlternateFtaDllFileName = "FTA_DLL.dll";
@@ -21,6 +22,7 @@ public sealed class FtaDllPressureReader(
     private PressureReading? latestReading;
     private readonly INativeDllLoader nativeDllLoader = nativeDllLoader ?? new NativeDllLoader();
     private readonly IFtaEnvironmentDiagnostics environmentDiagnostics = environmentDiagnostics ?? new FtaEnvironmentDiagnostics();
+    private readonly IFtaMessagePump messagePump = messagePump ?? NoOpFtaMessagePump.Instance;
 
     public string DeviceName => "FTA DLL";
     public string? LastStatusMessage { get; private set; }
@@ -470,6 +472,7 @@ public sealed class FtaDllPressureReader(
 
     private DllProbeResult ProbeDllFiles()
     {
+        ApplyWorkingDirectory();
         var dllFolder = string.IsNullOrWhiteSpace(configuration.FtaDllPath)
             ? AppContext.BaseDirectory
             : Path.GetFullPath(configuration.FtaDllPath);
@@ -674,6 +677,7 @@ public sealed class FtaDllPressureReader(
         return new FtaEnvironmentSnapshot(string.Join(" | ",
             $"FtaInitializationMode: {configuration.FtaInitializationMode}",
             $"FtaConfigPath: {ResolveFtaConfigPath(dllFolder)}",
+            $"FtaWorkingDirectory: {FormatOptional(configuration.FtaWorkingDirectory)}",
             $"Current working directory: {Environment.CurrentDirectory}",
             $"DLL folder: {dllFolder}",
             $"Process architecture: {RuntimeInformation.ProcessArchitecture}",
@@ -695,6 +699,7 @@ public sealed class FtaDllPressureReader(
         while (DateTimeOffset.UtcNow < timeoutAt)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            messagePump.ProcessPendingMessages();
             var status = bindings!.FTAStatus();
             if (DateTimeOffset.UtcNow >= nextLogAt)
             {
@@ -751,6 +756,7 @@ public sealed class FtaDllPressureReader(
         while (DateTimeOffset.UtcNow < timeoutAt)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            messagePump.ProcessPendingMessages();
             var bit1Raw = bindings!.FTABitStatus(1);
             if (bit1Raw != 0)
             {
@@ -792,6 +798,20 @@ public sealed class FtaDllPressureReader(
     private TimeSpan GetFirmnessReadingTimeout() =>
         TimeSpan.FromSeconds(configuration.FtaReadingTimeoutSeconds > 0 ? configuration.FtaReadingTimeoutSeconds : 60);
 
+    private void ApplyWorkingDirectory()
+    {
+        if (string.IsNullOrWhiteSpace(configuration.FtaWorkingDirectory))
+        {
+            return;
+        }
+
+        var workingDirectory = Path.GetFullPath(configuration.FtaWorkingDirectory);
+        if (Directory.Exists(workingDirectory))
+        {
+            Environment.CurrentDirectory = workingDirectory;
+        }
+    }
+
     private static string? BuildLoadErrorMessage(DllProbeResult probe)
     {
         if (string.IsNullOrWhiteSpace(probe.LoadErrorMessage))
@@ -827,6 +847,9 @@ public sealed class FtaDllPressureReader(
 
     private static string FormatStatusSamples(IReadOnlyList<int> values) =>
         values.Count == 0 ? "(none)" : string.Join(", ", values);
+
+    private static string FormatOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "(not configured)" : value;
 
     private sealed record DllProbeResult(
         string DllFolder,

@@ -7,6 +7,7 @@
   "FtaInitializationMode": "FTAInit",
   "FtaConfigPath": "C:\\Program Files\\FTADLL\\FTA_DLL.CFG",
   "FtaReadingTimeoutSeconds": 60,
+  "FtaWorkingDirectory": null,
   "ComPort": null,
   "ApiBaseUrl": "https://localhost:7001",
   "LocalDataPath": ".\\data"

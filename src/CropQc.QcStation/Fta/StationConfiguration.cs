@@ -13,6 +13,7 @@ public sealed class StationConfiguration
     public FtaInitializationMode FtaInitializationMode { get; set; } = FtaInitializationMode.FTAInit;
     public string FtaConfigPath { get; set; } = @"C:\Program Files\FTADLL\FTA_DLL.CFG";
     public int FtaReadingTimeoutSeconds { get; set; } = 60;
+    public string? FtaWorkingDirectory { get; set; }
     public string? ComPort { get; set; }
     public string ApiBaseUrl { get; set; } = "https://localhost:7001";
     public string LocalDataPath { get; set; } = ".\\data";
