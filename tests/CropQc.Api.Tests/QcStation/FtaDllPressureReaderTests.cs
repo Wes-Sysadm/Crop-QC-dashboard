@@ -67,6 +67,25 @@ public sealed class FtaDllPressureReaderTests
     }
 
     [Fact]
+    public async Task Initialize_uses_fta_init2_when_configured()
+    {
+        var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
+        var configuration = CreateRealDllConfiguration(tempFolder);
+        configuration.FtaInitializationMode = FtaInitializationMode.FTAInit2;
+        configuration.FtaConfigPath = @"C:\Program Files\FTADLL\FTA_DLL.CFG";
+        var fakeLoader = new FakeNativeDllLoader(DllLoadResult.Success());
+        var reader = new FtaDllPressureReader(configuration, fakeLoader);
+
+        var status = await reader.InitializeAsync();
+
+        Assert.True(status.IsInitialized);
+        Assert.Equal(0, fakeLoader.InitCalls);
+        Assert.Equal(1, fakeLoader.Init2Calls);
+        Assert.Equal(configuration.FtaConfigPath, fakeLoader.LastInit2Path);
+        Assert.Contains("FTAInit2", status.StatusMessage);
+    }
+
+    [Fact]
     public async Task Start_pressure_reading_calls_documented_firmness_function()
     {
         var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
@@ -122,6 +141,68 @@ public sealed class FtaDllPressureReaderTests
         Assert.Contains("FTADoAutoFirmnessReading completed", reader.LastStatusMessage);
         Assert.Contains("Before FTADoAutoFirmnessReading", reader.LastStatusMessage);
         Assert.Contains("After FTADoAutoFirmnessReading", reader.LastStatusMessage);
+    }
+
+    [Fact]
+    public async Task Demo_style_poll_reads_max_firmness_only_when_status_is_positive_and_bit_one_is_set()
+    {
+        var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
+        var configuration = CreateRealDllConfiguration(tempFolder);
+        var fakeLoader = new FakeNativeDllLoader(DllLoadResult.Success())
+        {
+            StatusSequence = new Queue<int>([0, -1, 0, 1]),
+            MaxFirmness = 16.25f
+        };
+        var reader = new FtaDllPressureReader(configuration, fakeLoader);
+
+        await reader.InitializeAsync();
+        var reading = await reader.DemoStylePollReadingAsync();
+
+        Assert.NotNull(reading);
+        Assert.Equal(16.25m, reading.ReadingValueLbs);
+        Assert.Equal(1, fakeLoader.ReadMaxFirmnessCalls);
+        Assert.Contains("Demo-style raw FTAStatus samples:", reader.LastStatusMessage);
+    }
+
+    [Fact]
+    public async Task Demo_style_auto_reading_calls_auto_command_then_demo_poll()
+    {
+        var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
+        var configuration = CreateRealDllConfiguration(tempFolder);
+        var fakeLoader = new FakeNativeDllLoader(DllLoadResult.Success())
+        {
+            StatusWord = 1,
+            MaxFirmness = 17.25f
+        };
+        var reader = new FtaDllPressureReader(configuration, fakeLoader);
+
+        await reader.InitializeAsync();
+        var reading = await reader.DemoStyleAutoReadingAsync();
+
+        Assert.NotNull(reading);
+        Assert.Equal(17.25m, reading.ReadingValueLbs);
+        Assert.Equal(1, fakeLoader.DoAutoFirmnessReadingCalls);
+    }
+
+    [Fact]
+    public async Task Demo_style_manual_button_reading_calls_manual_command_then_demo_poll()
+    {
+        var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
+        var configuration = CreateRealDllConfiguration(tempFolder);
+        var fakeLoader = new FakeNativeDllLoader(DllLoadResult.Success())
+        {
+            StatusWord = 1,
+            MaxFirmness = 18.25f
+        };
+        var reader = new FtaDllPressureReader(configuration, fakeLoader);
+
+        await reader.InitializeAsync();
+        var reading = await reader.DemoStyleManualButtonReadingAsync();
+
+        Assert.NotNull(reading);
+        Assert.Equal(18.25m, reading.ReadingValueLbs);
+        Assert.Equal(1, fakeLoader.DoFirmnessReadingCalls);
+        Assert.Contains("physical FTA front/init button", reader.LastStatusMessage);
     }
 
     [Fact]
@@ -182,6 +263,44 @@ public sealed class FtaDllPressureReaderTests
 
         Assert.Contains("FTAStatus raw value: -1 (negative/suspicious; raw status word was not decoded)", status.StatusMessage);
         Assert.Contains("FTABitStatus(1) new firmness: raw", status.StatusMessage);
+    }
+
+    [Fact]
+    public async Task Diagnostic_status_reports_config_com_and_hid_warning()
+    {
+        var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
+        var configuration = CreateRealDllConfiguration(tempFolder);
+        var environmentDiagnostics = new FakeFtaEnvironmentDiagnostics(
+            new FtaConfigFileDiagnostics(@"C:\Program Files\FTADLL\FTA_DLL.CFG", true, new DateTimeOffset(2026, 5, 22, 9, 30, 0, TimeSpan.Zero), 128, ["COM1"]),
+            ["COM1"],
+            [@"VID_6017&PID_3430"]);
+        var reader = new FtaDllPressureReader(configuration, new FakeNativeDllLoader(DllLoadResult.Success()), environmentDiagnostics);
+
+        await reader.InitializeAsync();
+        var status = await reader.DiagnosticStatusAsync();
+
+        Assert.Contains(@"FTA_DLL.CFG path: C:\Program Files\FTADLL\FTA_DLL.CFG", status.StatusMessage);
+        Assert.Contains("FTA_DLL.CFG exists: Yes", status.StatusMessage);
+        Assert.Contains("FTA_DLL.CFG visible COM strings: COM1", status.StatusMessage);
+        Assert.Contains("Windows available COM ports: COM1", status.StatusMessage);
+        Assert.Contains("Windows HID devices matching VID_6017: VID_6017&PID_3430", status.StatusMessage);
+        Assert.Contains("FTA_DLL.CFG says COM1, Windows only reports COM1, and the FTA appears as HID USB VID_6017 instead of a COM port.", status.StatusMessage);
+    }
+
+    [Fact]
+    public void Environment_diagnostics_extracts_visible_com_port_strings_from_config_file()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), $"crop-qc-fta-cfg-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempFolder);
+        File.WriteAllText(Path.Combine(tempFolder, FtaEnvironmentDiagnostics.FtaConfigFileName), "Port=COM1\r\nBackup=COM2");
+        var diagnostics = new FtaEnvironmentDiagnostics();
+
+        var config = diagnostics.ReadConfigFile(tempFolder);
+
+        Assert.True(config.Exists);
+        Assert.True(config.Length > 0);
+        Assert.Contains("COM1", config.VisibleComPorts);
+        Assert.Contains("COM2", config.VisibleComPorts);
     }
 
     [Fact]
@@ -306,7 +425,11 @@ public sealed class FtaDllPressureReaderTests
 
         public bool NewFirmnessAvailable { get; set; } = true;
         public int StatusWord { get; set; }
+        public Queue<int>? StatusSequence { get; set; }
         public float MaxFirmness { get; set; } = 12.5f;
+        public int InitCalls { get; private set; }
+        public int Init2Calls { get; private set; }
+        public string? LastInit2Path { get; private set; }
         public int DoFirmnessReadingCalls { get; private set; }
         public int DoAutoFirmnessReadingCalls { get; private set; }
         public int ReadMaxFirmnessCalls { get; private set; }
@@ -337,13 +460,23 @@ public sealed class FtaDllPressureReaderTests
 
         private void FTAInit()
         {
+            InitCalls++;
+        }
+
+        private void FTAInit2(string sPath)
+        {
+            Init2Calls++;
+            LastInit2Path = sPath;
         }
 
         private void FTASetup()
         {
         }
 
-        private int FTAStatus() => StatusWord;
+        private int FTAStatus() =>
+            StatusSequence is { Count: > 0 }
+                ? StatusSequence.Dequeue()
+                : StatusWord;
 
         private int FTABitStatus(int bit) => bit switch
         {
@@ -381,5 +514,17 @@ public sealed class FtaDllPressureReaderTests
         private void FTAQuit()
         {
         }
+    }
+
+    private sealed class FakeFtaEnvironmentDiagnostics(
+        FtaConfigFileDiagnostics config,
+        IReadOnlyList<string> availableComPorts,
+        IReadOnlyList<string> hidDeviceIds) : IFtaEnvironmentDiagnostics
+    {
+        public FtaConfigFileDiagnostics ReadConfigFile(string dllFolder) => config;
+
+        public IReadOnlyList<string> GetAvailableComPorts() => availableComPorts;
+
+        public IReadOnlyList<string> GetHidDeviceIdsByVendorId(string vendorId) => hidDeviceIds;
     }
 }

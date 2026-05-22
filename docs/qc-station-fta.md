@@ -65,6 +65,9 @@ The current settings fields are:
 - `FtaMode`: `Mock` or `RealDll`
 - `FtaDllPath`
 - `FtaDllFileName`
+- `FtaInitializationMode`: `FTAInit` or `FTAInit2`
+- `FtaConfigPath`
+- `FtaReadingTimeoutSeconds`
 - `ComPort`
 - `ApiBaseUrl`
 - `LocalDataPath`
@@ -118,6 +121,7 @@ Real DLL status messages show:
 The harness binds the documented FTA SDK 11.0.4 function names:
 
 - `FTAInit`
+- `FTAInit2`
 - `FTASetup`
 - `FTAStatus`
 - `FTABitStatus`
@@ -132,6 +136,7 @@ The harness binds the documented FTA SDK 11.0.4 function names:
 The SDK behavior used by the harness is:
 
 - `FTAInit` initializes the interface and establishes the serial/USB link.
+- `FTAInit2(char *sPath)` initializes the interface using a config path. The vendor demo declares DLL calls with `_stdcall` and calls `FTAInit2` by copying the CFG path text into a `char` buffer.
 - `FTADoFirmnessReading` enables one firmness test cycle and appears to expect the operator to press the FTA front/init button or otherwise run the physical test.
 - `FTADoAutoFirmnessReading` starts an auto firmness cycle. The SDK says the FTA beeps and then completes a firmness measurement without input from the Init button.
 - Status bit 1 means a new firmness reading is available.
@@ -147,6 +152,8 @@ The FTA has also been observed in Windows as a HID USB Input Device:
 USB\VID_6017&PID_3430
 ```
 
+The uploaded `FTA_DLL.CFG` appears to contain `COM1`, and Windows has also been observed listing only `COM1`. That can be confusing because the FTA device itself appears as HID USB. The original vendor software may use additional configuration beyond `FTA_DLL.CFG`, or it may bridge through a vendor driver while still leaving legacy COM settings in the config file.
+
 The harness checks these status bits:
 
 - bit 1: new firmness reading available
@@ -160,7 +167,29 @@ The harness checks these status bits:
 
 Use the `FTA Diagnostic Status` command before and after a reading attempt when troubleshooting the physical station. It displays the raw `FTAStatus` value and raw `FTABitStatus` values for bits 1, 2, 3, 5, 6, 7, 8, and 9, plus a Yes/No interpretation for each direct bit check.
 
+The diagnostic command also reports:
+
+- `FTA_DLL.CFG` path.
+- Whether `FTA_DLL.CFG` exists.
+- `FTA_DLL.CFG` last write time.
+- `FTA_DLL.CFG` file length.
+- Visible COM strings found in `FTA_DLL.CFG`, such as `COM1`.
+- Windows COM ports visible to the QC Station process.
+- Windows HID devices matching `VID_6017`.
+- A warning if `FTA_DLL.CFG` says `COM1`, Windows only reports `COM1`, and the FTA appears as HID USB instead of a COM port.
+
 If `FTAStatus` returns `-1`, the harness labels the value as negative/suspicious and does not decode the raw status word as if every bit is valid. It still shows the direct `FTABitStatus` calls separately.
+
+The vendor demo source continuously polls during idle with this pattern:
+
+```text
+iStatus = FTAStatus();
+if (iStatus > 0)
+    if (iStatus & 1)
+        FTAReadMaxFirmness();
+```
+
+The `Demo-Style Poll Reading`, `Demo-Style Auto Reading`, and `Demo-Style Manual/Button Reading` commands mimic that pattern. They poll raw `FTAStatus` for up to `FtaReadingTimeoutSeconds` and read max firmness only when `FTAStatus > 0` and bit 1 is set.
 
 The `Start Manual/Button Firmness Reading` command captures diagnostic status before and after `FTADoFirmnessReading`. If the call returns but bit 1 is still false, the harness logs:
 
@@ -180,6 +209,23 @@ C:\Program Files\FTADLL\FTA_DLL.CFG
 
 If the FTA is not responding, run the setup dialog on the QC computer, confirm the COM/USB setting, then initialize and check status again.
 
+To test `FTAInit2`, set the QC Station config like this:
+
+```json
+{
+  "FtaMode": "RealDll",
+  "FtaDllPath": "C:\\Windows\\SysWOW64",
+  "FtaDllFileName": "FTA_dll.dll",
+  "FtaInitializationMode": "FTAInit2",
+  "FtaConfigPath": "C:\\Program Files\\FTADLL\\FTA_DLL.CFG",
+  "FtaReadingTimeoutSeconds": 60
+}
+```
+
+With `FtaInitializationMode` set to `FTAInit2`, the normal `Initialize FTA` command calls `FTAInit2` automatically. The `Initialize FTA With Config Path` command also calls `FTAInit2` directly, regardless of the configured initialization mode.
+
+If `FTAInit` beeps but firmness commands do not move the probe, compare behavior against the original vendor app and watch the config timestamps before and after opening `FTASetup()` or changing settings in the vendor software. A changed timestamp may reveal which config file the working vendor path actually uses.
+
 ## Firmness Reading Commands
 
 The harness keeps the two SDK reading styles separate:
@@ -187,6 +233,9 @@ The harness keeps the two SDK reading styles separate:
 - `Start Manual/Button Firmness Reading` calls `FTADoFirmnessReading()` and returns immediately after the DLL call. Use this to confirm the basic SDK command can be invoked.
 - `Start And Wait Manual/Button Reading` calls `FTADoFirmnessReading()`, tells the operator to press the FTA front/init button or run the physical test, then polls bit 1 for up to 60 seconds and reads `FTAReadMaxFirmness()` when available.
 - `Start Auto Firmness Reading` calls `FTADoAutoFirmnessReading()`, captures diagnostics before and after the call, then polls bit 1 for up to 60 seconds and reads `FTAReadMaxFirmness()` when available.
+- `Demo-Style Poll Reading` only polls `FTAStatus()` and reads `FTAReadMaxFirmness()` when `FTAStatus > 0` and status bit 1 is set.
+- `Demo-Style Auto Reading` calls `FTADoAutoFirmnessReading()`, then uses demo-style polling.
+- `Demo-Style Manual/Button Reading` calls `FTADoFirmnessReading()`, tells the operator to press the physical FTA button, then uses demo-style polling.
 
 If auto mode beeps and manual/button mode does not, the next physical troubleshooting step is to confirm the saved FTA setup, COM/USB selection, and probe state.
 
@@ -201,13 +250,14 @@ On the physical QC computer connected to the GUSS/FTA:
    ```
 
 2. Select `Initialize FTA`.
-3. Select `Open FTA Setup` if the serial/USB settings need to be selected or confirmed.
-4. Select `Check Status` and confirm bit 3 and/or bit 7 show that the FTA is connected/responding.
-5. Select `FTA Diagnostic Status` to capture the baseline raw status and bit values.
-6. Select `Start Auto Firmness Reading`.
-7. If auto mode does not produce a reading, select `Start And Wait Manual/Button Reading`, then press the FTA front/init button or run the physical firmness test.
-8. Select `FTA Diagnostic Status` again if there is no beep or no new reading.
-9. Select `Get Latest Reading` if a separate latest-read check is needed.
+3. If testing the vendor demo initialization path, select `Initialize FTA With Config Path`.
+4. Select `Open FTA Setup` if the serial/USB settings need to be selected or confirmed.
+5. Select `Check Status` and confirm bit 3 and/or bit 7 show that the FTA is connected/responding.
+6. Select `FTA Diagnostic Status` to capture the baseline raw status and bit values.
+7. Select `Demo-Style Auto Reading`.
+8. If auto mode does not produce a reading, select `Demo-Style Manual/Button Reading`, then press the FTA front/init button or run the physical firmness test.
+9. Select `FTA Diagnostic Status` again if there is no beep, no probe movement, or no new reading.
+10. Select `Get Latest Reading` if a separate latest-read check is needed.
 
 If `Get Latest Reading` says no new firmness reading is available, bit 1 was not set yet. Run the physical test cycle again or check the FTA setup/status.
 
@@ -229,12 +279,16 @@ The local harness displays:
 Available commands:
 
 - Initialize FTA
+- Initialize FTA With Config Path
 - Open FTA Setup
 - FTA Diagnostic Status
 - Check Status
 - Start Manual/Button Firmness Reading
 - Start Auto Firmness Reading
 - Start And Wait Manual/Button Reading
+- Demo-Style Poll Reading
+- Demo-Style Auto Reading
+- Demo-Style Manual/Button Reading
 - Get Latest Reading
 - Cancel
 - Return Probe Home
@@ -253,6 +307,8 @@ Before production use, test and confirm:
 - Whether `borlndmm.dll` must be loaded before the main FTA DLL.
 - Required bitness, such as x86 versus x64.
 - COM port or other device connection requirements.
+- Whether the vendor software updates `FTA_DLL.CFG` or uses additional config files/registry settings.
+- Whether HID `USB\VID_6017&PID_3430` is expected for the working vendor app path despite `FTA_DLL.CFG` containing `COM1`.
 - Initialize/status/read/cancel/home command behavior.
 - Pressure unit returned by the DLL and whether conversion to pounds is required.
 - Error codes and recoverable fault behavior.

@@ -2,12 +2,14 @@ using System.Runtime.InteropServices;
 
 namespace CropQc.QcStation.Fta;
 
-public sealed class FtaDllPressureReader(StationConfiguration configuration, INativeDllLoader? nativeDllLoader = null) : IFtaDevice, IFtaPressureReader
+public sealed class FtaDllPressureReader(
+    StationConfiguration configuration,
+    INativeDllLoader? nativeDllLoader = null,
+    IFtaEnvironmentDiagnostics? environmentDiagnostics = null) : IFtaDevice, IFtaPressureReader
 {
     public const string DefaultFtaDllFileName = "FTA_dll.dll";
     public const string AlternateFtaDllFileName = "FTA_DLL.dll";
     public const string BorlandMemoryManagerFileName = "borlndmm.dll";
-    private static readonly TimeSpan FirmnessReadingTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan FirmnessReadingPollInterval = TimeSpan.FromMilliseconds(250);
 
     private bool isInitialized;
@@ -18,11 +20,18 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
     private FtaNativeBindings? bindings;
     private PressureReading? latestReading;
     private readonly INativeDllLoader nativeDllLoader = nativeDllLoader ?? new NativeDllLoader();
+    private readonly IFtaEnvironmentDiagnostics environmentDiagnostics = environmentDiagnostics ?? new FtaEnvironmentDiagnostics();
 
     public string DeviceName => "FTA DLL";
     public string? LastStatusMessage { get; private set; }
 
-    public Task<FtaDeviceStatus> InitializeAsync(CancellationToken cancellationToken = default)
+    public Task<FtaDeviceStatus> InitializeAsync(CancellationToken cancellationToken = default) =>
+        InitializeCoreAsync(configuration.FtaInitializationMode == FtaInitializationMode.FTAInit2);
+
+    public Task<FtaDeviceStatus> InitializeWithConfigPathAsync(CancellationToken cancellationToken = default) =>
+        InitializeCoreAsync(useConfigPath: true);
+
+    private Task<FtaDeviceStatus> InitializeCoreAsync(bool useConfigPath)
     {
         lastProbe = ProbeDllFiles();
         if (!lastProbe.MainDllFound)
@@ -52,9 +61,11 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
 
         try
         {
-            bindings!.FTAInit();
+            var initMessage = useConfigPath
+                ? CallFtaInit2()
+                : CallFtaInit();
             isInitialized = true;
-            var statusSnapshot = ReadStatusSnapshot("FTAInit completed.");
+            var statusSnapshot = ReadStatusSnapshot($"{initMessage} completed.");
             isConnected = statusSnapshot.IsInterfaceConnected || statusSnapshot.HasFtaResponded;
             errorMessage = lastProbe.BorlandMemoryManagerFound
                 ? null
@@ -66,7 +77,7 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         {
             isInitialized = false;
             isConnected = false;
-            errorMessage = $"FTAInit failed: {ex.Message}";
+            errorMessage = $"{(useConfigPath ? "FTAInit2" : "FTAInit")} failed: {ex.Message}";
             LastStatusMessage = errorMessage;
             return Task.FromResult(Status("FTA DLL initialization failed.", errorMessage));
         }
@@ -116,8 +127,9 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
 
         var statusSnapshot = ReadStatusSnapshot("FTA Diagnostic Status.");
         isConnected = statusSnapshot.IsInterfaceConnected || statusSnapshot.HasFtaResponded;
-        LastStatusMessage = statusSnapshot.Message;
-        return Task.FromResult(Status(statusSnapshot.Message, errorMessage));
+        var environmentSnapshot = ReadEnvironmentSnapshot();
+        LastStatusMessage = string.Join(" | ", statusSnapshot.Message, environmentSnapshot.Message);
+        return Task.FromResult(Status(LastStatusMessage, errorMessage));
     }
 
     public Task<FtaDeviceStatus> OpenSetupAsync(CancellationToken cancellationToken = default)
@@ -241,6 +253,104 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         catch (Exception ex)
         {
             errorMessage = $"FTADoFirmnessReading failed: {ex.Message}";
+            LastStatusMessage = errorMessage;
+            return null;
+        }
+    }
+
+    public async Task<PressureReading?> DemoStylePollReadingAsync(CancellationToken cancellationToken = default)
+    {
+        var readyStatus = EnsureReadyForFunctionCall();
+        if (readyStatus is not null)
+        {
+            LastStatusMessage = readyStatus.ErrorMessage ?? readyStatus.StatusMessage;
+            return null;
+        }
+
+        try
+        {
+            return await DemoStylePollReadingCoreAsync("demo-style poll", cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            LastStatusMessage = "Demo-style poll reading wait was cancelled.";
+            return null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Demo-style poll reading failed: {ex.Message}";
+            LastStatusMessage = errorMessage;
+            return null;
+        }
+    }
+
+    public async Task<PressureReading?> DemoStyleAutoReadingAsync(CancellationToken cancellationToken = default)
+    {
+        var readyStatus = EnsureReadyForFunctionCall();
+        if (readyStatus is not null)
+        {
+            LastStatusMessage = readyStatus.ErrorMessage ?? readyStatus.StatusMessage;
+            return null;
+        }
+
+        try
+        {
+            var beforeSnapshot = ReadStatusSnapshot("Before demo-style FTADoAutoFirmnessReading.");
+            bindings!.FTADoAutoFirmnessReading();
+            var afterSnapshot = ReadStatusSnapshot("After demo-style FTADoAutoFirmnessReading.");
+            isReading = true;
+            var reading = await DemoStylePollReadingCoreAsync("demo-style auto firmness", cancellationToken);
+            LastStatusMessage = string.Join(" | ",
+                "FTADoAutoFirmnessReading completed.",
+                beforeSnapshot.Message,
+                afterSnapshot.Message,
+                LastStatusMessage).TrimEnd(' ', '|');
+            return reading;
+        }
+        catch (OperationCanceledException)
+        {
+            LastStatusMessage = "Demo-style auto firmness reading wait was cancelled.";
+            return null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Demo-style auto firmness reading failed: {ex.Message}";
+            LastStatusMessage = errorMessage;
+            return null;
+        }
+    }
+
+    public async Task<PressureReading?> DemoStyleManualButtonReadingAsync(CancellationToken cancellationToken = default)
+    {
+        var readyStatus = EnsureReadyForFunctionCall();
+        if (readyStatus is not null)
+        {
+            LastStatusMessage = readyStatus.ErrorMessage ?? readyStatus.StatusMessage;
+            return null;
+        }
+
+        try
+        {
+            var beforeSnapshot = ReadStatusSnapshot("Before demo-style FTADoFirmnessReading.");
+            bindings!.FTADoFirmnessReading();
+            var afterSnapshot = ReadStatusSnapshot("After demo-style FTADoFirmnessReading.");
+            isReading = true;
+            var reading = await DemoStylePollReadingCoreAsync("demo-style manual/button firmness", cancellationToken);
+            LastStatusMessage = string.Join(" | ",
+                "FTADoFirmnessReading completed. Press the physical FTA front/init button.",
+                beforeSnapshot.Message,
+                afterSnapshot.Message,
+                LastStatusMessage).TrimEnd(' ', '|');
+            return reading;
+        }
+        catch (OperationCanceledException)
+        {
+            LastStatusMessage = "Demo-style manual/button firmness reading wait was cancelled.";
+            return null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Demo-style manual/button firmness reading failed: {ex.Message}";
             LastStatusMessage = errorMessage;
             return null;
         }
@@ -467,6 +577,8 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         nativeBindings = null;
         var init = Bind<FTAInit>(nativeLibraryHandle, nameof(FTAInit), out var error);
         if (error is not null) return error;
+        var init2 = Bind<FTAInit2>(nativeLibraryHandle, nameof(FTAInit2), out error);
+        if (error is not null) return error;
         var setup = Bind<FTASetup>(nativeLibraryHandle, nameof(FTASetup), out error);
         if (error is not null) return error;
         var status = Bind<FTAStatus>(nativeLibraryHandle, nameof(FTAStatus), out error);
@@ -488,7 +600,7 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         var quit = Bind<FTAQuit>(nativeLibraryHandle, nameof(FTAQuit), out error);
         if (error is not null) return error;
 
-        nativeBindings = new FtaNativeBindings(init!, setup!, status!, bitStatus!, doFirmnessReading!, doAutoFirmnessReading!, readMaxFirmness!, readLastFirmness!, cancel!, back!, quit!);
+        nativeBindings = new FtaNativeBindings(init!, init2!, setup!, status!, bitStatus!, doFirmnessReading!, doAutoFirmnessReading!, readMaxFirmness!, readLastFirmness!, cancel!, back!, quit!);
         return null;
     }
 
@@ -536,9 +648,106 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         }
     }
 
+    private string CallFtaInit()
+    {
+        bindings!.FTAInit();
+        return "FTAInit";
+    }
+
+    private string CallFtaInit2()
+    {
+        var configPath = ResolveFtaConfigPath();
+        bindings!.FTAInit2(configPath);
+        return $"FTAInit2({configPath})";
+    }
+
+    private FtaEnvironmentSnapshot ReadEnvironmentSnapshot()
+    {
+        var dllFolder = lastProbe?.DllFolder ?? (string.IsNullOrWhiteSpace(configuration.FtaDllPath)
+            ? AppContext.BaseDirectory
+            : Path.GetFullPath(configuration.FtaDllPath));
+        var config = environmentDiagnostics.ReadConfigFile(ResolveFtaConfigPath(dllFolder));
+        var availableComPorts = environmentDiagnostics.GetAvailableComPorts();
+        var hidDevices = environmentDiagnostics.GetHidDeviceIdsByVendorId("VID_6017");
+        var warnings = BuildEnvironmentWarnings(config, availableComPorts, hidDevices);
+
+        return new FtaEnvironmentSnapshot(string.Join(" | ",
+            $"FtaInitializationMode: {configuration.FtaInitializationMode}",
+            $"FtaConfigPath: {ResolveFtaConfigPath(dllFolder)}",
+            $"Current working directory: {Environment.CurrentDirectory}",
+            $"DLL folder: {dllFolder}",
+            $"Process architecture: {RuntimeInformation.ProcessArchitecture}",
+            $"FTA_DLL.CFG path: {config.Path}",
+            $"FTA_DLL.CFG exists: {YesNo(config.Exists)}",
+            $"FTA_DLL.CFG LastWriteTime: {(config.LastWriteTime is null ? "(missing)" : config.LastWriteTime.Value.ToString("yyyy-MM-dd HH:mm:ss zzz"))}",
+            $"FTA_DLL.CFG length: {(config.Length is null ? "(missing)" : config.Length.Value)}",
+            $"FTA_DLL.CFG visible COM strings: {FormatList(config.VisibleComPorts)}",
+            $"Windows available COM ports: {FormatList(availableComPorts)}",
+            $"Windows HID devices matching VID_6017: {FormatList(hidDevices)}",
+            $"FTA config/device warnings: {FormatList(warnings)}"));
+    }
+
+    private async Task<PressureReading?> DemoStylePollReadingCoreAsync(string readingMode, CancellationToken cancellationToken)
+    {
+        var timeoutAt = DateTimeOffset.UtcNow.Add(GetFirmnessReadingTimeout());
+        var nextLogAt = DateTimeOffset.MinValue;
+        var sampledStatuses = new List<int>();
+        while (DateTimeOffset.UtcNow < timeoutAt)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var status = bindings!.FTAStatus();
+            if (DateTimeOffset.UtcNow >= nextLogAt)
+            {
+                sampledStatuses.Add(status);
+                nextLogAt = DateTimeOffset.UtcNow.AddSeconds(1);
+            }
+
+            if (status > 0 && (status & 1) == 1)
+            {
+                var maxFirmness = bindings.FTAReadMaxFirmness();
+                if (maxFirmness == -1f)
+                {
+                    LastStatusMessage = $"FTAReadMaxFirmness returned -1 after {readingMode} FTAStatus was {status}; no valid firmness reading is available. Demo-style raw FTAStatus samples: {FormatStatusSamples(sampledStatuses)}.";
+                    isReading = false;
+                    return null;
+                }
+
+                latestReading = PressureReading.Success((decimal)maxFirmness, PressureReadingSource.FTA, configuration.StationName);
+                isReading = false;
+                LastStatusMessage = $"{readingMode} reading detected from demo-style polling. FTAStatus: {status}. FTAReadMaxFirmness returned {maxFirmness:0.00} lbs. Demo-style raw FTAStatus samples: {FormatStatusSamples(sampledStatuses)}.";
+                return latestReading;
+            }
+
+            await Task.Delay(FirmnessReadingPollInterval, cancellationToken);
+        }
+
+        isReading = false;
+        LastStatusMessage = $"No {readingMode} reading detected after {GetFirmnessReadingTimeout().TotalSeconds:0} seconds using demo-style polling. Demo-style raw FTAStatus samples: {FormatStatusSamples(sampledStatuses)}.";
+        return null;
+    }
+
+    private static IReadOnlyList<string> BuildEnvironmentWarnings(
+        FtaConfigFileDiagnostics config,
+        IReadOnlyList<string> availableComPorts,
+        IReadOnlyList<string> hidDevices)
+    {
+        var configSaysCom1 = config.VisibleComPorts.Any(port => string.Equals(port, "COM1", StringComparison.OrdinalIgnoreCase));
+        var onlyCom1IsAvailable = availableComPorts.Count == 1 && string.Equals(availableComPorts[0], "COM1", StringComparison.OrdinalIgnoreCase);
+        var ftaAppearsAsHid = hidDevices.Any(device => device.Contains("VID_6017", StringComparison.OrdinalIgnoreCase));
+
+        if (configSaysCom1 && onlyCom1IsAvailable && ftaAppearsAsHid)
+        {
+            return [
+                "FTA_DLL.CFG says COM1, Windows only reports COM1, and the FTA appears as HID USB VID_6017 instead of a COM port. Original vendor software may be using additional configuration beyond FTA_DLL.CFG."
+            ];
+        }
+
+        return [];
+    }
+
     private async Task<PressureReading?> WaitForMaxFirmnessReadingAsync(string readingMode, CancellationToken cancellationToken)
     {
-        var timeoutAt = DateTimeOffset.UtcNow.Add(FirmnessReadingTimeout);
+        var timeoutAt = DateTimeOffset.UtcNow.Add(GetFirmnessReadingTimeout());
         while (DateTimeOffset.UtcNow < timeoutAt)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -563,9 +772,25 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         }
 
         isReading = false;
-        LastStatusMessage = $"No {readingMode} reading detected after {FirmnessReadingTimeout.TotalSeconds:0} seconds.";
+        LastStatusMessage = $"No {readingMode} reading detected after {GetFirmnessReadingTimeout().TotalSeconds:0} seconds.";
         return null;
     }
+
+    private string ResolveFtaConfigPath(string? dllFolder = null)
+    {
+        if (!string.IsNullOrWhiteSpace(configuration.FtaConfigPath))
+        {
+            return Path.GetFullPath(configuration.FtaConfigPath);
+        }
+
+        var folder = dllFolder ?? lastProbe?.DllFolder ?? (string.IsNullOrWhiteSpace(configuration.FtaDllPath)
+            ? AppContext.BaseDirectory
+            : Path.GetFullPath(configuration.FtaDllPath));
+        return Path.Combine(folder, FtaEnvironmentDiagnostics.FtaConfigFileName);
+    }
+
+    private TimeSpan GetFirmnessReadingTimeout() =>
+        TimeSpan.FromSeconds(configuration.FtaReadingTimeoutSeconds > 0 ? configuration.FtaReadingTimeoutSeconds : 60);
 
     private static string? BuildLoadErrorMessage(DllProbeResult probe)
     {
@@ -597,6 +822,12 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
     private static string FormatBitStatus(int bit, string label, int rawValue) =>
         $"FTABitStatus({bit}) {label}: raw {rawValue}, {(rawValue != 0 ? "Yes" : "No")}";
 
+    private static string FormatList(IReadOnlyList<string> values) =>
+        values.Count == 0 ? "(none)" : string.Join(", ", values);
+
+    private static string FormatStatusSamples(IReadOnlyList<int> values) =>
+        values.Count == 0 ? "(none)" : string.Join(", ", values);
+
     private sealed record DllProbeResult(
         string DllFolder,
         string MainDllFileName,
@@ -625,8 +856,11 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         public bool HasFtaResponded => FtaRespondedRaw != 0;
     }
 
+    private sealed record FtaEnvironmentSnapshot(string Message);
+
     private sealed record FtaNativeBindings(
         FTAInit FTAInit,
+        FTAInit2 FTAInit2,
         FTASetup FTASetup,
         FTAStatus FTAStatus,
         FTABitStatus FTABitStatus,
@@ -638,36 +872,39 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         FTABack FTABack,
         FTAQuit FTAQuit);
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate void FTAInit();
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate void FTAInit2([MarshalAs(UnmanagedType.LPStr)] string sPath);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate void FTASetup();
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate int FTAStatus();
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate int FTABitStatus(int bit);
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate void FTADoFirmnessReading();
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate void FTADoAutoFirmnessReading();
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate float FTAReadMaxFirmness();
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate float FTAReadLastFirmness();
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate void FTACancel();
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate void FTABack();
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate void FTAQuit();
 }
