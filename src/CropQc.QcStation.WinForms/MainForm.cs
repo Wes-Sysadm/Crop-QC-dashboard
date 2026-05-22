@@ -75,6 +75,8 @@ public sealed class MainForm : Form
     private int renderedLogCount;
     private CancellationTokenSource? continuousCaptureCts;
     private bool isContinuousCaptureRunning;
+    private bool shutdownComplete;
+    private bool shutdownInProgress;
 
     public MainForm(IFtaStationService stationService, string settingsPath)
     {
@@ -303,7 +305,7 @@ public sealed class MainForm : Form
         AddReadingCommand(flow, "Get Latest Reading", () => stationService.GetLatestPressureReadingAsync());
         AddCommand(flow, "Cancel", () => stationService.CancelReadingAsync());
         AddCommand(flow, "Return Probe Home", () => stationService.ReturnProbeHomeAsync());
-        AddCommand(flow, "Quit/Disconnect FTA", () => stationService.QuitAsync());
+        AddCaptureButton(flow, "Quit/Disconnect FTA", QuitDisconnectFtaAsync);
 
         var clearButton = CreateButton("Clear Log");
         clearButton.Click += (_, _) =>
@@ -690,6 +692,75 @@ public sealed class MainForm : Form
         AppendLog("Continuous capture stop requested.");
     }
 
+    private async Task StopContinuousCaptureForShutdownAsync(string reason)
+    {
+        if (!isContinuousCaptureRunning)
+        {
+            AppendLog($"{reason}: continuous capture is not running.");
+            return;
+        }
+
+        AppendLog($"{reason}: stopping continuous capture.");
+        continuousCaptureCts?.Cancel();
+
+        var timeoutAt = DateTimeOffset.UtcNow.AddSeconds(3);
+        while (isContinuousCaptureRunning && DateTimeOffset.UtcNow < timeoutAt)
+        {
+            await Task.Delay(100);
+            Application.DoEvents();
+        }
+
+        AppendLog(isContinuousCaptureRunning
+            ? $"{reason}: continuous capture stop requested; continuing with disconnect cleanup."
+            : $"{reason}: continuous capture stopped.");
+    }
+
+    private async Task QuitDisconnectFtaAsync()
+    {
+        AppendLog("Quit/Disconnect FTA requested.");
+        await ShutdownFtaAsync("Quit/Disconnect FTA", closeAfterShutdown: false);
+    }
+
+    private async Task ShutdownFtaAsync(string reason, bool closeAfterShutdown)
+    {
+        if (shutdownInProgress)
+        {
+            AppendLog($"{reason}: shutdown is already in progress.");
+            return;
+        }
+
+        shutdownInProgress = true;
+        try
+        {
+            await StopContinuousCaptureForShutdownAsync(reason);
+
+            AppendLog($"{reason}: calling FTACancel then FTAQuit.");
+            var status = await stationService.QuitAsync();
+            RenderNewServiceLogEntries();
+            AppendLog($"{reason}: {status.StatusMessage}{(string.IsNullOrWhiteSpace(status.ErrorMessage) ? "" : $" Error: {status.ErrorMessage}")}");
+
+            continuousStatusTextBox.Text = "Disconnected - initialize FTA before capture";
+            AppendLog($"{reason}: local status set to disconnected/not initialized.");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"{reason}: disconnect cleanup failed: {ex.Message}");
+            continuousStatusTextBox.Text = "Disconnect error - initialize or restart before capture";
+        }
+        finally
+        {
+            shutdownInProgress = false;
+            RefreshStatusDisplay();
+            RefreshCaptureDisplay();
+
+            if (closeAfterShutdown)
+            {
+                shutdownComplete = true;
+                Close();
+            }
+        }
+    }
+
     private async Task RunContinuousManualCaptureAsync(CancellationToken cancellationToken)
     {
         try
@@ -958,4 +1029,26 @@ public sealed class MainForm : Form
 
     private static string FormatPressure(decimal? pressure) =>
         pressure is null ? "" : $"{pressure:0.00} lbs";
+
+    protected override async void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (shutdownComplete)
+        {
+            base.OnFormClosing(e);
+            return;
+        }
+
+        e.Cancel = true;
+        AppendLog("Application closing: attempting FTA cleanup.");
+        try
+        {
+            await ShutdownFtaAsync("Application closing", closeAfterShutdown: true);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"Application closing: cleanup error ignored: {ex.Message}");
+            shutdownComplete = true;
+            Close();
+        }
+    }
 }

@@ -443,15 +443,26 @@ public sealed class FtaDllPressureReader(
 
     public Task<FtaDeviceStatus> QuitAsync(CancellationToken cancellationToken = default)
     {
+        string? quitError = null;
+        var messages = new List<string>();
+
         try
         {
-            bindings?.FTAQuit();
-            LastStatusMessage = bindings is null ? "FTAQuit skipped; native functions are not bound." : "FTAQuit completed.";
+            if (bindings is null)
+            {
+                messages.Add("FTAQuit skipped; native functions are not bound.");
+            }
+            else
+            {
+                messages.Add("FTAQuit call started.");
+                bindings.FTAQuit();
+                messages.Add("FTAQuit completed.");
+            }
         }
         catch (Exception ex)
         {
-            errorMessage = $"FTAQuit failed: {ex.Message}";
-            LastStatusMessage = errorMessage;
+            quitError = $"FTAQuit failed: {ex.Message}";
+            messages.Add(quitError);
         }
         finally
         {
@@ -467,7 +478,10 @@ public sealed class FtaDllPressureReader(
             }
         }
 
-        return Task.FromResult(Status(LastStatusMessage ?? "FTA interface disconnected.", errorMessage));
+        messages.Add("FTA interface marked disconnected/not initialized.");
+        errorMessage = quitError;
+        LastStatusMessage = string.Join(" ", messages);
+        return Task.FromResult(new FtaDeviceStatus(false, false, false, LastStatusMessage, quitError));
     }
 
     private DllProbeResult ProbeDllFiles()

@@ -131,8 +131,29 @@ public sealed class FtaStationService(
 
     public async Task<FtaDeviceStatus> QuitAsync(CancellationToken cancellationToken = default)
     {
-        Log("Quit FTA started.");
-        return LogStatus("Quit FTA", await device.QuitAsync(cancellationToken));
+        Log("Quit/Disconnect FTA started.");
+
+        try
+        {
+            Log("Quit/Disconnect FTA: calling FTACancel before FTAQuit.");
+            var cancelStatus = await pressureReader.CancelReadingAsync(cancellationToken);
+            LogStatus("Quit/Disconnect FTACancel", cancelStatus);
+        }
+        catch (Exception ex)
+        {
+            Log($"Quit/Disconnect FTACancel failed, continuing to FTAQuit: {ex.Message}");
+        }
+
+        try
+        {
+            Log("Quit/Disconnect FTA: calling FTAQuit.");
+            return LogStatus("Quit/Disconnect FTAQuit", await device.QuitAsync(cancellationToken));
+        }
+        catch (Exception ex)
+        {
+            var status = new FtaDeviceStatus(false, false, false, "FTAQuit failed; local capture state should remain stopped.", ex.Message);
+            return LogStatus("Quit/Disconnect FTAQuit", status);
+        }
     }
 
     public PressureReading UseMockReading(decimal? manualValueLbs = null)
