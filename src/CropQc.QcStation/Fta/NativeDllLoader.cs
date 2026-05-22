@@ -9,8 +9,7 @@ public sealed class NativeDllLoader : INativeDllLoader
         try
         {
             var handle = NativeLibrary.Load(dllPath);
-            NativeLibrary.Free(handle);
-            return DllLoadResult.Success();
+            return DllLoadResult.Success(handle);
         }
         catch (Exception ex) when (ex is DllNotFoundException or BadImageFormatException or FileLoadException)
         {
@@ -20,6 +19,31 @@ public sealed class NativeDllLoader : INativeDllLoader
             }
 
             return DllLoadResult.Failed(ex.Message);
+        }
+    }
+
+    public bool TryGetExport(IntPtr nativeLibraryHandle, string exportName, Type delegateType, out Delegate? nativeDelegate, out string? errorMessage)
+    {
+        try
+        {
+            var export = NativeLibrary.GetExport(nativeLibraryHandle, exportName);
+            nativeDelegate = Marshal.GetDelegateForFunctionPointer(export, delegateType);
+            errorMessage = null;
+            return true;
+        }
+        catch (Exception ex) when (ex is EntryPointNotFoundException or ArgumentException)
+        {
+            nativeDelegate = null;
+            errorMessage = ex.Message;
+            return false;
+        }
+    }
+
+    public void Free(IntPtr nativeLibraryHandle)
+    {
+        if (nativeLibraryHandle != IntPtr.Zero)
+        {
+            NativeLibrary.Free(nativeLibraryHandle);
         }
     }
 }

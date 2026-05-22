@@ -9,6 +9,7 @@ public sealed class MockFtaPressureReader(string stationName) : IFtaDevice, IFta
     private PressureReading? latestReading;
 
     public string DeviceName => "Mock FTA";
+    public string? LastStatusMessage { get; private set; }
 
     public void SetConnected(bool connected) => isConnected = connected;
 
@@ -22,24 +23,30 @@ public sealed class MockFtaPressureReader(string stationName) : IFtaDevice, IFta
     public Task<FtaDeviceStatus> InitializeAsync(CancellationToken cancellationToken = default)
     {
         isInitialized = isConnected;
-        return Task.FromResult(CurrentStatus(isConnected ? "Mock FTA initialized." : "Mock FTA is disconnected."));
+        LastStatusMessage = isConnected ? "Mock FTA initialized." : "Mock FTA is disconnected.";
+        return Task.FromResult(CurrentStatus(LastStatusMessage));
     }
 
-    public Task<FtaDeviceStatus> CheckStatusAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(CurrentStatus(isConnected ? "Mock FTA connected." : "Mock FTA disconnected."));
+    public Task<FtaDeviceStatus> CheckStatusAsync(CancellationToken cancellationToken = default)
+    {
+        LastStatusMessage = isConnected ? "Mock FTA connected." : "Mock FTA disconnected.";
+        return Task.FromResult(CurrentStatus(LastStatusMessage));
+    }
 
     public Task<FtaDeviceStatus> StartPressureReadingAsync(CancellationToken cancellationToken = default)
     {
         if (!isInitialized || !isConnected)
         {
-            return Task.FromResult(CurrentStatus("Mock FTA is not ready.", "Initialize the mock FTA before reading."));
+            LastStatusMessage = "Mock FTA is not ready.";
+            return Task.FromResult(CurrentStatus(LastStatusMessage, "Initialize the mock FTA before reading."));
         }
 
         isReading = true;
         var value = Math.Round((decimal)(random.NextDouble() * 10d + 8d), 2);
         latestReading = PressureReading.Success(value, PressureReadingSource.Mock, stationName);
         isReading = false;
-        return Task.FromResult(CurrentStatus($"Mock pressure reading captured: {value:0.00} lbs."));
+        LastStatusMessage = $"Mock pressure reading captured: {value:0.00} lbs.";
+        return Task.FromResult(CurrentStatus(LastStatusMessage));
     }
 
     public Task<PressureReading?> GetLatestPressureReadingAsync(CancellationToken cancellationToken = default) =>
@@ -48,11 +55,29 @@ public sealed class MockFtaPressureReader(string stationName) : IFtaDevice, IFta
     public Task<FtaDeviceStatus> CancelReadingAsync(CancellationToken cancellationToken = default)
     {
         isReading = false;
-        return Task.FromResult(CurrentStatus("Mock reading cancelled."));
+        LastStatusMessage = "Mock reading cancelled.";
+        return Task.FromResult(CurrentStatus(LastStatusMessage));
     }
 
-    public Task<FtaDeviceStatus> ReturnProbeHomeAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(CurrentStatus("Mock probe returned home."));
+    public Task<FtaDeviceStatus> OpenSetupAsync(CancellationToken cancellationToken = default)
+    {
+        LastStatusMessage = "Mock setup dialog placeholder opened.";
+        return Task.FromResult(CurrentStatus(LastStatusMessage));
+    }
+
+    public Task<FtaDeviceStatus> ReturnProbeHomeAsync(CancellationToken cancellationToken = default)
+    {
+        LastStatusMessage = "Mock probe returned home.";
+        return Task.FromResult(CurrentStatus(LastStatusMessage));
+    }
+
+    public Task<FtaDeviceStatus> QuitAsync(CancellationToken cancellationToken = default)
+    {
+        isInitialized = false;
+        isReading = false;
+        LastStatusMessage = "Mock FTA disconnected.";
+        return Task.FromResult(CurrentStatus(LastStatusMessage));
+    }
 
     private FtaDeviceStatus CurrentStatus(string message, string? errorMessage = null) =>
         new(isInitialized, isConnected, isReading, message, errorMessage);

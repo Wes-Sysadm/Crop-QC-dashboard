@@ -9,7 +9,7 @@ The POC gives the QC Station project a safe place to test:
 - FTA device initialization and status flow.
 - Pressure reading capture through a clean C# abstraction.
 - Mock/test mode without FTA hardware.
-- A real DLL wrapper placeholder that can be completed on the QC computer later.
+- Real DLL firmness-reading calls isolated behind a wrapper that can be tested on the QC computer.
 - Station configuration for warehouse, DLL path, COM port, API URL, and local data path.
 
 ## Project
@@ -86,7 +86,7 @@ Use mock mode for development machines and demos where the FTA is not connected.
 
 ## Real DLL Mode
 
-Real DLL mode is isolated in `FtaDllPressureReader`. This is the only class that should later load or call the vendor FTA DLL.
+Real DLL mode is isolated in `FtaDllPressureReader`. This is the only class that loads and calls the vendor FTA DLL.
 
 Expected DLL files later:
 
@@ -96,9 +96,15 @@ FTA_DLL.dll
 borlndmm.dll
 ```
 
+The current FTA computer has the main DLL at:
+
+```text
+C:\Program Files\FTADLL\FTA_dll.dll
+```
+
 Place the main FTA DLL in the configured `FtaDllPath`. `FtaDllFileName` is checked first and defaults to `FTA_dll.dll`. If that configured file is not found, the harness also checks the alternate `FTA_DLL.dll` name.
 
-`FTA_dll.dll` or `FTA_DLL.dll` is required. `borlndmm.dll` is warning-only for now because the current FTA computer may not have it in `C:\Program Files\FTADLL`. If the main DLL exists, the harness attempts a safe load check. If the load fails because of a missing dependency or bitness mismatch, the harness reports the actual loader error instead of crashing.
+`FTA_dll.dll` or `FTA_DLL.dll` is required. `borlndmm.dll` may be called by the FTA DLL according to the SDK, but it is warning-only in this harness because the current FTA computer may not have it in `C:\Program Files\FTADLL`. If the main DLL exists, the harness attempts a safe load check. If the load fails because of a missing dependency or bitness mismatch, the harness reports the actual loader error instead of crashing.
 
 Real DLL status messages show:
 
@@ -109,7 +115,65 @@ Real DLL status messages show:
 - whether `borlndmm.dll` was found
 - whether RealDll mode is ready for actual function calls
 
-The vendor function declarations and calls are intentionally TODOs until the actual DLL can be tested on the QC computer connected to the GUSS/FTA.
+The harness binds the documented FTA SDK 11.0.4 function names:
+
+- `FTAInit`
+- `FTASetup`
+- `FTAStatus`
+- `FTABitStatus`
+- `FTADoFirmnessReading`
+- `FTAReadMaxFirmness`
+- `FTAReadLastFirmness`
+- `FTACancel`
+- `FTABack`
+- `FTAQuit`
+
+The SDK behavior used by the harness is:
+
+- `FTAInit` initializes the interface and establishes the serial/USB link.
+- `FTADoFirmnessReading` enables one firmness test cycle.
+- Status bit 1 means a new firmness reading is available.
+- `FTAReadMaxFirmness` returns the max firmness reading when bit 1 is true, then resets bit 1.
+- `FTAReadLastFirmness` returns the last firmness reading when bit 1 is true and does not reset bit 1.
+- Reading when bit 1 is not true returns `-1`.
+
+The harness checks these status bits:
+
+- bit 1: new firmness reading available
+- bit 3: interface connected
+- bit 5: probe at top
+- bit 7: FTA responded
+
+The actual calling convention and pressure units still need to be confirmed on the physical FTA computer. If the vendor DLL rejects the first binding/call test, check the SDK headers and update only `FtaDllPressureReader`.
+
+## FTA Setup Dialog
+
+Use the `Open FTA Setup` command in the QC Station harness to call `FTASetup()`. The SDK says this opens the setup dialog where the serial port is selected and settings are saved to:
+
+```text
+C:\Program Files\FTADLL\FTA_DLL.CFG
+```
+
+If the FTA is not responding, run the setup dialog on the QC computer, confirm the COM/USB setting, then initialize and check status again.
+
+## Basic RealDll Test Sequence
+
+On the physical QC computer connected to the GUSS/FTA:
+
+1. Run the QC Station as x86:
+
+   ```powershell
+   .\scripts\dev-run-qcstation-x86.ps1
+   ```
+
+2. Select `Initialize FTA`.
+3. Select `Open FTA Setup` if the serial/USB settings need to be selected or confirmed.
+4. Select `Check Status` and confirm bit 3 and/or bit 7 show that the FTA is connected/responding.
+5. Select `Start Pressure Reading`.
+6. Physically run the fruit firmness test on the FTA.
+7. Select `Get Latest Reading`.
+
+If `Get Latest Reading` says no new firmness reading is available, bit 1 was not set yet. Run the physical test cycle again or check the FTA setup/status.
 
 ## Test Screen Commands
 
@@ -129,12 +193,14 @@ The local harness displays:
 Available commands:
 
 - Initialize FTA
+- Open FTA Setup
 - Check Status
 - Start Pressure Reading
 - Get Latest Reading
 - Cancel
-- Use Mock Reading
 - Return Probe Home
+- Quit/Disconnect FTA
+- Use Mock Reading
 - Clear Log
 
 ## Hardware Testing Still Required

@@ -23,29 +23,36 @@ while (!exit)
             await stationService.InitializeAsync();
             break;
         case "2":
-            await stationService.CheckStatusAsync();
+            await stationService.OpenSetupAsync();
             break;
         case "3":
-            await stationService.StartPressureReadingAsync();
+            await stationService.CheckStatusAsync();
             break;
         case "4":
-            await stationService.GetLatestPressureReadingAsync();
+            await stationService.StartPressureReadingAsync();
             break;
         case "5":
-            await stationService.CancelReadingAsync();
+            await stationService.GetLatestPressureReadingAsync();
             break;
         case "6":
-            Console.Write("Manual mock pressure lbs, blank for generated test value: ");
-            var input = Console.ReadLine();
-            stationService.UseMockReading(decimal.TryParse(input, out var manualValue) ? manualValue : null);
+            await stationService.CancelReadingAsync();
             break;
         case "7":
             await stationService.ReturnProbeHomeAsync();
             break;
         case "8":
+            await stationService.QuitAsync();
+            break;
+        case "9":
+            Console.Write("Manual mock pressure lbs, blank for generated test value: ");
+            var input = Console.ReadLine();
+            stationService.UseMockReading(decimal.TryParse(input, out var manualValue) ? manualValue : null);
+            break;
+        case "10":
             stationService.ClearLog();
             break;
         case "0":
+            await stationService.QuitAsync();
             exit = true;
             break;
         default:
@@ -71,13 +78,15 @@ static void RenderStatus(IFtaStationService stationService)
     Console.WriteLine();
     Console.WriteLine("Commands");
     Console.WriteLine("1. Initialize FTA");
-    Console.WriteLine("2. Check Status");
-    Console.WriteLine("3. Start Pressure Reading");
-    Console.WriteLine("4. Get Latest Reading");
-    Console.WriteLine("5. Cancel");
-    Console.WriteLine("6. Use Mock Reading");
+    Console.WriteLine("2. Open FTA Setup");
+    Console.WriteLine("3. Check Status");
+    Console.WriteLine("4. Start Pressure Reading");
+    Console.WriteLine("5. Get Latest Reading");
+    Console.WriteLine("6. Cancel");
     Console.WriteLine("7. Return Probe Home");
-    Console.WriteLine("8. Clear Log");
+    Console.WriteLine("8. Quit/Disconnect FTA");
+    Console.WriteLine("9. Use Mock Reading");
+    Console.WriteLine("10. Clear Log");
     Console.WriteLine("0. Exit");
     Console.WriteLine();
     Console.WriteLine("Log");
