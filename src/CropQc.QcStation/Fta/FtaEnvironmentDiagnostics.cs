@@ -23,9 +23,11 @@ public sealed class FtaEnvironmentDiagnostics : IFtaEnvironmentDiagnostics
 {
     public const string FtaConfigFileName = "FTA_DLL.CFG";
 
-    public FtaConfigFileDiagnostics ReadConfigFile(string dllFolder)
+    public FtaConfigFileDiagnostics ReadConfigFile(string configPathOrFolder)
     {
-        var configPath = Path.Combine(dllFolder, FtaConfigFileName);
+        var configPath = string.Equals(Path.GetFileName(configPathOrFolder), FtaConfigFileName, StringComparison.OrdinalIgnoreCase)
+            ? configPathOrFolder
+            : Path.Combine(configPathOrFolder, FtaConfigFileName);
         var fileInfo = new FileInfo(configPath);
         if (!fileInfo.Exists)
         {

@@ -67,6 +67,25 @@ public sealed class FtaDllPressureReaderTests
     }
 
     [Fact]
+    public async Task Initialize_uses_fta_init2_when_configured()
+    {
+        var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
+        var configuration = CreateRealDllConfiguration(tempFolder);
+        configuration.FtaInitializationMode = FtaInitializationMode.FTAInit2;
+        configuration.FtaConfigPath = @"C:\Program Files\FTADLL\FTA_DLL.CFG";
+        var fakeLoader = new FakeNativeDllLoader(DllLoadResult.Success());
+        var reader = new FtaDllPressureReader(configuration, fakeLoader);
+
+        var status = await reader.InitializeAsync();
+
+        Assert.True(status.IsInitialized);
+        Assert.Equal(0, fakeLoader.InitCalls);
+        Assert.Equal(1, fakeLoader.Init2Calls);
+        Assert.Equal(configuration.FtaConfigPath, fakeLoader.LastInit2Path);
+        Assert.Contains("FTAInit2", status.StatusMessage);
+    }
+
+    [Fact]
     public async Task Start_pressure_reading_calls_documented_firmness_function()
     {
         var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
@@ -122,6 +141,68 @@ public sealed class FtaDllPressureReaderTests
         Assert.Contains("FTADoAutoFirmnessReading completed", reader.LastStatusMessage);
         Assert.Contains("Before FTADoAutoFirmnessReading", reader.LastStatusMessage);
         Assert.Contains("After FTADoAutoFirmnessReading", reader.LastStatusMessage);
+    }
+
+    [Fact]
+    public async Task Demo_style_poll_reads_max_firmness_only_when_status_is_positive_and_bit_one_is_set()
+    {
+        var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
+        var configuration = CreateRealDllConfiguration(tempFolder);
+        var fakeLoader = new FakeNativeDllLoader(DllLoadResult.Success())
+        {
+            StatusSequence = new Queue<int>([0, -1, 0, 1]),
+            MaxFirmness = 16.25f
+        };
+        var reader = new FtaDllPressureReader(configuration, fakeLoader);
+
+        await reader.InitializeAsync();
+        var reading = await reader.DemoStylePollReadingAsync();
+
+        Assert.NotNull(reading);
+        Assert.Equal(16.25m, reading.ReadingValueLbs);
+        Assert.Equal(1, fakeLoader.ReadMaxFirmnessCalls);
+        Assert.Contains("Demo-style raw FTAStatus samples:", reader.LastStatusMessage);
+    }
+
+    [Fact]
+    public async Task Demo_style_auto_reading_calls_auto_command_then_demo_poll()
+    {
+        var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
+        var configuration = CreateRealDllConfiguration(tempFolder);
+        var fakeLoader = new FakeNativeDllLoader(DllLoadResult.Success())
+        {
+            StatusWord = 1,
+            MaxFirmness = 17.25f
+        };
+        var reader = new FtaDllPressureReader(configuration, fakeLoader);
+
+        await reader.InitializeAsync();
+        var reading = await reader.DemoStyleAutoReadingAsync();
+
+        Assert.NotNull(reading);
+        Assert.Equal(17.25m, reading.ReadingValueLbs);
+        Assert.Equal(1, fakeLoader.DoAutoFirmnessReadingCalls);
+    }
+
+    [Fact]
+    public async Task Demo_style_manual_button_reading_calls_manual_command_then_demo_poll()
+    {
+        var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
+        var configuration = CreateRealDllConfiguration(tempFolder);
+        var fakeLoader = new FakeNativeDllLoader(DllLoadResult.Success())
+        {
+            StatusWord = 1,
+            MaxFirmness = 18.25f
+        };
+        var reader = new FtaDllPressureReader(configuration, fakeLoader);
+
+        await reader.InitializeAsync();
+        var reading = await reader.DemoStyleManualButtonReadingAsync();
+
+        Assert.NotNull(reading);
+        Assert.Equal(18.25m, reading.ReadingValueLbs);
+        Assert.Equal(1, fakeLoader.DoFirmnessReadingCalls);
+        Assert.Contains("physical FTA front/init button", reader.LastStatusMessage);
     }
 
     [Fact]
@@ -344,7 +425,11 @@ public sealed class FtaDllPressureReaderTests
 
         public bool NewFirmnessAvailable { get; set; } = true;
         public int StatusWord { get; set; }
+        public Queue<int>? StatusSequence { get; set; }
         public float MaxFirmness { get; set; } = 12.5f;
+        public int InitCalls { get; private set; }
+        public int Init2Calls { get; private set; }
+        public string? LastInit2Path { get; private set; }
         public int DoFirmnessReadingCalls { get; private set; }
         public int DoAutoFirmnessReadingCalls { get; private set; }
         public int ReadMaxFirmnessCalls { get; private set; }
@@ -375,13 +460,23 @@ public sealed class FtaDllPressureReaderTests
 
         private void FTAInit()
         {
+            InitCalls++;
+        }
+
+        private void FTAInit2(string sPath)
+        {
+            Init2Calls++;
+            LastInit2Path = sPath;
         }
 
         private void FTASetup()
         {
         }
 
-        private int FTAStatus() => StatusWord;
+        private int FTAStatus() =>
+            StatusSequence is { Count: > 0 }
+                ? StatusSequence.Dequeue()
+                : StatusWord;
 
         private int FTABitStatus(int bit) => bit switch
         {

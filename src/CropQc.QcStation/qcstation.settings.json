@@ -4,6 +4,9 @@
   "FtaMode": "Mock",
   "FtaDllPath": ".\\fta",
   "FtaDllFileName": "FTA_dll.dll",
+  "FtaInitializationMode": "FTAInit",
+  "FtaConfigPath": "C:\\Program Files\\FTADLL\\FTA_DLL.CFG",
+  "FtaReadingTimeoutSeconds": 60,
   "ComPort": null,
   "ApiBaseUrl": "https://localhost:7001",
   "LocalDataPath": ".\\data"

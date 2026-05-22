@@ -18,6 +18,12 @@ public sealed class FtaStationService(
         return LogStatus("Initialize FTA", await device.InitializeAsync(cancellationToken));
     }
 
+    public async Task<FtaDeviceStatus> InitializeWithConfigPathAsync(CancellationToken cancellationToken = default)
+    {
+        Log("Initialize FTA With Config Path started.");
+        return LogStatus("Initialize FTA With Config Path", await device.InitializeWithConfigPathAsync(cancellationToken));
+    }
+
     public async Task<FtaDeviceStatus> CheckStatusAsync(CancellationToken cancellationToken = default)
     {
         Log("Check Status started.");
@@ -56,6 +62,31 @@ public sealed class FtaStationService(
         Log("Press the FTA front/init button or run the physical firmness test.");
         LatestReading = await pressureReader.StartAndWaitManualFirmnessReadingAsync(cancellationToken);
         LogReadingResult("Start And Wait Manual/Button Reading");
+        return LatestReading;
+    }
+
+    public async Task<PressureReading?> DemoStylePollReadingAsync(CancellationToken cancellationToken = default)
+    {
+        Log("Demo-Style Poll Reading started.");
+        LatestReading = await pressureReader.DemoStylePollReadingAsync(cancellationToken);
+        LogReadingResult("Demo-Style Poll Reading");
+        return LatestReading;
+    }
+
+    public async Task<PressureReading?> DemoStyleAutoReadingAsync(CancellationToken cancellationToken = default)
+    {
+        Log("Demo-Style Auto Reading started.");
+        LatestReading = await pressureReader.DemoStyleAutoReadingAsync(cancellationToken);
+        LogReadingResult("Demo-Style Auto Reading");
+        return LatestReading;
+    }
+
+    public async Task<PressureReading?> DemoStyleManualButtonReadingAsync(CancellationToken cancellationToken = default)
+    {
+        Log("Demo-Style Manual/Button Reading started.");
+        Log("Press the FTA front/init button when prompted by the FTA.");
+        LatestReading = await pressureReader.DemoStyleManualButtonReadingAsync(cancellationToken);
+        LogReadingResult("Demo-Style Manual/Button Reading");
         return LatestReading;
     }
 

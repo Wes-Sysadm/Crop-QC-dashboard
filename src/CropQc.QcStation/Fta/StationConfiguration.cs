@@ -10,6 +10,9 @@ public sealed class StationConfiguration
     public FtaMode FtaMode { get; set; } = FtaMode.Mock;
     public string FtaDllPath { get; set; } = ".\\fta";
     public string FtaDllFileName { get; set; } = "FTA_dll.dll";
+    public FtaInitializationMode FtaInitializationMode { get; set; } = FtaInitializationMode.FTAInit;
+    public string FtaConfigPath { get; set; } = @"C:\Program Files\FTADLL\FTA_DLL.CFG";
+    public int FtaReadingTimeoutSeconds { get; set; } = 60;
     public string? ComPort { get; set; }
     public string ApiBaseUrl { get; set; } = "https://localhost:7001";
     public string LocalDataPath { get; set; } = ".\\data";

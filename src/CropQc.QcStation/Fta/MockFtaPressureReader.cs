@@ -27,6 +27,13 @@ public sealed class MockFtaPressureReader(string stationName) : IFtaDevice, IFta
         return Task.FromResult(CurrentStatus(LastStatusMessage));
     }
 
+    public Task<FtaDeviceStatus> InitializeWithConfigPathAsync(CancellationToken cancellationToken = default)
+    {
+        isInitialized = isConnected;
+        LastStatusMessage = isConnected ? "Mock FTA initialized with config path." : "Mock FTA is disconnected.";
+        return Task.FromResult(CurrentStatus(LastStatusMessage));
+    }
+
     public Task<FtaDeviceStatus> CheckStatusAsync(CancellationToken cancellationToken = default)
     {
         LastStatusMessage = isConnected ? "Mock FTA connected." : "Mock FTA disconnected.";
@@ -79,6 +86,33 @@ public sealed class MockFtaPressureReader(string stationName) : IFtaDevice, IFta
         LastStatusMessage = latestReading is null
             ? LastStatusMessage
             : $"Mock manual/button firmness reading captured: {latestReading.ReadingValueLbs:0.00} lbs.";
+        return latestReading;
+    }
+
+    public async Task<PressureReading?> DemoStylePollReadingAsync(CancellationToken cancellationToken = default)
+    {
+        await StartPressureReadingAsync(cancellationToken);
+        LastStatusMessage = latestReading is null
+            ? LastStatusMessage
+            : $"Mock demo-style poll reading captured: {latestReading.ReadingValueLbs:0.00} lbs.";
+        return latestReading;
+    }
+
+    public async Task<PressureReading?> DemoStyleAutoReadingAsync(CancellationToken cancellationToken = default)
+    {
+        await StartPressureReadingAsync(cancellationToken);
+        LastStatusMessage = latestReading is null
+            ? LastStatusMessage
+            : $"Mock demo-style auto reading captured: {latestReading.ReadingValueLbs:0.00} lbs.";
+        return latestReading;
+    }
+
+    public async Task<PressureReading?> DemoStyleManualButtonReadingAsync(CancellationToken cancellationToken = default)
+    {
+        await StartPressureReadingAsync(cancellationToken);
+        LastStatusMessage = latestReading is null
+            ? LastStatusMessage
+            : $"Mock demo-style manual/button reading captured: {latestReading.ReadingValueLbs:0.00} lbs.";
         return latestReading;
     }
 

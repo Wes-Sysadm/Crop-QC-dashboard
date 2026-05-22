@@ -23,42 +23,55 @@ while (!exit)
             await stationService.InitializeAsync();
             break;
         case "2":
-            await stationService.OpenSetupAsync();
+            await stationService.InitializeWithConfigPathAsync();
             break;
         case "3":
-            await stationService.DiagnosticStatusAsync();
+            await stationService.OpenSetupAsync();
             break;
         case "4":
-            await stationService.CheckStatusAsync();
+            await stationService.DiagnosticStatusAsync();
             break;
         case "5":
-            await stationService.StartPressureReadingAsync();
+            await stationService.CheckStatusAsync();
             break;
         case "6":
-            await stationService.StartAutoFirmnessReadingAsync();
+            await stationService.StartPressureReadingAsync();
             break;
         case "7":
+            await stationService.StartAutoFirmnessReadingAsync();
+            break;
+        case "8":
             Console.WriteLine("Press the FTA front/init button or run the physical firmness test when prompted by the FTA.");
             await stationService.StartAndWaitManualFirmnessReadingAsync();
             break;
-        case "8":
-            await stationService.GetLatestPressureReadingAsync();
-            break;
         case "9":
-            await stationService.CancelReadingAsync();
+            await stationService.DemoStylePollReadingAsync();
             break;
         case "10":
-            await stationService.ReturnProbeHomeAsync();
+            await stationService.DemoStyleAutoReadingAsync();
             break;
         case "11":
-            await stationService.QuitAsync();
+            Console.WriteLine("Press the FTA front/init button when prompted by the FTA.");
+            await stationService.DemoStyleManualButtonReadingAsync();
             break;
         case "12":
+            await stationService.GetLatestPressureReadingAsync();
+            break;
+        case "13":
+            await stationService.CancelReadingAsync();
+            break;
+        case "14":
+            await stationService.ReturnProbeHomeAsync();
+            break;
+        case "15":
+            await stationService.QuitAsync();
+            break;
+        case "16":
             Console.Write("Manual mock pressure lbs, blank for generated test value: ");
             var input = Console.ReadLine();
             stationService.UseMockReading(decimal.TryParse(input, out var manualValue) ? manualValue : null);
             break;
-        case "13":
+        case "17":
             stationService.ClearLog();
             break;
         case "0":
@@ -81,6 +94,9 @@ static void RenderStatus(IFtaStationService stationService)
     Console.WriteLine($"FTA mode: {stationService.Configuration.FtaMode}");
     Console.WriteLine($"DLL path: {stationService.Configuration.FtaDllPath}");
     Console.WriteLine($"DLL file: {stationService.Configuration.FtaDllFileName}");
+    Console.WriteLine($"Initialization mode: {stationService.Configuration.FtaInitializationMode}");
+    Console.WriteLine($"FTA config path: {stationService.Configuration.FtaConfigPath}");
+    Console.WriteLine($"Reading timeout seconds: {stationService.Configuration.FtaReadingTimeoutSeconds}");
     Console.WriteLine($"COM port: {stationService.Configuration.ComPort ?? "(not configured)"}");
     Console.WriteLine($"API base URL: {stationService.Configuration.ApiBaseUrl}");
     Console.WriteLine($"Local data path: {stationService.Configuration.LocalDataPath}");
@@ -88,18 +104,22 @@ static void RenderStatus(IFtaStationService stationService)
     Console.WriteLine();
     Console.WriteLine("Commands");
     Console.WriteLine("1. Initialize FTA");
-    Console.WriteLine("2. Open FTA Setup");
-    Console.WriteLine("3. FTA Diagnostic Status");
-    Console.WriteLine("4. Check Status");
-    Console.WriteLine("5. Start Manual/Button Firmness Reading");
-    Console.WriteLine("6. Start Auto Firmness Reading");
-    Console.WriteLine("7. Start And Wait Manual/Button Reading");
-    Console.WriteLine("8. Get Latest Reading");
-    Console.WriteLine("9. Cancel");
-    Console.WriteLine("10. Return Probe Home");
-    Console.WriteLine("11. Quit/Disconnect FTA");
-    Console.WriteLine("12. Use Mock Reading");
-    Console.WriteLine("13. Clear Log");
+    Console.WriteLine("2. Initialize FTA With Config Path");
+    Console.WriteLine("3. Open FTA Setup");
+    Console.WriteLine("4. FTA Diagnostic Status");
+    Console.WriteLine("5. Check Status");
+    Console.WriteLine("6. Start Manual/Button Firmness Reading");
+    Console.WriteLine("7. Start Auto Firmness Reading");
+    Console.WriteLine("8. Start And Wait Manual/Button Reading");
+    Console.WriteLine("9. Demo-Style Poll Reading");
+    Console.WriteLine("10. Demo-Style Auto Reading");
+    Console.WriteLine("11. Demo-Style Manual/Button Reading");
+    Console.WriteLine("12. Get Latest Reading");
+    Console.WriteLine("13. Cancel");
+    Console.WriteLine("14. Return Probe Home");
+    Console.WriteLine("15. Quit/Disconnect FTA");
+    Console.WriteLine("16. Use Mock Reading");
+    Console.WriteLine("17. Clear Log");
     Console.WriteLine("0. Exit");
     Console.WriteLine();
     Console.WriteLine("Log");
