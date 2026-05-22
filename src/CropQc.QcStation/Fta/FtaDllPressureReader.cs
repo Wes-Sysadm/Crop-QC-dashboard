@@ -2,7 +2,10 @@ using System.Runtime.InteropServices;
 
 namespace CropQc.QcStation.Fta;
 
-public sealed class FtaDllPressureReader(StationConfiguration configuration, INativeDllLoader? nativeDllLoader = null) : IFtaDevice, IFtaPressureReader
+public sealed class FtaDllPressureReader(
+    StationConfiguration configuration,
+    INativeDllLoader? nativeDllLoader = null,
+    IFtaEnvironmentDiagnostics? environmentDiagnostics = null) : IFtaDevice, IFtaPressureReader
 {
     public const string DefaultFtaDllFileName = "FTA_dll.dll";
     public const string AlternateFtaDllFileName = "FTA_DLL.dll";
@@ -18,6 +21,7 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
     private FtaNativeBindings? bindings;
     private PressureReading? latestReading;
     private readonly INativeDllLoader nativeDllLoader = nativeDllLoader ?? new NativeDllLoader();
+    private readonly IFtaEnvironmentDiagnostics environmentDiagnostics = environmentDiagnostics ?? new FtaEnvironmentDiagnostics();
 
     public string DeviceName => "FTA DLL";
     public string? LastStatusMessage { get; private set; }
@@ -116,8 +120,9 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
 
         var statusSnapshot = ReadStatusSnapshot("FTA Diagnostic Status.");
         isConnected = statusSnapshot.IsInterfaceConnected || statusSnapshot.HasFtaResponded;
-        LastStatusMessage = statusSnapshot.Message;
-        return Task.FromResult(Status(statusSnapshot.Message, errorMessage));
+        var environmentSnapshot = ReadEnvironmentSnapshot();
+        LastStatusMessage = string.Join(" | ", statusSnapshot.Message, environmentSnapshot.Message);
+        return Task.FromResult(Status(LastStatusMessage, errorMessage));
     }
 
     public Task<FtaDeviceStatus> OpenSetupAsync(CancellationToken cancellationToken = default)
@@ -536,6 +541,46 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         }
     }
 
+    private FtaEnvironmentSnapshot ReadEnvironmentSnapshot()
+    {
+        var dllFolder = lastProbe?.DllFolder ?? (string.IsNullOrWhiteSpace(configuration.FtaDllPath)
+            ? AppContext.BaseDirectory
+            : Path.GetFullPath(configuration.FtaDllPath));
+        var config = environmentDiagnostics.ReadConfigFile(dllFolder);
+        var availableComPorts = environmentDiagnostics.GetAvailableComPorts();
+        var hidDevices = environmentDiagnostics.GetHidDeviceIdsByVendorId("VID_6017");
+        var warnings = BuildEnvironmentWarnings(config, availableComPorts, hidDevices);
+
+        return new FtaEnvironmentSnapshot(string.Join(" | ",
+            $"FTA_DLL.CFG path: {config.Path}",
+            $"FTA_DLL.CFG exists: {YesNo(config.Exists)}",
+            $"FTA_DLL.CFG LastWriteTime: {(config.LastWriteTime is null ? "(missing)" : config.LastWriteTime.Value.ToString("yyyy-MM-dd HH:mm:ss zzz"))}",
+            $"FTA_DLL.CFG length: {(config.Length is null ? "(missing)" : config.Length.Value)}",
+            $"FTA_DLL.CFG visible COM strings: {FormatList(config.VisibleComPorts)}",
+            $"Windows available COM ports: {FormatList(availableComPorts)}",
+            $"Windows HID devices matching VID_6017: {FormatList(hidDevices)}",
+            $"FTA config/device warnings: {FormatList(warnings)}"));
+    }
+
+    private static IReadOnlyList<string> BuildEnvironmentWarnings(
+        FtaConfigFileDiagnostics config,
+        IReadOnlyList<string> availableComPorts,
+        IReadOnlyList<string> hidDevices)
+    {
+        var configSaysCom1 = config.VisibleComPorts.Any(port => string.Equals(port, "COM1", StringComparison.OrdinalIgnoreCase));
+        var onlyCom1IsAvailable = availableComPorts.Count == 1 && string.Equals(availableComPorts[0], "COM1", StringComparison.OrdinalIgnoreCase);
+        var ftaAppearsAsHid = hidDevices.Any(device => device.Contains("VID_6017", StringComparison.OrdinalIgnoreCase));
+
+        if (configSaysCom1 && onlyCom1IsAvailable && ftaAppearsAsHid)
+        {
+            return [
+                "FTA_DLL.CFG says COM1, Windows only reports COM1, and the FTA appears as HID USB VID_6017 instead of a COM port. Original vendor software may be using additional configuration beyond FTA_DLL.CFG."
+            ];
+        }
+
+        return [];
+    }
+
     private async Task<PressureReading?> WaitForMaxFirmnessReadingAsync(string readingMode, CancellationToken cancellationToken)
     {
         var timeoutAt = DateTimeOffset.UtcNow.Add(FirmnessReadingTimeout);
@@ -597,6 +642,9 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
     private static string FormatBitStatus(int bit, string label, int rawValue) =>
         $"FTABitStatus({bit}) {label}: raw {rawValue}, {(rawValue != 0 ? "Yes" : "No")}";
 
+    private static string FormatList(IReadOnlyList<string> values) =>
+        values.Count == 0 ? "(none)" : string.Join(", ", values);
+
     private sealed record DllProbeResult(
         string DllFolder,
         string MainDllFileName,
@@ -624,6 +672,8 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration, INa
         public bool IsInterfaceConnected => InterfaceConnectedRaw != 0;
         public bool HasFtaResponded => FtaRespondedRaw != 0;
     }
+
+    private sealed record FtaEnvironmentSnapshot(string Message);
 
     private sealed record FtaNativeBindings(
         FTAInit FTAInit,

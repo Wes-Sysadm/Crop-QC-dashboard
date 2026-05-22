@@ -185,6 +185,44 @@ public sealed class FtaDllPressureReaderTests
     }
 
     [Fact]
+    public async Task Diagnostic_status_reports_config_com_and_hid_warning()
+    {
+        var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
+        var configuration = CreateRealDllConfiguration(tempFolder);
+        var environmentDiagnostics = new FakeFtaEnvironmentDiagnostics(
+            new FtaConfigFileDiagnostics(@"C:\Program Files\FTADLL\FTA_DLL.CFG", true, new DateTimeOffset(2026, 5, 22, 9, 30, 0, TimeSpan.Zero), 128, ["COM1"]),
+            ["COM1"],
+            [@"VID_6017&PID_3430"]);
+        var reader = new FtaDllPressureReader(configuration, new FakeNativeDllLoader(DllLoadResult.Success()), environmentDiagnostics);
+
+        await reader.InitializeAsync();
+        var status = await reader.DiagnosticStatusAsync();
+
+        Assert.Contains(@"FTA_DLL.CFG path: C:\Program Files\FTADLL\FTA_DLL.CFG", status.StatusMessage);
+        Assert.Contains("FTA_DLL.CFG exists: Yes", status.StatusMessage);
+        Assert.Contains("FTA_DLL.CFG visible COM strings: COM1", status.StatusMessage);
+        Assert.Contains("Windows available COM ports: COM1", status.StatusMessage);
+        Assert.Contains("Windows HID devices matching VID_6017: VID_6017&PID_3430", status.StatusMessage);
+        Assert.Contains("FTA_DLL.CFG says COM1, Windows only reports COM1, and the FTA appears as HID USB VID_6017 instead of a COM port.", status.StatusMessage);
+    }
+
+    [Fact]
+    public void Environment_diagnostics_extracts_visible_com_port_strings_from_config_file()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), $"crop-qc-fta-cfg-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempFolder);
+        File.WriteAllText(Path.Combine(tempFolder, FtaEnvironmentDiagnostics.FtaConfigFileName), "Port=COM1\r\nBackup=COM2");
+        var diagnostics = new FtaEnvironmentDiagnostics();
+
+        var config = diagnostics.ReadConfigFile(tempFolder);
+
+        Assert.True(config.Exists);
+        Assert.True(config.Length > 0);
+        Assert.Contains("COM1", config.VisibleComPorts);
+        Assert.Contains("COM2", config.VisibleComPorts);
+    }
+
+    [Fact]
     public async Task Latest_reading_returns_null_when_new_firmness_bit_is_false()
     {
         var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
@@ -381,5 +419,17 @@ public sealed class FtaDllPressureReaderTests
         private void FTAQuit()
         {
         }
+    }
+
+    private sealed class FakeFtaEnvironmentDiagnostics(
+        FtaConfigFileDiagnostics config,
+        IReadOnlyList<string> availableComPorts,
+        IReadOnlyList<string> hidDeviceIds) : IFtaEnvironmentDiagnostics
+    {
+        public FtaConfigFileDiagnostics ReadConfigFile(string dllFolder) => config;
+
+        public IReadOnlyList<string> GetAvailableComPorts() => availableComPorts;
+
+        public IReadOnlyList<string> GetHidDeviceIdsByVendorId(string vendorId) => hidDeviceIds;
     }
 }
