@@ -1,43 +1,71 @@
 namespace CropQc.QcStation.Fta;
 
-public sealed class FtaDllPressureReader(StationConfiguration configuration) : IFtaDevice, IFtaPressureReader
+public sealed class FtaDllPressureReader(StationConfiguration configuration, INativeDllLoader? nativeDllLoader = null) : IFtaDevice, IFtaPressureReader
 {
-    public const string FtaDllFileName = "FTA_DLL.dll";
+    public const string DefaultFtaDllFileName = "FTA_dll.dll";
+    public const string AlternateFtaDllFileName = "FTA_DLL.dll";
     public const string BorlandMemoryManagerFileName = "borlndmm.dll";
 
     private bool isInitialized;
+    private bool isConnected;
     private bool isReading;
     private string? errorMessage;
+    private DllProbeResult? lastProbe;
+    private readonly INativeDllLoader nativeDllLoader = nativeDllLoader ?? new NativeDllLoader();
 
     public string DeviceName => "FTA DLL";
 
     public Task<FtaDeviceStatus> InitializeAsync(CancellationToken cancellationToken = default)
     {
-        var validationError = ValidateDllFiles();
-        if (validationError is not null)
+        lastProbe = ProbeDllFiles();
+        if (!lastProbe.MainDllFound)
         {
             isInitialized = false;
-            errorMessage = validationError;
+            isConnected = false;
+            errorMessage = $"{lastProbe.MainDllFileName} was not found in {lastProbe.DllFolder}.";
             return Task.FromResult(Status("FTA DLL initialization failed.", errorMessage));
+        }
+
+        if (!lastProbe.MainDllLoaded)
+        {
+            isInitialized = false;
+            isConnected = false;
+            errorMessage = lastProbe.LoadErrorMessage;
+            return Task.FromResult(Status("FTA DLL load failed.", errorMessage));
         }
 
         // TODO: Add vendor FTA_DLL.dll P/Invoke declarations and initialization call here.
         // This class is intentionally the only place that should load or call the vendor DLL.
-        isInitialized = false;
-        errorMessage = "FTA DLL files were found, but vendor function bindings are not implemented yet.";
-        return Task.FromResult(Status("FTA DLL placeholder reached.", errorMessage));
+        isInitialized = true;
+        isConnected = true;
+        errorMessage = lastProbe.BorlandMemoryManagerFound
+            ? null
+            : $"{BorlandMemoryManagerFileName} was not found in {lastProbe.DllFolder}. This is warning-only until hardware DLL calls are implemented.";
+        return Task.FromResult(Status("FTA DLL loaded; vendor function bindings are not implemented yet.", errorMessage));
     }
 
     public Task<FtaDeviceStatus> CheckStatusAsync(CancellationToken cancellationToken = default)
     {
-        var validationError = ValidateDllFiles();
-        if (validationError is not null)
+        lastProbe = ProbeDllFiles();
+        if (!lastProbe.MainDllFound)
         {
-            errorMessage = validationError;
+            isConnected = false;
+            errorMessage = $"{lastProbe.MainDllFileName} was not found in {lastProbe.DllFolder}.";
             return Task.FromResult(Status("FTA DLL unavailable.", errorMessage));
         }
 
-        return Task.FromResult(Status("FTA DLL files found; hardware status call is not implemented yet.", errorMessage));
+        if (!lastProbe.MainDllLoaded)
+        {
+            isConnected = false;
+            errorMessage = lastProbe.LoadErrorMessage;
+            return Task.FromResult(Status("FTA DLL load failed.", errorMessage));
+        }
+
+        isConnected = true;
+        errorMessage = lastProbe.BorlandMemoryManagerFound
+            ? null
+            : $"{BorlandMemoryManagerFileName} missing; warning only.";
+        return Task.FromResult(Status("FTA DLL load check passed; hardware status call is not implemented yet.", errorMessage));
     }
 
     public Task<FtaDeviceStatus> StartPressureReadingAsync(CancellationToken cancellationToken = default)
@@ -71,27 +99,76 @@ public sealed class FtaDllPressureReader(StationConfiguration configuration) : I
         return Task.FromResult(Status("FTA probe-home placeholder invoked."));
     }
 
-    private string? ValidateDllFiles()
+    private DllProbeResult ProbeDllFiles()
     {
         var dllFolder = string.IsNullOrWhiteSpace(configuration.FtaDllPath)
             ? AppContext.BaseDirectory
             : Path.GetFullPath(configuration.FtaDllPath);
-        var ftaDll = Path.Combine(dllFolder, FtaDllFileName);
-        var memoryManagerDll = Path.Combine(dllFolder, BorlandMemoryManagerFileName);
+        var mainDllFileName = ResolveMainDllFileName(dllFolder);
+        var mainDllPath = Path.Combine(dllFolder, mainDllFileName);
+        var memoryManagerDllPath = Path.Combine(dllFolder, BorlandMemoryManagerFileName);
+        var mainDllFound = File.Exists(mainDllPath);
+        var borlandMemoryManagerFound = File.Exists(memoryManagerDllPath);
 
-        if (!File.Exists(ftaDll))
+        if (!mainDllFound)
         {
-            return $"{FtaDllFileName} was not found in {dllFolder}.";
+            return new DllProbeResult(dllFolder, mainDllFileName, mainDllPath, false, false, borlandMemoryManagerFound, null);
         }
 
-        if (!File.Exists(memoryManagerDll))
-        {
-            return $"{BorlandMemoryManagerFileName} was not found in {dllFolder}.";
-        }
-
-        return null;
+        var loadResult = nativeDllLoader.TryLoad(mainDllPath);
+        return new DllProbeResult(dllFolder, mainDllFileName, mainDllPath, true, loadResult.Loaded, borlandMemoryManagerFound, loadResult.ErrorMessage);
     }
 
-    private FtaDeviceStatus Status(string message, string? error = null) =>
-        new(isInitialized, isInitialized, isReading, message, error);
+    private string ResolveMainDllFileName(string dllFolder)
+    {
+        var configuredFileName = string.IsNullOrWhiteSpace(configuration.FtaDllFileName)
+            ? DefaultFtaDllFileName
+            : configuration.FtaDllFileName.Trim();
+
+        if (File.Exists(Path.Combine(dllFolder, configuredFileName)))
+        {
+            return configuredFileName;
+        }
+
+        if (!string.Equals(configuredFileName, DefaultFtaDllFileName, StringComparison.OrdinalIgnoreCase)
+            && File.Exists(Path.Combine(dllFolder, DefaultFtaDllFileName)))
+        {
+            return DefaultFtaDllFileName;
+        }
+
+        if (!string.Equals(configuredFileName, AlternateFtaDllFileName, StringComparison.OrdinalIgnoreCase)
+            && File.Exists(Path.Combine(dllFolder, AlternateFtaDllFileName)))
+        {
+            return AlternateFtaDllFileName;
+        }
+
+        return configuredFileName;
+    }
+
+    private FtaDeviceStatus Status(string message, string? error = null)
+    {
+        var probe = lastProbe;
+        var detail = probe is null
+            ? message
+            : string.Join(" | ",
+                message,
+                $"DLL folder: {probe.DllFolder}",
+                $"Main DLL: {probe.MainDllFileName}",
+                $"Main DLL found: {YesNo(probe.MainDllFound)}",
+                $"Main DLL load check: {YesNo(probe.MainDllLoaded)}",
+                $"{BorlandMemoryManagerFileName} found: {YesNo(probe.BorlandMemoryManagerFound)}",
+                "Ready for actual function calls: No; vendor P/Invoke bindings are not implemented yet");
+        return new(isInitialized, isConnected, isReading, detail, error);
+    }
+
+    private static string YesNo(bool value) => value ? "Yes" : "No";
+
+    private sealed record DllProbeResult(
+        string DllFolder,
+        string MainDllFileName,
+        string MainDllPath,
+        bool MainDllFound,
+        bool MainDllLoaded,
+        bool BorlandMemoryManagerFound,
+        string? LoadErrorMessage);
 }

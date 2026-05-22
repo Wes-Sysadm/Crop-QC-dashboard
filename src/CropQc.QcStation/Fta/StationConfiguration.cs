@@ -9,6 +9,7 @@ public sealed class StationConfiguration
     public string WarehouseCode { get; set; } = "WP";
     public FtaMode FtaMode { get; set; } = FtaMode.Mock;
     public string FtaDllPath { get; set; } = ".\\fta";
+    public string FtaDllFileName { get; set; } = "FTA_dll.dll";
     public string? ComPort { get; set; }
     public string ApiBaseUrl { get; set; } = "https://localhost:7001";
     public string LocalDataPath { get; set; } = ".\\data";

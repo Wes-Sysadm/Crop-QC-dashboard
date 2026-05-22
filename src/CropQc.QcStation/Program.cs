@@ -63,6 +63,7 @@ static void RenderStatus(IFtaStationService stationService)
     Console.WriteLine($"Warehouse: {stationService.Configuration.WarehouseCode}");
     Console.WriteLine($"FTA mode: {stationService.Configuration.FtaMode}");
     Console.WriteLine($"DLL path: {stationService.Configuration.FtaDllPath}");
+    Console.WriteLine($"DLL file: {stationService.Configuration.FtaDllFileName}");
     Console.WriteLine($"COM port: {stationService.Configuration.ComPort ?? "(not configured)"}");
     Console.WriteLine($"API base URL: {stationService.Configuration.ApiBaseUrl}");
     Console.WriteLine($"Local data path: {stationService.Configuration.LocalDataPath}");
