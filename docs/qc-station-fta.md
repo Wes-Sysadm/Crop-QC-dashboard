@@ -122,6 +122,7 @@ The harness binds the documented FTA SDK 11.0.4 function names:
 - `FTAStatus`
 - `FTABitStatus`
 - `FTADoFirmnessReading`
+- `FTADoAutoFirmnessReading`
 - `FTAReadMaxFirmness`
 - `FTAReadLastFirmness`
 - `FTACancel`
@@ -131,18 +132,41 @@ The harness binds the documented FTA SDK 11.0.4 function names:
 The SDK behavior used by the harness is:
 
 - `FTAInit` initializes the interface and establishes the serial/USB link.
-- `FTADoFirmnessReading` enables one firmness test cycle.
+- `FTADoFirmnessReading` enables one firmness test cycle and appears to expect the operator to press the FTA front/init button or otherwise run the physical test.
+- `FTADoAutoFirmnessReading` starts an auto firmness cycle. The SDK says the FTA beeps and then completes a firmness measurement without input from the Init button.
 - Status bit 1 means a new firmness reading is available.
 - `FTAReadMaxFirmness` returns the max firmness reading when bit 1 is true, then resets bit 1.
 - `FTAReadLastFirmness` returns the last firmness reading when bit 1 is true and does not reset bit 1.
 - Reading when bit 1 is not true returns `-1`.
 
+On the real FTA computer, `FTAInit` makes the FTA beep. That confirms the DLL is communicating with hardware. If `FTADoFirmnessReading` returns without crashing but there is no beep and no reading, try `Start Auto Firmness Reading`.
+
+The FTA has also been observed in Windows as a HID USB Input Device:
+
+```text
+USB\VID_6017&PID_3430
+```
+
 The harness checks these status bits:
 
 - bit 1: new firmness reading available
+- bit 2: new size reading available
 - bit 3: interface connected
 - bit 5: probe at top
+- bit 6: probe at bottom
 - bit 7: FTA responded
+- bit 8: new mass reading
+- bit 9: scale attached/can measure mass
+
+Use the `FTA Diagnostic Status` command before and after a reading attempt when troubleshooting the physical station. It displays the raw `FTAStatus` value and raw `FTABitStatus` values for bits 1, 2, 3, 5, 6, 7, 8, and 9, plus a Yes/No interpretation for each direct bit check.
+
+If `FTAStatus` returns `-1`, the harness labels the value as negative/suspicious and does not decode the raw status word as if every bit is valid. It still shows the direct `FTABitStatus` calls separately.
+
+The `Start Manual/Button Firmness Reading` command captures diagnostic status before and after `FTADoFirmnessReading`. If the call returns but bit 1 is still false, the harness logs:
+
+```text
+FTADoFirmnessReading call returned, but no new reading detected yet. Confirm FTA setup COM port and probe state.
+```
 
 The actual calling convention and pressure units still need to be confirmed on the physical FTA computer. If the vendor DLL rejects the first binding/call test, check the SDK headers and update only `FtaDllPressureReader`.
 
@@ -155,6 +179,16 @@ C:\Program Files\FTADLL\FTA_DLL.CFG
 ```
 
 If the FTA is not responding, run the setup dialog on the QC computer, confirm the COM/USB setting, then initialize and check status again.
+
+## Firmness Reading Commands
+
+The harness keeps the two SDK reading styles separate:
+
+- `Start Manual/Button Firmness Reading` calls `FTADoFirmnessReading()` and returns immediately after the DLL call. Use this to confirm the basic SDK command can be invoked.
+- `Start And Wait Manual/Button Reading` calls `FTADoFirmnessReading()`, tells the operator to press the FTA front/init button or run the physical test, then polls bit 1 for up to 60 seconds and reads `FTAReadMaxFirmness()` when available.
+- `Start Auto Firmness Reading` calls `FTADoAutoFirmnessReading()`, captures diagnostics before and after the call, then polls bit 1 for up to 60 seconds and reads `FTAReadMaxFirmness()` when available.
+
+If auto mode beeps and manual/button mode does not, the next physical troubleshooting step is to confirm the saved FTA setup, COM/USB selection, and probe state.
 
 ## Basic RealDll Test Sequence
 
@@ -169,9 +203,11 @@ On the physical QC computer connected to the GUSS/FTA:
 2. Select `Initialize FTA`.
 3. Select `Open FTA Setup` if the serial/USB settings need to be selected or confirmed.
 4. Select `Check Status` and confirm bit 3 and/or bit 7 show that the FTA is connected/responding.
-5. Select `Start Pressure Reading`.
-6. Physically run the fruit firmness test on the FTA.
-7. Select `Get Latest Reading`.
+5. Select `FTA Diagnostic Status` to capture the baseline raw status and bit values.
+6. Select `Start Auto Firmness Reading`.
+7. If auto mode does not produce a reading, select `Start And Wait Manual/Button Reading`, then press the FTA front/init button or run the physical firmness test.
+8. Select `FTA Diagnostic Status` again if there is no beep or no new reading.
+9. Select `Get Latest Reading` if a separate latest-read check is needed.
 
 If `Get Latest Reading` says no new firmness reading is available, bit 1 was not set yet. Run the physical test cycle again or check the FTA setup/status.
 
@@ -194,8 +230,11 @@ Available commands:
 
 - Initialize FTA
 - Open FTA Setup
+- FTA Diagnostic Status
 - Check Status
-- Start Pressure Reading
+- Start Manual/Button Firmness Reading
+- Start Auto Firmness Reading
+- Start And Wait Manual/Button Reading
 - Get Latest Reading
 - Cancel
 - Return Probe Home

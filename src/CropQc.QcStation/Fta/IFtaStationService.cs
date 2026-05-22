@@ -8,8 +8,11 @@ public interface IFtaStationService
 
     Task<FtaDeviceStatus> InitializeAsync(CancellationToken cancellationToken = default);
     Task<FtaDeviceStatus> CheckStatusAsync(CancellationToken cancellationToken = default);
+    Task<FtaDeviceStatus> DiagnosticStatusAsync(CancellationToken cancellationToken = default);
     Task<FtaDeviceStatus> OpenSetupAsync(CancellationToken cancellationToken = default);
     Task<FtaDeviceStatus> StartPressureReadingAsync(CancellationToken cancellationToken = default);
+    Task<PressureReading?> StartAutoFirmnessReadingAsync(CancellationToken cancellationToken = default);
+    Task<PressureReading?> StartAndWaitManualFirmnessReadingAsync(CancellationToken cancellationToken = default);
     Task<PressureReading?> GetLatestPressureReadingAsync(CancellationToken cancellationToken = default);
     Task<FtaDeviceStatus> CancelReadingAsync(CancellationToken cancellationToken = default);
     Task<FtaDeviceStatus> ReturnProbeHomeAsync(CancellationToken cancellationToken = default);

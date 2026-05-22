@@ -24,6 +24,12 @@ public sealed class FtaStationService(
         return LogStatus("Check Status", await device.CheckStatusAsync(cancellationToken));
     }
 
+    public async Task<FtaDeviceStatus> DiagnosticStatusAsync(CancellationToken cancellationToken = default)
+    {
+        Log("FTA Diagnostic Status started.");
+        return LogStatus("FTA Diagnostic Status", await device.DiagnosticStatusAsync(cancellationToken));
+    }
+
     public async Task<FtaDeviceStatus> OpenSetupAsync(CancellationToken cancellationToken = default)
     {
         Log("Open FTA Setup started.");
@@ -32,8 +38,25 @@ public sealed class FtaStationService(
 
     public async Task<FtaDeviceStatus> StartPressureReadingAsync(CancellationToken cancellationToken = default)
     {
-        Log("Start Pressure Reading started.");
-        return LogStatus("Start Pressure Reading", await pressureReader.StartPressureReadingAsync(cancellationToken));
+        Log("Start Manual/Button Firmness Reading started.");
+        return LogStatus("Start Manual/Button Firmness Reading", await pressureReader.StartPressureReadingAsync(cancellationToken));
+    }
+
+    public async Task<PressureReading?> StartAutoFirmnessReadingAsync(CancellationToken cancellationToken = default)
+    {
+        Log("Start Auto Firmness Reading started.");
+        LatestReading = await pressureReader.StartAutoFirmnessReadingAsync(cancellationToken);
+        LogReadingResult("Start Auto Firmness Reading");
+        return LatestReading;
+    }
+
+    public async Task<PressureReading?> StartAndWaitManualFirmnessReadingAsync(CancellationToken cancellationToken = default)
+    {
+        Log("Start And Wait Manual/Button Reading started.");
+        Log("Press the FTA front/init button or run the physical firmness test.");
+        LatestReading = await pressureReader.StartAndWaitManualFirmnessReadingAsync(cancellationToken);
+        LogReadingResult("Start And Wait Manual/Button Reading");
+        return LatestReading;
     }
 
     public async Task<PressureReading?> GetLatestPressureReadingAsync(CancellationToken cancellationToken = default)
@@ -91,6 +114,18 @@ public sealed class FtaStationService(
     {
         Log($"{action}: {status.StatusMessage}{(string.IsNullOrWhiteSpace(status.ErrorMessage) ? "" : $" Error: {status.ErrorMessage}")}");
         return status;
+    }
+
+    private void LogReadingResult(string action)
+    {
+        if (LatestReading is null)
+        {
+            Log($"{action}: {pressureReader.LastStatusMessage ?? "No pressure reading is available."}");
+        }
+        else
+        {
+            Log($"{action}: {LatestReading.ReadingValueLbs:0.00} lbs ({LatestReading.Source}). {pressureReader.LastStatusMessage}");
+        }
     }
 
     private void Log(string message) =>
