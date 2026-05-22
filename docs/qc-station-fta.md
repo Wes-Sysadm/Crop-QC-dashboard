@@ -32,6 +32,30 @@ The app uses `src\CropQc.QcStation\qcstation.settings.json` by default. You can 
 dotnet run --project .\src\CropQc.QcStation\CropQc.QcStation.csproj -- .\path\to\qcstation.settings.json
 ```
 
+## Running RealDll Mode as x86
+
+The FTA-connected computer reported this load error:
+
+```text
+An attempt was made to load a program with an incorrect format. (0x8007000B)
+```
+
+That usually means a 32-bit/64-bit mismatch. The current `FTA_dll.dll` in `C:\Program Files\FTADLL` is likely 32-bit, while a normal .NET run may start the QC Station as a 64-bit process.
+
+For RealDll testing on the QC computer, run the station explicitly as x86:
+
+```powershell
+.\scripts\dev-run-qcstation-x86.ps1
+```
+
+The script runs:
+
+```powershell
+dotnet run --project .\src\CropQc.QcStation\CropQc.QcStation.csproj --configuration Debug --property:Platform=x86 -- .\src\CropQc.QcStation\qcstation.settings.json
+```
+
+The QC Station project supports `AnyCPU`, `x86`, and `x64` platforms. Normal solution builds remain unchanged; RealDll hardware testing should use x86 until the vendor DLL bitness is confirmed.
+
 ## Configuration
 
 The current settings fields are:
@@ -95,6 +119,7 @@ The local harness displays:
 - Warehouse
 - FTA mode
 - DLL path
+- DLL file
 - COM port
 - API base URL placeholder
 - Local data path placeholder

@@ -14,6 +14,11 @@ public sealed class NativeDllLoader : INativeDllLoader
         }
         catch (Exception ex) when (ex is DllNotFoundException or BadImageFormatException or FileLoadException)
         {
+            if (ex is BadImageFormatException || ex.Message.Contains("0x8007000B", StringComparison.OrdinalIgnoreCase))
+            {
+                return DllLoadResult.ArchitectureMismatch(ex.Message);
+            }
+
             return DllLoadResult.Failed(ex.Message);
         }
     }

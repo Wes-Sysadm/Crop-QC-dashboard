@@ -83,6 +83,28 @@ public sealed class FtaDllPressureReaderTests
         Assert.Contains("Missing dependency: example.dll", status.ErrorMessage);
     }
 
+    [Fact]
+    public async Task Architecture_mismatch_load_error_suggests_x86()
+    {
+        var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
+        var configuration = new StationConfiguration
+        {
+            StationName = "Real DLL Test",
+            FtaMode = FtaMode.RealDll,
+            FtaDllPath = tempFolder,
+            FtaDllFileName = FtaDllPressureReader.DefaultFtaDllFileName
+        };
+        var reader = new FtaDllPressureReader(configuration, new FakeNativeDllLoader(DllLoadResult.ArchitectureMismatch("An attempt was made to load a program with an incorrect format. (0x8007000B)")));
+
+        var status = await reader.InitializeAsync();
+
+        Assert.False(status.IsInitialized);
+        Assert.Contains("32-bit/64-bit mismatch", status.ErrorMessage);
+        Assert.Contains("run the QC Station as x86", status.ErrorMessage);
+        Assert.Contains("Process architecture:", status.StatusMessage);
+        Assert.Contains("OS architecture:", status.StatusMessage);
+    }
+
     private static string CreateTempDllFolder(string ftaDllFileName)
     {
         var tempFolder = Path.Combine(Path.GetTempPath(), $"crop-qc-fta-{Guid.NewGuid():N}");
