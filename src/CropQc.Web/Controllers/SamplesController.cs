@@ -1,11 +1,15 @@
 using CropQc.Web.Models;
 using CropQc.Web.Services;
+using CropQc.Shared.Storage;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CropQc.Web.Controllers;
 
 [Route("[controller]")]
-public sealed class SamplesController(IDashboardDataService dataService) : Controller
+public sealed class SamplesController(
+    IDashboardDataService dataService,
+    FileStorageOptions fileStorageOptions,
+    ILogger<SamplesController> logger) : Controller
 {
     [HttpGet("{id:long}")]
     public async Task<IActionResult> Details(long id, CancellationToken cancellationToken) =>
@@ -36,12 +40,13 @@ public sealed class SamplesController(IDashboardDataService dataService) : Contr
     [HttpPost("{id:long}/Starch/photos")]
     public async Task<IActionResult> AddStarchPhoto(long id, AddPhotoMetadataForm form, CancellationToken cancellationToken)
     {
+        LogPhotoUploadStart("starch", id, form);
         form.QcSampleId = id;
         form.ReceiptId = null;
         var error = IsAllowedPhotoType(form.PhotoType, "FruitAfterStarch", "Other")
             ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
             : "Only after-starch photos can be added from the Starch Input page.";
-        TempData[error is null ? "Success" : "Error"] = error ?? "Photo saved.";
+        TempData[error is null ? "Success" : "Error"] = error ?? "Photo uploaded successfully.";
         return RedirectToAction(nameof(Starch), new { id });
     }
 
@@ -67,15 +72,31 @@ public sealed class SamplesController(IDashboardDataService dataService) : Contr
     [HttpPost("{id:long}/photos")]
     public async Task<IActionResult> AddPhoto(long id, AddPhotoMetadataForm form, CancellationToken cancellationToken)
     {
+        LogPhotoUploadStart("sample", id, form);
         form.QcSampleId = id;
         form.ReceiptId = null;
         var error = IsAllowedPhotoType(form.PhotoType, "SampleBeforeCutting", "CutFruit", "Other")
             ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
             : "Fruit after starch photos must be added from the Starch Input page.";
-        TempData[error is null ? "Success" : "Error"] = error ?? "Photo saved.";
+        TempData[error is null ? "Success" : "Error"] = error ?? "Photo uploaded successfully.";
         return RedirectToAction(nameof(Details), new { id });
     }
 
     private static bool IsAllowedPhotoType(string photoType, params string[] allowedTypes) =>
         allowedTypes.Any(x => string.Equals(x, photoType, StringComparison.OrdinalIgnoreCase));
+
+    private void LogPhotoUploadStart(string scope, long id, AddPhotoMetadataForm form)
+    {
+        var file = form.PhotoFile;
+        logger.LogInformation(
+            "{Scope} photo upload start. Id: {Id}. Uploaded file present: {HasFile}. FileName: {FileName}. ContentType: {ContentType}. Size: {Size}. PhotoType: {PhotoType}. Selected storage provider: {StorageProvider}.",
+            scope,
+            id,
+            file is not null,
+            file?.FileName ?? "(none)",
+            file?.ContentType ?? "(none)",
+            file?.Length ?? 0,
+            form.PhotoType,
+            fileStorageOptions.Provider);
+    }
 }

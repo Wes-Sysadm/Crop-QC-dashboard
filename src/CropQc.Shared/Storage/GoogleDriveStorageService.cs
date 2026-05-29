@@ -2,6 +2,8 @@ using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
 using Google.Apis.Services;
 using Google.Apis.Upload;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using File = Google.Apis.Drive.v3.Data.File;
 
 namespace CropQc.Shared.Storage;
@@ -16,9 +18,13 @@ public interface IGoogleDriveClient
 public sealed record GoogleDriveFolder(string Id, string Name, string? DriveId, string? WebViewLink);
 public sealed record GoogleDriveFile(string Id, string Name, string? DriveId, string? WebViewLink, long? Size);
 
-public sealed class GoogleDriveStorageService(GoogleDriveStorageOptions options, IGoogleDriveClient? client = null) : IFileStorageService
+public sealed class GoogleDriveStorageService(
+    GoogleDriveStorageOptions options,
+    IGoogleDriveClient? client = null,
+    ILogger<GoogleDriveStorageService>? logger = null) : IFileStorageService
 {
     private readonly Lazy<IGoogleDriveClient> client = new(() => client ?? CreateClient(options));
+    private readonly ILogger<GoogleDriveStorageService> logger = logger ?? NullLogger<GoogleDriveStorageService>.Instance;
 
     public string GenerateTargetPath(FileStorageTargetContext context) =>
         string.Join('/',
@@ -36,9 +42,11 @@ public sealed class GoogleDriveStorageService(GoogleDriveStorageOptions options,
         }
 
         var targetPath = NormalizeTargetPath(request.TargetPath);
+        logger.LogInformation("Google Drive storage save started. TargetPath: {TargetPath}. FileName: {FileName}. ContentType: {ContentType}. Size: {Size}.", targetPath, request.FileName, request.ContentType, request.FileSizeBytes ?? 0);
         var folderId = await EnsureFolderPathAsync(targetPath, cancellationToken);
         var fileName = SanitizeFileName(request.FileName);
         var uploaded = await client.Value.UploadFileAsync(folderId, fileName, request.ContentType, request.Content, cancellationToken);
+        logger.LogInformation("Google Drive storage save succeeded. FileId: {FileId}. FolderId: {FolderId}. DriveId: {DriveId}. WebUrlPresent: {WebUrlPresent}.", uploaded.Id, folderId, uploaded.DriveId ?? "(none)", !string.IsNullOrWhiteSpace(uploaded.WebViewLink));
 
         return new FileStorageReference(
             FileStorageProviders.GoogleDrive,
@@ -64,8 +72,15 @@ public sealed class GoogleDriveStorageService(GoogleDriveStorageOptions options,
         var parentId = options.RootFolderId.Trim();
         foreach (var segment in SplitPath(targetPath))
         {
+            logger.LogInformation("Google Drive folder lookup started. ParentFolderId: {ParentFolderId}. FolderName: {FolderName}.", parentId, segment);
             var existing = await client.Value.FindFolderAsync(parentId, segment, cancellationToken);
             var folder = existing ?? await client.Value.CreateFolderAsync(parentId, segment, cancellationToken);
+            logger.LogInformation(
+                "Google Drive folder {FolderAction}. ParentFolderId: {ParentFolderId}. FolderName: {FolderName}. FolderId: {FolderId}.",
+                existing is null ? "created" : "reused",
+                parentId,
+                segment,
+                folder.Id);
             parentId = folder.Id;
         }
 

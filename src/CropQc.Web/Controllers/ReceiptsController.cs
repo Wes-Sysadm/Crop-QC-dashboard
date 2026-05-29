@@ -1,11 +1,16 @@
 using CropQc.Web.Models;
 using CropQc.Web.Services;
+using CropQc.Shared.Storage;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CropQc.Web.Controllers;
 
 [Route("[controller]")]
-public sealed class ReceiptsController(IDashboardDataService dataService, IReceivingExportService exportService) : Controller
+public sealed class ReceiptsController(
+    IDashboardDataService dataService,
+    IReceivingExportService exportService,
+    FileStorageOptions fileStorageOptions,
+    ILogger<ReceiptsController> logger) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index([FromQuery] ReceiptSearchForm search, CancellationToken cancellationToken) =>
@@ -56,15 +61,31 @@ public sealed class ReceiptsController(IDashboardDataService dataService, IRecei
     [HttpPost("{id:long}/photos")]
     public async Task<IActionResult> AddPhoto(long id, AddPhotoMetadataForm form, CancellationToken cancellationToken)
     {
+        LogPhotoUploadStart("receipt", id, form);
         form.ReceiptId = id;
         form.QcSampleId = null;
         var error = IsAllowedPhotoType(form.PhotoType, "BinTruck", "Other")
             ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
             : "Only bin/truck photos can be added from the receipt detail page.";
-        TempData[error is null ? "Success" : "Error"] = error ?? "Photo saved.";
+        TempData[error is null ? "Success" : "Error"] = error ?? "Photo uploaded successfully.";
         return RedirectToAction(nameof(Details), new { id });
     }
 
     private static bool IsAllowedPhotoType(string photoType, params string[] allowedTypes) =>
         allowedTypes.Any(x => string.Equals(x, photoType, StringComparison.OrdinalIgnoreCase));
+
+    private void LogPhotoUploadStart(string scope, long id, AddPhotoMetadataForm form)
+    {
+        var file = form.PhotoFile;
+        logger.LogInformation(
+            "{Scope} photo upload start. Id: {Id}. Uploaded file present: {HasFile}. FileName: {FileName}. ContentType: {ContentType}. Size: {Size}. PhotoType: {PhotoType}. Selected storage provider: {StorageProvider}.",
+            scope,
+            id,
+            file is not null,
+            file?.FileName ?? "(none)",
+            file?.ContentType ?? "(none)",
+            file?.Length ?? 0,
+            form.PhotoType,
+            fileStorageOptions.Provider);
+    }
 }

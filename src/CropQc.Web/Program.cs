@@ -144,7 +144,8 @@ builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
 builder.Services.AddSingleton(CreateGoogleDriveStorageOptions(builder.Configuration));
 builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorageService(
     services.GetRequiredService<FileStorageOptions>(),
-    services.GetRequiredService<GoogleDriveStorageOptions>()));
+    services.GetRequiredService<GoogleDriveStorageOptions>(),
+    services.GetRequiredService<ILogger<GoogleDriveStorageService>>()));
 
 var app = builder.Build();
 var isRender = !string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_HOSTNAME"])
@@ -260,11 +261,14 @@ static GoogleDriveStorageOptions CreateGoogleDriveStorageOptions(IConfiguration 
         BaseFolderName = configuration["GoogleDrive:BaseFolderName"] ?? "Photos"
     };
 
-static IFileStorageService CreateFileStorageService(FileStorageOptions fileStorageOptions, GoogleDriveStorageOptions googleDriveOptions)
+static IFileStorageService CreateFileStorageService(
+    FileStorageOptions fileStorageOptions,
+    GoogleDriveStorageOptions googleDriveOptions,
+    ILogger<GoogleDriveStorageService> googleDriveLogger)
 {
     if (string.Equals(fileStorageOptions.Provider, FileStorageProviders.GoogleDrive, StringComparison.OrdinalIgnoreCase))
     {
-        return new GoogleDriveStorageService(googleDriveOptions);
+        return new GoogleDriveStorageService(googleDriveOptions, logger: googleDriveLogger);
     }
 
     return new LocalFileStorageService(fileStorageOptions);
