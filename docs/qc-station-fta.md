@@ -333,6 +333,29 @@ The WinForms harness exposes the same hardware commands as buttons, plus status/
 
 The WinForms harness also includes a local-only 25-fruit pressure grid. It tracks fruit number, Pressure 1, Pressure 2, average pressure, current target, last captured reading, capture target, local row status, and reading history. Continuous Manual Capture is the primary workflow: the operator starts it once, then runs each physical FTA test with the green button while the harness captures readings and advances through P1/P2 for each fruit. This prepares the operator flow for mapping readings into QC sample rows later, but it does not write to Azure SQL or update the web QC workflow yet.
 
+## Dashboard API Pressure Save
+
+The WinForms harness can connect to the MVP 1 API and save FTA pressure readings back to a selected QC sample. This is online-only for now; offline sync remains future work.
+
+Run the API and WinForms station together:
+
+1. Start the API project with the local development script or `dotnet run --project .\src\CropQc.Api\CropQc.Api.csproj`.
+2. Confirm the WinForms `ApiBaseUrl` matches the API URL, such as `https://localhost:7001`.
+3. Run the WinForms x86 harness:
+
+   ```powershell
+   .\scripts\dev-run-qcstation-winforms-x86.ps1
+   ```
+
+4. In Dashboard Sample Selection, enter the warehouse filter if desired, then select `Refresh Today's Samples`.
+5. Select a sample and click `Select Sample`.
+6. Confirm the sample context, existing pressure readings, and current target.
+7. Use `Start Continuous Manual Capture`, then press and hold the green FTA button for each physical test.
+8. Click `Save Pressures to Dashboard`.
+9. Refresh the web dashboard sample page to see the saved pressure readings.
+
+The QC Station pressure save endpoint is pressure-only. It updates `Pressure1Lbs`, `Pressure1Source`, `Pressure2Lbs`, and `Pressure2Source`; it does not overwrite weight, grade, starch, defects, photos, or receipt data. `Auto-save after each completed fruit` can save after Pressure 2 is captured, but it is unchecked by default.
+
 ## Hardware Testing Still Required
 
 Real hardware testing must happen on the QC computer connected to the GUSS/FTA.
