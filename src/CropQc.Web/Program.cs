@@ -124,6 +124,27 @@ app.MapGet("/health/db", async (CropQcDbContext dbContext, CancellationToken can
         return Results.Problem($"Database health check failed: {ex.Message}", statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 }).AllowAnonymous();
+app.MapGet("/health/master-data", async (CropQcDbContext dbContext, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        return Results.Ok(new
+        {
+            warehouses = await dbContext.Warehouses.CountAsync(cancellationToken),
+            rooms = await dbContext.Rooms.CountAsync(cancellationToken),
+            fruitProfiles = await dbContext.FruitProfiles.CountAsync(cancellationToken),
+            grades = await dbContext.Grades.CountAsync(cancellationToken),
+            defects = await dbContext.DefectTypes.CountAsync(cancellationToken),
+            sampleTypes = await dbContext.SampleTypes.CountAsync(cancellationToken),
+            starchValues = await dbContext.StarchScaleValues.CountAsync(cancellationToken),
+            sizeThresholds = await dbContext.FruitSizeConversionThresholds.CountAsync(cancellationToken)
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Master data health check failed: {ex.Message}", statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+}).AllowAnonymous();
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
