@@ -27,7 +27,14 @@ public sealed class AuthController(GoogleAuthenticationOptions googleOptions) : 
             return RedirectToAction(nameof(Login), new { error = "Google OAuth is not configured for this environment." });
         }
 
-        return Challenge(new AuthenticationProperties { RedirectUri = "/" }, "Google");
+        return Challenge(
+            new AuthenticationProperties
+            {
+                RedirectUri = "/",
+                IsPersistent = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddDays(googleOptions.SessionDays)
+            },
+            "Google");
     }
 
     [HttpPost("/Logout")]

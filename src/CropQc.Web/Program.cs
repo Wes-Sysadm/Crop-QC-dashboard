@@ -2,6 +2,7 @@ using CropQc.Data;
 using CropQc.Shared.Storage;
 using CropQc.Web.Auth;
 using CropQc.Web.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -26,9 +27,36 @@ var authenticationBuilder = builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
+        var sessionLifetime = TimeSpan.FromDays(googleAuthOptions.SessionDays);
         options.LoginPath = "/Login";
         options.LogoutPath = "/Logout";
         options.AccessDeniedPath = "/AccessDenied";
+        options.ExpireTimeSpan = sessionLifetime;
+        options.SlidingExpiration = true;
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+            ? CookieSecurePolicy.SameAsRequest
+            : CookieSecurePolicy.Always;
+        options.Events.OnValidatePrincipal = async context =>
+        {
+            var email = context.Principal?.FindFirstValue(ClaimTypes.Email);
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                context.RejectPrincipal();
+                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                return;
+            }
+
+            var dbContext = context.HttpContext.RequestServices.GetRequiredService<CropQcDbContext>();
+            var isActive = await dbContext.Users.AsNoTracking()
+                .AnyAsync(x => x.Email == email && x.IsActive, context.HttpContext.RequestAborted);
+            if (!isActive)
+            {
+                context.RejectPrincipal();
+                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            }
+        };
     });
 if (googleAuthOptions.IsGoogleConfigured)
 {
@@ -39,6 +67,7 @@ if (googleAuthOptions.IsGoogleConfigured)
         options.CallbackPath = "/signin-google";
         options.Events.OnCreatingTicket = async context =>
         {
+            var sessionLifetime = TimeSpan.FromDays(googleAuthOptions.SessionDays);
             var configuredOptions = context.HttpContext.RequestServices.GetRequiredService<GoogleAuthenticationOptions>();
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("GoogleAuth");
             var provisioner = context.HttpContext.RequestServices.GetRequiredService<IGoogleUserProvisioningService>();
@@ -73,6 +102,9 @@ if (googleAuthOptions.IsGoogleConfigured)
                     identity.AddClaim(new Claim(ClaimTypes.Role, role));
                 }
             }
+
+            context.Properties.IsPersistent = true;
+            context.Properties.ExpiresUtc = DateTimeOffset.UtcNow.Add(sessionLifetime);
         };
         options.Events.OnRemoteFailure = context =>
         {

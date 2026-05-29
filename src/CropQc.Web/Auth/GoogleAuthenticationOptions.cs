@@ -4,6 +4,7 @@ public sealed class GoogleAuthenticationOptions
 {
     public string? ClientId { get; init; }
     public string? ClientSecret { get; init; }
+    public int SessionDays { get; init; } = 7;
     public IReadOnlySet<string> AllowedDomains { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     public IReadOnlySet<string> BootstrapAdminEmails { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     public bool IsGoogleConfigured => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret);
@@ -24,9 +25,16 @@ public sealed class GoogleAuthenticationOptions
         {
             ClientId = configuration["Authentication:Google:ClientId"],
             ClientSecret = configuration["Authentication:Google:ClientSecret"],
+            SessionDays = ReadSessionDays(configuration),
             AllowedDomains = allowedDomains,
             BootstrapAdminEmails = bootstrapAdminEmails
         };
+    }
+
+    private static int ReadSessionDays(IConfiguration configuration)
+    {
+        var configuredDays = configuration.GetValue<int?>("Authentication:SessionDays");
+        return configuredDays is > 0 ? configuredDays.Value : 7;
     }
 
     public bool IsBootstrapAdminEmail(string? email) =>

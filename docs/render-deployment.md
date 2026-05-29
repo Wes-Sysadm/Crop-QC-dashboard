@@ -62,6 +62,7 @@ Set these variables in Render:
 - `Database__SeedMasterDataOnStartup=false`
 - `Authentication__AllowedGoogleDomains=wp-packing.com,earlbrownandsons.com,fruitandland.com`
 - `Authentication__BootstrapAdminEmails=wes@fruitandland.com`
+- `Authentication__SessionDays=7`
 - `Authentication__Google__ClientId=[Google OAuth web client ID]`
 - `Authentication__Google__ClientSecret=[Google OAuth client secret]`
 - `FileStorage__Provider=Local`
@@ -72,6 +73,8 @@ Set these variables in Render:
 Do not commit database passwords, Google credentials, Gmail credentials, or API secrets.
 
 Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
+
+Successful Google login creates a persistent local dashboard session for `Authentication__SessionDays`, which defaults to 7 days. Users stay signed in for one week unless they click Logout, their account is deactivated, or authentication fails. Logout immediately clears the local auth cookie.
 
 `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` and the app's forwarded-header middleware let ASP.NET Core honor Render's `X-Forwarded-Proto=https` header. This is required so Google OAuth generates `https://crop-qc-dashboard.onrender.com/signin-google` instead of an internal `http://` callback URL.
 
@@ -89,7 +92,7 @@ Admin-only dashboard pages:
 - `/Admin/Users` manages user accounts, active status, and roles after Google login creates identity records.
 - `/MasterData` shows edit/add/deactivate controls only for Admin users.
 - `/Admin/Configuration` manages safe non-secret runtime configuration values. Do not store OAuth secrets, database connection strings, Gmail secrets, Google Drive secrets, or API keys there.
-- `/Admin/Downloads` provides whitelisted internal support-file downloads, such as the FTA DLL installer, to Admin users only.
+- `/Admin/Downloads` provides approved internal support-file links, such as the FTA DLL installer Google Drive file, to Admin users only.
 
 Master Data editing notes:
 
@@ -109,6 +112,7 @@ The current download entry is:
 - File: `FTADLL.exe`
 - Purpose: installer/runtime files needed for GUSS FTA DLL integration on QC Station computers.
 - Link: `https://drive.google.com/file/d/1iYy1v1-D8T-S4SgfHJOeuwoeJfsbcvoS/view?usp=drive_link`
+- Button text: `Open Google Drive Download`
 
 The installer binary is not committed to the repository or deployed into Render. Google Drive sharing permissions are managed in Google Drive and should be limited to company users when possible.
 
