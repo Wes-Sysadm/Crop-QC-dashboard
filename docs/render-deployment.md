@@ -1,6 +1,6 @@
 # Render Deployment
 
-This document describes the first Render staging deployment path for the MVP 1 Receiving/QC web dashboard. It does not implement Google Drive upload, Gmail sending, storage inventory, Mexico qualification, packout imports, pool closing imports, or analytics.
+This document describes the first Render staging deployment path for the MVP 1 Receiving/QC web dashboard. It includes Google Drive photo upload configuration. It does not implement Gmail sending, storage inventory, Mexico qualification, packout imports, pool closing imports, or analytics.
 
 ## Target Services
 
@@ -31,6 +31,7 @@ Create a new Render Blueprint from the repository. The included `render.yaml` de
 - Health check path: `/health`.
 - Render Postgres database name: `crop-qc-dashboard-db`.
 - `ConnectionStrings__CropQc` wired from the Render Postgres connection string.
+- `FileStorage__Provider=GoogleDrive` with the provided QC files root folder ID.
 
 The Render Blueprint syntax uses `fromDatabase` with `property: connectionString` for database connection string injection, matching Render's Blueprint environment variable reference pattern.
 
@@ -71,9 +72,13 @@ Set these variables in Render:
 - `DataProtection__PersistKeysToFileSystem=true`
 - `DataProtection__KeysPath=/var/data/dataprotection-keys`
 - `DataProtection__ApplicationName=CropQcDashboard`
-- `FileStorage__Provider=Local`
+- `FileStorage__Provider=GoogleDrive`
 - `FileStorage__LocalRootPath=/var/data/cropqc-files`
 - `FileStorage__BasePath=Crop QC Photos`
+- `GoogleDrive__RootFolderId=1pcVsEpDVdYpDrTphXwsLkhuA8D-FH79I`
+- `GoogleDrive__ServiceAccountJson=[Google service account JSON]`
+- `GoogleDrive__ApplicationName=Crop QC Dashboard`
+- `GoogleDrive__BaseFolderName=Photos`
 - `Email__Provider=None`
 
 Do not commit database passwords, Google credentials, Gmail credentials, or API secrets.
@@ -108,7 +113,34 @@ Master Data editing notes:
 - Commodity is editable. Apple and Pear are seeded, and Admins can type additional commodities such as Cherry, Peach, Nectarine, or Apricot.
 - Rooms are tied to warehouses. Room code uniqueness is per warehouse, and the Rooms page shows warehouse code/name with every room.
 
-`FileStorage__Provider=Local` is a placeholder for now. Render ephemeral disk should not be treated as durable photo storage unless a persistent disk is explicitly configured. The intended durable file provider is Google Shared Drive in a later PR.
+`FileStorage__Provider=GoogleDrive` enables photo uploads to the configured Google Drive root folder. Keep `FileStorage__Provider=Local` only for local development or temporary staging diagnostics. Render ephemeral disk should not be treated as durable photo storage unless a persistent disk is explicitly configured.
+
+## Google Drive Photo Storage
+
+The configured Google Drive root folder is:
+
+```text
+1pcVsEpDVdYpDrTphXwsLkhuA8D-FH79I
+```
+
+The app creates or reuses this folder structure below that root:
+
+```text
+Photos/{CropYear}/{Warehouse}/Receipt-{ReceiptId}/{PhotoType}/
+```
+
+Setup steps:
+
+1. Enable the Google Drive API in the Google Cloud project.
+2. Create a service account for the Crop QC Dashboard.
+3. Add the service account email to the provided Google Drive root folder.
+4. Grant Editor or Content Manager equivalent access.
+5. Set `FileStorage__Provider=GoogleDrive`.
+6. Set `GoogleDrive__RootFolderId=1pcVsEpDVdYpDrTphXwsLkhuA8D-FH79I`.
+7. Set `GoogleDrive__ServiceAccountJson` to the full service account JSON. Do not commit this JSON.
+8. Sign in as Admin and check `/health/storage`. The endpoint shows provider, root-folder configuration, and credential configuration without exposing secrets.
+
+If upload fails, check the service account folder access, Drive API status, root folder ID, and service account JSON validity.
 
 ## Retention And Backups
 

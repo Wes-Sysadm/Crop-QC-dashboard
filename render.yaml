@@ -40,11 +40,19 @@ services:
       - key: DataProtection__ApplicationName
         value: CropQcDashboard
       - key: FileStorage__Provider
-        value: Local
+        value: GoogleDrive
       - key: FileStorage__LocalRootPath
         value: /var/data/cropqc-files
       - key: FileStorage__BasePath
         value: Crop QC Photos
+      - key: GoogleDrive__RootFolderId
+        value: 1pcVsEpDVdYpDrTphXwsLkhuA8D-FH79I
+      - key: GoogleDrive__ServiceAccountJson
+        sync: false
+      - key: GoogleDrive__ApplicationName
+        value: Crop QC Dashboard
+      - key: GoogleDrive__BaseFolderName
+        value: Photos
       - key: Email__Provider
         value: None
 

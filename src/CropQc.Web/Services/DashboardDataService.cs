@@ -1,7 +1,9 @@
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Storage;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace CropQc.Web.Services;
 
@@ -23,7 +25,7 @@ public interface IDashboardDataService
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, CancellationToken cancellationToken);
 }
 
-public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboardDataService
+public sealed class DashboardDataService(CropQcDbContext dbContext, IFileStorageService fileStorageService, IHttpContextAccessor httpContextAccessor) : IDashboardDataService
 {
     private const string DataWarning = "Database is not available yet. The dashboard shell is running with empty data.";
 
@@ -558,23 +560,49 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
             return "Photo metadata must attach to either a receipt or a QC sample.";
         }
 
-        if (string.IsNullOrWhiteSpace(form.PhotoType) || string.IsNullOrWhiteSpace(form.PhotoSource) || string.IsNullOrWhiteSpace(form.FileName) || string.IsNullOrWhiteSpace(form.ContentType) || string.IsNullOrWhiteSpace(form.SharePointDriveId) || string.IsNullOrWhiteSpace(form.SharePointItemId))
+        if (string.IsNullOrWhiteSpace(form.PhotoType) || string.IsNullOrWhiteSpace(form.PhotoSource))
         {
-            return "Photo type, source, file name, content type, target folder, and file reference are required.";
+            return "Photo type and source are required.";
         }
 
-        if (form.ReceiptId is not null && !await dbContext.Receipts.AnyAsync(x => x.Id == form.ReceiptId, cancellationToken))
+        var receipt = form.ReceiptId is null
+            ? null
+            : await dbContext.Receipts
+                .Include(x => x.Warehouse)
+                .SingleOrDefaultAsync(x => x.Id == form.ReceiptId, cancellationToken);
+        if (form.ReceiptId is not null && receipt is null)
         {
             return "Receipt not found.";
         }
 
         var sample = form.QcSampleId is null
             ? null
-            : await dbContext.QcSamples.Include(x => x.Receipt).SingleOrDefaultAsync(x => x.Id == form.QcSampleId, cancellationToken);
+            : await dbContext.QcSamples
+                .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
+                .SingleOrDefaultAsync(x => x.Id == form.QcSampleId, cancellationToken);
         if (form.QcSampleId is not null && sample is null)
         {
             return "QC sample not found.";
         }
+
+        receipt ??= sample?.Receipt;
+        if (receipt is null)
+        {
+            return "Receipt context is required for photo storage.";
+        }
+
+        var capturedAt = DateTimeOffset.UtcNow;
+        FileStorageReference reference;
+        try
+        {
+            reference = await SavePhotoFileOrPlaceholderAsync(form, receipt, capturedAt, cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
+
+        var capturedByUserId = await GetCurrentUserIdAsync(cancellationToken);
 
         dbContext.QcPhotos.Add(new QcPhoto
         {
@@ -582,13 +610,19 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
             QcSampleId = form.QcSampleId,
             PhotoType = form.PhotoType.Trim(),
             PhotoSource = form.PhotoSource.Trim(),
-            FileName = form.FileName.Trim(),
-            ContentType = form.ContentType.Trim(),
-            FileSizeBytes = form.FileSizeBytes,
-            SharePointDriveId = form.SharePointDriveId.Trim(),
-            SharePointItemId = form.SharePointItemId.Trim(),
-            WebUrl = string.IsNullOrWhiteSpace(form.WebUrl) ? null : form.WebUrl.Trim(),
-            CapturedAt = DateTimeOffset.UtcNow
+            FileName = reference.FileName,
+            ContentType = reference.ContentType,
+            FileSizeBytes = reference.FileSizeBytes,
+            StorageProvider = reference.StorageProvider,
+            DriveId = reference.DriveId,
+            FileId = reference.FileId,
+            FolderId = reference.FolderId,
+            SharePointDriveId = reference.DriveId ?? reference.FolderId ?? reference.TargetPath,
+            SharePointItemId = reference.FileId ?? reference.StorageKey,
+            WebUrl = reference.WebUrl,
+            CapturedByUserId = capturedByUserId,
+            CapturedAt = capturedAt,
+            UploadedAt = form.PhotoFile is null ? null : capturedAt
         });
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -813,6 +847,74 @@ public sealed class DashboardDataService(CropQcDbContext dbContext) : IDashboard
             .OrderBy(x => x.Key)
             .Select(x => new PhotoGroupViewModel(x.Key, x.Select(photo => new PhotoMetadataViewModel(photo.PhotoType, photo.PhotoSource, photo.FileName, photo.ContentType, photo.FileSizeBytes, photo.WebUrl, photo.CapturedAt)).ToList()))
             .ToList();
+
+    private async Task<FileStorageReference> SavePhotoFileOrPlaceholderAsync(AddPhotoMetadataForm form, Receipt receipt, DateTimeOffset capturedAt, CancellationToken cancellationToken)
+    {
+        var context = new FileStorageTargetContext(
+            receipt.CropYear,
+            receipt.Warehouse.Code,
+            receipt.CompuTechReceiptId,
+            form.PhotoType.Trim(),
+            capturedAt);
+        var targetPath = fileStorageService.GenerateTargetPath(context);
+
+        if (form.PhotoFile is null)
+        {
+            if (string.Equals(form.PhotoSource, "Upload File", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Select a photo file to upload.");
+            }
+
+            var placeholderName = GeneratePhotoFileName(receipt.CompuTechReceiptId, form.PhotoType, capturedAt, ".jpg");
+            return new FileStorageReference(
+                FileStorageProviders.Placeholder,
+                $"{targetPath}/{placeholderName}",
+                targetPath,
+                placeholderName,
+                string.IsNullOrWhiteSpace(form.ContentType) ? "image/jpeg" : form.ContentType.Trim(),
+                form.FileSizeBytes ?? 0,
+                FolderId: targetPath,
+                WebUrl: $"{targetPath}/{placeholderName}");
+        }
+
+        var extension = Path.GetExtension(form.PhotoFile.FileName);
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            extension = ".jpg";
+        }
+
+        var fileName = GeneratePhotoFileName(receipt.CompuTechReceiptId, form.PhotoType, capturedAt, extension);
+        await using var stream = form.PhotoFile.OpenReadStream();
+        return await fileStorageService.SaveAsync(new FileStorageSaveRequest(
+            stream,
+            targetPath,
+            fileName,
+            string.IsNullOrWhiteSpace(form.PhotoFile.ContentType) ? "application/octet-stream" : form.PhotoFile.ContentType,
+            form.PhotoFile.Length), cancellationToken);
+    }
+
+    private async Task<int?> GetCurrentUserIdAsync(CancellationToken cancellationToken)
+    {
+        var email = httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.Email);
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return null;
+        }
+
+        return await dbContext.Users.AsNoTracking()
+            .Where(x => x.Email == email)
+            .Select(x => (int?)x.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    private static string GeneratePhotoFileName(string receiptId, string photoType, DateTimeOffset capturedAt, string extension) =>
+        $"{SanitizeFileName(receiptId)}_{SanitizeFileName(photoType)}_{capturedAt:yyyy-MM-dd_HHmmss}{extension}";
+
+    private static string SanitizeFileName(string value)
+    {
+        var invalidChars = Path.GetInvalidFileNameChars();
+        return string.Concat(value.Select(ch => invalidChars.Contains(ch) || char.IsWhiteSpace(ch) ? '_' : ch));
+    }
 
     private static decimal? Average(decimal? first, decimal? second) =>
         first is null || second is null ? null : decimal.Round((first.Value + second.Value) / 2m, 2);

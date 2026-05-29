@@ -6,7 +6,7 @@
         : Model.DefaultPhotoType;
 }
 
-<form class="panel form-grid photo-workflow" method="post" action="@Model.FormAction" id="@instanceId"
+<form class="panel form-grid photo-workflow" method="post" action="@Model.FormAction" id="@instanceId" enctype="multipart/form-data"
       data-crop-year="@Model.CropYear"
       data-warehouse="@Model.Warehouse"
       data-receipt-id="@Model.ReceiptId">
@@ -29,12 +29,12 @@
     <input type="hidden" name="FileName" class="photo-file-name" required />
     <input type="hidden" name="ContentType" class="photo-content-type" required />
     <input type="hidden" name="FileSizeBytes" class="photo-file-size" />
-    <input type="hidden" name="SharePointDriveId" class="photo-drive-id" required />
-    <input type="hidden" name="SharePointItemId" class="photo-item-id" required />
+    <input type="hidden" name="SharePointDriveId" class="photo-drive-id" />
+    <input type="hidden" name="SharePointItemId" class="photo-item-id" />
     <input type="hidden" name="WebUrl" class="photo-web-url" />
 
     <div class="source-panel upload-panel wide">
-        <input type="file" accept="image/*" class="photo-file-input" hidden />
+        <input type="file" accept="image/*" class="photo-file-input" name="PhotoFile" hidden />
         <button type="button" class="upload-zone">
             <span>Drop photo here or click to browse</span>
         </button>
@@ -59,8 +59,8 @@
         <div><strong>Content type:</strong> <span class="selected-content-type">image/jpeg</span></div>
     </div>
 
-    <p class="muted wide">This saves photo metadata only. Real SharePoint upload and USB camera capture will be connected later.</p>
-    <button type="submit">Add Photo Metadata</button>
+    <p class="muted wide">Upload File saves the photo through the configured storage provider and stores metadata only in the database. USB camera capture remains a placeholder until the QC Station camera workflow is connected.</p>
+    <button type="submit">Save Photo</button>
 </form>
 
 <script>
@@ -112,7 +112,7 @@
             const type = clean(photoType.value);
             const receiptId = clean(form.dataset.receiptId);
             const extension = file?.name?.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : ".jpg";
-            const folder = `CropQc/${form.dataset.cropYear}/${clean(form.dataset.warehouse)}/Receipt-${receiptId}/${type}/`;
+            const folder = `Photos/${form.dataset.cropYear}/${clean(form.dataset.warehouse)}/Receipt-${receiptId}/${type}/`;
             const generated = `${receiptId}_${type}_${datePart}_${timePart}${extension}`;
 
             fileNameInput.value = file?.name || generated;

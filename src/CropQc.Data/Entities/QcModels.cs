@@ -97,12 +97,17 @@ public sealed class QcPhoto
     public required string FileName { get; set; }
     public required string ContentType { get; set; }
     public long? FileSizeBytes { get; set; }
+    public string StorageProvider { get; set; } = "Legacy";
+    public string? DriveId { get; set; }
+    public string? FileId { get; set; }
+    public string? FolderId { get; set; }
     public required string SharePointDriveId { get; set; }
     public required string SharePointItemId { get; set; }
     public string? WebUrl { get; set; }
     public int? CapturedByUserId { get; set; }
     public User? CapturedByUser { get; set; }
     public DateTimeOffset CapturedAt { get; set; }
+    public DateTimeOffset? UploadedAt { get; set; }
 }
 
 public sealed class QcSummaryEmailLog

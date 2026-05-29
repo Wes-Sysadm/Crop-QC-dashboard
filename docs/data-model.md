@@ -73,7 +73,7 @@ Seeded password policy:
 - `QcSamples` stores receiving samples for a receipt, sample type, workflow statuses, user/station capture metadata, actual sample size, sequence number, and notes. Duplicate samples for the same Compu-Tech receipt use `SampleSequenceNumber`; display formatting is `12345`, `12345(2)`, `12345(3)`, etc.
 - `QcFruitReadings` stores up to 25 displayed fruit rows per sample. The actual sample size may be fewer than 25.
 - `QcFruitDefects` allows multiple defects per fruit reading.
-- `QcPhotos` stores photo metadata and external file references only. Photo binaries are not stored in the database. A photo attaches to either a receipt or a QC sample.
+- `QcPhotos` stores photo metadata and external file references only. Photo binaries are not stored in the database. A photo attaches to either a receipt or a QC sample. Google Drive uploads populate `StorageProvider`, `DriveId`, `FileId`, `FolderId`, `WebUrl`, `UploadedAt`, and the legacy SharePoint-named reference fields for compatibility.
 - `QcSummaryEmailLogs` stores send/resend history. Each send or resend creates a separate row and may optionally reference a QC sample.
 - `QcStations` stores Windows QC Station registration metadata.
 - `OfflineSyncItems` is a placeholder for later offline QC Station sync tracking.
