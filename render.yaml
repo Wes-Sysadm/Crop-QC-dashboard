@@ -9,6 +9,8 @@ services:
         value: Production
       - key: DATABASE_PROVIDER
         value: PostgreSql
+      - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+        value: true
       - key: ConnectionStrings__CropQc
         fromDatabase:
           name: crop-qc-dashboard-db
@@ -18,7 +20,7 @@ services:
       - key: Database__SeedMasterDataOnStartup
         value: false
       - key: Authentication__AllowedGoogleDomains
-        value: wp-packing.com,earlbrownandsons.com
+        value: wp-packing.com,earlbrownandsons.com,fruitandland.com
       - key: Authentication__Google__ClientId
         sync: false
       - key: Authentication__Google__ClientSecret
