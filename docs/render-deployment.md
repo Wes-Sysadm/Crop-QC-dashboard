@@ -55,11 +55,12 @@ Render provides `PORT`; the fallback `8080` is for local Docker testing.
 Set these variables in Render:
 
 - `ASPNETCORE_ENVIRONMENT=Production`
+- `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true`
 - `DATABASE_PROVIDER=PostgreSql`
 - `ConnectionStrings__CropQc=[Render internal Postgres connection string]`
 - `Database__EnsureCreatedOnStartup=false`
 - `Database__SeedMasterDataOnStartup=false`
-- `Authentication__AllowedGoogleDomains=wp-packing.com,earlbrownandsons.com`
+- `Authentication__AllowedGoogleDomains=wp-packing.com,earlbrownandsons.com,fruitandland.com`
 - `Authentication__Google__ClientId=[Google OAuth web client ID]`
 - `Authentication__Google__ClientSecret=[Google OAuth client secret]`
 - `FileStorage__Provider=Local`
@@ -69,7 +70,9 @@ Set these variables in Render:
 
 Do not commit database passwords, Google credentials, Gmail credentials, or API secrets.
 
-Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com` and `earlbrownandsons.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
+Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
+
+`ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` and the app's forwarded-header middleware let ASP.NET Core honor Render's `X-Forwarded-Proto=https` header. This is required so Google OAuth generates `https://crop-qc-dashboard.onrender.com/signin-google` instead of an internal `http://` callback URL.
 
 `FileStorage__Provider=Local` is a placeholder for now. Render ephemeral disk should not be treated as durable photo storage unless a persistent disk is explicitly configured. The intended durable file provider is Google Shared Drive in a later PR.
 
@@ -162,6 +165,8 @@ Configure the authorized redirect URI for the Render service:
 ```text
 https://[render-host]/signin-google
 ```
+
+Do not add an `http://` redirect URI in Google. If Google shows a `redirect_uri_mismatch` with `http://crop-qc-dashboard.onrender.com/signin-google`, confirm `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` is set in Render and redeploy the service.
 
 Set the OAuth client ID and secret in Render environment variables. Do not store them in appsettings files or source control.
 

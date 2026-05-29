@@ -4,6 +4,7 @@ using CropQc.Web.Auth;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
@@ -13,6 +14,12 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 builder.Services.AddControllersWithViews();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 var googleAuthOptions = GoogleAuthenticationOptions.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(googleAuthOptions);
 var authenticationBuilder = builder.Services
@@ -79,6 +86,7 @@ builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 var app = builder.Build();
 var isRender = !string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_HOSTNAME"])
     || !string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_URL"]);
+var useForwardedHeaders = isRender || app.Configuration.GetValue<bool>("ASPNETCORE_FORWARDEDHEADERS_ENABLED");
 
 if (app.Configuration.GetValue<bool>("Database:EnsureCreatedOnStartup"))
 {
@@ -92,6 +100,11 @@ if (app.Configuration.GetValue<bool>("Database:SeedMasterDataOnStartup"))
     using var scope = app.Services.CreateScope();
     var seeder = scope.ServiceProvider.GetRequiredService<IMasterDataSeeder>();
     await seeder.SeedAsync(CancellationToken.None);
+}
+
+if (useForwardedHeaders)
+{
+    app.UseForwardedHeaders();
 }
 
 if (!app.Environment.IsDevelopment())
