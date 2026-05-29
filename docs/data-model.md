@@ -47,6 +47,14 @@ Seeded password policy:
 - Require symbol: true.
 - Password expiration days: 365.
 
+## Retention Policy
+
+- Database data is retained indefinitely by default.
+- No automatic deletion is enabled for receipts, QC samples, fruit readings, QC fruit defects, photo metadata, audit logs, QC summary email logs, users, roles, warehouses, rooms, varieties, grades, defects, starch scales, size thresholds, or other master data.
+- Photos and attachments are retained for at least 3 crop years after the current crop year.
+- `PhotoRetentionCropYearsAfterCurrent` defaults to `3`, but it is a planning value only. No automatic photo deletion currently runs.
+- Admin-reviewed archive/delete workflow is future work and must be built before any purge behavior is enabled.
+
 ## Master Data
 
 - `Warehouses` stores EBS, DH, McDougall, and WP.

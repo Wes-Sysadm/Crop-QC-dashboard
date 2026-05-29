@@ -110,6 +110,16 @@ Master Data editing notes:
 
 `FileStorage__Provider=Local` is a placeholder for now. Render ephemeral disk should not be treated as durable photo storage unless a persistent disk is explicitly configured. The intended durable file provider is Google Shared Drive in a later PR.
 
+## Retention And Backups
+
+Database records are retained indefinitely by default. The app does not automatically purge receipts, samples, fruit readings, defects, audit logs, email logs, users, roles, rooms, varieties, or master data.
+
+Photos and attachments must be retained for at least 3 crop years after the current crop year. The Admin Configuration value `PhotoRetentionCropYearsAfterCurrent` defaults to `3`, but it is a planning value only. No automatic photo deletion currently runs, and an Admin-reviewed archive/delete workflow is future work.
+
+Render Postgres backups are operational backups, not a substitute for the Crop QC retention policy. Before production use, configure and document separate database backup/export procedures that meet company retention needs.
+
+The eventual photo storage provider must support at least 3 crop years of retention after the current crop year. For staging, local placeholder storage is not durable unless backed by a Render persistent disk.
+
 ## Admin Downloads
 
 `/Admin/Downloads` is protected by the Admin policy and links only to approved internal support files. It does not proxy downloads through the web app, expose arbitrary file paths, allow uploads, commit installer binaries, or store installer files in the Render container.

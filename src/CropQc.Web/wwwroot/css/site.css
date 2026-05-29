@@ -49,6 +49,9 @@ tr:last-child td { border-bottom: 0; }
 .detail-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 8px 18px; }
 .panel { background: white; border: 1px solid #d9e1e8; border-radius: 6px; padding: 16px; }
 .panel h3 { margin: 0 0 12px; font-size: 17px; }
+.summary-list { display: grid; grid-template-columns: 180px 1fr; gap: 8px 18px; margin: 0; }
+.summary-list dt { font-weight: 800; color: #2f4050; }
+.summary-list dd { margin: 0; color: #334; }
 .login-panel { max-width: 520px; margin: 48px auto; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 12px; margin-top: 14px; }
 .form-grid h2, .form-grid h3, .form-grid button, .form-grid .wide { grid-column: 1 / -1; }

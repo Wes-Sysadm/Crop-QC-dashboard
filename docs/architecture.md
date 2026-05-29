@@ -25,6 +25,14 @@ The database stores structured data, including receipts, samples, fruit rows, me
 
 Photos and attachments will be stored in Google Shared Drive. The database should store metadata and stable references only, not binary photo content. The application has a file storage service boundary with a local provider for development and a planned Google Drive provider.
 
+## Retention Boundary
+
+Database records are retained indefinitely by default. There is no automatic deletion or purge of receipts, samples, fruit readings, fruit defects, photo metadata, audit logs, email logs, users, roles, rooms, varieties, or other master data.
+
+Photos and attachments must be retained for at least 3 crop years after the current crop year. The current `PhotoRetentionCropYearsAfterCurrent` configuration value is a planning value only; no automatic photo deletion currently runs.
+
+Admin-reviewed archive/delete workflows are future work. Until that workflow exists, retention actions must not run automatically.
+
 ## Email Boundary
 
 Gmail API or Google Workspace SMTP relay will be used later for QC Summary email. MVP 1 documentation reserves `HL@fruitandland.com` as the sender and `QC@fruitandland.com` as the QC Summary recipient.
