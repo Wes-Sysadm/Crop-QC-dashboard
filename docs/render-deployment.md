@@ -98,16 +98,27 @@ For the first empty Render staging database only, use the opt-in schema creation
 2. Set `Database__SeedMasterDataOnStartup=true` in Render.
 3. Deploy the web service.
 4. Open `/health/db` and confirm it returns success.
-5. Sign in with an allowed Google account.
-6. Open `/Receipts` and verify the warehouse, room, and variety dropdowns are populated.
-7. Open `/MasterData/rooms` and `/MasterData/fruit-profiles` to verify the seeded lists.
-8. Set `Database__EnsureCreatedOnStartup=false`.
-9. Set `Database__SeedMasterDataOnStartup=false` after seed counts are confirmed in logs.
-10. Redeploy the web service.
+5. Open `/health/master-data` and confirm the master-data counts. The seeded room list currently has 68 rooms.
+6. Sign in with an allowed Google account.
+7. Open `/Receipts` and verify the warehouse, room, and variety dropdowns are populated.
+8. Open `/MasterData/rooms` and `/MasterData/fruit-profiles` to verify the seeded lists.
+9. Set `Database__EnsureCreatedOnStartup=false`.
+10. Set `Database__SeedMasterDataOnStartup=false` after seed counts are confirmed in logs.
+11. Redeploy the web service.
 
 This uses EF Core `EnsureCreated` to create the current model in an empty PostgreSQL database. It does not create EF migration history and should not be used as the long-term production migration strategy.
 
 The master-data seed is idempotent and only inserts missing required rows. It does not delete receipts, samples, photos, or user-entered data, and it does not reset existing master-data edits.
+
+When `Database__SeedMasterDataOnStartup=true`, Render logs should include:
+
+- warehouses count
+- rooms before seed
+- rooms added
+- rooms after seed
+- fruit profiles count
+- grades count
+- defects count
 
 ## PostgreSQL Migration Strategy
 
@@ -134,6 +145,7 @@ After deployment:
 
 - `/health` should return `200 OK` with `Crop QC Dashboard OK`.
 - `/health/db` should return `200 OK` when the app can connect to the configured database.
+- `/health/master-data` should return counts for warehouses, rooms, fruit profiles, grades, defects, sample types, starch values, and size thresholds. For the current MVP 1 seed, `rooms` should be at least `68` after the room seed runs.
 - `/` should redirect to Google login when not authenticated, then load the dashboard after sign-in.
 - `/Receipts` should load receipt list/search after sign-in and show seeded warehouses, rooms, and fruit profiles.
 - `/DailyQc` should load the Daily QC dashboard after sign-in.

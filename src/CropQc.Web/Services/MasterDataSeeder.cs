@@ -15,9 +15,10 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
     {
         logger.LogInformation("Master data seed started.");
 
+        var roomsBeforeSeed = await dbContext.Rooms.CountAsync(cancellationToken);
         await SeedRolesAsync(cancellationToken);
         var warehouses = await SeedWarehousesAsync(cancellationToken);
-        await SeedRoomsAsync(warehouses, cancellationToken);
+        var roomsAdded = await SeedRoomsAsync(warehouses, cancellationToken);
         await SeedGradesAsync(cancellationToken);
         await SeedDefectsAsync(cancellationToken);
         await SeedSampleTypesAsync(cancellationToken);
@@ -30,11 +31,17 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
         var warehouseCount = await dbContext.Warehouses.CountAsync(cancellationToken);
         var roomCount = await dbContext.Rooms.CountAsync(cancellationToken);
         var fruitProfileCount = await dbContext.FruitProfiles.CountAsync(cancellationToken);
+        var gradeCount = await dbContext.Grades.CountAsync(cancellationToken);
+        var defectCount = await dbContext.DefectTypes.CountAsync(cancellationToken);
         logger.LogInformation(
-            "Master data seed completed. Warehouses: {WarehouseCount}; Rooms: {RoomCount}; Fruit profiles: {FruitProfileCount}.",
+            "Master data seed completed. Warehouses: {WarehouseCount}; Rooms before seed: {RoomsBeforeSeed}; Rooms added: {RoomsAdded}; Rooms after seed: {RoomCount}; Fruit profiles: {FruitProfileCount}; Grades: {GradeCount}; Defects: {DefectCount}.",
             warehouseCount,
+            roomsBeforeSeed,
+            roomsAdded,
             roomCount,
-            fruitProfileCount);
+            fruitProfileCount,
+            gradeCount,
+            defectCount);
     }
 
     private async Task SeedRolesAsync(CancellationToken cancellationToken)
@@ -65,19 +72,32 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        return await dbContext.Warehouses.ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, cancellationToken);
+        var warehouses = await dbContext.Warehouses.ToListAsync(cancellationToken);
+        return warehouses
+            .GroupBy(x => NormalizeCode(x.Code), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
     }
 
-    private async Task SeedRoomsAsync(IReadOnlyDictionary<string, Warehouse> warehouses, CancellationToken cancellationToken)
+    private async Task<int> SeedRoomsAsync(IReadOnlyDictionary<string, Warehouse> warehouses, CancellationToken cancellationToken)
     {
+        var existingRoomKeys = await dbContext.Rooms
+            .Select(x => new { x.WarehouseId, x.Code })
+            .ToListAsync(cancellationToken);
+        var existingKeys = existingRoomKeys
+            .Select(x => RoomKey(x.WarehouseId, x.Code))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var added = 0;
+
         foreach (var room in RoomSeeds())
         {
-            if (!warehouses.TryGetValue(room.WarehouseCode, out var warehouse))
+            if (!warehouses.TryGetValue(NormalizeCode(room.WarehouseCode), out var warehouse))
             {
+                logger.LogWarning("Room seed skipped for {RoomCode}; warehouse code {WarehouseCode} was not found.", room.Code, room.WarehouseCode);
                 continue;
             }
 
-            if (!await dbContext.Rooms.AnyAsync(x => x.WarehouseId == warehouse.Id && x.Code == room.Code, cancellationToken))
+            var key = RoomKey(warehouse.Id, room.Code);
+            if (!existingKeys.Contains(key))
             {
                 dbContext.Rooms.Add(new Room
                 {
@@ -87,8 +107,18 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
                     CapacityBins = 0,
                     IsActive = true
                 });
+                existingKeys.Add(key);
+                added++;
             }
         }
+
+        if (added > 0)
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        logger.LogInformation("Room seed step completed. Expected rooms: {ExpectedRoomCount}; Rooms added: {RoomsAdded}.", RoomSeeds().Count, added);
+        return added;
     }
 
     private async Task SeedGradesAsync(CancellationToken cancellationToken)
@@ -204,4 +234,7 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
         ("Apple", 48, 405.0000m), ("Apple", 56, 354.0000m), ("Apple", 64, 298.0000m), ("Apple", 72, 264.0000m), ("Apple", 80, 238.0000m), ("Apple", 88, 215.0000m), ("Apple", 100, 190.0000m), ("Apple", 113, 167.0000m), ("Apple", 125, 153.0000m), ("Apple", 138, 136.0000m), ("Apple", 150, 128.0000m), ("Apple", 163, 116.0000m), ("Apple", 175, 108.0000m), ("Apple", 198, 96.0000m), ("Apple", 216, 88.0000m),
         ("Pear", 50, 360.0000m), ("Pear", 60, 303.0000m), ("Pear", 70, 260.0000m), ("Pear", 80, 227.0000m), ("Pear", 90, 203.0000m), ("Pear", 100, 182.0000m), ("Pear", 110, 165.0000m), ("Pear", 120, 151.0000m), ("Pear", 135, 135.0000m), ("Pear", 150, 121.0000m), ("Pear", 165, 110.0000m), ("Pear", 180, 101.0000m), ("Pear", 193, 94.0000m), ("Pear", 210, 87.0000m), ("Pear", 225, 81.0000m)
     ];
+
+    private static string NormalizeCode(string code) => code.Trim().ToUpperInvariant();
+    private static string RoomKey(int warehouseId, string roomCode) => $"{warehouseId}:{NormalizeCode(roomCode)}";
 }
