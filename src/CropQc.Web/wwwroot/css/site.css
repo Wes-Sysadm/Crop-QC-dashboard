@@ -36,6 +36,7 @@ table { width: 100%; border-collapse: collapse; }
 th, td { padding: 9px 10px; border-bottom: 1px solid #e7edf2; text-align: left; vertical-align: top; white-space: nowrap; }
 th { background: #edf2f6; color: #2f4050; font-size: 12px; text-transform: uppercase; }
 tr:last-child td { border-bottom: 0; }
+.wrap-cell { white-space: normal; min-width: 280px; }
 .status { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #e8edf2; color: #334; font-size: 12px; font-weight: 700; }
 .status.ready, .status.sent { background: #dff1e0; color: #1b5e20; }
 .status.missing, .status.pending { background: #fde8e8; color: #a42020; }

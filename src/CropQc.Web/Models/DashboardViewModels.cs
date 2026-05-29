@@ -25,6 +25,12 @@ public sealed record MasterDataPageViewModel(
 }
 
 public sealed record MasterDataEditItem(int Id, IReadOnlyList<string> Cells, bool IsActive);
+public sealed record AdminDownloadItem(string Name, string FileName, string Description, string Notes, bool IsAvailable);
+
+public sealed class AdminDownloadsViewModel
+{
+    public IReadOnlyList<AdminDownloadItem> Downloads { get; set; } = [];
+}
 
 public sealed class MasterDataEditForm
 {
@@ -43,6 +49,7 @@ public sealed class MasterDataEditForm
     public int? SizeCategory { get; set; }
     public decimal? MinimumWeightGrams { get; set; }
     public bool IsActive { get; set; } = true;
+    public IReadOnlyList<string> CommodityOptions { get; set; } = [];
 }
 
 public sealed class ConfigurationPageViewModel

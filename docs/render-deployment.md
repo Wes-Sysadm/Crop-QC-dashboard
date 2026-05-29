@@ -89,8 +89,33 @@ Admin-only dashboard pages:
 - `/Admin/Users` manages user accounts, active status, and roles after Google login creates identity records.
 - `/MasterData` shows edit/add/deactivate controls only for Admin users.
 - `/Admin/Configuration` manages safe non-secret runtime configuration values. Do not store OAuth secrets, database connection strings, Gmail secrets, Google Drive secrets, or API keys there.
+- `/Admin/Downloads` provides whitelisted internal support-file downloads, such as the FTA DLL installer, to Admin users only.
+
+Master Data editing notes:
+
+- Fruit profile organic/conventional status is controlled only by `ProductionType`. `ProductionType=Organic` derives `IsOrganic=true`; `ProductionType=Conventional` derives `IsOrganic=false`.
+- Commodity is editable. Apple and Pear are seeded, and Admins can type additional commodities such as Cherry, Peach, Nectarine, or Apricot.
+- Rooms are tied to warehouses. Room code uniqueness is per warehouse, and the Rooms page shows warehouse code/name with every room.
 
 `FileStorage__Provider=Local` is a placeholder for now. Render ephemeral disk should not be treated as durable photo storage unless a persistent disk is explicitly configured. The intended durable file provider is Google Shared Drive in a later PR.
+
+## Admin Downloads
+
+`/Admin/Downloads` is protected by the Admin policy and serves only whitelisted files. It does not expose arbitrary file paths and does not allow uploads.
+
+The current download entry is:
+
+- Name: FTA DLL Installer
+- File: `FTADLL.exe`
+- Purpose: installer/runtime files needed for GUSS FTA DLL integration on QC Station computers.
+
+The installer binary is not committed to the repository. To make it available on the deployed server, place it at:
+
+```text
+src/CropQc.Web/App_Data/Downloads/FTADLL.exe
+```
+
+for local/publish packaging, or the equivalent `App_Data/Downloads/FTADLL.exe` path under the deployed app content root. If the file is absent, the Admin Downloads page shows the entry as not deployed.
 
 ## Render Postgres
 

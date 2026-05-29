@@ -18,6 +18,8 @@ public interface IAdminManagementService
 
 public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminManagementService
 {
+    private static readonly string[] DefaultCommodityOptions = ["Apple", "Pear"];
+
     private static readonly IReadOnlyList<(string Key, string Value, string Description, string ValueType)> ConfigurationDefaults =
     [
         ("DefaultCropYear", DateTimeOffset.UtcNow.Year.ToString(), "Default crop year", "Integer"),
@@ -51,12 +53,12 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         {
             "warehouses" => await dbContext.Warehouses.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.Code, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "rooms" => await dbContext.Rooms.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, WarehouseId = x.WarehouseId, Code = x.Code, Name = x.Name, CapacityBins = x.CapacityBins, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
-            "fruit-profiles" => await dbContext.FruitProfiles.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.VarietyCode, Name = x.Name, Description = x.Description, FruitType = x.FruitType, ProductionType = x.ProductionType, IsOrganic = x.IsOrganic, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
+            "fruit-profiles" => await WithCommodityOptions(await dbContext.FruitProfiles.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.VarietyCode, Name = x.Name, Description = x.Description, FruitType = x.FruitType, ProductionType = x.ProductionType, IsOrganic = x.IsOrganic, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken),
             "grades" => await dbContext.Grades.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.Code, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "defects" => await dbContext.DefectTypes.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "sample-types" => await dbContext.SampleTypes.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "starch-scale-values" => await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Value = x.Value, SortOrder = x.SortOrder, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
-            "size-thresholds" => await dbContext.FruitSizeConversionThresholds.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, FruitType = x.FruitType, SizeCategory = x.SizeCategory, MinimumWeightGrams = x.MinimumWeightGrams, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
+            "size-thresholds" => await WithCommodityOptions(await dbContext.FruitSizeConversionThresholds.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, FruitType = x.FruitType, SizeCategory = x.SizeCategory, MinimumWeightGrams = x.MinimumWeightGrams, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken),
             _ => null
         };
     }
@@ -135,14 +137,23 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
 
     private async Task<MasterDataPageViewModel> RoomsPage(bool canEdit, CancellationToken ct)
     {
-        var rows = await dbContext.Rooms.AsNoTracking().Include(x => x.Warehouse).OrderBy(x => x.Warehouse.Code).ThenBy(x => x.Code).Select(x => new MasterDataEditItem(x.Id, new[] { x.Warehouse.Code, x.Code, x.Name, x.CapacityBins.ToString(), YesNo(x.IsActive) }, x.IsActive)).ToListAsync(ct);
-        return Page("Rooms", "rooms", ["Warehouse", "Code", "Name", "Capacity Bins", "Active"], rows, canEdit);
+        var rows = await dbContext.Rooms.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .OrderBy(x => x.Warehouse.Code)
+            .ThenBy(x => x.Code)
+            .Select(x => new MasterDataEditItem(x.Id, new[] { x.Warehouse.Code, x.Warehouse.Name, x.Code, x.Name, x.CapacityBins.ToString(), YesNo(x.IsActive) }, x.IsActive))
+            .ToListAsync(ct);
+        return Page("Rooms", "rooms", ["Warehouse Code", "Warehouse Name", "Room Code", "Room Name", "Capacity Bins", "Active"], rows, canEdit);
     }
 
     private async Task<MasterDataPageViewModel> FruitProfilesPage(bool canEdit, CancellationToken ct)
     {
-        var rows = await dbContext.FruitProfiles.AsNoTracking().OrderBy(x => x.Name).Select(x => new MasterDataEditItem(x.Id, new[] { x.VarietyCode, x.Name, x.FruitType, x.ProductionType, YesNo(x.IsOrganic), YesNo(x.IsActive) }, x.IsActive)).ToListAsync(ct);
-        return Page("Fruit profiles / variety codes", "fruit-profiles", ["Variety Code", "Name", "Fruit Type", "Production Type", "Organic", "Active"], rows, canEdit);
+        var rows = await dbContext.FruitProfiles.AsNoTracking()
+            .OrderBy(x => x.FruitType)
+            .ThenBy(x => x.Name)
+            .Select(x => new MasterDataEditItem(x.Id, new[] { x.VarietyCode, x.Name, x.FruitType, x.ProductionType, YesNo(x.IsActive) }, x.IsActive))
+            .ToListAsync(ct);
+        return await PageWithCommodityOptions("Fruit profiles / variety codes", "fruit-profiles", ["Variety Code", "Name", "Commodity", "Production Type", "Active"], rows, canEdit, ct);
     }
 
     private async Task<MasterDataPageViewModel> GradesPage(bool canEdit, CancellationToken ct)
@@ -172,7 +183,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
     private async Task<MasterDataPageViewModel> SizeThresholdsPage(bool canEdit, CancellationToken ct)
     {
         var rows = await dbContext.FruitSizeConversionThresholds.AsNoTracking().OrderBy(x => x.FruitType).ThenByDescending(x => x.MinimumWeightGrams).Select(x => new MasterDataEditItem(x.Id, new[] { x.FruitType, x.SizeCategory.ToString(), x.MinimumWeightGrams.ToString("0.0000"), YesNo(x.IsActive) }, x.IsActive)).ToListAsync(ct);
-        return Page("Size thresholds", "size-thresholds", ["Fruit Type", "Size", "Minimum Weight (g)", "Active"], rows, canEdit);
+        return await PageWithCommodityOptions("Size thresholds", "size-thresholds", ["Commodity", "Size", "Minimum Weight (g)", "Active"], rows, canEdit, ct);
     }
 
     private async Task<string?> SaveWarehouse(MasterDataEditForm form, string by, CancellationToken ct)
@@ -209,13 +220,21 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
 
     private async Task<string?> SaveFruitProfile(MasterDataEditForm form, string by, CancellationToken ct)
     {
-        if (Blank(form.Code) || Blank(form.Name)) return "Variety code and name are required.";
+        if (Blank(form.Code) || Blank(form.Name) || Blank(form.FruitType) || Blank(form.ProductionType)) return "Variety code, name, commodity, and production type are required.";
+        if (!IsValidProductionType(form.ProductionType)) return "Production type must be Conventional or Organic.";
         if (await dbContext.FruitProfiles.AnyAsync(x => x.VarietyCode == form.Code.Trim() && x.Id != (form.Id ?? 0), ct)) return "Variety code must be unique.";
         var entity = form.Id is null ? new FruitProfile { VarietyCode = "", Name = "", FruitType = "", ProductionType = "" } : await dbContext.FruitProfiles.FindAsync([form.Id.Value], ct);
         if (entity is null) return "Fruit profile not found.";
         var action = form.Id is null ? "create" : "update";
         var before = form.Id is null ? null : JsonSerializer.Serialize(entity);
-        entity.VarietyCode = form.Code.Trim(); entity.Name = form.Name.Trim(); entity.Description = form.Description; entity.FruitType = form.FruitType; entity.ProductionType = form.ProductionType; entity.IsOrganic = form.IsOrganic || form.ProductionType == "Organic"; entity.IsActive = form.IsActive;
+        var productionType = NormalizeProductionType(form.ProductionType);
+        entity.VarietyCode = form.Code.Trim();
+        entity.Name = form.Name.Trim();
+        entity.Description = form.Description;
+        entity.FruitType = form.FruitType.Trim();
+        entity.ProductionType = productionType;
+        entity.IsOrganic = productionType == "Organic";
+        entity.IsActive = form.IsActive;
         if (form.Id is null) dbContext.FruitProfiles.Add(entity);
         await dbContext.SaveChangesAsync(ct);
         await AddAuditAsync(action, "fruit-profiles", entity.Id.ToString(), by, before, JsonSerializer.Serialize(entity), ct);
@@ -278,11 +297,11 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
 
     private async Task<string?> SaveSizeThreshold(MasterDataEditForm form, string by, CancellationToken ct)
     {
-        if (form.SizeCategory is null || form.MinimumWeightGrams is null) return "Size and minimum weight are required.";
+        if (Blank(form.FruitType) || form.SizeCategory is null || form.MinimumWeightGrams is null) return "Commodity, size, and minimum weight are required.";
         var entity = form.Id is null ? new FruitSizeConversionThreshold { FruitType = "" } : await dbContext.FruitSizeConversionThresholds.FindAsync([form.Id.Value], ct);
         if (entity is null) return "Size threshold not found.";
         var action = form.Id is null ? "create" : "update"; var before = form.Id is null ? null : JsonSerializer.Serialize(entity);
-        entity.FruitType = form.FruitType; entity.SizeCategory = form.SizeCategory.Value; entity.MinimumWeightGrams = form.MinimumWeightGrams.Value; entity.IsActive = form.IsActive;
+        entity.FruitType = form.FruitType.Trim(); entity.SizeCategory = form.SizeCategory.Value; entity.MinimumWeightGrams = form.MinimumWeightGrams.Value; entity.IsActive = form.IsActive;
         if (form.Id is null) dbContext.FruitSizeConversionThresholds.Add(entity);
         await dbContext.SaveChangesAsync(ct); await AddAuditAsync(action, "size-thresholds", entity.Id.ToString(), by, before, JsonSerializer.Serialize(entity), ct); await dbContext.SaveChangesAsync(ct);
         return null;
@@ -348,6 +367,46 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
 
     private static MasterDataPageViewModel Page(string title, string type, IReadOnlyList<string> columns, IReadOnlyList<MasterDataEditItem> items, bool canEdit) =>
         new(title, null, columns, items.Select(x => x.Cells).ToList(), type, canEdit, items, new MasterDataEditForm { Type = type });
+
+    private async Task<MasterDataPageViewModel> PageWithCommodityOptions(string title, string type, IReadOnlyList<string> columns, IReadOnlyList<MasterDataEditItem> items, bool canEdit, CancellationToken ct) =>
+        new(title, null, columns, items.Select(x => x.Cells).ToList(), type, canEdit, items, new MasterDataEditForm { Type = type, CommodityOptions = await GetCommodityOptionsAsync(ct) });
+
+    private async Task<MasterDataEditForm?> WithCommodityOptions(MasterDataEditForm? form, CancellationToken ct)
+    {
+        if (form is null) return null;
+        form.CommodityOptions = await GetCommodityOptionsAsync(ct);
+        return form;
+    }
+
+    private async Task<IReadOnlyList<string>> GetCommodityOptionsAsync(CancellationToken ct)
+    {
+        var fruitProfileTypes = await dbContext.FruitProfiles.AsNoTracking()
+            .Select(x => x.FruitType)
+            .Where(x => x != "")
+            .Distinct()
+            .ToListAsync(ct);
+        var thresholdTypes = await dbContext.FruitSizeConversionThresholds.AsNoTracking()
+            .Select(x => x.FruitType)
+            .Where(x => x != "")
+            .Distinct()
+            .ToListAsync(ct);
+
+        return DefaultCommodityOptions
+            .Concat(fruitProfileTypes)
+            .Concat(thresholdTypes)
+            .Where(x => !Blank(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
+    }
+
+    private static bool IsValidProductionType(string value) =>
+        string.Equals(value.Trim(), "Conventional", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value.Trim(), "Organic", StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeProductionType(string value) =>
+        string.Equals(value.Trim(), "Organic", StringComparison.OrdinalIgnoreCase) ? "Organic" : "Conventional";
 
     private static bool Blank(string value) => string.IsNullOrWhiteSpace(value);
     private static string YesNo(bool value) => value ? "Yes" : "No";

@@ -12,6 +12,9 @@
         ("Starch scale values", "/MasterData/starch-scale-values"),
         ("Size thresholds", "/MasterData/size-thresholds")
     };
+    var roomWarehouseOptions = Model.Type == "rooms"
+        ? Model.Items.Select(x => x.Cells[0]).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList()
+        : new List<string>();
 }
 
 <h1>@Model.Title</h1>
@@ -30,6 +33,30 @@
     <a class="button secondary-button" href="/Admin/Configuration">Configuration</a>
 }
 </nav>
+
+@if (Model.Type == "rooms")
+{
+    <section class="toolbar" aria-label="Room filters">
+        <div class="field">
+            <label>Warehouse</label>
+            <select id="roomWarehouseFilter">
+                <option value="">All warehouses</option>
+                @foreach (var warehouseCode in roomWarehouseOptions)
+                {
+                    <option value="@warehouseCode">@warehouseCode</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label>Active Status</label>
+            <select id="roomActiveFilter">
+                <option value="">All statuses</option>
+                <option value="Yes">Active</option>
+                <option value="No">Inactive</option>
+            </select>
+        </div>
+    </section>
+}
 
 @if (TempData["Error"] is not null)
 {
@@ -68,7 +95,7 @@
         <tbody>
         @foreach (var item in Model.Items.Count > 0 ? Model.Items : Model.Rows.Select((row, index) => new MasterDataEditItem(index, row, true)))
         {
-            <tr>
+            <tr class="@(Model.Type == "rooms" ? "room-row" : null)" data-warehouse="@(Model.Type == "rooms" ? item.Cells[0] : null)" data-active="@(Model.Type == "rooms" ? item.Cells[^1] : null)">
             @foreach (var cell in item.Cells)
             {
                 <td>@cell</td>
@@ -90,3 +117,27 @@
         </tbody>
     </table>
 </div>
+
+@if (Model.Type == "rooms")
+{
+    <script>
+        (() => {
+            const warehouseFilter = document.getElementById("roomWarehouseFilter");
+            const activeFilter = document.getElementById("roomActiveFilter");
+            const rows = Array.from(document.querySelectorAll(".room-row"));
+
+            function applyRoomFilters() {
+                const warehouse = warehouseFilter.value;
+                const active = activeFilter.value;
+                rows.forEach(row => {
+                    const warehouseMatches = !warehouse || row.dataset.warehouse === warehouse;
+                    const activeMatches = !active || row.dataset.active === active;
+                    row.hidden = !(warehouseMatches && activeMatches);
+                });
+            }
+
+            warehouseFilter.addEventListener("change", applyRoomFilters);
+            activeFilter.addEventListener("change", applyRoomFilters);
+        })();
+    </script>
+}
