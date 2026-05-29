@@ -50,9 +50,9 @@ Crop QC Dashboard supports receiving quality control workflows. MVP 1 is limited
 - Managers and Admins can resend with a reason.
 - Daily QC dashboard showing received samples and sent/not-sent/ready/missing status.
 - Offline capture in Windows QC Station app.
-- Sync to Azure when internet returns.
-- Photos and attachments stored in SharePoint/OneDrive.
-- SQL stores metadata and structured data.
+- Sync to the Render/Postgres backend and Google Drive storage when internet returns.
+- Photos and attachments stored in Google Shared Drive.
+- Database stores metadata and structured data.
 - Everything is audit logged.
 
 ## Out of Scope for MVP 1

@@ -1,6 +1,6 @@
 # QC Station FTA Proof of Concept
 
-This document describes the first Windows QC Station proof of concept for integrating with a GUSS/FTA Fruit Texture Analyzer. This is a local harness only. It does not sync readings to Azure SQL, write readings into the QC sample grid, capture USB camera photos, upload files to SharePoint, or send email.
+This document describes the first Windows QC Station proof of concept for integrating with a GUSS/FTA Fruit Texture Analyzer. This is a local harness only. It does not sync readings to the backend database, write readings into the QC sample grid, capture USB camera photos, upload files to Google Drive, or send email.
 
 ## Purpose
 
@@ -332,7 +332,7 @@ Available commands:
 
 The WinForms harness exposes the same hardware commands as buttons, plus status/config labels for station name, warehouse, FTA mode, DLL path, DLL file, initialization mode, config path, current working directory, process architecture, OS architecture, and last pressure reading. Its log box auto-scrolls and keeps timestamped entries visible during hardware tests.
 
-The WinForms harness also includes a local-only 25-fruit pressure grid. It tracks fruit number, Pressure 1, Pressure 2, average pressure, current target, last captured reading, capture target, local row status, and reading history. Continuous Manual Capture is the primary workflow: the operator starts it once, then runs each physical FTA test with the green button while the harness captures readings and advances through P1/P2 for each fruit. This prepares the operator flow for mapping readings into QC sample rows later, but it does not write to Azure SQL or update the web QC workflow yet.
+The WinForms harness also includes a local-only 25-fruit pressure grid. It tracks fruit number, Pressure 1, Pressure 2, average pressure, current target, last captured reading, capture target, local row status, and reading history. Continuous Manual Capture is the primary workflow: the operator starts it once, then runs each physical FTA test with the green button while the harness captures readings and advances through P1/P2 for each fruit. This prepares the operator flow for mapping readings into QC sample rows later, but it does not write to the backend database or update the web QC workflow yet.
 
 ## Dashboard API Pressure Save
 
@@ -385,9 +385,9 @@ Before production use, test and confirm:
 This POC does not implement:
 
 - Real USB camera capture.
-- SharePoint/OneDrive upload.
+- Google Drive upload.
 - Actual QC Summary email sending.
-- Azure SQL sync.
+- Backend database sync.
 - Offline queue persistence.
 - Storage inventory.
 - Mexico qualification.

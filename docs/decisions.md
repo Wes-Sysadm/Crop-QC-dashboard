@@ -4,21 +4,21 @@
 
 The Crop QC Dashboard will use .NET/C# across the web dashboard, API, shared contracts, data boundary, and Windows QC Station.
 
-## ADR-0002: Target Azure App Service
+## ADR-0002: Target Render Web Service
 
-The web dashboard and API will target Azure App Service.
+The web dashboard and API will target Render Web Service hosting.
 
-## ADR-0003: Use Azure SQL for Structured Data
+## ADR-0003: Use Render Postgres for Production Structured Data
 
-Azure SQL is the main database for structured records, metadata, workflow state, permissions, and audit logs.
+Render Postgres is the target production database for structured records, metadata, workflow state, permissions, and audit logs. SQL Server LocalDB / SQL Server remains supported for local development until the PostgreSQL migration path is complete.
 
-## ADR-0004: Store Files in SharePoint/OneDrive
+## ADR-0004: Store Files in Google Shared Drive
 
-Photos and attachments will be stored in a SharePoint/OneDrive document library. SQL will store file metadata and references only.
+Photos and attachments will be stored in a Google Shared Drive. The database will store file metadata and references only.
 
-## ADR-0005: Reserve Microsoft Graph Integration
+## ADR-0005: Reserve Gmail Integration
 
-Microsoft Graph will be added later for SharePoint file storage and Microsoft 365 email. The reserved email sender is `HL@fruitandland.com`, and the reserved QC Summary recipient is `QC@fruitandland.com`.
+Gmail API or Google Workspace SMTP relay will be added later for QC Summary email. The reserved email sender is `HL@fruitandland.com`, and the reserved QC Summary recipient is `QC@fruitandland.com`.
 
 ## ADR-0006: Design for Offline QC Station Sync
 
