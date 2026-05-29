@@ -36,6 +36,10 @@
 
 @if (Model.Type == "rooms")
 {
+    @if (Model.Items.Count == 0)
+    {
+        <p class="notice warning">No rooms are currently configured. Set <code>Database__SeedMasterDataOnStartup=true</code> and redeploy to add the required MVP 1 room list, then verify <code>/health/master-data</code>.</p>
+    }
     <section class="toolbar" aria-label="Room filters">
         <div class="field">
             <label>Warehouse</label>

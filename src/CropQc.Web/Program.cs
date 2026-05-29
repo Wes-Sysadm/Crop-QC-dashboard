@@ -207,7 +207,8 @@ app.MapGet("/health/master-data", async (CropQcDbContext dbContext, Cancellation
             defects = await dbContext.DefectTypes.CountAsync(cancellationToken),
             sampleTypes = await dbContext.SampleTypes.CountAsync(cancellationToken),
             starchValues = await dbContext.StarchScaleValues.CountAsync(cancellationToken),
-            sizeThresholds = await dbContext.FruitSizeConversionThresholds.CountAsync(cancellationToken)
+            sizeThresholds = await dbContext.FruitSizeConversionThresholds.CountAsync(cancellationToken),
+            expectedSeededRooms = MasterDataSeeder.ExpectedSeededRoomCount
         });
     }
     catch (Exception ex)

@@ -196,6 +196,20 @@ After deployment:
 
 `/health` intentionally does not touch the database so Render can distinguish app startup issues from database connectivity or schema issues.
 
+## Repair Missing Rooms
+
+If warehouses and fruit profiles exist but `/MasterData/rooms` is empty, repair the live database with the idempotent master-data seed:
+
+1. Set `Database__SeedMasterDataOnStartup=true` in Render.
+2. Redeploy the web service.
+3. Watch Render logs for `Room seed started`, `Rooms added`, `Rooms repaired`, `Rooms after seed`, and any missing warehouse-code warnings.
+4. Open `/health/master-data` and verify `rooms` is at least `68`.
+5. Open `/MasterData/rooms` and confirm rooms show warehouse code, warehouse name, room code, room name, capacity, and active status.
+6. Open `/Receipts` and confirm selecting WP, EBS, DH, or McDougall filters the room dropdown to that warehouse.
+7. Set `Database__SeedMasterDataOnStartup=false` after counts are confirmed, then redeploy.
+
+The room seed matches warehouses by warehouse code, not fixed database IDs. It adds missing rooms only and does not overwrite user-edited names or capacities unless a name is blank or a capacity is invalid.
+
 ## Google OAuth Setup
 
 Create a Google OAuth web client in the Google Cloud project used for the staging dashboard.
