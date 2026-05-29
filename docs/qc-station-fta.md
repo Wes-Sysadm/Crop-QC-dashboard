@@ -286,7 +286,8 @@ On the physical QC computer connected to the GUSS/FTA:
 7. Let the harness capture the value, auto-fill the current target, and re-arm for the next test.
 8. Repeat the physical green-button test cycle. The harness fills Fruit 1 Pressure 1, Fruit 1 Pressure 2, Fruit 2 Pressure 1, Fruit 2 Pressure 2, and continues through Fruit 25 Pressure 2.
 9. Select `Stop Continuous Capture` when done or if troubleshooting is needed.
-10. Select `FTA Diagnostic Status` again if there is no beep, no probe movement, or no new reading.
+10. Select `Quit/Disconnect FTA` before closing the station app when possible.
+11. Select `FTA Diagnostic Status` again if there is no beep, no probe movement, or no new reading.
 
 If `Get Latest Reading` says no new firmness reading is available, bit 1 was not set yet. Run the physical test cycle again or check the FTA setup/status.
 
@@ -355,6 +356,12 @@ Run the API and WinForms station together:
 9. Refresh the web dashboard sample page to see the saved pressure readings.
 
 The QC Station pressure save endpoint is pressure-only. It updates `Pressure1Lbs`, `Pressure1Source`, `Pressure2Lbs`, and `Pressure2Source`; it does not overwrite weight, grade, starch, defects, photos, or receipt data. `Auto-save after each completed fruit` can save after Pressure 2 is captured, but it is unchecked by default.
+
+## Quit / Disconnect Behavior
+
+Use `Quit/Disconnect FTA` before closing the WinForms harness when possible. The button stops continuous capture, calls `FTACancel`, then calls `FTAQuit`, marks the local station status as disconnected/not initialized, and logs each cleanup step.
+
+Closing the WinForms app also attempts the same cleanup automatically. Shutdown cleanup errors are logged and ignored so the app can close without crashing. If the FTA interface appears stuck after a failed disconnect, power-cycle the FTA and restart the QC Station harness before initializing again.
 
 ## Hardware Testing Still Required
 
