@@ -1,32 +1,54 @@
 # Render Deployment
 
-This document describes the target Render deployment direction for the MVP 1 Receiving/QC web dashboard and API. It does not implement Google Drive upload, Gmail sending, storage inventory, Mexico qualification, packout imports, pool closing imports, or analytics.
+This document describes the first Render staging deployment path for the MVP 1 Receiving/QC web dashboard. It does not implement Google Drive upload, Gmail sending, storage inventory, Mexico qualification, packout imports, pool closing imports, or analytics.
 
 ## Target Services
 
-- Render Web Service for `CropQc.Web` or `CropQc.Api`.
+- Render Web Service for `CropQc.Web`.
 - Render Postgres for structured data.
 - Google Shared Drive later for photos and attachments.
 - Gmail API or Google Workspace SMTP relay later for QC Summary email.
 - WinForms QC Station remains local for FTA, camera, and future offline capture.
 
-## Web Service Setup
+## Repository Deployment Files
 
-Create a Render Web Service connected to this repository.
+The repository includes:
 
-Recommended build command:
+- `Dockerfile` at the repo root.
+- `render.yaml` at the repo root.
+- `src/CropQc.Web/appsettings.Production.json` with safe non-secret defaults.
+
+The Docker image builds and publishes only `src/CropQc.Web/CropQc.Web.csproj`. It does not run the WinForms QC Station.
+
+## Render Blueprint Setup
+
+Create a new Render Blueprint from the repository. The included `render.yaml` defines:
+
+- Web service name: `crop-qc-dashboard`.
+- Docker runtime using `./Dockerfile`.
+- Health check path: `/health`.
+- Render Postgres database name: `crop-qc-dashboard-db`.
+- `ConnectionStrings__CropQc` wired from the Render Postgres connection string.
+
+The Render Blueprint syntax uses `fromDatabase` with `property: connectionString` for database connection string injection, matching Render's Blueprint environment variable reference pattern.
+
+## Manual Web Service Setup
+
+If not using `render.yaml`, create a Render Web Service manually:
+
+- Environment: Docker.
+- Dockerfile path: `./Dockerfile`.
+- Health check path: `/health`.
+- Region: same region as the Render Postgres database.
+- Auto-deploy: enabled for staging if desired.
+
+The Dockerfile starts the app with:
 
 ```bash
-dotnet publish src/CropQc.Web/CropQc.Web.csproj -c Release -o out
+dotnet CropQc.Web.dll --urls http://0.0.0.0:${PORT:-8080}
 ```
 
-Recommended start command:
-
-```bash
-dotnet out/CropQc.Web.dll
-```
-
-If deploying the API separately, publish and start `src/CropQc.Api/CropQc.Api.csproj` instead.
+Render provides `PORT`; the fallback `8080` is for local Docker testing.
 
 ## Environment Variables
 
@@ -34,21 +56,22 @@ Set these variables in Render:
 
 - `ASPNETCORE_ENVIRONMENT=Production`
 - `DATABASE_PROVIDER=PostgreSql`
-- `ConnectionStrings__CropQc=[Render Postgres external or internal connection string]`
+- `ConnectionStrings__CropQc=[Render internal Postgres connection string]`
+- `Database__EnsureCreatedOnStartup=false`
 - `FileStorage__Provider=Local`
 - `FileStorage__LocalRootPath=/var/data/cropqc-files`
 - `FileStorage__BasePath=Crop QC Photos`
-- `Email__Provider=Gmail`
-- `Email__FromAddress=HL@fruitandland.com`
-- `Email__ToAddress=QC@fruitandland.com`
+- `Email__Provider=None`
+
+Do not commit database passwords, Google credentials, Gmail credentials, or API secrets.
 
 `FileStorage__Provider=Local` is a placeholder for now. Render ephemeral disk should not be treated as durable photo storage unless a persistent disk is explicitly configured. The intended durable file provider is Google Shared Drive in a later PR.
 
 ## Render Postgres
 
-Create a Render Postgres instance and copy its connection string into `ConnectionStrings__CropQc`.
+Create the Render Postgres database in the same region as the web service. Use the internal database URL for the web service connection string.
 
-The application chooses the provider with:
+The app chooses the provider from:
 
 ```json
 "Database": {
@@ -59,18 +82,30 @@ The application chooses the provider with:
 
 Environment variable `DATABASE_PROVIDER=PostgreSql` overrides the appsettings value.
 
-## Migrations
+## First Staging Schema Creation
 
-The existing EF Core migrations are SQL Server-oriented and must remain intact for current local development. PostgreSQL should use a separate migration path before production cutover.
+The existing checked-in EF migrations are SQL Server-oriented and must remain intact for local SQL Server development. They are not the final PostgreSQL migration path.
 
-Recommended next step:
+For the first empty Render staging database only, use the opt-in schema creation switch:
 
-1. Add a provider-specific PostgreSQL migrations assembly or folder.
+1. Set `Database__EnsureCreatedOnStartup=true` in Render.
+2. Deploy the web service.
+3. Open `/health/db` and confirm it returns success.
+4. Set `Database__EnsureCreatedOnStartup=false`.
+5. Redeploy the web service.
+
+This uses EF Core `EnsureCreated` to create the current model in an empty PostgreSQL database. It does not create EF migration history and should not be used as the long-term production migration strategy.
+
+## PostgreSQL Migration Strategy
+
+Before production cutover, add a provider-specific PostgreSQL migration path:
+
+1. Add a PostgreSQL migrations assembly or provider-specific migrations folder.
 2. Generate a fresh PostgreSQL initial migration against the current model.
-3. Validate the migration against a Render Postgres test database.
-4. Run the migration during deployment with either `dotnet ef database update` or a migration bundle.
+3. Validate the migration against a disposable Render Postgres database.
+4. Replace staging `EnsureCreated` usage with `dotnet ef database update` or a migration bundle.
 
-Temporary manual migration command for testing:
+Example migration command for the future migration path:
 
 ```powershell
 $env:DATABASE_PROVIDER="PostgreSql"
@@ -78,14 +113,27 @@ $env:ConnectionStrings__CropQc="[Render Postgres connection string]"
 dotnet ef database update --project .\src\CropQc.Data\CropQc.Data.csproj --startup-project .\src\CropQc.Web\CropQc.Web.csproj
 ```
 
-Do not run this against production until the PostgreSQL migration path has been generated and reviewed.
+Do not run SQL Server-oriented migrations against Render Postgres.
 
 ## Health And Smoke Checks
 
-Suggested URLs after deployment:
+After deployment:
 
-- `/` for the web dashboard home.
-- `/Receipts` for receipt list/search.
-- `/DailyQc` for the Daily QC dashboard.
-- API root `/` if deploying `CropQc.Api`.
-- API OpenAPI endpoint in Development only unless explicitly enabled for Production later.
+- `/health` should return `200 OK` with `Crop QC Dashboard OK`.
+- `/health/db` should return `200 OK` when the app can connect to the configured database.
+- `/` should load the web dashboard home after the database schema exists.
+- `/Receipts` should load receipt list/search after the database schema exists.
+- `/DailyQc` should load the Daily QC dashboard after the database schema exists.
+
+`/health` intentionally does not touch the database so Render can distinguish app startup issues from database connectivity or schema issues.
+
+## Redeploy After GitHub Push
+
+If auto-deploy is enabled, Render redeploys after a push to the configured branch. For manual deploys, use Render Dashboard -> service -> Manual Deploy -> Deploy latest commit.
+
+Check the deploy logs for:
+
+- Docker restore/publish success.
+- The app binding to `0.0.0.0:$PORT`.
+- `/health` passing.
+- `/health/db` passing after the database is configured and schema exists.

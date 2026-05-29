@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: crop-qc-dashboard
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: DATABASE_PROVIDER
+        value: PostgreSql
+      - key: ConnectionStrings__CropQc
+        fromDatabase:
+          name: crop-qc-dashboard-db
+          property: connectionString
+      - key: Database__EnsureCreatedOnStartup
+        value: false
+      - key: FileStorage__Provider
+        value: Local
+      - key: FileStorage__LocalRootPath
+        value: /var/data/cropqc-files
+      - key: FileStorage__BasePath
+        value: Crop QC Photos
+      - key: Email__Provider
+        value: None
+
+databases:
+  - name: crop-qc-dashboard-db
+    databaseName: cropqc
+    user: cropqc
