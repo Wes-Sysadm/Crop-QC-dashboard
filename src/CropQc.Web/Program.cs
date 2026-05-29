@@ -80,6 +80,8 @@ builder.Services.AddScoped<IDashboardDataService, DashboardDataService>();
 builder.Services.AddScoped<IGoogleUserProvisioningService, GoogleUserProvisioningService>();
 builder.Services.AddScoped<IMasterDataSeeder, MasterDataSeeder>();
 builder.Services.AddScoped<IReceivingExportService, ReceivingExportService>();
+builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService>();
+builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
 builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 

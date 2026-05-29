@@ -1,0 +1,18 @@
+@model MasterDataEditForm
+@{
+    ViewData["Title"] = "Edit Master Data";
+}
+
+<h1>Edit Master Data</h1>
+@if (TempData["Error"] is not null)
+{
+    <p class="notice warning">@TempData["Error"]</p>
+}
+
+<section class="panel">
+    <form class="form-grid" method="post" action="/MasterData/@Model.Type/Save">
+        @await Html.PartialAsync("_MasterDataFields", Model)
+        <button type="submit">Save</button>
+        <a class="button secondary-button" href="/MasterData/@Model.Type">Cancel</a>
+    </form>
+</section>
