@@ -48,6 +48,28 @@ Use the WinForms harness for real FTA hardware testing. The console harness rema
 
 Real hardware testing confirmed the WinForms x86 harness is the correct harness for this unit. The working operator flow is manual/button firmness reading: start continuous manual capture once, then press and hold the green FTA button for each physical test. Auto firmness reading did not move the probe on the current unit and should be treated as experimental.
 
+## FTA Installer Download
+
+Admins can use the web dashboard page `/Admin/Downloads` to get the internal FTA DLL installer when it has been deployed to the server.
+
+Download entry:
+
+- Name: FTA DLL Installer.
+- File: `FTADLL.exe`.
+- Use: installer/runtime files needed for the GUSS FTA DLL integration on QC Station computers.
+
+Install `FTADLL.exe` on each FTA-connected Windows computer. This installer is for internal company computers only. The installer does not replace the QC Station app; RealDll hardware testing and production capture still require the WinForms x86 QC Station harness.
+
+After installation, configure the QC Station for the confirmed working path:
+
+```json
+{
+  "FtaDllPath": "C:\\Windows\\SysWOW64",
+  "FtaDllFileName": "FTA_DLL.dll",
+  "FtaWorkingDirectory": "C:\\Program Files (x86)\\FTAWin"
+}
+```
+
 ## Running RealDll Mode as x86
 
 The FTA-connected computer reported this load error:

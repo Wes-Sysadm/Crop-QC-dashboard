@@ -50,14 +50,14 @@ Seeded password policy:
 ## Master Data
 
 - `Warehouses` stores EBS, DH, McDougall, and WP.
-- `Rooms` stores admin-editable rooms per warehouse, including room code, max bin capacity, and active status.
-- `FruitProfiles` stores variety name/description, variety code, fruit type, production type, organic flag, and active status.
+- `Rooms` stores admin-editable rooms per warehouse, including room code, max bin capacity, and active status. Room code is unique per warehouse, not globally.
+- `FruitProfiles` stores variety name/description, variety code, commodity/fruit type, production type, derived organic flag, and active status. Admins edit `ProductionType`; `IsOrganic` is derived automatically from whether production type is Organic.
 - `SampleTypes` stores Receiving Sample, Door Sample, and Line QC Sample.
 - `Grades` stores W1, W2, W3, W4, WF, US1, US2, and USF.
 - `DefectTypes` stores the MVP 1 defect list. Defect severity is not tracked in MVP 1.
 - `StarchScales` stores starch scale definitions, optionally scoped by fruit type or fruit profile.
 - `StarchScaleValues` stores values for the seeded 6-point starch scale.
-- `FruitSizeConversionThresholds` stores apple and pear size thresholds.
+- `FruitSizeConversionThresholds` stores commodity-specific size thresholds. Apple and Pear are seeded, and additional commodities can be added by Admins when thresholds are needed.
 
 ## Receiving/QC Transactions
 
