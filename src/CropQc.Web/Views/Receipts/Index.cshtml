@@ -2,7 +2,7 @@
 @using System.Text.Json
 @{
     ViewData["Title"] = "Receipts";
-    var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, code = x.Code }));
+    var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, code = x.Code, name = x.Name }));
     var hasRequiredMasterData = Model.Warehouses.Count > 0 && Model.Rooms.Count > 0 && Model.FruitProfiles.Count > 0;
 }
 
@@ -125,7 +125,7 @@
                 for (const room of rooms.filter(item => item.warehouseId === warehouseId)) {
                     const option = document.createElement("option");
                     option.value = room.id;
-                    option.textContent = room.code;
+                    option.textContent = `${room.code} - ${room.name}`;
                     if (selectedRoomId && Number(selectedRoomId) === room.id) {
                         option.selected = true;
                     }

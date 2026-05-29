@@ -11,6 +11,8 @@ public interface IMasterDataSeeder
 
 public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDataSeeder> logger) : IMasterDataSeeder
 {
+    public const int ExpectedSeededRoomCount = 68;
+
     public async Task SeedAsync(CancellationToken cancellationToken)
     {
         logger.LogInformation("Master data seed started.");
@@ -80,13 +82,26 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
 
     private async Task<int> SeedRoomsAsync(IReadOnlyDictionary<string, Warehouse> warehouses, CancellationToken cancellationToken)
     {
+        logger.LogInformation("Room seed started. Rooms before seed: {RoomsBeforeSeed}.", await dbContext.Rooms.CountAsync(cancellationToken));
+        var missingWarehouseCodes = RoomSeeds()
+            .Select(x => NormalizeCode(x.WarehouseCode))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(x => !warehouses.ContainsKey(x))
+            .OrderBy(x => x)
+            .ToList();
+        foreach (var warehouseCode in missingWarehouseCodes)
+        {
+            logger.LogWarning("Room seed missing warehouse code {WarehouseCode}.", warehouseCode);
+        }
+
         var existingRoomKeys = await dbContext.Rooms
-            .Select(x => new { x.WarehouseId, x.Code })
+            .Select(x => new { x.Id, x.WarehouseId, x.Code })
             .ToListAsync(cancellationToken);
         var existingKeys = existingRoomKeys
             .Select(x => RoomKey(x.WarehouseId, x.Code))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var added = 0;
+        var repaired = 0;
 
         foreach (var room in RoomSeeds())
         {
@@ -109,15 +124,53 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
                 });
                 existingKeys.Add(key);
                 added++;
+                continue;
+            }
+
+            var existingRoomId = existingRoomKeys.FirstOrDefault(x => string.Equals(RoomKey(x.WarehouseId, x.Code), key, StringComparison.OrdinalIgnoreCase))?.Id;
+            if (existingRoomId is null)
+            {
+                continue;
+            }
+
+            var existingRoom = await dbContext.Rooms.FindAsync([existingRoomId.Value], cancellationToken);
+            if (existingRoom is null)
+            {
+                continue;
+            }
+
+            var changed = false;
+            if (string.IsNullOrWhiteSpace(existingRoom.Name))
+            {
+                existingRoom.Name = room.Name;
+                changed = true;
+            }
+
+            if (existingRoom.CapacityBins < 0)
+            {
+                existingRoom.CapacityBins = 0;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                repaired++;
             }
         }
 
-        if (added > 0)
+        if (added > 0 || repaired > 0)
         {
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        logger.LogInformation("Room seed step completed. Expected rooms: {ExpectedRoomCount}; Rooms added: {RoomsAdded}.", RoomSeeds().Count, added);
+        var roomsAfterSeed = await dbContext.Rooms.CountAsync(cancellationToken);
+        logger.LogInformation(
+            "Room seed completed. Expected rooms: {ExpectedRoomCount}; Missing warehouse codes: {MissingWarehouseCodes}; Rooms added: {RoomsAdded}; Rooms repaired: {RoomsRepaired}; Rooms after seed: {RoomsAfterSeed}.",
+            ExpectedSeededRoomCount,
+            missingWarehouseCodes.Count == 0 ? "(none)" : string.Join(", ", missingWarehouseCodes),
+            added,
+            repaired,
+            roomsAfterSeed);
         return added;
     }
 
