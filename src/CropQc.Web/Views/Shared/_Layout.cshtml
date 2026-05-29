@@ -1,4 +1,5 @@
 <!doctype html>
+@using System.Security.Claims
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -14,6 +15,17 @@
             <a href="/DailyQc">Daily QC</a>
             <a href="/Receipts">Receipts</a>
             <a href="/MasterData">Master Data</a>
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <span class="user-email">@User.FindFirstValue(ClaimTypes.Email)</span>
+                <form class="logout-form" method="post" action="/Logout">
+                    <button type="submit" class="link-button">Logout</button>
+                </form>
+            }
+            else
+            {
+                <a href="/Login">Login</a>
+            }
         </nav>
     </header>
     <main class="page">

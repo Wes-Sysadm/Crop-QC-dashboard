@@ -15,6 +15,14 @@ services:
           property: connectionString
       - key: Database__EnsureCreatedOnStartup
         value: false
+      - key: Database__SeedMasterDataOnStartup
+        value: false
+      - key: Authentication__AllowedGoogleDomains
+        value: wp-packing.com,earlbrownandsons.com
+      - key: Authentication__Google__ClientId
+        sync: false
+      - key: Authentication__Google__ClientSecret
+        sync: false
       - key: FileStorage__Provider
         value: Local
       - key: FileStorage__LocalRootPath
