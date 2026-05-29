@@ -101,21 +101,16 @@ Master Data editing notes:
 
 ## Admin Downloads
 
-`/Admin/Downloads` is protected by the Admin policy and serves only whitelisted files. It does not expose arbitrary file paths and does not allow uploads.
+`/Admin/Downloads` is protected by the Admin policy and links only to approved internal support files. It does not proxy downloads through the web app, expose arbitrary file paths, allow uploads, commit installer binaries, or store installer files in the Render container.
 
 The current download entry is:
 
 - Name: FTA DLL Installer
 - File: `FTADLL.exe`
 - Purpose: installer/runtime files needed for GUSS FTA DLL integration on QC Station computers.
+- Link: `https://drive.google.com/file/d/1iYy1v1-D8T-S4SgfHJOeuwoeJfsbcvoS/view?usp=drive_link`
 
-The installer binary is not committed to the repository. To make it available on the deployed server, place it at:
-
-```text
-src/CropQc.Web/App_Data/Downloads/FTADLL.exe
-```
-
-for local/publish packaging, or the equivalent `App_Data/Downloads/FTADLL.exe` path under the deployed app content root. If the file is absent, the Admin Downloads page shows the entry as not deployed.
+The installer binary is not committed to the repository or deployed into Render. Google Drive sharing permissions are managed in Google Drive and should be limited to company users when possible.
 
 ## Render Postgres
 

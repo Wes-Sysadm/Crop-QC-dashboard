@@ -50,15 +50,16 @@ Real hardware testing confirmed the WinForms x86 harness is the correct harness 
 
 ## FTA Installer Download
 
-Admins can use the web dashboard page `/Admin/Downloads` to get the internal FTA DLL installer when it has been deployed to the server.
+Admins can use the web dashboard page `/Admin/Downloads` to open the shared Google Drive download page for the internal FTA DLL installer.
 
 Download entry:
 
 - Name: FTA DLL Installer.
 - File: `FTADLL.exe`.
 - Use: installer/runtime files needed for the GUSS FTA DLL integration on QC Station computers.
+- Link: `https://drive.google.com/file/d/1iYy1v1-D8T-S4SgfHJOeuwoeJfsbcvoS/view?usp=drive_link`.
 
-Install `FTADLL.exe` on each FTA-connected Windows computer. This installer is for internal company computers only. The installer does not replace the QC Station app; RealDll hardware testing and production capture still require the WinForms x86 QC Station harness.
+Install `FTADLL.exe` on each FTA-connected Windows computer before running QC Station RealDll mode. This installer is for internal company computers only. The installer does not replace the QC Station app; RealDll hardware testing and production capture still require the WinForms x86 QC Station harness. Google Drive sharing permissions should be limited to company users when possible.
 
 After installation, configure the QC Station for the confirmed working path:
 
@@ -69,6 +70,8 @@ After installation, configure the QC Station for the confirmed working path:
   "FtaWorkingDirectory": "C:\\Program Files (x86)\\FTAWin"
 }
 ```
+
+After installing the FTA DLL runtime, run the WinForms x86 QC Station app and use continuous manual capture mode for the confirmed working FTA flow.
 
 ## Running RealDll Mode as x86
 

@@ -5,12 +5,7 @@
 
 <h1>Admin Downloads</h1>
 
-<p class="notice warning">Internal installer files are for company QC computers only. This page does not allow uploads or arbitrary file downloads.</p>
-
-@if (TempData["Error"] is not null)
-{
-    <p class="notice warning">@TempData["Error"]</p>
-}
+<p class="notice warning">Internal installer links are for company QC computers only. Google Drive sharing permissions should be limited to company users when possible.</p>
 
 <div class="table-wrap">
     <table>
@@ -20,7 +15,6 @@
                 <th>File</th>
                 <th>Description</th>
                 <th>Notes</th>
-                <th>Status</th>
                 <th>Action</th>
             </tr>
         </thead>
@@ -32,16 +26,8 @@
                 <td>@download.FileName</td>
                 <td>@download.Description</td>
                 <td class="wrap-cell">@download.Notes</td>
-                <td><span class="status @(download.IsAvailable ? "ready" : "missing")">@(download.IsAvailable ? "Available" : "Not deployed")</span></td>
                 <td>
-                    @if (download.IsAvailable)
-                    {
-                        <a class="button" href="/Admin/Downloads/@download.FileName">Download</a>
-                    }
-                    else
-                    {
-                        <span class="muted">Place the file in App_Data/Downloads on the web server.</span>
-                    }
+                    <a class="button" href="@download.Url" target="_blank" rel="noopener noreferrer">Open Download</a>
                 </td>
             </tr>
         }

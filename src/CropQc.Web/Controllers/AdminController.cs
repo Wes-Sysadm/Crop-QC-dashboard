@@ -7,9 +7,10 @@ namespace CropQc.Web.Controllers;
 
 [Route("Admin")]
 [Authorize(Policy = "RequireAdmin")]
-public sealed class AdminController(IUserAdminService userAdminService, IAdminAuthorizationService authorizationService, IWebHostEnvironment environment) : Controller
+public sealed class AdminController(IUserAdminService userAdminService, IAdminAuthorizationService authorizationService) : Controller
 {
     private const string FtaDllInstallerFileName = "FTADLL.exe";
+    private const string FtaDllInstallerUrl = "https://drive.google.com/file/d/1iYy1v1-D8T-S4SgfHJOeuwoeJfsbcvoS/view?usp=drive_link";
 
     [HttpGet("Users")]
     public async Task<IActionResult> Users(CancellationToken cancellationToken) =>
@@ -18,7 +19,6 @@ public sealed class AdminController(IUserAdminService userAdminService, IAdminAu
     [HttpGet("Downloads")]
     public IActionResult Downloads()
     {
-        var installerPath = GetWhitelistedDownloadPath(FtaDllInstallerFileName);
         var model = new AdminDownloadsViewModel
         {
             Downloads =
@@ -27,30 +27,12 @@ public sealed class AdminController(IUserAdminService userAdminService, IAdminAu
                     "FTA DLL Installer",
                     FtaDllInstallerFileName,
                     "Installer/runtime files needed for the GUSS FTA DLL integration on QC Station computers.",
-                    "Install on each FTA-connected Windows computer. QC Station RealDll mode also requires the WinForms x86 station app. Use only for internal company computers.",
-                    System.IO.File.Exists(installerPath))
+                    FtaDllInstallerUrl,
+                    "Opens the shared Google Drive download page. Use only on internal company QC Station computers. Install before running QC Station RealDll mode. After installation, run the WinForms x86 QC Station app.")
             ]
         };
 
         return View(model);
-    }
-
-    [HttpGet("Downloads/{fileName}")]
-    public IActionResult Download(string fileName)
-    {
-        if (!string.Equals(fileName, FtaDllInstallerFileName, StringComparison.OrdinalIgnoreCase))
-        {
-            return NotFound();
-        }
-
-        var installerPath = GetWhitelistedDownloadPath(FtaDllInstallerFileName);
-        if (!System.IO.File.Exists(installerPath))
-        {
-            TempData["Error"] = "FTADLL.exe is not deployed on this server yet. Place it in App_Data/Downloads on the web server, then redeploy or restart.";
-            return RedirectToAction(nameof(Downloads));
-        }
-
-        return PhysicalFile(installerPath, "application/vnd.microsoft.portable-executable", FtaDllInstallerFileName);
     }
 
     [HttpPost("Users/Add")]
@@ -69,6 +51,4 @@ public sealed class AdminController(IUserAdminService userAdminService, IAdminAu
         return RedirectToAction(nameof(Users));
     }
 
-    private string GetWhitelistedDownloadPath(string fileName) =>
-        Path.Combine(environment.ContentRootPath, "App_Data", "Downloads", fileName);
 }
