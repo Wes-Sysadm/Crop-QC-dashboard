@@ -20,6 +20,8 @@ The repository includes:
 
 The Docker image builds and publishes only `src/CropQc.Web/CropQc.Web.csproj`. It does not run the WinForms QC Station.
 
+The Render web service should include a persistent disk mounted at `/var/data`. The app uses that disk for local placeholder file storage and for ASP.NET Core Data Protection keys at `/var/data/dataprotection-keys`.
+
 ## Render Blueprint Setup
 
 Create a new Render Blueprint from the repository. The included `render.yaml` defines:
@@ -40,6 +42,7 @@ If not using `render.yaml`, create a Render Web Service manually:
 - Dockerfile path: `./Dockerfile`.
 - Health check path: `/health`.
 - Region: same region as the Render Postgres database.
+- Persistent disk: mount at `/var/data`.
 - Auto-deploy: enabled for staging if desired.
 
 The Dockerfile starts the app with:
@@ -65,6 +68,9 @@ Set these variables in Render:
 - `Authentication__SessionDays=7`
 - `Authentication__Google__ClientId=[Google OAuth web client ID]`
 - `Authentication__Google__ClientSecret=[Google OAuth client secret]`
+- `DataProtection__PersistKeysToFileSystem=true`
+- `DataProtection__KeysPath=/var/data/dataprotection-keys`
+- `DataProtection__ApplicationName=CropQcDashboard`
 - `FileStorage__Provider=Local`
 - `FileStorage__LocalRootPath=/var/data/cropqc-files`
 - `FileStorage__BasePath=Crop QC Photos`
@@ -75,6 +81,8 @@ Do not commit database passwords, Google credentials, Gmail credentials, or API 
 Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 
 Successful Google login creates a persistent local dashboard session for `Authentication__SessionDays`, which defaults to 7 days. Users stay signed in for one week unless they click Logout, their account is deactivated, or authentication fails. Logout immediately clears the local auth cookie.
+
+ASP.NET Core Data Protection keys must also be persisted for those one-week cookies to survive Render restarts and redeploys. Without persisted keys, Render may log a warning about `/root/.aspnet/DataProtection-Keys`, and existing login cookies become unreadable when the container is replaced. Configure a Render persistent disk mounted at `/var/data` and store keys at `/var/data/dataprotection-keys`. Do not commit key files and do not log key contents.
 
 `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` and the app's forwarded-header middleware let ASP.NET Core honor Render's `X-Forwarded-Proto=https` header. This is required so Google OAuth generates `https://crop-qc-dashboard.onrender.com/signin-google` instead of an internal `http://` callback URL.
 
