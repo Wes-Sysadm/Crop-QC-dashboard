@@ -4,6 +4,10 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
+    disks:
+      - name: crop-qc-dashboard-data
+        mountPath: /var/data
+        sizeGB: 1
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
@@ -29,6 +33,12 @@ services:
         sync: false
       - key: Authentication__Google__ClientSecret
         sync: false
+      - key: DataProtection__PersistKeysToFileSystem
+        value: true
+      - key: DataProtection__KeysPath
+        value: /var/data/dataprotection-keys
+      - key: DataProtection__ApplicationName
+        value: CropQcDashboard
       - key: FileStorage__Provider
         value: Local
       - key: FileStorage__LocalRootPath

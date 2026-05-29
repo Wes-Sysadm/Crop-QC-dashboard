@@ -5,6 +5,7 @@ using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
@@ -15,6 +16,7 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 builder.Services.AddControllersWithViews();
+ConfigureDataProtection(builder.Services, builder.Configuration);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -229,3 +231,24 @@ static FileStorageOptions CreateFileStorageOptions(IConfiguration configuration)
         LocalRootPath = configuration["FileStorage:LocalRootPath"] ?? Path.Combine("App_Data", "CropQcFiles"),
         BasePath = configuration["FileStorage:BasePath"] ?? "Crop QC Photos"
     };
+
+static void ConfigureDataProtection(IServiceCollection services, IConfiguration configuration)
+{
+    var applicationName = configuration["DataProtection:ApplicationName"] ?? "CropQcDashboard";
+    var dataProtectionBuilder = services.AddDataProtection()
+        .SetApplicationName(applicationName);
+
+    if (!configuration.GetValue<bool>("DataProtection:PersistKeysToFileSystem"))
+    {
+        return;
+    }
+
+    var keysPath = configuration["DataProtection:KeysPath"];
+    if (string.IsNullOrWhiteSpace(keysPath))
+    {
+        throw new InvalidOperationException("DataProtection:KeysPath is required when DataProtection:PersistKeysToFileSystem is true.");
+    }
+
+    Directory.CreateDirectory(keysPath);
+    dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+}
