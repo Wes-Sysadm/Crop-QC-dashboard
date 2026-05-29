@@ -5,7 +5,7 @@ public sealed class GoogleAuthenticationOptions
     public string? ClientId { get; init; }
     public string? ClientSecret { get; init; }
     public IReadOnlySet<string> AllowedDomains { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    public IReadOnlySet<string> AdminEmails { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlySet<string> BootstrapAdminEmails { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     public bool IsGoogleConfigured => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret);
 
     public static GoogleAuthenticationOptions FromConfiguration(IConfiguration configuration)
@@ -14,7 +14,7 @@ public sealed class GoogleAuthenticationOptions
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(domain => !string.IsNullOrWhiteSpace(domain))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var adminEmails = (configuration["Authentication:AdminEmails"] ?? string.Empty)
+        var bootstrapAdminEmails = (configuration["Authentication:BootstrapAdminEmails"] ?? configuration["Authentication:AdminEmails"] ?? string.Empty)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(email => !string.IsNullOrWhiteSpace(email))
             .Select(email => email.ToLowerInvariant())
@@ -25,12 +25,12 @@ public sealed class GoogleAuthenticationOptions
             ClientId = configuration["Authentication:Google:ClientId"],
             ClientSecret = configuration["Authentication:Google:ClientSecret"],
             AllowedDomains = allowedDomains,
-            AdminEmails = adminEmails
+            BootstrapAdminEmails = bootstrapAdminEmails
         };
     }
 
-    public bool IsAdminEmail(string? email) =>
-        !string.IsNullOrWhiteSpace(email) && AdminEmails.Contains(email.Trim().ToLowerInvariant());
+    public bool IsBootstrapAdminEmail(string? email) =>
+        !string.IsNullOrWhiteSpace(email) && BootstrapAdminEmails.Contains(email.Trim().ToLowerInvariant());
 
     public bool IsAllowedEmail(string? email)
     {

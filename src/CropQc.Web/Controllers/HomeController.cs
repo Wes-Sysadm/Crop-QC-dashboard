@@ -8,5 +8,8 @@ public sealed class HomeController(IDashboardDataService dataService) : Controll
     public async Task<IActionResult> Index(CancellationToken cancellationToken) =>
         View(await dataService.GetHomeDashboardAsync(cancellationToken));
 
+    [HttpGet("/AccessDenied")]
+    public IActionResult AccessDenied() => View();
+
     public IActionResult Error() => View();
 }
