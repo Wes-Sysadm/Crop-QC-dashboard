@@ -1,0 +1,28 @@
+@{
+    ViewData["Title"] = "Login";
+    var googleConfigured = ViewData["GoogleConfigured"] as bool? == true;
+    var allowedDomains = ViewData["AllowedDomains"] as string ?? "";
+}
+
+<div class="login-panel panel">
+    <h1>Crop QC Dashboard Login</h1>
+    <p class="muted">Use your company Google Workspace account to access the dashboard.</p>
+
+    @if (ViewData["Error"] is string error && !string.IsNullOrWhiteSpace(error))
+    {
+        <p class="notice warning">@error</p>
+    }
+
+    <p><strong>Allowed domains:</strong> @allowedDomains</p>
+
+    @if (googleConfigured)
+    {
+        <form method="post" action="/Login/Google">
+            <button type="submit">Sign in with Google</button>
+        </form>
+    }
+    else
+    {
+        <p class="notice warning">Google OAuth is not configured. Set Authentication__Google__ClientId and Authentication__Google__ClientSecret.</p>
+    }
+</div>

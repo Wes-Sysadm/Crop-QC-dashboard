@@ -5,11 +5,19 @@ using Microsoft.AspNetCore.Mvc;
 namespace CropQc.Web.Controllers;
 
 [Route("[controller]")]
-public sealed class ReceiptsController(IDashboardDataService dataService) : Controller
+public sealed class ReceiptsController(IDashboardDataService dataService, IReceivingExportService exportService) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index([FromQuery] ReceiptSearchForm search, CancellationToken cancellationToken) =>
         View(await dataService.SearchReceiptsAsync(search, cancellationToken));
+
+    [HttpGet("Export")]
+    public async Task<IActionResult> Export(CancellationToken cancellationToken)
+    {
+        var content = await exportService.ExportReceivingDataAsync(cancellationToken);
+        var fileName = $"crop-qc-receiving-export-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.xlsx";
+        return File(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+    }
 
     [HttpPost("Create")]
     public async Task<IActionResult> Create(CreateReceiptForm form, CancellationToken cancellationToken)

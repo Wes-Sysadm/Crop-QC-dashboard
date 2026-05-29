@@ -1,13 +1,68 @@
 using CropQc.Data;
 using CropQc.Shared.Storage;
+using CropQc.Web.Auth;
 using CropQc.Web.Services;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 builder.Services.AddControllersWithViews();
+var googleAuthOptions = GoogleAuthenticationOptions.FromConfiguration(builder.Configuration);
+builder.Services.AddSingleton(googleAuthOptions);
+var authenticationBuilder = builder.Services
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/Login";
+        options.LogoutPath = "/Logout";
+        options.AccessDeniedPath = "/Login";
+    });
+if (googleAuthOptions.IsGoogleConfigured)
+{
+    authenticationBuilder.AddGoogle("Google", options =>
+    {
+        options.ClientId = googleAuthOptions.ClientId!;
+        options.ClientSecret = googleAuthOptions.ClientSecret!;
+        options.CallbackPath = "/signin-google";
+        options.Events.OnCreatingTicket = async context =>
+        {
+            var configuredOptions = context.HttpContext.RequestServices.GetRequiredService<GoogleAuthenticationOptions>();
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("GoogleAuth");
+            var provisioner = context.HttpContext.RequestServices.GetRequiredService<IGoogleUserProvisioningService>();
+            var email = context.Principal?.FindFirstValue(ClaimTypes.Email);
+            var displayName = context.Principal?.FindFirstValue(ClaimTypes.Name);
+
+            if (!configuredOptions.IsAllowedEmail(email))
+            {
+                var domain = GoogleAuthenticationOptions.GetEmailDomain(email) ?? "(missing)";
+                logger.LogWarning("Google login rejected for {Email}; domain {Domain} is not allowed.", email ?? "(missing)", domain);
+                context.Fail("This Google account is not allowed for the Crop QC Dashboard.");
+                return;
+            }
+
+            await provisioner.ProvisionAllowedUserAsync(email!, displayName, context.HttpContext.RequestAborted);
+        };
+        options.Events.OnRemoteFailure = context =>
+        {
+            context.HandleResponse();
+            var message = UrlEncoder.Default.Encode(context.Failure?.Message ?? "Google login failed.");
+            context.Response.Redirect($"/Login?error={message}");
+            return Task.CompletedTask;
+        };
+    });
+}
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
 builder.Services.AddDbContext<CropQcDbContext>(options =>
     CropQcDatabase.Configure(
         options,
@@ -15,6 +70,9 @@ builder.Services.AddDbContext<CropQcDbContext>(options =>
         builder.Configuration.GetConnectionString(builder.Configuration["Database:ConnectionStringName"] ?? CropQcDatabase.DefaultConnectionStringName),
         sqlOptions => sqlOptions.CommandTimeout(3)));
 builder.Services.AddScoped<IDashboardDataService, DashboardDataService>();
+builder.Services.AddScoped<IGoogleUserProvisioningService, GoogleUserProvisioningService>();
+builder.Services.AddScoped<IMasterDataSeeder, MasterDataSeeder>();
+builder.Services.AddScoped<IReceivingExportService, ReceivingExportService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
 builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 
@@ -27,6 +85,13 @@ if (app.Configuration.GetValue<bool>("Database:EnsureCreatedOnStartup"))
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
     await dbContext.Database.EnsureCreatedAsync();
+}
+
+if (app.Configuration.GetValue<bool>("Database:SeedMasterDataOnStartup"))
+{
+    using var scope = app.Services.CreateScope();
+    var seeder = scope.ServiceProvider.GetRequiredService<IMasterDataSeeder>();
+    await seeder.SeedAsync(CancellationToken.None);
 }
 
 if (!app.Environment.IsDevelopment())
@@ -42,7 +107,9 @@ if (!isRender)
 
 app.UseStaticFiles();
 app.UseRouting();
-app.MapGet("/health", () => Results.Text("Crop QC Dashboard OK", "text/plain"));
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapGet("/health", () => Results.Text("Crop QC Dashboard OK", "text/plain")).AllowAnonymous();
 app.MapGet("/health/db", async (CropQcDbContext dbContext, CancellationToken cancellationToken) =>
 {
     try
@@ -56,7 +123,7 @@ app.MapGet("/health/db", async (CropQcDbContext dbContext, CancellationToken can
     {
         return Results.Problem($"Database health check failed: {ex.Message}", statusCode: StatusCodes.Status503ServiceUnavailable);
     }
-});
+}).AllowAnonymous();
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");

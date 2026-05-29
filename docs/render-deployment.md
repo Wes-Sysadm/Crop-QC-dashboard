@@ -58,12 +58,18 @@ Set these variables in Render:
 - `DATABASE_PROVIDER=PostgreSql`
 - `ConnectionStrings__CropQc=[Render internal Postgres connection string]`
 - `Database__EnsureCreatedOnStartup=false`
+- `Database__SeedMasterDataOnStartup=false`
+- `Authentication__AllowedGoogleDomains=wp-packing.com,earlbrownandsons.com`
+- `Authentication__Google__ClientId=[Google OAuth web client ID]`
+- `Authentication__Google__ClientSecret=[Google OAuth client secret]`
 - `FileStorage__Provider=Local`
 - `FileStorage__LocalRootPath=/var/data/cropqc-files`
 - `FileStorage__BasePath=Crop QC Photos`
 - `Email__Provider=None`
 
 Do not commit database passwords, Google credentials, Gmail credentials, or API secrets.
+
+Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com` and `earlbrownandsons.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 
 `FileStorage__Provider=Local` is a placeholder for now. Render ephemeral disk should not be treated as durable photo storage unless a persistent disk is explicitly configured. The intended durable file provider is Google Shared Drive in a later PR.
 
@@ -89,12 +95,19 @@ The existing checked-in EF migrations are SQL Server-oriented and must remain in
 For the first empty Render staging database only, use the opt-in schema creation switch:
 
 1. Set `Database__EnsureCreatedOnStartup=true` in Render.
-2. Deploy the web service.
-3. Open `/health/db` and confirm it returns success.
-4. Set `Database__EnsureCreatedOnStartup=false`.
-5. Redeploy the web service.
+2. Set `Database__SeedMasterDataOnStartup=true` in Render.
+3. Deploy the web service.
+4. Open `/health/db` and confirm it returns success.
+5. Sign in with an allowed Google account.
+6. Open `/Receipts` and verify the warehouse, room, and variety dropdowns are populated.
+7. Open `/MasterData/rooms` and `/MasterData/fruit-profiles` to verify the seeded lists.
+8. Set `Database__EnsureCreatedOnStartup=false`.
+9. Set `Database__SeedMasterDataOnStartup=false` after seed counts are confirmed in logs.
+10. Redeploy the web service.
 
 This uses EF Core `EnsureCreated` to create the current model in an empty PostgreSQL database. It does not create EF migration history and should not be used as the long-term production migration strategy.
+
+The master-data seed is idempotent and only inserts missing required rows. It does not delete receipts, samples, photos, or user-entered data, and it does not reset existing master-data edits.
 
 ## PostgreSQL Migration Strategy
 
@@ -121,11 +134,28 @@ After deployment:
 
 - `/health` should return `200 OK` with `Crop QC Dashboard OK`.
 - `/health/db` should return `200 OK` when the app can connect to the configured database.
-- `/` should load the web dashboard home after the database schema exists.
-- `/Receipts` should load receipt list/search after the database schema exists.
-- `/DailyQc` should load the Daily QC dashboard after the database schema exists.
+- `/` should redirect to Google login when not authenticated, then load the dashboard after sign-in.
+- `/Receipts` should load receipt list/search after sign-in and show seeded warehouses, rooms, and fruit profiles.
+- `/DailyQc` should load the Daily QC dashboard after sign-in.
+- `/Receipts/Export` downloads the receiving-data Excel export after sign-in.
 
 `/health` intentionally does not touch the database so Render can distinguish app startup issues from database connectivity or schema issues.
+
+## Google OAuth Setup
+
+Create a Google OAuth web client in the Google Cloud project used for the staging dashboard.
+
+Configure the authorized redirect URI for the Render service:
+
+```text
+https://[render-host]/signin-google
+```
+
+Set the OAuth client ID and secret in Render environment variables. Do not store them in appsettings files or source control.
+
+## Receiving Data Export
+
+The Receipts page includes `Export Receiving Data to Excel`. The export returns an `.xlsx` file with receipt, sample, readiness/status, and fruit-row data. It is a dashboard export only; no email is sent and no Google Drive upload is performed.
 
 ## Redeploy After GitHub Push
 
