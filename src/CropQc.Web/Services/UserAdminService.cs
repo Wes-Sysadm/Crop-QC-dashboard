@@ -16,11 +16,41 @@ public interface IUserAdminService
 
 public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthenticationOptions authOptions) : IUserAdminService
 {
+    private static readonly IReadOnlyDictionary<string, string> RoleSummaries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Admin"] = "Full access, including users, master data, configuration, overrides, exports, and audit review.",
+        ["Manager"] = "QC workflow manager; can edit older QC data, void/resend/override, and export receiving data.",
+        ["QC User"] = "Same-day QC entry for receipts, samples, pressure, weight, grade, defects, starch, and photos.",
+        ["Viewer"] = "Read-only dashboard, receipt, and sample access."
+    };
+
+    private static readonly IReadOnlyList<RolePermissionViewModel> RolePermissionRows =
+    [
+        new("View dashboard", "Yes", "Yes", "Yes", "Yes"),
+        new("View receipts/samples", "Yes", "Yes", "Yes", "Yes"),
+        new("Create receiving receipts", "Yes", "Yes", "Yes", "No"),
+        new("Create QC samples", "Yes", "Yes", "Yes", "No"),
+        new("Enter same-day QC data", "Yes", "Yes", "Yes", "No"),
+        new("Edit same-day QC data", "Yes", "Yes", "Yes", "No"),
+        new("Edit older QC data", "Yes", "Yes", "No", "No"),
+        new("Void samples", "Yes", "Yes", "No", "No"),
+        new("Resend QC Summary", "Yes", "Yes", "No", "No"),
+        new("Override/send with missing data", "Yes", "Yes", "No", "No"),
+        new("Edit master data", "Yes", "No", "No", "No"),
+        new("Edit configuration", "Yes", "No", "No", "No"),
+        new("Manage users/roles", "Yes", "No", "No", "No"),
+        new("View audit logs", "Yes", "No", "No", "No"),
+        new("Export receiving data", "Yes", "Yes", "No", "No")
+    ];
+
     public async Task<UserAdminPageViewModel> GetUsersAsync(CancellationToken cancellationToken)
     {
         await EnsureUserAccessColumnsAsync(cancellationToken);
         await EnsureRolesAsync(cancellationToken);
-        var roles = await dbContext.Roles.AsNoTracking().OrderBy(x => x.Id).Select(x => new RoleOptionViewModel(x.Id, x.Name)).ToListAsync(cancellationToken);
+        var roleEntities = await dbContext.Roles.AsNoTracking()
+            .OrderBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var roles = roleEntities.Select(x => new RoleOptionViewModel(x.Id, x.Name, RoleSummary(x.Name))).ToList();
         var users = await dbContext.Users.AsNoTracking()
             .Include(x => x.UserRoles).ThenInclude(x => x.Role)
             .OrderBy(x => x.Email)
@@ -29,15 +59,21 @@ public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthentica
         return new UserAdminPageViewModel
         {
             Roles = roles,
+            RolePermissions = RolePermissionRows,
             AddUserForm = new AddUserForm { RoleId = roles.FirstOrDefault(x => x.Name == "Viewer")?.Id ?? roles.FirstOrDefault()?.Id ?? 0 },
-            Users = users.Select(x => new UserAdminListItem(
-                x.Id,
-                x.Email,
-                x.DisplayName,
-                x.Domain,
-                PrimaryRoleName(x),
-                x.IsActive,
-                x.LastLoginAt)).ToList()
+            Users = users.Select(x =>
+            {
+                var roleName = PrimaryRoleName(x);
+                return new UserAdminListItem(
+                    x.Id,
+                    x.Email,
+                    x.DisplayName,
+                    x.Domain,
+                    roleName,
+                    RoleSummary(roleName),
+                    x.IsActive,
+                    x.LastLoginAt);
+            }).ToList()
         };
     }
 
@@ -109,6 +145,9 @@ public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthentica
 
     private static string PrimaryRoleName(User user) =>
         user.UserRoles.OrderBy(x => x.RoleId).Select(x => x.Role.Name).FirstOrDefault() ?? "Viewer";
+
+    private static string RoleSummary(string roleName) =>
+        RoleSummaries.TryGetValue(roleName, out var summary) ? summary : "Custom role.";
 
     private async Task AddAuditAsync(string action, string entityName, string entityKey, string by, string? before, string? after, CancellationToken ct)
     {

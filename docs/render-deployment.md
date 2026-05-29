@@ -80,11 +80,11 @@ Successful Google login creates a persistent local dashboard session for `Authen
 
 Initial Admin bootstrap is controlled by `Authentication__BootstrapAdminEmails`. The initial bootstrap admin is `wes@fruitandland.com`. After that account logs in, manage users and roles from `/Admin/Users`; the bootstrap setting remains a safety net so the first Admin is not locked out if database roles are empty.
 
-Roles are managed inside the dashboard:
+Roles are managed inside the dashboard. `/Admin/Users` also shows a role permission matrix so Admin users can see exactly what each access level is intended to allow or block before changing a user role:
 
-- Admin: full access to user management, Master Data editing, and Configuration.
-- Manager: future review/resend/override workflows.
-- QC User: future same-day QC entry permissions.
+- Admin: full access, including user management, Master Data editing, Configuration, override/send, audit review, and exports.
+- Manager: dashboard and QC workflow access, older QC edits, void/resend/override, and receiving exports; no user, Master Data, or Configuration editing.
+- QC User: dashboard access plus receipt/sample creation and same-day QC entry; no older QC edits, voids, overrides, or admin access.
 - Viewer: read-only dashboard access.
 
 Admin-only dashboard pages:
