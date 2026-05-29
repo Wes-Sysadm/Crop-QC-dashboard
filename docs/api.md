@@ -6,7 +6,7 @@ The MVP 1 API is a Receiving/QC foundation for the future web dashboard and Wind
 
 - API project: `src/CropQc.Api`.
 - DbContext: `CropQcDbContext`.
-- Provider: Azure SQL-compatible EF Core SQL Server.
+- Database provider: configurable `SqlServer` or `PostgreSql`. SQL Server remains the default for local development; Render Postgres is the target production provider.
 - OpenAPI is available in development at `/openapi/v1.json`.
 - Authentication is still a placeholder; endpoint shapes are designed for future authenticated users.
 
@@ -54,7 +54,7 @@ Rows are limited to 1 through 25. A completed row requires Pressure 1, Pressure 
 
 - `POST /api/photos/metadata`
 
-Photo metadata attaches to exactly one parent: receipt or QC sample. Photo binaries are not stored in SQL. SharePoint/OneDrive references are stored for later Graph integration.
+Photo metadata attaches to exactly one parent: receipt or QC sample. Photo binaries are not stored in the database. Local file storage is the current development provider; Google Shared Drive is the target durable file provider for a later PR.
 
 Expected photo types:
 

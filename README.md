@@ -9,12 +9,13 @@ Later phases will add storage inventory, room controller imports, Mexico qualifi
 ## Technology Direction
 
 - .NET/C#
-- Azure App Service for the web dashboard and API
-- Azure SQL for structured data
-- SharePoint/OneDrive document library for photos and attachments
+- Render Web Service for the web dashboard and API
+- Render Postgres as the target production database
+- SQL Server LocalDB / SQL Server remains supported for local development while Postgres migration work is completed
+- Google Shared Drive as the target photo and attachment store
 - Windows desktop QC Station app
 - SQLite local cache for later offline QC Station support
-- Microsoft Graph later for SharePoint file storage and Microsoft 365 email
+- Gmail API or Google Workspace SMTP relay later for QC Summary email
 
 ## Solution Layout
 
@@ -30,6 +31,8 @@ Later phases will add storage inventory, room controller imports, Mexico qualifi
 ## Local Development
 
 See [docs/local-dev-setup.md](docs/local-dev-setup.md) for Windows PowerShell instructions to restore packages, build, apply EF Core migrations to LocalDB or SQL Server Express, run the API, run the web dashboard, run tests, and smoke-test the MVP 1 Receiving/QC workflow.
+
+For the new target backend direction, see [docs/render-deployment.md](docs/render-deployment.md), [docs/google-drive-storage.md](docs/google-drive-storage.md), and [docs/gmail-email.md](docs/gmail-email.md).
 
 Common helper scripts:
 

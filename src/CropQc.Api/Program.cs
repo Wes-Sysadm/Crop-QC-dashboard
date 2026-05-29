@@ -1,13 +1,15 @@
 using CropQc.Api.Services;
 using CropQc.Data;
-using Microsoft.EntityFrameworkCore;
+using CropQc.Shared.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<CropQcDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("CropQc")
-        ?? "Server=(localdb)\\mssqllocaldb;Database=CropQcDashboard;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True"));
+    CropQcDatabase.Configure(
+        options,
+        builder.Configuration["DATABASE_PROVIDER"] ?? builder.Configuration["Database:Provider"],
+        builder.Configuration.GetConnectionString(builder.Configuration["Database:ConnectionStringName"] ?? CropQcDatabase.DefaultConnectionStringName)));
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IMasterDataService, MasterDataService>();
 builder.Services.AddScoped<IReceiptService, ReceiptService>();
@@ -17,6 +19,8 @@ builder.Services.AddScoped<IQcPhotoService, QcPhotoService>();
 builder.Services.AddScoped<IQcSummaryService, QcSummaryService>();
 builder.Services.AddScoped<IQcSummaryEmailLogService, QcSummaryEmailLogService>();
 builder.Services.AddScoped<IQcStationApiService, QcStationApiService>();
+builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
+builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 
 var app = builder.Build();
 
@@ -35,3 +39,11 @@ app.MapGet("/", () => Results.Ok(new
 }));
 
 app.Run();
+
+static FileStorageOptions CreateFileStorageOptions(IConfiguration configuration) =>
+    new()
+    {
+        Provider = configuration["FileStorage:Provider"] ?? FileStorageProviders.Local,
+        LocalRootPath = configuration["FileStorage:LocalRootPath"] ?? Path.Combine("App_Data", "CropQcFiles"),
+        BasePath = configuration["FileStorage:BasePath"] ?? "Crop QC Photos"
+    };

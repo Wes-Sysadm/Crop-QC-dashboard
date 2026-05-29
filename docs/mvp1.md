@@ -58,7 +58,7 @@ Required photos before sending QC Summary:
 - Cut fruit photo.
 - Fruit after starch photo.
 
-Photos and attachments are stored in SharePoint/OneDrive. SQL stores metadata and structured data.
+Photos and attachments will be stored in Google Shared Drive. The database stores metadata and structured data only.
 
 ## QC Summary Email
 
@@ -76,7 +76,7 @@ The daily QC dashboard shows received samples and whether each sample is sent, n
 ## Offline QC Station
 
 - Offline capture is required in the Windows QC Station app.
-- Sync to Azure when internet returns.
+- Sync to the Render/Postgres backend and Google Drive storage when internet returns.
 - SQLite local cache will be used for offline QC Station data.
 - Design with sync boundaries in mind.
 

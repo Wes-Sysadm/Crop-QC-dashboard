@@ -2,7 +2,7 @@
 
 This guide explains how to run the current Crop QC Dashboard MVP 1 Receiving/QC web dashboard and API on a Windows development machine.
 
-The current local setup is for development only. It does not add authentication, FTA integration, USB camera capture, SharePoint upload, email sending, storage inventory, Mexico qualification, packout imports, pool closing imports, or analytics.
+The current local setup is for development only. It does not add authentication, FTA integration, USB camera capture, Google Drive upload, email sending, storage inventory, Mexico qualification, packout imports, pool closing imports, or analytics.
 
 ## 1. Check Prerequisites
 
@@ -199,7 +199,7 @@ Use the web dashboard at `http://localhost:5275`.
 12. Return to the sample detail page and confirm Summary Readiness changes as rows, starch, and photos are completed.
 13. Confirm the `Send QC Summary Placeholder` button is disabled while readiness is false and appears enabled only when readiness is true.
 
-No actual email is sent. No image binary is uploaded or stored in SQL. Photo forms currently save metadata and placeholder SharePoint/OneDrive references only.
+No actual email is sent. No image binary is uploaded or stored in the database. Photo forms currently save metadata and placeholder external file references only.
 
 ## Useful Direct Commands
 
@@ -222,8 +222,11 @@ dotnet run --project .\src\CropQc.Web\CropQc.Web.csproj --no-launch-profile
 Override the database connection string for a single PowerShell session:
 
 ```powershell
+$env:DATABASE_PROVIDER = "SqlServer"
 $env:ConnectionStrings__CropQc = "Server=.\SQLEXPRESS;Database=CropQcDashboard;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True"
 ```
+
+The app now supports `DATABASE_PROVIDER=SqlServer` or `DATABASE_PROVIDER=PostgreSql`. SQL Server LocalDB remains the default local development provider. PostgreSQL is the target Render production provider, but it needs a provider-specific migration path before production cutover.
 
 ## Troubleshooting
 

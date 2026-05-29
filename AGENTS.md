@@ -12,9 +12,9 @@ This repository is for the Crop QC Dashboard.
 ## Data and File Storage
 
 - Do not store photos directly in SQL.
-- Use Azure SQL for structured data.
-- Use SharePoint/OneDrive for photos, attachments, and other files.
-- Microsoft Graph integration will be added later for SharePoint file storage and Microsoft 365 email.
+- Use provider-based database configuration. SQL Server remains supported for local development, and Render Postgres is the target production database.
+- Use provider-based file storage. Local storage is for development, and Google Shared Drive is the target production store for photos, attachments, and other files.
+- Gmail API or Google Workspace SMTP relay will be added later for QC Summary email.
 
 ## Audit and Sync
 

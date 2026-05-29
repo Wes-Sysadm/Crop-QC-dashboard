@@ -403,7 +403,7 @@ public sealed class MainForm : Form
         {
             AutoSize = true,
             MaximumSize = new Size(390, 0),
-            Text = "Capture is local until saved. Save Pressures to Dashboard updates only Pressure 1 and Pressure 2 on the selected sample."
+            Text = "Capture stays local until saved. Save Pressures to Dashboard updates only Pressure 1 and Pressure 2 on the selected sample."
         };
         AddCaptureRow(panel, "", note, 10);
 

@@ -33,10 +33,13 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     {
         ConfigureAuth(modelBuilder);
         ConfigureMasterData(modelBuilder);
-        ConfigureQc(modelBuilder);
+        ConfigureQc(modelBuilder, IsPostgreSqlProvider());
         ConfigureAudit(modelBuilder);
         SeedData(modelBuilder);
     }
+
+    private bool IsPostgreSqlProvider() =>
+        Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true;
 
     private static void ConfigureAuth(ModelBuilder modelBuilder)
     {
@@ -144,7 +147,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         });
     }
 
-    private static void ConfigureQc(ModelBuilder modelBuilder)
+    private static void ConfigureQc(ModelBuilder modelBuilder, bool isPostgreSqlProvider)
     {
         modelBuilder.Entity<Receipt>(entity =>
         {
@@ -184,8 +187,12 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         {
             entity.ToTable(table =>
             {
-                table.HasCheckConstraint("CK_QcFruitReadings_RowNumber_1_25", "[RowNumber] >= 1 AND [RowNumber] <= 25");
-                table.HasCheckConstraint("CK_QcFruitReadings_CompletedRequiresCoreFields", "([IsCompleted] = 0) OR ([Pressure1Lbs] IS NOT NULL AND [Pressure2Lbs] IS NOT NULL AND [WeightGrams] IS NOT NULL AND [GradeId] IS NOT NULL)");
+                table.HasCheckConstraint("CK_QcFruitReadings_RowNumber_1_25", isPostgreSqlProvider
+                    ? "\"RowNumber\" >= 1 AND \"RowNumber\" <= 25"
+                    : "[RowNumber] >= 1 AND [RowNumber] <= 25");
+                table.HasCheckConstraint("CK_QcFruitReadings_CompletedRequiresCoreFields", isPostgreSqlProvider
+                    ? "(\"IsCompleted\" = FALSE) OR (\"Pressure1Lbs\" IS NOT NULL AND \"Pressure2Lbs\" IS NOT NULL AND \"WeightGrams\" IS NOT NULL AND \"GradeId\" IS NOT NULL)"
+                    : "([IsCompleted] = 0) OR ([Pressure1Lbs] IS NOT NULL AND [Pressure2Lbs] IS NOT NULL AND [WeightGrams] IS NOT NULL AND [GradeId] IS NOT NULL)");
             });
             entity.Property(x => x.Pressure1Lbs).HasPrecision(6, 2);
             entity.Property(x => x.Pressure1Source).HasMaxLength(50);
@@ -218,7 +225,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         {
             entity.ToTable(table =>
             {
-                table.HasCheckConstraint("CK_QcPhotos_ReceiptOrSample", "([ReceiptId] IS NOT NULL AND [QcSampleId] IS NULL) OR ([ReceiptId] IS NULL AND [QcSampleId] IS NOT NULL)");
+                table.HasCheckConstraint("CK_QcPhotos_ReceiptOrSample", isPostgreSqlProvider
+                    ? "(\"ReceiptId\" IS NOT NULL AND \"QcSampleId\" IS NULL) OR (\"ReceiptId\" IS NULL AND \"QcSampleId\" IS NOT NULL)"
+                    : "([ReceiptId] IS NOT NULL AND [QcSampleId] IS NULL) OR ([ReceiptId] IS NULL AND [QcSampleId] IS NOT NULL)");
             });
             entity.Property(x => x.PhotoType).HasMaxLength(50).IsRequired();
             entity.Property(x => x.PhotoSource).HasMaxLength(50).IsRequired();
