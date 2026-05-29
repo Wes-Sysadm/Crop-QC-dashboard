@@ -25,7 +25,7 @@ public sealed record MasterDataPageViewModel(
 }
 
 public sealed record MasterDataEditItem(int Id, IReadOnlyList<string> Cells, bool IsActive);
-public sealed record AdminDownloadItem(string Name, string FileName, string Description, string Notes, bool IsAvailable);
+public sealed record AdminDownloadItem(string Name, string FileName, string Description, string Url, string Notes);
 
 public sealed class AdminDownloadsViewModel
 {
