@@ -9,7 +9,7 @@ public interface IGoogleUserProvisioningService
     Task<User> ProvisionAllowedUserAsync(string email, string? displayName, CancellationToken cancellationToken);
 }
 
-public sealed class GoogleUserProvisioningService(CropQcDbContext dbContext, ILogger<GoogleUserProvisioningService> logger) : IGoogleUserProvisioningService
+public sealed class GoogleUserProvisioningService(CropQcDbContext dbContext, CropQc.Web.Auth.GoogleAuthenticationOptions authOptions, ILogger<GoogleUserProvisioningService> logger) : IGoogleUserProvisioningService
 {
     public async Task<User> ProvisionAllowedUserAsync(string email, string? displayName, CancellationToken cancellationToken)
     {
@@ -43,10 +43,11 @@ public sealed class GoogleUserProvisioningService(CropQcDbContext dbContext, ILo
             user.UpdatedAt = now;
         }
 
-        var viewerRole = await dbContext.Roles.SingleOrDefaultAsync(x => x.Name == "Viewer", cancellationToken);
-        if (viewerRole is not null && user.UserRoles.All(x => x.RoleId != viewerRole.Id))
+        var roleName = authOptions.IsAdminEmail(normalizedEmail) ? "Admin" : "Viewer";
+        var role = await dbContext.Roles.SingleOrDefaultAsync(x => x.Name == roleName, cancellationToken);
+        if (role is not null && user.UserRoles.All(x => x.RoleId != role.Id))
         {
-            dbContext.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = viewerRole.Id });
+            dbContext.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);

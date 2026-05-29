@@ -1,0 +1,51 @@
+@model MasterDataEditForm
+@inject CropQc.Data.CropQcDbContext DbContext
+@{
+    var warehouses = DbContext.Warehouses.OrderBy(x => x.Code).ToList();
+}
+<input type="hidden" name="Id" value="@Model.Id" />
+<input type="hidden" name="Type" value="@Model.Type" />
+
+@if (Model.Type == "rooms")
+{
+    <div class="field"><label>Warehouse</label><select name="WarehouseId" required><option value="">Select</option>@foreach (var warehouse in warehouses){<option value="@warehouse.Id" selected="@(Model.WarehouseId == warehouse.Id ? "selected" : null)">@warehouse.Code</option>}</select></div>
+}
+
+@if (Model.Type is "warehouses" or "grades")
+{
+    <div class="field"><label>Code</label><input name="Code" value="@Model.Code" required /></div>
+    <div class="field"><label>Name / Description</label><input name="Name" value="@Model.Name" required /></div>
+}
+else if (Model.Type == "rooms")
+{
+    <div class="field"><label>Code</label><input name="Code" value="@Model.Code" required /></div>
+    <div class="field"><label>Name</label><input name="Name" value="@Model.Name" required /></div>
+    <div class="field"><label>Capacity Bins</label><input name="CapacityBins" type="number" min="0" value="@Model.CapacityBins" required /></div>
+}
+else if (Model.Type == "fruit-profiles")
+{
+    <div class="field"><label>Variety Code</label><input name="Code" value="@Model.Code" required /></div>
+    <div class="field"><label>Name</label><input name="Name" value="@Model.Name" required /></div>
+    <div class="field"><label>Description</label><input name="Description" value="@Model.Description" /></div>
+    <div class="field"><label>Commodity</label><select name="FruitType"><option selected="@(Model.FruitType == "Apple" ? "selected" : null)">Apple</option><option selected="@(Model.FruitType == "Pear" ? "selected" : null)">Pear</option></select></div>
+    <div class="field"><label>Production Type</label><select name="ProductionType"><option selected="@(Model.ProductionType == "Conventional" ? "selected" : null)">Conventional</option><option selected="@(Model.ProductionType == "Organic" ? "selected" : null)">Organic</option></select></div>
+    <label class="checkbox-field"><input type="checkbox" name="IsOrganic" value="true" checked="@Model.IsOrganic" /> Organic</label><input type="hidden" name="IsOrganic" value="false" />
+}
+else if (Model.Type is "defects" or "sample-types")
+{
+    <div class="field"><label>Name</label><input name="Name" value="@Model.Name" required /></div>
+}
+else if (Model.Type == "starch-scale-values")
+{
+    <div class="field"><label>Value</label><input name="Value" type="number" step="0.1" value="@Model.Value" required /></div>
+    <div class="field"><label>Display Order</label><input name="SortOrder" type="number" value="@Model.SortOrder" /></div>
+}
+else if (Model.Type == "size-thresholds")
+{
+    <div class="field"><label>Commodity</label><select name="FruitType"><option selected="@(Model.FruitType == "Apple" ? "selected" : null)">Apple</option><option selected="@(Model.FruitType == "Pear" ? "selected" : null)">Pear</option></select></div>
+    <div class="field"><label>Size Category</label><input name="SizeCategory" type="number" value="@Model.SizeCategory" required /></div>
+    <div class="field"><label>Minimum Weight Grams</label><input name="MinimumWeightGrams" type="number" step="0.0001" value="@Model.MinimumWeightGrams" required /></div>
+    <p class="muted wide">Weights are minimum thresholds. Fruit is assigned the largest size category it qualifies for; below the smallest threshold is Undersized.</p>
+}
+
+<label class="checkbox-field wide"><input type="checkbox" name="IsActive" value="true" checked="@Model.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" />

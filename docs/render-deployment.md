@@ -61,6 +61,7 @@ Set these variables in Render:
 - `Database__EnsureCreatedOnStartup=false`
 - `Database__SeedMasterDataOnStartup=false`
 - `Authentication__AllowedGoogleDomains=wp-packing.com,earlbrownandsons.com,fruitandland.com`
+- `Authentication__AdminEmails=wes@fruitandland.com`
 - `Authentication__Google__ClientId=[Google OAuth web client ID]`
 - `Authentication__Google__ClientSecret=[Google OAuth client secret]`
 - `FileStorage__Provider=Local`
@@ -73,6 +74,8 @@ Do not commit database passwords, Google credentials, Gmail credentials, or API 
 Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 
 `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` and the app's forwarded-header middleware let ASP.NET Core honor Render's `X-Forwarded-Proto=https` header. This is required so Google OAuth generates `https://crop-qc-dashboard.onrender.com/signin-google` instead of an internal `http://` callback URL.
+
+Admin access is controlled by `Authentication__AdminEmails`. The initial admin is `wes@fruitandland.com`. Add more comma-separated Google account emails in Render when additional admins need master-data or configuration edit access. This is config/environment based for now, so no manual database role edit is required for the first admin.
 
 `FileStorage__Provider=Local` is a placeholder for now. Render ephemeral disk should not be treated as durable photo storage unless a persistent disk is explicitly configured. The intended durable file provider is Google Shared Drive in a later PR.
 

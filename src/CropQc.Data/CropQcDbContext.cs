@@ -28,6 +28,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<QcStation> QcStations => Set<QcStation>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<OfflineSyncItem> OfflineSyncItems => Set<OfflineSyncItem>();
+    public DbSet<DashboardConfiguration> DashboardConfigurations => Set<DashboardConfiguration>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,6 +36,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         ConfigureMasterData(modelBuilder);
         ConfigureQc(modelBuilder, IsPostgreSqlProvider());
         ConfigureAudit(modelBuilder);
+        ConfigureDashboardConfiguration(modelBuilder);
         SeedData(modelBuilder);
     }
 
@@ -290,6 +292,18 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.SourceApplication).HasMaxLength(100);
             entity.HasIndex(x => new { x.EntityName, x.EntityKey });
             entity.HasIndex(x => x.CreatedAt);
+        });
+    }
+
+    private static void ConfigureDashboardConfiguration(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<DashboardConfiguration>(entity =>
+        {
+            entity.Property(x => x.Key).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.Value).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.Description).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.ValueType).HasMaxLength(50).IsRequired();
+            entity.HasIndex(x => x.Key).IsUnique();
         });
     }
 

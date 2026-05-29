@@ -1,5 +1,6 @@
 <!doctype html>
 @using System.Security.Claims
+@inject CropQc.Web.Services.IAdminAuthorizationService AdminAuthorization
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -15,6 +16,11 @@
             <a href="/DailyQc">Daily QC</a>
             <a href="/Receipts">Receipts</a>
             <a href="/MasterData">Master Data</a>
+            @if (AdminAuthorization.IsAdmin(User))
+            {
+                <a href="/Configuration">Configuration</a>
+                <span class="status ready">Admin</span>
+            }
             @if (User.Identity?.IsAuthenticated == true)
             {
                 <span class="user-email">@User.FindFirstValue(ClaimTypes.Email)</span>

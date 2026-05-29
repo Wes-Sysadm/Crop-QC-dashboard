@@ -25,7 +25,31 @@
 {
     <a class="button" href="@link.Item2">@link.Item1</a>
 }
+@if (Model.CanEdit)
+{
+    <a class="button secondary-button" href="/Configuration">Configuration</a>
+}
 </nav>
+
+@if (TempData["Error"] is not null)
+{
+    <p class="notice warning">@TempData["Error"]</p>
+}
+@if (TempData["Success"] is not null)
+{
+    <p class="notice success">@TempData["Success"]</p>
+}
+
+@if (Model.CanEdit && Model.Type != "index")
+{
+    <section class="panel">
+        <h2>Add @Model.Title</h2>
+        <form class="form-grid" method="post" action="/MasterData/@Model.Type/Save">
+            @await Html.PartialAsync("_MasterDataFields", Model.EditForm ?? new MasterDataEditForm { Type = Model.Type })
+            <button type="submit">Add</button>
+        </form>
+    </section>
+}
 
 <div class="table-wrap">
     <table>
@@ -35,15 +59,31 @@
             {
                 <th>@column</th>
             }
+            @if (Model.CanEdit && Model.Type != "index")
+            {
+                <th>Actions</th>
+            }
             </tr>
         </thead>
         <tbody>
-        @foreach (var row in Model.Rows)
+        @foreach (var item in Model.Items.Count > 0 ? Model.Items : Model.Rows.Select((row, index) => new MasterDataEditItem(index, row, true)))
         {
             <tr>
-            @foreach (var cell in row)
+            @foreach (var cell in item.Cells)
             {
                 <td>@cell</td>
+            }
+            @if (Model.CanEdit && Model.Type != "index")
+            {
+                <td class="button-row">
+                    <a class="button secondary-button" href="/MasterData/@Model.Type/Edit/@item.Id">Edit</a>
+                    @if (item.IsActive)
+                    {
+                        <form method="post" action="/MasterData/@Model.Type/Deactivate/@item.Id">
+                            <button class="secondary-button" type="submit">Deactivate</button>
+                        </form>
+                    }
+                </td>
             }
             </tr>
         }

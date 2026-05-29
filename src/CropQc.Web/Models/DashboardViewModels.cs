@@ -11,7 +11,53 @@ public sealed class HomeDashboardViewModel
     public IReadOnlyList<SampleListItemViewModel> TodaySamples { get; set; } = [];
 }
 
-public sealed record MasterDataPageViewModel(string Title, string? DataWarning, IReadOnlyList<string> Columns, IReadOnlyList<IReadOnlyList<string>> Rows);
+public sealed record MasterDataPageViewModel(
+    string Title,
+    string? DataWarning,
+    IReadOnlyList<string> Columns,
+    IReadOnlyList<IReadOnlyList<string>> Rows,
+    string Type = "index",
+    bool CanEdit = false,
+    IReadOnlyList<MasterDataEditItem> Items = null!,
+    MasterDataEditForm? EditForm = null)
+{
+    public IReadOnlyList<MasterDataEditItem> Items { get; init; } = Items ?? [];
+}
+
+public sealed record MasterDataEditItem(int Id, IReadOnlyList<string> Cells, bool IsActive);
+
+public sealed class MasterDataEditForm
+{
+    public string Type { get; set; } = "";
+    public int? Id { get; set; }
+    public int? WarehouseId { get; set; }
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Description { get; set; }
+    public int CapacityBins { get; set; }
+    public string FruitType { get; set; } = "Apple";
+    public string ProductionType { get; set; } = "Conventional";
+    public bool IsOrganic { get; set; }
+    public decimal? Value { get; set; }
+    public int? SortOrder { get; set; }
+    public int? SizeCategory { get; set; }
+    public decimal? MinimumWeightGrams { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public sealed class ConfigurationPageViewModel
+{
+    public bool CanEdit { get; set; }
+    public string? DataWarning { get; set; }
+    public IReadOnlyList<ConfigurationItemViewModel> Items { get; set; } = [];
+}
+
+public sealed record ConfigurationItemViewModel(int Id, string Key, string Value, string Description, string ValueType);
+
+public sealed class ConfigurationEditForm
+{
+    public Dictionary<int, string> Values { get; set; } = [];
+}
 
 public sealed class ReceiptListViewModel
 {

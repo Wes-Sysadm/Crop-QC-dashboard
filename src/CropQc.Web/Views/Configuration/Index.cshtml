@@ -1,0 +1,37 @@
+@model ConfigurationPageViewModel
+@{
+    ViewData["Title"] = "Configuration";
+}
+
+<h1>Configuration</h1>
+<p class="notice">Only safe, non-secret runtime settings are editable here. OAuth secrets, database strings, Gmail secrets, and Drive secrets must stay in environment variables.</p>
+@if (TempData["Error"] is not null)
+{
+    <p class="notice warning">@TempData["Error"]</p>
+}
+@if (TempData["Success"] is not null)
+{
+    <p class="notice success">@TempData["Success"]</p>
+}
+
+<form method="post" action="/Configuration/Save">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Setting</th><th>Value</th><th>Description</th><th>Type</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var item in Model.Items)
+            {
+                <tr>
+                    <td>@item.Key</td>
+                    <td><input name="Values[@item.Id]" value="@item.Value" /></td>
+                    <td>@item.Description</td>
+                    <td>@item.ValueType</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <p class="button-row"><button type="submit">Save Configuration</button></p>
+</form>
