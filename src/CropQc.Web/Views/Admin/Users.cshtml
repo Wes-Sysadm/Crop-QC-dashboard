@@ -18,10 +18,48 @@
     <form class="toolbar" method="post" action="/Admin/Users/Add">
         <div class="field"><label>Email</label><input name="Email" type="email" required /></div>
         <div class="field"><label>Display Name</label><input name="DisplayName" /></div>
-        <div class="field"><label>Role</label><select name="RoleId">@foreach (var role in Model.Roles){<option value="@role.Id" selected="@(role.Name == "Viewer" ? "selected" : null)">@role.Name</option>}</select></div>
+        <div class="field">
+            <label>Role</label>
+            <select name="RoleId">
+                @foreach (var role in Model.Roles)
+                {
+                    <option value="@role.Id" selected="@(role.Name == "Viewer" ? "selected" : null)">@role.Name - @role.Summary</option>
+                }
+            </select>
+        </div>
         <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked /> Active</label><input type="hidden" name="IsActive" value="false" />
         <button type="submit">Add User</button>
     </form>
+</section>
+
+<section class="panel">
+    <h2>Role Permissions</h2>
+    <p class="muted">This matrix shows the intended MVP 1 access levels. Admins can update user roles here; application enforcement is tightened around admin-only areas first.</p>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Permission</th>
+                    <th>Admin</th>
+                    <th>Manager</th>
+                    <th>QC User</th>
+                    <th>Viewer</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var permission in Model.RolePermissions)
+            {
+                <tr>
+                    <td>@permission.Permission</td>
+                    <td>@permission.Admin</td>
+                    <td>@permission.Manager</td>
+                    <td>@permission.QcUser</td>
+                    <td>@permission.Viewer</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
 </section>
 
 <h2>Users</h2>
@@ -45,7 +83,10 @@
                 <td>@user.Email</td>
                 <td>@user.DisplayName</td>
                 <td>@user.Domain</td>
-                <td>@user.Role</td>
+                <td>
+                    <span class="status">@user.Role</span>
+                    <div class="muted">@user.RoleSummary</div>
+                </td>
                 <td>@(user.IsActive ? "Yes" : "No")</td>
                 <td>@user.LastLoginAt?.LocalDateTime</td>
                 <td>
@@ -54,7 +95,7 @@
                         <select name="RoleId">
                             @foreach (var role in Model.Roles)
                             {
-                                <option value="@role.Id" selected="@(role.Name == user.Role ? "selected" : null)">@role.Name</option>
+                                <option value="@role.Id" selected="@(role.Name == user.Role ? "selected" : null)">@role.Name - @role.Summary</option>
                             }
                         </select>
                         <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@user.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" />

@@ -71,11 +71,13 @@ public sealed class UserAdminPageViewModel
     public string? DataWarning { get; set; }
     public IReadOnlyList<UserAdminListItem> Users { get; set; } = [];
     public IReadOnlyList<RoleOptionViewModel> Roles { get; set; } = [];
+    public IReadOnlyList<RolePermissionViewModel> RolePermissions { get; set; } = [];
     public AddUserForm AddUserForm { get; set; } = new();
 }
 
-public sealed record UserAdminListItem(int Id, string Email, string DisplayName, string Domain, string Role, bool IsActive, DateTimeOffset? LastLoginAt);
-public sealed record RoleOptionViewModel(int Id, string Name);
+public sealed record UserAdminListItem(int Id, string Email, string DisplayName, string Domain, string Role, string RoleSummary, bool IsActive, DateTimeOffset? LastLoginAt);
+public sealed record RoleOptionViewModel(int Id, string Name, string Summary);
+public sealed record RolePermissionViewModel(string Permission, string Admin, string Manager, string QcUser, string Viewer);
 
 public sealed class AddUserForm
 {
