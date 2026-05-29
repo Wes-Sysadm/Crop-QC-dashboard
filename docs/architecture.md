@@ -23,7 +23,7 @@
 
 The database stores structured data, including receipts, samples, fruit rows, measurements, defects, photo metadata, email status, permissions, and audit records. The target production database is Render Postgres. SQL Server remains the current local/dev-compatible provider until the PostgreSQL migration path is completed.
 
-Photos and attachments will be stored in Google Shared Drive. The database should store metadata and stable references only, not binary photo content. The application has a file storage service boundary with a local provider for development and a planned Google Drive provider.
+Photos and attachments are stored through the file storage service boundary. Local development can use the local provider, and Render can use the Google Drive provider. The Google Drive provider writes files under the configured root folder and the database stores metadata and stable references only, not binary photo content.
 
 ## Retention Boundary
 

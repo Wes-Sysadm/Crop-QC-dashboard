@@ -41,7 +41,7 @@ public sealed class SamplesController(IDashboardDataService dataService) : Contr
         var error = IsAllowedPhotoType(form.PhotoType, "FruitAfterStarch", "Other")
             ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
             : "Only after-starch photos can be added from the Starch Input page.";
-        TempData[error is null ? "Success" : "Error"] = error ?? "Photo metadata added.";
+        TempData[error is null ? "Success" : "Error"] = error ?? "Photo saved.";
         return RedirectToAction(nameof(Starch), new { id });
     }
 
@@ -72,7 +72,7 @@ public sealed class SamplesController(IDashboardDataService dataService) : Contr
         var error = IsAllowedPhotoType(form.PhotoType, "SampleBeforeCutting", "CutFruit", "Other")
             ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
             : "Fruit after starch photos must be added from the Starch Input page.";
-        TempData[error is null ? "Success" : "Error"] = error ?? "Photo metadata added.";
+        TempData[error is null ? "Success" : "Error"] = error ?? "Photo saved.";
         return RedirectToAction(nameof(Details), new { id });
     }
 

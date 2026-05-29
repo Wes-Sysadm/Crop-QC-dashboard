@@ -132,6 +132,7 @@ builder.Services.AddDbContext<CropQcDbContext>(options =>
         builder.Configuration["DATABASE_PROVIDER"] ?? builder.Configuration["Database:Provider"],
         builder.Configuration.GetConnectionString(builder.Configuration["Database:ConnectionStringName"] ?? CropQcDatabase.DefaultConnectionStringName),
         sqlOptions => sqlOptions.CommandTimeout(3)));
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IDashboardDataService, DashboardDataService>();
 builder.Services.AddScoped<IGoogleUserProvisioningService, GoogleUserProvisioningService>();
 builder.Services.AddScoped<IMasterDataSeeder, MasterDataSeeder>();
@@ -140,7 +141,10 @@ builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService
 builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
-builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
+builder.Services.AddSingleton(CreateGoogleDriveStorageOptions(builder.Configuration));
+builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorageService(
+    services.GetRequiredService<FileStorageOptions>(),
+    services.GetRequiredService<GoogleDriveStorageOptions>()));
 
 var app = builder.Build();
 var isRender = !string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_HOSTNAME"])
@@ -160,6 +164,8 @@ if (app.Configuration.GetValue<bool>("Database:SeedMasterDataOnStartup"))
     var seeder = scope.ServiceProvider.GetRequiredService<IMasterDataSeeder>();
     await seeder.SeedAsync(CancellationToken.None);
 }
+
+await EnsurePhotoStorageColumnsAsync(app.Services);
 
 if (useForwardedHeaders)
 {
@@ -218,6 +224,18 @@ app.MapGet("/health/master-data", async (CropQcDbContext dbContext, Cancellation
         return Results.Problem($"Master data health check failed: {ex.Message}", statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 }).AllowAnonymous();
+app.MapGet("/health/storage", (FileStorageOptions fileStorageOptions, GoogleDriveStorageOptions googleDriveOptions) =>
+{
+    var provider = string.IsNullOrWhiteSpace(fileStorageOptions.Provider) ? FileStorageProviders.Local : fileStorageOptions.Provider;
+    return Results.Ok(new
+    {
+        provider,
+        googleDriveRootFolderConfigured = !string.IsNullOrWhiteSpace(googleDriveOptions.RootFolderId),
+        googleDriveCredentialsConfigured = !string.IsNullOrWhiteSpace(googleDriveOptions.ServiceAccountJson)
+            || !string.IsNullOrWhiteSpace(googleDriveOptions.ServiceAccountJsonPath),
+        googleDriveApplicationNameConfigured = !string.IsNullOrWhiteSpace(googleDriveOptions.ApplicationName)
+    });
+}).RequireAuthorization("RequireAdmin");
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
@@ -231,6 +249,63 @@ static FileStorageOptions CreateFileStorageOptions(IConfiguration configuration)
         LocalRootPath = configuration["FileStorage:LocalRootPath"] ?? Path.Combine("App_Data", "CropQcFiles"),
         BasePath = configuration["FileStorage:BasePath"] ?? "Crop QC Photos"
     };
+
+static GoogleDriveStorageOptions CreateGoogleDriveStorageOptions(IConfiguration configuration) =>
+    new()
+    {
+        RootFolderId = configuration["GoogleDrive:RootFolderId"] ?? "",
+        ServiceAccountJson = configuration["GoogleDrive:ServiceAccountJson"],
+        ServiceAccountJsonPath = configuration["GoogleDrive:ServiceAccountJsonPath"],
+        ApplicationName = configuration["GoogleDrive:ApplicationName"] ?? "Crop QC Dashboard",
+        BaseFolderName = configuration["GoogleDrive:BaseFolderName"] ?? "Photos"
+    };
+
+static IFileStorageService CreateFileStorageService(FileStorageOptions fileStorageOptions, GoogleDriveStorageOptions googleDriveOptions)
+{
+    if (string.Equals(fileStorageOptions.Provider, FileStorageProviders.GoogleDrive, StringComparison.OrdinalIgnoreCase))
+    {
+        return new GoogleDriveStorageService(googleDriveOptions);
+    }
+
+    return new LocalFileStorageService(fileStorageOptions);
+}
+
+static async Task EnsurePhotoStorageColumnsAsync(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("PhotoStorageSchema");
+    try
+    {
+        var provider = dbContext.Database.ProviderName ?? "";
+        if (provider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
+        {
+            await dbContext.Database.ExecuteSqlRawAsync("""
+                ALTER TABLE "QcPhotos" ADD COLUMN IF NOT EXISTS "StorageProvider" character varying(50) NOT NULL DEFAULT 'Legacy';
+                ALTER TABLE "QcPhotos" ADD COLUMN IF NOT EXISTS "DriveId" character varying(200) NULL;
+                ALTER TABLE "QcPhotos" ADD COLUMN IF NOT EXISTS "FileId" character varying(200) NULL;
+                ALTER TABLE "QcPhotos" ADD COLUMN IF NOT EXISTS "FolderId" character varying(200) NULL;
+                ALTER TABLE "QcPhotos" ADD COLUMN IF NOT EXISTS "UploadedAt" timestamp with time zone NULL;
+                CREATE INDEX IF NOT EXISTS "IX_QcPhotos_StorageProvider_FileId" ON "QcPhotos" ("StorageProvider", "FileId");
+                """);
+        }
+        else if (provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+        {
+            await dbContext.Database.ExecuteSqlRawAsync("""
+                IF COL_LENGTH('QcPhotos', 'StorageProvider') IS NULL ALTER TABLE [QcPhotos] ADD [StorageProvider] nvarchar(50) NOT NULL CONSTRAINT [DF_QcPhotos_StorageProvider] DEFAULT N'Legacy';
+                IF COL_LENGTH('QcPhotos', 'DriveId') IS NULL ALTER TABLE [QcPhotos] ADD [DriveId] nvarchar(200) NULL;
+                IF COL_LENGTH('QcPhotos', 'FileId') IS NULL ALTER TABLE [QcPhotos] ADD [FileId] nvarchar(200) NULL;
+                IF COL_LENGTH('QcPhotos', 'FolderId') IS NULL ALTER TABLE [QcPhotos] ADD [FolderId] nvarchar(200) NULL;
+                IF COL_LENGTH('QcPhotos', 'UploadedAt') IS NULL ALTER TABLE [QcPhotos] ADD [UploadedAt] datetimeoffset NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_QcPhotos_StorageProvider_FileId' AND object_id = OBJECT_ID(N'[QcPhotos]')) CREATE INDEX [IX_QcPhotos_StorageProvider_FileId] ON [QcPhotos] ([StorageProvider], [FileId]);
+                """);
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Photo storage metadata schema check skipped or failed.");
+    }
+}
 
 static void ConfigureDataProtection(IServiceCollection services, IConfiguration configuration)
 {

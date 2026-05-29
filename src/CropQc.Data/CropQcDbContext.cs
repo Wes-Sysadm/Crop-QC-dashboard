@@ -238,10 +238,15 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.PhotoSource).HasMaxLength(50).IsRequired();
             entity.Property(x => x.FileName).HasMaxLength(260).IsRequired();
             entity.Property(x => x.ContentType).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.StorageProvider).HasMaxLength(50).HasDefaultValue("Legacy").IsRequired();
+            entity.Property(x => x.DriveId).HasMaxLength(200);
+            entity.Property(x => x.FileId).HasMaxLength(200);
+            entity.Property(x => x.FolderId).HasMaxLength(200);
             entity.Property(x => x.SharePointDriveId).HasMaxLength(200).IsRequired();
             entity.Property(x => x.SharePointItemId).HasMaxLength(200).IsRequired();
             entity.Property(x => x.WebUrl).HasMaxLength(1000);
             entity.HasIndex(x => new { x.SharePointDriveId, x.SharePointItemId }).IsUnique();
+            entity.HasIndex(x => new { x.StorageProvider, x.FileId });
             entity.HasOne(x => x.Receipt)
                 .WithMany(x => x.Photos)
                 .HasForeignKey(x => x.ReceiptId)

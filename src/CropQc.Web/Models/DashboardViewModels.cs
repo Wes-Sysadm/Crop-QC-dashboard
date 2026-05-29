@@ -251,6 +251,7 @@ public sealed class AddPhotoMetadataForm
 {
     public long? ReceiptId { get; set; }
     public long? QcSampleId { get; set; }
+    public IFormFile? PhotoFile { get; set; }
     public string PhotoType { get; set; } = "";
     public string PhotoSource { get; set; } = "Upload File";
     public string FileName { get; set; } = "";

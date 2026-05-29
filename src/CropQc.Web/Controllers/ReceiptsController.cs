@@ -61,7 +61,7 @@ public sealed class ReceiptsController(IDashboardDataService dataService, IRecei
         var error = IsAllowedPhotoType(form.PhotoType, "BinTruck", "Other")
             ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
             : "Only bin/truck photos can be added from the receipt detail page.";
-        TempData[error is null ? "Success" : "Error"] = error ?? "Photo metadata added.";
+        TempData[error is null ? "Success" : "Error"] = error ?? "Photo saved.";
         return RedirectToAction(nameof(Details), new { id });
     }
 

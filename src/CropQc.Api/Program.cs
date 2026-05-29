@@ -20,7 +20,10 @@ builder.Services.AddScoped<IQcSummaryService, QcSummaryService>();
 builder.Services.AddScoped<IQcSummaryEmailLogService, QcSummaryEmailLogService>();
 builder.Services.AddScoped<IQcStationApiService, QcStationApiService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
-builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
+builder.Services.AddSingleton(CreateGoogleDriveStorageOptions(builder.Configuration));
+builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorageService(
+    services.GetRequiredService<FileStorageOptions>(),
+    services.GetRequiredService<GoogleDriveStorageOptions>()));
 
 var app = builder.Build();
 
@@ -47,3 +50,23 @@ static FileStorageOptions CreateFileStorageOptions(IConfiguration configuration)
         LocalRootPath = configuration["FileStorage:LocalRootPath"] ?? Path.Combine("App_Data", "CropQcFiles"),
         BasePath = configuration["FileStorage:BasePath"] ?? "Crop QC Photos"
     };
+
+static GoogleDriveStorageOptions CreateGoogleDriveStorageOptions(IConfiguration configuration) =>
+    new()
+    {
+        RootFolderId = configuration["GoogleDrive:RootFolderId"] ?? "",
+        ServiceAccountJson = configuration["GoogleDrive:ServiceAccountJson"],
+        ServiceAccountJsonPath = configuration["GoogleDrive:ServiceAccountJsonPath"],
+        ApplicationName = configuration["GoogleDrive:ApplicationName"] ?? "Crop QC Dashboard",
+        BaseFolderName = configuration["GoogleDrive:BaseFolderName"] ?? "Photos"
+    };
+
+static IFileStorageService CreateFileStorageService(FileStorageOptions fileStorageOptions, GoogleDriveStorageOptions googleDriveOptions)
+{
+    if (string.Equals(fileStorageOptions.Provider, FileStorageProviders.GoogleDrive, StringComparison.OrdinalIgnoreCase))
+    {
+        return new GoogleDriveStorageService(googleDriveOptions);
+    }
+
+    return new LocalFileStorageService(fileStorageOptions);
+}
