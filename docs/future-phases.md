@@ -10,6 +10,10 @@ Create and validate a provider-specific PostgreSQL migration path before using R
 
 Implement real Google Shared Drive upload and Gmail API or Google Workspace SMTP sending after the provider boundaries are reviewed.
 
+## Admin-Reviewed Retention Archive/Delete
+
+Build an Admin-reviewed archive/delete workflow before any retention purge is enabled. Database records are retained indefinitely by default, and photos are retained for at least 3 crop years after the current crop year. No automatic purge runs in MVP 1.
+
 ## Storage Inventory
 
 Track inventory in storage, room state, movement, and related operational workflows.

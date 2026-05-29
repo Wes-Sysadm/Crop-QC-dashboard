@@ -5,6 +5,17 @@
 
 <h1>Configuration</h1>
 <p class="notice">Only safe, non-secret runtime settings are editable here. OAuth secrets, database strings, Gmail secrets, and Drive secrets must stay in environment variables.</p>
+<section class="panel">
+    <h2>Retention Policy</h2>
+    <dl class="summary-list">
+        <dt>Database retention</dt>
+        <dd>Indefinite. Receipts, samples, fruit readings, defects, audit logs, email logs, users, roles, rooms, varieties, and master data are not automatically deleted.</dd>
+        <dt>Photo retention</dt>
+        <dd>At least 3 crop years after the current crop year.</dd>
+        <dt>Automatic deletion</dt>
+        <dd>Disabled. Admin-reviewed archive/delete workflow is future work.</dd>
+    </dl>
+</section>
 @if (TempData["Error"] is not null)
 {
     <p class="notice warning">@TempData["Error"]</p>
@@ -23,10 +34,13 @@
             <tbody>
             @foreach (var item in Model.Items)
             {
+                var description = item.Key == "PhotoRetentionCropYearsAfterCurrent" && !item.Description.Contains("Planning value only", StringComparison.OrdinalIgnoreCase)
+                    ? $"{item.Description} Planning value only. No automatic photo deletion currently runs."
+                    : item.Description;
                 <tr>
                     <td>@item.Key</td>
                     <td><input name="Values[@item.Id]" value="@item.Value" /></td>
-                    <td>@item.Description</td>
+                    <td>@description</td>
                     <td>@item.ValueType</td>
                 </tr>
             }

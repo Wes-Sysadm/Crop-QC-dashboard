@@ -49,6 +49,12 @@ Photo metadata should include:
 
 Current model fields still use SharePoint-oriented names (`SharePointDriveId`, `SharePointItemId`) because the first MVP schema was built for SharePoint/OneDrive. A future schema migration should rename or generalize these fields before Google Drive production use.
 
+## Retention
+
+Photos and attachments in the target Google Shared Drive must be retained for at least 3 crop years after the current crop year. The dashboard configuration value `PhotoRetentionCropYearsAfterCurrent` defaults to `3`, but it is currently a planning value only.
+
+No automatic Drive purge, cleanup, or deletion job is enabled. Admin-reviewed archive/delete workflow is future work and must be built before any automated retention action is allowed.
+
 ## Future Implementation Notes
 
 Add a `GoogleDriveStorageService` implementing `IFileStorageService`.
