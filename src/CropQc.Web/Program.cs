@@ -28,7 +28,7 @@ var authenticationBuilder = builder.Services
     {
         options.LoginPath = "/Login";
         options.LogoutPath = "/Logout";
-        options.AccessDeniedPath = "/Login";
+        options.AccessDeniedPath = "/AccessDenied";
     });
 if (googleAuthOptions.IsGoogleConfigured)
 {
@@ -44,6 +44,7 @@ if (googleAuthOptions.IsGoogleConfigured)
             var provisioner = context.HttpContext.RequestServices.GetRequiredService<IGoogleUserProvisioningService>();
             var email = context.Principal?.FindFirstValue(ClaimTypes.Email);
             var displayName = context.Principal?.FindFirstValue(ClaimTypes.Name);
+            var googleSubjectId = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
 
             if (!configuredOptions.IsAllowedEmail(email))
             {
@@ -53,7 +54,25 @@ if (googleAuthOptions.IsGoogleConfigured)
                 return;
             }
 
-            await provisioner.ProvisionAllowedUserAsync(email!, displayName, context.HttpContext.RequestAborted);
+            ProvisionedUserAccess access;
+            try
+            {
+                access = await provisioner.ProvisionAllowedUserAsync(email!, displayName, googleSubjectId, context.HttpContext.RequestAborted);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                context.Fail(ex.Message);
+                return;
+            }
+
+            var identity = (ClaimsIdentity?)context.Principal?.Identity;
+            if (identity is not null)
+            {
+                foreach (var role in access.Roles)
+                {
+                    identity.AddClaim(new Claim(ClaimTypes.Role, role));
+                }
+            }
         };
         options.Events.OnRemoteFailure = context =>
         {
@@ -69,6 +88,9 @@ builder.Services.AddAuthorization(options =>
     options.FallbackPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
+    options.AddPolicy("RequireAdmin", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("RequireManagerOrAdmin", policy => policy.RequireRole("Admin", "Manager"));
+    options.AddPolicy("RequireQcUserOrHigher", policy => policy.RequireRole("Admin", "Manager", "QC User"));
 });
 builder.Services.AddDbContext<CropQcDbContext>(options =>
     CropQcDatabase.Configure(
@@ -82,6 +104,7 @@ builder.Services.AddScoped<IMasterDataSeeder, MasterDataSeeder>();
 builder.Services.AddScoped<IReceivingExportService, ReceivingExportService>();
 builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService>();
 builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
+builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
 builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 

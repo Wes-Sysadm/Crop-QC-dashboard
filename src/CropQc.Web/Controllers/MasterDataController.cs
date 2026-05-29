@@ -1,4 +1,5 @@
 using CropQc.Web.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CropQc.Web.Controllers;
@@ -12,18 +13,18 @@ public sealed class MasterDataController(IAdminManagementService adminService, I
         View(await adminService.GetMasterDataAsync(type ?? "index", authorizationService.IsAdmin(User), cancellationToken));
 
     [HttpGet("{type}/Edit/{id:int}")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> Edit(string type, int id, CancellationToken cancellationToken)
     {
-        if (!authorizationService.IsAdmin(User)) return View("AccessDenied");
         var form = await adminService.GetEditFormAsync(type, id, cancellationToken);
         if (form is null) return NotFound();
         return View(form);
     }
 
     [HttpPost("{type}/Save")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> Save(string type, CropQc.Web.Models.MasterDataEditForm form, CancellationToken cancellationToken)
     {
-        if (!authorizationService.IsAdmin(User)) return View("AccessDenied");
         form.Type = type;
         var error = await adminService.SaveMasterDataAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         if (error is not null)
@@ -36,9 +37,9 @@ public sealed class MasterDataController(IAdminManagementService adminService, I
     }
 
     [HttpPost("{type}/Deactivate/{id:int}")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> Deactivate(string type, int id, CancellationToken cancellationToken)
     {
-        if (!authorizationService.IsAdmin(User)) return View("AccessDenied");
         var error = await adminService.DeactivateAsync(type, id, authorizationService.GetEmail(User) ?? "", cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Record deactivated.";
         return RedirectToAction(nameof(Index), new { type });

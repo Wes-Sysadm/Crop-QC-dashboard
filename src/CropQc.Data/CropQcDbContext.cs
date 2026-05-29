@@ -49,8 +49,11 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         {
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
             entity.Property(x => x.DisplayName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.GoogleSubjectId).HasMaxLength(200);
+            entity.Property(x => x.Domain).HasMaxLength(150).IsRequired();
             entity.Property(x => x.PasswordHash).HasMaxLength(500);
             entity.HasIndex(x => x.Email).IsUnique();
+            entity.HasIndex(x => x.GoogleSubjectId);
         });
 
         modelBuilder.Entity<Role>(entity =>

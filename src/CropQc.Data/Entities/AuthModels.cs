@@ -5,9 +5,12 @@ public sealed class User
     public int Id { get; set; }
     public required string Email { get; set; }
     public required string DisplayName { get; set; }
+    public string? GoogleSubjectId { get; set; }
+    public string Domain { get; set; } = "";
     public string? PasswordHash { get; set; }
     public DateTimeOffset? PasswordLastChangedAt { get; set; }
     public bool IsActive { get; set; } = true;
+    public DateTimeOffset? LastLoginAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
     public ICollection<UserRole> UserRoles { get; } = new List<UserRole>();

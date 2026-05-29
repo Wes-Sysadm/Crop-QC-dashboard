@@ -11,7 +11,8 @@ public interface IAdminAuthorizationService
 
 public sealed class AdminAuthorizationService(GoogleAuthenticationOptions options) : IAdminAuthorizationService
 {
-    public bool IsAdmin(ClaimsPrincipal user) => options.IsAdminEmail(GetEmail(user));
+    public bool IsAdmin(ClaimsPrincipal user) =>
+        user.IsInRole("Admin") || options.IsBootstrapAdminEmail(GetEmail(user));
 
     public string? GetEmail(ClaimsPrincipal user) =>
         user.FindFirstValue(ClaimTypes.Email)?.Trim().ToLowerInvariant();

@@ -61,7 +61,7 @@ Set these variables in Render:
 - `Database__EnsureCreatedOnStartup=false`
 - `Database__SeedMasterDataOnStartup=false`
 - `Authentication__AllowedGoogleDomains=wp-packing.com,earlbrownandsons.com,fruitandland.com`
-- `Authentication__AdminEmails=wes@fruitandland.com`
+- `Authentication__BootstrapAdminEmails=wes@fruitandland.com`
 - `Authentication__Google__ClientId=[Google OAuth web client ID]`
 - `Authentication__Google__ClientSecret=[Google OAuth client secret]`
 - `FileStorage__Provider=Local`
@@ -75,7 +75,20 @@ Google login is required for dashboard pages. Only Google Workspace accounts fro
 
 `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` and the app's forwarded-header middleware let ASP.NET Core honor Render's `X-Forwarded-Proto=https` header. This is required so Google OAuth generates `https://crop-qc-dashboard.onrender.com/signin-google` instead of an internal `http://` callback URL.
 
-Admin access is controlled by `Authentication__AdminEmails`. The initial admin is `wes@fruitandland.com`. Add more comma-separated Google account emails in Render when additional admins need master-data or configuration edit access. This is config/environment based for now, so no manual database role edit is required for the first admin.
+Initial Admin bootstrap is controlled by `Authentication__BootstrapAdminEmails`. The initial bootstrap admin is `wes@fruitandland.com`. After that account logs in, manage users and roles from `/Admin/Users`; the bootstrap setting remains a safety net so the first Admin is not locked out if database roles are empty.
+
+Roles are managed inside the dashboard:
+
+- Admin: full access to user management, Master Data editing, and Configuration.
+- Manager: future review/resend/override workflows.
+- QC User: future same-day QC entry permissions.
+- Viewer: read-only dashboard access.
+
+Admin-only dashboard pages:
+
+- `/Admin/Users` manages user accounts, active status, and roles after Google login creates identity records.
+- `/MasterData` shows edit/add/deactivate controls only for Admin users.
+- `/Admin/Configuration` manages safe non-secret runtime configuration values. Do not store OAuth secrets, database connection strings, Gmail secrets, Google Drive secrets, or API keys there.
 
 `FileStorage__Provider=Local` is a placeholder for now. Render ephemeral disk should not be treated as durable photo storage unless a persistent disk is explicitly configured. The intended durable file provider is Google Shared Drive in a later PR.
 

@@ -59,6 +59,32 @@ public sealed class ConfigurationEditForm
     public Dictionary<int, string> Values { get; set; } = [];
 }
 
+public sealed class UserAdminPageViewModel
+{
+    public string? DataWarning { get; set; }
+    public IReadOnlyList<UserAdminListItem> Users { get; set; } = [];
+    public IReadOnlyList<RoleOptionViewModel> Roles { get; set; } = [];
+    public AddUserForm AddUserForm { get; set; } = new();
+}
+
+public sealed record UserAdminListItem(int Id, string Email, string DisplayName, string Domain, string Role, bool IsActive, DateTimeOffset? LastLoginAt);
+public sealed record RoleOptionViewModel(int Id, string Name);
+
+public sealed class AddUserForm
+{
+    public string Email { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public int RoleId { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public sealed class UpdateUserAccessForm
+{
+    public int UserId { get; set; }
+    public int RoleId { get; set; }
+    public bool IsActive { get; set; }
+}
+
 public sealed class ReceiptListViewModel
 {
     public string? DataWarning { get; set; }

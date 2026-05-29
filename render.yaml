@@ -21,7 +21,7 @@ services:
         value: false
       - key: Authentication__AllowedGoogleDomains
         value: wp-packing.com,earlbrownandsons.com,fruitandland.com
-      - key: Authentication__AdminEmails
+      - key: Authentication__BootstrapAdminEmails
         value: wes@fruitandland.com
       - key: Authentication__Google__ClientId
         sync: false
