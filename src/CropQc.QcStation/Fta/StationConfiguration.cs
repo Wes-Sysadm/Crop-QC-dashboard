@@ -37,16 +37,17 @@ public sealed class StationConfiguration
         }) ?? new StationConfiguration();
     }
 
-    public static string ResolveSettingsPath(string? commandLinePath, string? baseDirectory = null)
+    public static string ResolveSettingsPath(string? commandLinePath, string? baseDirectory = null, string? installedSettingsPath = null)
     {
         if (!string.IsNullOrWhiteSpace(commandLinePath))
         {
             return commandLinePath;
         }
 
-        if (File.Exists(InstalledSettingsPath))
+        var installedPath = installedSettingsPath ?? InstalledSettingsPath;
+        if (File.Exists(installedPath))
         {
-            return InstalledSettingsPath;
+            return installedPath;
         }
 
         var directory = new DirectoryInfo(baseDirectory ?? AppContext.BaseDirectory);

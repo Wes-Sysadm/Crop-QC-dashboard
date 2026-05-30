@@ -24,6 +24,7 @@ public static class QcStationSetupPackageBuilder
 {
     public const string InstalledConfigPath = @"C:\ProgramData\CropQc\QcStation\qcstation.settings.json";
     public const string InstalledConfigDirectory = @"C:\ProgramData\CropQc\QcStation";
+    public const string StandardWinFormsExePath = @"C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe";
 
     public static byte[] Build(QcStation station, string configJson)
     {
@@ -69,6 +70,7 @@ public static class QcStationSetupPackageBuilder
 
         $targetDirectory = '{{InstalledConfigDirectory}}'
         $targetPath = '{{InstalledConfigPath}}'
+        $appExePath = '{{StandardWinFormsExePath}}'
         $sourcePath = Join-Path $PSScriptRoot 'qcstation.settings.json'
 
         try {
@@ -91,10 +93,28 @@ public static class QcStationSetupPackageBuilder
             Write-Host "QC Station configuration installed successfully."
             Write-Host "Installed path: $targetPath"
             Write-Host ""
+
+            if (Test-Path -LiteralPath $appExePath) {
+                $protocolRoot = 'HKCU:\Software\Classes\cropqcstation'
+                New-Item -Path $protocolRoot -Force | Out-Null
+                Set-Item -Path $protocolRoot -Value 'URL:Crop QC Station'
+                New-ItemProperty -Path $protocolRoot -Name 'URL Protocol' -Value '' -PropertyType String -Force | Out-Null
+                New-Item -Path "$protocolRoot\DefaultIcon" -Force | Out-Null
+                Set-Item -Path "$protocolRoot\DefaultIcon" -Value "`"$appExePath`",0"
+                New-Item -Path "$protocolRoot\shell\open\command" -Force | Out-Null
+                Set-Item -Path "$protocolRoot\shell\open\command" -Value "`"$appExePath`" `"%1`""
+                Write-Host "cropqcstation:// protocol handler registered for this Windows user."
+            }
+            else {
+                Write-Warning "QC Station app executable was not found. Protocol handler was not registered. Install or copy the QC Station app to $appExePath, then rerun this installer."
+            }
+
+            Write-Host ""
             Write-Host "Next steps:"
             Write-Host "1. Launch Crop QC Station."
             Write-Host "2. Install FTADLL.exe from Admin Downloads if this computer is connected to an FTA."
             Write-Host "3. Confirm station code and warehouse in the app."
+            Write-Host "4. Test Open in QC Station from a dashboard sample page."
         }
         catch {
             Write-Error "QC Station configuration install failed: $($_.Exception.Message)"
@@ -119,6 +139,12 @@ public static class QcStationSetupPackageBuilder
         3. Confirm it says the configuration installed successfully.
         4. Install FTADLL.exe from Admin Downloads if this computer is connected to an FTA.
         5. Launch Crop QC Station.
+
+        Protocol link setup:
+        - The installer registers cropqcstation:// links if the WinForms app is installed here:
+          {{StandardWinFormsExePath}}
+        - If the app is not installed there yet, install or copy the QC Station app to that folder and rerun Install-CropQcStationConfig.cmd.
+        - Test by opening a dashboard sample page and clicking Open in QC Station.
 
         This installs:
         {{InstalledConfigPath}}

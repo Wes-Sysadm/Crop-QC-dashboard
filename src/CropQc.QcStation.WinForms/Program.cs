@@ -8,7 +8,9 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
 
-        var settingsPath = StationConfiguration.ResolveSettingsPath(args.FirstOrDefault());
+        var launch = args.Select(QcStationProtocolLaunch.Parse).FirstOrDefault(x => x is not null);
+        var settingsArg = args.FirstOrDefault(x => !QcStationProtocolLaunch.IsProtocolArgument(x));
+        var settingsPath = StationConfiguration.ResolveSettingsPath(settingsArg);
         if (!File.Exists(settingsPath))
         {
             MessageBox.Show(
@@ -21,6 +23,6 @@ internal static class Program
         var configuration = StationConfiguration.Load(settingsPath);
         var stationService = FtaStationServiceFactory.Create(configuration, new WinFormsFtaMessagePump());
 
-        Application.Run(new MainForm(stationService, settingsPath));
+        Application.Run(new MainForm(stationService, settingsPath, launch));
     }
 }

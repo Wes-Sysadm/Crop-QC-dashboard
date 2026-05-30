@@ -78,10 +78,13 @@ public sealed class MainForm : Form
     private bool shutdownComplete;
     private bool shutdownInProgress;
 
-    public MainForm(IFtaStationService stationService, string settingsPath)
+    private readonly QcStationProtocolLaunch? launchRequest;
+
+    public MainForm(IFtaStationService stationService, string settingsPath, QcStationProtocolLaunch? launchRequest = null)
     {
         this.stationService = stationService;
         this.settingsPath = settingsPath;
+        this.launchRequest = launchRequest;
 
         Text = $"{ProjectInfo.Name} QC Station WinForms FTA Harness";
         Width = 1380;
@@ -96,6 +99,7 @@ public sealed class MainForm : Form
         RefreshCaptureDisplay();
         AppendLog($"Settings: {settingsPath}");
         AppendLog("WinForms harness started on STA thread with a Windows message loop.");
+        Shown += async (_, _) => await HandleLaunchRequestAsync();
     }
 
     private void BuildLayout()
@@ -627,6 +631,38 @@ public sealed class MainForm : Form
         RefreshSampleStatusDisplay();
         RefreshCaptureDisplay();
         AppendLog($"Selected sample {selectedSample.DisplayReceiptId} from dashboard API.");
+    }
+
+    private async Task LoadSampleByIdAsync(long sampleId)
+    {
+        apiClient ??= CreateApiClient();
+        selectedSample = await apiClient.GetSampleDetailAsync(sampleId);
+        if (selectedSample is null)
+        {
+            apiStatusTextBox.Text = "Sample not found";
+            AppendLog($"Protocol launch sample {sampleId} was not found by the API.");
+            return;
+        }
+
+        LoadSelectedSampleIntoCaptureGrid();
+        hasUnsavedPressureChanges = false;
+        RefreshSampleStatusDisplay();
+        RefreshCaptureDisplay();
+        apiStatusTextBox.Text = $"Loaded sample {selectedSample.DisplayReceiptId}";
+        AppendLog($"Loaded sample {selectedSample.DisplayReceiptId} from protocol launch.");
+    }
+
+    private async Task HandleLaunchRequestAsync()
+    {
+        if (launchRequest?.SampleId is long sampleId)
+        {
+            AppendLog($"Protocol launch requested sample {sampleId}.");
+            await LoadSampleByIdAsync(sampleId);
+        }
+        else if (launchRequest?.ReceiptId is long receiptId)
+        {
+            AppendLog($"Protocol launch requested receipt {receiptId}; receipt launch is not implemented yet.");
+        }
     }
 
     private void LoadSelectedSampleIntoCaptureGrid()
