@@ -382,7 +382,7 @@ Run the dashboard/API and WinForms station together:
 1. Start the web dashboard or API project. On Render, use the dashboard URL as `ApiBaseUrl`.
 2. In the dashboard, sign in as an Admin and open `Admin -> QC Stations`.
 3. Create one QC Station record for each physical QC computer, then download that station's setup package immediately after creation or key rotation.
-4. On the QC Station computer, extract the setup package and double-click `Install-CropQcStation.cmd`. No PowerShell command entry is required. A full package installs the WinForms app to `C:\Program Files\CropQc\QcStation`, copies `qcstation.settings.json` to `C:\ProgramData\CropQc\QcStation\qcstation.settings.json`, backs up any existing config first, and registers `cropqcstation://` links.
+4. On the QC Station computer, extract the setup package and double-click `Install-CropQcStation.cmd`. No PowerShell command entry is required. A full package installs the WinForms app to `C:\Program Files\CropQc\QcStation`, copies `qcstation.settings.json` to `C:\ProgramData\CropQc\QcStation\qcstation.settings.json`, backs up any existing app/config first, creates a desktop shortcut when possible, and registers `cropqcstation://` links.
 5. Confirm the WinForms `ApiBaseUrl` matches the dashboard/API URL, such as `https://localhost:7001` for local API testing or the Render dashboard URL for live testing.
 6. Run the WinForms x86 harness:
 
@@ -396,7 +396,7 @@ Run the dashboard/API and WinForms station together:
 10. Click `Save Pressures to Dashboard`.
 11. Refresh the web dashboard sample page to see the saved pressure readings.
 
-The protocol handler points to `C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe`. If the setup package is marked config-only, publish/deploy the WinForms app payload, download a new full setup package, or copy the QC Station app to that folder and rerun `Install-CropQcStation.cmd`.
+The protocol handler points to `C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe`. If the Admin QC Stations page says the app payload is missing, publish/deploy the WinForms app payload before creating or rotating station setup packages.
 
 The QC Station pressure save endpoint is pressure-only. It updates `Pressure1Lbs`, `Pressure1Source`, `Pressure2Lbs`, and `Pressure2Source`; it does not overwrite weight, grade, starch, defects, photos, or receipt data. `Auto-save after each completed fruit` can save after Pressure 2 is captured, but it is unchecked by default.
 
@@ -408,13 +408,13 @@ Keep setup packages private. Each package contains the raw station API key. If a
 
 ## Publishing The WinForms Payload
 
-The Render web app cannot build the Windows QC Station app during a download request. Before deploying a web build that should generate full QC Station setup packages, publish the WinForms x86 payload and include it with the web deployment:
+The Render web app cannot build the Windows QC Station app during a download request. The Docker build publishes the WinForms x86 payload into the web app before publishing the dashboard. For local or manual deployment, publish the payload directly into the web app payload folder:
 
 ```powershell
-.\scripts\publish-qcstation-winforms-x86.ps1 -CopyToWebPayload
+.\scripts\publish-qcstation-winforms-x86.ps1
 ```
 
-The script publishes `src\CropQc.QcStation.WinForms\CropQc.QcStation.WinForms.csproj` in Release mode for `win-x86`, writes the output to `artifacts\qcstation-winforms-x86`, and copies it to `src\CropQc.Web\App_Data\QcStationWinForms` when `-CopyToWebPayload` is supplied. The Admin QC Stations page shows whether that payload is present. If it is missing, generated setup packages are clearly labeled config-only.
+The script publishes `src\CropQc.QcStation.WinForms\CropQc.QcStation.WinForms.csproj` in Release mode for `win-x86` and writes the output to `src\CropQc.Web\App_Data\QcStationWinForms`, which the web project copies to publish output. The Admin QC Stations page shows whether that payload is present. If it is missing, full setup package buttons are disabled and station setup packages cannot be generated until the payload is deployed.
 
 ## Quit / Disconnect Behavior
 

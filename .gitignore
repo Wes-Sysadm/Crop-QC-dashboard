@@ -6,5 +6,6 @@ obj/
 .localappdata/
 .nuget-packages/
 artifacts/
+src/CropQc.Web/App_Data/QcStationWinForms/
 *.user
 *.suo

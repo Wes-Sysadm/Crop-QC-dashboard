@@ -6,6 +6,7 @@
 .vscode/
 TestResults/
 coverage/
+src/CropQc.Web/App_Data/QcStationWinForms/
 *.user
 *.suo
 *.nupkg

@@ -4,12 +4,18 @@ WORKDIR /src
 COPY CropQc.sln ./
 COPY src/CropQc.Shared/CropQc.Shared.csproj src/CropQc.Shared/
 COPY src/CropQc.Data/CropQc.Data.csproj src/CropQc.Data/
+COPY src/CropQc.QcStation/CropQc.QcStation.csproj src/CropQc.QcStation/
+COPY src/CropQc.QcStation.WinForms/CropQc.QcStation.WinForms.csproj src/CropQc.QcStation.WinForms/
 COPY src/CropQc.Web/CropQc.Web.csproj src/CropQc.Web/
 RUN dotnet restore src/CropQc.Web/CropQc.Web.csproj
+RUN dotnet restore src/CropQc.QcStation.WinForms/CropQc.QcStation.WinForms.csproj -r win-x86 -p:EnableWindowsTargeting=true
 
 COPY src/CropQc.Shared/ src/CropQc.Shared/
 COPY src/CropQc.Data/ src/CropQc.Data/
+COPY src/CropQc.QcStation/ src/CropQc.QcStation/
+COPY src/CropQc.QcStation.WinForms/ src/CropQc.QcStation.WinForms/
 COPY src/CropQc.Web/ src/CropQc.Web/
+RUN dotnet publish src/CropQc.QcStation.WinForms/CropQc.QcStation.WinForms.csproj -c Release -r win-x86 --self-contained false -p:PlatformTarget=x86 -p:EnableWindowsTargeting=true -p:PublishSingleFile=false -o src/CropQc.Web/App_Data/QcStationWinForms --no-restore
 RUN dotnet publish src/CropQc.Web/CropQc.Web.csproj -c Release -o /app/publish --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final

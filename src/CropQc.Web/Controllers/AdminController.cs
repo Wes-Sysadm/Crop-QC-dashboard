@@ -37,9 +37,9 @@ public sealed class AdminController(
                 new(
                     "QC Station Configs",
                     "setup package .zip",
-                    "Per-station setup packages generated from Admin QC Stations.",
+                    "Per-station setup packages generated from Admin QC Stations. Full packages install the WinForms app, station config, and browser link handler.",
                     "/Admin/QcStations",
-                    "Each QC computer needs its own station record and API key. Download the setup package immediately after create/rotate; do not use one shared API key for all computers.")
+                    "Each QC computer needs its own station record and API key. FTADLL.exe is separate and still required for FTA-connected computers; do not use one shared API key for all computers.")
             ]
         };
 
@@ -55,6 +55,12 @@ public sealed class AdminController(
     [Authorize(Policy = "RequireManagerOrAdmin")]
     public async Task<IActionResult> CreateQcStation(QcStationForm form, string downloadType = "package", CancellationToken cancellationToken = default)
     {
+        if (RequestsSetupPackage(downloadType) && !qcStationAdminService.AppPayloadAvailable)
+        {
+            TempData["Error"] = "QC Station app payload is missing. Full setup packages cannot be generated. Deploy the WinForms payload before creating station setup packages.";
+            return RedirectToAction(nameof(QcStations));
+        }
+
         var (error, download) = await qcStationAdminService.CreateAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         if (error is not null || download is null)
         {
@@ -96,6 +102,12 @@ public sealed class AdminController(
     [Authorize(Policy = "RequireManagerOrAdmin")]
     public async Task<IActionResult> RotateQcStationKey(int id, string downloadType = "package", CancellationToken cancellationToken = default)
     {
+        if (RequestsSetupPackage(downloadType) && !qcStationAdminService.AppPayloadAvailable)
+        {
+            TempData["Error"] = "QC Station app payload is missing. Full setup packages cannot be generated. Deploy the WinForms payload before rotating station keys for setup packages.";
+            return RedirectToAction(nameof(QcStations));
+        }
+
         var (error, download) = await qcStationAdminService.RotateKeyAsync(id, authorizationService.GetEmail(User) ?? "", cancellationToken);
         if (error is not null || download is null)
         {
@@ -123,6 +135,9 @@ public sealed class AdminController(
 
         return File(download.PackageBytes, "application/zip", download.PackageFileName);
     }
+
+    private static bool RequestsSetupPackage(string downloadType) =>
+        string.Equals(downloadType, "package", StringComparison.OrdinalIgnoreCase);
 
     [HttpPost("Users/Add")]
     [Authorize(Policy = "RequireAdmin")]

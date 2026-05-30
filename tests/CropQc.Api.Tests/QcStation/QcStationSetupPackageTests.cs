@@ -35,12 +35,14 @@ public sealed class QcStationSetupPackageTests
         Assert.Contains(@"C:\Program Files\CropQc\QcStation", script);
         Assert.Contains(@"C:\ProgramData\CropQc\QcStation\qcstation.settings.json", script);
         Assert.Contains("$packageHasApp = $false", script);
+        Assert.Contains("$appBackupDirectory = \"$appDirectory.backup-$timestamp\"", script);
         Assert.Contains("qcstation.settings.backup-$timestamp.json", script);
         Assert.Contains("HKCU:\\Software\\Classes\\cropqcstation", script);
         Assert.Contains("URL Protocol", script);
         Assert.Contains(@"C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe", script);
         Assert.Contains("shell\\open\\command", script);
         Assert.Contains("%1", script);
+        Assert.Contains("Crop QC Station.lnk", script);
 
         var readme = ReadEntry(archive, "README.txt");
         Assert.Contains("Double-click Install-CropQcStation.cmd", readme);
@@ -72,12 +74,66 @@ public sealed class QcStationSetupPackageTests
             Assert.Contains(archive.Entries, x => x.FullName == "app/CropQc.QcStation.WinForms.exe");
             Assert.Contains(archive.Entries, x => x.FullName == "app/CropQc.QcStation.dll");
             Assert.Contains("$packageHasApp = $true", ReadEntry(archive, "install-qcstation.ps1"));
+            Assert.Contains("Copy-Item -Path (Join-Path $sourceAppDirectory '*') -Destination $appDirectory", ReadEntry(archive, "install-qcstation.ps1"));
             Assert.Contains("Full setup package", ReadEntry(archive, "README.txt"));
         }
         finally
         {
             payloadRoot.Delete(recursive: true);
         }
+    }
+
+    [Fact]
+    public void PublishScript_StagesPayloadDirectlyInWebAppData()
+    {
+        var script = File.ReadAllText(FindRepositoryFile("scripts", "publish-qcstation-winforms-x86.ps1"));
+
+        Assert.Contains("src/CropQc.Web/App_Data/QcStationWinForms", script);
+        Assert.Contains("-p:PlatformTarget=x86", script);
+        Assert.Contains("-p:EnableWindowsTargeting=true", script);
+        Assert.DoesNotContain("[switch]$CopyToWebPayload", script);
+    }
+
+    [Fact]
+    public void WebProject_PublishesQcStationPayloadWhenPresent()
+    {
+        var project = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "CropQc.Web.csproj"));
+
+        Assert.Contains(@"App_Data\QcStationWinForms\**\*", project);
+        Assert.Contains("<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>", project);
+    }
+
+    [Fact]
+    public void Dockerfile_PublishesWinFormsPayloadBeforeWebPublish()
+    {
+        var dockerfile = File.ReadAllText(FindRepositoryFile("Dockerfile"));
+
+        Assert.Contains("src/CropQc.QcStation.WinForms/CropQc.QcStation.WinForms.csproj", dockerfile);
+        Assert.Contains("-r win-x86", dockerfile);
+        Assert.Contains("-p:EnableWindowsTargeting=true", dockerfile);
+        Assert.Contains("-o src/CropQc.Web/App_Data/QcStationWinForms", dockerfile);
+        Assert.Contains("dotnet publish src/CropQc.Web/CropQc.Web.csproj", dockerfile);
+    }
+
+    [Fact]
+    public void AdminQcStationsView_BlocksFullSetupWhenPayloadMissing()
+    {
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Admin", "QcStations.cshtml"));
+
+        Assert.Contains("QC Station app payload is missing", view);
+        Assert.Contains("Full Setup Package Unavailable", view);
+        Assert.Contains("disabled title=\"Deploy the WinForms payload before generating setup packages.\"", view);
+        Assert.Contains("Add Station and Download Full Setup Package", view);
+    }
+
+    [Fact]
+    public void AdminController_BlocksPackageCreateAndRotateWhenPayloadMissing()
+    {
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "AdminController.cs"));
+
+        Assert.Contains("RequestsSetupPackage(downloadType) && !qcStationAdminService.AppPayloadAvailable", controller);
+        Assert.Contains("Full setup packages cannot be generated", controller);
+        Assert.Contains("private static bool RequestsSetupPackage", controller);
     }
 
     [Fact]
