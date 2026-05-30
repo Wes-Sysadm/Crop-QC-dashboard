@@ -5,6 +5,8 @@ namespace CropQc.QcStation.Fta;
 
 public sealed class StationConfiguration
 {
+    public const string InstalledSettingsPath = @"C:\ProgramData\CropQc\QcStation\qcstation.settings.json";
+
     public string StationName { get; set; } = Environment.MachineName;
     public string WarehouseCode { get; set; } = "WP";
     public FtaMode FtaMode { get; set; } = FtaMode.Mock;
@@ -34,4 +36,34 @@ public sealed class StationConfiguration
             Converters = { new JsonStringEnumConverter() }
         }) ?? new StationConfiguration();
     }
+
+    public static string ResolveSettingsPath(string? commandLinePath, string? baseDirectory = null)
+    {
+        if (!string.IsNullOrWhiteSpace(commandLinePath))
+        {
+            return commandLinePath;
+        }
+
+        if (File.Exists(InstalledSettingsPath))
+        {
+            return InstalledSettingsPath;
+        }
+
+        var directory = new DirectoryInfo(baseDirectory ?? AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(directory.FullName, "src", "CropQc.QcStation", "qcstation.settings.json");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return Path.Combine(baseDirectory ?? AppContext.BaseDirectory, "qcstation.settings.json");
+    }
+
+    public static string MissingSettingsMessage(string path) =>
+        $"QC Station settings were not found at '{path}'. Install the station setup package from Admin -> QC Stations, or pass a settings path on the command line. Installed stations should use {InstalledSettingsPath}.";
 }

@@ -26,7 +26,19 @@ Run it with:
 dotnet run --project .\src\CropQc.QcStation\CropQc.QcStation.csproj
 ```
 
-The app uses `src\CropQc.QcStation\qcstation.settings.json` by default. You can pass another settings file path as the first argument:
+Installed QC Station computers use this config path by default:
+
+```text
+C:\ProgramData\CropQc\QcStation\qcstation.settings.json
+```
+
+The app checks settings in this order:
+
+1. Command-line settings path, if provided.
+2. `C:\ProgramData\CropQc\QcStation\qcstation.settings.json`.
+3. The repo development fallback `src\CropQc.QcStation\qcstation.settings.json`.
+
+You can pass another settings file path as the first argument:
 
 ```powershell
 dotnet run --project .\src\CropQc.QcStation\CropQc.QcStation.csproj -- .\path\to\qcstation.settings.json
@@ -369,8 +381,8 @@ Run the dashboard/API and WinForms station together:
 
 1. Start the web dashboard or API project. On Render, use the dashboard URL as `ApiBaseUrl`.
 2. In the dashboard, sign in as an Admin and open `Admin -> QC Stations`.
-3. Create one QC Station record for each physical QC computer, then download that station's `qcstation.settings.json` immediately after creation or key rotation.
-4. Place the downloaded `qcstation.settings.json` on the QC Station computer. Each config includes that computer's `QcStationCode` and one-time raw `QcStationApiKey`.
+3. Create one QC Station record for each physical QC computer, then download that station's setup package immediately after creation or key rotation.
+4. On the QC Station computer, extract the setup package and run `install-qcstation-config.ps1`. It installs `qcstation.settings.json` to `C:\ProgramData\CropQc\QcStation\qcstation.settings.json` and backs up any existing config first.
 5. Confirm the WinForms `ApiBaseUrl` matches the dashboard/API URL, such as `https://localhost:7001` for local API testing or the Render dashboard URL for live testing.
 6. Run the WinForms x86 harness:
 
@@ -390,7 +402,9 @@ The QC Station pressure save endpoint is pressure-only. It updates `Pressure1Lbs
 
 Station API access is managed in the database, not with one shared Render environment variable. Each QC computer sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the server stores only a hash of the key. Deactivate a station to block it immediately, or rotate its key and download a fresh config if a computer is replaced.
 
-`Admin -> Downloads` links to the Google Drive `FTADLL.exe` installer. Install it on each FTA-connected QC Station computer before running RealDll mode, then use `Admin -> QC Stations` to download that computer's station-specific config. This setup supports 20+ station computers without sharing one secret across all of them.
+`Admin -> Downloads` links to the Google Drive `FTADLL.exe` installer. Install it on each FTA-connected QC Station computer before running RealDll mode, then use `Admin -> QC Stations` to download that computer's station-specific setup package. This setup supports 20+ station computers without sharing one secret across all of them.
+
+Keep setup packages private. Each package contains the raw station API key. If a package is lost or exposed, rotate that station's key in `Admin -> QC Stations` and download a new package.
 
 ## Quit / Disconnect Behavior
 

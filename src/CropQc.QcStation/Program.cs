@@ -1,7 +1,13 @@
 using CropQc.QcStation.Fta;
 using CropQc.Shared;
 
-var settingsPath = args.FirstOrDefault() ?? Path.Combine(AppContext.BaseDirectory, "qcstation.settings.json");
+var settingsPath = StationConfiguration.ResolveSettingsPath(args.FirstOrDefault());
+if (!File.Exists(settingsPath))
+{
+    Console.WriteLine(StationConfiguration.MissingSettingsMessage(settingsPath));
+    Console.WriteLine();
+}
+
 var configuration = StationConfiguration.Load(settingsPath);
 var stationService = FtaStationServiceFactory.Create(configuration);
 

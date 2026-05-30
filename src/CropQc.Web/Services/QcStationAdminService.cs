@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
@@ -16,7 +18,102 @@ public interface IQcStationAdminService
     Task<(string? Error, QcStationConfigDownload? Download)> RotateKeyAsync(int id, string changedByEmail, CancellationToken cancellationToken);
 }
 
-public sealed record QcStationConfigDownload(string FileName, string Json);
+public sealed record QcStationConfigDownload(string FileName, string Json, string PackageFileName, byte[] PackageBytes);
+
+public static class QcStationSetupPackageBuilder
+{
+    public const string InstalledConfigPath = @"C:\ProgramData\CropQc\QcStation\qcstation.settings.json";
+    public const string InstalledConfigDirectory = @"C:\ProgramData\CropQc\QcStation";
+
+    public static byte[] Build(QcStation station, string configJson)
+    {
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            AddText(archive, "qcstation.settings.json", configJson);
+            AddText(archive, "install-qcstation-config.ps1", BuildInstallScript());
+            AddText(archive, "README.txt", BuildReadme(station));
+        }
+
+        return stream.ToArray();
+    }
+
+    public static string BuildInstallScript() =>
+        $$"""
+        $ErrorActionPreference = 'Stop'
+
+        $targetDirectory = '{{InstalledConfigDirectory}}'
+        $targetPath = '{{InstalledConfigPath}}'
+        $sourcePath = Join-Path $PSScriptRoot 'qcstation.settings.json'
+
+        try {
+            if (-not (Test-Path -LiteralPath $sourcePath)) {
+                throw "qcstation.settings.json was not found next to this installer script."
+            }
+
+            if (-not (Test-Path -LiteralPath $targetDirectory)) {
+                New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
+            }
+
+            if (Test-Path -LiteralPath $targetPath) {
+                $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+                $backupPath = Join-Path $targetDirectory "qcstation.settings.backup-$timestamp.json"
+                Copy-Item -LiteralPath $targetPath -Destination $backupPath -Force
+                Write-Host "Existing QC Station configuration backed up to $backupPath"
+            }
+
+            Copy-Item -LiteralPath $sourcePath -Destination $targetPath -Force
+            Write-Host "QC Station configuration installed successfully."
+            Write-Host "Installed path: $targetPath"
+            Write-Host ""
+            Write-Host "Next steps:"
+            Write-Host "1. Install FTADLL.exe from Admin Downloads if needed."
+            Write-Host "2. Run CropQc.QcStation.WinForms."
+            Write-Host "3. Confirm station code and warehouse in the app."
+        }
+        catch {
+            Write-Error "QC Station configuration install failed: $($_.Exception.Message)"
+            exit 1
+        }
+        """;
+
+    public static string BuildReadme(QcStation station)
+    {
+        var stationName = string.IsNullOrWhiteSpace(station.StationName) ? station.Name : station.StationName;
+        return $$"""
+        Crop QC Station Setup Package
+        =============================
+
+        Station name: {{stationName}}
+        Station code: {{station.StationCode}}
+        Warehouse: {{station.WarehouseCode ?? ""}}
+
+        Install steps:
+        1. Extract this zip file.
+        2. Right-click install-qcstation-config.ps1.
+        3. Run with PowerShell.
+        4. If blocked, open PowerShell in the extracted folder and run:
+           Set-ExecutionPolicy -Scope Process Bypass
+           .\install-qcstation-config.ps1
+        5. Launch QC Station.
+
+        This installs:
+        {{InstalledConfigPath}}
+
+        Keep this package private because it contains the station API key.
+        Anyone with this package can act as this QC Station until the key is rotated or the station is deactivated.
+
+        If this package is lost or exposed, rotate the station key in Admin -> QC Stations and download a new package.
+        """;
+    }
+
+    private static void AddText(ZipArchive archive, string entryName, string content)
+    {
+        var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+        using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        writer.Write(content);
+    }
+}
 
 public sealed class QcStationAdminService(CropQcDbContext dbContext, IConfiguration configuration) : IQcStationAdminService
 {
@@ -225,7 +322,19 @@ public sealed class QcStationAdminService(CropQcDbContext dbContext, IConfigurat
         };
 
         var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
-        return new QcStationConfigDownload($"{station.StationCode}-qcstation.settings.json", json);
+        var packageFileName = $"CropQcStation-{SanitizeFileName(station.StationCode)}-Setup.zip";
+        return new QcStationConfigDownload(
+            $"{station.StationCode}-qcstation.settings.json",
+            json,
+            packageFileName,
+            QcStationSetupPackageBuilder.Build(station, json));
+    }
+
+    private static string SanitizeFileName(string value)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var safe = new string(value.Select(ch => invalid.Contains(ch) ? '-' : ch).ToArray()).Trim();
+        return string.IsNullOrWhiteSpace(safe) ? "QC-Station" : safe;
     }
 
     private async Task<int?> FindWarehouseIdAsync(string warehouseCode, CancellationToken cancellationToken) =>

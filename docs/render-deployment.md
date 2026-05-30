@@ -86,7 +86,9 @@ Set these variables in Render:
 
 Do not commit database passwords, Google credentials, Gmail credentials, or API secrets.
 
-WinForms QC Station access is managed from the database, not with one shared Render API key. Sign in as Admin, open `/Admin/QcStations`, create one station record per QC computer, and download that station's `qcstation.settings.json` immediately after creation or key rotation. The station sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the dashboard stores only the key hash. Deactivate a station to revoke access without breaking other QC computers.
+WinForms QC Station access is managed from the database, not with one shared Render API key. Sign in as Admin, open `/Admin/QcStations`, create one station record per QC computer, and download that station's setup package immediately after creation or key rotation. The package includes `qcstation.settings.json`, `install-qcstation-config.ps1`, and `README.txt`. Run the installer script on the QC computer to install the config at `C:\ProgramData\CropQc\QcStation\qcstation.settings.json`. The station sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the dashboard stores only the key hash. Deactivate a station to revoke access without breaking other QC computers.
+
+Keep station setup packages private because they contain the raw station API key. If a package is lost or exposed, rotate the station key from `/Admin/QcStations` and download a new setup package.
 
 Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 
@@ -108,7 +110,7 @@ Roles are managed inside the dashboard. `/Admin/Users` also shows a role permiss
 Admin-only dashboard pages:
 
 - `/Admin/Users` manages user accounts, active status, and roles after Google login creates identity records.
-- `/Admin/QcStations` manages station enrollment, per-station API keys, key rotation, deactivation, and config downloads.
+- `/Admin/QcStations` manages station enrollment, per-station API keys, key rotation, deactivation, raw config downloads, and setup package downloads.
 - `/MasterData` shows edit/add/deactivate controls only for Admin users.
 - `/Admin/Configuration` manages safe non-secret runtime configuration values. Do not store OAuth secrets, database connection strings, Gmail secrets, Google Drive secrets, or API keys there.
 - `/Admin/Downloads` provides approved internal support-file links, such as the FTA DLL installer Google Drive file, to Admin users only.
