@@ -34,10 +34,46 @@ public sealed class QcStationSetupPackageTests
         var script = ReadEntry(archive, "install-qcstation-config.ps1");
         Assert.Contains(@"C:\ProgramData\CropQc\QcStation\qcstation.settings.json", script);
         Assert.Contains("qcstation.settings.backup-$timestamp.json", script);
+        Assert.Contains("HKCU:\\Software\\Classes\\cropqcstation", script);
+        Assert.Contains("URL Protocol", script);
+        Assert.Contains(@"C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe", script);
+        Assert.Contains("shell\\open\\command", script);
+        Assert.Contains("%1", script);
 
         var readme = ReadEntry(archive, "README.txt");
         Assert.Contains("Double-click Install-CropQcStationConfig.cmd", readme);
+        Assert.Contains("cropqcstation://", readme);
         Assert.DoesNotContain("Set-ExecutionPolicy -Scope Process Bypass", readme);
+    }
+
+    [Fact]
+    public void ProtocolLaunch_ParsesValidSampleUrl()
+    {
+        var launch = QcStationProtocolLaunch.Parse("cropqcstation://sample/123");
+
+        Assert.NotNull(launch);
+        Assert.Equal(123, launch.SampleId);
+        Assert.Null(launch.ReceiptId);
+    }
+
+    [Theory]
+    [InlineData("cropqcstation://sample/not-a-number")]
+    [InlineData("cropqcstation://sample/0")]
+    [InlineData("https://example.com/sample/123")]
+    [InlineData("cropqcstation://unknown/123")]
+    public void ProtocolLaunch_RejectsInvalidUrls(string value)
+    {
+        Assert.Null(QcStationProtocolLaunch.Parse(value));
+    }
+
+    [Fact]
+    public void SampleDetailView_UsesCropQcStationProtocolLink()
+    {
+        var viewPath = FindRepositoryFile("src", "CropQc.Web", "Views", "Samples", "Details.cshtml");
+        var view = File.ReadAllText(viewPath);
+
+        Assert.Contains("href=\"cropqcstation://sample/@Model.Sample.Id\"", view);
+        Assert.Contains("Requires the QC Station setup package", view);
     }
 
     [Fact]
@@ -59,7 +95,7 @@ public sealed class QcStationSetupPackageTests
             var repoConfigPath = Path.Combine(repoConfigDirectory, "qcstation.settings.json");
             File.WriteAllText(repoConfigPath, "{}");
 
-            var path = StationConfiguration.ResolveSettingsPath(null, tempRoot.FullName);
+            var path = StationConfiguration.ResolveSettingsPath(null, tempRoot.FullName, Path.Combine(tempRoot.FullName, "missing-programdata-config.json"));
 
             Assert.Equal(repoConfigPath, path);
         }
@@ -74,5 +110,22 @@ public sealed class QcStationSetupPackageTests
         var entry = archive.GetEntry(entryName) ?? throw new InvalidOperationException($"Entry {entryName} was not found.");
         using var reader = new StreamReader(entry.Open());
         return reader.ReadToEnd();
+    }
+
+    private static string FindRepositoryFile(params string[] pathParts)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(new[] { directory.FullName }.Concat(pathParts).ToArray());
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException($"Could not find repository file {Path.Combine(pathParts)}.");
     }
 }

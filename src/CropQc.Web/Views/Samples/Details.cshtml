@@ -38,12 +38,12 @@
         <h2>FTA Pressure Capture</h2>
         <p>FTA pressure capture is done through the local QC Station app. The browser does not connect directly to the physical FTA DLL.</p>
         <p>Selected sample: <strong>@Model.Sample.DisplayReceiptId</strong> | Sample ID: <code>@Model.Sample.Id</code> | Receipt ID: <code>@Model.Sample.ReceiptIdText</code></p>
-        <p>Open the WinForms QC Station, refresh today's samples, select <strong>@Model.Sample.DisplayReceiptId</strong>, then start continuous manual capture. FTA readings may be captured from QC Station and saved here.</p>
+        <p>Click Open in QC Station to launch the local WinForms app for <strong>@Model.Sample.DisplayReceiptId</strong>, then start continuous manual capture. FTA readings may be captured from QC Station and saved here.</p>
         <p>
             <button type="button" class="secondary-button" data-copy-sample-id="@Model.Sample.Id">Copy Sample ID</button>
             <a class="button secondary-button" href="cropqcstation://sample/@Model.Sample.Id">Open in QC Station</a>
         </p>
-        <p class="muted">The QC Station app uses its own station code and API key generated in Admin QC Stations. The custom protocol link remains a placeholder.</p>
+        <p class="muted">Requires the QC Station setup package to be installed on this computer. If nothing opens, install the station setup package from Admin -> QC Stations. The link sends only the sample ID; the station code and API key stay in the installed local config.</p>
     </section>
 }
 

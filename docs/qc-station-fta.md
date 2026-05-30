@@ -382,7 +382,7 @@ Run the dashboard/API and WinForms station together:
 1. Start the web dashboard or API project. On Render, use the dashboard URL as `ApiBaseUrl`.
 2. In the dashboard, sign in as an Admin and open `Admin -> QC Stations`.
 3. Create one QC Station record for each physical QC computer, then download that station's setup package immediately after creation or key rotation.
-4. On the QC Station computer, extract the setup package and double-click `Install-CropQcStationConfig.cmd`. No PowerShell command entry is required. The installer copies `qcstation.settings.json` to `C:\ProgramData\CropQc\QcStation\qcstation.settings.json` and backs up any existing config first.
+4. On the QC Station computer, extract the setup package and double-click `Install-CropQcStationConfig.cmd`. No PowerShell command entry is required. The installer copies `qcstation.settings.json` to `C:\ProgramData\CropQc\QcStation\qcstation.settings.json`, backs up any existing config first, and registers `cropqcstation://` links when the WinForms app exists at `C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe`.
 5. Confirm the WinForms `ApiBaseUrl` matches the dashboard/API URL, such as `https://localhost:7001` for local API testing or the Render dashboard URL for live testing.
 6. Run the WinForms x86 harness:
 
@@ -390,13 +390,13 @@ Run the dashboard/API and WinForms station together:
    .\scripts\dev-run-qcstation-winforms-x86.ps1
    ```
 
-7. In the web dashboard, open `/Samples/{sampleId}`. The FTA section shows the sample ID and reminds users that FTA capture happens in QC Station.
-8. In Dashboard Sample Selection, enter the warehouse filter if desired, then select `Refresh Today's Samples`.
-9. Select a sample and click `Select Sample`.
-10. Confirm the sample context, existing pressure readings, and current target.
-11. Use `Start Continuous Manual Capture`, then press and hold the green FTA button for each physical test.
-12. Click `Save Pressures to Dashboard`.
-13. Refresh the web dashboard sample page to see the saved pressure readings.
+7. In the web dashboard, open `/Samples/{sampleId}` and click `Open in QC Station`.
+8. The browser launches `cropqcstation://sample/{sampleId}`. The WinForms app reads the installed config, calls the dashboard API, loads that sample, and sets the pressure target to the first missing slot.
+9. Use `Start Continuous Manual Capture`, then press and hold the green FTA button for each physical test.
+10. Click `Save Pressures to Dashboard`.
+11. Refresh the web dashboard sample page to see the saved pressure readings.
+
+The protocol handler requires the WinForms executable at `C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe`. If the installer warns that the executable was not found, install or copy the QC Station app to that folder and rerun `Install-CropQcStationConfig.cmd`.
 
 The QC Station pressure save endpoint is pressure-only. It updates `Pressure1Lbs`, `Pressure1Source`, `Pressure2Lbs`, and `Pressure2Source`; it does not overwrite weight, grade, starch, defects, photos, or receipt data. `Auto-save after each completed fruit` can save after Pressure 2 is captured, but it is unchecked by default.
 
