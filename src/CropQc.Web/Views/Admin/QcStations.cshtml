@@ -16,7 +16,14 @@
 <section class="panel">
     <h2>Add QC Station</h2>
     <p class="muted">Creating a station generates a unique API key and immediately downloads that station's setup package or raw config. The raw key is not stored and cannot be shown again.</p>
-    <p class="muted">Normal setup: extract the ZIP on the QC computer and double-click <strong>Install-CropQcStationConfig.cmd</strong>. No PowerShell command entry is required.</p>
+    @if (Model.AppPayloadAvailable)
+    {
+        <p class="notice success">Full setup packages are available and install the QC Station app, station config, and cropqcstation:// protocol handler. Extract the ZIP and double-click <strong>Install-CropQcStation.cmd</strong>.</p>
+    }
+    else
+    {
+        <p class="notice warning">QC Station app payload is not deployed at @Model.AppPayloadPath. Setup packages are config-only until the WinForms payload is published and deployed.</p>
+    }
     <form class="toolbar" method="post" action="/Admin/QcStations/Create">
         <div class="field"><label>Station name</label><input name="StationName" placeholder="WP QC Station 1" required /></div>
         <div class="field"><label>Station code</label><input name="StationCode" placeholder="WP-QC-01" required /></div>
@@ -32,7 +39,7 @@
         </div>
         <div class="field"><label>Description</label><input name="Description" /></div>
         <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked /> Active</label><input type="hidden" name="IsActive" value="false" />
-        <button type="submit" name="downloadType" value="package">Add Station and Download Setup Package</button>
+        <button type="submit" name="downloadType" value="package">Add Station and Download @(Model.AppPayloadAvailable ? "Full Setup Package" : "Config-Only Setup Package")</button>
         <button class="secondary-button" type="submit" name="downloadType" value="json">Add Station and Download JSON</button>
     </form>
 </section>
@@ -101,11 +108,11 @@
                     <td>
                         @if (station.ApiKeyLastFour is null)
                         {
-                            <span class="muted">Rotate key to generate a new setup package.</span>
+                            <span class="muted">Rotate key to generate a new @(Model.AppPayloadAvailable ? "full setup package" : "config-only setup package").</span>
                         }
                         else
                         {
-                            <span class="muted">Raw key is no longer available. Rotate key to generate a new setup package. Users install it by double-clicking Install-CropQcStationConfig.cmd.</span>
+                            <span class="muted">Raw key is no longer available. Rotate key to generate a new @(Model.AppPayloadAvailable ? "full setup package" : "config-only setup package"). Users install it by double-clicking Install-CropQcStation.cmd.</span>
                         }
                     </td>
                     <td>
@@ -130,7 +137,7 @@
                         </details>
                         <form class="button-row" method="post" action="/Admin/QcStations/RotateKey">
                             <input type="hidden" name="id" value="@station.Id" />
-                            <button class="secondary-button" type="submit" name="downloadType" value="package">Rotate Key and Download Setup Package</button>
+                            <button class="secondary-button" type="submit" name="downloadType" value="package">Rotate Key and Download @(Model.AppPayloadAvailable ? "Full Setup Package" : "Config-Only Setup Package")</button>
                             <button class="secondary-button" type="submit" name="downloadType" value="json">Rotate Key and Download JSON</button>
                         </form>
                         <form class="button-row" method="post" action="/Admin/QcStations/DownloadConfig">

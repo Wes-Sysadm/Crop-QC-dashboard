@@ -86,9 +86,17 @@ Set these variables in Render:
 
 Do not commit database passwords, Google credentials, Gmail credentials, or API secrets.
 
-WinForms QC Station access is managed from the database, not with one shared Render API key. Sign in as Admin, open `/Admin/QcStations`, create one station record per QC computer, and download that station's setup package immediately after creation or key rotation. The package includes `qcstation.settings.json`, `Install-CropQcStationConfig.cmd`, `install-qcstation-config.ps1`, and `README.txt`. Extract the ZIP and double-click `Install-CropQcStationConfig.cmd` on the QC computer to install the config at `C:\ProgramData\CropQc\QcStation\qcstation.settings.json`. No manual PowerShell command entry is required. The installer also registers `cropqcstation://` links if the WinForms app exists at `C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe`; otherwise install/copy the station app there and rerun the installer. The station sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the dashboard stores only the key hash. Deactivate a station to revoke access without breaking other QC computers.
+WinForms QC Station access is managed from the database, not with one shared Render API key. Sign in as Admin, open `/Admin/QcStations`, create one station record per QC computer, and download that station's setup package immediately after creation or key rotation. A full package includes `app/`, `qcstation.settings.json`, `Install-CropQcStation.cmd`, `install-qcstation.ps1`, and `README.txt`. Extract the ZIP and double-click `Install-CropQcStation.cmd` on the QC computer to install the app at `C:\Program Files\CropQc\QcStation`, install config at `C:\ProgramData\CropQc\QcStation\qcstation.settings.json`, and register `cropqcstation://` links. No manual PowerShell command entry is required. The station sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the dashboard stores only the key hash. Deactivate a station to revoke access without breaking other QC computers.
 
 Keep station setup packages private because they contain the raw station API key. If a package is lost or exposed, rotate the station key from `/Admin/QcStations` and download a new setup package.
+
+To generate full setup packages, publish the WinForms x86 payload before deploying the web app:
+
+```powershell
+.\scripts\publish-qcstation-winforms-x86.ps1 -CopyToWebPayload
+```
+
+This writes the payload to `src\CropQc.Web\App_Data\QcStationWinForms`. The deployed app looks for the payload at `App_Data/QcStationWinForms` by default; override it with `QcStation__WinFormsPayloadPath` only if the payload is mounted somewhere else. If the payload is missing in the deployed web app, `/Admin/QcStations` warns that setup packages are config-only and do not install the WinForms app.
 
 Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 

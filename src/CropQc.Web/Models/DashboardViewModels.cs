@@ -40,6 +40,8 @@ public sealed class QcStationsPageViewModel
     public string? Search { get; set; }
     public string? WarehouseCode { get; set; }
     public string ActiveFilter { get; set; } = "Active";
+    public bool AppPayloadAvailable { get; set; }
+    public string AppPayloadPath { get; set; } = "";
 }
 
 public sealed record QcStationListItemViewModel(
