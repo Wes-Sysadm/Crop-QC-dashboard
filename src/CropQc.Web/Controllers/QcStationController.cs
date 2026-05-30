@@ -11,15 +11,15 @@ namespace CropQc.Web.Controllers;
 [AllowAnonymous]
 [ApiController]
 [Route("api/qc-station")]
-public sealed class QcStationController(CropQcDbContext dbContext, IConfiguration configuration, ILogger<QcStationController> logger) : ControllerBase
+public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcStationController> logger) : ControllerBase
 {
     [HttpGet("samples/today")]
     public async Task<IActionResult> GetTodaySamples([FromQuery] string? warehouseCode, CancellationToken cancellationToken)
     {
-        var auth = ValidateStationApiKey();
-        if (auth is not null)
+        var auth = await AuthenticateStationAsync(cancellationToken);
+        if (auth.Result is not null)
         {
-            return auth;
+            return auth.Result;
         }
 
         var today = DateTimeOffset.UtcNow.Date;
@@ -60,10 +60,10 @@ public sealed class QcStationController(CropQcDbContext dbContext, IConfiguratio
     [HttpGet("samples/{sampleId:long}/pressure")]
     public async Task<IActionResult> GetSampleDetail(long sampleId, CancellationToken cancellationToken)
     {
-        var auth = ValidateStationApiKey();
-        if (auth is not null)
+        var auth = await AuthenticateStationAsync(cancellationToken);
+        if (auth.Result is not null)
         {
-            return auth;
+            return auth.Result;
         }
 
         var sample = await LoadSampleAsync(sampleId, asTracking: false, cancellationToken);
@@ -75,11 +75,12 @@ public sealed class QcStationController(CropQcDbContext dbContext, IConfiguratio
     [HttpPost("samples/{sampleId:long}/pressure")]
     public async Task<IActionResult> UpdatePressures(long sampleId, UpdateQcStationPressuresRequest request, CancellationToken cancellationToken)
     {
-        var auth = ValidateStationApiKey();
-        if (auth is not null)
+        var auth = await AuthenticateStationAsync(cancellationToken);
+        if (auth.Result is not null)
         {
-            return auth;
+            return auth.Result;
         }
+        var station = auth.Station!;
 
         var sample = await LoadSampleAsync(sampleId, asTracking: true, cancellationToken);
         if (sample is null)
@@ -92,7 +93,7 @@ public sealed class QcStationController(CropQcDbContext dbContext, IConfiguratio
             return BadRequest(new { error = "Rows are required." });
         }
 
-        var stationName = Request.Headers["X-QC-STATION-NAME"].FirstOrDefault() ?? "QC Station";
+        var stationName = station.StationName == "" ? station.Name : station.StationName;
         var before = sample.FruitReadings
             .OrderBy(x => x.RowNumber)
             .Select(x => new { x.RowNumber, x.Pressure1Lbs, x.Pressure2Lbs })
@@ -112,7 +113,7 @@ public sealed class QcStationController(CropQcDbContext dbContext, IConfiguratio
                 {
                     QcSampleId = sampleId,
                     RowNumber = row.RowNumber,
-                    SizeStatus = "Not Calculated",
+                    SizeStatus = "NotCalculated",
                     CreatedAt = DateTimeOffset.UtcNow
                 };
                 dbContext.QcFruitReadings.Add(reading);
@@ -124,6 +125,8 @@ public sealed class QcStationController(CropQcDbContext dbContext, IConfiguratio
         }
 
         sample.UpdatedAt = DateTimeOffset.UtcNow;
+        station.LastSyncAt = DateTimeOffset.UtcNow;
+        station.UpdatedAt = DateTimeOffset.UtcNow;
         dbContext.AuditLogs.Add(new AuditLog
         {
             Action = "Edit",
@@ -132,6 +135,8 @@ public sealed class QcStationController(CropQcDbContext dbContext, IConfiguratio
             BeforeValuesJson = JsonSerializer.Serialize(before),
             AfterValuesJson = JsonSerializer.Serialize(new
             {
+                StationId = station.Id,
+                station.StationCode,
                 StationName = stationName,
                 SampleId = sampleId,
                 Rows = request.Rows.Select(x => new { x.RowNumber, x.Pressure1Lbs, x.Pressure2Lbs })
@@ -179,17 +184,32 @@ public sealed class QcStationController(CropQcDbContext dbContext, IConfiguratio
         return query.SingleOrDefaultAsync(cancellationToken);
     }
 
-    private IActionResult? ValidateStationApiKey()
+    private async Task<(QcStation? Station, IActionResult? Result)> AuthenticateStationAsync(CancellationToken cancellationToken)
     {
-        Request.Headers.TryGetValue(QcStationApiKeyValidator.HeaderName, out var provided);
-        var result = QcStationApiKeyValidator.Validate(configuration["QcStation:ApiKey"], provided.FirstOrDefault());
-        return result switch
+        Request.Headers.TryGetValue(QcStationApiKeyValidator.StationCodeHeaderName, out var codeHeader);
+        Request.Headers.TryGetValue(QcStationApiKeyValidator.HeaderName, out var keyHeader);
+        var stationCode = codeHeader.FirstOrDefault();
+        var apiKey = keyHeader.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(stationCode) || string.IsNullOrWhiteSpace(apiKey))
         {
-            QcStationApiKeyValidationResult.Valid => null,
-            QcStationApiKeyValidationResult.NotConfigured => StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "QC Station API key is not configured." }),
-            QcStationApiKeyValidationResult.Missing => Unauthorized(new { error = "QC Station API key is required." }),
-            _ => Unauthorized(new { error = "QC Station API key is invalid." })
-        };
+            return (null, Unauthorized(new { error = "QC Station credentials are required." }));
+        }
+
+        var station = await dbContext.QcStations.SingleOrDefaultAsync(x => x.StationCode == stationCode.Trim(), cancellationToken);
+        if (station is null || string.IsNullOrWhiteSpace(station.ApiKeyHash) || !QcStationApiKeyValidator.VerifyHashedApiKey(apiKey, station.ApiKeyHash))
+        {
+            return (null, Unauthorized(new { error = "QC Station credentials are invalid." }));
+        }
+
+        if (!station.IsActive)
+        {
+            return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "QC Station is inactive." }));
+        }
+
+        station.LastSeenAt = DateTimeOffset.UtcNow;
+        station.LastSeenIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return (station, null);
     }
 
     private static QcStationSampleDetail ToDetail(QcSample sample) =>
@@ -216,7 +236,7 @@ public sealed class QcStationController(CropQcDbContext dbContext, IConfiguratio
     {
         if (reading is null)
         {
-            return new QcStationFruitReading(0, 0, rowNumber, null, null, null, null, null, null, null, null, null, null, null, "Not Calculated", false, []);
+            return new QcStationFruitReading(0, 0, rowNumber, null, null, null, null, null, null, null, null, null, null, null, "NotCalculated", false, []);
         }
 
         return new QcStationFruitReading(

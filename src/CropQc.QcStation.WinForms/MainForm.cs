@@ -145,12 +145,13 @@ public sealed class MainForm : Form
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         group.Controls.Add(grid);
 
-        AddStatusRow(grid, "Station name", "StationName", "Warehouse", "WarehouseCode");
-        AddStatusRow(grid, "FTA mode", "FtaMode", "DLL path", "FtaDllPath");
-        AddStatusRow(grid, "DLL file", "FtaDllFileName", "Initialization mode", "FtaInitializationMode");
-        AddStatusRow(grid, "FTA config path", "FtaConfigPath", "Working directory", "FtaWorkingDirectory");
-        AddStatusRow(grid, "Current working directory", "CurrentWorkingDirectory", "Process architecture", "ProcessArchitecture");
-        AddStatusRow(grid, "OS architecture", "OSArchitecture", "Last pressure reading", "LastPressureReading");
+        AddStatusRow(grid, "Station name", "StationName", "Station code", "QcStationCode");
+        AddStatusRow(grid, "Warehouse", "WarehouseCode", "FTA mode", "FtaMode");
+        AddStatusRow(grid, "DLL path", "FtaDllPath", "DLL file", "FtaDllFileName");
+        AddStatusRow(grid, "Initialization mode", "FtaInitializationMode", "FTA config path", "FtaConfigPath");
+        AddStatusRow(grid, "Working directory", "FtaWorkingDirectory", "Current working directory", "CurrentWorkingDirectory");
+        AddStatusRow(grid, "Process architecture", "ProcessArchitecture", "OS architecture", "OSArchitecture");
+        AddStatusRow(grid, "Last pressure reading", "LastPressureReading", "API base URL", "ApiBaseUrl");
 
         return group;
     }
@@ -663,6 +664,7 @@ public sealed class MainForm : Form
     private QcStationApiClient CreateApiClient() =>
         QcStationApiClient.Create(
             apiBaseUrlTextBox.Text,
+            stationService.Configuration.QcStationCode,
             stationService.Configuration.QcStationApiKey,
             stationService.Configuration.StationName);
 
@@ -943,7 +945,9 @@ public sealed class MainForm : Form
     {
         var config = stationService.Configuration;
         SetValue("StationName", config.StationName);
+        SetValue("QcStationCode", config.QcStationCode ?? "");
         SetValue("WarehouseCode", config.WarehouseCode);
+        SetValue("ApiBaseUrl", config.ApiBaseUrl);
         SetValue("FtaMode", config.FtaMode.ToString());
         SetValue("FtaDllPath", config.FtaDllPath);
         SetValue("FtaDllFileName", config.FtaDllFileName);

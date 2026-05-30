@@ -142,10 +142,25 @@ public sealed class QcStation
     public int Id { get; set; }
     public required string StationCode { get; set; }
     public required string Name { get; set; }
+    public string StationName { get; set; } = "";
     public int? WarehouseId { get; set; }
     public Warehouse? Warehouse { get; set; }
+    public string? WarehouseCode { get; set; }
+    public string? Description { get; set; }
     public string? DeviceIdentifier { get; set; }
     public bool IsActive { get; set; } = true;
+    public string? ApiKeyHash { get; set; }
+    public string? ApiKeyLastFour { get; set; }
+    public DateTimeOffset? ApiKeyCreatedAt { get; set; }
+    public DateTimeOffset? ApiKeyRotatedAt { get; set; }
+    public DateTimeOffset? LastSeenAt { get; set; }
+    public string? LastSeenIp { get; set; }
+    public DateTimeOffset? LastSyncAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public int? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+    public string? Notes { get; set; }
     public ICollection<QcSample> Samples { get; } = new List<QcSample>();
 }
 

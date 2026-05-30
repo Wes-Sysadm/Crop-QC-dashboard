@@ -276,7 +276,14 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         {
             entity.Property(x => x.StationCode).HasMaxLength(50).IsRequired();
             entity.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.StationName).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.WarehouseCode).HasMaxLength(25);
+            entity.Property(x => x.Description).HasMaxLength(500);
             entity.Property(x => x.DeviceIdentifier).HasMaxLength(200);
+            entity.Property(x => x.ApiKeyHash).HasMaxLength(200);
+            entity.Property(x => x.ApiKeyLastFour).HasMaxLength(12);
+            entity.Property(x => x.LastSeenIp).HasMaxLength(100);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
             entity.HasIndex(x => x.StationCode).IsUnique();
         });
 

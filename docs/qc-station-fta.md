@@ -368,25 +368,29 @@ The browser pressure page does not connect directly to the physical FTA DLL. Ope
 Run the dashboard/API and WinForms station together:
 
 1. Start the web dashboard or API project. On Render, use the dashboard URL as `ApiBaseUrl`.
-2. Set `QcStation__ApiKey` on the dashboard/API and copy the same value into `qcstation.settings.json` as `QcStationApiKey`.
-3. Confirm the WinForms `ApiBaseUrl` matches the dashboard/API URL, such as `https://localhost:7001` for local API testing or the Render dashboard URL for live testing.
-4. Run the WinForms x86 harness:
+2. In the dashboard, sign in as an Admin and open `Admin -> QC Stations`.
+3. Create one QC Station record for each physical QC computer, then download that station's `qcstation.settings.json` immediately after creation or key rotation.
+4. Place the downloaded `qcstation.settings.json` on the QC Station computer. Each config includes that computer's `QcStationCode` and one-time raw `QcStationApiKey`.
+5. Confirm the WinForms `ApiBaseUrl` matches the dashboard/API URL, such as `https://localhost:7001` for local API testing or the Render dashboard URL for live testing.
+6. Run the WinForms x86 harness:
 
    ```powershell
    .\scripts\dev-run-qcstation-winforms-x86.ps1
    ```
 
-5. In the web dashboard, open `/Samples/{sampleId}`. The FTA section shows the sample ID and reminds users that FTA capture happens in QC Station.
-6. In Dashboard Sample Selection, enter the warehouse filter if desired, then select `Refresh Today's Samples`.
-7. Select a sample and click `Select Sample`.
-8. Confirm the sample context, existing pressure readings, and current target.
-9. Use `Start Continuous Manual Capture`, then press and hold the green FTA button for each physical test.
-10. Click `Save Pressures to Dashboard`.
-11. Refresh the web dashboard sample page to see the saved pressure readings.
+7. In the web dashboard, open `/Samples/{sampleId}`. The FTA section shows the sample ID and reminds users that FTA capture happens in QC Station.
+8. In Dashboard Sample Selection, enter the warehouse filter if desired, then select `Refresh Today's Samples`.
+9. Select a sample and click `Select Sample`.
+10. Confirm the sample context, existing pressure readings, and current target.
+11. Use `Start Continuous Manual Capture`, then press and hold the green FTA button for each physical test.
+12. Click `Save Pressures to Dashboard`.
+13. Refresh the web dashboard sample page to see the saved pressure readings.
 
 The QC Station pressure save endpoint is pressure-only. It updates `Pressure1Lbs`, `Pressure1Source`, `Pressure2Lbs`, and `Pressure2Source`; it does not overwrite weight, grade, starch, defects, photos, or receipt data. `Auto-save after each completed fruit` can save after Pressure 2 is captured, but it is unchecked by default.
 
-The temporary station API key uses the `X-QC-STATION-API-KEY` header. This is an MVP station-auth bridge until stronger workstation identity is built.
+Station API access is managed in the database, not with one shared Render environment variable. Each QC computer sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the server stores only a hash of the key. Deactivate a station to block it immediately, or rotate its key and download a fresh config if a computer is replaced.
+
+`Admin -> Downloads` links to the Google Drive `FTADLL.exe` installer. Install it on each FTA-connected QC Station computer before running RealDll mode, then use `Admin -> QC Stations` to download that computer's station-specific config. This setup supports 20+ station computers without sharing one secret across all of them.
 
 ## Quit / Disconnect Behavior
 

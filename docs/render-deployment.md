@@ -82,11 +82,11 @@ Set these variables in Render:
 - `GoogleDrive__ApplicationName=Crop QC Dashboard`
 - `GoogleDrive__BaseFolderName=Photos`
 - `Email__Provider=None`
-- `QcStation__ApiKey=[secure random key for WinForms QC Station API access]`
+- `QcStation__ApiBaseUrl=https://crop-qc-dashboard.onrender.com`
 
 Do not commit database passwords, Google credentials, Gmail credentials, or API secrets.
 
-The WinForms QC Station uses `QcStation__ApiKey` as a temporary API key for pressure capture endpoints. Put the same value in the local station `qcstation.settings.json` as `QcStationApiKey`. The station sends it in the `X-QC-STATION-API-KEY` header when loading today's samples or saving pressure-only rows. Rotate this key if a QC computer is retired or the value is exposed.
+WinForms QC Station access is managed from the database, not with one shared Render API key. Sign in as Admin, open `/Admin/QcStations`, create one station record per QC computer, and download that station's `qcstation.settings.json` immediately after creation or key rotation. The station sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the dashboard stores only the key hash. Deactivate a station to revoke access without breaking other QC computers.
 
 Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 
@@ -108,6 +108,7 @@ Roles are managed inside the dashboard. `/Admin/Users` also shows a role permiss
 Admin-only dashboard pages:
 
 - `/Admin/Users` manages user accounts, active status, and roles after Google login creates identity records.
+- `/Admin/QcStations` manages station enrollment, per-station API keys, key rotation, deactivation, and config downloads.
 - `/MasterData` shows edit/add/deactivate controls only for Admin users.
 - `/Admin/Configuration` manages safe non-secret runtime configuration values. Do not store OAuth secrets, database connection strings, Gmail secrets, Google Drive secrets, or API keys there.
 - `/Admin/Downloads` provides approved internal support-file links, such as the FTA DLL installer Google Drive file, to Admin users only.

@@ -32,6 +32,41 @@ public sealed class AdminDownloadsViewModel
     public IReadOnlyList<AdminDownloadItem> Downloads { get; set; } = [];
 }
 
+public sealed class QcStationsPageViewModel
+{
+    public IReadOnlyList<QcStationListItemViewModel> Stations { get; set; } = [];
+    public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
+    public QcStationForm Form { get; set; } = new();
+    public string? Search { get; set; }
+    public string? WarehouseCode { get; set; }
+    public string ActiveFilter { get; set; } = "Active";
+}
+
+public sealed record QcStationListItemViewModel(
+    int Id,
+    string StationName,
+    string StationCode,
+    string WarehouseCode,
+    string? Description,
+    bool IsActive,
+    string? ApiKeyLastFour,
+    DateTimeOffset? ApiKeyCreatedAt,
+    DateTimeOffset? ApiKeyRotatedAt,
+    DateTimeOffset? LastSeenAt,
+    string? LastSeenIp,
+    DateTimeOffset? LastSyncAt);
+
+public sealed class QcStationForm
+{
+    public int? Id { get; set; }
+    public string StationName { get; set; } = "";
+    public string StationCode { get; set; } = "";
+    public string WarehouseCode { get; set; } = "";
+    public string? Description { get; set; }
+    public string? Notes { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
 public sealed class MasterDataEditForm
 {
     public string Type { get; set; } = "";

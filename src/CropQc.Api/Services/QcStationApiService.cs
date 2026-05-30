@@ -9,7 +9,7 @@ public interface IQcStationApiService
 {
     Task<IReadOnlyList<QcStationSampleListItemDto>> GetTodaySamplesAsync(string? warehouseCode, CancellationToken cancellationToken);
     Task<QcStationSampleDetailDto?> GetSampleDetailAsync(long sampleId, CancellationToken cancellationToken);
-    Task<(QcStationSampleDetailDto? Sample, string? Error)> UpdatePressuresAsync(long sampleId, UpdateQcStationPressuresRequest request, CancellationToken cancellationToken);
+    Task<(QcStationSampleDetailDto? Sample, string? Error)> UpdatePressuresAsync(long sampleId, UpdateQcStationPressuresRequest request, QcStation station, CancellationToken cancellationToken);
 }
 
 public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService auditService) : IQcStationApiService
@@ -62,7 +62,7 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
         return sample is null ? null : ToDetailDto(sample);
     }
 
-    public async Task<(QcStationSampleDetailDto? Sample, string? Error)> UpdatePressuresAsync(long sampleId, UpdateQcStationPressuresRequest request, CancellationToken cancellationToken)
+    public async Task<(QcStationSampleDetailDto? Sample, string? Error)> UpdatePressuresAsync(long sampleId, UpdateQcStationPressuresRequest request, QcStation station, CancellationToken cancellationToken)
     {
         var sample = await dbContext.QcSamples
             .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
@@ -83,6 +83,10 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
             return (ToDetailDto(sample), null);
         }
 
+        var before = sample.FruitReadings
+            .OrderBy(x => x.RowNumber)
+            .Select(x => new { x.RowNumber, x.Pressure1Lbs, x.Pressure2Lbs })
+            .ToList();
         var existingRows = sample.FruitReadings.ToDictionary(x => x.RowNumber);
         foreach (var row in request.Rows)
         {
@@ -109,8 +113,24 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
         }
 
         sample.UpdatedAt = DateTimeOffset.UtcNow;
+        station.LastSyncAt = DateTimeOffset.UtcNow;
+        station.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
-        await auditService.RecordAsync("Edit", nameof(QcFruitReading), sampleId.ToString(), afterValuesJson: "QC Station pressure-only update.", cancellationToken: cancellationToken);
+        await auditService.RecordAsync(
+            "Edit",
+            nameof(QcFruitReading),
+            sampleId.ToString(),
+            beforeValuesJson: System.Text.Json.JsonSerializer.Serialize(before),
+            afterValuesJson: System.Text.Json.JsonSerializer.Serialize(new
+            {
+                StationId = station.Id,
+                station.StationCode,
+                StationName = string.IsNullOrWhiteSpace(station.StationName) ? station.Name : station.StationName,
+                SampleId = sampleId,
+                Rows = request.Rows.Select(x => new { x.RowNumber, x.Pressure1Lbs, x.Pressure2Lbs })
+            }),
+            sourceApplication: $"CropQc.QcStation:{(string.IsNullOrWhiteSpace(station.StationName) ? station.Name : station.StationName)}",
+            cancellationToken: cancellationToken);
         return (ToDetailDto(sample), null);
     }
 
