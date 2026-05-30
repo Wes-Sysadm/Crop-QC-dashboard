@@ -21,10 +21,17 @@ dotnet publish $projectPath `
     --configuration $Configuration `
     --runtime win-x86 `
     --self-contained false `
+    -p:TargetFramework=net9.0-windows `
     -p:PlatformTarget=x86 `
     -p:EnableWindowsTargeting=true `
+    -p:RuntimeIdentifier=win-x86 `
+    -p:SelfContained=false `
     -p:PublishSingleFile=false `
     --output $publishPath
+
+if (-not (Test-Path -LiteralPath (Join-Path $publishPath "CropQc.QcStation.WinForms.exe"))) {
+    throw "QC Station WinForms publish completed, but CropQc.QcStation.WinForms.exe was not found in $publishPath."
+}
 
 Write-Host "QC Station WinForms x86 publish complete."
 Write-Host "Web setup package payload staged at: $publishPath"
