@@ -34,7 +34,7 @@
     <input type="hidden" name="WebUrl" class="photo-web-url" />
 
     <div class="source-panel upload-panel wide">
-        <input type="file" accept="image/*" class="photo-file-input" name="PhotoFile" hidden />
+        <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="photo-file-input" name="PhotoFile" hidden />
         <button type="button" class="upload-zone">
             <span>Drop photo here or click to browse</span>
         </button>
@@ -148,6 +148,11 @@
 
         function setUploadFile(file) {
             selectedUploadFile = file;
+            if (file && window.DataTransfer) {
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                fileInput.files = dataTransfer.files;
+            }
             buildMetadata(file);
             showPreview(file);
         }
@@ -189,7 +194,8 @@
             buildMetadata(null);
         });
         form.addEventListener("submit", event => {
-            if (photoSource.value === "Upload File" && !selectedUploadFile) {
+            const hasPostedFile = fileInput.files && fileInput.files.length > 0;
+            if (photoSource.value === "Upload File" && !hasPostedFile) {
                 event.preventDefault();
                 uploadZone.focus();
                 uploadZone.classList.add("drag-over");

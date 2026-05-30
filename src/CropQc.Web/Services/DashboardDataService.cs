@@ -25,7 +25,12 @@ public interface IDashboardDataService
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, CancellationToken cancellationToken);
 }
 
-public sealed class DashboardDataService(CropQcDbContext dbContext, IFileStorageService fileStorageService, IHttpContextAccessor httpContextAccessor) : IDashboardDataService
+public sealed class DashboardDataService(
+    CropQcDbContext dbContext,
+    IFileStorageService fileStorageService,
+    FileStorageOptions fileStorageOptions,
+    IHttpContextAccessor httpContextAccessor,
+    ILogger<DashboardDataService> logger) : IDashboardDataService
 {
     private const string DataWarning = "Database is not available yet. The dashboard shell is running with empty data.";
 
@@ -555,6 +560,18 @@ public sealed class DashboardDataService(CropQcDbContext dbContext, IFileStorage
 
     public async Task<string?> AddPhotoMetadataAsync(AddPhotoMetadataForm form, CancellationToken cancellationToken)
     {
+        logger.LogInformation(
+            "Photo metadata request received. ReceiptId: {ReceiptId}. QcSampleId: {QcSampleId}. PhotoType: {PhotoType}. PhotoSource: {PhotoSource}. Uploaded file present: {HasFile}. FileName: {FileName}. ContentType: {ContentType}. Size: {Size}. Selected storage provider: {StorageProvider}.",
+            form.ReceiptId,
+            form.QcSampleId,
+            form.PhotoType,
+            form.PhotoSource,
+            form.PhotoFile is not null,
+            form.PhotoFile?.FileName ?? "(none)",
+            form.PhotoFile?.ContentType ?? "(none)",
+            form.PhotoFile?.Length ?? 0,
+            fileStorageOptions.Provider);
+
         if ((form.ReceiptId is null && form.QcSampleId is null) || (form.ReceiptId is not null && form.QcSampleId is not null))
         {
             return "Photo metadata must attach to either a receipt or a QC sample.";
@@ -563,6 +580,18 @@ public sealed class DashboardDataService(CropQcDbContext dbContext, IFileStorage
         if (string.IsNullOrWhiteSpace(form.PhotoType) || string.IsNullOrWhiteSpace(form.PhotoSource))
         {
             return "Photo type and source are required.";
+        }
+
+        var fileValidationError = PhotoUploadValidator.Validate(form);
+        if (fileValidationError is not null)
+        {
+            logger.LogWarning(
+                "Photo upload validation failed. ReceiptId: {ReceiptId}. QcSampleId: {QcSampleId}. PhotoType: {PhotoType}. Error: {Error}",
+                form.ReceiptId,
+                form.QcSampleId,
+                form.PhotoType,
+                fileValidationError);
+            return fileValidationError;
         }
 
         var receipt = form.ReceiptId is null
@@ -599,12 +628,38 @@ public sealed class DashboardDataService(CropQcDbContext dbContext, IFileStorage
         }
         catch (InvalidOperationException ex)
         {
-            return ex.Message;
+            logger.LogError(
+                ex,
+                "Photo storage save failed. ReceiptId: {ReceiptId}. QcSampleId: {QcSampleId}. PhotoType: {PhotoType}. StorageProvider: {StorageProvider}.",
+                form.ReceiptId,
+                form.QcSampleId,
+                form.PhotoType,
+                fileStorageOptions.Provider);
+            return FormatStorageError(ex);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Unexpected photo storage save failed. ReceiptId: {ReceiptId}. QcSampleId: {QcSampleId}. PhotoType: {PhotoType}. StorageProvider: {StorageProvider}.",
+                form.ReceiptId,
+                form.QcSampleId,
+                form.PhotoType,
+                fileStorageOptions.Provider);
+            return FormatStorageError(ex);
         }
 
         var capturedByUserId = await GetCurrentUserIdAsync(cancellationToken);
 
-        dbContext.QcPhotos.Add(new QcPhoto
+        logger.LogInformation(
+            "QcPhoto metadata insert started. ReceiptId: {ReceiptId}. QcSampleId: {QcSampleId}. StorageProvider: {StorageProvider}. FileId: {FileId}. FolderId: {FolderId}.",
+            form.ReceiptId,
+            form.QcSampleId,
+            reference.StorageProvider,
+            reference.FileId ?? reference.StorageKey,
+            reference.FolderId ?? reference.TargetPath);
+
+        var photo = new QcPhoto
         {
             ReceiptId = form.ReceiptId,
             QcSampleId = form.QcSampleId,
@@ -623,9 +678,16 @@ public sealed class DashboardDataService(CropQcDbContext dbContext, IFileStorage
             CapturedByUserId = capturedByUserId,
             CapturedAt = capturedAt,
             UploadedAt = form.PhotoFile is null ? null : capturedAt
-        });
+        };
+        dbContext.QcPhotos.Add(photo);
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        logger.LogInformation(
+            "QcPhoto metadata insert succeeded. QcPhotoId: {QcPhotoId}. StorageProvider: {StorageProvider}. FileId: {FileId}. FolderId: {FolderId}.",
+            photo.Id,
+            photo.StorageProvider,
+            photo.FileId ?? photo.SharePointItemId,
+            photo.FolderId ?? photo.SharePointDriveId);
         if (sample is not null)
         {
             await RefreshSampleStatusesAsync(sample, cancellationToken);
@@ -857,16 +919,23 @@ public sealed class DashboardDataService(CropQcDbContext dbContext, IFileStorage
             form.PhotoType.Trim(),
             capturedAt);
         var targetPath = fileStorageService.GenerateTargetPath(context);
+        logger.LogInformation(
+            "Storage save started. Provider: {StorageProvider}. TargetPath: {TargetPath}. ReceiptId: {ReceiptId}. PhotoType: {PhotoType}. Uploaded file present: {HasFile}.",
+            fileStorageOptions.Provider,
+            targetPath,
+            receipt.CompuTechReceiptId,
+            form.PhotoType,
+            form.PhotoFile is not null);
 
         if (form.PhotoFile is null)
         {
             if (string.Equals(form.PhotoSource, "Upload File", StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException("Select a photo file to upload.");
+                throw new InvalidOperationException("No photo file was selected.");
             }
 
             var placeholderName = GeneratePhotoFileName(receipt.CompuTechReceiptId, form.PhotoType, capturedAt, ".jpg");
-            return new FileStorageReference(
+            var placeholderReference = new FileStorageReference(
                 FileStorageProviders.Placeholder,
                 $"{targetPath}/{placeholderName}",
                 targetPath,
@@ -875,6 +944,12 @@ public sealed class DashboardDataService(CropQcDbContext dbContext, IFileStorage
                 form.FileSizeBytes ?? 0,
                 FolderId: targetPath,
                 WebUrl: $"{targetPath}/{placeholderName}");
+            logger.LogInformation(
+                "Storage save succeeded with placeholder reference. Provider: {StorageProvider}. FileId: {FileId}. FolderId: {FolderId}.",
+                placeholderReference.StorageProvider,
+                placeholderReference.FileId ?? placeholderReference.StorageKey,
+                placeholderReference.FolderId ?? placeholderReference.TargetPath);
+            return placeholderReference;
         }
 
         var extension = Path.GetExtension(form.PhotoFile.FileName);
@@ -885,12 +960,33 @@ public sealed class DashboardDataService(CropQcDbContext dbContext, IFileStorage
 
         var fileName = GeneratePhotoFileName(receipt.CompuTechReceiptId, form.PhotoType, capturedAt, extension);
         await using var stream = form.PhotoFile.OpenReadStream();
-        return await fileStorageService.SaveAsync(new FileStorageSaveRequest(
-            stream,
-            targetPath,
-            fileName,
-            string.IsNullOrWhiteSpace(form.PhotoFile.ContentType) ? "application/octet-stream" : form.PhotoFile.ContentType,
-            form.PhotoFile.Length), cancellationToken);
+        try
+        {
+            var reference = await fileStorageService.SaveAsync(new FileStorageSaveRequest(
+                stream,
+                targetPath,
+                fileName,
+                string.IsNullOrWhiteSpace(form.PhotoFile.ContentType) ? "application/octet-stream" : form.PhotoFile.ContentType,
+                form.PhotoFile.Length), cancellationToken);
+            logger.LogInformation(
+                "Storage save succeeded. Provider: {StorageProvider}. FileId: {FileId}. FolderId: {FolderId}. WebUrlPresent: {WebUrlPresent}.",
+                reference.StorageProvider,
+                reference.FileId ?? reference.StorageKey,
+                reference.FolderId ?? reference.TargetPath,
+                !string.IsNullOrWhiteSpace(reference.WebUrl));
+            return reference;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Storage save failed with exception message: {Message}. Provider: {StorageProvider}. TargetPath: {TargetPath}. FileName: {FileName}.",
+                SafeErrorMessage(ex),
+                fileStorageOptions.Provider,
+                targetPath,
+                fileName);
+            throw;
+        }
     }
 
     private async Task<int?> GetCurrentUserIdAsync(CancellationToken cancellationToken)
@@ -914,6 +1010,25 @@ public sealed class DashboardDataService(CropQcDbContext dbContext, IFileStorage
     {
         var invalidChars = Path.GetInvalidFileNameChars();
         return string.Concat(value.Select(ch => invalidChars.Contains(ch) || char.IsWhiteSpace(ch) ? '_' : ch));
+    }
+
+    private static string SafeErrorMessage(Exception exception)
+    {
+        var message = exception.Message;
+        return string.IsNullOrWhiteSpace(message) ? "Unknown error." : message;
+    }
+
+    private string FormatStorageError(Exception exception)
+    {
+        var message = SafeErrorMessage(exception);
+        if (string.Equals(message, "No photo file was selected.", StringComparison.Ordinal))
+        {
+            return message;
+        }
+
+        return string.Equals(fileStorageOptions.Provider, FileStorageProviders.GoogleDrive, StringComparison.OrdinalIgnoreCase)
+            ? $"Google Drive upload failed: {message}"
+            : $"Photo upload failed: {message}";
     }
 
     private static decimal? Average(decimal? first, decimal? second) =>
