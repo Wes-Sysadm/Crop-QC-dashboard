@@ -1,4 +1,5 @@
 @model MasterDataPageViewModel
+@inject CropQc.Web.Services.IAdminAuthorizationService AdminAuthorization
 @{
     ViewData["Title"] = Model.Title;
     var links = new[]
@@ -30,7 +31,10 @@
 }
 @if (Model.CanEdit)
 {
-    <a class="button secondary-button" href="/Admin/Configuration">Configuration</a>
+    @if (AdminAuthorization.IsAdmin(User))
+    {
+        <a class="button secondary-button" href="/Admin/Configuration">Configuration</a>
+    }
 }
 </nav>
 

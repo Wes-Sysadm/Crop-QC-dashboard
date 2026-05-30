@@ -41,17 +41,15 @@ public sealed class DashboardDataService(
         {
             var todaySamples = await QuerySamples().Where(x => x.SampleTakenAt.Date == DateTimeOffset.UtcNow.Date).ToListAsync(cancellationToken);
             var enriched = await EnrichSamplesAsync(todaySamples, cancellationToken);
+            var cards = BuildHomeCards(
+                enriched.Count,
+                enriched.Count(x => x.IsReady),
+                enriched.Count(x => !x.IsReady),
+                enriched.Count(x => x.EmailStatus == "Sent"),
+                enriched.Count(x => x.Status.Contains("Needs Review", StringComparison.OrdinalIgnoreCase)));
             return new HomeDashboardViewModel
             {
-                Cards =
-                [
-                    new("Today's receiving samples", enriched.Count, "/DailyQc", "info"),
-                    new("Samples ready to send", enriched.Count(x => x.IsReady), "/DailyQc", "ready"),
-                    new("Samples missing required data", enriched.Count(x => !x.IsReady), "/DailyQc", "missing"),
-                    new("Samples already sent", enriched.Count(x => x.EmailStatus == "Sent"), "/DailyQc", "sent"),
-                    new("Samples needing review", enriched.Count(x => x.Status.Contains("Needs Review", StringComparison.OrdinalIgnoreCase)), "/DailyQc", "review"),
-                    new("Master data/admin links", 8, "/MasterData", "admin")
-                ],
+                Cards = cards,
                 TodaySamples = enriched
             };
         }
@@ -60,17 +58,29 @@ public sealed class DashboardDataService(
             return new HomeDashboardViewModel
             {
                 DataWarning = DataWarning,
-                Cards =
-                [
-                    new("Today's receiving samples", 0, "/DailyQc", "info"),
-                    new("Samples ready to send", 0, "/DailyQc", "ready"),
-                    new("Samples missing required data", 0, "/DailyQc", "missing"),
-                    new("Samples already sent", 0, "/DailyQc", "sent"),
-                    new("Samples needing review", 0, "/DailyQc", "review"),
-                    new("Master data/admin links", 8, "/MasterData", "admin")
-                ]
+                Cards = BuildHomeCards(0, 0, 0, 0, 0)
             };
         }
+    }
+
+    private IReadOnlyList<StatusCountCard> BuildHomeCards(int todaySamples, int ready, int missing, int sent, int review)
+    {
+        var cards = new List<StatusCountCard>
+        {
+            new("Today's receiving samples", todaySamples, "/DailyQc", "info"),
+            new("Samples ready to send", ready, "/DailyQc", "ready"),
+            new("Samples missing required data", missing, "/DailyQc", "missing"),
+            new("Samples already sent", sent, "/DailyQc", "sent"),
+            new("Samples needing review", review, "/DailyQc", "review")
+        };
+
+        var user = httpContextAccessor.HttpContext?.User;
+        if (user?.IsInRole("Admin") == true || user?.IsInRole("Manager") == true)
+        {
+            cards.Add(new("Master data/admin links", 8, "/MasterData", "admin"));
+        }
+
+        return cards;
     }
 
     public async Task<MasterDataPageViewModel> GetMasterDataPageAsync(string type, CancellationToken cancellationToken)

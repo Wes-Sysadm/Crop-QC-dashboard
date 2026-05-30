@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CropQc.Web.Controllers;
 
 [Route("Admin")]
-[Authorize(Policy = "RequireAdmin")]
+[Authorize(Policy = "RequireAuthenticatedUser")]
 public sealed class AdminController(
     IUserAdminService userAdminService,
     IAdminAuthorizationService authorizationService,
@@ -16,10 +16,12 @@ public sealed class AdminController(
     private const string FtaDllInstallerUrl = "https://drive.google.com/file/d/1iYy1v1-D8T-S4SgfHJOeuwoeJfsbcvoS/view?usp=drive_link";
 
     [HttpGet("Users")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> Users(CancellationToken cancellationToken) =>
         View(await userAdminService.GetUsersAsync(cancellationToken));
 
     [HttpGet("Downloads")]
+    [Authorize(Policy = "RequireAdmin")]
     public IActionResult Downloads()
     {
         var model = new AdminDownloadsViewModel
@@ -45,10 +47,12 @@ public sealed class AdminController(
     }
 
     [HttpGet("QcStations")]
+    [Authorize(Policy = "RequireManagerOrAdmin")]
     public async Task<IActionResult> QcStations([FromQuery] string? search, [FromQuery] string? warehouseCode, [FromQuery] string activeFilter = "Active", CancellationToken cancellationToken = default) =>
         View(await qcStationAdminService.GetStationsAsync(search, warehouseCode, activeFilter, cancellationToken));
 
     [HttpPost("QcStations/Create")]
+    [Authorize(Policy = "RequireManagerOrAdmin")]
     public async Task<IActionResult> CreateQcStation(QcStationForm form, string downloadType = "package", CancellationToken cancellationToken = default)
     {
         var (error, download) = await qcStationAdminService.CreateAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -62,6 +66,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("QcStations/Update")]
+    [Authorize(Policy = "RequireManagerOrAdmin")]
     public async Task<IActionResult> UpdateQcStation(QcStationForm form, CancellationToken cancellationToken)
     {
         var error = await qcStationAdminService.UpdateAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -70,6 +75,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("QcStations/Deactivate")]
+    [Authorize(Policy = "RequireManagerOrAdmin")]
     public async Task<IActionResult> DeactivateQcStation(int id, CancellationToken cancellationToken)
     {
         var error = await qcStationAdminService.SetActiveAsync(id, false, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -78,6 +84,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("QcStations/Reactivate")]
+    [Authorize(Policy = "RequireManagerOrAdmin")]
     public async Task<IActionResult> ReactivateQcStation(int id, CancellationToken cancellationToken)
     {
         var error = await qcStationAdminService.SetActiveAsync(id, true, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -86,6 +93,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("QcStations/RotateKey")]
+    [Authorize(Policy = "RequireManagerOrAdmin")]
     public async Task<IActionResult> RotateQcStationKey(int id, string downloadType = "package", CancellationToken cancellationToken = default)
     {
         var (error, download) = await qcStationAdminService.RotateKeyAsync(id, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -99,6 +107,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("QcStations/DownloadConfig")]
+    [Authorize(Policy = "RequireManagerOrAdmin")]
     public IActionResult DownloadExistingQcStationConfig()
     {
         TempData["Error"] = "Rotate key to generate a new downloadable config or setup package.";
@@ -116,6 +125,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("Users/Add")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> AddUser(AddUserForm form, CancellationToken cancellationToken)
     {
         var error = await userAdminService.AddUserAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -124,6 +134,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("Users/Update")]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> UpdateUser(UpdateUserAccessForm form, CancellationToken cancellationToken)
     {
         var error = await userAdminService.UpdateUserAccessAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);

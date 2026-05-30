@@ -110,16 +110,16 @@ Initial Admin bootstrap is controlled by `Authentication__BootstrapAdminEmails`.
 
 Roles are managed inside the dashboard. `/Admin/Users` also shows a role permission matrix so Admin users can see exactly what each access level is intended to allow or block before changing a user role:
 
-- Admin: full access, including user management, Master Data editing, Configuration, override/send, audit review, and exports.
-- Manager: dashboard and QC workflow access, older QC edits, void/resend/override, and receiving exports; no user, Master Data, or Configuration editing.
-- QC User: dashboard access plus receipt/sample creation and same-day QC entry; no older QC edits, voids, overrides, or admin access.
-- Viewer: read-only dashboard access.
+- Admin: Dashboard, Daily QC, Receipts, Master Data, Users, QC Stations, Downloads, Configuration, override/send, audit review, and exports.
+- Manager: Dashboard, Daily QC, Receipts, Master Data, and QC Stations; no Users, Downloads, or Configuration access.
+- QC User: Dashboard, Daily QC, and Receipts; no management/admin access.
+- Viewer: Dashboard, Daily QC, and Receipts; no management/admin access.
 
-Admin-only dashboard pages:
+Management dashboard pages:
 
 - `/Admin/Users` manages user accounts, active status, and roles after Google login creates identity records.
-- `/Admin/QcStations` manages station enrollment, per-station API keys, key rotation, deactivation, raw config downloads, and setup package downloads.
-- `/MasterData` shows edit/add/deactivate controls only for Admin users.
+- `/Admin/QcStations` manages station enrollment, per-station API keys, key rotation, deactivation, raw config downloads, and setup package downloads. Admins and Managers can access this page.
+- `/MasterData` shows edit/add/deactivate controls for Admins and Managers.
 - `/Admin/Configuration` manages safe non-secret runtime configuration values. Do not store OAuth secrets, database connection strings, Gmail secrets, Google Drive secrets, or API keys there.
 - `/Admin/Downloads` provides approved internal support-file links, such as the FTA DLL installer Google Drive file, to Admin users only.
 
