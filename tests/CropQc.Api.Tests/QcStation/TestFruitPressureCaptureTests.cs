@@ -86,6 +86,22 @@ public sealed class TestFruitPressureCaptureTests
     }
 
     [Fact]
+    public void LoadRows_StartsAtFirstMissingPressureSlot()
+    {
+        var capture = new TestFruitPressureCapture();
+
+        capture.LoadRows(
+        [
+            new FruitPressureCaptureRow(1, 10m, 11m, 10.5m, "Complete"),
+            new FruitPressureCaptureRow(2, 12m, null, null, "Missing P2"),
+            new FruitPressureCaptureRow(3, null, null, null, "Missing P1")
+        ]);
+
+        Assert.Equal(2, capture.FruitNumber);
+        Assert.Equal("Pressure 2", capture.CurrentTargetSlot);
+    }
+
+    [Fact]
     public void ShouldCaptureReading_PreventsDuplicateReadingId()
     {
         var capture = new TestFruitPressureCapture();
