@@ -23,16 +23,18 @@ public sealed class QcStationSetupPackageTests
 
         using var archive = new ZipArchive(new MemoryStream(package), ZipArchiveMode.Read);
         Assert.Contains(archive.Entries, x => x.FullName == "qcstation.settings.json");
-        Assert.Contains(archive.Entries, x => x.FullName == "Install-CropQcStationConfig.cmd");
-        Assert.Contains(archive.Entries, x => x.FullName == "install-qcstation-config.ps1");
+        Assert.Contains(archive.Entries, x => x.FullName == "Install-CropQcStation.cmd");
+        Assert.Contains(archive.Entries, x => x.FullName == "install-qcstation.ps1");
         Assert.Contains(archive.Entries, x => x.FullName == "README.txt");
 
-        var command = ReadEntry(archive, "Install-CropQcStationConfig.cmd");
+        var command = ReadEntry(archive, "Install-CropQcStation.cmd");
         Assert.Contains("powershell.exe -NoProfile -ExecutionPolicy Bypass", command);
-        Assert.Contains("install-qcstation-config.ps1", command);
+        Assert.Contains("install-qcstation.ps1", command);
 
-        var script = ReadEntry(archive, "install-qcstation-config.ps1");
+        var script = ReadEntry(archive, "install-qcstation.ps1");
+        Assert.Contains(@"C:\Program Files\CropQc\QcStation", script);
         Assert.Contains(@"C:\ProgramData\CropQc\QcStation\qcstation.settings.json", script);
+        Assert.Contains("$packageHasApp = $false", script);
         Assert.Contains("qcstation.settings.backup-$timestamp.json", script);
         Assert.Contains("HKCU:\\Software\\Classes\\cropqcstation", script);
         Assert.Contains("URL Protocol", script);
@@ -41,9 +43,41 @@ public sealed class QcStationSetupPackageTests
         Assert.Contains("%1", script);
 
         var readme = ReadEntry(archive, "README.txt");
-        Assert.Contains("Double-click Install-CropQcStationConfig.cmd", readme);
+        Assert.Contains("Double-click Install-CropQcStation.cmd", readme);
+        Assert.Contains("Config-only setup package", readme);
         Assert.Contains("cropqcstation://", readme);
         Assert.DoesNotContain("Set-ExecutionPolicy -Scope Process Bypass", readme);
+    }
+
+    [Fact]
+    public void SetupPackage_IncludesAppFolderWhenPayloadExists()
+    {
+        var station = new CropQc.Data.Entities.QcStation
+        {
+            Id = 1,
+            StationCode = "WP-QC-01",
+            StationName = "WP QC Station 1",
+            Name = "WP QC Station 1",
+            WarehouseCode = "WP"
+        };
+        var payloadRoot = Directory.CreateTempSubdirectory("cropqc-station-payload-test");
+        try
+        {
+            File.WriteAllText(Path.Combine(payloadRoot.FullName, "CropQc.QcStation.WinForms.exe"), "fake exe");
+            File.WriteAllText(Path.Combine(payloadRoot.FullName, "CropQc.QcStation.dll"), "fake dll");
+
+            var package = QcStationSetupPackageBuilder.Build(station, """{"StationName":"WP QC Station 1"}""", payloadRoot.FullName);
+
+            using var archive = new ZipArchive(new MemoryStream(package), ZipArchiveMode.Read);
+            Assert.Contains(archive.Entries, x => x.FullName == "app/CropQc.QcStation.WinForms.exe");
+            Assert.Contains(archive.Entries, x => x.FullName == "app/CropQc.QcStation.dll");
+            Assert.Contains("$packageHasApp = $true", ReadEntry(archive, "install-qcstation.ps1"));
+            Assert.Contains("Full setup package", ReadEntry(archive, "README.txt"));
+        }
+        finally
+        {
+            payloadRoot.Delete(recursive: true);
+        }
     }
 
     [Fact]

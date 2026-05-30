@@ -71,7 +71,7 @@ Download entry:
 - Use: installer/runtime files needed for the GUSS FTA DLL integration on QC Station computers.
 - Link: `https://drive.google.com/file/d/1iYy1v1-D8T-S4SgfHJOeuwoeJfsbcvoS/view?usp=drive_link`.
 
-Install `FTADLL.exe` on each FTA-connected Windows computer before running QC Station RealDll mode. This installer is for internal company computers only. The installer does not replace the QC Station app; RealDll hardware testing and production capture still require the WinForms x86 QC Station harness. Google Drive sharing permissions should be limited to company users when possible.
+Install `FTADLL.exe` on each FTA-connected Windows computer before running QC Station RealDll mode. This installer is for internal company computers only. It is separate from the Crop QC Station setup package, which installs the WinForms app and station config. Google Drive sharing permissions should be limited to company users when possible.
 
 After installation, configure the QC Station for the confirmed working path:
 
@@ -382,7 +382,7 @@ Run the dashboard/API and WinForms station together:
 1. Start the web dashboard or API project. On Render, use the dashboard URL as `ApiBaseUrl`.
 2. In the dashboard, sign in as an Admin and open `Admin -> QC Stations`.
 3. Create one QC Station record for each physical QC computer, then download that station's setup package immediately after creation or key rotation.
-4. On the QC Station computer, extract the setup package and double-click `Install-CropQcStationConfig.cmd`. No PowerShell command entry is required. The installer copies `qcstation.settings.json` to `C:\ProgramData\CropQc\QcStation\qcstation.settings.json`, backs up any existing config first, and registers `cropqcstation://` links when the WinForms app exists at `C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe`.
+4. On the QC Station computer, extract the setup package and double-click `Install-CropQcStation.cmd`. No PowerShell command entry is required. A full package installs the WinForms app to `C:\Program Files\CropQc\QcStation`, copies `qcstation.settings.json` to `C:\ProgramData\CropQc\QcStation\qcstation.settings.json`, backs up any existing config first, and registers `cropqcstation://` links.
 5. Confirm the WinForms `ApiBaseUrl` matches the dashboard/API URL, such as `https://localhost:7001` for local API testing or the Render dashboard URL for live testing.
 6. Run the WinForms x86 harness:
 
@@ -396,7 +396,7 @@ Run the dashboard/API and WinForms station together:
 10. Click `Save Pressures to Dashboard`.
 11. Refresh the web dashboard sample page to see the saved pressure readings.
 
-The protocol handler requires the WinForms executable at `C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe`. If the installer warns that the executable was not found, install or copy the QC Station app to that folder and rerun `Install-CropQcStationConfig.cmd`.
+The protocol handler points to `C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe`. If the setup package is marked config-only, publish/deploy the WinForms app payload, download a new full setup package, or copy the QC Station app to that folder and rerun `Install-CropQcStation.cmd`.
 
 The QC Station pressure save endpoint is pressure-only. It updates `Pressure1Lbs`, `Pressure1Source`, `Pressure2Lbs`, and `Pressure2Source`; it does not overwrite weight, grade, starch, defects, photos, or receipt data. `Auto-save after each completed fruit` can save after Pressure 2 is captured, but it is unchecked by default.
 
@@ -405,6 +405,16 @@ Station API access is managed in the database, not with one shared Render enviro
 `Admin -> Downloads` links to the Google Drive `FTADLL.exe` installer. Install it on each FTA-connected QC Station computer before running RealDll mode, then use `Admin -> QC Stations` to download that computer's station-specific setup package. This setup supports 20+ station computers without sharing one secret across all of them.
 
 Keep setup packages private. Each package contains the raw station API key. If a package is lost or exposed, rotate that station's key in `Admin -> QC Stations` and download a new package.
+
+## Publishing The WinForms Payload
+
+The Render web app cannot build the Windows QC Station app during a download request. Before deploying a web build that should generate full QC Station setup packages, publish the WinForms x86 payload and include it with the web deployment:
+
+```powershell
+.\scripts\publish-qcstation-winforms-x86.ps1 -CopyToWebPayload
+```
+
+The script publishes `src\CropQc.QcStation.WinForms\CropQc.QcStation.WinForms.csproj` in Release mode for `win-x86`, writes the output to `artifacts\qcstation-winforms-x86`, and copies it to `src\CropQc.Web\App_Data\QcStationWinForms` when `-CopyToWebPayload` is supplied. The Admin QC Stations page shows whether that payload is present. If it is missing, generated setup packages are clearly labeled config-only.
 
 ## Quit / Disconnect Behavior
 

@@ -5,5 +5,6 @@ obj/
 .appdata/
 .localappdata/
 .nuget-packages/
+artifacts/
 *.user
 *.suo
