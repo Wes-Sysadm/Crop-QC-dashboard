@@ -82,8 +82,11 @@ Set these variables in Render:
 - `GoogleDrive__ApplicationName=Crop QC Dashboard`
 - `GoogleDrive__BaseFolderName=Photos`
 - `Email__Provider=None`
+- `QcStation__ApiKey=[secure random key for WinForms QC Station API access]`
 
 Do not commit database passwords, Google credentials, Gmail credentials, or API secrets.
+
+The WinForms QC Station uses `QcStation__ApiKey` as a temporary API key for pressure capture endpoints. Put the same value in the local station `qcstation.settings.json` as `QcStationApiKey`. The station sends it in the `X-QC-STATION-API-KEY` header when loading today's samples or saving pressure-only rows. Rotate this key if a QC computer is retired or the value is exposed.
 
 Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 

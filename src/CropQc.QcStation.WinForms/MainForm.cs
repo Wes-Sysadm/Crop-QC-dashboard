@@ -243,12 +243,14 @@ public sealed class MainForm : Form
 
         sampleListView.Columns.Add("Display ID", 105);
         sampleListView.Columns.Add("Warehouse", 80);
+        sampleListView.Columns.Add("Room", 80);
         sampleListView.Columns.Add("Grower", 150);
         sampleListView.Columns.Add("Lot", 100);
         sampleListView.Columns.Add("Variety", 80);
         sampleListView.Columns.Add("Status", 130);
         sampleListView.Columns.Add("Starch", 105);
         sampleListView.Columns.Add("Email", 90);
+        sampleListView.Columns.Add("P Rows", 70);
         root.Controls.Add(sampleListView, 0, 2);
 
         sampleListView.DoubleClick += async (_, _) => await SelectCurrentSampleAsync();
@@ -571,7 +573,7 @@ public sealed class MainForm : Form
 
     private async Task RefreshTodaySamplesAsync()
     {
-        apiClient = QcStationApiClient.Create(apiBaseUrlTextBox.Text);
+        apiClient = CreateApiClient();
         apiStatusTextBox.Text = "Loading...";
         sampleListView.Items.Clear();
         try
@@ -581,12 +583,14 @@ public sealed class MainForm : Form
             {
                 var item = new ListViewItem(sample.DisplayReceiptId) { Tag = sample };
                 item.SubItems.Add(sample.WarehouseCode);
+                item.SubItems.Add(sample.RoomCode);
                 item.SubItems.Add(sample.GrowerName);
                 item.SubItems.Add(sample.LotCode);
                 item.SubItems.Add(sample.VarietyCode);
                 item.SubItems.Add(sample.Status);
                 item.SubItems.Add(sample.StarchStatus);
                 item.SubItems.Add(sample.EmailStatus);
+                item.SubItems.Add(sample.CompletedPressureRows.ToString());
                 sampleListView.Items.Add(item);
             }
 
@@ -608,7 +612,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        apiClient ??= QcStationApiClient.Create(apiBaseUrlTextBox.Text);
+        apiClient ??= CreateApiClient();
         selectedSample = await apiClient.GetSampleDetailAsync(sample.SampleId);
         if (selectedSample is null)
         {
@@ -642,7 +646,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        apiClient ??= QcStationApiClient.Create(apiBaseUrlTextBox.Text);
+        apiClient ??= CreateApiClient();
         var rows = testFruitCapture.Rows
             .Where(row => row.Pressure1Lbs is not null || row.Pressure2Lbs is not null)
             .Select(row => new QcStationPressureRowUpdate(row.FruitNumber, row.Pressure1Lbs, row.Pressure2Lbs))
@@ -655,6 +659,12 @@ public sealed class MainForm : Form
         RefreshCaptureDisplay();
         AppendLog($"Saved {rows.Count} pressure rows to dashboard sample {selectedSample?.DisplayReceiptId}.");
     }
+
+    private QcStationApiClient CreateApiClient() =>
+        QcStationApiClient.Create(
+            apiBaseUrlTextBox.Text,
+            stationService.Configuration.QcStationApiKey,
+            stationService.Configuration.StationName);
 
     private void StartContinuousManualCapture()
     {

@@ -1,6 +1,6 @@
 # QC Station FTA Proof of Concept
 
-This document describes the first Windows QC Station proof of concept for integrating with a GUSS/FTA Fruit Texture Analyzer. This is a local harness only. It does not sync readings to the backend database, write readings into the QC sample grid, capture USB camera photos, upload files to Google Drive, or send email.
+This document describes the Windows QC Station proof of concept for integrating with a GUSS/FTA Fruit Texture Analyzer. The WinForms station can capture FTA pressures locally and save pressure-only rows back to a selected QC sample through the dashboard API. It does not provide offline sync yet, capture USB camera photos, upload files to Google Drive, or send email.
 
 ## Purpose
 
@@ -357,30 +357,36 @@ Available commands:
 
 The WinForms harness exposes the same hardware commands as buttons, plus status/config labels for station name, warehouse, FTA mode, DLL path, DLL file, initialization mode, config path, current working directory, process architecture, OS architecture, and last pressure reading. Its log box auto-scrolls and keeps timestamped entries visible during hardware tests.
 
-The WinForms harness also includes a local-only 25-fruit pressure grid. It tracks fruit number, Pressure 1, Pressure 2, average pressure, current target, last captured reading, capture target, local row status, and reading history. Continuous Manual Capture is the primary workflow: the operator starts it once, then runs each physical FTA test with the green button while the harness captures readings and advances through P1/P2 for each fruit. This prepares the operator flow for mapping readings into QC sample rows later, but it does not write to the backend database or update the web QC workflow yet.
+The WinForms harness also includes a 25-fruit pressure grid. It tracks fruit number, Pressure 1, Pressure 2, average pressure, current target, last captured reading, capture target, local row status, and reading history. Continuous Manual Capture is the primary workflow: the operator starts it once, then runs each physical FTA test with the green button while the harness captures readings and advances through P1/P2 for each fruit. Captured pressures stay local until the operator selects `Save Pressures to Dashboard` or enables the optional auto-save setting.
 
 ## Dashboard API Pressure Save
 
 The WinForms harness can connect to the MVP 1 API and save FTA pressure readings back to a selected QC sample. This is online-only for now; offline sync remains future work.
 
-Run the API and WinForms station together:
+The browser pressure page does not connect directly to the physical FTA DLL. Open or create the sample in the web dashboard first, then use the local WinForms QC Station to select that sample and capture pressures.
 
-1. Start the API project with the local development script or `dotnet run --project .\src\CropQc.Api\CropQc.Api.csproj`.
-2. Confirm the WinForms `ApiBaseUrl` matches the API URL, such as `https://localhost:7001`.
-3. Run the WinForms x86 harness:
+Run the dashboard/API and WinForms station together:
+
+1. Start the web dashboard or API project. On Render, use the dashboard URL as `ApiBaseUrl`.
+2. Set `QcStation__ApiKey` on the dashboard/API and copy the same value into `qcstation.settings.json` as `QcStationApiKey`.
+3. Confirm the WinForms `ApiBaseUrl` matches the dashboard/API URL, such as `https://localhost:7001` for local API testing or the Render dashboard URL for live testing.
+4. Run the WinForms x86 harness:
 
    ```powershell
    .\scripts\dev-run-qcstation-winforms-x86.ps1
    ```
 
-4. In Dashboard Sample Selection, enter the warehouse filter if desired, then select `Refresh Today's Samples`.
-5. Select a sample and click `Select Sample`.
-6. Confirm the sample context, existing pressure readings, and current target.
-7. Use `Start Continuous Manual Capture`, then press and hold the green FTA button for each physical test.
-8. Click `Save Pressures to Dashboard`.
-9. Refresh the web dashboard sample page to see the saved pressure readings.
+5. In the web dashboard, open `/Samples/{sampleId}`. The FTA section shows the sample ID and reminds users that FTA capture happens in QC Station.
+6. In Dashboard Sample Selection, enter the warehouse filter if desired, then select `Refresh Today's Samples`.
+7. Select a sample and click `Select Sample`.
+8. Confirm the sample context, existing pressure readings, and current target.
+9. Use `Start Continuous Manual Capture`, then press and hold the green FTA button for each physical test.
+10. Click `Save Pressures to Dashboard`.
+11. Refresh the web dashboard sample page to see the saved pressure readings.
 
 The QC Station pressure save endpoint is pressure-only. It updates `Pressure1Lbs`, `Pressure1Source`, `Pressure2Lbs`, and `Pressure2Source`; it does not overwrite weight, grade, starch, defects, photos, or receipt data. `Auto-save after each completed fruit` can save after Pressure 2 is captured, but it is unchecked by default.
+
+The temporary station API key uses the `X-QC-STATION-API-KEY` header. This is an MVP station-auth bridge until stronger workstation identity is built.
 
 ## Quit / Disconnect Behavior
 

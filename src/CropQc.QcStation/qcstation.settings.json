@@ -10,5 +10,6 @@
   "FtaWorkingDirectory": null,
   "ComPort": null,
   "ApiBaseUrl": "https://localhost:7001",
+  "QcStationApiKey": "",
   "LocalDataPath": ".\\data"
 }

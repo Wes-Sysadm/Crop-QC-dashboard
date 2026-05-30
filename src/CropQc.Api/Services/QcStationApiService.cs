@@ -19,7 +19,9 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
         var today = DateTimeOffset.UtcNow.Date;
         var query = dbContext.QcSamples.AsNoTracking()
             .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
+            .Include(x => x.Receipt).ThenInclude(x => x.Room)
             .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
+            .Include(x => x.FruitReadings)
             .Where(x => x.SampleTakenAt.Date == today);
 
         if (!string.IsNullOrWhiteSpace(warehouseCode))
@@ -34,12 +36,14 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
                 x.ReceiptId,
                 x.SampleSequenceNumber <= 1 ? x.Receipt.CompuTechReceiptId : x.Receipt.CompuTechReceiptId + "(" + x.SampleSequenceNumber + ")",
                 x.Receipt.Warehouse.Code,
+                x.Receipt.Room.Code,
                 x.Receipt.GrowerName,
                 x.Receipt.LotCode,
                 x.Receipt.FruitProfile.VarietyCode,
                 x.Status,
                 x.StarchStatus,
                 x.EmailStatus,
+                x.FruitReadings.Count(row => row.Pressure1Lbs != null && row.Pressure2Lbs != null),
                 x.SampleTakenAt))
             .ToListAsync(cancellationToken);
     }
@@ -50,7 +54,9 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
             .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
             .Include(x => x.Receipt).ThenInclude(x => x.Room)
             .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
-            .Include(x => x.FruitReadings)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType)
             .SingleOrDefaultAsync(x => x.Id == sampleId, cancellationToken);
 
         return sample is null ? null : ToDetailDto(sample);
@@ -62,7 +68,9 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
             .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
             .Include(x => x.Receipt).ThenInclude(x => x.Room)
             .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
-            .Include(x => x.FruitReadings)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType)
             .SingleOrDefaultAsync(x => x.Id == sampleId, cancellationToken);
 
         if (sample is null)
@@ -135,8 +143,51 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
             sample.StarchStatus,
             sample.EmailStatus,
             sample.SampleTakenAt,
-            sample.FruitReadings
-                .OrderBy(x => x.RowNumber)
-                .Select(QcFruitReadingService.ToDto)
+            Enumerable.Range(1, 25)
+                .Select(rowNumber => ToStationFruitReadingDto(rowNumber, sample.FruitReadings.SingleOrDefault(x => x.RowNumber == rowNumber)))
                 .ToList());
+
+    private static QcStationFruitReadingDto ToStationFruitReadingDto(int rowNumber, QcFruitReading? reading)
+    {
+        if (reading is null)
+        {
+            return new QcStationFruitReadingDto(
+                0,
+                0,
+                rowNumber,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                SizeCalculationService.NotCalculated,
+                false,
+                []);
+        }
+
+        return new QcStationFruitReadingDto(
+            reading.Id,
+            reading.QcSampleId,
+            reading.RowNumber,
+            reading.Pressure1Lbs,
+            reading.Pressure1Source,
+            reading.Pressure2Lbs,
+            reading.Pressure2Source,
+            SizeCalculationService.CalculatePressureAverage(reading.Pressure1Lbs, reading.Pressure2Lbs),
+            reading.WeightGrams,
+            reading.GradeId,
+            reading.Grade?.Code,
+            reading.StarchScaleValueId,
+            reading.StarchScaleValue?.Value.ToString("0.####"),
+            reading.SizeCategory,
+            reading.SizeStatus,
+            reading.IsCompleted,
+            reading.Defects.Select(x => string.IsNullOrWhiteSpace(x.Notes) ? x.DefectType.Name : $"{x.DefectType.Name}: {x.Notes}").ToList());
+    }
 }

@@ -5,12 +5,14 @@ public sealed record QcStationSampleListItem(
     long ReceiptId,
     string DisplayReceiptId,
     string WarehouseCode,
+    string RoomCode,
     string GrowerName,
     string LotCode,
     string VarietyCode,
     string Status,
     string StarchStatus,
     string EmailStatus,
+    int CompletedPressureRows,
     DateTimeOffset SampleTakenAt);
 
 public sealed record QcStationSampleDetail(
@@ -41,10 +43,13 @@ public sealed record QcStationFruitReading(
     decimal? PressureAverageLbs,
     decimal? WeightGrams,
     int? GradeId,
+    string? Grade,
     int? StarchScaleValueId,
+    string? Starch,
     int? SizeCategory,
     string SizeStatus,
-    bool IsCompleted);
+    bool IsCompleted,
+    IReadOnlyList<string> Defects);
 
 public sealed record QcStationPressureRowUpdate(
     int RowNumber,

@@ -62,13 +62,34 @@ public sealed record QcStationSampleListItemDto(
     long ReceiptId,
     string DisplayReceiptId,
     string WarehouseCode,
+    string RoomCode,
     string GrowerName,
     string LotCode,
     string VarietyCode,
     string Status,
     string StarchStatus,
     string EmailStatus,
+    int CompletedPressureRows,
     DateTimeOffset SampleTakenAt);
+
+public sealed record QcStationFruitReadingDto(
+    long Id,
+    long QcSampleId,
+    int RowNumber,
+    decimal? Pressure1Lbs,
+    string? Pressure1Source,
+    decimal? Pressure2Lbs,
+    string? Pressure2Source,
+    decimal? PressureAverageLbs,
+    decimal? WeightGrams,
+    int? GradeId,
+    string? Grade,
+    int? StarchScaleValueId,
+    string? Starch,
+    int? SizeCategory,
+    string SizeStatus,
+    bool IsCompleted,
+    IReadOnlyList<string> Defects);
 
 public sealed record QcStationSampleDetailDto(
     long SampleId,
@@ -85,7 +106,7 @@ public sealed record QcStationSampleDetailDto(
     string StarchStatus,
     string EmailStatus,
     DateTimeOffset SampleTakenAt,
-    IReadOnlyList<QcFruitReadingDto> FruitReadings);
+    IReadOnlyList<QcStationFruitReadingDto> FruitReadings);
 
 public sealed record UpdateQcStationPressureRowRequest(
     int RowNumber,

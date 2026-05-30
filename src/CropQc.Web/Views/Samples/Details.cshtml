@@ -33,6 +33,18 @@
             <a href="/Receipts/@Model.Sample.ReceiptId">Back to receipt</a>
         </p>
     </section>
+
+    <section class="panel">
+        <h2>FTA Pressure Capture</h2>
+        <p>FTA pressure capture is done through the local QC Station app. The browser does not connect directly to the physical FTA DLL.</p>
+        <p>Selected sample: <strong>@Model.Sample.DisplayReceiptId</strong> | Sample ID: <code>@Model.Sample.Id</code> | Receipt ID: <code>@Model.Sample.ReceiptIdText</code></p>
+        <p>Open the WinForms QC Station, refresh today's samples, select <strong>@Model.Sample.DisplayReceiptId</strong>, then start continuous manual capture. FTA readings may be captured from QC Station and saved here.</p>
+        <p>
+            <button type="button" class="secondary-button" data-copy-sample-id="@Model.Sample.Id">Copy Sample ID</button>
+            <a class="button secondary-button" href="cropqcstation://sample/@Model.Sample.Id">Open in QC Station</a>
+        </p>
+        <p class="muted">The QC Station app uses the dashboard API and a temporary station API key. The custom protocol link is a placeholder until workstation registration is installed.</p>
+    </section>
 }
 
 <section class="panel">
@@ -133,6 +145,7 @@
             </table>
         </div>
         <p class="muted">Blank rows are ignored. Use the separate Starch Input page after fruit is cut.</p>
+        <p class="muted">FTA readings may be captured from QC Station and saved here. Saving this grid remains available for manual pressure entry and weight/grade/defect edits.</p>
         <button type="submit">Save QC Rows</button>
     </form>
 
@@ -224,6 +237,18 @@
                 button.addEventListener("dblclick", () => addDefect(row, button));
                 button.addEventListener("click", () => addDefect(row, button));
             }
+        }
+
+        for (const button of document.querySelectorAll("[data-copy-sample-id]")) {
+            button.addEventListener("click", async () => {
+                const sampleId = button.dataset.copySampleId;
+                try {
+                    await navigator.clipboard.writeText(sampleId);
+                    button.textContent = "Sample ID copied";
+                } catch {
+                    window.prompt("Copy QC Station sample ID", sampleId);
+                }
+            });
         }
     })();
 </script>
