@@ -16,6 +16,7 @@
 <section class="panel">
     <h2>Add QC Station</h2>
     <p class="muted">Creating a station generates a unique API key and immediately downloads that station's setup package or raw config. The raw key is not stored and cannot be shown again.</p>
+    <p class="muted">Normal setup: extract the ZIP on the QC computer and double-click <strong>Install-CropQcStationConfig.cmd</strong>. No PowerShell command entry is required.</p>
     <form class="toolbar" method="post" action="/Admin/QcStations/Create">
         <div class="field"><label>Station name</label><input name="StationName" placeholder="WP QC Station 1" required /></div>
         <div class="field"><label>Station code</label><input name="StationCode" placeholder="WP-QC-01" required /></div>
@@ -104,7 +105,7 @@
                         }
                         else
                         {
-                            <span class="muted">Raw key is no longer available. Rotate key to generate a new setup package.</span>
+                            <span class="muted">Raw key is no longer available. Rotate key to generate a new setup package. Users install it by double-clicking Install-CropQcStationConfig.cmd.</span>
                         }
                     </td>
                     <td>

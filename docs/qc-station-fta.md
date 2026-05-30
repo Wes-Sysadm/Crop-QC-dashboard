@@ -382,7 +382,7 @@ Run the dashboard/API and WinForms station together:
 1. Start the web dashboard or API project. On Render, use the dashboard URL as `ApiBaseUrl`.
 2. In the dashboard, sign in as an Admin and open `Admin -> QC Stations`.
 3. Create one QC Station record for each physical QC computer, then download that station's setup package immediately after creation or key rotation.
-4. On the QC Station computer, extract the setup package and run `install-qcstation-config.ps1`. It installs `qcstation.settings.json` to `C:\ProgramData\CropQc\QcStation\qcstation.settings.json` and backs up any existing config first.
+4. On the QC Station computer, extract the setup package and double-click `Install-CropQcStationConfig.cmd`. No PowerShell command entry is required. The installer copies `qcstation.settings.json` to `C:\ProgramData\CropQc\QcStation\qcstation.settings.json` and backs up any existing config first.
 5. Confirm the WinForms `ApiBaseUrl` matches the dashboard/API URL, such as `https://localhost:7001` for local API testing or the Render dashboard URL for live testing.
 6. Run the WinForms x86 harness:
 

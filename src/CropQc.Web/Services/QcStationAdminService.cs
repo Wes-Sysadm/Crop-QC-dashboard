@@ -31,12 +31,37 @@ public static class QcStationSetupPackageBuilder
         using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
         {
             AddText(archive, "qcstation.settings.json", configJson);
+            AddText(archive, "Install-CropQcStationConfig.cmd", BuildCommandInstaller());
             AddText(archive, "install-qcstation-config.ps1", BuildInstallScript());
             AddText(archive, "README.txt", BuildReadme(station));
         }
 
         return stream.ToArray();
     }
+
+    public static string BuildCommandInstaller() =>
+        """
+        @echo off
+        setlocal
+        title Crop QC Station Configuration Installer
+
+        echo Installing Crop QC Station configuration...
+        echo.
+
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-qcstation-config.ps1"
+        set EXITCODE=%ERRORLEVEL%
+
+        echo.
+        if "%EXITCODE%"=="0" (
+            echo Install completed. You can close this window.
+        ) else (
+            echo Install failed with exit code %EXITCODE%.
+            echo If Windows blocked the install, right-click this file and choose Run as administrator.
+        )
+        echo.
+        pause
+        exit /b %EXITCODE%
+        """;
 
     public static string BuildInstallScript() =>
         $$"""
@@ -67,8 +92,8 @@ public static class QcStationSetupPackageBuilder
             Write-Host "Installed path: $targetPath"
             Write-Host ""
             Write-Host "Next steps:"
-            Write-Host "1. Install FTADLL.exe from Admin Downloads if needed."
-            Write-Host "2. Run CropQc.QcStation.WinForms."
+            Write-Host "1. Launch Crop QC Station."
+            Write-Host "2. Install FTADLL.exe from Admin Downloads if this computer is connected to an FTA."
             Write-Host "3. Confirm station code and warehouse in the app."
         }
         catch {
@@ -89,13 +114,11 @@ public static class QcStationSetupPackageBuilder
         Warehouse: {{station.WarehouseCode ?? ""}}
 
         Install steps:
-        1. Extract this zip file.
-        2. Right-click install-qcstation-config.ps1.
-        3. Run with PowerShell.
-        4. If blocked, open PowerShell in the extracted folder and run:
-           Set-ExecutionPolicy -Scope Process Bypass
-           .\install-qcstation-config.ps1
-        5. Launch QC Station.
+        1. Extract this ZIP on the QC Station computer.
+        2. Double-click Install-CropQcStationConfig.cmd.
+        3. Confirm it says the configuration installed successfully.
+        4. Install FTADLL.exe from Admin Downloads if this computer is connected to an FTA.
+        5. Launch Crop QC Station.
 
         This installs:
         {{InstalledConfigPath}}

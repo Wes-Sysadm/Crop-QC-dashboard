@@ -23,12 +23,21 @@ public sealed class QcStationSetupPackageTests
 
         using var archive = new ZipArchive(new MemoryStream(package), ZipArchiveMode.Read);
         Assert.Contains(archive.Entries, x => x.FullName == "qcstation.settings.json");
+        Assert.Contains(archive.Entries, x => x.FullName == "Install-CropQcStationConfig.cmd");
         Assert.Contains(archive.Entries, x => x.FullName == "install-qcstation-config.ps1");
         Assert.Contains(archive.Entries, x => x.FullName == "README.txt");
+
+        var command = ReadEntry(archive, "Install-CropQcStationConfig.cmd");
+        Assert.Contains("powershell.exe -NoProfile -ExecutionPolicy Bypass", command);
+        Assert.Contains("install-qcstation-config.ps1", command);
 
         var script = ReadEntry(archive, "install-qcstation-config.ps1");
         Assert.Contains(@"C:\ProgramData\CropQc\QcStation\qcstation.settings.json", script);
         Assert.Contains("qcstation.settings.backup-$timestamp.json", script);
+
+        var readme = ReadEntry(archive, "README.txt");
+        Assert.Contains("Double-click Install-CropQcStationConfig.cmd", readme);
+        Assert.DoesNotContain("Set-ExecutionPolicy -Scope Process Bypass", readme);
     }
 
     [Fact]
