@@ -11,6 +11,7 @@ namespace CropQc.Web.Services;
 
 public interface IQcStationAdminService
 {
+    bool AppPayloadAvailable { get; }
     Task<QcStationsPageViewModel> GetStationsAsync(string? search, string? warehouseCode, string activeFilter, CancellationToken cancellationToken);
     Task<(string? Error, QcStationConfigDownload? Download)> CreateAsync(QcStationForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> UpdateAsync(QcStationForm form, string changedByEmail, CancellationToken cancellationToken);
@@ -18,7 +19,7 @@ public interface IQcStationAdminService
     Task<(string? Error, QcStationConfigDownload? Download)> RotateKeyAsync(int id, string changedByEmail, CancellationToken cancellationToken);
 }
 
-public sealed record QcStationConfigDownload(string FileName, string Json, string PackageFileName, byte[] PackageBytes);
+public sealed record QcStationConfigDownload(string FileName, string Json, string PackageFileName, byte[] PackageBytes, bool AppPayloadAvailable);
 
 public static class QcStationSetupPackageBuilder
 {
@@ -105,6 +106,13 @@ public static class QcStationSetupPackageBuilder
                     throw "The setup package says it contains the QC Station app, but the app folder was not found."
                 }
 
+                if (Test-Path -LiteralPath $appDirectory) {
+                    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+                    $appBackupDirectory = "$appDirectory.backup-$timestamp"
+                    Copy-Item -LiteralPath $appDirectory -Destination $appBackupDirectory -Recurse -Force
+                    Write-Host "Existing QC Station app folder backed up to $appBackupDirectory"
+                }
+
                 if (-not (Test-Path -LiteralPath $appDirectory)) {
                     New-Item -ItemType Directory -Path $appDirectory -Force | Out-Null
                 }
@@ -143,6 +151,23 @@ public static class QcStationSetupPackageBuilder
                 New-Item -Path "$protocolRoot\shell\open\command" -Force | Out-Null
                 Set-Item -Path "$protocolRoot\shell\open\command" -Value "`"$appExePath`" `"%1`""
                 Write-Host "cropqcstation:// protocol handler registered for this Windows user."
+
+                try {
+                    $desktopPath = [Environment]::GetFolderPath('DesktopDirectory')
+                    if (-not [string]::IsNullOrWhiteSpace($desktopPath)) {
+                        $shortcutPath = Join-Path $desktopPath 'Crop QC Station.lnk'
+                        $shell = New-Object -ComObject WScript.Shell
+                        $shortcut = $shell.CreateShortcut($shortcutPath)
+                        $shortcut.TargetPath = $appExePath
+                        $shortcut.WorkingDirectory = $appDirectory
+                        $shortcut.IconLocation = "$appExePath,0"
+                        $shortcut.Save()
+                        Write-Host "Desktop shortcut created: $shortcutPath"
+                    }
+                }
+                catch {
+                    Write-Warning "Desktop shortcut could not be created: $($_.Exception.Message)"
+                }
             }
             else {
                 Write-Warning "QC Station app executable was not found. Protocol handler was not registered. Install or copy the QC Station app to $appExePath, then rerun this installer."
@@ -227,7 +252,7 @@ public sealed class QcStationAdminService(CropQcDbContext dbContext, IConfigurat
         configuration["QcStation:WinFormsPayloadPath"]
         ?? Path.Combine(AppContext.BaseDirectory, "App_Data", "QcStationWinForms");
 
-    private bool AppPayloadAvailable =>
+    public bool AppPayloadAvailable =>
         Directory.Exists(AppPayloadPath)
         && File.Exists(Path.Combine(AppPayloadPath, "CropQc.QcStation.WinForms.exe"));
 
@@ -443,7 +468,8 @@ public sealed class QcStationAdminService(CropQcDbContext dbContext, IConfigurat
             $"{station.StationCode}-qcstation.settings.json",
             json,
             packageFileName,
-            QcStationSetupPackageBuilder.Build(station, json, AppPayloadPath));
+            QcStationSetupPackageBuilder.Build(station, json, AppPayloadPath),
+            AppPayloadAvailable);
     }
 
     private static string SanitizeFileName(string value)

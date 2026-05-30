@@ -22,7 +22,7 @@
     }
     else
     {
-        <p class="notice warning">QC Station app payload is not deployed at @Model.AppPayloadPath. Setup packages are config-only until the WinForms payload is published and deployed.</p>
+        <p class="notice warning"><strong>QC Station app payload is missing.</strong> Full setup packages cannot be generated. Deploy the WinForms payload before creating station setup packages. Expected payload path: <code>@Model.AppPayloadPath</code>.</p>
     }
     <form class="toolbar" method="post" action="/Admin/QcStations/Create">
         <div class="field"><label>Station name</label><input name="StationName" placeholder="WP QC Station 1" required /></div>
@@ -39,7 +39,14 @@
         </div>
         <div class="field"><label>Description</label><input name="Description" /></div>
         <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked /> Active</label><input type="hidden" name="IsActive" value="false" />
-        <button type="submit" name="downloadType" value="package">Add Station and Download @(Model.AppPayloadAvailable ? "Full Setup Package" : "Config-Only Setup Package")</button>
+        @if (Model.AppPayloadAvailable)
+        {
+            <button type="submit" name="downloadType" value="package">Add Station and Download Full Setup Package</button>
+        }
+        else
+        {
+            <button type="submit" name="downloadType" value="package" disabled title="Deploy the WinForms payload before generating setup packages.">Full Setup Package Unavailable</button>
+        }
         <button class="secondary-button" type="submit" name="downloadType" value="json">Add Station and Download JSON</button>
     </form>
 </section>
@@ -108,11 +115,11 @@
                     <td>
                         @if (station.ApiKeyLastFour is null)
                         {
-                            <span class="muted">Rotate key to generate a new @(Model.AppPayloadAvailable ? "full setup package" : "config-only setup package").</span>
+                            <span class="muted">Rotate key to generate a new full setup package after the app payload is deployed.</span>
                         }
                         else
                         {
-                            <span class="muted">Raw key is no longer available. Rotate key to generate a new @(Model.AppPayloadAvailable ? "full setup package" : "config-only setup package"). Users install it by double-clicking Install-CropQcStation.cmd.</span>
+                            <span class="muted">Raw key is no longer available. Rotate key to generate a new full setup package. Users install it by double-clicking Install-CropQcStation.cmd.</span>
                         }
                     </td>
                     <td>
@@ -137,7 +144,14 @@
                         </details>
                         <form class="button-row" method="post" action="/Admin/QcStations/RotateKey">
                             <input type="hidden" name="id" value="@station.Id" />
-                            <button class="secondary-button" type="submit" name="downloadType" value="package">Rotate Key and Download @(Model.AppPayloadAvailable ? "Full Setup Package" : "Config-Only Setup Package")</button>
+                            @if (Model.AppPayloadAvailable)
+                            {
+                                <button class="secondary-button" type="submit" name="downloadType" value="package">Rotate Key and Download Full Setup Package</button>
+                            }
+                            else
+                            {
+                                <button class="secondary-button" type="submit" name="downloadType" value="package" disabled title="Deploy the WinForms payload before generating setup packages.">Full Setup Package Unavailable</button>
+                            }
                             <button class="secondary-button" type="submit" name="downloadType" value="json">Rotate Key and Download JSON</button>
                         </form>
                         <form class="button-row" method="post" action="/Admin/QcStations/DownloadConfig">
