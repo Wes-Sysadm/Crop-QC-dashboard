@@ -86,17 +86,19 @@ Set these variables in Render:
 
 Do not commit database passwords, Google credentials, Gmail credentials, or API secrets.
 
-WinForms QC Station access is managed from the database, not with one shared Render API key. Sign in as Admin, open `/Admin/QcStations`, create one station record per QC computer, and download that station's setup package immediately after creation or key rotation. A full package includes `app/`, `qcstation.settings.json`, `Install-CropQcStation.cmd`, `install-qcstation.ps1`, and `README.txt`. Extract the ZIP and double-click `Install-CropQcStation.cmd` on the QC computer to install the app at `C:\Program Files\CropQc\QcStation`, install config at `C:\ProgramData\CropQc\QcStation\qcstation.settings.json`, and register `cropqcstation://` links. No manual PowerShell command entry is required. The installer backs up existing app/config files and creates a desktop shortcut when possible. The station sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the dashboard stores only the key hash. Deactivate a station to revoke access without breaking other QC computers.
+WinForms QC Station access is managed from the database, not with one shared Render API key. Sign in as Admin, open `/Admin/QcStations`, create one station record per QC computer, and download that station's `qcstation.settings.json` immediately after creation or key rotation. The station sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the dashboard stores only the key hash. Deactivate a station to revoke access without breaking other QC computers.
 
-Keep station setup packages private because they contain the raw station API key. If a package is lost or exposed, rotate the station key from `/Admin/QcStations` and download a new setup package.
+Keep station config JSON private because it contains the raw station API key. If a config file is lost or exposed, rotate the station key from `/Admin/QcStations` and download a new config. The shared MSI installer contains no station secrets.
 
-The Docker build publishes the WinForms x86 payload into the web app before publishing the dashboard. For local or manual deployment, publish the payload before deploying the web app:
+The Render Docker build publishes only the web dashboard. It does not build Windows desktop payloads or the QC Station installer. Build the signed MSI on a Windows build machine:
 
 ```powershell
-.\scripts\publish-qcstation-winforms-x86.ps1
+.\scripts\build-qcstation-installer.ps1
 ```
 
-This writes the payload to `src\CropQc.Web\App_Data\QcStationWinForms`. The web project copies that folder into publish output, and the deployed app looks for it at `App_Data/QcStationWinForms` by default; override it with `QcStation__WinFormsPayloadPath` only if the payload is mounted somewhere else. If the payload is missing in the deployed web app, `/Admin/QcStations` shows a red warning and disables full setup package downloads until the WinForms payload is deployed.
+The script publishes the WinForms x86 app, builds `artifacts\installers\CropQcStationSetup.msi`, and signs it when signing environment variables are configured. If signing is not configured, it builds an unsigned MSI and prints a SmartScreen/Defender warning.
+
+To deploy the installer download, place the signed MSI at `src\CropQc.Web\App_Data\Downloads\CropQcStationSetup.msi` before web publish/deploy, or set `QcStation__InstallerPath` to a whitelisted deployed path containing `CropQcStationSetup.msi`. If the MSI is missing, `/Admin/Downloads` shows “QC Station installer has not been deployed yet” and the web app still starts normally.
 
 Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 
@@ -118,10 +120,10 @@ Roles are managed inside the dashboard. `/Admin/Users` also shows a role permiss
 Management dashboard pages:
 
 - `/Admin/Users` manages user accounts, active status, and roles after Google login creates identity records.
-- `/Admin/QcStations` manages station enrollment, per-station API keys, key rotation, deactivation, raw config downloads, and setup package downloads. Admins and Managers can access this page.
+- `/Admin/QcStations` manages station enrollment, per-station API keys, key rotation, deactivation, and raw config downloads. Admins and Managers can access this page.
 - `/MasterData` shows edit/add/deactivate controls for Admins and Managers.
 - `/Admin/Configuration` manages safe non-secret runtime configuration values. Do not store OAuth secrets, database connection strings, Gmail secrets, Google Drive secrets, or API keys there.
-- `/Admin/Downloads` provides approved internal support-file links, such as the FTA DLL installer Google Drive file, to Admin users only.
+- `/Admin/Downloads` provides approved internal support-file links, such as the FTA DLL installer Google Drive file and the QC Station App Installer MSI when deployed, to Admin users only.
 
 Master Data editing notes:
 

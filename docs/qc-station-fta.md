@@ -71,7 +71,7 @@ Download entry:
 - Use: installer/runtime files needed for the GUSS FTA DLL integration on QC Station computers.
 - Link: `https://drive.google.com/file/d/1iYy1v1-D8T-S4SgfHJOeuwoeJfsbcvoS/view?usp=drive_link`.
 
-Install `FTADLL.exe` on each FTA-connected Windows computer before running QC Station RealDll mode. This installer is for internal company computers only. It is separate from the Crop QC Station setup package, which installs the WinForms app and station config. Google Drive sharing permissions should be limited to company users when possible.
+Install `FTADLL.exe` on each FTA-connected Windows computer before running QC Station RealDll mode. This installer is for internal company computers only. It is separate from the Crop QC Station App Installer MSI, which installs the WinForms app and protocol handler but does not include station config or API keys. Google Drive sharing permissions should be limited to company users when possible.
 
 After installation, configure the QC Station for the confirmed working path:
 
@@ -380,41 +380,44 @@ The browser pressure page does not connect directly to the physical FTA DLL. Ope
 Run the dashboard/API and WinForms station together:
 
 1. Start the web dashboard or API project. On Render, use the dashboard URL as `ApiBaseUrl`.
-2. In the dashboard, sign in as an Admin and open `Admin -> QC Stations`.
-3. Create one QC Station record for each physical QC computer, then download that station's setup package immediately after creation or key rotation.
-4. On the QC Station computer, extract the setup package and double-click `Install-CropQcStation.cmd`. No PowerShell command entry is required. A full package installs the WinForms app to `C:\Program Files\CropQc\QcStation`, copies `qcstation.settings.json` to `C:\ProgramData\CropQc\QcStation\qcstation.settings.json`, backs up any existing app/config first, creates a desktop shortcut when possible, and registers `cropqcstation://` links.
-5. Confirm the WinForms `ApiBaseUrl` matches the dashboard/API URL, such as `https://localhost:7001` for local API testing or the Render dashboard URL for live testing.
-6. Run the WinForms x86 harness:
+2. In the dashboard, sign in as an Admin and open `Admin -> Downloads`.
+3. Download and run the signed `CropQcStationSetup.msi`. The MSI installs the WinForms app to `C:\Program Files\CropQc\QcStation`, creates shortcuts, and registers `cropqcstation://` links. It does not contain station API keys.
+4. Open `Admin -> QC Stations`, create one QC Station record for each physical QC computer, and download that station's `qcstation.settings.json` immediately after creation or key rotation.
+5. Launch Crop QC Station. If prompted, browse for the downloaded `qcstation.settings.json`; the app validates it and copies it to `C:\ProgramData\CropQc\QcStation\qcstation.settings.json`.
+6. Confirm the WinForms `ApiBaseUrl` matches the dashboard/API URL, such as `https://localhost:7001` for local API testing or the Render dashboard URL for live testing.
+7. Run the WinForms x86 harness locally during development:
 
    ```powershell
    .\scripts\dev-run-qcstation-winforms-x86.ps1
    ```
 
-7. In the web dashboard, open `/Samples/{sampleId}` and click `Open in QC Station`.
-8. The browser launches `cropqcstation://sample/{sampleId}`. The WinForms app reads the installed config, calls the dashboard API, loads that sample, and sets the pressure target to the first missing slot.
-9. Use `Start Continuous Manual Capture`, then press and hold the green FTA button for each physical test.
-10. Click `Save Pressures to Dashboard`.
-11. Refresh the web dashboard sample page to see the saved pressure readings.
+8. In the web dashboard, open `/Samples/{sampleId}` and click `Open in QC Station`.
+9. The browser launches `cropqcstation://sample/{sampleId}`. The WinForms app reads the installed config, calls the dashboard API, loads that sample, and sets the pressure target to the first missing slot. If config is missing, it opens the import screen first.
+10. Use `Start Continuous Manual Capture`, then press and hold the green FTA button for each physical test.
+11. Click `Save Pressures to Dashboard`.
+12. Refresh the web dashboard sample page to see the saved pressure readings.
 
-The protocol handler points to `C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe`. If the Admin QC Stations page says the app payload is missing, publish/deploy the WinForms app payload before creating or rotating station setup packages.
+The protocol handler points to `C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe`.
 
 The QC Station pressure save endpoint is pressure-only. It updates `Pressure1Lbs`, `Pressure1Source`, `Pressure2Lbs`, and `Pressure2Source`; it does not overwrite weight, grade, starch, defects, photos, or receipt data. `Auto-save after each completed fruit` can save after Pressure 2 is captured, but it is unchecked by default.
 
 Station API access is managed in the database, not with one shared Render environment variable. Each QC computer sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the server stores only a hash of the key. Deactivate a station to block it immediately, or rotate its key and download a fresh config if a computer is replaced.
 
-`Admin -> Downloads` links to the Google Drive `FTADLL.exe` installer. Install it on each FTA-connected QC Station computer before running RealDll mode, then use `Admin -> QC Stations` to download that computer's station-specific setup package. This setup supports 20+ station computers without sharing one secret across all of them.
+`Admin -> Downloads` links to the Google Drive `FTADLL.exe` installer and the Crop QC Station App Installer MSI when the MSI has been deployed. Install `FTADLL.exe` on each FTA-connected QC Station computer before running RealDll mode, then use `Admin -> QC Stations` to download that computer's station-specific config JSON. This setup supports 20+ station computers without sharing one secret across all of them.
 
-Keep setup packages private. Each package contains the raw station API key. If a package is lost or exposed, rotate that station's key in `Admin -> QC Stations` and download a new package.
+Keep station config JSON private. It contains the raw station API key. If a config file is lost or exposed, rotate that station's key in `Admin -> QC Stations` and download a new config. The MSI contains no station secrets.
 
-## Publishing The WinForms Payload
+## Building The QC Station Installer
 
-The Render web app cannot build the Windows QC Station app during a download request. The Docker build publishes the WinForms x86 payload into the web app before publishing the dashboard. For local or manual deployment, publish the payload directly into the web app payload folder:
+The Render web app does not build Windows desktop payloads. Build the QC Station MSI on a Windows build machine:
 
 ```powershell
-.\scripts\publish-qcstation-winforms-x86.ps1
+.\scripts\build-qcstation-installer.ps1
 ```
 
-The script publishes `src\CropQc.QcStation.WinForms\CropQc.QcStation.WinForms.csproj` in Release mode for `win-x86` and writes the output to `src\CropQc.Web\App_Data\QcStationWinForms`, which the web project copies to publish output. The Admin QC Stations page shows whether that payload is present. If it is missing, full setup package buttons are disabled and station setup packages cannot be generated until the payload is deployed.
+The script publishes `src\CropQc.QcStation.WinForms\CropQc.QcStation.WinForms.csproj` in Release mode for `win-x86`, builds the WiX MSI at `artifacts\installers\CropQcStationSetup.msi`, and signs the executable/MSI when signing environment variables are configured. If signing is not configured it builds an unsigned MSI and prints a warning. Do not use an unsigned MSI for production rollout.
+
+To make the MSI available from `Admin -> Downloads`, place the signed MSI at `src\CropQc.Web\App_Data\Downloads\CropQcStationSetup.msi` before publishing the web app, or configure `QcStation:InstallerPath` to the deployed MSI path. The MSI should not be committed unless explicitly approved.
 
 ## Quit / Disconnect Behavior
 

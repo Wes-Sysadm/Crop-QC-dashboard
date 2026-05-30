@@ -13,11 +13,18 @@ internal static class Program
         var settingsPath = StationConfiguration.ResolveSettingsPath(settingsArg);
         if (!File.Exists(settingsPath))
         {
-            MessageBox.Show(
-                StationConfiguration.MissingSettingsMessage(settingsPath),
-                "QC Station settings missing",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+            using var importForm = new ConfigImportForm(StationConfiguration.InstalledSettingsPath, launch);
+            if (importForm.ShowDialog() != DialogResult.OK || !File.Exists(StationConfiguration.InstalledSettingsPath))
+            {
+                MessageBox.Show(
+                    StationConfiguration.MissingSettingsMessage(settingsPath),
+                    "QC Station settings missing",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            settingsPath = StationConfiguration.InstalledSettingsPath;
         }
 
         var configuration = StationConfiguration.Load(settingsPath);

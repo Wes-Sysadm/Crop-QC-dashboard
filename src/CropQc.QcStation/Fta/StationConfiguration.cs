@@ -66,5 +66,47 @@ public sealed class StationConfiguration
     }
 
     public static string MissingSettingsMessage(string path) =>
-        $"QC Station settings were not found at '{path}'. Install the station setup package from Admin -> QC Stations, or pass a settings path on the command line. Installed stations should use {InstalledSettingsPath}.";
+        $"QC Station settings were not found at '{path}'. Install the Crop QC Station app, then download station config from Admin -> QC Stations and import qcstation.settings.json. Installed stations should use {InstalledSettingsPath}.";
+}
+
+public static class StationConfigurationImport
+{
+    public static StationConfiguration ValidateSource(string sourcePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+        {
+            throw new FileNotFoundException("qcstation.settings.json was not found.", sourcePath);
+        }
+
+        var configuration = StationConfiguration.Load(sourcePath);
+        if (string.IsNullOrWhiteSpace(configuration.QcStationCode)
+            || string.IsNullOrWhiteSpace(configuration.QcStationApiKey))
+        {
+            throw new InvalidDataException("The selected settings file is missing QcStationCode or QcStationApiKey.");
+        }
+
+        return configuration;
+    }
+
+    public static string Import(string sourcePath, string? targetPath = null)
+    {
+        ValidateSource(sourcePath);
+        var destination = targetPath ?? StationConfiguration.InstalledSettingsPath;
+        var directory = Path.GetDirectoryName(destination);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        if (File.Exists(destination))
+        {
+            var backupPath = Path.Combine(
+                directory ?? AppContext.BaseDirectory,
+                $"qcstation.settings.backup-{DateTime.Now:yyyyMMdd-HHmmss}.json");
+            File.Copy(destination, backupPath, overwrite: true);
+        }
+
+        File.Copy(sourcePath, destination, overwrite: true);
+        return destination;
+    }
 }

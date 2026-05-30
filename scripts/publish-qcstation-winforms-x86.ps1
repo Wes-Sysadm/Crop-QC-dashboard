@@ -1,6 +1,6 @@
 param(
     [string]$Configuration = "Release",
-    [string]$OutputPath = "src/CropQc.Web/App_Data/QcStationWinForms"
+    [string]$OutputPath = "artifacts/qcstation-winforms-x86"
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,4 +33,5 @@ if (-not (Test-Path -LiteralPath (Join-Path $publishPath "CropQc.QcStation.WinFo
 }
 
 Write-Host "QC Station WinForms x86 publish complete."
-Write-Host "Web setup package payload staged at: $publishPath"
+Write-Host "QC Station WinForms x86 payload staged at: $publishPath"
+Write-Host "Run scripts/build-qcstation-installer.ps1 to build the MSI installer."

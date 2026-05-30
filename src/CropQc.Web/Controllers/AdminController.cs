@@ -10,10 +10,13 @@ namespace CropQc.Web.Controllers;
 public sealed class AdminController(
     IUserAdminService userAdminService,
     IAdminAuthorizationService authorizationService,
-    IQcStationAdminService qcStationAdminService) : Controller
+    IQcStationAdminService qcStationAdminService,
+    IWebHostEnvironment environment,
+    IConfiguration configuration) : Controller
 {
     private const string FtaDllInstallerFileName = "FTADLL.exe";
     private const string FtaDllInstallerUrl = "https://drive.google.com/file/d/1iYy1v1-D8T-S4SgfHJOeuwoeJfsbcvoS/view?usp=drive_link";
+    private const string QcStationInstallerFileName = "CropQcStationSetup.msi";
 
     [HttpGet("Users")]
     [Authorize(Policy = "RequireAdmin")]
@@ -24,6 +27,8 @@ public sealed class AdminController(
     [Authorize(Policy = "RequireAdmin")]
     public IActionResult Downloads()
     {
+        var installerPath = GetQcStationInstallerPath();
+        var installerExists = System.IO.File.Exists(installerPath);
         var model = new AdminDownloadsViewModel
         {
             Downloads =
@@ -33,17 +38,49 @@ public sealed class AdminController(
                     FtaDllInstallerFileName,
                     "Installer/runtime files needed for the GUSS FTA DLL integration on QC Station computers.",
                     FtaDllInstallerUrl,
-                    "Opens the shared Google Drive download page. Use only on internal company QC Station computers. Install before running QC Station RealDll mode. After installation, run the WinForms x86 QC Station app."),
+                    "Opens the shared Google Drive download page. Use only on internal company QC Station computers. Install before running QC Station RealDll mode. After installation, run the Crop QC Station app.",
+                    OpensInNewTab: true,
+                    ActionText: "Open Google Drive Download"),
+                new(
+                    "QC Station App Installer",
+                    QcStationInstallerFileName,
+                    "Signed MSI installer for the Crop QC Station WinForms app. Installs the app, Start Menu shortcut, and cropqcstation:// browser link handler. It does not contain station API keys.",
+                    installerExists ? "/Admin/Downloads/QcStationInstaller" : "",
+                    installerExists
+                        ? "Run this installer on each QC computer, then import that computer's station config JSON from Admin QC Stations."
+                        : "QC Station installer has not been deployed yet. Build/sign CropQcStationSetup.msi and place it in App_Data/Downloads or the configured installer download path.",
+                    IsAvailable: installerExists,
+                    ActionText: "Download MSI"),
                 new(
                     "QC Station Configs",
-                    "setup package .zip",
-                    "Per-station setup packages generated from Admin QC Stations. Full packages install the WinForms app, station config, and browser link handler.",
+                    "qcstation.settings.json",
+                    "Station-specific config JSON generated from Admin QC Stations. Contains the station code/key and must be imported into the installed QC Station app.",
                     "/Admin/QcStations",
-                    "Each QC computer needs its own station record and API key. FTADLL.exe is separate and still required for FTA-connected computers; do not use one shared API key for all computers.")
+                    "Each QC computer needs its own station record and API key. The MSI is shared across stations; the config JSON is the secret per-station file.",
+                    ActionText: "Manage QC Stations")
             ]
         };
 
         return View(model);
+    }
+
+    [HttpGet("Downloads/QcStationInstaller")]
+    [Authorize(Policy = "RequireAdmin")]
+    public IActionResult DownloadQcStationInstaller()
+    {
+        var installerPath = GetQcStationInstallerPath();
+        if (!System.IO.File.Exists(installerPath))
+        {
+            TempData["Error"] = "QC Station installer has not been deployed yet. Build/sign CropQcStationSetup.msi and place it in the configured installer download location.";
+            return RedirectToAction(nameof(Downloads));
+        }
+
+        if (!string.Equals(Path.GetFileName(installerPath), QcStationInstallerFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            return NotFound();
+        }
+
+        return PhysicalFile(installerPath, "application/octet-stream", QcStationInstallerFileName);
     }
 
     [HttpGet("QcStations")]
@@ -53,14 +90,8 @@ public sealed class AdminController(
 
     [HttpPost("QcStations/Create")]
     [Authorize(Policy = "RequireManagerOrAdmin")]
-    public async Task<IActionResult> CreateQcStation(QcStationForm form, string downloadType = "package", CancellationToken cancellationToken = default)
+    public async Task<IActionResult> CreateQcStation(QcStationForm form, CancellationToken cancellationToken = default)
     {
-        if (RequestsSetupPackage(downloadType) && !qcStationAdminService.AppPayloadAvailable)
-        {
-            TempData["Error"] = "QC Station app payload is missing. Full setup packages cannot be generated. Deploy the WinForms payload before creating station setup packages.";
-            return RedirectToAction(nameof(QcStations));
-        }
-
         var (error, download) = await qcStationAdminService.CreateAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         if (error is not null || download is null)
         {
@@ -68,7 +99,7 @@ public sealed class AdminController(
             return RedirectToAction(nameof(QcStations));
         }
 
-        return DownloadQcStationConfig(download, downloadType);
+        return DownloadQcStationConfig(download);
     }
 
     [HttpPost("QcStations/Update")]
@@ -100,14 +131,8 @@ public sealed class AdminController(
 
     [HttpPost("QcStations/RotateKey")]
     [Authorize(Policy = "RequireManagerOrAdmin")]
-    public async Task<IActionResult> RotateQcStationKey(int id, string downloadType = "package", CancellationToken cancellationToken = default)
+    public async Task<IActionResult> RotateQcStationKey(int id, CancellationToken cancellationToken = default)
     {
-        if (RequestsSetupPackage(downloadType) && !qcStationAdminService.AppPayloadAvailable)
-        {
-            TempData["Error"] = "QC Station app payload is missing. Full setup packages cannot be generated. Deploy the WinForms payload before rotating station keys for setup packages.";
-            return RedirectToAction(nameof(QcStations));
-        }
-
         var (error, download) = await qcStationAdminService.RotateKeyAsync(id, authorizationService.GetEmail(User) ?? "", cancellationToken);
         if (error is not null || download is null)
         {
@@ -115,29 +140,23 @@ public sealed class AdminController(
             return RedirectToAction(nameof(QcStations));
         }
 
-        return DownloadQcStationConfig(download, downloadType);
+        return DownloadQcStationConfig(download);
     }
 
     [HttpPost("QcStations/DownloadConfig")]
     [Authorize(Policy = "RequireManagerOrAdmin")]
     public IActionResult DownloadExistingQcStationConfig()
     {
-        TempData["Error"] = "Rotate key to generate a new downloadable config or setup package.";
+        TempData["Error"] = "Rotate key to generate a new downloadable station config. Raw station keys are not stored after creation or rotation.";
         return RedirectToAction(nameof(QcStations));
     }
 
-    private FileContentResult DownloadQcStationConfig(QcStationConfigDownload download, string downloadType)
-    {
-        if (string.Equals(downloadType, "json", StringComparison.OrdinalIgnoreCase))
-        {
-            return File(System.Text.Encoding.UTF8.GetBytes(download.Json), "application/json", download.FileName);
-        }
+    private FileContentResult DownloadQcStationConfig(QcStationConfigDownload download) =>
+        File(System.Text.Encoding.UTF8.GetBytes(download.Json), "application/json", download.FileName);
 
-        return File(download.PackageBytes, "application/zip", download.PackageFileName);
-    }
-
-    private static bool RequestsSetupPackage(string downloadType) =>
-        string.Equals(downloadType, "package", StringComparison.OrdinalIgnoreCase);
+    private string GetQcStationInstallerPath() =>
+        configuration["QcStation:InstallerPath"]
+        ?? Path.Combine(environment.ContentRootPath, "App_Data", "Downloads", QcStationInstallerFileName);
 
     [HttpPost("Users/Add")]
     [Authorize(Policy = "RequireAdmin")]
