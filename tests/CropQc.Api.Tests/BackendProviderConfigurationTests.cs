@@ -66,7 +66,9 @@ public sealed class BackendProviderConfigurationTests
     {
         var storage = new GoogleDriveStorageService(new GoogleDriveStorageOptions
         {
+            UseSharedDrive = true,
             RootFolderId = "root",
+            SharedDriveId = "root",
             ServiceAccountJson = "{}"
         }, new FakeGoogleDriveClient());
 
@@ -86,7 +88,9 @@ public sealed class BackendProviderConfigurationTests
         var client = new FakeGoogleDriveClient(existingFolders: ["root|Photos", "folder-Photos|2026"]);
         var storage = new GoogleDriveStorageService(new GoogleDriveStorageOptions
         {
+            UseSharedDrive = true,
             RootFolderId = "root",
+            SharedDriveId = "root",
             ServiceAccountJson = "{}"
         }, client);
 
@@ -105,7 +109,9 @@ public sealed class BackendProviderConfigurationTests
     {
         var storage = new GoogleDriveStorageService(new GoogleDriveStorageOptions
         {
-            RootFolderId = "root"
+            UseSharedDrive = true,
+            RootFolderId = "root",
+            SharedDriveId = "root"
         });
 
         await using var content = new MemoryStream([1]);
@@ -113,6 +119,31 @@ public sealed class BackendProviderConfigurationTests
             storage.SaveAsync(new FileStorageSaveRequest(content, "Photos/2026/WP/Receipt-12345/BinTruck", "test.jpg", "image/jpeg", 1)));
 
         Assert.Contains("service account credentials", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(false, "root", "root", "UseSharedDrive")]
+    [InlineData(true, "", "root", "RootFolderId")]
+    [InlineData(true, "root", "", "SharedDriveId")]
+    public async Task Google_drive_storage_requires_shared_drive_configuration(
+        bool useSharedDrive,
+        string rootFolderId,
+        string sharedDriveId,
+        string expectedMessage)
+    {
+        var storage = new GoogleDriveStorageService(new GoogleDriveStorageOptions
+        {
+            UseSharedDrive = useSharedDrive,
+            RootFolderId = rootFolderId,
+            SharedDriveId = sharedDriveId,
+            ServiceAccountJson = "{}"
+        }, new FakeGoogleDriveClient());
+
+        await using var content = new MemoryStream([1]);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            storage.SaveAsync(new FileStorageSaveRequest(content, "Photos/2026/WP/Receipt-12345/BinTruck", "test.jpg", "image/jpeg", 1)));
+
+        Assert.Contains(expectedMessage, error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

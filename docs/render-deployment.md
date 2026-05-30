@@ -31,7 +31,7 @@ Create a new Render Blueprint from the repository. The included `render.yaml` de
 - Health check path: `/health`.
 - Render Postgres database name: `crop-qc-dashboard-db`.
 - `ConnectionStrings__CropQc` wired from the Render Postgres connection string.
-- `FileStorage__Provider=GoogleDrive` with the provided QC files root folder ID.
+- `FileStorage__Provider=GoogleDrive` with the provided Google Shared Drive root folder ID.
 
 The Render Blueprint syntax uses `fromDatabase` with `property: connectionString` for database connection string injection, matching Render's Blueprint environment variable reference pattern.
 
@@ -75,7 +75,9 @@ Set these variables in Render:
 - `FileStorage__Provider=GoogleDrive`
 - `FileStorage__LocalRootPath=/var/data/cropqc-files`
 - `FileStorage__BasePath=Crop QC Photos`
-- `GoogleDrive__RootFolderId=1pcVsEpDVdYpDrTphXwsLkhuA8D-FH79I`
+- `GoogleDrive__UseSharedDrive=true`
+- `GoogleDrive__RootFolderId=0ADHRTHdG9u98Uk9PVA`
+- `GoogleDrive__SharedDriveId=0ADHRTHdG9u98Uk9PVA`
 - `GoogleDrive__ServiceAccountJson=[Google service account JSON]`
 - `GoogleDrive__ApplicationName=Crop QC Dashboard`
 - `GoogleDrive__BaseFolderName=Photos`
@@ -117,10 +119,11 @@ Master Data editing notes:
 
 ## Google Drive Photo Storage
 
-The configured Google Drive root folder is:
+The configured Google Shared Drive root folder is:
 
 ```text
-1pcVsEpDVdYpDrTphXwsLkhuA8D-FH79I
+https://drive.google.com/drive/folders/0ADHRTHdG9u98Uk9PVA?dmr=1&ec=wgc-drive-%5Bmodule%5D-goto
+RootFolderId / SharedDriveId: 0ADHRTHdG9u98Uk9PVA
 ```
 
 The app creates or reuses this folder structure below that root:
@@ -133,14 +136,16 @@ Setup steps:
 
 1. Enable the Google Drive API in the Google Cloud project.
 2. Create a service account for the Crop QC Dashboard.
-3. Add the service account email to the provided Google Drive root folder.
-4. Grant Editor or Content Manager equivalent access.
+3. Add the service account email from the JSON to the Google Shared Drive.
+4. Grant Content Manager or Manager access.
 5. Set `FileStorage__Provider=GoogleDrive`.
-6. Set `GoogleDrive__RootFolderId=1pcVsEpDVdYpDrTphXwsLkhuA8D-FH79I`.
-7. Set `GoogleDrive__ServiceAccountJson` to the full service account JSON. Do not commit this JSON.
-8. Sign in as Admin and check `/health/storage`. The endpoint shows provider, root-folder configuration, and credential configuration without exposing secrets.
+6. Set `GoogleDrive__UseSharedDrive=true`.
+7. Set `GoogleDrive__RootFolderId=0ADHRTHdG9u98Uk9PVA`.
+8. Set `GoogleDrive__SharedDriveId=0ADHRTHdG9u98Uk9PVA`.
+9. Set `GoogleDrive__ServiceAccountJson` to the full service account JSON. Do not commit this JSON.
+10. Sign in as Admin and check `/health/storage`. The endpoint shows provider, Shared Drive mode, root-folder configuration, shared-drive configuration, credential configuration, and application-name configuration without exposing secrets.
 
-If upload fails, check the service account folder access, Drive API status, root folder ID, and service account JSON validity.
+If upload fails, check the service account folder access, Drive API status, root folder ID, shared drive ID, and service account JSON validity. A normal My Drive shared folder is not enough for service account uploads because service accounts do not have their own Drive storage quota. The target must be a Google Shared Drive folder.
 
 ## Retention And Backups
 

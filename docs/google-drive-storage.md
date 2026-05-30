@@ -9,7 +9,9 @@ MVP 1 stores photo binaries outside the database. Postgres stores metadata only.
 - Store structured metadata and stable file references in Postgres.
 - Keep the file storage boundary provider-based so local development can keep using `LocalFileStorageService`.
 - Configure `FileStorage__Provider=GoogleDrive` on Render to enable real Google Drive uploads.
-- Provided QC files root folder ID: `1pcVsEpDVdYpDrTphXwsLkhuA8D-FH79I`.
+- Google Shared Drive URL: `https://drive.google.com/drive/folders/0ADHRTHdG9u98Uk9PVA?dmr=1&ec=wgc-drive-%5Bmodule%5D-goto`
+- Shared Drive / root folder ID: `0ADHRTHdG9u98Uk9PVA`.
+- Service accounts do not have their own Drive storage quota. A normal My Drive shared folder is not enough for service account uploads; the target must be a Google Shared Drive folder.
 
 ## Folder Structure
 
@@ -41,7 +43,9 @@ Render environment variables:
 
 ```text
 FileStorage__Provider=GoogleDrive
-GoogleDrive__RootFolderId=1pcVsEpDVdYpDrTphXwsLkhuA8D-FH79I
+GoogleDrive__UseSharedDrive=true
+GoogleDrive__RootFolderId=0ADHRTHdG9u98Uk9PVA
+GoogleDrive__SharedDriveId=0ADHRTHdG9u98Uk9PVA
 GoogleDrive__ServiceAccountJson=<service account JSON>
 GoogleDrive__ApplicationName=Crop QC Dashboard
 GoogleDrive__BaseFolderName=Photos
@@ -53,11 +57,11 @@ For local testing, use either `GoogleDrive__ServiceAccountJson` or `GoogleDrive_
 
 1. Enable the Google Drive API in the Google Cloud project.
 2. Create a service account for the Crop QC Dashboard.
-3. Grant the service account access to the provided root folder `1pcVsEpDVdYpDrTphXwsLkhuA8D-FH79I`.
-4. Use Editor or Content Manager equivalent access so the app can create folders and upload files.
+3. Add the service account email from the JSON to the Google Shared Drive / root folder `0ADHRTHdG9u98Uk9PVA`.
+4. Use Content Manager or Manager access so the app can create folders and upload files.
 5. Store the service account JSON in Render as `GoogleDrive__ServiceAccountJson`.
 
-If uploads fail, verify the Drive API is enabled, the JSON is valid, and the service account has access to the root folder.
+If uploads fail, verify the Drive API is enabled, the JSON is valid, `GoogleDrive__UseSharedDrive=true`, `GoogleDrive__RootFolderId` and `GoogleDrive__SharedDriveId` are set to `0ADHRTHdG9u98Uk9PVA`, and the service account has Content Manager or Manager access. The error `Service Accounts do not have storage quota` means the upload is not being treated as a Shared Drive upload target.
 
 ## Metadata To Store
 
@@ -88,7 +92,7 @@ No automatic Drive purge, cleanup, or deletion job is enabled. Admin-reviewed ar
 
 - `GoogleDriveStorageService` implements `IFileStorageService`.
 - It resolves or creates the crop year / warehouse / receipt / photo type folders.
-- Upload the file binary to the configured Shared Drive.
+- Upload the file binary to the configured Shared Drive using Shared Drive API options such as `SupportsAllDrives`, `IncludeItemsFromAllDrives`, and the configured shared drive ID for folder searches.
 - Return a storage reference with Drive ID, file ID, folder ID, file name, size, content type, and web link.
 - Avoid storing image binary in Postgres.
 - Audit create/delete/void actions through the existing audit boundary.

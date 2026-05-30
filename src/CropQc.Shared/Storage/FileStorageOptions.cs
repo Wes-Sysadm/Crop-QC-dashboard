@@ -9,7 +9,9 @@ public sealed class FileStorageOptions
 
 public sealed class GoogleDriveStorageOptions
 {
+    public bool UseSharedDrive { get; set; }
     public string RootFolderId { get; set; } = "";
+    public string SharedDriveId { get; set; } = "";
     public string? ServiceAccountJson { get; set; }
     public string? ServiceAccountJsonPath { get; set; }
     public string ApplicationName { get; set; } = "Crop QC Dashboard";
