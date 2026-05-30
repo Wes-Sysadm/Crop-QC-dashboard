@@ -140,6 +140,7 @@ builder.Services.AddScoped<IReceivingExportService, ReceivingExportService>();
 builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService>();
 builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IUserAdminService, UserAdminService>();
+builder.Services.AddScoped<IQcStationAdminService, QcStationAdminService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
 builder.Services.AddSingleton(CreateGoogleDriveStorageOptions(builder.Configuration));
 builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorageService(

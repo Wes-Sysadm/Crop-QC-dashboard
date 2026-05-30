@@ -59,8 +59,8 @@ services:
         value: Photos
       - key: Email__Provider
         value: None
-      - key: QcStation__ApiKey
-        sync: false
+      - key: QcStation__ApiBaseUrl
+        value: https://crop-qc-dashboard.onrender.com
 
 databases:
   - name: crop-qc-dashboard-db

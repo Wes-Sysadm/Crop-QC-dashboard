@@ -16,6 +16,7 @@ public sealed class StationConfiguration
     public string? FtaWorkingDirectory { get; set; }
     public string? ComPort { get; set; }
     public string ApiBaseUrl { get; set; } = "https://localhost:7001";
+    public string? QcStationCode { get; set; }
     public string? QcStationApiKey { get; set; }
     public string LocalDataPath { get; set; } = ".\\data";
 

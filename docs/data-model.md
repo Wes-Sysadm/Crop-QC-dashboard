@@ -75,7 +75,7 @@ Seeded password policy:
 - `QcFruitDefects` allows multiple defects per fruit reading.
 - `QcPhotos` stores photo metadata and external file references only. Photo binaries are not stored in the database. A photo attaches to either a receipt or a QC sample. Google Drive uploads populate `StorageProvider`, `DriveId`, `FileId`, `FolderId`, `WebUrl`, `UploadedAt`, and the legacy SharePoint-named reference fields for compatibility.
 - `QcSummaryEmailLogs` stores send/resend history. Each send or resend creates a separate row and may optionally reference a QC sample.
-- `QcStations` stores Windows QC Station registration metadata.
+- `QcStations` stores Windows QC Station registration metadata, including station code, warehouse, active status, last seen/sync timestamps, and a hash of the per-station API key. Raw station API keys are shown only at create/rotate time and are not retained.
 - `OfflineSyncItems` is a placeholder for later offline QC Station sync tracking.
 - `AuditLogs` records create, edit, delete, send, import, and export actions.
 

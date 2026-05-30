@@ -1,29 +1,32 @@
 using CropQc.Api.Dtos;
 using CropQc.Api.Services;
+using CropQc.Data;
+using CropQc.Data.Entities;
 using CropQc.Shared.Security;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CropQc.Api.Controllers;
 
 [ApiController]
 [Route("api/qc-station")]
-public sealed class QcStationController(IQcStationApiService service, IConfiguration configuration) : ControllerBase
+public sealed class QcStationController(IQcStationApiService service, CropQcDbContext dbContext) : ControllerBase
 {
     [HttpGet("samples/today")]
     public async Task<IActionResult> GetTodaySamples([FromQuery] string? warehouseCode, CancellationToken cancellationToken)
     {
-        var auth = ValidateStationApiKey();
-        return auth ?? Ok(await service.GetTodaySamplesAsync(warehouseCode, cancellationToken));
+        var auth = await AuthenticateStationAsync(cancellationToken);
+        return auth.Result ?? Ok(await service.GetTodaySamplesAsync(warehouseCode, cancellationToken));
     }
 
     [HttpGet("samples/{sampleId:long}")]
     [HttpGet("samples/{sampleId:long}/pressure")]
     public async Task<IActionResult> GetSampleDetail(long sampleId, CancellationToken cancellationToken)
     {
-        var auth = ValidateStationApiKey();
-        if (auth is not null)
+        var auth = await AuthenticateStationAsync(cancellationToken);
+        if (auth.Result is not null)
         {
-            return auth;
+            return auth.Result;
         }
 
         var sample = await service.GetSampleDetailAsync(sampleId, cancellationToken);
@@ -35,26 +38,41 @@ public sealed class QcStationController(IQcStationApiService service, IConfigura
     [HttpPost("samples/{sampleId:long}/pressure")]
     public async Task<IActionResult> UpdatePressures(long sampleId, UpdateQcStationPressuresRequest request, CancellationToken cancellationToken)
     {
-        var auth = ValidateStationApiKey();
-        if (auth is not null)
+        var auth = await AuthenticateStationAsync(cancellationToken);
+        if (auth.Result is not null)
         {
-            return auth;
+            return auth.Result;
         }
 
-        var (sample, error) = await service.UpdatePressuresAsync(sampleId, request, cancellationToken);
+        var (sample, error) = await service.UpdatePressuresAsync(sampleId, request, auth.Station!, cancellationToken);
         return sample is null ? BadRequest(new { error }) : Ok(sample);
     }
 
-    private IActionResult? ValidateStationApiKey()
+    private async Task<(QcStation? Station, IActionResult? Result)> AuthenticateStationAsync(CancellationToken cancellationToken)
     {
-        Request.Headers.TryGetValue(QcStationApiKeyValidator.HeaderName, out var provided);
-        var result = QcStationApiKeyValidator.Validate(configuration["QcStation:ApiKey"], provided.FirstOrDefault());
-        return result switch
+        Request.Headers.TryGetValue(QcStationApiKeyValidator.StationCodeHeaderName, out var stationCodeHeader);
+        Request.Headers.TryGetValue(QcStationApiKeyValidator.HeaderName, out var apiKeyHeader);
+        var stationCode = stationCodeHeader.FirstOrDefault();
+        var apiKey = apiKeyHeader.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(stationCode) || string.IsNullOrWhiteSpace(apiKey))
         {
-            QcStationApiKeyValidationResult.Valid => null,
-            QcStationApiKeyValidationResult.NotConfigured => StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "QC Station API key is not configured." }),
-            QcStationApiKeyValidationResult.Missing => Unauthorized(new { error = "QC Station API key is required." }),
-            _ => Unauthorized(new { error = "QC Station API key is invalid." })
-        };
+            return (null, Unauthorized(new { error = "QC Station credentials are required." }));
+        }
+
+        var station = await dbContext.QcStations.SingleOrDefaultAsync(x => x.StationCode == stationCode.Trim(), cancellationToken);
+        if (station is null || string.IsNullOrWhiteSpace(station.ApiKeyHash) || !QcStationApiKeyValidator.VerifyHashedApiKey(apiKey, station.ApiKeyHash))
+        {
+            return (null, Unauthorized(new { error = "QC Station credentials are invalid." }));
+        }
+
+        if (!station.IsActive)
+        {
+            return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "QC Station is inactive." }));
+        }
+
+        station.LastSeenAt = DateTimeOffset.UtcNow;
+        station.LastSeenIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return (station, null);
     }
 }

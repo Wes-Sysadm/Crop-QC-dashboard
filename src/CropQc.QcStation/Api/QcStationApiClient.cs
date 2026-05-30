@@ -30,12 +30,17 @@ public sealed class QcStationApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<QcStationSampleDetail>(cancellationToken);
     }
 
-    public static QcStationApiClient Create(string apiBaseUrl, string? apiKey = null, string? stationName = null)
+    public static QcStationApiClient Create(string apiBaseUrl, string? stationCode = null, string? apiKey = null, string? stationName = null)
     {
         var baseUri = string.IsNullOrWhiteSpace(apiBaseUrl)
             ? new Uri("https://localhost:7001")
             : new Uri(apiBaseUrl.Trim().TrimEnd('/') + "/");
         var client = new HttpClient { BaseAddress = baseUri };
+        if (!string.IsNullOrWhiteSpace(stationCode))
+        {
+            client.DefaultRequestHeaders.Add(QcStationApiKeyValidator.StationCodeHeaderName, stationCode.Trim());
+        }
+
         if (!string.IsNullOrWhiteSpace(apiKey))
         {
             client.DefaultRequestHeaders.Add(QcStationApiKeyValidator.HeaderName, apiKey.Trim());
