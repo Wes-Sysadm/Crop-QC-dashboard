@@ -34,10 +34,10 @@ public sealed class AdminController(
                     "Opens the shared Google Drive download page. Use only on internal company QC Station computers. Install before running QC Station RealDll mode. After installation, run the WinForms x86 QC Station app."),
                 new(
                     "QC Station Configs",
-                    "qcstation.settings.json",
-                    "Per-station configuration files generated from Admin QC Stations.",
+                    "setup package .zip",
+                    "Per-station setup packages generated from Admin QC Stations.",
                     "/Admin/QcStations",
-                    "Each QC computer needs its own station record and API key. Do not use one shared API key for all computers.")
+                    "Each QC computer needs its own station record and API key. Download the setup package immediately after create/rotate; do not use one shared API key for all computers.")
             ]
         };
 
@@ -49,7 +49,7 @@ public sealed class AdminController(
         View(await qcStationAdminService.GetStationsAsync(search, warehouseCode, activeFilter, cancellationToken));
 
     [HttpPost("QcStations/Create")]
-    public async Task<IActionResult> CreateQcStation(QcStationForm form, CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateQcStation(QcStationForm form, string downloadType = "package", CancellationToken cancellationToken = default)
     {
         var (error, download) = await qcStationAdminService.CreateAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         if (error is not null || download is null)
@@ -58,7 +58,7 @@ public sealed class AdminController(
             return RedirectToAction(nameof(QcStations));
         }
 
-        return File(System.Text.Encoding.UTF8.GetBytes(download.Json), "application/json", download.FileName);
+        return DownloadQcStationConfig(download, downloadType);
     }
 
     [HttpPost("QcStations/Update")]
@@ -86,7 +86,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("QcStations/RotateKey")]
-    public async Task<IActionResult> RotateQcStationKey(int id, CancellationToken cancellationToken)
+    public async Task<IActionResult> RotateQcStationKey(int id, string downloadType = "package", CancellationToken cancellationToken = default)
     {
         var (error, download) = await qcStationAdminService.RotateKeyAsync(id, authorizationService.GetEmail(User) ?? "", cancellationToken);
         if (error is not null || download is null)
@@ -95,14 +95,24 @@ public sealed class AdminController(
             return RedirectToAction(nameof(QcStations));
         }
 
-        return File(System.Text.Encoding.UTF8.GetBytes(download.Json), "application/json", download.FileName);
+        return DownloadQcStationConfig(download, downloadType);
     }
 
     [HttpPost("QcStations/DownloadConfig")]
     public IActionResult DownloadExistingQcStationConfig()
     {
-        TempData["Error"] = "Rotate key to generate a new downloadable config.";
+        TempData["Error"] = "Rotate key to generate a new downloadable config or setup package.";
         return RedirectToAction(nameof(QcStations));
+    }
+
+    private FileContentResult DownloadQcStationConfig(QcStationConfigDownload download, string downloadType)
+    {
+        if (string.Equals(downloadType, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            return File(System.Text.Encoding.UTF8.GetBytes(download.Json), "application/json", download.FileName);
+        }
+
+        return File(download.PackageBytes, "application/zip", download.PackageFileName);
     }
 
     [HttpPost("Users/Add")]
