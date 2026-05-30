@@ -15,15 +15,8 @@
 
 <section class="panel">
     <h2>Add QC Station</h2>
-    <p class="muted">Creating a station generates a unique API key and immediately downloads that station's setup package or raw config. The raw key is not stored and cannot be shown again.</p>
-    @if (Model.AppPayloadAvailable)
-    {
-        <p class="notice success">Full setup packages are available and install the QC Station app, station config, and cropqcstation:// protocol handler. Extract the ZIP and double-click <strong>Install-CropQcStation.cmd</strong>.</p>
-    }
-    else
-    {
-        <p class="notice warning"><strong>QC Station app payload is missing.</strong> Full setup packages cannot be generated. Deploy the WinForms payload before creating station setup packages. Expected payload path: <code>@Model.AppPayloadPath</code>.</p>
-    }
+    <p class="muted">Creating a station generates a unique API key and immediately downloads that station's config JSON. The raw key is not stored and cannot be shown again.</p>
+    <p class="notice">Install the shared Crop QC Station App Installer from <a href="/Admin/Downloads">Admin Downloads</a>, then import this station-specific <code>qcstation.settings.json</code> in the app. The MSI contains no station secrets.</p>
     <form class="toolbar" method="post" action="/Admin/QcStations/Create">
         <div class="field"><label>Station name</label><input name="StationName" placeholder="WP QC Station 1" required /></div>
         <div class="field"><label>Station code</label><input name="StationCode" placeholder="WP-QC-01" required /></div>
@@ -39,15 +32,7 @@
         </div>
         <div class="field"><label>Description</label><input name="Description" /></div>
         <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked /> Active</label><input type="hidden" name="IsActive" value="false" />
-        @if (Model.AppPayloadAvailable)
-        {
-            <button type="submit" name="downloadType" value="package">Add Station and Download Full Setup Package</button>
-        }
-        else
-        {
-            <button type="submit" name="downloadType" value="package" disabled title="Deploy the WinForms payload before generating setup packages.">Full Setup Package Unavailable</button>
-        }
-        <button class="secondary-button" type="submit" name="downloadType" value="json">Add Station and Download JSON</button>
+        <button type="submit">Add Station and Download Config JSON</button>
     </form>
 </section>
 
@@ -91,7 +76,7 @@
                     <th>Key</th>
                     <th>Last Seen</th>
                     <th>Last Sync</th>
-                    <th>Setup Package</th>
+                    <th>Station Config</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -115,11 +100,11 @@
                     <td>
                         @if (station.ApiKeyLastFour is null)
                         {
-                            <span class="muted">Rotate key to generate a new full setup package after the app payload is deployed.</span>
+                            <span class="muted">Rotate key to generate a downloadable config JSON.</span>
                         }
                         else
                         {
-                            <span class="muted">Raw key is no longer available. Rotate key to generate a new full setup package. Users install it by double-clicking Install-CropQcStation.cmd.</span>
+                            <span class="muted">Raw key is no longer available. Rotate key to generate a new station config JSON.</span>
                         }
                     </td>
                     <td>
@@ -144,15 +129,7 @@
                         </details>
                         <form class="button-row" method="post" action="/Admin/QcStations/RotateKey">
                             <input type="hidden" name="id" value="@station.Id" />
-                            @if (Model.AppPayloadAvailable)
-                            {
-                                <button class="secondary-button" type="submit" name="downloadType" value="package">Rotate Key and Download Full Setup Package</button>
-                            }
-                            else
-                            {
-                                <button class="secondary-button" type="submit" name="downloadType" value="package" disabled title="Deploy the WinForms payload before generating setup packages.">Full Setup Package Unavailable</button>
-                            }
-                            <button class="secondary-button" type="submit" name="downloadType" value="json">Rotate Key and Download JSON</button>
+                            <button class="secondary-button" type="submit">Rotate Key and Download Config JSON</button>
                         </form>
                         <form class="button-row" method="post" action="/Admin/QcStations/DownloadConfig">
                             <input type="hidden" name="id" value="@station.Id" />

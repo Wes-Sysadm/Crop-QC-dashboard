@@ -25,7 +25,7 @@ public sealed record MasterDataPageViewModel(
 }
 
 public sealed record MasterDataEditItem(int Id, IReadOnlyList<string> Cells, bool IsActive);
-public sealed record AdminDownloadItem(string Name, string FileName, string Description, string Url, string Notes);
+public sealed record AdminDownloadItem(string Name, string FileName, string Description, string Url, string Notes, bool IsAvailable = true, bool OpensInNewTab = false, string ActionText = "Open");
 
 public sealed class AdminDownloadsViewModel
 {
@@ -40,8 +40,6 @@ public sealed class QcStationsPageViewModel
     public string? Search { get; set; }
     public string? WarehouseCode { get; set; }
     public string ActiveFilter { get; set; } = "Active";
-    public bool AppPayloadAvailable { get; set; }
-    public string AppPayloadPath { get; set; } = "";
 }
 
 public sealed record QcStationListItemViewModel(

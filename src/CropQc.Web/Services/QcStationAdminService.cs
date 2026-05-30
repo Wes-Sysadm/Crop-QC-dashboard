@@ -1,5 +1,3 @@
-using System.IO.Compression;
-using System.Text;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
@@ -11,7 +9,6 @@ namespace CropQc.Web.Services;
 
 public interface IQcStationAdminService
 {
-    bool AppPayloadAvailable { get; }
     Task<QcStationsPageViewModel> GetStationsAsync(string? search, string? warehouseCode, string activeFilter, CancellationToken cancellationToken);
     Task<(string? Error, QcStationConfigDownload? Download)> CreateAsync(QcStationForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> UpdateAsync(QcStationForm form, string changedByEmail, CancellationToken cancellationToken);
@@ -19,243 +16,10 @@ public interface IQcStationAdminService
     Task<(string? Error, QcStationConfigDownload? Download)> RotateKeyAsync(int id, string changedByEmail, CancellationToken cancellationToken);
 }
 
-public sealed record QcStationConfigDownload(string FileName, string Json, string PackageFileName, byte[] PackageBytes, bool AppPayloadAvailable);
-
-public static class QcStationSetupPackageBuilder
-{
-    public const string InstalledConfigPath = @"C:\ProgramData\CropQc\QcStation\qcstation.settings.json";
-    public const string InstalledConfigDirectory = @"C:\ProgramData\CropQc\QcStation";
-    public const string InstalledAppDirectory = @"C:\Program Files\CropQc\QcStation";
-    public const string StandardWinFormsExePath = @"C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe";
-
-    public static byte[] Build(QcStation station, string configJson, string? appPayloadPath = null)
-    {
-        var appPayloadAvailable = !string.IsNullOrWhiteSpace(appPayloadPath)
-            && Directory.Exists(appPayloadPath)
-            && File.Exists(Path.Combine(appPayloadPath, "CropQc.QcStation.WinForms.exe"));
-        using var stream = new MemoryStream();
-        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
-        {
-            if (appPayloadAvailable)
-            {
-                AddDirectory(archive, appPayloadPath!, "app");
-            }
-
-            AddText(archive, "qcstation.settings.json", configJson);
-            AddText(archive, "Install-CropQcStation.cmd", BuildCommandInstaller());
-            AddText(archive, "install-qcstation.ps1", BuildInstallScript(appPayloadAvailable));
-            AddText(archive, "README.txt", BuildReadme(station, appPayloadAvailable));
-        }
-
-        return stream.ToArray();
-    }
-
-    public static string BuildCommandInstaller() =>
-        """
-        @echo off
-        setlocal
-        title Crop QC Station Installer
-
-        echo Installing Crop QC Station...
-        echo.
-
-        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-qcstation.ps1"
-        set EXITCODE=%ERRORLEVEL%
-
-        echo.
-        if "%EXITCODE%"=="0" (
-            echo Install completed. You can close this window.
-        ) else (
-            echo Install failed with exit code %EXITCODE%.
-            echo If Windows blocked the install, right-click this file and choose Run as administrator.
-        )
-        echo.
-        pause
-        exit /b %EXITCODE%
-        """;
-
-    public static string BuildInstallScript(bool appPayloadAvailable = false) =>
-        $$"""
-        $ErrorActionPreference = 'Stop'
-
-        $configDirectory = '{{InstalledConfigDirectory}}'
-        $configPath = '{{InstalledConfigPath}}'
-        $appDirectory = '{{InstalledAppDirectory}}'
-        $appExePath = '{{StandardWinFormsExePath}}'
-        $sourceConfigPath = Join-Path $PSScriptRoot 'qcstation.settings.json'
-        $sourceAppDirectory = Join-Path $PSScriptRoot 'app'
-        $packageHasApp = {{(appPayloadAvailable ? "$true" : "$false")}}
-
-        try {
-            $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-            $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-            if (-not $isAdmin) {
-                Write-Host "Administrator permission is required to install the QC Station app under Program Files."
-                Write-Host "Requesting administrator permission..."
-                Start-Process powershell.exe -Verb RunAs -Wait -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
-                Write-Host "Elevated installer process finished."
-                exit 0
-            }
-
-            if (-not (Test-Path -LiteralPath $sourceConfigPath)) {
-                throw "qcstation.settings.json was not found next to this installer script."
-            }
-
-            if ($packageHasApp) {
-                if (-not (Test-Path -LiteralPath $sourceAppDirectory)) {
-                    throw "The setup package says it contains the QC Station app, but the app folder was not found."
-                }
-
-                if (Test-Path -LiteralPath $appDirectory) {
-                    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-                    $appBackupDirectory = "$appDirectory.backup-$timestamp"
-                    Copy-Item -LiteralPath $appDirectory -Destination $appBackupDirectory -Recurse -Force
-                    Write-Host "Existing QC Station app folder backed up to $appBackupDirectory"
-                }
-
-                if (-not (Test-Path -LiteralPath $appDirectory)) {
-                    New-Item -ItemType Directory -Path $appDirectory -Force | Out-Null
-                }
-
-                Copy-Item -Path (Join-Path $sourceAppDirectory '*') -Destination $appDirectory -Recurse -Force
-                Write-Host "QC Station app installed to $appDirectory"
-            }
-            else {
-                Write-Warning "This is a config-only setup package. The QC Station app payload was not included in the web deployment."
-                Write-Warning "Install or copy the QC Station app to $appDirectory, then rerun this installer to register cropqcstation:// links."
-            }
-
-            if (-not (Test-Path -LiteralPath $configDirectory)) {
-                New-Item -ItemType Directory -Path $configDirectory -Force | Out-Null
-            }
-
-            if (Test-Path -LiteralPath $configPath) {
-                $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-                $backupPath = Join-Path $configDirectory "qcstation.settings.backup-$timestamp.json"
-                Copy-Item -LiteralPath $configPath -Destination $backupPath -Force
-                Write-Host "Existing QC Station configuration backed up to $backupPath"
-            }
-
-            Copy-Item -LiteralPath $sourceConfigPath -Destination $configPath -Force
-            Write-Host "QC Station configuration installed successfully."
-            Write-Host "Installed path: $configPath"
-            Write-Host ""
-
-            if (Test-Path -LiteralPath $appExePath) {
-                $protocolRoot = 'HKCU:\Software\Classes\cropqcstation'
-                New-Item -Path $protocolRoot -Force | Out-Null
-                Set-Item -Path $protocolRoot -Value 'URL:Crop QC Station'
-                New-ItemProperty -Path $protocolRoot -Name 'URL Protocol' -Value '' -PropertyType String -Force | Out-Null
-                New-Item -Path "$protocolRoot\DefaultIcon" -Force | Out-Null
-                Set-Item -Path "$protocolRoot\DefaultIcon" -Value "`"$appExePath`",0"
-                New-Item -Path "$protocolRoot\shell\open\command" -Force | Out-Null
-                Set-Item -Path "$protocolRoot\shell\open\command" -Value "`"$appExePath`" `"%1`""
-                Write-Host "cropqcstation:// protocol handler registered for this Windows user."
-
-                try {
-                    $desktopPath = [Environment]::GetFolderPath('DesktopDirectory')
-                    if (-not [string]::IsNullOrWhiteSpace($desktopPath)) {
-                        $shortcutPath = Join-Path $desktopPath 'Crop QC Station.lnk'
-                        $shell = New-Object -ComObject WScript.Shell
-                        $shortcut = $shell.CreateShortcut($shortcutPath)
-                        $shortcut.TargetPath = $appExePath
-                        $shortcut.WorkingDirectory = $appDirectory
-                        $shortcut.IconLocation = "$appExePath,0"
-                        $shortcut.Save()
-                        Write-Host "Desktop shortcut created: $shortcutPath"
-                    }
-                }
-                catch {
-                    Write-Warning "Desktop shortcut could not be created: $($_.Exception.Message)"
-                }
-            }
-            else {
-                Write-Warning "QC Station app executable was not found. Protocol handler was not registered. Install or copy the QC Station app to $appExePath, then rerun this installer."
-            }
-
-            Write-Host ""
-            Write-Host "Next steps:"
-            Write-Host "1. Launch Crop QC Station."
-            Write-Host "2. Install FTADLL.exe from Admin Downloads if this computer is connected to an FTA."
-            Write-Host "3. Confirm station code and warehouse in the app."
-            Write-Host "4. Test Open in QC Station from a dashboard sample page."
-        }
-        catch {
-            Write-Error "Crop QC Station install failed: $($_.Exception.Message)"
-            exit 1
-        }
-        """;
-
-    public static string BuildReadme(QcStation station, bool appPayloadAvailable = false)
-    {
-        var stationName = string.IsNullOrWhiteSpace(station.StationName) ? station.Name : station.StationName;
-        var packageType = appPayloadAvailable
-            ? "Full setup package: installs the QC Station app, station config, and cropqcstation:// protocol handler."
-            : "Config-only setup package: the QC Station app payload was not deployed with the website.";
-        return $$"""
-        Crop QC Station Setup Package
-        =============================
-
-        Station name: {{stationName}}
-        Station code: {{station.StationCode}}
-        Warehouse: {{station.WarehouseCode ?? ""}}
-
-        {{packageType}}
-
-        Install steps:
-        1. Extract this ZIP on the QC Station computer.
-        2. Double-click Install-CropQcStation.cmd.
-        3. Approve the Windows administrator prompt if shown.
-        4. Confirm it says the installation completed successfully.
-        5. Install FTADLL.exe from Admin Downloads if this computer is connected to an FTA.
-        6. Launch Crop QC Station.
-
-        App install path:
-        {{InstalledAppDirectory}}
-
-        Config install path:
-        {{InstalledConfigPath}}
-
-        Protocol link setup:
-        - The installer registers cropqcstation:// links to:
-          {{StandardWinFormsExePath}}
-        - If this package is config-only, publish/deploy the WinForms app payload, download a new setup package, or copy the QC Station app to the app install path and rerun Install-CropQcStation.cmd.
-        - Test by opening a dashboard sample page and clicking Open in QC Station.
-
-        Keep this package private because it contains the station API key.
-        Anyone with this package can act as this QC Station until the key is rotated or the station is deactivated.
-
-        If this package is lost or exposed, rotate the station key in Admin -> QC Stations and download a new package.
-        """;
-    }
-
-    private static void AddText(ZipArchive archive, string entryName, string content)
-    {
-        var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
-        using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-        writer.Write(content);
-    }
-
-    private static void AddDirectory(ZipArchive archive, string sourceDirectory, string entryRoot)
-    {
-        foreach (var file in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories))
-        {
-            var relative = Path.GetRelativePath(sourceDirectory, file).Replace('\\', '/');
-            archive.CreateEntryFromFile(file, $"{entryRoot}/{relative}", CompressionLevel.Optimal);
-        }
-    }
-}
+public sealed record QcStationConfigDownload(string FileName, string Json);
 
 public sealed class QcStationAdminService(CropQcDbContext dbContext, IConfiguration configuration) : IQcStationAdminService
 {
-    private string AppPayloadPath =>
-        configuration["QcStation:WinFormsPayloadPath"]
-        ?? Path.Combine(AppContext.BaseDirectory, "App_Data", "QcStationWinForms");
-
-    public bool AppPayloadAvailable =>
-        Directory.Exists(AppPayloadPath)
-        && File.Exists(Path.Combine(AppPayloadPath, "CropQc.QcStation.WinForms.exe"));
-
     public async Task<QcStationsPageViewModel> GetStationsAsync(string? search, string? warehouseCode, string activeFilter, CancellationToken cancellationToken)
     {
         await EnsureQcStationColumnsAsync(cancellationToken);
@@ -302,9 +66,7 @@ public sealed class QcStationAdminService(CropQcDbContext dbContext, IConfigurat
             Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Code).ToListAsync(cancellationToken),
             Search = search,
             WarehouseCode = warehouseCode,
-            ActiveFilter = string.IsNullOrWhiteSpace(activeFilter) ? "Active" : activeFilter,
-            AppPayloadAvailable = AppPayloadAvailable,
-            AppPayloadPath = AppPayloadPath
+            ActiveFilter = string.IsNullOrWhiteSpace(activeFilter) ? "Active" : activeFilter
         };
     }
 
@@ -463,20 +225,7 @@ public sealed class QcStationAdminService(CropQcDbContext dbContext, IConfigurat
         };
 
         var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
-        var packageFileName = $"CropQcStation-{SanitizeFileName(station.StationCode)}-Setup.zip";
-        return new QcStationConfigDownload(
-            $"{station.StationCode}-qcstation.settings.json",
-            json,
-            packageFileName,
-            QcStationSetupPackageBuilder.Build(station, json, AppPayloadPath),
-            AppPayloadAvailable);
-    }
-
-    private static string SanitizeFileName(string value)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var safe = new string(value.Select(ch => invalid.Contains(ch) ? '-' : ch).ToArray()).Trim();
-        return string.IsNullOrWhiteSpace(safe) ? "QC-Station" : safe;
+        return new QcStationConfigDownload($"{station.StationCode}-qcstation.settings.json", json);
     }
 
     private async Task<int?> FindWarehouseIdAsync(string warehouseCode, CancellationToken cancellationToken) =>
