@@ -125,6 +125,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("RequireAdmin", policy => policy.RequireRole("Admin"));
     options.AddPolicy("RequireManagerOrAdmin", policy => policy.RequireRole("Admin", "Manager"));
     options.AddPolicy("RequireQcUserOrHigher", policy => policy.RequireRole("Admin", "Manager", "QC User"));
+    options.AddPolicy("RequireAuthenticatedUser", policy => policy.RequireAuthenticatedUser());
 });
 builder.Services.AddDbContext<CropQcDbContext>(options =>
     CropQcDatabase.Configure(

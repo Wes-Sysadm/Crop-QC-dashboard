@@ -19,7 +19,7 @@ public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthentica
     private static readonly IReadOnlyDictionary<string, string> RoleSummaries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["Admin"] = "Full access, including users, master data, configuration, overrides, exports, and audit review.",
-        ["Manager"] = "QC workflow manager; can edit older QC data, void/resend/override, and export receiving data.",
+        ["Manager"] = "QC workflow manager; can use normal QC pages, manage master data, and manage QC Stations.",
         ["QC User"] = "Same-day QC entry for receipts, samples, pressure, weight, grade, defects, starch, and photos.",
         ["Viewer"] = "Read-only dashboard, receipt, and sample access."
     };
@@ -27,7 +27,13 @@ public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthentica
     private static readonly IReadOnlyList<RolePermissionViewModel> RolePermissionRows =
     [
         new("View dashboard", "Yes", "Yes", "Yes", "Yes"),
+        new("View Daily QC", "Yes", "Yes", "Yes", "Yes"),
         new("View receipts/samples", "Yes", "Yes", "Yes", "Yes"),
+        new("View Master Data", "Yes", "Yes", "No", "No"),
+        new("Manage QC Stations", "Yes", "Yes", "No", "No"),
+        new("Manage users/roles", "Yes", "No", "No", "No"),
+        new("Open Admin Downloads", "Yes", "No", "No", "No"),
+        new("Edit configuration", "Yes", "No", "No", "No"),
         new("Create receiving receipts", "Yes", "Yes", "Yes", "No"),
         new("Create QC samples", "Yes", "Yes", "Yes", "No"),
         new("Enter same-day QC data", "Yes", "Yes", "Yes", "No"),
@@ -36,9 +42,7 @@ public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthentica
         new("Void samples", "Yes", "Yes", "No", "No"),
         new("Resend QC Summary", "Yes", "Yes", "No", "No"),
         new("Override/send with missing data", "Yes", "Yes", "No", "No"),
-        new("Edit master data", "Yes", "No", "No", "No"),
-        new("Edit configuration", "Yes", "No", "No", "No"),
-        new("Manage users/roles", "Yes", "No", "No", "No"),
+        new("Edit master data", "Yes", "Yes", "No", "No"),
         new("View audit logs", "Yes", "No", "No", "No"),
         new("Export receiving data", "Yes", "Yes", "No", "No")
     ];

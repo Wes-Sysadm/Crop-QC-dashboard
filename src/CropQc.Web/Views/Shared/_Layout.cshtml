@@ -12,21 +12,26 @@
     <header class="topbar">
         <a class="brand" href="/">Crop QC Dashboard</a>
         <nav>
-            <a href="/">Dashboard</a>
-            <a href="/DailyQc">Daily QC</a>
-            <a href="/Receipts">Receipts</a>
-            <a href="/MasterData">Master Data</a>
-            @if (AdminAuthorization.IsAdmin(User))
-            {
-                <a href="/Admin/Users">Users</a>
-                <a href="/Admin/QcStations">QC Stations</a>
-                <a href="/Admin/Downloads">Downloads</a>
-                <a href="/Admin/Configuration">Configuration</a>
-                <span class="status ready">Admin</span>
-            }
             @if (User.Identity?.IsAuthenticated == true)
             {
+                var isAdmin = AdminAuthorization.IsAdmin(User);
+                var isManagerOrAdmin = AdminAuthorization.IsManagerOrAdmin(User);
                 var role = User.FindAll(ClaimTypes.Role).Select(x => x.Value).OrderBy(x => x).FirstOrDefault() ?? "Viewer";
+                <a href="/">Dashboard</a>
+                <a href="/DailyQc">Daily QC</a>
+                <a href="/Receipts">Receipts</a>
+                @if (isManagerOrAdmin)
+                {
+                    <a href="/MasterData">Master Data</a>
+                    <a href="/Admin/QcStations">QC Stations</a>
+                }
+                @if (isAdmin)
+                {
+                    <a href="/Admin/Users">Users</a>
+                    <a href="/Admin/Downloads">Downloads</a>
+                    <a href="/Admin/Configuration">Configuration</a>
+                    <span class="status ready">Admin</span>
+                }
                 <span class="user-email">@User.FindFirstValue(ClaimTypes.Email)</span>
                 <span class="status">@role</span>
                 <form class="logout-form" method="post" action="/Logout">
