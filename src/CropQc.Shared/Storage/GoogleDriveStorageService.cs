@@ -23,6 +23,7 @@ public sealed class GoogleDriveStorageService(
     IGoogleDriveClient? client = null,
     ILogger<GoogleDriveStorageService>? logger = null) : IFileStorageService
 {
+    internal const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
     private readonly Lazy<IGoogleDriveClient> client = new(() => client ?? CreateClient(options));
     private readonly ILogger<GoogleDriveStorageService> logger = logger ?? NullLogger<GoogleDriveStorageService>.Instance;
 
@@ -36,13 +37,23 @@ public sealed class GoogleDriveStorageService(
 
     public async Task<FileStorageReference> SaveAsync(FileStorageSaveRequest request, CancellationToken cancellationToken = default)
     {
+        ValidateSharedDriveConfiguration();
+
         if (string.IsNullOrWhiteSpace(options.RootFolderId))
         {
             throw new InvalidOperationException("GoogleDrive:RootFolderId is required when FileStorage:Provider is GoogleDrive.");
         }
 
         var targetPath = NormalizeTargetPath(request.TargetPath);
-        logger.LogInformation("Google Drive storage save started. TargetPath: {TargetPath}. FileName: {FileName}. ContentType: {ContentType}. Size: {Size}.", targetPath, request.FileName, request.ContentType, request.FileSizeBytes ?? 0);
+        logger.LogInformation(
+            "Google Drive storage save started. TargetPath: {TargetPath}. FileName: {FileName}. ContentType: {ContentType}. Size: {Size}. UseSharedDrive: {UseSharedDrive}. RootFolderConfigured: {RootFolderConfigured}. SharedDriveConfigured: {SharedDriveConfigured}.",
+            targetPath,
+            request.FileName,
+            request.ContentType,
+            request.FileSizeBytes ?? 0,
+            options.UseSharedDrive,
+            !string.IsNullOrWhiteSpace(options.RootFolderId),
+            !string.IsNullOrWhiteSpace(options.SharedDriveId));
         var folderId = await EnsureFolderPathAsync(targetPath, cancellationToken);
         var fileName = SanitizeFileName(request.FileName);
         var uploaded = await client.Value.UploadFileAsync(folderId, fileName, request.ContentType, request.Content, cancellationToken);
@@ -69,6 +80,8 @@ public sealed class GoogleDriveStorageService(
 
     public async Task<string> EnsureFolderPathAsync(string targetPath, CancellationToken cancellationToken = default)
     {
+        ValidateSharedDriveConfiguration();
+
         var parentId = options.RootFolderId.Trim();
         foreach (var segment in SplitPath(targetPath))
         {
@@ -85,6 +98,24 @@ public sealed class GoogleDriveStorageService(
         }
 
         return parentId;
+    }
+
+    private void ValidateSharedDriveConfiguration()
+    {
+        if (!options.UseSharedDrive)
+        {
+            throw new InvalidOperationException("GoogleDrive:UseSharedDrive=true is required for Google Drive uploads. Service accounts do not have My Drive storage quota.");
+        }
+
+        if (string.IsNullOrWhiteSpace(options.RootFolderId))
+        {
+            throw new InvalidOperationException("GoogleDrive:RootFolderId is required when GoogleDrive:UseSharedDrive is true.");
+        }
+
+        if (string.IsNullOrWhiteSpace(options.SharedDriveId))
+        {
+            throw new InvalidOperationException("GoogleDrive:SharedDriveId is required when GoogleDrive:UseSharedDrive is true.");
+        }
     }
 
     private static IGoogleDriveClient CreateClient(GoogleDriveStorageOptions options)
@@ -112,7 +143,7 @@ public sealed class GoogleDriveStorageService(
             ApplicationName = string.IsNullOrWhiteSpace(options.ApplicationName) ? "Crop QC Dashboard" : options.ApplicationName
         });
 
-        return new GoogleDriveApiClient(service);
+        return new GoogleDriveApiClient(service, options);
     }
 
     private static string NormalizeTargetPath(string path) =>
@@ -139,8 +170,11 @@ public sealed class GoogleDriveStorageService(
     }
 }
 
-public sealed class GoogleDriveApiClient(DriveService service) : IGoogleDriveClient
+public sealed class GoogleDriveApiClient(DriveService service, GoogleDriveStorageOptions options) : IGoogleDriveClient
 {
+    private readonly bool useSharedDrive = options.UseSharedDrive;
+    private readonly string? sharedDriveId = string.IsNullOrWhiteSpace(options.SharedDriveId) ? null : options.SharedDriveId.Trim();
+
     public async Task<GoogleDriveFolder?> FindFolderAsync(string parentFolderId, string name, CancellationToken cancellationToken)
     {
         var request = service.Files.List();
@@ -149,6 +183,7 @@ public sealed class GoogleDriveApiClient(DriveService service) : IGoogleDriveCli
         request.PageSize = 1;
         request.SupportsAllDrives = true;
         request.IncludeItemsFromAllDrives = true;
+        ApplySharedDriveSearchOptions(request);
 
         var result = await ExecuteDriveRequestAsync(() => request.ExecuteAsync(cancellationToken), "find Google Drive folder");
         var folder = result.Files.FirstOrDefault();
@@ -185,11 +220,22 @@ public sealed class GoogleDriveApiClient(DriveService service) : IGoogleDriveCli
         var result = await ExecuteDriveRequestAsync(() => request.UploadAsync(cancellationToken), "upload Google Drive file");
         if (result.Status != UploadStatus.Completed)
         {
-            throw new InvalidOperationException($"Google Drive upload failed: {result.Exception?.Message ?? result.Status.ToString()}");
+            throw new InvalidOperationException($"Google Drive upload failed: {ToSafeGoogleDriveMessage(result.Exception?.Message ?? result.Status.ToString())}", result.Exception);
         }
 
         var file = request.ResponseBody;
         return new GoogleDriveFile(file.Id, file.Name, file.DriveId, file.WebViewLink, file.Size);
+    }
+
+    private void ApplySharedDriveSearchOptions(FilesResource.ListRequest request)
+    {
+        if (!useSharedDrive || string.IsNullOrWhiteSpace(sharedDriveId))
+        {
+            return;
+        }
+
+        request.Corpora = "drive";
+        request.DriveId = sharedDriveId;
     }
 
     private static async Task<T> ExecuteDriveRequestAsync<T>(Func<Task<T>> action, string operation)
@@ -204,13 +250,23 @@ public sealed class GoogleDriveApiClient(DriveService service) : IGoogleDriveCli
         }
         catch (Google.GoogleApiException ex) when (ex.HttpStatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized)
         {
+            if (ex.Message.Contains("Service Accounts do not have storage quota", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(GoogleDriveStorageService.SharedDriveQuotaGuidance, ex);
+            }
+
             throw new InvalidOperationException($"Google Drive {operation} failed. Confirm the Drive API is enabled and the service account has Editor or Content Manager access to the root folder.", ex);
         }
         catch (Google.GoogleApiException ex)
         {
-            throw new InvalidOperationException($"Google Drive {operation} failed: {ex.Message}", ex);
+            throw new InvalidOperationException($"Google Drive {operation} failed: {ToSafeGoogleDriveMessage(ex.Message)}", ex);
         }
     }
+
+    private static string ToSafeGoogleDriveMessage(string message) =>
+        message.Contains("Service Accounts do not have storage quota", StringComparison.OrdinalIgnoreCase)
+            ? GoogleDriveStorageService.SharedDriveQuotaGuidance
+            : message;
 
     private static string EscapeQueryValue(string value) =>
         value.Replace("\\", "\\\\").Replace("'", "\\'");

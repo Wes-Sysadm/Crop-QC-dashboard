@@ -55,7 +55,9 @@ static FileStorageOptions CreateFileStorageOptions(IConfiguration configuration)
 static GoogleDriveStorageOptions CreateGoogleDriveStorageOptions(IConfiguration configuration) =>
     new()
     {
+        UseSharedDrive = configuration.GetValue<bool>("GoogleDrive:UseSharedDrive"),
         RootFolderId = configuration["GoogleDrive:RootFolderId"] ?? "",
+        SharedDriveId = configuration["GoogleDrive:SharedDriveId"] ?? "",
         ServiceAccountJson = configuration["GoogleDrive:ServiceAccountJson"],
         ServiceAccountJsonPath = configuration["GoogleDrive:ServiceAccountJsonPath"],
         ApplicationName = configuration["GoogleDrive:ApplicationName"] ?? "Crop QC Dashboard",

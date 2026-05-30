@@ -45,8 +45,12 @@ services:
         value: /var/data/cropqc-files
       - key: FileStorage__BasePath
         value: Crop QC Photos
+      - key: GoogleDrive__UseSharedDrive
+        value: true
       - key: GoogleDrive__RootFolderId
-        value: 1pcVsEpDVdYpDrTphXwsLkhuA8D-FH79I
+        value: 0ADHRTHdG9u98Uk9PVA
+      - key: GoogleDrive__SharedDriveId
+        value: 0ADHRTHdG9u98Uk9PVA
       - key: GoogleDrive__ServiceAccountJson
         sync: false
       - key: GoogleDrive__ApplicationName

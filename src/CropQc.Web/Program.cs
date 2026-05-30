@@ -231,7 +231,9 @@ app.MapGet("/health/storage", (FileStorageOptions fileStorageOptions, GoogleDriv
     return Results.Ok(new
     {
         provider,
+        googleDriveUseSharedDrive = googleDriveOptions.UseSharedDrive,
         googleDriveRootFolderConfigured = !string.IsNullOrWhiteSpace(googleDriveOptions.RootFolderId),
+        googleDriveSharedDriveConfigured = !string.IsNullOrWhiteSpace(googleDriveOptions.SharedDriveId),
         googleDriveCredentialsConfigured = !string.IsNullOrWhiteSpace(googleDriveOptions.ServiceAccountJson)
             || !string.IsNullOrWhiteSpace(googleDriveOptions.ServiceAccountJsonPath),
         googleDriveApplicationNameConfigured = !string.IsNullOrWhiteSpace(googleDriveOptions.ApplicationName)
@@ -254,7 +256,9 @@ static FileStorageOptions CreateFileStorageOptions(IConfiguration configuration)
 static GoogleDriveStorageOptions CreateGoogleDriveStorageOptions(IConfiguration configuration) =>
     new()
     {
+        UseSharedDrive = configuration.GetValue<bool>("GoogleDrive:UseSharedDrive"),
         RootFolderId = configuration["GoogleDrive:RootFolderId"] ?? "",
+        SharedDriveId = configuration["GoogleDrive:SharedDriveId"] ?? "",
         ServiceAccountJson = configuration["GoogleDrive:ServiceAccountJson"],
         ServiceAccountJsonPath = configuration["GoogleDrive:ServiceAccountJsonPath"],
         ApplicationName = configuration["GoogleDrive:ApplicationName"] ?? "Crop QC Dashboard",

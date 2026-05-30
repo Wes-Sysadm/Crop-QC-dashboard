@@ -33,6 +33,7 @@ public sealed class DashboardDataService(
     ILogger<DashboardDataService> logger) : IDashboardDataService
 {
     private const string DataWarning = "Database is not available yet. The dashboard shell is running with empty data.";
+    private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
 
     public async Task<HomeDashboardViewModel> GetHomeDashboardAsync(CancellationToken cancellationToken)
     {
@@ -1024,6 +1025,12 @@ public sealed class DashboardDataService(
         if (string.Equals(message, "No photo file was selected.", StringComparison.Ordinal))
         {
             return message;
+        }
+
+        if (message.Contains("Service Accounts do not have storage quota", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("not being treated as a Shared Drive upload target", StringComparison.OrdinalIgnoreCase))
+        {
+            return SharedDriveQuotaGuidance;
         }
 
         return string.Equals(fileStorageOptions.Provider, FileStorageProviders.GoogleDrive, StringComparison.OrdinalIgnoreCase)
