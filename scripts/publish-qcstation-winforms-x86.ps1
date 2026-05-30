@@ -21,7 +21,6 @@ dotnet publish $projectPath `
     --configuration $Configuration `
     --runtime win-x86 `
     --self-contained false `
-    -p:TargetFramework=net9.0-windows `
     -p:PlatformTarget=x86 `
     -p:EnableWindowsTargeting=true `
     -p:RuntimeIdentifier=win-x86 `

@@ -89,7 +89,6 @@ public sealed class QcStationSetupPackageTests
         var script = File.ReadAllText(FindRepositoryFile("scripts", "publish-qcstation-winforms-x86.ps1"));
 
         Assert.Contains("src/CropQc.Web/App_Data/QcStationWinForms", script);
-        Assert.Contains("-p:TargetFramework=net9.0-windows", script);
         Assert.Contains("-p:PlatformTarget=x86", script);
         Assert.Contains("-p:EnableWindowsTargeting=true", script);
         Assert.Contains("-p:RuntimeIdentifier=win-x86", script);
@@ -113,13 +112,16 @@ public sealed class QcStationSetupPackageTests
 
         Assert.Contains("src/CropQc.QcStation.WinForms/CropQc.QcStation.WinForms.csproj", dockerfile);
         Assert.Contains("-r win-x86", dockerfile);
-        Assert.Contains("-p:TargetFramework=net9.0-windows", dockerfile);
         Assert.Contains("-p:EnableWindowsTargeting=true", dockerfile);
         Assert.Contains("-p:Platform=x86", dockerfile);
         Assert.Contains("Publishing QC Station WinForms payload", dockerfile);
         Assert.Contains("-o src/CropQc.Web/App_Data/QcStationWinForms", dockerfile);
         Assert.Contains("test -f src/CropQc.Web/App_Data/QcStationWinForms/CropQc.QcStation.WinForms.exe", dockerfile);
         Assert.Contains("dotnet publish src/CropQc.Web/CropQc.Web.csproj", dockerfile);
+        Assert.Contains("test -f /app/publish/CropQc.Web.dll", dockerfile);
+        Assert.Contains("test -f /app/publish/CropQc.Shared.dll", dockerfile);
+        Assert.Contains("test -f /app/publish/App_Data/QcStationWinForms/CropQc.QcStation.WinForms.exe", dockerfile);
+        Assert.DoesNotContain("-p:TargetFramework=net9.0-windows", dockerfile);
     }
 
     [Fact]
