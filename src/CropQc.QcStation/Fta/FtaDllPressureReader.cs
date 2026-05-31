@@ -150,9 +150,9 @@ public sealed class FtaDllPressureReader(
         }
         catch (Exception ex)
         {
-            errorMessage = $"FTASetup failed: {ex.Message}";
+            errorMessage = $"FTA setup/calibration could not be opened. Use FTAWin for calibration until this function is supported. FTASetup failed: {ex.Message}";
             LastStatusMessage = errorMessage;
-            return Task.FromResult(Status("FTA setup failed.", errorMessage));
+            return Task.FromResult(Status("FTA setup/calibration failed.", errorMessage));
         }
     }
 

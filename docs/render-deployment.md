@@ -83,6 +83,7 @@ Set these variables in Render:
 - `GoogleDrive__BaseFolderName=Photos`
 - `Email__Provider=None`
 - `QcStation__ApiBaseUrl=https://crop-qc-dashboard.onrender.com`
+- `Downloads__QcStationInstallerUrl=[Google Drive share link for CropQcStationSetup.msi]`
 
 Do not commit database passwords, Google credentials, Gmail credentials, or API secrets.
 
@@ -98,7 +99,7 @@ The Render Docker build publishes only the web dashboard. It does not build Wind
 
 The script publishes the WinForms x86 app, builds `artifacts\installers\CropQcStationSetup.msi`, and signs it when signing environment variables are configured. If signing is not configured, it builds an unsigned MSI and prints a SmartScreen/Defender warning.
 
-To deploy the installer download, place the signed MSI at `src\CropQc.Web\App_Data\Downloads\CropQcStationSetup.msi` before web publish/deploy, or set `QcStation__InstallerPath` to a whitelisted deployed path containing `CropQcStationSetup.msi`. If the MSI is missing, `/Admin/Downloads` shows “QC Station installer has not been deployed yet” and the web app still starts normally.
+To deploy the installer download, upload `artifacts\installers\CropQcStationSetup.msi` to Google Drive, restrict sharing to company users, and set `Downloads__QcStationInstallerUrl` in Render. Render does not host or build the MSI. If the env var is missing, `/Admin/Downloads` shows “QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.” The web app still starts normally.
 
 Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 

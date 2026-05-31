@@ -13,6 +13,11 @@
         <Directory Id="INSTALLFOLDER" Name="QcStation" />
       </Directory>
     </StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="ProgramDataCompanyFolder" Name="CropQc">
+        <Directory Id="ProgramDataStationFolder" Name="QcStation" />
+      </Directory>
+    </StandardDirectory>
 
     <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="ApplicationProgramsFolder" Name="Crop QC Station" />
@@ -50,10 +55,16 @@
       </RegistryKey>
     </Component>
 
+    <Component Id="ProgramDataConfigFolder" Directory="ProgramDataStationFolder" Guid="{257A8FDD-FD89-43BC-A018-503646C90B92}">
+      <CreateFolder />
+      <RegistryValue Root="HKLM" Key="Software\CropQc\QcStation" Name="ProgramDataFolderCreated" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
     <Feature Id="MainFeature" Title="Crop QC Station" Level="1">
       <ComponentGroupRef Id="PublishedAppComponents" />
       <ComponentRef Id="ApplicationShortcut" />
       <ComponentRef Id="ProtocolHandler" />
+      <ComponentRef Id="ProgramDataConfigFolder" />
     </Feature>
   </Package>
 </Wix>

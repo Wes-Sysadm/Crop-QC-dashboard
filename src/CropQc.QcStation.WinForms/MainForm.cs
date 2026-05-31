@@ -300,7 +300,7 @@ public sealed class MainForm : Form
 
         AddCommand(flow, "Initialize FTA", () => stationService.InitializeAsync());
         AddCommand(flow, "Initialize FTA With Config Path", () => stationService.InitializeWithConfigPathAsync());
-        AddCommand(flow, "Open FTA Setup", () => stationService.OpenSetupAsync());
+        AddCommand(flow, "Open FTA Setup / Calibration", () => stationService.OpenSetupAsync());
         AddCommand(flow, "FTA Diagnostic Status", () => stationService.DiagnosticStatusAsync());
         AddContinuousButton(flow, "Start Continuous Manual Capture", StartContinuousManualCapture);
         AddContinuousButton(flow, "Stop Continuous Capture", StopContinuousCapture);
