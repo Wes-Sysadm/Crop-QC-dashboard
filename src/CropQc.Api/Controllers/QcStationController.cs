@@ -10,7 +10,7 @@ namespace CropQc.Api.Controllers;
 
 [ApiController]
 [Route("api/qc-station")]
-public sealed class QcStationController(IQcStationApiService service, CropQcDbContext dbContext) : ControllerBase
+public sealed class QcStationController(IQcStationApiService service, CropQcDbContext dbContext, ILogger<QcStationController> logger) : ControllerBase
 {
     [HttpGet("samples/today")]
     public async Task<IActionResult> GetTodaySamples([FromQuery] string? warehouseCode, CancellationToken cancellationToken)
@@ -54,24 +54,34 @@ public sealed class QcStationController(IQcStationApiService service, CropQcDbCo
         Request.Headers.TryGetValue(QcStationApiKeyValidator.HeaderName, out var apiKeyHeader);
         var stationCode = stationCodeHeader.FirstOrDefault();
         var apiKey = apiKeyHeader.FirstOrDefault();
+        var remoteIp = HttpContext.Connection.RemoteIpAddress?.ToString();
         if (string.IsNullOrWhiteSpace(stationCode) || string.IsNullOrWhiteSpace(apiKey))
         {
+            logger.LogWarning("QC Station auth failed: missing credentials. StationCode: {StationCode}; RemoteIp: {RemoteIp}.", stationCode, remoteIp);
             return (null, Unauthorized(new { error = "QC Station credentials are required." }));
         }
 
         var station = await dbContext.QcStations.SingleOrDefaultAsync(x => x.StationCode == stationCode.Trim(), cancellationToken);
-        if (station is null || string.IsNullOrWhiteSpace(station.ApiKeyHash) || !QcStationApiKeyValidator.VerifyHashedApiKey(apiKey, station.ApiKeyHash))
+        if (station is null)
         {
+            logger.LogWarning("QC Station auth failed: station not found. StationCode: {StationCode}; StationFound: false; RemoteIp: {RemoteIp}.", stationCode, remoteIp);
+            return (null, Unauthorized(new { error = "QC Station credentials are invalid." }));
+        }
+
+        if (string.IsNullOrWhiteSpace(station.ApiKeyHash) || !QcStationApiKeyValidator.VerifyHashedApiKey(apiKey, station.ApiKeyHash))
+        {
+            logger.LogWarning("QC Station auth failed: invalid key. StationCode: {StationCode}; StationFound: true; StationActive: {StationActive}; RemoteIp: {RemoteIp}.", station.StationCode, station.IsActive, remoteIp);
             return (null, Unauthorized(new { error = "QC Station credentials are invalid." }));
         }
 
         if (!station.IsActive)
         {
+            logger.LogWarning("QC Station auth failed: inactive station. StationCode: {StationCode}; StationFound: true; StationActive: false; RemoteIp: {RemoteIp}.", station.StationCode, remoteIp);
             return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "QC Station is inactive." }));
         }
 
         station.LastSeenAt = DateTimeOffset.UtcNow;
-        station.LastSeenIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        station.LastSeenIp = remoteIp;
         await dbContext.SaveChangesAsync(cancellationToken);
         return (station, null);
     }

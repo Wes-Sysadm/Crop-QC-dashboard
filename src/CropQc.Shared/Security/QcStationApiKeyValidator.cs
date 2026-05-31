@@ -6,6 +6,7 @@ public static class QcStationApiKeyValidator
 {
     public const string HeaderName = "X-QC-STATION-API-KEY";
     public const string StationCodeHeaderName = "X-QC-STATION-CODE";
+    public const string StationCodePattern = "^[A-Za-z0-9_-]+$";
 
     public static QcStationApiKeyValidationResult Validate(string? configuredApiKey, string? providedApiKey)
     {
@@ -44,6 +45,18 @@ public static class QcStationApiKeyValidator
         return CryptographicOperations.FixedTimeEquals(
             System.Text.Encoding.UTF8.GetBytes(providedHash),
             System.Text.Encoding.UTF8.GetBytes(apiKeyHash));
+    }
+
+    public static bool IsStationCodeSafe(string? stationCode) =>
+        !string.IsNullOrWhiteSpace(stationCode)
+        && System.Text.RegularExpressions.Regex.IsMatch(stationCode.Trim(), StationCodePattern);
+
+    public static string NormalizeStationCode(string value)
+    {
+        var normalized = System.Text.RegularExpressions.Regex.Replace(value.Trim(), @"\s+", "-");
+        normalized = System.Text.RegularExpressions.Regex.Replace(normalized, @"[^A-Za-z0-9_-]+", "-");
+        normalized = System.Text.RegularExpressions.Regex.Replace(normalized, "-{2,}", "-").Trim('-');
+        return normalized.ToUpperInvariant();
     }
 }
 
