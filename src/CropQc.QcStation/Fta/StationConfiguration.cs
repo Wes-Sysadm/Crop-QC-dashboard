@@ -53,6 +53,11 @@ public sealed class StationConfiguration
         }
 
         var directory = new DirectoryInfo(baseDirectory ?? AppContext.BaseDirectory);
+        if (IsInstalledProgramFilesPath(directory.FullName))
+        {
+            return Path.Combine(baseDirectory ?? AppContext.BaseDirectory, "qcstation.settings.json");
+        }
+
         while (directory is not null)
         {
             var candidate = Path.Combine(directory.FullName, "src", "CropQc.QcStation", "qcstation.settings.json");
@@ -69,6 +74,33 @@ public sealed class StationConfiguration
 
     public static string MissingSettingsMessage(string path) =>
         $"QC Station settings were not found at '{path}'. Install the Crop QC Station app, then download station config from Admin -> QC Stations and import qcstation.settings.json. Installed stations should use {InstalledSettingsPath}.";
+
+    public static bool IsConfigurationValid(StationConfiguration configuration) =>
+        !string.IsNullOrWhiteSpace(configuration.StationName)
+        && !string.IsNullOrWhiteSpace(configuration.WarehouseCode)
+        && !string.IsNullOrWhiteSpace(configuration.ApiBaseUrl)
+        && !string.IsNullOrWhiteSpace(configuration.QcStationCode)
+        && !string.IsNullOrWhiteSpace(configuration.QcStationApiKey);
+
+    public static string BackupPathFor(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        return Path.Combine(
+            string.IsNullOrWhiteSpace(directory) ? AppContext.BaseDirectory : directory,
+            $"qcstation.settings.backup-{DateTime.Now:yyyyMMdd-HHmmss}.json");
+    }
+
+    private static bool IsInstalledProgramFilesPath(string path)
+    {
+        var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        return StartsWithDirectory(fullPath, programFiles) || StartsWithDirectory(fullPath, programFilesX86);
+    }
+
+    private static bool StartsWithDirectory(string path, string directory) =>
+        !string.IsNullOrWhiteSpace(directory)
+        && path.StartsWith(Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
 
     public void CopyFrom(StationConfiguration source)
     {
@@ -101,11 +133,7 @@ public static class StationConfigurationImport
         }
 
         var configuration = StationConfiguration.Load(sourcePath);
-        if (string.IsNullOrWhiteSpace(configuration.QcStationCode)
-            || string.IsNullOrWhiteSpace(configuration.QcStationApiKey)
-            || string.IsNullOrWhiteSpace(configuration.ApiBaseUrl)
-            || string.IsNullOrWhiteSpace(configuration.StationName)
-            || string.IsNullOrWhiteSpace(configuration.WarehouseCode))
+        if (!StationConfiguration.IsConfigurationValid(configuration))
         {
             throw new InvalidDataException("This does not appear to be a valid Crop QC Station config.");
         }
@@ -125,10 +153,7 @@ public static class StationConfigurationImport
 
         if (File.Exists(destination))
         {
-            var backupPath = Path.Combine(
-                directory ?? AppContext.BaseDirectory,
-                $"qcstation.settings.backup-{DateTime.Now:yyyyMMdd-HHmmss}.json");
-            File.Copy(destination, backupPath, overwrite: true);
+            File.Copy(destination, StationConfiguration.BackupPathFor(destination), overwrite: true);
         }
 
         File.Copy(sourcePath, destination, overwrite: true);

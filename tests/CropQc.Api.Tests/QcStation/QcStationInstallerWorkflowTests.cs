@@ -121,7 +121,9 @@ public sealed class QcStationInstallerWorkflowTests
 
         Assert.Contains("href=\"cropqcstation://sample/@Model.Sample.Id\"", view);
         Assert.Contains("QC Station App Installer from Admin -> Downloads", view);
-        Assert.Contains("download station config from Admin -> QC Stations and import it", view);
+        Assert.Contains("<h2>FTA Pressure Capture</h2>", view);
+        Assert.Contains("Continue entering weight and grade on this page as needed", view);
+        Assert.Contains("rotate/download station config from Admin -> QC Stations and import it", view);
     }
 
     [Fact]
@@ -200,6 +202,22 @@ public sealed class QcStationInstallerWorkflowTests
     }
 
     [Fact]
+    public void ResolveSettingsPath_DoesNotUseDevelopmentFallbackFromProgramFilesInstall()
+    {
+        var installPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "CropQc",
+            "QcStation");
+
+        var path = StationConfiguration.ResolveSettingsPath(
+            null,
+            installPath,
+            Path.Combine(installPath, "missing-programdata-config.json"));
+
+        Assert.Equal(Path.Combine(installPath, "qcstation.settings.json"), path);
+    }
+
+    [Fact]
     public void StationConfigImport_BacksUpExistingConfig()
     {
         var tempRoot = Directory.CreateTempSubdirectory("cropqc-station-import-backup-test");
@@ -233,10 +251,28 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("FTA Diagnostic Status", mainForm);
         Assert.Contains("Return Probe Home", mainForm);
         Assert.Contains("Cancel FTA Action", mainForm);
+        Assert.Contains("Import / Replace Station Config", mainForm);
+        Assert.Contains("Open Config Folder", mainForm);
+        Assert.Contains("Forget Current Config", mainForm);
+        Assert.Contains("LoadedConfigPath", mainForm);
+        Assert.Contains("apiClient = null", mainForm);
         Assert.Contains("WaitForManualRearmReadyAsync", mainForm);
         Assert.Contains("FtaManualCaptureSafeMode", mainForm);
         Assert.Contains("RequiresImport", program);
         Assert.Contains("StationConfigurationImport.ValidateSource(settingsPath)", program);
+    }
+
+    [Fact]
+    public void AdminDownloadsAndQcStations_ExplainConfigImportFlow()
+    {
+        var downloads = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Admin", "Downloads.cshtml"));
+        var qcStations = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Admin", "QcStations.cshtml"));
+        var adminController = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "AdminController.cs"));
+
+        Assert.Contains("Import / Replace Station Config", downloads);
+        Assert.Contains("Import / Replace Station Config", qcStations);
+        Assert.Contains("Confirm the Station Name and Station Code shown in the app match this station", qcStations);
+        Assert.Contains("Install FTADLL.exe separately on FTA-connected computers", adminController);
     }
 
     private static string FindRepositoryFile(params string[] pathParts)

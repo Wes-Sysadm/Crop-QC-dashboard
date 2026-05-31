@@ -128,8 +128,8 @@ public sealed class ConfigImportForm : Form
         catch (QcStationAuthorizationException ex)
         {
             return ex.StatusCode == System.Net.HttpStatusCode.Forbidden
-                ? "Station inactive or not authorized. Confirm this station is active in Admin -> QC Stations."
-                : "Station not authorized. The key may be invalid or rotated; download/import the latest station config.";
+                ? $"Station authorization failed for StationCode: {configuration.QcStationCode}. The app may be using an old config, the station may be inactive, or the key may have been rotated. Import the latest station config from Admin -> QC Stations."
+                : $"Station not authorized for StationCode: {configuration.QcStationCode}. The key may be invalid or rotated; download/import the latest station config.";
         }
         catch (HttpRequestException ex)
         {

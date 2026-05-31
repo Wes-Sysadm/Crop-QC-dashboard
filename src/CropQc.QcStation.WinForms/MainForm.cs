@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using CropQc.QcStation.Api;
 using CropQc.QcStation.Fta;
@@ -106,7 +107,9 @@ public sealed class MainForm : Form
     {
         var menu = new MenuStrip();
         var setupMenu = new ToolStripMenuItem("Station Setup");
-        setupMenu.DropDownItems.Add("Import Station Config", null, async (_, _) => await ImportStationConfigAsync());
+        setupMenu.DropDownItems.Add("Import / Replace Station Config", null, async (_, _) => await ImportStationConfigAsync());
+        setupMenu.DropDownItems.Add("Open Config Folder", null, async (_, _) => await OpenConfigFolderAsync());
+        setupMenu.DropDownItems.Add("Forget Current Config", null, async (_, _) => await ForgetCurrentConfigAsync());
         setupMenu.DropDownItems.Add("Test Dashboard Connection", null, async (_, _) => await TestDashboardConnectionAsync());
         menu.Items.Add(setupMenu);
         MainMenuStrip = menu;
@@ -186,11 +189,13 @@ public sealed class MainForm : Form
             WrapContents = true
         };
         group.Controls.Add(flow);
-        AddSampleButton(flow, "Import Station Config", ImportStationConfigAsync);
+        AddSampleButton(flow, "Import / Replace Station Config", ImportStationConfigAsync);
+        AddSampleButton(flow, "Open Config Folder", OpenConfigFolderAsync);
+        AddSampleButton(flow, "Forget Current Config", ForgetCurrentConfigAsync);
         AddSampleButton(flow, "Test Dashboard Connection", TestDashboardConnectionAsync);
         flow.Controls.Add(new Label
         {
-            Text = "Import downloaded qcstation.settings.json after station key rotation. The app installs it to ProgramData and never displays the API key.",
+            Text = "Import downloaded qcstation.settings.json after station key rotation. The app installs it to ProgramData, reloads station identity immediately, and never displays the API key.",
             AutoSize = true,
             MaximumSize = new Size(760, 0),
             Margin = new Padding(8, 8, 4, 4)
@@ -220,13 +225,14 @@ public sealed class MainForm : Form
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         group.Controls.Add(grid);
 
-        AddStatusRow(grid, "Station name", "StationName", "Station code", "QcStationCode");
-        AddStatusRow(grid, "Warehouse", "WarehouseCode", "FTA mode", "FtaMode");
-        AddStatusRow(grid, "DLL path", "FtaDllPath", "DLL file", "FtaDllFileName");
-        AddStatusRow(grid, "Initialization mode", "FtaInitializationMode", "FTA config path", "FtaConfigPath");
-        AddStatusRow(grid, "Working directory", "FtaWorkingDirectory", "Current working directory", "CurrentWorkingDirectory");
-        AddStatusRow(grid, "Process architecture", "ProcessArchitecture", "OS architecture", "OSArchitecture");
-        AddStatusRow(grid, "Last pressure reading", "LastPressureReading", "API base URL", "ApiBaseUrl");
+        AddStatusRow(grid, "Loaded config path", "LoadedConfigPath", "Station name", "StationName");
+        AddStatusRow(grid, "Station code", "QcStationCode", "Warehouse", "WarehouseCode");
+        AddStatusRow(grid, "FTA mode", "FtaMode", "DLL path", "FtaDllPath");
+        AddStatusRow(grid, "DLL file", "FtaDllFileName", "Initialization mode", "FtaInitializationMode");
+        AddStatusRow(grid, "FTA config path", "FtaConfigPath", "Working directory", "FtaWorkingDirectory");
+        AddStatusRow(grid, "Current working directory", "CurrentWorkingDirectory", "Process architecture", "ProcessArchitecture");
+        AddStatusRow(grid, "OS architecture", "OSArchitecture", "Last pressure reading", "LastPressureReading");
+        AddStatusRow(grid, "API base URL", "ApiBaseUrl", "Safe capture mode", "FtaManualCaptureSafeMode");
 
         return group;
     }
@@ -667,6 +673,13 @@ public sealed class MainForm : Form
 
     private async Task RefreshTodaySamplesAsync()
     {
+        if (!StationConfiguration.IsConfigurationValid(stationService.Configuration))
+        {
+            apiStatusTextBox.Text = "Config missing/invalid";
+            AppendLog("Refresh Today's Samples skipped: import a valid station config first.");
+            return;
+        }
+
         apiClient = CreateApiClient();
         apiStatusTextBox.Text = "Loading...";
         sampleListView.Items.Clear();
@@ -841,7 +854,7 @@ public sealed class MainForm : Form
         if (ex is QcStationAuthorizationException)
         {
             var config = stationService.Configuration;
-            const string message = "QC Station is not authorized. Confirm this station is active in Admin -> QC Stations. If the key was rotated, download/import the latest station config.";
+            var message = $"Station authorization failed for StationCode: {config.QcStationCode ?? "(missing)"}. The app may be using an old config, the station may be inactive, or the key may have been rotated. Import the latest station config from Admin -> QC Stations.";
             apiStatusTextBox.Text = "Not authorized";
             lastSaveResultTextBox.Text = "Not authorized";
             AppendLog($"{action} failed: {message}");
@@ -886,13 +899,116 @@ public sealed class MainForm : Form
         RefreshStatusDisplay();
         AppendLog($"Station config imported. StationName: {importedConfiguration.StationName}; QcStationCode: {importedConfiguration.QcStationCode}; WarehouseCode: {importedConfiguration.WarehouseCode}; ApiBaseUrl: {importedConfiguration.ApiBaseUrl}.");
         await TestDashboardConnectionAsync();
+        if (launchRequest?.SampleId is long sampleId && selectedSample is null)
+        {
+            AppendLog($"Retrying pending protocol sample {sampleId} after config import.");
+            await LoadSampleByIdAsync(sampleId);
+        }
+    }
+
+    private Task OpenConfigFolderAsync()
+    {
+        var folder = Path.GetDirectoryName(StationConfiguration.InstalledSettingsPath)!;
+        try
+        {
+            Directory.CreateDirectory(folder);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = folder,
+                UseShellExecute = true
+            });
+            AppendLog($"Opened config folder: {folder}");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"Open Config Folder failed: {ex.Message}");
+            MessageBox.Show(
+                $"Could not open config folder:{Environment.NewLine}{folder}{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                "Open Config Folder failed",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task ForgetCurrentConfigAsync()
+    {
+        var result = MessageBox.Show(
+            "Forget the current station config? The active config will be backed up and removed. API calls will stop until a valid config is imported.",
+            "Forget Current Config",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+        if (result != DialogResult.Yes)
+        {
+            AppendLog("Forget Current Config cancelled.");
+            return;
+        }
+
+        try
+        {
+            var path = StationConfiguration.InstalledSettingsPath;
+            if (File.Exists(path))
+            {
+                var backupPath = StationConfiguration.BackupPathFor(path);
+                File.Move(path, backupPath, overwrite: true);
+                AppendLog($"Current station config backed up to {backupPath}.");
+            }
+            else
+            {
+                AppendLog("No installed station config was present to forget.");
+            }
+
+            stationService.Configuration.CopyFrom(new StationConfiguration
+            {
+                StationName = "(missing)",
+                WarehouseCode = "",
+                ApiBaseUrl = "",
+                QcStationCode = null,
+                QcStationApiKey = null
+            });
+            settingsPath = StationConfiguration.InstalledSettingsPath;
+            apiClient = null;
+            selectedSample = null;
+            sampleListView.Items.Clear();
+            hasUnsavedPressureChanges = false;
+            apiStatusTextBox.Text = "Config missing";
+            selectedSampleTextBox.Text = "(none)";
+            sampleContextTextBox.Text = "(none)";
+            RefreshStatusDisplay();
+            RefreshSampleStatusDisplay();
+            AppendLog("Station config forgotten. Import / Replace Station Config before using dashboard API calls.");
+            MessageBox.Show(
+                "Station configuration was forgotten. Use Import / Replace Station Config to install a valid qcstation.settings.json.",
+                "Station config forgotten",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            await ImportStationConfigAsync();
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"Forget Current Config failed: {ex.Message}");
+            MessageBox.Show(
+                $"Could not forget current config. Run Crop QC Station as Administrator once if Windows blocks access.{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                "Forget Current Config failed",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
     }
 
     private async Task TestDashboardConnectionAsync()
     {
+        if (!StationConfiguration.IsConfigurationValid(stationService.Configuration))
+        {
+            apiStatusTextBox.Text = "Config missing/invalid";
+            AppendLog("Test Dashboard Connection skipped: config is missing or invalid. Import station config first.");
+            return;
+        }
+
         try
         {
             apiClient = CreateApiClient();
+            AppendLog($"Testing dashboard connection for StationName: {stationService.Configuration.StationName}; QcStationCode: {stationService.Configuration.QcStationCode}; ApiBaseUrl: {stationService.Configuration.ApiBaseUrl}.");
             var samples = await apiClient.GetTodaySamplesAsync(warehouseFilterTextBox.Text);
             apiStatusTextBox.Text = "Connected successfully";
             AppendLog($"Dashboard connection test succeeded. Today's sample count for warehouse '{warehouseFilterTextBox.Text}': {samples.Count}.");
@@ -1241,6 +1357,7 @@ public sealed class MainForm : Form
     private void RefreshStatusDisplay()
     {
         var config = stationService.Configuration;
+        SetValue("LoadedConfigPath", settingsPath);
         SetValue("StationName", config.StationName);
         SetValue("QcStationCode", config.QcStationCode ?? "");
         SetValue("WarehouseCode", config.WarehouseCode);
@@ -1255,6 +1372,7 @@ public sealed class MainForm : Form
         SetValue("ProcessArchitecture", RuntimeInformation.ProcessArchitecture.ToString());
         SetValue("OSArchitecture", RuntimeInformation.OSArchitecture.ToString());
         SetValue("LastPressureReading", FormatReading(stationService.LatestReading));
+        SetValue("FtaManualCaptureSafeMode", config.FtaManualCaptureSafeMode ? "Enabled" : "Disabled");
     }
 
     private void RefreshSampleStatusDisplay()
