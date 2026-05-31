@@ -185,8 +185,24 @@ public sealed class QcStationAdminService(CropQcDbContext dbContext, IConfigurat
             return "Station name, station code, and warehouse are required.";
         }
 
+        var stationCode = form.StationCode.Trim();
+        var existingCode = isCreate || form.Id is null
+            ? null
+            : await dbContext.QcStations
+                .Where(x => x.Id == form.Id.Value)
+                .Select(x => x.StationCode)
+                .SingleOrDefaultAsync(cancellationToken);
+        var isExistingUnsafeCodeUnchanged = !isCreate
+            && existingCode is not null
+            && string.Equals(existingCode, stationCode, StringComparison.Ordinal)
+            && !QcStationApiKeyValidator.IsStationCodeSafe(stationCode);
+        if (!isExistingUnsafeCodeUnchanged && !QcStationApiKeyValidator.IsStationCodeSafe(stationCode))
+        {
+            return "Station code may contain only letters, numbers, dashes, and underscores. Use dashes instead of spaces, such as MCD-12.";
+        }
+
         var id = form.Id ?? 0;
-        if (await dbContext.QcStations.AnyAsync(x => x.StationCode == form.StationCode.Trim() && x.Id != id, cancellationToken))
+        if (await dbContext.QcStations.AnyAsync(x => x.StationCode == stationCode && x.Id != id, cancellationToken))
         {
             return "Station code must be unique.";
         }

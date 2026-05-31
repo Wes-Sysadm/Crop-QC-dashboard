@@ -57,4 +57,32 @@ public sealed class QcStationApiKeyValidatorTests
         Assert.True(QcStationApiKeyValidator.VerifyHashedApiKey(rawKey, hash));
         Assert.False(QcStationApiKeyValidator.VerifyHashedApiKey(rawKey + "x", hash));
     }
+
+    [Theory]
+    [InlineData("MCD-12")]
+    [InlineData("WP_FTA_01")]
+    [InlineData("EBS123")]
+    public void IsStationCodeSafe_AllowsHeaderSafeCodes(string stationCode)
+    {
+        Assert.True(QcStationApiKeyValidator.IsStationCodeSafe(stationCode));
+    }
+
+    [Theory]
+    [InlineData("MCD 12")]
+    [InlineData("WP/FTA/01")]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void IsStationCodeSafe_RejectsUnsafeCodes(string stationCode)
+    {
+        Assert.False(QcStationApiKeyValidator.IsStationCodeSafe(stationCode));
+    }
+
+    [Theory]
+    [InlineData("MCD 12", "MCD-12")]
+    [InlineData("wp qc station 1", "WP-QC-STATION-1")]
+    [InlineData("EBS / FTA / 02", "EBS-FTA-02")]
+    public void NormalizeStationCode_ConvertsSpacesAndUnsafeCharactersToDashes(string input, string expected)
+    {
+        Assert.Equal(expected, QcStationApiKeyValidator.NormalizeStationCode(input));
+    }
 }

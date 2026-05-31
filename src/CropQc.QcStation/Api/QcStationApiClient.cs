@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using CropQc.Shared.Security;
 
@@ -13,12 +14,18 @@ public sealed class QcStationApiClient(HttpClient httpClient)
             path += $"?warehouseCode={Uri.EscapeDataString(warehouseCode)}";
         }
 
-        return await httpClient.GetFromJsonAsync<IReadOnlyList<QcStationSampleListItem>>(path, cancellationToken)
+        using var response = await httpClient.GetAsync(path, cancellationToken);
+        await EnsureAuthorizedSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<IReadOnlyList<QcStationSampleListItem>>(cancellationToken)
             ?? [];
     }
 
-    public async Task<QcStationSampleDetail?> GetSampleDetailAsync(long sampleId, CancellationToken cancellationToken = default) =>
-        await httpClient.GetFromJsonAsync<QcStationSampleDetail>($"api/qc-station/samples/{sampleId}/pressure", cancellationToken);
+    public async Task<QcStationSampleDetail?> GetSampleDetailAsync(long sampleId, CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.GetAsync($"api/qc-station/samples/{sampleId}/pressure", cancellationToken);
+        await EnsureAuthorizedSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<QcStationSampleDetail>(cancellationToken);
+    }
 
     public async Task<QcStationSampleDetail?> SavePressuresAsync(long sampleId, IReadOnlyList<QcStationPressureRowUpdate> rows, CancellationToken cancellationToken = default)
     {
@@ -26,16 +33,21 @@ public sealed class QcStationApiClient(HttpClient httpClient)
             $"api/qc-station/samples/{sampleId}/pressure",
             new QcStationPressureUpdateRequest(rows),
             cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureAuthorizedSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<QcStationSampleDetail>(cancellationToken);
     }
 
     public static QcStationApiClient Create(string apiBaseUrl, string? stationCode = null, string? apiKey = null, string? stationName = null)
     {
+        return Create(new HttpClientHandler(), apiBaseUrl, stationCode, apiKey, stationName);
+    }
+
+    public static QcStationApiClient Create(HttpMessageHandler handler, string apiBaseUrl, string? stationCode = null, string? apiKey = null, string? stationName = null)
+    {
         var baseUri = string.IsNullOrWhiteSpace(apiBaseUrl)
             ? new Uri("https://localhost:7001")
             : new Uri(apiBaseUrl.Trim().TrimEnd('/') + "/");
-        var client = new HttpClient { BaseAddress = baseUri };
+        var client = new HttpClient(handler) { BaseAddress = baseUri };
         if (!string.IsNullOrWhiteSpace(stationCode))
         {
             client.DefaultRequestHeaders.Add(QcStationApiKeyValidator.StationCodeHeaderName, stationCode.Trim());
@@ -53,4 +65,21 @@ public sealed class QcStationApiClient(HttpClient httpClient)
 
         return new QcStationApiClient(client);
     }
+
+    private static async Task EnsureAuthorizedSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new QcStationAuthorizationException(response.StatusCode, body);
+        }
+
+        response.EnsureSuccessStatusCode();
+    }
+}
+
+public sealed class QcStationAuthorizationException(HttpStatusCode statusCode, string? responseBody = null)
+    : HttpRequestException("QC Station is not authorized.", null, statusCode)
+{
+    public string? ResponseBody { get; } = responseBody;
 }

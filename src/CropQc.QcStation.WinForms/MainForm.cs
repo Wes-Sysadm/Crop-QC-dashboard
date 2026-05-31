@@ -604,8 +604,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            apiStatusTextBox.Text = "API error";
-            AppendLog($"Refresh today's samples failed: {ex.Message}");
+            HandleApiException("Refresh today's samples", ex);
         }
     }
 
@@ -617,39 +616,53 @@ public sealed class MainForm : Form
             return;
         }
 
-        apiClient ??= CreateApiClient();
-        selectedSample = await apiClient.GetSampleDetailAsync(sample.SampleId);
-        if (selectedSample is null)
+        try
         {
-            apiStatusTextBox.Text = "Sample not found";
-            AppendLog($"Sample {sample.SampleId} was not found by the API.");
-            return;
-        }
+            apiClient ??= CreateApiClient();
+            selectedSample = await apiClient.GetSampleDetailAsync(sample.SampleId);
+            if (selectedSample is null)
+            {
+                apiStatusTextBox.Text = "Sample not found";
+                AppendLog($"Sample {sample.SampleId} was not found by the API.");
+                return;
+            }
 
-        LoadSelectedSampleIntoCaptureGrid();
-        hasUnsavedPressureChanges = false;
-        RefreshSampleStatusDisplay();
-        RefreshCaptureDisplay();
-        AppendLog($"Selected sample {selectedSample.DisplayReceiptId} from dashboard API.");
+            LoadSelectedSampleIntoCaptureGrid();
+            hasUnsavedPressureChanges = false;
+            RefreshSampleStatusDisplay();
+            RefreshCaptureDisplay();
+            AppendLog($"Selected sample {selectedSample.DisplayReceiptId} from dashboard API.");
+        }
+        catch (Exception ex)
+        {
+            HandleApiException("Select sample", ex);
+        }
     }
 
     private async Task LoadSampleByIdAsync(long sampleId)
     {
-        apiClient ??= CreateApiClient();
-        selectedSample = await apiClient.GetSampleDetailAsync(sampleId);
-        if (selectedSample is null)
+        try
         {
-            apiStatusTextBox.Text = "Sample not found";
-            AppendLog($"Protocol launch sample {sampleId} was not found by the API.");
-            return;
-        }
+            apiClient ??= CreateApiClient();
+            selectedSample = await apiClient.GetSampleDetailAsync(sampleId);
+            if (selectedSample is null)
+            {
+                apiStatusTextBox.Text = "Sample not found";
+                AppendLog($"Protocol launch sample {sampleId} was not found by the API.");
+                return;
+            }
 
-        LoadSelectedSampleIntoCaptureGrid();
-        hasUnsavedPressureChanges = false;
-        RefreshSampleStatusDisplay();
-        RefreshCaptureDisplay();
-        apiStatusTextBox.Text = $"Loaded sample {selectedSample.DisplayReceiptId}";
-        AppendLog($"Loaded sample {selectedSample.DisplayReceiptId} from protocol launch.");
+            LoadSelectedSampleIntoCaptureGrid();
+            hasUnsavedPressureChanges = false;
+            RefreshSampleStatusDisplay();
+            RefreshCaptureDisplay();
+            apiStatusTextBox.Text = $"Loaded sample {selectedSample.DisplayReceiptId}";
+            AppendLog($"Loaded sample {selectedSample.DisplayReceiptId} from protocol launch.");
+        }
+        catch (Exception ex)
+        {
+            HandleApiException($"Load sample {sampleId}", ex);
+        }
     }
 
     private async Task HandleLaunchRequestAsync()
@@ -689,12 +702,19 @@ public sealed class MainForm : Form
             .Select(row => new QcStationPressureRowUpdate(row.FruitNumber, row.Pressure1Lbs, row.Pressure2Lbs))
             .ToList();
 
-        selectedSample = await apiClient.SavePressuresAsync(selectedSample.SampleId, rows);
-        hasUnsavedPressureChanges = false;
-        lastSaveResultTextBox.Text = $"Saved {rows.Count} rows at {DateTime.Now:HH:mm:ss}";
-        RefreshSampleStatusDisplay();
-        RefreshCaptureDisplay();
-        AppendLog($"Saved {rows.Count} pressure rows to dashboard sample {selectedSample?.DisplayReceiptId}.");
+        try
+        {
+            selectedSample = await apiClient.SavePressuresAsync(selectedSample.SampleId, rows);
+            hasUnsavedPressureChanges = false;
+            lastSaveResultTextBox.Text = $"Saved {rows.Count} rows at {DateTime.Now:HH:mm:ss}";
+            RefreshSampleStatusDisplay();
+            RefreshCaptureDisplay();
+            AppendLog($"Saved {rows.Count} pressure rows to dashboard sample {selectedSample?.DisplayReceiptId}.");
+        }
+        catch (Exception ex)
+        {
+            HandleApiException("Save pressures", ex);
+        }
     }
 
     private QcStationApiClient CreateApiClient() =>
@@ -703,6 +723,28 @@ public sealed class MainForm : Form
             stationService.Configuration.QcStationCode,
             stationService.Configuration.QcStationApiKey,
             stationService.Configuration.StationName);
+
+    private void HandleApiException(string action, Exception ex)
+    {
+        if (ex is QcStationAuthorizationException)
+        {
+            var config = stationService.Configuration;
+            const string message = "QC Station is not authorized. Confirm this station is active in Admin -> QC Stations. If the key was rotated, download/import the latest station config.";
+            apiStatusTextBox.Text = "Not authorized";
+            lastSaveResultTextBox.Text = "Not authorized";
+            AppendLog($"{action} failed: {message}");
+            AppendLog($"StationName: {config.StationName}; QcStationCode: {config.QcStationCode ?? "(missing)"}; ApiBaseUrl: {config.ApiBaseUrl}");
+            MessageBox.Show(
+                $"{message}{Environment.NewLine}{Environment.NewLine}StationName: {config.StationName}{Environment.NewLine}QcStationCode: {config.QcStationCode ?? "(missing)"}{Environment.NewLine}ApiBaseUrl: {config.ApiBaseUrl}",
+                "QC Station not authorized",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        apiStatusTextBox.Text = "API error";
+        AppendLog($"{action} failed: {ex.Message}");
+    }
 
     private void StartContinuousManualCapture()
     {
