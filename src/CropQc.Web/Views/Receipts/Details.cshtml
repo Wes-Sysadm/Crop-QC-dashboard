@@ -38,9 +38,10 @@
 <div class="grid-two">
     <section>
         <h2>Linked Samples</h2>
+        <p class="muted">Use Open in QC Station to capture FTA pressures for a sample. Weight, grade, defects, and other QC details can still be entered on the sample page. Requires Crop QC Station to be installed and station config imported.</p>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Sample</th><th>Status</th><th>Starch</th><th>Ready</th><th>Missing</th><th>Time</th></tr></thead>
+                <thead><tr><th>Sample</th><th>Status</th><th>Starch</th><th>Ready</th><th>Missing</th><th>Time</th><th>Actions</th></tr></thead>
                 <tbody>
                 @foreach (var sample in Model.Samples)
                 {
@@ -76,6 +77,10 @@
                             }
                         </td>
                         <td>@sample.SampleTakenAt.LocalDateTime</td>
+                        <td>
+                            <a class="inline-action" href="/Samples/@sample.Id">View Sample</a>
+                            <a class="inline-action" href="cropqcstation://sample/@sample.Id">Open in QC Station</a>
+                        </td>
                     </tr>
                 }
                 </tbody>
