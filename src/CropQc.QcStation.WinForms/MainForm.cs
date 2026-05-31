@@ -8,7 +8,7 @@ namespace CropQc.QcStation.WinForms;
 public sealed class MainForm : Form
 {
     private readonly IFtaStationService stationService;
-    private readonly string settingsPath;
+    private string settingsPath;
     private readonly TestFruitPressureCapture testFruitCapture = new();
     private QcStationApiClient? apiClient;
     private QcStationSampleDetail? selectedSample;
@@ -87,9 +87,9 @@ public sealed class MainForm : Form
         this.launchRequest = launchRequest;
 
         Text = $"{ProjectInfo.Name} QC Station WinForms FTA Harness";
-        Width = 1380;
-        Height = 1000;
-        MinimumSize = new Size(1120, 820);
+        Width = 1180;
+        Height = 820;
+        MinimumSize = new Size(900, 640);
         apiBaseUrlTextBox.Text = stationService.Configuration.ApiBaseUrl;
         warehouseFilterTextBox.Text = stationService.Configuration.WarehouseCode;
 
@@ -104,27 +104,98 @@ public sealed class MainForm : Form
 
     private void BuildLayout()
     {
+        var menu = new MenuStrip();
+        var setupMenu = new ToolStripMenuItem("Station Setup");
+        setupMenu.DropDownItems.Add("Import Station Config", null, async (_, _) => await ImportStationConfigAsync());
+        setupMenu.DropDownItems.Add("Test Dashboard Connection", null, async (_, _) => await TestDashboardConnectionAsync());
+        menu.Items.Add(setupMenu);
+        MainMenuStrip = menu;
+        Controls.Add(menu);
+
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 6,
-            Padding = new Padding(10)
+            RowCount = 2,
+            Padding = new Padding(10, menu.Height + 6, 10, 10)
         };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(root);
 
-        root.Controls.Add(BuildStatusPanel(), 0, 0);
-        root.Controls.Add(BuildSampleSelectionPanel(), 0, 1);
-        root.Controls.Add(BuildGuidancePanel(), 0, 2);
-        root.Controls.Add(BuildButtonPanel(), 0, 3);
-        root.Controls.Add(BuildPressureCapturePanel(), 0, 4);
-        root.Controls.Add(BuildLogPanel(), 0, 5);
+        var tabs = new TabControl { Dock = DockStyle.Fill };
+        tabs.TabPages.Add(BuildScrollableTab("Setup / Connection", BuildStackedPanel(BuildStationSetupPanel(), BuildStatusPanel())));
+        tabs.TabPages.Add(BuildScrollableTab("Sample Selection", BuildSampleSelectionPanel()));
+        tabs.TabPages.Add(BuildScrollableTab("FTA Capture", BuildStackedPanel(BuildGuidancePanel(), BuildButtonPanel(), BuildCaptureFieldsPanel())));
+        tabs.TabPages.Add(BuildTab("Pressure Grid", BuildPressureTablesPanel()));
+        tabs.TabPages.Add(BuildTab("Logs / Diagnostics", BuildLogPanel()));
+        root.Controls.Add(tabs, 0, 0);
+    }
+
+    private static TabPage BuildScrollableTab(string title, Control content)
+    {
+        var tab = new TabPage(title) { AutoScroll = true };
+        content.Dock = DockStyle.Top;
+        tab.Controls.Add(content);
+        return tab;
+    }
+
+    private static TabPage BuildTab(string title, Control content)
+    {
+        var tab = new TabPage(title);
+        content.Dock = DockStyle.Fill;
+        tab.Controls.Add(content);
+        return tab;
+    }
+
+    private static Control BuildStackedPanel(params Control[] controls)
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            ColumnCount = 1,
+            RowCount = controls.Length,
+            Padding = new Padding(8)
+        };
+
+        for (var index = 0; index < controls.Length; index++)
+        {
+            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            controls[index].Dock = DockStyle.Top;
+            controls[index].Margin = new Padding(0, 0, 0, 10);
+            panel.Controls.Add(controls[index], 0, index);
+        }
+
+        return panel;
+    }
+
+    private Control BuildStationSetupPanel()
+    {
+        var group = new GroupBox
+        {
+            Dock = DockStyle.Top,
+            Text = "Station Setup",
+            AutoSize = true
+        };
+
+        var flow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            Padding = new Padding(10),
+            WrapContents = true
+        };
+        group.Controls.Add(flow);
+        AddSampleButton(flow, "Import Station Config", ImportStationConfigAsync);
+        AddSampleButton(flow, "Test Dashboard Connection", TestDashboardConnectionAsync);
+        flow.Controls.Add(new Label
+        {
+            Text = "Import downloaded qcstation.settings.json after station key rotation. The app installs it to ProgramData and never displays the API key.",
+            AutoSize = true,
+            MaximumSize = new Size(760, 0),
+            Margin = new Padding(8, 8, 4, 4)
+        });
+        return group;
     }
 
     private Control BuildStatusPanel()
@@ -195,7 +266,7 @@ public sealed class MainForm : Form
             AutoSize = true,
             Padding = new Padding(4, 8, 4, 4),
             Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold),
-            Text = "Recommended workflow: Click Start Continuous Manual Capture once, then press and hold the green FTA button for each test. Readings auto-fill Pressure 1, Pressure 2, then advance to the next fruit. Auto firmness reading is experimental and is not supported on the current unit."
+            Text = "Use Manual/Button mode only. Click Start Continuous Manual Capture once, then press and hold the green FTA button for each test. If the probe travels too far or behaves unexpectedly, click Stop/Cancel and use FTA Setup/Calibration before continuing."
         };
 
     private Control BuildSampleSelectionPanel()
@@ -305,12 +376,14 @@ public sealed class MainForm : Form
         AddContinuousButton(flow, "Start Continuous Manual Capture", StartContinuousManualCapture);
         AddContinuousButton(flow, "Stop Continuous Capture", StopContinuousCapture);
         AddCommand(flow, "Start Manual/Button Firmness Reading - Recommended", () => stationService.StartPressureReadingAsync());
-        AddReadingCommand(flow, "Start Auto Firmness Reading - Experimental", () => stationService.StartAutoFirmnessReadingAsync());
+        var autoButton = CreateButton("Start Auto Firmness Reading - Disabled");
+        autoButton.Enabled = false;
+        autoButton.Tag = "AlwaysDisabled";
+        flow.Controls.Add(autoButton);
         AddReadingCommand(flow, "Start And Wait Manual/Button Reading - Recommended", () => stationService.StartAndWaitManualFirmnessReadingAsync());
         AddReadingCommand(flow, "Demo-Style Manual/Button Reading", () => stationService.DemoStyleManualButtonReadingAsync());
-        AddReadingCommand(flow, "Demo-Style Auto Reading - Experimental", () => stationService.DemoStyleAutoReadingAsync());
         AddReadingCommand(flow, "Get Latest Reading", () => stationService.GetLatestPressureReadingAsync());
-        AddCommand(flow, "Cancel", () => stationService.CancelReadingAsync());
+        AddCommand(flow, "Cancel FTA Action", () => stationService.CancelReadingAsync());
         AddCommand(flow, "Return Probe Home", () => stationService.ReturnProbeHomeAsync());
         AddCaptureButton(flow, "Quit/Disconnect FTA", QuitDisconnectFtaAsync);
 
@@ -352,6 +425,22 @@ public sealed class MainForm : Form
         root.Controls.Add(BuildReadingHistoryPanel(), 2, 0);
 
         return group;
+    }
+
+    private Control BuildPressureTablesPanel()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Padding = new Padding(10)
+        };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        root.Controls.Add(BuildFruitPressureGridPanel(), 0, 0);
+        root.Controls.Add(BuildReadingHistoryPanel(), 1, 0);
+        return root;
     }
 
     private Control BuildCaptureFieldsPanel()
@@ -692,7 +781,18 @@ public sealed class MainForm : Form
     {
         if (selectedSample is null)
         {
-            AppendLog("Save requested, but no dashboard sample is selected.");
+            lastSaveResultTextBox.Text = "Select a sample before saving pressures.";
+            AppendLog("Select a sample before saving pressures.");
+            return;
+        }
+
+        var config = stationService.Configuration;
+        if (string.IsNullOrWhiteSpace(config.ApiBaseUrl)
+            || string.IsNullOrWhiteSpace(config.QcStationCode)
+            || string.IsNullOrWhiteSpace(config.QcStationApiKey))
+        {
+            lastSaveResultTextBox.Text = "Station config missing.";
+            AppendLog("Save requested, but station config is missing ApiBaseUrl, QcStationCode, or QcStationApiKey.");
             return;
         }
 
@@ -701,15 +801,27 @@ public sealed class MainForm : Form
             .Where(row => row.Pressure1Lbs is not null || row.Pressure2Lbs is not null)
             .Select(row => new QcStationPressureRowUpdate(row.FruitNumber, row.Pressure1Lbs, row.Pressure2Lbs))
             .ToList();
+        if (rows.Count == 0)
+        {
+            lastSaveResultTextBox.Text = "No pressure values to save.";
+            AppendLog("Save requested, but there are no pressure values to send.");
+            return;
+        }
 
         try
         {
+            AppendLog($"Save pressures started. SampleId: {selectedSample.SampleId}; StationCode: {config.QcStationCode}; RowCount: {rows.Count}.");
+            foreach (var row in rows)
+            {
+                AppendLog($"Save row {row.RowNumber}: P1={FormatPressure(row.Pressure1Lbs)}, P2={FormatPressure(row.Pressure2Lbs)}.");
+            }
+
             selectedSample = await apiClient.SavePressuresAsync(selectedSample.SampleId, rows);
             hasUnsavedPressureChanges = false;
-            lastSaveResultTextBox.Text = $"Saved {rows.Count} rows at {DateTime.Now:HH:mm:ss}";
+            lastSaveResultTextBox.Text = "Saved pressures to dashboard.";
             RefreshSampleStatusDisplay();
             RefreshCaptureDisplay();
-            AppendLog($"Saved {rows.Count} pressure rows to dashboard sample {selectedSample?.DisplayReceiptId}.");
+            AppendLog($"Saved pressures to dashboard. Rows: {rows.Count}; Sample: {selectedSample?.DisplayReceiptId}.");
         }
         catch (Exception ex)
         {
@@ -742,8 +854,53 @@ public sealed class MainForm : Form
             return;
         }
 
+        if (ex is QcStationApiException apiException)
+        {
+            var safeBody = string.IsNullOrWhiteSpace(apiException.ResponseBody) ? "(no response body)" : apiException.ResponseBody;
+            apiStatusTextBox.Text = "API error";
+            lastSaveResultTextBox.Text = $"Save failed: HTTP {(int?)apiException.StatusCode} {apiException.StatusCode}";
+            AppendLog($"{action} failed: HTTP {(int?)apiException.StatusCode} {apiException.StatusCode}. Response: {safeBody}");
+            return;
+        }
+
         apiStatusTextBox.Text = "API error";
+        lastSaveResultTextBox.Text = $"Save failed: {ex.Message}";
         AppendLog($"{action} failed: {ex.Message}");
+    }
+
+    private async Task ImportStationConfigAsync()
+    {
+        using var importForm = new ConfigImportForm(StationConfiguration.InstalledSettingsPath, launchRequest);
+        if (importForm.ShowDialog(this) != DialogResult.OK || !File.Exists(StationConfiguration.InstalledSettingsPath))
+        {
+            AppendLog("Station config import was cancelled or did not install a config.");
+            return;
+        }
+
+        settingsPath = StationConfiguration.InstalledSettingsPath;
+        var importedConfiguration = StationConfiguration.Load(settingsPath);
+        stationService.Configuration.CopyFrom(importedConfiguration);
+        apiBaseUrlTextBox.Text = importedConfiguration.ApiBaseUrl;
+        warehouseFilterTextBox.Text = importedConfiguration.WarehouseCode;
+        apiClient = null;
+        RefreshStatusDisplay();
+        AppendLog($"Station config imported. StationName: {importedConfiguration.StationName}; QcStationCode: {importedConfiguration.QcStationCode}; WarehouseCode: {importedConfiguration.WarehouseCode}; ApiBaseUrl: {importedConfiguration.ApiBaseUrl}.");
+        await TestDashboardConnectionAsync();
+    }
+
+    private async Task TestDashboardConnectionAsync()
+    {
+        try
+        {
+            apiClient = CreateApiClient();
+            var samples = await apiClient.GetTodaySamplesAsync(warehouseFilterTextBox.Text);
+            apiStatusTextBox.Text = "Connected successfully";
+            AppendLog($"Dashboard connection test succeeded. Today's sample count for warehouse '{warehouseFilterTextBox.Text}': {samples.Count}.");
+        }
+        catch (Exception ex)
+        {
+            HandleApiException("Test dashboard connection", ex);
+        }
     }
 
     private void StartContinuousManualCapture()
@@ -778,8 +935,19 @@ public sealed class MainForm : Form
             return;
         }
 
-        continuousCaptureCts?.Cancel();
         AppendLog("Continuous capture stop requested.");
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await stationService.CancelReadingAsync();
+            }
+            catch (Exception ex)
+            {
+                BeginInvoke(() => AppendLog($"Stop Continuous Capture: Cancel FTA Action failed: {ex.Message}"));
+            }
+        });
+        continuousCaptureCts?.Cancel();
     }
 
     private async Task StopContinuousCaptureForShutdownAsync(string reason)
@@ -906,6 +1074,7 @@ public sealed class MainForm : Form
     private async Task ArmContinuousManualReadingAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        await WaitForManualRearmReadyAsync(cancellationToken);
         var status = await stationService.StartPressureReadingAsync(cancellationToken);
         RenderNewServiceLogEntries();
         if (!status.IsInitialized)
@@ -921,6 +1090,56 @@ public sealed class MainForm : Form
         // FTAReadMaxFirmness resets the new-reading bit per SDK. Give the DLL/UI
         // message loop a short breath before accepting another reading event.
         await Task.Delay(500, cancellationToken);
+    }
+
+    private async Task WaitForManualRearmReadyAsync(CancellationToken cancellationToken)
+    {
+        var config = stationService.Configuration;
+        var delayMs = config.FtaManualRearmDelayMs > 0 ? config.FtaManualRearmDelayMs : 2000;
+        if (!config.FtaManualCaptureSafeMode)
+        {
+            await Task.Delay(delayMs, cancellationToken);
+            return;
+        }
+
+        continuousStatusTextBox.Text = "Waiting for FTA home";
+        AppendLog("Waiting for FTA to return home before next test.");
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(8);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var status = await stationService.DiagnosticStatusAsync(cancellationToken);
+            RenderNewServiceLogEntries();
+            if (!status.IsConnected && config.FtaMode == FtaMode.RealDll)
+            {
+                throw new InvalidOperationException(status.ErrorMessage ?? "FTA connection was lost while waiting to re-arm.");
+            }
+
+            if (StatusIndicatesProbeAtTop(status.StatusMessage))
+            {
+                continuousStatusTextBox.Text = "FTA ready";
+                return;
+            }
+
+            await Task.Delay(500, cancellationToken);
+        }
+
+        AppendLog($"Probe-at-top status was not confirmed; waiting configured safe re-arm delay of {delayMs} ms.");
+        await Task.Delay(delayMs, cancellationToken);
+    }
+
+    private static bool StatusIndicatesProbeAtTop(string statusMessage)
+    {
+        const string marker = "FTABitStatus(5) probe at top";
+        var index = statusMessage.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        var end = statusMessage.IndexOf('|', index);
+        var segment = end < 0 ? statusMessage[index..] : statusMessage[index..end];
+        return segment.Contains("Yes", StringComparison.OrdinalIgnoreCase);
     }
 
     private Task CaptureLatestReadingAsync(PressureCaptureTarget target)
@@ -994,7 +1213,7 @@ public sealed class MainForm : Form
     {
         foreach (var button in Controls.OfType<Control>().SelectMany(Descendants).OfType<Button>())
         {
-            button.Enabled = enabled;
+            button.Enabled = enabled && !string.Equals(button.Tag as string, "AlwaysDisabled", StringComparison.Ordinal);
         }
     }
 

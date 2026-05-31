@@ -1,3 +1,4 @@
+using CropQc.QcStation.Api;
 using CropQc.QcStation.Fta;
 
 namespace CropQc.QcStation.WinForms;
@@ -63,7 +64,7 @@ public sealed class ConfigImportForm : Form
         var picker = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top };
         picker.Controls.Add(selectedFileTextBox);
         var browseButton = new Button { Text = "Browse for qcstation.settings.json", AutoSize = true };
-        browseButton.Click += (_, _) => BrowseAndImport();
+        browseButton.Click += async (_, _) => await BrowseAndImportAsync();
         picker.Controls.Add(browseButton);
         root.Controls.Add(picker, 0, 3);
 
@@ -74,7 +75,7 @@ public sealed class ConfigImportForm : Form
         root.Controls.Add(closeButton, 0, 5);
     }
 
-    private void BrowseAndImport()
+    private async Task BrowseAndImportAsync()
     {
         using var dialog = new OpenFileDialog
         {
@@ -91,10 +92,17 @@ public sealed class ConfigImportForm : Form
         selectedFileTextBox.Text = dialog.FileName;
         try
         {
+            var sourceConfiguration = StationConfigurationImport.ValidateSource(dialog.FileName);
             var installedPath = StationConfigurationImport.Import(dialog.FileName, targetPath);
             var configuration = StationConfiguration.Load(installedPath);
+            var connectionStatus = await TestConnectionAsync(configuration);
             statusLabel.ForeColor = Color.DarkGreen;
-            statusLabel.Text = $"Station configuration imported successfully. Station: {configuration.StationName} ({configuration.QcStationCode}), Warehouse: {configuration.WarehouseCode}. Restarting station screen...";
+            statusLabel.Text = $"Config installed successfully. StationName: {configuration.StationName}; QcStationCode: {configuration.QcStationCode}; WarehouseCode: {configuration.WarehouseCode}; ApiBaseUrl: {configuration.ApiBaseUrl}. {connectionStatus}";
+            MessageBox.Show(
+                $"Config installed successfully.{Environment.NewLine}{Environment.NewLine}StationName: {sourceConfiguration.StationName}{Environment.NewLine}QcStationCode: {sourceConfiguration.QcStationCode}{Environment.NewLine}WarehouseCode: {sourceConfiguration.WarehouseCode}{Environment.NewLine}ApiBaseUrl: {sourceConfiguration.ApiBaseUrl}{Environment.NewLine}{Environment.NewLine}{connectionStatus}",
+                "Station config installed",
+                MessageBoxButtons.OK,
+                connectionStatus.StartsWith("Connected", StringComparison.OrdinalIgnoreCase) ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
             DialogResult = DialogResult.OK;
             Close();
         }
@@ -102,6 +110,34 @@ public sealed class ConfigImportForm : Form
         {
             statusLabel.ForeColor = Color.DarkRed;
             statusLabel.Text = $"Configuration import failed: {ex.Message}. If Windows blocks the copy, run Crop QC Station as administrator and try again.";
+        }
+    }
+
+    private static async Task<string> TestConnectionAsync(StationConfiguration configuration)
+    {
+        try
+        {
+            var client = QcStationApiClient.Create(
+                configuration.ApiBaseUrl,
+                configuration.QcStationCode,
+                configuration.QcStationApiKey,
+                configuration.StationName);
+            await client.GetTodaySamplesAsync(configuration.WarehouseCode);
+            return "Connected successfully.";
+        }
+        catch (QcStationAuthorizationException ex)
+        {
+            return ex.StatusCode == System.Net.HttpStatusCode.Forbidden
+                ? "Station inactive or not authorized. Confirm this station is active in Admin -> QC Stations."
+                : "Station not authorized. The key may be invalid or rotated; download/import the latest station config.";
+        }
+        catch (HttpRequestException ex)
+        {
+            return $"Server unavailable or connection failed: {ex.Message}";
+        }
+        catch (TaskCanceledException)
+        {
+            return "Server unavailable or connection timed out.";
         }
     }
 }

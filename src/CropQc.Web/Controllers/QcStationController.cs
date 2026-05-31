@@ -81,19 +81,27 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
             return auth.Result;
         }
         var station = auth.Station!;
+        var stationName = station.StationName == "" ? station.Name : station.StationName;
+        logger.LogInformation(
+            "QC Station pressure save requested. StationCode: {StationCode}; StationName: {StationName}; SampleId: {SampleId}; RowCount: {RowCount}.",
+            station.StationCode,
+            stationName,
+            sampleId,
+            request.Rows?.Count ?? 0);
 
         var sample = await LoadSampleAsync(sampleId, asTracking: true, cancellationToken);
         if (sample is null)
         {
+            logger.LogWarning("QC Station pressure save rejected: sample not found. StationCode: {StationCode}; SampleId: {SampleId}.", station.StationCode, sampleId);
             return NotFound(new { error = "QC sample not found." });
         }
 
-        if (request.Rows is null)
+        if (request.Rows is null || request.Rows.Count == 0)
         {
-            return BadRequest(new { error = "Rows are required." });
+            logger.LogWarning("QC Station pressure save rejected: no pressure rows. StationCode: {StationCode}; SampleId: {SampleId}.", station.StationCode, sampleId);
+            return BadRequest(new { error = "At least one pressure row is required." });
         }
 
-        var stationName = station.StationName == "" ? station.Name : station.StationName;
         var before = sample.FruitReadings
             .OrderBy(x => x.RowNumber)
             .Select(x => new { x.RowNumber, x.Pressure1Lbs, x.Pressure2Lbs })
@@ -104,6 +112,7 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
         {
             if (row.RowNumber is < 1 or > 25)
             {
+                logger.LogWarning("QC Station pressure save rejected: invalid row number {RowNumber}. StationCode: {StationCode}; SampleId: {SampleId}.", row.RowNumber, station.StationCode, sampleId);
                 return BadRequest(new { error = $"RowNumber {row.RowNumber} must be between 1 and 25." });
             }
 
