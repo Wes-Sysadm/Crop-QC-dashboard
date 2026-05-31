@@ -267,12 +267,25 @@ public sealed class QcStationInstallerWorkflowTests
     {
         var mainForm = File.ReadAllText(FindRepositoryFile("src", "CropQc.QcStation.WinForms", "MainForm.cs"));
         var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.QcStation.WinForms", "Program.cs"));
+        var ftaButtonPanel = ExtractBetween(mainForm, "private Control BuildButtonPanel()", "private Control BuildPressureCapturePanel()");
 
-        Assert.Contains("Open FTA Setup / Calibration", mainForm);
+        Assert.Contains("AddFtaCommand(flow, \"Initialize\"", ftaButtonPanel);
+        Assert.Contains("AddFtaCommand(flow, \"Calibration\"", ftaButtonPanel);
+        Assert.Contains("AddFtaCommand(flow, \"Diagnostics\"", ftaButtonPanel);
+        Assert.Contains("AddFtaContinuousButton(flow, \"Start Manual Capture\"", ftaButtonPanel);
+        Assert.Contains("AddFtaContinuousButton(flow, \"Stop Capture\"", ftaButtonPanel);
+        Assert.Contains("AddFtaCaptureButton(flow, \"Quit\"", ftaButtonPanel);
+        Assert.Contains("Use Manual/Button mode only. Press and hold the physical FTA button for each test.", mainForm);
         Assert.Contains("stationService.OpenSetupAsync()", mainForm);
-        Assert.Contains("FTA Diagnostic Status", mainForm);
-        Assert.Contains("Return Probe Home", mainForm);
-        Assert.Contains("Cancel FTA Action", mainForm);
+        Assert.DoesNotContain("Start Auto", ftaButtonPanel);
+        Assert.DoesNotContain("Auto Firmness", ftaButtonPanel);
+        Assert.DoesNotContain("Demo-Style", ftaButtonPanel);
+        Assert.DoesNotContain("Get Latest", ftaButtonPanel);
+        Assert.DoesNotContain("Start And Wait", ftaButtonPanel);
+        Assert.DoesNotContain("Manual/Button Firmness", ftaButtonPanel);
+        Assert.DoesNotContain("Return Probe", ftaButtonPanel);
+        Assert.DoesNotContain("Cancel FTA", ftaButtonPanel);
+        Assert.DoesNotContain("Clear Log", ftaButtonPanel);
         Assert.Contains("Import / Replace Station Config", mainForm);
         Assert.Contains("Open Config Folder", mainForm);
         Assert.Contains("Forget Current Config", mainForm);
@@ -312,5 +325,14 @@ public sealed class QcStationInstallerWorkflowTests
         }
 
         throw new FileNotFoundException($"Could not find repository file {Path.Combine(pathParts)}.");
+    }
+
+    private static string ExtractBetween(string value, string start, string end)
+    {
+        var startIndex = value.IndexOf(start, StringComparison.Ordinal);
+        Assert.True(startIndex >= 0, $"Could not find start marker '{start}'.");
+        var endIndex = value.IndexOf(end, startIndex, StringComparison.Ordinal);
+        Assert.True(endIndex > startIndex, $"Could not find end marker '{end}'.");
+        return value[startIndex..endIndex];
     }
 }

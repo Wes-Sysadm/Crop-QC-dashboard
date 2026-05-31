@@ -272,7 +272,7 @@ public sealed class MainForm : Form
             AutoSize = true,
             Padding = new Padding(4, 8, 4, 4),
             Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold),
-            Text = "Use Manual/Button mode only. Click Start Continuous Manual Capture once, then press and hold the green FTA button for each test. If the probe travels too far or behaves unexpectedly, click Stop/Cancel and use FTA Setup/Calibration before continuing."
+            Text = "Use Manual/Button mode only. Press and hold the physical FTA button for each test. If the probe travels too far or behaves unexpectedly, click Stop Capture and use Calibration before continuing."
         };
 
     private Control BuildSampleSelectionPanel()
@@ -362,7 +362,7 @@ public sealed class MainForm : Form
         var group = new GroupBox
         {
             Dock = DockStyle.Top,
-            Text = "FTA Commands - Manual/Button Reading Recommended",
+            Text = "FTA Capture - Manual/Button Mode",
             AutoSize = true
         };
 
@@ -375,33 +375,12 @@ public sealed class MainForm : Form
         };
         group.Controls.Add(flow);
 
-        AddCommand(flow, "Initialize FTA", () => stationService.InitializeAsync());
-        AddCommand(flow, "Initialize FTA With Config Path", () => stationService.InitializeWithConfigPathAsync());
-        AddCommand(flow, "Open FTA Setup / Calibration", () => stationService.OpenSetupAsync());
-        AddCommand(flow, "FTA Diagnostic Status", () => stationService.DiagnosticStatusAsync());
-        AddContinuousButton(flow, "Start Continuous Manual Capture", StartContinuousManualCapture);
-        AddContinuousButton(flow, "Stop Continuous Capture", StopContinuousCapture);
-        AddCommand(flow, "Start Manual/Button Firmness Reading - Recommended", () => stationService.StartPressureReadingAsync());
-        var autoButton = CreateButton("Start Auto Firmness Reading - Disabled");
-        autoButton.Enabled = false;
-        autoButton.Tag = "AlwaysDisabled";
-        flow.Controls.Add(autoButton);
-        AddReadingCommand(flow, "Start And Wait Manual/Button Reading - Recommended", () => stationService.StartAndWaitManualFirmnessReadingAsync());
-        AddReadingCommand(flow, "Demo-Style Manual/Button Reading", () => stationService.DemoStyleManualButtonReadingAsync());
-        AddReadingCommand(flow, "Get Latest Reading", () => stationService.GetLatestPressureReadingAsync());
-        AddCommand(flow, "Cancel FTA Action", () => stationService.CancelReadingAsync());
-        AddCommand(flow, "Return Probe Home", () => stationService.ReturnProbeHomeAsync());
-        AddCaptureButton(flow, "Quit/Disconnect FTA", QuitDisconnectFtaAsync);
-
-        var clearButton = CreateButton("Clear Log");
-        clearButton.Click += (_, _) =>
-        {
-            stationService.ClearLog();
-            renderedLogCount = 0;
-            logTextBox.Clear();
-            AppendLog("Log cleared.");
-        };
-        flow.Controls.Add(clearButton);
+        AddFtaCommand(flow, "Initialize", () => stationService.InitializeAsync());
+        AddFtaCommand(flow, "Calibration", () => stationService.OpenSetupAsync());
+        AddFtaCommand(flow, "Diagnostics", () => stationService.DiagnosticStatusAsync());
+        AddFtaContinuousButton(flow, "Start Manual Capture", StartContinuousManualCapture);
+        AddFtaContinuousButton(flow, "Stop Capture", StopContinuousCapture);
+        AddFtaCaptureButton(flow, "Quit", QuitDisconnectFtaAsync);
 
         return group;
     }
@@ -597,6 +576,31 @@ public sealed class MainForm : Form
         return group;
     }
 
+    private void AddFtaCommand(FlowLayoutPanel flow, string text, Func<Task<FtaDeviceStatus>> command)
+    {
+        var button = CreateFtaCommandButton(text);
+        button.Click += async (_, _) => await RunCommandAsync(text, async () =>
+        {
+            var status = await command();
+            AppendLog($"{text}: {status.StatusMessage}{(string.IsNullOrWhiteSpace(status.ErrorMessage) ? "" : $" Error: {status.ErrorMessage}")}");
+        });
+        flow.Controls.Add(button);
+    }
+
+    private void AddFtaCaptureButton(FlowLayoutPanel flow, string text, Func<Task> command)
+    {
+        var button = CreateFtaCommandButton(text);
+        button.Click += async (_, _) => await RunCommandAsync(text, command);
+        flow.Controls.Add(button);
+    }
+
+    private void AddFtaContinuousButton(FlowLayoutPanel flow, string text, Action command)
+    {
+        var button = CreateFtaCommandButton(text);
+        button.Click += (_, _) => command();
+        flow.Controls.Add(button);
+    }
+
     private void AddCommand(FlowLayoutPanel flow, string text, Func<Task<FtaDeviceStatus>> command)
     {
         var button = CreateButton(text);
@@ -649,6 +653,18 @@ public sealed class MainForm : Form
             AutoSize = true,
             Margin = new Padding(4),
             Padding = new Padding(8, 5, 8, 5)
+        };
+
+    private static Button CreateFtaCommandButton(string text) =>
+        new()
+        {
+            Text = text,
+            AutoSize = false,
+            Width = 178,
+            Height = 48,
+            Margin = new Padding(6),
+            Padding = new Padding(8, 6, 8, 6),
+            TextAlign = ContentAlignment.MiddleCenter
         };
 
     private static TextBox CreateReadOnlyTextBox(int width = 220) =>
