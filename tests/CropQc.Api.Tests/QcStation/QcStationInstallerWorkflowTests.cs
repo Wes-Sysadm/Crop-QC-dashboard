@@ -90,6 +90,10 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("Rotate Key and Download Config JSON", view);
         Assert.Contains("The MSI contains no station secrets", view);
         Assert.Contains("QcStationConfigDownload(string FileName, string Json)", service);
+        Assert.Contains("FtaManualCaptureSafeMode = true", service);
+        Assert.Contains("FtaManualRearmDelayMs = 750", service);
+        Assert.Contains("FtaHomePollIntervalMs = 150", service);
+        Assert.Contains("FtaMaxHomeWaitMs = 5000", service);
         Assert.DoesNotContain("ZipArchive", service);
         Assert.DoesNotContain("PackageBytes", service);
     }
@@ -277,6 +281,13 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("AddFtaCaptureButton(flow, \"Quit\"", ftaButtonPanel);
         Assert.Contains("Use Manual/Button mode only. Press and hold the physical FTA button for each test.", mainForm);
         Assert.Contains("stationService.OpenSetupAsync()", mainForm);
+        Assert.Contains("Auto-save after each captured reading", mainForm);
+        Assert.Contains("Checked = true", mainForm);
+        Assert.Contains("Save / Retry Unsaved Pressures", mainForm);
+        Assert.Contains("QueueAutoSave(capture)", mainForm);
+        Assert.Contains("FtaHomePollIntervalMs", mainForm);
+        Assert.Contains("FtaMaxHomeWaitMs", mainForm);
+        Assert.Contains("Ready for next FTA button press.", mainForm);
         Assert.DoesNotContain("Start Auto", ftaButtonPanel);
         Assert.DoesNotContain("Auto Firmness", ftaButtonPanel);
         Assert.DoesNotContain("Demo-Style", ftaButtonPanel);

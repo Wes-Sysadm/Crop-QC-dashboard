@@ -112,4 +112,15 @@ public sealed class TestFruitPressureCaptureTests
 
         Assert.False(capture.ShouldCaptureReading(reading));
     }
+
+    [Fact]
+    public void StationConfiguration_DefaultsToSmoothSafeManualRearm()
+    {
+        var configuration = new StationConfiguration();
+
+        Assert.True(configuration.FtaManualCaptureSafeMode);
+        Assert.Equal(750, configuration.FtaManualRearmDelayMs);
+        Assert.Equal(150, configuration.FtaHomePollIntervalMs);
+        Assert.Equal(5000, configuration.FtaMaxHomeWaitMs);
+    }
 }

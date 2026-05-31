@@ -16,7 +16,9 @@ public sealed class StationConfiguration
     public string FtaConfigPath { get; set; } = @"C:\Program Files\FTADLL\FTA_DLL.CFG";
     public int FtaReadingTimeoutSeconds { get; set; } = 60;
     public bool FtaManualCaptureSafeMode { get; set; } = true;
-    public int FtaManualRearmDelayMs { get; set; } = 2000;
+    public int FtaManualRearmDelayMs { get; set; } = 750;
+    public int FtaHomePollIntervalMs { get; set; } = 150;
+    public int FtaMaxHomeWaitMs { get; set; } = 5000;
     public string? FtaWorkingDirectory { get; set; }
     public string? ComPort { get; set; }
     public string ApiBaseUrl { get; set; } = "https://localhost:7001";
@@ -114,6 +116,8 @@ public sealed class StationConfiguration
         FtaReadingTimeoutSeconds = source.FtaReadingTimeoutSeconds;
         FtaManualCaptureSafeMode = source.FtaManualCaptureSafeMode;
         FtaManualRearmDelayMs = source.FtaManualRearmDelayMs;
+        FtaHomePollIntervalMs = source.FtaHomePollIntervalMs;
+        FtaMaxHomeWaitMs = source.FtaMaxHomeWaitMs;
         FtaWorkingDirectory = source.FtaWorkingDirectory;
         ComPort = source.ComPort;
         ApiBaseUrl = source.ApiBaseUrl;

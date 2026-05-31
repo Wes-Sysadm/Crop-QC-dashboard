@@ -22,7 +22,8 @@ public sealed class MainForm : Form
     private readonly TextBox sampleContextTextBox = CreateReadOnlyTextBox(520);
     private readonly TextBox unsavedChangesTextBox = CreateReadOnlyTextBox(120);
     private readonly TextBox lastSaveResultTextBox = CreateReadOnlyTextBox(260);
-    private readonly CheckBox autoSaveCompletedFruitCheckBox = new() { Text = "Auto-save after each completed fruit", AutoSize = true };
+    private readonly CheckBox autoSaveCompletedFruitCheckBox = new() { Text = "Auto-save after each captured reading", AutoSize = true, Checked = true };
+    private readonly SemaphoreSlim pressureSaveLock = new(1, 1);
     private readonly ListView sampleListView = new()
     {
         Dock = DockStyle.Fill,
@@ -306,7 +307,7 @@ public sealed class MainForm : Form
         controls.Controls.Add(warehouseFilterTextBox);
         AddSampleButton(controls, "Refresh Today's Samples", RefreshTodaySamplesAsync);
         AddSampleButton(controls, "Select Sample", SelectCurrentSampleAsync);
-        AddSampleButton(controls, "Save Pressures to Dashboard", SavePressuresToDashboardAsync);
+        AddSampleButton(controls, "Save / Retry Unsaved Pressures", SavePressuresToDashboardAsync);
         controls.Controls.Add(autoSaveCompletedFruitCheckBox);
         root.Controls.Add(controls, 0, 0);
 
@@ -484,7 +485,7 @@ public sealed class MainForm : Form
         {
             AutoSize = true,
             MaximumSize = new Size(390, 0),
-            Text = "Capture stays local until saved. Save Pressures to Dashboard updates only Pressure 1 and Pressure 2 on the selected sample."
+            Text = "Auto-save is on by default. Save / Retry Unsaved Pressures updates only Pressure 1 and Pressure 2 on the selected sample."
         };
         AddCaptureRow(panel, "", note, 10);
 
@@ -806,12 +807,29 @@ public sealed class MainForm : Form
             row.Pressure1Lbs is null ? "Missing P1" : row.Pressure2Lbs is null ? "Missing P2" : "Complete")));
     }
 
-    private async Task SavePressuresToDashboardAsync()
+    private Task SavePressuresToDashboardAsync() =>
+        SavePressuresToDashboardAsync(autoSave: false, capture: null);
+
+    private async Task SavePressuresToDashboardAsync(bool autoSave, CapturedPressureHistoryEntry? capture)
     {
+        await pressureSaveLock.WaitAsync();
+        try
+        {
+            await SavePressuresToDashboardCoreAsync(autoSave, capture);
+        }
+        finally
+        {
+            pressureSaveLock.Release();
+        }
+    }
+
+    private async Task SavePressuresToDashboardCoreAsync(bool autoSave, CapturedPressureHistoryEntry? capture)
+    {
+        var actionName = autoSave ? "Auto-save pressures" : "Save pressures";
         if (selectedSample is null)
         {
             lastSaveResultTextBox.Text = "Select a sample before saving pressures.";
-            AppendLog("Select a sample before saving pressures.");
+            AppendLog($"{actionName}: select a sample before saving pressures.");
             return;
         }
 
@@ -821,7 +839,7 @@ public sealed class MainForm : Form
             || string.IsNullOrWhiteSpace(config.QcStationApiKey))
         {
             lastSaveResultTextBox.Text = "Station config missing.";
-            AppendLog("Save requested, but station config is missing ApiBaseUrl, QcStationCode, or QcStationApiKey.");
+            AppendLog($"{actionName}: station config is missing ApiBaseUrl, QcStationCode, or QcStationApiKey.");
             return;
         }
 
@@ -833,28 +851,53 @@ public sealed class MainForm : Form
         if (rows.Count == 0)
         {
             lastSaveResultTextBox.Text = "No pressure values to save.";
-            AppendLog("Save requested, but there are no pressure values to send.");
+            AppendLog($"{actionName}: there are no pressure values to send.");
             return;
         }
 
         try
         {
-            AppendLog($"Save pressures started. SampleId: {selectedSample.SampleId}; StationCode: {config.QcStationCode}; RowCount: {rows.Count}.");
+            if (autoSave && capture is not null)
+            {
+                lastSaveResultTextBox.Text = $"Saving Fruit {capture.FruitNumber} {capture.TargetSlot}...";
+                continuousStatusTextBox.Text = "Saving to dashboard...";
+            }
+
+            AppendLog($"{actionName} started. SampleId: {selectedSample.SampleId}; StationCode: {config.QcStationCode}; RowCount: {rows.Count}.");
             foreach (var row in rows)
             {
-                AppendLog($"Save row {row.RowNumber}: P1={FormatPressure(row.Pressure1Lbs)}, P2={FormatPressure(row.Pressure2Lbs)}.");
+                AppendLog($"{actionName} row {row.RowNumber}: P1={FormatPressure(row.Pressure1Lbs)}, P2={FormatPressure(row.Pressure2Lbs)}.");
             }
 
             selectedSample = await apiClient.SavePressuresAsync(selectedSample.SampleId, rows);
             hasUnsavedPressureChanges = false;
-            lastSaveResultTextBox.Text = "Saved pressures to dashboard.";
+            lastSaveResultTextBox.Text = autoSave && capture is not null
+                ? $"Saved Fruit {capture.FruitNumber} {capture.TargetSlot}."
+                : "Saved pressures to dashboard.";
             RefreshSampleStatusDisplay();
             RefreshCaptureDisplay();
-            AppendLog($"Saved pressures to dashboard. Rows: {rows.Count}; Sample: {selectedSample?.DisplayReceiptId}.");
+            AppendLog(autoSave && capture is not null
+                ? $"Auto-save succeeded for Fruit {capture.FruitNumber} {capture.TargetSlot}. Sample: {selectedSample?.DisplayReceiptId}."
+                : $"Saved pressures to dashboard. Rows: {rows.Count}; Sample: {selectedSample?.DisplayReceiptId}.");
         }
         catch (Exception ex)
         {
-            HandleApiException("Save pressures", ex);
+            hasUnsavedPressureChanges = true;
+            lastSaveResultTextBox.Text = autoSave
+                ? "Auto-save failed. Reading kept locally. Use Save / Retry Unsaved Pressures."
+                : "Save failed.";
+            RefreshSampleStatusDisplay();
+            HandleApiException(actionName, ex);
+            if (autoSave)
+            {
+                lastSaveResultTextBox.Text = "Auto-save failed. Reading kept locally. Use Save / Retry Unsaved Pressures.";
+                AppendLog("Auto-save failed. Reading kept locally. Use Save / Retry Unsaved Pressures to retry.");
+                if (ex is QcStationAuthorizationException or QcStationApiException)
+                {
+                    AppendLog("Continuous capture stopped because dashboard save failed with an authorization or server/API error.");
+                    continuousCaptureCts?.Cancel();
+                }
+            }
         }
     }
 
@@ -1165,10 +1208,6 @@ public sealed class MainForm : Form
                 {
                     AppendLog("Continuous capture reading detected.");
                     var capture = CaptureReading(reading, PressureCaptureTarget.AutoAdvance, syncFruitFromInput: false);
-                    if (autoSaveCompletedFruitCheckBox.Checked && capture.TargetSlot == "Pressure 2")
-                    {
-                        await SavePressuresToDashboardAsync();
-                    }
                     AppendLog($"Auto-advanced target: Fruit {testFruitCapture.FruitNumber} {testFruitCapture.CurrentTargetSlot}.");
 
                     if (testFruitCapture.IsSampleComplete)
@@ -1187,6 +1226,11 @@ public sealed class MainForm : Form
         catch (OperationCanceledException)
         {
             AppendLog("Continuous capture stopped.");
+        }
+        catch (TimeoutException ex)
+        {
+            continuousStatusTextBox.Text = "FTA home timeout";
+            AppendLog(ex.Message);
         }
         catch (Exception ex)
         {
@@ -1214,6 +1258,7 @@ public sealed class MainForm : Form
             throw new InvalidOperationException(status.ErrorMessage ?? status.StatusMessage);
         }
 
+        continuousStatusTextBox.Text = "Ready for next FTA button press.";
         AppendLog($"Re-armed for next test. Current target: Fruit {testFruitCapture.FruitNumber} {testFruitCapture.CurrentTargetSlot}.");
     }
 
@@ -1227,16 +1272,19 @@ public sealed class MainForm : Form
     private async Task WaitForManualRearmReadyAsync(CancellationToken cancellationToken)
     {
         var config = stationService.Configuration;
-        var delayMs = config.FtaManualRearmDelayMs > 0 ? config.FtaManualRearmDelayMs : 2000;
+        var delayMs = config.FtaManualRearmDelayMs > 0 ? config.FtaManualRearmDelayMs : 750;
+        var pollIntervalMs = config.FtaHomePollIntervalMs > 0 ? config.FtaHomePollIntervalMs : 150;
+        var maxHomeWaitMs = config.FtaMaxHomeWaitMs > 0 ? config.FtaMaxHomeWaitMs : 5000;
         if (!config.FtaManualCaptureSafeMode)
         {
             await Task.Delay(delayMs, cancellationToken);
             return;
         }
 
-        continuousStatusTextBox.Text = "Waiting for FTA home";
-        AppendLog("Waiting for FTA to return home before next test.");
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(8);
+        continuousStatusTextBox.Text = "Waiting for probe home...";
+        AppendLog($"Waiting for FTA to return home before next test. Polling every {pollIntervalMs} ms; max wait {maxHomeWaitMs} ms.");
+        var startedAt = DateTimeOffset.UtcNow;
+        var deadline = startedAt.AddMilliseconds(maxHomeWaitMs);
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -1249,20 +1297,37 @@ public sealed class MainForm : Form
 
             if (StatusIndicatesProbeAtTop(status.StatusMessage))
             {
-                continuousStatusTextBox.Text = "FTA ready";
+                continuousStatusTextBox.Text = "Ready for next FTA button press.";
                 return;
             }
 
-            await Task.Delay(500, cancellationToken);
+            if (!StatusIndicatesProbeAtBottom(status.StatusMessage)
+                && DateTimeOffset.UtcNow - startedAt >= TimeSpan.FromMilliseconds(delayMs))
+            {
+                AppendLog($"Probe-at-top was not confirmed, but fallback safe delay of {delayMs} ms elapsed without probe-at-bottom status.");
+                continuousStatusTextBox.Text = "Ready for next FTA button press.";
+                return;
+            }
+
+            await Task.Delay(pollIntervalMs, cancellationToken);
         }
 
-        AppendLog($"Probe-at-top status was not confirmed; waiting configured safe re-arm delay of {delayMs} ms.");
-        await Task.Delay(delayMs, cancellationToken);
+        continuousStatusTextBox.Text = "FTA home timeout";
+        throw new TimeoutException("FTA did not report home position. Capture stopped. Check FTA and use Calibration/Diagnostics before continuing.");
     }
 
     private static bool StatusIndicatesProbeAtTop(string statusMessage)
     {
-        const string marker = "FTABitStatus(5) probe at top";
+        return StatusBitSegmentContains(statusMessage, "FTABitStatus(5) probe at top", "Yes");
+    }
+
+    private static bool StatusIndicatesProbeAtBottom(string statusMessage)
+    {
+        return StatusBitSegmentContains(statusMessage, "FTABitStatus(6) probe at bottom", "Yes");
+    }
+
+    private static bool StatusBitSegmentContains(string statusMessage, string marker, string expectedValue)
+    {
         var index = statusMessage.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
         if (index < 0)
         {
@@ -1271,7 +1336,7 @@ public sealed class MainForm : Form
 
         var end = statusMessage.IndexOf('|', index);
         var segment = end < 0 ? statusMessage[index..] : statusMessage[index..end];
-        return segment.Contains("Yes", StringComparison.OrdinalIgnoreCase);
+        return segment.Contains(expectedValue, StringComparison.OrdinalIgnoreCase);
     }
 
     private Task CaptureLatestReadingAsync(PressureCaptureTarget target)
@@ -1297,10 +1362,24 @@ public sealed class MainForm : Form
         var capturedFruit = testFruitCapture.FruitNumber;
         var slot = testFruitCapture.Capture(reading, target);
         hasUnsavedPressureChanges = true;
+        continuousStatusTextBox.Text = "Reading captured.";
         AppendLog($"Captured {reading.ReadingValueLbs:0.00} lbs into Fruit {capturedFruit} {slot}.");
+        var capture = new CapturedPressureHistoryEntry(reading.CapturedAt, reading.ReadingValueLbs, reading.Source, capturedFruit, slot);
         RefreshCaptureDisplay();
         RefreshSampleStatusDisplay();
-        return new CapturedPressureHistoryEntry(reading.CapturedAt, reading.ReadingValueLbs, reading.Source, capturedFruit, slot);
+        QueueAutoSave(capture);
+        return capture;
+    }
+
+    private void QueueAutoSave(CapturedPressureHistoryEntry capture)
+    {
+        if (!autoSaveCompletedFruitCheckBox.Checked)
+        {
+            return;
+        }
+
+        AppendLog($"Auto-save queued for Fruit {capture.FruitNumber} {capture.TargetSlot}.");
+        _ = SavePressuresToDashboardAsync(autoSave: true, capture);
     }
 
     private PressureCaptureTarget GetSelectedCaptureTarget()
