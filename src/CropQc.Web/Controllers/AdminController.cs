@@ -46,7 +46,7 @@ public sealed class AdminController(
                     "Signed MSI installer for the Crop QC Station WinForms app. Installs the app, Start Menu shortcut, and cropqcstation:// browser link handler. It does not contain station API keys.",
                     installerUrl ?? "",
                     installerConfigured
-                        ? "Opens the configured installer download link. Run this installer on each QC computer, then import that computer's station config JSON from Admin QC Stations."
+                        ? "Install Crop QC Station first. Then download station config JSON from Admin QC Stations and import it inside the app with Import / Replace Station Config."
                         : "QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.",
                     IsAvailable: installerConfigured,
                     OpensInNewTab: installerConfigured,
@@ -56,7 +56,7 @@ public sealed class AdminController(
                     "qcstation.settings.json",
                     "Station-specific config JSON generated from Admin QC Stations. Contains the station code/key and must be imported into the installed QC Station app.",
                     "/Admin/QcStations",
-                    "Each QC computer needs its own station record and API key. The MSI is shared across stations; the config JSON is the secret per-station file.",
+                    "Each QC computer needs its own station record and API key. Download the JSON, open Crop QC Station, choose Import / Replace Station Config, and confirm the app shows the matching station name/code. Install FTADLL.exe separately on FTA-connected computers.",
                     ActionText: "Manage QC Stations")
             ]
         };

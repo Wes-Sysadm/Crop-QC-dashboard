@@ -38,7 +38,7 @@
         <h2>FTA Pressure Capture</h2>
         <p>FTA pressure capture is done through the local QC Station app. The browser does not connect directly to the physical FTA DLL.</p>
         <p>Selected sample: <strong>@Model.Sample.DisplayReceiptId</strong> | Sample ID: <code>@Model.Sample.Id</code> | Receipt ID: <code>@Model.Sample.ReceiptIdText</code></p>
-        <p>Click Open in QC Station to launch the local WinForms app for <strong>@Model.Sample.DisplayReceiptId</strong>, then start continuous manual capture. FTA readings may be captured from QC Station and saved here.</p>
+        <p>Click Open in QC Station to launch the local WinForms app for <strong>@Model.Sample.DisplayReceiptId</strong>, then start continuous manual capture. Use the local Crop QC Station app for FTA pressure readings. Continue entering weight and grade on this page as needed.</p>
         <p>
             <button type="button" class="secondary-button" data-copy-sample-id="@Model.Sample.Id">Copy Sample ID</button>
             <a class="button secondary-button" href="cropqcstation://sample/@Model.Sample.Id">Open in QC Station</a>
