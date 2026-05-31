@@ -127,6 +127,28 @@ public sealed class QcStationInstallerWorkflowTests
     }
 
     [Fact]
+    public void ReceiptDetailView_OffersOpenInQcStationForLinkedSamplesOnly()
+    {
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Details.cshtml"));
+
+        Assert.Contains("@foreach (var sample in Model.Samples)", view);
+        Assert.Contains("href=\"cropqcstation://sample/@sample.Id\"", view);
+        Assert.Contains("Open in QC Station", view);
+        Assert.Contains("Use Open in QC Station to capture FTA pressures for a sample", view);
+        Assert.True(view.IndexOf("cropqcstation://sample/@sample.Id", StringComparison.Ordinal) > view.IndexOf("@foreach (var sample in Model.Samples)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void DailyQcView_OffersOpenInQcStationForEachSample()
+    {
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "DailyQc", "Index.cshtml"));
+
+        Assert.Contains("@foreach (var sample in Model.Samples)", view);
+        Assert.Contains("href=\"cropqcstation://sample/@sample.Id\"", view);
+        Assert.Contains("Open in QC Station", view);
+    }
+
+    [Fact]
     public void ResolveSettingsPath_UsesCommandLinePathWhenProgramDataConfigIsMissing()
     {
         var path = StationConfiguration.ResolveSettingsPath(@"C:\custom\qcstation.settings.json", baseDirectory: @"C:\unused", installedSettingsPath: @"C:\unused\missing-programdata-config.json");
