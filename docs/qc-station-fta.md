@@ -417,7 +417,7 @@ The Render web app does not build Windows desktop payloads. Build the QC Station
 
 The script publishes `src\CropQc.QcStation.WinForms\CropQc.QcStation.WinForms.csproj` in Release mode for `win-x86`, builds the WiX MSI at `artifacts\installers\CropQcStationSetup.msi`, and signs the executable/MSI when signing environment variables are configured. If signing is not configured it builds an unsigned MSI and prints a warning. Do not use an unsigned MSI for production rollout.
 
-To make the MSI available from `Admin -> Downloads`, place the signed MSI at `src\CropQc.Web\App_Data\Downloads\CropQcStationSetup.msi` before publishing the web app, or configure `QcStation:InstallerPath` to the deployed MSI path. The MSI should not be committed unless explicitly approved.
+To make the MSI available from `Admin -> Downloads`, upload `artifacts\installers\CropQcStationSetup.msi` to Google Drive and set `Downloads__QcStationInstallerUrl` in Render. Render does not host or build the MSI. The MSI should not be committed unless explicitly approved.
 
 ## Quit / Disconnect Behavior
 
