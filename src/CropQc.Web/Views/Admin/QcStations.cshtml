@@ -16,7 +16,7 @@
 <section class="panel">
     <h2>Add QC Station</h2>
     <p class="muted">Creating a station generates a unique API key and immediately downloads that station's config JSON. The raw key is not stored and cannot be shown again.</p>
-    <p class="notice">Install the shared Crop QC Station App Installer from <a href="/Admin/Downloads">Admin Downloads</a>, then import this station-specific <code>qcstation.settings.json</code> in the app. The MSI contains no station secrets.</p>
+    <p class="notice">After installing Crop QC Station, open the app and choose Station Setup -> Import Station Config. Select the JSON file you downloaded here. The app will install it into ProgramData automatically. The MSI contains no station secrets.</p>
     <p class="notice warning">Station codes for new stations may use only letters, numbers, dashes, and underscores. Use dashes instead of spaces, for example <code>MCD-12</code>.</p>
     <form class="toolbar" method="post" action="/Admin/QcStations/Create">
         <div class="field"><label>Station name</label><input id="new-station-name" name="StationName" placeholder="WP QC Station 1" required /></div>

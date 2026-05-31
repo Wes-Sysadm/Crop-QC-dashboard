@@ -15,7 +15,7 @@ public sealed class QcStationApiClient(HttpClient httpClient)
         }
 
         using var response = await httpClient.GetAsync(path, cancellationToken);
-        await EnsureAuthorizedSuccessAsync(response, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<IReadOnlyList<QcStationSampleListItem>>(cancellationToken)
             ?? [];
     }
@@ -23,7 +23,7 @@ public sealed class QcStationApiClient(HttpClient httpClient)
     public async Task<QcStationSampleDetail?> GetSampleDetailAsync(long sampleId, CancellationToken cancellationToken = default)
     {
         using var response = await httpClient.GetAsync($"api/qc-station/samples/{sampleId}/pressure", cancellationToken);
-        await EnsureAuthorizedSuccessAsync(response, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<QcStationSampleDetail>(cancellationToken);
     }
 
@@ -33,7 +33,7 @@ public sealed class QcStationApiClient(HttpClient httpClient)
             $"api/qc-station/samples/{sampleId}/pressure",
             new QcStationPressureUpdateRequest(rows),
             cancellationToken);
-        await EnsureAuthorizedSuccessAsync(response, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<QcStationSampleDetail>(cancellationToken);
     }
 
@@ -66,7 +66,7 @@ public sealed class QcStationApiClient(HttpClient httpClient)
         return new QcStationApiClient(client);
     }
 
-    private static async Task EnsureAuthorizedSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
@@ -74,12 +74,21 @@ public sealed class QcStationApiClient(HttpClient httpClient)
             throw new QcStationAuthorizationException(response.StatusCode, body);
         }
 
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new QcStationApiException(response.StatusCode, body);
+        }
     }
 }
 
-public sealed class QcStationAuthorizationException(HttpStatusCode statusCode, string? responseBody = null)
-    : HttpRequestException("QC Station is not authorized.", null, statusCode)
+public class QcStationApiException(HttpStatusCode statusCode, string? responseBody = null)
+    : HttpRequestException($"QC Station API request failed with HTTP {(int)statusCode} {statusCode}.", null, statusCode)
 {
     public string? ResponseBody { get; } = responseBody;
+}
+
+public sealed class QcStationAuthorizationException(HttpStatusCode statusCode, string? responseBody = null)
+    : QcStationApiException(statusCode, responseBody)
+{
 }

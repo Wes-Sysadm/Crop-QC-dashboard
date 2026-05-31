@@ -125,11 +125,31 @@ public sealed class QcStationInstallerWorkflowTests
     }
 
     [Fact]
-    public void ResolveSettingsPath_PrefersCommandLinePath()
+    public void ResolveSettingsPath_UsesCommandLinePathWhenProgramDataConfigIsMissing()
     {
-        var path = StationConfiguration.ResolveSettingsPath(@"C:\custom\qcstation.settings.json", baseDirectory: @"C:\unused");
+        var path = StationConfiguration.ResolveSettingsPath(@"C:\custom\qcstation.settings.json", baseDirectory: @"C:\unused", installedSettingsPath: @"C:\unused\missing-programdata-config.json");
 
         Assert.Equal(@"C:\custom\qcstation.settings.json", path);
+    }
+
+    [Fact]
+    public void ResolveSettingsPath_PrefersProgramDataPathOverCommandLinePath()
+    {
+        var tempRoot = Directory.CreateTempSubdirectory("cropqc-station-programdata-test");
+        try
+        {
+            var installedPath = Path.Combine(tempRoot.FullName, "ProgramData", "qcstation.settings.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(installedPath)!);
+            File.WriteAllText(installedPath, "{}");
+
+            var path = StationConfiguration.ResolveSettingsPath(@"C:\custom\qcstation.settings.json", tempRoot.FullName, installedPath);
+
+            Assert.Equal(installedPath, path);
+        }
+        finally
+        {
+            tempRoot.Delete(recursive: true);
+        }
     }
 
     [Fact]
@@ -165,7 +185,7 @@ public sealed class QcStationInstallerWorkflowTests
             Assert.Throws<InvalidDataException>(() => StationConfigurationImport.ValidateSource(invalidPath));
 
             var validPath = Path.Combine(tempRoot.FullName, "qcstation.settings.json");
-            File.WriteAllText(validPath, """{"StationName":"WP QC Station 1","QcStationCode":"WP-QC-01","QcStationApiKey":"secret","ApiBaseUrl":"https://crop-qc-dashboard.onrender.com"}""");
+            File.WriteAllText(validPath, """{"StationName":"WP QC Station 1","WarehouseCode":"WP","QcStationCode":"WP-QC-01","QcStationApiKey":"secret","ApiBaseUrl":"https://crop-qc-dashboard.onrender.com"}""");
             var targetPath = Path.Combine(tempRoot.FullName, "ProgramData", "qcstation.settings.json");
 
             var installedPath = StationConfigurationImport.Import(validPath, targetPath);
@@ -180,15 +200,43 @@ public sealed class QcStationInstallerWorkflowTests
     }
 
     [Fact]
+    public void StationConfigImport_BacksUpExistingConfig()
+    {
+        var tempRoot = Directory.CreateTempSubdirectory("cropqc-station-import-backup-test");
+        try
+        {
+            var sourcePath = Path.Combine(tempRoot.FullName, "qcstation.settings.json");
+            File.WriteAllText(sourcePath, """{"StationName":"WP QC Station 1","WarehouseCode":"WP","QcStationCode":"WP-QC-01","QcStationApiKey":"secret","ApiBaseUrl":"https://crop-qc-dashboard.onrender.com"}""");
+            var targetPath = Path.Combine(tempRoot.FullName, "ProgramData", "qcstation.settings.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+            File.WriteAllText(targetPath, """{"old":true}""");
+
+            StationConfigurationImport.Import(sourcePath, targetPath);
+
+            Assert.True(File.Exists(targetPath));
+            Assert.Single(Directory.GetFiles(Path.GetDirectoryName(targetPath)!, "qcstation.settings.backup-*.json"));
+        }
+        finally
+        {
+            tempRoot.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public void WinFormsUi_WiresFtaSetupCalibrationCommand()
     {
         var mainForm = File.ReadAllText(FindRepositoryFile("src", "CropQc.QcStation.WinForms", "MainForm.cs"));
+        var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.QcStation.WinForms", "Program.cs"));
 
         Assert.Contains("Open FTA Setup / Calibration", mainForm);
         Assert.Contains("stationService.OpenSetupAsync()", mainForm);
         Assert.Contains("FTA Diagnostic Status", mainForm);
         Assert.Contains("Return Probe Home", mainForm);
-        Assert.Contains("Cancel", mainForm);
+        Assert.Contains("Cancel FTA Action", mainForm);
+        Assert.Contains("WaitForManualRearmReadyAsync", mainForm);
+        Assert.Contains("FtaManualCaptureSafeMode", mainForm);
+        Assert.Contains("RequiresImport", program);
+        Assert.Contains("StationConfigurationImport.ValidateSource(settingsPath)", program);
     }
 
     private static string FindRepositoryFile(params string[] pathParts)

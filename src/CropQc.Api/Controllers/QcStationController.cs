@@ -44,7 +44,21 @@ public sealed class QcStationController(IQcStationApiService service, CropQcDbCo
             return auth.Result;
         }
 
+        logger.LogInformation(
+            "QC Station pressure save requested. StationCode: {StationCode}; SampleId: {SampleId}; RowCount: {RowCount}.",
+            auth.Station!.StationCode,
+            sampleId,
+            request.Rows?.Count ?? 0);
         var (sample, error) = await service.UpdatePressuresAsync(sampleId, request, auth.Station!, cancellationToken);
+        if (sample is null)
+        {
+            logger.LogWarning(
+                "QC Station pressure save rejected. StationCode: {StationCode}; SampleId: {SampleId}; Reason: {Reason}.",
+                auth.Station!.StationCode,
+                sampleId,
+                error);
+        }
+
         return sample is null ? BadRequest(new { error }) : Ok(sample);
     }
 

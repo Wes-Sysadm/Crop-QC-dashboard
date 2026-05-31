@@ -80,7 +80,7 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
 
         if (request.Rows is null || request.Rows.Count == 0)
         {
-            return (ToDetailDto(sample), null);
+            return (null, "At least one pressure row is required.");
         }
 
         var before = sample.FruitReadings

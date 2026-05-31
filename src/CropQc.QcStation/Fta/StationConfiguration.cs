@@ -15,6 +15,8 @@ public sealed class StationConfiguration
     public FtaInitializationMode FtaInitializationMode { get; set; } = FtaInitializationMode.FTAInit;
     public string FtaConfigPath { get; set; } = @"C:\Program Files\FTADLL\FTA_DLL.CFG";
     public int FtaReadingTimeoutSeconds { get; set; } = 60;
+    public bool FtaManualCaptureSafeMode { get; set; } = true;
+    public int FtaManualRearmDelayMs { get; set; } = 2000;
     public string? FtaWorkingDirectory { get; set; }
     public string? ComPort { get; set; }
     public string ApiBaseUrl { get; set; } = "https://localhost:7001";
@@ -39,15 +41,15 @@ public sealed class StationConfiguration
 
     public static string ResolveSettingsPath(string? commandLinePath, string? baseDirectory = null, string? installedSettingsPath = null)
     {
-        if (!string.IsNullOrWhiteSpace(commandLinePath))
-        {
-            return commandLinePath;
-        }
-
         var installedPath = installedSettingsPath ?? InstalledSettingsPath;
         if (File.Exists(installedPath))
         {
             return installedPath;
+        }
+
+        if (!string.IsNullOrWhiteSpace(commandLinePath))
+        {
+            return commandLinePath;
         }
 
         var directory = new DirectoryInfo(baseDirectory ?? AppContext.BaseDirectory);
@@ -67,6 +69,26 @@ public sealed class StationConfiguration
 
     public static string MissingSettingsMessage(string path) =>
         $"QC Station settings were not found at '{path}'. Install the Crop QC Station app, then download station config from Admin -> QC Stations and import qcstation.settings.json. Installed stations should use {InstalledSettingsPath}.";
+
+    public void CopyFrom(StationConfiguration source)
+    {
+        StationName = source.StationName;
+        WarehouseCode = source.WarehouseCode;
+        FtaMode = source.FtaMode;
+        FtaDllPath = source.FtaDllPath;
+        FtaDllFileName = source.FtaDllFileName;
+        FtaInitializationMode = source.FtaInitializationMode;
+        FtaConfigPath = source.FtaConfigPath;
+        FtaReadingTimeoutSeconds = source.FtaReadingTimeoutSeconds;
+        FtaManualCaptureSafeMode = source.FtaManualCaptureSafeMode;
+        FtaManualRearmDelayMs = source.FtaManualRearmDelayMs;
+        FtaWorkingDirectory = source.FtaWorkingDirectory;
+        ComPort = source.ComPort;
+        ApiBaseUrl = source.ApiBaseUrl;
+        QcStationCode = source.QcStationCode;
+        QcStationApiKey = source.QcStationApiKey;
+        LocalDataPath = source.LocalDataPath;
+    }
 }
 
 public static class StationConfigurationImport
@@ -81,9 +103,11 @@ public static class StationConfigurationImport
         var configuration = StationConfiguration.Load(sourcePath);
         if (string.IsNullOrWhiteSpace(configuration.QcStationCode)
             || string.IsNullOrWhiteSpace(configuration.QcStationApiKey)
-            || string.IsNullOrWhiteSpace(configuration.ApiBaseUrl))
+            || string.IsNullOrWhiteSpace(configuration.ApiBaseUrl)
+            || string.IsNullOrWhiteSpace(configuration.StationName)
+            || string.IsNullOrWhiteSpace(configuration.WarehouseCode))
         {
-            throw new InvalidDataException("The selected settings file is missing QcStationCode, QcStationApiKey, or ApiBaseUrl.");
+            throw new InvalidDataException("This does not appear to be a valid Crop QC Station config.");
         }
 
         return configuration;
