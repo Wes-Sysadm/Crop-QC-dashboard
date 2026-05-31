@@ -39,20 +39,27 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("SIGNING_MODE", script);
         Assert.Contains("SIGN_CERT_PATH", script);
         Assert.Contains("Installer is unsigned and may trigger SmartScreen/Defender", script);
+        Assert.Contains("Upload this installer to Google Drive and set Downloads__QcStationInstallerUrl in Render.", script);
     }
 
     [Fact]
-    public void WixInstaller_RegistersProtocolAndContainsNoStationSecrets()
+    public void WixInstaller_InstallsAppCreatesConfigFolderAndRegistersProtocol()
     {
         var wxs = File.ReadAllText(FindRepositoryFile("installers", "CropQc.QcStation.Installer", "Package.wxs"));
 
         Assert.Contains("ProgramFiles64Folder", wxs);
         Assert.Contains("INSTALLFOLDER", wxs);
+        Assert.Contains("CommonAppDataFolder", wxs);
+        Assert.Contains("ProgramDataStationFolder", wxs);
+        Assert.Contains("ProgramDataConfigFolder", wxs);
+        Assert.Contains("<CreateFolder />", wxs);
         Assert.Contains("CropQc.QcStation.WinForms.exe", wxs);
         Assert.Contains("cropqcstation", wxs);
         Assert.Contains("URL Protocol", wxs);
         Assert.Contains("StartMenuShortcut", wxs);
         Assert.Contains("DesktopShortcut", wxs);
+        Assert.Contains("MajorUpgrade", wxs);
+        Assert.Contains("UpgradeCode", wxs);
         Assert.DoesNotContain("QcStationApiKey", wxs);
         Assert.DoesNotContain("qcstation.settings.json", wxs);
     }
@@ -64,11 +71,13 @@ public sealed class QcStationInstallerWorkflowTests
         var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Admin", "Downloads.cshtml"));
 
         Assert.Contains("CropQcStationSetup.msi", controller);
-        Assert.Contains("DownloadQcStationInstaller", controller);
-        Assert.Contains("QC Station installer has not been deployed yet", controller);
+        Assert.Contains("Downloads:QcStationInstallerUrl", controller);
+        Assert.Contains("QC Station installer link is not configured", controller);
+        Assert.Contains("Upload CropQcStationSetup.msi to Google Drive", controller);
         Assert.Contains("Download MSI", controller);
         Assert.Contains("Not deployed", view);
         Assert.DoesNotContain("Install-CropQcStation.cmd", controller);
+        Assert.DoesNotContain("PhysicalFile", controller);
     }
 
     [Fact]
@@ -145,7 +154,7 @@ public sealed class QcStationInstallerWorkflowTests
     }
 
     [Fact]
-    public void StationConfigImport_RequiresStationCodeAndApiKey()
+    public void StationConfigImport_RequiresStationCodeApiKeyAndApiBaseUrl()
     {
         var tempRoot = Directory.CreateTempSubdirectory("cropqc-station-import-test");
         try
@@ -156,7 +165,7 @@ public sealed class QcStationInstallerWorkflowTests
             Assert.Throws<InvalidDataException>(() => StationConfigurationImport.ValidateSource(invalidPath));
 
             var validPath = Path.Combine(tempRoot.FullName, "qcstation.settings.json");
-            File.WriteAllText(validPath, """{"StationName":"WP QC Station 1","QcStationCode":"WP-QC-01","QcStationApiKey":"secret"}""");
+            File.WriteAllText(validPath, """{"StationName":"WP QC Station 1","QcStationCode":"WP-QC-01","QcStationApiKey":"secret","ApiBaseUrl":"https://crop-qc-dashboard.onrender.com"}""");
             var targetPath = Path.Combine(tempRoot.FullName, "ProgramData", "qcstation.settings.json");
 
             var installedPath = StationConfigurationImport.Import(validPath, targetPath);
@@ -168,6 +177,18 @@ public sealed class QcStationInstallerWorkflowTests
         {
             tempRoot.Delete(recursive: true);
         }
+    }
+
+    [Fact]
+    public void WinFormsUi_WiresFtaSetupCalibrationCommand()
+    {
+        var mainForm = File.ReadAllText(FindRepositoryFile("src", "CropQc.QcStation.WinForms", "MainForm.cs"));
+
+        Assert.Contains("Open FTA Setup / Calibration", mainForm);
+        Assert.Contains("stationService.OpenSetupAsync()", mainForm);
+        Assert.Contains("FTA Diagnostic Status", mainForm);
+        Assert.Contains("Return Probe Home", mainForm);
+        Assert.Contains("Cancel", mainForm);
     }
 
     private static string FindRepositoryFile(params string[] pathParts)

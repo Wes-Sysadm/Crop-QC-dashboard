@@ -11,7 +11,6 @@ public sealed class AdminController(
     IUserAdminService userAdminService,
     IAdminAuthorizationService authorizationService,
     IQcStationAdminService qcStationAdminService,
-    IWebHostEnvironment environment,
     IConfiguration configuration) : Controller
 {
     private const string FtaDllInstallerFileName = "FTADLL.exe";
@@ -27,8 +26,8 @@ public sealed class AdminController(
     [Authorize(Policy = "RequireAdmin")]
     public IActionResult Downloads()
     {
-        var installerPath = GetQcStationInstallerPath();
-        var installerExists = System.IO.File.Exists(installerPath);
+        var installerUrl = configuration["Downloads:QcStationInstallerUrl"];
+        var installerConfigured = !string.IsNullOrWhiteSpace(installerUrl);
         var model = new AdminDownloadsViewModel
         {
             Downloads =
@@ -45,11 +44,12 @@ public sealed class AdminController(
                     "QC Station App Installer",
                     QcStationInstallerFileName,
                     "Signed MSI installer for the Crop QC Station WinForms app. Installs the app, Start Menu shortcut, and cropqcstation:// browser link handler. It does not contain station API keys.",
-                    installerExists ? "/Admin/Downloads/QcStationInstaller" : "",
-                    installerExists
-                        ? "Run this installer on each QC computer, then import that computer's station config JSON from Admin QC Stations."
-                        : "QC Station installer has not been deployed yet. Build/sign CropQcStationSetup.msi and place it in App_Data/Downloads or the configured installer download path.",
-                    IsAvailable: installerExists,
+                    installerUrl ?? "",
+                    installerConfigured
+                        ? "Opens the configured installer download link. Run this installer on each QC computer, then import that computer's station config JSON from Admin QC Stations."
+                        : "QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.",
+                    IsAvailable: installerConfigured,
+                    OpensInNewTab: installerConfigured,
                     ActionText: "Download MSI"),
                 new(
                     "QC Station Configs",
@@ -62,25 +62,6 @@ public sealed class AdminController(
         };
 
         return View(model);
-    }
-
-    [HttpGet("Downloads/QcStationInstaller")]
-    [Authorize(Policy = "RequireAdmin")]
-    public IActionResult DownloadQcStationInstaller()
-    {
-        var installerPath = GetQcStationInstallerPath();
-        if (!System.IO.File.Exists(installerPath))
-        {
-            TempData["Error"] = "QC Station installer has not been deployed yet. Build/sign CropQcStationSetup.msi and place it in the configured installer download location.";
-            return RedirectToAction(nameof(Downloads));
-        }
-
-        if (!string.Equals(Path.GetFileName(installerPath), QcStationInstallerFileName, StringComparison.OrdinalIgnoreCase))
-        {
-            return NotFound();
-        }
-
-        return PhysicalFile(installerPath, "application/octet-stream", QcStationInstallerFileName);
     }
 
     [HttpGet("QcStations")]
@@ -153,10 +134,6 @@ public sealed class AdminController(
 
     private FileContentResult DownloadQcStationConfig(QcStationConfigDownload download) =>
         File(System.Text.Encoding.UTF8.GetBytes(download.Json), "application/json", download.FileName);
-
-    private string GetQcStationInstallerPath() =>
-        configuration["QcStation:InstallerPath"]
-        ?? Path.Combine(environment.ContentRootPath, "App_Data", "Downloads", QcStationInstallerFileName);
 
     [HttpPost("Users/Add")]
     [Authorize(Policy = "RequireAdmin")]

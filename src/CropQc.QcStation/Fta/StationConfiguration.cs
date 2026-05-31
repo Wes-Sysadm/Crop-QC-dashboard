@@ -80,9 +80,10 @@ public static class StationConfigurationImport
 
         var configuration = StationConfiguration.Load(sourcePath);
         if (string.IsNullOrWhiteSpace(configuration.QcStationCode)
-            || string.IsNullOrWhiteSpace(configuration.QcStationApiKey))
+            || string.IsNullOrWhiteSpace(configuration.QcStationApiKey)
+            || string.IsNullOrWhiteSpace(configuration.ApiBaseUrl))
         {
-            throw new InvalidDataException("The selected settings file is missing QcStationCode or QcStationApiKey.");
+            throw new InvalidDataException("The selected settings file is missing QcStationCode, QcStationApiKey, or ApiBaseUrl.");
         }
 
         return configuration;
