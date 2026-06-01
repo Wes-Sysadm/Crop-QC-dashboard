@@ -393,13 +393,15 @@ Run the dashboard/API and WinForms station together:
 
 8. In the web dashboard, open `/Samples/{sampleId}` and click `Open in QC Station`.
 9. The browser launches `cropqcstation://sample/{sampleId}`. The WinForms app reads the installed config, calls the dashboard API, loads that sample, and sets the pressure target to the first missing slot. If config is missing, it opens the import screen first.
-10. Use `Start Continuous Manual Capture`, then press and hold the green FTA button for each physical test.
-11. Click `Save Pressures to Dashboard`.
+10. Use `Start Manual Capture`, then press and hold the physical FTA button for each test.
+11. Captured readings auto-save to the dashboard by default after each pressure slot. Use `Save / Retry Unsaved Pressures` only as a backup if auto-save fails or a local value was manually edited.
 12. Refresh the web dashboard sample page to see the saved pressure readings.
 
 The protocol handler points to `C:\Program Files\CropQc\QcStation\CropQc.QcStation.WinForms.exe`.
 
-The QC Station pressure save endpoint is pressure-only. It updates `Pressure1Lbs`, `Pressure1Source`, `Pressure2Lbs`, and `Pressure2Source`; it does not overwrite weight, grade, starch, defects, photos, or receipt data. `Auto-save after each completed fruit` can save after Pressure 2 is captured, but it is unchecked by default.
+The QC Station pressure save endpoint is pressure-only. It updates `Pressure1Lbs`, `Pressure1Source`, `Pressure2Lbs`, and `Pressure2Source`; it does not overwrite weight, grade, starch, defects, photos, or receipt data. `Auto-save after each captured reading` is checked by default. Auto-save failures keep the reading locally and the operator can retry with `Save / Retry Unsaved Pressures`.
+
+FTA DLL firmness units are explicit in station config. `FtaFirmnessUnit` defaults to `Kilograms` because the live DLL has returned kg values; the station converts raw kg readings to pounds before display and save. Set `FtaFirmnessUnit` to `Pounds` only if the FTA DLL is confirmed to return pounds. Dashboard pressure fields are stored in pounds.
 
 Station API access is managed in the database, not with one shared Render environment variable. Each QC computer sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the server stores only a hash of the key. Deactivate a station to block it immediately, or rotate its key and download a fresh config if a computer is replaced.
 
@@ -417,7 +419,7 @@ The Render web app does not build Windows desktop payloads. Build the QC Station
 
 The script publishes `src\CropQc.QcStation.WinForms\CropQc.QcStation.WinForms.csproj` in Release mode for `win-x86`, builds the WiX MSI at `artifacts\installers\CropQcStationSetup.msi`, and signs the executable/MSI when signing environment variables are configured. If signing is not configured it builds an unsigned MSI and prints a warning. Do not use an unsigned MSI for production rollout.
 
-To make the MSI available from `Admin -> Downloads`, upload `artifacts\installers\CropQcStationSetup.msi` to Google Drive and set `Downloads__QcStationInstallerUrl` in Render. Render does not host or build the MSI. The MSI should not be committed unless explicitly approved.
+To make the MSI available from `Admin -> Downloads`, upload `artifacts\installers\CropQcStationSetup.msi` to the shared Google Drive location used for internal QC installers and set `Downloads__QcStationInstallerUrl` in Render. The page opens the Google Drive-hosted MSI link the same way it opens the `FTADLL.exe` link. Render does not host or build the MSI. The MSI should not be committed unless explicitly approved.
 
 ## Quit / Disconnect Behavior
 

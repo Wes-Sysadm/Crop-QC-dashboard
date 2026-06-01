@@ -74,7 +74,8 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("Downloads:QcStationInstallerUrl", controller);
         Assert.Contains("QC Station installer link is not configured", controller);
         Assert.Contains("Upload CropQcStationSetup.msi to Google Drive", controller);
-        Assert.Contains("Download MSI", controller);
+        Assert.Contains("Crop QC Station App Installer", controller);
+        Assert.Contains("Open Google Drive Download", controller);
         Assert.Contains("Not deployed", view);
         Assert.DoesNotContain("Install-CropQcStation.cmd", controller);
         Assert.DoesNotContain("PhysicalFile", controller);
@@ -90,6 +91,11 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("Rotate Key and Download Config JSON", view);
         Assert.Contains("The MSI contains no station secrets", view);
         Assert.Contains("QcStationConfigDownload(string FileName, string Json)", service);
+        Assert.Contains("FtaManualCaptureSafeMode = true", service);
+        Assert.Contains("FtaManualRearmDelayMs = 250", service);
+        Assert.Contains("FtaHomePollIntervalMs = 100", service);
+        Assert.Contains("FtaMaxHomeWaitMs = 5000", service);
+        Assert.Contains("FtaFirmnessUnit = \"Kilograms\"", service);
         Assert.DoesNotContain("ZipArchive", service);
         Assert.DoesNotContain("PackageBytes", service);
     }
@@ -267,12 +273,34 @@ public sealed class QcStationInstallerWorkflowTests
     {
         var mainForm = File.ReadAllText(FindRepositoryFile("src", "CropQc.QcStation.WinForms", "MainForm.cs"));
         var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.QcStation.WinForms", "Program.cs"));
+        var ftaButtonPanel = ExtractBetween(mainForm, "private Control BuildButtonPanel()", "private Control BuildPressureCapturePanel()");
 
-        Assert.Contains("Open FTA Setup / Calibration", mainForm);
+        Assert.Contains("AddFtaCommand(flow, \"Initialize\"", ftaButtonPanel);
+        Assert.Contains("AddFtaCommand(flow, \"Calibration\"", ftaButtonPanel);
+        Assert.Contains("AddFtaCommand(flow, \"Diagnostics\"", ftaButtonPanel);
+        Assert.Contains("AddFtaContinuousButton(flow, \"Start Manual Capture\"", ftaButtonPanel);
+        Assert.Contains("AddFtaContinuousButton(flow, \"Stop Capture\"", ftaButtonPanel);
+        Assert.Contains("AddFtaCaptureButton(flow, \"Quit\"", ftaButtonPanel);
+        Assert.Contains("Use Manual/Button mode only. Press and hold the physical FTA button for each test.", mainForm);
         Assert.Contains("stationService.OpenSetupAsync()", mainForm);
-        Assert.Contains("FTA Diagnostic Status", mainForm);
-        Assert.Contains("Return Probe Home", mainForm);
-        Assert.Contains("Cancel FTA Action", mainForm);
+        Assert.Contains("Auto-save after each captured reading", mainForm);
+        Assert.Contains("Checked = true", mainForm);
+        Assert.Contains("Save / Retry Unsaved Pressures", mainForm);
+        Assert.Contains("QueueAutoSave(capture)", mainForm);
+        Assert.Contains("FtaHomePollIntervalMs", mainForm);
+        Assert.Contains("FtaMaxHomeWaitMs", mainForm);
+        Assert.Contains("Ready for next FTA button press.", mainForm);
+        Assert.Contains("Dashboard connection successful. Loaded", mainForm);
+        Assert.Contains("Dashboard connection failed. Unauthorized / invalid key.", mainForm);
+        Assert.DoesNotContain("Start Auto", ftaButtonPanel);
+        Assert.DoesNotContain("Auto Firmness", ftaButtonPanel);
+        Assert.DoesNotContain("Demo-Style", ftaButtonPanel);
+        Assert.DoesNotContain("Get Latest", ftaButtonPanel);
+        Assert.DoesNotContain("Start And Wait", ftaButtonPanel);
+        Assert.DoesNotContain("Manual/Button Firmness", ftaButtonPanel);
+        Assert.DoesNotContain("Return Probe", ftaButtonPanel);
+        Assert.DoesNotContain("Cancel FTA", ftaButtonPanel);
+        Assert.DoesNotContain("Clear Log", ftaButtonPanel);
         Assert.Contains("Import / Replace Station Config", mainForm);
         Assert.Contains("Open Config Folder", mainForm);
         Assert.Contains("Forget Current Config", mainForm);
@@ -282,6 +310,18 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("FtaManualCaptureSafeMode", mainForm);
         Assert.Contains("RequiresImport", program);
         Assert.Contains("StationConfigurationImport.ValidateSource(settingsPath)", program);
+    }
+
+    [Fact]
+    public void ConfigImportDialog_DefaultsToDownloadsAndJsonFiles()
+    {
+        var form = File.ReadAllText(FindRepositoryFile("src", "CropQc.QcStation.WinForms", "ConfigImportForm.cs"));
+
+        Assert.Contains("InitialDirectory = ResolveInitialDirectory()", form);
+        Assert.Contains("Station config JSON (*.json)|*.json|All files (*.*)|*.*", form);
+        Assert.Contains("FilterIndex = 1", form);
+        Assert.Contains("Downloads", form);
+        Assert.Contains("Validating required fields: StationName, WarehouseCode, ApiBaseUrl, QcStationCode, QcStationApiKey", form);
     }
 
     [Fact]
@@ -312,5 +352,14 @@ public sealed class QcStationInstallerWorkflowTests
         }
 
         throw new FileNotFoundException($"Could not find repository file {Path.Combine(pathParts)}.");
+    }
+
+    private static string ExtractBetween(string value, string start, string end)
+    {
+        var startIndex = value.IndexOf(start, StringComparison.Ordinal);
+        Assert.True(startIndex >= 0, $"Could not find start marker '{start}'.");
+        var endIndex = value.IndexOf(end, startIndex, StringComparison.Ordinal);
+        Assert.True(endIndex > startIndex, $"Could not find end marker '{end}'.");
+        return value[startIndex..endIndex];
     }
 }

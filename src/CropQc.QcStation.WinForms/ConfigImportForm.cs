@@ -80,8 +80,10 @@ public sealed class ConfigImportForm : Form
         using var dialog = new OpenFileDialog
         {
             Title = "Select qcstation.settings.json",
-            Filter = "QC Station settings (qcstation.settings.json)|qcstation.settings.json|JSON files (*.json)|*.json|All files (*.*)|*.*",
-            CheckFileExists = true
+            Filter = "Station config JSON (*.json)|*.json|All files (*.*)|*.*",
+            FilterIndex = 1,
+            CheckFileExists = true,
+            InitialDirectory = ResolveInitialDirectory()
         };
 
         if (dialog.ShowDialog(this) != DialogResult.OK)
@@ -90,6 +92,8 @@ public sealed class ConfigImportForm : Form
         }
 
         selectedFileTextBox.Text = dialog.FileName;
+        statusLabel.ForeColor = SystemColors.ControlText;
+        statusLabel.Text = $"Selected file: {dialog.FileName}. Validating required fields: StationName, WarehouseCode, ApiBaseUrl, QcStationCode, QcStationApiKey.";
         try
         {
             var sourceConfiguration = StationConfigurationImport.ValidateSource(dialog.FileName);
@@ -111,6 +115,24 @@ public sealed class ConfigImportForm : Form
             statusLabel.ForeColor = Color.DarkRed;
             statusLabel.Text = $"Configuration import failed: {ex.Message}. If Windows blocks the copy, run Crop QC Station as administrator and try again.";
         }
+    }
+
+    internal static string ResolveInitialDirectory()
+    {
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var downloads = string.IsNullOrWhiteSpace(userProfile) ? "" : Path.Combine(userProfile, "Downloads");
+        if (Directory.Exists(downloads))
+        {
+            return downloads;
+        }
+
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        if (Directory.Exists(documents))
+        {
+            return documents;
+        }
+
+        return Environment.CurrentDirectory;
     }
 
     private static async Task<string> TestConnectionAsync(StationConfiguration configuration)

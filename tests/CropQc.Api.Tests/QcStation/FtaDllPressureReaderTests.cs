@@ -32,7 +32,8 @@ public sealed class FtaDllPressureReaderTests
             StationName = "Real DLL Test",
             FtaMode = FtaMode.RealDll,
             FtaDllPath = tempFolder,
-            FtaDllFileName = FtaDllPressureReader.DefaultFtaDllFileName
+            FtaDllFileName = FtaDllPressureReader.DefaultFtaDllFileName,
+            FtaFirmnessUnit = FtaFirmnessUnit.Pounds
         };
         var reader = new FtaDllPressureReader(configuration, new FakeNativeDllLoader(DllLoadResult.Success()));
 
@@ -227,6 +228,28 @@ public sealed class FtaDllPressureReaderTests
     }
 
     [Fact]
+    public async Task Fta_reading_converts_kg_to_lbs_when_configured()
+    {
+        var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
+        var configuration = CreateRealDllConfiguration(tempFolder);
+        configuration.FtaFirmnessUnit = FtaFirmnessUnit.Kilograms;
+        var fakeLoader = new FakeNativeDllLoader(DllLoadResult.Success())
+        {
+            MaxFirmness = 2.05f
+        };
+        var reader = new FtaDllPressureReader(configuration, fakeLoader);
+
+        await reader.InitializeAsync();
+        var reading = await reader.StartAndWaitManualFirmnessReadingAsync();
+
+        Assert.NotNull(reading);
+        Assert.Equal(4.52m, reading.ReadingValueLbs);
+        Assert.Equal(2.05m, reading.RawReadingValue);
+        Assert.Equal("kg", reading.RawReadingUnit);
+        Assert.Contains("FTAReadMaxFirmness returned 2.05 kg; stored 4.52 lbs", reader.LastStatusMessage);
+    }
+
+    [Fact]
     public async Task Diagnostic_status_reports_raw_value_and_required_bits()
     {
         var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
@@ -369,7 +392,8 @@ public sealed class FtaDllPressureReaderTests
             StationName = "Real DLL Test",
             FtaMode = FtaMode.RealDll,
             FtaDllPath = tempFolder,
-            FtaDllFileName = FtaDllPressureReader.DefaultFtaDllFileName
+            FtaDllFileName = FtaDllPressureReader.DefaultFtaDllFileName,
+            FtaFirmnessUnit = FtaFirmnessUnit.Pounds
         };
         var reader = new FtaDllPressureReader(configuration, new FakeNativeDllLoader(DllLoadResult.Failed("Missing dependency: example.dll")));
 
@@ -389,7 +413,8 @@ public sealed class FtaDllPressureReaderTests
             StationName = "Real DLL Test",
             FtaMode = FtaMode.RealDll,
             FtaDllPath = tempFolder,
-            FtaDllFileName = FtaDllPressureReader.DefaultFtaDllFileName
+            FtaDllFileName = FtaDllPressureReader.DefaultFtaDllFileName,
+            FtaFirmnessUnit = FtaFirmnessUnit.Pounds
         };
         var reader = new FtaDllPressureReader(configuration, new FakeNativeDllLoader(DllLoadResult.ArchitectureMismatch("An attempt was made to load a program with an incorrect format. (0x8007000B)")));
 
@@ -416,7 +441,8 @@ public sealed class FtaDllPressureReaderTests
             StationName = "Real DLL Test",
             FtaMode = FtaMode.RealDll,
             FtaDllPath = tempFolder,
-            FtaDllFileName = FtaDllPressureReader.DefaultFtaDllFileName
+            FtaDllFileName = FtaDllPressureReader.DefaultFtaDllFileName,
+            FtaFirmnessUnit = FtaFirmnessUnit.Pounds
         };
 
     private sealed class FakeNativeDllLoader(DllLoadResult result) : INativeDllLoader

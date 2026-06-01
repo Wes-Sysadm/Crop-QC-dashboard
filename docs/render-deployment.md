@@ -178,15 +178,20 @@ The eventual photo storage provider must support at least 3 crop years of retent
 
 `/Admin/Downloads` is protected by the Admin policy and links only to approved internal support files. It does not proxy downloads through the web app, expose arbitrary file paths, allow uploads, commit installer binaries, or store installer files in the Render container.
 
-The current download entry is:
+The current Google Drive download entries are:
 
 - Name: FTA DLL Installer
 - File: `FTADLL.exe`
 - Purpose: installer/runtime files needed for GUSS FTA DLL integration on QC Station computers.
 - Link: `https://drive.google.com/file/d/1iYy1v1-D8T-S4SgfHJOeuwoeJfsbcvoS/view?usp=drive_link`
 - Button text: `Open Google Drive Download`
+- Name: Crop QC Station App Installer
+- File: `CropQcStationSetup.msi`
+- Purpose: installs the Crop QC Station WinForms app used for FTA pressure capture and station sync.
+- Link: set with `Downloads__QcStationInstallerUrl=[Google Drive share link to CropQcStationSetup.msi]`
+- Button text: `Open Google Drive Download`
 
-The installer binary is not committed to the repository or deployed into Render. Google Drive sharing permissions are managed in Google Drive and should be limited to company users when possible.
+The installer binaries are not committed to the repository or deployed into Render. Google Drive sharing permissions are managed in Google Drive and should be limited to company users when possible.
 
 ## Render Postgres
 
