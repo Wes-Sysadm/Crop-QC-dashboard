@@ -41,16 +41,16 @@ public sealed class AdminController(
                     OpensInNewTab: true,
                     ActionText: "Open Google Drive Download"),
                 new(
-                    "QC Station App Installer",
+                    "Crop QC Station App Installer",
                     QcStationInstallerFileName,
-                    "Signed MSI installer for the Crop QC Station WinForms app. Installs the app, Start Menu shortcut, and cropqcstation:// browser link handler. It does not contain station API keys.",
+                    "Installs the Crop QC Station WinForms app used for FTA pressure capture and station sync.",
                     installerUrl ?? "",
                     installerConfigured
-                        ? "Install Crop QC Station first. Then download station config JSON from Admin QC Stations and import it inside the app with Import / Replace Station Config."
+                        ? "Opens the shared Google Drive download page. Install Crop QC Station first. Then download station config JSON from Admin QC Stations and import it inside the app with Import / Replace Station Config."
                         : "QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.",
                     IsAvailable: installerConfigured,
                     OpensInNewTab: installerConfigured,
-                    ActionText: "Download MSI"),
+                    ActionText: "Open Google Drive Download"),
                 new(
                     "QC Station Configs",
                     "qcstation.settings.json",

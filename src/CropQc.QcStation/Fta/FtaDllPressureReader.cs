@@ -383,9 +383,9 @@ public sealed class FtaDllPressureReader(
                 return Task.FromResult<PressureReading?>(null);
             }
 
-            latestReading = PressureReading.Success((decimal)maxFirmness, PressureReadingSource.FTA, configuration.StationName);
+            latestReading = CreateFtaPressureReading(maxFirmness);
             isReading = false;
-            LastStatusMessage = $"FTAReadMaxFirmness returned {maxFirmness:0.00} lbs.";
+            LastStatusMessage = FormatFirmnessStatus("FTAReadMaxFirmness returned", maxFirmness, latestReading);
             return Task.FromResult<PressureReading?>(latestReading);
         }
         catch (Exception ex)
@@ -731,9 +731,9 @@ public sealed class FtaDllPressureReader(
                     return null;
                 }
 
-                latestReading = PressureReading.Success((decimal)maxFirmness, PressureReadingSource.FTA, configuration.StationName);
+                latestReading = CreateFtaPressureReading(maxFirmness);
                 isReading = false;
-                LastStatusMessage = $"{readingMode} reading detected from demo-style polling. FTAStatus: {status}. FTAReadMaxFirmness returned {maxFirmness:0.00} lbs. Demo-style raw FTAStatus samples: {FormatStatusSamples(sampledStatuses)}.";
+                LastStatusMessage = $"{readingMode} reading detected from demo-style polling. FTAStatus: {status}. {FormatFirmnessStatus("FTAReadMaxFirmness returned", maxFirmness, latestReading)} Demo-style raw FTAStatus samples: {FormatStatusSamples(sampledStatuses)}.";
                 return latestReading;
             }
 
@@ -782,9 +782,9 @@ public sealed class FtaDllPressureReader(
                     return null;
                 }
 
-                latestReading = PressureReading.Success((decimal)maxFirmness, PressureReadingSource.FTA, configuration.StationName);
+                latestReading = CreateFtaPressureReading(maxFirmness);
                 isReading = false;
-                LastStatusMessage = $"{readingMode} reading detected. FTAReadMaxFirmness returned {maxFirmness:0.00} lbs.";
+                LastStatusMessage = $"{readingMode} reading detected. {FormatFirmnessStatus("FTAReadMaxFirmness returned", maxFirmness, latestReading)}";
                 return latestReading;
             }
 
@@ -808,6 +808,29 @@ public sealed class FtaDllPressureReader(
             : Path.GetFullPath(configuration.FtaDllPath));
         return Path.Combine(folder, FtaEnvironmentDiagnostics.FtaConfigFileName);
     }
+
+    private PressureReading CreateFtaPressureReading(float rawFirmness)
+    {
+        var rawValue = (decimal)rawFirmness;
+        var pounds = ConvertRawFirmnessToPounds(rawValue, configuration.FtaFirmnessUnit);
+        return PressureReading.Success(pounds, PressureReadingSource.FTA, configuration.StationName, rawValue, FormatFirmnessUnit(configuration.FtaFirmnessUnit));
+    }
+
+    public static decimal ConvertRawFirmnessToPounds(decimal rawFirmness, FtaFirmnessUnit unit) =>
+        unit == FtaFirmnessUnit.Kilograms
+            ? Math.Round(rawFirmness * 2.20462262185m, 2, MidpointRounding.AwayFromZero)
+            : rawFirmness;
+
+    private static string FormatFirmnessStatus(string prefix, float rawFirmness, PressureReading reading)
+    {
+        var rawUnit = reading.RawReadingUnit ?? "lbs";
+        return rawUnit.Equals("lbs", StringComparison.OrdinalIgnoreCase)
+            ? $"{prefix} {rawFirmness:0.00} lbs."
+            : $"{prefix} {rawFirmness:0.00} {rawUnit}; stored {reading.ReadingValueLbs:0.00} lbs.";
+    }
+
+    private static string FormatFirmnessUnit(FtaFirmnessUnit unit) =>
+        unit == FtaFirmnessUnit.Kilograms ? "kg" : "lbs";
 
     private TimeSpan GetFirmnessReadingTimeout() =>
         TimeSpan.FromSeconds(configuration.FtaReadingTimeoutSeconds > 0 ? configuration.FtaReadingTimeoutSeconds : 60);

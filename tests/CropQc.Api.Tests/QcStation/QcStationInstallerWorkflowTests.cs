@@ -74,7 +74,8 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("Downloads:QcStationInstallerUrl", controller);
         Assert.Contains("QC Station installer link is not configured", controller);
         Assert.Contains("Upload CropQcStationSetup.msi to Google Drive", controller);
-        Assert.Contains("Download MSI", controller);
+        Assert.Contains("Crop QC Station App Installer", controller);
+        Assert.Contains("Open Google Drive Download", controller);
         Assert.Contains("Not deployed", view);
         Assert.DoesNotContain("Install-CropQcStation.cmd", controller);
         Assert.DoesNotContain("PhysicalFile", controller);
@@ -91,9 +92,10 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("The MSI contains no station secrets", view);
         Assert.Contains("QcStationConfigDownload(string FileName, string Json)", service);
         Assert.Contains("FtaManualCaptureSafeMode = true", service);
-        Assert.Contains("FtaManualRearmDelayMs = 750", service);
-        Assert.Contains("FtaHomePollIntervalMs = 150", service);
+        Assert.Contains("FtaManualRearmDelayMs = 250", service);
+        Assert.Contains("FtaHomePollIntervalMs = 100", service);
         Assert.Contains("FtaMaxHomeWaitMs = 5000", service);
+        Assert.Contains("FtaFirmnessUnit = \"Kilograms\"", service);
         Assert.DoesNotContain("ZipArchive", service);
         Assert.DoesNotContain("PackageBytes", service);
     }
@@ -288,6 +290,8 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("FtaHomePollIntervalMs", mainForm);
         Assert.Contains("FtaMaxHomeWaitMs", mainForm);
         Assert.Contains("Ready for next FTA button press.", mainForm);
+        Assert.Contains("Dashboard connection successful. Loaded", mainForm);
+        Assert.Contains("Dashboard connection failed. Unauthorized / invalid key.", mainForm);
         Assert.DoesNotContain("Start Auto", ftaButtonPanel);
         Assert.DoesNotContain("Auto Firmness", ftaButtonPanel);
         Assert.DoesNotContain("Demo-Style", ftaButtonPanel);
@@ -306,6 +310,18 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("FtaManualCaptureSafeMode", mainForm);
         Assert.Contains("RequiresImport", program);
         Assert.Contains("StationConfigurationImport.ValidateSource(settingsPath)", program);
+    }
+
+    [Fact]
+    public void ConfigImportDialog_DefaultsToDownloadsAndJsonFiles()
+    {
+        var form = File.ReadAllText(FindRepositoryFile("src", "CropQc.QcStation.WinForms", "ConfigImportForm.cs"));
+
+        Assert.Contains("InitialDirectory = ResolveInitialDirectory()", form);
+        Assert.Contains("Station config JSON (*.json)|*.json|All files (*.*)|*.*", form);
+        Assert.Contains("FilterIndex = 1", form);
+        Assert.Contains("Downloads", form);
+        Assert.Contains("Validating required fields: StationName, WarehouseCode, ApiBaseUrl, QcStationCode, QcStationApiKey", form);
     }
 
     [Fact]

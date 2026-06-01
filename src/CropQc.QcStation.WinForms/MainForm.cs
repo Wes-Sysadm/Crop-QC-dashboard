@@ -234,6 +234,7 @@ public sealed class MainForm : Form
         AddStatusRow(grid, "Current working directory", "CurrentWorkingDirectory", "Process architecture", "ProcessArchitecture");
         AddStatusRow(grid, "OS architecture", "OSArchitecture", "Last pressure reading", "LastPressureReading");
         AddStatusRow(grid, "API base URL", "ApiBaseUrl", "Safe capture mode", "FtaManualCaptureSafeMode");
+        AddStatusRow(grid, "FTA firmness unit", "FtaFirmnessUnit", "Re-arm timing", "FtaRearmTiming");
 
         return group;
     }
@@ -1059,7 +1060,8 @@ public sealed class MainForm : Form
     {
         if (!StationConfiguration.IsConfigurationValid(stationService.Configuration))
         {
-            apiStatusTextBox.Text = "Config missing/invalid";
+            apiStatusTextBox.Text = "Dashboard connection failed. Config missing/invalid.";
+            apiStatusTextBox.BackColor = Color.MistyRose;
             AppendLog("Test Dashboard Connection skipped: config is missing or invalid. Import station config first.");
             return;
         }
@@ -1069,12 +1071,26 @@ public sealed class MainForm : Form
             apiClient = CreateApiClient();
             AppendLog($"Testing dashboard connection for StationName: {stationService.Configuration.StationName}; QcStationCode: {stationService.Configuration.QcStationCode}; ApiBaseUrl: {stationService.Configuration.ApiBaseUrl}.");
             var samples = await apiClient.GetTodaySamplesAsync(warehouseFilterTextBox.Text);
-            apiStatusTextBox.Text = "Connected successfully";
-            AppendLog($"Dashboard connection test succeeded. Today's sample count for warehouse '{warehouseFilterTextBox.Text}': {samples.Count}.");
+            apiStatusTextBox.BackColor = Color.Honeydew;
+            apiStatusTextBox.Text = $"Dashboard connection successful. Loaded {samples.Count} samples.";
+            AppendLog($"Dashboard connection successful. ApiBaseUrl: {stationService.Configuration.ApiBaseUrl}; StationName: {stationService.Configuration.StationName}; QcStationCode: {stationService.Configuration.QcStationCode}; WarehouseCode: {stationService.Configuration.WarehouseCode}; Loaded {samples.Count} samples.");
         }
         catch (Exception ex)
         {
+            apiStatusTextBox.BackColor = Color.MistyRose;
+            var statusText = ex switch
+            {
+                QcStationAuthorizationException authEx when authEx.StatusCode == System.Net.HttpStatusCode.Forbidden => "Dashboard connection failed. Station inactive or forbidden.",
+                QcStationAuthorizationException => "Dashboard connection failed. Unauthorized / invalid key.",
+                QcStationApiException apiEx => $"Dashboard connection failed. HTTP {(int?)apiEx.StatusCode} {apiEx.StatusCode}.",
+                HttpRequestException => "Dashboard connection failed. Server unavailable or network error.",
+                TaskCanceledException => "Dashboard connection failed. Server unavailable or timed out.",
+                _ => "Dashboard connection failed. Unexpected response."
+            };
+            apiStatusTextBox.Text = statusText;
             HandleApiException("Test dashboard connection", ex);
+            apiStatusTextBox.BackColor = Color.MistyRose;
+            apiStatusTextBox.Text = statusText;
         }
     }
 
@@ -1272,8 +1288,8 @@ public sealed class MainForm : Form
     private async Task WaitForManualRearmReadyAsync(CancellationToken cancellationToken)
     {
         var config = stationService.Configuration;
-        var delayMs = config.FtaManualRearmDelayMs > 0 ? config.FtaManualRearmDelayMs : 750;
-        var pollIntervalMs = config.FtaHomePollIntervalMs > 0 ? config.FtaHomePollIntervalMs : 150;
+        var delayMs = config.FtaManualRearmDelayMs > 0 ? config.FtaManualRearmDelayMs : 250;
+        var pollIntervalMs = config.FtaHomePollIntervalMs > 0 ? config.FtaHomePollIntervalMs : 100;
         var maxHomeWaitMs = config.FtaMaxHomeWaitMs > 0 ? config.FtaMaxHomeWaitMs : 5000;
         if (!config.FtaManualCaptureSafeMode)
         {
@@ -1297,14 +1313,18 @@ public sealed class MainForm : Form
 
             if (StatusIndicatesProbeAtTop(status.StatusMessage))
             {
+                var elapsedMs = (DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
+                AppendLog($"FTA home detected after {elapsedMs:0} ms. Debouncing {delayMs} ms before re-arm.");
+                await Task.Delay(delayMs, cancellationToken);
                 continuousStatusTextBox.Text = "Ready for next FTA button press.";
+                AppendLog($"FTA ready for next button press after {(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds:0} ms.");
                 return;
             }
 
             if (!StatusIndicatesProbeAtBottom(status.StatusMessage)
                 && DateTimeOffset.UtcNow - startedAt >= TimeSpan.FromMilliseconds(delayMs))
             {
-                AppendLog($"Probe-at-top was not confirmed, but fallback safe delay of {delayMs} ms elapsed without probe-at-bottom status.");
+                AppendLog($"Probe-at-top was not confirmed, but fallback safe delay of {delayMs} ms elapsed without probe-at-bottom status. Total wait {(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds:0} ms.");
                 continuousStatusTextBox.Text = "Ready for next FTA button press.";
                 return;
             }
@@ -1363,12 +1383,22 @@ public sealed class MainForm : Form
         var slot = testFruitCapture.Capture(reading, target);
         hasUnsavedPressureChanges = true;
         continuousStatusTextBox.Text = "Reading captured.";
-        AppendLog($"Captured {reading.ReadingValueLbs:0.00} lbs into Fruit {capturedFruit} {slot}.");
+        AppendLog(FormatCapturedReadingLog(reading, capturedFruit, slot));
         var capture = new CapturedPressureHistoryEntry(reading.CapturedAt, reading.ReadingValueLbs, reading.Source, capturedFruit, slot);
         RefreshCaptureDisplay();
         RefreshSampleStatusDisplay();
         QueueAutoSave(capture);
         return capture;
+    }
+
+    private static string FormatCapturedReadingLog(PressureReading reading, int fruitNumber, string slot)
+    {
+        if (reading.RawReadingValue is decimal rawValue && !string.IsNullOrWhiteSpace(reading.RawReadingUnit))
+        {
+            return $"Captured raw {rawValue:0.00} {reading.RawReadingUnit} = {reading.ReadingValueLbs:0.00} lbs into Fruit {fruitNumber} {slot}.";
+        }
+
+        return $"Captured {reading.ReadingValueLbs:0.00} lbs into Fruit {fruitNumber} {slot}.";
     }
 
     private void QueueAutoSave(CapturedPressureHistoryEntry capture)
@@ -1468,6 +1498,8 @@ public sealed class MainForm : Form
         SetValue("OSArchitecture", RuntimeInformation.OSArchitecture.ToString());
         SetValue("LastPressureReading", FormatReading(stationService.LatestReading));
         SetValue("FtaManualCaptureSafeMode", config.FtaManualCaptureSafeMode ? "Enabled" : "Disabled");
+        SetValue("FtaFirmnessUnit", config.FtaFirmnessUnit.ToString());
+        SetValue("FtaRearmTiming", $"poll {config.FtaHomePollIntervalMs} ms, delay {config.FtaManualRearmDelayMs} ms, max {config.FtaMaxHomeWaitMs} ms");
     }
 
     private void RefreshSampleStatusDisplay()

@@ -119,8 +119,9 @@ public sealed class TestFruitPressureCaptureTests
         var configuration = new StationConfiguration();
 
         Assert.True(configuration.FtaManualCaptureSafeMode);
-        Assert.Equal(750, configuration.FtaManualRearmDelayMs);
-        Assert.Equal(150, configuration.FtaHomePollIntervalMs);
+        Assert.Equal(250, configuration.FtaManualRearmDelayMs);
+        Assert.Equal(100, configuration.FtaHomePollIntervalMs);
         Assert.Equal(5000, configuration.FtaMaxHomeWaitMs);
+        Assert.Equal(FtaFirmnessUnit.Kilograms, configuration.FtaFirmnessUnit);
     }
 }
