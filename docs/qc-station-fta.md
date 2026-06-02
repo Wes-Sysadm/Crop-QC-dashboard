@@ -77,8 +77,16 @@ After installation, configure the QC Station for the confirmed working path:
 
 ```json
 {
+  "FtaConnectionMode": "Auto",
   "FtaDllPath": "C:\\Windows\\SysWOW64",
   "FtaDllFileName": "FTA_DLL.dll",
+  "FtaInitializationMode": "FTAInit",
+  "FtaConfigPath": "C:\\Program Files\\FTADLL\\FTA_DLL.CFG",
+  "FtaFirmnessUnit": "Kilograms",
+  "FtaManualCaptureSafeMode": true,
+  "FtaHomePollIntervalMs": 100,
+  "FtaManualRearmDelayMs": 250,
+  "FtaMaxHomeWaitMs": 5000,
   "FtaWorkingDirectory": "C:\\Program Files (x86)\\FTAWin"
 }
 ```
@@ -121,10 +129,16 @@ The current settings fields are:
 - `FtaDllPath`
 - `FtaDllFileName`
 - `FtaInitializationMode`: `FTAInit` or `FTAInit2`
+- `FtaConnectionMode`: `Auto`, `UsbHid`, `Serial`, or `UsbSerial`
 - `FtaConfigPath`
 - `FtaReadingTimeoutSeconds`
 - `FtaWorkingDirectory`
 - `ComPort`
+- `FtaSerialPort`
+- `FtaSerialBaudRate`
+- `FtaSerialDataBits`
+- `FtaSerialParity`
+- `FtaSerialStopBits`
 - `ApiBaseUrl`
 - `LocalDataPath`
 
@@ -223,7 +237,7 @@ The harness checks these status bits:
 - bit 8: new mass reading
 - bit 9: scale attached/can measure mass
 
-Use the `FTA Diagnostic Status` command before and after a reading attempt when troubleshooting the physical station. It displays the raw `FTAStatus` value and raw `FTABitStatus` values for bits 1, 2, 3, 5, 6, 7, 8, and 9, plus a Yes/No interpretation for each direct bit check.
+Use the `Diagnostics` command or the `FTA Diagnostics` tab before and after a reading attempt when troubleshooting the physical station. The full diagnostic report displays runtime details, station config, required file checks, USB/HID candidates, COM port candidates, `FTA_DLL.CFG` COM references, and raw `FTAStatus` / `FTABitStatus` values for bits 1, 2, 3, 5, 6, 7, 8, and 9 when the DLL responds.
 
 The diagnostic command also reports:
 
@@ -237,6 +251,53 @@ The diagnostic command also reports:
 - A warning if `FTA_DLL.CFG` says `COM1`, Windows only reports `COM1`, and the FTA appears as HID USB instead of a COM port.
 
 If `FTAStatus` returns `-1`, the harness labels the value as negative/suspicious and does not decode the raw status word as if every bit is valid. It still shows the direct `FTABitStatus` calls separately.
+
+## FTA Hardware Diagnostics
+
+The WinForms `FTA Diagnostics` tab is intended to make the USB/HID vs serial question visible instead of guessing. It includes:
+
+- `FtaConnectionMode`: `Auto`, `UsbHid`, `Serial`, or `UsbSerial`.
+- A COM port selector populated from Windows COM ports.
+- `Refresh Devices`.
+- `Run Full FTA Diagnostic`.
+- `Copy Diagnostic Report`.
+- `Open FTA Setup / Calibration`.
+- `Save FTA Connection Settings`.
+
+`Auto` mode does not implement a low-level serial protocol. It only recommends the most likely path:
+
+1. Prefer a known direct USB HID FTA when Windows reports `VID_6017` / `PID_3430`.
+2. Otherwise prefer a COM port referenced by `FTA_DLL.CFG` when Windows also reports that COM port.
+3. Otherwise list possible USB-to-serial adapters, such as FTDI, Prolific, Silicon Labs CP210x, CH340/CH341, USB Serial Device, USB-to-Serial, or Serial Converter.
+4. If multiple USB-to-serial candidates exist, do not auto-select one; open `FTA Setup / Calibration` and choose the correct port.
+
+The diagnostic report checks:
+
+- process architecture and OS architecture
+- loaded config path
+- `FtaConnectionMode`, `FtaSerialPort`, and FTA DLL settings
+- `C:\Windows\SysWOW64\FTA_DLL.dll`
+- `C:\Windows\SysWOW64\borlndmm.dll`
+- configured DLL folder and main DLL
+- configured `FTA_DLL.CFG`
+- `C:\Program Files\FTADLL\FTA_DLL.dll`
+- `C:\Program Files\FTADLL\FTA_DLL.CFG`
+- `C:\Program Files (x86)\FTAWin`
+- USB HID devices, highlighting `VID_6017&PID_3430`
+- serial COM ports and likely USB-to-serial adapters
+- visible COM strings in `FTA_DLL.CFG`
+- `FTAStatus` and important `FTABitStatus` values after initialization
+
+The plain-English conclusion is meant to be actionable. Examples include:
+
+- `FTA ready.`
+- `FTA USB device detected, but DLL did not respond.`
+- `FTA DLL missing. Install FTADLL.exe from Admin -> Downloads, then rerun diagnostics.`
+- `FTA_DLL.dll requires x86. Install/run the x86 QC Station app.`
+- `COM port detected, but FTA DLL did not respond. Confirm the correct COM port in FTA Setup / Calibration and verify adapter drivers.`
+- `No USB HID or COM connection was detected. Check cable, power, Device Manager, and FTADLL/driver installation.`
+
+Use `Copy Diagnostic Report` when asking for help. The report excludes `QcStationApiKey` and other secrets.
 
 The vendor demo source continuously polls during idle with this pattern:
 
@@ -272,10 +333,16 @@ The confirmed working RealDll configuration for the current FTA unit is:
 ```json
 {
   "FtaMode": "RealDll",
+  "FtaConnectionMode": "Auto",
   "FtaDllPath": "C:\\Windows\\SysWOW64",
   "FtaDllFileName": "FTA_DLL.dll",
   "FtaInitializationMode": "FTAInit",
   "FtaConfigPath": "C:\\Program Files\\FTADLL\\FTA_DLL.CFG",
+  "FtaFirmnessUnit": "Kilograms",
+  "FtaManualCaptureSafeMode": true,
+  "FtaHomePollIntervalMs": 100,
+  "FtaManualRearmDelayMs": 250,
+  "FtaMaxHomeWaitMs": 5000,
   "FtaReadingTimeoutSeconds": 60,
   "FtaWorkingDirectory": "C:\\Program Files (x86)\\FTAWin"
 }
@@ -317,14 +384,14 @@ On the physical QC computer connected to the GUSS/FTA:
    ```
 
 3. Select `Initialize FTA`.
-4. Select `FTA Diagnostic Status` and confirm the DLL path, config path, process architecture, and status bits.
+4. Select `Diagnostics` or open the `FTA Diagnostics` tab and run `Run Full FTA Diagnostic`; confirm the DLL path, config path, process architecture, USB/HID or COM candidates, and status bits.
 5. Select `Start Continuous Manual Capture`.
 6. Press and hold the green FTA button until the probe completes the test.
 7. Let the harness capture the value, auto-fill the current target, and re-arm for the next test.
 8. Repeat the physical green-button test cycle. The harness fills Fruit 1 Pressure 1, Fruit 1 Pressure 2, Fruit 2 Pressure 1, Fruit 2 Pressure 2, and continues through Fruit 25 Pressure 2.
 9. Select `Stop Continuous Capture` when done or if troubleshooting is needed.
 10. Select `Quit/Disconnect FTA` before closing the station app when possible.
-11. Select `FTA Diagnostic Status` again if there is no beep, no probe movement, or no new reading.
+11. Select `Diagnostics` again if there is no beep, no probe movement, or no new reading.
 
 If `Get Latest Reading` says no new firmness reading is available, bit 1 was not set yet. Run the physical test cycle again or check the FTA setup/status.
 
@@ -345,29 +412,16 @@ The local harness displays:
 - Last pressure reading
 - Timestamped log
 
-Available commands:
+Normal FTA Capture commands:
 
-- Initialize FTA
-- Initialize FTA With Config Path
-- Open FTA Setup
-- FTA Diagnostic Status
-- Check Status
-- Start Continuous Manual Capture
-- Stop Continuous Capture
-- Start Manual/Button Firmness Reading - Recommended
-- Start Auto Firmness Reading - Experimental
-- Start And Wait Manual/Button Reading - Recommended
-- Demo-Style Poll Reading
-- Demo-Style Auto Reading - Experimental
-- Demo-Style Manual/Button Reading
-- Get Latest Reading
-- Cancel
-- Return Probe Home
-- Quit/Disconnect FTA
-- Use Mock Reading
-- Clear Log
+- Initialize
+- Calibration
+- Diagnostics
+- Start Manual Capture
+- Stop Capture
+- Quit
 
-The WinForms harness exposes the same hardware commands as buttons, plus status/config labels for station name, warehouse, FTA mode, DLL path, DLL file, initialization mode, config path, current working directory, process architecture, OS architecture, and last pressure reading. Its log box auto-scrolls and keeps timestamped entries visible during hardware tests.
+Auto/demo/latest/duplicate/cancel/home commands are not shown in the normal operator FTA Capture tab. Diagnostics, calibration, and connection settings live in the `FTA Diagnostics` tab. The WinForms harness also shows status/config labels for station name, warehouse, FTA mode, connection mode, DLL path, DLL file, initialization mode, config path, current working directory, process architecture, OS architecture, serial port, and last pressure reading. Its log box auto-scrolls and keeps timestamped entries visible during hardware tests.
 
 The WinForms harness also includes a 25-fruit pressure grid. It tracks fruit number, Pressure 1, Pressure 2, average pressure, current target, last captured reading, capture target, local row status, and reading history. Continuous Manual Capture is the primary workflow: the operator starts it once, then runs each physical FTA test with the green button while the harness captures readings and advances through P1/P2 for each fruit. Captured pressures stay local until the operator selects `Save Pressures to Dashboard` or enables the optional auto-save setting.
 

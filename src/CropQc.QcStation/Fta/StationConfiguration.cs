@@ -13,6 +13,7 @@ public sealed class StationConfiguration
     public string FtaDllPath { get; set; } = ".\\fta";
     public string FtaDllFileName { get; set; } = "FTA_dll.dll";
     public FtaInitializationMode FtaInitializationMode { get; set; } = FtaInitializationMode.FTAInit;
+    public FtaConnectionMode FtaConnectionMode { get; set; } = FtaConnectionMode.Auto;
     public string FtaConfigPath { get; set; } = @"C:\Program Files\FTADLL\FTA_DLL.CFG";
     public int FtaReadingTimeoutSeconds { get; set; } = 60;
     public bool FtaManualCaptureSafeMode { get; set; } = true;
@@ -22,6 +23,11 @@ public sealed class StationConfiguration
     public FtaFirmnessUnit FtaFirmnessUnit { get; set; } = FtaFirmnessUnit.Kilograms;
     public string? FtaWorkingDirectory { get; set; }
     public string? ComPort { get; set; }
+    public string? FtaSerialPort { get; set; }
+    public int? FtaSerialBaudRate { get; set; }
+    public int FtaSerialDataBits { get; set; } = 8;
+    public FtaSerialParity FtaSerialParity { get; set; } = FtaSerialParity.None;
+    public FtaSerialStopBits FtaSerialStopBits { get; set; } = FtaSerialStopBits.One;
     public string ApiBaseUrl { get; set; } = "https://localhost:7001";
     public string? QcStationCode { get; set; }
     public string? QcStationApiKey { get; set; }
@@ -113,6 +119,7 @@ public sealed class StationConfiguration
         FtaDllPath = source.FtaDllPath;
         FtaDllFileName = source.FtaDllFileName;
         FtaInitializationMode = source.FtaInitializationMode;
+        FtaConnectionMode = source.FtaConnectionMode;
         FtaConfigPath = source.FtaConfigPath;
         FtaReadingTimeoutSeconds = source.FtaReadingTimeoutSeconds;
         FtaManualCaptureSafeMode = source.FtaManualCaptureSafeMode;
@@ -122,6 +129,11 @@ public sealed class StationConfiguration
         FtaFirmnessUnit = source.FtaFirmnessUnit;
         FtaWorkingDirectory = source.FtaWorkingDirectory;
         ComPort = source.ComPort;
+        FtaSerialPort = source.FtaSerialPort;
+        FtaSerialBaudRate = source.FtaSerialBaudRate;
+        FtaSerialDataBits = source.FtaSerialDataBits;
+        FtaSerialParity = source.FtaSerialParity;
+        FtaSerialStopBits = source.FtaSerialStopBits;
         ApiBaseUrl = source.ApiBaseUrl;
         QcStationCode = source.QcStationCode;
         QcStationApiKey = source.QcStationApiKey;
@@ -133,6 +145,30 @@ public enum FtaFirmnessUnit
 {
     Pounds,
     Kilograms
+}
+
+public enum FtaConnectionMode
+{
+    Auto,
+    UsbHid,
+    Serial,
+    UsbSerial
+}
+
+public enum FtaSerialParity
+{
+    None,
+    Odd,
+    Even,
+    Mark,
+    Space
+}
+
+public enum FtaSerialStopBits
+{
+    One,
+    OnePointFive,
+    Two
 }
 
 public static class StationConfigurationImport

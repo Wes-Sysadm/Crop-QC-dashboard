@@ -92,10 +92,15 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("The MSI contains no station secrets", view);
         Assert.Contains("QcStationConfigDownload(string FileName, string Json)", service);
         Assert.Contains("FtaManualCaptureSafeMode = true", service);
+        Assert.Contains("FtaConnectionMode = \"Auto\"", service);
         Assert.Contains("FtaManualRearmDelayMs = 250", service);
         Assert.Contains("FtaHomePollIntervalMs = 100", service);
         Assert.Contains("FtaMaxHomeWaitMs = 5000", service);
         Assert.Contains("FtaFirmnessUnit = \"Kilograms\"", service);
+        Assert.Contains("FtaSerialPort = (string?)null", service);
+        Assert.Contains("FtaSerialDataBits = 8", service);
+        Assert.Contains("FtaSerialParity = \"None\"", service);
+        Assert.Contains("FtaSerialStopBits = \"One\"", service);
         Assert.DoesNotContain("ZipArchive", service);
         Assert.DoesNotContain("PackageBytes", service);
     }
@@ -277,7 +282,7 @@ public sealed class QcStationInstallerWorkflowTests
 
         Assert.Contains("AddFtaCommand(flow, \"Initialize\"", ftaButtonPanel);
         Assert.Contains("AddFtaCommand(flow, \"Calibration\"", ftaButtonPanel);
-        Assert.Contains("AddFtaCommand(flow, \"Diagnostics\"", ftaButtonPanel);
+        Assert.Contains("AddFtaCaptureButton(flow, \"Diagnostics\", RunFullFtaDiagnosticAsync)", ftaButtonPanel);
         Assert.Contains("AddFtaContinuousButton(flow, \"Start Manual Capture\"", ftaButtonPanel);
         Assert.Contains("AddFtaContinuousButton(flow, \"Stop Capture\"", ftaButtonPanel);
         Assert.Contains("AddFtaCaptureButton(flow, \"Quit\"", ftaButtonPanel);
@@ -308,6 +313,12 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("apiClient = null", mainForm);
         Assert.Contains("WaitForManualRearmReadyAsync", mainForm);
         Assert.Contains("FtaManualCaptureSafeMode", mainForm);
+        Assert.Contains("BuildFtaDiagnosticsPanel", mainForm);
+        Assert.Contains("Run Full FTA Diagnostic", mainForm);
+        Assert.Contains("Copy Diagnostic Report", mainForm);
+        Assert.Contains("Save FTA Connection Settings", mainForm);
+        Assert.Contains("FtaConnectionMode", mainForm);
+        Assert.Contains("FtaSerialPort", mainForm);
         Assert.Contains("RequiresImport", program);
         Assert.Contains("StationConfigurationImport.ValidateSource(settingsPath)", program);
     }

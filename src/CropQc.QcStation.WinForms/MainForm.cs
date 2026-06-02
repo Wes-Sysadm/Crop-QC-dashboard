@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using CropQc.QcStation.Api;
 using CropQc.QcStation.Fta;
 using CropQc.Shared;
@@ -74,6 +76,25 @@ public sealed class MainForm : Form
         ScrollBars = ScrollBars.Vertical,
         WordWrap = false
     };
+    private readonly IFtaEnvironmentDiagnostics ftaEnvironmentDiagnostics = new FtaEnvironmentDiagnostics();
+    private readonly TextBox ftaDiagnosticsTextBox = new()
+    {
+        Dock = DockStyle.Fill,
+        Multiline = true,
+        ReadOnly = true,
+        ScrollBars = ScrollBars.Both,
+        WordWrap = false
+    };
+    private readonly ComboBox ftaConnectionModeComboBox = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Width = 150
+    };
+    private readonly ComboBox ftaSerialPortComboBox = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Width = 150
+    };
     private int renderedLogCount;
     private CancellationTokenSource? continuousCaptureCts;
     private bool isContinuousCaptureRunning;
@@ -131,6 +152,7 @@ public sealed class MainForm : Form
         tabs.TabPages.Add(BuildScrollableTab("Sample Selection", BuildSampleSelectionPanel()));
         tabs.TabPages.Add(BuildScrollableTab("FTA Capture", BuildStackedPanel(BuildGuidancePanel(), BuildButtonPanel(), BuildCaptureFieldsPanel())));
         tabs.TabPages.Add(BuildTab("Pressure Grid", BuildPressureTablesPanel()));
+        tabs.TabPages.Add(BuildTab("FTA Diagnostics", BuildFtaDiagnosticsPanel()));
         tabs.TabPages.Add(BuildTab("Logs / Diagnostics", BuildLogPanel()));
         root.Controls.Add(tabs, 0, 0);
     }
@@ -235,6 +257,7 @@ public sealed class MainForm : Form
         AddStatusRow(grid, "OS architecture", "OSArchitecture", "Last pressure reading", "LastPressureReading");
         AddStatusRow(grid, "API base URL", "ApiBaseUrl", "Safe capture mode", "FtaManualCaptureSafeMode");
         AddStatusRow(grid, "FTA firmness unit", "FtaFirmnessUnit", "Re-arm timing", "FtaRearmTiming");
+        AddStatusRow(grid, "FTA connection mode", "FtaConnectionMode", "FTA serial port", "FtaSerialPort");
 
         return group;
     }
@@ -379,12 +402,56 @@ public sealed class MainForm : Form
 
         AddFtaCommand(flow, "Initialize", () => stationService.InitializeAsync());
         AddFtaCommand(flow, "Calibration", () => stationService.OpenSetupAsync());
-        AddFtaCommand(flow, "Diagnostics", () => stationService.DiagnosticStatusAsync());
+        AddFtaCaptureButton(flow, "Diagnostics", RunFullFtaDiagnosticAsync);
         AddFtaContinuousButton(flow, "Start Manual Capture", StartContinuousManualCapture);
         AddFtaContinuousButton(flow, "Stop Capture", StopContinuousCapture);
         AddFtaCaptureButton(flow, "Quit", QuitDisconnectFtaAsync);
 
         return group;
+    }
+
+    private Control BuildFtaDiagnosticsPanel()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 2,
+            ColumnCount = 1,
+            Padding = new Padding(10)
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var controls = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            WrapContents = true
+        };
+        ftaConnectionModeComboBox.Items.AddRange(Enum.GetNames<FtaConnectionMode>());
+        ftaConnectionModeComboBox.SelectedItem = stationService.Configuration.FtaConnectionMode.ToString();
+        controls.Controls.Add(new Label { Text = "Connection mode", AutoSize = true, Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold), Margin = new Padding(4, 8, 4, 4) });
+        controls.Controls.Add(ftaConnectionModeComboBox);
+        controls.Controls.Add(new Label { Text = "COM port", AutoSize = true, Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold), Margin = new Padding(8, 8, 4, 4) });
+        controls.Controls.Add(ftaSerialPortComboBox);
+        AddSampleButton(controls, "Refresh Devices", RefreshFtaDevicesAsync);
+        AddSampleButton(controls, "Run Full FTA Diagnostic", RunFullFtaDiagnosticAsync);
+        AddSampleButton(controls, "Copy Diagnostic Report", CopyFtaDiagnosticReportAsync);
+        AddSampleButton(controls, "Open FTA Setup / Calibration", OpenFtaSetupAndRefreshDiagnosticsAsync);
+        AddSampleButton(controls, "Save FTA Connection Settings", SaveFtaConnectionSettingsAsync);
+        controls.Controls.Add(new Label
+        {
+            AutoSize = true,
+            MaximumSize = new Size(760, 0),
+            Margin = new Padding(8, 8, 4, 4),
+            Text = "Serial settings must match FTA Setup / FTA_DLL.CFG. Auto mode prefers known USB HID VID_6017/PID_3430, then configured COM ports, and never silently chooses among multiple USB-to-serial adapters."
+        });
+        root.Controls.Add(controls, 0, 0);
+        root.Controls.Add(ftaDiagnosticsTextBox, 0, 1);
+
+        RefreshFtaDeviceSelections();
+        ftaDiagnosticsTextBox.Text = "Click Run Full FTA Diagnostic to check app architecture, DLL files, USB HID devices, COM ports, FTA_DLL.CFG, and FTAStatus/FTABitStatus response.";
+        return root;
     }
 
     private Control BuildPressureCapturePanel()
@@ -1412,6 +1479,120 @@ public sealed class MainForm : Form
         _ = SavePressuresToDashboardAsync(autoSave: true, capture);
     }
 
+    private Task RefreshFtaDevicesAsync()
+    {
+        RefreshFtaDeviceSelections();
+        var report = BuildFtaDiagnosticReport(null, null);
+        ftaDiagnosticsTextBox.Text = report.ReportText;
+        AppendLog("FTA device discovery refreshed.");
+        return Task.CompletedTask;
+    }
+
+    private async Task RunFullFtaDiagnosticAsync()
+    {
+        AppendLog("Run Full FTA Diagnostic started.");
+        RefreshFtaDeviceSelections();
+        FtaDeviceStatus? status = null;
+        string? error = null;
+        try
+        {
+            AppendLog($"FTA diagnostic: mode {stationService.Configuration.FtaConnectionMode}; DLL {stationService.Configuration.FtaDllPath}\\{stationService.Configuration.FtaDllFileName}; working directory {FormatOptional(stationService.Configuration.FtaWorkingDirectory)}.");
+            status = await stationService.InitializeAsync();
+            RenderNewServiceLogEntries();
+            if (!status.IsInitialized || !status.IsConnected)
+            {
+                error = status.ErrorMessage ?? status.StatusMessage;
+            }
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            AppendLog($"Run Full FTA Diagnostic initialize failed: {ex.Message}");
+        }
+
+        var report = BuildFtaDiagnosticReport(status, error);
+        ftaDiagnosticsTextBox.Text = report.ReportText;
+        AppendLog($"Run Full FTA Diagnostic conclusion: {report.Conclusion}");
+    }
+
+    private Task CopyFtaDiagnosticReportAsync()
+    {
+        var reportText = string.IsNullOrWhiteSpace(ftaDiagnosticsTextBox.Text)
+            ? BuildFtaDiagnosticReport(null, null).ReportText
+            : ftaDiagnosticsTextBox.Text;
+        Clipboard.SetText(reportText);
+        AppendLog("FTA diagnostic report copied to clipboard.");
+        return Task.CompletedTask;
+    }
+
+    private async Task OpenFtaSetupAndRefreshDiagnosticsAsync()
+    {
+        var status = await stationService.OpenSetupAsync();
+        RenderNewServiceLogEntries();
+        RefreshFtaDeviceSelections();
+        var report = BuildFtaDiagnosticReport(status, status.ErrorMessage);
+        ftaDiagnosticsTextBox.Text = report.ReportText;
+        AppendLog("FTA Setup / Calibration closed or returned; diagnostics refreshed.");
+    }
+
+    private Task SaveFtaConnectionSettingsAsync()
+    {
+        var config = stationService.Configuration;
+        if (Enum.TryParse<FtaConnectionMode>(ftaConnectionModeComboBox.SelectedItem?.ToString(), ignoreCase: true, out var mode))
+        {
+            config.FtaConnectionMode = mode;
+        }
+
+        config.FtaSerialPort = string.IsNullOrWhiteSpace(ftaSerialPortComboBox.SelectedItem?.ToString())
+            ? null
+            : ftaSerialPortComboBox.SelectedItem.ToString();
+        config.ComPort = config.FtaSerialPort;
+
+        var path = File.Exists(settingsPath) ? settingsPath : StationConfiguration.InstalledSettingsPath;
+        try
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(path, JsonSerializer.Serialize(config, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Converters = { new JsonStringEnumConverter() }
+            }));
+            settingsPath = path;
+            RefreshStatusDisplay();
+            AppendLog($"FTA connection settings saved to {path}. Serial settings must match FTA Setup / FTA_DLL.CFG.");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"FTA connection settings could not be saved: {ex.Message}");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void RefreshFtaDeviceSelections()
+    {
+        var selectedPort = stationService.Configuration.FtaSerialPort ?? stationService.Configuration.ComPort;
+        ftaConnectionModeComboBox.SelectedItem = stationService.Configuration.FtaConnectionMode.ToString();
+        ftaSerialPortComboBox.Items.Clear();
+        ftaSerialPortComboBox.Items.Add("");
+        foreach (var port in ftaEnvironmentDiagnostics.GetComPortDiagnostics().Where(port => !string.IsNullOrWhiteSpace(port.PortName)).Select(port => port.PortName).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase))
+        {
+            ftaSerialPortComboBox.Items.Add(port);
+        }
+
+        ftaSerialPortComboBox.SelectedItem = selectedPort is not null && ftaSerialPortComboBox.Items.Contains(selectedPort)
+            ? selectedPort
+            : "";
+    }
+
+    private FtaConnectionDiagnosticReport BuildFtaDiagnosticReport(FtaDeviceStatus? status, string? error) =>
+        FtaConnectionDiagnostics.BuildReport(stationService.Configuration, settingsPath, ftaEnvironmentDiagnostics, status, error);
+
     private PressureCaptureTarget GetSelectedCaptureTarget()
     {
         if (pressure1TargetRadio.Checked)
@@ -1500,6 +1681,8 @@ public sealed class MainForm : Form
         SetValue("FtaManualCaptureSafeMode", config.FtaManualCaptureSafeMode ? "Enabled" : "Disabled");
         SetValue("FtaFirmnessUnit", config.FtaFirmnessUnit.ToString());
         SetValue("FtaRearmTiming", $"poll {config.FtaHomePollIntervalMs} ms, delay {config.FtaManualRearmDelayMs} ms, max {config.FtaMaxHomeWaitMs} ms");
+        SetValue("FtaConnectionMode", config.FtaConnectionMode.ToString());
+        SetValue("FtaSerialPort", string.IsNullOrWhiteSpace(config.FtaSerialPort) ? "(not configured)" : config.FtaSerialPort);
     }
 
     private void RefreshSampleStatusDisplay()
@@ -1585,6 +1768,9 @@ public sealed class MainForm : Form
 
     private static string FormatPressure(decimal? pressure) =>
         pressure is null ? "" : $"{pressure:0.00} lbs";
+
+    private static string FormatOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "(not configured)" : value;
 
     protected override async void OnFormClosing(FormClosingEventArgs e)
     {
