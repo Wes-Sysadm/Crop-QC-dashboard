@@ -459,7 +459,7 @@ FTA DLL firmness units are explicit in station config. `FtaFirmnessUnit` default
 
 Station API access is managed in the database, not with one shared Render environment variable. Each QC computer sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the server stores only a hash of the key. Deactivate a station to block it immediately, or rotate its key and download a fresh config if a computer is replaced.
 
-`Admin -> Downloads` links to the Google Drive `FTADLL.exe` installer and the Crop QC Station App Installer MSI when the MSI has been deployed. Install `FTADLL.exe` on each FTA-connected QC Station computer before running RealDll mode, then use `Admin -> QC Stations` to download that computer's station-specific config JSON. This setup supports 20+ station computers without sharing one secret across all of them.
+`Admin -> Downloads` links only to shared installer/support downloads: the Google Drive `FTADLL.exe` installer and the Crop QC Station App Installer MSI when the MSI has been deployed. It does not provide station-specific config JSON. Install the Crop QC Station App Installer first, then use `Admin -> QC Stations` to create/select the station and download that computer's station-specific config JSON. Open Crop QC Station and use `Import / Replace Station Config` to install the JSON into ProgramData. Install `FTADLL.exe` only on FTA-connected QC Station computers before running RealDll mode. This setup supports 20+ station computers without sharing one secret across all of them.
 
 Keep station config JSON private. It contains the raw station API key. If a config file is lost or exposed, rotate that station's key in `Admin -> QC Stations` and download a new config. The MSI contains no station secrets.
 
