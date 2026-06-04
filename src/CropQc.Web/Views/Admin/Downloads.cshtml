@@ -10,7 +10,18 @@
 }
 
 <p class="notice warning">Internal installer links are for company QC computers only. Google Drive sharing controls access to the FTA DLL installer and should be limited to company users when possible.</p>
-<p class="notice">Install the shared Crop QC Station app first. Then download a station-specific config from <a href="/Admin/QcStations">Admin QC Stations</a> and import it inside the app with <strong>Import / Replace Station Config</strong>. Install FTADLL.exe separately on FTA-connected computers. The MSI contains no station API keys.</p>
+<section class="form-section">
+    <h2>QC Station setup workflow</h2>
+    <ol>
+        <li>Install Crop QC Station App Installer from this page.</li>
+        <li>Create or select a station under Admin &rarr; QC Stations.</li>
+        <li>Download the station config JSON from Admin &rarr; QC Stations.</li>
+        <li>Open Crop QC Station and use <strong>Import / Replace Station Config</strong>.</li>
+        <li>Install FTADLL.exe only on FTA-connected computers.</li>
+    </ol>
+    <p>Station configs are generated and downloaded from Admin &rarr; QC Stations. Downloads is only for shared installer/support files; the MSI contains no station API keys.</p>
+    <p><a class="button secondary-button" href="/Admin/QcStations">Manage QC Stations</a></p>
+</section>
 
 <div class="table-wrap">
     <table>

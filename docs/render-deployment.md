@@ -178,7 +178,7 @@ The eventual photo storage provider must support at least 3 crop years of retent
 
 ## Admin Downloads
 
-`/Admin/Downloads` is protected by the Admin policy and links only to approved internal support files. It does not proxy downloads through the web app, expose arbitrary file paths, allow uploads, commit installer binaries, or store installer files in the Render container.
+`/Admin/Downloads` is protected by the Admin policy and links only to approved shared installer/support files. It does not proxy downloads through the web app, expose arbitrary file paths, allow uploads, commit installer binaries, store installer files in the Render container, or provide station-specific config JSON. Station configs are generated and downloaded only from `/Admin/QcStations`.
 
 The current Google Drive download entries are:
 

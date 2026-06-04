@@ -50,14 +50,7 @@ public sealed class AdminController(
                         : "QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.",
                     IsAvailable: installerConfigured,
                     OpensInNewTab: installerConfigured,
-                    ActionText: "Open Google Drive Download"),
-                new(
-                    "QC Station Configs",
-                    "qcstation.settings.json",
-                    "Station-specific config JSON generated from Admin QC Stations. Contains the station code/key and must be imported into the installed QC Station app.",
-                    "/Admin/QcStations",
-                    "Each QC computer needs its own station record and API key. Download the JSON, open Crop QC Station, choose Import / Replace Station Config, and confirm the app shows the matching station name/code. Install FTADLL.exe separately on FTA-connected computers.",
-                    ActionText: "Manage QC Stations")
+                    ActionText: "Open Google Drive Download")
             ]
         };
 

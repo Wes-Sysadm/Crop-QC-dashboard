@@ -76,7 +76,19 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("Upload CropQcStationSetup.msi to Google Drive", controller);
         Assert.Contains("Crop QC Station App Installer", controller);
         Assert.Contains("Open Google Drive Download", controller);
+        Assert.Contains("FTA DLL Installer", controller);
         Assert.Contains("Not deployed", view);
+        Assert.Contains("Manage QC Stations", view);
+        Assert.Contains("Station configs are generated and downloaded from Admin", view);
+        Assert.Contains("Install Crop QC Station App Installer from this page", view);
+        Assert.Contains("Download the station config JSON from Admin", view);
+        Assert.DoesNotContain("\"QC Station Configs\"", controller);
+        Assert.DoesNotContain("qcstation.settings.json", controller);
+        Assert.DoesNotContain("Add Station and Download Config JSON", view);
+        Assert.DoesNotContain("Rotate Key and Download Config JSON", view);
+        Assert.DoesNotContain("Download Config</button>", view);
+        Assert.DoesNotContain("action=\"/Admin/QcStations/Create\"", view);
+        Assert.DoesNotContain("action=\"/Admin/QcStations/RotateKey\"", view);
         Assert.DoesNotContain("Install-CropQcStation.cmd", controller);
         Assert.DoesNotContain("PhysicalFile", controller);
     }
@@ -340,12 +352,12 @@ public sealed class QcStationInstallerWorkflowTests
     {
         var downloads = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Admin", "Downloads.cshtml"));
         var qcStations = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Admin", "QcStations.cshtml"));
-        var adminController = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "AdminController.cs"));
 
         Assert.Contains("Import / Replace Station Config", downloads);
         Assert.Contains("Import / Replace Station Config", qcStations);
         Assert.Contains("Confirm the Station Name and Station Code shown in the app match this station", qcStations);
-        Assert.Contains("Install FTADLL.exe separately on FTA-connected computers", adminController);
+        Assert.Contains("Install FTADLL.exe only on FTA-connected computers", downloads);
+        Assert.Contains("Downloads is only for shared installer/support files", downloads);
     }
 
     private static string FindRepositoryFile(params string[] pathParts)
