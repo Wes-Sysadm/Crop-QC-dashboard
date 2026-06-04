@@ -327,6 +327,79 @@ public sealed class FtaDllPressureReaderTests
     }
 
     [Fact]
+    public void StationConfiguration_DefaultsToAutoConnectionModeAndSerialDefaults()
+    {
+        var configuration = new StationConfiguration();
+
+        Assert.Equal(FtaConnectionMode.Auto, configuration.FtaConnectionMode);
+        Assert.Null(configuration.FtaSerialPort);
+        Assert.Null(configuration.FtaSerialBaudRate);
+        Assert.Equal(8, configuration.FtaSerialDataBits);
+        Assert.Equal(FtaSerialParity.None, configuration.FtaSerialParity);
+        Assert.Equal(FtaSerialStopBits.One, configuration.FtaSerialStopBits);
+    }
+
+    [Fact]
+    public void Connection_diagnostics_recognizes_known_fta_usb_hid_vid_pid()
+    {
+        Assert.True(FtaConnectionDiagnostics.IsKnownFtaUsbHid(@"HID\VID_6017&PID_3430\1234"));
+        Assert.True(FtaConnectionDiagnostics.IsKnownFtaUsbHid(@"HID\VID_6017\1234"));
+    }
+
+    [Theory]
+    [InlineData("COM3", "USB Serial Device", "USB\\VID_0403&PID_6001", "FTDI")]
+    [InlineData("COM4", "Silicon Labs CP210x USB to UART Bridge", "USB\\VID_10C4&PID_EA60", "")]
+    [InlineData("COM5", "USB-to-Serial Comm Port", "USB\\VID_067B&PID_2303", "Prolific")]
+    public void Connection_diagnostics_recognizes_usb_to_serial_candidates(string port, string friendlyName, string pnpId, string manufacturer)
+    {
+        Assert.True(FtaConnectionDiagnostics.IsUsbToSerialCandidate(new FtaComPortDiagnostics(port, friendlyName, pnpId, manufacturer, "Present")));
+    }
+
+    [Fact]
+    public void Auto_connection_does_not_arbitrarily_select_when_multiple_usb_serial_candidates_exist()
+    {
+        var config = new StationConfiguration { FtaConnectionMode = FtaConnectionMode.Auto };
+        var candidates = new[]
+        {
+            new FtaConnectionCandidate("USB-to-Serial", "COM3", "USB Serial Device", "Present", true, "possible"),
+            new FtaConnectionCandidate("USB-to-Serial", "COM4", "USB Serial Device", "Present", true, "possible")
+        };
+        var ftaConfig = new FtaConfigFileDiagnostics(@"C:\Program Files\FTADLL\FTA_DLL.CFG", true, null, null, []);
+
+        var recommendation = FtaConnectionDiagnostics.RecommendMode(config, candidates, ftaConfig);
+
+        Assert.Contains("multiple USB-to-serial candidates", recommendation);
+        Assert.Contains("Do not auto-select", recommendation);
+    }
+
+    [Fact]
+    public void Diagnostic_report_excludes_station_api_key_and_includes_connection_candidates()
+    {
+        var configuration = new StationConfiguration
+        {
+            StationName = "WP FTA 1",
+            QcStationCode = "WP-FTA-01",
+            QcStationApiKey = "super-secret-key",
+            FtaDllPath = Path.GetTempPath(),
+            FtaDllFileName = "missing.dll"
+        };
+        var environmentDiagnostics = new FakeFtaEnvironmentDiagnostics(
+            new FtaConfigFileDiagnostics(@"C:\Program Files\FTADLL\FTA_DLL.CFG", true, null, 20, ["COM1"]),
+            ["COM1"],
+            [@"HID\VID_6017&PID_3430\ABC"],
+            [new FtaUsbDeviceDiagnostics(@"HID\VID_6017&PID_3430\ABC", "GUSS FTA", "Present", "GUSS")],
+            [new FtaComPortDiagnostics("COM3", "USB Serial Device", @"USB\VID_0403&PID_6001", "FTDI", "Present")]);
+
+        var report = FtaConnectionDiagnostics.BuildReport(configuration, @"C:\ProgramData\CropQc\QcStation\qcstation.settings.json", environmentDiagnostics);
+
+        Assert.DoesNotContain("super-secret-key", report.ReportText);
+        Assert.Contains("USB HID", report.ReportText);
+        Assert.Contains("VID_6017&PID_3430", report.ReportText);
+        Assert.Contains("USB-to-Serial", report.ReportText);
+        Assert.Contains("FTA DLL missing", report.Conclusion);
+    }
+
+    [Fact]
     public async Task Latest_reading_returns_null_when_new_firmness_bit_is_false()
     {
         var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
@@ -545,12 +618,20 @@ public sealed class FtaDllPressureReaderTests
     private sealed class FakeFtaEnvironmentDiagnostics(
         FtaConfigFileDiagnostics config,
         IReadOnlyList<string> availableComPorts,
-        IReadOnlyList<string> hidDeviceIds) : IFtaEnvironmentDiagnostics
+        IReadOnlyList<string> hidDeviceIds,
+        IReadOnlyList<FtaUsbDeviceDiagnostics>? usbDevices = null,
+        IReadOnlyList<FtaComPortDiagnostics>? comPortDiagnostics = null) : IFtaEnvironmentDiagnostics
     {
         public FtaConfigFileDiagnostics ReadConfigFile(string dllFolder) => config;
 
         public IReadOnlyList<string> GetAvailableComPorts() => availableComPorts;
 
         public IReadOnlyList<string> GetHidDeviceIdsByVendorId(string vendorId) => hidDeviceIds;
+
+        public IReadOnlyList<FtaUsbDeviceDiagnostics> GetUsbHidDevices() =>
+            usbDevices ?? hidDeviceIds.Select(id => new FtaUsbDeviceDiagnostics(id, id, "Present", "")).ToArray();
+
+        public IReadOnlyList<FtaComPortDiagnostics> GetComPortDiagnostics() =>
+            comPortDiagnostics ?? availableComPorts.Select(port => new FtaComPortDiagnostics(port, port, port, "", "Present")).ToArray();
     }
 }
