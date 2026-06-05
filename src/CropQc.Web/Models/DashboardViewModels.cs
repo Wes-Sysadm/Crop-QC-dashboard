@@ -91,10 +91,25 @@ public sealed class ConfigurationPageViewModel
 {
     public bool CanEdit { get; set; }
     public string? DataWarning { get; set; }
+    public EmailStatusViewModel EmailStatus { get; set; } = new();
     public IReadOnlyList<ConfigurationItemViewModel> Items { get; set; } = [];
 }
 
 public sealed record ConfigurationItemViewModel(int Id, string Key, string Value, string Description, string ValueType);
+
+public sealed class EmailStatusViewModel
+{
+    public string Provider { get; set; } = "None";
+    public string ExpectedProviderEnvironmentVariable { get; set; } = "Email__Provider";
+    public bool GmailUserEnabled { get; set; }
+    public bool DefaultQcRecipientsConfigured { get; set; }
+    public string? CurrentUserEmail { get; set; }
+    public string? CurrentUserDomain { get; set; }
+    public bool CurrentUserDomainAllowed { get; set; }
+    public bool GmailCredentialPresent { get; set; }
+    public bool GmailSendPermissionGranted { get; set; }
+    public bool CurrentUserNeedsReconnect { get; set; }
+}
 
 public sealed class ConfigurationEditForm
 {

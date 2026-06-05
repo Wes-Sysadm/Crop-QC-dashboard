@@ -46,6 +46,7 @@ Crop QC Dashboard supports receiving quality control workflows. MVP 1 is limited
 - One email per receipt.
 - No batching.
 - QC Summary email sends from the logged-in Google Workspace user through Gmail API when `Email__Provider=GmailUser` is configured. Allowed company domains are `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com`. During testing, configured recipients are `rob@earlbrownandsons.com,wes@fruitandland.com`.
+- Production defaults QC Summary sending to GmailUser unless `Email__Provider=None` is explicitly set. Admin Configuration shows safe email status/diagnostics without exposing Gmail tokens or secrets.
 - Reply-To is the user who took the sample.
 - Managers and Admins can resend with a reason.
 - Daily QC dashboard showing received samples and sent/not-sent/ready/missing status.

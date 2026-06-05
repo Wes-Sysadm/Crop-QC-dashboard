@@ -27,7 +27,7 @@ var googleAuthOptions = GoogleAuthenticationOptions.FromConfiguration(builder.Co
 var gmailOptions = CreateGmailOptions(builder.Configuration);
 builder.Services.AddSingleton(googleAuthOptions);
 builder.Services.AddSingleton(gmailOptions);
-builder.Services.AddSingleton(CreateEmailOptions(builder.Configuration));
+builder.Services.AddSingleton(EmailOptionsFactory.Create(builder.Configuration, builder.Environment.IsProduction()));
 var authenticationBuilder = builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -175,6 +175,7 @@ builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorage
     services.GetRequiredService<ILogger<GoogleDriveStorageService>>()));
 
 var app = builder.Build();
+LogEmailConfiguration(app);
 var isRender = !string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_HOSTNAME"])
     || !string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_URL"]);
 var useForwardedHeaders = isRender || app.Configuration.GetValue<bool>("ASPNETCORE_FORWARDEDHEADERS_ENABLED");
@@ -299,14 +300,16 @@ static GmailOptions CreateGmailOptions(IConfiguration configuration) =>
         SendScope = configuration["Google:Gmail:SendScope"] ?? GmailScopes.Send
     };
 
-static EmailOptions CreateEmailOptions(IConfiguration configuration) =>
-    new()
-    {
-        Provider = configuration["Email:Provider"] ?? EmailProviders.None,
-        FromAddress = configuration["Email:FromAddress"] ?? "HL@fruitandland.com",
-        ToAddress = configuration["Email:ToAddress"] ?? configuration["Email:QcDefaultRecipients"] ?? EmailOptions.TestingQcDefaultRecipients,
-        QcDefaultRecipients = configuration["Email:QcDefaultRecipients"] ?? configuration["Email:ToAddress"] ?? EmailOptions.TestingQcDefaultRecipients
-    };
+static void LogEmailConfiguration(WebApplication app)
+{
+    var emailOptions = app.Services.GetRequiredService<EmailOptions>();
+    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("EmailConfiguration");
+    logger.LogInformation(
+        "Email provider: {EmailProvider}. Default QC recipients configured: {RecipientsConfigured}. Gmail send enabled: {GmailSendEnabled}.",
+        emailOptions.Provider,
+        emailOptions.QcRecipientList.Count > 0,
+        string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase));
+}
 
 static IFileStorageService CreateFileStorageService(
     FileStorageOptions fileStorageOptions,
