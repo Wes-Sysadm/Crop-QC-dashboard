@@ -16,7 +16,9 @@ public sealed record QcEmailMessage(
     string To,
     string? ReplyTo,
     string Subject,
-    string Body);
+    string TextBody,
+    string HtmlBody,
+    IReadOnlyList<QcEmailInlineImage> InlineImages);
 
 public sealed record QcEmailSendResult(bool Success, string? MessageId, string? Error, bool ReconnectRequired = false)
 {
@@ -90,6 +92,8 @@ public sealed class GmailUserEmailSender(
 
     public static string BuildRawMessage(QcEmailMessage message)
     {
+        var relatedBoundary = $"cropqc-related-{Guid.NewGuid():N}";
+        var alternativeBoundary = $"cropqc-alt-{Guid.NewGuid():N}";
         var builder = new StringBuilder();
         builder.AppendLine($"From: {message.From}");
         builder.AppendLine($"To: {message.To}");
@@ -100,10 +104,35 @@ public sealed class GmailUserEmailSender(
 
         builder.AppendLine($"Subject: {message.Subject}");
         builder.AppendLine("MIME-Version: 1.0");
+        builder.AppendLine($"Content-Type: multipart/related; boundary=\"{relatedBoundary}\"");
+        builder.AppendLine();
+        builder.AppendLine($"--{relatedBoundary}");
+        builder.AppendLine($"Content-Type: multipart/alternative; boundary=\"{alternativeBoundary}\"");
+        builder.AppendLine();
+        builder.AppendLine($"--{alternativeBoundary}");
         builder.AppendLine("Content-Type: text/plain; charset=utf-8");
         builder.AppendLine("Content-Transfer-Encoding: 8bit");
         builder.AppendLine();
-        builder.AppendLine(message.Body);
+        builder.AppendLine(message.TextBody);
+        builder.AppendLine($"--{alternativeBoundary}");
+        builder.AppendLine("Content-Type: text/html; charset=utf-8");
+        builder.AppendLine("Content-Transfer-Encoding: 8bit");
+        builder.AppendLine();
+        builder.AppendLine(message.HtmlBody);
+        builder.AppendLine($"--{alternativeBoundary}--");
+
+        foreach (var image in message.InlineImages)
+        {
+            builder.AppendLine($"--{relatedBoundary}");
+            builder.AppendLine($"Content-Type: {image.ContentType}; name=\"{image.FileName}\"");
+            builder.AppendLine("Content-Transfer-Encoding: base64");
+            builder.AppendLine($"Content-ID: <{image.ContentId}>");
+            builder.AppendLine($"Content-Disposition: inline; filename=\"{image.FileName}\"");
+            builder.AppendLine();
+            builder.AppendLine(Convert.ToBase64String(image.Bytes, Base64FormattingOptions.InsertLineBreaks));
+        }
+
+        builder.AppendLine($"--{relatedBoundary}--");
         var bytes = Encoding.UTF8.GetBytes(builder.ToString());
         return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }

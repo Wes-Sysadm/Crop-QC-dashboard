@@ -411,6 +411,46 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("Downloads is only for shared installer/support files", downloads);
     }
 
+    [Fact]
+    public void QcStations_AllowsDuplicateFriendlyNamesButRequiresUniqueCodes()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "QcStationAdminService.cs"));
+        var validateForm = ExtractBetween(service, "private async Task<string?> ValidateFormAsync", "private QcStationConfigDownload BuildConfigDownload");
+
+        Assert.Contains("Station code must be unique.", validateForm);
+        Assert.Contains("QcStationApiKeyValidator.IsStationCodeSafe", validateForm);
+        Assert.DoesNotContain("Station name must be unique", validateForm, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("x.StationName ==", validateForm);
+        Assert.DoesNotContain("x.Name ==", validateForm);
+    }
+
+    [Fact]
+    public void QcStations_ViewShowsDeactivateReactivateAndDuplicateNameGuidance()
+    {
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Admin", "QcStations.cshtml"));
+
+        Assert.Contains("Station Name is a friendly label and can be reused", view);
+        Assert.Contains("Station Code must be unique", view);
+        Assert.Contains("/Admin/QcStations/Deactivate", view);
+        Assert.Contains("/Admin/QcStations/Reactivate", view);
+        Assert.Contains("If this is the same computer, reactivate it.", view);
+        Assert.Contains("create a new Station Code or rotate the key", view);
+    }
+
+    [Fact]
+    public void QcStations_ReactivateDoesNotRotateOrDeleteApiKey()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "QcStationAdminService.cs"));
+        var setActive = ExtractBetween(service, "public async Task<string?> SetActiveAsync", "public async Task<(string? Error, QcStationConfigDownload? Download)> RotateKeyAsync");
+
+        Assert.Contains("station.IsActive = isActive", setActive);
+        Assert.Contains("reactivate", setActive);
+        Assert.Contains("deactivate", setActive);
+        Assert.DoesNotContain("ApiKeyHash", setActive);
+        Assert.DoesNotContain("GenerateApiKey", setActive);
+        Assert.DoesNotContain("Remove(", setActive);
+    }
+
     private static string FindRepositoryFile(params string[] pathParts)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

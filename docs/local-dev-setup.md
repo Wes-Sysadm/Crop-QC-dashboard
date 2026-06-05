@@ -191,12 +191,12 @@ Use the web dashboard at `http://localhost:5275`.
    - Optional notes when `Other` defect is selected
 8. Save the fruit rows.
 9. Confirm the row shows calculated average pressure, calculated size, size status, and completed status.
-10. Add placeholder receipt-level photo metadata for at least one `BinTruck` photo from the receipt detail page.
-11. Add placeholder sample-level photo metadata for:
-    - `SampleBeforeCutting`
-    - `CutFruit`
-    - `FruitAfterStarch`
-12. Return to the sample detail page and confirm Summary Readiness changes as rows, starch, and photos are completed.
+10. Add placeholder photo metadata required for the sample type:
+    - Door/Room or Line: `SampleBeforeCutting` and `CutFruit`.
+    - Receiving: receipt-level `BinTruck`, plus sample-level `SampleBeforeCutting`, `CutFruit`, and `FruitAfterStarch`.
+    - Transfer: receipt-level `BinTruck`, plus sample-level `SampleBeforeCutting` and `CutFruit`.
+11. Return to the sample detail page and confirm Summary Readiness shows the sample type and required photo statuses.
+12. When Gmail sending is configured, confirm the QC Summary email body includes summary data, fruit rows, and inline photo sections.
 13. Confirm the `Send QC Summary` button is disabled while readiness is false and appears enabled only when readiness is true for users with send permission.
 
 No actual email is sent locally unless you explicitly configure Google OAuth and `Email__Provider=GmailUser`. No image binary is stored in the database. Photo forms save metadata and external file references only.

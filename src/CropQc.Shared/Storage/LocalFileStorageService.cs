@@ -57,6 +57,12 @@ public sealed class LocalFileStorageService(FileStorageOptions options) : IFileS
             WebUrl: fullPath));
     }
 
+    public Task<Stream?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default)
+    {
+        var fullPath = GetSafeFullPath(storageKey);
+        return Task.FromResult<Stream?>(File.Exists(fullPath) ? File.OpenRead(fullPath) : null);
+    }
+
     public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default)
     {
         var fullPath = GetSafeFullPath(storageKey);
