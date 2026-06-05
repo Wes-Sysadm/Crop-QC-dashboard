@@ -7,7 +7,7 @@
 @foreach (var group in Model)
 {
     <div class="panel">
-        <h2>@group.PhotoType</h2>
+        <h2>@FriendlyPhotoType(group.PhotoType)</h2>
         <div class="table-wrap">
             <table>
                 <thead><tr><th>File</th><th>Source</th><th>Type</th><th>Size</th><th>Captured</th></tr></thead>
@@ -26,4 +26,18 @@
             </table>
         </div>
     </div>
+}
+
+@functions {
+    private static string FriendlyPhotoType(string photoType) => photoType switch
+    {
+        "BinTruck" => "Truck photo",
+        "TopOfTruck" => "Top of truck",
+        "Hectre" => "Hectre",
+        "SampleBeforeCutting" => "Whole sample",
+        "CutFruit" => "Cut apples",
+        "FruitAfterStarch" => "Starch apples",
+        "Other" => "Other",
+        _ => photoType
+    };
 }

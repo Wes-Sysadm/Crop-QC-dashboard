@@ -11,11 +11,34 @@ namespace CropQc.Api.Tests;
 public sealed class GmailUserEmailTests
 {
     [Fact]
+    public void EmailOptions_DefaultQcRecipientsUseTestingAddresses()
+    {
+        var options = new EmailOptions();
+
+        Assert.Equal("rob@earlbrownandsons.com, wes@fruitandland.com", options.QcRecipientHeader);
+        Assert.Equal(["rob@earlbrownandsons.com", "wes@fruitandland.com"], options.QcRecipientList);
+    }
+
+    [Fact]
+    public void EmailOptions_ConfiguredQcDefaultRecipientsOverrideLegacyToAddress()
+    {
+        var options = new EmailOptions
+        {
+            ToAddress = "QC@fruitandland.com",
+            QcDefaultRecipients = "rob@earlbrownandsons.com,wes@fruitandland.com"
+        };
+
+        Assert.Equal("rob@earlbrownandsons.com, wes@fruitandland.com", options.QcRecipientHeader);
+        Assert.DoesNotContain("QC@fruitandland.com", options.QcRecipientHeader);
+    }
+
+    [Fact]
     public void GmailRawMessage_UsesLoggedInUserAsFromAndIncludesSubject()
     {
+        var recipients = "rob@earlbrownandsons.com, wes@fruitandland.com";
         var raw = GmailUserEmailSender.BuildRawMessage(new QcEmailMessage(
             "wes@fruitandland.com",
-            "QC@fruitandland.com",
+            recipients,
             "sample-taker@fruitandland.com",
             "QC Summary - R123",
             "Plain body text",
@@ -25,7 +48,7 @@ public sealed class GmailUserEmailTests
         var decoded = DecodeBase64Url(raw);
 
         Assert.Contains("From: wes@fruitandland.com", decoded);
-        Assert.Contains("To: QC@fruitandland.com", decoded);
+        Assert.Contains($"To: {recipients}", decoded);
         Assert.Contains("Reply-To: sample-taker@fruitandland.com", decoded);
         Assert.Contains("Subject: QC Summary - R123", decoded);
         Assert.Contains("multipart/related", decoded);
@@ -147,9 +170,11 @@ public sealed class GmailUserEmailTests
 
         Assert.Contains("Sending from:", details);
         Assert.Contains("Send QC Summary", details);
+        Assert.Contains("To:", details);
         Assert.Contains("Gmail permission is missing", overrideSend);
         Assert.Contains("Email Diagnostics", overrideSend);
         Assert.Contains("Allowed Google Workspace domains", overrideSend);
+        Assert.Contains("configured QC recipients", overrideSend);
         Assert.Contains("Send QC Summary Override", overrideSend);
         Assert.Contains("Send QC Summary", dailyQc);
         Assert.Contains("Required Photos", details);
@@ -168,6 +193,18 @@ public sealed class GmailUserEmailTests
         Assert.Contains("[Authorize(Policy = \"RequireManagerOrAdmin\")]", controller);
         Assert.Contains("SendQcSummaryAsync", controller);
         Assert.Contains("LogOverrideSendAsync", controller);
+    }
+
+    [Fact]
+    public void WebEmailConfiguration_UsesTestingQcDefaultRecipients()
+    {
+        var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
+        var productionSettings = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "appsettings.Production.json"));
+        var adminManagementService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "AdminManagementService.cs"));
+
+        Assert.Contains("Email:QcDefaultRecipients", program);
+        Assert.Contains("rob@earlbrownandsons.com,wes@fruitandland.com", productionSettings);
+        Assert.Contains("rob@earlbrownandsons.com,wes@fruitandland.com", adminManagementService);
     }
 
     private static string DecodeBase64Url(string value)

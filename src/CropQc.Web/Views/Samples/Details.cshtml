@@ -58,7 +58,7 @@
     <p>Sample type: @Model.Sample?.SampleType</p>
     <h3>Required Photos</h3>
     @await Html.PartialAsync("_ReadinessChecklist", Model.Readiness.RequiredPhotoChecklist)
-    <p class="muted">Required photos vary by sample type. Receiving samples require truck, whole sample, cut apples, and starch apples. Door/room and line samples require whole sample and cut apples. Transfer samples require truck, whole sample, and cut apples.</p>
+    <p class="muted">Required photos vary by sample type. Receiving samples require truck photo, top of truck, Hectre, whole sample, cut apples, and starch apples. Transfer samples require truck photo, top of truck, whole sample, and cut apples; Hectre is optional unless configured otherwise. Door/room and line samples require whole sample and cut apples.</p>
     @await Html.PartialAsync("_ReadinessChecklist", Model.Readiness.Checklist)
     @if (Model.Readiness.MissingItems.Count > 0)
     {
@@ -75,6 +75,7 @@
         {
             <form method="post" action="/Samples/@Model.Sample?.Id/Send" class="inline-form">
                 <p class="muted">Sending from: @User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value</p>
+                <p class="muted">To: @(Model.RecipientEmail ?? "configured QC recipients")</p>
                 <button type="submit">Send QC Summary</button>
             </form>
         }
@@ -115,7 +116,7 @@
                         <th>Other notes</th>
                         <th>Size</th>
                         <th>Size Status</th>
-                        <th>Completed</th>
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -158,13 +159,13 @@
                         <td><input class="other-notes" name="Rows[@i].OtherDefectNotes" value="@row.OtherDefectNotes" disabled="@(!row.Defects.Contains("Other") ? "disabled" : null)" /></td>
                         <td>@row.SizeCategory</td>
                         <td>@row.SizeStatus</td>
-                        <td>@YesNo(row.IsCompleted)</td>
+                        <td><span class="status @StatusClass(row.EntryStatus)">@row.EntryStatus</span></td>
                     </tr>
                 }
                 </tbody>
             </table>
         </div>
-        <p class="muted">Blank rows are ignored. Use the separate Starch Input page after fruit is cut.</p>
+        <p class="muted">Rows save as Empty, In Progress, or Complete. In-progress rows are saved and can be finished later. Complete rows require Pressure 1, Pressure 2, weight, and grade. Use the separate Starch Input page after fruit is cut.</p>
         <p class="muted">FTA readings may be captured from QC Station and saved here. Saving this grid remains available for manual pressure entry and weight/grade/defect edits.</p>
         <button type="submit">Save QC Rows</button>
     </form>
@@ -181,7 +182,7 @@
                 FormAction = $"/Samples/{Model.Sample.Id}/photos",
                 Title = "Add Sample Photo",
                 DefaultPhotoType = Model.AddPhotoForm.PhotoType,
-                PhotoTypes = ["SampleBeforeCutting", "CutFruit", "Other"],
+                PhotoTypes = ["Hectre", "SampleBeforeCutting", "CutFruit", "Other"],
                 CropYear = Model.Sample.CropYear,
                 Warehouse = Model.Sample.Warehouse,
                 ReceiptId = Model.Sample.ReceiptIdText
@@ -275,6 +276,13 @@
 
 @functions {
     private static string YesNo(bool value) => value ? "Yes" : "No";
+
+    private static string StatusClass(string status) => status switch
+    {
+        "Complete" => "ready",
+        "In Progress" => "pending",
+        _ => "missing"
+    };
 
     private static string StarchSummary(ReadinessViewModel readiness)
     {

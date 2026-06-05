@@ -108,9 +108,9 @@
             @await Html.PartialAsync("_PhotoPlaceholderForm", new PhotoPlaceholderFormViewModel
             {
                 FormAction = $"/Receipts/{Model.Receipt.Id}/photos",
-                Title = "Add Bin/Truck Photo",
+                Title = "Add Receipt Photo",
                 DefaultPhotoType = "BinTruck",
-                PhotoTypes = ["BinTruck", "Other"],
+                PhotoTypes = ["BinTruck", "TopOfTruck", "Other"],
                 CropYear = Model.Receipt.CropYear,
                 Warehouse = Model.Receipt.Warehouse,
                 ReceiptId = Model.Receipt.CompuTechReceiptId

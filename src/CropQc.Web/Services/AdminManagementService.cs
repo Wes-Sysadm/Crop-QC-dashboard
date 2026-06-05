@@ -28,7 +28,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         ("UnsyncedCriticalHours", "12", "Unsynced critical hours", "Integer"),
         ("OfflineSessionDays", "7", "Offline session days", "Integer"),
         ("DefaultQcSummaryFromAddress", "HL@fruitandland.com", "Default QC summary from address", "String"),
-        ("DefaultQcSummaryRecipient", "QC@fruitandland.com", "Default QC summary recipient", "String"),
+        ("DefaultQcSummaryRecipient", "rob@earlbrownandsons.com,wes@fruitandland.com", "Default QC summary testing recipients", "String"),
         ("PhotoRetentionCropYearsAfterCurrent", "3", "Photo retention crop years after current. Planning value only; no automatic photo deletion currently runs.", "Integer"),
         ("AllowOverrideSendWithMissingData", "true", "Allow override send with missing data", "Boolean")
     ];

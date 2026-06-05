@@ -23,6 +23,8 @@ Photos/
     {Warehouse}/
       Receipt-{ReceiptId}/
         BinTruck/
+        TopOfTruck/
+        Hectre/
         SampleBeforeCutting/
         CutFruit/
         FruitAfterStarch/

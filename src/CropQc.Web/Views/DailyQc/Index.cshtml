@@ -8,6 +8,10 @@
 {
     <p class="notice warning">@Model.DataWarning</p>
 }
+@if (!string.IsNullOrWhiteSpace(Model.StatusDescription))
+{
+    <p class="notice">@Model.StatusDescription</p>
+}
 
 <form class="toolbar" method="get">
     <div class="field">
@@ -18,6 +22,16 @@
             {
                 <option value="@warehouse.Id" selected="@(Model.WarehouseId == warehouse.Id)">@warehouse.Code</option>
             }
+        </select>
+    </div>
+    <div class="field">
+        <label>Status</label>
+        <select name="status">
+            <option value="" selected="@(string.IsNullOrWhiteSpace(Model.Status))">All</option>
+            <option value="ReadyToSend" selected="@(Model.Status == "ReadyToSend")">Ready to Email</option>
+            <option value="MissingData" selected="@(Model.Status == "MissingData")">Missing Data</option>
+            <option value="NeedsReview" selected="@(Model.Status == "NeedsReview")">Needs Review</option>
+            <option value="Sent" selected="@(Model.Status == "Sent")">Sent</option>
         </select>
     </div>
     <button type="submit">Refresh</button>
@@ -33,6 +47,7 @@
                 <th>Starch</th>
                 <th>Ready</th>
                 <th>Missing Items</th>
+                <th>Review Reasons</th>
                 <th>Email</th>
                 <th>Action</th>
             </tr>
@@ -64,6 +79,21 @@
                         @foreach (var item in sample.MissingItems)
                         {
                             <li>@item</li>
+                        }
+                        </ul>
+                    }
+                </td>
+                <td>
+                    @if (sample.ReviewReasons.Count == 0)
+                    {
+                        <span class="muted">None</span>
+                    }
+                    else
+                    {
+                        <ul class="list">
+                        @foreach (var reason in sample.ReviewReasons)
+                        {
+                            <li>@reason</li>
                         }
                         </ul>
                     }

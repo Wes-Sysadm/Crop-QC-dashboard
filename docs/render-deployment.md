@@ -85,7 +85,10 @@ Set these variables in Render:
 - `Email__QcDefaultRecipients=rob@earlbrownandsons.com,wes@fruitandland.com`
 - `Google__Gmail__SendScope=https://www.googleapis.com/auth/gmail.send`
 - `QcStation__ApiBaseUrl=https://crop-qc-dashboard.onrender.com`
+- `Downloads__MasterFolderUrl=<Google Drive folder share link>`
 - `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link`
+- `DataCleanup__AllowedEmails=wes@fruitandland.com`
+- Optional review thresholds: `DashboardReview__LowPressureLbs`, `DashboardReview__HighPressureLbs`, `DashboardReview__HighStarch`, `DashboardReview__HighDefectPercent`, `DashboardReview__HighPressureVarianceLbs`
 
 Do not commit database passwords, Google credentials, Gmail credentials, OAuth tokens, or API secrets.
 
@@ -93,7 +96,7 @@ WinForms QC Station access is managed from the database, not with one shared Ren
 
 Keep station config JSON private because it contains the raw station API key. If a config file is lost or exposed, rotate the station key from `/Admin/QcStations` and download a new config. The shared MSI installer contains no station secrets.
 
-Generated station config defaults to `FtaConnectionMode=Auto`, `FtaMode=RealDll`, `FtaDllPath=C:\Windows\SysWOW64`, `FtaDllFileName=FTA_DLL.dll`, `FtaInitializationMode=FTAInit`, `FtaConfigPath=C:\Program Files\FTADLL\FTA_DLL.CFG`, `FtaWorkingDirectory=C:\Program Files (x86)\FTAWin`, and `FtaFirmnessUnit=Kilograms`. The WinForms `FTA Diagnostics` tab can identify direct USB HID devices such as `VID_6017&PID_3430`, native COM ports, USB-to-serial adapters, and COM references in `FTA_DLL.CFG`; use `Copy Diagnostic Report` for troubleshooting without exposing the station API key. If diagnostics show `Process architecture: X86` but `FTA_DLL.dll` fails with `0x8007000B`, check the reported PE architecture/details for `FTA_DLL.dll` and `borlndmm.dll`; `SysWOW64` is the correct 32-bit system folder on 64-bit Windows.
+Generated station config defaults to `FtaConnectionMode=Auto`, `FtaMode=RealDll`, `FtaDllPath=C:\Windows\SysWOW64`, `FtaDllFileName=FTA_DLL.dll`, `FtaInitializationMode=FTAInit`, `FtaConfigPath=C:\Program Files\FTADLL\FTA_DLL.CFG`, `FtaWorkingDirectory=C:\Program Files (x86)\FTAWin`, and `FtaFirmnessUnit=Kilograms`. The WinForms `FTA Diagnostics` tab can identify direct USB HID devices such as `VID_6017&PID_3430`, native COM ports, USB-to-serial adapters, and COM references in `FTA_DLL.CFG`; use `Copy Diagnostic Report` for troubleshooting without exposing the station API key. If diagnostics show `Process architecture: X86` but `FTA_DLL.dll` fails with `0x8007000B`, check the reported PE architecture/details for `FTA_DLL.dll` and `borlndmm.dll`; `SysWOW64` is the correct 32-bit system folder on 64-bit Windows. The known-good x86 `borlndmm.dll` is stored in the same Google Drive folder as `FTADLL.exe` and `CropQcStationSetup.msi`.
 
 The Render Docker build publishes only the web dashboard. It does not build Windows desktop payloads or the QC Station installer. Build the signed MSI on a Windows build machine:
 
@@ -107,7 +110,7 @@ To deploy the installer download, upload `artifacts\installers\CropQcStationSetu
 
 Google login is required for dashboard pages. Only Google Workspace accounts from `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 
-QC Summary email uses Gmail API user-delegated sending when `Email__Provider=GmailUser`. Emails send from the logged-in Google Workspace account for any allowed company domain, and sent messages should appear in that user's Gmail Sent folder. During testing, set `Email__QcDefaultRecipients=rob@earlbrownandsons.com,wes@fruitandland.com`; change this before production rollout if the recipient list changes. Users may need to log out and sign back in after the Gmail scope is added so Google can prompt for `gmail.send`.
+QC Summary email uses Gmail API user-delegated sending when `Email__Provider=GmailUser`. Emails send from the logged-in Google Workspace account for any allowed company domain to the configured `Email__QcDefaultRecipients`, and sent messages should appear in that user's Gmail Sent folder. During the current testing phase, set `Email__QcDefaultRecipients=rob@earlbrownandsons.com,wes@fruitandland.com`; change this before production rollout if the recipient list changes. Users may need to log out and sign back in after the Gmail scope is added so Google can prompt for `gmail.send`.
 
 Successful Google login creates a persistent local dashboard session for `Authentication__SessionDays`, which defaults to 7 days. Users stay signed in for one week unless they click Logout, their account is deactivated, or authentication fails. Logout immediately clears the local auth cookie.
 
@@ -182,10 +185,15 @@ The eventual photo storage provider must support at least 3 crop years of retent
 
 ## Admin Downloads
 
-`/Admin/Downloads` is protected by the Admin policy and links only to approved shared installer/support files. It does not proxy downloads through the web app, expose arbitrary file paths, allow uploads, commit installer binaries, store installer files in the Render container, or provide station-specific config JSON. Station configs are generated and downloaded only from `/Admin/QcStations`.
+`/Admin/Downloads` is protected by the Admin policy and links only to approved shared installer/support files. It does not proxy downloads through the web app, expose arbitrary file paths, allow uploads, commit installer binaries, store installer files in the Render container, or provide station-specific config JSON. Station configs are generated and downloaded only from `/Admin/QcStations`. The preferred production entry is `Downloads__MasterFolderUrl`, which opens the shared Google Drive folder containing `CropQcStationSetup.msi`, `FTADLL.exe`, `borlndmm.dll`, and related support files.
 
 The current Google Drive download entries are:
 
+- Name: Hosted Files Folder
+- File: Google Drive folder
+- Purpose: master Google Drive folder for hosted installer/support files.
+- Link: set with `Downloads__MasterFolderUrl=<Google Drive folder share link>`
+- Button text: `Open Google Drive Folder`
 - Name: FTA DLL Installer
 - File: `FTADLL.exe`
 - Purpose: installer/runtime files needed for GUSS FTA DLL integration on QC Station computers.
@@ -195,6 +203,13 @@ The current Google Drive download entries are:
 - File: `CropQcStationSetup.msi`
 - Purpose: installs the Crop QC Station WinForms app used for FTA pressure capture and station sync.
 - Link: set with `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link`
+- Button text: `Open Google Drive Download`
+- Name: FTA borlndmm.dll Dependency
+- File: `borlndmm.dll`
+- Purpose: known-good x86 dependency used by the FTA DLL. Use only when diagnostics report the installed `borlndmm.dll` is 64-bit or invalid.
+- Link: set with `Downloads__FtaBorlndmmUrl=[Google Drive share link to the known-good x86 borlndmm.dll]`
+- Button text: `Open Google Drive Download`
+- If diagnostics show `FTA_DLL.dll is 32-bit, but borlndmm.dll is 64-bit`, back up the old `C:\Windows\SysWOW64\borlndmm.dll`, replace it with the known-good x86 copy from Google Drive, and rerun QC Station FTA Diagnostics.
 
 ## Crop Years And Admin Cleanup
 
@@ -209,8 +224,7 @@ CropYear__DefaultEndMonth=7
 CropYear__DefaultEndDay=31
 ```
 
-Admin cleanup is available at `/Admin/DataCleanup`. Use Preview first, keep Soft cleanup as the normal test-data cleanup mode, and type `DELETE TEST DATA` only after verifying the counts. Hard purge is permanent for selected database records and does not automatically remove Google Drive files.
-- Button text: `Open Google Drive Download`
+Admin cleanup is available at `/Admin/DataCleanup` only for Admin users whose email is listed in `DataCleanup__AllowedEmails`. The default and current production value is `wes@fruitandland.com`; Admin role by itself is not enough. Use Preview first, keep Soft cleanup as the normal test-data cleanup mode, and type `DELETE TEST DATA` only after verifying the counts. Hard purge is permanent for selected database records and does not automatically remove Google Drive files.
 
 The installer binaries are not committed to the repository or deployed into Render. Google Drive sharing permissions are managed in Google Drive and should be limited to company users when possible.
 

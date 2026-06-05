@@ -2,10 +2,28 @@ namespace CropQc.Web.Services;
 
 public sealed class EmailOptions
 {
+    public const string TestingQcDefaultRecipients = "rob@earlbrownandsons.com,wes@fruitandland.com";
+
     public string Provider { get; init; } = EmailProviders.None;
     public string FromAddress { get; init; } = "HL@fruitandland.com";
-    public string ToAddress { get; init; } = "QC@fruitandland.com";
-    public string QcDefaultRecipients { get; init; } = "QC@fruitandland.com";
+    public string ToAddress { get; init; } = TestingQcDefaultRecipients;
+    public string QcDefaultRecipients { get; init; } = TestingQcDefaultRecipients;
+
+    public string QcRecipientHeader =>
+        string.Join(", ", QcRecipientList);
+
+    public IReadOnlyList<string> QcRecipientList =>
+        ParseRecipients(QcDefaultRecipients).Count > 0
+            ? ParseRecipients(QcDefaultRecipients)
+            : ParseRecipients(ToAddress);
+
+    private static IReadOnlyList<string> ParseRecipients(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 }
 
 public static class EmailProviders

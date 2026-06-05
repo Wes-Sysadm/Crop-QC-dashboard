@@ -2,7 +2,7 @@ using CropQc.Data.Entities;
 
 namespace CropQc.Web.Models;
 
-public sealed record StatusCountCard(string Label, int Count, string Href, string CssClass);
+public sealed record StatusCountCard(string Label, int Count, string Href, string CssClass, string HelperText);
 
 public sealed class HomeDashboardViewModel
 {
@@ -146,6 +146,8 @@ public sealed class ReceiptSearchForm
 {
     public int? CropYear { get; set; }
     public bool AllCropYears { get; set; }
+    public string? DateFilter { get; set; }
+    public string? SampleType { get; set; }
     public string? ReceiptId { get; set; }
     public string? Grower { get; set; }
     public string? Lot { get; set; }
@@ -211,6 +213,7 @@ public sealed class SampleListItemViewModel
     public int? ActualSampleSize { get; set; }
     public bool IsReady { get; set; }
     public IReadOnlyList<string> MissingItems { get; set; } = [];
+    public IReadOnlyList<string> ReviewReasons { get; set; } = [];
     public IReadOnlyList<ReadinessChecklistItem> Checklist { get; set; } = [];
     public int CompletedFruitCount { get; set; }
     public decimal? AveragePressureLbs { get; set; }
@@ -227,6 +230,7 @@ public sealed class SampleDetailViewModel
     public IReadOnlyList<Grade> Grades { get; set; } = [];
     public IReadOnlyList<StarchScaleValue> StarchScaleValues { get; set; } = [];
     public IReadOnlyList<DefectType> DefectTypes { get; set; } = [];
+    public string? RecipientEmail { get; set; }
     public SaveFruitReadingsForm FruitReadingForm { get; set; } = new();
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
 }
@@ -260,6 +264,7 @@ public sealed class FruitReadingRowViewModel
     public int? SizeCategory { get; set; }
     public string SizeStatus { get; set; } = "";
     public bool IsCompleted { get; set; }
+    public string EntryStatus { get; set; } = "Empty";
     public IReadOnlyList<int> DefectTypeIds { get; set; } = [];
     public IReadOnlyList<string> Defects { get; set; } = [];
     public string? OtherDefectNotes { get; set; }
@@ -427,6 +432,8 @@ public sealed class DailyQcDashboardViewModel
 {
     public string? DataWarning { get; set; }
     public int? WarehouseId { get; set; }
+    public string? Status { get; set; }
+    public string? StatusDescription { get; set; }
     public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
     public IReadOnlyList<SampleListItemViewModel> Samples { get; set; } = [];
 }

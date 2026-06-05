@@ -35,7 +35,9 @@ Admin-reviewed archive/delete workflows are future work. Until that workflow exi
 
 ## Email Boundary
 
-QC Summary email sends through the Gmail API using the logged-in Google Workspace user's delegated `gmail.send` permission when `Email__Provider=GmailUser` is configured. Allowed sending domains are configured with `Authentication__AllowedGoogleDomains`; current company domains are `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com`. The configured QC recipients come from `Email__QcDefaultRecipients`; the sender is the logged-in user, not a shared SMTP account. Refresh tokens are encrypted with ASP.NET Core Data Protection and are not logged.
+QC Summary email sends through the Gmail API using the logged-in Google Workspace user's delegated `gmail.send` permission when `Email__Provider=GmailUser` is configured. Allowed sending domains are configured with `Authentication__AllowedGoogleDomains`; current company domains are `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com`. QC recipients are configured with `Email__QcDefaultRecipients`; the current test value is `rob@earlbrownandsons.com,wes@fruitandland.com`. The sender is the logged-in user, not a shared SMTP account. Refresh tokens are encrypted with ASP.NET Core Data Protection and are not logged.
+
+Admin Downloads links to Google Drive-hosted installer/support files and should prefer the configured `Downloads__MasterFolderUrl` master folder. Station-specific QC Station config JSON remains under Admin -> QC Stations. Admin Data Cleanup is additionally restricted by `DataCleanup__AllowedEmails` so Admin role alone is not enough. Normal web pages should use responsive layouts without page-level horizontal scrolling; action groups must wrap or stack instead of hiding controls off-screen.
 
 ## Offline Boundary
 

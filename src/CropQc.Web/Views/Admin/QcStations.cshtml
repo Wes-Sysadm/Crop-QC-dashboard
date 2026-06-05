@@ -68,94 +68,81 @@
 <section class="panel">
     <h2>Station List</h2>
     <p class="notice">If a station receives 401/403, rotate the key, download the new config, and import it into the station app. Confirm the station is active before retrying.</p>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>Station</th>
-                    <th>Code</th>
-                    <th>Warehouse</th>
-                    <th>Active</th>
-                    <th>Key</th>
-                    <th>Last Seen</th>
-                    <th>Last Sync</th>
-                    <th>Station Config</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-            @foreach (var station in Model.Stations)
+    <div class="responsive-card-grid station-card-grid">
+    @foreach (var station in Model.Stations)
+    {
+        <article class="station-card">
+            <header class="station-card-header">
+                <div>
+                    <h3>@station.StationName</h3>
+                    <p class="station-code">@station.StationCode</p>
+                    <p class="muted">@station.Description</p>
+                </div>
+                <span class="status @(station.IsActive ? "ready" : "missing")">@(station.IsActive ? "Active" : "Inactive")</span>
+            </header>
+            <dl class="station-meta">
+                <dt>Warehouse</dt><dd>@station.WarehouseCode</dd>
+                <dt>Key</dt><dd>@(station.ApiKeyLastFour is null ? "Not generated" : $"...{station.ApiKeyLastFour}")</dd>
+                <dt>Last Seen</dt><dd>@(station.LastSeenAt?.LocalDateTime.ToString() ?? "Never") <span class="muted">@station.LastSeenIp</span></dd>
+                <dt>Last Sync</dt><dd>@(station.LastSyncAt?.LocalDateTime.ToString() ?? "Never")</dd>
+            </dl>
+            <div class="station-config-note">
+                @if (station.ApiKeyLastFour is null)
+                {
+                    <span class="muted">Rotate key to generate a downloadable config JSON.</span>
+                }
+                else
+                {
+                    <span class="muted">Raw key is no longer available. Rotate key to generate a new station config JSON.</span>
+                }
+                @if (station.StationCode.Contains(' '))
+                {
+                    <div class="notice warning">This existing station code contains spaces. It can keep working, but rotate/import a new config after renaming it with dashes.</div>
+                }
+            </div>
+            <div class="action-bar">
+                <form method="post" action="/Admin/QcStations/RotateKey">
+                    <input type="hidden" name="id" value="@station.Id" />
+                    <button class="secondary-button" type="submit">Rotate Key and Download Config JSON</button>
+                </form>
+                <form method="post" action="/Admin/QcStations/DownloadConfig">
+                    <input type="hidden" name="id" value="@station.Id" />
+                    <button class="secondary-button" type="submit">Download Config</button>
+                </form>
+                @if (station.IsActive)
+                {
+                    <form method="post" action="/Admin/QcStations/Deactivate"><input type="hidden" name="id" value="@station.Id" /><button class="secondary-button" type="submit">Deactivate</button></form>
+                }
+                else
+                {
+                    <form method="post" action="/Admin/QcStations/Reactivate"><input type="hidden" name="id" value="@station.Id" /><button class="secondary-button" type="submit">Reactivate</button></form>
+                }
+            </div>
+            @if (!station.IsActive)
             {
-                <tr>
-                    <td>
-                        <strong>@station.StationName</strong>
-                        <div class="muted">@station.Description</div>
-                    </td>
-                    <td>@station.StationCode</td>
-                    <td>@station.WarehouseCode</td>
-                    <td><strong>@(station.IsActive ? "Active" : "Inactive")</strong></td>
-                    <td>@(station.ApiKeyLastFour is null ? "Not generated" : $"...{station.ApiKeyLastFour}")</td>
-                    <td>
-                        @station.LastSeenAt?.LocalDateTime
-                        <div class="muted">@station.LastSeenIp</div>
-                    </td>
-                    <td>@station.LastSyncAt?.LocalDateTime</td>
-                    <td>
-                        @if (station.ApiKeyLastFour is null)
-                        {
-                            <span class="muted">Rotate key to generate a downloadable config JSON.</span>
-                        }
-                        else
-                        {
-                            <span class="muted">Raw key is no longer available. Rotate key to generate a new station config JSON.</span>
-                        }
-                        @if (station.StationCode.Contains(' '))
-                        {
-                            <div class="notice warning">This existing station code contains spaces. It can keep working, but rotate/import a new config after renaming it with dashes.</div>
-                        }
-                    </td>
-                    <td>
-                        <details>
-                            <summary>Edit</summary>
-                            <form class="stack-form" method="post" action="/Admin/QcStations/Update">
-                                <input type="hidden" name="Id" value="@station.Id" />
-                                <label>Station name <input name="StationName" value="@station.StationName" required /></label>
-                                <label>Station code <input name="StationCode" value="@station.StationCode" title="Use letters, numbers, dashes, and underscores only for new station codes. Existing codes with spaces can be saved unchanged." required /></label>
-                                <label>Warehouse
-                                    <select name="WarehouseCode" required>
-                                    @foreach (var warehouse in Model.Warehouses)
-                                    {
-                                        <option value="@warehouse.Code" selected="@(warehouse.Code == station.WarehouseCode ? "selected" : null)">@warehouse.Code - @warehouse.Name</option>
-                                    }
-                                    </select>
-                                </label>
-                                <label>Description <input name="Description" value="@station.Description" /></label>
-                                <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@station.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" />
-                                <button class="secondary-button" type="submit">Save</button>
-                            </form>
-                        </details>
-                        <form class="button-row" method="post" action="/Admin/QcStations/RotateKey">
-                            <input type="hidden" name="id" value="@station.Id" />
-                            <button class="secondary-button" type="submit">Rotate Key and Download Config JSON</button>
-                        </form>
-                        <form class="button-row" method="post" action="/Admin/QcStations/DownloadConfig">
-                            <input type="hidden" name="id" value="@station.Id" />
-                            <button class="secondary-button" type="submit">Download Config</button>
-                        </form>
-                        @if (station.IsActive)
-                        {
-                            <form class="button-row" method="post" action="/Admin/QcStations/Deactivate"><input type="hidden" name="id" value="@station.Id" /><button class="secondary-button" type="submit">Deactivate</button></form>
-                        }
-                        else
-                        {
-                            <form class="button-row" method="post" action="/Admin/QcStations/Reactivate"><input type="hidden" name="id" value="@station.Id" /><button class="secondary-button" type="submit">Reactivate</button></form>
-                            <p class="muted">If this is the same computer, reactivate it. If this is a replacement computer or the config may be exposed, create a new Station Code or rotate the key.</p>
-                        }
-                    </td>
-                </tr>
+                <p class="muted">If this is the same computer, reactivate it. If this is a replacement computer or the config may be exposed, create a new Station Code or rotate the key.</p>
             }
-            </tbody>
-        </table>
+            <details>
+                <summary>Edit</summary>
+                <form class="stack-form" method="post" action="/Admin/QcStations/Update">
+                    <input type="hidden" name="Id" value="@station.Id" />
+                    <label>Station name <input name="StationName" value="@station.StationName" required /></label>
+                    <label>Station code <input name="StationCode" value="@station.StationCode" title="Use letters, numbers, dashes, and underscores only for new station codes. Existing codes with spaces can be saved unchanged." required /></label>
+                    <label>Warehouse
+                        <select name="WarehouseCode" required>
+                        @foreach (var warehouse in Model.Warehouses)
+                        {
+                            <option value="@warehouse.Code" selected="@(warehouse.Code == station.WarehouseCode ? "selected" : null)">@warehouse.Code - @warehouse.Name</option>
+                        }
+                        </select>
+                    </label>
+                    <label>Description <input name="Description" value="@station.Description" /></label>
+                    <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@station.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" />
+                    <button class="secondary-button" type="submit">Save</button>
+                </form>
+            </details>
+        </article>
+    }
     </div>
 </section>
 

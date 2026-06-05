@@ -15,6 +15,8 @@ public interface IQcPhotoRequirementPolicy
 public sealed class QcPhotoRequirementPolicy : IQcPhotoRequirementPolicy
 {
     public static readonly QcPhotoRequirement TruckPhoto = new("TruckPhoto", "Truck photo", "BinTruck", ReceiptLevel: true);
+    public static readonly QcPhotoRequirement TopOfTruck = new("TopOfTruck", "Top of truck", "TopOfTruck", ReceiptLevel: true);
+    public static readonly QcPhotoRequirement Hectre = new("Hectre", "Hectre", "Hectre", ReceiptLevel: false);
     public static readonly QcPhotoRequirement WholeSample = new("WholeSample", "Whole sample", "SampleBeforeCutting", ReceiptLevel: false);
     public static readonly QcPhotoRequirement CutApples = new("CutApples", "Cut apples", "CutFruit", ReceiptLevel: false);
     public static readonly QcPhotoRequirement StarchApples = new("StarchApples", "Starch apples", "FruitAfterStarch", ReceiptLevel: false);
@@ -24,12 +26,12 @@ public sealed class QcPhotoRequirementPolicy : IQcPhotoRequirementPolicy
         var normalized = sampleTypeName ?? string.Empty;
         if (normalized.Contains("receiving", StringComparison.OrdinalIgnoreCase))
         {
-            return [TruckPhoto, WholeSample, CutApples, StarchApples];
+            return [TruckPhoto, TopOfTruck, Hectre, WholeSample, CutApples, StarchApples];
         }
 
         if (normalized.Contains("transfer", StringComparison.OrdinalIgnoreCase))
         {
-            return [TruckPhoto, WholeSample, CutApples];
+            return [TruckPhoto, TopOfTruck, WholeSample, CutApples];
         }
 
         if (normalized.Contains("door", StringComparison.OrdinalIgnoreCase)
@@ -56,7 +58,7 @@ public sealed class QcPhotoRequirementPolicy : IQcPhotoRequirementPolicy
     public IReadOnlyList<string> MissingRequiredPhotos(string? sampleTypeName, IReadOnlyCollection<string> receiptPhotoTypes, IReadOnlyCollection<string> samplePhotoTypes) =>
         GetRequirements(sampleTypeName)
             .Where(requirement => !HasPhoto(requirement, receiptPhotoTypes, samplePhotoTypes))
-            .Select(requirement => $"{requirement.FriendlyName} photo is required for {DisplaySampleType(sampleTypeName)}.")
+            .Select(requirement => $"Missing required photo: {requirement.FriendlyName}")
             .ToList();
 
     private static bool HasPhoto(QcPhotoRequirement requirement, IReadOnlyCollection<string> receiptPhotoTypes, IReadOnlyCollection<string> samplePhotoTypes)
@@ -64,7 +66,4 @@ public sealed class QcPhotoRequirementPolicy : IQcPhotoRequirementPolicy
         var source = requirement.ReceiptLevel ? receiptPhotoTypes : samplePhotoTypes;
         return source.Contains(requirement.PhotoType, StringComparer.OrdinalIgnoreCase);
     }
-
-    private static string DisplaySampleType(string? sampleTypeName) =>
-        string.IsNullOrWhiteSpace(sampleTypeName) ? "this sample type" : sampleTypeName;
 }

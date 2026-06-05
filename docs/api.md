@@ -48,7 +48,7 @@ Duplicate receiving samples are allowed. The next `SampleSequenceNumber` is assi
 - `POST /api/fruit-readings/{readingId}/defects`
 - `DELETE /api/fruit-readings/{readingId}/defects/{defectId}`
 
-Rows are limited to 1 through 25. A completed row requires Pressure 1, Pressure 2, weight in grams, and grade. Starch can be saved later. Size category/status is calculated from fruit type and minimum weight thresholds. Below the smallest threshold is `Undersized`.
+Rows are limited to 1 through 25. Partial rows are valid work in progress and should be saved when any pressure, weight, grade, starch, or defect data is entered. A row is marked complete only when Pressure 1, Pressure 2, weight in grams, and grade are present. Starch can be saved later. Size category/status is calculated from fruit type and minimum weight thresholds. Below the smallest threshold is `Undersized`.
 
 ## Photos
 
@@ -59,6 +59,8 @@ Photo metadata attaches to exactly one parent: receipt or QC sample. Photo binar
 Expected photo types:
 
 - `BinTruck`
+- `TopOfTruck`
+- `Hectre`
 - `SampleBeforeCutting`
 - `CutFruit`
 - `FruitAfterStarch`
@@ -70,7 +72,7 @@ Expected photo types:
 - `POST /api/receipts/{receiptId}/email-logs`
 - `GET /api/receipts/{receiptId}/email-logs`
 
-Readiness requires a receipt, at least one completed fruit row, all completed rows to have required measurement fields, starch on all completed rows, and the required photos for the sample type. Door/Room and Line samples require `SampleBeforeCutting` and `CutFruit`. Receiving samples require receipt-level `BinTruck` plus sample-level `SampleBeforeCutting`, `CutFruit`, and `FruitAfterStarch`. Transfer samples require receipt-level `BinTruck` plus sample-level `SampleBeforeCutting` and `CutFruit`.
+Readiness requires a receipt, at least one completed fruit row, all completed rows to have required measurement fields, starch on all completed rows, and the required photos for the sample type. Receiving samples require receipt-level `BinTruck` and `TopOfTruck` plus sample-level `Hectre`, `SampleBeforeCutting`, `CutFruit`, and `FruitAfterStarch`. Transfer samples require receipt-level `BinTruck` and `TopOfTruck` plus sample-level `SampleBeforeCutting` and `CutFruit`; `Hectre` is optional unless configured as required later. Door/Room and Line samples require `SampleBeforeCutting` and `CutFruit`.
 
 Web dashboard QC Summary sending uses `Email__Provider=GmailUser` to send through the logged-in user's Gmail account. Email logs record From, To, Reply-To, subject, status, Gmail message ID when returned, sender user, send timestamp, and safe failure status when sending fails. The email body contains the summary, fruit row overview, and inline `cid:` photo references; the summary is not provided only as an attachment.
 

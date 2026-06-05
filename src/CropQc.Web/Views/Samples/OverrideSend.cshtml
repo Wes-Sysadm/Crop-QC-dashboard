@@ -18,7 +18,8 @@
     <section class="panel">
         <h2>Manager/Admin Override Send</h2>
         <p>@Model.Sample.DisplayReceiptId | @Model.Receipt.GrowerName | @Model.Receipt.LotCode | @Model.Receipt.VarietyCode</p>
-        <p>Sending from: <strong>@(Model.SenderEmail ?? "current Google user")</strong> to <strong>@(Model.RecipientEmail ?? "configured QC recipient")</strong>.</p>
+        <p>Sending from: <strong>@(Model.SenderEmail ?? "current Google user")</strong></p>
+        <p>To: <strong>@(Model.RecipientEmail ?? "configured QC recipients")</strong></p>
         <p class="notice warning">This sends a QC Summary email even though required data is missing.</p>
         <p class="muted">Emails send from the logged-in Google Workspace account. Allowed Google Workspace domains: @Model.AllowedGoogleDomains.</p>
         <p class="muted">If Gmail permission is missing, sign out and sign back in to reconnect Google/Gmail with the send permission.</p>

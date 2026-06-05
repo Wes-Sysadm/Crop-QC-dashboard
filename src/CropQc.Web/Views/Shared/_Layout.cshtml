@@ -1,6 +1,7 @@
 <!doctype html>
 @using System.Security.Claims
 @inject CropQc.Web.Services.IAdminAuthorizationService AdminAuthorization
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -17,6 +18,10 @@
                 var isAdmin = AdminAuthorization.IsAdmin(User);
                 var isManagerOrAdmin = AdminAuthorization.IsManagerOrAdmin(User);
                 var role = User.FindAll(ClaimTypes.Role).Select(x => x.Value).OrderBy(x => x).FirstOrDefault() ?? "Viewer";
+                var currentEmail = User.FindFirstValue(ClaimTypes.Email) ?? "";
+                var cleanupAllowedEmails = (Configuration["DataCleanup:AllowedEmails"] ?? "wes@fruitandland.com")
+                    .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                var canAccessDataCleanup = cleanupAllowedEmails.Contains(currentEmail, StringComparer.OrdinalIgnoreCase);
                 <a href="/">Dashboard</a>
                 <a href="/DailyQc">Daily QC</a>
                 <a href="/Receipts">Receipts</a>
@@ -30,10 +35,13 @@
                     <a href="/Admin/Users">Users</a>
                     <a href="/Admin/Downloads">Downloads</a>
                     <a href="/Admin/Configuration">Configuration</a>
-                    <a href="/Admin/DataCleanup">Data Cleanup</a>
+                    @if (canAccessDataCleanup)
+                    {
+                        <a href="/Admin/DataCleanup">Data Cleanup</a>
+                    }
                     <span class="status ready">Admin</span>
                 }
-                <span class="user-email">@User.FindFirstValue(ClaimTypes.Email)</span>
+                <span class="user-email">@currentEmail</span>
                 <span class="status">@role</span>
                 <form class="logout-form" method="post" action="/Logout">
                     <button type="submit" class="link-button">Logout</button>

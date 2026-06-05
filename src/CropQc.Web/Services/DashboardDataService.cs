@@ -26,7 +26,25 @@ public interface IDashboardDataService
     Task<string?> SendQcSummaryAsync(long sampleId, CancellationToken cancellationToken);
     Task<string?> LogOverrideSendAsync(OverrideSendForm form, CancellationToken cancellationToken);
     Task<string?> AddPhotoMetadataAsync(AddPhotoMetadataForm form, CancellationToken cancellationToken);
-    Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, CancellationToken cancellationToken);
+    Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken);
+}
+
+public enum FruitRowEntryStatus
+{
+    Empty,
+    InProgress,
+    Complete
+}
+
+public static class FruitRowEntryStatusExtensions
+{
+    public static string ToDisplayName(this FruitRowEntryStatus status) => status switch
+    {
+        FruitRowEntryStatus.Empty => "Empty",
+        FruitRowEntryStatus.InProgress => "In Progress",
+        FruitRowEntryStatus.Complete => "Complete",
+        _ => status.ToString()
+    };
 }
 
 public sealed class DashboardDataService(
@@ -41,6 +59,7 @@ public sealed class DashboardDataService(
     IQcSummaryEmailComposer emailComposer,
     ICropYearService cropYearService,
     IHttpContextAccessor httpContextAccessor,
+    IConfiguration configuration,
     ILogger<DashboardDataService> logger) : IDashboardDataService
 {
     private const string DataWarning = "Database is not available yet. The dashboard shell is running with empty data.";
@@ -53,11 +72,11 @@ public sealed class DashboardDataService(
             var todaySamples = await QuerySamples().Where(x => x.SampleTakenAt.Date == DateTimeOffset.UtcNow.Date).ToListAsync(cancellationToken);
             var enriched = await EnrichSamplesAsync(todaySamples, cancellationToken);
             var cards = BuildHomeCards(
-                enriched.Count,
+                enriched.Count(x => x.SampleType.Contains("Receiving", StringComparison.OrdinalIgnoreCase)),
                 enriched.Count(x => x.IsReady),
                 enriched.Count(x => !x.IsReady),
                 enriched.Count(x => x.EmailStatus == "Sent"),
-                enriched.Count(x => x.Status.Contains("Needs Review", StringComparison.OrdinalIgnoreCase)));
+                enriched.Count(x => x.ReviewReasons.Count > 0));
             return new HomeDashboardViewModel
             {
                 Cards = cards,
@@ -78,17 +97,17 @@ public sealed class DashboardDataService(
     {
         var cards = new List<StatusCountCard>
         {
-            new("Today's receiving samples", todaySamples, "/DailyQc", "info"),
-            new("Samples ready to send", ready, "/DailyQc", "ready"),
-            new("Samples missing required data", missing, "/DailyQc", "missing"),
-            new("Samples already sent", sent, "/DailyQc", "sent"),
-            new("Samples needing review", review, "/DailyQc", "review")
+            new("Today's Receiving Samples", todaySamples, "/Receipts?DateFilter=today&SampleType=Receiving", "info", "Receipts with receiving QC activity today."),
+            new("Samples Ready to Email", ready, "/DailyQc?status=ReadyToSend", "ready", "Samples with required data and photos ready for QC summary email."),
+            new("Samples Missing Data", missing, "/DailyQc?status=MissingData", "missing", "Samples that are saved but missing required fields/photos for completion or email."),
+            new("Samples Already Sent", sent, "/DailyQc?status=Sent", "sent", "Samples that already have a QC summary email recorded."),
+            new("Samples Needing Review", review, "/DailyQc?status=NeedsReview", "review", "Samples with review flags such as pressure/starch/defect/variance thresholds.")
         };
 
         var user = httpContextAccessor.HttpContext?.User;
         if (user?.IsInRole("Admin") == true || user?.IsInRole("Manager") == true)
         {
-            cards.Add(new("Master data/admin links", 8, "/MasterData", "admin"));
+            cards.Add(new("Master Data/Admin Links", 8, "/MasterData", "admin", "Management pages available to your role."));
         }
 
         return cards;
@@ -139,12 +158,26 @@ public sealed class DashboardDataService(
                 .Where(x => !x.IsDeleted)
                 .AsQueryable();
             if (!search.AllCropYears && search.CropYear is not null) query = query.Where(x => x.CropYear == search.CropYear);
+            if (string.Equals(search.DateFilter, "today", StringComparison.OrdinalIgnoreCase))
+            {
+                var today = DateTimeOffset.UtcNow.Date;
+                query = query.Where(x => x.ReceivedAt.Date == today);
+            }
+
             if (!string.IsNullOrWhiteSpace(search.ReceiptId)) query = query.Where(x => x.CompuTechReceiptId.Contains(search.ReceiptId));
             if (!string.IsNullOrWhiteSpace(search.Grower)) query = query.Where(x => x.GrowerName.Contains(search.Grower));
             if (!string.IsNullOrWhiteSpace(search.Lot)) query = query.Where(x => x.LotCode.Contains(search.Lot));
             if (search.WarehouseId is not null) query = query.Where(x => x.WarehouseId == search.WarehouseId);
             if (search.RoomId is not null) query = query.Where(x => x.RoomId == search.RoomId);
             if (search.FruitProfileId is not null) query = query.Where(x => x.FruitProfileId == search.FruitProfileId);
+            if (!string.IsNullOrWhiteSpace(search.SampleType))
+            {
+                var sampleType = search.SampleType.Trim();
+                query = query.Where(x => dbContext.QcSamples.Any(sample =>
+                    !sample.IsDeleted
+                    && sample.ReceiptId == x.Id
+                    && sample.SampleType.Name.Contains(sampleType)));
+            }
 
             var receipts = await query.OrderByDescending(x => x.ReceivedAt).Take(500).ToListAsync(cancellationToken);
             var receiptIds = receipts.Select(x => x.Id).ToList();
@@ -310,7 +343,7 @@ public sealed class DashboardDataService(
             var rowModels = await GetFruitReadingRowsAsync(id, cancellationToken);
 
             var photos = await dbContext.QcPhotos.AsNoTracking()
-                .Where(x => x.QcSampleId == id && (x.PhotoType == "SampleBeforeCutting" || x.PhotoType == "CutFruit" || x.PhotoType == "Other"))
+                .Where(x => x.QcSampleId == id && (x.PhotoType == "Hectre" || x.PhotoType == "SampleBeforeCutting" || x.PhotoType == "CutFruit" || x.PhotoType == "Other"))
                 .OrderByDescending(x => x.CapturedAt)
                 .ToListAsync(cancellationToken);
             var grades = await dbContext.Grades.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Id).ToListAsync(cancellationToken);
@@ -321,6 +354,7 @@ public sealed class DashboardDataService(
                 FruitRows = rowModels,
                 PhotoGroups = GroupPhotos(photos),
                 Readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken),
+                RecipientEmail = emailOptions.QcRecipientHeader,
                 Grades = grades,
                 DefectTypes = defectTypes,
                 FruitReadingForm = new SaveFruitReadingsForm
@@ -463,20 +497,8 @@ public sealed class DashboardDataService(
                 return $"Row {submittedRow.RowNumber} has an invalid defect.";
             }
 
-            var isBlank = submittedRow.Pressure1Lbs is null
-                && submittedRow.Pressure2Lbs is null
-                && submittedRow.WeightGrams is null
-                && submittedRow.GradeId is null
-                && selectedDefectIds.Count == 0
-                && string.IsNullOrWhiteSpace(submittedRow.OtherDefectNotes);
-            var isCompleted = submittedRow.Pressure1Lbs is not null
-                && submittedRow.Pressure2Lbs is not null
-                && submittedRow.WeightGrams is not null
-                && submittedRow.GradeId is not null;
-            if (!isBlank && !isCompleted)
-            {
-                return $"Row {submittedRow.RowNumber} is partially entered. Completed rows require Pressure 1, Pressure 2, weight, and grade.";
-            }
+            var entryStatus = GetFruitRowEntryStatus(submittedRow, selectedDefectIds);
+            var isCompleted = entryStatus == FruitRowEntryStatus.Complete;
 
             var reading = existingRows.SingleOrDefault(x => x.RowNumber == submittedRow.RowNumber);
             if (reading is null)
@@ -633,7 +655,7 @@ public sealed class DashboardDataService(
                 SenderEmail = senderEmail,
                 SenderDomain = senderDomain,
                 SenderDomainAllowed = senderDomain is not null && authOptions.AllowedDomains.Contains(senderDomain),
-                RecipientEmail = emailOptions.ToAddress,
+                RecipientEmail = emailOptions.QcRecipientHeader,
                 GmailReconnectRequired = !string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase)
                     || !credentialDiagnostic.GmailSendPermissionGranted,
                 GmailCredentialPresent = credentialDiagnostic.CredentialPresent,
@@ -697,7 +719,8 @@ public sealed class DashboardDataService(
         }
 
         var emailContent = await emailComposer.ComposeAsync(sample, readiness, isOverride, overrideReason, cancellationToken);
-        var message = new QcEmailMessage(sender.Email, emailOptions.ToAddress, sample.TakenByUser?.Email, emailContent.Subject, emailContent.TextBody, emailContent.HtmlBody, emailContent.InlineImages);
+        var recipients = emailOptions.QcRecipientHeader;
+        var message = new QcEmailMessage(sender.Email, recipients, sample.TakenByUser?.Email, emailContent.Subject, emailContent.TextBody, emailContent.HtmlBody, emailContent.InlineImages);
 
         var now = DateTimeOffset.UtcNow;
         var sendResult = await emailSender.SendAsync(sender, message, cancellationToken);
@@ -708,7 +731,7 @@ public sealed class DashboardDataService(
             ReceiptId = sample.ReceiptId,
             QcSampleId = sample.Id,
             FromAddress = sender.Email,
-            ToAddress = emailOptions.ToAddress,
+            ToAddress = recipients,
             ReplyToAddress = sample.TakenByUser?.Email,
             Subject = emailContent.Subject,
             Status = status,
@@ -743,7 +766,7 @@ public sealed class DashboardDataService(
             System.Text.Json.JsonSerializer.Serialize(new
             {
                 Sender = sender.Email,
-                To = emailOptions.ToAddress,
+                To = recipients,
                 Subject = emailContent.Subject,
                 Status = status,
                 GmailMessageId = sendResult.MessageId,
@@ -908,7 +931,7 @@ public sealed class DashboardDataService(
         return null;
     }
 
-    public async Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, CancellationToken cancellationToken)
+    public async Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken)
     {
         try
         {
@@ -919,18 +942,42 @@ public sealed class DashboardDataService(
             }
 
             var samples = await query.OrderByDescending(x => x.SampleTakenAt).ToListAsync(cancellationToken);
+            var enriched = await EnrichSamplesAsync(samples, cancellationToken);
+            enriched = FilterDailyQcSamples(enriched, status);
             return new DailyQcDashboardViewModel
             {
                 WarehouseId = warehouseId,
+                Status = status,
+                StatusDescription = BuildDailyQcStatusDescription(status),
                 Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
-                Samples = await EnrichSamplesAsync(samples, cancellationToken)
+                Samples = enriched
             };
         }
         catch
         {
-            return new DailyQcDashboardViewModel { WarehouseId = warehouseId, DataWarning = DataWarning };
+            return new DailyQcDashboardViewModel { WarehouseId = warehouseId, Status = status, DataWarning = DataWarning };
         }
     }
+
+    private static IReadOnlyList<SampleListItemViewModel> FilterDailyQcSamples(IReadOnlyList<SampleListItemViewModel> samples, string? status) =>
+        status?.Trim().ToLowerInvariant() switch
+        {
+            "readytosend" => samples.Where(x => x.IsReady).ToList(),
+            "missingdata" => samples.Where(x => !x.IsReady).ToList(),
+            "needsreview" => samples.Where(x => x.ReviewReasons.Count > 0).ToList(),
+            "sent" => samples.Where(x => x.EmailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase)).ToList(),
+            _ => samples
+        };
+
+    private static string? BuildDailyQcStatusDescription(string? status) =>
+        status?.Trim().ToLowerInvariant() switch
+        {
+            "readytosend" => "Showing samples with required data and photos ready for QC summary email.",
+            "missingdata" => "Showing saved samples that are missing required fields/photos for completion or email readiness.",
+            "needsreview" => "Showing samples with explicit or threshold-based review flags.",
+            "sent" => "Showing samples with a recorded QC summary email.",
+            _ => null
+        };
 
     private IQueryable<QcSample> QuerySamples(bool includeDeleted = false)
     {
@@ -959,6 +1006,7 @@ public sealed class DashboardDataService(
         foreach (var sample in samples)
         {
             var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+            var averagePressure = AveragePressure(sample.FruitReadings);
             result.Add(new SampleListItemViewModel
             {
                 Id = sample.Id,
@@ -977,14 +1025,69 @@ public sealed class DashboardDataService(
                 ActualSampleSize = sample.ActualSampleSize,
                 IsReady = readiness.IsReady,
                 MissingItems = readiness.MissingItems,
+                ReviewReasons = BuildReviewReasons(sample, averagePressure),
                 Checklist = readiness.Checklist,
                 CompletedFruitCount = readiness.CompletedFruitCount,
-                AveragePressureLbs = AveragePressure(sample.FruitReadings),
+                AveragePressureLbs = averagePressure,
                 IsDeleted = sample.IsDeleted
             });
         }
 
         return result;
+    }
+
+    private IReadOnlyList<string> BuildReviewReasons(QcSample sample, decimal? averagePressureLbs)
+    {
+        var reasons = new List<string>();
+        if (sample.Status.Contains("Needs Review", StringComparison.OrdinalIgnoreCase))
+        {
+            reasons.Add("Sample is explicitly marked Needs Review.");
+        }
+
+        AddThresholdReason(reasons, averagePressureLbs, "DashboardReview:LowPressureLbs", value => averagePressureLbs < value, value => $"Average pressure {averagePressureLbs:0.##} lbs is below configured low threshold {value:0.##} lbs.");
+        AddThresholdReason(reasons, averagePressureLbs, "DashboardReview:HighPressureLbs", value => averagePressureLbs > value, value => $"Average pressure {averagePressureLbs:0.##} lbs is above configured high threshold {value:0.##} lbs.");
+
+        var starchValues = sample.FruitReadings
+            .Where(x => x.StarchScaleValue is not null)
+            .Select(x => x.StarchScaleValue!.Value)
+            .ToList();
+        var averageStarch = starchValues.Count == 0 ? (decimal?)null : decimal.Round(starchValues.Average(), 2);
+        AddThresholdReason(reasons, averageStarch, "DashboardReview:HighStarch", value => averageStarch > value, value => $"Average starch {averageStarch:0.##} is above configured threshold {value:0.##}.");
+
+        var completedRows = sample.FruitReadings.Where(x => x.IsCompleted).ToList();
+        if (completedRows.Count > 0)
+        {
+            var defectRows = completedRows.Count(x => x.Defects.Count > 0);
+            var defectPercent = decimal.Round(defectRows * 100m / completedRows.Count, 2);
+            AddThresholdReason(reasons, defectPercent, "DashboardReview:HighDefectPercent", value => defectPercent > value, value => $"Defects are present on {defectPercent:0.##}% of completed fruit, above configured threshold {value:0.##}%.");
+        }
+
+        var pressureValues = sample.FruitReadings
+            .Select(x => Average(x.Pressure1Lbs, x.Pressure2Lbs))
+            .Where(x => x is not null)
+            .Select(x => x!.Value)
+            .ToList();
+        if (pressureValues.Count > 1)
+        {
+            var variance = decimal.Round(pressureValues.Max() - pressureValues.Min(), 2);
+            AddThresholdReason(reasons, variance, "DashboardReview:HighPressureVarianceLbs", value => variance > value, value => $"Pressure variance {variance:0.##} lbs is above configured threshold {value:0.##} lbs.");
+        }
+
+        return reasons;
+    }
+
+    private void AddThresholdReason(List<string> reasons, decimal? actualValue, string key, Func<decimal, bool> isTriggered, Func<decimal, string> buildReason)
+    {
+        if (actualValue is null)
+        {
+            return;
+        }
+
+        var rawThreshold = configuration[key];
+        if (decimal.TryParse(rawThreshold, out var threshold) && isTriggered(threshold))
+        {
+            reasons.Add(buildReason(threshold));
+        }
     }
 
     private async Task<IReadOnlyList<FruitReadingRowViewModel>> GetFruitReadingRowsAsync(long sampleId, CancellationToken cancellationToken)
@@ -1001,7 +1104,7 @@ public sealed class DashboardDataService(
             {
                 var row = rows.SingleOrDefault(x => x.RowNumber == rowNumber);
                 return row is null
-                    ? new FruitReadingRowViewModel { RowNumber = rowNumber }
+                    ? new FruitReadingRowViewModel { RowNumber = rowNumber, EntryStatus = FruitRowEntryStatus.Empty.ToDisplayName() }
                     : new FruitReadingRowViewModel
                     {
                         RowNumber = row.RowNumber,
@@ -1016,6 +1119,7 @@ public sealed class DashboardDataService(
                         SizeCategory = row.SizeCategory,
                         SizeStatus = row.SizeStatus,
                         IsCompleted = row.IsCompleted,
+                        EntryStatus = GetFruitRowEntryStatus(row).ToDisplayName(),
                         DefectTypeIds = row.Defects.Select(x => x.DefectTypeId).ToList(),
                         Defects = row.Defects.Select(x => x.DefectType.Name).OrderBy(x => x).ToList(),
                         OtherDefectNotes = row.Defects.FirstOrDefault(x => x.DefectType.Name == "Other")?.Notes
@@ -1023,6 +1127,49 @@ public sealed class DashboardDataService(
             })
             .ToList();
     }
+
+    public static FruitRowEntryStatus GetFruitRowEntryStatus(FruitReadingEditRow row, IReadOnlyCollection<int>? selectedDefectIds = null)
+    {
+        var hasAnyValue = row.Pressure1Lbs is not null
+            || row.Pressure2Lbs is not null
+            || row.WeightGrams is not null
+            || row.GradeId is not null
+            || row.StarchScaleValueId is not null
+            || (selectedDefectIds ?? row.DefectTypeIds).Count > 0
+            || !string.IsNullOrWhiteSpace(row.OtherDefectNotes);
+        if (!hasAnyValue)
+        {
+            return FruitRowEntryStatus.Empty;
+        }
+
+        return HasCompletionFields(row.Pressure1Lbs, row.Pressure2Lbs, row.WeightGrams, row.GradeId)
+            ? FruitRowEntryStatus.Complete
+            : FruitRowEntryStatus.InProgress;
+    }
+
+    private static FruitRowEntryStatus GetFruitRowEntryStatus(QcFruitReading row)
+    {
+        var hasAnyValue = row.Pressure1Lbs is not null
+            || row.Pressure2Lbs is not null
+            || row.WeightGrams is not null
+            || row.GradeId is not null
+            || row.StarchScaleValueId is not null
+            || row.Defects.Count > 0;
+        if (!hasAnyValue)
+        {
+            return FruitRowEntryStatus.Empty;
+        }
+
+        return HasCompletionFields(row.Pressure1Lbs, row.Pressure2Lbs, row.WeightGrams, row.GradeId)
+            ? FruitRowEntryStatus.Complete
+            : FruitRowEntryStatus.InProgress;
+    }
+
+    private static bool HasCompletionFields(decimal? pressure1Lbs, decimal? pressure2Lbs, decimal? weightGrams, int? gradeId) =>
+        pressure1Lbs is not null
+        && pressure2Lbs is not null
+        && weightGrams is not null
+        && gradeId is not null;
 
     private async Task<ReadinessViewModel> GetReadinessAsync(long sampleId, long receiptId, CancellationToken cancellationToken)
     {

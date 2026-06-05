@@ -9,7 +9,10 @@ public sealed class ReadinessEvaluatorTests
     {
         var input = new ReadinessEvaluationInput(
             true,
+            "Receiving Sample",
             [new ReadinessFruitRow(true, true, true, true, true, true)],
+            true,
+            true,
             true,
             true,
             true,
@@ -24,11 +27,34 @@ public sealed class ReadinessEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_DoesNotRequireHectreForTransferSamples()
+    {
+        var input = new ReadinessEvaluationInput(
+            true,
+            "Transfer Sample",
+            [new ReadinessFruitRow(true, true, true, true, true, true)],
+            true,
+            true,
+            false,
+            true,
+            true,
+            true);
+
+        var result = ReadinessEvaluator.Evaluate(input);
+
+        Assert.True(result.IsReady);
+        Assert.DoesNotContain(result.MissingItems, x => x.Contains("Hectre", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Evaluate_ReportsMissingStarchAndPhotos()
     {
         var input = new ReadinessEvaluationInput(
             true,
+            "Receiving Sample",
             [new ReadinessFruitRow(true, true, true, true, true, false)],
+            false,
+            false,
             false,
             true,
             false,
@@ -41,6 +67,8 @@ public sealed class ReadinessEvaluatorTests
         Assert.Equal(1, result.StarchMissingCount);
         Assert.Contains(result.MissingItems, x => x.Contains("Starch", StringComparison.OrdinalIgnoreCase));
         Assert.False(result.PhotoStatus.HasBinTruck);
+        Assert.False(result.PhotoStatus.HasTopOfTruck);
+        Assert.False(result.PhotoStatus.HasHectre);
         Assert.False(result.PhotoStatus.HasCutFruit);
         Assert.False(result.PhotoStatus.HasFruitAfterStarch);
     }

@@ -17,6 +17,7 @@ public sealed class AdminController(
     private const string FtaDllInstallerFileName = "FTADLL.exe";
     private const string FtaDllInstallerUrl = "https://drive.google.com/file/d/1iYy1v1-D8T-S4SgfHJOeuwoeJfsbcvoS/view?usp=drive_link";
     private const string QcStationInstallerFileName = "CropQcStationSetup.msi";
+    private const string FtaBorlandDependencyFileName = "borlndmm.dll";
 
     [HttpGet("Users")]
     [Authorize(Policy = "RequireAdmin")]
@@ -27,12 +28,27 @@ public sealed class AdminController(
     [Authorize(Policy = "RequireAdmin")]
     public IActionResult Downloads()
     {
+        var masterFolderUrl = configuration["Downloads:MasterFolderUrl"];
+        var masterFolderConfigured = !string.IsNullOrWhiteSpace(masterFolderUrl);
         var installerUrl = configuration["Downloads:QcStationInstallerUrl"];
         var installerConfigured = !string.IsNullOrWhiteSpace(installerUrl);
+        var borlandDependencyUrl = configuration["Downloads:FtaBorlndmmUrl"];
+        var borlandDependencyConfigured = !string.IsNullOrWhiteSpace(borlandDependencyUrl);
         var model = new AdminDownloadsViewModel
         {
             Downloads =
             [
+                new(
+                    "Hosted Files Folder",
+                    "Google Drive folder",
+                    "Open the shared Google Drive folder containing CropQcStationSetup.msi, FTADLL.exe, borlndmm.dll, and other hosted support files.",
+                    masterFolderUrl ?? "",
+                    masterFolderConfigured
+                        ? "Opens the shared Google Drive folder. Use this as the master production download location for installer/support files."
+                        : "Downloads folder link is not configured. Set Downloads__MasterFolderUrl in Render.",
+                    IsAvailable: masterFolderConfigured,
+                    OpensInNewTab: masterFolderConfigured,
+                    ActionText: "Open Google Drive Folder"),
                 new(
                     "FTA DLL Installer",
                     FtaDllInstallerFileName,
@@ -51,6 +67,17 @@ public sealed class AdminController(
                         : "QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.",
                     IsAvailable: installerConfigured,
                     OpensInNewTab: installerConfigured,
+                    ActionText: "Open Google Drive Download"),
+                new(
+                    "FTA borlndmm.dll Dependency",
+                    FtaBorlandDependencyFileName,
+                    "Known-good x86 borlndmm.dll used by the FTA DLL. Use only when diagnostics report the installed borlndmm.dll is 64-bit or invalid.",
+                    borlandDependencyUrl ?? "",
+                    borlandDependencyConfigured
+                        ? "Opens the shared Google Drive download page. Back up the existing borlndmm.dll before replacing it, then rerun QC Station FTA Diagnostics."
+                        : "FTA borlndmm.dll dependency link is not configured. Upload the known-good x86 borlndmm.dll to Google Drive and set Downloads__FtaBorlndmmUrl in Render.",
+                    IsAvailable: borlandDependencyConfigured,
+                    OpensInNewTab: borlandDependencyConfigured,
                     ActionText: "Open Google Drive Download")
             ]
         };
@@ -60,13 +87,25 @@ public sealed class AdminController(
 
     [HttpGet("DataCleanup")]
     [Authorize(Policy = "RequireAdmin")]
-    public async Task<IActionResult> DataCleanup([FromQuery] DataCleanupFilterForm filter, CancellationToken cancellationToken) =>
-        View(await dataCleanupService.BuildPageAsync(filter, cancellationToken));
+    public async Task<IActionResult> DataCleanup([FromQuery] DataCleanupFilterForm filter, CancellationToken cancellationToken)
+    {
+        if (!IsDataCleanupAllowed())
+        {
+            return Forbid();
+        }
+
+        return View(await dataCleanupService.BuildPageAsync(filter, cancellationToken));
+    }
 
     [HttpPost("DataCleanup/Execute")]
     [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> ExecuteDataCleanup(DataCleanupFilterForm filter, CancellationToken cancellationToken)
     {
+        if (!IsDataCleanupAllowed())
+        {
+            return Forbid();
+        }
+
         var (preview, error) = await dataCleanupService.ExecuteAsync(filter, authorizationService.GetEmail(User) ?? "", cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? $"Cleanup complete. Samples affected: {preview.SamplesAffected}. Receipts affected: {preview.ReceiptsAffected}.";
         return RedirectToAction(nameof(DataCleanup), filter);
@@ -142,6 +181,30 @@ public sealed class AdminController(
 
     private FileContentResult DownloadQcStationConfig(QcStationConfigDownload download) =>
         File(System.Text.Encoding.UTF8.GetBytes(download.Json), "application/json", download.FileName);
+
+    private bool IsDataCleanupAllowed()
+    {
+        var email = authorizationService.GetEmail(User);
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return false;
+        }
+
+        return GetDataCleanupAllowedEmails().Contains(email.Trim(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private IReadOnlyList<string> GetDataCleanupAllowedEmails()
+    {
+        var configured = configuration["DataCleanup:AllowedEmails"];
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            configured = "wes@fruitandland.com";
+        }
+
+        return configured
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .ToList();
+    }
 
     [HttpPost("Users/Add")]
     [Authorize(Policy = "RequireAdmin")]

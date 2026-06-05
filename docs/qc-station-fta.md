@@ -127,6 +127,8 @@ The FTA DLL is a 32-bit vendor DLL. On 64-bit Windows, `C:\Windows\SysWOW64` is 
 
 If `FTA_DLL.dll` or `borlndmm.dll` is not reported as `x86`, reinstall `FTADLL.exe` from Admin -> Downloads or point `FtaDllPath` at the valid 32-bit vendor DLL folder.
 
+The known-good x86 `borlndmm.dll` is stored in the same Google Drive folder as `FTADLL.exe` and `CropQcStationSetup.msi`. If diagnostics show `FTA_DLL.dll is 32-bit, but borlndmm.dll is 64-bit`, back up the existing `C:\Windows\SysWOW64\borlndmm.dll`, replace it with the known-good x86 copy from Google Drive, and rerun QC Station FTA Diagnostics. Use the dependency download only for this specific diagnostic finding or when the installed `borlndmm.dll` is invalid.
+
 The QC Station project supports `AnyCPU`, `x86`, and `x64` platforms. Normal solution builds remain unchanged; RealDll hardware testing should use x86 until the vendor DLL bitness is confirmed.
 
 The WinForms harness also supports x86. It runs on an STA thread with a real Windows message loop. During reading waits it keeps the UI responsive and allows pending Windows messages to be processed, which may matter because the SDK says `FTAInit` installs an FTA interface and shows a tray icon. The vendor FTAwin software and vendor demos are GUI-based, and FTAwin works on the same machine where the console harness can initialize but cannot move the probe.
@@ -476,7 +478,7 @@ FTA DLL firmness units are explicit in station config. `FtaFirmnessUnit` default
 
 Station API access is managed in the database, not with one shared Render environment variable. Each QC computer sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the server stores only a hash of the key. Deactivate a station to block it immediately, or rotate its key and download a fresh config if a computer is replaced.
 
-`Admin -> Downloads` links only to shared installer/support downloads: the Google Drive `FTADLL.exe` installer and the Crop QC Station App Installer MSI when the MSI has been deployed. It does not provide station-specific config JSON. Install the Crop QC Station App Installer first, then use `Admin -> QC Stations` to create/select the station and download that computer's station-specific config JSON. Open Crop QC Station and use `Import / Replace Station Config` to install the JSON into ProgramData. Install `FTADLL.exe` only on FTA-connected QC Station computers before running RealDll mode. This setup supports 20+ station computers without sharing one secret across all of them.
+`Admin -> Downloads` links only to shared installer/support downloads: the Google Drive `FTADLL.exe` installer, the Crop QC Station App Installer MSI when the MSI has been deployed, and the optional known-good x86 `borlndmm.dll` dependency link when `Downloads__FtaBorlndmmUrl` is configured. It does not provide station-specific config JSON. Install the Crop QC Station App Installer first, then use `Admin -> QC Stations` to create/select the station and download that computer's station-specific config JSON. Open Crop QC Station and use `Import / Replace Station Config` to install the JSON into ProgramData. Install `FTADLL.exe` only on FTA-connected QC Station computers before running RealDll mode. This setup supports 20+ station computers without sharing one secret across all of them.
 
 Keep station config JSON private. It contains the raw station API key. If a config file is lost or exposed, rotate that station's key in `Admin -> QC Stations` and download a new config. The MSI contains no station secrets.
 
@@ -491,6 +493,8 @@ The Render web app does not build Windows desktop payloads. Build the QC Station
 The script publishes `src\CropQc.QcStation.WinForms\CropQc.QcStation.WinForms.csproj` in Release mode for `win-x86`, builds the WiX MSI at `artifacts\installers\CropQcStationSetup.msi`, and signs the executable/MSI when signing environment variables are configured. If signing is not configured it builds an unsigned MSI and prints a warning. Do not use an unsigned MSI for production rollout.
 
 To make the MSI available from `Admin -> Downloads`, upload `artifacts\installers\CropQcStationSetup.msi` to the shared Google Drive location used for internal QC installers and set `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link` in Render. The page opens the Google Drive-hosted MSI link in a new tab the same way it opens the `FTADLL.exe` link. Render does not host, proxy, or build the MSI. The MSI should not be committed unless explicitly approved.
+
+To make the known-good x86 `borlndmm.dll` available from `Admin -> Downloads`, upload it to the same shared Google Drive folder and set `Downloads__FtaBorlndmmUrl` in Render. Back up the old local file before replacing it, then rerun `Run Full FTA Diagnostic`.
 
 ## Quit / Disconnect Behavior
 
