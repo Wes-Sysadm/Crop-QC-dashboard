@@ -473,7 +473,7 @@ The Render web app does not build Windows desktop payloads. Build the QC Station
 
 The script publishes `src\CropQc.QcStation.WinForms\CropQc.QcStation.WinForms.csproj` in Release mode for `win-x86`, builds the WiX MSI at `artifacts\installers\CropQcStationSetup.msi`, and signs the executable/MSI when signing environment variables are configured. If signing is not configured it builds an unsigned MSI and prints a warning. Do not use an unsigned MSI for production rollout.
 
-To make the MSI available from `Admin -> Downloads`, upload `artifacts\installers\CropQcStationSetup.msi` to the shared Google Drive location used for internal QC installers and set `Downloads__QcStationInstallerUrl` in Render. The page opens the Google Drive-hosted MSI link the same way it opens the `FTADLL.exe` link. Render does not host or build the MSI. The MSI should not be committed unless explicitly approved.
+To make the MSI available from `Admin -> Downloads`, upload `artifacts\installers\CropQcStationSetup.msi` to the shared Google Drive location used for internal QC installers and set `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link` in Render. The page opens the Google Drive-hosted MSI link in a new tab the same way it opens the `FTADLL.exe` link. Render does not host, proxy, or build the MSI. The MSI should not be committed unless explicitly approved.
 
 ## Quit / Disconnect Behavior
 

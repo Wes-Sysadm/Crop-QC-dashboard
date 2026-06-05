@@ -1,9 +1,15 @@
 using CropQc.QcStation.Fta;
+using CropQc.Web.Controllers;
+using CropQc.Web.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 
 namespace CropQc.Api.Tests.QcStation;
 
 public sealed class QcStationInstallerWorkflowTests
 {
+    private const string QcStationInstallerGoogleDriveUrl = "https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link";
+
     [Fact]
     public void Dockerfile_BuildsOnlyWebDashboard()
     {
@@ -91,6 +97,51 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.DoesNotContain("action=\"/Admin/QcStations/RotateKey\"", view);
         Assert.DoesNotContain("Install-CropQcStation.cmd", controller);
         Assert.DoesNotContain("PhysicalFile", controller);
+    }
+
+    [Fact]
+    public void AdminDownloads_ShowsGoogleDriveMsiLinkWhenConfigured()
+    {
+        var controller = CreateAdminController(new Dictionary<string, string?>
+        {
+            ["Downloads:QcStationInstallerUrl"] = QcStationInstallerGoogleDriveUrl
+        });
+
+        var result = Assert.IsType<ViewResult>(controller.Downloads());
+        var model = Assert.IsType<AdminDownloadsViewModel>(result.Model);
+        var installer = Assert.Single(model.Downloads, item => item.Name == "Crop QC Station App Installer");
+
+        Assert.True(installer.IsAvailable);
+        Assert.True(installer.OpensInNewTab);
+        Assert.Equal("Open Google Drive Download", installer.ActionText);
+        Assert.Equal(QcStationInstallerGoogleDriveUrl, installer.Url);
+        Assert.DoesNotContain("not configured", installer.Notes, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AdminDownloads_ShowsMissingMsiGuidanceWhenUrlIsMissing()
+    {
+        var controller = CreateAdminController([]);
+
+        var result = Assert.IsType<ViewResult>(controller.Downloads());
+        var model = Assert.IsType<AdminDownloadsViewModel>(result.Model);
+        var installer = Assert.Single(model.Downloads, item => item.Name == "Crop QC Station App Installer");
+
+        Assert.False(installer.IsAvailable);
+        Assert.False(installer.OpensInNewTab);
+        Assert.Equal("", installer.Url);
+        Assert.Contains("QC Station installer link is not configured", installer.Notes);
+        Assert.Contains("Downloads__QcStationInstallerUrl", installer.Notes);
+    }
+
+    [Fact]
+    public void ProductionSettings_IncludeGoogleDriveMsiInstallerUrl()
+    {
+        var productionSettings = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "appsettings.Production.json"));
+
+        Assert.Contains("\"Downloads\"", productionSettings);
+        Assert.Contains("\"QcStationInstallerUrl\"", productionSettings);
+        Assert.Contains(QcStationInstallerGoogleDriveUrl, productionSettings);
     }
 
     [Fact]
@@ -375,6 +426,14 @@ public sealed class QcStationInstallerWorkflowTests
         }
 
         throw new FileNotFoundException($"Could not find repository file {Path.Combine(pathParts)}.");
+    }
+
+    private static AdminController CreateAdminController(Dictionary<string, string?> values)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(values)
+            .Build();
+        return new AdminController(null!, null!, null!, configuration);
     }
 
     private static string ExtractBetween(string value, string start, string end)
