@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Diagnostics;
 
 namespace CropQc.QcStation.Fta;
 
@@ -153,6 +154,12 @@ public static class FtaConnectionDiagnostics
         FtaDeviceStatus? ftaStatus,
         string? lastError)
     {
+        var configuredDll = PeFileInspector.Inspect(Path.Combine(ResolveDllFolder(configuration), ResolveDllFileName(configuration)));
+        var configuredBorland = PeFileInspector.Inspect(Path.Combine(ResolveDllFolder(configuration), FtaDllPressureReader.BorlandMemoryManagerFileName));
+        var hasIncorrectFormatError = !string.IsNullOrWhiteSpace(lastError)
+            && (lastError.Contains("incorrect format", StringComparison.OrdinalIgnoreCase)
+                || lastError.Contains("0x8007000B", StringComparison.OrdinalIgnoreCase));
+
         if (!File.Exists(Path.Combine(ResolveDllFolder(configuration), ResolveDllFileName(configuration))))
         {
             return "FTA DLL missing. Install FTADLL.exe from Admin -> Downloads, then rerun diagnostics.";
@@ -168,9 +175,19 @@ public static class FtaConnectionDiagnostics
             return "FTA ready.";
         }
 
-        if (!string.IsNullOrWhiteSpace(lastError) && lastError.Contains("incorrect format", StringComparison.OrdinalIgnoreCase))
+        if (hasIncorrectFormatError && RuntimeInformation.ProcessArchitecture == Architecture.X86)
+        {
+            return BuildIncorrectFormatGuidance(RuntimeInformation.ProcessArchitecture, configuredDll, configuredBorland, candidates.Any(x => x.Type == "Configured COM" && x.IsLikelyFta));
+        }
+
+        if (hasIncorrectFormatError)
         {
             return "FTA DLL failed to load. This is likely x86/x64 mismatch or missing dependency.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(lastError) && candidates.Any(x => x.Type == "Configured COM" && x.IsLikelyFta))
+        {
+            return "Connection candidate looks valid: configured COM port is present. DLL load must be fixed before FTAInit can test the FTA.";
         }
 
         if (candidates.Any(x => x.Type == "USB HID" && x.IsLikelyFta))
@@ -197,14 +214,18 @@ public static class FtaConnectionDiagnostics
         string? lastError)
     {
         var builder = new StringBuilder();
+        var appBaseDirectory = AppContext.BaseDirectory;
+        var processMainModulePath = GetProcessMainModulePath();
         builder.AppendLine("Crop QC Station FTA Hardware Diagnostic Report");
         builder.AppendLine();
         builder.AppendLine("Section 1: App/runtime");
         builder.AppendLine($"Process architecture: {RuntimeInformation.ProcessArchitecture}");
         builder.AppendLine($"OS architecture: {RuntimeInformation.OSArchitecture}");
-        builder.AppendLine($"App install path: {AppContext.BaseDirectory}");
+        builder.AppendLine($"App install path: {appBaseDirectory}");
+        builder.AppendLine($"AppContext.BaseDirectory: {appBaseDirectory}");
+        builder.AppendLine($"Process main module path: {FormatOptional(processMainModulePath)}");
         builder.AppendLine($"Loaded config path: {loadedConfigPath}");
-        builder.AppendLine($"Running from Program Files: {YesNo(IsProgramFilesPath(AppContext.BaseDirectory))}");
+        builder.AppendLine($"Running from Program Files: {YesNo(IsProgramFilesPath(appBaseDirectory) || IsProgramFilesPath(processMainModulePath))}");
         builder.AppendLine($".NET runtime: {RuntimeInformation.FrameworkDescription}");
         builder.AppendLine();
         builder.AppendLine("Section 2: Station config");
@@ -227,18 +248,38 @@ public static class FtaConnectionDiagnostics
         builder.AppendLine($"FtaSerialStopBits: {configuration.FtaSerialStopBits}");
         builder.AppendLine();
         builder.AppendLine("Section 3: Required files");
-        AddFileLine(builder, @"C:\Windows\SysWOW64\FTA_DLL.dll");
-        AddFileLine(builder, @"C:\Windows\SysWOW64\borlndmm.dll");
+        var configuredDllFolder = ResolveDllFolder(configuration);
+        var configuredMainDllPath = Path.Combine(configuredDllFolder, ResolveDllFileName(configuration));
+        var configuredBorlandPath = Path.Combine(configuredDllFolder, FtaDllPressureReader.BorlandMemoryManagerFileName);
+        var sysWow64MainDllPath = @"C:\Windows\SysWOW64\FTA_DLL.dll";
+        var sysWow64BorlandPath = @"C:\Windows\SysWOW64\borlndmm.dll";
+        var alternateInstalledMainDllPath = @"C:\Program Files\FTADLL\FTA_DLL.dll";
+        AddFileLine(builder, sysWow64MainDllPath);
+        AddFileLine(builder, sysWow64BorlandPath);
         AddDirectoryLine(builder, ResolveDllFolder(configuration), "Configured DLL folder");
-        AddFileLine(builder, Path.Combine(ResolveDllFolder(configuration), ResolveDllFileName(configuration)), "Configured main DLL");
+        AddFileLine(builder, configuredMainDllPath, "Configured main DLL");
         AddFileLine(builder, ResolveConfigPath(configuration), "Configured FTA config file");
-        AddFileLine(builder, @"C:\Program Files\FTADLL\FTA_DLL.dll");
+        AddFileLine(builder, alternateInstalledMainDllPath);
         AddFileLine(builder, @"C:\Program Files\FTADLL\FTA_DLL.CFG");
         AddDirectoryLine(builder, @"C:\Program Files (x86)\FTAWin", "FTAWin working folder");
+        builder.AppendLine();
+        builder.AppendLine("Section 3b: DLL PE architecture/details");
+        AddPeLine(builder, configuredMainDllPath, "Configured main DLL");
+        AddPeLine(builder, configuredBorlandPath, "Configured borlndmm.dll");
+        AddPeLine(builder, sysWow64MainDllPath, "SysWOW64 FTA_DLL.dll");
+        AddPeLine(builder, sysWow64BorlandPath, "SysWOW64 borlndmm.dll");
+        AddPeLine(builder, alternateInstalledMainDllPath, "Program Files FTADLL FTA_DLL.dll");
+        foreach (var vendorDll in EnumerateVendorDlls(configuration).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            AddPeLine(builder, vendorDll, "Vendor DLL");
+        }
+        builder.AppendLine(CompareDllCopies(sysWow64MainDllPath, alternateInstalledMainDllPath));
         builder.AppendLine();
         builder.AppendLine("Section 4: DLL load/status check");
         builder.AppendLine(ftaStatus is null ? "Not run yet." : ftaStatus.StatusMessage);
         builder.AppendLine($"Last error: {FormatOptional(lastError ?? ftaStatus?.ErrorMessage)}");
+        builder.AppendLine("On 64-bit Windows, C:\\Windows\\SysWOW64 is the 32-bit system folder. C:\\Windows\\System32 is the 64-bit system folder.");
+        builder.AppendLine("If an x86 QC Station loads a dependency from System32, check FtaDllPath and the vendor installer folders.");
         builder.AppendLine();
         builder.AppendLine("Section 5/6: USB HID, serial, USB-to-serial, and configured COM candidates");
         foreach (var candidate in candidates)
@@ -262,6 +303,49 @@ public static class FtaConnectionDiagnostics
         return builder.ToString();
     }
 
+    public static string BuildIncorrectFormatGuidance(
+        Architecture processArchitecture,
+        PeFileInspection configuredDll,
+        PeFileInspection configuredBorland,
+        bool hasAvailableConfiguredCom)
+    {
+        if (processArchitecture != Architecture.X86)
+        {
+            return "FTA DLL failed to load. This is likely x86/x64 mismatch or missing dependency.";
+        }
+
+        var guidance = new List<string>
+        {
+            "QC Station is already running x86. The DLL load failure is likely caused by the FTA DLL file or one of its dependencies being the wrong architecture, invalid, or loaded from the wrong folder."
+        };
+
+        if (configuredDll.Exists && configuredDll.Architecture != PeArchitecture.X86)
+        {
+            guidance.Add("Configured FTA_DLL.dll is not x86. Use the 32-bit vendor FTA_DLL.dll.");
+        }
+        else
+        {
+            guidance.Add("Confirm FTA_DLL.dll PE architecture, borlndmm.dll PE architecture, dependency search path, and which vendor DLL copy is correct.");
+        }
+
+        if (configuredBorland.Exists && configuredBorland.Architecture != PeArchitecture.X86)
+        {
+            guidance.Add("borlndmm.dll is not x86 or is invalid. Reinstall FTADLL.exe or replace with the vendor 32-bit borlndmm.dll.");
+        }
+
+        if (configuredDll.Architecture == PeArchitecture.Invalid || configuredBorland.Architecture == PeArchitecture.Invalid)
+        {
+            guidance.Add("One vendor file exists but does not look like a valid Windows DLL.");
+        }
+
+        if (hasAvailableConfiguredCom)
+        {
+            guidance.Add("Connection candidate looks valid: configured COM port is present. DLL load must be fixed before FTAInit can test the FTA.");
+        }
+
+        return string.Join(" ", guidance);
+    }
+
     private static string ResolveDllFolder(StationConfiguration configuration) =>
         string.IsNullOrWhiteSpace(configuration.FtaDllPath)
             ? AppContext.BaseDirectory
@@ -281,11 +365,19 @@ public static class FtaConnectionDiagnostics
     private static void AddDirectoryLine(StringBuilder builder, string path, string label) =>
         builder.AppendLine($"{label}: {(Directory.Exists(path) ? "Yes" : "No")} ({path})");
 
-    private static bool IsProgramFilesPath(string path)
+    public static bool IsProgramFilesPath(string? path)
     {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-        return StartsWith(path, programFiles) || StartsWith(path, programFilesX86);
+        return StartsWith(path, programFiles)
+            || StartsWith(path, programFilesX86)
+            || StartsWith(path, @"C:\Program Files")
+            || StartsWith(path, @"C:\Program Files (x86)");
     }
 
     private static bool StartsWith(string path, string directory) =>
@@ -300,4 +392,93 @@ public static class FtaConnectionDiagnostics
     private static string FormatList(IReadOnlyList<string> values) =>
         values.Count == 0 ? "(none)" : string.Join(", ", values);
 
+    private static void AddPeLine(StringBuilder builder, string path, string label)
+    {
+        var inspection = PeFileInspector.Inspect(path);
+        builder.AppendLine($"{label}: {PeFileInspector.Format(inspection)}");
+        if (inspection.Exists && inspection.Architecture == PeArchitecture.Invalid)
+        {
+            builder.AppendLine($"  Guidance: {inspection.ErrorMessage ?? "File exists but does not look like a valid Windows DLL."}");
+        }
+        else if (label.Contains("FTA_DLL", StringComparison.OrdinalIgnoreCase) || label.Contains("main DLL", StringComparison.OrdinalIgnoreCase))
+        {
+            if (inspection.Exists && inspection.Architecture != PeArchitecture.X86)
+            {
+                builder.AppendLine("  Guidance: Configured FTA_DLL.dll is not x86. Use the 32-bit vendor FTA_DLL.dll.");
+            }
+        }
+        else if (label.Contains("borlndmm", StringComparison.OrdinalIgnoreCase))
+        {
+            if (inspection.Exists && inspection.Architecture != PeArchitecture.X86)
+            {
+                builder.AppendLine("  Guidance: borlndmm.dll is not x86 or is invalid. Reinstall FTADLL.exe or replace with the vendor 32-bit borlndmm.dll.");
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateVendorDlls(StationConfiguration configuration)
+    {
+        var folders = new[]
+        {
+            ResolveDllFolder(configuration),
+            @"C:\Windows\SysWOW64",
+            @"C:\Program Files\FTADLL",
+            @"C:\Program Files (x86)\FTAWin"
+        };
+
+        foreach (var folder in folders.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            IEnumerable<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(folder, "*.dll", SearchOption.TopDirectoryOnly)
+                    .Where(path => Path.GetFileName(path).Contains("FTA", StringComparison.OrdinalIgnoreCase)
+                        || Path.GetFileName(path).Equals(FtaDllPressureReader.BorlandMemoryManagerFileName, StringComparison.OrdinalIgnoreCase));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var file in files)
+            {
+                yield return file;
+            }
+        }
+    }
+
+    private static string CompareDllCopies(string sysWow64Path, string programFilesPath)
+    {
+        var sysWow64 = PeFileInspector.Inspect(sysWow64Path);
+        var programFiles = PeFileInspector.Inspect(programFilesPath);
+        var builder = new StringBuilder("DLL copy comparison: ");
+        builder.Append($"SysWOW64 architecture {PeFileInspector.FormatArchitecture(sysWow64.Architecture)}, size {sysWow64.FileSizeBytes?.ToString() ?? "(missing)"}, modified {FormatDate(sysWow64.LastModifiedAt)}; ");
+        builder.Append($"Program Files FTADLL architecture {PeFileInspector.FormatArchitecture(programFiles.Architecture)}, size {programFiles.FileSizeBytes?.ToString() ?? "(missing)"}, modified {FormatDate(programFiles.LastModifiedAt)}.");
+
+        if (sysWow64.Architecture == PeArchitecture.X86 && programFiles.Exists && programFiles.Architecture != PeArchitecture.X86)
+        {
+            builder.Append(" Recommendation: use C:\\Windows\\SysWOW64 as FtaDllPath because that copy appears to be the valid x86 DLL.");
+        }
+        else if (programFiles.Architecture == PeArchitecture.X86 && sysWow64.Exists && sysWow64.Architecture != PeArchitecture.X86)
+        {
+            builder.Append(" Recommendation: switch FtaDllPath to C:\\Program Files\\FTADLL because that copy appears to be the valid x86 DLL.");
+        }
+
+        return builder.ToString();
+    }
+
+    private static string FormatDate(DateTimeOffset? value) =>
+        value is null ? "(missing)" : value.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz");
+
+    private static string? GetProcessMainModulePath()
+    {
+        try
+        {
+            return Process.GetCurrentProcess().MainModule?.FileName;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return null;
+        }
+    }
 }
