@@ -194,6 +194,21 @@ The current Google Drive download entries are:
 - File: `CropQcStationSetup.msi`
 - Purpose: installs the Crop QC Station WinForms app used for FTA pressure capture and station sync.
 - Link: set with `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link`
+
+## Crop Years And Admin Cleanup
+
+Crop years use the starting-year convention by default: CropYear `2026` starts `2026-08-01` and ends `2027-07-31`. The web app defaults receipt browsing to the current crop year and prompts for confirmation when a receipt date may be ambiguous because seasons can start early or run late.
+
+Optional crop-year window settings:
+
+```text
+CropYear__DefaultStartMonth=8
+CropYear__DefaultStartDay=1
+CropYear__DefaultEndMonth=7
+CropYear__DefaultEndDay=31
+```
+
+Admin cleanup is available at `/Admin/DataCleanup`. Use Preview first, keep Soft cleanup as the normal test-data cleanup mode, and type `DELETE TEST DATA` only after verifying the counts. Hard purge is permanent for selected database records and does not automatically remove Google Drive files.
 - Button text: `Open Google Drive Download`
 
 The installer binaries are not committed to the repository or deployed into Render. Google Drive sharing permissions are managed in Google Drive and should be limited to company users when possible.

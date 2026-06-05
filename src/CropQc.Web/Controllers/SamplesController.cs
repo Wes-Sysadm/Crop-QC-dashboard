@@ -16,6 +16,22 @@ public sealed class SamplesController(
     public async Task<IActionResult> Details(long id, CancellationToken cancellationToken) =>
         View(await dataService.GetSampleDetailAsync(id, cancellationToken));
 
+    [HttpGet("{id:long}/Delete")]
+    [Authorize(Policy = "RequireAdmin")]
+    public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken) =>
+        View(await dataService.GetDeleteSampleConfirmationAsync(id, cancellationToken));
+
+    [HttpPost("{id:long}/Delete")]
+    [Authorize(Policy = "RequireAdmin")]
+    public async Task<IActionResult> ConfirmDelete(long id, DeleteSampleConfirmationViewModel form, CancellationToken cancellationToken)
+    {
+        var (receiptId, error) = await dataService.SoftDeleteSampleAsync(id, form.Reason, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "QC sample deleted.";
+        return receiptId is null
+            ? RedirectToAction("Index", "Receipts")
+            : RedirectToAction("Details", "Receipts", new { id = receiptId.Value });
+    }
+
     [HttpPost("{id:long}/rows")]
     public async Task<IActionResult> SaveRows(long id, SaveFruitReadingsForm form, CancellationToken cancellationToken)
     {

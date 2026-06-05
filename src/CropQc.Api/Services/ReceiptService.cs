@@ -47,11 +47,11 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
     }
 
     public async Task<ReceiptDto?> GetAsync(long id, CancellationToken cancellationToken) =>
-        await dbContext.Receipts.AsNoTracking().Where(x => x.Id == id).Select(x => ToDto(x)).SingleOrDefaultAsync(cancellationToken);
+        await dbContext.Receipts.AsNoTracking().Where(x => x.Id == id && !x.IsDeleted).Select(x => ToDto(x)).SingleOrDefaultAsync(cancellationToken);
 
     public async Task<IReadOnlyList<ReceiptDto>> SearchAsync(ReceiptSearchRequest request, CancellationToken cancellationToken)
     {
-        var query = dbContext.Receipts.AsNoTracking();
+        var query = dbContext.Receipts.AsNoTracking().Where(x => !x.IsDeleted);
         if (request.CropYear is not null) query = query.Where(x => x.CropYear == request.CropYear);
         if (!string.IsNullOrWhiteSpace(request.ReceiptId)) query = query.Where(x => x.CompuTechReceiptId.Contains(request.ReceiptId));
         if (!string.IsNullOrWhiteSpace(request.Grower)) query = query.Where(x => x.GrowerName.Contains(request.Grower));
@@ -70,7 +70,7 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
             return (null, "A reason is required for receipt updates.");
         }
 
-        var receipt = await dbContext.Receipts.FindAsync([id], cancellationToken);
+        var receipt = await dbContext.Receipts.SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
         if (receipt is null)
         {
             return (null, "Receipt not found.");

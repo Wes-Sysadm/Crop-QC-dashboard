@@ -165,6 +165,8 @@ builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService
 builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 builder.Services.AddScoped<IQcStationAdminService, QcStationAdminService>();
+builder.Services.AddScoped<ICropYearService, CropYearService>();
+builder.Services.AddScoped<IDataCleanupService, DataCleanupService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
 builder.Services.AddSingleton(CreateGoogleDriveStorageOptions(builder.Configuration));
 builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorageService(
@@ -192,6 +194,7 @@ if (app.Configuration.GetValue<bool>("Database:SeedMasterDataOnStartup"))
 }
 
 await EnsurePhotoStorageColumnsAsync(app.Services);
+await EnsureCleanupColumnsAsync(app.Services);
 
 if (useForwardedHeaders)
 {
@@ -351,6 +354,55 @@ static async Task EnsurePhotoStorageColumnsAsync(IServiceProvider services)
     catch (Exception ex)
     {
         logger.LogWarning(ex, "Photo storage metadata schema check skipped or failed.");
+    }
+}
+
+static async Task EnsureCleanupColumnsAsync(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("CleanupSchema");
+    try
+    {
+        var provider = dbContext.Database.ProviderName ?? "";
+        if (provider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
+        {
+            await dbContext.Database.ExecuteSqlRawAsync("""
+                ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "IsTestData" boolean NOT NULL DEFAULT FALSE;
+                ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "IsDeleted" boolean NOT NULL DEFAULT FALSE;
+                ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "DeletedAt" timestamp with time zone NULL;
+                ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "DeletedByUserId" integer NULL;
+                ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "DeleteReason" character varying(1000) NULL;
+                ALTER TABLE "QcSamples" ADD COLUMN IF NOT EXISTS "IsTestData" boolean NOT NULL DEFAULT FALSE;
+                ALTER TABLE "QcSamples" ADD COLUMN IF NOT EXISTS "IsDeleted" boolean NOT NULL DEFAULT FALSE;
+                ALTER TABLE "QcSamples" ADD COLUMN IF NOT EXISTS "DeletedAt" timestamp with time zone NULL;
+                ALTER TABLE "QcSamples" ADD COLUMN IF NOT EXISTS "DeletedByUserId" integer NULL;
+                ALTER TABLE "QcSamples" ADD COLUMN IF NOT EXISTS "DeleteReason" character varying(1000) NULL;
+                CREATE INDEX IF NOT EXISTS "IX_Receipts_CropYear_IsDeleted" ON "Receipts" ("CropYear", "IsDeleted");
+                CREATE INDEX IF NOT EXISTS "IX_QcSamples_ReceiptId_IsDeleted" ON "QcSamples" ("ReceiptId", "IsDeleted");
+                """);
+        }
+        else if (provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+        {
+            await dbContext.Database.ExecuteSqlRawAsync("""
+                IF COL_LENGTH('Receipts', 'IsTestData') IS NULL ALTER TABLE [Receipts] ADD [IsTestData] bit NOT NULL CONSTRAINT [DF_Receipts_IsTestData] DEFAULT 0;
+                IF COL_LENGTH('Receipts', 'IsDeleted') IS NULL ALTER TABLE [Receipts] ADD [IsDeleted] bit NOT NULL CONSTRAINT [DF_Receipts_IsDeleted] DEFAULT 0;
+                IF COL_LENGTH('Receipts', 'DeletedAt') IS NULL ALTER TABLE [Receipts] ADD [DeletedAt] datetimeoffset NULL;
+                IF COL_LENGTH('Receipts', 'DeletedByUserId') IS NULL ALTER TABLE [Receipts] ADD [DeletedByUserId] int NULL;
+                IF COL_LENGTH('Receipts', 'DeleteReason') IS NULL ALTER TABLE [Receipts] ADD [DeleteReason] nvarchar(1000) NULL;
+                IF COL_LENGTH('QcSamples', 'IsTestData') IS NULL ALTER TABLE [QcSamples] ADD [IsTestData] bit NOT NULL CONSTRAINT [DF_QcSamples_IsTestData] DEFAULT 0;
+                IF COL_LENGTH('QcSamples', 'IsDeleted') IS NULL ALTER TABLE [QcSamples] ADD [IsDeleted] bit NOT NULL CONSTRAINT [DF_QcSamples_IsDeleted] DEFAULT 0;
+                IF COL_LENGTH('QcSamples', 'DeletedAt') IS NULL ALTER TABLE [QcSamples] ADD [DeletedAt] datetimeoffset NULL;
+                IF COL_LENGTH('QcSamples', 'DeletedByUserId') IS NULL ALTER TABLE [QcSamples] ADD [DeletedByUserId] int NULL;
+                IF COL_LENGTH('QcSamples', 'DeleteReason') IS NULL ALTER TABLE [QcSamples] ADD [DeleteReason] nvarchar(1000) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Receipts_CropYear_IsDeleted' AND object_id = OBJECT_ID(N'[Receipts]')) CREATE INDEX [IX_Receipts_CropYear_IsDeleted] ON [Receipts] ([CropYear], [IsDeleted]);
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_QcSamples_ReceiptId_IsDeleted' AND object_id = OBJECT_ID(N'[QcSamples]')) CREATE INDEX [IX_QcSamples_ReceiptId_IsDeleted] ON [QcSamples] ([ReceiptId], [IsDeleted]);
+                """);
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Cleanup schema check skipped or failed.");
     }
 }
 

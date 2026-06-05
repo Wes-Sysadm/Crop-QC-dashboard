@@ -22,7 +22,7 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
             .Include(x => x.Receipt).ThenInclude(x => x.Room)
             .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
             .Include(x => x.FruitReadings)
-            .Where(x => x.SampleTakenAt.Date == today);
+            .Where(x => !x.IsDeleted && x.SampleTakenAt.Date == today);
 
         if (!string.IsNullOrWhiteSpace(warehouseCode))
         {
@@ -57,7 +57,7 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
             .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
             .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
             .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType)
-            .SingleOrDefaultAsync(x => x.Id == sampleId, cancellationToken);
+            .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted, cancellationToken);
 
         return sample is null ? null : ToDetailDto(sample);
     }
@@ -71,7 +71,7 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
             .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
             .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
             .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType)
-            .SingleOrDefaultAsync(x => x.Id == sampleId, cancellationToken);
+            .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted, cancellationToken);
 
         if (sample is null)
         {

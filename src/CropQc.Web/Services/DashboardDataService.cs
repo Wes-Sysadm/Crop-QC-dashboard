@@ -16,6 +16,8 @@ public interface IDashboardDataService
     Task<ReceiptDetailViewModel> GetReceiptDetailAsync(long id, CancellationToken cancellationToken);
     Task<(long? SampleId, int? SampleSequenceNumber, string? Warning, string? Error)> CreateReceivingSampleAsync(long receiptId, CancellationToken cancellationToken);
     Task<SampleDetailViewModel> GetSampleDetailAsync(long id, CancellationToken cancellationToken);
+    Task<DeleteSampleConfirmationViewModel> GetDeleteSampleConfirmationAsync(long id, CancellationToken cancellationToken);
+    Task<(long? ReceiptId, string? Error)> SoftDeleteSampleAsync(long id, string? reason, CancellationToken cancellationToken);
     Task<string?> SaveFruitReadingsAsync(SaveFruitReadingsForm form, CancellationToken cancellationToken);
     Task<StarchTestViewModel> GetStarchTestAsync(long id, CancellationToken cancellationToken);
     Task<string?> SaveStarchTestAsync(SaveStarchTestForm form, CancellationToken cancellationToken);
@@ -34,6 +36,7 @@ public sealed class DashboardDataService(
     IQcEmailSender emailSender,
     IQcPhotoRequirementPolicy photoRequirementPolicy,
     IQcSummaryEmailComposer emailComposer,
+    ICropYearService cropYearService,
     IHttpContextAccessor httpContextAccessor,
     ILogger<DashboardDataService> logger) : IDashboardDataService
 {
@@ -115,6 +118,7 @@ public sealed class DashboardDataService(
     {
         try
         {
+            search.CropYear ??= cropYearService.GetCurrentCropYear(DateTimeOffset.Now);
             if (search.WarehouseId is not null && search.RoomId is not null)
             {
                 var roomMatchesWarehouse = await dbContext.Rooms.AsNoTracking()
@@ -125,8 +129,13 @@ public sealed class DashboardDataService(
                 }
             }
 
-            var query = dbContext.Receipts.AsNoTracking().Include(x => x.Warehouse).Include(x => x.Room).Include(x => x.FruitProfile).AsQueryable();
-            if (search.CropYear is not null) query = query.Where(x => x.CropYear == search.CropYear);
+            var query = dbContext.Receipts.AsNoTracking()
+                .Include(x => x.Warehouse)
+                .Include(x => x.Room)
+                .Include(x => x.FruitProfile)
+                .Where(x => !x.IsDeleted)
+                .AsQueryable();
+            if (!search.AllCropYears && search.CropYear is not null) query = query.Where(x => x.CropYear == search.CropYear);
             if (!string.IsNullOrWhiteSpace(search.ReceiptId)) query = query.Where(x => x.CompuTechReceiptId.Contains(search.ReceiptId));
             if (!string.IsNullOrWhiteSpace(search.Grower)) query = query.Where(x => x.GrowerName.Contains(search.Grower));
             if (!string.IsNullOrWhiteSpace(search.Lot)) query = query.Where(x => x.LotCode.Contains(search.Lot));
@@ -134,14 +143,29 @@ public sealed class DashboardDataService(
             if (search.RoomId is not null) query = query.Where(x => x.RoomId == search.RoomId);
             if (search.FruitProfileId is not null) query = query.Where(x => x.FruitProfileId == search.FruitProfileId);
 
-            var receipts = await query.OrderByDescending(x => x.ReceivedAt).Take(200).ToListAsync(cancellationToken);
+            var receipts = await query.OrderByDescending(x => x.ReceivedAt).Take(500).ToListAsync(cancellationToken);
+            var receiptIds = receipts.Select(x => x.Id).ToList();
+            var sampleSummaries = await dbContext.QcSamples.AsNoTracking()
+                .Where(x => receiptIds.Contains(x.ReceiptId) && !x.IsDeleted)
+                .GroupBy(x => x.ReceiptId)
+                .Select(x => new ReceiptSampleSummary(
+                    x.Key,
+                    x.Count(),
+                    x.Max(s => s.UpdatedAt ?? s.CreatedAt),
+                    x.Any(s => s.Status == "Ready to Send"),
+                    x.Any(s => s.Status.Contains("Needs Review")),
+                    x.Any(s => s.EmailStatus == "Sent")))
+                .ToDictionaryAsync(x => x.ReceiptId, cancellationToken);
             return new ReceiptListViewModel
             {
                 Search = search,
-                Receipts = receipts.Select(ReceiptListItem).ToList(),
+                Receipts = receipts.Select(receipt => ReceiptListItem(receipt, sampleSummaries.GetValueOrDefault(receipt.Id))).ToList(),
                 Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
                 Rooms = await dbContext.Rooms.AsNoTracking().OrderBy(x => x.WarehouseId).ThenBy(x => x.Code).ToListAsync(cancellationToken),
-                FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken)
+                FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
+                AvailableCropYears = await cropYearService.GetAvailableCropYearsAsync(cancellationToken),
+                CurrentCropYear = cropYearService.GetCurrentCropYear(DateTimeOffset.Now),
+                CropYearHelpText = "Crop years use the starting-year convention by default: CropYear 2026 starts 2026-08-01 and ends 2027-07-31. Confirm crop year when season dates overlap."
             };
         }
         catch
@@ -168,6 +192,12 @@ public sealed class DashboardDataService(
             return "Selected room does not belong to the selected warehouse.";
         }
 
+        if (cropYearService.RequiresConfirmation(form.ReceivedAt, form.CropYear) && !form.ConfirmCropYear)
+        {
+            var candidates = string.Join(", ", cropYearService.GetCandidateCropYears(form.ReceivedAt));
+            return $"Confirm Crop Year before saving. Suggested crop year option(s) for this received date: {candidates}.";
+        }
+
         var now = DateTimeOffset.UtcNow;
         dbContext.Receipts.Add(new Receipt
         {
@@ -192,19 +222,20 @@ public sealed class DashboardDataService(
     {
         try
         {
-            var receipt = await dbContext.Receipts.AsNoTracking().Include(x => x.Warehouse).Include(x => x.Room).Include(x => x.FruitProfile).SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+            var receipt = await dbContext.Receipts.AsNoTracking().Include(x => x.Warehouse).Include(x => x.Room).Include(x => x.FruitProfile).SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
             if (receipt is null)
             {
                 return new ReceiptDetailViewModel { DataWarning = "Receipt not found." };
             }
 
-            var samples = await QuerySamples().Where(x => x.ReceiptId == id).ToListAsync(cancellationToken);
+            var samples = await QuerySamples().Where(x => x.ReceiptId == id).OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleSequenceNumber).ToListAsync(cancellationToken);
             var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.ReceiptId == id).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
             return new ReceiptDetailViewModel
             {
                 Receipt = ReceiptListItem(receipt),
                 Samples = await EnrichSamplesAsync(samples, cancellationToken),
                 PhotoGroups = GroupPhotos(photos),
+                CanDeleteSamples = httpContextAccessor.HttpContext?.User.IsInRole("Admin") == true,
                 AddPhotoForm = new AddPhotoMetadataForm
                 {
                     ReceiptId = receipt.Id,
@@ -222,7 +253,7 @@ public sealed class DashboardDataService(
 
     public async Task<(long? SampleId, int? SampleSequenceNumber, string? Warning, string? Error)> CreateReceivingSampleAsync(long receiptId, CancellationToken cancellationToken)
     {
-        var receiptExists = await dbContext.Receipts.AnyAsync(x => x.Id == receiptId, cancellationToken);
+        var receiptExists = await dbContext.Receipts.AnyAsync(x => x.Id == receiptId && !x.IsDeleted, cancellationToken);
         if (!receiptExists)
         {
             return (null, null, null, "Receipt not found.");
@@ -237,7 +268,7 @@ public sealed class DashboardDataService(
         }
 
         var existingReceivingSampleCount = await dbContext.QcSamples
-            .CountAsync(x => x.ReceiptId == receiptId && x.SampleTypeId == receivingSampleType.Id, cancellationToken);
+            .CountAsync(x => x.ReceiptId == receiptId && x.SampleTypeId == receivingSampleType.Id && !x.IsDeleted, cancellationToken);
         var nextSequenceNumber = existingReceivingSampleCount + 1;
         var now = DateTimeOffset.UtcNow;
         var sample = new QcSample
@@ -316,6 +347,71 @@ public sealed class DashboardDataService(
         {
             return new SampleDetailViewModel { DataWarning = DataWarning };
         }
+    }
+
+    public async Task<DeleteSampleConfirmationViewModel> GetDeleteSampleConfirmationAsync(long id, CancellationToken cancellationToken)
+    {
+        var sample = await QuerySamples(includeDeleted: true).SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (sample is null)
+        {
+            return new DeleteSampleConfirmationViewModel { DataWarning = "QC sample not found." };
+        }
+
+        return new DeleteSampleConfirmationViewModel
+        {
+            SampleId = sample.Id,
+            ReceiptId = sample.ReceiptId,
+            CropYear = sample.Receipt.CropYear,
+            DisplayReceiptId = sample.GetDisplayReceiptId(),
+            Warehouse = sample.Receipt.Warehouse.Code,
+            GrowerName = sample.Receipt.GrowerName,
+            LotCode = sample.Receipt.LotCode,
+            VarietyCode = sample.Receipt.FruitProfile.VarietyCode,
+            SampleType = sample.SampleType.Name,
+            PhotoCount = sample.Photos.Count,
+            EmailStatus = sample.EmailStatus
+        };
+    }
+
+    public async Task<(long? ReceiptId, string? Error)> SoftDeleteSampleAsync(long id, string? reason, CancellationToken cancellationToken)
+    {
+        var user = httpContextAccessor.HttpContext?.User;
+        if (user?.IsInRole("Admin") != true)
+        {
+            return (null, "Only Admin users can delete QC samples.");
+        }
+
+        var sample = await dbContext.QcSamples
+            .Include(x => x.Photos)
+            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (sample is null)
+        {
+            return (null, "QC sample not found.");
+        }
+
+        if (sample.IsDeleted)
+        {
+            return (sample.ReceiptId, "QC sample is already deleted.");
+        }
+
+        var changedBy = GetCurrentUserEmail() ?? "unknown";
+        var before = System.Text.Json.JsonSerializer.Serialize(new { sample.Id, sample.ReceiptId, sample.Status, sample.EmailStatus, PhotoCount = sample.Photos.Count });
+        sample.IsDeleted = true;
+        sample.DeletedAt = DateTimeOffset.UtcNow;
+        sample.DeletedByUserId = await GetCurrentUserIdAsync(cancellationToken);
+        sample.DeleteReason = string.IsNullOrWhiteSpace(reason) ? "Admin sample delete" : reason.Trim();
+        sample.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await AddAuditAsync(
+            "soft-delete",
+            nameof(QcSample),
+            sample.Id.ToString(),
+            changedBy,
+            before,
+            System.Text.Json.JsonSerializer.Serialize(new { sample.Id, sample.ReceiptId, sample.IsDeleted, sample.DeletedAt, sample.DeleteReason, PhotoCount = sample.Photos.Count }),
+            cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return (sample.ReceiptId, null);
     }
 
     public async Task<string?> SaveFruitReadingsAsync(SaveFruitReadingsForm form, CancellationToken cancellationToken)
@@ -585,6 +681,7 @@ public sealed class DashboardDataService(
 
         var emailContent = await emailComposer.ComposeAsync(sample, readiness, isOverride, overrideReason, cancellationToken);
         var message = new QcEmailMessage(sender.Email, emailOptions.ToAddress, sample.TakenByUser?.Email, emailContent.Subject, emailContent.TextBody, emailContent.HtmlBody, emailContent.InlineImages);
+
         var now = DateTimeOffset.UtcNow;
         var sendResult = await emailSender.SendAsync(sender, message, cancellationToken);
         var status = sendResult.Success ? "Sent" : "Failed";
@@ -818,8 +915,15 @@ public sealed class DashboardDataService(
         }
     }
 
-    private IQueryable<QcSample> QuerySamples() =>
-        dbContext.QcSamples.AsNoTracking()
+    private IQueryable<QcSample> QuerySamples(bool includeDeleted = false)
+    {
+        var query = dbContext.QcSamples.AsNoTracking();
+        if (!includeDeleted)
+        {
+            query = query.Where(x => !x.IsDeleted);
+        }
+
+        return query
             .Include(x => x.SampleType)
             .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
             .Include(x => x.Receipt).ThenInclude(x => x.Room)
@@ -830,6 +934,7 @@ public sealed class DashboardDataService(
             .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
             .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
             .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType);
+    }
 
     private async Task<IReadOnlyList<SampleListItemViewModel>> EnrichSamplesAsync(IReadOnlyList<QcSample> samples, CancellationToken cancellationToken)
     {
@@ -855,7 +960,10 @@ public sealed class DashboardDataService(
                 ActualSampleSize = sample.ActualSampleSize,
                 IsReady = readiness.IsReady,
                 MissingItems = readiness.MissingItems,
-                Checklist = readiness.Checklist
+                Checklist = readiness.Checklist,
+                CompletedFruitCount = readiness.CompletedFruitCount,
+                AveragePressureLbs = AveragePressure(sample.FruitReadings),
+                IsDeleted = sample.IsDeleted
             });
         }
 
@@ -986,7 +1094,7 @@ public sealed class DashboardDataService(
         return match is null ? (null, "Undersized") : (match.SizeCategory, "Sized");
     }
 
-    private static ReceiptListItemViewModel ReceiptListItem(Receipt receipt) => new(
+    private static ReceiptListItemViewModel ReceiptListItem(Receipt receipt, ReceiptSampleSummary? sampleSummary = null) => new(
         receipt.Id,
         receipt.CropYear,
         receipt.ReceivedAt,
@@ -996,7 +1104,44 @@ public sealed class DashboardDataService(
         receipt.GrowerName,
         receipt.LotCode,
         receipt.FruitProfile.VarietyCode,
-        receipt.BinCount);
+        receipt.BinCount,
+        sampleSummary?.SampleCount ?? 0,
+        BuildReceiptQcStatus(sampleSummary),
+        sampleSummary?.LastUpdatedAt ?? receipt.UpdatedAt);
+
+    private static string BuildReceiptQcStatus(ReceiptSampleSummary? sampleSummary)
+    {
+        if (sampleSummary is null || sampleSummary.SampleCount == 0)
+        {
+            return "No samples";
+        }
+
+        if (sampleSummary.HasReview)
+        {
+            return "Needs Review";
+        }
+
+        if (sampleSummary.HasReady)
+        {
+            return "Ready to Send";
+        }
+
+        return sampleSummary.HasSent ? "Sent" : "In Progress";
+    }
+
+    private static decimal? AveragePressure(IEnumerable<QcFruitReading> rows)
+    {
+        var values = rows
+            .Where(x => x.IsCompleted)
+            .Select(x => Average(x.Pressure1Lbs, x.Pressure2Lbs))
+            .Where(x => x is not null)
+            .Select(x => x!.Value)
+            .ToList();
+
+        return values.Count == 0 ? null : decimal.Round(values.Average(), 2);
+    }
+
+    private sealed record ReceiptSampleSummary(long ReceiptId, int SampleCount, DateTimeOffset LastUpdatedAt, bool HasReady, bool HasReview, bool HasSent);
 
     private static IReadOnlyList<PhotoGroupViewModel> GroupPhotos(IReadOnlyList<QcPhoto> photos) =>
         photos.GroupBy(x => x.PhotoType)

@@ -17,6 +17,11 @@ public sealed class Receipt
     public int BinCount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    public bool IsTestData { get; set; }
+    public bool IsDeleted { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
+    public int? DeletedByUserId { get; set; }
+    public string? DeleteReason { get; set; }
     public ICollection<QcSample> Samples { get; } = new List<QcSample>();
     public ICollection<QcPhoto> Photos { get; } = new List<QcPhoto>();
     public ICollection<QcSummaryEmailLog> SummaryEmailLogs { get; } = new List<QcSummaryEmailLog>();
@@ -43,6 +48,11 @@ public sealed class QcSample
     public DateTimeOffset SampleTakenAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
+    public bool IsTestData { get; set; }
+    public bool IsDeleted { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
+    public int? DeletedByUserId { get; set; }
+    public string? DeleteReason { get; set; }
     public ICollection<QcFruitReading> FruitReadings { get; } = new List<QcFruitReading>();
     public ICollection<QcPhoto> Photos { get; } = new List<QcPhoto>();
 

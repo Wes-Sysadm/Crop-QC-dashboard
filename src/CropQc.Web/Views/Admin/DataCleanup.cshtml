@@ -1,0 +1,110 @@
+@model DataCleanupViewModel
+@{
+    ViewData["Title"] = "Data Cleanup";
+}
+
+<h1>Data Cleanup</h1>
+@if (TempData["Success"] is string success)
+{
+    <p class="notice success">@success</p>
+}
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+
+<section class="panel">
+    <h2>Cleanup Filters</h2>
+    <p class="notice warning">Admin only. Preview counts before cleanup. Soft cleanup is recommended and does not delete Google Drive photos.</p>
+    <p class="muted">Environment: <strong>@Model.EnvironmentName</strong> | Database provider: <strong>@Model.DatabaseProvider</strong></p>
+    <form class="toolbar" method="get" action="/Admin/DataCleanup">
+        <div class="field">
+            <label>Crop Year</label>
+            <select name="CropYear">
+                @foreach (var year in Model.AvailableCropYears)
+                {
+                    <option value="@year" selected="@(!Model.Filter.AllCropYears && Model.Filter.CropYear == year ? "selected" : null)">@year</option>
+                }
+            </select>
+        </div>
+        <label class="checkbox-field"><input type="checkbox" name="AllCropYears" value="true" checked="@Model.Filter.AllCropYears" /> All crop years</label><input type="hidden" name="AllCropYears" value="false" />
+        <div class="field"><label>From date</label><input name="FromDate" type="date" value="@Model.Filter.FromDate?.ToString("yyyy-MM-dd")" /></div>
+        <div class="field"><label>To date</label><input name="ToDate" type="date" value="@Model.Filter.ToDate?.ToString("yyyy-MM-dd")" /></div>
+        <div class="field">
+            <label>Warehouse</label>
+            <select name="WarehouseId">
+                <option value="">All</option>
+                @foreach (var warehouse in Model.Warehouses)
+                {
+                    <option value="@warehouse.Id" selected="@(Model.Filter.WarehouseId == warehouse.Id ? "selected" : null)">@warehouse.Code</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label>Sample type</label>
+            <select name="SampleTypeId">
+                <option value="">All</option>
+                @foreach (var sampleType in Model.SampleTypes)
+                {
+                    <option value="@sampleType.Id" selected="@(Model.Filter.SampleTypeId == sampleType.Id ? "selected" : null)">@sampleType.Name</option>
+                }
+            </select>
+        </div>
+        <div class="field"><label>Receipt ID</label><input name="ReceiptId" value="@Model.Filter.ReceiptId" /></div>
+        <label class="checkbox-field"><input type="checkbox" name="IncludeEmailedSamples" value="true" checked="@Model.Filter.IncludeEmailedSamples" /> Include emailed samples</label><input type="hidden" name="IncludeEmailedSamples" value="false" />
+        <label class="checkbox-field"><input type="checkbox" name="IncludeDeletedSamples" value="true" checked="@Model.Filter.IncludeDeletedSamples" /> Include already deleted samples</label><input type="hidden" name="IncludeDeletedSamples" value="false" />
+        <label class="checkbox-field"><input type="checkbox" name="IncludePhotoMetadata" value="true" checked="@Model.Filter.IncludePhotoMetadata" /> Count/delete photo metadata in hard purge</label><input type="hidden" name="IncludePhotoMetadata" value="false" />
+        <button type="submit">Preview</button>
+    </form>
+</section>
+
+<section class="panel">
+    <h2>Preview Counts</h2>
+    @if (Model.Preview.IsProduction)
+    {
+        <p class="notice warning">Production environment. Review filters carefully and export/backup production data before cleanup.</p>
+    }
+    @if (Model.Preview.IsAllCropYears)
+    {
+        <p class="notice warning">All Crop Years is selected.</p>
+    }
+    <div class="stat-grid">
+        <div class="stat-card"><strong>@Model.Preview.ReceiptsAffected</strong><span>Receipts affected</span></div>
+        <div class="stat-card"><strong>@Model.Preview.SamplesAffected</strong><span>Samples affected</span></div>
+        <div class="stat-card"><strong>@Model.Preview.FruitRowsAffected</strong><span>Fruit rows affected</span></div>
+        <div class="stat-card"><strong>@Model.Preview.PhotoRecordsAffected</strong><span>Photo records affected</span></div>
+        <div class="stat-card"><strong>@Model.Preview.EmailLogsAffected</strong><span>Email logs affected</span></div>
+        <div class="stat-card"><strong>@Model.Preview.DriveFilesAffected</strong><span>Drive files affected</span></div>
+    </div>
+</section>
+
+<section class="panel">
+    <h2>Danger Zone</h2>
+    <p class="notice warning">Type <strong>DELETE TEST DATA</strong> to run cleanup. Soft cleanup hides selected samples and keeps photos. Hard purge permanently deletes selected sample records, rows, selected photo metadata, and email logs.</p>
+    <form class="toolbar" method="post" action="/Admin/DataCleanup/Execute">
+        <input type="hidden" name="CropYear" value="@Model.Filter.CropYear" />
+        <input type="hidden" name="AllCropYears" value="@Model.Filter.AllCropYears.ToString().ToLowerInvariant()" />
+        <input type="hidden" name="FromDate" value="@Model.Filter.FromDate?.ToString("yyyy-MM-dd")" />
+        <input type="hidden" name="ToDate" value="@Model.Filter.ToDate?.ToString("yyyy-MM-dd")" />
+        <input type="hidden" name="WarehouseId" value="@Model.Filter.WarehouseId" />
+        <input type="hidden" name="SampleTypeId" value="@Model.Filter.SampleTypeId" />
+        <input type="hidden" name="ReceiptId" value="@Model.Filter.ReceiptId" />
+        <input type="hidden" name="IncludeEmailedSamples" value="@Model.Filter.IncludeEmailedSamples.ToString().ToLowerInvariant()" />
+        <input type="hidden" name="IncludeDeletedSamples" value="@Model.Filter.IncludeDeletedSamples.ToString().ToLowerInvariant()" />
+        <input type="hidden" name="IncludePhotoMetadata" value="@Model.Filter.IncludePhotoMetadata.ToString().ToLowerInvariant()" />
+        <div class="field">
+            <label>Cleanup mode</label>
+            <select name="CleanupMode">
+                <option value="Soft" selected="@(Model.Filter.CleanupMode != "Hard" ? "selected" : null)">Soft cleanup</option>
+                <option value="Hard" selected="@(Model.Filter.CleanupMode == "Hard" ? "selected" : null)">Hard purge test data</option>
+            </select>
+        </div>
+        <div class="field"><label>Reason</label><input name="Reason" value="@Model.Filter.Reason" /></div>
+        <div class="field"><label>Confirmation</label><input name="ConfirmationText" /></div>
+        <button class="danger-button" type="submit">Run Cleanup</button>
+    </form>
+</section>

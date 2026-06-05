@@ -28,7 +28,7 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
             .Include(x => x.Receipt).ThenInclude(x => x.Room)
             .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
             .Include(x => x.FruitReadings)
-            .Where(x => x.SampleTakenAt.Date == today);
+            .Where(x => !x.IsDeleted && x.SampleTakenAt.Date == today);
 
         if (!string.IsNullOrWhiteSpace(warehouseCode))
         {
@@ -183,7 +183,7 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
             .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
             .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
             .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType)
-            .Where(x => x.Id == sampleId);
+            .Where(x => x.Id == sampleId && !x.IsDeleted);
 
         if (!asTracking)
         {

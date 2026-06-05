@@ -21,7 +21,19 @@
 }
 
 <form class="toolbar" method="get">
-    <div class="field"><label>Crop Year</label><input name="CropYear" value="@Model.Search.CropYear" /></div>
+    <div class="field">
+        <label>Crop Year</label>
+        <select name="CropYear">
+            @foreach (var year in Model.AvailableCropYears)
+            {
+                <option value="@year" selected="@(!Model.Search.AllCropYears && Model.Search.CropYear == year ? "selected" : null)">@year</option>
+            }
+        </select>
+    </div>
+    @if (User.IsInRole("Admin") || User.IsInRole("Manager"))
+    {
+        <label class="checkbox-field"><input type="checkbox" name="AllCropYears" value="true" checked="@Model.Search.AllCropYears" /> All crop years</label><input type="hidden" name="AllCropYears" value="false" />
+    }
     <div class="field"><label>Receipt ID</label><input name="ReceiptId" value="@Model.Search.ReceiptId" /></div>
     <div class="field"><label>Grower</label><input name="Grower" value="@Model.Search.Grower" /></div>
     <div class="field"><label>Lot</label><input name="Lot" value="@Model.Search.Lot" /></div>
@@ -44,10 +56,11 @@
     <button type="submit">Search</button>
     <a class="button secondary-button" href="/Receipts/Export">Export Receiving Data to Excel</a>
 </form>
+<p class="muted">@Model.CropYearHelpText</p>
 
 <h2>Add Receipt</h2>
 <form class="toolbar" method="post" action="/Receipts/Create">
-    <div class="field"><label>Crop Year</label><input name="CropYear" value="@DateTimeOffset.Now.Year" required /></div>
+    <div class="field"><label>Crop Year</label><input name="CropYear" value="@Model.CurrentCropYear" required /></div>
     <div class="field"><label>Received At</label><input name="ReceivedAt" type="datetime-local" value="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")" required /></div>
     <div class="field"><label>Receipt ID</label><input name="CompuTechReceiptId" required /></div>
     <div class="field"><label>Warehouse</label><select id="addWarehouseId" name="WarehouseId" required><option value="">Select</option>@foreach (var item in Model.Warehouses){<option value="@item.Id">@item.Code</option>}</select></div>
@@ -56,8 +69,10 @@
     <div class="field"><label>Grower</label><input name="GrowerName" required /></div>
     <div class="field"><label>Lot</label><input name="LotCode" required /></div>
     <div class="field"><label>Bin Count</label><input name="BinCount" type="number" min="1" required /></div>
+    <label class="checkbox-field"><input type="checkbox" name="ConfirmCropYear" value="true" /> Confirm Crop Year</label><input type="hidden" name="ConfirmCropYear" value="false" />
     <button type="submit" disabled="@(!hasRequiredMasterData)">Add Receipt</button>
 </form>
+<p class="muted">If the received date falls in an overlap window, confirm the crop year before saving.</p>
 
 <h2>Receipt Results</h2>
 <div class="table-wrap">
@@ -73,6 +88,10 @@
                 <th>Lot</th>
                 <th>Variety</th>
                 <th>Bins</th>
+                <th>Samples</th>
+                <th>QC Status</th>
+                <th>Last Updated</th>
+                <th>Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -88,6 +107,10 @@
                 <td>@receipt.LotCode</td>
                 <td>@receipt.VarietyCode</td>
                 <td>@receipt.BinCount</td>
+                <td>@receipt.SampleCount</td>
+                <td>@receipt.QcStatus</td>
+                <td>@receipt.LastUpdatedAt?.LocalDateTime</td>
+                <td><a class="inline-action" href="/Receipts/@receipt.Id">Review</a></td>
             </tr>
         }
         </tbody>
