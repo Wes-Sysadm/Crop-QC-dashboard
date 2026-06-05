@@ -106,17 +106,17 @@
             <table class="qc-grid">
                 <thead>
                     <tr>
-                        <th>Row</th>
-                        <th>P1 lbs</th>
-                        <th>P2 lbs</th>
-                        <th>Avg</th>
-                        <th>Weight g</th>
-                        <th>Grade</th>
-                        <th>Defects</th>
-                        <th>Other notes</th>
-                        <th>Size</th>
-                        <th>Size Status</th>
-                        <th>Status</th>
+                        <th class="compact-cell">Row</th>
+                        <th class="numeric-cell">P1 lbs</th>
+                        <th class="numeric-cell">P2 lbs</th>
+                        <th class="numeric-cell">Avg lbs</th>
+                        <th class="numeric-cell">Weight g</th>
+                        <th class="compact-cell">Grade</th>
+                        <th class="wide-cell">Defects</th>
+                        <th class="wide-cell">Other notes</th>
+                        <th class="compact-cell">Size</th>
+                        <th class="nowrap-cell">Size Status</th>
+                        <th class="nowrap-cell">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -124,15 +124,15 @@
                 {
                     var row = Model.FruitRows[i];
                     <tr class="fruit-row" data-row-index="@i">
-                        <td>
+                        <td class="compact-cell">
                             @row.RowNumber
                             <input type="hidden" name="Rows[@i].RowNumber" value="@row.RowNumber" />
                         </td>
-                        <td><input class="number-input" name="Rows[@i].Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /></td>
-                        <td><input class="number-input" name="Rows[@i].Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /></td>
-                        <td>@row.PressureAverageLbs</td>
-                        <td><input class="number-input" name="Rows[@i].WeightGrams" type="number" step="0.0001" min="0" value="@row.WeightGrams" /></td>
-                        <td>
+                        <td class="numeric-cell"><input class="number-input" name="Rows[@i].Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /></td>
+                        <td class="numeric-cell"><input class="number-input" name="Rows[@i].Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /></td>
+                        <td class="numeric-cell">@row.PressureAverageLbs</td>
+                        <td class="numeric-cell"><input class="number-input" name="Rows[@i].WeightGrams" type="number" step="0.0001" min="0" value="@row.WeightGrams" /></td>
+                        <td class="compact-cell">
                             <select name="Rows[@i].GradeId">
                                 <option value="">--</option>
                                 @foreach (var grade in Model.Grades)
@@ -141,7 +141,7 @@
                                 }
                             </select>
                         </td>
-                        <td>
+                        <td class="wide-cell">
                             <div class="selected-defects" data-row-index="@i"></div>
                             <div class="defect-hidden-inputs" data-row-index="@i">
                                 @foreach (var defectId in row.DefectTypeIds)
@@ -156,10 +156,10 @@
                                 }
                             </div>
                         </td>
-                        <td><input class="other-notes" name="Rows[@i].OtherDefectNotes" value="@row.OtherDefectNotes" disabled="@(!row.Defects.Contains("Other") ? "disabled" : null)" /></td>
-                        <td>@row.SizeCategory</td>
-                        <td>@row.SizeStatus</td>
-                        <td><span class="status @StatusClass(row.EntryStatus)">@row.EntryStatus</span></td>
+                        <td class="wide-cell"><input class="other-notes" name="Rows[@i].OtherDefectNotes" value="@row.OtherDefectNotes" disabled="@(!row.Defects.Contains("Other") ? "disabled" : null)" /></td>
+                        <td class="compact-cell">@row.SizeCategory</td>
+                        <td class="nowrap-cell">@row.SizeStatus</td>
+                        <td class="nowrap-cell"><span class="status @StatusClass(row.EntryStatus)">@row.EntryStatus</span></td>
                     </tr>
                 }
                 </tbody>
