@@ -38,7 +38,11 @@ public sealed class GmailUserEmailSender(
     {
         if (!string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase))
         {
-            return QcEmailSendResult.Failed($"Email provider is {emailOptions.Provider}. Set Email__Provider=GmailUser to send QC Summary email.");
+            var provider = string.IsNullOrWhiteSpace(emailOptions.Provider) ? EmailProviders.None : emailOptions.Provider;
+            var providerMessage = emailOptions.IsProduction
+                ? $"Email is disabled because Email__Provider is set to {provider} or missing. Production should use Email__Provider=GmailUser."
+                : $"Email provider is {provider}. Set Email__Provider=GmailUser to send QC Summary email.";
+            return QcEmailSendResult.Failed(providerMessage);
         }
 
         if (string.IsNullOrWhiteSpace(sender.Email))
