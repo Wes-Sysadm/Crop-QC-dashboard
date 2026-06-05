@@ -33,6 +33,48 @@ public sealed class GmailUserEmailTests
     }
 
     [Fact]
+    public void EmailOptionsFactory_ProductionDefaultsToGmailUserWhenProviderMissingOrDefaultNone()
+    {
+        var missingProvider = EmailOptionsFactory.Create(new ConfigurationBuilder().Build(), isProduction: true, explicitEnvironmentProvider: null);
+        var defaultNone = EmailOptionsFactory.Create(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Email:Provider"] = EmailProviders.None
+            })
+            .Build(), isProduction: true, explicitEnvironmentProvider: null);
+
+        Assert.Equal(EmailProviders.GmailUser, missingProvider.Provider);
+        Assert.Equal(EmailProviders.GmailUser, defaultNone.Provider);
+        Assert.True(missingProvider.IsProduction);
+    }
+
+    [Fact]
+    public void EmailOptionsFactory_DevelopmentDefaultsToNone()
+    {
+        var options = EmailOptionsFactory.Create(new ConfigurationBuilder().Build(), isProduction: false, explicitEnvironmentProvider: null);
+
+        Assert.Equal(EmailProviders.None, options.Provider);
+        Assert.False(options.IsProduction);
+    }
+
+    [Fact]
+    public void EmailOptionsFactory_ExplicitEnvironmentProviderOverridesProductionDefault()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Email:Provider"] = EmailProviders.None
+            })
+            .Build();
+
+        var disabled = EmailOptionsFactory.Create(configuration, isProduction: true, explicitEnvironmentProvider: EmailProviders.None);
+        var enabled = EmailOptionsFactory.Create(configuration, isProduction: true, explicitEnvironmentProvider: EmailProviders.GmailUser);
+
+        Assert.Equal(EmailProviders.None, disabled.Provider);
+        Assert.Equal(EmailProviders.GmailUser, enabled.Provider);
+    }
+
+    [Fact]
     public void GmailRawMessage_UsesLoggedInUserAsFromAndIncludesSubject()
     {
         var recipients = "rob@earlbrownandsons.com, wes@fruitandland.com";
@@ -107,6 +149,35 @@ public sealed class GmailUserEmailTests
     }
 
     [Fact]
+    public async Task GmailUserEmailSender_ProviderNoneInProductionShowsRenderSetting()
+    {
+        var sender = CreateSender(
+            new FakeCredentialStore(GoogleAccessTokenResult.Success("access-token")),
+            new FakeGmailHttpHandler(HttpStatusCode.OK, """{"id":"gmail-message-1"}"""),
+            new EmailOptions { Provider = EmailProviders.None, IsProduction = true });
+
+        var result = await sender.SendAsync(User("wes@fruitandland.com"), Message("wes@fruitandland.com"), CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.False(result.ReconnectRequired);
+        Assert.Contains("Email__Provider=GmailUser", result.Error);
+        Assert.Contains("Production should use", result.Error);
+    }
+
+    [Fact]
+    public async Task GmailUserEmailSender_GmailUserChecksTokenBeforeSending()
+    {
+        var credentialStore = new FakeCredentialStore(GoogleAccessTokenResult.Reconnect("Gmail permission is required. Please reconnect Google/Gmail."));
+        var sender = CreateSender(credentialStore, new FakeGmailHttpHandler(HttpStatusCode.OK, """{"id":"gmail-message-1"}"""));
+
+        var result = await sender.SendAsync(User("wes@fruitandland.com"), Message("wes@fruitandland.com"), CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.True(result.ReconnectRequired);
+        Assert.Equal(1, credentialStore.AccessTokenRequests);
+    }
+
+    [Fact]
     public void GoogleAuthenticationOptions_ReadsAllCompanyDomainsFromConfiguration()
     {
         var options = GoogleAuthenticationOptions.FromConfiguration(new ConfigurationBuilder()
@@ -162,6 +233,26 @@ public sealed class GmailUserEmailTests
     }
 
     [Fact]
+    public void AdminConfiguration_ShowsSafeEmailStatusPanel()
+    {
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "ConfigurationController.cs"));
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Configuration", "Index.cshtml"));
+        var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
+
+        Assert.Contains("BuildEmailStatusAsync", controller);
+        Assert.Contains("GmailCredentialPresent", controller);
+        Assert.Contains("GmailSendPermissionGranted", controller);
+        Assert.Contains("Email Status", view);
+        Assert.Contains("Email__Provider=GmailUser", view);
+        Assert.Contains("Reconnect Google/Gmail", view);
+        Assert.Contains("Email provider:", program);
+        Assert.Contains("Default QC recipients configured:", program);
+        Assert.DoesNotContain("AccessToken", view);
+        Assert.DoesNotContain("RefreshToken", view);
+        Assert.DoesNotContain("ClientSecret", view);
+    }
+
+    [Fact]
     public void SampleViews_ShowGmailSenderAndNoPlaceholderSendLanguage()
     {
         var details = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Samples", "Details.cshtml"));
@@ -198,11 +289,12 @@ public sealed class GmailUserEmailTests
     [Fact]
     public void WebEmailConfiguration_UsesTestingQcDefaultRecipients()
     {
-        var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
+        var emailOptions = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "EmailOptions.cs"));
         var productionSettings = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "appsettings.Production.json"));
         var adminManagementService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "AdminManagementService.cs"));
 
-        Assert.Contains("Email:QcDefaultRecipients", program);
+        Assert.Contains("Email:QcDefaultRecipients", emailOptions);
+        Assert.Contains("EmailOptionsFactory", emailOptions);
         Assert.Contains("rob@earlbrownandsons.com,wes@fruitandland.com", productionSettings);
         Assert.Contains("rob@earlbrownandsons.com,wes@fruitandland.com", adminManagementService);
     }
@@ -214,9 +306,9 @@ public sealed class GmailUserEmailTests
         return Encoding.UTF8.GetString(Convert.FromBase64String(padded));
     }
 
-    private static GmailUserEmailSender CreateSender(FakeCredentialStore credentialStore, FakeGmailHttpHandler httpHandler) =>
+    private static GmailUserEmailSender CreateSender(FakeCredentialStore credentialStore, FakeGmailHttpHandler httpHandler, EmailOptions? emailOptions = null) =>
         new(
-            new EmailOptions { Provider = EmailProviders.GmailUser, ToAddress = "rob@earlbrownandsons.com,wes@fruitandland.com" },
+            emailOptions ?? new EmailOptions { Provider = EmailProviders.GmailUser, ToAddress = "rob@earlbrownandsons.com,wes@fruitandland.com" },
             new GoogleAuthenticationOptions
             {
                 AllowedDomains = new HashSet<string>(["fruitandland.com", "earlbrownandsons.com", "wp-packingllc.com"], StringComparer.OrdinalIgnoreCase)

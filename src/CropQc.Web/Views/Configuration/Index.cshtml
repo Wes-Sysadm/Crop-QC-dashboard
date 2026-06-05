@@ -16,6 +16,40 @@
         <dd>Disabled. Admin-reviewed archive/delete workflow is future work.</dd>
     </dl>
 </section>
+<section class="panel">
+    <h2>Email Status</h2>
+    <dl class="summary-list">
+        <dt>Email provider</dt>
+        <dd><span class="status @(Model.EmailStatus.GmailUserEnabled ? "ready" : "missing")">@Model.EmailStatus.Provider</span></dd>
+        <dt>Expected Render env var</dt>
+        <dd><code>@Model.EmailStatus.ExpectedProviderEnvironmentVariable=GmailUser</code></dd>
+        <dt>GmailUser enabled</dt>
+        <dd>@(Model.EmailStatus.GmailUserEnabled ? "Yes" : "No")</dd>
+        <dt>Default QC recipients configured</dt>
+        <dd>@(Model.EmailStatus.DefaultQcRecipientsConfigured ? "Yes" : "No")</dd>
+        <dt>Current user email</dt>
+        <dd>@(Model.EmailStatus.CurrentUserEmail ?? "Unknown")</dd>
+        <dt>Current user domain</dt>
+        <dd>@(Model.EmailStatus.CurrentUserDomain ?? "Unknown") (@(Model.EmailStatus.CurrentUserDomainAllowed ? "allowed" : "not allowed"))</dd>
+        <dt>Gmail credential present</dt>
+        <dd>@(Model.EmailStatus.GmailCredentialPresent ? "Yes" : "No")</dd>
+        <dt>gmail.send permission granted</dt>
+        <dd>@(Model.EmailStatus.GmailSendPermissionGranted ? "Yes" : "No")</dd>
+        <dt>Current user needs reconnect</dt>
+        <dd><span class="status @(Model.EmailStatus.CurrentUserNeedsReconnect ? "missing" : "ready")">@(Model.EmailStatus.CurrentUserNeedsReconnect ? "Yes" : "No")</span></dd>
+    </dl>
+    @if (!Model.EmailStatus.GmailUserEnabled)
+    {
+        <p class="notice warning">QC Summary sending is disabled. Set <code>Email__Provider=GmailUser</code> in Render for production Gmail sending.</p>
+    }
+    else if (Model.EmailStatus.CurrentUserNeedsReconnect)
+    {
+        <p class="notice warning">Reconnect Google/Gmail to grant send permission. Sign out and sign back in with Google so the app can request <code>https://www.googleapis.com/auth/gmail.send</code>.</p>
+        <form method="post" action="/Login/Google" class="button-row">
+            <button type="submit">Reconnect Google/Gmail</button>
+        </form>
+    }
+</section>
 @if (TempData["Error"] is not null)
 {
     <p class="notice warning">@TempData["Error"]</p>
