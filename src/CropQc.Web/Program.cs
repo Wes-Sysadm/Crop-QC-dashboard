@@ -24,7 +24,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 var googleAuthOptions = GoogleAuthenticationOptions.FromConfiguration(builder.Configuration);
+var gmailOptions = CreateGmailOptions(builder.Configuration);
 builder.Services.AddSingleton(googleAuthOptions);
+builder.Services.AddSingleton(gmailOptions);
+builder.Services.AddSingleton(CreateEmailOptions(builder.Configuration));
 var authenticationBuilder = builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -67,12 +70,16 @@ if (googleAuthOptions.IsGoogleConfigured)
         options.ClientId = googleAuthOptions.ClientId!;
         options.ClientSecret = googleAuthOptions.ClientSecret!;
         options.CallbackPath = "/signin-google";
+        options.SaveTokens = true;
+        options.Scope.Add(gmailOptions.SendScope);
+        options.AccessType = "offline";
         options.Events.OnCreatingTicket = async context =>
         {
             var sessionLifetime = TimeSpan.FromDays(googleAuthOptions.SessionDays);
             var configuredOptions = context.HttpContext.RequestServices.GetRequiredService<GoogleAuthenticationOptions>();
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("GoogleAuth");
             var provisioner = context.HttpContext.RequestServices.GetRequiredService<IGoogleUserProvisioningService>();
+            var credentialStore = context.HttpContext.RequestServices.GetRequiredService<IGoogleCredentialStore>();
             var email = context.Principal?.FindFirstValue(ClaimTypes.Email);
             var displayName = context.Principal?.FindFirstValue(ClaimTypes.Name);
             var googleSubjectId = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -107,12 +114,23 @@ if (googleAuthOptions.IsGoogleConfigured)
 
             context.Properties.IsPersistent = true;
             context.Properties.ExpiresUtc = DateTimeOffset.UtcNow.Add(sessionLifetime);
+            await credentialStore.SaveFromAuthenticationPropertiesAsync(access.User, context.Properties, context.HttpContext.RequestAborted);
+            context.Properties.StoreTokens(Array.Empty<AuthenticationToken>());
         };
         options.Events.OnRemoteFailure = context =>
         {
             context.HandleResponse();
             var message = UrlEncoder.Default.Encode(context.Failure?.Message ?? "Google login failed.");
             context.Response.Redirect($"/Login?error={message}");
+            return Task.CompletedTask;
+        };
+        options.Events.OnRedirectToAuthorizationEndpoint = context =>
+        {
+            var separator = context.RedirectUri.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+            var redirectUri = context.RedirectUri.Contains("prompt=", StringComparison.OrdinalIgnoreCase)
+                ? context.RedirectUri
+                : $"{context.RedirectUri}{separator}prompt=consent";
+            context.Response.Redirect(redirectUri);
             return Task.CompletedTask;
         };
     });
@@ -134,8 +152,11 @@ builder.Services.AddDbContext<CropQcDbContext>(options =>
         builder.Configuration.GetConnectionString(builder.Configuration["Database:ConnectionStringName"] ?? CropQcDatabase.DefaultConnectionStringName),
         sqlOptions => sqlOptions.CommandTimeout(3)));
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient();
 builder.Services.AddScoped<IDashboardDataService, DashboardDataService>();
 builder.Services.AddScoped<IGoogleUserProvisioningService, GoogleUserProvisioningService>();
+builder.Services.AddScoped<IGoogleCredentialStore, GoogleCredentialStore>();
+builder.Services.AddScoped<IQcEmailSender, GmailUserEmailSender>();
 builder.Services.AddScoped<IMasterDataSeeder, MasterDataSeeder>();
 builder.Services.AddScoped<IReceivingExportService, ReceivingExportService>();
 builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService>();
@@ -265,6 +286,20 @@ static GoogleDriveStorageOptions CreateGoogleDriveStorageOptions(IConfiguration 
         ServiceAccountJsonPath = configuration["GoogleDrive:ServiceAccountJsonPath"],
         ApplicationName = configuration["GoogleDrive:ApplicationName"] ?? "Crop QC Dashboard",
         BaseFolderName = configuration["GoogleDrive:BaseFolderName"] ?? "Photos"
+    };
+
+static GmailOptions CreateGmailOptions(IConfiguration configuration) =>
+    new()
+    {
+        SendScope = configuration["Google:Gmail:SendScope"] ?? GmailScopes.Send
+    };
+
+static EmailOptions CreateEmailOptions(IConfiguration configuration) =>
+    new()
+    {
+        Provider = configuration["Email:Provider"] ?? EmailProviders.None,
+        FromAddress = configuration["Email:FromAddress"] ?? "HL@fruitandland.com",
+        ToAddress = configuration["Email:ToAddress"] ?? "QC@fruitandland.com"
     };
 
 static IFileStorageService CreateFileStorageService(

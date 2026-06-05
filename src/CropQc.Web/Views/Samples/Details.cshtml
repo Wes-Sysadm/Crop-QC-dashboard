@@ -64,14 +64,27 @@
     }
     @if (Model.Readiness.IsReady)
     {
-        <button type="button">Send QC Summary Placeholder</button>
+        @if (User.IsInRole("Admin") || User.IsInRole("Manager") || User.IsInRole("QC User"))
+        {
+            <form method="post" action="/Samples/@Model.Sample?.Id/Send" class="inline-form">
+                <p class="muted">Sending from: @User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value</p>
+                <button type="submit">Send QC Summary</button>
+            </form>
+        }
+        else
+        {
+            <p class="muted">Viewers cannot send QC Summary email.</p>
+        }
     }
     else
     {
-        <button type="button" disabled>Send QC Summary Placeholder</button>
+        <button type="button" disabled>Send QC Summary</button>
         @if (Model.Sample is not null)
         {
-            <a class="button secondary-button" href="/Samples/@Model.Sample.Id/OverrideSend">Override Send With Missing Data - Manager/Admin Override Placeholder</a>
+            @if (User.IsInRole("Admin") || User.IsInRole("Manager"))
+            {
+                <a class="button secondary-button" href="/Samples/@Model.Sample.Id/OverrideSend">Override Send With Missing Data - Manager/Admin</a>
+            }
         }
     }
 </section>

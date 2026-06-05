@@ -2,7 +2,7 @@
 
 This guide explains how to run the current Crop QC Dashboard MVP 1 Receiving/QC web dashboard and API on a Windows development machine.
 
-The current local setup is for development only. It does not add authentication, FTA integration, USB camera capture, Google Drive upload, email sending, storage inventory, Mexico qualification, packout imports, pool closing imports, or analytics.
+The current local setup is for development only. Local configuration keeps real email disabled by default with `Email__Provider=None`. It does not add USB camera capture, production Google Drive configuration, storage inventory, Mexico qualification, packout imports, pool closing imports, or analytics.
 
 ## 1. Check Prerequisites
 
@@ -197,9 +197,9 @@ Use the web dashboard at `http://localhost:5275`.
     - `CutFruit`
     - `FruitAfterStarch`
 12. Return to the sample detail page and confirm Summary Readiness changes as rows, starch, and photos are completed.
-13. Confirm the `Send QC Summary Placeholder` button is disabled while readiness is false and appears enabled only when readiness is true.
+13. Confirm the `Send QC Summary` button is disabled while readiness is false and appears enabled only when readiness is true for users with send permission.
 
-No actual email is sent. No image binary is uploaded or stored in the database. Photo forms currently save metadata and placeholder external file references only.
+No actual email is sent locally unless you explicitly configure Google OAuth and `Email__Provider=GmailUser`. No image binary is stored in the database. Photo forms save metadata and external file references only.
 
 ## Useful Direct Commands
 

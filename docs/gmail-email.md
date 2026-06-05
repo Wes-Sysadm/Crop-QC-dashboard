@@ -1,20 +1,22 @@
-# Gmail Email Plan
+# Gmail User-Delegated Email Sending
 
-MVP 1 currently creates QC Summary email log placeholder records only. This document defines the target Gmail direction. It does not implement real email sending yet.
+MVP 1 sends QC Summary emails through the logged-in user's Google/Gmail account when `Email__Provider=GmailUser` is configured. A message sent by `wes@fruitandland.com` is sent by Gmail as `wes@fruitandland.com` and should appear in that user's Gmail Sent folder.
 
-## Target Provider Options
+## Provider
 
-Use one of these Google Workspace paths:
+The production provider is:
 
-- Gmail API with OAuth/service-account domain delegation where appropriate.
-- Google Workspace SMTP relay if the organization prefers relay-based sending.
+```text
+Email__Provider=GmailUser
+Google__Gmail__SendScope=https://www.googleapis.com/auth/gmail.send
+```
 
-The email boundary should remain provider-based so Gmail can be swapped or tested without changing QC workflow code.
+Local development can keep `Email__Provider=None` to disable real sending. Shared SMTP is not the normal sending identity.
 
-## Reserved Addresses
+## Sender And Recipients
 
-- Sender: `HL@fruitandland.com`
-- Recipient: `QC@fruitandland.com`
+- Sender: the logged-in Google user.
+- Recipient: configured `Email__ToAddress`, default `QC@fruitandland.com`.
 - Reply-To: the user who took the sample, when available.
 
 ## Expected Send Rules
@@ -25,7 +27,25 @@ Normal QC Summary sending should require:
 - Pressure 1, Pressure 2, weight, grade, and starch for every completed row.
 - Required photos: BinTruck, SampleBeforeCutting, CutFruit, and FruitAfterStarch.
 
-Override send remains a Manager/Admin workflow placeholder until authentication/authorization is implemented.
+Normal ready-sample sending is available to Admin, Manager, and QC User roles. Manager/Admin override send can send even when required data is missing, with an override reason. Viewer users cannot send.
+
+## OAuth And Reconnect
+
+Google OAuth requests `https://www.googleapis.com/auth/gmail.send` and offline access. Users may need to log out and sign back in after the scope is added so Google can show the new consent prompt.
+
+If Gmail permission or a refresh token is missing, the UI shows:
+
+```text
+Gmail permission is required. Please reconnect Google/Gmail.
+```
+
+Reconnect by signing out and signing back in with the Gmail send permission.
+
+## Token Security
+
+Google access and refresh tokens are stored in `UserGoogleCredentials` encrypted with ASP.NET Core Data Protection. The app reuses the persisted Data Protection key setup used for login cookies on Render.
+
+Tokens are not logged, displayed in the UI, or stored in auth cookies after login processing. Deactivating a user blocks dashboard access and stops future sends.
 
 ## Metadata And Audit
 
@@ -35,6 +55,7 @@ Each send or resend should create a `QcSummaryEmailLog` row with:
 - User who sent the message.
 - Sent timestamp.
 - Resend or override reason when applicable.
-- Report/body snapshot or durable report reference when practical.
+- Gmail message ID when returned.
+- Safe success/failure status and safe failure reason.
 
-Email send, resend, and override actions must be audit logged.
+Email send, resend, and override actions are audit logged. Tokens and secrets are never written to email logs or audit logs.

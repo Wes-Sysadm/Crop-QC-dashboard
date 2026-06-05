@@ -16,9 +16,9 @@ Render Postgres is the target production database for structured records, metada
 
 Photos and attachments will be stored in a Google Shared Drive. The database will store file metadata and references only.
 
-## ADR-0005: Reserve Gmail Integration
+## ADR-0005: Use User-Delegated Gmail Sending
 
-Gmail API or Google Workspace SMTP relay will be added later for QC Summary email. The reserved email sender is `HL@fruitandland.com`, and the reserved QC Summary recipient is `QC@fruitandland.com`.
+QC Summary email sends through the Gmail API with the logged-in user's delegated `gmail.send` permission. The sender is the logged-in Google user, and the default QC Summary recipient is `QC@fruitandland.com`. Shared SMTP is not the normal sending identity.
 
 ## ADR-0006: Design for Offline QC Station Sync
 

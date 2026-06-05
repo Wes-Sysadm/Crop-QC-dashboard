@@ -6,6 +6,7 @@ namespace CropQc.Data;
 public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
+    public DbSet<UserGoogleCredential> UserGoogleCredentials => Set<UserGoogleCredential>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
@@ -54,6 +55,19 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.PasswordHash).HasMaxLength(500);
             entity.HasIndex(x => x.Email).IsUnique();
             entity.HasIndex(x => x.GoogleSubjectId);
+        });
+
+        modelBuilder.Entity<UserGoogleCredential>(entity =>
+        {
+            entity.Property(x => x.Provider).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.AccessTokenEncrypted).HasMaxLength(4000);
+            entity.Property(x => x.RefreshTokenEncrypted).HasMaxLength(4000);
+            entity.Property(x => x.Scope).HasMaxLength(1000).IsRequired();
+            entity.HasIndex(x => new { x.UserId, x.Provider }).IsUnique();
+            entity.HasOne(x => x.User)
+                .WithMany(x => x.GoogleCredentials)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Role>(entity =>

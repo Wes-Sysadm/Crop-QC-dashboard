@@ -15,6 +15,22 @@ public sealed class User
     public DateTimeOffset? UpdatedAt { get; set; }
     public ICollection<UserRole> UserRoles { get; } = new List<UserRole>();
     public ICollection<QcSample> TakenSamples { get; } = new List<QcSample>();
+    public ICollection<UserGoogleCredential> GoogleCredentials { get; } = new List<UserGoogleCredential>();
+}
+
+public sealed class UserGoogleCredential
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public User User { get; set; } = null!;
+    public string Provider { get; set; } = "Google";
+    public string? AccessTokenEncrypted { get; set; }
+    public string? RefreshTokenEncrypted { get; set; }
+    public string Scope { get; set; } = "";
+    public DateTimeOffset? ExpiresAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? LastUsedAt { get; set; }
 }
 
 public sealed class Role

@@ -20,6 +20,7 @@ public interface IDashboardDataService
     Task<StarchTestViewModel> GetStarchTestAsync(long id, CancellationToken cancellationToken);
     Task<string?> SaveStarchTestAsync(SaveStarchTestForm form, CancellationToken cancellationToken);
     Task<OverrideSendViewModel> GetOverrideSendAsync(long id, CancellationToken cancellationToken);
+    Task<string?> SendQcSummaryAsync(long sampleId, CancellationToken cancellationToken);
     Task<string?> LogOverrideSendAsync(OverrideSendForm form, CancellationToken cancellationToken);
     Task<string?> AddPhotoMetadataAsync(AddPhotoMetadataForm form, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, CancellationToken cancellationToken);
@@ -29,6 +30,8 @@ public sealed class DashboardDataService(
     CropQcDbContext dbContext,
     IFileStorageService fileStorageService,
     FileStorageOptions fileStorageOptions,
+    EmailOptions emailOptions,
+    IQcEmailSender emailSender,
     IHttpContextAccessor httpContextAccessor,
     ILogger<DashboardDataService> logger) : IDashboardDataService
 {
@@ -519,6 +522,9 @@ public sealed class DashboardDataService(
                 Receipt = ReceiptListItem(sample.Receipt),
                 Readiness = readiness,
                 Checklist = readiness.Checklist,
+                SenderEmail = GetCurrentUserEmail(),
+                RecipientEmail = emailOptions.ToAddress,
+                GmailReconnectRequired = !string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase),
                 Form = new OverrideSendForm { SampleId = sample.Id }
             };
         }
@@ -526,6 +532,23 @@ public sealed class DashboardDataService(
         {
             return new OverrideSendViewModel { DataWarning = DataWarning };
         }
+    }
+
+    public async Task<string?> SendQcSummaryAsync(long sampleId, CancellationToken cancellationToken)
+    {
+        var sample = await QuerySamples().SingleOrDefaultAsync(x => x.Id == sampleId, cancellationToken);
+        if (sample is null)
+        {
+            return "QC sample not found.";
+        }
+
+        var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+        if (!readiness.IsReady)
+        {
+            return "QC Summary cannot be sent until required data, starch, and photos are complete. Use Manager/Admin override if needed.";
+        }
+
+        return await SendAndLogQcSummaryAsync(sample, readiness, isOverride: false, overrideReason: null, cancellationToken);
     }
 
     public async Task<string?> LogOverrideSendAsync(OverrideSendForm form, CancellationToken cancellationToken)
@@ -547,26 +570,80 @@ public sealed class DashboardDataService(
         }
 
         var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+        return await SendAndLogQcSummaryAsync(sample, readiness, isOverride: true, overrideReason: form.OverrideReason.Trim(), cancellationToken);
+    }
+
+    private async Task<string?> SendAndLogQcSummaryAsync(QcSample sample, ReadinessViewModel readiness, bool isOverride, string? overrideReason, CancellationToken cancellationToken)
+    {
+        var sender = await GetCurrentUserAsync(cancellationToken);
+        if (sender is null)
+        {
+            return "A logged-in user is required to send QC Summary email.";
+        }
+
+        var subject = isOverride
+            ? $"QC Summary Override - {sample.GetDisplayReceiptId()}"
+            : $"QC Summary - {sample.GetDisplayReceiptId()}";
+        var body = BuildQcSummaryEmailBody(sample, readiness, isOverride, overrideReason);
+        var message = new QcEmailMessage(sender.Email, emailOptions.ToAddress, sample.TakenByUser?.Email, subject, body);
+        var now = DateTimeOffset.UtcNow;
+        var sendResult = await emailSender.SendAsync(sender, message, cancellationToken);
+        var status = sendResult.Success ? "Sent" : "Failed";
+
         dbContext.QcSummaryEmailLogs.Add(new QcSummaryEmailLog
         {
             ReceiptId = sample.ReceiptId,
             QcSampleId = sample.Id,
-            FromAddress = "HL@fruitandland.com",
-            ToAddress = "QC@fruitandland.com",
+            FromAddress = sender.Email,
+            ToAddress = emailOptions.ToAddress,
             ReplyToAddress = sample.TakenByUser?.Email,
-            Subject = $"QC Summary Override Placeholder - {sample.GetDisplayReceiptId()}",
-            Status = "OverrideLogged",
-            SentAt = null,
+            Subject = subject,
+            Status = status,
+            MessageId = sendResult.MessageId,
+            SentByUserId = sender.Id,
+            SentAt = sendResult.Success ? now : null,
             IsResend = false,
-            IsOverride = true,
-            OverrideReason = form.OverrideReason.Trim(),
+            IsOverride = isOverride,
+            OverrideReason = overrideReason,
             MissingItemsSnapshot = string.Join(Environment.NewLine, readiness.MissingItems),
-            EmailBodySnapshot = "Override send placeholder logged; no email was sent.",
-            CreatedAt = DateTimeOffset.UtcNow
+            EmailBodySnapshot = null,
+            ReportSnapshotReference = sendResult.Success
+                ? $"Gmail message id: {sendResult.MessageId ?? "(not returned)"}"
+                : $"Send failed: {sendResult.Error}",
+            CreatedAt = now
         });
 
+        if (sendResult.Success)
+        {
+            var trackedSample = await dbContext.QcSamples.SingleAsync(x => x.Id == sample.Id, cancellationToken);
+            trackedSample.EmailStatus = "Sent";
+            trackedSample.Status = "Sent";
+            trackedSample.UpdatedAt = now;
+        }
+
+        await AddAuditAsync(
+            sendResult.Success ? "send" : "send-failed",
+            "qc-summary-email",
+            sample.Id.ToString(),
+            sender.Email,
+            null,
+            System.Text.Json.JsonSerializer.Serialize(new
+            {
+                Sender = sender.Email,
+                To = emailOptions.ToAddress,
+                Subject = subject,
+                Status = status,
+                GmailMessageId = sendResult.MessageId,
+                Failure = sendResult.Success ? null : sendResult.Error,
+                IsOverride = isOverride
+            }),
+            cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return null;
+        return sendResult.Success
+            ? null
+            : sendResult.ReconnectRequired
+                ? "Gmail permission is required. Please reconnect Google/Gmail."
+                : $"QC Summary email failed: {sendResult.Error}";
     }
 
     public async Task<string?> AddPhotoMetadataAsync(AddPhotoMetadataForm form, CancellationToken cancellationToken)
@@ -1012,6 +1089,71 @@ public sealed class DashboardDataService(
             .Where(x => x.Email == email)
             .Select(x => (int?)x.Id)
             .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    private string? GetCurrentUserEmail() =>
+        httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.Email)?.Trim().ToLowerInvariant();
+
+    private async Task<User?> GetCurrentUserAsync(CancellationToken cancellationToken)
+    {
+        var email = GetCurrentUserEmail();
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return null;
+        }
+
+        return await dbContext.Users.SingleOrDefaultAsync(x => x.Email == email && x.IsActive, cancellationToken);
+    }
+
+    private static string BuildQcSummaryEmailBody(QcSample sample, ReadinessViewModel readiness, bool isOverride, string? overrideReason)
+    {
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine(isOverride ? "QC Summary Override" : "QC Summary");
+        builder.AppendLine();
+        builder.AppendLine($"Receipt: {sample.GetDisplayReceiptId()}");
+        builder.AppendLine($"Warehouse: {sample.Receipt.Warehouse.Code}");
+        builder.AppendLine($"Room: {sample.Receipt.Room.Code}");
+        builder.AppendLine($"Grower: {sample.Receipt.GrowerName}");
+        builder.AppendLine($"Lot: {sample.Receipt.LotCode}");
+        builder.AppendLine($"Variety: {sample.Receipt.FruitProfile.VarietyCode}");
+        builder.AppendLine($"Sample status: {sample.Status}");
+        builder.AppendLine($"Completed fruit: {readiness.CompletedFruitCount}");
+        builder.AppendLine($"Starch: {(readiness.StarchMissingCount == 0 ? "Complete" : $"{readiness.StarchMissingCount} missing")}");
+        builder.AppendLine($"Photos complete: {YesNo(readiness.HasBinTruck && readiness.HasSampleBeforeCutting && readiness.HasCutFruit && readiness.HasFruitAfterStarch)}");
+
+        if (readiness.MissingItems.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Missing items:");
+            foreach (var item in readiness.MissingItems)
+            {
+                builder.AppendLine($"- {item}");
+            }
+        }
+
+        if (isOverride)
+        {
+            builder.AppendLine();
+            builder.AppendLine($"Override reason: {overrideReason}");
+        }
+
+        return builder.ToString();
+    }
+
+    private async Task AddAuditAsync(string action, string entityName, string entityKey, string changedByEmail, string? before, string? after, CancellationToken ct)
+    {
+        var userId = await dbContext.Users.Where(x => x.Email == changedByEmail).Select(x => (int?)x.Id).SingleOrDefaultAsync(ct);
+        dbContext.AuditLogs.Add(new AuditLog
+        {
+            Action = action,
+            EntityName = entityName,
+            EntityKey = entityKey,
+            UserId = userId,
+            BeforeValuesJson = before,
+            AfterValuesJson = after,
+            SourceApplication = "Web",
+            CreatedAt = DateTimeOffset.UtcNow
+        });
     }
 
     private static string GeneratePhotoFileName(string receiptId, string photoType, DateTimeOffset capturedAt, string extension) =>
