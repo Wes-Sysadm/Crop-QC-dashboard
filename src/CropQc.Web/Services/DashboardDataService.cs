@@ -718,7 +718,7 @@ public sealed class DashboardDataService(
             return "A logged-in user is required to send QC Summary email.";
         }
 
-        var emailContent = await emailComposer.ComposeAsync(sample, readiness, isOverride, overrideReason, cancellationToken);
+        var emailContent = await emailComposer.ComposeAsync(sample, readiness, sender, isOverride, overrideReason, cancellationToken);
         var recipients = emailOptions.QcRecipientHeader;
         var message = new QcEmailMessage(sender.Email, recipients, sample.TakenByUser?.Email, emailContent.Subject, emailContent.TextBody, emailContent.HtmlBody, emailContent.InlineImages);
 
