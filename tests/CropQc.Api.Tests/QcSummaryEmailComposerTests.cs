@@ -12,8 +12,8 @@ public sealed class QcSummaryEmailComposerTests
     [InlineData("Door Sample", "WholeSample,CutApples")]
     [InlineData("Room Sample", "WholeSample,CutApples")]
     [InlineData("Line Sample", "WholeSample,CutApples")]
-    [InlineData("Receiving Sample", "TruckPhoto,WholeSample,CutApples,StarchApples")]
-    [InlineData("Transfer Sample", "TruckPhoto,WholeSample,CutApples")]
+    [InlineData("Receiving Sample", "TruckPhoto,TopOfTruck,Hectre,WholeSample,CutApples,StarchApples")]
+    [InlineData("Transfer Sample", "TruckPhoto,TopOfTruck,WholeSample,CutApples")]
     public void PhotoRequirementPolicy_MapsRequiredPhotosBySampleType(string sampleType, string expectedKeys)
     {
         var policy = new QcPhotoRequirementPolicy();
@@ -37,7 +37,7 @@ public sealed class QcSummaryEmailComposerTests
     }
 
     [Fact]
-    public void PhotoRequirementPolicy_RequiresStarchPhotoForReceivingSamples()
+    public void PhotoRequirementPolicy_RequiresTopOfTruckAndHectreForReceivingSamples()
     {
         var policy = new QcPhotoRequirementPolicy();
 
@@ -46,7 +46,27 @@ public sealed class QcSummaryEmailComposerTests
             receiptPhotoTypes: ["BinTruck"],
             samplePhotoTypes: ["SampleBeforeCutting", "CutFruit"]);
 
+        Assert.Contains("Missing required photo: Top of truck", missing);
+        Assert.Contains("Missing required photo: Hectre", missing);
         Assert.Contains(missing, x => x.Contains("Starch apples", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void PhotoRequirementPolicy_DoesNotRequireHectreForTransferOrLineSamples()
+    {
+        var policy = new QcPhotoRequirementPolicy();
+
+        var transferMissing = policy.MissingRequiredPhotos(
+            "Transfer Sample",
+            receiptPhotoTypes: ["BinTruck", "TopOfTruck"],
+            samplePhotoTypes: ["SampleBeforeCutting", "CutFruit"]);
+        var lineMissing = policy.MissingRequiredPhotos(
+            "Line Sample",
+            receiptPhotoTypes: [],
+            samplePhotoTypes: ["SampleBeforeCutting", "CutFruit"]);
+
+        Assert.DoesNotContain(transferMissing, x => x.Contains("Hectre", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lineMissing, x => x.Contains("Hectre", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -63,6 +83,8 @@ public sealed class QcSummaryEmailComposerTests
         Assert.Contains("<h2>Fruit Overview</h2>", content.HtmlBody);
         Assert.Contains("cid:cropqc-photo-", content.HtmlBody);
         Assert.Contains("Truck photo", content.HtmlBody);
+        Assert.Contains("Top of truck", content.HtmlBody);
+        Assert.Contains("Hectre", content.HtmlBody);
         Assert.Contains("Whole sample", content.HtmlBody);
         Assert.Contains("Cut apples", content.HtmlBody);
         Assert.Contains("Starch apples", content.HtmlBody);
@@ -70,6 +92,37 @@ public sealed class QcSummaryEmailComposerTests
         Assert.Contains("Row 1:", content.TextBody);
         Assert.NotEmpty(content.InlineImages);
         Assert.All(content.InlineImages, image => Assert.Contains("@cropqc", image.ContentId));
+    }
+
+    [Fact]
+    public async Task EmailComposer_OrdersInlinePhotoSectionsForReceivingSamples()
+    {
+        var sample = BuildSample("Receiving Sample");
+        var readiness = new ReadinessViewModel { CompletedFruitCount = 1 };
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+
+        var content = await composer.ComposeAsync(sample, readiness, isOverride: false, overrideReason: null, CancellationToken.None);
+
+        Assert.Contains("cid:cropqc-photo-5@cropqc", content.HtmlBody);
+        Assert.Contains("cid:cropqc-photo-6@cropqc", content.HtmlBody);
+        Assert.True(content.HtmlBody.IndexOf("<h3>Truck photo</h3>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h3>Top of truck</h3>", StringComparison.Ordinal));
+        Assert.True(content.HtmlBody.IndexOf("<h3>Top of truck</h3>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h3>Hectre</h3>", StringComparison.Ordinal));
+        Assert.True(content.HtmlBody.IndexOf("<h3>Hectre</h3>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h3>Whole sample</h3>", StringComparison.Ordinal));
+        Assert.True(content.HtmlBody.IndexOf("<h3>Whole sample</h3>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h3>Cut apples</h3>", StringComparison.Ordinal));
+        Assert.True(content.HtmlBody.IndexOf("<h3>Cut apples</h3>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h3>Starch apples</h3>", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PhotoUploadUi_SupportsTopOfTruckAndHectreFriendlyLabels()
+    {
+        var receiptView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Details.cshtml"));
+        var sampleView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Samples", "Details.cshtml"));
+        var photoForm = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_PhotoPlaceholderForm.cshtml"));
+
+        Assert.Contains("\"TopOfTruck\"", receiptView);
+        Assert.Contains("\"Hectre\"", sampleView);
+        Assert.Contains("\"TopOfTruck\" => \"Top of truck\"", photoForm);
+        Assert.Contains("\"Hectre\" => \"Hectre\"", photoForm);
     }
 
     private static QcSample BuildSample(string sampleType)
@@ -133,6 +186,8 @@ public sealed class QcSummaryEmailComposerTests
         sample.FruitReadings.Add(row);
 
         receipt.Photos.Add(Photo(1, "BinTruck", receiptId: receipt.Id));
+        receipt.Photos.Add(Photo(5, "TopOfTruck", receiptId: receipt.Id));
+        sample.Photos.Add(Photo(6, "Hectre", sampleId: sample.Id));
         sample.Photos.Add(Photo(2, "SampleBeforeCutting", sampleId: sample.Id));
         sample.Photos.Add(Photo(3, "CutFruit", sampleId: sample.Id));
         sample.Photos.Add(Photo(4, "FruitAfterStarch", sampleId: sample.Id));
@@ -167,5 +222,22 @@ public sealed class QcSummaryEmailComposerTests
             Task.FromResult<Stream?>(new MemoryStream([1, 2, 3]));
         public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+    }
+
+    private static string FindRepositoryFile(params string[] pathParts)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(new[] { directory.FullName }.Concat(pathParts).ToArray());
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException($"Could not find repository file {Path.Combine(pathParts)}.");
     }
 }

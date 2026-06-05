@@ -148,7 +148,7 @@ public sealed record QcPhotoDto(
     int? CapturedByUserId,
     DateTimeOffset CapturedAt);
 
-public sealed record PhotoStatusDetails(bool HasBinTruck, bool HasSampleBeforeCutting, bool HasCutFruit, bool HasFruitAfterStarch);
+public sealed record PhotoStatusDetails(bool HasBinTruck, bool HasTopOfTruck, bool HasHectre, bool HasSampleBeforeCutting, bool HasCutFruit, bool HasFruitAfterStarch);
 public sealed record QcSummaryReadinessDto(bool IsReady, IReadOnlyList<string> MissingItems, int CompletedFruitCount, int StarchMissingCount, PhotoStatusDetails PhotoStatus);
 
 public sealed record CreateEmailLogRequest(

@@ -110,12 +110,14 @@ Seeded password policy:
 Supported photo types are:
 
 - BinTruck.
+- TopOfTruck.
+- Hectre.
 - SampleBeforeCutting.
 - CutFruit.
 - FruitAfterStarch.
 - Other.
 
-Bin/truck photos attach to `Receipts`. Sample before cutting, cut fruit, and fruit after starch photos attach to `QcSamples`. Photo source is stored as a string, with intended values such as USB Camera and Manual Upload.
+Bin/truck and top-of-truck photos attach to `Receipts`. Hectre, sample before cutting, cut fruit, and fruit after starch photos attach to `QcSamples`. Photo source is stored as a string, with intended values such as USB Camera and Manual Upload.
 
 ## Relational Constraints
 

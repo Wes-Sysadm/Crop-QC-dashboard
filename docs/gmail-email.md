@@ -26,10 +26,10 @@ Normal QC Summary sending should require:
 - At least one completed fruit row.
 - Pressure 1, Pressure 2, weight, grade, and starch for every completed row.
 - Required photos based on sample type:
+  - Receiving: Truck photo (`BinTruck`), Top of truck (`TopOfTruck`), Hectre (`Hectre`), Whole sample (`SampleBeforeCutting`), Cut apples (`CutFruit`), and Starch apples (`FruitAfterStarch`).
+  - Transfer: Truck photo (`BinTruck`), Top of truck (`TopOfTruck`), Whole sample (`SampleBeforeCutting`), and Cut apples (`CutFruit`). Hectre can be attached when applicable, but it does not block normal send by default.
   - Door or Room: Whole sample (`SampleBeforeCutting`) and Cut apples (`CutFruit`).
-  - Receiving: Truck photo (`BinTruck`), Whole sample (`SampleBeforeCutting`), Cut apples (`CutFruit`), and Starch apples (`FruitAfterStarch`).
-  - Transfer: Truck photo (`BinTruck`), Whole sample (`SampleBeforeCutting`), and Cut apples (`CutFruit`).
-  - Line: Whole sample (`SampleBeforeCutting`) and Cut apples (`CutFruit`).
+  - Line: Whole sample (`SampleBeforeCutting`) and Cut apples (`CutFruit`). Hectre can be attached when applicable, but it does not block normal send by default.
 
 Normal ready-sample sending is available to Admin, Manager, and QC User roles. Manager/Admin override send can send even when required data is missing, with an override reason. Viewer users cannot send.
 
@@ -43,6 +43,7 @@ The HTML body includes:
 - Summary table at the top with completed fruit count, average pressure, average starch, average weight, grade summary, defect summary, size/status summary, and notes.
 - Line-by-line fruit overview with row number, pressures, average pressure, weight, grade, starch, size/category, defects, and notes.
 - Photo sections grouped by friendly photo requirement name.
+- Photo sections appear in this order when present: Truck photo, Top of truck, Hectre, Whole sample, Cut apples, and Starch apples.
 
 Required and present photos are embedded inline with MIME `Content-ID` values and referenced from the HTML body using `cid:` image URLs. If the configured storage provider cannot return image bytes, the email falls back to a safe photo link when one is available. Tokens and storage credentials are never included in the email or logs.
 

@@ -256,6 +256,8 @@ public sealed class QcSummaryEmailComposer(
     private static string FriendlyPhotoName(string photoType) => photoType switch
     {
         "BinTruck" => "Truck photo",
+        "TopOfTruck" => "Top of truck",
+        "Hectre" => "Hectre",
         "SampleBeforeCutting" => "Whole sample",
         "CutFruit" => "Cut apples",
         "FruitAfterStarch" => "Starch apples",

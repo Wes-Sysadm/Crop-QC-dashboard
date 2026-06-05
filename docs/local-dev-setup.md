@@ -193,8 +193,8 @@ Use the web dashboard at `http://localhost:5275`.
 9. Confirm the row shows calculated average pressure, calculated size, size status, and completed status.
 10. Add placeholder photo metadata required for the sample type:
     - Door/Room or Line: `SampleBeforeCutting` and `CutFruit`.
-    - Receiving: receipt-level `BinTruck`, plus sample-level `SampleBeforeCutting`, `CutFruit`, and `FruitAfterStarch`.
-    - Transfer: receipt-level `BinTruck`, plus sample-level `SampleBeforeCutting` and `CutFruit`.
+    - Receiving: receipt-level `BinTruck` and `TopOfTruck`, plus sample-level `Hectre`, `SampleBeforeCutting`, `CutFruit`, and `FruitAfterStarch`.
+    - Transfer: receipt-level `BinTruck` and `TopOfTruck`, plus sample-level `SampleBeforeCutting` and `CutFruit`; `Hectre` is optional unless configured as required later.
 11. Return to the sample detail page and confirm Summary Readiness shows the sample type and required photo statuses.
 12. When Gmail sending is configured, confirm the QC Summary email body includes summary data, fruit rows, and inline photo sections.
 13. Confirm the `Send QC Summary` button is disabled while readiness is false and appears enabled only when readiness is true for users with send permission.
