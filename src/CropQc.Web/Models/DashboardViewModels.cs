@@ -261,6 +261,7 @@ public sealed class FruitReadingRowViewModel
     public int? SizeCategory { get; set; }
     public string SizeStatus { get; set; } = "";
     public bool IsCompleted { get; set; }
+    public string EntryStatus { get; set; } = "Empty";
     public IReadOnlyList<int> DefectTypeIds { get; set; } = [];
     public IReadOnlyList<string> Defects { get; set; } = [];
     public string? OtherDefectNotes { get; set; }

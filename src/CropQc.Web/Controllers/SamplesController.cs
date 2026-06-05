@@ -37,7 +37,7 @@ public sealed class SamplesController(
     {
         form.SampleId = id;
         var error = await dataService.SaveFruitReadingsAsync(form, cancellationToken);
-        TempData[error is null ? "Success" : "Error"] = error ?? "Fruit readings saved.";
+        TempData[error is null ? "Success" : "Error"] = error ?? "Fruit readings saved. In-progress rows can be completed later.";
         return RedirectToAction(nameof(Details), new { id });
     }
 

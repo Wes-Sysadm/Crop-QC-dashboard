@@ -28,6 +28,24 @@ public interface IDashboardDataService
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, CancellationToken cancellationToken);
 }
 
+public enum FruitRowEntryStatus
+{
+    Empty,
+    InProgress,
+    Complete
+}
+
+public static class FruitRowEntryStatusExtensions
+{
+    public static string ToDisplayName(this FruitRowEntryStatus status) => status switch
+    {
+        FruitRowEntryStatus.Empty => "Empty",
+        FruitRowEntryStatus.InProgress => "In Progress",
+        FruitRowEntryStatus.Complete => "Complete",
+        _ => status.ToString()
+    };
+}
+
 public sealed class DashboardDataService(
     CropQcDbContext dbContext,
     IFileStorageService fileStorageService,
@@ -461,20 +479,8 @@ public sealed class DashboardDataService(
                 return $"Row {submittedRow.RowNumber} has an invalid defect.";
             }
 
-            var isBlank = submittedRow.Pressure1Lbs is null
-                && submittedRow.Pressure2Lbs is null
-                && submittedRow.WeightGrams is null
-                && submittedRow.GradeId is null
-                && selectedDefectIds.Count == 0
-                && string.IsNullOrWhiteSpace(submittedRow.OtherDefectNotes);
-            var isCompleted = submittedRow.Pressure1Lbs is not null
-                && submittedRow.Pressure2Lbs is not null
-                && submittedRow.WeightGrams is not null
-                && submittedRow.GradeId is not null;
-            if (!isBlank && !isCompleted)
-            {
-                return $"Row {submittedRow.RowNumber} is partially entered. Completed rows require Pressure 1, Pressure 2, weight, and grade.";
-            }
+            var entryStatus = GetFruitRowEntryStatus(submittedRow, selectedDefectIds);
+            var isCompleted = entryStatus == FruitRowEntryStatus.Complete;
 
             var reading = existingRows.SingleOrDefault(x => x.RowNumber == submittedRow.RowNumber);
             if (reading is null)
@@ -986,7 +992,7 @@ public sealed class DashboardDataService(
             {
                 var row = rows.SingleOrDefault(x => x.RowNumber == rowNumber);
                 return row is null
-                    ? new FruitReadingRowViewModel { RowNumber = rowNumber }
+                    ? new FruitReadingRowViewModel { RowNumber = rowNumber, EntryStatus = FruitRowEntryStatus.Empty.ToDisplayName() }
                     : new FruitReadingRowViewModel
                     {
                         RowNumber = row.RowNumber,
@@ -1001,6 +1007,7 @@ public sealed class DashboardDataService(
                         SizeCategory = row.SizeCategory,
                         SizeStatus = row.SizeStatus,
                         IsCompleted = row.IsCompleted,
+                        EntryStatus = GetFruitRowEntryStatus(row).ToDisplayName(),
                         DefectTypeIds = row.Defects.Select(x => x.DefectTypeId).ToList(),
                         Defects = row.Defects.Select(x => x.DefectType.Name).OrderBy(x => x).ToList(),
                         OtherDefectNotes = row.Defects.FirstOrDefault(x => x.DefectType.Name == "Other")?.Notes
@@ -1008,6 +1015,49 @@ public sealed class DashboardDataService(
             })
             .ToList();
     }
+
+    public static FruitRowEntryStatus GetFruitRowEntryStatus(FruitReadingEditRow row, IReadOnlyCollection<int>? selectedDefectIds = null)
+    {
+        var hasAnyValue = row.Pressure1Lbs is not null
+            || row.Pressure2Lbs is not null
+            || row.WeightGrams is not null
+            || row.GradeId is not null
+            || row.StarchScaleValueId is not null
+            || (selectedDefectIds ?? row.DefectTypeIds).Count > 0
+            || !string.IsNullOrWhiteSpace(row.OtherDefectNotes);
+        if (!hasAnyValue)
+        {
+            return FruitRowEntryStatus.Empty;
+        }
+
+        return HasCompletionFields(row.Pressure1Lbs, row.Pressure2Lbs, row.WeightGrams, row.GradeId)
+            ? FruitRowEntryStatus.Complete
+            : FruitRowEntryStatus.InProgress;
+    }
+
+    private static FruitRowEntryStatus GetFruitRowEntryStatus(QcFruitReading row)
+    {
+        var hasAnyValue = row.Pressure1Lbs is not null
+            || row.Pressure2Lbs is not null
+            || row.WeightGrams is not null
+            || row.GradeId is not null
+            || row.StarchScaleValueId is not null
+            || row.Defects.Count > 0;
+        if (!hasAnyValue)
+        {
+            return FruitRowEntryStatus.Empty;
+        }
+
+        return HasCompletionFields(row.Pressure1Lbs, row.Pressure2Lbs, row.WeightGrams, row.GradeId)
+            ? FruitRowEntryStatus.Complete
+            : FruitRowEntryStatus.InProgress;
+    }
+
+    private static bool HasCompletionFields(decimal? pressure1Lbs, decimal? pressure2Lbs, decimal? weightGrams, int? gradeId) =>
+        pressure1Lbs is not null
+        && pressure2Lbs is not null
+        && weightGrams is not null
+        && gradeId is not null;
 
     private async Task<ReadinessViewModel> GetReadinessAsync(long sampleId, long receiptId, CancellationToken cancellationToken)
     {
