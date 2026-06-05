@@ -9,6 +9,7 @@ namespace CropQc.Api.Tests.QcStation;
 public sealed class QcStationInstallerWorkflowTests
 {
     private const string QcStationInstallerGoogleDriveUrl = "https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link";
+    private const string FtaBorlndmmGoogleDriveUrl = "https://drive.google.com/file/d/example-borlndmm/view?usp=drive_link";
 
     [Fact]
     public void Dockerfile_BuildsOnlyWebDashboard()
@@ -83,6 +84,9 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("Crop QC Station App Installer", controller);
         Assert.Contains("Open Google Drive Download", controller);
         Assert.Contains("FTA DLL Installer", controller);
+        Assert.Contains("FTA borlndmm.dll Dependency", controller);
+        Assert.Contains("Downloads:FtaBorlndmmUrl", controller);
+        Assert.Contains("Downloads__FtaBorlndmmUrl", controller);
         Assert.Contains("Not deployed", view);
         Assert.Contains("Manage QC Stations", view);
         Assert.Contains("Station configs are generated and downloaded from Admin", view);
@@ -116,6 +120,41 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Equal("Open Google Drive Download", installer.ActionText);
         Assert.Equal(QcStationInstallerGoogleDriveUrl, installer.Url);
         Assert.DoesNotContain("not configured", installer.Notes, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AdminDownloads_ShowsBorlndmmDependencyLinkWhenConfigured()
+    {
+        var controller = CreateAdminController(new Dictionary<string, string?>
+        {
+            ["Downloads:FtaBorlndmmUrl"] = FtaBorlndmmGoogleDriveUrl
+        });
+
+        var result = Assert.IsType<ViewResult>(controller.Downloads());
+        var model = Assert.IsType<AdminDownloadsViewModel>(result.Model);
+        var dependency = Assert.Single(model.Downloads, item => item.Name == "FTA borlndmm.dll Dependency");
+
+        Assert.True(dependency.IsAvailable);
+        Assert.True(dependency.OpensInNewTab);
+        Assert.Equal("Open Google Drive Download", dependency.ActionText);
+        Assert.Equal(FtaBorlndmmGoogleDriveUrl, dependency.Url);
+        Assert.Contains("Back up the existing borlndmm.dll", dependency.Notes);
+    }
+
+    [Fact]
+    public void AdminDownloads_ShowsMissingBorlndmmGuidanceWhenUrlIsMissing()
+    {
+        var controller = CreateAdminController([]);
+
+        var result = Assert.IsType<ViewResult>(controller.Downloads());
+        var model = Assert.IsType<AdminDownloadsViewModel>(result.Model);
+        var dependency = Assert.Single(model.Downloads, item => item.Name == "FTA borlndmm.dll Dependency");
+
+        Assert.False(dependency.IsAvailable);
+        Assert.False(dependency.OpensInNewTab);
+        Assert.Equal("", dependency.Url);
+        Assert.Contains("FTA borlndmm.dll dependency link is not configured", dependency.Notes);
+        Assert.Contains("Downloads__FtaBorlndmmUrl", dependency.Notes);
     }
 
     [Fact]

@@ -75,6 +75,7 @@
         {
             <form method="post" action="/Samples/@Model.Sample?.Id/Send" class="inline-form">
                 <p class="muted">Sending from: @User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value</p>
+                <p class="muted">To: @(Model.RecipientEmail ?? "configured QC recipients")</p>
                 <button type="submit">Send QC Summary</button>
             </form>
         }

@@ -227,6 +227,7 @@ public sealed class SampleDetailViewModel
     public IReadOnlyList<Grade> Grades { get; set; } = [];
     public IReadOnlyList<StarchScaleValue> StarchScaleValues { get; set; } = [];
     public IReadOnlyList<DefectType> DefectTypes { get; set; } = [];
+    public string? RecipientEmail { get; set; }
     public SaveFruitReadingsForm FruitReadingForm { get; set; } = new();
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
 }

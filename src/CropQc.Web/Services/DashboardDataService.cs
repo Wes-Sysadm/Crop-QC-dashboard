@@ -318,6 +318,7 @@ public sealed class DashboardDataService(
                 FruitRows = rowModels,
                 PhotoGroups = GroupPhotos(photos),
                 Readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken),
+                RecipientEmail = emailOptions.QcRecipientHeader,
                 Grades = grades,
                 DefectTypes = defectTypes,
                 FruitReadingForm = new SaveFruitReadingsForm
@@ -621,7 +622,7 @@ public sealed class DashboardDataService(
                 Readiness = readiness,
                 Checklist = readiness.Checklist,
                 SenderEmail = GetCurrentUserEmail(),
-                RecipientEmail = emailOptions.ToAddress,
+                RecipientEmail = emailOptions.QcRecipientHeader,
                 GmailReconnectRequired = !string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase),
                 Form = new OverrideSendForm { SampleId = sample.Id }
             };
@@ -680,7 +681,8 @@ public sealed class DashboardDataService(
         }
 
         var emailContent = await emailComposer.ComposeAsync(sample, readiness, isOverride, overrideReason, cancellationToken);
-        var message = new QcEmailMessage(sender.Email, emailOptions.ToAddress, sample.TakenByUser?.Email, emailContent.Subject, emailContent.TextBody, emailContent.HtmlBody, emailContent.InlineImages);
+        var recipients = emailOptions.QcRecipientHeader;
+        var message = new QcEmailMessage(sender.Email, recipients, sample.TakenByUser?.Email, emailContent.Subject, emailContent.TextBody, emailContent.HtmlBody, emailContent.InlineImages);
 
         var now = DateTimeOffset.UtcNow;
         var sendResult = await emailSender.SendAsync(sender, message, cancellationToken);
@@ -691,7 +693,7 @@ public sealed class DashboardDataService(
             ReceiptId = sample.ReceiptId,
             QcSampleId = sample.Id,
             FromAddress = sender.Email,
-            ToAddress = emailOptions.ToAddress,
+            ToAddress = recipients,
             ReplyToAddress = sample.TakenByUser?.Email,
             Subject = emailContent.Subject,
             Status = status,
@@ -726,7 +728,7 @@ public sealed class DashboardDataService(
             System.Text.Json.JsonSerializer.Serialize(new
             {
                 Sender = sender.Email,
-                To = emailOptions.ToAddress,
+                To = recipients,
                 Subject = emailContent.Subject,
                 Status = status,
                 GmailMessageId = sendResult.MessageId,
