@@ -139,6 +139,13 @@ public sealed class FtaDllPressureReader(
         var readyStatus = EnsureReadyForFunctionCall();
         if (readyStatus is not null)
         {
+            if (!string.IsNullOrWhiteSpace(errorMessage) && errorMessage.Contains("DLL", StringComparison.OrdinalIgnoreCase))
+            {
+                errorMessage = $"Cannot open FTA Setup because FTA_DLL.dll failed to load. {errorMessage}";
+                LastStatusMessage = errorMessage;
+                return Task.FromResult(Status("FTA setup/calibration unavailable.", errorMessage));
+            }
+
             return Task.FromResult(readyStatus);
         }
 
@@ -498,7 +505,7 @@ public sealed class FtaDllPressureReader(
 
         if (!mainDllFound)
         {
-            return new DllProbeResult(dllFolder, mainDllFileName, mainDllPath, false, false, borlandMemoryManagerFound, null, false, IntPtr.Zero);
+            return new DllProbeResult(dllFolder, mainDllFileName, mainDllPath, false, false, borlandMemoryManagerFound, null, false, IntPtr.Zero, null, null, null, Environment.CurrentDirectory, null, mainDllPath);
         }
 
         if (lastProbe?.NativeLibraryHandle is { } existingHandle && existingHandle != IntPtr.Zero && string.Equals(lastProbe.MainDllPath, mainDllPath, StringComparison.OrdinalIgnoreCase))
@@ -514,7 +521,22 @@ public sealed class FtaDllPressureReader(
         }
 
         var loadResult = nativeDllLoader.TryLoad(mainDllPath);
-        return new DllProbeResult(dllFolder, mainDllFileName, mainDllPath, true, loadResult.Loaded, borlandMemoryManagerFound, loadResult.ErrorMessage, loadResult.IsArchitectureMismatch, loadResult.NativeLibraryHandle);
+        return new DllProbeResult(
+            dllFolder,
+            mainDllFileName,
+            mainDllPath,
+            true,
+            loadResult.Loaded,
+            borlandMemoryManagerFound,
+            loadResult.ErrorMessage,
+            loadResult.IsArchitectureMismatch,
+            loadResult.NativeLibraryHandle,
+            loadResult.ExceptionType,
+            loadResult.HResult,
+            loadResult.CurrentDirectoryBeforeLoad,
+            loadResult.CurrentDirectoryAtLoad,
+            loadResult.DllSearchDirectory,
+            loadResult.LoadedPath);
     }
 
     private string ResolveMainDllFileName(string dllFolder)
@@ -555,6 +577,12 @@ public sealed class FtaDllPressureReader(
                 $"Main DLL found: {YesNo(probe.MainDllFound)}",
                 $"Main DLL load check: {YesNo(probe.MainDllLoaded)}",
                 $"{BorlandMemoryManagerFileName} found: {YesNo(probe.BorlandMemoryManagerFound)}",
+                $"Current directory before DLL load: {FormatOptional(probe.CurrentDirectoryBeforeLoad)}",
+                $"Current directory at DLL load: {FormatOptional(probe.CurrentDirectoryAtLoad)}",
+                $"DLL search folder: {FormatOptional(probe.DllSearchDirectory)}",
+                $"Full DLL path loaded: {FormatOptional(probe.LoadedPath)}",
+                $"DLL load exception type: {FormatOptional(probe.LoadExceptionType)}",
+                $"DLL load HResult: {FormatHResult(probe.LoadHResult)}",
                 $"Process architecture: {RuntimeInformation.ProcessArchitecture}",
                 $"OS architecture: {RuntimeInformation.OSArchitecture}",
                 $"Ready for actual function calls: {YesNo(isInitialized && bindings is not null)}");
@@ -861,6 +889,14 @@ public sealed class FtaDllPressureReader(
             return probe.LoadErrorMessage;
         }
 
+        if (RuntimeInformation.ProcessArchitecture == Architecture.X86)
+        {
+            return string.Join(" ",
+                probe.LoadErrorMessage,
+                "QC Station is already running x86. The DLL load failure is likely caused by the FTA DLL file or one of its dependencies being the wrong architecture, invalid, or loaded from the wrong folder.",
+                "Confirm FTA_DLL.dll PE architecture, confirm borlndmm.dll PE architecture, confirm the DLL search path, and confirm whether the C:\\Windows\\SysWOW64 copy or C:\\Program Files\\FTADLL copy is the correct vendor DLL.");
+        }
+
         return string.Join(" ",
             probe.LoadErrorMessage,
             "This usually means a 32-bit/64-bit mismatch.",
@@ -888,6 +924,9 @@ public sealed class FtaDllPressureReader(
     private static string FormatOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "(not configured)" : value;
 
+    private static string FormatHResult(int? hResult) =>
+        hResult is null ? "(none)" : $"0x{hResult.Value:X8}";
+
     private sealed record DllProbeResult(
         string DllFolder,
         string MainDllFileName,
@@ -897,7 +936,13 @@ public sealed class FtaDllPressureReader(
         bool BorlandMemoryManagerFound,
         string? LoadErrorMessage,
         bool IsArchitectureMismatch,
-        IntPtr NativeLibraryHandle);
+        IntPtr NativeLibraryHandle,
+        string? LoadExceptionType,
+        int? LoadHResult,
+        string? CurrentDirectoryBeforeLoad,
+        string? CurrentDirectoryAtLoad,
+        string? DllSearchDirectory,
+        string? LoadedPath);
 
     private sealed record FtaStatusSnapshot(
         int? StatusWord,

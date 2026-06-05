@@ -400,6 +400,85 @@ public sealed class FtaDllPressureReaderTests
     }
 
     [Fact]
+    public void Pe_file_inspector_identifies_x86_x64_and_invalid_files()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), $"crop-qc-pe-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempFolder);
+        var x86Path = Path.Combine(tempFolder, "x86.dll");
+        var x64Path = Path.Combine(tempFolder, "x64.dll");
+        var invalidPath = Path.Combine(tempFolder, "invalid.dll");
+        WriteMinimalPeFile(x86Path, 0x014c, 0x10b);
+        WriteMinimalPeFile(x64Path, 0x8664, 0x20b);
+        File.WriteAllText(invalidPath, "not a dll");
+
+        Assert.Equal(PeArchitecture.X86, PeFileInspector.Inspect(x86Path).Architecture);
+        Assert.Equal(PeArchitecture.X64, PeFileInspector.Inspect(x64Path).Architecture);
+        Assert.Equal(PeArchitecture.Invalid, PeFileInspector.Inspect(invalidPath).Architecture);
+    }
+
+    [Fact]
+    public void Incorrect_format_guidance_for_x86_process_points_to_dependency_or_wrong_dll_not_run_x86()
+    {
+        var configuredDll = new PeFileInspection(@"C:\Windows\SysWOW64\FTA_DLL.dll", true, PeArchitecture.X86, 100, DateTimeOffset.UtcNow, "1.0", null);
+        var borlandDll = new PeFileInspection(@"C:\Windows\SysWOW64\borlndmm.dll", true, PeArchitecture.Invalid, 50, DateTimeOffset.UtcNow, null, "File exists but does not look like a valid Windows DLL.");
+
+        var guidance = FtaConnectionDiagnostics.BuildIncorrectFormatGuidance(System.Runtime.InteropServices.Architecture.X86, configuredDll, borlandDll, hasAvailableConfiguredCom: true);
+
+        Assert.Contains("QC Station is already running x86", guidance);
+        Assert.Contains("dependencies being the wrong architecture", guidance);
+        Assert.Contains("borlndmm.dll is not x86 or is invalid", guidance);
+        Assert.Contains("Connection candidate looks valid", guidance);
+        Assert.DoesNotContain("run the QC Station as x86", guidance, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Program_files_detection_handles_installed_qc_station_path()
+    {
+        Assert.True(FtaConnectionDiagnostics.IsProgramFilesPath(@"C:\Program Files\CropQc\QcStation\"));
+        Assert.True(FtaConnectionDiagnostics.IsProgramFilesPath(@"C:\Program Files (x86)\CropQc\QcStation\"));
+        Assert.False(FtaConnectionDiagnostics.IsProgramFilesPath(@"C:\Users\admin\source\CropQc\"));
+    }
+
+    [Fact]
+    public void Diagnostic_report_includes_dll_copy_comparison_and_com_blocker_conclusion()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), $"crop-qc-report-dll-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempFolder);
+        File.WriteAllText(Path.Combine(tempFolder, FtaDllPressureReader.AlternateFtaDllFileName), "not a dll");
+        var configuration = new StationConfiguration
+        {
+            StationName = "MCD 12",
+            QcStationCode = "MCD-12",
+            QcStationApiKey = "do-not-report",
+            FtaDllPath = tempFolder,
+            FtaDllFileName = FtaDllPressureReader.AlternateFtaDllFileName
+        };
+        var environmentDiagnostics = new FakeFtaEnvironmentDiagnostics(
+            new FtaConfigFileDiagnostics(@"C:\Program Files\FTADLL\FTA_DLL.CFG", true, null, 20, ["COM1"]),
+            ["COM1"],
+            [],
+            [],
+            [new FtaComPortDiagnostics("COM1", "Communications Port (COM1)", @"ACPI\PNP0501", "", "Present")]);
+
+        var report = FtaConnectionDiagnostics.BuildReport(
+            configuration,
+            @"C:\ProgramData\CropQc\QcStation\qcstation.settings.json",
+            environmentDiagnostics,
+            null,
+            "An attempt was made to load a program with an incorrect format. (0x8007000B)");
+
+        Assert.DoesNotContain("do-not-report", report.ReportText);
+        Assert.Contains("DLL copy comparison", report.ReportText);
+        Assert.Contains(@"C:\Windows\SysWOW64\FTA_DLL.dll", report.ReportText);
+        Assert.Contains(@"C:\Program Files\FTADLL\FTA_DLL.dll", report.ReportText);
+        Assert.Contains("Configured COM | COM1", report.ReportText);
+        if (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.X86)
+        {
+            Assert.Contains("Connection candidate looks valid", report.Conclusion);
+        }
+    }
+
+    [Fact]
     public async Task Latest_reading_returns_null_when_new_firmness_bit_is_false()
     {
         var tempFolder = CreateTempDllFolder(FtaDllPressureReader.DefaultFtaDllFileName);
@@ -506,6 +585,23 @@ public sealed class FtaDllPressureReaderTests
         Directory.CreateDirectory(tempFolder);
         File.WriteAllText(Path.Combine(tempFolder, ftaDllFileName), "fake test dll");
         return tempFolder;
+    }
+
+    private static void WriteMinimalPeFile(string path, ushort machine, ushort optionalHeaderMagic)
+    {
+        var bytes = new byte[512];
+        bytes[0] = 0x4d;
+        bytes[1] = 0x5a;
+        BitConverter.GetBytes(0x80).CopyTo(bytes, 0x3c);
+        bytes[0x80] = 0x50;
+        bytes[0x81] = 0x45;
+        bytes[0x82] = 0x00;
+        bytes[0x83] = 0x00;
+        BitConverter.GetBytes(machine).CopyTo(bytes, 0x84);
+        BitConverter.GetBytes((ushort)1).CopyTo(bytes, 0x86);
+        BitConverter.GetBytes((ushort)224).CopyTo(bytes, 0x94);
+        BitConverter.GetBytes(optionalHeaderMagic).CopyTo(bytes, 0x98);
+        File.WriteAllBytes(path, bytes);
     }
 
     private static StationConfiguration CreateRealDllConfiguration(string tempFolder) =>
