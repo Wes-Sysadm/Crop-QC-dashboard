@@ -83,7 +83,7 @@ Set these variables in Render:
 - `GoogleDrive__BaseFolderName=Photos`
 - `Email__Provider=None`
 - `QcStation__ApiBaseUrl=https://crop-qc-dashboard.onrender.com`
-- `Downloads__QcStationInstallerUrl=[Google Drive share link for CropQcStationSetup.msi]`
+- `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link`
 
 Do not commit database passwords, Google credentials, Gmail credentials, or API secrets.
 
@@ -101,7 +101,7 @@ The Render Docker build publishes only the web dashboard. It does not build Wind
 
 The script publishes the WinForms x86 app, builds `artifacts\installers\CropQcStationSetup.msi`, and signs it when signing environment variables are configured. If signing is not configured, it builds an unsigned MSI and prints a SmartScreen/Defender warning.
 
-To deploy the installer download, upload `artifacts\installers\CropQcStationSetup.msi` to Google Drive, restrict sharing to company users, and set `Downloads__QcStationInstallerUrl` in Render. Render does not host or build the MSI. If the env var is missing, `/Admin/Downloads` shows “QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.” The web app still starts normally.
+To deploy the installer download, upload `artifacts\installers\CropQcStationSetup.msi` to Google Drive, restrict sharing to company users, and set `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link` in Render. Render does not host, proxy, or build the MSI. If no installer URL is configured, `/Admin/Downloads` shows “QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.” The web app still starts normally.
 
 Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 
@@ -190,7 +190,7 @@ The current Google Drive download entries are:
 - Name: Crop QC Station App Installer
 - File: `CropQcStationSetup.msi`
 - Purpose: installs the Crop QC Station WinForms app used for FTA pressure capture and station sync.
-- Link: set with `Downloads__QcStationInstallerUrl=[Google Drive share link to CropQcStationSetup.msi]`
+- Link: set with `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link`
 - Button text: `Open Google Drive Download`
 
 The installer binaries are not committed to the repository or deployed into Render. Google Drive sharing permissions are managed in Google Drive and should be limited to company users when possible.
