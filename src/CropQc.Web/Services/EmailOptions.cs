@@ -5,6 +5,7 @@ public sealed class EmailOptions
     public string Provider { get; init; } = EmailProviders.None;
     public string FromAddress { get; init; } = "HL@fruitandland.com";
     public string ToAddress { get; init; } = "QC@fruitandland.com";
+    public string QcDefaultRecipients { get; init; } = "QC@fruitandland.com";
 }
 
 public static class EmailProviders

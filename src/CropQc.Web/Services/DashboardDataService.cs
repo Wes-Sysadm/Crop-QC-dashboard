@@ -1,6 +1,7 @@
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Storage;
+using CropQc.Web.Auth;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
@@ -33,6 +34,8 @@ public sealed class DashboardDataService(
     IFileStorageService fileStorageService,
     FileStorageOptions fileStorageOptions,
     EmailOptions emailOptions,
+    GoogleAuthenticationOptions authOptions,
+    IGoogleCredentialStore googleCredentialStore,
     IQcEmailSender emailSender,
     IQcPhotoRequirementPolicy photoRequirementPolicy,
     IQcSummaryEmailComposer emailComposer,
@@ -614,15 +617,29 @@ public sealed class DashboardDataService(
             }
 
             var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+            var sender = await GetCurrentUserAsync(cancellationToken);
+            var senderEmail = sender?.Email ?? GetCurrentUserEmail();
+            var senderDomain = GoogleAuthenticationOptions.GetEmailDomain(senderEmail);
+            var credentialDiagnostic = sender is null
+                ? new GoogleCredentialDiagnostic(false, false)
+                : await googleCredentialStore.GetDiagnosticAsync(sender, cancellationToken);
+
             return new OverrideSendViewModel
             {
                 Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
                 Receipt = ReceiptListItem(sample.Receipt),
                 Readiness = readiness,
                 Checklist = readiness.Checklist,
-                SenderEmail = GetCurrentUserEmail(),
+                SenderEmail = senderEmail,
+                SenderDomain = senderDomain,
+                SenderDomainAllowed = senderDomain is not null && authOptions.AllowedDomains.Contains(senderDomain),
                 RecipientEmail = emailOptions.ToAddress,
-                GmailReconnectRequired = !string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase),
+                GmailReconnectRequired = !string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase)
+                    || !credentialDiagnostic.GmailSendPermissionGranted,
+                GmailCredentialPresent = credentialDiagnostic.CredentialPresent,
+                GmailSendPermissionGranted = credentialDiagnostic.GmailSendPermissionGranted,
+                GmailUserProviderEnabled = string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase),
+                AllowedGoogleDomains = string.Join(", ", authOptions.AllowedDomains.OrderBy(x => x)),
                 Form = new OverrideSendForm { SampleId = sample.Id }
             };
         }

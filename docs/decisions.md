@@ -18,7 +18,7 @@ Photos and attachments will be stored in a Google Shared Drive. The database wil
 
 ## ADR-0005: Use User-Delegated Gmail Sending
 
-QC Summary email sends through the Gmail API with the logged-in user's delegated `gmail.send` permission. The sender is the logged-in Google user, and the default QC Summary recipient is `QC@fruitandland.com`. Shared SMTP is not the normal sending identity.
+QC Summary email sends through the Gmail API with the logged-in user's delegated `gmail.send` permission. The sender is the logged-in Google Workspace user from an allowed company domain, currently `fruitandland.com`, `earlbrownandsons.com`, or `wp-packingllc.com`. QC Summary recipients are configured with `Email__QcDefaultRecipients`. Shared SMTP is not the normal sending identity.
 
 ## ADR-0006: Design for Offline QC Station Sync
 

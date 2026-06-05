@@ -1,4 +1,9 @@
+using CropQc.Data.Entities;
+using CropQc.Web.Auth;
 using CropQc.Web.Services;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Net;
 using System.Text;
 
 namespace CropQc.Api.Tests;
@@ -29,6 +34,69 @@ public sealed class GmailUserEmailTests
         Assert.Contains("HTML body text", decoded);
         Assert.Contains("Content-ID: <test-image@cropqc>", decoded);
         Assert.Contains("Content-Disposition: inline", decoded);
+    }
+
+    [Theory]
+    [InlineData("wes@fruitandland.com")]
+    [InlineData("rob@earlbrownandsons.com")]
+    [InlineData("user@wp-packingllc.com")]
+    public async Task GmailUserEmailSender_AllowsConfiguredCompanyDomains(string senderEmail)
+    {
+        var httpHandler = new FakeGmailHttpHandler(HttpStatusCode.OK, """{"id":"gmail-message-1"}""");
+        var sender = CreateSender(new FakeCredentialStore(GoogleAccessTokenResult.Success("access-token")), httpHandler);
+
+        var result = await sender.SendAsync(User(senderEmail), Message(senderEmail), CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal("gmail-message-1", result.MessageId);
+        Assert.Equal(1, httpHandler.SendCount);
+    }
+
+    [Fact]
+    public async Task GmailUserEmailSender_BlocksDisallowedDomainBeforeCredentialLookup()
+    {
+        var credentialStore = new FakeCredentialStore(GoogleAccessTokenResult.Success("access-token"));
+        var httpHandler = new FakeGmailHttpHandler(HttpStatusCode.OK, """{"id":"gmail-message-1"}""");
+        var sender = CreateSender(credentialStore, httpHandler);
+
+        var result = await sender.SendAsync(User("outsider@example.com"), Message("outsider@example.com"), CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("domain is not allowed", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, credentialStore.AccessTokenRequests);
+        Assert.Equal(0, httpHandler.SendCount);
+    }
+
+    [Theory]
+    [InlineData("wes@fruitandland.com")]
+    [InlineData("rob@earlbrownandsons.com")]
+    [InlineData("user@wp-packingllc.com")]
+    public async Task GmailUserEmailSender_MissingGmailPermissionRequiresReconnectForAnyAllowedDomain(string senderEmail)
+    {
+        var sender = CreateSender(
+            new FakeCredentialStore(GoogleAccessTokenResult.Reconnect("Gmail permission is required. Please reconnect Google/Gmail.")),
+            new FakeGmailHttpHandler(HttpStatusCode.OK, """{"id":"gmail-message-1"}"""));
+
+        var result = await sender.SendAsync(User(senderEmail), Message(senderEmail), CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.True(result.ReconnectRequired);
+    }
+
+    [Fact]
+    public void GoogleAuthenticationOptions_ReadsAllCompanyDomainsFromConfiguration()
+    {
+        var options = GoogleAuthenticationOptions.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Authentication:AllowedGoogleDomains"] = "fruitandland.com,earlbrownandsons.com,wp-packingllc.com"
+            })
+            .Build());
+
+        Assert.True(options.IsAllowedEmail("wes@fruitandland.com"));
+        Assert.True(options.IsAllowedEmail("rob@earlbrownandsons.com"));
+        Assert.True(options.IsAllowedEmail("user@wp-packingllc.com"));
+        Assert.False(options.IsAllowedEmail("outsider@example.com"));
     }
 
     [Fact]
@@ -66,6 +134,8 @@ public sealed class GmailUserEmailTests
 
         Assert.Contains("\"Provider\": \"GmailUser\"", productionSettings);
         Assert.Contains("\"SendScope\": \"https://www.googleapis.com/auth/gmail.send\"", productionSettings);
+        Assert.Contains("fruitandland.com,earlbrownandsons.com,wp-packingllc.com", productionSettings);
+        Assert.Contains("\"QcDefaultRecipients\": \"rob@earlbrownandsons.com,wes@fruitandland.com\"", productionSettings);
     }
 
     [Fact]
@@ -78,6 +148,8 @@ public sealed class GmailUserEmailTests
         Assert.Contains("Sending from:", details);
         Assert.Contains("Send QC Summary", details);
         Assert.Contains("Gmail permission is missing", overrideSend);
+        Assert.Contains("Email Diagnostics", overrideSend);
+        Assert.Contains("Allowed Google Workspace domains", overrideSend);
         Assert.Contains("Send QC Summary Override", overrideSend);
         Assert.Contains("Send QC Summary", dailyQc);
         Assert.Contains("Required Photos", details);
@@ -103,6 +175,63 @@ public sealed class GmailUserEmailTests
         var padded = value.Replace('-', '+').Replace('_', '/');
         padded = padded.PadRight(padded.Length + ((4 - padded.Length % 4) % 4), '=');
         return Encoding.UTF8.GetString(Convert.FromBase64String(padded));
+    }
+
+    private static GmailUserEmailSender CreateSender(FakeCredentialStore credentialStore, FakeGmailHttpHandler httpHandler) =>
+        new(
+            new EmailOptions { Provider = EmailProviders.GmailUser, ToAddress = "rob@earlbrownandsons.com,wes@fruitandland.com" },
+            new GoogleAuthenticationOptions
+            {
+                AllowedDomains = new HashSet<string>(["fruitandland.com", "earlbrownandsons.com", "wp-packingllc.com"], StringComparer.OrdinalIgnoreCase)
+            },
+            credentialStore,
+            new FakeHttpClientFactory(httpHandler),
+            NullLogger<GmailUserEmailSender>.Instance);
+
+    private static User User(string email) => new()
+    {
+        Id = Math.Abs(email.GetHashCode()),
+        Email = email,
+        DisplayName = email,
+        Domain = GoogleAuthenticationOptions.GetEmailDomain(email) ?? "",
+        IsActive = true,
+        CreatedAt = DateTimeOffset.UtcNow
+    };
+
+    private static QcEmailMessage Message(string senderEmail) =>
+        new(senderEmail, "rob@earlbrownandsons.com,wes@fruitandland.com", null, "QC Summary", "Text", "<p>HTML</p>", []);
+
+    private sealed class FakeCredentialStore(GoogleAccessTokenResult result) : IGoogleCredentialStore
+    {
+        public int AccessTokenRequests { get; private set; }
+        public Task SaveFromAuthenticationPropertiesAsync(User user, Microsoft.AspNetCore.Authentication.AuthenticationProperties properties, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+        public Task<GoogleAccessTokenResult> GetAccessTokenAsync(User user, CancellationToken cancellationToken)
+        {
+            AccessTokenRequests++;
+            return Task.FromResult(result);
+        }
+        public Task<GoogleCredentialDiagnostic> GetDiagnosticAsync(User user, CancellationToken cancellationToken) =>
+            Task.FromResult(new GoogleCredentialDiagnostic(result.AccessToken is not null, result.AccessToken is not null));
+    }
+
+    private sealed class FakeHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+
+    private sealed class FakeGmailHttpHandler(HttpStatusCode statusCode, string body) : HttpMessageHandler
+    {
+        public int SendCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            SendCount++;
+            return Task.FromResult(new HttpResponseMessage(statusCode)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            });
+        }
     }
 
     private static string FindRepositoryFile(params string[] pathParts)

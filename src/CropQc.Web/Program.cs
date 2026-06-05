@@ -304,7 +304,8 @@ static EmailOptions CreateEmailOptions(IConfiguration configuration) =>
     {
         Provider = configuration["Email:Provider"] ?? EmailProviders.None,
         FromAddress = configuration["Email:FromAddress"] ?? "HL@fruitandland.com",
-        ToAddress = configuration["Email:ToAddress"] ?? "QC@fruitandland.com"
+        QcDefaultRecipients = configuration["Email:QcDefaultRecipients"] ?? configuration["Email:ToAddress"] ?? "QC@fruitandland.com",
+        ToAddress = configuration["Email:QcDefaultRecipients"] ?? configuration["Email:ToAddress"] ?? "QC@fruitandland.com"
     };
 
 static IFileStorageService CreateFileStorageService(

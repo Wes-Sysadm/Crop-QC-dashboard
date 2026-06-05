@@ -318,8 +318,14 @@ public sealed class OverrideSendViewModel
     public ReadinessViewModel Readiness { get; set; } = new();
     public IReadOnlyList<ReadinessChecklistItem> Checklist { get; set; } = [];
     public string? SenderEmail { get; set; }
+    public string? SenderDomain { get; set; }
+    public bool SenderDomainAllowed { get; set; }
     public string? RecipientEmail { get; set; }
     public bool GmailReconnectRequired { get; set; }
+    public bool GmailCredentialPresent { get; set; }
+    public bool GmailSendPermissionGranted { get; set; }
+    public bool GmailUserProviderEnabled { get; set; }
+    public string AllowedGoogleDomains { get; set; } = "";
     public OverrideSendForm Form { get; set; } = new();
 }
 

@@ -20,11 +20,28 @@
         <p>@Model.Sample.DisplayReceiptId | @Model.Receipt.GrowerName | @Model.Receipt.LotCode | @Model.Receipt.VarietyCode</p>
         <p>Sending from: <strong>@(Model.SenderEmail ?? "current Google user")</strong> to <strong>@(Model.RecipientEmail ?? "configured QC recipient")</strong>.</p>
         <p class="notice warning">This sends a QC Summary email even though required data is missing.</p>
+        <p class="muted">Emails send from the logged-in Google Workspace account. Allowed Google Workspace domains: @Model.AllowedGoogleDomains.</p>
         <p class="muted">If Gmail permission is missing, sign out and sign back in to reconnect Google/Gmail with the send permission.</p>
         <p>
             <a href="/Samples/@Model.Sample.Id">Back to sample detail</a>
             <a class="inline-action" href="/Receipts/@Model.Sample.ReceiptId">Back to receipt detail</a>
         </p>
+    </section>
+
+    <section class="panel">
+        <h2>Email Diagnostics</h2>
+        <div class="table-wrap">
+            <table>
+                <tbody>
+                    <tr><th>Current user email</th><td>@(Model.SenderEmail ?? "Unknown")</td></tr>
+                    <tr><th>Current user domain</th><td>@(Model.SenderDomain ?? "Unknown")</td></tr>
+                    <tr><th>Domain allowed</th><td><span class="status @(Model.SenderDomainAllowed ? "ready" : "missing")">@(Model.SenderDomainAllowed ? "Yes" : "No")</span></td></tr>
+                    <tr><th>Gmail send permission granted</th><td><span class="status @(Model.GmailSendPermissionGranted ? "ready" : "missing")">@(Model.GmailSendPermissionGranted ? "Yes" : "No")</span></td></tr>
+                    <tr><th>Gmail credential present</th><td><span class="status @(Model.GmailCredentialPresent ? "ready" : "missing")">@(Model.GmailCredentialPresent ? "Yes" : "No")</span></td></tr>
+                    <tr><th>Email provider GmailUser</th><td><span class="status @(Model.GmailUserProviderEnabled ? "ready" : "missing")">@(Model.GmailUserProviderEnabled ? "Yes" : "No")</span></td></tr>
+                </tbody>
+            </table>
+        </div>
     </section>
 
     <section class="panel">

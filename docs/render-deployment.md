@@ -64,7 +64,7 @@ Set these variables in Render:
 - `ConnectionStrings__CropQc=[Render internal Postgres connection string]`
 - `Database__EnsureCreatedOnStartup=false`
 - `Database__SeedMasterDataOnStartup=false`
-- `Authentication__AllowedGoogleDomains=wp-packing.com,earlbrownandsons.com,fruitandland.com`
+- `Authentication__AllowedGoogleDomains=fruitandland.com,earlbrownandsons.com,wp-packingllc.com`
 - `Authentication__BootstrapAdminEmails=wes@fruitandland.com`
 - `Authentication__SessionDays=7`
 - `Authentication__Google__ClientId=[Google OAuth web client ID]`
@@ -82,6 +82,7 @@ Set these variables in Render:
 - `GoogleDrive__ApplicationName=Crop QC Dashboard`
 - `GoogleDrive__BaseFolderName=Photos`
 - `Email__Provider=GmailUser`
+- `Email__QcDefaultRecipients=rob@earlbrownandsons.com,wes@fruitandland.com`
 - `Google__Gmail__SendScope=https://www.googleapis.com/auth/gmail.send`
 - `QcStation__ApiBaseUrl=https://crop-qc-dashboard.onrender.com`
 - `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link`
@@ -104,9 +105,9 @@ The script publishes the WinForms x86 app, builds `artifacts\installers\CropQcSt
 
 To deploy the installer download, upload `artifacts\installers\CropQcStationSetup.msi` to Google Drive, restrict sharing to company users, and set `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link` in Render. Render does not host, proxy, or build the MSI. If no installer URL is configured, `/Admin/Downloads` shows “QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.” The web app still starts normally.
 
-Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
+Google login is required for dashboard pages. Only Google Workspace accounts from `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 
-QC Summary email uses Gmail API user-delegated sending when `Email__Provider=GmailUser`. Emails send from the logged-in Google account, and sent messages should appear in that user's Gmail Sent folder. Users may need to log out and sign back in after the Gmail scope is added so Google can prompt for `gmail.send`.
+QC Summary email uses Gmail API user-delegated sending when `Email__Provider=GmailUser`. Emails send from the logged-in Google Workspace account for any allowed company domain, and sent messages should appear in that user's Gmail Sent folder. During testing, set `Email__QcDefaultRecipients=rob@earlbrownandsons.com,wes@fruitandland.com`; change this before production rollout if the recipient list changes. Users may need to log out and sign back in after the Gmail scope is added so Google can prompt for `gmail.send`.
 
 Successful Google login creates a persistent local dashboard session for `Authentication__SessionDays`, which defaults to 7 days. Users stay signed in for one week unless they click Logout, their account is deactivated, or authentication fails. Logout immediately clears the local auth cookie.
 
@@ -334,6 +335,8 @@ https://crop-qc-dashboard.onrender.com/signin-google
 ```
 
 Refresh tokens for Gmail sending are stored encrypted with ASP.NET Core Data Protection in the database. Tokens are not logged and are cleared from the local auth cookie after login processing. If a user sees `Gmail permission is required. Please reconnect Google/Gmail.`, have them sign out and sign in again to grant the Gmail send permission.
+
+The OAuth app must allow users from the company Google Workspace domains: `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com`.
 
 ## Receiving Data Export
 
