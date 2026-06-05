@@ -4,21 +4,77 @@ namespace CropQc.QcStation.Fta;
 
 public sealed class NativeDllLoader : INativeDllLoader
 {
+    private const uint LoadWithAlteredSearchPath = 0x00000008;
+
     public DllLoadResult TryLoad(string dllPath)
     {
+        var fullPath = Path.GetFullPath(dllPath);
+        var dllSearchDirectory = Path.GetDirectoryName(fullPath);
+        var currentDirectoryBeforeLoad = Environment.CurrentDirectory;
         try
         {
-            var handle = NativeLibrary.Load(dllPath);
-            return DllLoadResult.Success(handle);
+            if (OperatingSystem.IsWindows())
+            {
+                if (!string.IsNullOrWhiteSpace(dllSearchDirectory))
+                {
+                    SetDllDirectory(dllSearchDirectory);
+                }
+
+                var handle = LoadLibraryEx(fullPath, IntPtr.Zero, LoadWithAlteredSearchPath);
+                if (handle == IntPtr.Zero)
+                {
+                    var error = Marshal.GetLastWin32Error();
+                    var message = Marshal.GetPInvokeErrorMessage(error);
+                    if (error == 193)
+                    {
+                        return DllLoadResult.ArchitectureMismatch(
+                            $"{message} (Win32 error {error})",
+                            "Win32 LoadLibraryEx",
+                            error,
+                            currentDirectoryBeforeLoad,
+                            Environment.CurrentDirectory,
+                            dllSearchDirectory,
+                            fullPath);
+                    }
+
+                    return DllLoadResult.Failed(
+                        $"{message} (Win32 error {error})",
+                        "Win32 LoadLibraryEx",
+                        error,
+                        currentDirectoryBeforeLoad,
+                        Environment.CurrentDirectory,
+                        dllSearchDirectory,
+                        fullPath);
+                }
+
+                return DllLoadResult.Success(handle, currentDirectoryBeforeLoad, Environment.CurrentDirectory, dllSearchDirectory, fullPath);
+            }
+
+            var nativeHandle = NativeLibrary.Load(fullPath);
+            return DllLoadResult.Success(nativeHandle, currentDirectoryBeforeLoad, Environment.CurrentDirectory, dllSearchDirectory, fullPath);
         }
         catch (Exception ex) when (ex is DllNotFoundException or BadImageFormatException or FileLoadException)
         {
             if (ex is BadImageFormatException || ex.Message.Contains("0x8007000B", StringComparison.OrdinalIgnoreCase))
             {
-                return DllLoadResult.ArchitectureMismatch(ex.Message);
+                return DllLoadResult.ArchitectureMismatch(
+                    ex.Message,
+                    ex.GetType().Name,
+                    ex.HResult,
+                    currentDirectoryBeforeLoad,
+                    Environment.CurrentDirectory,
+                    dllSearchDirectory,
+                    fullPath);
             }
 
-            return DllLoadResult.Failed(ex.Message);
+            return DllLoadResult.Failed(
+                ex.Message,
+                ex.GetType().Name,
+                ex.HResult,
+                currentDirectoryBeforeLoad,
+                Environment.CurrentDirectory,
+                dllSearchDirectory,
+                fullPath);
         }
     }
 
@@ -46,4 +102,10 @@ public sealed class NativeDllLoader : INativeDllLoader
             NativeLibrary.Free(nativeLibraryHandle);
         }
     }
+
+    [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool SetDllDirectory(string? lpPathName);
+
+    [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern IntPtr LoadLibraryEx(string lpLibFileName, IntPtr hFile, uint dwFlags);
 }

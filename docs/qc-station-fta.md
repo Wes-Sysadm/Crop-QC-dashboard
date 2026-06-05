@@ -103,7 +103,7 @@ An attempt was made to load a program with an incorrect format. (0x8007000B)
 
 That usually means a 32-bit/64-bit mismatch. The current `FTA_dll.dll` in `C:\Program Files\FTADLL` is likely 32-bit, while a normal .NET run may start the QC Station as a 64-bit process.
 
-For RealDll testing on the QC computer, run the station explicitly as x86:
+For RealDll testing on the QC computer, run the station explicitly as x86 if the diagnostic report says the process architecture is not `X86`:
 
 ```powershell
 .\scripts\dev-run-qcstation-x86.ps1
@@ -114,6 +114,27 @@ The script runs:
 ```powershell
 dotnet run --project .\src\CropQc.QcStation\CropQc.QcStation.csproj --configuration Debug --property:Platform=x86 -- .\src\CropQc.QcStation\qcstation.settings.json
 ```
+
+If the diagnostic report already says `Process architecture: X86` and the DLL still fails with `0x8007000B`, the problem is not that QC Station is running as x64. In that case, the likely cause is that `FTA_DLL.dll` or one of its dependencies is the wrong architecture, invalid, or being resolved from the wrong folder.
+
+The FTA DLL is a 32-bit vendor DLL. On 64-bit Windows, `C:\Windows\SysWOW64` is the correct 32-bit system folder; `C:\Windows\System32` is the 64-bit system folder. When the x86 QC Station reports `0x8007000B`, run `Run Full FTA Diagnostic` and compare:
+
+- `C:\Windows\SysWOW64\FTA_DLL.dll`
+- `C:\Windows\SysWOW64\borlndmm.dll`
+- `C:\Program Files\FTADLL\FTA_DLL.dll`
+- configured `FtaDllPath`
+- current directory and DLL search folder used during load
+
+If `FTA_DLL.dll` or `borlndmm.dll` is not reported as `x86`, reinstall `FTADLL.exe` from Admin -> Downloads or point `FtaDllPath` at the valid 32-bit vendor DLL folder.
+
+One known failure pattern is:
+
+- `FTA_DLL.dll` reports `x86`
+- QC Station reports `Process architecture: X86`
+- `borlndmm.dll` reports `x64`
+- the loader reports `%1 is not a valid Win32 application. (Win32 error 193)` / `0x000000C1`
+
+That means the 32-bit `FTA_DLL.dll` is trying to load a 64-bit `borlndmm.dll` dependency. Install or copy the vendor 32-bit `borlndmm.dll` next to the selected `FTA_DLL.dll`. If `C:\Program Files\FTADLL\FTA_DLL.dll` is the valid x86 copy and `C:\Program Files\FTADLL\borlndmm.dll` is missing, copy the vendor 32-bit `borlndmm.dll` into `C:\Program Files\FTADLL`.
 
 The QC Station project supports `AnyCPU`, `x86`, and `x64` platforms. Normal solution builds remain unchanged; RealDll hardware testing should use x86 until the vendor DLL bitness is confirmed.
 
@@ -274,6 +295,7 @@ The WinForms `FTA Diagnostics` tab is intended to make the USB/HID vs serial que
 The diagnostic report checks:
 
 - process architecture and OS architecture
+- app base directory, process main module path, and installed-mode detection
 - loaded config path
 - `FtaConnectionMode`, `FtaSerialPort`, and FTA DLL settings
 - `C:\Windows\SysWOW64\FTA_DLL.dll`
@@ -283,6 +305,9 @@ The diagnostic report checks:
 - `C:\Program Files\FTADLL\FTA_DLL.dll`
 - `C:\Program Files\FTADLL\FTA_DLL.CFG`
 - `C:\Program Files (x86)\FTAWin`
+- PE architecture, file size, modified time, and version details for the configured and alternate vendor DLL copies
+- common `borlndmm.dll` locations, including whether any x86 copy was found
+- DLL load exception type, HResult, current directory, DLL search folder, and full path used
 - USB HID devices, highlighting `VID_6017&PID_3430`
 - serial COM ports and likely USB-to-serial adapters
 - visible COM strings in `FTA_DLL.CFG`
@@ -294,6 +319,9 @@ The plain-English conclusion is meant to be actionable. Examples include:
 - `FTA USB device detected, but DLL did not respond.`
 - `FTA DLL missing. Install FTADLL.exe from Admin -> Downloads, then rerun diagnostics.`
 - `FTA_DLL.dll requires x86. Install/run the x86 QC Station app.`
+- `QC Station is already running x86. The DLL load failure is likely caused by the FTA DLL file or one of its dependencies being the wrong architecture, invalid, or loaded from the wrong folder.`
+- `FTA_DLL.dll is 32-bit, but borlndmm.dll is 64-bit. Install/copy the vendor 32-bit borlndmm.dll next to FTA_DLL.dll.`
+- `Connection candidate looks valid: configured COM port is present. DLL load must be fixed before FTAInit can test the FTA.`
 - `COM port detected, but FTA DLL did not respond. Confirm the correct COM port in FTA Setup / Calibration and verify adapter drivers.`
 - `No USB HID or COM connection was detected. Check cable, power, Device Manager, and FTADLL/driver installation.`
 
@@ -352,7 +380,7 @@ The confirmed working RealDll configuration for the current FTA unit is:
 
 With `FtaInitializationMode` set to `FTAInit2`, the normal `Initialize FTA` command calls `FTAInit2` automatically. The `Initialize FTA With Config Path` command also calls `FTAInit2` directly, regardless of the configured initialization mode.
 
-When `FtaWorkingDirectory` is configured and the directory exists, the FTA reader sets the process current directory before probing/calling the DLL. This helps test whether the vendor DLL expects to run from `C:\Program Files\FTADLL` while loading supporting files.
+When `FtaWorkingDirectory` is configured and the directory exists, the FTA reader sets the process current directory before probing/calling the DLL. It also loads the configured main DLL by full path and adds the configured `FtaDllPath` as the DLL search folder before loading. This helps dependencies such as `borlndmm.dll` resolve from `C:\Windows\SysWOW64` or the configured vendor DLL folder instead of accidentally using an incompatible copy.
 
 If `FTAInit` beeps but firmness commands do not move the probe, compare behavior against the original vendor app and watch the config timestamps before and after opening `FTASetup()` or changing settings in the vendor software. A changed timestamp may reveal which config file the working vendor path actually uses.
 
