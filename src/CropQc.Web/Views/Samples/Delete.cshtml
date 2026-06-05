@@ -1,0 +1,37 @@
+@model DeleteSampleConfirmationViewModel
+@{
+    ViewData["Title"] = "Delete QC Sample";
+}
+
+<h1>Delete QC Sample</h1>
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+else
+{
+    <section class="panel">
+        <h2>Delete this QC sample?</h2>
+        <p class="notice warning">This performs a soft delete. The receipt remains, Google Drive photos are not deleted, and the action is audit logged.</p>
+        <dl class="details-list">
+            <dt>Sample ID</dt><dd>@Model.SampleId</dd>
+            <dt>Receipt</dt><dd>@Model.DisplayReceiptId</dd>
+            <dt>Crop Year</dt><dd>@Model.CropYear</dd>
+            <dt>Warehouse</dt><dd>@Model.Warehouse</dd>
+            <dt>Grower</dt><dd>@Model.GrowerName</dd>
+            <dt>Lot</dt><dd>@Model.LotCode</dd>
+            <dt>Variety</dt><dd>@Model.VarietyCode</dd>
+            <dt>Sample type</dt><dd>@Model.SampleType</dd>
+            <dt>Photo count</dt><dd>@Model.PhotoCount</dd>
+            <dt>Email status</dt><dd>@Model.EmailStatus</dd>
+        </dl>
+        <form method="post" action="/Samples/@Model.SampleId/Delete">
+            <div class="field">
+                <label>Reason</label>
+                <textarea name="Reason" rows="3" placeholder="Test data cleanup, duplicate sample, or other reason"></textarea>
+            </div>
+            <button class="danger-button" type="submit">Delete Sample</button>
+            <a class="button secondary-button" href="/Receipts/@Model.ReceiptId">Cancel</a>
+        </form>
+    </section>
+}

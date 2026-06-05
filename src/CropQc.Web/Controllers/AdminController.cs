@@ -11,6 +11,7 @@ public sealed class AdminController(
     IUserAdminService userAdminService,
     IAdminAuthorizationService authorizationService,
     IQcStationAdminService qcStationAdminService,
+    IDataCleanupService dataCleanupService,
     IConfiguration configuration) : Controller
 {
     private const string FtaDllInstallerFileName = "FTADLL.exe";
@@ -55,6 +56,20 @@ public sealed class AdminController(
         };
 
         return View(model);
+    }
+
+    [HttpGet("DataCleanup")]
+    [Authorize(Policy = "RequireAdmin")]
+    public async Task<IActionResult> DataCleanup([FromQuery] DataCleanupFilterForm filter, CancellationToken cancellationToken) =>
+        View(await dataCleanupService.BuildPageAsync(filter, cancellationToken));
+
+    [HttpPost("DataCleanup/Execute")]
+    [Authorize(Policy = "RequireAdmin")]
+    public async Task<IActionResult> ExecuteDataCleanup(DataCleanupFilterForm filter, CancellationToken cancellationToken)
+    {
+        var (preview, error) = await dataCleanupService.ExecuteAsync(filter, authorizationService.GetEmail(User) ?? "", cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? $"Cleanup complete. Samples affected: {preview.SamplesAffected}. Receipts affected: {preview.ReceiptsAffected}.";
+        return RedirectToAction(nameof(DataCleanup), filter);
     }
 
     [HttpGet("QcStations")]

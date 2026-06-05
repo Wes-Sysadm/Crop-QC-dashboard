@@ -137,11 +137,15 @@ public sealed class ReceiptListViewModel
     public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
     public IReadOnlyList<Room> Rooms { get; set; } = [];
     public IReadOnlyList<FruitProfile> FruitProfiles { get; set; } = [];
+    public IReadOnlyList<int> AvailableCropYears { get; set; } = [];
+    public int CurrentCropYear { get; set; }
+    public string CropYearHelpText { get; set; } = "";
 }
 
 public sealed class ReceiptSearchForm
 {
     public int? CropYear { get; set; }
+    public bool AllCropYears { get; set; }
     public string? ReceiptId { get; set; }
     public string? Grower { get; set; }
     public string? Lot { get; set; }
@@ -160,12 +164,16 @@ public sealed record ReceiptListItemViewModel(
     string GrowerName,
     string LotCode,
     string VarietyCode,
-    int BinCount);
+    int BinCount,
+    int SampleCount = 0,
+    string QcStatus = "",
+    DateTimeOffset? LastUpdatedAt = null);
 
 public sealed class CreateReceiptForm
 {
     public int CropYear { get; set; } = DateTimeOffset.Now.Year;
     public DateTimeOffset ReceivedAt { get; set; } = DateTimeOffset.Now;
+    public bool ConfirmCropYear { get; set; }
     public string CompuTechReceiptId { get; set; } = "";
     public int WarehouseId { get; set; }
     public int RoomId { get; set; }
@@ -182,6 +190,7 @@ public sealed class ReceiptDetailViewModel
     public IReadOnlyList<SampleListItemViewModel> Samples { get; set; } = [];
     public IReadOnlyList<PhotoGroupViewModel> PhotoGroups { get; set; } = [];
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
+    public bool CanDeleteSamples { get; set; }
 }
 
 public sealed class SampleListItemViewModel
@@ -203,6 +212,9 @@ public sealed class SampleListItemViewModel
     public bool IsReady { get; set; }
     public IReadOnlyList<string> MissingItems { get; set; } = [];
     public IReadOnlyList<ReadinessChecklistItem> Checklist { get; set; } = [];
+    public int CompletedFruitCount { get; set; }
+    public decimal? AveragePressureLbs { get; set; }
+    public bool IsDeleted { get; set; }
 }
 
 public sealed class SampleDetailViewModel
@@ -309,6 +321,65 @@ public sealed class OverrideSendViewModel
     public string? RecipientEmail { get; set; }
     public bool GmailReconnectRequired { get; set; }
     public OverrideSendForm Form { get; set; } = new();
+}
+
+public sealed class DeleteSampleConfirmationViewModel
+{
+    public string? DataWarning { get; set; }
+    public long SampleId { get; set; }
+    public long ReceiptId { get; set; }
+    public int CropYear { get; set; }
+    public string DisplayReceiptId { get; set; } = "";
+    public string Warehouse { get; set; } = "";
+    public string GrowerName { get; set; } = "";
+    public string LotCode { get; set; } = "";
+    public string VarietyCode { get; set; } = "";
+    public string SampleType { get; set; } = "";
+    public int PhotoCount { get; set; }
+    public string EmailStatus { get; set; } = "";
+    public string Reason { get; set; } = "";
+}
+
+public sealed class DataCleanupViewModel
+{
+    public string? DataWarning { get; set; }
+    public DataCleanupFilterForm Filter { get; set; } = new();
+    public DataCleanupPreviewViewModel Preview { get; set; } = new();
+    public IReadOnlyList<int> AvailableCropYears { get; set; } = [];
+    public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
+    public IReadOnlyList<SampleType> SampleTypes { get; set; } = [];
+    public string EnvironmentName { get; set; } = "";
+    public string DatabaseProvider { get; set; } = "";
+}
+
+public sealed class DataCleanupFilterForm
+{
+    public int? CropYear { get; set; }
+    public bool AllCropYears { get; set; }
+    public DateTime? FromDate { get; set; }
+    public DateTime? ToDate { get; set; }
+    public int? WarehouseId { get; set; }
+    public int? SampleTypeId { get; set; }
+    public string? ReceiptId { get; set; }
+    public bool IncludeEmailedSamples { get; set; }
+    public bool IncludeDeletedSamples { get; set; }
+    public bool IncludePhotoMetadata { get; set; }
+    public bool IncludeReceiptsWithoutSamples { get; set; }
+    public string CleanupMode { get; set; } = "Soft";
+    public string ConfirmationText { get; set; } = "";
+    public string? Reason { get; set; }
+}
+
+public sealed class DataCleanupPreviewViewModel
+{
+    public int ReceiptsAffected { get; set; }
+    public int SamplesAffected { get; set; }
+    public int FruitRowsAffected { get; set; }
+    public int PhotoRecordsAffected { get; set; }
+    public int EmailLogsAffected { get; set; }
+    public int DriveFilesAffected { get; set; }
+    public bool IsProduction { get; set; }
+    public bool IsAllCropYears { get; set; }
 }
 
 public sealed class OverrideSendForm

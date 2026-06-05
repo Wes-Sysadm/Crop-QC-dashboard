@@ -31,6 +31,10 @@
         <p>
             <a class="button" href="/Samples/@Model.Sample.Id/Starch">Starch Input</a>
             <a href="/Receipts/@Model.Sample.ReceiptId">Back to receipt</a>
+            @if (User.IsInRole("Admin"))
+            {
+                <a class="button secondary-button danger-link" href="/Samples/@Model.Sample.Id/Delete">Delete Sample</a>
+            }
         </p>
     </section>
 

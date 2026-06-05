@@ -18,7 +18,7 @@ public sealed class QcSampleService(CropQcDbContext dbContext, IAuditService aud
 {
     public async Task<(QcSampleDto? Sample, string? Error)> CreateAsync(long receiptId, CreateQcSampleRequest request, CancellationToken cancellationToken)
     {
-        var receipt = await dbContext.Receipts.FindAsync([receiptId], cancellationToken);
+        var receipt = await dbContext.Receipts.SingleOrDefaultAsync(x => x.Id == receiptId && !x.IsDeleted, cancellationToken);
         if (receipt is null)
         {
             return (null, "Receipt not found.");
@@ -29,7 +29,7 @@ public sealed class QcSampleService(CropQcDbContext dbContext, IAuditService aud
             return (null, "SampleTypeId is required.");
         }
 
-        var existingCount = await dbContext.QcSamples.CountAsync(x => x.ReceiptId == receiptId, cancellationToken);
+        var existingCount = await dbContext.QcSamples.CountAsync(x => x.ReceiptId == receiptId && !x.IsDeleted, cancellationToken);
         var sequence = existingCount + 1;
         var sample = new QcSample
         {
@@ -56,13 +56,13 @@ public sealed class QcSampleService(CropQcDbContext dbContext, IAuditService aud
 
     public async Task<QcSampleDto?> GetAsync(long id, CancellationToken cancellationToken) =>
         await dbContext.QcSamples.AsNoTracking().Include(x => x.Receipt)
-            .Where(x => x.Id == id)
+            .Where(x => x.Id == id && !x.IsDeleted)
             .Select(x => ToDto(x, x.Receipt.CompuTechReceiptId))
             .SingleOrDefaultAsync(cancellationToken);
 
     public async Task<IReadOnlyList<QcSampleDto>> GetForReceiptAsync(long receiptId, CancellationToken cancellationToken) =>
         await dbContext.QcSamples.AsNoTracking().Include(x => x.Receipt)
-            .Where(x => x.ReceiptId == receiptId)
+            .Where(x => x.ReceiptId == receiptId && !x.IsDeleted)
             .OrderBy(x => x.SampleSequenceNumber)
             .Select(x => ToDto(x, x.Receipt.CompuTechReceiptId))
             .ToListAsync(cancellationToken);
@@ -71,7 +71,7 @@ public sealed class QcSampleService(CropQcDbContext dbContext, IAuditService aud
     {
         var today = DateTimeOffset.UtcNow.Date;
         return await dbContext.QcSamples.AsNoTracking().Include(x => x.Receipt)
-            .Where(x => x.Receipt.WarehouseId == warehouseId && x.SampleTakenAt.Date == today)
+            .Where(x => !x.IsDeleted && x.Receipt.WarehouseId == warehouseId && x.SampleTakenAt.Date == today)
             .OrderByDescending(x => x.SampleTakenAt)
             .Select(x => ToDto(x, x.Receipt.CompuTechReceiptId))
             .ToListAsync(cancellationToken);
@@ -79,7 +79,7 @@ public sealed class QcSampleService(CropQcDbContext dbContext, IAuditService aud
 
     public async Task<(QcSampleDto? Sample, string? Error)> UpdateStatusesAsync(long id, UpdateQcSampleStatusesRequest request, CancellationToken cancellationToken)
     {
-        var sample = await dbContext.QcSamples.Include(x => x.Receipt).SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        var sample = await dbContext.QcSamples.Include(x => x.Receipt).SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
         if (sample is null)
         {
             return (null, "QC sample not found.");

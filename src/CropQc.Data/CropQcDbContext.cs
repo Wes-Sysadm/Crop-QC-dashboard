@@ -173,7 +173,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.CompuTechReceiptId).HasMaxLength(50).IsRequired();
             entity.Property(x => x.GrowerName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.LotCode).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.DeleteReason).HasMaxLength(1000);
             entity.HasIndex(x => x.CompuTechReceiptId);
+            entity.HasIndex(x => new { x.CropYear, x.IsDeleted });
             entity.HasOne(x => x.Warehouse)
                 .WithMany(x => x.Receipts)
                 .HasForeignKey(x => x.WarehouseId)
@@ -195,7 +197,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.PhotoStatus).HasMaxLength(50).IsRequired();
             entity.Property(x => x.EmailStatus).HasMaxLength(50).IsRequired();
             entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.Property(x => x.DeleteReason).HasMaxLength(1000);
             entity.HasIndex(x => new { x.ReceiptId, x.SampleSequenceNumber }).IsUnique();
+            entity.HasIndex(x => new { x.ReceiptId, x.IsDeleted });
             entity.HasOne(x => x.SampleType)
                 .WithMany(x => x.Samples)
                 .HasForeignKey(x => x.SampleTypeId)
