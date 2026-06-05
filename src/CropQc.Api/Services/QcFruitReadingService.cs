@@ -21,11 +21,6 @@ public sealed class QcFruitReadingService(CropQcDbContext dbContext, IAuditServi
             return (null, "RowNumber must be between 1 and 25.");
         }
 
-        if (request.IsCompleted && (request.Pressure1Lbs is null || request.Pressure2Lbs is null || request.WeightGrams is null || request.GradeId is null))
-        {
-            return (null, "Completed rows require Pressure1Lbs, Pressure2Lbs, WeightGrams, and GradeId.");
-        }
-
         var sample = await dbContext.QcSamples.Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
             .SingleOrDefaultAsync(x => x.Id == sampleId, cancellationToken);
         if (sample is null)
@@ -66,7 +61,12 @@ public sealed class QcFruitReadingService(CropQcDbContext dbContext, IAuditServi
         reading.StarchScaleValueId = request.StarchScaleValueId;
         reading.SizeCategory = size.SizeCategory;
         reading.SizeStatus = size.SizeStatus;
-        reading.IsCompleted = request.IsCompleted && !isBlank;
+        reading.IsCompleted = request.IsCompleted
+            && !isBlank
+            && request.Pressure1Lbs is not null
+            && request.Pressure2Lbs is not null
+            && request.WeightGrams is not null
+            && request.GradeId is not null;
         reading.UpdatedAt = DateTimeOffset.UtcNow;
 
         await dbContext.SaveChangesAsync(cancellationToken);

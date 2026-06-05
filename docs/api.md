@@ -48,7 +48,7 @@ Duplicate receiving samples are allowed. The next `SampleSequenceNumber` is assi
 - `POST /api/fruit-readings/{readingId}/defects`
 - `DELETE /api/fruit-readings/{readingId}/defects/{defectId}`
 
-Rows are limited to 1 through 25. A completed row requires Pressure 1, Pressure 2, weight in grams, and grade. Starch can be saved later. Size category/status is calculated from fruit type and minimum weight thresholds. Below the smallest threshold is `Undersized`.
+Rows are limited to 1 through 25. Partial rows are valid work in progress and should be saved when any pressure, weight, grade, starch, or defect data is entered. A row is marked complete only when Pressure 1, Pressure 2, weight in grams, and grade are present. Starch can be saved later. Size category/status is calculated from fruit type and minimum weight thresholds. Below the smallest threshold is `Undersized`.
 
 ## Photos
 

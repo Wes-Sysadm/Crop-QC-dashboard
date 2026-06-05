@@ -190,7 +190,7 @@ Use the web dashboard at `http://localhost:5275`.
    - Optional multiple defects
    - Optional notes when `Other` defect is selected
 8. Save the fruit rows.
-9. Confirm the row shows calculated average pressure, calculated size, size status, and completed status.
+9. Confirm partial rows save as In Progress and can be completed later. Confirm rows with Pressure 1, Pressure 2, weight, and grade show calculated average pressure, calculated size, size status, and Complete status.
 10. Add placeholder photo metadata required for the sample type:
     - Door/Room or Line: `SampleBeforeCutting` and `CutFruit`.
     - Receiving: receipt-level `BinTruck`, plus sample-level `SampleBeforeCutting`, `CutFruit`, and `FruitAfterStarch`.
