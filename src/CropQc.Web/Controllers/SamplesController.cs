@@ -1,6 +1,7 @@
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using CropQc.Shared.Storage;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CropQc.Web.Controllers;
@@ -51,10 +52,21 @@ public sealed class SamplesController(
     }
 
     [HttpGet("{id:long}/OverrideSend")]
+    [Authorize(Policy = "RequireManagerOrAdmin")]
     public async Task<IActionResult> OverrideSend(long id, CancellationToken cancellationToken) =>
         View(await dataService.GetOverrideSendAsync(id, cancellationToken));
 
+    [HttpPost("{id:long}/Send")]
+    [Authorize(Policy = "RequireQcUserOrHigher")]
+    public async Task<IActionResult> SendQcSummary(long id, CancellationToken cancellationToken)
+    {
+        var error = await dataService.SendQcSummaryAsync(id, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? $"Email sent from {User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value}.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
     [HttpPost("{id:long}/OverrideSend")]
+    [Authorize(Policy = "RequireManagerOrAdmin")]
     public async Task<IActionResult> LogOverrideSend(long id, OverrideSendForm form, CancellationToken cancellationToken)
     {
         form.SampleId = id;
@@ -65,7 +77,7 @@ public sealed class SamplesController(
             return RedirectToAction(nameof(OverrideSend), new { id });
         }
 
-        TempData["Success"] = "Override send placeholder logged. No email was sent.";
+        TempData["Success"] = $"Email sent from {User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value}.";
         return RedirectToAction(nameof(Details), new { id });
     }
 

@@ -16,9 +16,11 @@
 @if (Model.Sample is not null && Model.Receipt is not null)
 {
     <section class="panel">
-        <h2>Manager/Admin Override Placeholder</h2>
+        <h2>Manager/Admin Override Send</h2>
         <p>@Model.Sample.DisplayReceiptId | @Model.Receipt.GrowerName | @Model.Receipt.LotCode | @Model.Receipt.VarietyCode</p>
-        <p class="notice warning">This logs an override placeholder only. No QC Summary email will be sent.</p>
+        <p>Sending from: <strong>@(Model.SenderEmail ?? "current Google user")</strong> to <strong>@(Model.RecipientEmail ?? "configured QC recipient")</strong>.</p>
+        <p class="notice warning">This sends a QC Summary email even though required data is missing.</p>
+        <p class="muted">If Gmail permission is missing, sign out and sign back in to reconnect Google/Gmail with the send permission.</p>
         <p>
             <a href="/Samples/@Model.Sample.Id">Back to sample detail</a>
             <a class="inline-action" href="/Receipts/@Model.Sample.ReceiptId">Back to receipt detail</a>
@@ -47,8 +49,8 @@
         </label>
         <label class="checkbox-field wide">
             <input name="ConfirmOverride" type="checkbox" value="true" required />
-            I confirm this should be logged as an override placeholder with missing data.
+            I confirm this should be sent with missing data.
         </label>
-        <button type="submit">Log Override Placeholder</button>
+        <button type="submit">Send QC Summary Override</button>
     </form>
 }

@@ -6,9 +6,9 @@ The following areas are explicitly deferred until requested.
 
 Create and validate a provider-specific PostgreSQL migration path before using Render Postgres in production. Existing SQL Server migrations remain in place for current local development.
 
-## Google Drive And Gmail Integrations
+## Remaining Google Workspace Integrations
 
-Implement real Google Shared Drive upload and Gmail API or Google Workspace SMTP sending after the provider boundaries are reviewed.
+Google Shared Drive photo upload and Gmail user-delegated QC Summary sending are implemented. Remaining future work includes Gmail-generated attachments if needed, Google Drive archive workflows, and any broader Workspace automation beyond MVP 1 Receiving/QC.
 
 ## Admin-Reviewed Retention Archive/Delete
 

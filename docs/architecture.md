@@ -9,7 +9,7 @@
 - Google Shared Drive as the target store for photos and attachments.
 - Windows desktop QC Station app.
 - SQLite local cache for later offline QC Station data.
-- Gmail API or Google Workspace SMTP relay later for QC Summary email.
+- Gmail API user-delegated sending for QC Summary email.
 
 ## Project Boundaries
 
@@ -35,7 +35,7 @@ Admin-reviewed archive/delete workflows are future work. Until that workflow exi
 
 ## Email Boundary
 
-Gmail API or Google Workspace SMTP relay will be used later for QC Summary email. MVP 1 documentation reserves `HL@fruitandland.com` as the sender and `QC@fruitandland.com` as the QC Summary recipient.
+QC Summary email sends through the Gmail API using the logged-in Google user's delegated `gmail.send` permission when `Email__Provider=GmailUser` is configured. The configured QC recipient defaults to `QC@fruitandland.com`; the sender is the logged-in user, not a shared SMTP account. Refresh tokens are encrypted with ASP.NET Core Data Protection and are not logged.
 
 ## Offline Boundary
 

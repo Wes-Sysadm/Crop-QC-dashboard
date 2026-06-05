@@ -81,11 +81,12 @@ Set these variables in Render:
 - `GoogleDrive__ServiceAccountJson=[Google service account JSON]`
 - `GoogleDrive__ApplicationName=Crop QC Dashboard`
 - `GoogleDrive__BaseFolderName=Photos`
-- `Email__Provider=None`
+- `Email__Provider=GmailUser`
+- `Google__Gmail__SendScope=https://www.googleapis.com/auth/gmail.send`
 - `QcStation__ApiBaseUrl=https://crop-qc-dashboard.onrender.com`
 - `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link`
 
-Do not commit database passwords, Google credentials, Gmail credentials, or API secrets.
+Do not commit database passwords, Google credentials, Gmail credentials, OAuth tokens, or API secrets.
 
 WinForms QC Station access is managed from the database, not with one shared Render API key. Sign in as Admin, open `/Admin/QcStations`, create one station record per QC computer, and download that station's `qcstation.settings.json` immediately after creation or key rotation. The station sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the dashboard stores only the key hash. Deactivate a station to revoke access without breaking other QC computers.
 
@@ -104,6 +105,8 @@ The script publishes the WinForms x86 app, builds `artifacts\installers\CropQcSt
 To deploy the installer download, upload `artifacts\installers\CropQcStationSetup.msi` to Google Drive, restrict sharing to company users, and set `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link` in Render. Render does not host, proxy, or build the MSI. If no installer URL is configured, `/Admin/Downloads` shows “QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.” The web app still starts normally.
 
 Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
+
+QC Summary email uses Gmail API user-delegated sending when `Email__Provider=GmailUser`. Emails send from the logged-in Google account, and sent messages should appear in that user's Gmail Sent folder. Users may need to log out and sign back in after the Gmail scope is added so Google can prompt for `gmail.send`.
 
 Successful Google login creates a persistent local dashboard session for `Authentication__SessionDays`, which defaults to 7 days. Users stay signed in for one week unless they click Logout, their account is deactivated, or authentication fails. Logout immediately clears the local auth cookie.
 
@@ -302,6 +305,20 @@ https://[render-host]/signin-google
 Do not add an `http://` redirect URI in Google. If Google shows a `redirect_uri_mismatch` with `http://crop-qc-dashboard.onrender.com/signin-google`, confirm `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` is set in Render and redeploy the service.
 
 Set the OAuth client ID and secret in Render environment variables. Do not store them in appsettings files or source control.
+
+Enable Gmail API in the same Google Cloud project. In Google Auth Platform / Data Access, add this scope:
+
+```text
+https://www.googleapis.com/auth/gmail.send
+```
+
+The OAuth client remains a web application with redirect URI:
+
+```text
+https://crop-qc-dashboard.onrender.com/signin-google
+```
+
+Refresh tokens for Gmail sending are stored encrypted with ASP.NET Core Data Protection in the database. Tokens are not logged and are cleared from the local auth cookie after login processing. If a user sees `Gmail permission is required. Please reconnect Google/Gmail.`, have them sign out and sign in again to grant the Gmail send permission.
 
 ## Receiving Data Export
 

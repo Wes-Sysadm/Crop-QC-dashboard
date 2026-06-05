@@ -73,12 +73,20 @@
                     <a class="inline-action" href="cropqcstation://sample/@sample.Id">Open in QC Station</a>
                     @if (sample.IsReady)
                     {
-                        <button type="button">Send Placeholder</button>
+                        @if (User.IsInRole("Admin") || User.IsInRole("Manager") || User.IsInRole("QC User"))
+                        {
+                            <form method="post" action="/Samples/@sample.Id/Send" class="inline-form">
+                                <button type="submit">Send QC Summary</button>
+                            </form>
+                        }
                     }
                     else
                     {
-                        <button type="button" disabled>Send Placeholder</button>
-                        <a class="inline-action" href="/Samples/@sample.Id/OverrideSend">Override Send</a>
+                        <button type="button" disabled>Send QC Summary</button>
+                        @if (User.IsInRole("Admin") || User.IsInRole("Manager"))
+                        {
+                            <a class="inline-action" href="/Samples/@sample.Id/OverrideSend">Override Send</a>
+                        }
                     }
                 </td>
             </tr>

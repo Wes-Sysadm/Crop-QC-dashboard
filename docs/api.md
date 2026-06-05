@@ -8,7 +8,7 @@ The MVP 1 API is a Receiving/QC foundation for the future web dashboard and Wind
 - DbContext: `CropQcDbContext`.
 - Database provider: configurable `SqlServer` or `PostgreSql`. SQL Server remains the default for local development; Render Postgres is the target production provider.
 - OpenAPI is available in development at `/openapi/v1.json`.
-- Authentication is still a placeholder; endpoint shapes are designed for future authenticated users.
+- Web dashboard authentication uses allowed-domain Google login. API endpoint shapes remain designed for receiving/QC and QC Station integrations.
 
 ## Master Data
 
@@ -72,7 +72,7 @@ Expected photo types:
 
 Readiness requires a receipt, at least one completed fruit row, all completed rows to have required measurement fields, starch on all completed rows, at least one receipt-level `BinTruck` photo, and sample-level `SampleBeforeCutting`, `CutFruit`, and `FruitAfterStarch` photos.
 
-Email log creation is a send/resend placeholder only. It defaults From to `HL@fruitandland.com`, To to `QC@fruitandland.com`, and uses the sample taker as Reply-To when available.
+Web dashboard QC Summary sending uses `Email__Provider=GmailUser` to send through the logged-in user's Gmail account. Email logs record From, To, Reply-To, subject, status, Gmail message ID when returned, sender user, send timestamp, and safe failure status when sending fails.
 
 ## Audit
 

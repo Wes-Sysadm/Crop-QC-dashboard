@@ -304,6 +304,9 @@ public sealed class OverrideSendViewModel
     public ReceiptListItemViewModel? Receipt { get; set; }
     public ReadinessViewModel Readiness { get; set; } = new();
     public IReadOnlyList<ReadinessChecklistItem> Checklist { get; set; } = [];
+    public string? SenderEmail { get; set; }
+    public string? RecipientEmail { get; set; }
+    public bool GmailReconnectRequired { get; set; }
     public OverrideSendForm Form { get; set; } = new();
 }
 
