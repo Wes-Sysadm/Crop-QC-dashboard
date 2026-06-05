@@ -70,6 +70,22 @@ public sealed class AdminCleanupCropYearTests
     }
 
     [Fact]
+    public void DataCleanup_IsRestrictedToConfiguredAllowedEmails()
+    {
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "AdminController.cs"));
+        var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+        var settings = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "appsettings.json"));
+
+        Assert.Contains("DataCleanup:AllowedEmails", controller);
+        Assert.Contains("wes@fruitandland.com", controller);
+        Assert.Contains("return Forbid();", controller);
+        Assert.Contains("IsDataCleanupAllowed()", controller);
+        Assert.Contains("DataCleanup:AllowedEmails", layout);
+        Assert.Contains("canAccessDataCleanup", layout);
+        Assert.Contains("wes@fruitandland.com", settings);
+    }
+
+    [Fact]
     public void CleanupService_RequiresTypedConfirmationAndAuditLogs()
     {
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DataCleanupService.cs"));
@@ -104,6 +120,37 @@ public sealed class AdminCleanupCropYearTests
         Assert.Contains("ALTER TABLE \"QcSamples\" ADD COLUMN IF NOT EXISTS \"IsDeleted\"", program);
         Assert.Contains("IF COL_LENGTH('QcSamples', 'IsDeleted') IS NULL", program);
         Assert.Contains("IX_Receipts_CropYear_IsDeleted", program);
+    }
+
+    [Fact]
+    public void DashboardCards_LinkToActionableFilteredPages()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var homeView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Index.cshtml"));
+        var dailyQcView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "DailyQc", "Index.cshtml"));
+
+        Assert.Contains("/Receipts?DateFilter=today&SampleType=Receiving", service);
+        Assert.Contains("/DailyQc?status=ReadyToSend", service);
+        Assert.Contains("/DailyQc?status=MissingData", service);
+        Assert.Contains("/DailyQc?status=NeedsReview", service);
+        Assert.Contains("Samples Ready to Email", service);
+        Assert.DoesNotContain("Samples ready to send", service);
+        Assert.Contains("card.HelperText", homeView);
+        Assert.Contains("ReviewReasons", dailyQcView);
+        Assert.Contains("Missing Items", dailyQcView);
+    }
+
+    [Fact]
+    public void ResponsiveLayout_AvoidsWideQcStationActionTable()
+    {
+        var css = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css"));
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Admin", "QcStations.cshtml"));
+
+        Assert.Contains("overflow-x: hidden", css);
+        Assert.Contains("responsive-card-grid", css);
+        Assert.Contains("station-card", view);
+        Assert.Contains("action-bar", view);
+        Assert.DoesNotContain("<th>Actions</th>", view);
     }
 
     private static void AssertActionPolicy<TController>(string actionName, string policy)

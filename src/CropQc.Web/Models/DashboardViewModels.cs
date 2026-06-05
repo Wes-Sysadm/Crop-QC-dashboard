@@ -2,7 +2,7 @@ using CropQc.Data.Entities;
 
 namespace CropQc.Web.Models;
 
-public sealed record StatusCountCard(string Label, int Count, string Href, string CssClass);
+public sealed record StatusCountCard(string Label, int Count, string Href, string CssClass, string HelperText);
 
 public sealed class HomeDashboardViewModel
 {
@@ -146,6 +146,8 @@ public sealed class ReceiptSearchForm
 {
     public int? CropYear { get; set; }
     public bool AllCropYears { get; set; }
+    public string? DateFilter { get; set; }
+    public string? SampleType { get; set; }
     public string? ReceiptId { get; set; }
     public string? Grower { get; set; }
     public string? Lot { get; set; }
@@ -211,6 +213,7 @@ public sealed class SampleListItemViewModel
     public int? ActualSampleSize { get; set; }
     public bool IsReady { get; set; }
     public IReadOnlyList<string> MissingItems { get; set; } = [];
+    public IReadOnlyList<string> ReviewReasons { get; set; } = [];
     public IReadOnlyList<ReadinessChecklistItem> Checklist { get; set; } = [];
     public int CompletedFruitCount { get; set; }
     public decimal? AveragePressureLbs { get; set; }
@@ -320,8 +323,14 @@ public sealed class OverrideSendViewModel
     public ReadinessViewModel Readiness { get; set; } = new();
     public IReadOnlyList<ReadinessChecklistItem> Checklist { get; set; } = [];
     public string? SenderEmail { get; set; }
+    public string? SenderDomain { get; set; }
+    public bool SenderDomainAllowed { get; set; }
     public string? RecipientEmail { get; set; }
     public bool GmailReconnectRequired { get; set; }
+    public bool GmailCredentialPresent { get; set; }
+    public bool GmailSendPermissionGranted { get; set; }
+    public bool GmailUserProviderEnabled { get; set; }
+    public string AllowedGoogleDomains { get; set; } = "";
     public OverrideSendForm Form { get; set; } = new();
 }
 
@@ -423,6 +432,8 @@ public sealed class DailyQcDashboardViewModel
 {
     public string? DataWarning { get; set; }
     public int? WarehouseId { get; set; }
+    public string? Status { get; set; }
+    public string? StatusDescription { get; set; }
     public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
     public IReadOnlyList<SampleListItemViewModel> Samples { get; set; } = [];
 }

@@ -1,4 +1,5 @@
 using CropQc.Data.Entities;
+using CropQc.Web.Auth;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -28,6 +29,7 @@ public sealed record QcEmailSendResult(bool Success, string? MessageId, string? 
 
 public sealed class GmailUserEmailSender(
     EmailOptions emailOptions,
+    GoogleAuthenticationOptions authOptions,
     IGoogleCredentialStore credentialStore,
     IHttpClientFactory httpClientFactory,
     ILogger<GmailUserEmailSender> logger) : IQcEmailSender
@@ -42,6 +44,13 @@ public sealed class GmailUserEmailSender(
         if (string.IsNullOrWhiteSpace(sender.Email))
         {
             return QcEmailSendResult.Failed("A logged-in user is required to send QC Summary email.");
+        }
+
+        var senderDomain = GoogleAuthenticationOptions.GetEmailDomain(sender.Email);
+        if (senderDomain is null || !authOptions.AllowedDomains.Contains(senderDomain))
+        {
+            logger.LogWarning("Gmail send blocked for sender {SenderEmail}; domain {Domain} is not allowed.", sender.Email, senderDomain ?? "(missing)");
+            return QcEmailSendResult.Failed("Sender email domain is not allowed for Gmail sending.");
         }
 
         GoogleAccessTokenResult token;

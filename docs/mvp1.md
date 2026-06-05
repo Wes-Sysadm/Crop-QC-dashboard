@@ -65,7 +65,11 @@ Photos and attachments will be stored in Google Shared Drive. The database store
 - QC Summary preview is required before send.
 - One email per receipt.
 - No batching.
-- Email sends from the logged-in Google user to configured `Email__QcDefaultRecipients`. During testing this is `rob@earlbrownandsons.com,wes@fruitandland.com`.
+- QC Summary email sends from the logged-in Google Workspace user through Gmail API when `Email__Provider=GmailUser` is configured. Allowed company domains are `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com`. During testing, configured recipients are `rob@earlbrownandsons.com,wes@fruitandland.com`.
+- Dashboard metric cards click through to filtered receipt/Daily QC pages. Samples Missing Data and Samples Needing Review show missing fields/photos or review threshold reasons.
+- Admin Downloads links to the shared Google Drive hosted-files folder and installer/support files only. Station-specific QC Station config JSON is downloaded from Admin -> QC Stations.
+- Admin Data Cleanup requires Admin role plus an email listed in `DataCleanup__AllowedEmails`; default access is limited to `wes@fruitandland.com`.
+- Normal pages should be responsive and avoid page-level horizontal scrolling.
 - Reply-To is the user who took the sample.
 - Managers and Admins can resend with a reason.
 

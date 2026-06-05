@@ -13,6 +13,7 @@ public interface IGoogleCredentialStore
 {
     Task SaveFromAuthenticationPropertiesAsync(User user, AuthenticationProperties properties, CancellationToken cancellationToken);
     Task<GoogleAccessTokenResult> GetAccessTokenAsync(User user, CancellationToken cancellationToken);
+    Task<GoogleCredentialDiagnostic> GetDiagnosticAsync(User user, CancellationToken cancellationToken);
 }
 
 public sealed record GoogleAccessTokenResult(string? AccessToken, string? Error, bool ReconnectRequired)
@@ -20,6 +21,8 @@ public sealed record GoogleAccessTokenResult(string? AccessToken, string? Error,
     public static GoogleAccessTokenResult Success(string accessToken) => new(accessToken, null, false);
     public static GoogleAccessTokenResult Reconnect(string error) => new(null, error, true);
 }
+
+public sealed record GoogleCredentialDiagnostic(bool CredentialPresent, bool GmailSendPermissionGranted);
 
 public sealed class GoogleCredentialStore(
     CropQcDbContext dbContext,
@@ -114,6 +117,18 @@ public sealed class GoogleCredentialStore(
         credential.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
         return GoogleAccessTokenResult.Success(refreshed.AccessToken);
+    }
+
+    public async Task<GoogleCredentialDiagnostic> GetDiagnosticAsync(User user, CancellationToken cancellationToken)
+    {
+        await EnsureSchemaAsync(cancellationToken);
+        var credential = await dbContext.UserGoogleCredentials
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.UserId == user.Id && x.Provider == ProviderName, cancellationToken);
+
+        return credential is null
+            ? new GoogleCredentialDiagnostic(false, false)
+            : new GoogleCredentialDiagnostic(true, HasGmailScope(credential.Scope));
     }
 
     private async Task<GoogleTokenRefreshResult> RefreshAccessTokenAsync(string refreshToken, CancellationToken cancellationToken)

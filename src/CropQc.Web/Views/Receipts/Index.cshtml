@@ -21,6 +21,15 @@
 }
 
 <form class="toolbar" method="get">
+    <input type="hidden" name="DateFilter" value="@Model.Search.DateFilter" />
+    <input type="hidden" name="SampleType" value="@Model.Search.SampleType" />
+    @if (string.Equals(Model.Search.DateFilter, "today", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(Model.Search.SampleType))
+    {
+        <div class="notice">
+            Showing @Model.Search.SampleType receipts for @Model.Search.DateFilter.
+            <a class="inline-action" href="/Receipts">Clear dashboard filter</a>
+        </div>
+    }
     <div class="field">
         <label>Crop Year</label>
         <select name="CropYear">

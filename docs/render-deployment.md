@@ -64,7 +64,7 @@ Set these variables in Render:
 - `ConnectionStrings__CropQc=[Render internal Postgres connection string]`
 - `Database__EnsureCreatedOnStartup=false`
 - `Database__SeedMasterDataOnStartup=false`
-- `Authentication__AllowedGoogleDomains=wp-packing.com,earlbrownandsons.com,fruitandland.com`
+- `Authentication__AllowedGoogleDomains=fruitandland.com,earlbrownandsons.com,wp-packingllc.com`
 - `Authentication__BootstrapAdminEmails=wes@fruitandland.com`
 - `Authentication__SessionDays=7`
 - `Authentication__Google__ClientId=[Google OAuth web client ID]`
@@ -85,7 +85,10 @@ Set these variables in Render:
 - `Email__QcDefaultRecipients=rob@earlbrownandsons.com,wes@fruitandland.com`
 - `Google__Gmail__SendScope=https://www.googleapis.com/auth/gmail.send`
 - `QcStation__ApiBaseUrl=https://crop-qc-dashboard.onrender.com`
+- `Downloads__MasterFolderUrl=<Google Drive folder share link>`
 - `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link`
+- `DataCleanup__AllowedEmails=wes@fruitandland.com`
+- Optional review thresholds: `DashboardReview__LowPressureLbs`, `DashboardReview__HighPressureLbs`, `DashboardReview__HighStarch`, `DashboardReview__HighDefectPercent`, `DashboardReview__HighPressureVarianceLbs`
 
 Do not commit database passwords, Google credentials, Gmail credentials, OAuth tokens, or API secrets.
 
@@ -105,9 +108,9 @@ The script publishes the WinForms x86 app, builds `artifacts\installers\CropQcSt
 
 To deploy the installer download, upload `artifacts\installers\CropQcStationSetup.msi` to Google Drive, restrict sharing to company users, and set `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link` in Render. Render does not host, proxy, or build the MSI. If no installer URL is configured, `/Admin/Downloads` shows “QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.” The web app still starts normally.
 
-Google login is required for dashboard pages. Only Google Workspace accounts from `wp-packing.com`, `earlbrownandsons.com`, and `fruitandland.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
+Google login is required for dashboard pages. Only Google Workspace accounts from `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 
-QC Summary email uses Gmail API user-delegated sending when `Email__Provider=GmailUser`. Emails send from the logged-in Google account to the configured `Email__QcDefaultRecipients`, and sent messages should appear in that user's Gmail Sent folder. During the current testing phase, set `Email__QcDefaultRecipients=rob@earlbrownandsons.com,wes@fruitandland.com`; change this before production rollout if the recipient list changes. Users may need to log out and sign back in after the Gmail scope is added so Google can prompt for `gmail.send`.
+QC Summary email uses Gmail API user-delegated sending when `Email__Provider=GmailUser`. Emails send from the logged-in Google Workspace account for any allowed company domain to the configured `Email__QcDefaultRecipients`, and sent messages should appear in that user's Gmail Sent folder. During the current testing phase, set `Email__QcDefaultRecipients=rob@earlbrownandsons.com,wes@fruitandland.com`; change this before production rollout if the recipient list changes. Users may need to log out and sign back in after the Gmail scope is added so Google can prompt for `gmail.send`.
 
 Successful Google login creates a persistent local dashboard session for `Authentication__SessionDays`, which defaults to 7 days. Users stay signed in for one week unless they click Logout, their account is deactivated, or authentication fails. Logout immediately clears the local auth cookie.
 
@@ -182,10 +185,15 @@ The eventual photo storage provider must support at least 3 crop years of retent
 
 ## Admin Downloads
 
-`/Admin/Downloads` is protected by the Admin policy and links only to approved shared installer/support files. It does not proxy downloads through the web app, expose arbitrary file paths, allow uploads, commit installer binaries, store installer files in the Render container, or provide station-specific config JSON. Station configs are generated and downloaded only from `/Admin/QcStations`.
+`/Admin/Downloads` is protected by the Admin policy and links only to approved shared installer/support files. It does not proxy downloads through the web app, expose arbitrary file paths, allow uploads, commit installer binaries, store installer files in the Render container, or provide station-specific config JSON. Station configs are generated and downloaded only from `/Admin/QcStations`. The preferred production entry is `Downloads__MasterFolderUrl`, which opens the shared Google Drive folder containing `CropQcStationSetup.msi`, `FTADLL.exe`, `borlndmm.dll`, and related support files.
 
 The current Google Drive download entries are:
 
+- Name: Hosted Files Folder
+- File: Google Drive folder
+- Purpose: master Google Drive folder for hosted installer/support files.
+- Link: set with `Downloads__MasterFolderUrl=<Google Drive folder share link>`
+- Button text: `Open Google Drive Folder`
 - Name: FTA DLL Installer
 - File: `FTADLL.exe`
 - Purpose: installer/runtime files needed for GUSS FTA DLL integration on QC Station computers.
@@ -216,7 +224,7 @@ CropYear__DefaultEndMonth=7
 CropYear__DefaultEndDay=31
 ```
 
-Admin cleanup is available at `/Admin/DataCleanup`. Use Preview first, keep Soft cleanup as the normal test-data cleanup mode, and type `DELETE TEST DATA` only after verifying the counts. Hard purge is permanent for selected database records and does not automatically remove Google Drive files.
+Admin cleanup is available at `/Admin/DataCleanup` only for Admin users whose email is listed in `DataCleanup__AllowedEmails`. The default and current production value is `wes@fruitandland.com`; Admin role by itself is not enough. Use Preview first, keep Soft cleanup as the normal test-data cleanup mode, and type `DELETE TEST DATA` only after verifying the counts. Hard purge is permanent for selected database records and does not automatically remove Google Drive files.
 
 The installer binaries are not committed to the repository or deployed into Render. Google Drive sharing permissions are managed in Google Drive and should be limited to company users when possible.
 
@@ -341,6 +349,8 @@ https://crop-qc-dashboard.onrender.com/signin-google
 ```
 
 Refresh tokens for Gmail sending are stored encrypted with ASP.NET Core Data Protection in the database. Tokens are not logged and are cleared from the local auth cookie after login processing. If a user sees `Gmail permission is required. Please reconnect Google/Gmail.`, have them sign out and sign in again to grant the Gmail send permission.
+
+The OAuth app must allow users from the company Google Workspace domains: `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com`.
 
 ## Receiving Data Export
 

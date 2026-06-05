@@ -45,10 +45,12 @@ Crop QC Dashboard supports receiving quality control workflows. MVP 1 is limited
 - QC Summary preview before send.
 - One email per receipt.
 - No batching.
-- Email sends from the logged-in Google user to configured `Email__QcDefaultRecipients`. During testing this is `rob@earlbrownandsons.com,wes@fruitandland.com`.
+- QC Summary email sends from the logged-in Google Workspace user through Gmail API when `Email__Provider=GmailUser` is configured. Allowed company domains are `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com`. During testing, configured recipients are `rob@earlbrownandsons.com,wes@fruitandland.com`.
 - Reply-To is the user who took the sample.
 - Managers and Admins can resend with a reason.
 - Daily QC dashboard showing received samples and sent/not-sent/ready/missing status.
+- Dashboard cards must click through to filtered receipt/Daily QC lists. Today’s Receiving Samples opens today’s receiving receipts; Samples Ready to Email opens ready-to-send Daily QC; Samples Missing Data shows missing data/photo reasons; Samples Needing Review shows explicit review reasons from configured pressure/starch/defect/variance thresholds or manual Needs Review flags.
+- Admin Data Cleanup is restricted by both Admin role and `DataCleanup__AllowedEmails`; the default allowed email is `wes@fruitandland.com`.
 - Offline capture in Windows QC Station app.
 - Sync to the Render/Postgres backend and Google Drive storage when internet returns.
 - Photos and attachments stored in Google Shared Drive.

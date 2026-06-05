@@ -1,6 +1,6 @@
 # Gmail User-Delegated Email Sending
 
-MVP 1 sends QC Summary emails through the logged-in user's Google/Gmail account when `Email__Provider=GmailUser` is configured. A message sent by `wes@fruitandland.com` is sent by Gmail as `wes@fruitandland.com` and should appear in that user's Gmail Sent folder.
+MVP 1 sends QC Summary emails through the logged-in user's Google Workspace/Gmail account when `Email__Provider=GmailUser` is configured. A message sent by `wes@fruitandland.com`, `rob@earlbrownandsons.com`, or `user@wp-packingllc.com` is sent by Gmail as that logged-in user and should appear in that user's Gmail Sent folder.
 
 ## Provider
 
@@ -8,6 +8,8 @@ The production provider is:
 
 ```text
 Email__Provider=GmailUser
+Authentication__AllowedGoogleDomains=fruitandland.com,earlbrownandsons.com,wp-packingllc.com
+Email__QcDefaultRecipients=rob@earlbrownandsons.com,wes@fruitandland.com
 Google__Gmail__SendScope=https://www.googleapis.com/auth/gmail.send
 ```
 
@@ -15,8 +17,8 @@ Local development can keep `Email__Provider=None` to disable real sending. Share
 
 ## Sender And Recipients
 
-- Sender: the logged-in Google user.
-- Recipients: configured `Email__QcDefaultRecipients`.
+- Sender: the logged-in Google Workspace user from one of the allowed company domains.
+- Recipient: configured `Email__QcDefaultRecipients`; `Email__ToAddress` remains a fallback for older configuration.
 - Current testing recipients: `rob@earlbrownandsons.com,wes@fruitandland.com`.
 - Reply-To: the user who took the sample, when available.
 
@@ -52,7 +54,7 @@ Required and present photos are embedded inline with MIME `Content-ID` values an
 
 ## OAuth And Reconnect
 
-Google OAuth requests `https://www.googleapis.com/auth/gmail.send` and offline access. Users may need to log out and sign back in after the scope is added so Google can show the new consent prompt.
+Google OAuth requests `openid`, `email`, `profile`, `https://www.googleapis.com/auth/gmail.send`, and offline access. Users may need to log out and sign back in after the scope is added so Google can show the new consent prompt. Google Cloud OAuth consent/data access must allow users from `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com`.
 
 If Gmail permission or a refresh token is missing, the UI shows:
 
