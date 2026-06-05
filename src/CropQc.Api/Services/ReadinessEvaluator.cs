@@ -6,8 +6,11 @@ public sealed record ReadinessFruitRow(bool IsCompleted, bool HasPressure1, bool
 
 public sealed record ReadinessEvaluationInput(
     bool ReceiptExists,
+    string? SampleTypeName,
     IReadOnlyCollection<ReadinessFruitRow> FruitRows,
     bool HasBinTruckPhoto,
+    bool HasTopOfTruckPhoto,
+    bool HasHectrePhoto,
     bool HasSampleBeforeCuttingPhoto,
     bool HasCutFruitPhoto,
     bool HasFruitAfterStarchPhoto);
@@ -41,28 +44,16 @@ public static class ReadinessEvaluator
             missingItems.Add("Starch is required for all completed fruit rows.");
         }
 
-        if (!input.HasBinTruckPhoto)
+        var requiredPhotos = GetRequiredPhotos(input);
+        foreach (var missingPhoto in requiredPhotos.Where(x => !x.IsPresent))
         {
-            missingItems.Add("At least one bin/truck photo is required on the receipt.");
-        }
-
-        if (!input.HasSampleBeforeCuttingPhoto)
-        {
-            missingItems.Add("Sample before cutting photo is required on the sample.");
-        }
-
-        if (!input.HasCutFruitPhoto)
-        {
-            missingItems.Add("Cut fruit photo is required on the sample.");
-        }
-
-        if (!input.HasFruitAfterStarchPhoto)
-        {
-            missingItems.Add("Fruit after starch photo is required on the sample.");
+            missingItems.Add($"Missing required photo: {missingPhoto.Name}");
         }
 
         var photoStatus = new PhotoStatusDetails(
             input.HasBinTruckPhoto,
+            input.HasTopOfTruckPhoto,
+            input.HasHectrePhoto,
             input.HasSampleBeforeCuttingPhoto,
             input.HasCutFruitPhoto,
             input.HasFruitAfterStarchPhoto);
@@ -73,5 +64,39 @@ public static class ReadinessEvaluator
             completedRows.Count,
             starchMissingCount,
             photoStatus);
+    }
+
+    private static IReadOnlyList<(string Name, bool IsPresent)> GetRequiredPhotos(ReadinessEvaluationInput input)
+    {
+        var normalized = input.SampleTypeName ?? string.Empty;
+        if (normalized.Contains("receiving", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            [
+                ("Truck photo", input.HasBinTruckPhoto),
+                ("Top of truck", input.HasTopOfTruckPhoto),
+                ("Hectre", input.HasHectrePhoto),
+                ("Whole sample", input.HasSampleBeforeCuttingPhoto),
+                ("Cut apples", input.HasCutFruitPhoto),
+                ("Starch apples", input.HasFruitAfterStarchPhoto)
+            ];
+        }
+
+        if (normalized.Contains("transfer", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            [
+                ("Truck photo", input.HasBinTruckPhoto),
+                ("Top of truck", input.HasTopOfTruckPhoto),
+                ("Whole sample", input.HasSampleBeforeCuttingPhoto),
+                ("Cut apples", input.HasCutFruitPhoto)
+            ];
+        }
+
+        return
+        [
+            ("Whole sample", input.HasSampleBeforeCuttingPhoto),
+            ("Cut apples", input.HasCutFruitPhoto)
+        ];
     }
 }

@@ -15,6 +15,7 @@ public sealed class QcSummaryService(CropQcDbContext dbContext) : IQcSummaryServ
     {
         var sample = await dbContext.QcSamples.AsNoTracking()
             .Include(x => x.Receipt)
+            .Include(x => x.SampleType)
             .Include(x => x.FruitReadings)
             .SingleOrDefaultAsync(x => x.Id == sampleId, cancellationToken);
 
@@ -43,8 +44,11 @@ public sealed class QcSummaryService(CropQcDbContext dbContext) : IQcSummaryServ
 
         return ReadinessEvaluator.Evaluate(new ReadinessEvaluationInput(
             true,
+            sample.SampleType.Name,
             rows,
             receiptPhotos.Contains("BinTruck"),
+            receiptPhotos.Contains("TopOfTruck"),
+            samplePhotos.Contains("Hectre"),
             samplePhotos.Contains("SampleBeforeCutting"),
             samplePhotos.Contains("CutFruit"),
             samplePhotos.Contains("FruitAfterStarch")));

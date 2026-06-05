@@ -15,7 +15,7 @@
         <select name="PhotoType" class="photo-type">
             @foreach (var photoType in Model.PhotoTypes)
             {
-                <option value="@photoType" selected="@(photoType == defaultPhotoType ? "selected" : null)">@photoType</option>
+                <option value="@photoType" selected="@(photoType == defaultPhotoType ? "selected" : null)">@FriendlyPhotoType(photoType)</option>
             }
         </select>
     </label>
@@ -209,3 +209,17 @@
         syncSource();
     })();
 </script>
+
+@functions {
+    private static string FriendlyPhotoType(string photoType) => photoType switch
+    {
+        "BinTruck" => "Truck photo",
+        "TopOfTruck" => "Top of truck",
+        "Hectre" => "Hectre",
+        "SampleBeforeCutting" => "Whole sample",
+        "CutFruit" => "Cut apples",
+        "FruitAfterStarch" => "Starch apples",
+        "Other" => "Other",
+        _ => photoType
+    };
+}

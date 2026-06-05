@@ -307,7 +307,7 @@ public sealed class DashboardDataService(
             var rowModels = await GetFruitReadingRowsAsync(id, cancellationToken);
 
             var photos = await dbContext.QcPhotos.AsNoTracking()
-                .Where(x => x.QcSampleId == id && (x.PhotoType == "SampleBeforeCutting" || x.PhotoType == "CutFruit" || x.PhotoType == "Other"))
+                .Where(x => x.QcSampleId == id && (x.PhotoType == "Hectre" || x.PhotoType == "SampleBeforeCutting" || x.PhotoType == "CutFruit" || x.PhotoType == "Other"))
                 .OrderByDescending(x => x.CapturedAt)
                 .ToListAsync(cancellationToken);
             var grades = await dbContext.Grades.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Id).ToListAsync(cancellationToken);

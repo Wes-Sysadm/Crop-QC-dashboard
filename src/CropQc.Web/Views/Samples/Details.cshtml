@@ -58,7 +58,7 @@
     <p>Sample type: @Model.Sample?.SampleType</p>
     <h3>Required Photos</h3>
     @await Html.PartialAsync("_ReadinessChecklist", Model.Readiness.RequiredPhotoChecklist)
-    <p class="muted">Required photos vary by sample type. Receiving samples require truck, whole sample, cut apples, and starch apples. Door/room and line samples require whole sample and cut apples. Transfer samples require truck, whole sample, and cut apples.</p>
+    <p class="muted">Required photos vary by sample type. Receiving samples require truck photo, top of truck, Hectre, whole sample, cut apples, and starch apples. Transfer samples require truck photo, top of truck, whole sample, and cut apples; Hectre is optional unless configured otherwise. Door/room and line samples require whole sample and cut apples.</p>
     @await Html.PartialAsync("_ReadinessChecklist", Model.Readiness.Checklist)
     @if (Model.Readiness.MissingItems.Count > 0)
     {
@@ -182,7 +182,7 @@
                 FormAction = $"/Samples/{Model.Sample.Id}/photos",
                 Title = "Add Sample Photo",
                 DefaultPhotoType = Model.AddPhotoForm.PhotoType,
-                PhotoTypes = ["SampleBeforeCutting", "CutFruit", "Other"],
+                PhotoTypes = ["Hectre", "SampleBeforeCutting", "CutFruit", "Other"],
                 CropYear = Model.Sample.CropYear,
                 Warehouse = Model.Sample.Warehouse,
                 ReceiptId = Model.Sample.ReceiptIdText

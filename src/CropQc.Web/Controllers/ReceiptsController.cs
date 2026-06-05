@@ -64,9 +64,9 @@ public sealed class ReceiptsController(
         LogPhotoUploadStart("receipt", id, form);
         form.ReceiptId = id;
         form.QcSampleId = null;
-        var error = IsAllowedPhotoType(form.PhotoType, "BinTruck", "Other")
+        var error = IsAllowedPhotoType(form.PhotoType, "BinTruck", "TopOfTruck", "Other")
             ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
-            : "Only bin/truck photos can be added from the receipt detail page.";
+            : "Only truck, top-of-truck, or other photos can be added from the receipt detail page.";
         TempData[error is null ? "Success" : "Error"] = error ?? "Photo uploaded successfully.";
         return RedirectToAction(nameof(Details), new { id });
     }

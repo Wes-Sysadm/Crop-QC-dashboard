@@ -103,9 +103,9 @@ public sealed class SamplesController(
         LogPhotoUploadStart("sample", id, form);
         form.QcSampleId = id;
         form.ReceiptId = null;
-        var error = IsAllowedPhotoType(form.PhotoType, "SampleBeforeCutting", "CutFruit", "Other")
+        var error = IsAllowedPhotoType(form.PhotoType, "Hectre", "SampleBeforeCutting", "CutFruit", "Other")
             ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
-            : "Fruit after starch photos must be added from the Starch Input page.";
+            : "Only Hectre, whole sample, cut apples, or other photos can be added from the sample detail page. Fruit after starch photos must be added from the Starch Input page.";
         TempData[error is null ? "Success" : "Error"] = error ?? "Photo uploaded successfully.";
         return RedirectToAction(nameof(Details), new { id });
     }
