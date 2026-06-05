@@ -35,7 +35,7 @@ Admin-reviewed archive/delete workflows are future work. Until that workflow exi
 
 ## Email Boundary
 
-QC Summary email sends through the Gmail API using the logged-in Google user's delegated `gmail.send` permission when `Email__Provider=GmailUser` is configured. The configured QC recipient defaults to `QC@fruitandland.com`; the sender is the logged-in user, not a shared SMTP account. Refresh tokens are encrypted with ASP.NET Core Data Protection and are not logged.
+QC Summary email sends through the Gmail API using the logged-in Google user's delegated `gmail.send` permission when `Email__Provider=GmailUser` is configured. QC recipients are configured with `Email__QcDefaultRecipients`; the current test value is `rob@earlbrownandsons.com,wes@fruitandland.com`. The sender is the logged-in user, not a shared SMTP account. Refresh tokens are encrypted with ASP.NET Core Data Protection and are not logged.
 
 ## Offline Boundary
 

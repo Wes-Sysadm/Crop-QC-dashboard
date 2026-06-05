@@ -16,8 +16,11 @@ Local development can keep `Email__Provider=None` to disable real sending. Share
 ## Sender And Recipients
 
 - Sender: the logged-in Google user.
-- Recipient: configured `Email__ToAddress`, default `QC@fruitandland.com`.
+- Recipients: configured `Email__QcDefaultRecipients`.
+- Current testing recipients: `rob@earlbrownandsons.com,wes@fruitandland.com`.
 - Reply-To: the user who took the sample, when available.
+
+Do not use `QC@fruitandland.com` or broader distribution groups during the current email test phase unless the recipients are manually changed later. Update `Email__QcDefaultRecipients` before production rollout if the recipient list changes.
 
 ## Expected Send Rules
 

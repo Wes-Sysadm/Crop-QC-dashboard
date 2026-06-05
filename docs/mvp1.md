@@ -65,7 +65,7 @@ Photos and attachments will be stored in Google Shared Drive. The database store
 - QC Summary preview is required before send.
 - One email per receipt.
 - No batching.
-- Email sends from `HL@fruitandland.com` to `QC@fruitandland.com`.
+- Email sends from the logged-in Google user to configured `Email__QcDefaultRecipients`. During testing this is `rob@earlbrownandsons.com,wes@fruitandland.com`.
 - Reply-To is the user who took the sample.
 - Managers and Admins can resend with a reason.
 

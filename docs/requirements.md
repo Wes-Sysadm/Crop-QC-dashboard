@@ -45,7 +45,7 @@ Crop QC Dashboard supports receiving quality control workflows. MVP 1 is limited
 - QC Summary preview before send.
 - One email per receipt.
 - No batching.
-- Email sends from `HL@fruitandland.com` to `QC@fruitandland.com`.
+- Email sends from the logged-in Google user to configured `Email__QcDefaultRecipients`. During testing this is `rob@earlbrownandsons.com,wes@fruitandland.com`.
 - Reply-To is the user who took the sample.
 - Managers and Admins can resend with a reason.
 - Daily QC dashboard showing received samples and sent/not-sent/ready/missing status.

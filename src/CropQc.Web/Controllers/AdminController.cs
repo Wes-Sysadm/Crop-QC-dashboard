@@ -17,6 +17,7 @@ public sealed class AdminController(
     private const string FtaDllInstallerFileName = "FTADLL.exe";
     private const string FtaDllInstallerUrl = "https://drive.google.com/file/d/1iYy1v1-D8T-S4SgfHJOeuwoeJfsbcvoS/view?usp=drive_link";
     private const string QcStationInstallerFileName = "CropQcStationSetup.msi";
+    private const string FtaBorlandDependencyFileName = "borlndmm.dll";
 
     [HttpGet("Users")]
     [Authorize(Policy = "RequireAdmin")]
@@ -29,6 +30,8 @@ public sealed class AdminController(
     {
         var installerUrl = configuration["Downloads:QcStationInstallerUrl"];
         var installerConfigured = !string.IsNullOrWhiteSpace(installerUrl);
+        var borlandDependencyUrl = configuration["Downloads:FtaBorlndmmUrl"];
+        var borlandDependencyConfigured = !string.IsNullOrWhiteSpace(borlandDependencyUrl);
         var model = new AdminDownloadsViewModel
         {
             Downloads =
@@ -51,6 +54,17 @@ public sealed class AdminController(
                         : "QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.",
                     IsAvailable: installerConfigured,
                     OpensInNewTab: installerConfigured,
+                    ActionText: "Open Google Drive Download"),
+                new(
+                    "FTA borlndmm.dll Dependency",
+                    FtaBorlandDependencyFileName,
+                    "Known-good x86 borlndmm.dll used by the FTA DLL. Use only when diagnostics report the installed borlndmm.dll is 64-bit or invalid.",
+                    borlandDependencyUrl ?? "",
+                    borlandDependencyConfigured
+                        ? "Opens the shared Google Drive download page. Back up the existing borlndmm.dll before replacing it, then rerun QC Station FTA Diagnostics."
+                        : "FTA borlndmm.dll dependency link is not configured. Upload the known-good x86 borlndmm.dll to Google Drive and set Downloads__FtaBorlndmmUrl in Render.",
+                    IsAvailable: borlandDependencyConfigured,
+                    OpensInNewTab: borlandDependencyConfigured,
                     ActionText: "Open Google Drive Download")
             ]
         };
