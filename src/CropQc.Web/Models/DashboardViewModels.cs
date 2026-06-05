@@ -192,6 +192,7 @@ public sealed class SampleListItemViewModel
     public string DisplayReceiptId { get; set; } = "";
     public string ReceiptIdText { get; set; } = "";
     public string Warehouse { get; set; } = "";
+    public string SampleType { get; set; } = "";
     public string Status { get; set; } = "";
     public string StarchStatus { get; set; } = "";
     public string PhotoStatus { get; set; } = "";
@@ -342,6 +343,7 @@ public sealed class ReadinessViewModel
     public bool HasSampleBeforeCutting { get; set; }
     public bool HasCutFruit { get; set; }
     public bool HasFruitAfterStarch { get; set; }
+    public IReadOnlyList<ReadinessChecklistItem> RequiredPhotoChecklist { get; set; } = [];
 }
 
 public sealed class DailyQcDashboardViewModel

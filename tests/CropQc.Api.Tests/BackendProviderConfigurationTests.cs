@@ -180,5 +180,8 @@ public sealed class BackendProviderConfigurationTests
 
         public Task<GoogleDriveFile> UploadFileAsync(string folderId, string fileName, string contentType, Stream content, CancellationToken cancellationToken) =>
             Task.FromResult(new GoogleDriveFile($"file-{fileName}", fileName, null, $"https://drive.example/{fileName}", content.Length));
+
+        public Task<Stream?> DownloadFileAsync(string fileId, CancellationToken cancellationToken) =>
+            Task.FromResult<Stream?>(new MemoryStream([1, 2, 3]));
     }
 }

@@ -16,6 +16,7 @@
 <section class="panel">
     <h2>Add QC Station</h2>
     <p class="muted">Creating a station generates a unique API key and immediately downloads that station's config JSON. The raw key is not stored and cannot be shown again.</p>
+    <p class="notice">Station Name is a friendly label and can be reused. Station Code must be unique and is what the QC Station app uses to authenticate.</p>
     <p class="notice">After installing Crop QC Station, open the app and choose Import / Replace Station Config. Select the JSON file you downloaded here. The app will install it into ProgramData automatically. Confirm the Station Name and Station Code shown in the app match this station. The MSI contains no station secrets.</p>
     <p class="notice warning">Station codes for new stations may use only letters, numbers, dashes, and underscores. Use dashes instead of spaces, for example <code>MCD-12</code>.</p>
     <form class="toolbar" method="post" action="/Admin/QcStations/Create">
@@ -92,7 +93,7 @@
                     </td>
                     <td>@station.StationCode</td>
                     <td>@station.WarehouseCode</td>
-                    <td>@(station.IsActive ? "Yes" : "No")</td>
+                    <td><strong>@(station.IsActive ? "Active" : "Inactive")</strong></td>
                     <td>@(station.ApiKeyLastFour is null ? "Not generated" : $"...{station.ApiKeyLastFour}")</td>
                     <td>
                         @station.LastSeenAt?.LocalDateTime
@@ -148,6 +149,7 @@
                         else
                         {
                             <form class="button-row" method="post" action="/Admin/QcStations/Reactivate"><input type="hidden" name="id" value="@station.Id" /><button class="secondary-button" type="submit">Reactivate</button></form>
+                            <p class="muted">If this is the same computer, reactivate it. If this is a replacement computer or the config may be exposed, create a new Station Code or rotate the key.</p>
                         }
                     </td>
                 </tr>

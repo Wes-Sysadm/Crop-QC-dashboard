@@ -13,7 +13,9 @@ public sealed class GmailUserEmailTests
             "QC@fruitandland.com",
             "sample-taker@fruitandland.com",
             "QC Summary - R123",
-            "Body text"));
+            "Plain body text",
+            "<html><body><p>HTML body text</p><img src=\"cid:test-image@cropqc\" /></body></html>",
+            [new QcEmailInlineImage("test-image@cropqc", "photo.jpg", "image/jpeg", [1, 2, 3], "Whole sample")]));
 
         var decoded = DecodeBase64Url(raw);
 
@@ -21,7 +23,12 @@ public sealed class GmailUserEmailTests
         Assert.Contains("To: QC@fruitandland.com", decoded);
         Assert.Contains("Reply-To: sample-taker@fruitandland.com", decoded);
         Assert.Contains("Subject: QC Summary - R123", decoded);
-        Assert.Contains("Body text", decoded);
+        Assert.Contains("multipart/related", decoded);
+        Assert.Contains("multipart/alternative", decoded);
+        Assert.Contains("Plain body text", decoded);
+        Assert.Contains("HTML body text", decoded);
+        Assert.Contains("Content-ID: <test-image@cropqc>", decoded);
+        Assert.Contains("Content-Disposition: inline", decoded);
     }
 
     [Fact]
@@ -73,6 +80,8 @@ public sealed class GmailUserEmailTests
         Assert.Contains("Gmail permission is missing", overrideSend);
         Assert.Contains("Send QC Summary Override", overrideSend);
         Assert.Contains("Send QC Summary", dailyQc);
+        Assert.Contains("Required Photos", details);
+        Assert.Contains("Sample type:", details);
         Assert.DoesNotContain("Send QC Summary Placeholder", details);
         Assert.DoesNotContain("Override Placeholder", overrideSend);
         Assert.DoesNotContain("Send Placeholder", dailyQc);

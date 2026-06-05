@@ -31,6 +31,9 @@ public sealed class RoleNavigationAuthorizationTests
         AssertActionPolicy<AdminController>(nameof(AdminController.Downloads), "RequireAdmin");
         AssertActionPolicy<AdminController>(nameof(AdminController.QcStations), "RequireManagerOrAdmin");
         AssertActionPolicy<AdminController>(nameof(AdminController.CreateQcStation), "RequireManagerOrAdmin");
+        AssertActionPolicy<AdminController>(nameof(AdminController.UpdateQcStation), "RequireManagerOrAdmin");
+        AssertActionPolicy<AdminController>(nameof(AdminController.DeactivateQcStation), "RequireManagerOrAdmin");
+        AssertActionPolicy<AdminController>(nameof(AdminController.ReactivateQcStation), "RequireManagerOrAdmin");
         AssertActionPolicy<AdminController>(nameof(AdminController.RotateQcStationKey), "RequireManagerOrAdmin");
         AssertActionPolicy<AdminController>(nameof(AdminController.DownloadExistingQcStationConfig), "RequireManagerOrAdmin");
         AssertActionPolicy<AdminController>(nameof(AdminController.AddUser), "RequireAdmin");

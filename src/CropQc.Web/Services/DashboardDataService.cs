@@ -32,6 +32,8 @@ public sealed class DashboardDataService(
     FileStorageOptions fileStorageOptions,
     EmailOptions emailOptions,
     IQcEmailSender emailSender,
+    IQcPhotoRequirementPolicy photoRequirementPolicy,
+    IQcSummaryEmailComposer emailComposer,
     IHttpContextAccessor httpContextAccessor,
     ILogger<DashboardDataService> logger) : IDashboardDataService
 {
@@ -581,11 +583,8 @@ public sealed class DashboardDataService(
             return "A logged-in user is required to send QC Summary email.";
         }
 
-        var subject = isOverride
-            ? $"QC Summary Override - {sample.GetDisplayReceiptId()}"
-            : $"QC Summary - {sample.GetDisplayReceiptId()}";
-        var body = BuildQcSummaryEmailBody(sample, readiness, isOverride, overrideReason);
-        var message = new QcEmailMessage(sender.Email, emailOptions.ToAddress, sample.TakenByUser?.Email, subject, body);
+        var emailContent = await emailComposer.ComposeAsync(sample, readiness, isOverride, overrideReason, cancellationToken);
+        var message = new QcEmailMessage(sender.Email, emailOptions.ToAddress, sample.TakenByUser?.Email, emailContent.Subject, emailContent.TextBody, emailContent.HtmlBody, emailContent.InlineImages);
         var now = DateTimeOffset.UtcNow;
         var sendResult = await emailSender.SendAsync(sender, message, cancellationToken);
         var status = sendResult.Success ? "Sent" : "Failed";
@@ -597,7 +596,7 @@ public sealed class DashboardDataService(
             FromAddress = sender.Email,
             ToAddress = emailOptions.ToAddress,
             ReplyToAddress = sample.TakenByUser?.Email,
-            Subject = subject,
+            Subject = emailContent.Subject,
             Status = status,
             MessageId = sendResult.MessageId,
             SentByUserId = sender.Id,
@@ -608,7 +607,7 @@ public sealed class DashboardDataService(
             MissingItemsSnapshot = string.Join(Environment.NewLine, readiness.MissingItems),
             EmailBodySnapshot = null,
             ReportSnapshotReference = sendResult.Success
-                ? $"Gmail message id: {sendResult.MessageId ?? "(not returned)"}"
+                ? $"Gmail message id: {sendResult.MessageId ?? "(not returned)"}; inline images: {emailContent.InlineImages.Count}"
                 : $"Send failed: {sendResult.Error}",
             CreatedAt = now
         });
@@ -631,7 +630,7 @@ public sealed class DashboardDataService(
             {
                 Sender = sender.Email,
                 To = emailOptions.ToAddress,
-                Subject = subject,
+                Subject = emailContent.Subject,
                 Status = status,
                 GmailMessageId = sendResult.MessageId,
                 Failure = sendResult.Success ? null : sendResult.Error,
@@ -821,10 +820,16 @@ public sealed class DashboardDataService(
 
     private IQueryable<QcSample> QuerySamples() =>
         dbContext.QcSamples.AsNoTracking()
+            .Include(x => x.SampleType)
             .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
             .Include(x => x.Receipt).ThenInclude(x => x.Room)
             .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
-            .Include(x => x.TakenByUser);
+            .Include(x => x.Receipt).ThenInclude(x => x.Photos)
+            .Include(x => x.TakenByUser)
+            .Include(x => x.Photos)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType);
 
     private async Task<IReadOnlyList<SampleListItemViewModel>> EnrichSamplesAsync(IReadOnlyList<QcSample> samples, CancellationToken cancellationToken)
     {
@@ -840,6 +845,7 @@ public sealed class DashboardDataService(
                 ReceiptIdText = sample.Receipt.CompuTechReceiptId,
                 DisplayReceiptId = sample.SampleSequenceNumber <= 1 ? sample.Receipt.CompuTechReceiptId : $"{sample.Receipt.CompuTechReceiptId}({sample.SampleSequenceNumber})",
                 Warehouse = sample.Receipt.Warehouse.Code,
+                SampleType = sample.SampleType.Name,
                 Status = sample.Status,
                 StarchStatus = sample.StarchStatus,
                 PhotoStatus = sample.PhotoStatus,
@@ -895,6 +901,10 @@ public sealed class DashboardDataService(
 
     private async Task<ReadinessViewModel> GetReadinessAsync(long sampleId, long receiptId, CancellationToken cancellationToken)
     {
+        var sampleTypeName = await dbContext.QcSamples.AsNoTracking()
+            .Where(x => x.Id == sampleId)
+            .Select(x => x.SampleType.Name)
+            .SingleOrDefaultAsync(cancellationToken);
         var completedRows = await dbContext.QcFruitReadings.AsNoTracking().Where(x => x.QcSampleId == sampleId && x.IsCompleted).ToListAsync(cancellationToken);
         var receiptPhotos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.ReceiptId == receiptId).Select(x => x.PhotoType).ToListAsync(cancellationToken);
         var samplePhotos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.QcSampleId == sampleId).Select(x => x.PhotoType).ToListAsync(cancellationToken);
@@ -912,10 +922,8 @@ public sealed class DashboardDataService(
         var hasSampleBeforeCutting = samplePhotos.Contains("SampleBeforeCutting");
         var hasCutFruit = samplePhotos.Contains("CutFruit");
         var hasFruitAfterStarch = samplePhotos.Contains("FruitAfterStarch");
-        if (!hasBinTruck) missing.Add("At least one bin/truck photo is required on the receipt.");
-        if (!hasSampleBeforeCutting) missing.Add("Sample before cutting photo is required.");
-        if (!hasCutFruit) missing.Add("Cut fruit photo is required.");
-        if (!hasFruitAfterStarch) missing.Add("Fruit after starch photo is required.");
+        var requiredPhotoChecklist = photoRequirementPolicy.BuildChecklist(sampleTypeName, receiptPhotos, samplePhotos);
+        missing.AddRange(photoRequirementPolicy.MissingRequiredPhotos(sampleTypeName, receiptPhotos, samplePhotos));
 
         var checklist = new List<ReadinessChecklistItem>
         {
@@ -923,12 +931,9 @@ public sealed class DashboardDataService(
             ChecklistItem("Required data", "Pressure 1 and Pressure 2 for every completed fruit row", completedRows.Count == 0 || pressureMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing"),
             ChecklistItem("Required data", "Weight for every completed fruit row", completedRows.Count == 0 || weightMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing"),
             ChecklistItem("Required data", "Grade for every completed fruit row", completedRows.Count == 0 || gradeMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing"),
-            ChecklistItem("Required data", "Starch for every completed fruit row", completedRows.Count == 0 || starchMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing"),
-            ChecklistItem("Required photos", "At least one BinTruck photo on the receipt", hasBinTruck, "Missing"),
-            ChecklistItem("Required photos", "SampleBeforeCutting photo on the sample", hasSampleBeforeCutting, "Missing"),
-            ChecklistItem("Required photos", "CutFruit photo on the sample", hasCutFruit, "Missing"),
-            ChecklistItem("Required photos", "FruitAfterStarch photo on the starch page/sample", hasFruitAfterStarch, "Missing")
+            ChecklistItem("Required data", "Starch for every completed fruit row", completedRows.Count == 0 || starchMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing")
         };
+        checklist.AddRange(requiredPhotoChecklist);
 
         return new ReadinessViewModel
         {
@@ -940,7 +945,8 @@ public sealed class DashboardDataService(
             HasBinTruck = hasBinTruck,
             HasSampleBeforeCutting = hasSampleBeforeCutting,
             HasCutFruit = hasCutFruit,
-            HasFruitAfterStarch = hasFruitAfterStarch
+            HasFruitAfterStarch = hasFruitAfterStarch,
+            RequiredPhotoChecklist = requiredPhotoChecklist
         };
     }
 
@@ -951,7 +957,7 @@ public sealed class DashboardDataService(
         sample.StarchStatus = readiness.CompletedFruitCount > 0 && readiness.StarchMissingCount == 0
             ? "Starch Complete"
             : "Starch Pending";
-        sample.PhotoStatus = readiness.HasBinTruck && readiness.HasSampleBeforeCutting && readiness.HasCutFruit && readiness.HasFruitAfterStarch
+        sample.PhotoStatus = readiness.RequiredPhotoChecklist.All(x => x.Status == "Complete")
             ? "Photos Complete"
             : "Photo Pending";
         if (!sample.Status.Contains("Needs Review", StringComparison.OrdinalIgnoreCase) && sample.EmailStatus != "Sent")
@@ -1103,41 +1109,6 @@ public sealed class DashboardDataService(
         }
 
         return await dbContext.Users.SingleOrDefaultAsync(x => x.Email == email && x.IsActive, cancellationToken);
-    }
-
-    private static string BuildQcSummaryEmailBody(QcSample sample, ReadinessViewModel readiness, bool isOverride, string? overrideReason)
-    {
-        var builder = new System.Text.StringBuilder();
-        builder.AppendLine(isOverride ? "QC Summary Override" : "QC Summary");
-        builder.AppendLine();
-        builder.AppendLine($"Receipt: {sample.GetDisplayReceiptId()}");
-        builder.AppendLine($"Warehouse: {sample.Receipt.Warehouse.Code}");
-        builder.AppendLine($"Room: {sample.Receipt.Room.Code}");
-        builder.AppendLine($"Grower: {sample.Receipt.GrowerName}");
-        builder.AppendLine($"Lot: {sample.Receipt.LotCode}");
-        builder.AppendLine($"Variety: {sample.Receipt.FruitProfile.VarietyCode}");
-        builder.AppendLine($"Sample status: {sample.Status}");
-        builder.AppendLine($"Completed fruit: {readiness.CompletedFruitCount}");
-        builder.AppendLine($"Starch: {(readiness.StarchMissingCount == 0 ? "Complete" : $"{readiness.StarchMissingCount} missing")}");
-        builder.AppendLine($"Photos complete: {YesNo(readiness.HasBinTruck && readiness.HasSampleBeforeCutting && readiness.HasCutFruit && readiness.HasFruitAfterStarch)}");
-
-        if (readiness.MissingItems.Count > 0)
-        {
-            builder.AppendLine();
-            builder.AppendLine("Missing items:");
-            foreach (var item in readiness.MissingItems)
-            {
-                builder.AppendLine($"- {item}");
-            }
-        }
-
-        if (isOverride)
-        {
-            builder.AppendLine();
-            builder.AppendLine($"Override reason: {overrideReason}");
-        }
-
-        return builder.ToString();
     }
 
     private async Task AddAuditAsync(string action, string entityName, string entityKey, string changedByEmail, string? before, string? after, CancellationToken ct)

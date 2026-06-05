@@ -26,7 +26,7 @@
 {
     <section class="panel">
         <h2>@Model.Sample.DisplayReceiptId</h2>
-        <p>@Model.Sample.Warehouse | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Sample size: @Model.Sample.ActualSampleSize</p>
+        <p>@Model.Sample.Warehouse | @Model.Sample.SampleType | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Sample size: @Model.Sample.ActualSampleSize</p>
         <p>@StarchSummary(Model.Readiness)</p>
         <p>
             <a class="button" href="/Samples/@Model.Sample.Id/Starch">Starch Input</a>
@@ -51,7 +51,10 @@
     <h2>Summary Readiness</h2>
     <p><span class="status @(Model.Readiness.IsReady ? "ready" : "missing")">@(Model.Readiness.IsReady ? "Ready to Send" : "Missing Required Data")</span></p>
     <p>Completed fruit: @Model.Readiness.CompletedFruitCount | Starch missing: @Model.Readiness.StarchMissingCount</p>
-    <p>Photos: Bin/truck @YesNo(Model.Readiness.HasBinTruck), before cutting @YesNo(Model.Readiness.HasSampleBeforeCutting), cut fruit @YesNo(Model.Readiness.HasCutFruit), after starch @YesNo(Model.Readiness.HasFruitAfterStarch)</p>
+    <p>Sample type: @Model.Sample?.SampleType</p>
+    <h3>Required Photos</h3>
+    @await Html.PartialAsync("_ReadinessChecklist", Model.Readiness.RequiredPhotoChecklist)
+    <p class="muted">Required photos vary by sample type. Receiving samples require truck, whole sample, cut apples, and starch apples. Door/room and line samples require whole sample and cut apples. Transfer samples require truck, whole sample, and cut apples.</p>
     @await Html.PartialAsync("_ReadinessChecklist", Model.Readiness.Checklist)
     @if (Model.Readiness.MissingItems.Count > 0)
     {

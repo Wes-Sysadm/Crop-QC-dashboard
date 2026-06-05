@@ -70,9 +70,9 @@ Expected photo types:
 - `POST /api/receipts/{receiptId}/email-logs`
 - `GET /api/receipts/{receiptId}/email-logs`
 
-Readiness requires a receipt, at least one completed fruit row, all completed rows to have required measurement fields, starch on all completed rows, at least one receipt-level `BinTruck` photo, and sample-level `SampleBeforeCutting`, `CutFruit`, and `FruitAfterStarch` photos.
+Readiness requires a receipt, at least one completed fruit row, all completed rows to have required measurement fields, starch on all completed rows, and the required photos for the sample type. Door/Room and Line samples require `SampleBeforeCutting` and `CutFruit`. Receiving samples require receipt-level `BinTruck` plus sample-level `SampleBeforeCutting`, `CutFruit`, and `FruitAfterStarch`. Transfer samples require receipt-level `BinTruck` plus sample-level `SampleBeforeCutting` and `CutFruit`.
 
-Web dashboard QC Summary sending uses `Email__Provider=GmailUser` to send through the logged-in user's Gmail account. Email logs record From, To, Reply-To, subject, status, Gmail message ID when returned, sender user, send timestamp, and safe failure status when sending fails.
+Web dashboard QC Summary sending uses `Email__Provider=GmailUser` to send through the logged-in user's Gmail account. Email logs record From, To, Reply-To, subject, status, Gmail message ID when returned, sender user, send timestamp, and safe failure status when sending fails. The email body contains the summary, fruit row overview, and inline `cid:` photo references; the summary is not provided only as an attachment.
 
 ## Audit
 

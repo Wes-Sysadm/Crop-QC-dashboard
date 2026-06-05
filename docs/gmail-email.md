@@ -25,9 +25,26 @@ Normal QC Summary sending should require:
 
 - At least one completed fruit row.
 - Pressure 1, Pressure 2, weight, grade, and starch for every completed row.
-- Required photos: BinTruck, SampleBeforeCutting, CutFruit, and FruitAfterStarch.
+- Required photos based on sample type:
+  - Door or Room: Whole sample (`SampleBeforeCutting`) and Cut apples (`CutFruit`).
+  - Receiving: Truck photo (`BinTruck`), Whole sample (`SampleBeforeCutting`), Cut apples (`CutFruit`), and Starch apples (`FruitAfterStarch`).
+  - Transfer: Truck photo (`BinTruck`), Whole sample (`SampleBeforeCutting`), and Cut apples (`CutFruit`).
+  - Line: Whole sample (`SampleBeforeCutting`) and Cut apples (`CutFruit`).
 
 Normal ready-sample sending is available to Admin, Manager, and QC User roles. Manager/Admin override send can send even when required data is missing, with an override reason. Viewer users cannot send.
+
+## Email Body Format
+
+QC Summary emails are body-first HTML emails with a plain text fallback. The normal path does not generate a summary PDF, Excel file, or other data attachment.
+
+The HTML body includes:
+
+- Header context: receipt, sample type, warehouse, room, grower, lot, variety, sample date/time, and inspector when available.
+- Summary table at the top with completed fruit count, average pressure, average starch, average weight, grade summary, defect summary, size/status summary, and notes.
+- Line-by-line fruit overview with row number, pressures, average pressure, weight, grade, starch, size/category, defects, and notes.
+- Photo sections grouped by friendly photo requirement name.
+
+Required and present photos are embedded inline with MIME `Content-ID` values and referenced from the HTML body using `cid:` image URLs. If the configured storage provider cannot return image bytes, the email falls back to a safe photo link when one is available. Tokens and storage credentials are never included in the email or logs.
 
 ## OAuth And Reconnect
 

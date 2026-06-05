@@ -13,6 +13,7 @@ public interface IGoogleDriveClient
     Task<GoogleDriveFolder?> FindFolderAsync(string parentFolderId, string name, CancellationToken cancellationToken);
     Task<GoogleDriveFolder> CreateFolderAsync(string parentFolderId, string name, CancellationToken cancellationToken);
     Task<GoogleDriveFile> UploadFileAsync(string folderId, string fileName, string contentType, Stream content, CancellationToken cancellationToken);
+    Task<Stream?> DownloadFileAsync(string fileId, CancellationToken cancellationToken);
 }
 
 public sealed record GoogleDriveFolder(string Id, string Name, string? DriveId, string? WebViewLink);
@@ -74,6 +75,9 @@ public sealed class GoogleDriveStorageService(
 
     public Task<FileStorageReference?> GetMetadataAsync(string storageKey, CancellationToken cancellationToken = default) =>
         Task.FromResult<FileStorageReference?>(null);
+
+    public Task<Stream?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default) =>
+        client.Value.DownloadFileAsync(storageKey, cancellationToken);
 
     public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
@@ -225,6 +229,33 @@ public sealed class GoogleDriveApiClient(DriveService service, GoogleDriveStorag
 
         var file = request.ResponseBody;
         return new GoogleDriveFile(file.Id, file.Name, file.DriveId, file.WebViewLink, file.Size);
+    }
+
+    public async Task<Stream?> DownloadFileAsync(string fileId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(fileId))
+        {
+            return null;
+        }
+
+        var request = service.Files.Get(fileId);
+        request.SupportsAllDrives = true;
+        var stream = new MemoryStream();
+        try
+        {
+            await request.DownloadAsync(stream, cancellationToken);
+            stream.Position = 0;
+            return stream;
+        }
+        catch (Google.GoogleApiException ex) when (ex.HttpStatusCode is System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        catch
+        {
+            await stream.DisposeAsync();
+            throw;
+        }
     }
 
     private void ApplySharedDriveSearchOptions(FilesResource.ListRequest request)
