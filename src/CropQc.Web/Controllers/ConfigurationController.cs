@@ -15,6 +15,7 @@ public sealed class ConfigurationController(
     IAdminManagementService adminService,
     IAdminAuthorizationService authorizationService,
     EmailOptions emailOptions,
+    IQcEmailRecipientResolver qcEmailRecipientResolver,
     GoogleAuthenticationOptions googleAuthOptions,
     IGoogleCredentialStore googleCredentialStore,
     CropQcDbContext dbContext) : Controller
@@ -39,11 +40,14 @@ public sealed class ConfigurationController(
     {
         var currentEmail = User.FindFirstValue(ClaimTypes.Email);
         var domain = GoogleAuthenticationOptions.GetEmailDomain(currentEmail);
+        var recipientResolution = await qcEmailRecipientResolver.ResolveAsync(cancellationToken);
         var status = new EmailStatusViewModel
         {
             Provider = emailOptions.Provider,
             GmailUserEnabled = string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase),
-            DefaultQcRecipientsConfigured = emailOptions.QcRecipientList.Count > 0,
+            DefaultQcRecipientsConfigured = recipientResolution.IsConfigured,
+            DefaultQcRecipientsSource = recipientResolution.Source,
+            DefaultQcRecipients = recipientResolution.Recipients,
             CurrentUserEmail = currentEmail,
             CurrentUserDomain = domain,
             CurrentUserDomainAllowed = domain is not null && googleAuthOptions.AllowedDomains.Contains(domain)

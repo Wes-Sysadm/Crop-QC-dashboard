@@ -52,6 +52,7 @@ public sealed class DashboardDataService(
     IFileStorageService fileStorageService,
     FileStorageOptions fileStorageOptions,
     EmailOptions emailOptions,
+    IQcEmailRecipientResolver qcEmailRecipientResolver,
     GoogleAuthenticationOptions authOptions,
     IGoogleCredentialStore googleCredentialStore,
     IQcEmailSender emailSender,
@@ -348,13 +349,14 @@ public sealed class DashboardDataService(
                 .ToListAsync(cancellationToken);
             var grades = await dbContext.Grades.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Id).ToListAsync(cancellationToken);
             var defectTypes = await dbContext.DefectTypes.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync(cancellationToken);
+            var recipientResolution = await qcEmailRecipientResolver.ResolveAsync(cancellationToken);
             return new SampleDetailViewModel
             {
                 Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
                 FruitRows = rowModels,
                 PhotoGroups = GroupPhotos(photos),
                 Readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken),
-                RecipientEmail = emailOptions.QcRecipientHeader,
+                RecipientEmail = recipientResolution.IsConfigured ? recipientResolution.Header : null,
                 Grades = grades,
                 DefectTypes = defectTypes,
                 FruitReadingForm = new SaveFruitReadingsForm
@@ -646,6 +648,7 @@ public sealed class DashboardDataService(
                 ? new GoogleCredentialDiagnostic(false, false)
                 : await googleCredentialStore.GetDiagnosticAsync(sender, cancellationToken);
 
+            var recipientResolution = await qcEmailRecipientResolver.ResolveAsync(cancellationToken);
             return new OverrideSendViewModel
             {
                 Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
@@ -655,7 +658,7 @@ public sealed class DashboardDataService(
                 SenderEmail = senderEmail,
                 SenderDomain = senderDomain,
                 SenderDomainAllowed = senderDomain is not null && authOptions.AllowedDomains.Contains(senderDomain),
-                RecipientEmail = emailOptions.QcRecipientHeader,
+                RecipientEmail = recipientResolution.IsConfigured ? recipientResolution.Header : null,
                 GmailReconnectRequired = !string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase)
                     || !credentialDiagnostic.GmailSendPermissionGranted,
                 GmailCredentialPresent = credentialDiagnostic.CredentialPresent,
@@ -718,8 +721,14 @@ public sealed class DashboardDataService(
             return "A logged-in user is required to send QC Summary email.";
         }
 
+        var recipientResolution = await qcEmailRecipientResolver.ResolveAsync(cancellationToken);
+        if (!recipientResolution.IsConfigured)
+        {
+            return "No QC email recipients are configured. Admins can set them under Admin -> Configuration -> QC Email Recipients.";
+        }
+
         var emailContent = await emailComposer.ComposeAsync(sample, readiness, sender, isOverride, overrideReason, cancellationToken);
-        var recipients = emailOptions.QcRecipientHeader;
+        var recipients = recipientResolution.Header;
         var message = new QcEmailMessage(sender.Email, recipients, sample.TakenByUser?.Email, emailContent.Subject, emailContent.TextBody, emailContent.HtmlBody, emailContent.InlineImages);
 
         var now = DateTimeOffset.UtcNow;

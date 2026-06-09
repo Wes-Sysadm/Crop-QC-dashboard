@@ -20,11 +20,12 @@ In Production, the dashboard defaults to `GmailUser` when no explicit provider e
 ## Sender And Recipients
 
 - Sender: the logged-in Google Workspace user from one of the allowed company domains.
-- Recipient: configured `Email__QcDefaultRecipients`; `Email__ToAddress` remains a fallback for older configuration.
+- Recipient: the Admin Configuration setting `QcEmailDefaultRecipients`, edited under Admin -> Configuration -> QC Email Recipients.
+- Fallback recipient bootstrap: `Email__QcDefaultRecipients`; `Email__ToAddress` remains a fallback for older configuration.
 - Current testing recipients: `rob@earlbrownandsons.com,wes@fruitandland.com`.
 - Reply-To: the user who took the sample, when available.
 
-Do not use `QC@fruitandland.com` or broader distribution groups during the current email test phase unless the recipients are manually changed later. Update `Email__QcDefaultRecipients` before production rollout if the recipient list changes.
+Do not use `QC@fruitandland.com` or broader distribution groups during the current email test phase unless the recipients are manually changed later. Ongoing recipient changes should be made in Admin -> Configuration -> QC Email Recipients; Render's `Email__QcDefaultRecipients` is only a fallback/default when no database setting exists.
 
 ## Expected Send Rules
 
@@ -66,7 +67,7 @@ Gmail permission is required. Please reconnect Google/Gmail.
 
 Reconnect by signing out and signing back in with the Gmail send permission.
 
-Admins can open Admin -> Configuration -> Email Status to check the safe email diagnostics: provider value, expected `Email__Provider` environment variable, current user/domain, whether the domain is allowed, whether a Gmail credential exists, whether `gmail.send` is granted, and whether reconnect is required. This panel never displays access tokens, refresh tokens, client secrets, or API keys.
+Admins can open Admin -> Configuration -> Email Status to check the safe email diagnostics: provider value, expected `Email__Provider` environment variable, recipient source/list, current user/domain, whether the domain is allowed, whether a Gmail credential exists, whether `gmail.send` is granted, and whether reconnect is required. This panel never displays access tokens, refresh tokens, client secrets, or API keys.
 
 ## Token Security
 

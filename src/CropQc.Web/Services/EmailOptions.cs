@@ -1,4 +1,7 @@
 using Microsoft.Extensions.Configuration;
+using CropQc.Data;
+using Microsoft.EntityFrameworkCore;
+using System.Net.Mail;
 
 namespace CropQc.Web.Services;
 
@@ -8,25 +11,101 @@ public sealed class EmailOptions
 
     public string Provider { get; init; } = EmailProviders.None;
     public string FromAddress { get; init; } = "HL@fruitandland.com";
-    public string ToAddress { get; init; } = TestingQcDefaultRecipients;
-    public string QcDefaultRecipients { get; init; } = TestingQcDefaultRecipients;
+    public string ToAddress { get; init; } = "";
+    public string QcDefaultRecipients { get; init; } = "";
     public bool IsProduction { get; init; }
 
     public string QcRecipientHeader =>
         string.Join(", ", QcRecipientList);
 
     public IReadOnlyList<string> QcRecipientList =>
-        ParseRecipients(QcDefaultRecipients).Count > 0
-            ? ParseRecipients(QcDefaultRecipients)
-            : ParseRecipients(ToAddress);
+        QcEmailRecipientParser.Parse(QcDefaultRecipients).Recipients.Count > 0
+            ? QcEmailRecipientParser.Parse(QcDefaultRecipients).Recipients
+            : QcEmailRecipientParser.Parse(ToAddress).Recipients;
+}
 
-    private static IReadOnlyList<string> ParseRecipients(string? value) =>
-        string.IsNullOrWhiteSpace(value)
-            ? []
-            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+public static class QcEmailRecipientSettings
+{
+    public const string Key = "QcEmailDefaultRecipients";
+}
+
+public sealed record QcEmailRecipientParseResult(IReadOnlyList<string> Recipients, IReadOnlyList<string> InvalidRecipients);
+
+public sealed record QcEmailRecipientResolution(IReadOnlyList<string> Recipients, string Source)
+{
+    public string Header => string.Join(", ", Recipients);
+    public bool IsConfigured => Recipients.Count > 0;
+}
+
+public static class QcEmailRecipientSources
+{
+    public const string AdminConfiguration = "Admin Configuration";
+    public const string FallbackConfiguration = "Render/appsettings fallback";
+    public const string NotConfigured = "Not configured";
+}
+
+public static class QcEmailRecipientParser
+{
+    public static QcEmailRecipientParseResult Parse(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return new QcEmailRecipientParseResult([], []);
+        }
+
+        var recipients = new List<string>();
+        var invalid = new List<string>();
+        foreach (var item in value.Split([',', ';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (string.IsNullOrWhiteSpace(item))
+            {
+                continue;
+            }
+
+            try
+            {
+                var address = new MailAddress(item.Trim()).Address;
+                if (!recipients.Contains(address, StringComparer.OrdinalIgnoreCase))
+                {
+                    recipients.Add(address);
+                }
+            }
+            catch (FormatException)
+            {
+                invalid.Add(item.Trim());
+            }
+        }
+
+        return new QcEmailRecipientParseResult(recipients, invalid.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+    }
+}
+
+public interface IQcEmailRecipientResolver
+{
+    Task<QcEmailRecipientResolution> ResolveAsync(CancellationToken cancellationToken);
+}
+
+public sealed class QcEmailRecipientResolver(CropQcDbContext dbContext, EmailOptions emailOptions) : IQcEmailRecipientResolver
+{
+    public async Task<QcEmailRecipientResolution> ResolveAsync(CancellationToken cancellationToken)
+    {
+        var configuredValue = await dbContext.DashboardConfigurations.AsNoTracking()
+            .Where(x => x.Key == QcEmailRecipientSettings.Key)
+            .Select(x => x.Value)
+            .SingleOrDefaultAsync(cancellationToken);
+        var configured = QcEmailRecipientParser.Parse(configuredValue);
+        if (configured.Recipients.Count > 0)
+        {
+            return new QcEmailRecipientResolution(configured.Recipients, QcEmailRecipientSources.AdminConfiguration);
+        }
+
+        if (emailOptions.QcRecipientList.Count > 0)
+        {
+            return new QcEmailRecipientResolution(emailOptions.QcRecipientList, QcEmailRecipientSources.FallbackConfiguration);
+        }
+
+        return new QcEmailRecipientResolution([], QcEmailRecipientSources.NotConfigured);
+    }
 }
 
 public static class EmailProviders
@@ -58,8 +137,8 @@ public static class EmailOptionsFactory
         {
             Provider = string.IsNullOrWhiteSpace(provider) ? EmailProviders.None : provider.Trim(),
             FromAddress = configuration["Email:FromAddress"] ?? "HL@fruitandland.com",
-            ToAddress = configuration["Email:ToAddress"] ?? configuration["Email:QcDefaultRecipients"] ?? EmailOptions.TestingQcDefaultRecipients,
-            QcDefaultRecipients = configuration["Email:QcDefaultRecipients"] ?? configuration["Email:ToAddress"] ?? EmailOptions.TestingQcDefaultRecipients,
+            ToAddress = configuration["Email:ToAddress"] ?? configuration["Email:QcDefaultRecipients"] ?? "",
+            QcDefaultRecipients = configuration["Email:QcDefaultRecipients"] ?? configuration["Email:ToAddress"] ?? "",
             IsProduction = isProduction
         };
     }
