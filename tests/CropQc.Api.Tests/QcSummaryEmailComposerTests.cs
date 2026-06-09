@@ -76,11 +76,12 @@ public sealed class QcSummaryEmailComposerTests
         var readiness = new ReadinessViewModel { CompletedFruitCount = 1 };
         var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
 
-        var content = await composer.ComposeAsync(sample, readiness, isOverride: false, overrideReason: null, CancellationToken.None);
+        var content = await composer.ComposeAsync(sample, readiness, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
         Assert.Contains("WP - Reese LOT-1 9450 BLUE06 Receiving Sample On 05/11/2025", content.Subject);
         Assert.Contains("<h2>Summary</h2>", content.HtmlBody);
         Assert.Contains("<h2>Fruit Overview</h2>", content.HtmlBody);
+        Assert.True(content.HtmlBody.IndexOf("<h2>Fruit Overview</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal));
         Assert.Contains("cid:cropqc-photo-", content.HtmlBody);
         Assert.Contains("Truck photo", content.HtmlBody);
         Assert.Contains("Top of truck", content.HtmlBody);
@@ -101,7 +102,7 @@ public sealed class QcSummaryEmailComposerTests
         var readiness = new ReadinessViewModel { CompletedFruitCount = 1 };
         var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
 
-        var content = await composer.ComposeAsync(sample, readiness, isOverride: false, overrideReason: null, CancellationToken.None);
+        var content = await composer.ComposeAsync(sample, readiness, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
         Assert.Contains("cid:cropqc-photo-5@cropqc", content.HtmlBody);
         Assert.Contains("cid:cropqc-photo-6@cropqc", content.HtmlBody);
@@ -110,6 +111,100 @@ public sealed class QcSummaryEmailComposerTests
         Assert.True(content.HtmlBody.IndexOf("<h3>Hectre</h3>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h3>Whole sample</h3>", StringComparison.Ordinal));
         Assert.True(content.HtmlBody.IndexOf("<h3>Whole sample</h3>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h3>Cut apples</h3>", StringComparison.Ordinal));
         Assert.True(content.HtmlBody.IndexOf("<h3>Cut apples</h3>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h3>Starch apples</h3>", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task EmailComposer_IncludesPartialRowsAndSummarizesEnteredData()
+    {
+        var sample = BuildSample("Door Sample");
+        sample.FruitReadings.Clear();
+        var grade = new Grade { Id = 2, Code = "Fancy", Name = "Fancy" };
+        var starch = new StarchScaleValue { Id = 2, Value = 5.0m, SortOrder = 2, StarchScale = new StarchScale { Id = 1, Name = "Apple" } };
+        var bruise = new DefectType { Id = 2, Name = "Bruise" };
+        var sunburn = new DefectType { Id = 3, Name = "Sunburn" };
+        sample.FruitReadings.Add(new QcFruitReading
+        {
+            Id = 11,
+            QcSampleId = sample.Id,
+            RowNumber = 1,
+            Pressure1Lbs = 10m,
+            Pressure2Lbs = 12m,
+            SizeStatus = "NotCalculated",
+            IsCompleted = false
+        });
+        sample.FruitReadings.Add(new QcFruitReading
+        {
+            Id = 12,
+            QcSampleId = sample.Id,
+            RowNumber = 2,
+            WeightGrams = 175m,
+            SizeCategory = 100,
+            SizeStatus = "Sized",
+            IsCompleted = false
+        });
+        sample.FruitReadings.Add(new QcFruitReading
+        {
+            Id = 13,
+            QcSampleId = sample.Id,
+            RowNumber = 3,
+            Grade = grade,
+            GradeId = grade.Id,
+            SizeStatus = "NotCalculated",
+            IsCompleted = false
+        });
+        var row4 = new QcFruitReading
+        {
+            Id = 14,
+            QcSampleId = sample.Id,
+            RowNumber = 4,
+            SizeStatus = "NotCalculated",
+            IsCompleted = false
+        };
+        row4.Defects.Add(new QcFruitDefect { DefectType = bruise, DefectTypeId = bruise.Id, Notes = "Shoulder" });
+        sample.FruitReadings.Add(row4);
+        var row5 = new QcFruitReading
+        {
+            Id = 15,
+            QcSampleId = sample.Id,
+            RowNumber = 5,
+            Pressure1Lbs = 14m,
+            WeightGrams = 150m,
+            SizeCategory = 120,
+            StarchScaleValue = starch,
+            StarchScaleValueId = starch.Id,
+            SizeStatus = "Sized",
+            IsCompleted = false
+        };
+        row5.Defects.Add(new QcFruitDefect { DefectType = sunburn, DefectTypeId = sunburn.Id });
+        sample.FruitReadings.Add(row5);
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+
+        var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = false }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
+
+        Assert.Contains("Sample size</th><td style=\"border:1px solid #cbd5e1;\">5</td>", content.HtmlBody);
+        Assert.Contains("Average pressure lbs</th><td style=\"border:1px solid #cbd5e1;\">12.5</td>", content.HtmlBody);
+        Assert.Contains("Pressure std dev lbs</th><td style=\"border:1px solid #cbd5e1;\">2.12</td>", content.HtmlBody);
+        Assert.Contains("Average weight grams</th><td style=\"border:1px solid #cbd5e1;\">162.5</td>", content.HtmlBody);
+        Assert.Contains("Grade summary</th><td style=\"border:1px solid #cbd5e1;\">Fancy: 1</td>", content.HtmlBody);
+        Assert.Contains("Defect summary</th><td style=\"border:1px solid #cbd5e1;\">Bruise: 1, Sunburn: 1</td>", content.HtmlBody);
+        Assert.Contains("Size/status summary</th><td style=\"border:1px solid #cbd5e1;\">1 size 100, 1 size 120</td>", content.HtmlBody);
+        Assert.Contains("Row 1:", content.TextBody);
+        Assert.Contains("Row 5:", content.TextBody);
+        Assert.True(content.HtmlBody.IndexOf("<h2>Fruit Overview</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal));
+        Assert.Contains("Sample is incomplete; summary includes entered data only.", content.TextBody);
+    }
+
+    [Fact]
+    public async Task EmailComposer_UsesSendingUserAsInspectorFallback()
+    {
+        var sample = BuildSample("Door Sample");
+        sample.TakenByUser = null;
+        var sender = new User { Id = 7, Email = "rob@earlbrownandsons.com", DisplayName = "Rob", Domain = "earlbrownandsons.com" };
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+
+        var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true, CompletedFruitCount = 1 }, sender, isOverride: false, overrideReason: null, CancellationToken.None);
+
+        Assert.Contains("Inspector</th><td style=\"border:1px solid #cbd5e1;\">Rob (rob@earlbrownandsons.com)</td>", content.HtmlBody);
     }
 
     [Fact]

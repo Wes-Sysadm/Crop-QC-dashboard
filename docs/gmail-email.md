@@ -15,6 +15,8 @@ Google__Gmail__SendScope=https://www.googleapis.com/auth/gmail.send
 
 Local development can keep `Email__Provider=None` to disable real sending. Shared SMTP is not the normal sending identity.
 
+In Production, the dashboard defaults to `GmailUser` when no explicit provider environment variable is set. Render should still set `Email__Provider=GmailUser` so the intended send mode is obvious. Setting `Email__Provider=None` in Render intentionally disables QC Summary sending and will produce a provider-disabled message.
+
 ## Sender And Recipients
 
 - Sender: the logged-in Google Workspace user from one of the allowed company domains.
@@ -63,6 +65,8 @@ Gmail permission is required. Please reconnect Google/Gmail.
 ```
 
 Reconnect by signing out and signing back in with the Gmail send permission.
+
+Admins can open Admin -> Configuration -> Email Status to check the safe email diagnostics: provider value, expected `Email__Provider` environment variable, current user/domain, whether the domain is allowed, whether a Gmail credential exists, whether `gmail.send` is granted, and whether reconnect is required. This panel never displays access tokens, refresh tokens, client secrets, or API keys.
 
 ## Token Security
 
