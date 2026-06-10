@@ -33,6 +33,20 @@ Photos and attachments must be retained for at least 3 crop years after the curr
 
 Admin-reviewed archive/delete workflows are future work. Until that workflow exists, retention actions must not run automatically.
 
+## Environment Boundary
+
+Production and staging/test are separate operational environments. Production runs real users, receipts, samples, photos, emails, and QC Station connections. Staging/test runs fake data only and must be visibly labeled with `TEST SITE — DO NOT ENTER REAL QC DATA`. The app reads `AppEnvironment__Kind` (`Production`, `Staging`, or `Development`) and `AppEnvironment__DisplayName` to drive the visible label and production safety warnings.
+
+Production and staging must use separate Postgres databases, Google Drive photo folders, Google Drive backup folders, OAuth redirect URIs, email recipients, and QC Station configs/API keys. No staging service should point at a production database or production Drive folder.
+
+## Production Data Safety Boundary
+
+Future revisions must carry production data forward. Production changes should prefer additive migrations, backfill data before enforcing required fields, and keep old records readable after schema changes. Do not run destructive production migrations, table drops, column drops, seed/reset jobs, or hard purge actions without an explicit documented plan, a current backup, and post-deploy verification. Admin Data Cleanup is allowed only for configured cleanup emails, requires typed confirmation, and must audit every cleanup action.
+
+## Backup Boundary
+
+Google Drive is the backup target. Admin -> Backups reports the configured provider/folder, last backup status, production safety warnings, and manual actions. The backup workflow produces a PostgreSQL logical dump when `pg_dump` is available, a non-secret configuration snapshot, and a Google Drive photo/storage manifest. Configuration backups must not contain OAuth tokens, Google service account JSON, client secrets, API keys, station keys, or Gmail credentials. If `pg_dump` is missing from the runtime, the app warns and the deployment process must use Render/Postgres backups or a PostgreSQL-tools worker for database dumps.
+
 ## Email Boundary
 
 QC Summary email sends through the Gmail API using the logged-in Google Workspace user's delegated `gmail.send` permission when `Email__Provider=GmailUser` is configured. Allowed sending domains are configured with `Authentication__AllowedGoogleDomains`; current company domains are `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com`. QC recipients are configured with `Email__QcDefaultRecipients`; the current test value is `rob@earlbrownandsons.com,wes@fruitandland.com`. The sender is the logged-in user, not a shared SMTP account. Refresh tokens are encrypted with ASP.NET Core Data Protection and are not logged.

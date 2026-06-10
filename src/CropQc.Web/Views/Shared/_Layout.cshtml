@@ -1,6 +1,7 @@
 <!doctype html>
 @using System.Security.Claims
 @inject CropQc.Web.Services.IAdminAuthorizationService AdminAuthorization
+@inject CropQc.Web.Services.AppEnvironmentOptions AppEnvironment
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 <html lang="en">
 <head>
@@ -10,6 +11,13 @@
     <link rel="stylesheet" href="~/css/site.css" />
 </head>
 <body>
+    @if (AppEnvironment.IsStagingLike)
+    {
+        <div class="environment-banner">
+            TEST SITE — DO NOT ENTER REAL QC DATA
+            <span>@AppEnvironment.DisplayName</span>
+        </div>
+    }
     <header class="topbar">
         <a class="brand" href="/">Crop QC Dashboard</a>
         <nav>
@@ -35,6 +43,7 @@
                     <a href="/Admin/Users">Users</a>
                     <a href="/Admin/Downloads">Downloads</a>
                     <a href="/Admin/Configuration">Configuration</a>
+                    <a href="/Admin/Backups">Backups</a>
                     @if (canAccessDataCleanup)
                     {
                         <a href="/Admin/DataCleanup">Data Cleanup</a>
@@ -43,6 +52,10 @@
                 }
                 <span class="user-email">@currentEmail</span>
                 <span class="status">@role</span>
+                @if (AppEnvironment.IsProduction)
+                {
+                    <span class="environment-badge">@AppEnvironment.DisplayName</span>
+                }
                 <form class="logout-form" method="post" action="/Logout">
                     <button type="submit" class="link-button">Logout</button>
                 </form>

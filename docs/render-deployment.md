@@ -1,14 +1,43 @@
 # Render Deployment
 
-This document describes the first Render staging deployment path for the MVP 1 Receiving/QC web dashboard. It includes Google Drive photo upload configuration. It does not implement Gmail sending, storage inventory, Mexico qualification, packout imports, pool closing imports, or analytics.
+This document describes Render deployment for the Crop QC Dashboard production and staging services. It includes Google Drive photo upload, GmailUser QC Summary email, environment labeling, and Google Drive backup configuration. It does not implement storage inventory, Mexico qualification, packout imports, pool closing imports, or analytics.
 
 ## Target Services
 
 - Render Web Service for `CropQc.Web`.
 - Render Postgres for structured data.
-- Google Shared Drive later for photos and attachments.
-- Gmail API or Google Workspace SMTP relay later for QC Summary email.
+- Google Shared Drive for photos, attachments, installer/support downloads, and backups.
+- Gmail API for QC Summary email sent by the logged-in Google Workspace user.
 - WinForms QC Station remains local for FTA, camera, and future offline capture.
+
+## Production And Staging Separation
+
+Run production/live and staging/test as separate Render services.
+
+Production / Live Site:
+
+- Branch: `main`.
+- Uses the production Postgres database.
+- Uses production Google Drive photo and backup folders.
+- Uses production Google OAuth redirect URI/settings.
+- Uses production GmailUser settings and approved recipients.
+- Uses real QC Station records/configs.
+- Real data must be retained through future revisions unless explicitly deleted by an approved Admin cleanup process.
+- Set `AppEnvironment__Kind=Production` and `AppEnvironment__DisplayName=Production`.
+
+Staging / Test Site:
+
+- Branch: `staging`, a PR branch, or `main` with manual deploys.
+- Uses a separate staging Postgres database.
+- Uses separate staging Google Drive photo and backup folders.
+- Uses staging OAuth redirect URI/settings.
+- Uses test-only email recipients.
+- Uses fake/demo QC Station configs only.
+- Can be reset/purged.
+- Set `AppEnvironment__Kind=Staging` and `AppEnvironment__DisplayName=Crop QC Staging`.
+- The app shows `TEST SITE — DO NOT ENTER REAL QC DATA`.
+
+Staging and production must never share the same Postgres database, Google Drive photo folder, Google Drive backup folder, OAuth redirect URI, email recipient list, or QC Station API keys/configs.
 
 ## Repository Deployment Files
 
@@ -72,6 +101,8 @@ Set these variables in Render:
 - `DataProtection__PersistKeysToFileSystem=true`
 - `DataProtection__KeysPath=/var/data/dataprotection-keys`
 - `DataProtection__ApplicationName=CropQcDashboard`
+- `AppEnvironment__Kind=Production`
+- `AppEnvironment__DisplayName=Production`
 - `FileStorage__Provider=GoogleDrive`
 - `FileStorage__LocalRootPath=/var/data/cropqc-files`
 - `FileStorage__BasePath=Crop QC Photos`
@@ -88,6 +119,14 @@ Set these variables in Render:
 - `Downloads__MasterFolderUrl=<Google Drive folder share link>`
 - `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link`
 - `DataCleanup__AllowedEmails=wes@fruitandland.com`
+- `Backups__Enabled=true`
+- `Backups__Provider=GoogleDrive`
+- `Backups__GoogleDriveFolderId=<production Google Drive backup folder id>`
+- `Backups__RetentionDays=90`
+- `Backups__ScheduleUtcHour=10`
+- `Backups__DatabaseBackupEnabled=true`
+- `Backups__PhotoManifestEnabled=true`
+- `Backups__ConfigBackupEnabled=true`
 - Optional review thresholds: `DashboardReview__LowPressureLbs`, `DashboardReview__HighPressureLbs`, `DashboardReview__HighStarch`, `DashboardReview__HighDefectPercent`, `DashboardReview__HighPressureVarianceLbs`
 
 Do not commit database passwords, Google credentials, Gmail credentials, OAuth tokens, or API secrets.
@@ -126,7 +165,7 @@ Initial Admin bootstrap is controlled by `Authentication__BootstrapAdminEmails`.
 
 Roles are managed inside the dashboard. `/Admin/Users` also shows a role permission matrix so Admin users can see exactly what each access level is intended to allow or block before changing a user role:
 
-- Admin: Dashboard, Daily QC, Receipts, Master Data, Users, QC Stations, Downloads, Configuration, override/send, audit review, and exports.
+- Admin: Dashboard, Daily QC, Receipts, Master Data, Users, QC Stations, Downloads, Configuration, Backups, override/send, audit review, and exports.
 - Manager: Dashboard, Daily QC, Receipts, Master Data, and QC Stations; no Users, Downloads, or Configuration access.
 - QC User: Dashboard, Daily QC, and Receipts; no management/admin access.
 - Viewer: Dashboard, Daily QC, and Receipts; no management/admin access.
@@ -138,6 +177,7 @@ Management dashboard pages:
 - `/MasterData` shows edit/add/deactivate controls for Admins and Managers.
 - `/Admin/Configuration` manages safe non-secret runtime configuration values. Do not store OAuth secrets, database connection strings, Gmail secrets, Google Drive secrets, or API keys there.
 - `/Admin/Downloads` provides approved internal support-file links, such as the FTA DLL installer Google Drive file and the QC Station App Installer MSI when deployed, to Admin users only.
+- `/Admin/Backups` shows backup status, production safety warnings, and manual backup/test actions to Admin users only.
 
 Master Data editing notes:
 
@@ -183,7 +223,22 @@ Database records are retained indefinitely by default. The app does not automati
 
 Photos and attachments must be retained for at least 3 crop years after the current crop year. The Admin Configuration value `PhotoRetentionCropYearsAfterCurrent` defaults to `3`, but it is a planning value only. No automatic photo deletion currently runs, and an Admin-reviewed archive/delete workflow is future work.
 
-Render Postgres backups are operational backups, not a substitute for the Crop QC retention policy. Before production use, configure and document separate database backup/export procedures that meet company retention needs.
+Render Postgres backups are operational backups, not a substitute for the Crop QC retention policy. Production should also configure Admin -> Backups with `Backups__Provider=GoogleDrive` and `Backups__GoogleDriveFolderId` so the app can upload non-secret config snapshots and photo manifests, and database dumps when `pg_dump` is available.
+
+The Admin Backups page shows backup status, production safety warnings, and manual actions:
+
+- `Run Backup Now`
+- `Test Google Drive Backup Access`
+
+Backup file names:
+
+- `cropqc-prod-db-YYYYMMDD-HHMMSS.sql.gz`
+- `cropqc-prod-config-YYYYMMDD-HHMMSS.json`
+- `cropqc-prod-photo-manifest-YYYYMMDD-HHMMSS.json`
+
+If `pg_dump` is not available in the Render runtime, the page warns that a PostgreSQL-tools worker or external Render/Postgres backup must be configured. Config and photo-manifest backups can still run.
+
+See `docs/backup-restore.md` for restore steps and staging restore verification.
 
 The eventual photo storage provider must support at least 3 crop years of retention after the current crop year. For staging, local placeholder storage is not durable unless backed by a Render persistent disk.
 

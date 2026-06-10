@@ -1,0 +1,84 @@
+@model BackupStatusViewModel
+@{
+    ViewData["Title"] = "Admin Backups";
+}
+
+<h1>Admin Backups</h1>
+
+@if (TempData["Success"] is not null)
+{
+    <p class="notice success">@TempData["Success"]</p>
+}
+@if (TempData["Error"] is not null)
+{
+    <p class="notice error">@TempData["Error"]</p>
+}
+
+@if (Model.Warnings.Count > 0)
+{
+    <section class="panel">
+        <h2>Production Safety Warnings</h2>
+        <ul class="list">
+            @foreach (var warning in Model.Warnings)
+            {
+                <li>@warning</li>
+            }
+        </ul>
+    </section>
+}
+
+<section class="grid-two">
+    <div class="panel">
+        <h2>Backup Status</h2>
+        <dl class="summary-list">
+            <dt>Enabled</dt>
+            <dd>@(Model.Enabled ? "Yes" : "No")</dd>
+            <dt>Provider</dt>
+            <dd>@Model.Provider</dd>
+            <dt>Google Drive folder</dt>
+            <dd>@(Model.GoogleDriveFolderConfigured ? "Configured" : "Missing")</dd>
+            <dt>Database backup</dt>
+            <dd>@(Model.DatabaseBackupEnabled ? "Enabled" : "Disabled")</dd>
+            <dt>Config backup</dt>
+            <dd>@(Model.ConfigBackupEnabled ? "Enabled" : "Disabled")</dd>
+            <dt>Photo manifest</dt>
+            <dd>@(Model.PhotoManifestEnabled ? "Enabled" : "Disabled")</dd>
+            <dt>Retention</dt>
+            <dd>@Model.RetentionDays days</dd>
+            <dt>Schedule setting</dt>
+            <dd>@Model.ScheduleUtcHour:00 UTC daily target. Use Run Backup Now or an external scheduler until an in-app scheduler is enabled.</dd>
+        </dl>
+        <div class="action-bar">
+            <form method="post" action="/Admin/Backups/RunNow">
+                <button type="submit">Run Backup Now</button>
+            </form>
+            <form method="post" action="/Admin/Backups/TestAccess">
+                <button class="secondary-button" type="submit">Test Google Drive Backup Access</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Last Results</h2>
+        <dl class="summary-list">
+            <dt>Database</dt>
+            <dd>@(Model.LastDatabaseBackupAt?.ToString("u") ?? "No successful backup yet")<br /><span class="muted text-wrap-anywhere">@Model.LastDatabaseBackupFileName</span></dd>
+            <dt>Config</dt>
+            <dd>@(Model.LastConfigBackupAt?.ToString("u") ?? "No successful backup yet")<br /><span class="muted text-wrap-anywhere">@Model.LastConfigBackupFileName</span></dd>
+            <dt>Photo manifest</dt>
+            <dd>@(Model.LastPhotoManifestBackupAt?.ToString("u") ?? "No successful backup yet")<br /><span class="muted text-wrap-anywhere">@Model.LastPhotoManifestBackupFileName</span></dd>
+            <dt>Last error</dt>
+            <dd class="text-wrap-normal">@(string.IsNullOrWhiteSpace(Model.LastError) ? "None" : Model.LastError)</dd>
+        </dl>
+    </div>
+</section>
+
+<section class="form-section">
+    <h2>What Backups Include</h2>
+    <ul class="list">
+        <li>PostgreSQL logical database dump when <code>pg_dump</code> is available in the runtime.</li>
+        <li>Non-secret app configuration snapshot.</li>
+        <li>Google Drive photo/storage manifest with receipt, sample, photo type, file ID, and uploaded date references.</li>
+    </ul>
+    <p class="notice warning">Photo binaries already live in Google Drive. This backup stores a manifest so files can be verified and located during restore.</p>
+</section>
