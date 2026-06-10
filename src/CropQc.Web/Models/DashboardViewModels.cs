@@ -247,12 +247,17 @@ public sealed class SampleDetailViewModel
     public IReadOnlyList<Grade> Grades { get; set; } = [];
     public IReadOnlyList<StarchScaleValue> StarchScaleValues { get; set; } = [];
     public IReadOnlyList<DefectType> DefectTypes { get; set; } = [];
+    public IReadOnlyList<int> AllowedSampleSizes { get; set; } = [];
+    public int TargetSampleSize { get; set; } = 10;
+    public int EnteredFruitCount { get; set; }
+    public IReadOnlyList<QcPhotoRequirementViewModel> AvailablePhotoTypes { get; set; } = [];
     public string? RecipientEmail { get; set; }
     public SaveFruitReadingsForm FruitReadingForm { get; set; } = new();
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
 }
 
 public sealed record ReadinessChecklistItem(string Category, string Label, string Status, string CssClass);
+public sealed record QcPhotoRequirementViewModel(string PhotoType, string FriendlyName, bool IsRequired);
 
 public sealed class StarchTestViewModel
 {
@@ -290,8 +295,29 @@ public sealed class FruitReadingRowViewModel
 public sealed class SaveFruitReadingsForm
 {
     public long SampleId { get; set; }
+    public int TargetSampleSize { get; set; } = 10;
     public List<FruitReadingEditRow> Rows { get; set; } = [];
 }
+
+public sealed record SampleRefreshRowViewModel(
+    int RowNumber,
+    decimal? Pressure1Lbs,
+    decimal? Pressure2Lbs,
+    decimal? PressureAverageLbs,
+    decimal? WeightGrams,
+    int? GradeId,
+    string? Grade,
+    int? SizeCategory,
+    string SizeStatus,
+    string EntryStatus,
+    IReadOnlyList<string> Defects);
+
+public sealed record SampleRefreshViewModel(
+    long SampleId,
+    int TargetSampleSize,
+    int EnteredFruitCount,
+    DateTimeOffset? UpdatedAt,
+    IReadOnlyList<SampleRefreshRowViewModel> Rows);
 
 public sealed class FruitReadingEditRow
 {

@@ -17,6 +17,7 @@ public interface IDashboardDataService
     Task<ReceiptDetailViewModel> GetReceiptDetailAsync(long id, CancellationToken cancellationToken);
     Task<(long? SampleId, int? SampleSequenceNumber, string? Warning, string? Error)> CreateReceivingSampleAsync(long receiptId, CancellationToken cancellationToken);
     Task<SampleDetailViewModel> GetSampleDetailAsync(long id, CancellationToken cancellationToken);
+    Task<SampleRefreshViewModel?> GetSampleRefreshAsync(long id, CancellationToken cancellationToken);
     Task<DeleteSampleConfirmationViewModel> GetDeleteSampleConfirmationAsync(long id, CancellationToken cancellationToken);
     Task<(long? ReceiptId, string? Error)> SoftDeleteSampleAsync(long id, string? reason, CancellationToken cancellationToken);
     Task<string?> SaveFruitReadingsAsync(SaveFruitReadingsForm form, CancellationToken cancellationToken);
@@ -26,6 +27,7 @@ public interface IDashboardDataService
     Task<string?> SendQcSummaryAsync(long sampleId, CancellationToken cancellationToken);
     Task<string?> LogOverrideSendAsync(OverrideSendForm form, CancellationToken cancellationToken);
     Task<string?> AddPhotoMetadataAsync(AddPhotoMetadataForm form, CancellationToken cancellationToken);
+    Task<string?> AddSamplePhotoMetadataAsync(long sampleId, AddPhotoMetadataForm form, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken);
 }
 
@@ -317,6 +319,7 @@ public sealed class DashboardDataService(
             StarchStatus = "Starch Pending",
             PhotoStatus = "Photo Pending",
             EmailStatus = "Not Sent",
+            ActualSampleSize = 10,
             SampleTakenAt = now,
             CreatedAt = now,
             UpdatedAt = now
@@ -341,10 +344,16 @@ public sealed class DashboardDataService(
                 return new SampleDetailViewModel { DataWarning = "QC sample not found." };
             }
 
-            var rowModels = await GetFruitReadingRowsAsync(id, cancellationToken);
+            var allowedSampleSizes = await GetAllowedSampleSizesAsync(cancellationToken);
+            var targetSampleSize = ResolveTargetSampleSize(sample.ActualSampleSize, allowedSampleSizes);
+            var rowModels = await GetFruitReadingRowsAsync(id, targetSampleSize, cancellationToken);
 
+            var availablePhotoTypes = photoRequirementPolicy.GetAvailablePhotoTypes(sample.SampleType.Name);
+            var samplePhotoTypes = availablePhotoTypes.Where(x => !x.ReceiptLevel).Select(x => x.PhotoType).Append("Other").Distinct().ToList();
+            var receiptPhotoTypes = availablePhotoTypes.Where(x => x.ReceiptLevel).Select(x => x.PhotoType).Distinct().ToList();
             var photos = await dbContext.QcPhotos.AsNoTracking()
-                .Where(x => x.QcSampleId == id && (x.PhotoType == "Hectre" || x.PhotoType == "SampleBeforeCutting" || x.PhotoType == "CutFruit" || x.PhotoType == "Other"))
+                .Where(x => (x.QcSampleId == id && samplePhotoTypes.Contains(x.PhotoType))
+                    || (x.ReceiptId == sample.ReceiptId && receiptPhotoTypes.Contains(x.PhotoType)))
                 .OrderByDescending(x => x.CapturedAt)
                 .ToListAsync(cancellationToken);
             var grades = await dbContext.Grades.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Id).ToListAsync(cancellationToken);
@@ -357,11 +366,18 @@ public sealed class DashboardDataService(
                 PhotoGroups = GroupPhotos(photos),
                 Readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken),
                 RecipientEmail = recipientResolution.IsConfigured ? recipientResolution.Header : null,
+                AllowedSampleSizes = allowedSampleSizes,
+                TargetSampleSize = targetSampleSize,
+                EnteredFruitCount = rowModels.Count(HasEnteredData),
+                AvailablePhotoTypes = availablePhotoTypes
+                    .Select(x => new QcPhotoRequirementViewModel(x.PhotoType, x.FriendlyName, x.IsRequired))
+                    .ToList(),
                 Grades = grades,
                 DefectTypes = defectTypes,
                 FruitReadingForm = new SaveFruitReadingsForm
                 {
                     SampleId = sample.Id,
+                    TargetSampleSize = targetSampleSize,
                     Rows = rowModels.Select(row => new FruitReadingEditRow
                     {
                         RowNumber = row.RowNumber,
@@ -386,6 +402,36 @@ public sealed class DashboardDataService(
         {
             return new SampleDetailViewModel { DataWarning = DataWarning };
         }
+    }
+
+    public async Task<SampleRefreshViewModel?> GetSampleRefreshAsync(long id, CancellationToken cancellationToken)
+    {
+        var sample = await dbContext.QcSamples.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
+        if (sample is null)
+        {
+            return null;
+        }
+
+        var allowedSampleSizes = await GetAllowedSampleSizesAsync(cancellationToken);
+        var targetSampleSize = ResolveTargetSampleSize(sample.ActualSampleSize, allowedSampleSizes);
+        var rows = await GetFruitReadingRowsAsync(id, targetSampleSize, cancellationToken);
+        return new SampleRefreshViewModel(
+            id,
+            targetSampleSize,
+            rows.Count(HasEnteredData),
+            sample.UpdatedAt,
+            rows.Select(row => new SampleRefreshRowViewModel(
+                row.RowNumber,
+                row.Pressure1Lbs,
+                row.Pressure2Lbs,
+                row.PressureAverageLbs,
+                row.WeightGrams,
+                row.GradeId,
+                row.Grade,
+                row.SizeCategory,
+                row.SizeStatus,
+                row.EntryStatus,
+                row.Defects)).ToList());
     }
 
     public async Task<DeleteSampleConfirmationViewModel> GetDeleteSampleConfirmationAsync(long id, CancellationToken cancellationToken)
@@ -468,6 +514,12 @@ public sealed class DashboardDataService(
             return "At least one grid row must be submitted.";
         }
 
+        var allowedSampleSizes = await GetAllowedSampleSizesAsync(cancellationToken);
+        if (!allowedSampleSizes.Contains(form.TargetSampleSize))
+        {
+            return $"Sample size must be one of: {string.Join(", ", allowedSampleSizes)}.";
+        }
+
         var rowsByNumber = form.Rows.GroupBy(x => x.RowNumber).ToList();
         if (rowsByNumber.Any(x => x.Key is < 1 or > 25) || rowsByNumber.Any(x => x.Count() > 1))
         {
@@ -485,6 +537,7 @@ public sealed class DashboardDataService(
             .Include(x => x.Defects)
             .Where(x => x.QcSampleId == sample.Id)
             .ToListAsync(cancellationToken);
+        sample.ActualSampleSize = form.TargetSampleSize;
 
         foreach (var submittedRow in form.Rows.OrderBy(x => x.RowNumber))
         {
@@ -554,7 +607,9 @@ public sealed class DashboardDataService(
                 return new StarchTestViewModel { DataWarning = "QC sample not found." };
             }
 
-            var rowModels = await GetFruitReadingRowsAsync(id, cancellationToken);
+            var allowedSampleSizes = await GetAllowedSampleSizesAsync(cancellationToken);
+            var targetSampleSize = ResolveTargetSampleSize(sample.ActualSampleSize, allowedSampleSizes);
+            var rowModels = await GetFruitReadingRowsAsync(id, targetSampleSize, cancellationToken);
             var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
             var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.QcSampleId == id && (x.PhotoType == "FruitAfterStarch" || x.PhotoType == "Other")).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
             return new StarchTestViewModel
@@ -940,6 +995,28 @@ public sealed class DashboardDataService(
         return null;
     }
 
+    public async Task<string?> AddSamplePhotoMetadataAsync(long sampleId, AddPhotoMetadataForm form, CancellationToken cancellationToken)
+    {
+        var sample = await dbContext.QcSamples
+            .Include(x => x.SampleType)
+            .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted, cancellationToken);
+        if (sample is null)
+        {
+            return "QC sample not found.";
+        }
+
+        var available = photoRequirementPolicy.GetAvailablePhotoTypes(sample.SampleType.Name);
+        var selected = available.SingleOrDefault(x => string.Equals(x.PhotoType, form.PhotoType, StringComparison.OrdinalIgnoreCase));
+        if (selected is null && !string.Equals(form.PhotoType, "Other", StringComparison.OrdinalIgnoreCase))
+        {
+            return "That photo type is not available for this sample type.";
+        }
+
+        form.ReceiptId = selected?.ReceiptLevel == true ? sample.ReceiptId : null;
+        form.QcSampleId = selected?.ReceiptLevel == true ? null : sample.Id;
+        return await AddPhotoMetadataAsync(form, cancellationToken);
+    }
+
     public async Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken)
     {
         try
@@ -1099,7 +1176,7 @@ public sealed class DashboardDataService(
         }
     }
 
-    private async Task<IReadOnlyList<FruitReadingRowViewModel>> GetFruitReadingRowsAsync(long sampleId, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<FruitReadingRowViewModel>> GetFruitReadingRowsAsync(long sampleId, int targetSampleSize, CancellationToken cancellationToken)
     {
         var rows = await dbContext.QcFruitReadings.AsNoTracking()
             .Include(x => x.Grade)
@@ -1108,7 +1185,8 @@ public sealed class DashboardDataService(
             .Where(x => x.QcSampleId == sampleId)
             .ToListAsync(cancellationToken);
 
-        return Enumerable.Range(1, 25)
+        var rowCount = Math.Max(targetSampleSize, rows.Count == 0 ? 0 : rows.Max(x => x.RowNumber));
+        return Enumerable.Range(1, rowCount)
             .Select(rowNumber =>
             {
                 var row = rows.SingleOrDefault(x => x.RowNumber == rowNumber);
@@ -1136,6 +1214,42 @@ public sealed class DashboardDataService(
             })
             .ToList();
     }
+
+    private async Task<IReadOnlyList<int>> GetAllowedSampleSizesAsync(CancellationToken cancellationToken)
+    {
+        var configured = await dbContext.DashboardConfigurations.AsNoTracking()
+            .Where(x => x.Key == "AllowedSampleSizes")
+            .Select(x => x.Value)
+            .SingleOrDefaultAsync(cancellationToken);
+        var values = (configured ?? "10,25,50")
+            .Split([',', ';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => int.TryParse(x, out var value) ? value : 0)
+            .Where(x => x > 0)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToList();
+        return values.Count == 0 ? [10, 25, 50] : values;
+    }
+
+    private static int ResolveTargetSampleSize(int? savedSampleSize, IReadOnlyList<int> allowedSampleSizes)
+    {
+        if (savedSampleSize is > 0)
+        {
+            return savedSampleSize.Value;
+        }
+
+        return allowedSampleSizes.Contains(10) ? 10 : allowedSampleSizes.FirstOrDefault(10);
+    }
+
+    private static bool HasEnteredData(FruitReadingRowViewModel row) =>
+        row.Pressure1Lbs is not null ||
+        row.Pressure2Lbs is not null ||
+        row.WeightGrams is not null ||
+        row.GradeId is not null ||
+        row.StarchScaleValueId is not null ||
+        row.SizeCategory is not null ||
+        row.DefectTypeIds.Count > 0 ||
+        !string.IsNullOrWhiteSpace(row.OtherDefectNotes);
 
     public static FruitRowEntryStatus GetFruitRowEntryStatus(FruitReadingEditRow row, IReadOnlyCollection<int>? selectedDefectIds = null)
     {
@@ -1234,7 +1348,6 @@ public sealed class DashboardDataService(
     private async Task RefreshSampleStatusesAsync(QcSample sample, CancellationToken cancellationToken)
     {
         var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
-        sample.ActualSampleSize = readiness.CompletedFruitCount;
         sample.StarchStatus = readiness.CompletedFruitCount > 0 && readiness.StarchMissingCount == 0
             ? "Starch Complete"
             : "Starch Pending";

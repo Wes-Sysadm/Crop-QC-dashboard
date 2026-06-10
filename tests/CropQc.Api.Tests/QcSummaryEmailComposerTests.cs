@@ -23,6 +23,19 @@ public sealed class QcSummaryEmailComposerTests
         Assert.Equal(expectedKeys.Split(','), requirements);
     }
 
+    [Theory]
+    [InlineData("Door Sample", "TruckPhoto,TopOfTruck,Hectre,WholeSample,CutApples,StarchApples")]
+    [InlineData("Room Sample", "TruckPhoto,TopOfTruck,Hectre,WholeSample,CutApples,StarchApples")]
+    [InlineData("Line Sample", "Hectre,WholeSample,CutApples,StarchApples")]
+    public void PhotoRequirementPolicy_MapsAvailablePhotosBySampleType(string sampleType, string expectedKeys)
+    {
+        var policy = new QcPhotoRequirementPolicy();
+
+        var available = policy.GetAvailablePhotoTypes(sampleType).Select(x => x.Key);
+
+        Assert.Equal(expectedKeys.Split(','), available);
+    }
+
     [Fact]
     public void PhotoRequirementPolicy_DoesNotRequireOptionalPhotosForDoorSamples()
     {
@@ -82,6 +95,9 @@ public sealed class QcSummaryEmailComposerTests
         Assert.Contains("<h2>Summary</h2>", content.HtmlBody);
         Assert.Contains("<h2>Fruit Overview</h2>", content.HtmlBody);
         Assert.True(content.HtmlBody.IndexOf("<h2>Fruit Overview</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal));
+        Assert.True(content.HtmlBody.IndexOf("<h2>Fruit Overview</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Photos</h2>", StringComparison.Ordinal));
+        Assert.True(content.HtmlBody.IndexOf("<h2>Photos</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal));
+        Assert.DoesNotContain("Defects / Notes Detail", content.HtmlBody);
         Assert.Contains("cid:cropqc-photo-", content.HtmlBody);
         Assert.Contains("Truck photo", content.HtmlBody);
         Assert.Contains("Top of truck", content.HtmlBody);
@@ -181,7 +197,7 @@ public sealed class QcSummaryEmailComposerTests
 
         var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = false }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
-        Assert.Contains("Sample size</th><td style=\"border:1px solid #cbd5e1;\">5</td>", content.HtmlBody);
+        Assert.Contains("Entered fruit count</th><td style=\"border:1px solid #cbd5e1;\">5</td>", content.HtmlBody);
         Assert.Contains("Average pressure lbs</th><td style=\"border:1px solid #cbd5e1;\">12.5</td>", content.HtmlBody);
         Assert.Contains("Pressure std dev lbs</th><td style=\"border:1px solid #cbd5e1;\">2.12</td>", content.HtmlBody);
         Assert.Contains("Average weight grams</th><td style=\"border:1px solid #cbd5e1;\">162.5</td>", content.HtmlBody);
@@ -191,7 +207,33 @@ public sealed class QcSummaryEmailComposerTests
         Assert.Contains("Row 1:", content.TextBody);
         Assert.Contains("Row 5:", content.TextBody);
         Assert.True(content.HtmlBody.IndexOf("<h2>Fruit Overview</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal));
+        Assert.DoesNotContain("Defects / Notes Detail", content.HtmlBody);
         Assert.Contains("Sample is incomplete; summary includes entered data only.", content.TextBody);
+    }
+
+    [Fact]
+    public async Task EmailComposer_SortsSizeSummaryByPeakCountThenAppleSizeOrder()
+    {
+        var sample = BuildSample("Door Sample");
+        sample.FruitReadings.Clear();
+        var sizes = new[] { 120, 120, 120, 120, 100, 100, 100, 113, 113, 113, 88 };
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            sample.FruitReadings.Add(new QcFruitReading
+            {
+                Id = 100 + i,
+                QcSampleId = sample.Id,
+                RowNumber = i + 1,
+                WeightGrams = 150 + i,
+                SizeCategory = sizes[i],
+                SizeStatus = "Sized"
+            });
+        }
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+
+        var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
+
+        Assert.Contains("4 size 120, 3 size 100, 3 size 113, 1 size 88", content.HtmlBody);
     }
 
     [Fact]
@@ -215,7 +257,9 @@ public sealed class QcSummaryEmailComposerTests
         var photoForm = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_PhotoPlaceholderForm.cshtml"));
 
         Assert.Contains("\"TopOfTruck\"", receiptView);
-        Assert.Contains("\"Hectre\"", sampleView);
+        Assert.Contains("Model.AvailablePhotoTypes", sampleView);
+        Assert.Contains("PhotoTypes = Model.AvailablePhotoTypes", sampleView);
+        Assert.Contains("Available Photo Types", sampleView);
         Assert.Contains("\"TopOfTruck\" => \"Top of truck\"", photoForm);
         Assert.Contains("\"Hectre\" => \"Hectre\"", photoForm);
     }
@@ -255,6 +299,7 @@ public sealed class QcSummaryEmailComposerTests
             StarchStatus = "Starch Complete",
             PhotoStatus = "Photos Complete",
             EmailStatus = "Not Sent",
+            ActualSampleSize = 10,
             SampleTakenAt = DateTimeOffset.Parse("2025-05-11T10:30:00-07:00"),
             TakenByUser = new User { Id = 1, Email = "inspector@fruitandland.com", DisplayName = "Inspector", Domain = "fruitandland.com" }
         };

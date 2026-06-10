@@ -24,6 +24,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
     [
         ("DefaultCropYear", DateTimeOffset.UtcNow.Year.ToString(), "Default crop year", "Integer"),
         ("MaximumSampleRows", "25", "Maximum sample rows", "Integer"),
+        ("AllowedSampleSizes", "10,25,50", "Allowed QC sample target sizes. Use comma-separated values.", "IntegerList"),
         ("UnsyncedWarningHours", "2", "Unsynced warning hours", "Integer"),
         ("UnsyncedCriticalHours", "12", "Unsynced critical hours", "Integer"),
         ("OfflineSessionDays", "7", "Offline session days", "Integer"),
