@@ -3,6 +3,7 @@
 @{
     ViewData["Title"] = "QC Sample Detail";
     var defectOptionsJson = JsonSerializer.Serialize(Model.DefectTypes.Select(x => new { id = x.Id, name = x.Name }));
+    var refreshIntervalMs = 15000;
 }
 
 <h1>QC Sample Detail</h1>
@@ -26,7 +27,7 @@
 {
     <section class="panel">
         <h2>@Model.Sample.DisplayReceiptId</h2>
-        <p>@Model.Sample.Warehouse | @Model.Sample.SampleType | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Sample size: @Model.Sample.ActualSampleSize</p>
+        <p>@Model.Sample.Warehouse | @Model.Sample.SampleType | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Target sample size: @Model.TargetSampleSize | Entered fruit count: @Model.EnteredFruitCount</p>
         <p>@StarchSummary(Model.Readiness)</p>
         <p>
             <a class="button" href="/Samples/@Model.Sample.Id/Starch">Starch Input</a>
@@ -99,9 +100,24 @@
 
 @if (Model.Sample is not null)
 {
-    <form method="post" action="/Samples/@Model.Sample.Id/rows">
+    <form method="post" action="/Samples/@Model.Sample.Id/rows" id="qc-rows-form" data-sample-id="@Model.Sample.Id" data-refresh-url="/Samples/@Model.Sample.Id/refresh">
         <input type="hidden" name="SampleId" value="@Model.Sample.Id" />
-        <h2>25-Row QC Grid</h2>
+        <div class="toolbar">
+            <label class="field">
+                Sample size
+                <select name="TargetSampleSize" id="target-sample-size">
+                    @foreach (var size in Model.AllowedSampleSizes)
+                    {
+                        <option value="@size" selected="@(size == Model.TargetSampleSize ? "selected" : null)">@size</option>
+                    }
+                </select>
+            </label>
+            <button type="button" class="secondary-button" id="refresh-sample-data">Refresh sample data</button>
+            <span class="muted" id="sample-refresh-status" aria-live="polite"></span>
+        </div>
+        <p class="notice warning" id="sample-size-warning" hidden>Reducing target sample size does not delete existing saved rows. Existing entered rows remain visible unless manually cleared.</p>
+        <p class="notice warning" id="server-update-warning" hidden>New pressure data is available from QC Station. Save or discard your changes to refresh.</p>
+        <h2>QC Grid</h2>
         <div class="table-wrap qc-grid-wrap">
             <table class="qc-grid">
                 <thead>
@@ -123,14 +139,14 @@
                 @for (var i = 0; i < Model.FruitRows.Count; i++)
                 {
                     var row = Model.FruitRows[i];
-                    <tr class="fruit-row" data-row-index="@i">
+                    <tr class="fruit-row" data-row-index="@i" data-row-number="@row.RowNumber">
                         <td class="compact-cell">
                             @row.RowNumber
                             <input type="hidden" name="Rows[@i].RowNumber" value="@row.RowNumber" />
                         </td>
                         <td class="numeric-cell"><input class="number-input" name="Rows[@i].Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /></td>
                         <td class="numeric-cell"><input class="number-input" name="Rows[@i].Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /></td>
-                        <td class="numeric-cell">@row.PressureAverageLbs</td>
+                        <td class="numeric-cell pressure-average">@row.PressureAverageLbs</td>
                         <td class="numeric-cell"><input class="number-input" name="Rows[@i].WeightGrams" type="number" step="0.0001" min="0" value="@row.WeightGrams" /></td>
                         <td class="compact-cell">
                             <select name="Rows[@i].GradeId">
@@ -157,15 +173,15 @@
                             </div>
                         </td>
                         <td class="wide-cell"><input class="other-notes" name="Rows[@i].OtherDefectNotes" value="@row.OtherDefectNotes" disabled="@(!row.Defects.Contains("Other") ? "disabled" : null)" /></td>
-                        <td class="compact-cell">@row.SizeCategory</td>
-                        <td class="nowrap-cell">@row.SizeStatus</td>
-                        <td class="nowrap-cell"><span class="status @StatusClass(row.EntryStatus)">@row.EntryStatus</span></td>
+                        <td class="compact-cell size-category">@row.SizeCategory</td>
+                        <td class="nowrap-cell size-status">@row.SizeStatus</td>
+                        <td class="nowrap-cell"><span class="status row-entry-status @StatusClass(row.EntryStatus)">@row.EntryStatus</span></td>
                     </tr>
                 }
                 </tbody>
             </table>
         </div>
-        <p class="muted">Rows save as Empty, In Progress, or Complete. In-progress rows are saved and can be finished later. Complete rows require Pressure 1, Pressure 2, weight, and grade. Use the separate Starch Input page after fruit is cut.</p>
+        <p class="muted">Rows save as Empty, In Progress, or Complete. In-progress rows are saved and can be finished later. Complete rows require Pressure 1, Pressure 2, weight, and grade. Use the separate Starch Input page after fruit is cut. Changing sample size controls expected rows but never deletes existing row data.</p>
         <p class="muted">FTA readings may be captured from QC Station and saved here. Saving this grid remains available for manual pressure entry and weight/grade/defect edits.</p>
         <button type="submit">Save QC Rows</button>
     </form>
@@ -182,18 +198,87 @@
                 FormAction = $"/Samples/{Model.Sample.Id}/photos",
                 Title = "Add Sample Photo",
                 DefaultPhotoType = Model.AddPhotoForm.PhotoType,
-                PhotoTypes = ["Hectre", "SampleBeforeCutting", "CutFruit", "Other"],
+                PhotoTypes = Model.AvailablePhotoTypes.Select(x => x.PhotoType).Append("Other").Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
                 CropYear = Model.Sample.CropYear,
                 Warehouse = Model.Sample.Warehouse,
                 ReceiptId = Model.Sample.ReceiptIdText
             })
+            <div class="panel">
+                <h3>Available Photo Types</h3>
+                <ul class="compact-list">
+                    @foreach (var photoType in Model.AvailablePhotoTypes)
+                    {
+                        <li>@photoType.FriendlyName - @(photoType.IsRequired ? "Required" : "Optional")</li>
+                    }
+                </ul>
+            </div>
         </div>
     </section>
 }
 
+<dialog id="unsaved-dialog">
+    <form method="dialog" class="stack-form">
+        <h2>Unsaved changes</h2>
+        <p>You have unsaved QC sample changes.</p>
+        <div class="button-row">
+            <button type="button" id="save-then-navigate">Save Changes</button>
+            <button type="button" class="secondary-button" id="discard-then-navigate">Discard Changes</button>
+            <button type="button" class="secondary-button" id="stay-on-page">Cancel / Stay on Page</button>
+        </div>
+    </form>
+</dialog>
+
 <script>
     (() => {
         const defects = @Html.Raw(defectOptionsJson);
+        const refreshIntervalMs = @refreshIntervalMs;
+        const form = document.querySelector("#qc-rows-form");
+        const refreshStatus = document.querySelector("#sample-refresh-status");
+        const serverUpdateWarning = document.querySelector("#server-update-warning");
+        const sampleSizeWarning = document.querySelector("#sample-size-warning");
+        const targetSampleSize = document.querySelector("#target-sample-size");
+        const unsavedDialog = document.querySelector("#unsaved-dialog");
+        let dirty = false;
+        let pendingNavigation = null;
+
+        function setDirty(value) {
+            dirty = value;
+        }
+
+        function showStatus(message) {
+            if (!refreshStatus) return;
+            refreshStatus.textContent = message;
+            if (message) {
+                setTimeout(() => {
+                    if (refreshStatus.textContent === message) refreshStatus.textContent = "";
+                }, 4500);
+            }
+        }
+
+        function markDirty() {
+            setDirty(true);
+        }
+
+        document.addEventListener("input", event => {
+            if (event.target.closest("#unsaved-dialog")) return;
+            if (event.target.matches("input, select, textarea")) markDirty();
+        });
+        document.addEventListener("change", event => {
+            if (event.target.closest("#unsaved-dialog")) return;
+            if (event.target.matches("input, select, textarea")) markDirty();
+        });
+        for (const pageForm of document.querySelectorAll("form")) {
+            pageForm.addEventListener("submit", () => setDirty(false));
+        }
+
+        if (targetSampleSize) {
+            const initialSize = Number(targetSampleSize.defaultValue || targetSampleSize.value);
+            targetSampleSize.addEventListener("change", () => {
+                if (sampleSizeWarning && Number(targetSampleSize.value) < initialSize) {
+                    sampleSizeWarning.hidden = false;
+                }
+            });
+        }
 
         function findDefectName(id) {
             return defects.find(defect => defect.id === Number(id))?.name ?? `Defect ${id}`;
@@ -225,6 +310,7 @@
                 removeButton.setAttribute("aria-label", `Remove ${chip.textContent} from row ${Number(rowIndex) + 1}`);
                 removeButton.addEventListener("click", () => {
                     input.remove();
+                    markDirty();
                     renderSelectedDefects(row);
                     syncOtherNotes(row);
                 });
@@ -249,6 +335,7 @@
             input.name = `Rows[${rowIndex}].DefectTypeIds`;
             input.value = defectId;
             hiddenInputs.appendChild(input);
+            markDirty();
             renderSelectedDefects(row);
         }
 
@@ -270,6 +357,99 @@
                     window.prompt("Copy QC Station sample ID", sampleId);
                 }
             });
+        }
+
+        function navigateWithDirtyCheck(url) {
+            if (!dirty || !unsavedDialog) {
+                window.location.href = url;
+                return;
+            }
+
+            pendingNavigation = url;
+            unsavedDialog.showModal();
+        }
+
+        document.addEventListener("click", event => {
+            const anchor = event.target.closest("a[href]");
+            if (!anchor || !form || anchor.href.startsWith("cropqcstation:") || anchor.target === "_blank") return;
+            if (!dirty) return;
+            event.preventDefault();
+            navigateWithDirtyCheck(anchor.href);
+        });
+
+        document.querySelector("#stay-on-page")?.addEventListener("click", () => {
+            pendingNavigation = null;
+            unsavedDialog?.close();
+        });
+
+        document.querySelector("#discard-then-navigate")?.addEventListener("click", () => {
+            setDirty(false);
+            unsavedDialog?.close();
+            if (pendingNavigation) window.location.href = pendingNavigation;
+        });
+
+        document.querySelector("#save-then-navigate")?.addEventListener("click", async () => {
+            if (!form || !pendingNavigation) return;
+            const response = await fetch(form.action, { method: "POST", body: new FormData(form), credentials: "same-origin" });
+            if (response.ok) {
+                setDirty(false);
+                window.location.href = pendingNavigation;
+            } else {
+                showStatus("Save failed. Stay on this page and try again.");
+            }
+        });
+
+        window.addEventListener("beforeunload", event => {
+            if (!dirty) return;
+            event.preventDefault();
+            event.returnValue = "";
+        });
+
+        function updateRows(rows) {
+            for (const row of rows ?? []) {
+                const tr = document.querySelector(`.fruit-row[data-row-number="${row.rowNumber}"]`);
+                if (!tr) continue;
+                const p1 = tr.querySelector(`[name$=".Pressure1Lbs"]`);
+                const p2 = tr.querySelector(`[name$=".Pressure2Lbs"]`);
+                const weight = tr.querySelector(`[name$=".WeightGrams"]`);
+                if (p1) p1.value = row.pressure1Lbs ?? "";
+                if (p2) p2.value = row.pressure2Lbs ?? "";
+                if (weight) weight.value = row.weightGrams ?? "";
+                tr.querySelector(".pressure-average")?.replaceChildren(document.createTextNode(row.pressureAverageLbs ?? ""));
+                tr.querySelector(".size-category")?.replaceChildren(document.createTextNode(row.sizeCategory ?? ""));
+                tr.querySelector(".size-status")?.replaceChildren(document.createTextNode(row.sizeStatus ?? ""));
+                const status = tr.querySelector(".row-entry-status");
+                if (status) {
+                    const entryStatus = row.entryStatus ?? "";
+                    status.replaceChildren(document.createTextNode(entryStatus));
+                    status.className = `status row-entry-status ${entryStatus === "Complete" ? "ready" : entryStatus === "In Progress" ? "pending" : "missing"}`;
+                }
+            }
+        }
+
+        async function refreshSampleData(manual = false) {
+            if (!form) return;
+            if (dirty) {
+                if (serverUpdateWarning) serverUpdateWarning.hidden = false;
+                if (manual) showStatus("Save or discard changes before refreshing.");
+                return;
+            }
+
+            const response = await fetch(form.dataset.refreshUrl, { credentials: "same-origin" });
+            if (!response.ok) {
+                if (manual) showStatus("Refresh failed.");
+                return;
+            }
+
+            const data = await response.json();
+            updateRows(data.rows);
+            if (serverUpdateWarning) serverUpdateWarning.hidden = true;
+            showStatus("Updated from QC Station.");
+        }
+
+        document.querySelector("#refresh-sample-data")?.addEventListener("click", () => refreshSampleData(true));
+        if (form) {
+            window.setInterval(() => refreshSampleData(false), refreshIntervalMs);
         }
     })();
 </script>

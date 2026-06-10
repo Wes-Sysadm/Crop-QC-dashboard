@@ -16,6 +16,13 @@ public sealed class SamplesController(
     public async Task<IActionResult> Details(long id, CancellationToken cancellationToken) =>
         View(await dataService.GetSampleDetailAsync(id, cancellationToken));
 
+    [HttpGet("{id:long}/refresh")]
+    public async Task<IActionResult> Refresh(long id, CancellationToken cancellationToken)
+    {
+        var model = await dataService.GetSampleRefreshAsync(id, cancellationToken);
+        return model is null ? NotFound() : Json(model);
+    }
+
     [HttpGet("{id:long}/Delete")]
     [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken) =>
@@ -101,11 +108,7 @@ public sealed class SamplesController(
     public async Task<IActionResult> AddPhoto(long id, AddPhotoMetadataForm form, CancellationToken cancellationToken)
     {
         LogPhotoUploadStart("sample", id, form);
-        form.QcSampleId = id;
-        form.ReceiptId = null;
-        var error = IsAllowedPhotoType(form.PhotoType, "Hectre", "SampleBeforeCutting", "CutFruit", "Other")
-            ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
-            : "Only Hectre, whole sample, cut apples, or other photos can be added from the sample detail page. Fruit after starch photos must be added from the Starch Input page.";
+        var error = await dataService.AddSamplePhotoMetadataAsync(id, form, cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Photo uploaded successfully.";
         return RedirectToAction(nameof(Details), new { id });
     }
