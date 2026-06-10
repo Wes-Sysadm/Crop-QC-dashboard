@@ -28,7 +28,8 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         ("UnsyncedCriticalHours", "12", "Unsynced critical hours", "Integer"),
         ("OfflineSessionDays", "7", "Offline session days", "Integer"),
         ("DefaultQcSummaryFromAddress", "HL@fruitandland.com", "Default QC summary from address", "String"),
-        ("DefaultQcSummaryRecipient", "rob@earlbrownandsons.com,wes@fruitandland.com", "Default QC summary testing recipients", "String"),
+        ("DefaultQcSummaryRecipient", "rob@earlbrownandsons.com,wes@fruitandland.com", "Legacy default QC summary testing recipients. Use QcEmailDefaultRecipients for active sends.", "String"),
+        (QcEmailRecipientSettings.Key, EmailOptions.TestingQcDefaultRecipients, "Default QC Summary email recipients. Enter one email per line or comma-separated.", "EmailList"),
         ("PhotoRetentionCropYearsAfterCurrent", "3", "Photo retention crop years after current. Planning value only; no automatic photo deletion currently runs.", "Integer"),
         ("AllowOverrideSendWithMissingData", "true", "Allow override send with missing data", "Boolean")
     ];
@@ -119,8 +120,20 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         var configs = await dbContext.DashboardConfigurations.Where(x => form.Values.Keys.Contains(x.Id)).ToListAsync(cancellationToken);
         foreach (var config in configs)
         {
+            var submittedValue = form.Values[config.Id]?.Trim() ?? "";
+            if (config.Key == QcEmailRecipientSettings.Key)
+            {
+                var parsed = QcEmailRecipientParser.Parse(submittedValue);
+                if (parsed.InvalidRecipients.Count > 0)
+                {
+                    return $"Invalid QC email recipient: {string.Join(", ", parsed.InvalidRecipients)}.";
+                }
+
+                submittedValue = string.Join(Environment.NewLine, parsed.Recipients);
+            }
+
             var before = JsonSerializer.Serialize(config);
-            config.Value = form.Values[config.Id]?.Trim() ?? "";
+            config.Value = submittedValue;
             config.UpdatedAt = DateTimeOffset.UtcNow;
             await AddAuditAsync("update", "configuration", config.Id.ToString(), changedByEmail, before, JsonSerializer.Serialize(config), cancellationToken);
         }

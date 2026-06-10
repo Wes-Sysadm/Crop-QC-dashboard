@@ -109,6 +109,8 @@ public sealed class EmailStatusViewModel
     public bool GmailCredentialPresent { get; set; }
     public bool GmailSendPermissionGranted { get; set; }
     public bool CurrentUserNeedsReconnect { get; set; }
+    public string DefaultQcRecipientsSource { get; set; } = "Not configured";
+    public IReadOnlyList<string> DefaultQcRecipients { get; set; } = [];
 }
 
 public sealed class ConfigurationEditForm

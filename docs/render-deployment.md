@@ -92,6 +92,8 @@ Set these variables in Render:
 
 Do not commit database passwords, Google credentials, Gmail credentials, OAuth tokens, or API secrets.
 
+`Email__QcDefaultRecipients` is a fallback/bootstrap value. After deployment, Admin users should manage ongoing QC Summary recipients from Admin -> Configuration -> QC Email Recipients. The current testing recipients are `rob@earlbrownandsons.com` and `wes@fruitandland.com`.
+
 WinForms QC Station access is managed from the database, not with one shared Render API key. Sign in as Admin, open `/Admin/QcStations`, create one station record per QC computer, and download that station's `qcstation.settings.json` immediately after creation or key rotation. The station sends `X-QC-STATION-CODE` and `X-QC-STATION-API-KEY`; the dashboard stores only the key hash. Deactivate a station to revoke access without breaking other QC computers.
 
 Keep station config JSON private because it contains the raw station API key. If a config file is lost or exposed, rotate the station key from `/Admin/QcStations` and download a new config. The shared MSI installer contains no station secrets.

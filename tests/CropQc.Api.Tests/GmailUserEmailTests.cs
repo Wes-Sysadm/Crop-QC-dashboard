@@ -11,12 +11,12 @@ namespace CropQc.Api.Tests;
 public sealed class GmailUserEmailTests
 {
     [Fact]
-    public void EmailOptions_DefaultQcRecipientsUseTestingAddresses()
+    public void EmailOptions_DefaultQcRecipientsAreEmptyUntilConfigured()
     {
         var options = new EmailOptions();
 
-        Assert.Equal("rob@earlbrownandsons.com, wes@fruitandland.com", options.QcRecipientHeader);
-        Assert.Equal(["rob@earlbrownandsons.com", "wes@fruitandland.com"], options.QcRecipientList);
+        Assert.Equal("", options.QcRecipientHeader);
+        Assert.Empty(options.QcRecipientList);
     }
 
     [Fact]
@@ -30,6 +30,28 @@ public sealed class GmailUserEmailTests
 
         Assert.Equal("rob@earlbrownandsons.com, wes@fruitandland.com", options.QcRecipientHeader);
         Assert.DoesNotContain("QC@fruitandland.com", options.QcRecipientHeader);
+    }
+
+    [Fact]
+    public void QcEmailRecipientParser_AcceptsCommasAndNewLinesAndRemovesDuplicates()
+    {
+        var result = QcEmailRecipientParser.Parse("""
+            rob@earlbrownandsons.com, wes@fruitandland.com
+            ROB@earlbrownandsons.com
+            user@wp-packingllc.com
+            """);
+
+        Assert.Equal(["rob@earlbrownandsons.com", "wes@fruitandland.com", "user@wp-packingllc.com"], result.Recipients);
+        Assert.Empty(result.InvalidRecipients);
+    }
+
+    [Fact]
+    public void QcEmailRecipientParser_ReportsInvalidEmails()
+    {
+        var result = QcEmailRecipientParser.Parse("rob@earlbrownandsons.com,not-an-email");
+
+        Assert.Equal(["rob@earlbrownandsons.com"], result.Recipients);
+        Assert.Equal(["not-an-email"], result.InvalidRecipients);
     }
 
     [Fact]
@@ -243,6 +265,9 @@ public sealed class GmailUserEmailTests
         Assert.Contains("GmailCredentialPresent", controller);
         Assert.Contains("GmailSendPermissionGranted", controller);
         Assert.Contains("Email Status", view);
+        Assert.Contains("QC Email Recipients", view);
+        Assert.Contains("Default QC recipients source", view);
+        Assert.Contains("Default To recipients", view);
         Assert.Contains("Email__Provider=GmailUser", view);
         Assert.Contains("Reconnect Google/Gmail", view);
         Assert.Contains("Email provider:", program);
@@ -292,11 +317,22 @@ public sealed class GmailUserEmailTests
         var emailOptions = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "EmailOptions.cs"));
         var productionSettings = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "appsettings.Production.json"));
         var adminManagementService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "AdminManagementService.cs"));
+        var dashboardDataService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var configurationController = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "ConfigurationController.cs"));
 
         Assert.Contains("Email:QcDefaultRecipients", emailOptions);
         Assert.Contains("EmailOptionsFactory", emailOptions);
+        Assert.Contains("QcEmailRecipientResolver", emailOptions);
+        Assert.Contains("QcEmailDefaultRecipients", emailOptions);
+        Assert.Contains("Admin Configuration", emailOptions);
+        Assert.Contains("Render/appsettings fallback", emailOptions);
         Assert.Contains("rob@earlbrownandsons.com,wes@fruitandland.com", productionSettings);
         Assert.Contains("rob@earlbrownandsons.com,wes@fruitandland.com", adminManagementService);
+        Assert.Contains("QcEmailDefaultRecipients", adminManagementService);
+        Assert.Contains("Invalid QC email recipient", adminManagementService);
+        Assert.Contains("No QC email recipients are configured. Admins can set them under Admin -> Configuration -> QC Email Recipients.", dashboardDataService);
+        Assert.Contains("qcEmailRecipientResolver.ResolveAsync", dashboardDataService);
+        Assert.Contains("[Authorize(Policy = \"RequireAdmin\")]", configurationController);
     }
 
     private static string DecodeBase64Url(string value)
