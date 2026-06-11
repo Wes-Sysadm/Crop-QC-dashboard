@@ -25,9 +25,12 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 var googleAuthOptions = GoogleAuthenticationOptions.FromConfiguration(builder.Configuration);
 var gmailOptions = CreateGmailOptions(builder.Configuration);
+var appEnvironmentOptions = AppEnvironmentOptions.FromConfiguration(builder.Configuration, builder.Environment);
 builder.Services.AddSingleton(googleAuthOptions);
 builder.Services.AddSingleton(gmailOptions);
+builder.Services.AddSingleton(appEnvironmentOptions);
 builder.Services.AddSingleton(EmailOptionsFactory.Create(builder.Configuration, builder.Environment.IsProduction()));
+builder.Services.AddSingleton(BackupOptions.FromConfiguration(builder.Configuration));
 var authenticationBuilder = builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -168,6 +171,7 @@ builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 builder.Services.AddScoped<IQcStationAdminService, QcStationAdminService>();
 builder.Services.AddScoped<ICropYearService, CropYearService>();
 builder.Services.AddScoped<IDataCleanupService, DataCleanupService>();
+builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
 builder.Services.AddSingleton(CreateGoogleDriveStorageOptions(builder.Configuration));
 builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorageService(
@@ -177,6 +181,7 @@ builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorage
 
 var app = builder.Build();
 LogEmailConfiguration(app);
+LogEnvironmentConfiguration(app);
 var isRender = !string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_HOSTNAME"])
     || !string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_URL"]);
 var useForwardedHeaders = isRender || app.Configuration.GetValue<bool>("ASPNETCORE_FORWARDEDHEADERS_ENABLED");
@@ -269,6 +274,17 @@ app.MapGet("/health/storage", (FileStorageOptions fileStorageOptions, GoogleDriv
         googleDriveApplicationNameConfigured = !string.IsNullOrWhiteSpace(googleDriveOptions.ApplicationName)
     });
 }).RequireAuthorization("RequireAdmin");
+app.MapGet("/health/environment", (AppEnvironmentOptions appEnvironment, BackupOptions backupOptions) =>
+{
+    return Results.Ok(new
+    {
+        appEnvironment.Kind,
+        appEnvironment.DisplayName,
+        backupOptions.Enabled,
+        backupOptions.Provider,
+        backupFolderConfigured = backupOptions.GoogleDriveFolderConfigured
+    });
+}).RequireAuthorization("RequireAdmin");
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
@@ -310,6 +326,20 @@ static void LogEmailConfiguration(WebApplication app)
         emailOptions.Provider,
         emailOptions.QcRecipientList.Count > 0,
         string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase));
+}
+
+static void LogEnvironmentConfiguration(WebApplication app)
+{
+    var appEnvironment = app.Services.GetRequiredService<AppEnvironmentOptions>();
+    var backupOptions = app.Services.GetRequiredService<BackupOptions>();
+    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("AppEnvironment");
+    logger.LogInformation(
+        "App environment: {EnvironmentKind} ({DisplayName}). Backups enabled: {BackupsEnabled}. Backup provider: {BackupProvider}. Backup folder configured: {BackupFolderConfigured}.",
+        appEnvironment.Kind,
+        appEnvironment.DisplayName,
+        backupOptions.Enabled,
+        backupOptions.Provider,
+        backupOptions.GoogleDriveFolderConfigured);
 }
 
 static IFileStorageService CreateFileStorageService(

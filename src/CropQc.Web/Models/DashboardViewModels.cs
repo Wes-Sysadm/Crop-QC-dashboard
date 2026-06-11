@@ -32,6 +32,27 @@ public sealed class AdminDownloadsViewModel
     public IReadOnlyList<AdminDownloadItem> Downloads { get; set; } = [];
 }
 
+public sealed class BackupStatusViewModel
+{
+    public bool Enabled { get; set; }
+    public string Provider { get; set; } = "GoogleDrive";
+    public bool GoogleDriveFolderConfigured { get; set; }
+    public bool DatabaseBackupEnabled { get; set; }
+    public bool ConfigBackupEnabled { get; set; }
+    public bool PhotoManifestEnabled { get; set; }
+    public int RetentionDays { get; set; }
+    public int ScheduleUtcHour { get; set; }
+    public DateTimeOffset? NextScheduledBackupUtc { get; set; }
+    public DateTimeOffset? LastDatabaseBackupAt { get; set; }
+    public DateTimeOffset? LastConfigBackupAt { get; set; }
+    public DateTimeOffset? LastPhotoManifestBackupAt { get; set; }
+    public string? LastDatabaseBackupFileName { get; set; }
+    public string? LastConfigBackupFileName { get; set; }
+    public string? LastPhotoManifestBackupFileName { get; set; }
+    public string? LastError { get; set; }
+    public IReadOnlyList<string> Warnings { get; set; } = [];
+}
+
 public sealed class QcStationsPageViewModel
 {
     public IReadOnlyList<QcStationListItemViewModel> Stations { get; set; } = [];

@@ -57,6 +57,11 @@ Crop QC Dashboard supports receiving quality control workflows. MVP 1 is limited
 - Photos and attachments stored in Google Shared Drive.
 - Database stores metadata and structured data.
 - Everything is audit logged.
+- Production and staging must be separate environments. Production uses real data and staging/test uses fake data only. Staging/test must show a visible `TEST SITE — DO NOT ENTER REAL QC DATA` banner.
+- Production data must be retained through future revisions. No production reset, fake seed, table drop, column drop, destructive migration, or purge is allowed without a documented backup and migration/recovery plan.
+- Production migrations should be additive whenever possible. Backfill data before enforcing required fields, preserve existing receipts/samples/fruit rows/photos/users/stations/emails/audit logs, run a backup before migration, and verify health/key pages after deploy.
+- Admin Data Cleanup remains restricted by allowed email, requires typed confirmation, and must audit every delete/purge action. Test data seeding/reset workflows must never run in production.
+- Production backups use Google Drive as the configured target. At minimum the app must support non-secret configuration snapshots, photo/storage manifests, and a PostgreSQL logical dump when `pg_dump` is available. If `pg_dump` is unavailable, the Admin Backups page must warn and docs must describe the external backup path.
 
 ## Out of Scope for MVP 1
 

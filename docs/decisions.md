@@ -28,6 +28,10 @@ Admin Data Cleanup is limited to Admin users whose email appears in `DataCleanup
 
 Dashboard metric cards must click through to filtered pages that explain or resolve the metric. Missing-data and needs-review lists must show the reason, not just a count. Normal dashboard pages should avoid page-level horizontal scrolling by using wrapping action bars, responsive cards, and text wrapping for long IDs/URLs.
 
+## ADR-0008 - Production/Staging Separation And Backups
+
+Production is the live system of record and must retain real receipts, samples, photos, emails, QC Station records, and audit logs through future revisions. Staging/test is isolated fake data only and must show a prominent `TEST SITE — DO NOT ENTER REAL QC DATA` banner. Production and staging use separate databases, Google Drive folders, OAuth redirect URIs, email recipients, and QC Station configs. Google Drive is the backup target for app-generated backup artifacts: PostgreSQL logical dumps when `pg_dump` is available, non-secret configuration snapshots, and photo/storage manifests.
+
 ## ADR-0006: Design for Offline QC Station Sync
 
 The Windows QC Station must support offline capture later. SQLite is reserved as the local cache, and project boundaries should keep sync responsibilities explicit.
