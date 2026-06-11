@@ -670,12 +670,25 @@ public sealed class DashboardDataService(
         foreach (var submittedRow in form.Rows.OrderBy(x => x.RowNumber))
         {
             var reading = existingRows.SingleOrDefault(x => x.RowNumber == submittedRow.RowNumber);
-            if (reading is null || !reading.IsCompleted)
+            if (reading is null && submittedRow.StarchScaleValueId is null)
             {
                 continue;
             }
 
+            if (reading is null)
+            {
+                reading = new QcFruitReading
+                {
+                    QcSampleId = sample.Id,
+                    RowNumber = submittedRow.RowNumber,
+                    SizeStatus = "NotCalculated",
+                    CreatedAt = DateTimeOffset.UtcNow
+                };
+                dbContext.QcFruitReadings.Add(reading);
+            }
+
             reading.StarchScaleValueId = submittedRow.StarchScaleValueId;
+            reading.IsCompleted = HasCompletionFields(reading.Pressure1Lbs, reading.Pressure2Lbs, reading.WeightGrams, reading.GradeId);
             reading.UpdatedAt = DateTimeOffset.UtcNow;
         }
 

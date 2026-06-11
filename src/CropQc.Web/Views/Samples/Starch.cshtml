@@ -75,7 +75,7 @@
 
         <section class="panel starch-input-panel">
                 <h2>Starch Input</h2>
-                <p class="muted">Only completed fruit rows from the main QC grid require starch. Unsampled rows are shown for tray position context.</p>
+                <p class="muted">Starch values can be saved at any time. In-progress rows are saved and can be completed later; readiness still shows which rows need more data before email.</p>
                 <div class="table-wrap">
                     <table>
                         <thead>
@@ -94,9 +94,9 @@
                                     @row.RowNumber
                                     <input type="hidden" name="Rows[@i].RowNumber" value="@row.RowNumber" />
                                 </td>
-                                <td>@(row.IsCompleted ? "Completed fruit row" : "Not sampled")</td>
+                                <td>@row.EntryStatus</td>
                                 <td>
-                                    <select class="starch-input" name="Rows[@i].StarchScaleValueId" data-row-number="@row.RowNumber" disabled="@(!row.IsCompleted ? "disabled" : null)">
+                                    <select class="starch-input" name="Rows[@i].StarchScaleValueId" data-row-number="@row.RowNumber">
                                         <option value="">--</option>
                                         @foreach (var starch in Model.StarchScaleValues)
                                         {
@@ -177,7 +177,7 @@
 
     private static string TrayClass(FruitReadingRowViewModel row)
     {
-        if (!row.IsCompleted)
+        if (row.EntryStatus == "Empty" && row.StarchScaleValueId is null)
         {
             return "not-sampled";
         }
@@ -187,7 +187,7 @@
 
     private static string TrayLabel(FruitReadingRowViewModel row)
     {
-        if (!row.IsCompleted)
+        if (row.EntryStatus == "Empty" && row.StarchScaleValueId is null)
         {
             return "--";
         }
@@ -197,7 +197,7 @@
 
     private static string TrayStatus(FruitReadingRowViewModel row)
     {
-        if (!row.IsCompleted)
+        if (row.EntryStatus == "Empty" && row.StarchScaleValueId is null)
         {
             return "Not Sampled";
         }

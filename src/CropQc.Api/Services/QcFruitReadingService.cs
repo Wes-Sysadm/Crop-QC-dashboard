@@ -28,12 +28,6 @@ public sealed class QcFruitReadingService(CropQcDbContext dbContext, IAuditServi
             return (null, "QC sample not found.");
         }
 
-        var isBlank = request.Pressure1Lbs is null
-            && request.Pressure2Lbs is null
-            && request.WeightGrams is null
-            && request.GradeId is null
-            && request.StarchScaleValueId is null;
-
         var reading = await dbContext.QcFruitReadings.SingleOrDefaultAsync(x => x.QcSampleId == sampleId && x.RowNumber == rowNumber, cancellationToken);
         if (reading is null)
         {
@@ -52,21 +46,39 @@ public sealed class QcFruitReadingService(CropQcDbContext dbContext, IAuditServi
             .ToListAsync(cancellationToken);
         var size = SizeCalculationService.Calculate(request.WeightGrams, thresholds);
 
-        reading.Pressure1Lbs = request.Pressure1Lbs;
-        reading.Pressure1Source = request.Pressure1Source;
-        reading.Pressure2Lbs = request.Pressure2Lbs;
-        reading.Pressure2Source = request.Pressure2Source;
-        reading.WeightGrams = request.WeightGrams;
-        reading.GradeId = request.GradeId;
-        reading.StarchScaleValueId = request.StarchScaleValueId;
-        reading.SizeCategory = size.SizeCategory;
-        reading.SizeStatus = size.SizeStatus;
-        reading.IsCompleted = request.IsCompleted
-            && !isBlank
-            && request.Pressure1Lbs is not null
-            && request.Pressure2Lbs is not null
-            && request.WeightGrams is not null
-            && request.GradeId is not null;
+        if (request.Pressure1Lbs is not null)
+        {
+            reading.Pressure1Lbs = request.Pressure1Lbs;
+            reading.Pressure1Source = request.Pressure1Source;
+        }
+
+        if (request.Pressure2Lbs is not null)
+        {
+            reading.Pressure2Lbs = request.Pressure2Lbs;
+            reading.Pressure2Source = request.Pressure2Source;
+        }
+
+        if (request.WeightGrams is not null)
+        {
+            reading.WeightGrams = request.WeightGrams;
+            reading.SizeCategory = size.SizeCategory;
+            reading.SizeStatus = size.SizeStatus;
+        }
+
+        if (request.GradeId is not null)
+        {
+            reading.GradeId = request.GradeId;
+        }
+
+        if (request.StarchScaleValueId is not null)
+        {
+            reading.StarchScaleValueId = request.StarchScaleValueId;
+        }
+
+        reading.IsCompleted = reading.Pressure1Lbs is not null
+            && reading.Pressure2Lbs is not null
+            && reading.WeightGrams is not null
+            && reading.GradeId is not null;
         reading.UpdatedAt = DateTimeOffset.UtcNow;
 
         await dbContext.SaveChangesAsync(cancellationToken);
