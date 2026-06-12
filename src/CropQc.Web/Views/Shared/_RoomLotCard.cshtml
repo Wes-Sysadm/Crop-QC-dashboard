@@ -1,0 +1,49 @@
+@model RoomLotSummaryViewModel
+
+<article class="station-card">
+    <div class="station-card-header">
+        <div>
+            <h3>@Model.GrowerName @Model.LotCode</h3>
+            <p class="station-code">@Model.DisplayReceiptId | @Model.VarietyCode</p>
+        </div>
+        <span class="status @(Model.CurrentBins > 0 ? "ready" : "pending")">@Model.DepletionStatus</span>
+    </div>
+    <dl class="station-meta">
+        <dt>Bins</dt><dd>@Model.CurrentBins current / @Model.OriginalBins original</dd>
+        <dt>Depleted</dt><dd>@Model.DepletedBins</dd>
+        <dt>Avg pressure</dt><dd>@Format(Model.AveragePressureLbs)</dd>
+        <dt>Pressure std dev</dt><dd>@Format(Model.PressureStdDevLbs)</dd>
+        <dt>MoM pressure</dt><dd>@FormatChange(Model.MonthOverMonthPressureChangeLbs)</dd>
+        <dt>Harvest starch</dt><dd>@Format(Model.AverageStarch)</dd>
+        <dt>Defects</dt><dd>@Model.DefectSummary</dd>
+        <dt>Samples</dt><dd>@Model.SampleCount</dd>
+        <dt>Fruit rows</dt><dd>@Model.EnteredFruitCount</dd>
+        <dt>Last sample</dt><dd>@(Model.LastSampleDate?.LocalDateTime.ToString("g") ?? "No data")</dd>
+    </dl>
+    @if (Model.ReviewFlags.Count > 0)
+    {
+        <ul class="compact-list">
+        @foreach (var flag in Model.ReviewFlags.Take(3))
+        {
+            <li>@flag</li>
+        }
+        </ul>
+    }
+    <div class="action-bar">
+        <a class="button secondary-button" href="/Receipts/@Model.ReceiptId">View Receipt</a>
+        @foreach (var sample in Model.Samples.Take(4))
+        {
+            <a class="button secondary-button" href="/Samples/@sample.SampleId">View @sample.DisplayReceiptId</a>
+            <a class="button secondary-button" href="cropqcstation://sample/@sample.SampleId">Open QC Station</a>
+        }
+    </div>
+</article>
+
+@functions {
+    private static string Format(decimal? value) => value?.ToString("0.##") ?? "No data";
+    private static string FormatChange(decimal? value) => value is null
+        ? "N/A"
+        : value == 0
+            ? "unchanged"
+            : $"{(value > 0 ? "+" : "")}{value:0.##} lbs";
+}

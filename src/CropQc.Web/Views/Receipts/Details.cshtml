@@ -25,6 +25,9 @@
     <section class="panel">
         <h2>@Model.Receipt.CompuTechReceiptId</h2>
         <p>@Model.Receipt.CropYear | @Model.Receipt.ReceivedAt.LocalDateTime | @Model.Receipt.Warehouse / @Model.Receipt.Room | @Model.Receipt.GrowerName | @Model.Receipt.LotCode | @Model.Receipt.VarietyCode | @Model.Receipt.BinCount bins</p>
+        <div class="action-bar">
+            <a class="button secondary-button" href="/Dashboard/Rooms/@Model.Receipt.RoomId">View Room Summary</a>
+        </div>
         @if (Model.Samples.Any())
         {
             <p class="notice warning">This receipt already has a receiving sample. Creating another will assign the next sample sequence, such as @(Model.Receipt.CompuTechReceiptId)(2), and mark it Needs Review.</p>

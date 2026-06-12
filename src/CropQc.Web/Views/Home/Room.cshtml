@@ -1,0 +1,188 @@
+@model RoomDetailViewModel
+@{
+    ViewData["Title"] = "Room Summary";
+}
+
+<h1>Room Summary</h1>
+@if (TempData["Success"] is string success)
+{
+    <p class="notice success">@success</p>
+}
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+
+@if (Model.Summary is not null)
+{
+    <section class="panel">
+        <div class="room-card-header">
+            <div>
+                <h2>@Model.Summary.Warehouse / @Model.Summary.RoomCode</h2>
+                <p>@Model.Summary.RoomName</p>
+            </div>
+            <span class="status @RoomStatusClass(Model.Summary.Status)">@Model.Summary.Status</span>
+        </div>
+        <dl class="summary-list">
+            <dt>Current lots</dt><dd>@Model.Summary.CurrentLotsCount</dd>
+            <dt>Current bins</dt><dd>@(Model.Summary.CurrentBinsCount?.ToString() ?? "Empty")</dd>
+            <dt>Average pressure</dt><dd>@Format(Model.Summary.AveragePressureLbs)</dd>
+            <dt>Pressure std dev</dt><dd>@Format(Model.Summary.PressureStdDevLbs)</dd>
+            <dt>Month-over-month pressure</dt><dd>@FormatChange(Model.Summary.MonthOverMonthPressureChangeLbs)</dd>
+            <dt>Harvest starch</dt><dd>@Format(Model.Summary.AverageStarch)</dd>
+            <dt>Defects</dt><dd>@Model.Summary.DefectSummary</dd>
+            <dt>Last sample</dt><dd>@(Model.Summary.LastSampleDate?.LocalDateTime.ToString("g") ?? "No data")</dd>
+        </dl>
+        @if (Model.Summary.ReviewFlags.Count > 0)
+        {
+            <h3>Review Flags</h3>
+            <ul class="compact-list">
+            @foreach (var flag in Model.Summary.ReviewFlags)
+            {
+                <li>@flag</li>
+            }
+            </ul>
+        }
+    </section>
+}
+
+@if (Model.Summary?.Status == "Empty")
+{
+    <p class="notice">Room is empty. Historical/depleted lots remain listed below when available.</p>
+}
+
+<section class="panel">
+    <h2>Current Lots</h2>
+    @if (Model.CurrentLots.Count == 0)
+    {
+        <p class="muted">No active lots are currently assigned to this room.</p>
+    }
+    else
+    {
+        <div class="responsive-card-grid">
+        @foreach (var lot in Model.CurrentLots)
+        {
+            @await Html.PartialAsync("_RoomLotCard", lot)
+        }
+        </div>
+    }
+</section>
+
+@if (Model.CanManageDepletions && Model.Summary is not null)
+{
+    <section class="panel">
+        <h2>Record Bins Sent to Line</h2>
+        <p class="muted">Use depletion to remove fruit from current room summaries without deleting receipts, samples, photos, or email history.</p>
+        <form class="form-grid" method="post" action="/Dashboard/Rooms/@Model.Summary.RoomId/Deplete">
+            <label class="field">Lot / Receipt
+                <select name="ReceiptId" required>
+                    <option value="">Select current lot</option>
+                    @foreach (var option in Model.DepletionReceiptOptions)
+                    {
+                        <option value="@option.ReceiptId">@option.Label</option>
+                    }
+                </select>
+            </label>
+            <label class="field">Bins sent to line
+                <input type="number" min="1" name="BinCount" required />
+            </label>
+            <label class="field">Date/time
+                <input type="datetime-local" name="DepletedAt" value="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")" required />
+            </label>
+            <label class="field">Destination / line
+                <input name="Destination" maxlength="100" />
+            </label>
+            <label class="field wide">Notes
+                <textarea name="Notes" maxlength="1000"></textarea>
+            </label>
+            <label class="checkbox-field wide">
+                <input type="checkbox" name="ConfirmOverDepletion" value="true" />
+                Allow override if current bin count is unknown or correction is needed
+            </label>
+            <button type="submit">Record Depletion</button>
+        </form>
+    </section>
+}
+
+<section class="panel">
+    <h2>Depletion History</h2>
+    @if (Model.Depletions.Count == 0)
+    {
+        <p class="muted">No depletion records yet.</p>
+    }
+    else
+    {
+        <div class="responsive-card-grid">
+        @foreach (var depletion in Model.Depletions)
+        {
+            <article class="station-card">
+                <div class="station-card-header">
+                    <div>
+                        <h3>@depletion.Lot</h3>
+                        <p class="station-code">@depletion.DisplayReceiptId | @depletion.Variety</p>
+                    </div>
+                    <span class="status @(depletion.IsVoided ? "missing" : "sent")">@(depletion.IsVoided ? "Voided" : "Active")</span>
+                </div>
+                <dl class="station-meta">
+                    <dt>Bins</dt><dd>@depletion.BinCount</dd>
+                    <dt>Depleted</dt><dd>@depletion.DepletedAt.LocalDateTime</dd>
+                    <dt>Destination</dt><dd>@(depletion.Destination ?? "-")</dd>
+                    <dt>User</dt><dd>@(string.IsNullOrWhiteSpace(depletion.CreatedBy) ? "-" : depletion.CreatedBy)</dd>
+                    <dt>Notes</dt><dd>@(depletion.Notes ?? "-")</dd>
+                    @if (depletion.IsVoided)
+                    {
+                        <dt>Void reason</dt><dd>@depletion.VoidReason</dd>
+                    }
+                </dl>
+                <div class="action-bar">
+                    <a class="button secondary-button" href="/Receipts/@depletion.ReceiptId">View Receipt</a>
+                    @if (Model.CanManageDepletions && !depletion.IsVoided && Model.Summary is not null)
+                    {
+                        <form method="post" action="/Dashboard/Rooms/@Model.Summary.RoomId/Depletions/@depletion.Id/Void" class="stack-form">
+                            <label>Void reason
+                                <input name="Reason" required maxlength="1000" />
+                            </label>
+                            <button type="submit" class="secondary-button">Void</button>
+                        </form>
+                    }
+                </div>
+            </article>
+        }
+        </div>
+    }
+</section>
+
+<section class="panel">
+    <h2>Depleted / Historical Lots</h2>
+    @if (Model.DepletedLots.Count == 0)
+    {
+        <p class="muted">No fully depleted lots recorded for this room.</p>
+    }
+    else
+    {
+        <div class="responsive-card-grid">
+        @foreach (var lot in Model.DepletedLots)
+        {
+            @await Html.PartialAsync("_RoomLotCard", lot)
+        }
+        </div>
+    }
+</section>
+
+@functions {
+    private static string RoomStatusClass(string status) =>
+        status.Contains("review", StringComparison.OrdinalIgnoreCase) ? "review" :
+        status.Contains("active", StringComparison.OrdinalIgnoreCase) ? "ready" :
+        status.Contains("empty", StringComparison.OrdinalIgnoreCase) ? "pending" : "";
+
+    private static string Format(decimal? value) => value?.ToString("0.##") ?? "No data";
+    private static string FormatChange(decimal? value) => value is null
+        ? "N/A"
+        : value == 0
+            ? "unchanged"
+            : $"{(value > 0 ? "+" : "")}{value:0.##} lbs";
+}

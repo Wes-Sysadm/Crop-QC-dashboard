@@ -29,6 +29,9 @@ public interface IDashboardDataService
     Task<string?> AddPhotoMetadataAsync(AddPhotoMetadataForm form, CancellationToken cancellationToken);
     Task<string?> AddSamplePhotoMetadataAsync(long sampleId, AddPhotoMetadataForm form, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken);
+    Task<RoomDetailViewModel> GetRoomDetailAsync(int roomId, CancellationToken cancellationToken);
+    Task<string?> CreateRoomDepletionAsync(RoomDepletionForm form, CancellationToken cancellationToken);
+    Task<string?> VoidRoomDepletionAsync(VoidRoomDepletionForm form, CancellationToken cancellationToken);
 }
 
 public enum FruitRowEntryStatus
@@ -83,7 +86,8 @@ public sealed class DashboardDataService(
             return new HomeDashboardViewModel
             {
                 Cards = cards,
-                TodaySamples = enriched
+                TodaySamples = enriched,
+                RoomSummaries = await BuildRoomSummariesAsync(cancellationToken)
             };
         }
         catch
@@ -91,7 +95,8 @@ public sealed class DashboardDataService(
             return new HomeDashboardViewModel
             {
                 DataWarning = DataWarning,
-                Cards = BuildHomeCards(0, 0, 0, 0, 0)
+                Cards = BuildHomeCards(0, 0, 0, 0, 0),
+                RoomSummaries = []
             };
         }
     }
@@ -114,6 +119,127 @@ public sealed class DashboardDataService(
         }
 
         return cards;
+    }
+
+    public async Task<RoomDetailViewModel> GetRoomDetailAsync(int roomId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var summaries = await BuildRoomSummariesAsync(cancellationToken, roomId);
+            var summary = summaries.SingleOrDefault();
+            if (summary is null)
+            {
+                return new RoomDetailViewModel { DataWarning = "Room not found." };
+            }
+
+            var lotSummaries = await BuildRoomLotSummariesAsync(roomId, cancellationToken);
+            var activeLots = lotSummaries.Where(x => x.CurrentBins > 0).ToList();
+            var depletedLots = lotSummaries.Where(x => x.CurrentBins <= 0 && x.OriginalBins > 0).ToList();
+            var depletions = await BuildRoomDepletionHistoryAsync(roomId, cancellationToken);
+            var canManage = IsManagerOrAdmin();
+
+            return new RoomDetailViewModel
+            {
+                Summary = summary,
+                CurrentLots = activeLots,
+                DepletedLots = depletedLots,
+                Depletions = depletions,
+                DepletionReceiptOptions = activeLots.Select(x => new RoomReceiptOptionViewModel(x.ReceiptId, $"{x.DisplayReceiptId} - {x.GrowerName} {x.LotCode} {x.VarietyCode} ({x.CurrentBins} bins current)", x.CurrentBins)).ToList(),
+                DepletionForm = new RoomDepletionForm { RoomId = roomId, DepletedAt = DateTimeOffset.Now },
+                CanManageDepletions = canManage
+            };
+        }
+        catch
+        {
+            return new RoomDetailViewModel { DataWarning = DataWarning };
+        }
+    }
+
+    public async Task<string?> CreateRoomDepletionAsync(RoomDepletionForm form, CancellationToken cancellationToken)
+    {
+        if (!IsManagerOrAdmin())
+        {
+            return "Only Managers and Admins can record room depletion.";
+        }
+
+        if (form.BinCount <= 0)
+        {
+            return "Bin count must be positive.";
+        }
+
+        var receipt = await dbContext.Receipts
+            .Include(x => x.Warehouse)
+            .Include(x => x.Room)
+            .Include(x => x.FruitProfile)
+            .SingleOrDefaultAsync(x => x.Id == form.ReceiptId && !x.IsDeleted, cancellationToken);
+        if (receipt is null || receipt.RoomId != form.RoomId)
+        {
+            return "Room lot was not found.";
+        }
+
+        var depletedBins = await dbContext.RoomDepletions.AsNoTracking()
+            .Where(x => x.ReceiptId == receipt.Id && !x.IsVoided)
+            .SumAsync(x => (int?)x.BinCountDepleted, cancellationToken) ?? 0;
+        var currentBins = Math.Max(0, receipt.BinCount - depletedBins);
+        if (form.BinCount > currentBins && !form.ConfirmOverDepletion)
+        {
+            return $"Cannot deplete {form.BinCount} bins because only {currentBins} bins are currently known in this room. Confirm override if the current bin count is unknown or needs correction.";
+        }
+
+        var currentUser = await GetCurrentUserAsync(cancellationToken);
+        var depletion = new RoomDepletion
+        {
+            ReceiptId = receipt.Id,
+            WarehouseId = receipt.WarehouseId,
+            RoomId = receipt.RoomId,
+            FruitProfileId = receipt.FruitProfileId,
+            GrowerName = receipt.GrowerName,
+            LotCode = receipt.LotCode,
+            BinCountDepleted = form.BinCount,
+            Destination = string.IsNullOrWhiteSpace(form.Destination) ? null : form.Destination.Trim(),
+            Notes = string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim(),
+            DepletedAt = form.DepletedAt,
+            CreatedByUserId = currentUser?.Id,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        dbContext.RoomDepletions.Add(depletion);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await AddAuditAsync("Create", nameof(RoomDepletion), depletion.Id.ToString(), currentUser?.Email ?? "unknown", null, $"Receipt {receipt.CompuTechReceiptId}; {form.BinCount} bins depleted from {receipt.Warehouse.Code}/{receipt.Room.Code}.", cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
+    public async Task<string?> VoidRoomDepletionAsync(VoidRoomDepletionForm form, CancellationToken cancellationToken)
+    {
+        if (!IsManagerOrAdmin())
+        {
+            return "Only Managers and Admins can void room depletion records.";
+        }
+
+        if (string.IsNullOrWhiteSpace(form.Reason))
+        {
+            return "Void reason is required.";
+        }
+
+        var depletion = await dbContext.RoomDepletions.SingleOrDefaultAsync(x => x.Id == form.DepletionId && x.RoomId == form.RoomId, cancellationToken);
+        if (depletion is null)
+        {
+            return "Depletion record not found.";
+        }
+
+        if (depletion.IsVoided)
+        {
+            return null;
+        }
+
+        var currentUser = await GetCurrentUserAsync(cancellationToken);
+        depletion.IsVoided = true;
+        depletion.VoidedAt = DateTimeOffset.UtcNow;
+        depletion.VoidedByUserId = currentUser?.Id;
+        depletion.VoidReason = form.Reason.Trim();
+        await AddAuditAsync("Void", nameof(RoomDepletion), depletion.Id.ToString(), currentUser?.Email ?? "unknown", null, $"Voided depletion. Reason: {depletion.VoidReason}", cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
     }
 
     public async Task<MasterDataPageViewModel> GetMasterDataPageAsync(string type, CancellationToken cancellationToken)
@@ -1090,6 +1216,229 @@ public sealed class DashboardDataService(
             _ => null
         };
 
+    private async Task<IReadOnlyList<RoomSummaryItemViewModel>> BuildRoomSummariesAsync(CancellationToken cancellationToken, int? roomId = null)
+    {
+        var roomsQuery = dbContext.Rooms.AsNoTracking().Include(x => x.Warehouse).OrderBy(x => x.Warehouse.Code).ThenBy(x => x.Code);
+        var rooms = await (roomId is null ? roomsQuery : roomsQuery.Where(x => x.Id == roomId)).ToListAsync(cancellationToken);
+        var lots = roomId is null
+            ? await BuildRoomLotSummariesAsync(null, cancellationToken)
+            : await BuildRoomLotSummariesAsync(roomId.Value, cancellationToken);
+        var currentLotsByRoom = lots.Where(x => x.CurrentBins > 0).GroupBy(x => x.ReceiptId).ToDictionary(x => x.Key, x => x.First());
+        var samples = await QuerySamples()
+            .Where(x => currentLotsByRoom.Keys.Contains(x.ReceiptId))
+            .ToListAsync(cancellationToken);
+        var samplesByRoom = samples.GroupBy(x => x.Receipt.RoomId).ToDictionary(x => x.Key, x => x.ToList());
+
+        return rooms.Select(room =>
+        {
+            var roomLots = lots.Where(x => x.CurrentBins > 0 && currentLotsByRoom.ContainsKey(x.ReceiptId)).ToList();
+            roomLots = roomLots.Where(x => samplesByRoom.TryGetValue(room.Id, out _) || x.CurrentBins > 0).ToList();
+            var roomSamples = samplesByRoom.GetValueOrDefault(room.Id, []);
+            var pressures = PressureValues(roomSamples).ToList();
+            var starch = StarchValues(roomSamples).ToList();
+            var flags = BuildRoomReviewFlags(pressures, starch, roomSamples.SelectMany(x => x.FruitReadings).ToList(), MonthPressureChange(room.Id, currentMonth: true, roomSamples));
+            var currentBins = roomLots.Sum(x => x.CurrentBins);
+            var status = roomLots.Count == 0 ? "Empty" : flags.Count > 0 ? "Needs Review" : "Active";
+            return new RoomSummaryItemViewModel
+            {
+                RoomId = room.Id,
+                Warehouse = room.Warehouse.Code,
+                RoomCode = room.Code,
+                RoomName = room.Name,
+                Status = status,
+                CurrentLotsCount = roomLots.Count,
+                CurrentBinsCount = roomLots.Count == 0 ? null : currentBins,
+                LotSummary = roomLots.Count == 0 ? "Empty" : string.Join(", ", roomLots.Take(4).Select(x => $"{x.GrowerName} {x.LotCode} {x.VarietyCode}")),
+                AveragePressureLbs = AverageOrNull(pressures),
+                PressureStdDevLbs = StandardDeviationOrNull(pressures),
+                MonthOverMonthPressureChangeLbs = MonthPressureChange(room.Id, currentMonth: true, roomSamples),
+                AverageStarch = AverageOrNull(starch),
+                DefectSummary = SummarizeDefects(roomSamples),
+                LastSampleDate = roomSamples.Count == 0 ? null : roomSamples.Max(x => x.SampleTakenAt),
+                SampleCount = roomSamples.Count,
+                EnteredFruitCount = roomSamples.SelectMany(x => x.FruitReadings).Count(HasEnteredFruitData),
+                ReviewFlags = flags
+            };
+        }).ToList();
+    }
+
+    private async Task<IReadOnlyList<RoomLotSummaryViewModel>> BuildRoomLotSummariesAsync(int? roomId, CancellationToken cancellationToken)
+    {
+        var receiptsQuery = dbContext.Receipts.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .Include(x => x.Room)
+            .Include(x => x.FruitProfile)
+            .Where(x => !x.IsDeleted);
+        if (roomId is not null)
+        {
+            receiptsQuery = receiptsQuery.Where(x => x.RoomId == roomId);
+        }
+
+        var receipts = await receiptsQuery.OrderBy(x => x.Warehouse.Code).ThenBy(x => x.Room.Code).ThenBy(x => x.GrowerName).ThenBy(x => x.LotCode).ToListAsync(cancellationToken);
+        var receiptIds = receipts.Select(x => x.Id).ToList();
+        var depletionByReceipt = await dbContext.RoomDepletions.AsNoTracking()
+            .Where(x => receiptIds.Contains(x.ReceiptId) && !x.IsVoided)
+            .GroupBy(x => x.ReceiptId)
+            .Select(x => new { ReceiptId = x.Key, Bins = x.Sum(y => y.BinCountDepleted) })
+            .ToDictionaryAsync(x => x.ReceiptId, x => x.Bins, cancellationToken);
+        var samples = await QuerySamples()
+            .Where(x => receiptIds.Contains(x.ReceiptId))
+            .ToListAsync(cancellationToken);
+        var samplesByReceipt = samples.GroupBy(x => x.ReceiptId).ToDictionary(x => x.Key, x => x.ToList());
+
+        return receipts.Select(receipt =>
+        {
+            var depleted = depletionByReceipt.GetValueOrDefault(receipt.Id);
+            var currentBins = Math.Max(0, receipt.BinCount - depleted);
+            var lotSamples = samplesByReceipt.GetValueOrDefault(receipt.Id, []);
+            var pressures = PressureValues(lotSamples).ToList();
+            var starch = StarchValues(lotSamples).ToList();
+            return new RoomLotSummaryViewModel
+            {
+                ReceiptId = receipt.Id,
+                DisplayReceiptId = receipt.CompuTechReceiptId,
+                GrowerName = receipt.GrowerName,
+                LotCode = receipt.LotCode,
+                VarietyCode = receipt.FruitProfile.VarietyCode,
+                OriginalBins = receipt.BinCount,
+                DepletedBins = depleted,
+                CurrentBins = currentBins,
+                AveragePressureLbs = AverageOrNull(pressures),
+                PressureStdDevLbs = StandardDeviationOrNull(pressures),
+                MonthOverMonthPressureChangeLbs = MonthPressureChange(receipt.RoomId, currentMonth: true, lotSamples),
+                AverageStarch = AverageOrNull(starch),
+                DefectSummary = SummarizeDefects(lotSamples),
+                LastSampleDate = lotSamples.Count == 0 ? null : lotSamples.Max(x => x.SampleTakenAt),
+                SampleCount = lotSamples.Count,
+                EnteredFruitCount = lotSamples.SelectMany(x => x.FruitReadings).Count(HasEnteredFruitData),
+                DepletionStatus = currentBins > 0 ? "Current" : depleted > 0 ? "Depleted" : "No bins",
+                ReviewFlags = BuildRoomReviewFlags(pressures, starch, lotSamples.SelectMany(x => x.FruitReadings).ToList(), MonthPressureChange(receipt.RoomId, currentMonth: true, lotSamples)),
+                Samples = lotSamples
+                    .OrderByDescending(x => x.SampleTakenAt)
+                    .Select(x => new RoomSampleLinkViewModel(x.Id, x.SampleSequenceNumber <= 1 ? receipt.CompuTechReceiptId : $"{receipt.CompuTechReceiptId}({x.SampleSequenceNumber})", x.SampleType.Name))
+                    .ToList()
+            };
+        }).ToList();
+    }
+
+    private async Task<IReadOnlyList<RoomDepletionListItemViewModel>> BuildRoomDepletionHistoryAsync(int roomId, CancellationToken cancellationToken) =>
+        await dbContext.RoomDepletions.AsNoTracking()
+            .Include(x => x.Receipt)
+            .Include(x => x.FruitProfile)
+            .Include(x => x.CreatedByUser)
+            .Where(x => x.RoomId == roomId)
+            .OrderByDescending(x => x.DepletedAt)
+            .Select(x => new RoomDepletionListItemViewModel
+            {
+                Id = x.Id,
+                ReceiptId = x.ReceiptId,
+                DisplayReceiptId = x.Receipt.CompuTechReceiptId,
+                Lot = $"{x.GrowerName} {x.LotCode}",
+                Variety = x.FruitProfile.VarietyCode,
+                BinCount = x.BinCountDepleted,
+                Destination = x.Destination,
+                Notes = x.Notes,
+                DepletedAt = x.DepletedAt,
+                CreatedBy = x.CreatedByUser == null ? "" : x.CreatedByUser.DisplayName,
+                IsVoided = x.IsVoided,
+                VoidReason = x.VoidReason
+            })
+            .ToListAsync(cancellationToken);
+
+    private decimal? MonthPressureChange(int roomId, bool currentMonth, IReadOnlyList<QcSample> alreadyLoadedSamples)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var currentStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var previousStart = currentStart.AddMonths(-1);
+        var currentValues = PressureValues(alreadyLoadedSamples.Where(x => x.SampleTakenAt >= currentStart)).ToList();
+        var previousValues = PressureValues(alreadyLoadedSamples.Where(x => x.SampleTakenAt >= previousStart && x.SampleTakenAt < currentStart)).ToList();
+        if (currentValues.Count == 0 || previousValues.Count == 0)
+        {
+            return null;
+        }
+
+        return decimal.Round(currentValues.Average() - previousValues.Average(), 2);
+    }
+
+    private IReadOnlyList<string> BuildRoomReviewFlags(IReadOnlyList<decimal> pressures, IReadOnlyList<decimal> starchValues, IReadOnlyList<QcFruitReading> rows, decimal? monthPressureChange)
+    {
+        var flags = new List<string>();
+        var averagePressure = AverageOrNull(pressures);
+        AddThresholdReason(flags, averagePressure, "DashboardReview:LowPressureLbs", threshold => averagePressure < threshold, threshold => $"Average pressure {averagePressure:0.##} lbs is below configured low threshold {threshold:0.##} lbs.");
+        AddThresholdReason(flags, averagePressure, "DashboardReview:HighPressureLbs", threshold => averagePressure > threshold, threshold => $"Average pressure {averagePressure:0.##} lbs is above configured high threshold {threshold:0.##} lbs.");
+        var averageStarch = AverageOrNull(starchValues);
+        AddThresholdReason(flags, averageStarch, "DashboardReview:HighStarch", threshold => averageStarch > threshold, threshold => $"Average starch {averageStarch:0.##} is above configured threshold {threshold:0.##}.");
+        var variance = StandardDeviationOrNull(pressures);
+        AddThresholdReason(flags, variance, "DashboardReview:HighPressureVarianceLbs", threshold => variance > threshold, threshold => $"Pressure standard deviation {variance:0.##} lbs is above configured threshold {threshold:0.##} lbs.");
+        var completedRows = rows.Where(x => x.IsCompleted).ToList();
+        if (completedRows.Count > 0)
+        {
+            var defectPercent = decimal.Round(completedRows.Count(x => x.Defects.Count > 0) * 100m / completedRows.Count, 2);
+            AddThresholdReason(flags, defectPercent, "DashboardReview:HighDefectPercent", threshold => defectPercent > threshold, threshold => $"Defects are present on {defectPercent:0.##}% of completed fruit, above configured threshold {threshold:0.##}%.");
+        }
+
+        if (monthPressureChange < 0)
+        {
+            AddThresholdReason(flags, Math.Abs(monthPressureChange.Value), "DashboardReview:PressureDropLbs", threshold => Math.Abs(monthPressureChange.Value) > threshold, threshold => $"Month-over-month pressure dropped {Math.Abs(monthPressureChange.Value):0.##} lbs, above configured drop threshold {threshold:0.##} lbs.");
+        }
+
+        return flags;
+    }
+
+    private static IEnumerable<decimal> PressureValues(IEnumerable<QcSample> samples) =>
+        samples.SelectMany(x => x.FruitReadings)
+            .Select(x => AverageFlexible(x.Pressure1Lbs, x.Pressure2Lbs))
+            .Where(x => x is not null)
+            .Select(x => x!.Value);
+
+    private static IEnumerable<decimal> StarchValues(IEnumerable<QcSample> samples) =>
+        samples.SelectMany(x => x.FruitReadings)
+            .Where(x => x.StarchScaleValue is not null)
+            .Select(x => x.StarchScaleValue!.Value);
+
+    private static string SummarizeDefects(IEnumerable<QcSample> samples)
+    {
+        var groups = samples.SelectMany(x => x.FruitReadings)
+            .SelectMany(x => x.Defects)
+            .Select(x => x.DefectType.Name)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .GroupBy(x => x)
+            .OrderBy(x => x.Key)
+            .Select(x => $"{x.Key}: {x.Count()}")
+            .ToList();
+        return groups.Count == 0 ? "None" : string.Join(", ", groups);
+    }
+
+    private static decimal? AverageOrNull(IReadOnlyList<decimal> values) =>
+        values.Count == 0 ? null : decimal.Round(values.Average(), 2);
+
+    private static decimal? StandardDeviationOrNull(IReadOnlyList<decimal> values)
+    {
+        if (values.Count < 2)
+        {
+            return null;
+        }
+
+        var average = (double)values.Average();
+        var sum = values.Sum(x => Math.Pow((double)x - average, 2));
+        return decimal.Round((decimal)Math.Sqrt(sum / (values.Count - 1)), 2);
+    }
+
+    private static bool HasEnteredFruitData(QcFruitReading row) =>
+        row.Pressure1Lbs is not null ||
+        row.Pressure2Lbs is not null ||
+        row.WeightGrams is not null ||
+        row.GradeId is not null ||
+        row.StarchScaleValueId is not null ||
+        row.SizeCategory is not null ||
+        row.Defects.Count > 0;
+
+    private bool IsManagerOrAdmin()
+    {
+        var user = httpContextAccessor.HttpContext?.User;
+        return user?.IsInRole("Admin") == true || user?.IsInRole("Manager") == true;
+    }
+
     private IQueryable<QcSample> QuerySamples(bool includeDeleted = false)
     {
         var query = dbContext.QcSamples.AsNoTracking();
@@ -1411,6 +1760,7 @@ public sealed class DashboardDataService(
         receipt.ReceivedAt,
         receipt.CompuTechReceiptId,
         receipt.Warehouse.Code,
+        receipt.RoomId,
         receipt.Room.Code,
         receipt.GrowerName,
         receipt.LotCode,
@@ -1619,6 +1969,14 @@ public sealed class DashboardDataService(
 
     private static decimal? Average(decimal? first, decimal? second) =>
         first is null || second is null ? null : decimal.Round((first.Value + second.Value) / 2m, 2);
+
+    private static decimal? AverageFlexible(decimal? first, decimal? second) => (first, second) switch
+    {
+        (decimal a, decimal b) => decimal.Round((a + b) / 2m, 2),
+        (decimal a, null) => a,
+        (null, decimal b) => b,
+        _ => null
+    };
 
     private static string YesNo(bool value) => value ? "Yes" : "No";
     private static IReadOnlyList<string> Row(params string[] values) => values;

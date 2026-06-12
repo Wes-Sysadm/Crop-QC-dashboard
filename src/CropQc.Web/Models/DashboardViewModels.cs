@@ -9,6 +9,100 @@ public sealed class HomeDashboardViewModel
     public string? DataWarning { get; set; }
     public IReadOnlyList<StatusCountCard> Cards { get; set; } = [];
     public IReadOnlyList<SampleListItemViewModel> TodaySamples { get; set; } = [];
+    public IReadOnlyList<RoomSummaryItemViewModel> RoomSummaries { get; set; } = [];
+}
+
+public sealed class RoomSummaryItemViewModel
+{
+    public int RoomId { get; set; }
+    public string Warehouse { get; set; } = "";
+    public string RoomCode { get; set; } = "";
+    public string RoomName { get; set; } = "";
+    public string Status { get; set; } = "Empty";
+    public int CurrentLotsCount { get; set; }
+    public int? CurrentBinsCount { get; set; }
+    public string LotSummary { get; set; } = "Empty";
+    public decimal? AveragePressureLbs { get; set; }
+    public decimal? PressureStdDevLbs { get; set; }
+    public decimal? MonthOverMonthPressureChangeLbs { get; set; }
+    public decimal? AverageStarch { get; set; }
+    public string DefectSummary { get; set; } = "None";
+    public DateTimeOffset? LastSampleDate { get; set; }
+    public int SampleCount { get; set; }
+    public int EnteredFruitCount { get; set; }
+    public IReadOnlyList<string> ReviewFlags { get; set; } = [];
+}
+
+public sealed class RoomDetailViewModel
+{
+    public string? DataWarning { get; set; }
+    public RoomSummaryItemViewModel? Summary { get; set; }
+    public IReadOnlyList<RoomLotSummaryViewModel> CurrentLots { get; set; } = [];
+    public IReadOnlyList<RoomLotSummaryViewModel> DepletedLots { get; set; } = [];
+    public IReadOnlyList<RoomDepletionListItemViewModel> Depletions { get; set; } = [];
+    public IReadOnlyList<RoomReceiptOptionViewModel> DepletionReceiptOptions { get; set; } = [];
+    public RoomDepletionForm DepletionForm { get; set; } = new();
+    public bool CanManageDepletions { get; set; }
+}
+
+public sealed class RoomLotSummaryViewModel
+{
+    public long ReceiptId { get; set; }
+    public string DisplayReceiptId { get; set; } = "";
+    public string GrowerName { get; set; } = "";
+    public string LotCode { get; set; } = "";
+    public string VarietyCode { get; set; } = "";
+    public int OriginalBins { get; set; }
+    public int DepletedBins { get; set; }
+    public int CurrentBins { get; set; }
+    public decimal? AveragePressureLbs { get; set; }
+    public decimal? PressureStdDevLbs { get; set; }
+    public decimal? MonthOverMonthPressureChangeLbs { get; set; }
+    public decimal? AverageStarch { get; set; }
+    public string DefectSummary { get; set; } = "None";
+    public DateTimeOffset? LastSampleDate { get; set; }
+    public int SampleCount { get; set; }
+    public int EnteredFruitCount { get; set; }
+    public string DepletionStatus { get; set; } = "Current";
+    public IReadOnlyList<string> ReviewFlags { get; set; } = [];
+    public IReadOnlyList<RoomSampleLinkViewModel> Samples { get; set; } = [];
+}
+
+public sealed record RoomReceiptOptionViewModel(long ReceiptId, string Label, int CurrentBins);
+public sealed record RoomSampleLinkViewModel(long SampleId, string DisplayReceiptId, string SampleType);
+
+public sealed class RoomDepletionListItemViewModel
+{
+    public long Id { get; set; }
+    public long ReceiptId { get; set; }
+    public string DisplayReceiptId { get; set; } = "";
+    public string Lot { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public int BinCount { get; set; }
+    public string? Destination { get; set; }
+    public string? Notes { get; set; }
+    public DateTimeOffset DepletedAt { get; set; }
+    public string CreatedBy { get; set; } = "";
+    public bool IsVoided { get; set; }
+    public string? VoidReason { get; set; }
+}
+
+public sealed class RoomDepletionForm
+{
+    public int RoomId { get; set; }
+    public long ReceiptId { get; set; }
+    public int BinCount { get; set; }
+    public DateTimeOffset DepletedAt { get; set; } = DateTimeOffset.Now;
+    public string? Destination { get; set; }
+    public string? Notes { get; set; }
+    public bool ConfirmOverDepletion { get; set; }
+}
+
+public sealed class VoidRoomDepletionForm
+{
+    public long DepletionId { get; set; }
+    public int RoomId { get; set; }
+    public string Reason { get; set; } = "";
 }
 
 public sealed record MasterDataPageViewModel(
@@ -200,6 +294,7 @@ public sealed record ReceiptListItemViewModel(
     DateTimeOffset ReceivedAt,
     string CompuTechReceiptId,
     string Warehouse,
+    int RoomId,
     string Room,
     string GrowerName,
     string LotCode,

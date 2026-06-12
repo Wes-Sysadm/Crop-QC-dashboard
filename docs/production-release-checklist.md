@@ -17,6 +17,8 @@ Use this checklist before every production deploy. Production data is real compa
 - Database health endpoint passes: `/health/db`.
 - Login works.
 - Dashboard loads.
+- Dashboard Room Summary shows all rooms, including empty rooms.
+- Room drill-down opens and depletion history/current lot breakout is visible.
 - Receipts page loads.
 - Daily QC loads.
 - Sample detail loads.

@@ -47,6 +47,12 @@ Future revisions must carry production data forward. Production changes should p
 
 Google Drive is the backup target. Admin -> Backups reports the configured provider/folder, last backup status, production safety warnings, and manual actions. The backup workflow produces a PostgreSQL logical dump when `pg_dump` is available, a non-secret configuration snapshot, and a Google Drive photo/storage manifest. Configuration backups must not contain OAuth tokens, Google service account JSON, client secrets, API keys, station keys, or Gmail credentials. If `pg_dump` is missing from the runtime, the app warns and the deployment process must use Render/Postgres backups or a PostgreSQL-tools worker for database dumps.
 
+## Room Inventory Boundary
+
+Room Summary is a current-state view derived from receipts, samples, fruit readings, and additive room depletion records. Receipts and QC samples remain the historical source of what was received, sampled, photographed, emailed, and captured by QC Station. Depletion records represent bins sent from a room to the packing line and are used to remove those bins/lots from current room rollups without deleting or mutating historical QC data.
+
+Managers and Admins can create depletion records and void incorrect depletion records with a reason. Voiding is reversible for current-room calculations because voided records are retained but ignored by active inventory. Depletion history remains visible in room drill-downs and must be audited. Do not delete receipts or samples to remove fruit from room summaries.
+
 ## Email Boundary
 
 QC Summary email sends through the Gmail API using the logged-in Google Workspace user's delegated `gmail.send` permission when `Email__Provider=GmailUser` is configured. Allowed sending domains are configured with `Authentication__AllowedGoogleDomains`; current company domains are `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com`. QC recipients are configured with `Email__QcDefaultRecipients`; the current test value is `rob@earlbrownandsons.com,wes@fruitandland.com`. The sender is the logged-in user, not a shared SMTP account. Refresh tokens are encrypted with ASP.NET Core Data Protection and are not logged.
