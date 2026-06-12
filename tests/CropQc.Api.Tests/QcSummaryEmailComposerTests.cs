@@ -64,6 +64,25 @@ public sealed class QcSummaryEmailComposerTests
         Assert.Contains(missing, x => x.Contains("Starch apples", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData("TopTruck")]
+    [InlineData("TopTruckPhoto")]
+    [InlineData("TopOfTruckPhoto")]
+    [InlineData("Top truck photo")]
+    [InlineData("Top of truck")]
+    public void PhotoRequirementPolicy_NormalizesTopOfTruckAliases(string legacyPhotoType)
+    {
+        var policy = new QcPhotoRequirementPolicy();
+
+        var missing = policy.MissingRequiredPhotos(
+            "Receiving Sample",
+            receiptPhotoTypes: ["BinTruck", legacyPhotoType],
+            samplePhotoTypes: ["Hectre", "SampleBeforeCutting", "CutFruit", "FruitAfterStarch"]);
+
+        Assert.DoesNotContain("Missing required photo: Top of truck", missing);
+        Assert.Equal("TopOfTruck", QcPhotoRequirementPolicy.NormalizePhotoType(legacyPhotoType));
+    }
+
     [Fact]
     public void PhotoRequirementPolicy_DoesNotRequireHectreForTransferOrLineSamples()
     {
@@ -127,6 +146,22 @@ public sealed class QcSummaryEmailComposerTests
         Assert.True(content.HtmlBody.IndexOf("<h3>Hectre</h3>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h3>Whole sample</h3>", StringComparison.Ordinal));
         Assert.True(content.HtmlBody.IndexOf("<h3>Whole sample</h3>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h3>Cut apples</h3>", StringComparison.Ordinal));
         Assert.True(content.HtmlBody.IndexOf("<h3>Cut apples</h3>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h3>Starch apples</h3>", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task EmailComposer_MapsLegacyTopTruckPhotoToSingleTopOfTruckSection()
+    {
+        var sample = BuildSample("Receiving Sample");
+        sample.Receipt.Photos.Single(x => x.PhotoType == "TopOfTruck").PhotoType = "TopTruckPhoto";
+        var readiness = new ReadinessViewModel { CompletedFruitCount = 1 };
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+
+        var content = await composer.ComposeAsync(sample, readiness, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
+
+        Assert.Contains("<h3>Top of truck</h3>", content.HtmlBody);
+        Assert.DoesNotContain("Top truck photo", content.HtmlBody, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, CountOccurrences(content.HtmlBody, "<h3>Top of truck</h3>"));
+        Assert.Contains("- Top of truck: 1 photo(s)", content.TextBody);
     }
 
     [Fact]
@@ -379,5 +414,18 @@ public sealed class QcSummaryEmailComposerTests
         }
 
         throw new FileNotFoundException($"Could not find repository file {Path.Combine(pathParts)}.");
+    }
+
+    private static int CountOccurrences(string value, string match)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = value.IndexOf(match, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += match.Length;
+        }
+
+        return count;
     }
 }

@@ -70,18 +70,20 @@ public sealed class TestFruitPressureCaptureTests
     }
 
     [Fact]
-    public void Capture_AutoAdvance_StopsAtFruit25Pressure2()
+    public void Capture_AutoAdvance_StopsAtConfiguredTargetFruitPressure2()
     {
         var capture = new TestFruitPressureCapture();
+        capture.SetTargetFruitCount(50);
 
         for (var i = 0; i < TestFruitPressureCapture.MaxFruitCount * 2; i++)
         {
             capture.Capture(PressureReading.Success(10m + i, PressureReadingSource.FTA, "Station A"), PressureCaptureTarget.AutoAdvance);
         }
 
-        Assert.Equal(25, capture.FruitNumber);
+        Assert.Equal(50, capture.FruitNumber);
         Assert.Equal("Sample Complete", capture.CurrentTargetSlot);
         Assert.True(capture.IsSampleComplete);
+        Assert.Equal(50, capture.Rows.Count);
         Assert.All(capture.Rows, row => Assert.Equal("Complete", row.Status));
     }
 
@@ -95,10 +97,26 @@ public sealed class TestFruitPressureCaptureTests
             new FruitPressureCaptureRow(1, 10m, 11m, 10.5m, "Complete"),
             new FruitPressureCaptureRow(2, 12m, null, null, "Missing P2"),
             new FruitPressureCaptureRow(3, null, null, null, "Missing P1")
-        ]);
+        ], targetFruitCount: 50);
 
         Assert.Equal(2, capture.FruitNumber);
         Assert.Equal("Pressure 2", capture.CurrentTargetSlot);
+        Assert.Equal(50, capture.TargetFruitCount);
+        Assert.Equal(50, capture.Rows.Count);
+    }
+
+    [Fact]
+    public void SetTargetFruitCount_AllowsRow50PressureCapture()
+    {
+        var capture = new TestFruitPressureCapture();
+        capture.SetTargetFruitCount(50);
+
+        capture.FruitNumber = 50;
+        capture.Capture(PressureReading.Success(12.5m, PressureReadingSource.FTA, "Station A"), PressureCaptureTarget.Pressure1);
+
+        Assert.Equal(50, capture.TargetFruitCount);
+        Assert.Equal(50, capture.Rows.Count);
+        Assert.Contains(capture.Rows, row => row.FruitNumber == 50 && row.Pressure1Lbs == 12.5m);
     }
 
     [Fact]

@@ -30,6 +30,7 @@ public sealed record QcStationSampleDetail(
     string StarchStatus,
     string EmailStatus,
     DateTimeOffset SampleTakenAt,
+    int TargetSampleSize,
     IReadOnlyList<QcStationFruitReading> FruitReadings);
 
 public sealed record QcStationFruitReading(

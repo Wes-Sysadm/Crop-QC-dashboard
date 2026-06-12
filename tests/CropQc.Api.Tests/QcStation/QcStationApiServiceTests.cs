@@ -61,4 +61,37 @@ public sealed class QcStationApiServiceTests
         Assert.Null(reading.WeightGrams);
         Assert.Null(reading.GradeId);
     }
+
+    [Fact]
+    public void QcStationDetailPayload_IncludesTargetSampleSizeAndAvoidsFixedTwentyFiveGrid()
+    {
+        var apiDto = File.ReadAllText(FindRepositoryFile("src", "CropQc.Api", "Dtos", "QcDtos.cs"));
+        var stationDto = File.ReadAllText(FindRepositoryFile("src", "CropQc.QcStation", "Api", "QcStationApiDtos.cs"));
+        var webController = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "QcStationController.cs"));
+        var apiService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Api", "Services", "QcStationApiService.cs"));
+
+        Assert.Contains("int TargetSampleSize", apiDto, StringComparison.Ordinal);
+        Assert.Contains("int TargetSampleSize", stationDto, StringComparison.Ordinal);
+        Assert.DoesNotContain("Enumerable.Range(1, 25)", webController, StringComparison.Ordinal);
+        Assert.DoesNotContain("Enumerable.Range(1, 25)", apiService, StringComparison.Ordinal);
+        Assert.Contains("Math.Max(targetSampleSize", webController, StringComparison.Ordinal);
+        Assert.Contains("Math.Max(targetSampleSize", apiService, StringComparison.Ordinal);
+    }
+
+    private static string FindRepositoryFile(params string[] pathParts)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(new[] { directory.FullName }.Concat(pathParts).ToArray());
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException($"Could not find repository file {Path.Combine(pathParts)}.");
+    }
 }

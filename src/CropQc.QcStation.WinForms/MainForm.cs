@@ -38,7 +38,7 @@ public sealed class MainForm : Form
     private readonly NumericUpDown fruitNumberInput = new()
     {
         Minimum = 1,
-        Maximum = 25,
+        Maximum = TestFruitPressureCapture.MaxFruitCount,
         Value = 1,
         Width = 70
     };
@@ -618,7 +618,7 @@ public sealed class MainForm : Form
 
         panel.Controls.Add(new Label
         {
-            Text = "25-Fruit Pressure Grid",
+            Text = "Pressure Grid",
             AutoSize = true,
             Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold),
             Margin = new Padding(0, 0, 0, 6)
@@ -872,7 +872,9 @@ public sealed class MainForm : Form
             row.Pressure1Lbs,
             row.Pressure2Lbs,
             row.PressureAverageLbs,
-            row.Pressure1Lbs is null ? "Missing P1" : row.Pressure2Lbs is null ? "Missing P2" : "Complete")));
+            row.Pressure1Lbs is null ? "Missing P1" : row.Pressure2Lbs is null ? "Missing P2" : "Complete")),
+            selectedSample.TargetSampleSize);
+        fruitNumberInput.Maximum = testFruitCapture.TargetFruitCount;
     }
 
     private Task SavePressuresToDashboardAsync() =>
@@ -1171,7 +1173,7 @@ public sealed class MainForm : Form
 
         if (testFruitCapture.IsSampleComplete)
         {
-            AppendLog("Continuous capture was not started because the local 25-fruit sample is already complete.");
+            AppendLog($"Continuous capture was not started because the local {testFruitCapture.TargetFruitCount}-fruit sample is already complete.");
             return;
         }
 
@@ -1295,7 +1297,7 @@ public sealed class MainForm : Form
 
                     if (testFruitCapture.IsSampleComplete)
                     {
-                        AppendLog("Continuous capture completed Fruit 25 Pressure 2. Local sample capture is complete.");
+                        AppendLog($"Continuous capture completed Fruit {testFruitCapture.TargetFruitCount} Pressure 2. Local sample capture is complete.");
                         break;
                     }
 
@@ -1691,7 +1693,7 @@ public sealed class MainForm : Form
         unsavedChangesTextBox.Text = hasUnsavedPressureChanges ? "Yes" : "No";
         sampleContextTextBox.Text = selectedSample is null
             ? "(none)"
-            : $"{selectedSample.WarehouseCode} {selectedSample.RoomCode} | {selectedSample.GrowerName} | Lot {selectedSample.LotCode} | {selectedSample.VarietyCode}";
+            : $"{selectedSample.WarehouseCode} {selectedSample.RoomCode} | {selectedSample.GrowerName} | Lot {selectedSample.LotCode} | {selectedSample.VarietyCode} | Target {selectedSample.TargetSampleSize}";
     }
 
     private void RefreshCaptureDisplay()
@@ -1709,11 +1711,12 @@ public sealed class MainForm : Form
             : $"{testFruitCapture.LastCapturedReading.ReadingValueLbs:0.00} lbs ({testFruitCapture.LastCapturedReading.Source})";
         currentFruitTextBox.Text = testFruitCapture.FruitNumber.ToString();
         currentTargetTextBox.Text = testFruitCapture.CurrentTargetSlot;
+        var capturedCount = testFruitCapture.Rows.Count(row => row.Pressure1Lbs is not null || row.Pressure2Lbs is not null);
         continuousStatusTextBox.Text = isContinuousCaptureRunning
-            ? "Continuous capture armed"
+            ? $"Continuous capture armed - captured {capturedCount} / {testFruitCapture.TargetFruitCount}"
             : testFruitCapture.IsSampleComplete
                 ? "Sample complete"
-                : string.IsNullOrWhiteSpace(continuousStatusTextBox.Text) ? "Stopped" : continuousStatusTextBox.Text;
+                : string.IsNullOrWhiteSpace(continuousStatusTextBox.Text) ? $"Stopped - captured {capturedCount} / {testFruitCapture.TargetFruitCount}" : continuousStatusTextBox.Text;
 
         fruitPressureGrid.BeginUpdate();
         fruitPressureGrid.Items.Clear();

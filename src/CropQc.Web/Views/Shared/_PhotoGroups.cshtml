@@ -29,7 +29,7 @@
 }
 
 @functions {
-    private static string FriendlyPhotoType(string photoType) => photoType switch
+    private static string FriendlyPhotoType(string photoType) => NormalizePhotoType(photoType) switch
     {
         "BinTruck" => "Truck photo",
         "TopOfTruck" => "Top of truck",
@@ -40,4 +40,16 @@
         "Other" => "Other",
         _ => photoType
     };
+
+    private static string NormalizePhotoType(string? photoType)
+    {
+        var normalized = (photoType ?? "").Trim();
+        return normalized switch
+        {
+            "TopTruck" or "TopTruckPhoto" or "TopOfTruckPhoto" => "TopOfTruck",
+            _ when normalized.Equals("Top truck photo", StringComparison.OrdinalIgnoreCase) => "TopOfTruck",
+            _ when normalized.Equals("Top of truck", StringComparison.OrdinalIgnoreCase) => "TopOfTruck",
+            _ => normalized
+        };
+    }
 }

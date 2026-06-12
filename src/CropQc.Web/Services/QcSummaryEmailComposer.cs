@@ -75,7 +75,7 @@ public sealed class QcSummaryEmailComposer(
         {
             var source = requirement.ReceiptLevel ? sample.Receipt.Photos : sample.Photos;
             result.AddRange(source
-                .Where(x => string.Equals(x.PhotoType, requirement.PhotoType, StringComparison.OrdinalIgnoreCase))
+                .Where(x => string.Equals(QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType), requirement.PhotoType, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(x => x.CapturedAt));
         }
 
@@ -185,7 +185,7 @@ public sealed class QcSummaryEmailComposer(
         html.AppendLine("<h2>Photos</h2>");
         foreach (var requirement in requirements)
         {
-            var group = photos.Where(x => string.Equals(x.PhotoType, requirement.PhotoType, StringComparison.OrdinalIgnoreCase)).ToList();
+            var group = photos.Where(x => string.Equals(QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType), requirement.PhotoType, StringComparison.OrdinalIgnoreCase)).ToList();
             if (group.Count == 0)
             {
                 continue;
@@ -240,7 +240,7 @@ public sealed class QcSummaryEmailComposer(
         text.AppendLine("Photo sections:");
         foreach (var requirement in requirements)
         {
-            var count = photos.Count(x => string.Equals(x.PhotoType, requirement.PhotoType, StringComparison.OrdinalIgnoreCase));
+            var count = photos.Count(x => string.Equals(QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType), requirement.PhotoType, StringComparison.OrdinalIgnoreCase));
             if (count > 0)
             {
                 text.AppendLine($"- {requirement.FriendlyName}: {count} photo(s)");
@@ -366,7 +366,7 @@ public sealed class QcSummaryEmailComposer(
         return string.IsNullOrWhiteSpace(user.DisplayName) ? user.Email : user.DisplayName;
     }
 
-    private static string FriendlyPhotoName(string photoType) => photoType switch
+    private static string FriendlyPhotoName(string photoType) => QcPhotoRequirementPolicy.NormalizePhotoType(photoType) switch
     {
         "BinTruck" => "Truck photo",
         "TopOfTruck" => "Top of truck",
