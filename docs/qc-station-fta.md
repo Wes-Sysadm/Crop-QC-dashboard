@@ -407,7 +407,7 @@ On the physical QC computer connected to the GUSS/FTA:
 5. Select `Start Continuous Manual Capture`.
 6. Press and hold the green FTA button until the probe completes the test.
 7. Let the harness capture the value, auto-fill the current target, and re-arm for the next test.
-8. Repeat the physical green-button test cycle. The harness fills Fruit 1 Pressure 1, Fruit 1 Pressure 2, Fruit 2 Pressure 1, Fruit 2 Pressure 2, and continues through Fruit 25 Pressure 2.
+8. Repeat the physical green-button test cycle. The harness fills Fruit 1 Pressure 1, Fruit 1 Pressure 2, Fruit 2 Pressure 1, Fruit 2 Pressure 2, and continues through the selected target sample size, including Fruit 50 Pressure 2 for 50-apple samples.
 9. Select `Stop Continuous Capture` when done or if troubleshooting is needed.
 10. Select `Quit/Disconnect FTA` before closing the station app when possible.
 11. Select `Diagnostics` again if there is no beep, no probe movement, or no new reading.

@@ -131,7 +131,7 @@ Bin/truck and top-of-truck photos attach to `Receipts`. Hectre, sample before cu
 - Defect name is unique.
 - Fruit size category is unique per fruit type.
 - QC sample sequence is unique per receipt.
-- QC fruit row number is unique per sample and constrained to 1 through 25.
+- QC fruit row number is unique per sample and constrained to 1 through 50. The active target sample size can be 10, 25, or 50; rows above a reduced target size are preserved when they already contain entered data.
 - Completed fruit rows require core measurements and grade.
 - QC photos must attach to exactly one parent: receipt or QC sample.
 - QC photo external drive/item reference is unique.

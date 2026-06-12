@@ -1062,7 +1062,7 @@ namespace CropQc.Data.Migrations
                         {
                             t.HasCheckConstraint("CK_QcFruitReadings_CompletedRequiresCoreFields", "([IsCompleted] = 0) OR ([Pressure1Lbs] IS NOT NULL AND [Pressure2Lbs] IS NOT NULL AND [WeightGrams] IS NOT NULL AND [GradeId] IS NOT NULL)");
 
-                            t.HasCheckConstraint("CK_QcFruitReadings_RowNumber_1_25", "[RowNumber] >= 1 AND [RowNumber] <= 25");
+                            t.HasCheckConstraint("CK_QcFruitReadings_RowNumber_1_50", "[RowNumber] >= 1 AND [RowNumber] <= 50");
                         });
                 });
 

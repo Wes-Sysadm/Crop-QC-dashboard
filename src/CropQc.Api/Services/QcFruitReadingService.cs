@@ -16,16 +16,22 @@ public sealed class QcFruitReadingService(CropQcDbContext dbContext, IAuditServi
 {
     public async Task<(QcFruitReadingDto? Reading, string? Error)> UpsertAsync(long sampleId, int rowNumber, UpsertQcFruitReadingRequest request, CancellationToken cancellationToken)
     {
-        if (rowNumber is < 1 or > 25)
-        {
-            return (null, "RowNumber must be between 1 and 25.");
-        }
-
         var sample = await dbContext.QcSamples.Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
             .SingleOrDefaultAsync(x => x.Id == sampleId, cancellationToken);
         if (sample is null)
         {
             return (null, "QC sample not found.");
+        }
+
+        var targetRowNumber = Math.Clamp(sample.ActualSampleSize ?? 10, 1, 50);
+        var existingMaxRowNumber = await dbContext.QcFruitReadings.AsNoTracking()
+            .Where(x => x.QcSampleId == sampleId)
+            .Select(x => (int?)x.RowNumber)
+            .MaxAsync(cancellationToken) ?? 0;
+        var maxRowNumber = Math.Max(targetRowNumber, existingMaxRowNumber);
+        if (rowNumber < 1 || rowNumber > maxRowNumber)
+        {
+            return (null, $"RowNumber must be between 1 and {maxRowNumber}.");
         }
 
         var reading = await dbContext.QcFruitReadings.SingleOrDefaultAsync(x => x.QcSampleId == sampleId && x.RowNumber == rowNumber, cancellationToken);

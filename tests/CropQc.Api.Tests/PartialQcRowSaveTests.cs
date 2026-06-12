@@ -76,6 +76,24 @@ public sealed class PartialQcRowSaveTests
         """, apiService, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void SampleSaveValidation_DoesNotHardCodeTwentyFiveRows()
+    {
+        var dashboardService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var qcStationController = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "QcStationController.cs"));
+        var qcStationApiService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Api", "Services", "QcStationApiService.cs"));
+        var fruitReadingService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Api", "Services", "QcFruitReadingService.cs"));
+
+        Assert.DoesNotContain("1 through 25", dashboardService, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("1 through 25", qcStationController, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("1 through 25", qcStationApiService, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("1 through 25", fruitReadingService, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Math.Max(form.TargetSampleSize, existingMaxRowNumber)", dashboardService, StringComparison.Ordinal);
+        Assert.Contains("Math.Clamp(sample.ActualSampleSize ?? 10, 1, 50)", qcStationController, StringComparison.Ordinal);
+        Assert.Contains("Math.Clamp(sample.ActualSampleSize ?? 10, 1, 50)", qcStationApiService, StringComparison.Ordinal);
+        Assert.Contains("Math.Clamp(sample.ActualSampleSize ?? 10, 1, 50)", fruitReadingService, StringComparison.Ordinal);
+    }
+
     public static IEnumerable<object[]> PartialRows()
     {
         yield return [new FruitReadingEditRow { RowNumber = 1, Pressure1Lbs = 11.1m }];

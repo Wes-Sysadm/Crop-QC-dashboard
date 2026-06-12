@@ -210,9 +210,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         {
             entity.ToTable(table =>
             {
-                table.HasCheckConstraint("CK_QcFruitReadings_RowNumber_1_25", isPostgreSqlProvider
-                    ? "\"RowNumber\" >= 1 AND \"RowNumber\" <= 25"
-                    : "[RowNumber] >= 1 AND [RowNumber] <= 25");
+                table.HasCheckConstraint("CK_QcFruitReadings_RowNumber_1_50", isPostgreSqlProvider
+                    ? "\"RowNumber\" >= 1 AND \"RowNumber\" <= 50"
+                    : "[RowNumber] >= 1 AND [RowNumber] <= 50");
                 table.HasCheckConstraint("CK_QcFruitReadings_CompletedRequiresCoreFields", isPostgreSqlProvider
                     ? "(\"IsCompleted\" = FALSE) OR (\"Pressure1Lbs\" IS NOT NULL AND \"Pressure2Lbs\" IS NOT NULL AND \"WeightGrams\" IS NOT NULL AND \"GradeId\" IS NOT NULL)"
                     : "([IsCompleted] = 0) OR ([Pressure1Lbs] IS NOT NULL AND [Pressure2Lbs] IS NOT NULL AND [WeightGrams] IS NOT NULL AND [GradeId] IS NOT NULL)");

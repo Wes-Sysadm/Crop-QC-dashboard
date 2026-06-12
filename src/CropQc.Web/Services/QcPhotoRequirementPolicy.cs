@@ -84,8 +84,20 @@ public sealed class QcPhotoRequirementPolicy : IQcPhotoRequirementPolicy
 
     private static bool HasPhoto(QcPhotoRequirement requirement, IReadOnlyCollection<string> receiptPhotoTypes, IReadOnlyCollection<string> samplePhotoTypes)
     {
-        var source = requirement.ReceiptLevel ? receiptPhotoTypes : samplePhotoTypes;
+        var source = (requirement.ReceiptLevel ? receiptPhotoTypes : samplePhotoTypes).Select(NormalizePhotoType);
         return source.Contains(requirement.PhotoType, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public static string NormalizePhotoType(string? photoType)
+    {
+        var normalized = (photoType ?? "").Trim();
+        return normalized switch
+        {
+            "TopTruck" or "TopTruckPhoto" or "TopOfTruckPhoto" => "TopOfTruck",
+            _ when normalized.Equals("Top truck photo", StringComparison.OrdinalIgnoreCase) => "TopOfTruck",
+            _ when normalized.Equals("Top of truck", StringComparison.OrdinalIgnoreCase) => "TopOfTruck",
+            _ => normalized
+        };
     }
 
     private static IReadOnlyList<QcPhotoRequirement> MarkOptional(IReadOnlyList<QcPhotoRequirement> required, IReadOnlyList<QcPhotoRequirement> available)

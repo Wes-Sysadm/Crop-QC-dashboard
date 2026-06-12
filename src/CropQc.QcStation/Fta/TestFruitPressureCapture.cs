@@ -2,18 +2,25 @@ namespace CropQc.QcStation.Fta;
 
 public sealed class TestFruitPressureCapture
 {
-    public const int MaxFruitCount = 25;
+    public const int MaxFruitCount = 50;
     private readonly List<CapturedPressureHistoryEntry> history = [];
     private readonly decimal?[] pressure1Values = new decimal?[MaxFruitCount + 1];
     private readonly decimal?[] pressure2Values = new decimal?[MaxFruitCount + 1];
     private int fruitNumber = 1;
+    private int targetFruitCount = 25;
+
+    public int TargetFruitCount
+    {
+        get => targetFruitCount;
+        private set => targetFruitCount = Math.Clamp(value, 1, MaxFruitCount);
+    }
 
     public int FruitNumber
     {
         get => fruitNumber;
         set
         {
-            fruitNumber = Math.Clamp(value, 1, MaxFruitCount);
+            fruitNumber = Math.Clamp(value, 1, TargetFruitCount);
             SyncCurrentTargetToFruit();
         }
     }
@@ -26,7 +33,19 @@ public sealed class TestFruitPressureCapture
     public bool IsSampleComplete => Rows.All(row => row.Status == "Complete");
     public IReadOnlyList<CapturedPressureHistoryEntry> History => history;
     public IReadOnlyList<FruitPressureCaptureRow> Rows =>
-        Enumerable.Range(1, MaxFruitCount).Select(CreateRow).ToArray();
+        Enumerable.Range(1, TargetFruitCount).Select(CreateRow).ToArray();
+
+    public void SetTargetFruitCount(int targetFruitCount)
+    {
+        if (targetFruitCount is not (10 or 25 or 50))
+        {
+            targetFruitCount = 10;
+        }
+
+        TargetFruitCount = targetFruitCount;
+        FruitNumber = Math.Min(FruitNumber, TargetFruitCount);
+        SyncCurrentTargetToFruit();
+    }
 
     public string Capture(PressureReading reading, PressureCaptureTarget target)
     {
@@ -69,7 +88,7 @@ public sealed class TestFruitPressureCapture
     {
         if (rowNumber is < 1 or > MaxFruitCount)
         {
-            throw new ArgumentOutOfRangeException(nameof(rowNumber), "Row number must be between 1 and 25.");
+            throw new ArgumentOutOfRangeException(nameof(rowNumber), "Row number must be between 1 and 50.");
         }
 
         pressure1Values[rowNumber] = pressure1Lbs;
@@ -80,16 +99,20 @@ public sealed class TestFruitPressureCapture
         }
     }
 
-    public void LoadRows(IEnumerable<FruitPressureCaptureRow> rows)
+    public void LoadRows(IEnumerable<FruitPressureCaptureRow> rows, int targetFruitCount)
     {
         Clear();
+        SetTargetFruitCount(targetFruitCount);
         foreach (var row in rows)
         {
-            SetPressures(row.FruitNumber, row.Pressure1Lbs, row.Pressure2Lbs);
+            if (row.FruitNumber <= MaxFruitCount)
+            {
+                SetPressures(row.FruitNumber, row.Pressure1Lbs, row.Pressure2Lbs);
+            }
         }
 
         var next = Rows.FirstOrDefault(row => row.Status != "Complete");
-        FruitNumber = next?.FruitNumber ?? MaxFruitCount;
+        FruitNumber = next?.FruitNumber ?? TargetFruitCount;
         CurrentTargetSlot = next is null ? "Sample Complete" : next.Status == "Missing P1" ? "Pressure 1" : "Pressure 2";
     }
 
@@ -144,7 +167,7 @@ public sealed class TestFruitPressureCapture
             return;
         }
 
-        if (FruitNumber < MaxFruitCount)
+        if (FruitNumber < TargetFruitCount)
         {
             FruitNumber++;
             CurrentTargetSlot = "Pressure 1";
@@ -160,7 +183,7 @@ public sealed class TestFruitPressureCapture
             ? "Pressure 1"
             : Pressure2Lbs is null
                 ? "Pressure 2"
-                : FruitNumber < MaxFruitCount
+                : FruitNumber < TargetFruitCount
                     ? "Pressure 1"
                     : "Sample Complete";
     }

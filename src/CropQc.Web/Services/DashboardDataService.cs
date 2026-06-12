@@ -520,10 +520,15 @@ public sealed class DashboardDataService(
             return $"Sample size must be one of: {string.Join(", ", allowedSampleSizes)}.";
         }
 
+        var existingMaxRowNumber = await dbContext.QcFruitReadings.AsNoTracking()
+            .Where(x => x.QcSampleId == sample.Id)
+            .Select(x => (int?)x.RowNumber)
+            .MaxAsync(cancellationToken) ?? 0;
+        var maxAllowedRowNumber = Math.Max(form.TargetSampleSize, existingMaxRowNumber);
         var rowsByNumber = form.Rows.GroupBy(x => x.RowNumber).ToList();
-        if (rowsByNumber.Any(x => x.Key is < 1 or > 25) || rowsByNumber.Any(x => x.Count() > 1))
+        if (rowsByNumber.Any(x => x.Key < 1 || x.Key > maxAllowedRowNumber) || rowsByNumber.Any(x => x.Count() > 1))
         {
-            return "Rows must be unique and numbered 1 through 25.";
+            return $"Rows must be unique and numbered 1 through {maxAllowedRowNumber}.";
         }
 
         var validGradeIds = await dbContext.Grades.AsNoTracking().Select(x => x.Id).ToListAsync(cancellationToken);
@@ -652,10 +657,16 @@ public sealed class DashboardDataService(
             return "QC sample not found.";
         }
 
+        var existingMaxRowNumber = await dbContext.QcFruitReadings.AsNoTracking()
+            .Where(x => x.QcSampleId == sample.Id)
+            .Select(x => (int?)x.RowNumber)
+            .MaxAsync(cancellationToken) ?? 0;
+        var targetSampleSize = sample.ActualSampleSize is > 0 ? sample.ActualSampleSize.Value : 10;
+        var maxAllowedRowNumber = Math.Max(targetSampleSize, existingMaxRowNumber);
         var rowsByNumber = form.Rows.GroupBy(x => x.RowNumber).ToList();
-        if (rowsByNumber.Any(x => x.Key is < 1 or > 25) || rowsByNumber.Any(x => x.Count() > 1))
+        if (rowsByNumber.Any(x => x.Key < 1 || x.Key > maxAllowedRowNumber) || rowsByNumber.Any(x => x.Count() > 1))
         {
-            return "Rows must be unique and numbered 1 through 25.";
+            return $"Rows must be unique and numbered 1 through {maxAllowedRowNumber}.";
         }
 
         var validStarchIds = await dbContext.StarchScaleValues.AsNoTracking().Select(x => x.Id).ToHashSetAsync(cancellationToken);
@@ -964,7 +975,7 @@ public sealed class DashboardDataService(
         {
             ReceiptId = form.ReceiptId,
             QcSampleId = form.QcSampleId,
-            PhotoType = form.PhotoType.Trim(),
+            PhotoType = QcPhotoRequirementPolicy.NormalizePhotoType(form.PhotoType),
             PhotoSource = form.PhotoSource.Trim(),
             FileName = reference.FileName,
             ContentType = reference.ContentType,
@@ -1018,6 +1029,7 @@ public sealed class DashboardDataService(
             return "QC sample not found.";
         }
 
+        form.PhotoType = QcPhotoRequirementPolicy.NormalizePhotoType(form.PhotoType);
         var available = photoRequirementPolicy.GetAvailablePhotoTypes(sample.SampleType.Name);
         var selected = available.SingleOrDefault(x => string.Equals(x.PhotoType, form.PhotoType, StringComparison.OrdinalIgnoreCase));
         if (selected is null && !string.Equals(form.PhotoType, "Other", StringComparison.OrdinalIgnoreCase))
@@ -1443,9 +1455,9 @@ public sealed class DashboardDataService(
     private sealed record ReceiptSampleSummary(long ReceiptId, int SampleCount, DateTimeOffset LastUpdatedAt, bool HasReady, bool HasReview, bool HasSent);
 
     private static IReadOnlyList<PhotoGroupViewModel> GroupPhotos(IReadOnlyList<QcPhoto> photos) =>
-        photos.GroupBy(x => x.PhotoType)
+        photos.GroupBy(x => QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType))
             .OrderBy(x => x.Key)
-            .Select(x => new PhotoGroupViewModel(x.Key, x.Select(photo => new PhotoMetadataViewModel(photo.PhotoType, photo.PhotoSource, photo.FileName, photo.ContentType, photo.FileSizeBytes, photo.WebUrl, photo.CapturedAt)).ToList()))
+            .Select(x => new PhotoGroupViewModel(x.Key, x.Select(photo => new PhotoMetadataViewModel(QcPhotoRequirementPolicy.NormalizePhotoType(photo.PhotoType), photo.PhotoSource, photo.FileName, photo.ContentType, photo.FileSizeBytes, photo.WebUrl, photo.CapturedAt)).ToList()))
             .ToList();
 
     private async Task<FileStorageReference> SavePhotoFileOrPlaceholderAsync(AddPhotoMetadataForm form, Receipt receipt, DateTimeOffset capturedAt, CancellationToken cancellationToken)

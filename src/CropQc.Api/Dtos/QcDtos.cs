@@ -106,6 +106,7 @@ public sealed record QcStationSampleDetailDto(
     string StarchStatus,
     string EmailStatus,
     DateTimeOffset SampleTakenAt,
+    int TargetSampleSize,
     IReadOnlyList<QcStationFruitReadingDto> FruitReadings);
 
 public sealed record UpdateQcStationPressureRowRequest(

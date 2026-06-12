@@ -107,13 +107,14 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
             .Select(x => new { x.RowNumber, x.Pressure1Lbs, x.Pressure2Lbs })
             .ToList();
         var existingRows = sample.FruitReadings.ToDictionary(x => x.RowNumber);
+        var targetSampleSize = ResolveTargetSampleSize(sample);
 
         foreach (var row in request.Rows)
         {
-            if (row.RowNumber is < 1 or > 25)
+            if (row.RowNumber < 1 || row.RowNumber > targetSampleSize)
             {
                 logger.LogWarning("QC Station pressure save rejected: invalid row number {RowNumber}. StationCode: {StationCode}; SampleId: {SampleId}.", row.RowNumber, station.StationCode, sampleId);
-                return BadRequest(new { error = $"RowNumber {row.RowNumber} must be between 1 and 25." });
+                return BadRequest(new { error = $"RowNumber {row.RowNumber} must be between 1 and {targetSampleSize}." });
             }
 
             if (!existingRows.TryGetValue(row.RowNumber, out var reading))
@@ -231,8 +232,11 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
         return (station, null);
     }
 
-    private static QcStationSampleDetail ToDetail(QcSample sample) =>
-        new(
+    private static QcStationSampleDetail ToDetail(QcSample sample)
+    {
+        var targetSampleSize = ResolveTargetSampleSize(sample);
+        var rowCount = Math.Max(targetSampleSize, sample.FruitReadings.Count == 0 ? 0 : sample.FruitReadings.Max(x => x.RowNumber));
+        return new(
             sample.Id,
             sample.ReceiptId,
             sample.GetDisplayReceiptId(),
@@ -247,9 +251,14 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
             sample.StarchStatus,
             sample.EmailStatus,
             sample.SampleTakenAt,
-            Enumerable.Range(1, 25)
+            targetSampleSize,
+            Enumerable.Range(1, rowCount)
                 .Select(rowNumber => ToFruitReading(rowNumber, sample.FruitReadings.SingleOrDefault(x => x.RowNumber == rowNumber)))
                 .ToList());
+    }
+
+    private static int ResolveTargetSampleSize(QcSample sample) =>
+        Math.Clamp(sample.ActualSampleSize ?? 10, 1, 50);
 
     private static QcStationFruitReading ToFruitReading(int rowNumber, QcFruitReading? reading)
     {
@@ -312,6 +321,7 @@ public sealed record QcStationSampleDetail(
     string StarchStatus,
     string EmailStatus,
     DateTimeOffset SampleTakenAt,
+    int TargetSampleSize,
     IReadOnlyList<QcStationFruitReading> FruitReadings);
 
 public sealed record QcStationFruitReading(

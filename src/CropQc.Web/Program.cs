@@ -202,6 +202,7 @@ if (app.Configuration.GetValue<bool>("Database:SeedMasterDataOnStartup"))
 
 await EnsurePhotoStorageColumnsAsync(app.Services);
 await EnsureCleanupColumnsAsync(app.Services);
+await EnsureFruitRowLimitAsync(app.Services);
 
 if (useForwardedHeaders)
 {
@@ -438,6 +439,37 @@ static async Task EnsureCleanupColumnsAsync(IServiceProvider services)
     catch (Exception ex)
     {
         logger.LogWarning(ex, "Cleanup schema check skipped or failed.");
+    }
+}
+
+static async Task EnsureFruitRowLimitAsync(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("FruitRowSchema");
+    try
+    {
+        var provider = dbContext.Database.ProviderName ?? "";
+        if (provider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
+        {
+            await dbContext.Database.ExecuteSqlRawAsync("""
+                ALTER TABLE "QcFruitReadings" DROP CONSTRAINT IF EXISTS "CK_QcFruitReadings_RowNumber_1_25";
+                ALTER TABLE "QcFruitReadings" DROP CONSTRAINT IF EXISTS "CK_QcFruitReadings_RowNumber_1_50";
+                ALTER TABLE "QcFruitReadings" ADD CONSTRAINT "CK_QcFruitReadings_RowNumber_1_50" CHECK ("RowNumber" >= 1 AND "RowNumber" <= 50);
+                """);
+        }
+        else if (provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+        {
+            await dbContext.Database.ExecuteSqlRawAsync("""
+                IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_QcFruitReadings_RowNumber_1_25') ALTER TABLE [QcFruitReadings] DROP CONSTRAINT [CK_QcFruitReadings_RowNumber_1_25];
+                IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_QcFruitReadings_RowNumber_1_50') ALTER TABLE [QcFruitReadings] DROP CONSTRAINT [CK_QcFruitReadings_RowNumber_1_50];
+                ALTER TABLE [QcFruitReadings] ADD CONSTRAINT [CK_QcFruitReadings_RowNumber_1_50] CHECK ([RowNumber] >= 1 AND [RowNumber] <= 50);
+                """);
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Fruit row max-row schema check skipped or failed.");
     }
 }
 
