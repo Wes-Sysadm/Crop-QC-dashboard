@@ -20,6 +20,43 @@
 }
 </section>
 
+<h2>Room Summary</h2>
+<p class="muted">Current room rollups exclude bins recorded as sent to line. Empty rooms stay visible so room status can be checked at a glance.</p>
+<section class="room-card-grid">
+@foreach (var room in Model.RoomSummaries)
+{
+    <a class="room-card @RoomStatusClass(room.Status)" href="/Dashboard/Rooms/@room.RoomId">
+        <div class="room-card-header">
+            <div>
+                <h3>@room.Warehouse / @room.RoomCode</h3>
+                <p>@room.RoomName</p>
+            </div>
+            <span class="status @RoomStatusClass(room.Status)">@room.Status</span>
+        </div>
+        <dl class="room-metrics">
+            <div><dt>Lots</dt><dd>@room.CurrentLotsCount</dd></div>
+            <div><dt>Bins</dt><dd>@(room.CurrentBinsCount?.ToString() ?? "Empty")</dd></div>
+            <div><dt>Avg pressure</dt><dd>@Format(room.AveragePressureLbs)</dd></div>
+            <div><dt>Pressure std dev</dt><dd>@Format(room.PressureStdDevLbs)</dd></div>
+            <div><dt>MoM pressure</dt><dd>@FormatChange(room.MonthOverMonthPressureChangeLbs)</dd></div>
+            <div><dt>Harvest starch</dt><dd>@Format(room.AverageStarch)</dd></div>
+            <div><dt>Last sample</dt><dd>@(room.LastSampleDate?.LocalDateTime.ToString("g") ?? "No data")</dd></div>
+            <div><dt>Fruit rows</dt><dd>@room.EnteredFruitCount</dd></div>
+        </dl>
+        <p class="room-lots">@room.LotSummary</p>
+        @if (room.ReviewFlags.Count > 0)
+        {
+            <ul class="compact-list">
+            @foreach (var flag in room.ReviewFlags.Take(3))
+            {
+                <li>@flag</li>
+            }
+            </ul>
+        }
+    </a>
+}
+</section>
+
 <h2>Today's Receiving Samples</h2>
 <div class="table-wrap">
     <table>
@@ -65,4 +102,16 @@
         status.Contains("ready", StringComparison.OrdinalIgnoreCase) ? "ready" :
         status.Contains("sent", StringComparison.OrdinalIgnoreCase) ? "sent" :
         status.Contains("pending", StringComparison.OrdinalIgnoreCase) ? "pending" : "";
+
+    private static string RoomStatusClass(string status) =>
+        status.Contains("review", StringComparison.OrdinalIgnoreCase) ? "review" :
+        status.Contains("active", StringComparison.OrdinalIgnoreCase) ? "ready" :
+        status.Contains("empty", StringComparison.OrdinalIgnoreCase) ? "pending" : "";
+
+    private static string Format(decimal? value) => value?.ToString("0.##") ?? "No data";
+    private static string FormatChange(decimal? value) => value is null
+        ? "N/A"
+        : value == 0
+            ? "unchanged"
+            : $"{(value > 0 ? "+" : "")}{value:0.##} lbs";
 }

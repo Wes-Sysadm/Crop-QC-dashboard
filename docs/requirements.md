@@ -51,6 +51,10 @@ Crop QC Dashboard supports receiving quality control workflows. MVP 1 is limited
 - Managers and Admins can resend with a reason.
 - Daily QC dashboard showing received samples and sent/not-sent/ready/missing status.
 - Dashboard cards must click through to filtered receipt/Daily QC lists. Today’s Receiving Samples opens today’s receiving receipts; Samples Ready to Email opens ready-to-send Daily QC; Samples Missing Data shows missing data/photo reasons; Samples Needing Review shows explicit review reasons from configured pressure/starch/defect/variance thresholds or manual Needs Review flags.
+- Dashboard includes a Room Summary section for every room in master data, including empty rooms. Room rollups show current non-depleted fruit only, with pressure, pressure standard deviation, month-over-month pressure change, harvest starch, defects, latest sample date, lot/bin counts, and configured review flags when data exists.
+- Room drill-down shows current lots, depleted/history lots, related receipt/sample links, depletion history, and a Manager/Admin action to record bins sent to line.
+- Depletion is the production-safe way to remove fruit from active room summaries when bins are sent to line. Depletion records are additive and audited; they never delete receipts, QC samples, fruit rows, photos, email logs, or historical room/sample data.
+- Managers and Admins can create and void depletion records. QC Users and Viewers cannot create or void depletion records. Voided depletion records remain in history and are ignored by current-room calculations.
 - Admin Data Cleanup is restricted by both Admin role and `DataCleanup__AllowedEmails`; the default allowed email is `wes@fruitandland.com`.
 - Offline capture in Windows QC Station app.
 - Sync to the Render/Postgres backend and Google Drive storage when internet returns.

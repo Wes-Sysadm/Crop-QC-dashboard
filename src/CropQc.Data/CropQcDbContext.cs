@@ -21,6 +21,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<StarchScaleValue> StarchScaleValues => Set<StarchScaleValue>();
     public DbSet<FruitSizeConversionThreshold> FruitSizeConversionThresholds => Set<FruitSizeConversionThreshold>();
     public DbSet<Receipt> Receipts => Set<Receipt>();
+    public DbSet<RoomDepletion> RoomDepletions => Set<RoomDepletion>();
     public DbSet<QcSample> QcSamples => Set<QcSample>();
     public DbSet<QcFruitReading> QcFruitReadings => Set<QcFruitReading>();
     public DbSet<QcFruitDefect> QcFruitDefects => Set<QcFruitDefect>();
@@ -188,6 +189,41 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .WithMany(x => x.Receipts)
                 .HasForeignKey(x => x.FruitProfileId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<RoomDepletion>(entity =>
+        {
+            entity.Property(x => x.GrowerName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.LotCode).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Destination).HasMaxLength(100);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.Property(x => x.VoidReason).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.RoomId, x.IsVoided, x.DepletedAt });
+            entity.HasIndex(x => new { x.ReceiptId, x.IsVoided });
+            entity.HasOne(x => x.Receipt)
+                .WithMany(x => x.RoomDepletions)
+                .HasForeignKey(x => x.ReceiptId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Warehouse)
+                .WithMany()
+                .HasForeignKey(x => x.WarehouseId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Room)
+                .WithMany()
+                .HasForeignKey(x => x.RoomId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.FruitProfile)
+                .WithMany()
+                .HasForeignKey(x => x.FruitProfileId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.VoidedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.VoidedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<QcSample>(entity =>

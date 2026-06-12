@@ -25,6 +25,34 @@ public sealed class Receipt
     public ICollection<QcSample> Samples { get; } = new List<QcSample>();
     public ICollection<QcPhoto> Photos { get; } = new List<QcPhoto>();
     public ICollection<QcSummaryEmailLog> SummaryEmailLogs { get; } = new List<QcSummaryEmailLog>();
+    public ICollection<RoomDepletion> RoomDepletions { get; } = new List<RoomDepletion>();
+}
+
+public sealed class RoomDepletion
+{
+    public long Id { get; set; }
+    public long ReceiptId { get; set; }
+    public Receipt Receipt { get; set; } = null!;
+    public int WarehouseId { get; set; }
+    public Warehouse Warehouse { get; set; } = null!;
+    public int RoomId { get; set; }
+    public Room Room { get; set; } = null!;
+    public int FruitProfileId { get; set; }
+    public FruitProfile FruitProfile { get; set; } = null!;
+    public required string GrowerName { get; set; }
+    public required string LotCode { get; set; }
+    public int BinCountDepleted { get; set; }
+    public string? Destination { get; set; }
+    public string? Notes { get; set; }
+    public DateTimeOffset DepletedAt { get; set; }
+    public int? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public bool IsVoided { get; set; }
+    public DateTimeOffset? VoidedAt { get; set; }
+    public int? VoidedByUserId { get; set; }
+    public User? VoidedByUser { get; set; }
+    public string? VoidReason { get; set; }
 }
 
 public sealed class QcSample

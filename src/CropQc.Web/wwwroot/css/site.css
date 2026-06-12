@@ -27,6 +27,20 @@ h2 { margin: 28px 0 12px; font-size: 20px; }
 .card.sent { border-left-color: #1565c0; }
 .card.review { border-left-color: #ef6c00; }
 .card.admin { border-left-color: #6a1b9a; }
+.room-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: 14px; margin: 12px 0 26px; }
+.room-card { display: grid; gap: 12px; min-width: 0; padding: 14px; border: 1px solid #d9e1e8; border-left: 5px solid #607d8b; border-radius: 6px; background: white; color: inherit; }
+.room-card:hover { text-decoration: none; border-color: #9fb2c3; box-shadow: 0 2px 8px rgba(23, 32, 42, .08); }
+.room-card.ready { border-left-color: #2e7d32; }
+.room-card.pending { border-left-color: #9e9e9e; }
+.room-card.review { border-left-color: #ef6c00; }
+.room-card-header { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; min-width: 0; }
+.room-card-header h3, .room-card-header h2 { margin: 0; overflow-wrap: normal; word-break: normal; }
+.room-card-header p { margin: 4px 0 0; color: #66717c; }
+.room-metrics { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 8px; margin: 0; }
+.room-metrics div { min-width: 0; padding: 8px; border-radius: 4px; background: #f8fafc; }
+.room-metrics dt { font-size: 11px; font-weight: 800; color: #4a5968; text-transform: uppercase; white-space: normal; }
+.room-metrics dd { margin: 3px 0 0; font-weight: 800; color: #17202a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-lots { margin: 0; color: #4a5968; white-space: normal; overflow-wrap: break-word; word-break: normal; }
 .toolbar { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin: 0 0 18px; padding: 14px; background: white; border: 1px solid #d9e1e8; border-radius: 6px; }
 .field { display: grid; gap: 4px; min-width: 150px; }
 label { font-size: 12px; font-weight: 700; color: #4a5968; text-transform: uppercase; }
@@ -136,4 +150,13 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     .readiness-checklist { grid-template-columns: 1fr; }
     .tray-map { grid-template-columns: repeat(5, minmax(58px, 1fr)); gap: 8px; }
     .tray-position { min-height: 92px; padding: 6px; }
+}
+@media (max-width: 760px) {
+    .page { padding: 16px; }
+    .cards { grid-template-columns: 1fr; }
+    .room-metrics { grid-template-columns: 1fr; }
+    .summary-list, .station-meta { grid-template-columns: 1fr; }
+    .form-grid { grid-template-columns: 1fr; }
+    th, td { white-space: normal; word-break: normal; }
+    .nowrap-cell, .numeric-cell, .compact-cell { white-space: nowrap; }
 }
