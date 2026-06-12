@@ -323,6 +323,7 @@ public sealed class ReceiptDetailViewModel
     public string? DataWarning { get; set; }
     public ReceiptListItemViewModel? Receipt { get; set; }
     public IReadOnlyList<SampleListItemViewModel> Samples { get; set; } = [];
+    public IReadOnlyList<SampleType> SampleTypes { get; set; } = [];
     public IReadOnlyList<PhotoGroupViewModel> PhotoGroups { get; set; } = [];
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
     public bool CanDeleteSamples { get; set; }
@@ -474,6 +475,11 @@ public sealed class AddPhotoMetadataForm
     public string? WebUrl { get; set; }
 }
 
+public sealed class CreateReceiptSampleForm
+{
+    public int SampleTypeId { get; set; }
+}
+
 public sealed class OverrideSendViewModel
 {
     public string? DataWarning { get; set; }
@@ -570,7 +576,7 @@ public sealed class PhotoPlaceholderFormViewModel
     public string ReceiptId { get; set; } = "";
 }
 
-public sealed record PhotoMetadataViewModel(string PhotoType, string PhotoSource, string FileName, string ContentType, long? FileSizeBytes, string? WebUrl, DateTimeOffset CapturedAt);
+public sealed record PhotoMetadataViewModel(long Id, long? QcSampleId, long? DeleteFromSampleId, string PhotoType, string PhotoSource, string FileName, string ContentType, long? FileSizeBytes, string? WebUrl, DateTimeOffset CapturedAt, bool CanDelete);
 public sealed record PhotoGroupViewModel(string PhotoType, IReadOnlyList<PhotoMetadataViewModel> Photos);
 
 public sealed class ReadinessViewModel

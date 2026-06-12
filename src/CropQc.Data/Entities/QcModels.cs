@@ -146,6 +146,11 @@ public sealed class QcPhoto
     public User? CapturedByUser { get; set; }
     public DateTimeOffset CapturedAt { get; set; }
     public DateTimeOffset? UploadedAt { get; set; }
+    public bool IsDeleted { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
+    public int? DeletedByUserId { get; set; }
+    public User? DeletedByUser { get; set; }
+    public string? DeleteReason { get; set; }
 }
 
 public sealed class QcSummaryEmailLog

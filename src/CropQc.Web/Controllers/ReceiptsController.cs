@@ -41,9 +41,9 @@ public sealed class ReceiptsController(
         View(await dataService.GetReceiptDetailAsync(id, cancellationToken));
 
     [HttpPost("{id:long}/samples")]
-    public async Task<IActionResult> CreateSample(long id, CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateSample(long id, CreateReceiptSampleForm form, CancellationToken cancellationToken)
     {
-        var result = await dataService.CreateReceivingSampleAsync(id, cancellationToken);
+        var result = await dataService.CreateSampleAsync(id, form.SampleTypeId, cancellationToken);
         if (result.Error is not null)
         {
             TempData["Error"] = result.Error;

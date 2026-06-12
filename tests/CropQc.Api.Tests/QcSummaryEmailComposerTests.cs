@@ -165,6 +165,34 @@ public sealed class QcSummaryEmailComposerTests
     }
 
     [Fact]
+    public async Task EmailComposer_LinksOversizedPhotosInsteadOfEmbeddingOriginalBytes()
+    {
+        var sample = BuildSample("Receiving Sample");
+        sample.Receipt.Photos.Single(x => x.PhotoType == "BinTruck").WebUrl = "https://drive.example/photo";
+        var composer = new QcSummaryEmailComposer(new LargePhotoFileStorageService(QcSummaryEmailComposer.MaxInlineImageBytes + 1), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+
+        var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
+
+        Assert.Empty(content.InlineImages);
+        Assert.DoesNotContain("cid:cropqc-photo-", content.HtmlBody);
+        Assert.Contains("Photo was too large to embed and is linked instead.", content.HtmlBody);
+        Assert.Contains("https://drive.example/photo", content.HtmlBody);
+    }
+
+    [Fact]
+    public async Task EmailComposer_IgnoresRemovedPhotos()
+    {
+        var sample = BuildSample("Receiving Sample");
+        sample.Receipt.Photos.Single(x => x.PhotoType == "TopOfTruck").IsDeleted = true;
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+
+        var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
+
+        Assert.DoesNotContain("<h3>Top of truck</h3>", content.HtmlBody);
+        Assert.DoesNotContain("- Top of truck:", content.TextBody);
+    }
+
+    [Fact]
     public async Task EmailComposer_IncludesPartialRowsAndSummarizesEnteredData()
     {
         var sample = BuildSample("Door Sample");
@@ -294,9 +322,37 @@ public sealed class QcSummaryEmailComposerTests
         Assert.Contains("\"TopOfTruck\"", receiptView);
         Assert.Contains("Model.AvailablePhotoTypes", sampleView);
         Assert.Contains("PhotoTypes = Model.AvailablePhotoTypes", sampleView);
-        Assert.Contains("Available Photo Types", sampleView);
+        Assert.Contains("Photos / Requirements", sampleView);
+        Assert.DoesNotContain("Available Photo Types", sampleView);
+        Assert.DoesNotContain("<h3>Required Photos</h3>", sampleView);
         Assert.Contains("\"TopOfTruck\" => \"Top of truck\"", photoForm);
         Assert.Contains("\"Hectre\" => \"Hectre\"", photoForm);
+    }
+
+    [Fact]
+    public void ReceiptsCreateSample_UsesMasterDataDropdown()
+    {
+        var receiptView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Details.cshtml"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var seeder = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "MasterDataSeeder.cs"));
+
+        Assert.Contains("Model.SampleTypes", receiptView);
+        Assert.Contains("name=\"SampleTypeId\"", receiptView);
+        Assert.Contains("CreateSampleAsync", service);
+        Assert.Contains("\"Lot Sample\"", seeder);
+    }
+
+    [Fact]
+    public void PhotoRemovalUi_IsAvailableInSinglePhotoSection()
+    {
+        var photoGroups = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_PhotoGroups.cshtml"));
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "SamplesController.cs"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+
+        Assert.Contains("Remove Photo", photoGroups);
+        Assert.Contains("RemoveSamplePhotoAsync", controller);
+        Assert.Contains("IsDeleted = true", service);
+        Assert.Contains("remove-photo", service);
     }
 
     private static QcSample BuildSample(string sampleType)
@@ -397,6 +453,57 @@ public sealed class QcSummaryEmailComposerTests
             Task.FromResult<Stream?>(new MemoryStream([1, 2, 3]));
         public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+    }
+
+    private sealed class LargePhotoFileStorageService(int length) : IFileStorageService
+    {
+        public string GenerateTargetPath(FileStorageTargetContext context) => "target";
+        public Task<FileStorageReference> SaveAsync(FileStorageSaveRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+        public Task<FileStorageReference?> GetMetadataAsync(string storageKey, CancellationToken cancellationToken = default) =>
+            Task.FromResult<FileStorageReference?>(null);
+        public Task<Stream?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream?>(new FixedLengthStream(length));
+        public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class FixedLengthStream(int length) : Stream
+    {
+        private int _position;
+        public override bool CanRead => true;
+        public override bool CanSeek => true;
+        public override bool CanWrite => false;
+        public override long Length => length;
+        public override long Position { get => _position; set => _position = (int)value; }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (_position >= length)
+            {
+                return 0;
+            }
+
+            var read = Math.Min(count, length - _position);
+            Array.Fill<byte>(buffer, 1, offset, read);
+            _position += read;
+            return read;
+        }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            _position = origin switch
+            {
+                SeekOrigin.Begin => (int)offset,
+                SeekOrigin.Current => _position + (int)offset,
+                SeekOrigin.End => length + (int)offset,
+                _ => _position
+            };
+            return _position;
+        }
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private static string FindRepositoryFile(params string[] pathParts)

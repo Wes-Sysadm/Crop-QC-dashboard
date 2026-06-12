@@ -20,6 +20,9 @@ public sealed class QcSummaryEmailComposer(
     IQcPhotoRequirementPolicy photoRequirementPolicy,
     ILogger<QcSummaryEmailComposer> logger) : IQcSummaryEmailComposer
 {
+    public const int MaxInlineImageBytes = 1_500_000;
+    public const int MaxTotalInlineImageBytes = 12_000_000;
+
     public async Task<QcEmailContent> ComposeAsync(QcSample sample, ReadinessViewModel readiness, User? sendingUser, bool isOverride, string? overrideReason, CancellationToken cancellationToken)
     {
         var enteredRows = sample.FruitReadings.Where(HasEnteredData).OrderBy(x => x.RowNumber).ToList();
@@ -27,6 +30,8 @@ public sealed class QcSummaryEmailComposer(
         var photos = SelectEmailPhotos(sample, requirements);
         var inlineImages = new List<QcEmailInlineImage>();
         var imageReferences = new Dictionary<long, string>();
+        var linkedPhotoNotes = new Dictionary<long, string>();
+        var totalInlineBytes = 0;
 
         foreach (var photo in photos)
         {
@@ -44,16 +49,34 @@ public sealed class QcSummaryEmailComposer(
                     continue;
                 }
 
-                await using var memory = new MemoryStream();
-                await stream.CopyToAsync(memory, cancellationToken);
+                var remainingInlineBytes = MaxTotalInlineImageBytes - totalInlineBytes;
+                if (remainingInlineBytes <= 0)
+                {
+                    linkedPhotoNotes[photo.Id] = TooLargePhotoNote;
+                    continue;
+                }
+
+                var imageBytes = await ReadInlineImageBytesAsync(stream, Math.Min(MaxInlineImageBytes, remainingInlineBytes), cancellationToken);
+                if (imageBytes is null)
+                {
+                    linkedPhotoNotes[photo.Id] = TooLargePhotoNote;
+                    continue;
+                }
+
                 var contentId = $"cropqc-photo-{photo.Id}@cropqc";
                 inlineImages.Add(new QcEmailInlineImage(
                     contentId,
                     string.IsNullOrWhiteSpace(photo.FileName) ? $"photo-{photo.Id}.jpg" : photo.FileName,
                     string.IsNullOrWhiteSpace(photo.ContentType) ? "image/jpeg" : photo.ContentType,
-                    memory.ToArray(),
+                    imageBytes,
                     FriendlyPhotoName(photo.PhotoType)));
                 imageReferences[photo.Id] = contentId;
+                totalInlineBytes += imageBytes.Length;
+            }
+            catch (OutOfMemoryException ex)
+            {
+                linkedPhotoNotes[photo.Id] = TooLargePhotoNote;
+                logger.LogWarning(ex, "QC email photo was too large to embed and will be linked instead. PhotoId: {PhotoId}.", photo.Id);
             }
             catch (Exception ex)
             {
@@ -63,8 +86,8 @@ public sealed class QcSummaryEmailComposer(
 
         var subject = BuildSubject(sample);
         var inspector = FormatInspector(sample.TakenByUser) ?? FormatInspector(sendingUser) ?? "";
-        var html = BuildHtml(sample, readiness, enteredRows, requirements, photos, imageReferences, inspector, isOverride, overrideReason);
-        var text = BuildText(sample, readiness, enteredRows, requirements, photos, inspector, isOverride, overrideReason);
+        var html = BuildHtml(sample, readiness, enteredRows, requirements, photos, imageReferences, linkedPhotoNotes, inspector, isOverride, overrideReason);
+        var text = BuildText(sample, readiness, enteredRows, requirements, photos, linkedPhotoNotes, inspector, isOverride, overrideReason);
         return new QcEmailContent(subject, html, text, inlineImages);
     }
 
@@ -75,11 +98,45 @@ public sealed class QcSummaryEmailComposer(
         {
             var source = requirement.ReceiptLevel ? sample.Receipt.Photos : sample.Photos;
             result.AddRange(source
+                .Where(x => !x.IsDeleted)
                 .Where(x => string.Equals(QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType), requirement.PhotoType, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(x => x.CapturedAt));
         }
 
         return result;
+    }
+
+    private static async Task<byte[]?> ReadInlineImageBytesAsync(Stream stream, int maxBytes, CancellationToken cancellationToken)
+    {
+        if (maxBytes <= 0)
+        {
+            return null;
+        }
+
+        if (stream.CanSeek && stream.Length > maxBytes)
+        {
+            return null;
+        }
+
+        await using var memory = new MemoryStream(capacity: Math.Min(maxBytes, 64 * 1024));
+        var buffer = new byte[64 * 1024];
+        while (true)
+        {
+            var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+            if (read == 0)
+            {
+                break;
+            }
+
+            if (memory.Length + read > maxBytes)
+            {
+                return null;
+            }
+
+            await memory.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
+
+        return memory.ToArray();
     }
 
     public static string BuildSubject(QcSample sample)
@@ -107,6 +164,7 @@ public sealed class QcSummaryEmailComposer(
         IReadOnlyList<QcPhotoRequirement> requirements,
         IReadOnlyList<QcPhoto> photos,
         IReadOnlyDictionary<long, string> imageReferences,
+        IReadOnlyDictionary<long, string> linkedPhotoNotes,
         string inspector,
         bool isOverride,
         string? overrideReason)
@@ -160,7 +218,7 @@ public sealed class QcSummaryEmailComposer(
         }
         html.AppendLine("</tbody></table>");
 
-        AppendPhotoSections(html, requirements, photos, imageReferences);
+        AppendPhotoSections(html, requirements, photos, imageReferences, linkedPhotoNotes);
 
         html.AppendLine("<h2>Summary</h2>");
         html.AppendLine("<table cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;\">");
@@ -180,7 +238,7 @@ public sealed class QcSummaryEmailComposer(
         return html.ToString();
     }
 
-    private static void AppendPhotoSections(StringBuilder html, IReadOnlyList<QcPhotoRequirement> requirements, IReadOnlyList<QcPhoto> photos, IReadOnlyDictionary<long, string> imageReferences)
+    private static void AppendPhotoSections(StringBuilder html, IReadOnlyList<QcPhotoRequirement> requirements, IReadOnlyList<QcPhoto> photos, IReadOnlyDictionary<long, string> imageReferences, IReadOnlyDictionary<long, string> linkedPhotoNotes)
     {
         html.AppendLine("<h2>Photos</h2>");
         foreach (var requirement in requirements)
@@ -201,6 +259,14 @@ public sealed class QcSummaryEmailComposer(
                 else if (!string.IsNullOrWhiteSpace(photo.WebUrl))
                 {
                     html.AppendLine($"<p><a href=\"{Html(photo.WebUrl)}\">{Html(photo.FileName)}</a></p>");
+                    if (linkedPhotoNotes.TryGetValue(photo.Id, out var note))
+                    {
+                        html.AppendLine($"<p style=\"color:#92400e;\">{Html(note)}</p>");
+                    }
+                }
+                else if (linkedPhotoNotes.TryGetValue(photo.Id, out var note))
+                {
+                    html.AppendLine($"<p style=\"color:#92400e;\">{Html(photo.FileName)}: {Html(note)}</p>");
                 }
             }
         }
@@ -212,6 +278,7 @@ public sealed class QcSummaryEmailComposer(
         IReadOnlyList<QcFruitReading> enteredRows,
         IReadOnlyList<QcPhotoRequirement> requirements,
         IReadOnlyList<QcPhoto> photos,
+        IReadOnlyDictionary<long, string> linkedPhotoNotes,
         string inspector,
         bool isOverride,
         string? overrideReason)
@@ -240,10 +307,15 @@ public sealed class QcSummaryEmailComposer(
         text.AppendLine("Photo sections:");
         foreach (var requirement in requirements)
         {
-            var count = photos.Count(x => string.Equals(QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType), requirement.PhotoType, StringComparison.OrdinalIgnoreCase));
+            var group = photos.Where(x => string.Equals(QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType), requirement.PhotoType, StringComparison.OrdinalIgnoreCase)).ToList();
+            var count = group.Count;
             if (count > 0)
             {
                 text.AppendLine($"- {requirement.FriendlyName}: {count} photo(s)");
+                foreach (var photo in group.Where(x => linkedPhotoNotes.ContainsKey(x.Id)))
+                {
+                    text.AppendLine($"  {photo.FileName}: {linkedPhotoNotes[photo.Id]} {photo.WebUrl}");
+                }
             }
         }
         text.AppendLine();
@@ -337,6 +409,7 @@ public sealed class QcSummaryEmailComposer(
 
     private const string NumberCellStyle = "border:1px solid #cbd5e1;white-space:nowrap;text-align:right;min-width:54px;";
     private const string WrapCellStyle = "border:1px solid #cbd5e1;white-space:normal;overflow-wrap:break-word;word-break:normal;min-width:110px;";
+    private const string TooLargePhotoNote = "Photo was too large to embed and is linked instead.";
 
     private static string Cell(string value, string? style = null) => $"<td style=\"{style ?? "border:1px solid #cbd5e1;"}\">{Html(value)}</td>";
     private static string Html(string? value) => WebUtility.HtmlEncode(value ?? "");

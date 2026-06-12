@@ -15,7 +15,7 @@ public interface IDashboardDataService
     Task<ReceiptListViewModel> SearchReceiptsAsync(ReceiptSearchForm search, CancellationToken cancellationToken);
     Task<string?> CreateReceiptAsync(CreateReceiptForm form, CancellationToken cancellationToken);
     Task<ReceiptDetailViewModel> GetReceiptDetailAsync(long id, CancellationToken cancellationToken);
-    Task<(long? SampleId, int? SampleSequenceNumber, string? Warning, string? Error)> CreateReceivingSampleAsync(long receiptId, CancellationToken cancellationToken);
+    Task<(long? SampleId, int? SampleSequenceNumber, string? Warning, string? Error)> CreateSampleAsync(long receiptId, int sampleTypeId, CancellationToken cancellationToken);
     Task<SampleDetailViewModel> GetSampleDetailAsync(long id, CancellationToken cancellationToken);
     Task<SampleRefreshViewModel?> GetSampleRefreshAsync(long id, CancellationToken cancellationToken);
     Task<DeleteSampleConfirmationViewModel> GetDeleteSampleConfirmationAsync(long id, CancellationToken cancellationToken);
@@ -28,6 +28,7 @@ public interface IDashboardDataService
     Task<string?> LogOverrideSendAsync(OverrideSendForm form, CancellationToken cancellationToken);
     Task<string?> AddPhotoMetadataAsync(AddPhotoMetadataForm form, CancellationToken cancellationToken);
     Task<string?> AddSamplePhotoMetadataAsync(long sampleId, AddPhotoMetadataForm form, CancellationToken cancellationToken);
+    Task<string?> RemoveSamplePhotoAsync(long sampleId, long photoId, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken);
     Task<RoomDetailViewModel> GetRoomDetailAsync(int roomId, CancellationToken cancellationToken);
     Task<string?> CreateRoomDepletionAsync(RoomDepletionForm form, CancellationToken cancellationToken);
@@ -394,12 +395,13 @@ public sealed class DashboardDataService(
             }
 
             var samples = await QuerySamples().Where(x => x.ReceiptId == id).OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleSequenceNumber).ToListAsync(cancellationToken);
-            var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.ReceiptId == id).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
+            var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.ReceiptId == id && !x.IsDeleted).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
             return new ReceiptDetailViewModel
             {
                 Receipt = ReceiptListItem(receipt),
                 Samples = await EnrichSamplesAsync(samples, cancellationToken),
-                PhotoGroups = GroupPhotos(photos),
+                SampleTypes = await GetReceiptSampleTypesAsync(cancellationToken),
+                PhotoGroups = GroupPhotos(photos, canDelete: false),
                 CanDeleteSamples = httpContextAccessor.HttpContext?.User.IsInRole("Admin") == true,
                 AddPhotoForm = new AddPhotoMetadataForm
                 {
@@ -416,7 +418,7 @@ public sealed class DashboardDataService(
         }
     }
 
-    public async Task<(long? SampleId, int? SampleSequenceNumber, string? Warning, string? Error)> CreateReceivingSampleAsync(long receiptId, CancellationToken cancellationToken)
+    public async Task<(long? SampleId, int? SampleSequenceNumber, string? Warning, string? Error)> CreateSampleAsync(long receiptId, int sampleTypeId, CancellationToken cancellationToken)
     {
         var receiptExists = await dbContext.Receipts.AnyAsync(x => x.Id == receiptId && !x.IsDeleted, cancellationToken);
         if (!receiptExists)
@@ -424,22 +426,21 @@ public sealed class DashboardDataService(
             return (null, null, null, "Receipt not found.");
         }
 
-        var receivingSampleType = await dbContext.SampleTypes
-            .OrderBy(x => x.Id)
-            .FirstOrDefaultAsync(x => x.Name == "Receiving Sample", cancellationToken);
-        if (receivingSampleType is null)
+        var sampleType = await dbContext.SampleTypes
+            .SingleOrDefaultAsync(x => x.Id == sampleTypeId && x.IsActive, cancellationToken);
+        if (sampleType is null || !IsReceiptSampleTypeName(sampleType.Name))
         {
-            return (null, null, null, "Receiving Sample type is not configured.");
+            return (null, null, null, "Select Receiving Sample, Door Sample, or Lot Sample.");
         }
 
-        var existingReceivingSampleCount = await dbContext.QcSamples
-            .CountAsync(x => x.ReceiptId == receiptId && x.SampleTypeId == receivingSampleType.Id && !x.IsDeleted, cancellationToken);
-        var nextSequenceNumber = existingReceivingSampleCount + 1;
+        var existingSampleCount = await dbContext.QcSamples
+            .CountAsync(x => x.ReceiptId == receiptId && x.SampleTypeId == sampleType.Id && !x.IsDeleted, cancellationToken);
+        var nextSequenceNumber = existingSampleCount + 1;
         var now = DateTimeOffset.UtcNow;
         var sample = new QcSample
         {
             ReceiptId = receiptId,
-            SampleTypeId = receivingSampleType.Id,
+            SampleTypeId = sampleType.Id,
             SampleSequenceNumber = nextSequenceNumber,
             Status = nextSequenceNumber > 1 ? "Needs Review" : "Data Entry In Progress",
             StarchStatus = "Starch Pending",
@@ -455,7 +456,7 @@ public sealed class DashboardDataService(
         await dbContext.SaveChangesAsync(cancellationToken);
 
         var warning = nextSequenceNumber > 1
-            ? "A receiving sample already exists for this receipt. The new sample was created with the next sequence number and marked Needs Review."
+            ? $"A {sampleType.Name} already exists for this receipt. The new sample was created with the next sequence number and marked Needs Review."
             : null;
         return (sample.Id, nextSequenceNumber, warning, null);
     }
@@ -480,6 +481,7 @@ public sealed class DashboardDataService(
             var photos = await dbContext.QcPhotos.AsNoTracking()
                 .Where(x => (x.QcSampleId == id && samplePhotoTypes.Contains(x.PhotoType))
                     || (x.ReceiptId == sample.ReceiptId && receiptPhotoTypes.Contains(x.PhotoType)))
+                .Where(x => !x.IsDeleted)
                 .OrderByDescending(x => x.CapturedAt)
                 .ToListAsync(cancellationToken);
             var grades = await dbContext.Grades.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Id).ToListAsync(cancellationToken);
@@ -489,7 +491,7 @@ public sealed class DashboardDataService(
             {
                 Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
                 FruitRows = rowModels,
-                PhotoGroups = GroupPhotos(photos),
+                PhotoGroups = GroupPhotos(photos, CanEditSamples(), sample.Id),
                 Readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken),
                 RecipientEmail = recipientResolution.IsConfigured ? recipientResolution.Header : null,
                 AllowedSampleSizes = allowedSampleSizes,
@@ -579,7 +581,7 @@ public sealed class DashboardDataService(
             LotCode = sample.Receipt.LotCode,
             VarietyCode = sample.Receipt.FruitProfile.VarietyCode,
             SampleType = sample.SampleType.Name,
-            PhotoCount = sample.Photos.Count,
+            PhotoCount = sample.Photos.Count(x => !x.IsDeleted),
             EmailStatus = sample.EmailStatus
         };
     }
@@ -606,7 +608,7 @@ public sealed class DashboardDataService(
         }
 
         var changedBy = GetCurrentUserEmail() ?? "unknown";
-        var before = System.Text.Json.JsonSerializer.Serialize(new { sample.Id, sample.ReceiptId, sample.Status, sample.EmailStatus, PhotoCount = sample.Photos.Count });
+        var before = System.Text.Json.JsonSerializer.Serialize(new { sample.Id, sample.ReceiptId, sample.Status, sample.EmailStatus, PhotoCount = sample.Photos.Count(x => !x.IsDeleted) });
         sample.IsDeleted = true;
         sample.DeletedAt = DateTimeOffset.UtcNow;
         sample.DeletedByUserId = await GetCurrentUserIdAsync(cancellationToken);
@@ -619,7 +621,7 @@ public sealed class DashboardDataService(
             sample.Id.ToString(),
             changedBy,
             before,
-            System.Text.Json.JsonSerializer.Serialize(new { sample.Id, sample.ReceiptId, sample.IsDeleted, sample.DeletedAt, sample.DeleteReason, PhotoCount = sample.Photos.Count }),
+            System.Text.Json.JsonSerializer.Serialize(new { sample.Id, sample.ReceiptId, sample.IsDeleted, sample.DeletedAt, sample.DeleteReason, PhotoCount = sample.Photos.Count(x => !x.IsDeleted) }),
             cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return (sample.ReceiptId, null);
@@ -742,7 +744,7 @@ public sealed class DashboardDataService(
             var targetSampleSize = ResolveTargetSampleSize(sample.ActualSampleSize, allowedSampleSizes);
             var rowModels = await GetFruitReadingRowsAsync(id, targetSampleSize, cancellationToken);
             var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
-            var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.QcSampleId == id && (x.PhotoType == "FruitAfterStarch" || x.PhotoType == "Other")).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
+            var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.QcSampleId == id && !x.IsDeleted && (x.PhotoType == "FruitAfterStarch" || x.PhotoType == "Other")).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
             return new StarchTestViewModel
             {
                 Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
@@ -750,7 +752,7 @@ public sealed class DashboardDataService(
                 FruitRows = rowModels,
                 StarchScaleValues = await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken),
                 Readiness = readiness,
-                PhotoGroups = GroupPhotos(photos),
+                PhotoGroups = GroupPhotos(photos, CanEditSamples(), sample.Id),
                 AddPhotoForm = new AddPhotoMetadataForm
                 {
                     QcSampleId = sample.Id,
@@ -1168,6 +1170,71 @@ public sealed class DashboardDataService(
         return await AddPhotoMetadataAsync(form, cancellationToken);
     }
 
+    public async Task<string?> RemoveSamplePhotoAsync(long sampleId, long photoId, CancellationToken cancellationToken)
+    {
+        if (!CanEditSamples())
+        {
+            return "You do not have permission to remove photos.";
+        }
+
+        var sample = await dbContext.QcSamples
+            .Include(x => x.Receipt)
+            .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted, cancellationToken);
+        if (sample is null)
+        {
+            return "QC sample not found.";
+        }
+
+        var photo = await dbContext.QcPhotos
+            .SingleOrDefaultAsync(x => x.Id == photoId && !x.IsDeleted && (x.QcSampleId == sampleId || x.ReceiptId == sample.ReceiptId), cancellationToken);
+        if (photo is null)
+        {
+            return "Photo was not found.";
+        }
+
+        var changedBy = GetCurrentUserEmail() ?? "unknown";
+        var before = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            photo.Id,
+            photo.ReceiptId,
+            photo.QcSampleId,
+            photo.PhotoType,
+            photo.FileName,
+            photo.FileId,
+            photo.WebUrl
+        });
+
+        photo.IsDeleted = true;
+        photo.DeletedAt = DateTimeOffset.UtcNow;
+        photo.DeletedByUserId = await GetCurrentUserIdAsync(cancellationToken);
+        photo.DeleteReason = "Removed from sample detail";
+
+        await AddAuditAsync(
+            "remove-photo",
+            nameof(QcPhoto),
+            photo.Id.ToString(),
+            changedBy,
+            before,
+            System.Text.Json.JsonSerializer.Serialize(new { photo.Id, photo.IsDeleted, photo.DeletedAt, photo.PhotoType, photo.FileId }),
+            cancellationToken);
+
+        if (photo.ReceiptId is not null && photo.QcSampleId is null)
+        {
+            var receiptSamples = await dbContext.QcSamples.Where(x => x.ReceiptId == sample.ReceiptId && !x.IsDeleted).ToListAsync(cancellationToken);
+            foreach (var receiptSample in receiptSamples)
+            {
+                await RefreshSampleStatusesAsync(receiptSample, cancellationToken);
+            }
+        }
+        else
+        {
+            await RefreshSampleStatusesAsync(sample, cancellationToken);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
     public async Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken)
     {
         try
@@ -1439,6 +1506,57 @@ public sealed class DashboardDataService(
         return user?.IsInRole("Admin") == true || user?.IsInRole("Manager") == true;
     }
 
+    private bool CanEditSamples()
+    {
+        var user = httpContextAccessor.HttpContext?.User;
+        return user?.IsInRole("Admin") == true
+            || user?.IsInRole("Manager") == true
+            || user?.IsInRole("QC User") == true;
+    }
+
+    private async Task<IReadOnlyList<SampleType>> GetReceiptSampleTypesAsync(CancellationToken cancellationToken)
+    {
+        var sampleTypes = await dbContext.SampleTypes.AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        return sampleTypes
+            .Where(x => IsReceiptSampleTypeName(x.Name))
+            .OrderBy(x => ReceiptSampleTypeSort(x.Name))
+            .ThenBy(x => x.Name)
+            .ToList();
+    }
+
+    private static bool IsReceiptSampleTypeName(string name)
+    {
+        var normalized = NormalizeSampleTypeName(name);
+        return normalized is "receiving sample" or "door sample" or "lot sample";
+    }
+
+    private static int ReceiptSampleTypeSort(string name) => NormalizeSampleTypeName(name) switch
+    {
+        "receiving sample" => 0,
+        "door sample" => 1,
+        "lot sample" => 2,
+        _ => 99
+    };
+
+    private static string NormalizeSampleTypeName(string value)
+    {
+        var normalized = value.Trim().Replace("/", " ", StringComparison.OrdinalIgnoreCase);
+        while (normalized.Contains("  ", StringComparison.Ordinal))
+        {
+            normalized = normalized.Replace("  ", " ", StringComparison.Ordinal);
+        }
+
+        if (normalized.Equals("Door Room Sample", StringComparison.OrdinalIgnoreCase))
+        {
+            return "door sample";
+        }
+
+        return normalized.ToLowerInvariant();
+    }
+
     private IQueryable<QcSample> QuerySamples(bool includeDeleted = false)
     {
         var query = dbContext.QcSamples.AsNoTracking();
@@ -1675,8 +1793,8 @@ public sealed class DashboardDataService(
             .Select(x => x.SampleType.Name)
             .SingleOrDefaultAsync(cancellationToken);
         var completedRows = await dbContext.QcFruitReadings.AsNoTracking().Where(x => x.QcSampleId == sampleId && x.IsCompleted).ToListAsync(cancellationToken);
-        var receiptPhotos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.ReceiptId == receiptId).Select(x => x.PhotoType).ToListAsync(cancellationToken);
-        var samplePhotos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.QcSampleId == sampleId).Select(x => x.PhotoType).ToListAsync(cancellationToken);
+        var receiptPhotos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.ReceiptId == receiptId && !x.IsDeleted).Select(x => x.PhotoType).ToListAsync(cancellationToken);
+        var samplePhotos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.QcSampleId == sampleId && !x.IsDeleted).Select(x => x.PhotoType).ToListAsync(cancellationToken);
         var missing = new List<string>();
         var invalidRows = completedRows.Count(x => x.Pressure1Lbs is null || x.Pressure2Lbs is null || x.WeightGrams is null || x.GradeId is null);
         var pressureMissing = completedRows.Count(x => x.Pressure1Lbs is null || x.Pressure2Lbs is null);
@@ -1804,10 +1922,11 @@ public sealed class DashboardDataService(
 
     private sealed record ReceiptSampleSummary(long ReceiptId, int SampleCount, DateTimeOffset LastUpdatedAt, bool HasReady, bool HasReview, bool HasSent);
 
-    private static IReadOnlyList<PhotoGroupViewModel> GroupPhotos(IReadOnlyList<QcPhoto> photos) =>
-        photos.GroupBy(x => QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType))
+    private static IReadOnlyList<PhotoGroupViewModel> GroupPhotos(IReadOnlyList<QcPhoto> photos, bool canDelete, long? deleteFromSampleId = null) =>
+        photos.Where(x => !x.IsDeleted)
+            .GroupBy(x => QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType))
             .OrderBy(x => x.Key)
-            .Select(x => new PhotoGroupViewModel(x.Key, x.Select(photo => new PhotoMetadataViewModel(QcPhotoRequirementPolicy.NormalizePhotoType(photo.PhotoType), photo.PhotoSource, photo.FileName, photo.ContentType, photo.FileSizeBytes, photo.WebUrl, photo.CapturedAt)).ToList()))
+            .Select(x => new PhotoGroupViewModel(x.Key, x.Select(photo => new PhotoMetadataViewModel(photo.Id, photo.QcSampleId, deleteFromSampleId, QcPhotoRequirementPolicy.NormalizePhotoType(photo.PhotoType), photo.PhotoSource, photo.FileName, photo.ContentType, photo.FileSizeBytes, photo.WebUrl, photo.CapturedAt, canDelete)).ToList()))
             .ToList();
 
     private async Task<FileStorageReference> SavePhotoFileOrPlaceholderAsync(AddPhotoMetadataForm form, Receipt receipt, DateTimeOffset capturedAt, CancellationToken cancellationToken)
