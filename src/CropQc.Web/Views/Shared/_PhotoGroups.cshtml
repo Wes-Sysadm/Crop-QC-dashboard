@@ -10,7 +10,7 @@
         <h2>@FriendlyPhotoType(group.PhotoType)</h2>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>File</th><th>Source</th><th>Type</th><th>Size</th><th>Captured</th></tr></thead>
+                <thead><tr><th>File</th><th>Source</th><th>Type</th><th>Size</th><th>Captured</th><th>Actions</th></tr></thead>
                 <tbody>
                 @foreach (var photo in group.Photos)
                 {
@@ -20,6 +20,18 @@
                         <td>@photo.ContentType</td>
                         <td>@photo.FileSizeBytes</td>
                         <td>@photo.CapturedAt.LocalDateTime</td>
+                        <td>
+                            @if (photo.CanDelete && photo.DeleteFromSampleId is long sampleId)
+                            {
+                                <form class="inline-form" method="post" action="/Samples/@sampleId/photos/@photo.Id/remove" onsubmit="return confirm('Remove this photo from the sample?');">
+                                    <button type="submit" class="link-button danger-link">Remove Photo</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <span class="muted">-</span>
+                            }
+                        </td>
                     </tr>
                 }
                 </tbody>

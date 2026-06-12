@@ -113,6 +113,15 @@ public sealed class SamplesController(
         return RedirectToAction(nameof(Details), new { id });
     }
 
+    [HttpPost("{id:long}/photos/{photoId:long}/remove")]
+    [Authorize(Policy = "RequireQcUserOrHigher")]
+    public async Task<IActionResult> RemovePhoto(long id, long photoId, CancellationToken cancellationToken)
+    {
+        var error = await dataService.RemoveSamplePhotoAsync(id, photoId, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Photo removed from sample.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
     private static bool IsAllowedPhotoType(string photoType, params string[] allowedTypes) =>
         allowedTypes.Any(x => string.Equals(x, photoType, StringComparison.OrdinalIgnoreCase));
 

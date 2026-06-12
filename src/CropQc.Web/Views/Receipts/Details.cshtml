@@ -30,10 +30,20 @@
         </div>
         @if (Model.Samples.Any())
         {
-            <p class="notice warning">This receipt already has a receiving sample. Creating another will assign the next sample sequence, such as @(Model.Receipt.CompuTechReceiptId)(2), and mark it Needs Review.</p>
+            <p class="notice warning">This receipt already has a QC sample. Creating another sample of the same type will assign the next sample sequence, such as @(Model.Receipt.CompuTechReceiptId)(2), and mark it Needs Review.</p>
         }
         <form method="post" action="/Receipts/@Model.Receipt.Id/samples">
-            <button type="submit">Create Receiving Sample</button>
+            <label class="field">
+                Sample type
+                <select name="SampleTypeId" required>
+                    @foreach (var sampleType in Model.SampleTypes)
+                    {
+                        <option value="@sampleType.Id">@sampleType.Name</option>
+                    }
+                </select>
+            </label>
+            <button type="submit">Create QC Sample</button>
+            <p class="muted">Sample types come from Master Data. Use Receiving Sample, Door Sample, or Lot Sample for receipt QC.</p>
         </form>
     </section>
 }

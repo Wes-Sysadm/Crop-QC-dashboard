@@ -123,6 +123,23 @@ public sealed class GmailUserEmailTests
         Assert.Contains("Content-Disposition: inline", decoded);
     }
 
+    [Fact]
+    public void GmailRawMessage_RejectsOversizedInlineImagesBeforeMimeBuild()
+    {
+        var oversized = new byte[(int)GmailUserEmailSender.MaxInlineImageBytesPerMessage + 1];
+
+        var exception = Assert.Throws<InvalidOperationException>(() => GmailUserEmailSender.BuildRawMessage(new QcEmailMessage(
+            "rob@earlbrownandsons.com",
+            "wes@fruitandland.com",
+            null,
+            "QC Summary",
+            "Text",
+            "<p>Html</p>",
+            [new QcEmailInlineImage("photo@cropqc", "photo.jpg", "image/jpeg", oversized, "Photo")])));
+
+        Assert.Contains("embedded photos were too large", exception.Message);
+    }
+
     [Theory]
     [InlineData("wes@fruitandland.com")]
     [InlineData("rob@earlbrownandsons.com")]
@@ -293,7 +310,7 @@ public sealed class GmailUserEmailTests
         Assert.Contains("configured QC recipients", overrideSend);
         Assert.Contains("Send QC Summary Override", overrideSend);
         Assert.Contains("Send QC Summary", dailyQc);
-        Assert.Contains("Required Photos", details);
+        Assert.Contains("Photos / Requirements", details);
         Assert.Contains("Sample type:", details);
         Assert.DoesNotContain("Send QC Summary Placeholder", details);
         Assert.DoesNotContain("Override Placeholder", overrideSend);

@@ -201,6 +201,7 @@ if (app.Configuration.GetValue<bool>("Database:SeedMasterDataOnStartup"))
 }
 
 await EnsurePhotoStorageColumnsAsync(app.Services);
+await EnsurePhotoSoftDeleteColumnsAsync(app.Services);
 await EnsureCleanupColumnsAsync(app.Services);
 await EnsureFruitRowLimitAsync(app.Services);
 await EnsureRoomDepletionSchemaAsync(app.Services);
@@ -391,6 +392,43 @@ static async Task EnsurePhotoStorageColumnsAsync(IServiceProvider services)
     catch (Exception ex)
     {
         logger.LogWarning(ex, "Photo storage metadata schema check skipped or failed.");
+    }
+}
+
+static async Task EnsurePhotoSoftDeleteColumnsAsync(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("PhotoSoftDeleteSchema");
+    try
+    {
+        var provider = dbContext.Database.ProviderName ?? "";
+        if (provider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
+        {
+            await dbContext.Database.ExecuteSqlRawAsync("""
+                ALTER TABLE "QcPhotos" ADD COLUMN IF NOT EXISTS "IsDeleted" boolean NOT NULL DEFAULT FALSE;
+                ALTER TABLE "QcPhotos" ADD COLUMN IF NOT EXISTS "DeletedAt" timestamp with time zone NULL;
+                ALTER TABLE "QcPhotos" ADD COLUMN IF NOT EXISTS "DeletedByUserId" integer NULL;
+                ALTER TABLE "QcPhotos" ADD COLUMN IF NOT EXISTS "DeleteReason" character varying(1000) NULL;
+                CREATE INDEX IF NOT EXISTS "IX_QcPhotos_QcSampleId_IsDeleted" ON "QcPhotos" ("QcSampleId", "IsDeleted");
+                CREATE INDEX IF NOT EXISTS "IX_QcPhotos_ReceiptId_IsDeleted" ON "QcPhotos" ("ReceiptId", "IsDeleted");
+                """);
+        }
+        else if (provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+        {
+            await dbContext.Database.ExecuteSqlRawAsync("""
+                IF COL_LENGTH('QcPhotos', 'IsDeleted') IS NULL ALTER TABLE [QcPhotos] ADD [IsDeleted] bit NOT NULL CONSTRAINT [DF_QcPhotos_IsDeleted] DEFAULT 0;
+                IF COL_LENGTH('QcPhotos', 'DeletedAt') IS NULL ALTER TABLE [QcPhotos] ADD [DeletedAt] datetimeoffset NULL;
+                IF COL_LENGTH('QcPhotos', 'DeletedByUserId') IS NULL ALTER TABLE [QcPhotos] ADD [DeletedByUserId] int NULL;
+                IF COL_LENGTH('QcPhotos', 'DeleteReason') IS NULL ALTER TABLE [QcPhotos] ADD [DeleteReason] nvarchar(1000) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_QcPhotos_QcSampleId_IsDeleted' AND object_id = OBJECT_ID(N'[QcPhotos]')) CREATE INDEX [IX_QcPhotos_QcSampleId_IsDeleted] ON [QcPhotos] ([QcSampleId], [IsDeleted]);
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_QcPhotos_ReceiptId_IsDeleted' AND object_id = OBJECT_ID(N'[QcPhotos]')) CREATE INDEX [IX_QcPhotos_ReceiptId_IsDeleted] ON [QcPhotos] ([ReceiptId], [IsDeleted]);
+                """);
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Photo soft-delete schema check skipped or failed.");
     }
 }
 

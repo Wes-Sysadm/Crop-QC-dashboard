@@ -57,10 +57,7 @@
     <p><span class="status @(Model.Readiness.IsReady ? "ready" : "missing")">@(Model.Readiness.IsReady ? "Ready to Send" : "Missing Required Data")</span></p>
     <p>Completed fruit: @Model.Readiness.CompletedFruitCount | Starch missing: @Model.Readiness.StarchMissingCount</p>
     <p>Sample type: @Model.Sample?.SampleType</p>
-    <h3>Required Photos</h3>
-    @await Html.PartialAsync("_ReadinessChecklist", Model.Readiness.RequiredPhotoChecklist)
-    <p class="muted">Required photos vary by sample type. Receiving samples require truck photo, top of truck, Hectre, whole sample, cut apples, and starch apples. Transfer samples require truck photo, top of truck, whole sample, and cut apples; Hectre is optional unless configured otherwise. Door/room and line samples require whole sample and cut apples.</p>
-    @await Html.PartialAsync("_ReadinessChecklist", Model.Readiness.Checklist)
+    @await Html.PartialAsync("_ReadinessChecklist", Model.Readiness.Checklist.Where(x => x.Category != "Required photos").ToList())
     @if (Model.Readiness.MissingItems.Count > 0)
     {
         <ul class="list">
@@ -187,10 +184,11 @@
     </form>
 
     <section>
-        <h2>Sample Photos</h2>
+        <h2>Photos / Requirements</h2>
+        <p class="muted">Required photos vary by sample type. Receiving samples require truck photo, top of truck, Hectre, whole sample, cut apples, and starch apples. Door and lot samples require the photos configured for their sample type. Removed photos no longer count toward requirements or QC Summary emails.</p>
         <div class="grid-two">
             <div class="panel">
-                <h3>Photo Metadata</h3>
+                <h3>Current Photos</h3>
                 @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
             </div>
             @await Html.PartialAsync("_PhotoPlaceholderForm", new PhotoPlaceholderFormViewModel
@@ -204,11 +202,17 @@
                 ReceiptId = Model.Sample.ReceiptIdText
             })
             <div class="panel">
-                <h3>Available Photo Types</h3>
+                <h3>Requirements</h3>
                 <ul class="compact-list">
                     @foreach (var photoType in Model.AvailablePhotoTypes)
                     {
-                        <li>@photoType.FriendlyName - @(photoType.IsRequired ? "Required" : "Optional")</li>
+                        var hasPhoto = Model.PhotoGroups.Any(group =>
+                            string.Equals(NormalizePhotoType(group.PhotoType), NormalizePhotoType(photoType.PhotoType), StringComparison.OrdinalIgnoreCase)
+                            && group.Photos.Count > 0);
+                        <li>
+                            @photoType.FriendlyName - @(photoType.IsRequired ? "Required" : "Optional")
+                            <span class="status @(hasPhoto ? "ready" : photoType.IsRequired ? "missing" : "pending")">@(hasPhoto ? "Present" : photoType.IsRequired ? "Missing" : "Optional")</span>
+                        </li>
                     }
                 </ul>
             </div>
@@ -474,5 +478,17 @@
         return readiness.StarchMissingCount == 0
             ? "Starch status: Starch Complete."
             : $"Starch status: {readiness.StarchMissingCount} of {readiness.CompletedFruitCount} completed rows missing starch.";
+    }
+
+    private static string NormalizePhotoType(string? photoType)
+    {
+        var normalized = (photoType ?? "").Trim();
+        return normalized switch
+        {
+            "TopTruck" or "TopTruckPhoto" or "TopOfTruckPhoto" => "TopOfTruck",
+            _ when normalized.Equals("Top truck photo", StringComparison.OrdinalIgnoreCase) => "TopOfTruck",
+            _ when normalized.Equals("Top of truck", StringComparison.OrdinalIgnoreCase) => "TopOfTruck",
+            _ => normalized
+        };
     }
 }

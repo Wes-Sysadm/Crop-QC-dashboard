@@ -34,6 +34,8 @@ public sealed class GmailUserEmailSender(
     IHttpClientFactory httpClientFactory,
     ILogger<GmailUserEmailSender> logger) : IQcEmailSender
 {
+    public const long MaxInlineImageBytesPerMessage = 15_000_000;
+
     public async Task<QcEmailSendResult> SendAsync(User sender, QcEmailMessage message, CancellationToken cancellationToken)
     {
         if (!string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase))
@@ -73,7 +75,22 @@ public sealed class GmailUserEmailSender(
             return QcEmailSendResult.Failed(token.Error ?? "Gmail permission is required. Please reconnect Google/Gmail.", token.ReconnectRequired);
         }
 
-        var rawMessage = BuildRawMessage(message);
+        string rawMessage;
+        try
+        {
+            rawMessage = BuildRawMessage(message);
+        }
+        catch (OutOfMemoryException ex)
+        {
+            logger.LogWarning(ex, "Gmail raw message build failed because QC Summary inline photos were too large. Sender: {SenderEmail}.", sender.Email);
+            return QcEmailSendResult.Failed(LargeEmbeddedPhotoError);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "Gmail raw message build failed because QC Summary inline photos exceeded safe limits. Sender: {SenderEmail}.", sender.Email);
+            return QcEmailSendResult.Failed(ex.Message);
+        }
+
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://gmail.googleapis.com/gmail/v1/users/me/messages/send");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
         request.Content = JsonContent.Create(new GmailSendRequest(rawMessage));
@@ -107,6 +124,12 @@ public sealed class GmailUserEmailSender(
     {
         var relatedBoundary = $"cropqc-related-{Guid.NewGuid():N}";
         var alternativeBoundary = $"cropqc-alt-{Guid.NewGuid():N}";
+        var totalInlineBytes = message.InlineImages.Sum(x => (long)x.Bytes.Length);
+        if (totalInlineBytes > MaxInlineImageBytesPerMessage)
+        {
+            throw new InvalidOperationException(LargeEmbeddedPhotoError);
+        }
+
         var builder = new StringBuilder();
         builder.AppendLine($"From: {message.From}");
         builder.AppendLine($"To: {message.To}");
@@ -162,6 +185,8 @@ public sealed class GmailUserEmailSender(
 
     private static string SafeErrorMessage(Exception exception) =>
         string.IsNullOrWhiteSpace(exception.Message) ? "Unknown error." : exception.Message;
+
+    private const string LargeEmbeddedPhotoError = "QC Summary email failed because embedded photos were too large. The system limits inline photo size and links oversized photos; check photo sizes or send with photo links.";
 
     private sealed record GmailSendRequest([property: JsonPropertyName("raw")] string Raw);
 

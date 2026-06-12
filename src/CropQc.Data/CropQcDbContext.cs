@@ -299,8 +299,11 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.SharePointDriveId).HasMaxLength(200).IsRequired();
             entity.Property(x => x.SharePointItemId).HasMaxLength(200).IsRequired();
             entity.Property(x => x.WebUrl).HasMaxLength(1000);
+            entity.Property(x => x.DeleteReason).HasMaxLength(1000);
             entity.HasIndex(x => new { x.SharePointDriveId, x.SharePointItemId }).IsUnique();
             entity.HasIndex(x => new { x.StorageProvider, x.FileId });
+            entity.HasIndex(x => new { x.QcSampleId, x.IsDeleted });
+            entity.HasIndex(x => new { x.ReceiptId, x.IsDeleted });
             entity.HasOne(x => x.Receipt)
                 .WithMany(x => x.Photos)
                 .HasForeignKey(x => x.ReceiptId)
@@ -308,6 +311,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.QcSample)
                 .WithMany(x => x.Photos)
                 .HasForeignKey(x => x.QcSampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.DeletedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.DeletedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -430,7 +437,8 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         modelBuilder.Entity<SampleType>().HasData(
             new SampleType { Id = 1, Name = "Receiving Sample", IsActive = true },
             new SampleType { Id = 2, Name = "Door Sample", IsActive = true },
-            new SampleType { Id = 3, Name = "Line QC Sample", IsActive = true });
+            new SampleType { Id = 3, Name = "Line QC Sample", IsActive = true },
+            new SampleType { Id = 4, Name = "Lot Sample", IsActive = true });
 
         SeedFruitProfiles(modelBuilder);
         SeedStarchScale(modelBuilder);
