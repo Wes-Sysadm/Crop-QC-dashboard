@@ -137,4 +137,4 @@ else {
 }
 
 Write-Host "Installer ready: $msiPath"
-Write-Host "Upload this installer to Google Drive and set Downloads__QcStationInstallerUrl in Render."
+Write-Host "Upload this installer to the hosted Google Drive folder and set Downloads__MasterFolderUrl in Render."

@@ -84,8 +84,10 @@ public sealed class ProductionReadinessTests
     public void Backup_service_excludes_secret_values_from_config_snapshot()
     {
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "BackupService.cs"));
-        var snapshotStart = service.IndexOf("private object BuildSafeConfigurationSnapshot()", StringComparison.Ordinal);
+        var snapshotStart = service.IndexOf("private object BuildSafeConfigurationSnapshot", StringComparison.Ordinal);
         var snapshotEnd = service.IndexOf("private async Task<IReadOnlyList<object>> BuildPhotoManifestAsync", StringComparison.Ordinal);
+        Assert.True(snapshotStart >= 0, "Could not find backup configuration snapshot method.");
+        Assert.True(snapshotEnd > snapshotStart, "Could not find backup photo manifest method after snapshot method.");
         var snapshot = service[snapshotStart..snapshotEnd];
 
         Assert.Contains("BuildSafeConfigurationSnapshot", snapshot);
@@ -94,6 +96,7 @@ public sealed class ProductionReadinessTests
         Assert.DoesNotContain("AccessToken", snapshot);
         Assert.Contains("qcDefaultRecipientsConfigured", snapshot);
         Assert.Contains("googleDriveRootFolderId", snapshot);
+        Assert.Contains("effectiveOptions.GoogleDriveFolderId", snapshot);
     }
 
     [Fact]
@@ -122,6 +125,45 @@ public sealed class ProductionReadinessTests
         Assert.Contains("restore", restoreDocs, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Production backup completed before deploy", releaseChecklist);
         Assert.Contains("TEST SITE", stagingChecklist);
+    }
+
+    [Fact]
+    public void Backup_page_allows_configuring_google_drive_folder()
+    {
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "BackupsController.cs"));
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Backups", "Index.cshtml"));
+        var options = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "BackupOptions.cs"));
+
+        Assert.Contains("[HttpPost(\"Settings\")]", controller);
+        Assert.Contains("Google Drive Backup Folder", view);
+        Assert.Contains("Test Google Drive Backup Access", view);
+        Assert.Contains("Run Backup Now", view);
+        Assert.Contains("NormalizeGoogleDriveFolderId", options);
+        Assert.Contains("folders", options);
+    }
+
+    [Fact]
+    public void Configuration_removes_static_qc_summary_from_address()
+    {
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Configuration", "Index.cshtml"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "AdminManagementService.cs"));
+
+        Assert.Contains("Current logged-in Gmail user. No static From address is configured.", view);
+        Assert.Contains("DefaultQcSummaryFromAddress", view);
+        Assert.DoesNotContain("(\"DefaultQcSummaryFromAddress\"", service);
+    }
+
+    [Fact]
+    public void Offline_sync_design_documents_station_queue_and_conflicts()
+    {
+        var design = File.ReadAllText(FindRepositoryFile("docs", "offline-sync-design.md"));
+
+        Assert.Contains("SQLite", design);
+        Assert.Contains("Pending Sync", design);
+        Assert.Contains("Sync Failed", design);
+        Assert.Contains("idempotency key", design);
+        Assert.Contains("server remains the source of truth", design, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Never delete local pending data until the server confirms it synced", design);
     }
 
     [Fact]

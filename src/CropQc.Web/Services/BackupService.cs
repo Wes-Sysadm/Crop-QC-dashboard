@@ -13,6 +13,7 @@ namespace CropQc.Web.Services;
 public interface IBackupService
 {
     Task<BackupStatusViewModel> GetStatusAsync(CancellationToken cancellationToken);
+    Task<string?> SaveSettingsAsync(BackupSettingsForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<BackupRunResult> RunBackupNowAsync(string requestedByEmail, CancellationToken cancellationToken);
     Task<BackupRunResult> TestGoogleDriveAccessAsync(string requestedByEmail, CancellationToken cancellationToken);
 }
@@ -32,16 +33,30 @@ public sealed class BackupService(
 
     public async Task<BackupStatusViewModel> GetStatusAsync(CancellationToken cancellationToken)
     {
+        var effectiveOptions = await GetEffectiveOptionsAsync(cancellationToken);
         var status = new BackupStatusViewModel
         {
-            Enabled = options.Enabled,
-            Provider = options.Provider,
-            GoogleDriveFolderConfigured = options.GoogleDriveFolderConfigured,
-            DatabaseBackupEnabled = options.DatabaseBackupEnabled,
-            ConfigBackupEnabled = options.ConfigBackupEnabled,
-            PhotoManifestEnabled = options.PhotoManifestEnabled,
-            RetentionDays = options.RetentionDays,
-            ScheduleUtcHour = options.ScheduleUtcHour
+            Enabled = effectiveOptions.Enabled,
+            Provider = effectiveOptions.Provider,
+            GoogleDriveFolderConfigured = effectiveOptions.GoogleDriveFolderConfigured,
+            GoogleDriveFolderId = effectiveOptions.GoogleDriveFolderId,
+            GoogleDriveFolderDisplay = MaskFolderId(effectiveOptions.GoogleDriveFolderId),
+            DatabaseBackupEnabled = effectiveOptions.DatabaseBackupEnabled,
+            ConfigBackupEnabled = effectiveOptions.ConfigBackupEnabled,
+            PhotoManifestEnabled = effectiveOptions.PhotoManifestEnabled,
+            RetentionDays = effectiveOptions.RetentionDays,
+            ScheduleUtcHour = effectiveOptions.ScheduleUtcHour,
+            SettingsForm = new BackupSettingsForm
+            {
+                Enabled = effectiveOptions.Enabled,
+                Provider = effectiveOptions.Provider,
+                GoogleDriveFolder = effectiveOptions.GoogleDriveFolderId,
+                RetentionDays = effectiveOptions.RetentionDays,
+                ScheduleUtcHour = effectiveOptions.ScheduleUtcHour,
+                DatabaseBackupEnabled = effectiveOptions.DatabaseBackupEnabled,
+                ConfigBackupEnabled = effectiveOptions.ConfigBackupEnabled,
+                PhotoManifestEnabled = effectiveOptions.PhotoManifestEnabled
+            }
         };
 
         status.LastDatabaseBackupAt = await GetConfigDateAsync(BackupStatusKeys.LastDatabaseBackupAt, cancellationToken);
@@ -51,19 +66,50 @@ public sealed class BackupService(
         status.LastConfigBackupFileName = await GetConfigValueAsync(BackupStatusKeys.LastConfigBackupFileName, cancellationToken);
         status.LastPhotoManifestBackupFileName = await GetConfigValueAsync(BackupStatusKeys.LastPhotoManifestBackupFileName, cancellationToken);
         status.LastError = await GetConfigValueAsync(BackupStatusKeys.LastError, cancellationToken);
-        status.Warnings = BuildSafetyWarnings();
+        status.Warnings = BuildSafetyWarnings(effectiveOptions);
         return status;
+    }
+
+    public async Task<string?> SaveSettingsAsync(BackupSettingsForm form, string changedByEmail, CancellationToken cancellationToken)
+    {
+        var folderId = BackupOptions.NormalizeGoogleDriveFolderId(form.GoogleDriveFolder);
+        if (form.Provider.Equals(BackupProviders.GoogleDrive, StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(folderId))
+        {
+            return "Google Drive Backup Folder is required when backups use Google Drive.";
+        }
+
+        var values = new Dictionary<string, string>
+        {
+            ["Backups:Enabled"] = form.Enabled.ToString(),
+            ["Backups:Provider"] = BackupProviders.GoogleDrive,
+            ["Backups:GoogleDriveFolderId"] = folderId ?? "",
+            ["Backups:RetentionDays"] = Math.Clamp(form.RetentionDays, 1, 3650).ToString(),
+            ["Backups:ScheduleUtcHour"] = Math.Clamp(form.ScheduleUtcHour, 0, 23).ToString(),
+            ["Backups:DatabaseBackupEnabled"] = form.DatabaseBackupEnabled.ToString(),
+            ["Backups:ConfigBackupEnabled"] = form.ConfigBackupEnabled.ToString(),
+            ["Backups:PhotoManifestEnabled"] = form.PhotoManifestEnabled.ToString()
+        };
+
+        foreach (var (key, value) in values)
+        {
+            await SetConfigValueAsync(key, value, cancellationToken);
+        }
+
+        await AddAuditAsync("BackupSettingsUpdated", "Backup", "Settings", null, new { changedByEmail, folderConfigured = !string.IsNullOrWhiteSpace(folderId), form.Enabled, form.RetentionDays, form.ScheduleUtcHour }, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
     }
 
     public async Task<BackupRunResult> TestGoogleDriveAccessAsync(string requestedByEmail, CancellationToken cancellationToken)
     {
+        var effectiveOptions = await GetEffectiveOptionsAsync(cancellationToken);
         await AddAuditAsync("BackupTestRequested", "Backup", "GoogleDrive", null, new { requestedByEmail }, cancellationToken);
-        if (!options.Enabled)
+        if (!effectiveOptions.Enabled)
         {
             return BackupRunResult.Failed("Backups are disabled. Set Backups__Enabled=true before testing Google Drive backup access.");
         }
 
-        if (!options.IsGoogleDrive || !options.GoogleDriveFolderConfigured)
+        if (!effectiveOptions.IsGoogleDrive || !effectiveOptions.GoogleDriveFolderConfigured)
         {
             return BackupRunResult.Failed("Google Drive backup folder is not configured. Set Backups__Provider=GoogleDrive and Backups__GoogleDriveFolderId.");
         }
@@ -71,7 +117,7 @@ public sealed class BackupService(
         try
         {
             await using var content = new MemoryStream(Encoding.UTF8.GetBytes($"Crop QC backup access test {DateTimeOffset.UtcNow:O}"));
-            var storage = CreateBackupStorage();
+            var storage = CreateBackupStorage(effectiveOptions);
             var reference = await storage.SaveAsync(new FileStorageSaveRequest(
                 content,
                 "Backup Access Tests",
@@ -91,13 +137,14 @@ public sealed class BackupService(
 
     public async Task<BackupRunResult> RunBackupNowAsync(string requestedByEmail, CancellationToken cancellationToken)
     {
+        var effectiveOptions = await GetEffectiveOptionsAsync(cancellationToken);
         await AddAuditAsync("BackupStarted", "Backup", "Manual", null, new { requestedByEmail }, cancellationToken);
-        if (!options.Enabled)
+        if (!effectiveOptions.Enabled)
         {
             return await FinishFailureAsync("Backups are disabled. Set Backups__Enabled=true.", cancellationToken);
         }
 
-        if (!options.IsGoogleDrive || !options.GoogleDriveFolderConfigured)
+        if (!effectiveOptions.IsGoogleDrive || !effectiveOptions.GoogleDriveFolderConfigured)
         {
             return await FinishFailureAsync("Google Drive backup folder is not configured. Set Backups__GoogleDriveFolderId.", cancellationToken);
         }
@@ -107,18 +154,18 @@ public sealed class BackupService(
         var timestamp = DateTimeOffset.UtcNow;
         try
         {
-            var storage = CreateBackupStorage();
+            var storage = CreateBackupStorage(effectiveOptions);
 
-            if (options.DatabaseBackupEnabled)
+            if (effectiveOptions.DatabaseBackupEnabled)
             {
                 var dbResult = await TryRunDatabaseBackupAsync(storage, timestamp, cancellationToken);
                 messages.Add(dbResult.Message);
                 uploaded.AddRange(dbResult.UploadedFiles);
             }
 
-            if (options.ConfigBackupEnabled)
+            if (effectiveOptions.ConfigBackupEnabled)
             {
-                var config = BuildSafeConfigurationSnapshot();
+                var config = BuildSafeConfigurationSnapshot(effectiveOptions);
                 var fileName = BackupFileNames.Config(timestamp);
                 var reference = await UploadJsonAsync(storage, "Config", fileName, config, cancellationToken);
                 await SetConfigValueAsync(BackupStatusKeys.LastConfigBackupAt, timestamp.ToString("O"), cancellationToken);
@@ -127,7 +174,7 @@ public sealed class BackupService(
                 messages.Add($"Config snapshot uploaded: {fileName}");
             }
 
-            if (options.PhotoManifestEnabled)
+            if (effectiveOptions.PhotoManifestEnabled)
             {
                 var manifest = await BuildPhotoManifestAsync(cancellationToken);
                 var fileName = BackupFileNames.PhotoManifest(timestamp);
@@ -250,12 +297,12 @@ public sealed class BackupService(
         return reference;
     }
 
-    private IFileStorageService CreateBackupStorage()
+    private IFileStorageService CreateBackupStorage(BackupOptions effectiveOptions)
     {
         var backupDriveOptions = new GoogleDriveStorageOptions
         {
             UseSharedDrive = googleDriveOptions.UseSharedDrive,
-            RootFolderId = options.GoogleDriveFolderId ?? "",
+            RootFolderId = effectiveOptions.GoogleDriveFolderId ?? "",
             SharedDriveId = googleDriveOptions.SharedDriveId,
             ServiceAccountJson = googleDriveOptions.ServiceAccountJson,
             ServiceAccountJsonPath = googleDriveOptions.ServiceAccountJsonPath,
@@ -266,7 +313,7 @@ public sealed class BackupService(
         return new GoogleDriveStorageService(backupDriveOptions);
     }
 
-    private object BuildSafeConfigurationSnapshot() =>
+    private object BuildSafeConfigurationSnapshot(BackupOptions effectiveOptions) =>
         new
         {
             createdAt = DateTimeOffset.UtcNow,
@@ -294,19 +341,18 @@ public sealed class BackupService(
             },
             backups = new
             {
-                options.Enabled,
-                options.Provider,
-                googleDriveFolderId = options.GoogleDriveFolderId,
-                options.RetentionDays,
-                options.ScheduleUtcHour,
-                options.DatabaseBackupEnabled,
-                options.PhotoManifestEnabled,
-                options.ConfigBackupEnabled
+                effectiveOptions.Enabled,
+                effectiveOptions.Provider,
+                googleDriveFolderId = effectiveOptions.GoogleDriveFolderId,
+                effectiveOptions.RetentionDays,
+                effectiveOptions.ScheduleUtcHour,
+                effectiveOptions.DatabaseBackupEnabled,
+                effectiveOptions.PhotoManifestEnabled,
+                effectiveOptions.ConfigBackupEnabled
             },
             downloads = new
             {
-                masterFolderConfigured = !string.IsNullOrWhiteSpace(configuration["Downloads:MasterFolderUrl"]),
-                qcStationInstallerConfigured = !string.IsNullOrWhiteSpace(configuration["Downloads:QcStationInstallerUrl"])
+                masterFolderConfigured = !string.IsNullOrWhiteSpace(configuration["Downloads:MasterFolderUrl"])
             }
         };
 
@@ -340,12 +386,12 @@ public sealed class BackupService(
         return manifest.Cast<object>().ToList();
     }
 
-    private IReadOnlyList<string> BuildSafetyWarnings()
+    private IReadOnlyList<string> BuildSafetyWarnings(BackupOptions effectiveOptions)
     {
         var warnings = new List<string>();
-        if (appEnvironment.IsProduction && !options.GoogleDriveFolderConfigured)
+        if (appEnvironment.IsProduction && !effectiveOptions.GoogleDriveFolderConfigured)
         {
-            warnings.Add("Production backup folder is not configured. Set Backups__GoogleDriveFolderId before live use.");
+            warnings.Add("Production backup folder is not configured. Set Google Drive Backup Folder under Admin -> Backups or set Backups__GoogleDriveFolderId before live use.");
         }
 
         if (appEnvironment.IsProduction && configuration.GetValue("Database:SeedMasterDataOnStartup", false))
@@ -375,6 +421,31 @@ public sealed class BackupService(
         return warnings;
     }
 
+    private async Task<BackupOptions> GetEffectiveOptionsAsync(CancellationToken cancellationToken)
+    {
+        var keys = new[]
+        {
+            "Backups:Enabled",
+            "Backups:Provider",
+            "Backups:GoogleDriveFolderId",
+            "Backups:RetentionDays",
+            "Backups:ScheduleUtcHour",
+            "Backups:DatabaseBackupEnabled",
+            "Backups:ConfigBackupEnabled",
+            "Backups:PhotoManifestEnabled"
+        };
+        var overrides = await dbContext.DashboardConfigurations.AsNoTracking()
+            .Where(x => keys.Contains(x.Key) && x.Value != "")
+            .ToDictionaryAsync(x => x.Key, x => x.Value, cancellationToken);
+        return options.WithOverrides(overrides);
+    }
+
+    private static string? MaskFolderId(string? folderId)
+    {
+        if (string.IsNullOrWhiteSpace(folderId)) return null;
+        return folderId.Length <= 8 ? "Configured" : $"{folderId[..4]}...{folderId[^4..]}";
+    }
+
     private async Task<string?> GetConfigValueAsync(string key, CancellationToken cancellationToken) =>
         (await dbContext.DashboardConfigurations.AsNoTracking().SingleOrDefaultAsync(x => x.Key == key, cancellationToken))?.Value;
 
@@ -394,7 +465,9 @@ public sealed class BackupService(
             {
                 Key = key,
                 Value = value,
-                Description = "Backup status value managed by the backup service.",
+                Description = key.StartsWith("Backups:", StringComparison.OrdinalIgnoreCase)
+                    ? "Backup setting managed from Admin Backups."
+                    : "Backup status value managed by the backup service.",
                 ValueType = "String",
                 CreatedAt = now,
                 UpdatedAt = now

@@ -9,7 +9,6 @@ namespace CropQc.Api.Tests.QcStation;
 public sealed class QcStationInstallerWorkflowTests
 {
     private const string QcStationInstallerGoogleDriveUrl = "https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link";
-    private const string FtaBorlndmmGoogleDriveUrl = "https://drive.google.com/file/d/example-borlndmm/view?usp=drive_link";
     private const string MasterFolderGoogleDriveUrl = "https://drive.google.com/drive/folders/example-master-folder";
 
     [Fact]
@@ -47,7 +46,7 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.Contains("SIGNING_MODE", script);
         Assert.Contains("SIGN_CERT_PATH", script);
         Assert.Contains("Installer is unsigned and may trigger SmartScreen/Defender", script);
-        Assert.Contains("Upload this installer to Google Drive and set Downloads__QcStationInstallerUrl in Render.", script);
+        Assert.Contains("Upload this installer to the hosted Google Drive folder and set Downloads__MasterFolderUrl in Render.", script);
     }
 
     [Fact]
@@ -73,30 +72,26 @@ public sealed class QcStationInstallerWorkflowTests
     }
 
     [Fact]
-    public void AdminDownloads_UsesMsiInstallerAndNoScriptZipDefault()
+    public void AdminDownloads_UsesHostedFolderOnlyAndNoLocalFiles()
     {
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "AdminController.cs"));
         var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Admin", "Downloads.cshtml"));
 
         Assert.Contains("CropQcStationSetup.msi", controller);
-        Assert.Contains("Downloads:QcStationInstallerUrl", controller);
-        Assert.Contains("QC Station installer link is not configured", controller);
-        Assert.Contains("Upload CropQcStationSetup.msi to Google Drive", controller);
-        Assert.Contains("Crop QC Station App Installer", controller);
         Assert.Contains("Hosted Files Folder", controller);
         Assert.Contains("Downloads:MasterFolderUrl", controller);
-        Assert.Contains("Downloads folder link is not configured. Set Downloads__MasterFolderUrl in Render.", controller);
+        Assert.Contains("Hosted files folder is not configured", controller);
         Assert.Contains("Open Google Drive Folder", controller);
-        Assert.Contains("Open Google Drive Download", controller);
-        Assert.Contains("FTA DLL Installer", controller);
-        Assert.Contains("FTA borlndmm.dll Dependency", controller);
-        Assert.Contains("Downloads:FtaBorlndmmUrl", controller);
-        Assert.Contains("Downloads__FtaBorlndmmUrl", controller);
         Assert.Contains("Not deployed", view);
         Assert.Contains("Manage QC Stations", view);
         Assert.Contains("Station configs are generated and downloaded from Admin", view);
         Assert.Contains("Install Crop QC Station App Installer from this page", view);
         Assert.Contains("Download the station config JSON from Admin", view);
+        Assert.DoesNotContain("Crop QC Station App Installer\",", controller);
+        Assert.DoesNotContain("FTA DLL Installer", controller);
+        Assert.DoesNotContain("FTA borlndmm.dll Dependency", controller);
+        Assert.DoesNotContain("Downloads:QcStationInstallerUrl", controller);
+        Assert.DoesNotContain("Downloads:FtaBorlndmmUrl", controller);
         Assert.DoesNotContain("\"QC Station Configs\"", controller);
         Assert.DoesNotContain("qcstation.settings.json", controller);
         Assert.DoesNotContain("Add Station and Download Config JSON", view);
@@ -109,22 +104,21 @@ public sealed class QcStationInstallerWorkflowTests
     }
 
     [Fact]
-    public void AdminDownloads_ShowsGoogleDriveMsiLinkWhenConfigured()
+    public void AdminDownloads_DoesNotRenderIndividualInstallerLinks()
     {
         var controller = CreateAdminController(new Dictionary<string, string?>
         {
+            ["Downloads:MasterFolderUrl"] = MasterFolderGoogleDriveUrl,
             ["Downloads:QcStationInstallerUrl"] = QcStationInstallerGoogleDriveUrl
         });
 
         var result = Assert.IsType<ViewResult>(controller.Downloads());
         var model = Assert.IsType<AdminDownloadsViewModel>(result.Model);
-        var installer = Assert.Single(model.Downloads, item => item.Name == "Crop QC Station App Installer");
 
-        Assert.True(installer.IsAvailable);
-        Assert.True(installer.OpensInNewTab);
-        Assert.Equal("Open Google Drive Download", installer.ActionText);
-        Assert.Equal(QcStationInstallerGoogleDriveUrl, installer.Url);
-        Assert.DoesNotContain("not configured", installer.Notes, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(model.Downloads);
+        Assert.DoesNotContain(model.Downloads, item => item.Name == "Crop QC Station App Installer");
+        Assert.DoesNotContain(model.Downloads, item => item.Name == "FTA DLL Installer");
+        Assert.DoesNotContain(model.Downloads, item => item.Name == "FTA borlndmm.dll Dependency");
     }
 
     [Fact]
@@ -157,70 +151,19 @@ public sealed class QcStationInstallerWorkflowTests
         Assert.False(folder.IsAvailable);
         Assert.False(folder.OpensInNewTab);
         Assert.Equal("", folder.Url);
-        Assert.Contains("Downloads folder link is not configured", folder.Notes);
-        Assert.Contains("Downloads__MasterFolderUrl", folder.Notes);
+        Assert.Contains("Hosted files folder is not configured", folder.Notes);
+        Assert.Contains("Admin -> Configuration", folder.Notes);
     }
 
     [Fact]
-    public void AdminDownloads_ShowsBorlndmmDependencyLinkWhenConfigured()
-    {
-        var controller = CreateAdminController(new Dictionary<string, string?>
-        {
-            ["Downloads:FtaBorlndmmUrl"] = FtaBorlndmmGoogleDriveUrl
-        });
-
-        var result = Assert.IsType<ViewResult>(controller.Downloads());
-        var model = Assert.IsType<AdminDownloadsViewModel>(result.Model);
-        var dependency = Assert.Single(model.Downloads, item => item.Name == "FTA borlndmm.dll Dependency");
-
-        Assert.True(dependency.IsAvailable);
-        Assert.True(dependency.OpensInNewTab);
-        Assert.Equal("Open Google Drive Download", dependency.ActionText);
-        Assert.Equal(FtaBorlndmmGoogleDriveUrl, dependency.Url);
-        Assert.Contains("Back up the existing borlndmm.dll", dependency.Notes);
-    }
-
-    [Fact]
-    public void AdminDownloads_ShowsMissingBorlndmmGuidanceWhenUrlIsMissing()
-    {
-        var controller = CreateAdminController([]);
-
-        var result = Assert.IsType<ViewResult>(controller.Downloads());
-        var model = Assert.IsType<AdminDownloadsViewModel>(result.Model);
-        var dependency = Assert.Single(model.Downloads, item => item.Name == "FTA borlndmm.dll Dependency");
-
-        Assert.False(dependency.IsAvailable);
-        Assert.False(dependency.OpensInNewTab);
-        Assert.Equal("", dependency.Url);
-        Assert.Contains("FTA borlndmm.dll dependency link is not configured", dependency.Notes);
-        Assert.Contains("Downloads__FtaBorlndmmUrl", dependency.Notes);
-    }
-
-    [Fact]
-    public void AdminDownloads_ShowsMissingMsiGuidanceWhenUrlIsMissing()
-    {
-        var controller = CreateAdminController([]);
-
-        var result = Assert.IsType<ViewResult>(controller.Downloads());
-        var model = Assert.IsType<AdminDownloadsViewModel>(result.Model);
-        var installer = Assert.Single(model.Downloads, item => item.Name == "Crop QC Station App Installer");
-
-        Assert.False(installer.IsAvailable);
-        Assert.False(installer.OpensInNewTab);
-        Assert.Equal("", installer.Url);
-        Assert.Contains("QC Station installer link is not configured", installer.Notes);
-        Assert.Contains("Downloads__QcStationInstallerUrl", installer.Notes);
-    }
-
-    [Fact]
-    public void ProductionSettings_IncludeGoogleDriveMsiInstallerUrl()
+    public void ProductionSettings_IncludeGoogleDriveHostedFolderOnly()
     {
         var productionSettings = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "appsettings.Production.json"));
 
         Assert.Contains("\"Downloads\"", productionSettings);
         Assert.Contains("\"MasterFolderUrl\"", productionSettings);
-        Assert.Contains("\"QcStationInstallerUrl\"", productionSettings);
-        Assert.Contains(QcStationInstallerGoogleDriveUrl, productionSettings);
+        Assert.DoesNotContain("\"QcStationInstallerUrl\"", productionSettings);
+        Assert.DoesNotContain("\"FtaBorlndmmUrl\"", productionSettings);
     }
 
     [Fact]

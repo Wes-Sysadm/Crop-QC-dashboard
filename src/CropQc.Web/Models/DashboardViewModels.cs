@@ -67,6 +67,7 @@ public sealed class RoomLotSummaryViewModel
     public string RoomCode { get; set; } = "";
     public string DisplayReceiptId { get; set; } = "";
     public string GrowerNumber { get; set; } = "";
+    public string PoolStart { get; set; } = "";
     public string GrowerName { get; set; } = "";
     public string LotCode { get; set; } = "";
     public string VarietyCode { get; set; } = "";
@@ -149,6 +150,8 @@ public sealed class BackupStatusViewModel
     public bool Enabled { get; set; }
     public string Provider { get; set; } = "GoogleDrive";
     public bool GoogleDriveFolderConfigured { get; set; }
+    public string? GoogleDriveFolderId { get; set; }
+    public string? GoogleDriveFolderDisplay { get; set; }
     public bool DatabaseBackupEnabled { get; set; }
     public bool ConfigBackupEnabled { get; set; }
     public bool PhotoManifestEnabled { get; set; }
@@ -163,6 +166,19 @@ public sealed class BackupStatusViewModel
     public string? LastPhotoManifestBackupFileName { get; set; }
     public string? LastError { get; set; }
     public IReadOnlyList<string> Warnings { get; set; } = [];
+    public BackupSettingsForm SettingsForm { get; set; } = new();
+}
+
+public sealed class BackupSettingsForm
+{
+    public bool Enabled { get; set; }
+    public string Provider { get; set; } = "GoogleDrive";
+    public string? GoogleDriveFolder { get; set; }
+    public int RetentionDays { get; set; } = 90;
+    public int ScheduleUtcHour { get; set; } = 10;
+    public bool DatabaseBackupEnabled { get; set; } = true;
+    public bool ConfigBackupEnabled { get; set; } = true;
+    public bool PhotoManifestEnabled { get; set; } = true;
 }
 
 public sealed class QcStationsPageViewModel
@@ -216,6 +232,7 @@ public sealed class MasterDataEditForm
     public int? SortOrder { get; set; }
     public int? SizeCategory { get; set; }
     public decimal? MinimumWeightGrams { get; set; }
+    public string? PoolStart { get; set; }
     public bool IsActive { get; set; } = true;
     public IReadOnlyList<string> CommodityOptions { get; set; } = [];
 }
@@ -287,6 +304,7 @@ public sealed class ReceiptListViewModel
     public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
     public IReadOnlyList<Room> Rooms { get; set; } = [];
     public IReadOnlyList<FruitProfile> FruitProfiles { get; set; } = [];
+    public IReadOnlyList<GrowerLot> GrowerLots { get; set; } = [];
     public IReadOnlyList<int> AvailableCropYears { get; set; } = [];
     public int CurrentCropYear { get; set; }
     public string CropYearHelpText { get; set; } = "";
@@ -315,6 +333,7 @@ public sealed record ReceiptListItemViewModel(
     int RoomId,
     string Room,
     string GrowerNumber,
+    string PoolStart,
     string GrowerName,
     string LotCode,
     string VarietyCode,
@@ -332,7 +351,9 @@ public sealed class CreateReceiptForm
     public int WarehouseId { get; set; }
     public int RoomId { get; set; }
     public int FruitProfileId { get; set; }
+    public int? GrowerLotId { get; set; }
     public string GrowerNumber { get; set; } = "";
+    public string PoolStart { get; set; } = "";
     public string GrowerName { get; set; } = "";
     public string LotCode { get; set; } = "";
     public int BinCount { get; set; }

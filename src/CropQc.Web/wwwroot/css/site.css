@@ -16,13 +16,14 @@ a:hover { text-decoration: underline; }
 .nav-dropdown summary::after { content: "▾"; margin-left: 6px; font-size: 11px; }
 .nav-dropdown[open] summary::after { content: "▴"; }
 .nav-dropdown-menu { position: absolute; right: 0; z-index: 20; display: grid; min-width: 210px; margin-top: 8px; padding: 8px; border: 1px solid #9fb2c3; border-radius: 6px; background: white; box-shadow: 0 8px 20px rgba(23, 32, 42, .18); }
+.nav-dropdown:not([open]) .nav-dropdown-menu { display: none; }
 .topbar nav .nav-dropdown-menu a { display: block; padding: 8px 10px; border-radius: 4px; color: #16324f; white-space: nowrap; }
 .topbar nav .nav-dropdown-menu a:hover { background: #eaf2f8; text-decoration: none; }
 .user-email { color: #d9e7f3; font-size: 13px; font-weight: 600; }
 .logout-form { margin: 0; }
 .link-button { height: auto; min-height: 0; padding: 0; border: 0; background: transparent; color: white; font-weight: 700; }
 .link-button:hover { text-decoration: underline; }
-.page { width: 100%; padding: 24px; max-width: 1480px; margin: 0 auto; overflow-wrap: normal; word-break: normal; }
+.page { width: 100%; padding: 24px; max-width: min(94vw, 1920px); margin: 0 auto; overflow-wrap: normal; word-break: normal; }
 h1 { margin: 0 0 18px; font-size: 28px; }
 h2 { margin: 28px 0 12px; font-size: 20px; }
 .cards { display: grid; grid-template-columns: repeat(6, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
@@ -151,6 +152,15 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 .metadata-summary { display: grid; gap: 5px; padding: 10px 12px; border: 1px solid #d9e1e8; border-radius: 5px; background: #fbfcfd; color: #334; }
 .list { margin: 0; padding-left: 18px; }
 .muted { color: #66717c; }
+@media (hover: hover) and (pointer: fine) {
+    .nav-dropdown:hover .nav-dropdown-menu,
+    .nav-dropdown:focus-within .nav-dropdown-menu { display: grid; }
+}
+@media (min-width: 1800px) {
+    .cards { grid-template-columns: repeat(6, minmax(180px, 1fr)); }
+    .room-card-grid { grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
+    .responsive-card-grid { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+}
 @media (max-width: 1100px) {
     .cards { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
     .grid-two { grid-template-columns: 1fr; }

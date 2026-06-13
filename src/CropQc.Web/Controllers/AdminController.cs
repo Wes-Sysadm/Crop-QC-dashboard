@@ -14,11 +14,6 @@ public sealed class AdminController(
     IDataCleanupService dataCleanupService,
     IConfiguration configuration) : Controller
 {
-    private const string FtaDllInstallerFileName = "FTADLL.exe";
-    private const string FtaDllInstallerUrl = "https://drive.google.com/file/d/1iYy1v1-D8T-S4SgfHJOeuwoeJfsbcvoS/view?usp=drive_link";
-    private const string QcStationInstallerFileName = "CropQcStationSetup.msi";
-    private const string FtaBorlandDependencyFileName = "borlndmm.dll";
-
     [HttpGet("Users")]
     [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> Users(CancellationToken cancellationToken) =>
@@ -30,10 +25,6 @@ public sealed class AdminController(
     {
         var masterFolderUrl = configuration["Downloads:MasterFolderUrl"];
         var masterFolderConfigured = !string.IsNullOrWhiteSpace(masterFolderUrl);
-        var installerUrl = configuration["Downloads:QcStationInstallerUrl"];
-        var installerConfigured = !string.IsNullOrWhiteSpace(installerUrl);
-        var borlandDependencyUrl = configuration["Downloads:FtaBorlndmmUrl"];
-        var borlandDependencyConfigured = !string.IsNullOrWhiteSpace(borlandDependencyUrl);
         var model = new AdminDownloadsViewModel
         {
             Downloads =
@@ -45,40 +36,10 @@ public sealed class AdminController(
                     masterFolderUrl ?? "",
                     masterFolderConfigured
                         ? "Opens the shared Google Drive folder. Use this as the master production download location for installer/support files."
-                        : "Downloads folder link is not configured. Set Downloads__MasterFolderUrl in Render.",
+                        : "Hosted files folder is not configured. Set it under Admin -> Configuration or Render environment settings.",
                     IsAvailable: masterFolderConfigured,
                     OpensInNewTab: masterFolderConfigured,
-                    ActionText: "Open Google Drive Folder"),
-                new(
-                    "FTA DLL Installer",
-                    FtaDllInstallerFileName,
-                    "Installer/runtime files needed for the GUSS FTA DLL integration on QC Station computers.",
-                    FtaDllInstallerUrl,
-                    "Opens the shared Google Drive download page. Use only on internal company QC Station computers. Install before running QC Station RealDll mode. After installation, run the Crop QC Station app.",
-                    OpensInNewTab: true,
-                    ActionText: "Open Google Drive Download"),
-                new(
-                    "Crop QC Station App Installer",
-                    QcStationInstallerFileName,
-                    "Installs the Crop QC Station WinForms app used for FTA pressure capture and station sync.",
-                    installerUrl ?? "",
-                    installerConfigured
-                        ? "Opens the shared Google Drive download page. Install Crop QC Station first. Then download station config JSON from Admin QC Stations and import it inside the app with Import / Replace Station Config."
-                        : "QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.",
-                    IsAvailable: installerConfigured,
-                    OpensInNewTab: installerConfigured,
-                    ActionText: "Open Google Drive Download"),
-                new(
-                    "FTA borlndmm.dll Dependency",
-                    FtaBorlandDependencyFileName,
-                    "Known-good x86 borlndmm.dll used by the FTA DLL. Use only when diagnostics report the installed borlndmm.dll is 64-bit or invalid.",
-                    borlandDependencyUrl ?? "",
-                    borlandDependencyConfigured
-                        ? "Opens the shared Google Drive download page. Back up the existing borlndmm.dll before replacing it, then rerun QC Station FTA Diagnostics."
-                        : "FTA borlndmm.dll dependency link is not configured. Upload the known-good x86 borlndmm.dll to Google Drive and set Downloads__FtaBorlndmmUrl in Render.",
-                    IsAvailable: borlandDependencyConfigured,
-                    OpensInNewTab: borlandDependencyConfigured,
-                    ActionText: "Open Google Drive Download")
+                    ActionText: "Open Google Drive Folder")
             ]
         };
 

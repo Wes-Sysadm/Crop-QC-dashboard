@@ -1,4 +1,5 @@
 using CropQc.Web.Services;
+using CropQc.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -18,6 +19,14 @@ public sealed class BackupsController(IBackupService backupService) : Controller
     {
         var result = await backupService.RunBackupNowAsync(User.FindFirstValue(ClaimTypes.Email) ?? "", cancellationToken);
         TempData[result.Success ? "Success" : "Error"] = result.Message;
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost("Settings")]
+    public async Task<IActionResult> SaveSettings(BackupSettingsForm form, CancellationToken cancellationToken)
+    {
+        var error = await backupService.SaveSettingsAsync(form, User.FindFirstValue(ClaimTypes.Email) ?? "", cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Backup settings saved.";
         return RedirectToAction(nameof(Index));
     }
 

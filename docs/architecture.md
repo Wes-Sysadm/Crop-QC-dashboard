@@ -45,7 +45,7 @@ Future revisions must carry production data forward. Production changes should p
 
 ## Backup Boundary
 
-Google Drive is the backup target. Admin -> Backups reports the configured provider/folder, last backup status, production safety warnings, and manual actions. The backup workflow produces a PostgreSQL logical dump when `pg_dump` is available, a non-secret configuration snapshot, and a Google Drive photo/storage manifest. Configuration backups must not contain OAuth tokens, Google service account JSON, client secrets, API keys, station keys, or Gmail credentials. If `pg_dump` is missing from the runtime, the app warns and the deployment process must use Render/Postgres backups or a PostgreSQL-tools worker for database dumps.
+Google Drive is the backup target. Admin -> Backups reports the configured provider/folder, lets Admins set the Google Drive backup folder by folder URL or ID, shows last backup status, production safety warnings, and manual actions. The backup workflow produces a PostgreSQL logical dump when `pg_dump` is available, a non-secret configuration snapshot, and a Google Drive photo/storage manifest. Configuration backups must not contain OAuth tokens, Google service account JSON, client secrets, API keys, station keys, or Gmail credentials. If `pg_dump` is missing from the runtime, the app warns and the deployment process must use Render/Postgres backups or a PostgreSQL-tools worker for database dumps.
 
 ## Room Inventory Boundary
 
@@ -57,7 +57,7 @@ Current room inventory is receipt-driven. Receiving/receipt records add current 
 
 Room bin and lot counts must be scoped to the exact room. Current bins are receipt bins for that room minus non-voided depletion records for the same receipt/room. Current lots are current receipt lots in that exact room. Bins/lots in other rooms, depleted bins/lots, and observational Door/Lot samples are excluded from current inventory counts.
 
-Grower lots are managed through receipt inventory and exposed under Master Data -> Grower Lots. A grower lot is identified in practice by grower number/name, lot code, variety, crop year, facility, and room. Lot number alone is not assumed to be globally unique.
+Grower lots are managed under Master Data -> Grower Lots. In user-facing screens, `Grower` means the grower/orchard name, `Lot #` is the lot number formerly stored in some code paths as `GrowerNumber`, and `Pool Start` is the first pool characters retained for future final-results analysis. Inactive grower rows are hidden from normal receipt/sample selectors. Receipt inventory remains the current-room source; Grower Lots is master data for selecting and preserving grower/lot identity.
 
 Managers and Admins can create depletion records and void incorrect depletion records with a reason. Voiding is reversible for current-room calculations because voided records are retained but ignored by active inventory. Depletion history remains visible in room drill-downs and must be audited. Do not delete receipts or samples to remove fruit from room summaries.
 
@@ -65,11 +65,11 @@ Managers and Admins can create depletion records and void incorrect depletion re
 
 QC Summary email sends through the Gmail API using the logged-in Google Workspace user's delegated `gmail.send` permission when `Email__Provider=GmailUser` is configured. Allowed sending domains are configured with `Authentication__AllowedGoogleDomains`; current company domains are `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com`. QC recipients are configured with `Email__QcDefaultRecipients`; the current test value is `rob@earlbrownandsons.com,wes@fruitandland.com`. The sender is the logged-in user, not a shared SMTP account. Refresh tokens are encrypted with ASP.NET Core Data Protection and are not logged.
 
-Admin Downloads links to Google Drive-hosted installer/support files and should prefer the configured `Downloads__MasterFolderUrl` master folder. Station-specific QC Station config JSON remains under Admin -> QC Stations. Admin Data Cleanup is additionally restricted by `DataCleanup__AllowedEmails` so Admin role alone is not enough. Normal web pages should use responsive layouts without page-level horizontal scrolling; action groups must wrap or stack instead of hiding controls off-screen.
+Admin Downloads links only to the Google Drive-hosted master folder configured by `Downloads__MasterFolderUrl`; individual MSI, FTADLL, and dependency file links are kept inside that folder instead of rendered as separate buttons. Station-specific QC Station config JSON remains under Admin -> QC Stations. Admin Data Cleanup is additionally restricted by `DataCleanup__AllowedEmails` so Admin role alone is not enough. Normal web pages should use responsive layouts without page-level horizontal scrolling; action groups must wrap or stack instead of hiding controls off-screen. The Admin top-bar menu opens on hover for desktop users and remains clickable/tappable for touch devices.
 
 ## Offline Boundary
 
-The QC Station must be designed around offline capture and later sync. The station will use SQLite as a local cache, then sync structured data and file metadata to the Render/Postgres backend and Google Drive storage when internet connectivity returns.
+The QC Station must be designed around offline capture and later sync. The station will use SQLite or another durable local queue as a local cache, then sync structured data and file metadata to the Render/Postgres backend and Google Drive storage when internet connectivity returns. The web site alone should not be treated as the offline workflow; see `docs/offline-sync-design.md` for the planned station-side queue, idempotency, conflict, and sync-status model.
 
 ## Audit Boundary
 
