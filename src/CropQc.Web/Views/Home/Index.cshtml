@@ -21,41 +21,89 @@
 </section>
 
 <h2>Room Summary</h2>
-<p class="muted">Current room rollups exclude bins recorded as sent to line. Empty rooms stay visible so room status can be checked at a glance.</p>
-<section class="room-card-grid">
-@foreach (var room in Model.RoomSummaries)
-{
-    <a class="room-card @RoomStatusClass(room.Status)" href="/Dashboard/Rooms/@room.RoomId">
-        <div class="room-card-header">
-            <div>
-                <h3>@room.Warehouse / @room.RoomCode</h3>
-                <p>@room.RoomName</p>
-            </div>
-            <span class="status @RoomStatusClass(room.Status)">@room.Status</span>
-        </div>
-        <dl class="room-metrics">
-            <div><dt>Lots</dt><dd>@room.CurrentLotsCount</dd></div>
-            <div><dt>Bins</dt><dd>@(room.CurrentBinsCount?.ToString() ?? "Empty")</dd></div>
-            <div><dt>Avg pressure</dt><dd>@Format(room.AveragePressureLbs)</dd></div>
-            <div><dt>Pressure std dev</dt><dd>@Format(room.PressureStdDevLbs)</dd></div>
-            <div><dt>MoM pressure</dt><dd>@FormatChange(room.MonthOverMonthPressureChangeLbs)</dd></div>
-            <div><dt>Harvest starch</dt><dd>@Format(room.AverageStarch)</dd></div>
-            <div><dt>Last sample</dt><dd>@(room.LastSampleDate?.LocalDateTime.ToString("g") ?? "No data")</dd></div>
-            <div><dt>Fruit rows</dt><dd>@room.EnteredFruitCount</dd></div>
-        </dl>
-        <p class="room-lots">@room.LotSummary</p>
-        @if (room.ReviewFlags.Count > 0)
-        {
-            <ul class="compact-list">
-            @foreach (var flag in room.ReviewFlags.Take(3))
+<p class="muted">Current room rollups count bins and lots only in each exact room. Receipts/receiving add current inventory; Door and Lot samples are observational and contribute quality trends without adding bins.</p>
+<form class="toolbar" method="get" action="/">
+    <label class="field">Facility
+        <select name="Facility">
+            @foreach (var facility in Model.FacilityOptions)
             {
-                <li>@flag</li>
+                <option value="@facility" selected="@IsSelected(Model.RoomSummaryFilter.Facility, facility)">@facility</option>
             }
-            </ul>
-        }
-    </a>
+        </select>
+    </label>
+    <label class="field">EBS location
+        <select name="EbsLocation">
+            @foreach (var location in Model.EbsLocationOptions)
+            {
+                <option value="@location" selected="@IsSelected(Model.RoomSummaryFilter.EbsLocation, location)">@location</option>
+            }
+        </select>
+    </label>
+    <label class="field">Rooms
+        <select name="RoomStatus">
+            <option value="WithFruit" selected="@IsSelected(Model.RoomSummaryFilter.RoomStatus, "WithFruit")">Rooms with fruit</option>
+            <option value="Empty" selected="@IsSelected(Model.RoomSummaryFilter.RoomStatus, "Empty")">Empty rooms</option>
+            <option value="All" selected="@IsSelected(Model.RoomSummaryFilter.RoomStatus, "All")">All rooms</option>
+        </select>
+    </label>
+    <button type="submit">Apply</button>
+    <a class="button secondary-button" href="/MasterData/grower-lots">View Grower Lots</a>
+</form>
+
+@if (Model.RoomSummaries.Count == 0)
+{
+    <p class="notice">No rooms match the selected filters.</p>
 }
-</section>
+else
+{
+    @foreach (var facilityGroup in Model.RoomSummaries.GroupBy(x => x.Facility).OrderBy(x => FacilitySort(x.Key)).ThenBy(x => x.Key))
+    {
+        <section class="panel">
+            <h3>@facilityGroup.Key</h3>
+            @foreach (var locationGroup in facilityGroup.GroupBy(x => string.IsNullOrWhiteSpace(x.LocationGroup) ? facilityGroup.Key : x.LocationGroup).OrderBy(x => LocationSort(x.Key)).ThenBy(x => x.Key))
+            {
+                @if (facilityGroup.Key == "EBS")
+                {
+                    <h4>@locationGroup.Key</h4>
+                }
+                <div class="room-card-grid">
+                @foreach (var room in locationGroup.OrderBy(x => x.RoomCode))
+                {
+                    <a class="room-card @RoomStatusClass(room.Status)" href="/Dashboard/Rooms/@room.RoomId">
+                        <div class="room-card-header">
+                            <div>
+                                <h3>@room.Warehouse / @room.RoomCode</h3>
+                                <p>@room.RoomName</p>
+                            </div>
+                            <span class="status @RoomStatusClass(room.Status)">@room.Status</span>
+                        </div>
+                        <dl class="room-metrics">
+                            <div><dt>Lots</dt><dd>@room.CurrentLotsCount</dd></div>
+                            <div><dt>Bins</dt><dd>@(room.CurrentBinsCount?.ToString() ?? "Empty")</dd></div>
+                            <div><dt>Avg pressure</dt><dd>@Format(room.AveragePressureLbs)</dd></div>
+                            <div><dt>Pressure std dev</dt><dd>@Format(room.PressureStdDevLbs)</dd></div>
+                            <div><dt>MoM pressure</dt><dd>@FormatChange(room.MonthOverMonthPressureChangeLbs)</dd></div>
+                            <div><dt>Harvest starch</dt><dd>@Format(room.AverageStarch)</dd></div>
+                            <div><dt>Last sample</dt><dd>@(room.LastSampleDate?.LocalDateTime.ToString("g") ?? "No data")</dd></div>
+                            <div><dt>Fruit rows</dt><dd>@room.EnteredFruitCount</dd></div>
+                        </dl>
+                        <p class="room-lots">@room.LotSummary</p>
+                        @if (room.ReviewFlags.Count > 0)
+                        {
+                            <ul class="compact-list">
+                            @foreach (var flag in room.ReviewFlags.Take(3))
+                            {
+                                <li>@flag</li>
+                            }
+                            </ul>
+                        }
+                    </a>
+                }
+            </div>
+            }
+        </section>
+    }
+}
 
 <h2>Today's Receiving Samples</h2>
 <div class="table-wrap">
@@ -114,4 +162,7 @@
         : value == 0
             ? "unchanged"
             : $"{(value > 0 ? "+" : "")}{value:0.##} lbs";
+    private static bool IsSelected(string current, string value) => string.Equals(current, value, StringComparison.OrdinalIgnoreCase);
+    private static int FacilitySort(string facility) => facility switch { "MCD" => 0, "WP" => 1, "EBS" => 2, "DH" => 3, _ => 9 };
+    private static int LocationSort(string location) => location switch { "Evans" => 0, "Lamb" => 1, "BM" => 2, _ => 9 };
 }

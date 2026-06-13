@@ -449,6 +449,7 @@ static async Task EnsureCleanupColumnsAsync(IServiceProvider services)
                 ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "DeletedAt" timestamp with time zone NULL;
                 ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "DeletedByUserId" integer NULL;
                 ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "DeleteReason" character varying(1000) NULL;
+                ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "GrowerNumber" character varying(50) NULL;
                 ALTER TABLE "QcSamples" ADD COLUMN IF NOT EXISTS "IsTestData" boolean NOT NULL DEFAULT FALSE;
                 ALTER TABLE "QcSamples" ADD COLUMN IF NOT EXISTS "IsDeleted" boolean NOT NULL DEFAULT FALSE;
                 ALTER TABLE "QcSamples" ADD COLUMN IF NOT EXISTS "DeletedAt" timestamp with time zone NULL;
@@ -466,6 +467,7 @@ static async Task EnsureCleanupColumnsAsync(IServiceProvider services)
                 IF COL_LENGTH('Receipts', 'DeletedAt') IS NULL ALTER TABLE [Receipts] ADD [DeletedAt] datetimeoffset NULL;
                 IF COL_LENGTH('Receipts', 'DeletedByUserId') IS NULL ALTER TABLE [Receipts] ADD [DeletedByUserId] int NULL;
                 IF COL_LENGTH('Receipts', 'DeleteReason') IS NULL ALTER TABLE [Receipts] ADD [DeleteReason] nvarchar(1000) NULL;
+                IF COL_LENGTH('Receipts', 'GrowerNumber') IS NULL ALTER TABLE [Receipts] ADD [GrowerNumber] nvarchar(50) NULL;
                 IF COL_LENGTH('QcSamples', 'IsTestData') IS NULL ALTER TABLE [QcSamples] ADD [IsTestData] bit NOT NULL CONSTRAINT [DF_QcSamples_IsTestData] DEFAULT 0;
                 IF COL_LENGTH('QcSamples', 'IsDeleted') IS NULL ALTER TABLE [QcSamples] ADD [IsDeleted] bit NOT NULL CONSTRAINT [DF_QcSamples_IsDeleted] DEFAULT 0;
                 IF COL_LENGTH('QcSamples', 'DeletedAt') IS NULL ALTER TABLE [QcSamples] ADD [DeletedAt] datetimeoffset NULL;

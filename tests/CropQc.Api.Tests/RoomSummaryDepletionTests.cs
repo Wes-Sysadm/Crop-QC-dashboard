@@ -19,6 +19,9 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Room Summary", view);
         Assert.Contains("Model.RoomSummaries", view);
         Assert.Contains("/Dashboard/Rooms/@room.RoomId", view);
+        Assert.Contains("Rooms with fruit", view);
+        Assert.Contains("Empty rooms", view);
+        Assert.Contains("All rooms", view);
     }
 
     [Fact]
@@ -30,6 +33,58 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("!x.IsVoided", service);
         Assert.Contains("var currentBins = Math.Max(0, receipt.BinCount - depleted)", service);
         Assert.Contains("CurrentBins > 0", service);
+        Assert.Contains("GroupBy(x => x.RoomId)", service);
+        Assert.Contains("var roomLots = currentLotsByRoom.GetValueOrDefault(room.Id", service);
+    }
+
+    [Fact]
+    public void Dashboard_RoomSummaryHasFacilityAndEbsLocationFilters()
+    {
+        var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "HomeController.cs"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Index.cshtml"));
+
+        Assert.Contains("RoomSummaryFilterForm", model);
+        Assert.Contains("\"All\", \"MCD\", \"WP\", \"EBS\", \"DH\"", model);
+        Assert.Contains("\"All EBS\", \"Evans\", \"Lamb\", \"BM\"", model);
+        Assert.Contains("[FromQuery] RoomSummaryFilterForm", controller);
+        Assert.Contains("RoomStatus { get; set; } = \"WithFruit\"", model);
+        Assert.Contains("FacilityCode", service);
+        Assert.Contains("RoomLocationGroup", service);
+        Assert.Contains("Evans", view);
+        Assert.Contains("Lamb", view);
+        Assert.Contains("BM", view);
+    }
+
+    [Fact]
+    public void RoomInventory_SeparatesReceivingInventoryFromObservationalSamples()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var dashboard = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Index.cshtml"));
+        var docs = File.ReadAllText(FindRepositoryFile("docs", "architecture.md"));
+
+        Assert.Contains("Receipts/receiving add current inventory", dashboard);
+        Assert.Contains("Door and Lot samples are observational", dashboard);
+        Assert.Contains("Door and Lot samples do not create room inventory", docs);
+        Assert.Contains("var currentBins = Math.Max(0, receipt.BinCount - depleted)", service);
+        Assert.Contains("var lotSamples = samplesByReceipt.GetValueOrDefault(receipt.Id", service);
+    }
+
+    [Fact]
+    public void MasterData_GrowerLotsExposeCurrentRoomInventory()
+    {
+        var admin = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "AdminManagementService.cs"));
+        var masterData = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "MasterData", "Index.cshtml"));
+        var receiptModel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Data", "Entities", "QcModels.cs"));
+        var receiptView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Index.cshtml"));
+
+        Assert.Contains("\"grower-lots\" => await GrowerLotsPage", admin);
+        Assert.Contains("Grower lots / room inventory", admin);
+        Assert.Contains("Current Bins", admin);
+        Assert.Contains("public string? GrowerNumber", receiptModel);
+        Assert.Contains("name=\"GrowerNumber\"", receiptView);
+        Assert.Contains("/MasterData/grower-lots", masterData);
     }
 
     [Fact]

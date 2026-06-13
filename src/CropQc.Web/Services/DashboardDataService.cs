@@ -10,7 +10,7 @@ namespace CropQc.Web.Services;
 
 public interface IDashboardDataService
 {
-    Task<HomeDashboardViewModel> GetHomeDashboardAsync(CancellationToken cancellationToken);
+    Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken);
     Task<MasterDataPageViewModel> GetMasterDataPageAsync(string type, CancellationToken cancellationToken);
     Task<ReceiptListViewModel> SearchReceiptsAsync(ReceiptSearchForm search, CancellationToken cancellationToken);
     Task<string?> CreateReceiptAsync(CreateReceiptForm form, CancellationToken cancellationToken);
@@ -72,8 +72,9 @@ public sealed class DashboardDataService(
     private const string DataWarning = "Database is not available yet. The dashboard shell is running with empty data.";
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
 
-    public async Task<HomeDashboardViewModel> GetHomeDashboardAsync(CancellationToken cancellationToken)
+    public async Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
     {
+        var normalizedRoomFilter = NormalizeRoomSummaryFilter(roomSummaryFilter);
         try
         {
             var todaySamples = await QuerySamples().Where(x => x.SampleTakenAt.Date == DateTimeOffset.UtcNow.Date).ToListAsync(cancellationToken);
@@ -88,7 +89,8 @@ public sealed class DashboardDataService(
             {
                 Cards = cards,
                 TodaySamples = enriched,
-                RoomSummaries = await BuildRoomSummariesAsync(cancellationToken)
+                RoomSummaryFilter = normalizedRoomFilter,
+                RoomSummaries = await BuildRoomSummariesAsync(cancellationToken, roomSummaryFilter: normalizedRoomFilter)
             };
         }
         catch
@@ -97,6 +99,7 @@ public sealed class DashboardDataService(
             {
                 DataWarning = DataWarning,
                 Cards = BuildHomeCards(0, 0, 0, 0, 0),
+                RoomSummaryFilter = normalizedRoomFilter,
                 RoomSummaries = []
             };
         }
@@ -373,6 +376,7 @@ public sealed class DashboardDataService(
             WarehouseId = form.WarehouseId,
             RoomId = form.RoomId,
             FruitProfileId = form.FruitProfileId,
+            GrowerNumber = string.IsNullOrWhiteSpace(form.GrowerNumber) ? null : form.GrowerNumber.Trim(),
             GrowerName = form.GrowerName.Trim(),
             LotCode = form.LotCode.Trim(),
             BinCount = form.BinCount,
@@ -1283,33 +1287,48 @@ public sealed class DashboardDataService(
             _ => null
         };
 
-    private async Task<IReadOnlyList<RoomSummaryItemViewModel>> BuildRoomSummariesAsync(CancellationToken cancellationToken, int? roomId = null)
+    private async Task<IReadOnlyList<RoomSummaryItemViewModel>> BuildRoomSummariesAsync(CancellationToken cancellationToken, int? roomId = null, RoomSummaryFilterForm? roomSummaryFilter = null)
     {
+        var filter = NormalizeRoomSummaryFilter(roomSummaryFilter);
         var roomsQuery = dbContext.Rooms.AsNoTracking().Include(x => x.Warehouse).OrderBy(x => x.Warehouse.Code).ThenBy(x => x.Code);
         var rooms = await (roomId is null ? roomsQuery : roomsQuery.Where(x => x.Id == roomId)).ToListAsync(cancellationToken);
+        if (roomId is null)
+        {
+            rooms = rooms
+                .Where(room => RoomMatchesFacilityFilter(room, filter.Facility))
+                .Where(room => RoomMatchesEbsLocationFilter(room, filter.EbsLocation))
+                .ToList();
+        }
+
         var lots = roomId is null
             ? await BuildRoomLotSummariesAsync(null, cancellationToken)
             : await BuildRoomLotSummariesAsync(roomId.Value, cancellationToken);
-        var currentLotsByRoom = lots.Where(x => x.CurrentBins > 0).GroupBy(x => x.ReceiptId).ToDictionary(x => x.Key, x => x.First());
+        var currentLotsByRoom = lots
+            .Where(x => x.CurrentBins > 0)
+            .GroupBy(x => x.RoomId)
+            .ToDictionary(x => x.Key, x => x.ToList());
+        var currentReceiptIds = currentLotsByRoom.Values.SelectMany(x => x).Select(x => x.ReceiptId).Distinct().ToList();
         var samples = await QuerySamples()
-            .Where(x => currentLotsByRoom.Keys.Contains(x.ReceiptId))
+            .Where(x => currentReceiptIds.Contains(x.ReceiptId))
             .ToListAsync(cancellationToken);
         var samplesByRoom = samples.GroupBy(x => x.Receipt.RoomId).ToDictionary(x => x.Key, x => x.ToList());
 
-        return rooms.Select(room =>
+        var summaries = rooms.Select(room =>
         {
-            var roomLots = lots.Where(x => x.CurrentBins > 0 && currentLotsByRoom.ContainsKey(x.ReceiptId)).ToList();
-            roomLots = roomLots.Where(x => samplesByRoom.TryGetValue(room.Id, out _) || x.CurrentBins > 0).ToList();
+            var roomLots = currentLotsByRoom.GetValueOrDefault(room.Id, []);
             var roomSamples = samplesByRoom.GetValueOrDefault(room.Id, []);
             var pressures = PressureValues(roomSamples).ToList();
             var starch = StarchValues(roomSamples).ToList();
             var flags = BuildRoomReviewFlags(pressures, starch, roomSamples.SelectMany(x => x.FruitReadings).ToList(), MonthPressureChange(room.Id, currentMonth: true, roomSamples));
             var currentBins = roomLots.Sum(x => x.CurrentBins);
             var status = roomLots.Count == 0 ? "Empty" : flags.Count > 0 ? "Needs Review" : "Active";
+            var facility = FacilityCode(room.Warehouse.Code, room.Warehouse.Name);
             return new RoomSummaryItemViewModel
             {
                 RoomId = room.Id,
                 Warehouse = room.Warehouse.Code,
+                Facility = facility,
+                LocationGroup = RoomLocationGroup(room),
                 RoomCode = room.Code,
                 RoomName = room.Name,
                 Status = status,
@@ -1327,6 +1346,8 @@ public sealed class DashboardDataService(
                 ReviewFlags = flags
             };
         }).ToList();
+
+        return roomId is not null ? summaries : ApplyRoomStatusFilter(summaries, filter.RoomStatus);
     }
 
     private async Task<IReadOnlyList<RoomLotSummaryViewModel>> BuildRoomLotSummariesAsync(int? roomId, CancellationToken cancellationToken)
@@ -1334,6 +1355,7 @@ public sealed class DashboardDataService(
         var receiptsQuery = dbContext.Receipts.AsNoTracking()
             .Include(x => x.Warehouse)
             .Include(x => x.Room)
+                .ThenInclude(x => x.Warehouse)
             .Include(x => x.FruitProfile)
             .Where(x => !x.IsDeleted);
         if (roomId is not null)
@@ -1363,7 +1385,13 @@ public sealed class DashboardDataService(
             return new RoomLotSummaryViewModel
             {
                 ReceiptId = receipt.Id,
+                RoomId = receipt.RoomId,
+                Warehouse = receipt.Warehouse.Code,
+                Facility = FacilityCode(receipt.Warehouse.Code, receipt.Warehouse.Name),
+                LocationGroup = RoomLocationGroup(receipt.Room),
+                RoomCode = receipt.Room.Code,
                 DisplayReceiptId = receipt.CompuTechReceiptId,
+                GrowerNumber = receipt.GrowerNumber ?? "",
                 GrowerName = receipt.GrowerName,
                 LotCode = receipt.LotCode,
                 VarietyCode = receipt.FruitProfile.VarietyCode,
@@ -1411,6 +1439,69 @@ public sealed class DashboardDataService(
                 VoidReason = x.VoidReason
             })
             .ToListAsync(cancellationToken);
+
+    private static RoomSummaryFilterForm NormalizeRoomSummaryFilter(RoomSummaryFilterForm? filter)
+    {
+        var facility = string.IsNullOrWhiteSpace(filter?.Facility) ? "All" : filter.Facility.Trim().ToUpperInvariant();
+        if (facility is not ("All" or "MCD" or "WP" or "EBS" or "DH"))
+        {
+            facility = "All";
+        }
+
+        var ebsLocation = string.IsNullOrWhiteSpace(filter?.EbsLocation) ? "All EBS" : filter.EbsLocation.Trim();
+        if (!new[] { "All EBS", "Evans", "Lamb", "BM" }.Contains(ebsLocation, StringComparer.OrdinalIgnoreCase))
+        {
+            ebsLocation = "All EBS";
+        }
+
+        var roomStatus = string.IsNullOrWhiteSpace(filter?.RoomStatus) ? "WithFruit" : filter.RoomStatus.Trim();
+        if (!new[] { "WithFruit", "Empty", "All" }.Contains(roomStatus, StringComparer.OrdinalIgnoreCase))
+        {
+            roomStatus = "WithFruit";
+        }
+
+        return new RoomSummaryFilterForm
+        {
+            Facility = facility,
+            EbsLocation = ebsLocation.Equals("All EBS", StringComparison.OrdinalIgnoreCase) ? "All EBS" : ebsLocation,
+            RoomStatus = roomStatus.Equals("Empty", StringComparison.OrdinalIgnoreCase) ? "Empty" : roomStatus.Equals("All", StringComparison.OrdinalIgnoreCase) ? "All" : "WithFruit"
+        };
+    }
+
+    private static IReadOnlyList<RoomSummaryItemViewModel> ApplyRoomStatusFilter(IReadOnlyList<RoomSummaryItemViewModel> summaries, string roomStatus) =>
+        roomStatus switch
+        {
+            "Empty" => summaries.Where(x => x.CurrentLotsCount == 0 && (x.CurrentBinsCount ?? 0) == 0).ToList(),
+            "All" => summaries,
+            _ => summaries.Where(x => x.CurrentLotsCount > 0 || (x.CurrentBinsCount ?? 0) > 0).ToList()
+        };
+
+    private static bool RoomMatchesFacilityFilter(Room room, string facility) =>
+        facility.Equals("All", StringComparison.OrdinalIgnoreCase) || FacilityCode(room.Warehouse.Code, room.Warehouse.Name).Equals(facility, StringComparison.OrdinalIgnoreCase);
+
+    private static bool RoomMatchesEbsLocationFilter(Room room, string ebsLocation) =>
+        !FacilityCode(room.Warehouse.Code, room.Warehouse.Name).Equals("EBS", StringComparison.OrdinalIgnoreCase)
+        || ebsLocation.Equals("All EBS", StringComparison.OrdinalIgnoreCase)
+        || RoomLocationGroup(room).Equals(ebsLocation, StringComparison.OrdinalIgnoreCase);
+
+    private static string FacilityCode(string warehouseCode, string warehouseName)
+    {
+        var combined = $"{warehouseCode} {warehouseName}".Trim();
+        if (combined.Contains("McDougall", StringComparison.OrdinalIgnoreCase) || combined.Contains("MCD", StringComparison.OrdinalIgnoreCase)) return "MCD";
+        if (combined.Contains("WP", StringComparison.OrdinalIgnoreCase)) return "WP";
+        if (combined.Contains("EBS", StringComparison.OrdinalIgnoreCase) || combined.Contains("Earl Brown", StringComparison.OrdinalIgnoreCase)) return "EBS";
+        if (combined.Contains("DH", StringComparison.OrdinalIgnoreCase)) return "DH";
+        return string.IsNullOrWhiteSpace(warehouseCode) ? "Other" : warehouseCode.ToUpperInvariant();
+    }
+
+    private static string RoomLocationGroup(Room room)
+    {
+        var combined = $"{room.Code} {room.Name}";
+        if (combined.Contains("Evans", StringComparison.OrdinalIgnoreCase)) return "Evans";
+        if (combined.Contains("Lamb", StringComparison.OrdinalIgnoreCase)) return "Lamb";
+        if (combined.Contains("BM", StringComparison.OrdinalIgnoreCase) || combined.Contains("B M", StringComparison.OrdinalIgnoreCase)) return "BM";
+        return FacilityCode(room.Warehouse.Code, room.Warehouse.Name).Equals("EBS", StringComparison.OrdinalIgnoreCase) ? "Other EBS" : "";
+    }
 
     private decimal? MonthPressureChange(int roomId, bool currentMonth, IReadOnlyList<QcSample> alreadyLoadedSamples)
     {
@@ -1880,6 +1971,7 @@ public sealed class DashboardDataService(
         receipt.Warehouse.Code,
         receipt.RoomId,
         receipt.Room.Code,
+        receipt.GrowerNumber ?? "",
         receipt.GrowerName,
         receipt.LotCode,
         receipt.FruitProfile.VarietyCode,

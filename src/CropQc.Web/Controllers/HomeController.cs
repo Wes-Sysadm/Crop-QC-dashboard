@@ -7,8 +7,8 @@ namespace CropQc.Web.Controllers;
 
 public sealed class HomeController(IDashboardDataService dataService) : Controller
 {
-    public async Task<IActionResult> Index(CancellationToken cancellationToken) =>
-        View(await dataService.GetHomeDashboardAsync(cancellationToken));
+    public async Task<IActionResult> Index([FromQuery] RoomSummaryFilterForm roomSummaryFilter, CancellationToken cancellationToken) =>
+        View(await dataService.GetHomeDashboardAsync(roomSummaryFilter, cancellationToken));
 
     [HttpGet("/Dashboard/Rooms/{roomId:int}")]
     public async Task<IActionResult> Room(int roomId, CancellationToken cancellationToken) =>

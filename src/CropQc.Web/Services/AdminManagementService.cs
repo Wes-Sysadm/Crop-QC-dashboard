@@ -46,6 +46,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
             "sample-types" => await SampleTypesPage(canEdit, cancellationToken),
             "starch-scale-values" => await StarchPage(canEdit, cancellationToken),
             "size-thresholds" => await SizeThresholdsPage(canEdit, cancellationToken),
+            "grower-lots" => await GrowerLotsPage(cancellationToken),
             _ => new("Master data", null, ["Page"], MasterDataLinks().Select(x => (IReadOnlyList<string>)[x.Label]).ToList(), "index", canEdit)
         };
 
@@ -198,6 +199,54 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
     {
         var rows = await dbContext.FruitSizeConversionThresholds.AsNoTracking().OrderBy(x => x.FruitType).ThenByDescending(x => x.MinimumWeightGrams).Select(x => new MasterDataEditItem(x.Id, new[] { x.FruitType, x.SizeCategory.ToString(), x.MinimumWeightGrams.ToString("0.0000"), YesNo(x.IsActive) }, x.IsActive)).ToListAsync(ct);
         return await PageWithCommodityOptions("Size thresholds", "size-thresholds", ["Commodity", "Size", "Minimum Weight (g)", "Active"], rows, canEdit, ct);
+    }
+
+    private async Task<MasterDataPageViewModel> GrowerLotsPage(CancellationToken ct)
+    {
+        var receipts = await dbContext.Receipts.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .Include(x => x.Room)
+            .Include(x => x.FruitProfile)
+            .Where(x => !x.IsDeleted)
+            .OrderBy(x => x.Warehouse.Code)
+            .ThenBy(x => x.Room.Code)
+            .ThenBy(x => x.GrowerNumber)
+            .ThenBy(x => x.GrowerName)
+            .ThenBy(x => x.LotCode)
+            .ToListAsync(ct);
+        var receiptIds = receipts.Select(x => x.Id).ToList();
+        var depletedByReceipt = await dbContext.RoomDepletions.AsNoTracking()
+            .Where(x => receiptIds.Contains(x.ReceiptId) && !x.IsVoided)
+            .GroupBy(x => x.ReceiptId)
+            .Select(x => new { ReceiptId = x.Key, Bins = x.Sum(y => y.BinCountDepleted) })
+            .ToDictionaryAsync(x => x.ReceiptId, x => x.Bins, ct);
+        var rows = receipts.Select(receipt =>
+        {
+            var depleted = depletedByReceipt.GetValueOrDefault(receipt.Id);
+            var currentBins = Math.Max(0, receipt.BinCount - depleted);
+            return new MasterDataEditItem((int)Math.Min(receipt.Id, int.MaxValue), new[]
+            {
+                receipt.GrowerNumber ?? "",
+                receipt.GrowerName,
+                receipt.LotCode,
+                receipt.FruitProfile.VarietyCode,
+                receipt.CropYear.ToString(),
+                FacilityCode(receipt.Warehouse.Code, receipt.Warehouse.Name),
+                receipt.Room.Code,
+                receipt.BinCount.ToString(),
+                currentBins.ToString(),
+                currentBins > 0 ? "Current" : depleted > 0 ? "Depleted" : "No bins"
+            }, currentBins > 0);
+        }).ToList();
+
+        return new MasterDataPageViewModel(
+            "Grower Lots",
+            "Grower lots are managed through receipt inventory. Add or correct a grower number, lot, room, or bin count on the receipt so production history stays tied to the original receiving event.",
+            ["Grower #", "Grower", "Lot", "Variety", "Crop Year", "Facility", "Room", "Original Bins", "Current Bins", "Status"],
+            rows.Select(x => x.Cells).ToList(),
+            "grower-lots",
+            false,
+            rows);
     }
 
     private async Task<string?> SaveWarehouse(MasterDataEditForm form, string by, CancellationToken ct)
@@ -424,6 +473,15 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
 
     private static bool Blank(string value) => string.IsNullOrWhiteSpace(value);
     private static string YesNo(bool value) => value ? "Yes" : "No";
+    private static string FacilityCode(string warehouseCode, string warehouseName)
+    {
+        var combined = $"{warehouseCode} {warehouseName}".Trim();
+        if (combined.Contains("McDougall", StringComparison.OrdinalIgnoreCase) || combined.Contains("MCD", StringComparison.OrdinalIgnoreCase)) return "MCD";
+        if (combined.Contains("WP", StringComparison.OrdinalIgnoreCase)) return "WP";
+        if (combined.Contains("EBS", StringComparison.OrdinalIgnoreCase) || combined.Contains("Earl Brown", StringComparison.OrdinalIgnoreCase)) return "EBS";
+        if (combined.Contains("DH", StringComparison.OrdinalIgnoreCase)) return "DH";
+        return string.IsNullOrWhiteSpace(warehouseCode) ? "Other" : warehouseCode.ToUpperInvariant();
+    }
     private static IReadOnlyList<(string Label, string Href)> MasterDataLinks() =>
     [
         ("Warehouses", "/MasterData/warehouses"),
@@ -432,6 +490,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         ("Grades", "/MasterData/grades"),
         ("Defects", "/MasterData/defects"),
         ("Sample types", "/MasterData/sample-types"),
+        ("Grower lots / room inventory", "/MasterData/grower-lots"),
         ("Starch scale values", "/MasterData/starch-scale-values"),
         ("Size thresholds", "/MasterData/size-thresholds")
     ];
