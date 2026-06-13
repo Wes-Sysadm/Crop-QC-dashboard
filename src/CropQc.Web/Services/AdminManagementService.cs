@@ -57,7 +57,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         return type.ToLowerInvariant() switch
         {
             "warehouses" => await dbContext.Warehouses.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.Code, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
-            "rooms" => await dbContext.Rooms.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, WarehouseId = x.WarehouseId, Code = x.Code, Name = x.Name, CapacityBins = x.CapacityBins, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
+            "rooms" => await dbContext.Rooms.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, WarehouseId = x.WarehouseId, Code = x.Code, Name = x.Name, CompuTechCode = x.CompuTechRoomCode, CapacityBins = x.CapacityBins, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "fruit-profiles" => await WithCommodityOptions(await dbContext.FruitProfiles.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.VarietyCode, Name = x.Name, Description = x.Description, FruitType = x.FruitType, ProductionType = x.ProductionType, IsOrganic = x.IsOrganic, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken),
             "grades" => await dbContext.Grades.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.Code, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "defects" => await dbContext.DefectTypes.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
@@ -527,7 +527,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         if (entity is null) return "Room not found.";
         var action = form.Id is null ? "create" : "update";
         var before = form.Id is null ? null : JsonSerializer.Serialize(entity);
-        entity.WarehouseId = form.WarehouseId.Value; entity.Code = form.Code.Trim(); entity.Name = form.Name.Trim(); entity.CapacityBins = form.CapacityBins; entity.IsActive = form.IsActive;
+        entity.WarehouseId = form.WarehouseId.Value; entity.Code = form.Code.Trim(); entity.Name = form.Name.Trim(); entity.CompuTechRoomCode = Blank(form.CompuTechCode) ? null : form.CompuTechCode!.Trim(); entity.CapacityBins = form.CapacityBins; entity.IsActive = form.IsActive;
         if (form.Id is null) dbContext.Rooms.Add(entity);
         await dbContext.SaveChangesAsync(ct);
         await AddAuditAsync(action, "rooms", entity.Id.ToString(), by, before, JsonSerializer.Serialize(entity), ct);
@@ -725,7 +725,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
     private static string NormalizeProductionType(string value) =>
         string.Equals(value.Trim(), "Organic", StringComparison.OrdinalIgnoreCase) ? "Organic" : "Conventional";
 
-    private static bool Blank(string value) => string.IsNullOrWhiteSpace(value);
+    private static bool Blank(string? value) => string.IsNullOrWhiteSpace(value);
     private static string YesNo(bool value) => value ? "Yes" : "No";
     private static IReadOnlyList<(string Label, string Href)> MasterDataLinks() =>
     [

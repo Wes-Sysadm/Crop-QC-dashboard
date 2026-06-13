@@ -188,6 +188,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         modelBuilder.Entity<Receipt>(entity =>
         {
             entity.Property(x => x.CompuTechReceiptId).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.ReceiptType).HasMaxLength(50).HasDefaultValue("Truck receipt").IsRequired();
             entity.Property(x => x.GrowerNumber).HasMaxLength(50);
             entity.Property(x => x.PoolStart).HasMaxLength(20);
             entity.Property(x => x.GrowerName).HasMaxLength(200).IsRequired();

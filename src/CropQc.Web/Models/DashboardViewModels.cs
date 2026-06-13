@@ -14,6 +14,7 @@ public sealed class HomeDashboardViewModel
     public RoomSummaryFilterForm RoomSummaryFilter { get; set; } = new();
     public IReadOnlyList<string> FacilityOptions { get; set; } = ["All", "MCD", "WP", "EBS", "DH"];
     public IReadOnlyList<string> EbsLocationOptions { get; set; } = ["All EBS", "Evans", "Lamb", "BM"];
+    public IReadOnlyList<StorageFacilitySummaryViewModel> StorageByFacility { get; set; } = [];
 }
 
 public sealed class RoomSummaryFilterForm
@@ -362,6 +363,7 @@ public sealed class MasterDataEditForm
     public string Code { get; set; } = "";
     public string Name { get; set; } = "";
     public string? Description { get; set; }
+    public string? CompuTechCode { get; set; }
     public int CapacityBins { get; set; }
     public string FruitType { get; set; } = "Apple";
     public string ProductionType { get; set; } = "Conventional";
@@ -467,6 +469,7 @@ public sealed record ReceiptListItemViewModel(
     int CropYear,
     DateTimeOffset ReceivedAt,
     string CompuTechReceiptId,
+    string ReceiptType,
     string Warehouse,
     int RoomId,
     string Room,
@@ -486,6 +489,7 @@ public sealed class CreateReceiptForm
     public DateTimeOffset ReceivedAt { get; set; } = DateTimeOffset.Now;
     public bool ConfirmCropYear { get; set; }
     public string CompuTechReceiptId { get; set; } = "";
+    public string ReceiptType { get; set; } = "Truck receipt";
     public int WarehouseId { get; set; }
     public int RoomId { get; set; }
     public int FruitProfileId { get; set; }
@@ -495,6 +499,89 @@ public sealed class CreateReceiptForm
     public string GrowerName { get; set; } = "";
     public string LotCode { get; set; } = "";
     public int BinCount { get; set; }
+}
+
+public sealed class StorageFacilitySummaryViewModel
+{
+    public string Facility { get; set; } = "";
+    public int CurrentBins { get; set; }
+    public int CurrentGrowerLots { get; set; }
+    public int CurrentRooms { get; set; }
+}
+
+public sealed class CurrentGrowerLotsPageViewModel
+{
+    public string? DataWarning { get; set; }
+    public CurrentGrowerLotsFilterForm Filter { get; set; } = new();
+    public IReadOnlyList<CurrentGrowerLotViewModel> Lots { get; set; } = [];
+    public IReadOnlyList<int> CropYears { get; set; } = [];
+    public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
+    public IReadOnlyList<Room> Rooms { get; set; } = [];
+    public IReadOnlyList<string> Growers { get; set; } = [];
+    public IReadOnlyList<string> Varieties { get; set; } = [];
+}
+
+public sealed class CurrentGrowerLotsFilterForm
+{
+    public int? CropYear { get; set; }
+    public int? WarehouseId { get; set; }
+    public int? RoomId { get; set; }
+    public string? Grower { get; set; }
+    public string? Variety { get; set; }
+    public string? Search { get; set; }
+}
+
+public sealed class CurrentGrowerLotViewModel
+{
+    public string Grower { get; set; } = "";
+    public string Lot { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public string Warehouse { get; set; } = "";
+    public string Room { get; set; } = "";
+    public int CurrentBins { get; set; }
+    public DateTimeOffset? FirstReceivedAt { get; set; }
+    public DateTimeOffset? LastQcSampleAt { get; set; }
+    public decimal? LatestAveragePressure { get; set; }
+    public decimal? LatestStarch { get; set; }
+}
+
+public sealed class CropYearReviewPageViewModel
+{
+    public string? DataWarning { get; set; }
+    public CropYearReviewFilterForm Filter { get; set; } = new();
+    public IReadOnlyList<CropYearReviewRowViewModel> Rows { get; set; } = [];
+    public IReadOnlyList<int> CropYears { get; set; } = [];
+    public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
+    public IReadOnlyList<string> Growers { get; set; } = [];
+    public IReadOnlyList<string> Varieties { get; set; } = [];
+}
+
+public sealed class CropYearReviewFilterForm
+{
+    public int? CropYear { get; set; }
+    public int? WarehouseId { get; set; }
+    public string? Grower { get; set; }
+    public string? Variety { get; set; }
+}
+
+public sealed class CropYearReviewRowViewModel
+{
+    public DateTimeOffset SampleDate { get; set; }
+    public string Grower { get; set; } = "";
+    public string Lot { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public string Warehouse { get; set; } = "";
+    public string Room { get; set; } = "";
+    public string SampleType { get; set; } = "";
+    public decimal? AveragePressure { get; set; }
+    public decimal? PressureStdDev { get; set; }
+    public decimal? StarchAverage { get; set; }
+    public int EnteredFruitCount { get; set; }
+    public decimal? EarliestPressure { get; set; }
+    public decimal? LatestPressure { get; set; }
+    public decimal? PressureChange { get; set; }
+    public int? DaysBetweenSamples { get; set; }
+    public decimal? PressureLossPerWeek { get; set; }
 }
 
 public sealed class ReceiptDetailViewModel

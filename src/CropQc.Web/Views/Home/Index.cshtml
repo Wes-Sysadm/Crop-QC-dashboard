@@ -47,8 +47,22 @@
         </select>
     </label>
     <button type="submit">Apply</button>
-    <a class="button secondary-button" href="/MasterData/grower-lots">View Grower Lots</a>
+    <a class="button secondary-button" href="/GrowerLots/Current">View grower lots</a>
 </form>
+
+@if (Model.StorageByFacility.Count > 0)
+{
+    <section class="metric-grid storage-metrics" aria-label="Current storage by facility">
+    @foreach (var item in Model.StorageByFacility)
+    {
+        <div>
+            <strong>@item.CurrentBins</strong>
+            <span>@item.Facility bins</span>
+            <p class="muted">@item.CurrentGrowerLots grower lots in @item.CurrentRooms rooms</p>
+        </div>
+    }
+    </section>
+}
 
 @if (Model.RoomSummaries.Count == 0)
 {

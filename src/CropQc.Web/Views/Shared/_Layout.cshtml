@@ -30,10 +30,16 @@
                 var cleanupAllowedEmails = (Configuration["DataCleanup:AllowedEmails"] ?? "wes@fruitandland.com")
                     .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
                 var canAccessDataCleanup = isAdmin && cleanupAllowedEmails.Contains(currentEmail, StringComparer.OrdinalIgnoreCase);
+                var canAccessCropYearReview = string.Equals(currentEmail, "wes@fruitandland.com", StringComparison.OrdinalIgnoreCase);
                 var showAdminMenu = isManagerOrAdmin || isAdmin;
                 <a href="/">Dashboard</a>
                 <a href="/DailyQc">Daily QC</a>
                 <a href="/Receipts">Receipts</a>
+                <a href="/GrowerLots/Current">Grower Lots</a>
+                @if (canAccessCropYearReview)
+                {
+                    <a href="/CropYearReview">Crop Year Review</a>
+                }
                 @if (showAdminMenu)
                 {
                     <details class="nav-dropdown">

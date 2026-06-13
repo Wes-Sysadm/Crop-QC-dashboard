@@ -78,8 +78,6 @@ public sealed class RoomSummaryDepletionTests
         var admin = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "AdminManagementService.cs"));
         var masterData = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "MasterData", "Index.cshtml"));
         var fields = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "MasterData", "_MasterDataFields.cshtml"));
-        var receiptModel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Data", "Entities", "QcModels.cs"));
-        var receiptView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Index.cshtml"));
 
         Assert.Contains("\"grower-lots\" => await GrowerLotsPage", admin);
         Assert.Contains("Grower Lots", admin);
@@ -88,16 +86,37 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("INACTIVE", admin);
         Assert.Contains("Pool Start", fields);
         Assert.Contains("Lot #", fields);
+        Assert.Contains("/MasterData/grower-lots", masterData);
+    }
+
+    [Fact]
+    public void Receipts_RemovePoolStartAndReceiptLotAndUseEditableReceiptType()
+    {
+        var receiptModel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Data", "Entities", "QcModels.cs"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var receiptView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Index.cshtml"));
+        var detailsView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Details.cshtml"));
+
+        Assert.Contains("public string ReceiptType", receiptModel);
+        Assert.Contains("ReceiptTypeOptions = [\"Truck receipt\", \"Door sample\", \"Lot sample\"]", service);
+        Assert.Contains("name=\"ReceiptType\"", receiptView);
+        Assert.Contains("Truck receipt", receiptView);
+        Assert.Contains("Door sample", receiptView);
+        Assert.Contains("Lot sample", receiptView);
+        Assert.Contains("IsInventoryReceiptType(receiptType) ? form.BinCount : 0", service);
+        Assert.Contains("PoolStart = null", service);
         Assert.Contains("public string? GrowerNumber", receiptModel);
         Assert.Contains("public string? PoolStart", receiptModel);
         Assert.Contains("public int? GrowerLotId", receiptModel);
         Assert.Contains("name=\"GrowerNumber\"", receiptView);
-        Assert.Contains("name=\"PoolStart\"", receiptView);
         Assert.Contains("@lot.Grower - @lot.LotNumber", receiptView);
-        Assert.Contains("data-pool", receiptView);
         Assert.Contains("growerLotOptions", receiptView);
         Assert.Contains("Lot # not found in Master Data", receiptView);
-        Assert.Contains("/MasterData/grower-lots", masterData);
+        Assert.DoesNotContain("name=\"PoolStart\"", receiptView);
+        Assert.DoesNotContain("name=\"LotCode\"", receiptView);
+        Assert.DoesNotContain("Receipt Lot", receiptView);
+        Assert.DoesNotContain("Pool Start", receiptView);
+        Assert.DoesNotContain("Pool Start", detailsView);
     }
 
     [Fact]
@@ -225,6 +244,37 @@ public sealed class RoomSummaryDepletionTests
     }
 
     [Fact]
+    public void RoomCompuTechCode_IsEditableAndUsedForImportMatching()
+    {
+        var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
+        var admin = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "AdminManagementService.cs"));
+        var fields = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "MasterData", "_MasterDataFields.cshtml"));
+        var import = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "RoomInventoryImportService.cs"));
+
+        Assert.Contains("public string? CompuTechCode", model);
+        Assert.Contains("CompuTechCode = x.CompuTechRoomCode", admin);
+        Assert.Contains("entity.CompuTechRoomCode = Blank(form.CompuTechCode)", admin);
+        Assert.Contains("name=\"CompuTechCode\"", fields);
+        Assert.Contains("x.CompuTechRoomCode", import);
+        Assert.Contains("NormalizeCode(x.CompuTechRoomCode)", import);
+    }
+
+    [Fact]
+    public void CurrentStorageCounts_DeduplicateInventoryLots()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var import = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "RoomInventoryImportService.cs"));
+
+        Assert.Contains("CurrentLotKey", service);
+        Assert.Contains("currentLots.Select(CurrentLotKey).Distinct", service);
+        Assert.Contains("BuildAdjustmentOnlyLotSummariesAsync", service);
+        Assert.Contains(".GroupBy(x => $\"{x.RoomId}|{x.LotNumber", service);
+        Assert.DoesNotContain("SourceRoomCode ?? \"\").Trim().ToUpperInvariant()}|{x.LotNumber", service);
+        Assert.Contains("StartingInventoryKey(adjustment.RoomId, adjustment.LotNumber", import);
+        Assert.DoesNotContain("StartingInventoryKey(adjustment.RoomId, adjustment.LotNumber, adjustment.VarietyCode ?? \"\", adjustment.Source ?? adjustment.Reason ?? \"\", adjustment.SourceRoomCode", import);
+    }
+
+    [Fact]
     public void DashboardRoomSummary_IncludesAdjustmentOnlyStartingInventory()
     {
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
@@ -239,6 +289,58 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Starting inventory; no receipt history yet.", partial);
         Assert.Contains("/Admin/RoomInventory", layout);
         Assert.Contains("Current Lots", layout);
+    }
+
+    [Fact]
+    public void DashboardAndGrowerLots_ShowCurrentStorage()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
+        var dashboard = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Index.cshtml"));
+        var growerLots = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "GrowerLots.cshtml"));
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "HomeController.cs"));
+
+        Assert.Contains("Total Bins In Storage", service);
+        Assert.Contains("Grower Lots In Storage", service);
+        Assert.Contains("StorageByFacility", model);
+        Assert.Contains("CurrentGrowerLotsPageViewModel", model);
+        Assert.Contains("/GrowerLots/Current", dashboard);
+        Assert.Contains("Bins Currently In Storage", growerLots);
+        Assert.Contains("Last QC Sample", growerLots);
+        Assert.Contains("Latest Avg Pressure", growerLots);
+        Assert.Contains("GetCurrentGrowerLotsAsync", controller);
+    }
+
+    [Fact]
+    public void CropYearReview_IsWesOnlyAndShowsPressureLoss()
+    {
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "HomeController.cs"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "CropYearReview.cshtml"));
+        var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+
+        Assert.Contains("[HttpGet(\"/CropYearReview\")]", controller);
+        Assert.Contains("wes@fruitandland.com", controller);
+        Assert.Contains("return Forbid()", controller);
+        Assert.Contains("GetCropYearReviewAsync", service);
+        Assert.Contains("PressureLossPerWeek", model);
+        Assert.Contains("Pressure Loss/Week", view);
+        Assert.Contains("Days Between Samples", view);
+        Assert.Contains("canAccessCropYearReview", layout);
+    }
+
+    [Fact]
+    public void AdminUsers_RemoveDomainAndKeepActionsResponsive()
+    {
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Admin", "Users.cshtml"));
+        var css = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css"));
+
+        Assert.DoesNotContain("<th>Domain</th>", view);
+        Assert.DoesNotContain("@user.Domain", view);
+        Assert.Contains("responsive-admin-table", view);
+        Assert.Contains("responsive-admin-table", css);
+        Assert.Contains("display: block; width: 100% !important", css);
     }
 
     [Fact]
