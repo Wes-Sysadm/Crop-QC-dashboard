@@ -166,6 +166,69 @@ public sealed class RoomSummaryDepletionTests
     }
 
     [Fact]
+    public void EbsStartingInventoryImport_IncludesCompuTechSeedFileAndExpectedRoomTotals()
+    {
+        var csvPath = FindRepositoryFile("src", "CropQc.Web", "Data", "Seed", "ebs-starting-room-inventory.csv");
+        var csv = File.ReadAllText(csvPath);
+        var rows = File.ReadLines(csvPath).Skip(1)
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Select(line => line.Split(','))
+            .ToList();
+
+        Assert.Equal(23, rows.Count);
+        Assert.Equal(132, SumBins(rows, "evanca05"));
+        Assert.Equal(1469, SumBins(rows, "evanca12"));
+        Assert.Equal(362, SumBins(rows, "Blueca04"));
+        Assert.Equal(1178, SumBins(rows, "blueca01"));
+        Assert.Equal(1462, SumBins(rows, "Evanca01"));
+        Assert.Equal(1585, SumBins(rows, "Lambca17"));
+        Assert.Contains("Compu-Tech Starting Inventory", csv);
+    }
+
+    [Fact]
+    public void EbsStartingInventoryImport_MapsShortCodesAndAuditsBinChanges()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "RoomInventoryImportService.cs"));
+        var entity = File.ReadAllText(FindRepositoryFile("src", "CropQc.Data", "Entities", "QcModels.cs"));
+        var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "RoomInventoryController.cs"));
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "RoomInventory", "Index.cshtml"));
+
+        Assert.Contains("MapCompuTechRoomCode", service);
+        Assert.Contains("\"EVANCA\", \"EVANS-\"", service);
+        Assert.Contains("\"BLUECA\", \"BM-\"", service);
+        Assert.Contains("\"LAMBCA\", \"LAMB-\"", service);
+        Assert.Contains("DetermineEbsSubLocation", service);
+        Assert.Contains("Grower not found in Master Data", service);
+        Assert.Contains("Duplicate inventory row", service);
+        Assert.Contains("StartingInventoryImport", service);
+        Assert.Contains("BinCountChange", service);
+        Assert.Contains("public string? Source", entity);
+        Assert.Contains("public string? SourceRoomCode", entity);
+        Assert.Contains("ADD COLUMN IF NOT EXISTS \"SourceRoomCode\"", program);
+        Assert.Contains("[Authorize(Policy = \"RequireManagerOrAdmin\")]", controller);
+        Assert.Contains("Import EBS Starting Inventory", view);
+        Assert.Contains("Import Preview", view);
+    }
+
+    [Fact]
+    public void DashboardRoomSummary_IncludesAdjustmentOnlyStartingInventory()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
+        var partial = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_RoomLotCard.cshtml"));
+        var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+
+        Assert.Contains("BuildAdjustmentOnlyLotSummariesAsync", service);
+        Assert.Contains("ReceiptId == null", service);
+        Assert.Contains("RoomInventoryImportService.StartingInventoryAdjustmentType", service);
+        Assert.Contains("InventoryAdjustmentId", model);
+        Assert.Contains("Starting inventory; no receipt history yet.", partial);
+        Assert.Contains("/Admin/RoomInventory", layout);
+        Assert.Contains("Current Lots", layout);
+    }
+
+    [Fact]
     public void RoomViews_UseResponsiveCardsAndVisibleActions()
     {
         var home = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Index.cshtml"));
@@ -189,6 +252,9 @@ public sealed class RoomSummaryDepletionTests
         var attributes = method!.GetCustomAttributes<AuthorizeAttribute>().ToList();
         Assert.Contains(attributes, x => x.Policy == policy);
     }
+
+    private static int SumBins(IEnumerable<string[]> rows, string roomCode) =>
+        rows.Where(x => x.Length >= 6 && x[2].Equals(roomCode, StringComparison.OrdinalIgnoreCase)).Sum(x => int.Parse(x[5]));
 
     private static string FindRepositoryFile(params string[] pathParts)
     {

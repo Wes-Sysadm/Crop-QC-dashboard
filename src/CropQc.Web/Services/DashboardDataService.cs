@@ -151,7 +151,10 @@ public sealed class DashboardDataService(
                 DepletedLots = depletedLots,
                 Depletions = depletions,
                 InventoryAdjustments = inventoryAdjustments,
-                DepletionReceiptOptions = activeLots.Select(x => new RoomReceiptOptionViewModel(x.ReceiptId, $"{x.DisplayReceiptId} - {x.GrowerName} {x.LotCode} {x.VarietyCode} ({x.CurrentBins} bins current)", x.CurrentBins)).ToList(),
+                DepletionReceiptOptions = activeLots
+                    .Where(x => x.ReceiptId is not null)
+                    .Select(x => new RoomReceiptOptionViewModel(x.ReceiptId!.Value, $"{x.DisplayReceiptId} - {x.GrowerName} {x.LotCode} {x.VarietyCode} ({x.CurrentBins} bins current)", x.CurrentBins))
+                    .ToList(),
                 DepletionForm = new RoomDepletionForm { RoomId = roomId, DepletedAt = DateTimeOffset.Now },
                 TrueUpForm = new RoomInventoryTrueUpForm { RoomId = roomId, AdjustmentAt = DateTimeOffset.Now },
                 CanManageDepletions = canManage
@@ -1423,7 +1426,7 @@ public sealed class DashboardDataService(
             .Where(x => x.CurrentBins > 0)
             .GroupBy(x => x.RoomId)
             .ToDictionary(x => x.Key, x => x.ToList());
-        var currentReceiptIds = currentLotsByRoom.Values.SelectMany(x => x).Select(x => x.ReceiptId).Distinct().ToList();
+        var currentReceiptIds = currentLotsByRoom.Values.SelectMany(x => x).Where(x => x.ReceiptId is not null).Select(x => x.ReceiptId!.Value).Distinct().ToList();
         var samples = await QuerySamples()
             .Where(x => currentReceiptIds.Contains(x.ReceiptId))
             .ToListAsync(cancellationToken);
@@ -1440,13 +1443,14 @@ public sealed class DashboardDataService(
             var status = roomLots.Count == 0 ? "Empty" : flags.Count > 0 ? "Needs Review" : "Active";
             var facility = FacilityCode(room.Warehouse.Code, room.Warehouse.Name);
             var weakestLot = FindWeakestLot(roomLots);
+            var sourceRoomCodes = roomLots.Select(x => x.RoomCode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             return new RoomSummaryItemViewModel
             {
                 RoomId = room.Id,
                 Warehouse = room.Warehouse.Code,
                 Facility = facility,
                 LocationGroup = RoomLocationGroup(room),
-                RoomCode = room.Code,
+                RoomCode = sourceRoomCodes.Count == 1 ? sourceRoomCodes[0] : room.Code,
                 RoomName = room.Name,
                 Status = status,
                 CurrentLotsCount = roomLots.Count,
@@ -1501,7 +1505,7 @@ public sealed class DashboardDataService(
             .ToListAsync(cancellationToken);
         var samplesByReceipt = samples.GroupBy(x => x.ReceiptId).ToDictionary(x => x.Key, x => x.ToList());
 
-        var lotSummaries = receipts.Select(receipt =>
+        var receiptLotSummaries = receipts.Select(receipt =>
         {
             var depleted = depletionByReceipt.GetValueOrDefault(receipt.Id);
             var latestAdjustment = latestAdjustmentByReceipt.GetValueOrDefault(receipt.Id);
@@ -1545,16 +1549,69 @@ public sealed class DashboardDataService(
             };
         }).ToList();
 
+        var startingInventoryLotSummaries = await BuildAdjustmentOnlyLotSummariesAsync(roomId, cancellationToken);
+        var lotSummaries = receiptLotSummaries.Concat(startingInventoryLotSummaries).ToList();
+
         foreach (var group in lotSummaries.Where(x => x.CurrentBins > 0).GroupBy(x => x.RoomId))
         {
             var weakest = FindWeakestLot(group.ToList());
-            if (weakest is not null && group.SingleOrDefault(x => x.ReceiptId == weakest.ReceiptId) is { } match)
+            if (weakest is not null && group.SingleOrDefault(x => x.ReceiptId == weakest.ReceiptId && x.InventoryAdjustmentId == weakest.InventoryAdjustmentId) is { } match)
             {
                 match.WeakestReason = weakest.Reason;
             }
         }
 
         return lotSummaries;
+    }
+
+    private async Task<IReadOnlyList<RoomLotSummaryViewModel>> BuildAdjustmentOnlyLotSummariesAsync(int? roomId, CancellationToken cancellationToken)
+    {
+        var query = dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .Include(x => x.Room)
+                .ThenInclude(x => x.Warehouse)
+            .Where(x => x.ReceiptId == null && x.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType);
+        if (roomId is not null)
+        {
+            query = query.Where(x => x.RoomId == roomId);
+        }
+
+        var adjustments = await query.ToListAsync(cancellationToken);
+        return adjustments
+            .GroupBy(x => $"{x.RoomId}|{x.LotNumber.Trim().ToUpperInvariant()}|{(x.VarietyCode ?? "").Trim().ToUpperInvariant()}|{(x.Source ?? x.Reason ?? "").Trim().ToUpperInvariant()}", StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First())
+            .Where(x => x.NewBinCount > 0)
+            .Select(x => new RoomLotSummaryViewModel
+            {
+                ReceiptId = null,
+                InventoryAdjustmentId = x.Id,
+                RoomId = x.RoomId,
+                Warehouse = x.Warehouse.Code,
+                Facility = FacilityCode(x.Warehouse.Code, x.Warehouse.Name),
+                LocationGroup = !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : RoomLocationGroup(x.Room),
+                RoomCode = !string.IsNullOrWhiteSpace(x.SourceRoomCode) ? x.SourceRoomCode! : x.Room.Code,
+                DisplayReceiptId = x.Source ?? x.Reason ?? "Starting inventory",
+                GrowerNumber = x.LotNumber,
+                PoolStart = x.PoolStart ?? "",
+                GrowerName = x.GrowerName,
+                LotCode = x.LotNumber,
+                VarietyCode = x.VarietyCode ?? "",
+                OriginalBins = x.NewBinCount,
+                DepletedBins = 0,
+                CurrentBins = x.NewBinCount,
+                AveragePressureLbs = null,
+                PressureStdDevLbs = null,
+                MonthOverMonthPressureChangeLbs = null,
+                AverageStarch = null,
+                DefectSummary = "None",
+                LastSampleDate = null,
+                SampleCount = 0,
+                EnteredFruitCount = 0,
+                DepletionStatus = "Current",
+                ReviewFlags = [],
+                Samples = []
+            })
+            .ToList();
     }
 
     private async Task<IReadOnlyList<RoomDepletionListItemViewModel>> BuildRoomDepletionHistoryAsync(int roomId, CancellationToken cancellationToken) =>
@@ -1600,6 +1657,7 @@ public sealed class DashboardDataService(
                 ChangeAmount = x.ChangeAmount,
                 NewBinCount = x.NewBinCount,
                 AdjustmentType = x.AdjustmentType,
+                Source = x.Source,
                 Reason = x.Reason,
                 Notes = x.Notes,
                 AdjustmentAt = x.AdjustmentAt,
@@ -1657,6 +1715,7 @@ public sealed class DashboardDataService(
             ChangeAmount = changeAmount,
             NewBinCount = Math.Max(0, newBinCount),
             AdjustmentType = adjustmentType,
+            Source = reason,
             Reason = reason,
             Notes = notes,
             AdjustmentAt = adjustmentAt,
@@ -1712,13 +1771,13 @@ public sealed class DashboardDataService(
 
         if (lot.EnteredFruitCount == 0)
         {
-            return new(lot.ReceiptId, $"{lot.GrowerName} {lot.LotCode}", 0, "No QC trend data yet");
+            return new(lot.ReceiptId, lot.InventoryAdjustmentId, $"{lot.GrowerName} {lot.LotCode}", 0, "No QC trend data yet");
         }
 
-        return new(lot.ReceiptId, $"{lot.GrowerName} {lot.LotCode} {lot.VarietyCode}", score, reasons.Count == 0 ? "No QC trend data yet" : string.Join("; ", reasons.Take(3)));
+        return new(lot.ReceiptId, lot.InventoryAdjustmentId, $"{lot.GrowerName} {lot.LotCode} {lot.VarietyCode}", score, reasons.Count == 0 ? "No QC trend data yet" : string.Join("; ", reasons.Take(3)));
     }
 
-    private sealed record WeakestLotResult(long ReceiptId, string Label, decimal Score, string Reason);
+    private sealed record WeakestLotResult(long? ReceiptId, long? InventoryAdjustmentId, string Label, decimal Score, string Reason);
 
     private static RoomSummaryFilterForm NormalizeRoomSummaryFilter(RoomSummaryFilterForm? filter)
     {

@@ -65,7 +65,8 @@ public sealed class RoomDetailViewModel
 
 public sealed class RoomLotSummaryViewModel
 {
-    public long ReceiptId { get; set; }
+    public long? ReceiptId { get; set; }
+    public long? InventoryAdjustmentId { get; set; }
     public int RoomId { get; set; }
     public string Warehouse { get; set; } = "";
     public string Facility { get; set; } = "";
@@ -107,6 +108,7 @@ public sealed class RoomInventoryAdjustmentListItemViewModel
     public int ChangeAmount { get; set; }
     public int NewBinCount { get; set; }
     public string AdjustmentType { get; set; } = "";
+    public string? Source { get; set; }
     public string? Reason { get; set; }
     public string? Notes { get; set; }
     public DateTimeOffset AdjustmentAt { get; set; }
@@ -148,6 +150,83 @@ public sealed class RoomInventoryTrueUpForm
     public DateTimeOffset AdjustmentAt { get; set; } = DateTimeOffset.Now;
     public string Reason { get; set; } = "";
     public string? Notes { get; set; }
+}
+
+public sealed class RoomInventoryImportPageViewModel
+{
+    public RoomInventoryImportForm Form { get; set; } = new();
+    public RoomInventoryImportPreviewViewModel? ImportPreview { get; set; }
+    public IReadOnlyList<RoomInventoryCurrentLotViewModel> CurrentLots { get; set; } = [];
+    public IReadOnlyList<string> FacilityOptions { get; set; } = ["All", "MCD", "WP", "EBS", "DH"];
+    public IReadOnlyList<string> EbsLocationOptions { get; set; } = ["All EBS", "Evans", "Lamb", "BM"];
+}
+
+public sealed class RoomInventoryImportForm
+{
+    public IFormFile? CsvFile { get; set; }
+    public string? CsvText { get; set; }
+    public bool UseBuiltInSeed { get; set; }
+    public bool ConfirmImport { get; set; }
+    public string Facility { get; set; } = "All";
+    public string EbsLocation { get; set; } = "All EBS";
+    public string? RoomCode { get; set; }
+    public string? LotNumber { get; set; }
+    public string? Grower { get; set; }
+    public string? Variety { get; set; }
+}
+
+public sealed class RoomInventoryImportPreviewViewModel
+{
+    public int AddCount { get; set; }
+    public int UpdateCount { get; set; }
+    public int UnchangedCount { get; set; }
+    public int WarningCount { get; set; }
+    public int DuplicateCount { get; set; }
+    public int InvalidCount { get; set; }
+    public string CsvText { get; set; } = "";
+    public bool IsBuiltInSeed { get; set; }
+    public IReadOnlyList<RoomInventoryImportPreviewRow> Rows { get; set; } = [];
+    public bool CanApply => DuplicateCount == 0 && InvalidCount == 0 && Rows.Any(x => x.Action is "Add" or "Update");
+}
+
+public sealed class RoomInventoryImportPreviewRow
+{
+    public int RowNumber { get; set; }
+    public string Facility { get; set; } = "";
+    public string SubLocation { get; set; } = "";
+    public string RoomCode { get; set; } = "";
+    public string NormalizedRoomCode { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public string LotNumber { get; set; } = "";
+    public int? BinCount { get; set; }
+    public string Source { get; set; } = "";
+    public string Action { get; set; } = "";
+    public string Message { get; set; } = "";
+    public bool IsWarning { get; set; }
+    public int? RoomId { get; set; }
+    public int? WarehouseId { get; set; }
+    public int? GrowerLotId { get; set; }
+    public int? FruitProfileId { get; set; }
+    public string Grower { get; set; } = "";
+    public string PoolStart { get; set; } = "";
+    public int? OldBinCount { get; set; }
+    public int? NewBinCount { get; set; }
+}
+
+public sealed class RoomInventoryCurrentLotViewModel
+{
+    public int RoomId { get; set; }
+    public string Facility { get; set; } = "";
+    public string SubLocation { get; set; } = "";
+    public string RoomCode { get; set; } = "";
+    public string MasterRoomCode { get; set; } = "";
+    public string Grower { get; set; } = "";
+    public string LotNumber { get; set; } = "";
+    public string PoolStart { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public int CurrentBins { get; set; }
+    public string Source { get; set; } = "";
+    public DateTimeOffset LastAdjustmentAt { get; set; }
 }
 
 public sealed class VoidRoomDepletionForm

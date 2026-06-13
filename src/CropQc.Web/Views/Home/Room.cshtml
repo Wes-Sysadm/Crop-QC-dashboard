@@ -51,7 +51,14 @@
         {
             <p class="notice warning">
                 <strong>Weakest lot:</strong>
-                <a href="/Receipts/@Model.Summary.WeakestLotReceiptId">@Model.Summary.WeakestLotLabel</a>
+                @if (Model.Summary.WeakestLotReceiptId is not null)
+                {
+                    <a href="/Receipts/@Model.Summary.WeakestLotReceiptId">@Model.Summary.WeakestLotLabel</a>
+                }
+                else
+                {
+                    <span>@Model.Summary.WeakestLotLabel</span>
+                }
                 <span>@Model.Summary.WeakestLotReason</span>
             </p>
         }
@@ -169,6 +176,7 @@
                     <dt>New count</dt><dd>@adjustment.NewBinCount</dd>
                     <dt>When</dt><dd>@adjustment.AdjustmentAt.LocalDateTime</dd>
                     <dt>User</dt><dd>@(string.IsNullOrWhiteSpace(adjustment.CreatedBy) ? "-" : adjustment.CreatedBy)</dd>
+                    <dt>Source</dt><dd>@(adjustment.Source ?? "-")</dd>
                     <dt>Reason</dt><dd>@(adjustment.Reason ?? "-")</dd>
                     <dt>Notes</dt><dd>@(adjustment.Notes ?? "-")</dd>
                 </dl>
