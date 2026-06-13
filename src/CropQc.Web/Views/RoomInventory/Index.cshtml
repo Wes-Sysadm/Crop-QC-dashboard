@@ -1,0 +1,188 @@
+@model RoomInventoryImportPageViewModel
+@{
+    ViewData["Title"] = "Current Lots / Room Inventory";
+}
+
+<h1>Current Lots / Room Inventory</h1>
+@if (TempData["Success"] is string success)
+{
+    <p class="notice success">@success</p>
+}
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
+
+<section class="panel">
+    <h2>Import Starting Inventory</h2>
+    <p class="muted">Imports are previewed first, never delete existing inventory, and record audited bin count adjustments.</p>
+    <div class="action-bar">
+        <form method="post" action="/Admin/RoomInventory/ImportEbsStartingInventory">
+            <button type="submit">Import EBS Starting Inventory</button>
+        </form>
+    </div>
+    <form class="form-grid" method="post" enctype="multipart/form-data" action="/Admin/RoomInventory/Preview">
+        <label class="field wide">Upload room inventory CSV
+            <input type="file" name="CsvFile" accept=".csv,text/csv" />
+        </label>
+        <button type="submit" class="secondary-button">Preview CSV Import</button>
+    </form>
+</section>
+
+@if (Model.ImportPreview is not null)
+{
+    <section class="panel">
+        <h2>Import Preview</h2>
+        <div class="metric-grid">
+            <div><strong>@Model.ImportPreview.AddCount</strong><span>Add</span></div>
+            <div><strong>@Model.ImportPreview.UpdateCount</strong><span>Update</span></div>
+            <div><strong>@Model.ImportPreview.UnchangedCount</strong><span>Unchanged</span></div>
+            <div><strong>@Model.ImportPreview.WarningCount</strong><span>Warnings</span></div>
+            <div><strong>@Model.ImportPreview.DuplicateCount</strong><span>Duplicates</span></div>
+            <div><strong>@Model.ImportPreview.InvalidCount</strong><span>Invalid</span></div>
+        </div>
+        @if (Model.ImportPreview.Rows.Count == 0)
+        {
+            <p class="muted">No rows were found in the import file.</p>
+        }
+        else
+        {
+            <div class="table-wrap contained-table">
+                <table class="responsive-table">
+                    <thead>
+                    <tr>
+                        <th class="compact-cell">Row</th>
+                        <th>Action</th>
+                        <th>Facility</th>
+                        <th>Location</th>
+                        <th>Room</th>
+                        <th>Lot #</th>
+                        <th>Grower</th>
+                        <th>Pool</th>
+                        <th>Variety</th>
+                        <th class="numeric-cell">Old</th>
+                        <th class="numeric-cell">New</th>
+                        <th class="wide-cell">Message</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.ImportPreview.Rows)
+                    {
+                        <tr>
+                            <td class="compact-cell">@row.RowNumber</td>
+                            <td><span class="status @StatusClass(row.Action, row.IsWarning)">@row.Action</span></td>
+                            <td>@row.Facility</td>
+                            <td>@row.SubLocation</td>
+                            <td>@row.RoomCode <span class="muted">(@row.NormalizedRoomCode)</span></td>
+                            <td>@row.LotNumber</td>
+                            <td class="wrap-cell">@(string.IsNullOrWhiteSpace(row.Grower) ? "-" : row.Grower)</td>
+                            <td>@(string.IsNullOrWhiteSpace(row.PoolStart) ? "-" : row.PoolStart)</td>
+                            <td>@row.Variety</td>
+                            <td class="numeric-cell">@(row.OldBinCount?.ToString() ?? "-")</td>
+                            <td class="numeric-cell">@(row.NewBinCount?.ToString() ?? "-")</td>
+                            <td class="wide-cell">@row.Message</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+        <form method="post" action="/Admin/RoomInventory/Apply" class="action-bar">
+            <input type="hidden" name="CsvText" value="@Model.ImportPreview.CsvText" />
+            <input type="hidden" name="UseBuiltInSeed" value="@(Model.ImportPreview.IsBuiltInSeed ? "true" : "false")" />
+            <button type="submit" @(Model.ImportPreview.CanApply ? "" : "disabled")>Import Room Inventory</button>
+            @if (!Model.ImportPreview.CanApply)
+            {
+                <span class="muted">Resolve invalid or duplicate rows before applying.</span>
+            }
+        </form>
+    </section>
+}
+
+<section class="panel">
+    <h2>Current Imported Inventory</h2>
+    <form class="toolbar" method="get" action="/Admin/RoomInventory">
+        <label class="field">Facility
+            <select name="Facility">
+                @foreach (var option in Model.FacilityOptions)
+                {
+                    if (option.Equals(Model.Form.Facility, StringComparison.OrdinalIgnoreCase))
+                    {
+                        <option value="@option" selected>@option</option>
+                    }
+                    else
+                    {
+                        <option value="@option">@option</option>
+                    }
+                }
+            </select>
+        </label>
+        <label class="field">EBS location
+            <select name="EbsLocation">
+                @foreach (var option in Model.EbsLocationOptions)
+                {
+                    if (option.Equals(Model.Form.EbsLocation, StringComparison.OrdinalIgnoreCase))
+                    {
+                        <option value="@option" selected>@option</option>
+                    }
+                    else
+                    {
+                        <option value="@option">@option</option>
+                    }
+                }
+            </select>
+        </label>
+        <label class="field">Room
+            <input name="RoomCode" value="@Model.Form.RoomCode" />
+        </label>
+        <label class="field">Lot #
+            <input name="LotNumber" value="@Model.Form.LotNumber" />
+        </label>
+        <label class="field">Grower
+            <input name="Grower" value="@Model.Form.Grower" />
+        </label>
+        <label class="field">Variety
+            <input name="Variety" value="@Model.Form.Variety" />
+        </label>
+        <button type="submit" class="secondary-button">Filter</button>
+    </form>
+
+    @if (Model.CurrentLots.Count == 0)
+    {
+        <p class="muted">No imported current inventory rows match the selected filters.</p>
+    }
+    else
+    {
+        <div class="responsive-card-grid">
+        @foreach (var lot in Model.CurrentLots)
+        {
+            <article class="station-card">
+                <div class="station-card-header">
+                    <div>
+                        <h3>@lot.RoomCode | Lot # @lot.LotNumber</h3>
+                        <p class="station-code">@lot.Facility / @lot.SubLocation / master room @lot.MasterRoomCode</p>
+                    </div>
+                    <span class="status ready">@lot.CurrentBins bins</span>
+                </div>
+                <dl class="station-meta">
+                    <dt>Grower</dt><dd>@(string.IsNullOrWhiteSpace(lot.Grower) ? "Grower not found in Master Data" : lot.Grower)</dd>
+                    <dt>Pool Start</dt><dd>@(string.IsNullOrWhiteSpace(lot.PoolStart) ? "-" : lot.PoolStart)</dd>
+                    <dt>Variety</dt><dd>@lot.Variety</dd>
+                    <dt>Source</dt><dd>@lot.Source</dd>
+                    <dt>Last adjustment</dt><dd>@lot.LastAdjustmentAt.LocalDateTime</dd>
+                </dl>
+                <div class="action-bar">
+                    <a class="button secondary-button" href="/Dashboard/Rooms/@lot.RoomId">View Room</a>
+                </div>
+            </article>
+        }
+        </div>
+    }
+</section>
+
+@functions {
+    private static string StatusClass(string action, bool warning) =>
+        action == "Invalid" || action == "Duplicate" ? "missing" :
+        warning ? "review" :
+        action == "Unchanged" ? "pending" : "ready";
+}

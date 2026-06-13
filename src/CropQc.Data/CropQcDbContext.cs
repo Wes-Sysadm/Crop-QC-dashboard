@@ -250,6 +250,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.PoolStart).HasMaxLength(20);
             entity.Property(x => x.VarietyCode).HasMaxLength(50);
             entity.Property(x => x.AdjustmentType).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Source).HasMaxLength(150);
+            entity.Property(x => x.SourceRoomCode).HasMaxLength(100);
+            entity.Property(x => x.SourceSubLocation).HasMaxLength(100);
             entity.Property(x => x.Reason).HasMaxLength(500);
             entity.Property(x => x.Notes).HasMaxLength(1000);
             entity.HasIndex(x => new { x.RoomId, x.AdjustmentAt });

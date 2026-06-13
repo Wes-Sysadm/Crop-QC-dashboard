@@ -167,6 +167,7 @@ builder.Services.AddScoped<IMasterDataSeeder, MasterDataSeeder>();
 builder.Services.AddScoped<IReceivingExportService, ReceivingExportService>();
 builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService>();
 builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
+builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportService>();
 builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 builder.Services.AddScoped<IQcStationAdminService, QcStationAdminService>();
 builder.Services.AddScoped<ICropYearService, CropYearService>();
@@ -684,6 +685,9 @@ static async Task EnsureRoomInventoryAdjustmentSchemaAsync(IServiceProvider serv
                     "ChangeAmount" integer NOT NULL,
                     "NewBinCount" integer NOT NULL,
                     "AdjustmentType" character varying(50) NOT NULL,
+                    "Source" character varying(150) NULL,
+                    "SourceRoomCode" character varying(100) NULL,
+                    "SourceSubLocation" character varying(100) NULL,
                     "Reason" character varying(500) NULL,
                     "Notes" character varying(1000) NULL,
                     "AdjustmentAt" timestamp with time zone NOT NULL,
@@ -698,6 +702,9 @@ static async Task EnsureRoomInventoryAdjustmentSchemaAsync(IServiceProvider serv
                     CONSTRAINT "FK_RoomInventoryAdjustments_FruitProfiles_FruitProfileId" FOREIGN KEY ("FruitProfileId") REFERENCES "FruitProfiles" ("Id") ON DELETE SET NULL,
                     CONSTRAINT "FK_RoomInventoryAdjustments_Users_CreatedByUserId" FOREIGN KEY ("CreatedByUserId") REFERENCES "Users" ("Id") ON DELETE SET NULL
                 );
+                ALTER TABLE "RoomInventoryAdjustments" ADD COLUMN IF NOT EXISTS "Source" character varying(150) NULL;
+                ALTER TABLE "RoomInventoryAdjustments" ADD COLUMN IF NOT EXISTS "SourceRoomCode" character varying(100) NULL;
+                ALTER TABLE "RoomInventoryAdjustments" ADD COLUMN IF NOT EXISTS "SourceSubLocation" character varying(100) NULL;
                 CREATE INDEX IF NOT EXISTS "IX_RoomInventoryAdjustments_RoomId_AdjustmentAt" ON "RoomInventoryAdjustments" ("RoomId", "AdjustmentAt");
                 CREATE INDEX IF NOT EXISTS "IX_RoomInventoryAdjustments_ReceiptId_AdjustmentAt" ON "RoomInventoryAdjustments" ("ReceiptId", "AdjustmentAt");
                 """);
@@ -723,6 +730,9 @@ static async Task EnsureRoomInventoryAdjustmentSchemaAsync(IServiceProvider serv
                         [ChangeAmount] int NOT NULL,
                         [NewBinCount] int NOT NULL,
                         [AdjustmentType] nvarchar(50) NOT NULL,
+                        [Source] nvarchar(150) NULL,
+                        [SourceRoomCode] nvarchar(100) NULL,
+                        [SourceSubLocation] nvarchar(100) NULL,
                         [Reason] nvarchar(500) NULL,
                         [Notes] nvarchar(1000) NULL,
                         [AdjustmentAt] datetimeoffset NOT NULL,
@@ -738,6 +748,9 @@ static async Task EnsureRoomInventoryAdjustmentSchemaAsync(IServiceProvider serv
                         CONSTRAINT [FK_RoomInventoryAdjustments_Users_CreatedByUserId] FOREIGN KEY ([CreatedByUserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION
                     );
                 END
+                IF COL_LENGTH('RoomInventoryAdjustments', 'Source') IS NULL ALTER TABLE [RoomInventoryAdjustments] ADD [Source] nvarchar(150) NULL;
+                IF COL_LENGTH('RoomInventoryAdjustments', 'SourceRoomCode') IS NULL ALTER TABLE [RoomInventoryAdjustments] ADD [SourceRoomCode] nvarchar(100) NULL;
+                IF COL_LENGTH('RoomInventoryAdjustments', 'SourceSubLocation') IS NULL ALTER TABLE [RoomInventoryAdjustments] ADD [SourceSubLocation] nvarchar(100) NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_RoomInventoryAdjustments_RoomId_AdjustmentAt' AND object_id = OBJECT_ID(N'[RoomInventoryAdjustments]')) CREATE INDEX [IX_RoomInventoryAdjustments_RoomId_AdjustmentAt] ON [RoomInventoryAdjustments] ([RoomId], [AdjustmentAt]);
                 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_RoomInventoryAdjustments_ReceiptId_AdjustmentAt' AND object_id = OBJECT_ID(N'[RoomInventoryAdjustments]')) CREATE INDEX [IX_RoomInventoryAdjustments_ReceiptId_AdjustmentAt] ON [RoomInventoryAdjustments] ([ReceiptId], [AdjustmentAt]);
                 """);

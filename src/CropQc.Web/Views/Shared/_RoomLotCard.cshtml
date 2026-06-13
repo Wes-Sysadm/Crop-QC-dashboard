@@ -34,7 +34,14 @@
         <p class="notice warning"><strong>Weakest lot signal:</strong> @Model.WeakestReason</p>
     }
     <div class="action-bar">
-        <a class="button secondary-button" href="/Receipts/@Model.ReceiptId">View Receipt</a>
+        @if (Model.ReceiptId is not null)
+        {
+            <a class="button secondary-button" href="/Receipts/@Model.ReceiptId">View Receipt</a>
+        }
+        else
+        {
+            <span class="muted">Starting inventory; no receipt history yet.</span>
+        }
         @foreach (var sample in Model.Samples.Take(4))
         {
             <a class="button secondary-button" href="/Samples/@sample.SampleId">View @sample.DisplayReceiptId</a>

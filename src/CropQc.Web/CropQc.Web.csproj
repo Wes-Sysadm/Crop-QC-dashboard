@@ -6,6 +6,10 @@
     <ProjectReference Include="..\CropQc.Data\CropQc.Data.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Update="Data\Seed\ebs-starting-room-inventory.csv" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>

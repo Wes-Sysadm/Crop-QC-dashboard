@@ -83,6 +83,9 @@ public sealed class RoomInventoryAdjustment
     public int ChangeAmount { get; set; }
     public int NewBinCount { get; set; }
     public required string AdjustmentType { get; set; }
+    public string? Source { get; set; }
+    public string? SourceRoomCode { get; set; }
+    public string? SourceSubLocation { get; set; }
     public string? Reason { get; set; }
     public string? Notes { get; set; }
     public DateTimeOffset AdjustmentAt { get; set; }
