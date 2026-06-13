@@ -10,6 +10,7 @@ public sealed class QcSummaryEmailComposerTests
 {
     [Theory]
     [InlineData("Door Sample", "WholeSample,CutApples")]
+    [InlineData("Lot Sample", "WholeSample,CutApples")]
     [InlineData("Room Sample", "WholeSample,CutApples")]
     [InlineData("Line Sample", "WholeSample,CutApples")]
     [InlineData("Receiving Sample", "TruckPhoto,TopOfTruck,Hectre,WholeSample,CutApples,StarchApples")]
@@ -24,8 +25,9 @@ public sealed class QcSummaryEmailComposerTests
     }
 
     [Theory]
-    [InlineData("Door Sample", "TruckPhoto,TopOfTruck,Hectre,WholeSample,CutApples,StarchApples")]
-    [InlineData("Room Sample", "TruckPhoto,TopOfTruck,Hectre,WholeSample,CutApples,StarchApples")]
+    [InlineData("Door Sample", "WholeSample,CutApples,StarchApples")]
+    [InlineData("Lot Sample", "WholeSample,CutApples,StarchApples")]
+    [InlineData("Room Sample", "WholeSample,CutApples,StarchApples")]
     [InlineData("Line Sample", "Hectre,WholeSample,CutApples,StarchApples")]
     public void PhotoRequirementPolicy_MapsAvailablePhotosBySampleType(string sampleType, string expectedKeys)
     {
@@ -46,6 +48,23 @@ public sealed class QcSummaryEmailComposerTests
             receiptPhotoTypes: [],
             samplePhotoTypes: ["SampleBeforeCutting", "CutFruit"]);
 
+        Assert.Empty(missing);
+    }
+
+    [Theory]
+    [InlineData("Door Sample")]
+    [InlineData("Lot Sample")]
+    public void PhotoRequirementPolicy_DoorAndLotSamplesDoNotShowTruckOrHectreSlots(string sampleType)
+    {
+        var policy = new QcPhotoRequirementPolicy();
+
+        var available = policy.GetAvailablePhotoTypes(sampleType).Select(x => x.Key).ToList();
+        var missing = policy.MissingRequiredPhotos(sampleType, receiptPhotoTypes: [], samplePhotoTypes: ["SampleBeforeCutting", "CutFruit"]);
+
+        Assert.DoesNotContain("TruckPhoto", available);
+        Assert.DoesNotContain("TopOfTruck", available);
+        Assert.DoesNotContain("Hectre", available);
+        Assert.Contains("StarchApples", available);
         Assert.Empty(missing);
     }
 

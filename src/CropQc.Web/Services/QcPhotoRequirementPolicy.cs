@@ -50,11 +50,16 @@ public sealed class QcPhotoRequirementPolicy : IQcPhotoRequirementPolicy
     {
         var normalized = sampleTypeName ?? string.Empty;
         if (normalized.Contains("receiving", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains("transfer", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains("door", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains("room", StringComparison.OrdinalIgnoreCase))
+            || normalized.Contains("transfer", StringComparison.OrdinalIgnoreCase))
         {
             return MarkOptional(GetRequirements(sampleTypeName), FullPhotoOrder);
+        }
+
+        if (normalized.Contains("door", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("room", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("lot", StringComparison.OrdinalIgnoreCase))
+        {
+            return MarkOptional(GetRequirements(sampleTypeName), [WholeSample, CutApples, StarchApples]);
         }
 
         if (normalized.Contains("line", StringComparison.OrdinalIgnoreCase))

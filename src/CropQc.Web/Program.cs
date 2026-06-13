@@ -205,6 +205,7 @@ await EnsurePhotoSoftDeleteColumnsAsync(app.Services);
 await EnsureCleanupColumnsAsync(app.Services);
 await EnsureFruitRowLimitAsync(app.Services);
 await EnsureRoomDepletionSchemaAsync(app.Services);
+await EnsureRequiredSampleTypesAsync(app.Services);
 
 if (useForwardedHeaders)
 {
@@ -593,6 +594,29 @@ static async Task EnsureRoomDepletionSchemaAsync(IServiceProvider services)
     catch (Exception ex)
     {
         logger.LogWarning(ex, "Room depletion schema check skipped or failed.");
+    }
+}
+
+static async Task EnsureRequiredSampleTypesAsync(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("RequiredSampleTypes");
+    try
+    {
+        foreach (var name in new[] { "Receiving Sample", "Door Sample", "Lot Sample" })
+        {
+            if (!await dbContext.SampleTypes.AnyAsync(x => x.Name == name))
+            {
+                dbContext.SampleTypes.Add(new CropQc.Data.Entities.SampleType { Name = name, IsActive = true });
+            }
+        }
+
+        await dbContext.SaveChangesAsync();
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Required sample type check skipped or failed.");
     }
 }
 
