@@ -29,26 +29,37 @@
                 var currentEmail = User.FindFirstValue(ClaimTypes.Email) ?? "";
                 var cleanupAllowedEmails = (Configuration["DataCleanup:AllowedEmails"] ?? "wes@fruitandland.com")
                     .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-                var canAccessDataCleanup = cleanupAllowedEmails.Contains(currentEmail, StringComparer.OrdinalIgnoreCase);
+                var canAccessDataCleanup = isAdmin && cleanupAllowedEmails.Contains(currentEmail, StringComparer.OrdinalIgnoreCase);
+                var showAdminMenu = isManagerOrAdmin || isAdmin;
                 <a href="/">Dashboard</a>
                 <a href="/DailyQc">Daily QC</a>
                 <a href="/Receipts">Receipts</a>
-                @if (isManagerOrAdmin)
+                @if (showAdminMenu)
                 {
-                    <a href="/MasterData">Master Data</a>
-                    <a href="/Admin/QcStations">QC Stations</a>
-                }
-                @if (isAdmin)
-                {
-                    <a href="/Admin/Users">Users</a>
-                    <a href="/Admin/Downloads">Downloads</a>
-                    <a href="/Admin/Configuration">Configuration</a>
-                    <a href="/Admin/Backups">Backups</a>
-                    @if (canAccessDataCleanup)
-                    {
-                        <a href="/Admin/DataCleanup">Data Cleanup</a>
-                    }
-                    <span class="status ready">Admin</span>
+                    <details class="nav-dropdown">
+                        <summary>Admin</summary>
+                        <div class="nav-dropdown-menu">
+                            @if (isAdmin)
+                            {
+                                <a href="/Admin/Users">Users</a>
+                            }
+                            @if (isManagerOrAdmin)
+                            {
+                                <a href="/Admin/QcStations">QC Stations</a>
+                                <a href="/MasterData">Master Data</a>
+                            }
+                            @if (isAdmin)
+                            {
+                                <a href="/Admin/Downloads">Downloads</a>
+                                <a href="/Admin/Configuration">Configuration</a>
+                                <a href="/Admin/Backups">Backups</a>
+                            }
+                            @if (canAccessDataCleanup)
+                            {
+                                <a href="/Admin/DataCleanup">Data Cleanup</a>
+                            }
+                        </div>
+                    </details>
                 }
                 <span class="user-email">@currentEmail</span>
                 <span class="status">@role</span>

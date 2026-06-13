@@ -10,6 +10,14 @@ a:hover { text-decoration: underline; }
 .brand { color: white; font-size: 18px; font-weight: 700; }
 .topbar nav { display: flex; gap: 12px 18px; align-items: center; flex-wrap: wrap; }
 .topbar nav a { color: white; font-weight: 600; }
+.nav-dropdown { position: relative; color: white; font-weight: 700; }
+.nav-dropdown summary { display: inline-flex; align-items: center; min-height: 30px; cursor: pointer; list-style: none; }
+.nav-dropdown summary::-webkit-details-marker { display: none; }
+.nav-dropdown summary::after { content: "▾"; margin-left: 6px; font-size: 11px; }
+.nav-dropdown[open] summary::after { content: "▴"; }
+.nav-dropdown-menu { position: absolute; right: 0; z-index: 20; display: grid; min-width: 210px; margin-top: 8px; padding: 8px; border: 1px solid #9fb2c3; border-radius: 6px; background: white; box-shadow: 0 8px 20px rgba(23, 32, 42, .18); }
+.topbar nav .nav-dropdown-menu a { display: block; padding: 8px 10px; border-radius: 4px; color: #16324f; white-space: nowrap; }
+.topbar nav .nav-dropdown-menu a:hover { background: #eaf2f8; text-decoration: none; }
 .user-email { color: #d9e7f3; font-size: 13px; font-weight: 600; }
 .logout-form { margin: 0; }
 .link-button { height: auto; min-height: 0; padding: 0; border: 0; background: transparent; color: white; font-weight: 700; }
@@ -153,6 +161,10 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 }
 @media (max-width: 760px) {
     .page { padding: 16px; }
+    .topbar { align-items: flex-start; }
+    .topbar nav { width: 100%; }
+    .nav-dropdown { position: static; }
+    .nav-dropdown-menu { position: static; width: min(100%, 260px); box-shadow: none; }
     .cards { grid-template-columns: 1fr; }
     .room-metrics { grid-template-columns: 1fr; }
     .summary-list, .station-meta { grid-template-columns: 1fr; }

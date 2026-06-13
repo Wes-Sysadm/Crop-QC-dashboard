@@ -16,11 +16,17 @@ public sealed class RoleNavigationAuthorizationTests
         Assert.Contains("href=\"/Receipts\"", layout);
         Assert.Contains("AdminAuthorization.IsManagerOrAdmin(User)", layout);
         Assert.Contains("AdminAuthorization.IsAdmin(User)", layout);
+        Assert.Contains("class=\"nav-dropdown\"", layout);
+        Assert.Contains("<summary>Admin</summary>", layout);
+        Assert.Contains("showAdminMenu", layout);
         Assert.Contains("href=\"/MasterData\"", layout);
         Assert.Contains("href=\"/Admin/QcStations\"", layout);
         Assert.Contains("href=\"/Admin/Users\"", layout);
         Assert.Contains("href=\"/Admin/Downloads\"", layout);
         Assert.Contains("href=\"/Admin/Configuration\"", layout);
+        Assert.Contains("href=\"/Admin/Backups\"", layout);
+        Assert.Contains("href=\"/Admin/DataCleanup\"", layout);
+        Assert.Contains("canAccessDataCleanup", layout);
     }
 
     [Fact]
