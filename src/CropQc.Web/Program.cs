@@ -207,6 +207,7 @@ await EnsureCleanupColumnsAsync(app.Services);
 await EnsureFruitRowLimitAsync(app.Services);
 await EnsureRoomDepletionSchemaAsync(app.Services);
 await EnsureGrowerLotSchemaAsync(app.Services);
+await EnsureRoomMetadataSchemaAsync(app.Services);
 await EnsureRoomInventoryAdjustmentSchemaAsync(app.Services);
 await EnsureRequiredSampleTypesAsync(app.Services);
 
@@ -655,6 +656,43 @@ static async Task EnsureRoomDepletionSchemaAsync(IServiceProvider services)
     catch (Exception ex)
     {
         logger.LogWarning(ex, "Room depletion schema check skipped or failed.");
+    }
+}
+
+static async Task EnsureRoomMetadataSchemaAsync(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("RoomMetadataSchema");
+    try
+    {
+        var provider = db.Database.ProviderName ?? "";
+        if (provider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                ALTER TABLE "Rooms" ADD COLUMN IF NOT EXISTS "SubLocation" character varying(100) NULL;
+                ALTER TABLE "Rooms" ADD COLUMN IF NOT EXISTS "CropQcRoomName" character varying(100) NULL;
+                ALTER TABLE "Rooms" ADD COLUMN IF NOT EXISTS "CompuTechRoomCode" character varying(100) NULL;
+                ALTER TABLE "Rooms" ADD COLUMN IF NOT EXISTS "DisplayName" character varying(150) NULL;
+                ALTER TABLE "Rooms" ADD COLUMN IF NOT EXISTS "SortOrder" integer NOT NULL DEFAULT 0;
+                CREATE INDEX IF NOT EXISTS "IX_Rooms_WarehouseId_CompuTechRoomCode" ON "Rooms" ("WarehouseId", "CompuTechRoomCode");
+                """);
+        }
+        else if (provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                IF COL_LENGTH('Rooms', 'SubLocation') IS NULL ALTER TABLE [Rooms] ADD [SubLocation] nvarchar(100) NULL;
+                IF COL_LENGTH('Rooms', 'CropQcRoomName') IS NULL ALTER TABLE [Rooms] ADD [CropQcRoomName] nvarchar(100) NULL;
+                IF COL_LENGTH('Rooms', 'CompuTechRoomCode') IS NULL ALTER TABLE [Rooms] ADD [CompuTechRoomCode] nvarchar(100) NULL;
+                IF COL_LENGTH('Rooms', 'DisplayName') IS NULL ALTER TABLE [Rooms] ADD [DisplayName] nvarchar(150) NULL;
+                IF COL_LENGTH('Rooms', 'SortOrder') IS NULL ALTER TABLE [Rooms] ADD [SortOrder] int NOT NULL CONSTRAINT [DF_Rooms_SortOrder] DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Rooms_WarehouseId_CompuTechRoomCode' AND object_id = OBJECT_ID(N'[Rooms]')) CREATE INDEX [IX_Rooms_WarehouseId_CompuTechRoomCode] ON [Rooms] ([WarehouseId], [CompuTechRoomCode]);
+                """);
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Could not ensure room metadata schema.");
     }
 }
 

@@ -17,6 +17,11 @@ public sealed class Room
     public Warehouse Warehouse { get; set; } = null!;
     public required string Code { get; set; }
     public required string Name { get; set; }
+    public string? SubLocation { get; set; }
+    public string? CropQcRoomName { get; set; }
+    public string? CompuTechRoomCode { get; set; }
+    public string? DisplayName { get; set; }
+    public int SortOrder { get; set; }
     public int CapacityBins { get; set; }
     public bool IsActive { get; set; } = true;
 }

@@ -114,11 +114,17 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
             var key = RoomKey(warehouse.Id, room.Code);
             if (!existingKeys.Contains(key))
             {
+                var ebsMetadata = EbsRoomMetadata(room.Code);
                 dbContext.Rooms.Add(new Room
                 {
                     WarehouseId = warehouse.Id,
                     Code = room.Code,
                     Name = room.Name,
+                    SubLocation = ebsMetadata?.SubLocation,
+                    CropQcRoomName = ebsMetadata?.CropQcRoomName,
+                    CompuTechRoomCode = ebsMetadata?.CompuTechRoomCode,
+                    DisplayName = ebsMetadata?.CropQcRoomName,
+                    SortOrder = ebsMetadata?.SortOrder ?? 0,
                     CapacityBins = 0,
                     IsActive = true
                 });
@@ -155,6 +161,23 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
             if (changed)
             {
                 repaired++;
+            }
+
+            if (EbsRoomMetadata(existingRoom.Code) is { } metadata)
+            {
+                if (!string.Equals(existingRoom.SubLocation, metadata.SubLocation, StringComparison.Ordinal)
+                    || !string.Equals(existingRoom.CropQcRoomName, metadata.CropQcRoomName, StringComparison.Ordinal)
+                    || !string.Equals(existingRoom.CompuTechRoomCode, metadata.CompuTechRoomCode, StringComparison.Ordinal)
+                    || !string.Equals(existingRoom.DisplayName, metadata.CropQcRoomName, StringComparison.Ordinal)
+                    || existingRoom.SortOrder != metadata.SortOrder)
+                {
+                    existingRoom.SubLocation = metadata.SubLocation;
+                    existingRoom.CropQcRoomName = metadata.CropQcRoomName;
+                    existingRoom.CompuTechRoomCode = metadata.CompuTechRoomCode;
+                    existingRoom.DisplayName = metadata.CropQcRoomName;
+                    existingRoom.SortOrder = metadata.SortOrder;
+                    repaired++;
+                }
             }
         }
 
@@ -290,4 +313,16 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
 
     private static string NormalizeCode(string code) => code.Trim().ToUpperInvariant();
     private static string RoomKey(int warehouseId, string roomCode) => $"{warehouseId}:{NormalizeCode(roomCode)}";
+
+    private static (string CropQcRoomName, string CompuTechRoomCode, string SubLocation, int SortOrder)? EbsRoomMetadata(string roomCode) =>
+        NormalizeCode(roomCode) switch
+        {
+            "EVANS-5" => ("Evans-5", "evanca05", "Evans", 1005),
+            "EVANS-12" => ("Evans-12", "evanca12", "Evans", 1012),
+            "BM-4" => ("BM-4", "Blueca04", "BM", 2004),
+            "BM-1" => ("BM-1", "blueca01", "BM", 2001),
+            "EVANS-1" => ("Evans-01", "Evanca01", "Evans", 1001),
+            "LAMB-17" => ("Lamb-17", "Lambca17", "Lamb", 3017),
+            _ => null
+        };
 }
