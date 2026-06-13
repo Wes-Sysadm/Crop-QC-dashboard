@@ -106,8 +106,13 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         {
             entity.Property(x => x.Code).HasMaxLength(50).IsRequired();
             entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.SubLocation).HasMaxLength(100);
+            entity.Property(x => x.CropQcRoomName).HasMaxLength(100);
+            entity.Property(x => x.CompuTechRoomCode).HasMaxLength(100);
+            entity.Property(x => x.DisplayName).HasMaxLength(150);
             entity.HasIndex(x => new { x.WarehouseId, x.Code }).IsUnique();
             entity.HasIndex(x => new { x.WarehouseId, x.Name }).IsUnique();
+            entity.HasIndex(x => new { x.WarehouseId, x.CompuTechRoomCode });
             entity.HasOne(x => x.Warehouse)
                 .WithMany(x => x.Rooms)
                 .HasForeignKey(x => x.WarehouseId)

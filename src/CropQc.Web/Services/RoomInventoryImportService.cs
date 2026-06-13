@@ -72,10 +72,10 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
                 NewBinCount = newCount,
                 AdjustmentType = StartingInventoryAdjustmentType,
                 Source = row.Source,
-                SourceRoomCode = row.RoomCode,
+                SourceRoomCode = row.CompuTechRoomCode,
                 SourceSubLocation = row.SubLocation,
                 Reason = row.Source,
-                Notes = $"Imported from {row.Source}; Compu-Tech room {row.RoomCode}; mapped to master room {row.NormalizedRoomCode}.",
+                Notes = $"Imported from {row.Source}; Crop QC room {row.CropQcRoomName}; Compu-Tech room {row.CompuTechRoomCode}; mapped to master room {row.NormalizedRoomCode}.",
                 AdjustmentAt = now,
                 CreatedByUserId = user?.Id,
                 CreatedAt = now
@@ -85,15 +85,16 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             {
                 Action = "BinCountChange",
                 EntityName = nameof(RoomInventoryAdjustment),
-                EntityKey = $"{row.Facility}:{row.RoomCode}:{row.LotNumber}:{row.Variety}",
+                EntityKey = $"{row.Facility}:{row.CropQcRoomName}:{row.CompuTechRoomCode}:{row.LotNumber}:{row.Variety}",
                 UserId = user?.Id,
-                BeforeValuesJson = oldCount is null ? null : JsonSerializer.Serialize(new { row.Facility, row.SubLocation, row.RoomCode, row.LotNumber, row.Variety, BinCount = oldCount }),
-                AfterValuesJson = JsonSerializer.Serialize(new { row.Facility, row.SubLocation, row.RoomCode, row.LotNumber, row.Variety, BinCount = newCount, row.Source }),
+                BeforeValuesJson = oldCount is null ? null : JsonSerializer.Serialize(new { row.Facility, row.SubLocation, row.CropQcRoomName, row.CompuTechRoomCode, row.LotNumber, row.Variety, BinCount = oldCount }),
+                AfterValuesJson = JsonSerializer.Serialize(new { row.Facility, row.SubLocation, row.CropQcRoomName, row.CompuTechRoomCode, row.LotNumber, row.Variety, BinCount = newCount, row.Source }),
                 SourceApplication = "Web",
                 CreatedAt = now
             });
         }
 
+        await UpdateEbsRoomMetadataAsync(preview.Rows.Where(x => x.Action is "Add" or "Update" or "Unchanged"), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return (preview, null);
     }
@@ -126,19 +127,20 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
         var headers = parsedRows[0].Select(NormalizeHeader).ToList();
         var facilityIndex = FindHeader(headers, ["facility"]);
         var subLocationIndex = FindHeader(headers, ["sublocation", "location"]);
-        var roomCodeIndex = FindHeader(headers, ["roomcode", "room", "compu-techroom", "computechroom"]);
+        var cropQcRoomIndex = FindHeader(headers, ["cropqcroomname", "cropqcname", "cropqcroom", "displayroom", "roomname"]);
+        var compuTechRoomIndex = FindHeader(headers, ["computechroomcode", "compu-techroomcode", "roomcode", "room", "compu-techroom", "computechroom"]);
         var varietyIndex = FindHeader(headers, ["variety"]);
         var lotIndex = FindHeader(headers, ["lotnumber", "lot#", "lot", "growernumber", "grower#"]);
         var binIndex = FindHeader(headers, ["bincount", "count", "bins"]);
         var sourceIndex = FindHeader(headers, ["source"]);
-        if (facilityIndex < 0 || roomCodeIndex < 0 || varietyIndex < 0 || lotIndex < 0 || binIndex < 0)
+        if (facilityIndex < 0 || compuTechRoomIndex < 0 || varietyIndex < 0 || lotIndex < 0 || binIndex < 0)
         {
             return new RoomInventoryImportPreviewViewModel
             {
                 CsvText = csvText,
                 IsBuiltInSeed = isBuiltInSeed,
                 InvalidCount = 1,
-                Rows = [new() { RowNumber = 0, Action = "Invalid", Message = "CSV headers must include Facility, RoomCode, Variety, LotNumber, and BinCount. SubLocation and Source are recommended." }]
+                Rows = [new() { RowNumber = 0, Action = "Invalid", Message = "CSV headers must include Facility, CompuTechRoomCode (or RoomCode), Variety, LotNumber, and BinCount. CropQcRoomName, SubLocation, and Source are recommended." }]
             };
         }
 
@@ -161,31 +163,35 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             var raw = parsedRows[i];
             var rowNumber = i + 1;
             var facility = GetCell(raw, facilityIndex).Trim();
-            var roomCode = GetCell(raw, roomCodeIndex).Trim();
+            var compuTechRoomCode = GetCell(raw, compuTechRoomIndex).Trim();
+            var cropQcRoomName = cropQcRoomIndex >= 0 ? GetCell(raw, cropQcRoomIndex).Trim() : "";
             var variety = GetCell(raw, varietyIndex).Trim();
             var lotNumber = GetCell(raw, lotIndex).Trim();
             var binText = GetCell(raw, binIndex).Trim();
             var source = sourceIndex >= 0 ? GetCell(raw, sourceIndex).Trim() : DefaultStartingInventorySource;
             source = string.IsNullOrWhiteSpace(source) ? DefaultStartingInventorySource : source;
             var subLocation = subLocationIndex >= 0 ? GetCell(raw, subLocationIndex).Trim() : "";
-            subLocation = string.IsNullOrWhiteSpace(subLocation) ? DetermineEbsSubLocation(roomCode) : subLocation;
-            var mappedRoomCode = MapCompuTechRoomCode(roomCode);
+            cropQcRoomName = string.IsNullOrWhiteSpace(cropQcRoomName) ? CropQcRoomNameForCompuTechCode(compuTechRoomCode) : NormalizeCropQcRoomName(cropQcRoomName);
+            subLocation = string.IsNullOrWhiteSpace(subLocation) ? DetermineEbsSubLocation(cropQcRoomName, compuTechRoomCode) : subLocation;
+            var mappedRoomCode = MasterRoomCodeFor(cropQcRoomName, compuTechRoomCode);
             var normalizedRoomCode = NormalizeCode(mappedRoomCode);
             var row = new RoomInventoryImportPreviewRow
             {
                 RowNumber = rowNumber,
                 Facility = facility,
                 SubLocation = subLocation,
-                RoomCode = roomCode,
+                CropQcRoomName = cropQcRoomName,
+                CompuTechRoomCode = compuTechRoomCode,
+                RoomCode = cropQcRoomName,
                 NormalizedRoomCode = mappedRoomCode,
                 Variety = NormalizeVariety(variety),
                 LotNumber = lotNumber,
                 Source = source
             };
 
-            if (string.IsNullOrWhiteSpace(facility) || string.IsNullOrWhiteSpace(roomCode) || string.IsNullOrWhiteSpace(variety) || string.IsNullOrWhiteSpace(lotNumber))
+            if (string.IsNullOrWhiteSpace(facility) || string.IsNullOrWhiteSpace(compuTechRoomCode) || string.IsNullOrWhiteSpace(cropQcRoomName) || string.IsNullOrWhiteSpace(variety) || string.IsNullOrWhiteSpace(lotNumber))
             {
-                previewRows.Add(Invalid(row, "Facility, RoomCode, Variety, and LotNumber are required."));
+                previewRows.Add(Invalid(row, "Facility, CropQcRoomName, CompuTechRoomCode, Variety, and LotNumber are required."));
                 continue;
             }
 
@@ -203,7 +209,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
                 continue;
             }
 
-            var uploadKey = $"{facility}|{NormalizeCode(roomCode)}|{lotNumber}|{row.Variety}|{source}";
+            var uploadKey = $"{facility}|{NormalizeCode(cropQcRoomName)}|{NormalizeCode(compuTechRoomCode)}|{lotNumber}|{row.Variety}|{source}";
             if (seenRows.TryGetValue(uploadKey, out var firstRow))
             {
                 previewRows.Add(Invalid(row, $"Duplicate inventory row conflicts with CSV row {firstRow}.", "Duplicate"));
@@ -222,7 +228,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             var room = rooms.SingleOrDefault(x => x.WarehouseId == warehouse.Id && string.Equals(x.Code, mappedRoomCode, StringComparison.OrdinalIgnoreCase));
             if (room is null)
             {
-                previewRows.Add(Invalid(row, $"Room code {roomCode} was not recognized. Expected mappings include evanca* -> EVANS-*, blueca* -> BM-*, and lambca* -> LAMB-*."));
+                previewRows.Add(Invalid(row, $"Room {cropQcRoomName} / Compu-Tech code {compuTechRoomCode} was not recognized. Expected mappings include evanca05 -> Evans-5, evanca12 -> Evans-12, Blueca04 -> BM-4, blueca01 -> BM-1, Evanca01 -> Evans-01, and Lambca17 -> Lamb-17."));
                 continue;
             }
 
@@ -270,7 +276,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
                 row.Variety = fruitProfile.VarietyCode;
             }
 
-            var existingKey = StartingInventoryKey(row.RoomId.Value, row.LotNumber, row.Variety, row.Source);
+            var existingKey = StartingInventoryKey(row.RoomId.Value, row.LotNumber, row.Variety, row.Source, row.CompuTechRoomCode);
             if (!currentByKey.TryGetValue(existingKey, out var current))
             {
                 row.Action = "Add";
@@ -323,8 +329,10 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             {
                 RoomId = x.RoomId,
                 Facility = x.Warehouse.Code,
-                SubLocation = !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : DetermineEbsSubLocation(x.SourceRoomCode ?? x.Room.Code),
-                RoomCode = !string.IsNullOrWhiteSpace(x.SourceRoomCode) ? x.SourceRoomCode! : x.Room.Code,
+                SubLocation = !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : DetermineEbsSubLocation(x.Room.CropQcRoomName ?? x.Room.Code, x.SourceRoomCode ?? x.Room.CompuTechRoomCode ?? ""),
+                CropQcRoomName = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
+                CompuTechRoomCode = x.SourceRoomCode ?? x.Room.CompuTechRoomCode ?? "",
+                RoomCode = x.Room.CropQcRoomName ?? x.Room.Code,
                 MasterRoomCode = x.Room.Code,
                 Grower = x.GrowerName,
                 LotNumber = x.LotNumber,
@@ -350,7 +358,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
 
         if (!string.IsNullOrWhiteSpace(filter.RoomCode))
         {
-            latest = latest.Where(x => x.RoomCode.Contains(filter.RoomCode, StringComparison.OrdinalIgnoreCase) || x.MasterRoomCode.Contains(filter.RoomCode, StringComparison.OrdinalIgnoreCase)).ToList();
+            latest = latest.Where(x => x.CropQcRoomName.Contains(filter.RoomCode, StringComparison.OrdinalIgnoreCase) || x.CompuTechRoomCode.Contains(filter.RoomCode, StringComparison.OrdinalIgnoreCase) || x.MasterRoomCode.Contains(filter.RoomCode, StringComparison.OrdinalIgnoreCase)).ToList();
         }
 
         if (!string.IsNullOrWhiteSpace(filter.LotNumber))
@@ -374,6 +382,46 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             .ThenBy(x => x.RoomCode, StringComparer.OrdinalIgnoreCase)
             .ThenBy(x => x.LotNumber)
             .ToList();
+    }
+
+    private async Task UpdateEbsRoomMetadataAsync(IEnumerable<RoomInventoryImportPreviewRow> rows, CancellationToken cancellationToken)
+    {
+        var metadataRows = rows
+            .Where(x => x.RoomId is not null)
+            .GroupBy(x => x.RoomId!.Value)
+            .Select(x => x.First())
+            .ToList();
+        if (metadataRows.Count == 0)
+        {
+            return;
+        }
+
+        var roomIds = metadataRows.Select(x => x.RoomId!.Value).ToList();
+        var rooms = await dbContext.Rooms.Where(x => roomIds.Contains(x.Id)).ToListAsync(cancellationToken);
+        foreach (var row in metadataRows)
+        {
+            var room = rooms.SingleOrDefault(x => x.Id == row.RoomId);
+            if (room is null)
+            {
+                continue;
+            }
+
+            room.SubLocation = row.SubLocation;
+            room.CropQcRoomName = row.CropQcRoomName;
+            room.CompuTechRoomCode = row.CompuTechRoomCode;
+            room.DisplayName = row.CropQcRoomName;
+            room.SortOrder = EbsRoomSortOrder(row.SubLocation, row.CropQcRoomName);
+        }
+    }
+
+    private static int EbsRoomSortOrder(string subLocation, string cropQcRoomName)
+    {
+        var locationBase = subLocation.Equals("Evans", StringComparison.OrdinalIgnoreCase) ? 1000
+            : subLocation.Equals("BM", StringComparison.OrdinalIgnoreCase) ? 2000
+            : subLocation.Equals("Lamb", StringComparison.OrdinalIgnoreCase) ? 3000
+            : 9000;
+        var digits = new string(cropQcRoomName.Where(char.IsDigit).ToArray());
+        return locationBase + (int.TryParse(digits, out var roomNumber) ? roomNumber : 999);
     }
 
     private async Task<string> ReadCsvTextAsync(RoomInventoryImportForm form, CancellationToken cancellationToken)
@@ -406,17 +454,17 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
     }
 
     private static string StartingInventoryKey(RoomInventoryAdjustment adjustment) =>
-        StartingInventoryKey(adjustment.RoomId, adjustment.LotNumber, adjustment.VarietyCode ?? "", adjustment.Source ?? adjustment.Reason ?? "");
+        StartingInventoryKey(adjustment.RoomId, adjustment.LotNumber, adjustment.VarietyCode ?? "", adjustment.Source ?? adjustment.Reason ?? "", adjustment.SourceRoomCode ?? "");
 
-    private static string StartingInventoryKey(int roomId, string lotNumber, string variety, string source) =>
-        $"{roomId}|{lotNumber.Trim().ToUpperInvariant()}|{NormalizeVariety(variety)}|{source.Trim().ToUpperInvariant()}";
+    private static string StartingInventoryKey(int roomId, string lotNumber, string variety, string source, string compuTechRoomCode = "") =>
+        $"{roomId}|{NormalizeCode(compuTechRoomCode)}|{lotNumber.Trim().ToUpperInvariant()}|{NormalizeVariety(variety)}|{source.Trim().ToUpperInvariant()}";
 
     private static string JoinMessages(string first, IReadOnlyList<string> messages) =>
         messages.Count == 0 ? first : $"{first} {string.Join(" ", messages)}";
 
-    public static string DetermineEbsSubLocation(string roomCode)
+    public static string DetermineEbsSubLocation(string cropQcRoomName, string compuTechRoomCode = "")
     {
-        var normalized = NormalizeCode(roomCode);
+        var normalized = NormalizeCode($"{cropQcRoomName} {compuTechRoomCode}");
         if (normalized.StartsWith("EVANCA", StringComparison.OrdinalIgnoreCase) || normalized.StartsWith("EVANS", StringComparison.OrdinalIgnoreCase)) return "Evans";
         if (normalized.StartsWith("LAMBCA", StringComparison.OrdinalIgnoreCase) || normalized.StartsWith("LAMB", StringComparison.OrdinalIgnoreCase)) return "Lamb";
         if (normalized.StartsWith("BLUECA", StringComparison.OrdinalIgnoreCase) || normalized.StartsWith("BM", StringComparison.OrdinalIgnoreCase)) return "BM";
@@ -430,6 +478,47 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             ?? TryMap("BLUECA", "BM-", normalized)
             ?? TryMap("LAMBCA", "LAMB-", normalized)
             ?? normalized;
+    }
+
+    public static string CropQcRoomNameForCompuTechCode(string compuTechRoomCode) =>
+        NormalizeCode(compuTechRoomCode) switch
+        {
+            "EVANCA05" => "Evans-5",
+            "EVANCA12" => "Evans-12",
+            "BLUECA04" => "BM-4",
+            "BLUECA01" => "BM-1",
+            "EVANCA01" => "Evans-01",
+            "LAMBCA17" => "Lamb-17",
+            _ => NormalizeCropQcRoomName(compuTechRoomCode)
+        };
+
+    public static string MasterRoomCodeFor(string cropQcRoomName, string compuTechRoomCode) =>
+        NormalizeCode(compuTechRoomCode) switch
+        {
+            "EVANCA05" => "EVANS-5",
+            "EVANCA12" => "EVANS-12",
+            "BLUECA04" => "BM-4",
+            "BLUECA01" => "BM-1",
+            "EVANCA01" => "EVANS-1",
+            "LAMBCA17" => "LAMB-17",
+            _ => NormalizeCode(cropQcRoomName)
+        };
+
+    public static string NormalizeCropQcRoomName(string roomName)
+    {
+        var normalized = NormalizeCode(roomName);
+        return normalized switch
+        {
+            "EVANS5" => "Evans-5",
+            "EVANS05" => "Evans-5",
+            "EVANS12" => "Evans-12",
+            "BM4" => "BM-4",
+            "BM1" => "BM-1",
+            "EVANS1" => "Evans-01",
+            "EVANS01" => "Evans-01",
+            "LAMB17" => "Lamb-17",
+            _ => roomName.Trim()
+        };
     }
 
     private static string? TryMap(string prefix, string targetPrefix, string normalized)
@@ -452,7 +541,11 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
     }
 
     private static string NormalizeCode(string value) =>
-        value.Trim().Replace(" ", "", StringComparison.Ordinal).Replace("_", "", StringComparison.Ordinal).ToUpperInvariant();
+        value.Trim()
+            .Replace(" ", "", StringComparison.Ordinal)
+            .Replace("_", "", StringComparison.Ordinal)
+            .Replace("-", "", StringComparison.Ordinal)
+            .ToUpperInvariant();
 
     private static string NormalizeHeader(string value) =>
         new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());

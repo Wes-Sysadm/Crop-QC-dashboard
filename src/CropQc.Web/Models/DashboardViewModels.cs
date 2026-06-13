@@ -194,6 +194,8 @@ public sealed class RoomInventoryImportPreviewRow
     public int RowNumber { get; set; }
     public string Facility { get; set; } = "";
     public string SubLocation { get; set; } = "";
+    public string CropQcRoomName { get; set; } = "";
+    public string CompuTechRoomCode { get; set; } = "";
     public string RoomCode { get; set; } = "";
     public string NormalizedRoomCode { get; set; } = "";
     public string Variety { get; set; } = "";
@@ -218,6 +220,8 @@ public sealed class RoomInventoryCurrentLotViewModel
     public int RoomId { get; set; }
     public string Facility { get; set; } = "";
     public string SubLocation { get; set; } = "";
+    public string CropQcRoomName { get; set; } = "";
+    public string CompuTechRoomCode { get; set; } = "";
     public string RoomCode { get; set; } = "";
     public string MasterRoomCode { get; set; } = "";
     public string Grower { get; set; } = "";

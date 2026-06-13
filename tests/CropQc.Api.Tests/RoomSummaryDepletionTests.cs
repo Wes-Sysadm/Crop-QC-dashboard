@@ -176,12 +176,15 @@ public sealed class RoomSummaryDepletionTests
             .ToList();
 
         Assert.Equal(23, rows.Count);
-        Assert.Equal(132, SumBins(rows, "evanca05"));
-        Assert.Equal(1469, SumBins(rows, "evanca12"));
-        Assert.Equal(362, SumBins(rows, "Blueca04"));
-        Assert.Equal(1178, SumBins(rows, "blueca01"));
-        Assert.Equal(1462, SumBins(rows, "Evanca01"));
-        Assert.Equal(1585, SumBins(rows, "Lambca17"));
+        Assert.StartsWith("Facility,SubLocation,CropQcRoomName,CompuTechRoomCode", csv);
+        Assert.Equal(132, SumBins(rows, "evans-5"));
+        Assert.Equal(1469, SumBins(rows, "Evans-12"));
+        Assert.Equal(362, SumBins(rows, "BM-4"));
+        Assert.Equal(1178, SumBins(rows, "BM-1"));
+        Assert.Equal(1462, SumBins(rows, "Evans-01"));
+        Assert.Equal(1585, SumBins(rows, "Lamb-17"));
+        Assert.Contains("EBS,Evans,Evans-12,evanca12", csv);
+        Assert.Contains("EBS,BM,BM-1,blueca01", csv);
         Assert.Contains("Compu-Tech Starting Inventory", csv);
     }
 
@@ -189,26 +192,36 @@ public sealed class RoomSummaryDepletionTests
     public void EbsStartingInventoryImport_MapsShortCodesAndAuditsBinChanges()
     {
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "RoomInventoryImportService.cs"));
-        var entity = File.ReadAllText(FindRepositoryFile("src", "CropQc.Data", "Entities", "QcModels.cs"));
+        var qcEntity = File.ReadAllText(FindRepositoryFile("src", "CropQc.Data", "Entities", "QcModels.cs"));
+        var masterEntity = File.ReadAllText(FindRepositoryFile("src", "CropQc.Data", "Entities", "MasterDataModels.cs"));
         var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "RoomInventoryController.cs"));
         var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "RoomInventory", "Index.cshtml"));
 
-        Assert.Contains("MapCompuTechRoomCode", service);
-        Assert.Contains("\"EVANCA\", \"EVANS-\"", service);
-        Assert.Contains("\"BLUECA\", \"BM-\"", service);
-        Assert.Contains("\"LAMBCA\", \"LAMB-\"", service);
+        Assert.Contains("CropQcRoomNameForCompuTechCode", service);
+        Assert.Contains("\"EVANCA05\" => \"Evans-5\"", service);
+        Assert.Contains("\"EVANCA12\" => \"Evans-12\"", service);
+        Assert.Contains("\"BLUECA04\" => \"BM-4\"", service);
+        Assert.Contains("\"BLUECA01\" => \"BM-1\"", service);
+        Assert.Contains("\"EVANCA01\" => \"Evans-01\"", service);
+        Assert.Contains("\"LAMBCA17\" => \"Lamb-17\"", service);
         Assert.Contains("DetermineEbsSubLocation", service);
         Assert.Contains("Grower not found in Master Data", service);
         Assert.Contains("Duplicate inventory row", service);
         Assert.Contains("StartingInventoryImport", service);
         Assert.Contains("BinCountChange", service);
-        Assert.Contains("public string? Source", entity);
-        Assert.Contains("public string? SourceRoomCode", entity);
+        Assert.Contains("public string? CropQcRoomName", masterEntity);
+        Assert.Contains("public string? CompuTechRoomCode", masterEntity);
+        Assert.Contains("public string? Source", qcEntity);
+        Assert.Contains("public string? SourceRoomCode", qcEntity);
+        Assert.Contains("EnsureRoomMetadataSchemaAsync", program);
         Assert.Contains("ADD COLUMN IF NOT EXISTS \"SourceRoomCode\"", program);
+        Assert.Contains("ADD COLUMN IF NOT EXISTS \"CropQcRoomName\"", program);
         Assert.Contains("[Authorize(Policy = \"RequireManagerOrAdmin\")]", controller);
         Assert.Contains("Import EBS Starting Inventory", view);
         Assert.Contains("Import Preview", view);
+        Assert.Contains("Crop QC Room", view);
+        Assert.Contains("Compu-Tech Code", view);
     }
 
     [Fact]
@@ -253,8 +266,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains(attributes, x => x.Policy == policy);
     }
 
-    private static int SumBins(IEnumerable<string[]> rows, string roomCode) =>
-        rows.Where(x => x.Length >= 6 && x[2].Equals(roomCode, StringComparison.OrdinalIgnoreCase)).Sum(x => int.Parse(x[5]));
+    private static int SumBins(IEnumerable<string[]> rows, string cropQcRoomName) =>
+        rows.Where(x => x.Length >= 7 && x[2].Equals(cropQcRoomName, StringComparison.OrdinalIgnoreCase)).Sum(x => int.Parse(x[6]));
 
     private static string FindRepositoryFile(params string[] pathParts)
     {

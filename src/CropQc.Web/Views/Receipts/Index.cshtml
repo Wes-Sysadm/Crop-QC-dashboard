@@ -2,7 +2,7 @@
 @using System.Text.Json
 @{
     ViewData["Title"] = "Receipts";
-    var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, code = x.Code, name = x.Name }));
+    var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, code = x.CropQcRoomName ?? x.DisplayName ?? x.Code, name = x.DisplayName ?? x.Name, subLocation = x.SubLocation ?? "", compuTech = x.CompuTechRoomCode ?? "" }));
     var growerLotsJson = JsonSerializer.Serialize(Model.GrowerLots.Select(x => new { id = x.Id, grower = x.Grower, lot = x.LotNumber, pool = x.PoolStart ?? "", label = $"{x.Grower} - {x.LotNumber} - {(string.IsNullOrWhiteSpace(x.PoolStart) ? "-" : x.PoolStart)}" }));
     var hasRequiredMasterData = Model.Warehouses.Count > 0 && Model.Rooms.Count > 0 && Model.FruitProfiles.Count > 0;
 }
@@ -157,7 +157,9 @@
                 for (const room of rooms.filter(item => item.warehouseId === warehouseId)) {
                     const option = document.createElement("option");
                     option.value = room.id;
-                    option.textContent = `${room.code} - ${room.name}`;
+                    const prefix = room.subLocation ? `${room.subLocation} — ` : "";
+                    const legacy = room.compuTech ? ` (Compu-Tech: ${room.compuTech})` : "";
+                    option.textContent = `${prefix}${room.code}${legacy}`;
                     if (selectedRoomId && Number(selectedRoomId) === room.id) {
                         option.selected = true;
                     }
