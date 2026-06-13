@@ -12,6 +12,7 @@ public sealed class Receipt
     public Room Room { get; set; } = null!;
     public int FruitProfileId { get; set; }
     public FruitProfile FruitProfile { get; set; } = null!;
+    public string? GrowerNumber { get; set; }
     public required string GrowerName { get; set; }
     public required string LotCode { get; set; }
     public int BinCount { get; set; }

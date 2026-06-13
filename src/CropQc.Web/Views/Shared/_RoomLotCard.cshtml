@@ -3,8 +3,8 @@
 <article class="station-card">
     <div class="station-card-header">
         <div>
-            <h3>@Model.GrowerName @Model.LotCode</h3>
-            <p class="station-code">@Model.DisplayReceiptId | @Model.VarietyCode</p>
+            <h3>@(string.IsNullOrWhiteSpace(Model.GrowerNumber) ? Model.GrowerName : $"{Model.GrowerNumber} - {Model.GrowerName}") @Model.LotCode</h3>
+            <p class="station-code">@Model.DisplayReceiptId | @Model.Warehouse / @Model.RoomCode | @Model.VarietyCode</p>
         </div>
         <span class="status @(Model.CurrentBins > 0 ? "ready" : "pending")">@Model.DepletionStatus</span>
     </div>

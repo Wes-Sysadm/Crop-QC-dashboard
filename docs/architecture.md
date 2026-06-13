@@ -51,6 +51,14 @@ Google Drive is the backup target. Admin -> Backups reports the configured provi
 
 Room Summary is a current-state view derived from receipts, samples, fruit readings, and additive room depletion records. Receipts and QC samples remain the historical source of what was received, sampled, photographed, emailed, and captured by QC Station. Depletion records represent bins sent from a room to the packing line and are used to remove those bins/lots from current room rollups without deleting or mutating historical QC data.
 
+Dashboard Room Summary is grouped by facility/location. The default view shows rooms with fruit. Operators can filter by `All`, `MCD`, `WP`, `EBS`, and `DH`; EBS rooms are further grouped/filterable as `Evans`, `Lamb`, and `BM` where room naming identifies those locations. Empty rooms are still available through the Empty/All filter.
+
+Current room inventory is receipt-driven. Receiving/receipt records add current bins and lots to the exact room on the receipt. Door and Lot samples do not create room inventory; they are observational quality checks against fruit already associated with a receipt/lot/room. Door and Lot samples can contribute pressure, starch, defect, and month-over-month quality trends, but they must not increase current bins or current lot counts.
+
+Room bin and lot counts must be scoped to the exact room. Current bins are receipt bins for that room minus non-voided depletion records for the same receipt/room. Current lots are current receipt lots in that exact room. Bins/lots in other rooms, depleted bins/lots, and observational Door/Lot samples are excluded from current inventory counts.
+
+Grower lots are managed through receipt inventory and exposed under Master Data -> Grower Lots. A grower lot is identified in practice by grower number/name, lot code, variety, crop year, facility, and room. Lot number alone is not assumed to be globally unique.
+
 Managers and Admins can create depletion records and void incorrect depletion records with a reason. Voiding is reversible for current-room calculations because voided records are retained but ignored by active inventory. Depletion history remains visible in room drill-downs and must be audited. Do not delete receipts or samples to remove fruit from room summaries.
 
 ## Email Boundary

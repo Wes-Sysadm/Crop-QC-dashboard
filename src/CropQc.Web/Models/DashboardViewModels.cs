@@ -10,12 +10,24 @@ public sealed class HomeDashboardViewModel
     public IReadOnlyList<StatusCountCard> Cards { get; set; } = [];
     public IReadOnlyList<SampleListItemViewModel> TodaySamples { get; set; } = [];
     public IReadOnlyList<RoomSummaryItemViewModel> RoomSummaries { get; set; } = [];
+    public RoomSummaryFilterForm RoomSummaryFilter { get; set; } = new();
+    public IReadOnlyList<string> FacilityOptions { get; set; } = ["All", "MCD", "WP", "EBS", "DH"];
+    public IReadOnlyList<string> EbsLocationOptions { get; set; } = ["All EBS", "Evans", "Lamb", "BM"];
+}
+
+public sealed class RoomSummaryFilterForm
+{
+    public string Facility { get; set; } = "All";
+    public string EbsLocation { get; set; } = "All EBS";
+    public string RoomStatus { get; set; } = "WithFruit";
 }
 
 public sealed class RoomSummaryItemViewModel
 {
     public int RoomId { get; set; }
     public string Warehouse { get; set; } = "";
+    public string Facility { get; set; } = "";
+    public string LocationGroup { get; set; } = "";
     public string RoomCode { get; set; } = "";
     public string RoomName { get; set; } = "";
     public string Status { get; set; } = "Empty";
@@ -48,7 +60,13 @@ public sealed class RoomDetailViewModel
 public sealed class RoomLotSummaryViewModel
 {
     public long ReceiptId { get; set; }
+    public int RoomId { get; set; }
+    public string Warehouse { get; set; } = "";
+    public string Facility { get; set; } = "";
+    public string LocationGroup { get; set; } = "";
+    public string RoomCode { get; set; } = "";
     public string DisplayReceiptId { get; set; } = "";
+    public string GrowerNumber { get; set; } = "";
     public string GrowerName { get; set; } = "";
     public string LotCode { get; set; } = "";
     public string VarietyCode { get; set; } = "";
@@ -296,6 +314,7 @@ public sealed record ReceiptListItemViewModel(
     string Warehouse,
     int RoomId,
     string Room,
+    string GrowerNumber,
     string GrowerName,
     string LotCode,
     string VarietyCode,
@@ -313,6 +332,7 @@ public sealed class CreateReceiptForm
     public int WarehouseId { get; set; }
     public int RoomId { get; set; }
     public int FruitProfileId { get; set; }
+    public string GrowerNumber { get; set; } = "";
     public string GrowerName { get; set; } = "";
     public string LotCode { get; set; } = "";
     public int BinCount { get; set; }
