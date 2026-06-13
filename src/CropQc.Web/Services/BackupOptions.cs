@@ -26,6 +26,42 @@ public sealed class BackupOptions
             PhotoManifestEnabled = configuration.GetValue("Backups:PhotoManifestEnabled", true),
             ConfigBackupEnabled = configuration.GetValue("Backups:ConfigBackupEnabled", true)
         };
+
+    public BackupOptions WithOverrides(IReadOnlyDictionary<string, string> overrides) =>
+        new()
+        {
+            Enabled = Bool(overrides, "Backups:Enabled", Enabled),
+            Provider = overrides.GetValueOrDefault("Backups:Provider") ?? Provider,
+            GoogleDriveFolderId = NormalizeGoogleDriveFolderId(overrides.GetValueOrDefault("Backups:GoogleDriveFolderId") ?? GoogleDriveFolderId),
+            RetentionDays = Int(overrides, "Backups:RetentionDays", RetentionDays),
+            ScheduleUtcHour = Int(overrides, "Backups:ScheduleUtcHour", ScheduleUtcHour),
+            DatabaseBackupEnabled = Bool(overrides, "Backups:DatabaseBackupEnabled", DatabaseBackupEnabled),
+            PhotoManifestEnabled = Bool(overrides, "Backups:PhotoManifestEnabled", PhotoManifestEnabled),
+            ConfigBackupEnabled = Bool(overrides, "Backups:ConfigBackupEnabled", ConfigBackupEnabled)
+        };
+
+    public static string? NormalizeGoogleDriveFolderId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var trimmed = value.Trim();
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var folderIndex = Array.FindIndex(segments, x => x.Equals("folders", StringComparison.OrdinalIgnoreCase));
+            if (folderIndex >= 0 && folderIndex + 1 < segments.Length)
+            {
+                return segments[folderIndex + 1];
+            }
+        }
+
+        return trimmed;
+    }
+
+    private static bool Bool(IReadOnlyDictionary<string, string> values, string key, bool fallback) =>
+        values.TryGetValue(key, out var value) && bool.TryParse(value, out var parsed) ? parsed : fallback;
+
+    private static int Int(IReadOnlyDictionary<string, string> values, string key, int fallback) =>
+        values.TryGetValue(key, out var value) && int.TryParse(value, out var parsed) ? parsed : fallback;
 }
 
 public static class BackupProviders

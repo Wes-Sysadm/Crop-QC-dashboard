@@ -10,7 +10,7 @@
         ("Grades", "/MasterData/grades"),
         ("Defects", "/MasterData/defects"),
         ("Sample types", "/MasterData/sample-types"),
-        ("Grower lots / room inventory", "/MasterData/grower-lots"),
+        ("Grower Lots", "/MasterData/grower-lots"),
         ("Starch scale values", "/MasterData/starch-scale-values"),
         ("Size thresholds", "/MasterData/size-thresholds")
     };
@@ -76,7 +76,7 @@
     <p class="notice success">@TempData["Success"]</p>
 }
 
-@if (Model.CanEdit && Model.Type != "index" && Model.Type != "grower-lots")
+@if (Model.CanEdit && Model.Type != "index")
 {
     <section class="panel">
         <h2>Add @Model.Title</h2>
@@ -95,7 +95,7 @@
             {
                 <th>@column</th>
             }
-            @if (Model.CanEdit && Model.Type != "index" && Model.Type != "grower-lots")
+            @if (Model.CanEdit && Model.Type != "index")
             {
                 <th>Actions</th>
             }
@@ -109,7 +109,7 @@
             {
                 <td>@cell</td>
             }
-            @if (Model.CanEdit && Model.Type != "index" && Model.Type != "grower-lots")
+            @if (Model.CanEdit && Model.Type != "index")
             {
                 <td class="button-row">
                     <a class="button secondary-button" href="/MasterData/@Model.Type/Edit/@item.Id">Edit</a>

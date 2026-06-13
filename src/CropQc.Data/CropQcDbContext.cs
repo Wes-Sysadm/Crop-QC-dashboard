@@ -13,6 +13,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<PasswordPolicy> PasswordPolicies => Set<PasswordPolicy>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<Room> Rooms => Set<Room>();
+    public DbSet<GrowerLot> GrowerLots => Set<GrowerLot>();
     public DbSet<FruitProfile> FruitProfiles => Set<FruitProfile>();
     public DbSet<SampleType> SampleTypes => Set<SampleType>();
     public DbSet<Grade> Grades => Set<Grade>();
@@ -112,6 +113,15 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<GrowerLot>(entity =>
+        {
+            entity.Property(x => x.Grower).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.LotNumber).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.PoolStart).HasMaxLength(20);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.Grower, x.LotNumber }).IsUnique();
+        });
+
         modelBuilder.Entity<FruitProfile>(entity =>
         {
             entity.Property(x => x.Name).HasMaxLength(150).IsRequired();
@@ -173,6 +183,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         {
             entity.Property(x => x.CompuTechReceiptId).HasMaxLength(50).IsRequired();
             entity.Property(x => x.GrowerNumber).HasMaxLength(50);
+            entity.Property(x => x.PoolStart).HasMaxLength(20);
             entity.Property(x => x.GrowerName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.LotCode).HasMaxLength(100).IsRequired();
             entity.Property(x => x.DeleteReason).HasMaxLength(1000);
@@ -190,6 +201,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .WithMany(x => x.Receipts)
                 .HasForeignKey(x => x.FruitProfileId)
                 .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.GrowerLot)
+                .WithMany()
+                .HasForeignKey(x => x.GrowerLotId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<RoomDepletion>(entity =>

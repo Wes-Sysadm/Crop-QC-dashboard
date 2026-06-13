@@ -36,7 +36,7 @@
             <dt>Provider</dt>
             <dd>@Model.Provider</dd>
             <dt>Google Drive folder</dt>
-            <dd>@(Model.GoogleDriveFolderConfigured ? "Configured" : "Missing")</dd>
+            <dd>@(Model.GoogleDriveFolderConfigured ? $"Configured ({Model.GoogleDriveFolderDisplay})" : "Missing")</dd>
             <dt>Database backup</dt>
             <dd>@(Model.DatabaseBackupEnabled ? "Enabled" : "Disabled")</dd>
             <dt>Config backup</dt>
@@ -71,6 +71,30 @@
             <dd class="text-wrap-normal">@(string.IsNullOrWhiteSpace(Model.LastError) ? "None" : Model.LastError)</dd>
         </dl>
     </div>
+</section>
+
+<section class="panel">
+    <h2>Backup Location</h2>
+    <p class="muted">Set the Google Drive backup folder from the site. You may paste either a Drive folder URL or the folder ID.</p>
+    <form class="form-grid" method="post" action="/Admin/Backups/Settings">
+        <label class="checkbox-field wide"><input type="checkbox" name="Enabled" value="true" @(Model.SettingsForm.Enabled ? "checked" : "") /> Backups enabled</label><input type="hidden" name="Enabled" value="false" />
+        <div class="field">
+            <label>Backup provider</label>
+            <select name="Provider">
+                <option value="GoogleDrive" selected>Google Drive</option>
+            </select>
+        </div>
+        <div class="field wide">
+            <label>Google Drive Backup Folder</label>
+            <input name="GoogleDriveFolder" value="@Model.GoogleDriveFolderId" placeholder="Google Drive folder URL or folder ID" />
+        </div>
+        <div class="field"><label>Retention days</label><input name="RetentionDays" type="number" min="1" max="3650" value="@Model.SettingsForm.RetentionDays" /></div>
+        <div class="field"><label>Schedule UTC hour</label><input name="ScheduleUtcHour" type="number" min="0" max="23" value="@Model.SettingsForm.ScheduleUtcHour" /></div>
+        <label class="checkbox-field"><input type="checkbox" name="DatabaseBackupEnabled" value="true" @(Model.SettingsForm.DatabaseBackupEnabled ? "checked" : "") /> Database backup</label><input type="hidden" name="DatabaseBackupEnabled" value="false" />
+        <label class="checkbox-field"><input type="checkbox" name="ConfigBackupEnabled" value="true" @(Model.SettingsForm.ConfigBackupEnabled ? "checked" : "") /> Config snapshot</label><input type="hidden" name="ConfigBackupEnabled" value="false" />
+        <label class="checkbox-field"><input type="checkbox" name="PhotoManifestEnabled" value="true" @(Model.SettingsForm.PhotoManifestEnabled ? "checked" : "") /> Photo manifest</label><input type="hidden" name="PhotoManifestEnabled" value="false" />
+        <button type="submit">Save Backup Settings</button>
+    </form>
 </section>
 
 <section class="form-section">

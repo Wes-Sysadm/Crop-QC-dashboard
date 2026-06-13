@@ -3,7 +3,7 @@
     ViewData["Title"] = "Configuration";
     var qcRecipientsItem = Model.Items.FirstOrDefault(x => x.Key == "QcEmailDefaultRecipients");
     var generalItems = Model.Items
-        .Where(x => x.Key != "QcEmailDefaultRecipients" && x.Key != "DefaultQcSummaryRecipient")
+        .Where(x => x.Key != "QcEmailDefaultRecipients" && x.Key != "DefaultQcSummaryRecipient" && x.Key != "DefaultQcSummaryFromAddress")
         .ToList();
     var qcRecipientsText = qcRecipientsItem is null
         ? ""
@@ -49,6 +49,8 @@
         </dd>
         <dt>Current user email</dt>
         <dd>@(Model.EmailStatus.CurrentUserEmail ?? "Unknown")</dd>
+        <dt>QC Summary From</dt>
+        <dd>Current logged-in Gmail user. No static From address is configured.</dd>
         <dt>Current user domain</dt>
         <dd>@(Model.EmailStatus.CurrentUserDomain ?? "Unknown") (@(Model.EmailStatus.CurrentUserDomainAllowed ? "allowed" : "not allowed"))</dd>
         <dt>Gmail credential present</dt>

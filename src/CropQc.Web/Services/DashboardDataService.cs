@@ -332,6 +332,7 @@ public sealed class DashboardDataService(
                 Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
                 Rooms = await dbContext.Rooms.AsNoTracking().OrderBy(x => x.WarehouseId).ThenBy(x => x.Code).ToListAsync(cancellationToken),
                 FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
+                GrowerLots = await dbContext.GrowerLots.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Grower).ThenBy(x => x.LotNumber).ToListAsync(cancellationToken),
                 AvailableCropYears = await cropYearService.GetAvailableCropYearsAsync(cancellationToken),
                 CurrentCropYear = cropYearService.GetCurrentCropYear(DateTimeOffset.Now),
                 CropYearHelpText = "Crop years use the starting-year convention by default: CropYear 2026 starts 2026-08-01 and ends 2027-07-31. Confirm crop year when season dates overlap."
@@ -345,9 +346,9 @@ public sealed class DashboardDataService(
 
     public async Task<string?> CreateReceiptAsync(CreateReceiptForm form, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(form.CompuTechReceiptId) || string.IsNullOrWhiteSpace(form.GrowerName) || string.IsNullOrWhiteSpace(form.LotCode) || form.BinCount <= 0)
+        if (string.IsNullOrWhiteSpace(form.CompuTechReceiptId) || (form.GrowerLotId is null && (string.IsNullOrWhiteSpace(form.GrowerName) || string.IsNullOrWhiteSpace(form.GrowerNumber))) || string.IsNullOrWhiteSpace(form.LotCode) || form.BinCount <= 0)
         {
-            return "Receipt ID, grower, lot, and bin count are required.";
+            return "Receipt ID, grower, Lot #, receipt lot, and bin count are required.";
         }
 
         var room = await dbContext.Rooms.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.RoomId, cancellationToken);
@@ -367,6 +368,19 @@ public sealed class DashboardDataService(
             return $"Confirm Crop Year before saving. Suggested crop year option(s) for this received date: {candidates}.";
         }
 
+        GrowerLot? growerLot = null;
+        if (form.GrowerLotId is not null)
+        {
+            growerLot = await dbContext.GrowerLots.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.GrowerLotId && x.IsActive, cancellationToken);
+            if (growerLot is null)
+            {
+                return "Selected grower lot was not found or is inactive.";
+            }
+        }
+
+        var growerName = growerLot?.Grower ?? form.GrowerName.Trim();
+        var lotNumber = growerLot?.LotNumber ?? form.GrowerNumber.Trim();
+        var poolStart = growerLot?.PoolStart ?? form.PoolStart.Trim();
         var now = DateTimeOffset.UtcNow;
         dbContext.Receipts.Add(new Receipt
         {
@@ -376,8 +390,10 @@ public sealed class DashboardDataService(
             WarehouseId = form.WarehouseId,
             RoomId = form.RoomId,
             FruitProfileId = form.FruitProfileId,
-            GrowerNumber = string.IsNullOrWhiteSpace(form.GrowerNumber) ? null : form.GrowerNumber.Trim(),
-            GrowerName = form.GrowerName.Trim(),
+            GrowerLotId = growerLot?.Id,
+            GrowerNumber = string.IsNullOrWhiteSpace(lotNumber) ? null : lotNumber,
+            PoolStart = string.IsNullOrWhiteSpace(poolStart) ? null : poolStart,
+            GrowerName = growerName,
             LotCode = form.LotCode.Trim(),
             BinCount = form.BinCount,
             CreatedAt = now,
@@ -1392,6 +1408,7 @@ public sealed class DashboardDataService(
                 RoomCode = receipt.Room.Code,
                 DisplayReceiptId = receipt.CompuTechReceiptId,
                 GrowerNumber = receipt.GrowerNumber ?? "",
+                PoolStart = receipt.PoolStart ?? "",
                 GrowerName = receipt.GrowerName,
                 LotCode = receipt.LotCode,
                 VarietyCode = receipt.FruitProfile.VarietyCode,
@@ -1972,6 +1989,7 @@ public sealed class DashboardDataService(
         receipt.RoomId,
         receipt.Room.Code,
         receipt.GrowerNumber ?? "",
+        receipt.PoolStart ?? "",
         receipt.GrowerName,
         receipt.LotCode,
         receipt.FruitProfile.VarietyCode,

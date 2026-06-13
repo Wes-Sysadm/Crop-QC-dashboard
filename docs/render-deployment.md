@@ -117,7 +117,6 @@ Set these variables in Render:
 - `Google__Gmail__SendScope=https://www.googleapis.com/auth/gmail.send`
 - `QcStation__ApiBaseUrl=https://crop-qc-dashboard.onrender.com`
 - `Downloads__MasterFolderUrl=<Google Drive folder share link>`
-- `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link`
 - `DataCleanup__AllowedEmails=wes@fruitandland.com`
 - `Backups__Enabled=true`
 - `Backups__Provider=GoogleDrive`
@@ -147,7 +146,7 @@ The Render Docker build publishes only the web dashboard. It does not build Wind
 
 The script publishes the WinForms x86 app, builds `artifacts\installers\CropQcStationSetup.msi`, and signs it when signing environment variables are configured. If signing is not configured, it builds an unsigned MSI and prints a SmartScreen/Defender warning.
 
-To deploy the installer download, upload `artifacts\installers\CropQcStationSetup.msi` to Google Drive, restrict sharing to company users, and set `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link` in Render. Render does not host, proxy, or build the MSI. If no installer URL is configured, `/Admin/Downloads` shows “QC Station installer link is not configured. Upload CropQcStationSetup.msi to Google Drive and set Downloads__QcStationInstallerUrl in Render.” The web app still starts normally.
+To deploy installer/support downloads, upload `artifacts\installers\CropQcStationSetup.msi`, `FTADLL.exe`, the known-good x86 `borlndmm.dll`, and related support files to the shared Google Drive hosted-files folder. Set `Downloads__MasterFolderUrl=<Google Drive folder share link>` in Render. Render does not host, proxy, or build the MSI. If no folder URL is configured, `/Admin/Downloads` shows that the hosted files folder is not configured and points Admins to Admin -> Configuration or Render environment settings.
 
 Google login is required for dashboard pages. Only Google Workspace accounts from `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com` are accepted. Other Google accounts are rejected and logged without logging secrets.
 
@@ -176,7 +175,7 @@ Management dashboard pages:
 - `/Admin/QcStations` manages station enrollment, per-station API keys, key rotation, deactivation, and raw config downloads. Admins and Managers can access this page.
 - `/MasterData` shows edit/add/deactivate controls for Admins and Managers.
 - `/Admin/Configuration` manages safe non-secret runtime configuration values. Do not store OAuth secrets, database connection strings, Gmail secrets, Google Drive secrets, or API keys there.
-- `/Admin/Downloads` provides approved internal support-file links, such as the FTA DLL installer Google Drive file and the QC Station App Installer MSI when deployed, to Admin users only.
+- `/Admin/Downloads` provides only the approved hosted Google Drive folder link to Admin users. The folder contains installer/support files such as `CropQcStationSetup.msi`, `FTADLL.exe`, and `borlndmm.dll`; individual file buttons are intentionally not rendered in the web app.
 - `/Admin/Backups` shows backup status, production safety warnings, and manual backup/test actions to Admin users only.
 
 Master Data editing notes:
@@ -225,8 +224,10 @@ Photos and attachments must be retained for at least 3 crop years after the curr
 
 Render Postgres backups are operational backups, not a substitute for the Crop QC retention policy. Production should also configure Admin -> Backups with `Backups__Provider=GoogleDrive` and `Backups__GoogleDriveFolderId` so the app can upload non-secret config snapshots and photo manifests, and database dumps when `pg_dump` is available.
 
-The Admin Backups page shows backup status, production safety warnings, and manual actions:
+The Admin Backups page shows backup status, production safety warnings, backup-location settings, and manual actions:
 
+- `Google Drive Backup Folder` accepts either a folder URL or folder ID.
+- `Save Backup Settings`
 - `Run Backup Now`
 - `Test Google Drive Backup Access`
 
@@ -244,31 +245,17 @@ The eventual photo storage provider must support at least 3 crop years of retent
 
 ## Admin Downloads
 
-`/Admin/Downloads` is protected by the Admin policy and links only to approved shared installer/support files. It does not proxy downloads through the web app, expose arbitrary file paths, allow uploads, commit installer binaries, store installer files in the Render container, or provide station-specific config JSON. Station configs are generated and downloaded only from `/Admin/QcStations`. The preferred production entry is `Downloads__MasterFolderUrl`, which opens the shared Google Drive folder containing `CropQcStationSetup.msi`, `FTADLL.exe`, `borlndmm.dll`, and related support files.
+`/Admin/Downloads` is protected by the Admin policy and links only to the approved shared hosted-files folder. It does not proxy downloads through the web app, expose arbitrary file paths, allow uploads, commit installer binaries, store installer files in the Render container, render individual file buttons, or provide station-specific config JSON. Station configs are generated and downloaded only from `/Admin/QcStations`. The production entry is `Downloads__MasterFolderUrl`, which opens the shared Google Drive folder containing `CropQcStationSetup.msi`, `FTADLL.exe`, `borlndmm.dll`, and related support files.
 
-The current Google Drive download entries are:
+The current Google Drive download entry is:
 
 - Name: Hosted Files Folder
 - File: Google Drive folder
 - Purpose: master Google Drive folder for hosted installer/support files.
 - Link: set with `Downloads__MasterFolderUrl=<Google Drive folder share link>`
 - Button text: `Open Google Drive Folder`
-- Name: FTA DLL Installer
-- File: `FTADLL.exe`
-- Purpose: installer/runtime files needed for GUSS FTA DLL integration on QC Station computers.
-- Link: `https://drive.google.com/file/d/1iYy1v1-D8T-S4SgfHJOeuwoeJfsbcvoS/view?usp=drive_link`
-- Button text: `Open Google Drive Download`
-- Name: Crop QC Station App Installer
-- File: `CropQcStationSetup.msi`
-- Purpose: installs the Crop QC Station WinForms app used for FTA pressure capture and station sync.
-- Link: set with `Downloads__QcStationInstallerUrl=https://drive.google.com/file/d/1NQzoomWfDQpP2a3q-N_g9_lgIHGD37nt/view?usp=drive_link`
-- Button text: `Open Google Drive Download`
-- Name: FTA borlndmm.dll Dependency
-- File: `borlndmm.dll`
-- Purpose: known-good x86 dependency used by the FTA DLL. Use only when diagnostics report the installed `borlndmm.dll` is 64-bit or invalid.
-- Link: set with `Downloads__FtaBorlndmmUrl=[Google Drive share link to the known-good x86 borlndmm.dll]`
-- Button text: `Open Google Drive Download`
-- If diagnostics show `FTA_DLL.dll is 32-bit, but borlndmm.dll is 64-bit`, back up the old `C:\Windows\SysWOW64\borlndmm.dll`, replace it with the known-good x86 copy from Google Drive, and rerun QC Station FTA Diagnostics.
+
+Inside the hosted folder, keep `FTADLL.exe`, `CropQcStationSetup.msi`, the known-good x86 `borlndmm.dll`, and related support files. If diagnostics show `FTA_DLL.dll is 32-bit, but borlndmm.dll is 64-bit`, back up the old `C:\Windows\SysWOW64\borlndmm.dll`, replace it with the known-good x86 copy from the hosted folder, and rerun QC Station FTA Diagnostics.
 
 ## Crop Years And Admin Cleanup
 

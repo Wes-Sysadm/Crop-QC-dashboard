@@ -30,6 +30,20 @@ public sealed class RoleNavigationAuthorizationTests
     }
 
     [Fact]
+    public void AdminDropdown_OpensOnDesktopHoverAndKeepsTouchFallback()
+    {
+        var css = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css"));
+
+        Assert.Contains("@media (hover: hover) and (pointer: fine)", css);
+        Assert.Contains(".nav-dropdown:hover .nav-dropdown-menu", css);
+        Assert.Contains(".nav-dropdown:focus-within .nav-dropdown-menu", css);
+        Assert.Contains(".nav-dropdown:not([open]) .nav-dropdown-menu", css);
+        Assert.Contains(".nav-dropdown-menu { position: absolute", css);
+        Assert.Contains("@media (max-width: 760px)", css);
+        Assert.Contains(".nav-dropdown { position: static", css);
+    }
+
+    [Fact]
     public void AdminController_AuthorizationMatchesRoleNavigation()
     {
         AssertControllerPolicy<AdminController>("RequireAuthenticatedUser");

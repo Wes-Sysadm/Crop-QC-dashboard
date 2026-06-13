@@ -29,6 +29,14 @@ else if (Model.Type == "rooms")
     <div class="field"><label>Name</label><input name="Name" value="@Model.Name" required /></div>
     <div class="field"><label>Capacity Bins</label><input name="CapacityBins" type="number" min="0" value="@Model.CapacityBins" required /></div>
 }
+else if (Model.Type == "grower-lots")
+{
+    <div class="field wide"><label>Grower</label><input name="Name" value="@Model.Name" required /></div>
+    <div class="field"><label>Lot #</label><input name="Code" value="@Model.Code" required /></div>
+    <div class="field"><label>Pool Start</label><input name="PoolStart" value="@Model.PoolStart" maxlength="20" /></div>
+    <div class="field wide"><label>Notes</label><input name="Description" value="@Model.Description" maxlength="1000" /></div>
+    <p class="muted wide">Pool Start is the first two letters/characters of the pool and is stored for future final-results analysis.</p>
+}
 else if (Model.Type == "fruit-profiles")
 {
     <div class="field"><label>Variety Code</label><input name="Code" value="@Model.Code" required /></div>

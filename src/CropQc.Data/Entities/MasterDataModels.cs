@@ -21,6 +21,18 @@ public sealed class Room
     public bool IsActive { get; set; } = true;
 }
 
+public sealed class GrowerLot
+{
+    public int Id { get; set; }
+    public required string Grower { get; set; }
+    public required string LotNumber { get; set; }
+    public string? PoolStart { get; set; }
+    public string? Notes { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
 public sealed class FruitProfile
 {
     public int Id { get; set; }

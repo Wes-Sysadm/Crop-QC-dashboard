@@ -72,18 +72,28 @@ public sealed class RoomSummaryDepletionTests
     }
 
     [Fact]
-    public void MasterData_GrowerLotsExposeCurrentRoomInventory()
+    public void MasterData_GrowerLotsExposeGrowerLotTerminology()
     {
         var admin = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "AdminManagementService.cs"));
         var masterData = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "MasterData", "Index.cshtml"));
+        var fields = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "MasterData", "_MasterDataFields.cshtml"));
         var receiptModel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Data", "Entities", "QcModels.cs"));
         var receiptView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Index.cshtml"));
 
         Assert.Contains("\"grower-lots\" => await GrowerLotsPage", admin);
-        Assert.Contains("Grower lots / room inventory", admin);
-        Assert.Contains("Current Bins", admin);
+        Assert.Contains("Grower Lots", admin);
+        Assert.Contains("Lot #", admin);
+        Assert.Contains("Pool Start", admin);
+        Assert.Contains("INACTIVE", admin);
+        Assert.Contains("Pool Start", fields);
+        Assert.Contains("Lot #", fields);
         Assert.Contains("public string? GrowerNumber", receiptModel);
+        Assert.Contains("public string? PoolStart", receiptModel);
+        Assert.Contains("public int? GrowerLotId", receiptModel);
         Assert.Contains("name=\"GrowerNumber\"", receiptView);
+        Assert.Contains("name=\"PoolStart\"", receiptView);
+        Assert.Contains("@lot.Grower - @lot.LotNumber", receiptView);
+        Assert.Contains("data-pool", receiptView);
         Assert.Contains("/MasterData/grower-lots", masterData);
     }
 
