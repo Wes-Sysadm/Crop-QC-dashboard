@@ -33,6 +33,7 @@ public interface IDashboardDataService
     Task<RoomDetailViewModel> GetRoomDetailAsync(int roomId, CancellationToken cancellationToken);
     Task<string?> CreateRoomDepletionAsync(RoomDepletionForm form, CancellationToken cancellationToken);
     Task<string?> VoidRoomDepletionAsync(VoidRoomDepletionForm form, CancellationToken cancellationToken);
+    Task<string?> CreateRoomInventoryTrueUpAsync(RoomInventoryTrueUpForm form, CancellationToken cancellationToken);
 }
 
 public enum FruitRowEntryStatus
@@ -140,6 +141,7 @@ public sealed class DashboardDataService(
             var activeLots = lotSummaries.Where(x => x.CurrentBins > 0).ToList();
             var depletedLots = lotSummaries.Where(x => x.CurrentBins <= 0 && x.OriginalBins > 0).ToList();
             var depletions = await BuildRoomDepletionHistoryAsync(roomId, cancellationToken);
+            var inventoryAdjustments = await BuildRoomInventoryAdjustmentHistoryAsync(roomId, cancellationToken);
             var canManage = IsManagerOrAdmin();
 
             return new RoomDetailViewModel
@@ -148,8 +150,10 @@ public sealed class DashboardDataService(
                 CurrentLots = activeLots,
                 DepletedLots = depletedLots,
                 Depletions = depletions,
+                InventoryAdjustments = inventoryAdjustments,
                 DepletionReceiptOptions = activeLots.Select(x => new RoomReceiptOptionViewModel(x.ReceiptId, $"{x.DisplayReceiptId} - {x.GrowerName} {x.LotCode} {x.VarietyCode} ({x.CurrentBins} bins current)", x.CurrentBins)).ToList(),
                 DepletionForm = new RoomDepletionForm { RoomId = roomId, DepletedAt = DateTimeOffset.Now },
+                TrueUpForm = new RoomInventoryTrueUpForm { RoomId = roomId, AdjustmentAt = DateTimeOffset.Now },
                 CanManageDepletions = canManage
             };
         }
@@ -181,10 +185,7 @@ public sealed class DashboardDataService(
             return "Room lot was not found.";
         }
 
-        var depletedBins = await dbContext.RoomDepletions.AsNoTracking()
-            .Where(x => x.ReceiptId == receipt.Id && !x.IsVoided)
-            .SumAsync(x => (int?)x.BinCountDepleted, cancellationToken) ?? 0;
-        var currentBins = Math.Max(0, receipt.BinCount - depletedBins);
+        var currentBins = await GetCurrentBinsForReceiptAsync(receipt.Id, cancellationToken);
         if (form.BinCount > currentBins && !form.ConfirmOverDepletion)
         {
             return $"Cannot deplete {form.BinCount} bins because only {currentBins} bins are currently known in this room. Confirm override if the current bin count is unknown or needs correction.";
@@ -208,7 +209,19 @@ public sealed class DashboardDataService(
         };
         dbContext.RoomDepletions.Add(depletion);
         await dbContext.SaveChangesAsync(cancellationToken);
+        AddRoomInventoryAdjustment(
+            receipt,
+            currentUser,
+            "Depletion",
+            oldBinCount: currentBins,
+            changeAmount: -form.BinCount,
+            newBinCount: Math.Max(0, currentBins - form.BinCount),
+            adjustmentAt: form.DepletedAt,
+            reason: "Bins sent to line",
+            notes: depletion.Notes,
+            roomDepletionId: depletion.Id);
         await AddAuditAsync("Create", nameof(RoomDepletion), depletion.Id.ToString(), currentUser?.Email ?? "unknown", null, $"Receipt {receipt.CompuTechReceiptId}; {form.BinCount} bins depleted from {receipt.Warehouse.Code}/{receipt.Room.Code}.", cancellationToken);
+        await AddAuditAsync("BinCountChange", nameof(RoomInventoryAdjustment), receipt.Id.ToString(), currentUser?.Email ?? "unknown", null, $"Depletion changed bins from {currentBins} to {Math.Max(0, currentBins - form.BinCount)}.", cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
     }
@@ -225,7 +238,14 @@ public sealed class DashboardDataService(
             return "Void reason is required.";
         }
 
-        var depletion = await dbContext.RoomDepletions.SingleOrDefaultAsync(x => x.Id == form.DepletionId && x.RoomId == form.RoomId, cancellationToken);
+        var depletion = await dbContext.RoomDepletions
+            .Include(x => x.Receipt)
+                .ThenInclude(x => x.Warehouse)
+            .Include(x => x.Receipt)
+                .ThenInclude(x => x.Room)
+            .Include(x => x.Receipt)
+                .ThenInclude(x => x.FruitProfile)
+            .SingleOrDefaultAsync(x => x.Id == form.DepletionId && x.RoomId == form.RoomId, cancellationToken);
         if (depletion is null)
         {
             return "Depletion record not found.";
@@ -237,11 +257,70 @@ public sealed class DashboardDataService(
         }
 
         var currentUser = await GetCurrentUserAsync(cancellationToken);
+        var currentBeforeVoid = await GetCurrentBinsForReceiptAsync(depletion.ReceiptId, cancellationToken);
         depletion.IsVoided = true;
         depletion.VoidedAt = DateTimeOffset.UtcNow;
         depletion.VoidedByUserId = currentUser?.Id;
         depletion.VoidReason = form.Reason.Trim();
+        AddRoomInventoryAdjustment(
+            depletion.Receipt,
+            currentUser,
+            "Void/Reversal",
+            oldBinCount: currentBeforeVoid,
+            changeAmount: depletion.BinCountDepleted,
+            newBinCount: currentBeforeVoid + depletion.BinCountDepleted,
+            adjustmentAt: DateTimeOffset.UtcNow,
+            reason: depletion.VoidReason,
+            notes: $"Voided depletion {depletion.Id}.",
+            roomDepletionId: depletion.Id);
         await AddAuditAsync("Void", nameof(RoomDepletion), depletion.Id.ToString(), currentUser?.Email ?? "unknown", null, $"Voided depletion. Reason: {depletion.VoidReason}", cancellationToken);
+        await AddAuditAsync("BinCountChange", nameof(RoomInventoryAdjustment), depletion.ReceiptId.ToString(), currentUser?.Email ?? "unknown", null, $"Void/Reversal changed bins from {currentBeforeVoid} to {currentBeforeVoid + depletion.BinCountDepleted}.", cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
+    public async Task<string?> CreateRoomInventoryTrueUpAsync(RoomInventoryTrueUpForm form, CancellationToken cancellationToken)
+    {
+        if (!IsManagerOrAdmin())
+        {
+            return "Only Managers and Admins can true up room inventory.";
+        }
+
+        if (form.NewBinCount < 0)
+        {
+            return "Current bin count cannot be negative.";
+        }
+
+        if (string.IsNullOrWhiteSpace(form.Reason))
+        {
+            return "Reason is required for bin count true-up.";
+        }
+
+        var receipt = await dbContext.Receipts
+            .Include(x => x.Warehouse)
+            .Include(x => x.Room)
+            .Include(x => x.FruitProfile)
+            .SingleOrDefaultAsync(x => x.Id == form.ReceiptId && !x.IsDeleted, cancellationToken);
+        if (receipt is null || receipt.RoomId != form.RoomId)
+        {
+            return "Current lot was not found for this room.";
+        }
+
+        var currentUser = await GetCurrentUserAsync(cancellationToken);
+        var oldCount = await GetCurrentBinsForReceiptAsync(receipt.Id, cancellationToken);
+        var delta = form.NewBinCount - oldCount;
+        AddRoomInventoryAdjustment(
+            receipt,
+            currentUser,
+            "ManualTrueUp",
+            oldBinCount: oldCount,
+            changeAmount: delta,
+            newBinCount: form.NewBinCount,
+            adjustmentAt: form.AdjustmentAt,
+            reason: form.Reason.Trim(),
+            notes: string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim(),
+            roomDepletionId: null);
+        await AddAuditAsync("BinCountChange", nameof(RoomInventoryAdjustment), receipt.Id.ToString(), currentUser?.Email ?? "unknown", null, $"ManualTrueUp changed bins from {oldCount} to {form.NewBinCount}. Reason: {form.Reason.Trim()}", cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
     }
@@ -362,6 +441,12 @@ public sealed class DashboardDataService(
             return "Selected room does not belong to the selected warehouse.";
         }
 
+        var fruitProfile = await dbContext.FruitProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.FruitProfileId, cancellationToken);
+        if (fruitProfile is null)
+        {
+            return "Selected variety was not found.";
+        }
+
         if (cropYearService.RequiresConfirmation(form.ReceivedAt, form.CropYear) && !form.ConfirmCropYear)
         {
             var candidates = string.Join(", ", cropYearService.GetCandidateCropYears(form.ReceivedAt));
@@ -382,7 +467,7 @@ public sealed class DashboardDataService(
         var lotNumber = growerLot?.LotNumber ?? form.GrowerNumber.Trim();
         var poolStart = growerLot?.PoolStart ?? form.PoolStart.Trim();
         var now = DateTimeOffset.UtcNow;
-        dbContext.Receipts.Add(new Receipt
+        var receipt = new Receipt
         {
             CropYear = form.CropYear,
             ReceivedAt = form.ReceivedAt,
@@ -398,8 +483,23 @@ public sealed class DashboardDataService(
             BinCount = form.BinCount,
             CreatedAt = now,
             UpdatedAt = now
-        });
+        };
+        dbContext.Receipts.Add(receipt);
 
+        await dbContext.SaveChangesAsync(cancellationToken);
+        var currentUser = await GetCurrentUserAsync(cancellationToken);
+        AddRoomInventoryAdjustment(
+            receipt,
+            currentUser,
+            "ReceiptAdd",
+            oldBinCount: null,
+            changeAmount: receipt.BinCount,
+            newBinCount: receipt.BinCount,
+            adjustmentAt: receipt.ReceivedAt,
+            reason: "Receiving inventory added",
+            notes: $"Receipt {receipt.CompuTechReceiptId} added {receipt.BinCount} bins to {room.Code}.",
+            roomDepletionId: null);
+        await AddAuditAsync("BinCountChange", nameof(RoomInventoryAdjustment), receipt.CompuTechReceiptId, currentUser?.Email ?? "unknown", null, $"ReceiptAdd {receipt.BinCount} bins in room {room.Code}.", cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
     }
@@ -1339,6 +1439,7 @@ public sealed class DashboardDataService(
             var currentBins = roomLots.Sum(x => x.CurrentBins);
             var status = roomLots.Count == 0 ? "Empty" : flags.Count > 0 ? "Needs Review" : "Active";
             var facility = FacilityCode(room.Warehouse.Code, room.Warehouse.Name);
+            var weakestLot = FindWeakestLot(roomLots);
             return new RoomSummaryItemViewModel
             {
                 RoomId = room.Id,
@@ -1359,7 +1460,10 @@ public sealed class DashboardDataService(
                 LastSampleDate = roomSamples.Count == 0 ? null : roomSamples.Max(x => x.SampleTakenAt),
                 SampleCount = roomSamples.Count,
                 EnteredFruitCount = roomSamples.SelectMany(x => x.FruitReadings).Count(HasEnteredFruitData),
-                ReviewFlags = flags
+                ReviewFlags = flags,
+                WeakestLotLabel = weakestLot?.Label,
+                WeakestLotReason = weakestLot?.Reason,
+                WeakestLotReceiptId = weakestLot?.ReceiptId
             };
         }).ToList();
 
@@ -1386,15 +1490,24 @@ public sealed class DashboardDataService(
             .GroupBy(x => x.ReceiptId)
             .Select(x => new { ReceiptId = x.Key, Bins = x.Sum(y => y.BinCountDepleted) })
             .ToDictionaryAsync(x => x.ReceiptId, x => x.Bins, cancellationToken);
+        var receiptAdjustments = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
+            .ToListAsync(cancellationToken);
+        var latestAdjustmentByReceipt = receiptAdjustments
+            .GroupBy(x => x.ReceiptId!.Value)
+            .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First());
         var samples = await QuerySamples()
             .Where(x => receiptIds.Contains(x.ReceiptId))
             .ToListAsync(cancellationToken);
         var samplesByReceipt = samples.GroupBy(x => x.ReceiptId).ToDictionary(x => x.Key, x => x.ToList());
 
-        return receipts.Select(receipt =>
+        var lotSummaries = receipts.Select(receipt =>
         {
             var depleted = depletionByReceipt.GetValueOrDefault(receipt.Id);
-            var currentBins = Math.Max(0, receipt.BinCount - depleted);
+            var latestAdjustment = latestAdjustmentByReceipt.GetValueOrDefault(receipt.Id);
+            var currentBins = latestAdjustment is not null
+                ? Math.Max(0, latestAdjustment.NewBinCount)
+                : Math.Max(0, receipt.BinCount - depleted);
             var lotSamples = samplesByReceipt.GetValueOrDefault(receipt.Id, []);
             var pressures = PressureValues(lotSamples).ToList();
             var starch = StarchValues(lotSamples).ToList();
@@ -1431,6 +1544,17 @@ public sealed class DashboardDataService(
                     .ToList()
             };
         }).ToList();
+
+        foreach (var group in lotSummaries.Where(x => x.CurrentBins > 0).GroupBy(x => x.RoomId))
+        {
+            var weakest = FindWeakestLot(group.ToList());
+            if (weakest is not null && group.SingleOrDefault(x => x.ReceiptId == weakest.ReceiptId) is { } match)
+            {
+                match.WeakestReason = weakest.Reason;
+            }
+        }
+
+        return lotSummaries;
     }
 
     private async Task<IReadOnlyList<RoomDepletionListItemViewModel>> BuildRoomDepletionHistoryAsync(int roomId, CancellationToken cancellationToken) =>
@@ -1456,6 +1580,145 @@ public sealed class DashboardDataService(
                 VoidReason = x.VoidReason
             })
             .ToListAsync(cancellationToken);
+
+    private async Task<IReadOnlyList<RoomInventoryAdjustmentListItemViewModel>> BuildRoomInventoryAdjustmentHistoryAsync(int roomId, CancellationToken cancellationToken) =>
+        await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Include(x => x.Receipt)
+            .Include(x => x.Room)
+            .Include(x => x.CreatedByUser)
+            .Where(x => x.RoomId == roomId)
+            .OrderByDescending(x => x.AdjustmentAt)
+            .ThenByDescending(x => x.Id)
+            .Take(100)
+            .Select(x => new RoomInventoryAdjustmentListItemViewModel
+            {
+                Id = x.Id,
+                ReceiptId = x.ReceiptId,
+                Lot = $"{x.GrowerName} {x.LotNumber}",
+                Room = x.Room.Code,
+                OldBinCount = x.OldBinCount,
+                ChangeAmount = x.ChangeAmount,
+                NewBinCount = x.NewBinCount,
+                AdjustmentType = x.AdjustmentType,
+                Reason = x.Reason,
+                Notes = x.Notes,
+                AdjustmentAt = x.AdjustmentAt,
+                CreatedBy = x.CreatedByUser == null ? "" : x.CreatedByUser.DisplayName
+            })
+            .ToListAsync(cancellationToken);
+
+    private async Task<int> GetCurrentBinsForReceiptAsync(long receiptId, CancellationToken cancellationToken)
+    {
+        var latestAdjustment = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.ReceiptId == receiptId)
+            .OrderByDescending(x => x.AdjustmentAt)
+            .ThenByDescending(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (latestAdjustment is not null)
+        {
+            return Math.Max(0, latestAdjustment.NewBinCount);
+        }
+
+        var receiptBins = await dbContext.Receipts.AsNoTracking()
+            .Where(x => x.Id == receiptId)
+            .Select(x => x.BinCount)
+            .SingleAsync(cancellationToken);
+        var depleted = await dbContext.RoomDepletions.AsNoTracking()
+            .Where(x => x.ReceiptId == receiptId && !x.IsVoided)
+            .SumAsync(x => (int?)x.BinCountDepleted, cancellationToken) ?? 0;
+        return Math.Max(0, receiptBins - depleted);
+    }
+
+    private void AddRoomInventoryAdjustment(
+        Receipt receipt,
+        User? currentUser,
+        string adjustmentType,
+        int? oldBinCount,
+        int changeAmount,
+        int newBinCount,
+        DateTimeOffset adjustmentAt,
+        string? reason,
+        string? notes,
+        long? roomDepletionId)
+    {
+        dbContext.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
+        {
+            ReceiptId = receipt.Id == 0 ? null : receipt.Id,
+            RoomDepletionId = roomDepletionId,
+            WarehouseId = receipt.WarehouseId,
+            RoomId = receipt.RoomId,
+            GrowerLotId = receipt.GrowerLotId,
+            FruitProfileId = receipt.FruitProfileId,
+            GrowerName = receipt.GrowerName,
+            LotNumber = !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode,
+            PoolStart = receipt.PoolStart,
+            VarietyCode = receipt.FruitProfile?.VarietyCode,
+            OldBinCount = oldBinCount,
+            ChangeAmount = changeAmount,
+            NewBinCount = Math.Max(0, newBinCount),
+            AdjustmentType = adjustmentType,
+            Reason = reason,
+            Notes = notes,
+            AdjustmentAt = adjustmentAt,
+            CreatedByUserId = currentUser?.Id,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+    }
+
+    private static WeakestLotResult? FindWeakestLot(IReadOnlyList<RoomLotSummaryViewModel> lots)
+    {
+        var candidates = lots
+            .Where(x => x.CurrentBins > 0)
+            .Select(BuildWeakestLotScore)
+            .Where(x => x.Score > 0)
+            .OrderByDescending(x => x.Score)
+            .ThenBy(x => x.Label)
+            .ToList();
+        return candidates.FirstOrDefault();
+    }
+
+    private static WeakestLotResult BuildWeakestLotScore(RoomLotSummaryViewModel lot)
+    {
+        var reasons = new List<string>();
+        decimal score = 0;
+        if (lot.AveragePressureLbs is decimal pressure)
+        {
+            score += Math.Max(0m, 30m - pressure);
+            reasons.Add($"lowest pressure candidate {pressure:0.##} lbs");
+        }
+
+        if (lot.MonthOverMonthPressureChangeLbs is decimal change && change < 0)
+        {
+            score += Math.Abs(change) * 2m;
+            reasons.Add($"pressure {change:0.##} lbs MoM");
+        }
+
+        if (lot.DefectSummary != "None")
+        {
+            score += 2m;
+            reasons.Add($"defects: {lot.DefectSummary}");
+        }
+
+        if (lot.AverageStarch is decimal starch)
+        {
+            score += starch / 4m;
+            reasons.Add($"starch {starch:0.##}");
+        }
+
+        if (lot.PressureStdDevLbs is decimal stdDev && stdDev > 0)
+        {
+            score += stdDev / 2m;
+        }
+
+        if (lot.EnteredFruitCount == 0)
+        {
+            return new(lot.ReceiptId, $"{lot.GrowerName} {lot.LotCode}", 0, "No QC trend data yet");
+        }
+
+        return new(lot.ReceiptId, $"{lot.GrowerName} {lot.LotCode} {lot.VarietyCode}", score, reasons.Count == 0 ? "No QC trend data yet" : string.Join("; ", reasons.Take(3)));
+    }
+
+    private sealed record WeakestLotResult(long ReceiptId, string Label, decimal Score, string Reason);
 
     private static RoomSummaryFilterForm NormalizeRoomSummaryFilter(RoomSummaryFilterForm? filter)
     {
@@ -2221,6 +2484,7 @@ public sealed class DashboardDataService(
         ("Grades", "/MasterData/grades"),
         ("Defects", "/MasterData/defects"),
         ("Sample types", "/MasterData/sample-types"),
+        ("Grower Lots", "/MasterData/grower-lots"),
         ("Starch scale values", "/MasterData/starch-scale-values"),
         ("Size thresholds", "/MasterData/size-thresholds")
     ];

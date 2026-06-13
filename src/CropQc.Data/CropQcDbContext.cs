@@ -23,6 +23,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<FruitSizeConversionThreshold> FruitSizeConversionThresholds => Set<FruitSizeConversionThreshold>();
     public DbSet<Receipt> Receipts => Set<Receipt>();
     public DbSet<RoomDepletion> RoomDepletions => Set<RoomDepletion>();
+    public DbSet<RoomInventoryAdjustment> RoomInventoryAdjustments => Set<RoomInventoryAdjustment>();
     public DbSet<QcSample> QcSamples => Set<QcSample>();
     public DbSet<QcFruitReading> QcFruitReadings => Set<QcFruitReading>();
     public DbSet<QcFruitDefect> QcFruitDefects => Set<QcFruitDefect>();
@@ -239,6 +240,47 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.VoidedByUser)
                 .WithMany()
                 .HasForeignKey(x => x.VoidedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<RoomInventoryAdjustment>(entity =>
+        {
+            entity.Property(x => x.GrowerName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.LotNumber).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.PoolStart).HasMaxLength(20);
+            entity.Property(x => x.VarietyCode).HasMaxLength(50);
+            entity.Property(x => x.AdjustmentType).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(500);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.RoomId, x.AdjustmentAt });
+            entity.HasIndex(x => new { x.ReceiptId, x.AdjustmentAt });
+            entity.HasOne(x => x.Receipt)
+                .WithMany(x => x.RoomInventoryAdjustments)
+                .HasForeignKey(x => x.ReceiptId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.RoomDepletion)
+                .WithMany()
+                .HasForeignKey(x => x.RoomDepletionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.Warehouse)
+                .WithMany()
+                .HasForeignKey(x => x.WarehouseId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Room)
+                .WithMany()
+                .HasForeignKey(x => x.RoomId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.GrowerLot)
+                .WithMany()
+                .HasForeignKey(x => x.GrowerLotId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.FruitProfile)
+                .WithMany()
+                .HasForeignKey(x => x.FruitProfileId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.CreatedByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
 

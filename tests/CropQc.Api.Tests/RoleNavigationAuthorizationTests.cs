@@ -33,12 +33,16 @@ public sealed class RoleNavigationAuthorizationTests
     public void AdminDropdown_OpensOnDesktopHoverAndKeepsTouchFallback()
     {
         var css = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css"));
+        var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
 
         Assert.Contains("@media (hover: hover) and (pointer: fine)", css);
         Assert.Contains(".nav-dropdown:hover .nav-dropdown-menu", css);
         Assert.Contains(".nav-dropdown:focus-within .nav-dropdown-menu", css);
         Assert.Contains(".nav-dropdown:not([open]) .nav-dropdown-menu", css);
         Assert.Contains(".nav-dropdown-menu { position: absolute", css);
+        Assert.Contains("mouseenter", layout);
+        Assert.Contains("mouseleave", layout);
+        Assert.Contains("setTimeout(() => { dropdown.open = false; }, 220)", layout);
         Assert.Contains("@media (max-width: 760px)", css);
         Assert.Contains(".nav-dropdown { position: static", css);
     }

@@ -88,6 +88,10 @@ else
                             <div><dt>Fruit rows</dt><dd>@room.EnteredFruitCount</dd></div>
                         </dl>
                         <p class="room-lots">@room.LotSummary</p>
+                        @if (!string.IsNullOrWhiteSpace(room.WeakestLotLabel))
+                        {
+                            <p class="room-lots"><strong>Weakest lot:</strong> @room.WeakestLotLabel - @room.WeakestLotReason</p>
+                        }
                         @if (room.ReviewFlags.Count > 0)
                         {
                             <ul class="compact-list">

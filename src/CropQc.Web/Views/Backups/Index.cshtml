@@ -86,7 +86,9 @@
         </div>
         <div class="field wide">
             <label>Google Drive Backup Folder</label>
-            <input name="GoogleDriveFolder" value="@Model.GoogleDriveFolderId" placeholder="Google Drive folder URL or folder ID" />
+            <input id="googleDriveBackupFolder" name="GoogleDriveFolder" value="@Model.GoogleDriveFolderId" placeholder="Google Drive folder URL or folder ID" />
+            <span class="help-text">Paste the full Google Drive folder link or just the folder ID. For example, from <code>https://drive.google.com/drive/folders/0AJIU41AM__WNUk9PVA?...</code> the folder ID is <code>0AJIU41AM__WNUk9PVA</code>.</span>
+            <span id="parsedBackupFolderId" class="muted">Parsed folder ID: @(Model.GoogleDriveFolderId ?? "none")</span>
         </div>
         <div class="field"><label>Retention days</label><input name="RetentionDays" type="number" min="1" max="3650" value="@Model.SettingsForm.RetentionDays" /></div>
         <div class="field"><label>Schedule UTC hour</label><input name="ScheduleUtcHour" type="number" min="0" max="23" value="@Model.SettingsForm.ScheduleUtcHour" /></div>
@@ -106,3 +108,36 @@
     </ul>
     <p class="notice warning">Photo binaries already live in Google Drive. This backup stores a manifest so files can be verified and located during restore.</p>
 </section>
+
+<script>
+    (() => {
+        const input = document.getElementById("googleDriveBackupFolder");
+        const output = document.getElementById("parsedBackupFolderId");
+        if (!input || !output) return;
+
+        function parseFolderId(value) {
+            const trimmed = (value || "").trim();
+            if (!trimmed) return "";
+            try {
+                const url = new URL(trimmed);
+                const parts = url.pathname.split("/").filter(Boolean);
+                const folderIndex = parts.findIndex(part => part.toLowerCase() === "folders");
+                if (folderIndex >= 0 && parts[folderIndex + 1]) {
+                    return parts[folderIndex + 1];
+                }
+            } catch {
+                return trimmed;
+            }
+
+            return trimmed;
+        }
+
+        function updatePreview() {
+            const parsed = parseFolderId(input.value);
+            output.textContent = parsed ? `Parsed folder ID: ${parsed}` : "Parsed folder ID: none";
+        }
+
+        input.addEventListener("input", updatePreview);
+        updatePreview();
+    })();
+</script>

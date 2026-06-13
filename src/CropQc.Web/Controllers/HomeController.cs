@@ -35,6 +35,16 @@ public sealed class HomeController(IDashboardDataService dataService) : Controll
         return RedirectToAction(nameof(Room), new { roomId });
     }
 
+    [HttpPost("/Dashboard/Rooms/{roomId:int}/InventoryTrueUp")]
+    [Authorize(Policy = "RequireManagerOrAdmin")]
+    public async Task<IActionResult> InventoryTrueUp(int roomId, RoomInventoryTrueUpForm form, CancellationToken cancellationToken)
+    {
+        form.RoomId = roomId;
+        var error = await dataService.CreateRoomInventoryTrueUpAsync(form, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Room inventory true-up recorded.";
+        return RedirectToAction(nameof(Room), new { roomId });
+    }
+
     [HttpGet("/AccessDenied")]
     public IActionResult AccessDenied() => View();
 

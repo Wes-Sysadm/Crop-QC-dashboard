@@ -32,7 +32,7 @@
         {
             <p class="notice warning">This receipt already has a QC sample. Creating another sample of the same type will assign the next sample sequence, such as @(Model.Receipt.CompuTechReceiptId)(2), and mark it Needs Review.</p>
         }
-        <form method="post" action="/Receipts/@Model.Receipt.Id/samples">
+        <form id="add-sample" method="post" action="/Receipts/@Model.Receipt.Id/samples">
             <label class="field">
                 Sample type
                 <select name="SampleTypeId" required>
@@ -49,7 +49,7 @@
 }
 
 <div class="grid-two">
-    <section>
+    <section id="samples">
         <h2>Linked Samples</h2>
         <p class="muted">Use Open in QC Station to capture FTA pressures for a sample. Weight, grade, defects, and other QC details can still be entered on the sample page. Requires Crop QC Station to be installed and station config imported.</p>
         <div class="table-wrap">

@@ -32,10 +32,10 @@ public sealed class AdminController(
                 new(
                     "Hosted Files Folder",
                     "Google Drive folder",
-                    "Open the shared Google Drive folder containing CropQcStationSetup.msi, FTADLL.exe, borlndmm.dll, and other hosted support files.",
+                    "Open the shared Google Drive folder for installers and support files.",
                     masterFolderUrl ?? "",
                     masterFolderConfigured
-                        ? "Opens the shared Google Drive folder. Use this as the master production download location for installer/support files."
+                        ? "Use this folder for QC Station installers, FTADLL files, and support utilities."
                         : "Hosted files folder is not configured. Set it under Admin -> Configuration or Render environment settings.",
                     IsAvailable: masterFolderConfigured,
                     OpensInNewTab: masterFolderConfigured,
