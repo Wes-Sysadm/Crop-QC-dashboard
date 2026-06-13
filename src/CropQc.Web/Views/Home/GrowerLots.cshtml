@@ -1,0 +1,89 @@
+@model CurrentGrowerLotsPageViewModel
+@{
+    ViewData["Title"] = "Grower Lots In Storage";
+}
+
+<h1>Grower Lots In Storage</h1>
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+
+<form class="toolbar" method="get">
+    <div class="field">
+        <label>Crop Year</label>
+        <select name="CropYear">
+            <option value="">All</option>
+            @foreach (var year in Model.CropYears)
+            {
+                <option value="@year" selected="@(Model.Filter.CropYear == year ? "selected" : null)">@year</option>
+            }
+        </select>
+    </div>
+    <div class="field">
+        <label>Warehouse</label>
+        <select name="WarehouseId">
+            <option value="">All</option>
+            @foreach (var warehouse in Model.Warehouses)
+            {
+                <option value="@warehouse.Id" selected="@(Model.Filter.WarehouseId == warehouse.Id ? "selected" : null)">@warehouse.Code</option>
+            }
+        </select>
+    </div>
+    <div class="field">
+        <label>Room</label>
+        <select name="RoomId">
+            <option value="">All</option>
+            @foreach (var room in Model.Rooms)
+            {
+                <option value="@room.Id" selected="@(Model.Filter.RoomId == room.Id ? "selected" : null)">@((room.CropQcRoomName ?? room.DisplayName ?? room.Code))</option>
+            }
+        </select>
+    </div>
+    <div class="field"><label>Grower</label><input name="Grower" value="@Model.Filter.Grower" list="grower-options" /></div>
+    <datalist id="grower-options">@foreach (var grower in Model.Growers){<option value="@grower"></option>}</datalist>
+    <div class="field"><label>Variety</label><input name="Variety" value="@Model.Filter.Variety" list="variety-options" /></div>
+    <datalist id="variety-options">@foreach (var variety in Model.Varieties){<option value="@variety"></option>}</datalist>
+    <div class="field"><label>Lot/Search</label><input name="Search" value="@Model.Filter.Search" /></div>
+    <button type="submit">Apply</button>
+</form>
+
+<div class="table-wrap operational-table-wrap">
+    <table class="operational-table">
+        <thead>
+            <tr>
+                <th>Grower</th>
+                <th>Lot</th>
+                <th>Variety</th>
+                <th>Warehouse</th>
+                <th>Room</th>
+                <th>Bins Currently In Storage</th>
+                <th>Receipt/First Received</th>
+                <th>Last QC Sample</th>
+                <th>Latest Avg Pressure</th>
+                <th>Latest Starch</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var lot in Model.Lots)
+        {
+            <tr>
+                <td>@lot.Grower</td>
+                <td>@lot.Lot</td>
+                <td>@lot.Variety</td>
+                <td>@lot.Warehouse</td>
+                <td>@lot.Room</td>
+                <td class="numeric-cell">@lot.CurrentBins</td>
+                <td>@(lot.FirstReceivedAt?.LocalDateTime.ToString("g") ?? "Starting inventory")</td>
+                <td>@(lot.LastQcSampleAt?.LocalDateTime.ToString("g") ?? "-")</td>
+                <td>@Format(lot.LatestAveragePressure)</td>
+                <td>@Format(lot.LatestStarch)</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@functions {
+    private static string Format(decimal? value) => value?.ToString("0.##") ?? "-";
+}

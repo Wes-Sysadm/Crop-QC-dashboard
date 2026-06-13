@@ -1,0 +1,90 @@
+@model CropYearReviewPageViewModel
+@{
+    ViewData["Title"] = "Crop Year Review";
+}
+
+<h1>Crop Year Review</h1>
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+
+<form class="toolbar" method="get">
+    <div class="field">
+        <label>Crop Year</label>
+        <select name="CropYear">
+            @foreach (var year in Model.CropYears)
+            {
+                <option value="@year" selected="@(Model.Filter.CropYear == year ? "selected" : null)">@year</option>
+            }
+        </select>
+    </div>
+    <div class="field">
+        <label>Warehouse</label>
+        <select name="WarehouseId">
+            <option value="">All</option>
+            @foreach (var warehouse in Model.Warehouses)
+            {
+                <option value="@warehouse.Id" selected="@(Model.Filter.WarehouseId == warehouse.Id ? "selected" : null)">@warehouse.Code</option>
+            }
+        </select>
+    </div>
+    <div class="field"><label>Grower</label><input name="Grower" value="@Model.Filter.Grower" list="review-growers" /></div>
+    <datalist id="review-growers">@foreach (var grower in Model.Growers){<option value="@grower"></option>}</datalist>
+    <div class="field"><label>Variety</label><input name="Variety" value="@Model.Filter.Variety" list="review-varieties" /></div>
+    <datalist id="review-varieties">@foreach (var variety in Model.Varieties){<option value="@variety"></option>}</datalist>
+    <button type="submit">Apply</button>
+</form>
+
+<div class="table-wrap operational-table-wrap">
+    <table class="operational-table crop-year-review-table">
+        <thead>
+            <tr>
+                <th>Sample Date</th>
+                <th>Grower</th>
+                <th>Lot</th>
+                <th>Variety</th>
+                <th>Warehouse</th>
+                <th>Room</th>
+                <th>Sample Type</th>
+                <th>Average Pressure</th>
+                <th>Pressure Std Dev</th>
+                <th>Starch Average</th>
+                <th>Entered Fruit Count</th>
+                <th>Earliest Pressure</th>
+                <th>Latest Pressure</th>
+                <th>Pressure Change</th>
+                <th>Days Between Samples</th>
+                <th>Pressure Loss/Week</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var row in Model.Rows)
+        {
+            <tr>
+                <td>@row.SampleDate.LocalDateTime.ToString("g")</td>
+                <td>@row.Grower</td>
+                <td>@row.Lot</td>
+                <td>@row.Variety</td>
+                <td>@row.Warehouse</td>
+                <td>@row.Room</td>
+                <td>@row.SampleType</td>
+                <td>@Format(row.AveragePressure)</td>
+                <td>@Format(row.PressureStdDev)</td>
+                <td>@Format(row.StarchAverage)</td>
+                <td class="numeric-cell">@row.EnteredFruitCount</td>
+                <td>@Format(row.EarliestPressure)</td>
+                <td>@Format(row.LatestPressure)</td>
+                <td>@FormatChange(row.PressureChange)</td>
+                <td>@(row.DaysBetweenSamples?.ToString() ?? "-")</td>
+                <td>@Format(row.PressureLossPerWeek)</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@functions {
+    private static string Format(decimal? value) => value?.ToString("0.##") ?? "-";
+    private static string FormatChange(decimal? value) => value is null ? "-" : $"{(value > 0 ? "+" : "")}{value:0.##}";
+}

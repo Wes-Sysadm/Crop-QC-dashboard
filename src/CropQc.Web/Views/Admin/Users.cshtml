@@ -63,13 +63,12 @@
 </section>
 
 <h2>Users</h2>
-<div class="table-wrap">
-    <table>
+<div class="user-admin-list">
+    <table class="responsive-admin-table">
         <thead>
             <tr>
                 <th>Email</th>
                 <th>Display Name</th>
-                <th>Domain</th>
                 <th>Role</th>
                 <th>Active</th>
                 <th>Last Login</th>
@@ -82,7 +81,6 @@
             <tr>
                 <td>@user.Email</td>
                 <td>@user.DisplayName</td>
-                <td>@user.Domain</td>
                 <td>
                     <span class="status">@user.Role</span>
                     <div class="muted">@user.RoleSummary</div>

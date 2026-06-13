@@ -2,6 +2,7 @@ using CropQc.Web.Services;
 using CropQc.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace CropQc.Web.Controllers;
 
@@ -9,6 +10,23 @@ public sealed class HomeController(IDashboardDataService dataService) : Controll
 {
     public async Task<IActionResult> Index([FromQuery] RoomSummaryFilterForm roomSummaryFilter, CancellationToken cancellationToken) =>
         View(await dataService.GetHomeDashboardAsync(roomSummaryFilter, cancellationToken));
+
+    [HttpGet("/GrowerLots/Current")]
+    public async Task<IActionResult> CurrentGrowerLots([FromQuery] CurrentGrowerLotsFilterForm filter, CancellationToken cancellationToken) =>
+        View("GrowerLots", await dataService.GetCurrentGrowerLotsAsync(filter, cancellationToken));
+
+    [HttpGet("/CropYearReview")]
+    [Authorize]
+    public async Task<IActionResult> CropYearReview([FromQuery] CropYearReviewFilterForm filter, CancellationToken cancellationToken)
+    {
+        var email = User.FindFirstValue(ClaimTypes.Email);
+        if (!string.Equals(email, "wes@fruitandland.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
+        }
+
+        return View(await dataService.GetCropYearReviewAsync(filter, cancellationToken));
+    }
 
     [HttpGet("/Dashboard/Rooms/{roomId:int}")]
     public async Task<IActionResult> Room(int roomId, CancellationToken cancellationToken) =>

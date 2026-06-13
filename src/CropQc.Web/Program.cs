@@ -453,6 +453,7 @@ static async Task EnsureCleanupColumnsAsync(IServiceProvider services)
                 ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "DeletedAt" timestamp with time zone NULL;
                 ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "DeletedByUserId" integer NULL;
                 ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "DeleteReason" character varying(1000) NULL;
+                ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "ReceiptType" character varying(50) NOT NULL DEFAULT 'Truck receipt';
                 ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "GrowerNumber" character varying(50) NULL;
                 ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "GrowerLotId" integer NULL;
                 ALTER TABLE "Receipts" ADD COLUMN IF NOT EXISTS "PoolStart" character varying(20) NULL;
@@ -473,6 +474,7 @@ static async Task EnsureCleanupColumnsAsync(IServiceProvider services)
                 IF COL_LENGTH('Receipts', 'DeletedAt') IS NULL ALTER TABLE [Receipts] ADD [DeletedAt] datetimeoffset NULL;
                 IF COL_LENGTH('Receipts', 'DeletedByUserId') IS NULL ALTER TABLE [Receipts] ADD [DeletedByUserId] int NULL;
                 IF COL_LENGTH('Receipts', 'DeleteReason') IS NULL ALTER TABLE [Receipts] ADD [DeleteReason] nvarchar(1000) NULL;
+                IF COL_LENGTH('Receipts', 'ReceiptType') IS NULL ALTER TABLE [Receipts] ADD [ReceiptType] nvarchar(50) NOT NULL CONSTRAINT [DF_Receipts_ReceiptType] DEFAULT N'Truck receipt';
                 IF COL_LENGTH('Receipts', 'GrowerNumber') IS NULL ALTER TABLE [Receipts] ADD [GrowerNumber] nvarchar(50) NULL;
                 IF COL_LENGTH('Receipts', 'GrowerLotId') IS NULL ALTER TABLE [Receipts] ADD [GrowerLotId] int NULL;
                 IF COL_LENGTH('Receipts', 'PoolStart') IS NULL ALTER TABLE [Receipts] ADD [PoolStart] nvarchar(20) NULL;

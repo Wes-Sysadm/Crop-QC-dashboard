@@ -6,6 +6,7 @@ public sealed class Receipt
     public int CropYear { get; set; }
     public DateTimeOffset ReceivedAt { get; set; }
     public required string CompuTechReceiptId { get; set; }
+    public string ReceiptType { get; set; } = "Truck receipt";
     public int WarehouseId { get; set; }
     public Warehouse Warehouse { get; set; } = null!;
     public int RoomId { get; set; }

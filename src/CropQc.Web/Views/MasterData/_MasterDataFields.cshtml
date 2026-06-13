@@ -27,6 +27,7 @@ else if (Model.Type == "rooms")
 {
     <div class="field"><label>Code</label><input name="Code" value="@Model.Code" required /></div>
     <div class="field"><label>Name</label><input name="Name" value="@Model.Name" required /></div>
+    <div class="field"><label>Compu-Tech Code</label><input name="CompuTechCode" value="@Model.CompuTechCode" maxlength="100" /></div>
     <div class="field"><label>Capacity Bins</label><input name="CapacityBins" type="number" min="0" value="@Model.CapacityBins" required /></div>
 }
 else if (Model.Type == "grower-lots")

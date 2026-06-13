@@ -11,6 +11,8 @@ namespace CropQc.Web.Services;
 public interface IDashboardDataService
 {
     Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken);
+    Task<CurrentGrowerLotsPageViewModel> GetCurrentGrowerLotsAsync(CurrentGrowerLotsFilterForm filter, CancellationToken cancellationToken);
+    Task<CropYearReviewPageViewModel> GetCropYearReviewAsync(CropYearReviewFilterForm filter, CancellationToken cancellationToken);
     Task<MasterDataPageViewModel> GetMasterDataPageAsync(string type, CancellationToken cancellationToken);
     Task<ReceiptListViewModel> SearchReceiptsAsync(ReceiptSearchForm search, CancellationToken cancellationToken);
     Task<string?> CreateReceiptAsync(CreateReceiptForm form, CancellationToken cancellationToken);
@@ -72,6 +74,7 @@ public sealed class DashboardDataService(
 {
     private const string DataWarning = "Database is not available yet. The dashboard shell is running with empty data.";
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
+    private static readonly string[] ReceiptTypeOptions = ["Truck receipt", "Door sample", "Lot sample"];
 
     public async Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
     {
@@ -80,18 +83,34 @@ public sealed class DashboardDataService(
         {
             var todaySamples = await QuerySamples().Where(x => x.SampleTakenAt.Date == DateTimeOffset.UtcNow.Date).ToListAsync(cancellationToken);
             var enriched = await EnrichSamplesAsync(todaySamples, cancellationToken);
+            var currentLots = (await BuildRoomLotSummariesAsync(null, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
+            var totalCurrentBins = currentLots.Sum(x => x.CurrentBins);
+            var currentGrowerLots = currentLots.Select(CurrentLotKey).Distinct(StringComparer.OrdinalIgnoreCase).Count();
             var cards = BuildHomeCards(
                 enriched.Count(x => x.SampleType.Contains("Receiving", StringComparison.OrdinalIgnoreCase)),
                 enriched.Count(x => x.IsReady),
                 enriched.Count(x => !x.IsReady),
                 enriched.Count(x => x.EmailStatus == "Sent"),
-                enriched.Count(x => x.ReviewReasons.Count > 0));
+                enriched.Count(x => x.ReviewReasons.Count > 0),
+                totalCurrentBins,
+                currentGrowerLots);
             return new HomeDashboardViewModel
             {
                 Cards = cards,
                 TodaySamples = enriched,
                 RoomSummaryFilter = normalizedRoomFilter,
-                RoomSummaries = await BuildRoomSummariesAsync(cancellationToken, roomSummaryFilter: normalizedRoomFilter)
+                RoomSummaries = await BuildRoomSummariesAsync(cancellationToken, roomSummaryFilter: normalizedRoomFilter),
+                StorageByFacility = currentLots
+                    .GroupBy(x => x.Facility)
+                    .Select(x => new StorageFacilitySummaryViewModel
+                    {
+                        Facility = x.Key,
+                        CurrentBins = x.Sum(y => y.CurrentBins),
+                        CurrentGrowerLots = x.Select(CurrentLotKey).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                        CurrentRooms = x.Select(y => y.RoomId).Distinct().Count()
+                    })
+                    .OrderBy(x => x.Facility)
+                    .ToList()
             };
         }
         catch
@@ -99,31 +118,159 @@ public sealed class DashboardDataService(
             return new HomeDashboardViewModel
             {
                 DataWarning = DataWarning,
-                Cards = BuildHomeCards(0, 0, 0, 0, 0),
+                Cards = BuildHomeCards(0, 0, 0, 0, 0, 0, 0),
                 RoomSummaryFilter = normalizedRoomFilter,
                 RoomSummaries = []
             };
         }
     }
 
-    private IReadOnlyList<StatusCountCard> BuildHomeCards(int todaySamples, int ready, int missing, int sent, int review)
+    private IReadOnlyList<StatusCountCard> BuildHomeCards(int todaySamples, int ready, int missing, int sent, int review, int currentBins, int currentGrowerLots)
     {
-        var cards = new List<StatusCountCard>
-        {
+        return
+        [
+            new("Total Bins In Storage", currentBins, "/GrowerLots/Current", "ready", "Deduplicated current bins across receipts and starting inventory."),
+            new("Grower Lots In Storage", currentGrowerLots, "/GrowerLots/Current", "info", "Grower lots with fruit currently left in storage."),
             new("Today's Receiving Samples", todaySamples, "/Receipts?DateFilter=today&SampleType=Receiving", "info", "Receipts with receiving QC activity today."),
             new("Samples Ready to Email", ready, "/DailyQc?status=ReadyToSend", "ready", "Samples with required data and photos ready for QC summary email."),
-            new("Samples Missing Data", missing, "/DailyQc?status=MissingData", "missing", "Samples that are saved but missing required fields/photos for completion or email."),
-            new("Samples Already Sent", sent, "/DailyQc?status=Sent", "sent", "Samples that already have a QC summary email recorded."),
-            new("Samples Needing Review", review, "/DailyQc?status=NeedsReview", "review", "Samples with review flags such as pressure/starch/defect/variance thresholds.")
-        };
+            new("Samples Missing Data", missing, "/DailyQc?status=MissingData", "missing", "Samples missing required fields/photos."),
+            new("Samples Needing Review", review, "/DailyQc?status=NeedsReview", "review", "Samples with pressure, starch, defect, or variance review flags.")
+        ];
+    }
 
-        var user = httpContextAccessor.HttpContext?.User;
-        if (user?.IsInRole("Admin") == true || user?.IsInRole("Manager") == true)
+    public async Task<CurrentGrowerLotsPageViewModel> GetCurrentGrowerLotsAsync(CurrentGrowerLotsFilterForm filter, CancellationToken cancellationToken)
+    {
+        try
         {
-            cards.Add(new("Master Data/Admin Links", 8, "/MasterData", "admin", "Management pages available to your role."));
-        }
+            filter.CropYear ??= cropYearService.GetCurrentCropYear(DateTimeOffset.Now);
+            var currentLots = (await BuildRoomLotSummariesAsync(null, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
+            var receiptIds = currentLots.Where(x => x.ReceiptId is not null).Select(x => x.ReceiptId!.Value).Distinct().ToList();
+            var receipts = await dbContext.Receipts.AsNoTracking()
+                .Where(x => receiptIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, cancellationToken);
+            var latestSamples = await BuildLatestSampleSummariesAsync(receiptIds, cancellationToken);
 
-        return cards;
+            var rows = currentLots.Select(lot =>
+            {
+                receipts.TryGetValue(lot.ReceiptId ?? 0, out var receipt);
+                latestSamples.TryGetValue(lot.ReceiptId ?? 0, out var latestSample);
+                return new CurrentGrowerLotViewModel
+                {
+                    Grower = lot.GrowerName,
+                    Lot = lot.GrowerNumber,
+                    Variety = lot.VarietyCode,
+                    Warehouse = lot.Warehouse,
+                    Room = lot.RoomCode,
+                    CurrentBins = lot.CurrentBins,
+                    FirstReceivedAt = receipt?.ReceivedAt,
+                    LastQcSampleAt = latestSample?.SampleDate,
+                    LatestAveragePressure = latestSample?.AveragePressure,
+                    LatestStarch = latestSample?.AverageStarch
+                };
+            }).ToList();
+
+            if (filter.CropYear is not null)
+            {
+                rows = rows.Where(x => x.FirstReceivedAt is null || cropYearService.GetCurrentCropYear(x.FirstReceivedAt.Value) == filter.CropYear).ToList();
+            }
+
+            if (filter.WarehouseId is not null)
+            {
+                var warehouseCode = await dbContext.Warehouses.AsNoTracking().Where(x => x.Id == filter.WarehouseId).Select(x => x.Code).SingleOrDefaultAsync(cancellationToken);
+                rows = rows.Where(x => string.Equals(x.Warehouse, warehouseCode, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            if (filter.RoomId is not null)
+            {
+                var roomCode = await dbContext.Rooms.AsNoTracking().Where(x => x.Id == filter.RoomId).Select(x => x.CropQcRoomName ?? x.DisplayName ?? x.Code).SingleOrDefaultAsync(cancellationToken);
+                rows = rows.Where(x => string.Equals(x.Room, roomCode, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            if (!string.IsNullOrWhiteSpace(filter.Grower)) rows = rows.Where(x => x.Grower.Contains(filter.Grower, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (!string.IsNullOrWhiteSpace(filter.Variety)) rows = rows.Where(x => x.Variety.Contains(filter.Variety, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (!string.IsNullOrWhiteSpace(filter.Search))
+            {
+                var search = filter.Search.Trim();
+                rows = rows.Where(x => x.Lot.Contains(search, StringComparison.OrdinalIgnoreCase) || x.Grower.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            return new CurrentGrowerLotsPageViewModel
+            {
+                Filter = filter,
+                Lots = rows.OrderBy(x => x.Grower).ThenBy(x => x.Lot).ThenBy(x => x.Room).ToList(),
+                CropYears = await cropYearService.GetAvailableCropYearsAsync(cancellationToken),
+                Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Code).ToListAsync(cancellationToken),
+                Rooms = await dbContext.Rooms.AsNoTracking().OrderBy(x => x.WarehouseId).ThenBy(x => x.SortOrder).ThenBy(x => x.Code).ToListAsync(cancellationToken),
+                Growers = rows.Select(x => x.Grower).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+                Varieties = rows.Select(x => x.Variety).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList()
+            };
+        }
+        catch
+        {
+            return new CurrentGrowerLotsPageViewModel { Filter = filter, DataWarning = DataWarning };
+        }
+    }
+
+    public async Task<CropYearReviewPageViewModel> GetCropYearReviewAsync(CropYearReviewFilterForm filter, CancellationToken cancellationToken)
+    {
+        try
+        {
+            filter.CropYear ??= cropYearService.GetCurrentCropYear(DateTimeOffset.Now);
+            var query = QuerySamples().Where(x => x.Receipt.CropYear == filter.CropYear);
+            if (filter.WarehouseId is not null) query = query.Where(x => x.Receipt.WarehouseId == filter.WarehouseId);
+            if (!string.IsNullOrWhiteSpace(filter.Grower)) query = query.Where(x => x.Receipt.GrowerName.Contains(filter.Grower));
+            if (!string.IsNullOrWhiteSpace(filter.Variety)) query = query.Where(x => x.Receipt.FruitProfile.VarietyCode.Contains(filter.Variety));
+
+            var samples = await query.OrderBy(x => x.SampleTakenAt).Take(1000).ToListAsync(cancellationToken);
+            var pressureByLot = samples
+                .GroupBy(x => $"{x.Receipt.GrowerName}|{ReceiptLotNumber(x.Receipt)}|{x.Receipt.FruitProfile.VarietyCode}", StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(x => x.Key, x => x.Select(s => new { Sample = s, Pressure = AverageOrNull(PressureValues([s]).ToList()) }).Where(y => y.Pressure is not null).OrderBy(y => y.Sample.SampleTakenAt).ToList(), StringComparer.OrdinalIgnoreCase);
+
+            var rows = samples.Select(sample =>
+            {
+                var pressures = PressureValues([sample]).ToList();
+                var starch = StarchValues([sample]).ToList();
+                var key = $"{sample.Receipt.GrowerName}|{ReceiptLotNumber(sample.Receipt)}|{sample.Receipt.FruitProfile.VarietyCode}";
+                pressureByLot.TryGetValue(key, out var lotPressures);
+                var first = lotPressures?.FirstOrDefault();
+                var last = lotPressures?.LastOrDefault();
+                var days = first is not null && last is not null ? Math.Max(0, (int)(last.Sample.SampleTakenAt.Date - first.Sample.SampleTakenAt.Date).TotalDays) : (int?)null;
+                var change = first?.Pressure is not null && last?.Pressure is not null ? decimal.Round(last.Pressure.Value - first.Pressure.Value, 2) : (decimal?)null;
+                return new CropYearReviewRowViewModel
+                {
+                    SampleDate = sample.SampleTakenAt,
+                    Grower = sample.Receipt.GrowerName,
+                    Lot = ReceiptLotNumber(sample.Receipt),
+                    Variety = sample.Receipt.FruitProfile.VarietyCode,
+                    Warehouse = sample.Receipt.Warehouse.Code,
+                    Room = sample.Receipt.Room.CropQcRoomName ?? sample.Receipt.Room.DisplayName ?? sample.Receipt.Room.Code,
+                    SampleType = sample.SampleType.Name,
+                    AveragePressure = AverageOrNull(pressures),
+                    PressureStdDev = StandardDeviationOrNull(pressures),
+                    StarchAverage = AverageOrNull(starch),
+                    EnteredFruitCount = sample.FruitReadings.Count(HasEnteredFruitData),
+                    EarliestPressure = first?.Pressure,
+                    LatestPressure = last?.Pressure,
+                    PressureChange = change,
+                    DaysBetweenSamples = days,
+                    PressureLossPerWeek = days is > 0 && change < 0 ? decimal.Round(Math.Abs(change.Value) / days.Value * 7m, 2) : null
+                };
+            }).OrderByDescending(x => x.SampleDate).ToList();
+
+            return new CropYearReviewPageViewModel
+            {
+                Filter = filter,
+                Rows = rows,
+                CropYears = await cropYearService.GetAvailableCropYearsAsync(cancellationToken),
+                Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Code).ToListAsync(cancellationToken),
+                Growers = rows.Select(x => x.Grower).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+                Varieties = rows.Select(x => x.Variety).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList()
+            };
+        }
+        catch
+        {
+            return new CropYearReviewPageViewModel { Filter = filter, DataWarning = DataWarning };
+        }
     }
 
     public async Task<RoomDetailViewModel> GetRoomDetailAsync(int roomId, CancellationToken cancellationToken)
@@ -428,9 +575,10 @@ public sealed class DashboardDataService(
 
     public async Task<string?> CreateReceiptAsync(CreateReceiptForm form, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(form.CompuTechReceiptId) || (form.GrowerLotId is null && (string.IsNullOrWhiteSpace(form.GrowerName) || string.IsNullOrWhiteSpace(form.GrowerNumber))) || string.IsNullOrWhiteSpace(form.LotCode) || form.BinCount <= 0)
+        var receiptType = NormalizeReceiptType(form.ReceiptType);
+        if (string.IsNullOrWhiteSpace(form.CompuTechReceiptId) || (form.GrowerLotId is null && (string.IsNullOrWhiteSpace(form.GrowerName) || string.IsNullOrWhiteSpace(form.GrowerNumber))) || (IsInventoryReceiptType(receiptType) && form.BinCount <= 0))
         {
-            return "Receipt ID, grower, Lot #, receipt lot, and bin count are required.";
+            return "Receipt ID, grower, Lot #, receipt type, and bin count for truck receipts are required.";
         }
 
         var room = await dbContext.Rooms.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.RoomId, cancellationToken);
@@ -468,28 +616,33 @@ public sealed class DashboardDataService(
 
         var growerName = growerLot?.Grower ?? form.GrowerName.Trim();
         var lotNumber = growerLot?.LotNumber ?? form.GrowerNumber.Trim();
-        var poolStart = growerLot?.PoolStart ?? form.PoolStart.Trim();
         var now = DateTimeOffset.UtcNow;
         var receipt = new Receipt
         {
             CropYear = form.CropYear,
             ReceivedAt = form.ReceivedAt,
             CompuTechReceiptId = form.CompuTechReceiptId.Trim(),
+            ReceiptType = receiptType,
             WarehouseId = form.WarehouseId,
             RoomId = form.RoomId,
             FruitProfileId = form.FruitProfileId,
             GrowerLotId = growerLot?.Id,
             GrowerNumber = string.IsNullOrWhiteSpace(lotNumber) ? null : lotNumber,
-            PoolStart = string.IsNullOrWhiteSpace(poolStart) ? null : poolStart,
+            PoolStart = null,
             GrowerName = growerName,
-            LotCode = form.LotCode.Trim(),
-            BinCount = form.BinCount,
+            LotCode = lotNumber,
+            BinCount = IsInventoryReceiptType(receiptType) ? form.BinCount : 0,
             CreatedAt = now,
             UpdatedAt = now
         };
         dbContext.Receipts.Add(receipt);
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (!IsInventoryReceiptType(receiptType))
+        {
+            return null;
+        }
+
         var currentUser = await GetCurrentUserAsync(cancellationToken);
         AddRoomInventoryAdjustment(
             receipt,
@@ -1579,7 +1732,7 @@ public sealed class DashboardDataService(
 
         var adjustments = await query.ToListAsync(cancellationToken);
         return adjustments
-            .GroupBy(x => $"{x.RoomId}|{(x.SourceRoomCode ?? "").Trim().ToUpperInvariant()}|{x.LotNumber.Trim().ToUpperInvariant()}|{(x.VarietyCode ?? "").Trim().ToUpperInvariant()}|{(x.Source ?? x.Reason ?? "").Trim().ToUpperInvariant()}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(x => $"{x.RoomId}|{x.LotNumber.Trim().ToUpperInvariant()}|{(x.VarietyCode ?? "").Trim().ToUpperInvariant()}|{(x.Source ?? x.Reason ?? "").Trim().ToUpperInvariant()}", StringComparer.OrdinalIgnoreCase)
             .Select(x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First())
             .Where(x => x.NewBinCount > 0)
             .Select(x => new RoomLotSummaryViewModel
@@ -2313,6 +2466,7 @@ public sealed class DashboardDataService(
         receipt.CropYear,
         receipt.ReceivedAt,
         receipt.CompuTechReceiptId,
+        NormalizeReceiptType(receipt.ReceiptType),
         receipt.Warehouse.Code,
         receipt.RoomId,
         receipt.Room.Code,
@@ -2359,6 +2513,46 @@ public sealed class DashboardDataService(
     }
 
     private sealed record ReceiptSampleSummary(long ReceiptId, int SampleCount, DateTimeOffset LastUpdatedAt, bool HasReady, bool HasReview, bool HasSent);
+    private sealed record LatestSampleSummary(DateTimeOffset SampleDate, decimal? AveragePressure, decimal? AverageStarch);
+
+    private async Task<IReadOnlyDictionary<long, LatestSampleSummary>> BuildLatestSampleSummariesAsync(IReadOnlyList<long> receiptIds, CancellationToken cancellationToken)
+    {
+        if (receiptIds.Count == 0)
+        {
+            return new Dictionary<long, LatestSampleSummary>();
+        }
+
+        var samples = await QuerySamples()
+            .Where(x => receiptIds.Contains(x.ReceiptId))
+            .ToListAsync(cancellationToken);
+        return samples
+            .GroupBy(x => x.ReceiptId)
+            .ToDictionary(
+                x => x.Key,
+                x =>
+                {
+                    var latest = x.OrderByDescending(y => y.SampleTakenAt).ThenByDescending(y => y.Id).First();
+                    return new LatestSampleSummary(
+                        latest.SampleTakenAt,
+                        AverageOrNull(PressureValues([latest]).ToList()),
+                        AverageOrNull(StarchValues([latest]).ToList()));
+                });
+    }
+
+    private static string CurrentLotKey(RoomLotSummaryViewModel lot) =>
+        $"{lot.GrowerName}|{lot.GrowerNumber}|{lot.VarietyCode}";
+
+    private static string ReceiptLotNumber(Receipt receipt) =>
+        !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode;
+
+    private static string NormalizeReceiptType(string? receiptType)
+    {
+        var normalized = string.IsNullOrWhiteSpace(receiptType) ? "Truck receipt" : receiptType.Trim();
+        return ReceiptTypeOptions.FirstOrDefault(x => x.Equals(normalized, StringComparison.OrdinalIgnoreCase)) ?? "Truck receipt";
+    }
+
+    private static bool IsInventoryReceiptType(string receiptType) =>
+        NormalizeReceiptType(receiptType).Equals("Truck receipt", StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyList<PhotoGroupViewModel> GroupPhotos(IReadOnlyList<QcPhoto> photos, bool canDelete, long? deleteFromSampleId = null) =>
         photos.Where(x => !x.IsDeleted)

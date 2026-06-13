@@ -225,7 +225,11 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             }
 
             row.WarehouseId = warehouse.Id;
-            var room = rooms.SingleOrDefault(x => x.WarehouseId == warehouse.Id && string.Equals(x.Code, mappedRoomCode, StringComparison.OrdinalIgnoreCase));
+            var room = rooms.SingleOrDefault(x =>
+                    x.WarehouseId == warehouse.Id
+                    && !string.IsNullOrWhiteSpace(x.CompuTechRoomCode)
+                    && string.Equals(NormalizeCode(x.CompuTechRoomCode), NormalizeCode(compuTechRoomCode), StringComparison.OrdinalIgnoreCase))
+                ?? rooms.SingleOrDefault(x => x.WarehouseId == warehouse.Id && string.Equals(x.Code, mappedRoomCode, StringComparison.OrdinalIgnoreCase));
             if (room is null)
             {
                 previewRows.Add(Invalid(row, $"Room {cropQcRoomName} / Compu-Tech code {compuTechRoomCode} was not recognized. Expected mappings include evanca05 -> Evans-5, evanca12 -> Evans-12, Blueca04 -> BM-4, blueca01 -> BM-1, Evanca01 -> Evans-01, and Lambca17 -> Lamb-17."));
@@ -276,7 +280,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
                 row.Variety = fruitProfile.VarietyCode;
             }
 
-            var existingKey = StartingInventoryKey(row.RoomId.Value, row.LotNumber, row.Variety, row.Source, row.CompuTechRoomCode);
+            var existingKey = StartingInventoryKey(row.RoomId.Value, row.LotNumber, row.Variety, row.Source);
             if (!currentByKey.TryGetValue(existingKey, out var current))
             {
                 row.Action = "Add";
@@ -454,10 +458,10 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
     }
 
     private static string StartingInventoryKey(RoomInventoryAdjustment adjustment) =>
-        StartingInventoryKey(adjustment.RoomId, adjustment.LotNumber, adjustment.VarietyCode ?? "", adjustment.Source ?? adjustment.Reason ?? "", adjustment.SourceRoomCode ?? "");
+        StartingInventoryKey(adjustment.RoomId, adjustment.LotNumber, adjustment.VarietyCode ?? "", adjustment.Source ?? adjustment.Reason ?? "");
 
-    private static string StartingInventoryKey(int roomId, string lotNumber, string variety, string source, string compuTechRoomCode = "") =>
-        $"{roomId}|{NormalizeCode(compuTechRoomCode)}|{lotNumber.Trim().ToUpperInvariant()}|{NormalizeVariety(variety)}|{source.Trim().ToUpperInvariant()}";
+    private static string StartingInventoryKey(int roomId, string lotNumber, string variety, string source) =>
+        $"{roomId}|{lotNumber.Trim().ToUpperInvariant()}|{NormalizeVariety(variety)}|{source.Trim().ToUpperInvariant()}";
 
     private static string JoinMessages(string first, IReadOnlyList<string> messages) =>
         messages.Count == 0 ? first : $"{first} {string.Join(" ", messages)}";
