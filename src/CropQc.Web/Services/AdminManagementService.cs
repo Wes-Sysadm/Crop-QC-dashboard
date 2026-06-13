@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Web.Models;
@@ -12,6 +13,8 @@ public interface IAdminManagementService
     Task<MasterDataEditForm?> GetEditFormAsync(string type, int id, CancellationToken cancellationToken);
     Task<string?> SaveMasterDataAsync(MasterDataEditForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> DeactivateAsync(string type, int id, string changedByEmail, CancellationToken cancellationToken);
+    Task<GrowerLotImportPreviewViewModel> PreviewGrowerLotImportAsync(GrowerLotImportForm form, CancellationToken cancellationToken);
+    Task<(GrowerLotImportPreviewViewModel Preview, string? Error)> ApplyGrowerLotImportAsync(GrowerLotImportForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<ConfigurationPageViewModel> GetConfigurationAsync(bool canEdit, CancellationToken cancellationToken);
     Task<string?> SaveConfigurationAsync(ConfigurationEditForm form, string changedByEmail, CancellationToken cancellationToken);
 }
@@ -105,6 +108,60 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         await AddAuditAsync("deactivate", type, id.ToString(), changedByEmail, before, JsonSerializer.Serialize(entity), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
+    }
+
+    public async Task<GrowerLotImportPreviewViewModel> PreviewGrowerLotImportAsync(GrowerLotImportForm form, CancellationToken cancellationToken)
+    {
+        var csvText = await ReadCsvTextAsync(form, cancellationToken);
+        return await BuildGrowerLotImportPreviewAsync(csvText, cancellationToken);
+    }
+
+    public async Task<(GrowerLotImportPreviewViewModel Preview, string? Error)> ApplyGrowerLotImportAsync(GrowerLotImportForm form, string changedByEmail, CancellationToken cancellationToken)
+    {
+        var csvText = await ReadCsvTextAsync(form, cancellationToken);
+        var preview = await BuildGrowerLotImportPreviewAsync(csvText, cancellationToken);
+        if (!form.ConfirmImport)
+        {
+            return (preview, "Confirm Import Grower Lots before applying changes.");
+        }
+
+        if (!preview.CanApply)
+        {
+            return (preview, "Resolve duplicate/conflicting or invalid rows before importing grower lots.");
+        }
+
+        var existingLots = await dbContext.GrowerLots.ToListAsync(cancellationToken);
+        foreach (var row in preview.Rows.Where(x => x.Action is "Add" or "Update"))
+        {
+            var existing = existingLots.SingleOrDefault(x => string.Equals(x.LotNumber, row.LotNumber, StringComparison.OrdinalIgnoreCase));
+            if (existing is null)
+            {
+                var now = DateTimeOffset.UtcNow;
+                var entity = new GrowerLot
+                {
+                    Grower = row.Grower,
+                    LotNumber = row.LotNumber,
+                    PoolStart = string.IsNullOrWhiteSpace(row.PoolStart) ? null : row.PoolStart,
+                    IsActive = !row.IsInactive,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+                dbContext.GrowerLots.Add(entity);
+                existingLots.Add(entity);
+                await AddAuditAsync("import-add", "grower-lots", row.LotNumber, changedByEmail, null, JsonSerializer.Serialize(entity), cancellationToken);
+                continue;
+            }
+
+            var before = JsonSerializer.Serialize(existing);
+            existing.Grower = row.Grower;
+            existing.PoolStart = string.IsNullOrWhiteSpace(row.PoolStart) ? null : row.PoolStart;
+            existing.IsActive = !row.IsInactive;
+            existing.UpdatedAt = DateTimeOffset.UtcNow;
+            await AddAuditAsync("import-update", "grower-lots", existing.Id.ToString(), changedByEmail, before, JsonSerializer.Serialize(existing), cancellationToken);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return (preview, null);
     }
 
     public async Task<ConfigurationPageViewModel> GetConfigurationAsync(bool canEdit, CancellationToken cancellationToken)
@@ -240,6 +297,209 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         await dbContext.SaveChangesAsync(ct);
         return null;
     }
+
+    private async Task<GrowerLotImportPreviewViewModel> BuildGrowerLotImportPreviewAsync(string csvText, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(csvText))
+        {
+            return new GrowerLotImportPreviewViewModel
+            {
+                CsvText = "",
+                Rows = [new(0, "", "", "", "Invalid", "Upload a CSV file before previewing import.", false)],
+                InvalidCount = 1
+            };
+        }
+
+        var parsedRows = ParseCsv(csvText).ToList();
+        if (parsedRows.Count < 2)
+        {
+            return new GrowerLotImportPreviewViewModel
+            {
+                CsvText = csvText,
+                Rows = [new(0, "", "", "", "Invalid", "CSV must include a header row and at least one data row.", false)],
+                InvalidCount = 1
+            };
+        }
+
+        var headers = parsedRows[0].Select(NormalizeHeader).ToList();
+        var growerIndex = FindHeader(headers, ["grower", "growername"]);
+        var lotIndex = FindHeader(headers, ["#", "grower#", "growernumber", "lot#", "lotnumber"]);
+        var poolIndex = FindHeader(headers, ["poolstarts", "poolstart", "poolcode"]);
+        if (growerIndex < 0 || lotIndex < 0 || poolIndex < 0)
+        {
+            return new GrowerLotImportPreviewViewModel
+            {
+                CsvText = csvText,
+                Rows = [new(0, "", "", "", "Invalid", "CSV headers must include Grower, Lot #, and Pool Start columns. Supported aliases include GrowerName, #, Grower Number, Lot Number, POOL Starts, and PoolCode.", false)],
+                InvalidCount = 1
+            };
+        }
+
+        var existingByLot = (await dbContext.GrowerLots.AsNoTracking().ToListAsync(ct))
+            .GroupBy(x => x.LotNumber.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
+        var seenLots = new Dictionary<string, GrowerLotImportPreviewRow>(StringComparer.OrdinalIgnoreCase);
+        var rows = new List<GrowerLotImportPreviewRow>();
+
+        for (var i = 1; i < parsedRows.Count; i++)
+        {
+            var raw = parsedRows[i];
+            var rowNumber = i + 1;
+            var grower = GetCell(raw, growerIndex).Trim();
+            var lotNumber = GetCell(raw, lotIndex).Trim();
+            var poolStart = GetCell(raw, poolIndex).Trim();
+            var isInactive = grower.StartsWith("INACTIVE", StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(grower) && string.IsNullOrWhiteSpace(lotNumber) && string.IsNullOrWhiteSpace(poolStart))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(grower) || string.IsNullOrWhiteSpace(lotNumber))
+            {
+                rows.Add(new(rowNumber, grower, lotNumber, poolStart, "Invalid", "Grower and Lot # are required.", isInactive));
+                continue;
+            }
+
+            if (seenLots.TryGetValue(lotNumber, out var firstSeen)
+                && (!string.Equals(firstSeen.Grower, grower, StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(firstSeen.PoolStart, poolStart, StringComparison.OrdinalIgnoreCase)))
+            {
+                rows.Add(new(rowNumber, grower, lotNumber, poolStart, "Conflict", $"Duplicate Lot # {lotNumber} conflicts with row {firstSeen.RowNumber}.", isInactive));
+                continue;
+            }
+
+            seenLots.TryAdd(lotNumber, new(rowNumber, grower, lotNumber, poolStart, "Seen", "", isInactive));
+
+            if (!existingByLot.TryGetValue(lotNumber, out var matches))
+            {
+                rows.Add(new(rowNumber, grower, lotNumber, poolStart, "Add", isInactive ? "New inactive lot." : "New active lot.", isInactive));
+                continue;
+            }
+
+            if (matches.Count > 1)
+            {
+                rows.Add(new(rowNumber, grower, lotNumber, poolStart, "Conflict", $"Existing master data has multiple records for Lot # {lotNumber}. Resolve duplicates before importing.", isInactive));
+                continue;
+            }
+
+            var existing = matches[0];
+            var active = !isInactive;
+            if (string.Equals(existing.Grower, grower, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(existing.PoolStart ?? "", poolStart, StringComparison.OrdinalIgnoreCase)
+                && existing.IsActive == active)
+            {
+                rows.Add(new(rowNumber, grower, lotNumber, poolStart, "Unchanged", "No changes.", isInactive));
+            }
+            else
+            {
+                rows.Add(new(rowNumber, grower, lotNumber, poolStart, "Update", "Existing Lot # will be updated. Notes are preserved.", isInactive));
+            }
+        }
+
+        return new GrowerLotImportPreviewViewModel
+        {
+            CsvText = csvText,
+            Rows = rows,
+            AddCount = rows.Count(x => x.Action == "Add"),
+            UpdateCount = rows.Count(x => x.Action == "Update"),
+            UnchangedCount = rows.Count(x => x.Action == "Unchanged"),
+            ConflictCount = rows.Count(x => x.Action == "Conflict"),
+            InvalidCount = rows.Count(x => x.Action == "Invalid"),
+            InactiveCount = rows.Count(x => x.IsInactive)
+        };
+    }
+
+    private static async Task<string> ReadCsvTextAsync(GrowerLotImportForm form, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(form.CsvText))
+        {
+            return form.CsvText;
+        }
+
+        if (form.CsvFile is null || form.CsvFile.Length == 0)
+        {
+            return "";
+        }
+
+        using var reader = new StreamReader(form.CsvFile.OpenReadStream(), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return await reader.ReadToEndAsync(ct);
+    }
+
+    private static IEnumerable<IReadOnlyList<string>> ParseCsv(string text)
+    {
+        var row = new List<string>();
+        var cell = new StringBuilder();
+        var inQuotes = false;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var ch = text[i];
+            if (ch == '"')
+            {
+                if (inQuotes && i + 1 < text.Length && text[i + 1] == '"')
+                {
+                    cell.Append('"');
+                    i++;
+                }
+                else
+                {
+                    inQuotes = !inQuotes;
+                }
+                continue;
+            }
+
+            if (ch == ',' && !inQuotes)
+            {
+                row.Add(cell.ToString());
+                cell.Clear();
+                continue;
+            }
+
+            if ((ch == '\r' || ch == '\n') && !inQuotes)
+            {
+                if (ch == '\r' && i + 1 < text.Length && text[i + 1] == '\n')
+                {
+                    i++;
+                }
+
+                row.Add(cell.ToString());
+                cell.Clear();
+                yield return row;
+                row = [];
+                continue;
+            }
+
+            cell.Append(ch);
+        }
+
+        row.Add(cell.ToString());
+        if (row.Any(x => !string.IsNullOrWhiteSpace(x)) || text.EndsWith(",", StringComparison.Ordinal))
+        {
+            yield return row;
+        }
+    }
+
+    private static int FindHeader(IReadOnlyList<string> headers, IReadOnlyList<string> aliases)
+    {
+        for (var i = 0; i < headers.Count; i++)
+        {
+            if (aliases.Contains(headers[i], StringComparer.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string NormalizeHeader(string value) =>
+        value.Replace(" ", "", StringComparison.Ordinal)
+            .Replace("_", "", StringComparison.Ordinal)
+            .Replace("-", "", StringComparison.Ordinal)
+            .Trim()
+            .ToLowerInvariant();
+
+    private static string GetCell(IReadOnlyList<string> row, int index) =>
+        index >= 0 && index < row.Count ? row[index] : "";
 
     private async Task<string?> SaveWarehouse(MasterDataEditForm form, string by, CancellationToken ct)
     {
@@ -473,7 +733,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         ("Grades", "/MasterData/grades"),
         ("Defects", "/MasterData/defects"),
         ("Sample types", "/MasterData/sample-types"),
-        ("Grower lots / room inventory", "/MasterData/grower-lots"),
+        ("Grower Lots", "/MasterData/grower-lots"),
         ("Starch scale values", "/MasterData/starch-scale-values"),
         ("Size thresholds", "/MasterData/size-thresholds")
     ];

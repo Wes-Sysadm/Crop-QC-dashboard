@@ -23,41 +23,26 @@
     <p><a class="button secondary-button" href="/Admin/QcStations">Manage QC Stations</a></p>
 </section>
 
-<div class="table-wrap">
-    <table>
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>File</th>
-                <th>Description</th>
-                <th>Notes</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody>
-        @foreach (var download in Model.Downloads)
+<div class="responsive-card-grid">
+@foreach (var download in Model.Downloads)
+{
+    <article class="station-card download-card">
+        <div class="station-card-header">
+            <div>
+                <h2>@download.Name</h2>
+                <p class="station-code">@download.FileName</p>
+            </div>
+            @if (!download.IsAvailable || string.IsNullOrWhiteSpace(download.Url))
+            {
+                <span class="badge warn">Not configured</span>
+            }
+        </div>
+        <p class="download-description">@download.Description</p>
+        <p class="muted download-notes">@download.Notes</p>
+        @if (download.IsAvailable && !string.IsNullOrWhiteSpace(download.Url))
         {
-            <tr>
-                <td>@download.Name</td>
-                <td>@download.FileName</td>
-                <td>@download.Description</td>
-                <td class="wrap-cell">@download.Notes</td>
-                <td>
-                    @if (!download.IsAvailable || string.IsNullOrWhiteSpace(download.Url))
-                    {
-                        <span class="badge warn">Not deployed</span>
-                    }
-                    else if (download.OpensInNewTab)
-                    {
-                        <a class="button" href="@download.Url" target="_blank" rel="noopener noreferrer">@download.ActionText</a>
-                    }
-                    else
-                    {
-                        <a class="button" href="@download.Url">@download.ActionText</a>
-                    }
-                </td>
-            </tr>
+            <a class="button" href="@download.Url" target="_blank" rel="noopener noreferrer" title="@download.Url">@download.ActionText</a>
         }
-        </tbody>
-    </table>
+    </article>
+}
 </div>

@@ -31,7 +31,8 @@ public sealed class RoomSummaryDepletionTests
 
         Assert.Contains("RoomDepletions.AsNoTracking()", service);
         Assert.Contains("!x.IsVoided", service);
-        Assert.Contains("var currentBins = Math.Max(0, receipt.BinCount - depleted)", service);
+        Assert.Contains("latestAdjustment.NewBinCount", service);
+        Assert.Contains("receipt.BinCount - depleted", service);
         Assert.Contains("CurrentBins > 0", service);
         Assert.Contains("GroupBy(x => x.RoomId)", service);
         Assert.Contains("var roomLots = currentLotsByRoom.GetValueOrDefault(room.Id", service);
@@ -67,7 +68,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Receipts/receiving add current inventory", dashboard);
         Assert.Contains("Door and Lot samples are observational", dashboard);
         Assert.Contains("Door and Lot samples do not create room inventory", docs);
-        Assert.Contains("var currentBins = Math.Max(0, receipt.BinCount - depleted)", service);
+        Assert.Contains("latestAdjustment.NewBinCount", service);
         Assert.Contains("var lotSamples = samplesByReceipt.GetValueOrDefault(receipt.Id", service);
     }
 
@@ -94,7 +95,27 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("name=\"PoolStart\"", receiptView);
         Assert.Contains("@lot.Grower - @lot.LotNumber", receiptView);
         Assert.Contains("data-pool", receiptView);
+        Assert.Contains("growerLotOptions", receiptView);
+        Assert.Contains("Lot # not found in Master Data", receiptView);
         Assert.Contains("/MasterData/grower-lots", masterData);
+    }
+
+    [Fact]
+    public void GrowerLots_SupportMassImportPreviewAndApply()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "AdminManagementService.cs"));
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "MasterDataController.cs"));
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "MasterData", "Index.cshtml"));
+
+        Assert.Contains("PreviewGrowerLotImportAsync", service);
+        Assert.Contains("ApplyGrowerLotImportAsync", service);
+        Assert.Contains("Grower Number", service);
+        Assert.Contains("POOL Starts", service);
+        Assert.Contains("Duplicate Lot #", service);
+        Assert.Contains("never deletes production rows", view);
+        Assert.Contains("enctype=\"multipart/form-data\"", view);
+        Assert.Contains("ImportPreview", controller);
+        Assert.Contains("ImportApply", controller);
     }
 
     [Fact]
@@ -102,6 +123,7 @@ public sealed class RoomSummaryDepletionTests
     {
         AssertActionPolicy<HomeController>(nameof(HomeController.DepleteRoom), "RequireManagerOrAdmin");
         AssertActionPolicy<HomeController>(nameof(HomeController.VoidRoomDepletion), "RequireManagerOrAdmin");
+        AssertActionPolicy<HomeController>(nameof(HomeController.InventoryTrueUp), "RequireManagerOrAdmin");
     }
 
     [Fact]
@@ -112,12 +134,35 @@ public sealed class RoomSummaryDepletionTests
         var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
 
         Assert.Contains("public sealed class RoomDepletion", entity);
+        Assert.Contains("public sealed class RoomInventoryAdjustment", entity);
         Assert.Contains("IsVoided", entity);
         Assert.Contains("VoidReason", entity);
         Assert.Contains("AddAuditAsync(\"Create\", nameof(RoomDepletion)", service);
         Assert.Contains("AddAuditAsync(\"Void\", nameof(RoomDepletion)", service);
+        Assert.Contains("AddAuditAsync(\"BinCountChange\"", service);
         Assert.Contains("EnsureRoomDepletionSchemaAsync", program);
+        Assert.Contains("EnsureRoomInventoryAdjustmentSchemaAsync", program);
         Assert.DoesNotContain("Remove(depletion)", service, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RoomInventoryTrueUp_RecordsAdjustmentHistoryAndWeakestLots()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
+        var home = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Index.cshtml"));
+        var partial = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_RoomLotCard.cshtml"));
+
+        Assert.Contains("CreateRoomInventoryTrueUpAsync", service);
+        Assert.Contains("ManualTrueUp", service);
+        Assert.Contains("ReceiptAdd", service);
+        Assert.Contains("Depletion", service);
+        Assert.Contains("Void/Reversal", service);
+        Assert.Contains("Bin Count History", room);
+        Assert.Contains("True Up Current Lot Bins", room);
+        Assert.Contains("Weakest lot", home);
+        Assert.Contains("Weakest lot signal", partial);
+        Assert.Contains("FindWeakestLot", service);
     }
 
     [Fact]

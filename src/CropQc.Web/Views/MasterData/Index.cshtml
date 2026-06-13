@@ -17,6 +17,7 @@
     var roomWarehouseOptions = Model.Type == "rooms"
         ? Model.Items.Select(x => x.Cells[0]).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList()
         : new List<string>();
+    var importPreview = Model.ImportPreview;
 }
 
 <h1>@Model.Title</h1>
@@ -85,6 +86,77 @@
             <button type="submit">Add</button>
         </form>
     </section>
+}
+
+@if (Model.CanEdit && Model.Type == "grower-lots")
+{
+    <section class="panel">
+        <h2>Import Grower Lots</h2>
+        <p class="muted">Upload a CSV with <strong>Grower</strong>, <strong>Lot #</strong>, and <strong>Pool Start</strong>. Aliases like <code>Grower Number</code>, <code>#</code>, <code>Lot Number</code>, and <code>POOL Starts</code> are accepted. Import inserts or updates only; it never deletes production rows that are missing from the file.</p>
+        <form class="form-grid" method="post" enctype="multipart/form-data" action="/MasterData/grower-lots/ImportPreview">
+            <label class="field wide">Grower lot CSV
+                <input type="file" name="CsvFile" accept=".csv,text/csv" required />
+            </label>
+            <button type="submit">Preview Import</button>
+        </form>
+    </section>
+
+    @if (importPreview is not null)
+    {
+        <section class="panel">
+            <h2>Import Preview</h2>
+            <div class="metric-grid">
+                <div><strong>@importPreview.AddCount</strong><span>Add</span></div>
+                <div><strong>@importPreview.UpdateCount</strong><span>Update</span></div>
+                <div><strong>@importPreview.UnchangedCount</strong><span>Unchanged</span></div>
+                <div><strong>@importPreview.ConflictCount</strong><span>Conflicts</span></div>
+                <div><strong>@importPreview.InvalidCount</strong><span>Invalid</span></div>
+                <div><strong>@importPreview.InactiveCount</strong><span>Inactive</span></div>
+            </div>
+            <div class="table-wrap contained-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Row</th>
+                            <th>Action</th>
+                            <th>Grower</th>
+                            <th>Lot #</th>
+                            <th>Pool Start</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in importPreview.Rows.Take(50))
+                    {
+                        <tr>
+                            <td class="numeric-cell">@row.RowNumber</td>
+                            <td class="nowrap-cell">@row.Action</td>
+                            <td>@row.Grower</td>
+                            <td class="nowrap-cell">@row.LotNumber</td>
+                            <td class="nowrap-cell">@row.PoolStart</td>
+                            <td>@row.Message</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+            @if (importPreview.Rows.Count > 50)
+            {
+                <p class="muted">Showing first 50 preview rows.</p>
+            }
+            <div class="action-bar">
+                <form method="post" action="/MasterData/grower-lots/ImportApply">
+                    <input type="hidden" name="CsvText" value="@importPreview.CsvText" />
+                    <input type="hidden" name="ConfirmImport" value="true" />
+                    <button type="submit" disabled="@(!importPreview.CanApply)">Import Grower Lots</button>
+                </form>
+                @if (!importPreview.CanApply)
+                {
+                    <p class="notice warning">Resolve conflicts or invalid rows before applying this import.</p>
+                }
+            </div>
+        </section>
+    }
 }
 
 <div class="table-wrap">

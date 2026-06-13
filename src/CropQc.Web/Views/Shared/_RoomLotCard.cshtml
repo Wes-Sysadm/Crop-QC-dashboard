@@ -29,6 +29,10 @@
         }
         </ul>
     }
+    @if (!string.IsNullOrWhiteSpace(Model.WeakestReason))
+    {
+        <p class="notice warning"><strong>Weakest lot signal:</strong> @Model.WeakestReason</p>
+    }
     <div class="action-bar">
         <a class="button secondary-button" href="/Receipts/@Model.ReceiptId">View Receipt</a>
         @foreach (var sample in Model.Samples.Take(4))

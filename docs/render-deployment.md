@@ -227,6 +227,7 @@ Render Postgres backups are operational backups, not a substitute for the Crop Q
 The Admin Backups page shows backup status, production safety warnings, backup-location settings, and manual actions:
 
 - `Google Drive Backup Folder` accepts either a folder URL or folder ID.
+- Full folder URLs are accepted. For `https://drive.google.com/drive/folders/0AJIU41AM__WNUk9PVA?...`, the folder ID shown/saved is `0AJIU41AM__WNUk9PVA`.
 - `Save Backup Settings`
 - `Run Backup Now`
 - `Test Google Drive Backup Access`
@@ -253,6 +254,16 @@ The current Google Drive download entry is:
 - File: Google Drive folder
 - Purpose: master Google Drive folder for hosted installer/support files.
 - Link: set with `Downloads__MasterFolderUrl=<Google Drive folder share link>`
+
+## Grower Lots And Current Inventory
+
+Use `Admin -> Master Data -> Grower Lots` to maintain the grower lot master list. CSV import is previewed before applying and accepts columns/aliases for `Grower`, `Lot #`, and `Pool Start`. The import inserts missing lots, updates changed matching Lot # rows, marks Growers beginning with `INACTIVE` inactive, and does not delete production rows missing from the file.
+
+Receipt entry uses Grower Lots for lookup/autofill. Entering a known Lot # fills Grower and Pool Start. Unknown lots can still be entered manually, but operators should add them to Master Data when appropriate.
+
+Use room drill-down true-up/depletion actions to correct current inventory. Receiving adds bins, depletion subtracts bins, manual true-up corrects current counts, and void/reversal records corrections. Every bin count change is audited with old/new count, delta, reason, user, timestamp, and related receipt/depletion context. Do not delete receipts or samples to remove fruit from current room summaries.
+
+Dashboard Room Summary highlights the weakest current lot where quality data exists. Reasons are displayed so operators can see whether the signal comes from pressure, pressure drop, defects, starch, or variance.
 - Button text: `Open Google Drive Folder`
 
 Inside the hosted folder, keep `FTADLL.exe`, `CropQcStationSetup.msi`, the known-good x86 `borlndmm.dll`, and related support files. If diagnostics show `FTA_DLL.dll is 32-bit, but borlndmm.dll is 64-bit`, back up the old `C:\Windows\SysWOW64\borlndmm.dll`, replace it with the known-good x86 copy from the hosted folder, and rerun QC Station FTA Diagnostics.

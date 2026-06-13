@@ -47,6 +47,14 @@
             }
             </ul>
         }
+        @if (!string.IsNullOrWhiteSpace(Model.Summary.WeakestLotLabel))
+        {
+            <p class="notice warning">
+                <strong>Weakest lot:</strong>
+                <a href="/Receipts/@Model.Summary.WeakestLotReceiptId">@Model.Summary.WeakestLotLabel</a>
+                <span>@Model.Summary.WeakestLotReason</span>
+            </p>
+        }
     </section>
 }
 
@@ -74,6 +82,35 @@
 
 @if (Model.CanManageDepletions && Model.Summary is not null)
 {
+    <section class="panel">
+        <h2>True Up Current Lot Bins</h2>
+        <p class="muted">Use true-up to correct the current bin count for a lot already in this room. This creates an audited adjustment and does not delete receipts, samples, photos, or email history.</p>
+        <form class="form-grid" method="post" action="/Dashboard/Rooms/@Model.Summary.RoomId/InventoryTrueUp">
+            <label class="field">Current lot / receipt
+                <select name="ReceiptId" required>
+                    <option value="">Select current lot</option>
+                    @foreach (var option in Model.DepletionReceiptOptions)
+                    {
+                        <option value="@option.ReceiptId">@option.Label</option>
+                    }
+                </select>
+            </label>
+            <label class="field">Current bin count
+                <input type="number" min="0" name="NewBinCount" required />
+            </label>
+            <label class="field">As-of date/time
+                <input type="datetime-local" name="AdjustmentAt" value="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")" required />
+            </label>
+            <label class="field wide">Reason
+                <input name="Reason" maxlength="500" required placeholder="Inventory count true-up, correction, or room count verification" />
+            </label>
+            <label class="field wide">Notes
+                <textarea name="Notes" maxlength="1000"></textarea>
+            </label>
+            <button type="submit">Record True-Up</button>
+        </form>
+    </section>
+
     <section class="panel">
         <h2>Record Bins Sent to Line</h2>
         <p class="muted">Use depletion to remove fruit from current room summaries without deleting receipts, samples, photos, or email history.</p>
@@ -107,6 +144,43 @@
         </form>
     </section>
 }
+
+<section class="panel">
+    <h2>Bin Count History</h2>
+    @if (Model.InventoryAdjustments.Count == 0)
+    {
+        <p class="muted">No bin count adjustments have been recorded for this room.</p>
+    }
+    else
+    {
+        <div class="responsive-card-grid">
+        @foreach (var adjustment in Model.InventoryAdjustments)
+        {
+            <article class="station-card">
+                <div class="station-card-header">
+                    <div>
+                        <h3>@adjustment.Lot</h3>
+                        <p class="station-code">@adjustment.AdjustmentType</p>
+                    </div>
+                    <span class="status @(adjustment.ChangeAmount < 0 ? "missing" : "ready")">@(adjustment.ChangeAmount >= 0 ? "+" : "")@adjustment.ChangeAmount bins</span>
+                </div>
+                <dl class="station-meta">
+                    <dt>Old count</dt><dd>@(adjustment.OldBinCount?.ToString() ?? "-")</dd>
+                    <dt>New count</dt><dd>@adjustment.NewBinCount</dd>
+                    <dt>When</dt><dd>@adjustment.AdjustmentAt.LocalDateTime</dd>
+                    <dt>User</dt><dd>@(string.IsNullOrWhiteSpace(adjustment.CreatedBy) ? "-" : adjustment.CreatedBy)</dd>
+                    <dt>Reason</dt><dd>@(adjustment.Reason ?? "-")</dd>
+                    <dt>Notes</dt><dd>@(adjustment.Notes ?? "-")</dd>
+                </dl>
+                @if (adjustment.ReceiptId is not null)
+                {
+                    <a class="button secondary-button" href="/Receipts/@adjustment.ReceiptId">View Receipt</a>
+                }
+            </article>
+        }
+        </div>
+    }
+</section>
 
 <section class="panel">
     <h2>Depletion History</h2>

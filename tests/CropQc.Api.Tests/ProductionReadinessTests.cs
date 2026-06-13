@@ -140,6 +140,17 @@ public sealed class ProductionReadinessTests
         Assert.Contains("Run Backup Now", view);
         Assert.Contains("NormalizeGoogleDriveFolderId", options);
         Assert.Contains("folders", options);
+        Assert.Contains("0AJIU41AM__WNUk9PVA", view);
+        Assert.Contains("Parsed folder ID", view);
+    }
+
+    [Fact]
+    public void Backup_folder_url_parses_folder_id_and_discards_query_string()
+    {
+        var folder = BackupOptions.NormalizeGoogleDriveFolderId("https://drive.google.com/drive/folders/0AJIU41AM__WNUk9PVA?dmr=1&ec=wgc-drive-%5Bmodule%5D-goto");
+
+        Assert.Equal("0AJIU41AM__WNUk9PVA", folder);
+        Assert.Equal("0AJIU41AM__WNUk9PVA", BackupOptions.NormalizeGoogleDriveFolderId("0AJIU41AM__WNUk9PVA"));
     }
 
     [Fact]

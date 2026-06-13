@@ -77,12 +77,13 @@ public sealed class QcStationInstallerWorkflowTests
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "AdminController.cs"));
         var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Admin", "Downloads.cshtml"));
 
-        Assert.Contains("CropQcStationSetup.msi", controller);
         Assert.Contains("Hosted Files Folder", controller);
         Assert.Contains("Downloads:MasterFolderUrl", controller);
         Assert.Contains("Hosted files folder is not configured", controller);
         Assert.Contains("Open Google Drive Folder", controller);
-        Assert.Contains("Not deployed", view);
+        Assert.Contains("Not configured", view);
+        Assert.Contains("Open the shared Google Drive folder for installers and support files.", controller);
+        Assert.Contains("download-card", view);
         Assert.Contains("Manage QC Stations", view);
         Assert.Contains("Station configs are generated and downloaded from Admin", view);
         Assert.Contains("Install Crop QC Station App Installer from this page", view);

@@ -30,6 +30,7 @@ public sealed class Receipt
     public ICollection<QcPhoto> Photos { get; } = new List<QcPhoto>();
     public ICollection<QcSummaryEmailLog> SummaryEmailLogs { get; } = new List<QcSummaryEmailLog>();
     public ICollection<RoomDepletion> RoomDepletions { get; } = new List<RoomDepletion>();
+    public ICollection<RoomInventoryAdjustment> RoomInventoryAdjustments { get; } = new List<RoomInventoryAdjustment>();
 }
 
 public sealed class RoomDepletion
@@ -57,6 +58,37 @@ public sealed class RoomDepletion
     public int? VoidedByUserId { get; set; }
     public User? VoidedByUser { get; set; }
     public string? VoidReason { get; set; }
+}
+
+public sealed class RoomInventoryAdjustment
+{
+    public long Id { get; set; }
+    public long? ReceiptId { get; set; }
+    public Receipt? Receipt { get; set; }
+    public long? RoomDepletionId { get; set; }
+    public RoomDepletion? RoomDepletion { get; set; }
+    public int WarehouseId { get; set; }
+    public Warehouse Warehouse { get; set; } = null!;
+    public int RoomId { get; set; }
+    public Room Room { get; set; } = null!;
+    public int? GrowerLotId { get; set; }
+    public GrowerLot? GrowerLot { get; set; }
+    public int? FruitProfileId { get; set; }
+    public FruitProfile? FruitProfile { get; set; }
+    public required string GrowerName { get; set; }
+    public required string LotNumber { get; set; }
+    public string? PoolStart { get; set; }
+    public string? VarietyCode { get; set; }
+    public int? OldBinCount { get; set; }
+    public int ChangeAmount { get; set; }
+    public int NewBinCount { get; set; }
+    public required string AdjustmentType { get; set; }
+    public string? Reason { get; set; }
+    public string? Notes { get; set; }
+    public DateTimeOffset AdjustmentAt { get; set; }
+    public int? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 public sealed class QcSample

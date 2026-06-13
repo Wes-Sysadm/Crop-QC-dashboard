@@ -42,4 +42,28 @@ public sealed class MasterDataController(IAdminManagementService adminService, I
         TempData[error is null ? "Success" : "Error"] = error ?? "Record deactivated.";
         return RedirectToAction(nameof(Index), new { type });
     }
+
+    [HttpPost("grower-lots/ImportPreview")]
+    public async Task<IActionResult> PreviewGrowerLotImport(CropQc.Web.Models.GrowerLotImportForm form, CancellationToken cancellationToken)
+    {
+        var preview = await adminService.PreviewGrowerLotImportAsync(form, cancellationToken);
+        var model = await adminService.GetMasterDataAsync("grower-lots", authorizationService.IsManagerOrAdmin(User), cancellationToken);
+        return View("Index", model with { ImportPreview = preview });
+    }
+
+    [HttpPost("grower-lots/ImportApply")]
+    public async Task<IActionResult> ApplyGrowerLotImport(CropQc.Web.Models.GrowerLotImportForm form, CancellationToken cancellationToken)
+    {
+        form.ConfirmImport = true;
+        var (preview, error) = await adminService.ApplyGrowerLotImportAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
+        if (error is not null)
+        {
+            TempData["Error"] = error;
+            var model = await adminService.GetMasterDataAsync("grower-lots", authorizationService.IsManagerOrAdmin(User), cancellationToken);
+            return View("Index", model with { ImportPreview = preview });
+        }
+
+        TempData["Success"] = $"Grower lots imported. Added {preview.AddCount}, updated {preview.UpdateCount}, unchanged {preview.UnchangedCount}.";
+        return RedirectToAction(nameof(Index), new { type = "grower-lots" });
+    }
 }

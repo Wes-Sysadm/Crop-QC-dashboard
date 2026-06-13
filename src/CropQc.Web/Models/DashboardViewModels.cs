@@ -1,4 +1,5 @@
 using CropQc.Data.Entities;
+using Microsoft.AspNetCore.Http;
 
 namespace CropQc.Web.Models;
 
@@ -43,6 +44,9 @@ public sealed class RoomSummaryItemViewModel
     public int SampleCount { get; set; }
     public int EnteredFruitCount { get; set; }
     public IReadOnlyList<string> ReviewFlags { get; set; } = [];
+    public string? WeakestLotLabel { get; set; }
+    public string? WeakestLotReason { get; set; }
+    public long? WeakestLotReceiptId { get; set; }
 }
 
 public sealed class RoomDetailViewModel
@@ -52,8 +56,10 @@ public sealed class RoomDetailViewModel
     public IReadOnlyList<RoomLotSummaryViewModel> CurrentLots { get; set; } = [];
     public IReadOnlyList<RoomLotSummaryViewModel> DepletedLots { get; set; } = [];
     public IReadOnlyList<RoomDepletionListItemViewModel> Depletions { get; set; } = [];
+    public IReadOnlyList<RoomInventoryAdjustmentListItemViewModel> InventoryAdjustments { get; set; } = [];
     public IReadOnlyList<RoomReceiptOptionViewModel> DepletionReceiptOptions { get; set; } = [];
     public RoomDepletionForm DepletionForm { get; set; } = new();
+    public RoomInventoryTrueUpForm TrueUpForm { get; set; } = new();
     public bool CanManageDepletions { get; set; }
 }
 
@@ -84,11 +90,28 @@ public sealed class RoomLotSummaryViewModel
     public int EnteredFruitCount { get; set; }
     public string DepletionStatus { get; set; } = "Current";
     public IReadOnlyList<string> ReviewFlags { get; set; } = [];
+    public string? WeakestReason { get; set; }
     public IReadOnlyList<RoomSampleLinkViewModel> Samples { get; set; } = [];
 }
 
 public sealed record RoomReceiptOptionViewModel(long ReceiptId, string Label, int CurrentBins);
 public sealed record RoomSampleLinkViewModel(long SampleId, string DisplayReceiptId, string SampleType);
+
+public sealed class RoomInventoryAdjustmentListItemViewModel
+{
+    public long Id { get; set; }
+    public long? ReceiptId { get; set; }
+    public string Lot { get; set; } = "";
+    public string Room { get; set; } = "";
+    public int? OldBinCount { get; set; }
+    public int ChangeAmount { get; set; }
+    public int NewBinCount { get; set; }
+    public string AdjustmentType { get; set; } = "";
+    public string? Reason { get; set; }
+    public string? Notes { get; set; }
+    public DateTimeOffset AdjustmentAt { get; set; }
+    public string CreatedBy { get; set; } = "";
+}
 
 public sealed class RoomDepletionListItemViewModel
 {
@@ -117,6 +140,16 @@ public sealed class RoomDepletionForm
     public bool ConfirmOverDepletion { get; set; }
 }
 
+public sealed class RoomInventoryTrueUpForm
+{
+    public int RoomId { get; set; }
+    public long ReceiptId { get; set; }
+    public int NewBinCount { get; set; }
+    public DateTimeOffset AdjustmentAt { get; set; } = DateTimeOffset.Now;
+    public string Reason { get; set; } = "";
+    public string? Notes { get; set; }
+}
+
 public sealed class VoidRoomDepletionForm
 {
     public long DepletionId { get; set; }
@@ -135,9 +168,31 @@ public sealed record MasterDataPageViewModel(
     MasterDataEditForm? EditForm = null)
 {
     public IReadOnlyList<MasterDataEditItem> Items { get; init; } = Items ?? [];
+    public GrowerLotImportPreviewViewModel? ImportPreview { get; init; }
 }
 
 public sealed record MasterDataEditItem(int Id, IReadOnlyList<string> Cells, bool IsActive);
+public sealed class GrowerLotImportForm
+{
+    public IFormFile? CsvFile { get; set; }
+    public string? CsvText { get; set; }
+    public bool ConfirmImport { get; set; }
+}
+
+public sealed class GrowerLotImportPreviewViewModel
+{
+    public int AddCount { get; set; }
+    public int UpdateCount { get; set; }
+    public int UnchangedCount { get; set; }
+    public int ConflictCount { get; set; }
+    public int InvalidCount { get; set; }
+    public int InactiveCount { get; set; }
+    public string CsvText { get; set; } = "";
+    public IReadOnlyList<GrowerLotImportPreviewRow> Rows { get; set; } = [];
+    public bool CanApply => ConflictCount == 0 && InvalidCount == 0 && !string.IsNullOrWhiteSpace(CsvText);
+}
+
+public sealed record GrowerLotImportPreviewRow(int RowNumber, string Grower, string LotNumber, string PoolStart, string Action, string Message, bool IsInactive);
 public sealed record AdminDownloadItem(string Name, string FileName, string Description, string Url, string Notes, bool IsAvailable = true, bool OpensInNewTab = false, string ActionText = "Open");
 
 public sealed class AdminDownloadsViewModel

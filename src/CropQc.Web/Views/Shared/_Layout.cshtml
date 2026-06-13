@@ -80,5 +80,27 @@
     <main class="page">
         @RenderBody()
     </main>
+    <script>
+        (() => {
+            const dropdowns = document.querySelectorAll(".nav-dropdown");
+            dropdowns.forEach(dropdown => {
+                let closeTimer = null;
+                dropdown.addEventListener("mouseenter", () => {
+                    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+                    clearTimeout(closeTimer);
+                    dropdown.open = true;
+                });
+                dropdown.addEventListener("mouseleave", () => {
+                    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+                    closeTimer = setTimeout(() => { dropdown.open = false; }, 220);
+                });
+                dropdown.querySelector("summary")?.addEventListener("click", () => {
+                    dropdowns.forEach(other => {
+                        if (other !== dropdown) other.open = false;
+                    });
+                });
+            });
+        })();
+    </script>
 </body>
 </html>

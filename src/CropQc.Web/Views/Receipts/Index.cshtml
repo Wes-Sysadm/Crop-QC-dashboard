@@ -3,6 +3,7 @@
 @{
     ViewData["Title"] = "Receipts";
     var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, code = x.Code, name = x.Name }));
+    var growerLotsJson = JsonSerializer.Serialize(Model.GrowerLots.Select(x => new { id = x.Id, grower = x.Grower, lot = x.LotNumber, pool = x.PoolStart ?? "", label = $"{x.Grower} - {x.LotNumber} - {(string.IsNullOrWhiteSpace(x.PoolStart) ? "-" : x.PoolStart)}" }));
     var hasRequiredMasterData = Model.Warehouses.Count > 0 && Model.Rooms.Count > 0 && Model.FruitProfiles.Count > 0;
 }
 
@@ -77,7 +78,13 @@
     <div class="field"><label>Variety</label><select name="FruitProfileId" required><option value="">Select</option>@foreach (var item in Model.FruitProfiles){<option value="@item.Id">@item.VarietyCode - @item.Name</option>}</select></div>
     <div class="field wide"><label>Grower Lot</label><select id="addGrowerLotId" name="GrowerLotId"><option value="">Manual entry</option>@foreach (var lot in Model.GrowerLots){<option value="@lot.Id" data-grower="@lot.Grower" data-lot="@lot.LotNumber" data-pool="@lot.PoolStart">@lot.Grower - @lot.LotNumber - @(string.IsNullOrWhiteSpace(lot.PoolStart) ? "-" : lot.PoolStart)</option>}</select></div>
     <div class="field"><label>Grower</label><input name="GrowerName" required /></div>
-    <div class="field"><label>Lot #</label><input name="GrowerNumber" maxlength="50" required /></div>
+    <div class="field"><label>Lot #</label><input id="addGrowerNumber" name="GrowerNumber" maxlength="50" list="growerLotOptions" required /></div>
+    <datalist id="growerLotOptions">
+        @foreach (var lot in Model.GrowerLots)
+        {
+            <option value="@lot.LotNumber" label="@lot.Grower - @lot.LotNumber - @(string.IsNullOrWhiteSpace(lot.PoolStart) ? "-" : lot.PoolStart)"></option>
+        }
+    </datalist>
     <div class="field"><label>Pool Start</label><input name="PoolStart" maxlength="20" /></div>
     <div class="field"><label>Receipt Lot</label><input name="LotCode" required /></div>
     <div class="field"><label>Bin Count</label><input name="BinCount" type="number" min="1" required /></div>
@@ -85,57 +92,43 @@
     <button type="submit" disabled="@(!hasRequiredMasterData)">Add Receipt</button>
 </form>
 <p class="muted">If the received date falls in an overlap window, confirm the crop year before saving.</p>
+<p id="growerLotWarning" class="notice warning" hidden>Lot # not found in Master Data. Add it under Master Data &rarr; Grower Lots or continue as manual entry.</p>
 
 <h2>Receipt Results</h2>
-<div class="table-wrap">
-    <table>
-        <thead>
-            <tr>
-                <th>Crop Year</th>
-                <th>Received</th>
-                <th>Receipt ID</th>
-                <th>Warehouse</th>
-                <th>Room</th>
-                <th>Lot #</th>
-                <th>Pool Start</th>
-                <th>Grower</th>
-                <th>Receipt Lot</th>
-                <th>Variety</th>
-                <th>Bins</th>
-                <th>Samples</th>
-                <th>QC Status</th>
-                <th>Last Updated</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-        @foreach (var receipt in Model.Receipts)
-        {
-            <tr>
-                <td>@receipt.CropYear</td>
-                <td>@receipt.ReceivedAt.LocalDateTime</td>
-                <td><a href="/Receipts/@receipt.Id">@receipt.CompuTechReceiptId</a></td>
-                <td>@receipt.Warehouse</td>
-                <td>@receipt.Room</td>
-                <td>@(string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? "-" : receipt.GrowerNumber)</td>
-                <td>@(string.IsNullOrWhiteSpace(receipt.PoolStart) ? "-" : receipt.PoolStart)</td>
-                <td>@receipt.GrowerName</td>
-                <td>@receipt.LotCode</td>
-                <td>@receipt.VarietyCode</td>
-                <td>@receipt.BinCount</td>
-                <td>@receipt.SampleCount</td>
-                <td>@receipt.QcStatus</td>
-                <td>@receipt.LastUpdatedAt?.LocalDateTime</td>
-                <td><a class="inline-action" href="/Receipts/@receipt.Id">Review</a></td>
-            </tr>
-        }
-        </tbody>
-    </table>
+<div class="receipt-result-grid">
+@foreach (var receipt in Model.Receipts)
+{
+    <article class="receipt-card">
+        <div class="receipt-card-main">
+            <div>
+                <h3><a href="/Receipts/@receipt.Id">@receipt.CompuTechReceiptId</a></h3>
+                <p class="muted">@receipt.ReceivedAt.LocalDateTime.ToString("g") | Crop Year @receipt.CropYear | @receipt.Warehouse / @receipt.Room</p>
+            </div>
+            <div class="action-bar receipt-actions">
+                <a class="button secondary-button" href="/Receipts/@receipt.Id">View receipt</a>
+                <a class="button secondary-button" href="/Receipts/@receipt.Id#add-sample">Add sample</a>
+                <a class="button secondary-button" href="/Receipts/@receipt.Id#samples">View samples</a>
+            </div>
+        </div>
+        <dl class="receipt-card-meta">
+            <dt>Grower</dt><dd>@receipt.GrowerName</dd>
+            <dt>Lot #</dt><dd>@(string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? "-" : receipt.GrowerNumber)</dd>
+            <dt>Pool Start</dt><dd>@(string.IsNullOrWhiteSpace(receipt.PoolStart) ? "-" : receipt.PoolStart)</dd>
+            <dt>Receipt Lot</dt><dd>@receipt.LotCode</dd>
+            <dt>Variety</dt><dd>@receipt.VarietyCode</dd>
+            <dt>Bins</dt><dd>@receipt.BinCount</dd>
+            <dt>Samples</dt><dd>@receipt.SampleCount</dd>
+            <dt>QC Status</dt><dd>@receipt.QcStatus</dd>
+            <dt>Last Updated</dt><dd>@(receipt.LastUpdatedAt?.LocalDateTime.ToString("g") ?? "-")</dd>
+        </dl>
+    </article>
+}
 </div>
 
 <script>
     (() => {
         const rooms = @Html.Raw(roomOptionsJson);
+        const growerLots = @Html.Raw(growerLotsJson);
 
         function configureRoomFilter(warehouseSelectId, roomSelectId, emptyText, resetOnWarehouseChange) {
             const warehouseSelect = document.getElementById(warehouseSelectId);
@@ -193,12 +186,46 @@
         configureRoomFilter("searchWarehouseId", "searchRoomId", "All", true);
         configureRoomFilter("addWarehouseId", "addRoomId", "Select", true);
         const growerLotSelect = document.getElementById("addGrowerLotId");
+        const growerLotWarning = document.getElementById("growerLotWarning");
+        const growerNumberInput = document.getElementById("addGrowerNumber");
+        const growerNameInput = document.querySelector("input[name='GrowerName']");
+        const poolStartInput = document.querySelector("input[name='PoolStart']");
+
+        function fillGrowerLot(lot) {
+            if (!lot) {
+                return;
+            }
+
+            growerNameInput.value = lot.grower || "";
+            growerNumberInput.value = lot.lot || "";
+            poolStartInput.value = lot.pool || "";
+            growerLotSelect.value = lot.id || "";
+            growerLotWarning.hidden = true;
+        }
+
         growerLotSelect?.addEventListener("change", () => {
             const selected = growerLotSelect.selectedOptions[0];
             if (!selected || !selected.value) return;
-            document.querySelector("input[name='GrowerName']").value = selected.dataset.grower || "";
-            document.querySelector("input[name='GrowerNumber']").value = selected.dataset.lot || "";
-            document.querySelector("input[name='PoolStart']").value = selected.dataset.pool || "";
+            fillGrowerLot({ id: selected.value, grower: selected.dataset.grower || "", lot: selected.dataset.lot || "", pool: selected.dataset.pool || "" });
+        });
+        growerNumberInput?.addEventListener("change", () => {
+            const value = growerNumberInput.value.trim();
+            if (!value) {
+                growerLotWarning.hidden = true;
+                return;
+            }
+
+            const matches = growerLots.filter(lot => (lot.lot || "").toLowerCase() === value.toLowerCase());
+            if (matches.length === 1) {
+                fillGrowerLot(matches[0]);
+                return;
+            }
+
+            growerLotSelect.value = "";
+            growerLotWarning.textContent = matches.length > 1
+                ? `Lot # ${value} matches multiple Grower Lots. Select the correct Grower Lot from the dropdown.`
+                : "Lot # not found in Master Data. Add it under Master Data -> Grower Lots or continue as manual entry.";
+            growerLotWarning.hidden = false;
         });
     })();
 </script>
