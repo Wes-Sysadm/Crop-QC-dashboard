@@ -55,7 +55,8 @@
                         <th>Action</th>
                         <th>Facility</th>
                         <th>Location</th>
-                        <th>Room</th>
+                        <th>Crop QC Room</th>
+                        <th>Compu-Tech Code</th>
                         <th>Lot #</th>
                         <th>Grower</th>
                         <th>Pool</th>
@@ -73,7 +74,8 @@
                             <td><span class="status @StatusClass(row.Action, row.IsWarning)">@row.Action</span></td>
                             <td>@row.Facility</td>
                             <td>@row.SubLocation</td>
-                            <td>@row.RoomCode <span class="muted">(@row.NormalizedRoomCode)</span></td>
+                            <td>@row.CropQcRoomName <span class="muted">(@row.NormalizedRoomCode)</span></td>
+                            <td>@row.CompuTechRoomCode</td>
                             <td>@row.LotNumber</td>
                             <td class="wrap-cell">@(string.IsNullOrWhiteSpace(row.Grower) ? "-" : row.Grower)</td>
                             <td>@(string.IsNullOrWhiteSpace(row.PoolStart) ? "-" : row.PoolStart)</td>
@@ -159,13 +161,15 @@
             <article class="station-card">
                 <div class="station-card-header">
                     <div>
-                        <h3>@lot.RoomCode | Lot # @lot.LotNumber</h3>
-                        <p class="station-code">@lot.Facility / @lot.SubLocation / master room @lot.MasterRoomCode</p>
+                        <h3>@lot.CropQcRoomName | Lot # @lot.LotNumber</h3>
+                        <p class="station-code">@lot.Facility / @lot.SubLocation / Compu-Tech @lot.CompuTechRoomCode / master room @lot.MasterRoomCode</p>
                     </div>
                     <span class="status ready">@lot.CurrentBins bins</span>
                 </div>
                 <dl class="station-meta">
                     <dt>Grower</dt><dd>@(string.IsNullOrWhiteSpace(lot.Grower) ? "Grower not found in Master Data" : lot.Grower)</dd>
+                    <dt>Crop QC Room</dt><dd>@lot.CropQcRoomName</dd>
+                    <dt>Compu-Tech Code</dt><dd>@lot.CompuTechRoomCode</dd>
                     <dt>Pool Start</dt><dd>@(string.IsNullOrWhiteSpace(lot.PoolStart) ? "-" : lot.PoolStart)</dd>
                     <dt>Variety</dt><dd>@lot.Variety</dd>
                     <dt>Source</dt><dd>@lot.Source</dd>

@@ -214,10 +214,12 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         var rows = await dbContext.Rooms.AsNoTracking()
             .Include(x => x.Warehouse)
             .OrderBy(x => x.Warehouse.Code)
-            .ThenBy(x => x.Code)
-            .Select(x => new MasterDataEditItem(x.Id, new[] { x.Warehouse.Code, x.Warehouse.Name, x.Code, x.Name, x.CapacityBins.ToString(), YesNo(x.IsActive) }, x.IsActive))
+            .ThenBy(x => x.SubLocation)
+            .ThenBy(x => x.SortOrder)
+            .ThenBy(x => x.CropQcRoomName ?? x.Code)
+            .Select(x => new MasterDataEditItem(x.Id, new[] { x.Warehouse.Code, x.Warehouse.Name, x.CropQcRoomName ?? x.Code, x.CompuTechRoomCode ?? "", x.SubLocation ?? "", x.Name, x.CapacityBins.ToString(), YesNo(x.IsActive) }, x.IsActive))
             .ToListAsync(ct);
-        return Page("Rooms", "rooms", ["Warehouse Code", "Warehouse Name", "Room Code", "Room Name", "Capacity Bins", "Active"], rows, canEdit);
+        return Page("Rooms", "rooms", ["Warehouse Code", "Warehouse Name", "Crop QC Room", "Compu-Tech Code", "SubLocation", "Room Name", "Capacity Bins", "Active"], rows, canEdit);
     }
 
     private async Task<MasterDataPageViewModel> FruitProfilesPage(bool canEdit, CancellationToken ct)

@@ -412,7 +412,7 @@ public sealed class DashboardDataService(
                 Search = search,
                 Receipts = receipts.Select(receipt => ReceiptListItem(receipt, sampleSummaries.GetValueOrDefault(receipt.Id))).ToList(),
                 Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
-                Rooms = await dbContext.Rooms.AsNoTracking().OrderBy(x => x.WarehouseId).ThenBy(x => x.Code).ToListAsync(cancellationToken),
+                Rooms = await dbContext.Rooms.AsNoTracking().OrderBy(x => x.WarehouseId).ThenBy(x => x.SubLocation).ThenBy(x => x.SortOrder).ThenBy(x => x.CropQcRoomName ?? x.Code).ToListAsync(cancellationToken),
                 FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
                 GrowerLots = await dbContext.GrowerLots.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Grower).ThenBy(x => x.LotNumber).ToListAsync(cancellationToken),
                 AvailableCropYears = await cropYearService.GetAvailableCropYearsAsync(cancellationToken),
@@ -1444,14 +1444,15 @@ public sealed class DashboardDataService(
             var facility = FacilityCode(room.Warehouse.Code, room.Warehouse.Name);
             var weakestLot = FindWeakestLot(roomLots);
             var sourceRoomCodes = roomLots.Select(x => x.RoomCode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var displayRoomCode = room.CropQcRoomName ?? room.DisplayName ?? (sourceRoomCodes.Count == 1 ? sourceRoomCodes[0] : room.Code);
             return new RoomSummaryItemViewModel
             {
                 RoomId = room.Id,
                 Warehouse = room.Warehouse.Code,
                 Facility = facility,
                 LocationGroup = RoomLocationGroup(room),
-                RoomCode = sourceRoomCodes.Count == 1 ? sourceRoomCodes[0] : room.Code,
-                RoomName = room.Name,
+                RoomCode = displayRoomCode,
+                RoomName = room.DisplayName ?? room.Name,
                 Status = status,
                 CurrentLotsCount = roomLots.Count,
                 CurrentBinsCount = roomLots.Count == 0 ? null : currentBins,
@@ -1522,7 +1523,7 @@ public sealed class DashboardDataService(
                 Warehouse = receipt.Warehouse.Code,
                 Facility = FacilityCode(receipt.Warehouse.Code, receipt.Warehouse.Name),
                 LocationGroup = RoomLocationGroup(receipt.Room),
-                RoomCode = receipt.Room.Code,
+                RoomCode = receipt.Room.CropQcRoomName ?? receipt.Room.DisplayName ?? receipt.Room.Code,
                 DisplayReceiptId = receipt.CompuTechReceiptId,
                 GrowerNumber = receipt.GrowerNumber ?? "",
                 PoolStart = receipt.PoolStart ?? "",
@@ -1578,7 +1579,7 @@ public sealed class DashboardDataService(
 
         var adjustments = await query.ToListAsync(cancellationToken);
         return adjustments
-            .GroupBy(x => $"{x.RoomId}|{x.LotNumber.Trim().ToUpperInvariant()}|{(x.VarietyCode ?? "").Trim().ToUpperInvariant()}|{(x.Source ?? x.Reason ?? "").Trim().ToUpperInvariant()}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(x => $"{x.RoomId}|{(x.SourceRoomCode ?? "").Trim().ToUpperInvariant()}|{x.LotNumber.Trim().ToUpperInvariant()}|{(x.VarietyCode ?? "").Trim().ToUpperInvariant()}|{(x.Source ?? x.Reason ?? "").Trim().ToUpperInvariant()}", StringComparer.OrdinalIgnoreCase)
             .Select(x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First())
             .Where(x => x.NewBinCount > 0)
             .Select(x => new RoomLotSummaryViewModel
@@ -1589,7 +1590,7 @@ public sealed class DashboardDataService(
                 Warehouse = x.Warehouse.Code,
                 Facility = FacilityCode(x.Warehouse.Code, x.Warehouse.Name),
                 LocationGroup = !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : RoomLocationGroup(x.Room),
-                RoomCode = !string.IsNullOrWhiteSpace(x.SourceRoomCode) ? x.SourceRoomCode! : x.Room.Code,
+                RoomCode = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
                 DisplayReceiptId = x.Source ?? x.Reason ?? "Starting inventory",
                 GrowerNumber = x.LotNumber,
                 PoolStart = x.PoolStart ?? "",
@@ -1835,7 +1836,12 @@ public sealed class DashboardDataService(
 
     private static string RoomLocationGroup(Room room)
     {
-        var combined = $"{room.Code} {room.Name}";
+        if (!string.IsNullOrWhiteSpace(room.SubLocation))
+        {
+            return room.SubLocation;
+        }
+
+        var combined = $"{room.Code} {room.Name} {room.CropQcRoomName} {room.CompuTechRoomCode}";
         if (combined.Contains("Evans", StringComparison.OrdinalIgnoreCase)) return "Evans";
         if (combined.Contains("Lamb", StringComparison.OrdinalIgnoreCase)) return "Lamb";
         if (combined.Contains("BM", StringComparison.OrdinalIgnoreCase) || combined.Contains("B M", StringComparison.OrdinalIgnoreCase)) return "BM";
