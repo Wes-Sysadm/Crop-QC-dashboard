@@ -1,6 +1,9 @@
 using CropQc.Data.Entities;
 using CropQc.Shared.Storage;
 using CropQc.Web.Models;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Processing;
 using System.Net;
 using System.Text;
 
@@ -22,6 +25,9 @@ public sealed class QcSummaryEmailComposer(
 {
     public const int MaxInlineImageBytes = 1_500_000;
     public const int MaxTotalInlineImageBytes = 12_000_000;
+    private const int MaxSourceImageBytes = 25_000_000;
+    private const int InlineImageMaxWidth = 1200;
+    private const int InlineImageMaxHeight = 900;
 
     public async Task<QcEmailContent> ComposeAsync(QcSample sample, ReadinessViewModel readiness, User? sendingUser, bool isOverride, string? overrideReason, CancellationToken cancellationToken)
     {
@@ -56,8 +62,8 @@ public sealed class QcSummaryEmailComposer(
                     continue;
                 }
 
-                var imageBytes = await ReadInlineImageBytesAsync(stream, Math.Min(MaxInlineImageBytes, remainingInlineBytes), cancellationToken);
-                if (imageBytes is null)
+                var inlineImage = await PrepareInlineImageAsync(photo, stream, Math.Min(MaxInlineImageBytes, remainingInlineBytes), cancellationToken);
+                if (inlineImage is null)
                 {
                     linkedPhotoNotes[photo.Id] = TooLargePhotoNote;
                     continue;
@@ -66,12 +72,12 @@ public sealed class QcSummaryEmailComposer(
                 var contentId = $"cropqc-photo-{photo.Id}@cropqc";
                 inlineImages.Add(new QcEmailInlineImage(
                     contentId,
-                    string.IsNullOrWhiteSpace(photo.FileName) ? $"photo-{photo.Id}.jpg" : photo.FileName,
-                    string.IsNullOrWhiteSpace(photo.ContentType) ? "image/jpeg" : photo.ContentType,
-                    imageBytes,
+                    inlineImage.FileName,
+                    inlineImage.ContentType,
+                    inlineImage.Bytes,
                     FriendlyPhotoName(photo.PhotoType)));
                 imageReferences[photo.Id] = contentId;
-                totalInlineBytes += imageBytes.Length;
+                totalInlineBytes += inlineImage.Bytes.Length;
             }
             catch (OutOfMemoryException ex)
             {
@@ -106,13 +112,58 @@ public sealed class QcSummaryEmailComposer(
         return result;
     }
 
-    private static async Task<byte[]?> ReadInlineImageBytesAsync(Stream stream, int maxBytes, CancellationToken cancellationToken)
+    private static async Task<PreparedInlineImage?> PrepareInlineImageAsync(QcPhoto photo, Stream stream, int maxBytes, CancellationToken cancellationToken)
     {
         if (maxBytes <= 0)
         {
             return null;
         }
 
+        var sourceBytes = await ReadSourceImageBytesAsync(stream, MaxSourceImageBytes, cancellationToken);
+        if (sourceBytes is null)
+        {
+            return null;
+        }
+
+        await using var source = new MemoryStream(sourceBytes);
+        using var image = await Image.LoadAsync(source, cancellationToken);
+        image.Metadata.ExifProfile = null;
+        image.Metadata.IccProfile = null;
+        image.Mutate(x => x.AutoOrient());
+
+        if (image.Width > InlineImageMaxWidth || image.Height > InlineImageMaxHeight)
+        {
+            image.Mutate(x => x.Resize(new ResizeOptions
+            {
+                Mode = ResizeMode.Max,
+                Size = new Size(InlineImageMaxWidth, InlineImageMaxHeight)
+            }));
+        }
+
+        foreach (var attempt in CompressionAttempts)
+        {
+            if (image.Width > attempt.MaxWidth || image.Height > attempt.MaxHeight)
+            {
+                image.Mutate(x => x.Resize(new ResizeOptions
+                {
+                    Mode = ResizeMode.Max,
+                    Size = new Size(attempt.MaxWidth, attempt.MaxHeight)
+                }));
+            }
+
+            await using var compressed = new MemoryStream();
+            await image.SaveAsJpegAsync(compressed, new JpegEncoder { Quality = attempt.Quality }, cancellationToken);
+            if (compressed.Length <= maxBytes)
+            {
+                return new PreparedInlineImage(BuildInlineImageFileName(photo), "image/jpeg", compressed.ToArray());
+            }
+        }
+
+        return null;
+    }
+
+    private static async Task<byte[]?> ReadSourceImageBytesAsync(Stream stream, int maxBytes, CancellationToken cancellationToken)
+    {
         if (stream.CanSeek && stream.Length > maxBytes)
         {
             return null;
@@ -137,6 +188,15 @@ public sealed class QcSummaryEmailComposer(
         }
 
         return memory.ToArray();
+    }
+
+    private static string BuildInlineImageFileName(QcPhoto photo)
+    {
+        var name = string.IsNullOrWhiteSpace(photo.FileName)
+            ? $"photo-{photo.Id}"
+            : Path.GetFileNameWithoutExtension(photo.FileName);
+
+        return $"{(string.IsNullOrWhiteSpace(name) ? $"photo-{photo.Id}" : name)}.jpg";
     }
 
     public static string BuildSubject(QcSample sample)
@@ -450,5 +510,15 @@ public sealed class QcSummaryEmailComposer(
         _ => photoType
     };
 
+    private static readonly IReadOnlyList<InlineImageCompressionAttempt> CompressionAttempts =
+    [
+        new(InlineImageMaxWidth, InlineImageMaxHeight, 74),
+        new(1000, 750, 68),
+        new(800, 600, 62),
+        new(640, 480, 56)
+    ];
+
+    private sealed record PreparedInlineImage(string FileName, string ContentType, byte[] Bytes);
+    private sealed record InlineImageCompressionAttempt(int MaxWidth, int MaxHeight, int Quality);
     private sealed record QcSummaryStats(int SampleSize, decimal? AveragePressure, decimal? PressureStandardDeviation, decimal? AverageStarch, decimal? AverageWeight, string GradeSummary, string DefectSummary, string SizeSummary);
 }

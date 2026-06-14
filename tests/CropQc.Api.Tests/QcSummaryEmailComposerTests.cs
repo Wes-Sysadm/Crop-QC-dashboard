@@ -147,6 +147,52 @@ public sealed class QcSummaryEmailComposerTests
         Assert.Contains("Row 1:", content.TextBody);
         Assert.NotEmpty(content.InlineImages);
         Assert.All(content.InlineImages, image => Assert.Contains("@cropqc", image.ContentId));
+        Assert.All(content.InlineImages, image => Assert.Equal("image/jpeg", image.ContentType));
+        Assert.All(content.InlineImages, image => Assert.EndsWith(".jpg", image.FileName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task EmailComposer_EmbedsCidImagesWithoutDriveLinksForSuccessfulPhotos()
+    {
+        var sample = BuildSample("Receiving Sample");
+        foreach (var photo in sample.Receipt.Photos.Concat(sample.Photos))
+        {
+            photo.StorageProvider = FileStorageProviders.GoogleDrive;
+            photo.WebUrl = $"https://drive.google.com/file/d/{photo.FileId}/view";
+        }
+
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+
+        var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
+
+        Assert.NotEmpty(content.InlineImages);
+        Assert.Contains("cid:cropqc-photo-1@cropqc", content.HtmlBody);
+        Assert.DoesNotContain("drive.google.com", content.HtmlBody);
+        Assert.DoesNotContain("drive.google.com", content.TextBody);
+        Assert.DoesNotContain("<a href=\"https://drive.google.com", content.HtmlBody);
+    }
+
+    [Fact]
+    public async Task EmailComposer_ResizesAndCompressesLargeGoogleDrivePhotosBeforeEmbedding()
+    {
+        var sample = BuildSample("Receiving Sample");
+        sample.Receipt.Photos.Clear();
+        sample.Photos.Clear();
+        var photo = Photo(2, "SampleBeforeCutting", sampleId: sample.Id);
+        photo.StorageProvider = FileStorageProviders.GoogleDrive;
+        photo.WebUrl = "https://drive.google.com/file/d/photo-2/view";
+        sample.Photos.Add(photo);
+        var originalBytes = CreateBmp(1800, 1200);
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(originalBytes), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+
+        var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
+
+        var image = Assert.Single(content.InlineImages);
+        Assert.Equal("image/jpeg", image.ContentType);
+        Assert.True(image.Bytes.Length <= QcSummaryEmailComposer.MaxInlineImageBytes);
+        Assert.True(image.Bytes.Length < originalBytes.Length);
+        Assert.Contains("cid:cropqc-photo-2@cropqc", content.HtmlBody);
+        Assert.DoesNotContain("drive.google.com", content.HtmlBody);
     }
 
     [Fact]
@@ -188,7 +234,7 @@ public sealed class QcSummaryEmailComposerTests
     {
         var sample = BuildSample("Receiving Sample");
         sample.Receipt.Photos.Single(x => x.PhotoType == "BinTruck").WebUrl = "https://drive.example/photo";
-        var composer = new QcSummaryEmailComposer(new LargePhotoFileStorageService(QcSummaryEmailComposer.MaxInlineImageBytes + 1), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(new LargePhotoFileStorageService(25_000_001), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
 
         var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
@@ -461,15 +507,17 @@ public sealed class QcSummaryEmailComposerTests
         CapturedAt = DateTimeOffset.UtcNow
     };
 
-    private sealed class FakeFileStorageService : IFileStorageService
+    private sealed class FakeFileStorageService(byte[]? bytes = null) : IFileStorageService
     {
+        private readonly byte[] bytes = bytes ?? CreateBmp(24, 24);
+
         public string GenerateTargetPath(FileStorageTargetContext context) => "target";
         public Task<FileStorageReference> SaveAsync(FileStorageSaveRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
         public Task<FileStorageReference?> GetMetadataAsync(string storageKey, CancellationToken cancellationToken = default) =>
             Task.FromResult<FileStorageReference?>(null);
         public Task<Stream?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default) =>
-            Task.FromResult<Stream?>(new MemoryStream([1, 2, 3]));
+            Task.FromResult<Stream?>(new MemoryStream(bytes));
         public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
     }
@@ -553,5 +601,51 @@ public sealed class QcSummaryEmailComposerTests
         }
 
         return count;
+    }
+
+    private static byte[] CreateBmp(int width, int height)
+    {
+        var rowStride = ((width * 3) + 3) & ~3;
+        var pixelBytes = rowStride * height;
+        var fileSize = 54 + pixelBytes;
+        var bytes = new byte[fileSize];
+        bytes[0] = (byte)'B';
+        bytes[1] = (byte)'M';
+        WriteInt32(bytes, 2, fileSize);
+        WriteInt32(bytes, 10, 54);
+        WriteInt32(bytes, 14, 40);
+        WriteInt32(bytes, 18, width);
+        WriteInt32(bytes, 22, height);
+        WriteInt16(bytes, 26, 1);
+        WriteInt16(bytes, 28, 24);
+        WriteInt32(bytes, 34, pixelBytes);
+
+        for (var y = 0; y < height; y++)
+        {
+            var rowStart = 54 + (y * rowStride);
+            for (var x = 0; x < width; x++)
+            {
+                var offset = rowStart + (x * 3);
+                bytes[offset] = (byte)(x % 256);
+                bytes[offset + 1] = (byte)(y % 256);
+                bytes[offset + 2] = (byte)((x + y) % 256);
+            }
+        }
+
+        return bytes;
+    }
+
+    private static void WriteInt16(byte[] bytes, int offset, short value)
+    {
+        bytes[offset] = (byte)value;
+        bytes[offset + 1] = (byte)(value >> 8);
+    }
+
+    private static void WriteInt32(byte[] bytes, int offset, int value)
+    {
+        bytes[offset] = (byte)value;
+        bytes[offset + 1] = (byte)(value >> 8);
+        bytes[offset + 2] = (byte)(value >> 16);
+        bytes[offset + 3] = (byte)(value >> 24);
     }
 }
