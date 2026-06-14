@@ -121,6 +121,37 @@ public sealed class GmailUserEmailTests
         Assert.Contains("HTML body text", decoded);
         Assert.Contains("Content-ID: <test-image@cropqc>", decoded);
         Assert.Contains("Content-Disposition: inline", decoded);
+        Assert.DoesNotContain("Content-Disposition: attachment", decoded);
+        Assert.DoesNotContain("drive.google.com", decoded);
+    }
+
+    [Fact]
+    public async Task GmailUserEmailSender_SendPreservesInlineMimeParts()
+    {
+        var httpHandler = new FakeGmailHttpHandler(HttpStatusCode.OK, """{"id":"gmail-message-1"}""");
+        var sender = CreateSender(new FakeCredentialStore(GoogleAccessTokenResult.Success("access-token")), httpHandler);
+        var message = new QcEmailMessage(
+            "wes@fruitandland.com",
+            "rob@earlbrownandsons.com",
+            null,
+            "QC Summary",
+            "Photo is inline.",
+            "<html><body><h2>Photos</h2><img src=\"cid:photo-1@cropqc\" /></body></html>",
+            [new QcEmailInlineImage("photo-1@cropqc", "photo.jpg", "image/jpeg", [1, 2, 3, 4], "Whole sample")]);
+
+        var result = await sender.SendAsync(User("wes@fruitandland.com"), message, CancellationToken.None);
+
+        Assert.True(result.Success);
+        using var json = System.Text.Json.JsonDocument.Parse(httpHandler.LastRequestBody);
+        var raw = json.RootElement.GetProperty("raw").GetString();
+        Assert.NotNull(raw);
+        var decoded = DecodeBase64Url(raw!);
+        Assert.Contains("Content-Type: multipart/related", decoded);
+        Assert.Contains("<h2>Photos</h2><img src=\"cid:photo-1@cropqc\" />", decoded);
+        Assert.Contains("Content-ID: <photo-1@cropqc>", decoded);
+        Assert.Contains("Content-Disposition: inline; filename=\"photo.jpg\"", decoded);
+        Assert.DoesNotContain("Content-Disposition: attachment", decoded);
+        Assert.DoesNotContain("drive.google.com", decoded);
     }
 
     [Fact]
@@ -405,14 +436,16 @@ public sealed class GmailUserEmailTests
     private sealed class FakeGmailHttpHandler(HttpStatusCode statusCode, string body) : HttpMessageHandler
     {
         public int SendCount { get; private set; }
+        public string LastRequestBody { get; private set; } = "{}";
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             SendCount++;
-            return Task.FromResult(new HttpResponseMessage(statusCode)
+            LastRequestBody = request.Content is null ? "{}" : await request.Content.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(statusCode)
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json")
-            });
+            };
         }
     }
 
