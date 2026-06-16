@@ -29,6 +29,21 @@
         <h2>@Model.Sample.DisplayReceiptId</h2>
         <p>@Model.Sample.Warehouse | @Model.Sample.SampleType | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Target sample size: @Model.TargetSampleSize | Entered fruit count: @Model.EnteredFruitCount</p>
         <p>@StarchSummary(Model.Readiness)</p>
+        @if (CanChangeSampleType(Model.Sample.EmailStatus))
+        {
+            <form method="post" action="/Samples/@Model.Sample.Id/sample-type" class="inline-form">
+                <label>
+                    Sample type
+                    <select name="SampleTypeId">
+                        @foreach (var sampleType in Model.SampleTypes)
+                        {
+                            <option value="@sampleType.Id" selected="@(string.Equals(sampleType.Name, Model.Sample.SampleType, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@sampleType.Name</option>
+                        }
+                    </select>
+                </label>
+                <button type="submit" class="secondary-button">Update Sample Type</button>
+            </form>
+        }
         <p>
             <a class="button" href="/Samples/@Model.Sample.Id/Starch">Starch Input</a>
             <a href="/Receipts/@Model.Sample.ReceiptId">Back to receipt</a>
@@ -479,6 +494,11 @@
             ? "Starch status: Starch Complete."
             : $"Starch status: {readiness.StarchMissingCount} of {readiness.CompletedFruitCount} completed rows missing starch.";
     }
+
+    private bool CanChangeSampleType(string emailStatus) =>
+        User.IsInRole("Admin")
+        || (!emailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase)
+            && (User.IsInRole("Manager") || User.IsInRole("QC User")));
 
     private static string NormalizePhotoType(string? photoType)
     {

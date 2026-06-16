@@ -26,7 +26,7 @@ public sealed class QcPhotoRequirementPolicy : IQcPhotoRequirementPolicy
     public IReadOnlyList<QcPhotoRequirement> GetRequirements(string? sampleTypeName)
     {
         var normalized = sampleTypeName ?? string.Empty;
-        if (normalized.Contains("receiving", StringComparison.OrdinalIgnoreCase))
+        if (IsTruckSampleType(normalized))
         {
             return [TruckPhoto, TopOfTruck, Hectre, WholeSample, CutApples, StarchApples];
         }
@@ -49,7 +49,7 @@ public sealed class QcPhotoRequirementPolicy : IQcPhotoRequirementPolicy
     public IReadOnlyList<QcPhotoRequirement> GetAvailablePhotoTypes(string? sampleTypeName)
     {
         var normalized = sampleTypeName ?? string.Empty;
-        if (normalized.Contains("receiving", StringComparison.OrdinalIgnoreCase)
+        if (IsTruckSampleType(normalized)
             || normalized.Contains("transfer", StringComparison.OrdinalIgnoreCase))
         {
             return MarkOptional(GetRequirements(sampleTypeName), FullPhotoOrder);
@@ -112,4 +112,8 @@ public sealed class QcPhotoRequirementPolicy : IQcPhotoRequirementPolicy
             .Select(x => x with { IsRequired = requiredTypes.Contains(x.PhotoType) })
             .ToList();
     }
+
+    private static bool IsTruckSampleType(string sampleTypeName) =>
+        sampleTypeName.Contains("receiving", StringComparison.OrdinalIgnoreCase)
+        || sampleTypeName.Contains("truck", StringComparison.OrdinalIgnoreCase);
 }

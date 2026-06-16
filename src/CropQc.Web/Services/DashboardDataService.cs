@@ -22,6 +22,7 @@ public interface IDashboardDataService
     Task<SampleRefreshViewModel?> GetSampleRefreshAsync(long id, CancellationToken cancellationToken);
     Task<DeleteSampleConfirmationViewModel> GetDeleteSampleConfirmationAsync(long id, CancellationToken cancellationToken);
     Task<(long? ReceiptId, string? Error)> SoftDeleteSampleAsync(long id, string? reason, CancellationToken cancellationToken);
+    Task<string?> UpdateSampleTypeAsync(UpdateSampleTypeForm form, CancellationToken cancellationToken);
     Task<string?> SaveFruitReadingsAsync(SaveFruitReadingsForm form, CancellationToken cancellationToken);
     Task<StarchTestViewModel> GetStarchTestAsync(long id, CancellationToken cancellationToken);
     Task<string?> SaveStarchTestAsync(SaveStarchTestForm form, CancellationToken cancellationToken);
@@ -766,6 +767,7 @@ public sealed class DashboardDataService(
             return new SampleDetailViewModel
             {
                 Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
+                SampleTypes = await GetReceiptSampleTypesAsync(cancellationToken),
                 FruitRows = rowModels,
                 PhotoGroups = GroupPhotos(photos, CanEditSamples(), sample.Id),
                 Readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken),
@@ -901,6 +903,64 @@ public sealed class DashboardDataService(
             cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return (sample.ReceiptId, null);
+    }
+
+    public async Task<string?> UpdateSampleTypeAsync(UpdateSampleTypeForm form, CancellationToken cancellationToken)
+    {
+        if (!CanEditSamples())
+        {
+            return "Only QC Users, Managers, and Admins can change sample type.";
+        }
+
+        var sample = await dbContext.QcSamples
+            .Include(x => x.SampleType)
+            .SingleOrDefaultAsync(x => x.Id == form.SampleId && !x.IsDeleted, cancellationToken);
+        if (sample is null)
+        {
+            return "QC sample not found.";
+        }
+
+        var sampleType = await dbContext.SampleTypes
+            .SingleOrDefaultAsync(x => x.Id == form.SampleTypeId && x.IsActive, cancellationToken);
+        if (sampleType is null || !IsReceiptSampleTypeName(sampleType.Name))
+        {
+            return "Select Receiving Sample, Door Sample, or Lot Sample.";
+        }
+
+        if (sample.SampleTypeId == sampleType.Id)
+        {
+            return null;
+        }
+
+        var isSent = sample.EmailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase);
+        var isAdmin = httpContextAccessor.HttpContext?.User.IsInRole("Admin") == true;
+        if (isSent && !isAdmin)
+        {
+            return "Only Admin users can change sample type after QC Summary email has been sent.";
+        }
+
+        var changedBy = GetCurrentUserEmail() ?? "unknown";
+        var before = System.Text.Json.JsonSerializer.Serialize(new { sample.Id, sample.SampleTypeId, SampleType = sample.SampleType.Name, sample.EmailStatus });
+        sample.SampleTypeId = sampleType.Id;
+        sample.SampleType = sampleType;
+        sample.UpdatedAt = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await RefreshSampleStatusesAsync(sample, cancellationToken);
+
+        if (isSent)
+        {
+            await AddAuditAsync(
+                "sample-type-change-after-send",
+                nameof(QcSample),
+                sample.Id.ToString(),
+                changedBy,
+                before,
+                System.Text.Json.JsonSerializer.Serialize(new { sample.Id, sample.SampleTypeId, SampleType = sampleType.Name, sample.EmailStatus }),
+                cancellationToken);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
     }
 
     public async Task<string?> SaveFruitReadingsAsync(SaveFruitReadingsForm form, CancellationToken cancellationToken)
@@ -1198,6 +1258,8 @@ public sealed class DashboardDataService(
 
     private async Task<string?> SendAndLogQcSummaryAsync(QcSample sample, ReadinessViewModel readiness, bool isOverride, string? overrideReason, CancellationToken cancellationToken)
     {
+        var originalSampleTypeId = sample.SampleTypeId;
+        var originalSampleTypeName = sample.SampleType.Name;
         var sender = await GetCurrentUserAsync(cancellationToken);
         if (sender is null)
         {
@@ -1244,6 +1306,7 @@ public sealed class DashboardDataService(
         if (sendResult.Success)
         {
             var trackedSample = await dbContext.QcSamples.SingleAsync(x => x.Id == sample.Id, cancellationToken);
+            trackedSample.SampleTypeId = originalSampleTypeId;
             trackedSample.EmailStatus = "Sent";
             trackedSample.Status = "Sent";
             trackedSample.UpdatedAt = now;
@@ -1263,6 +1326,7 @@ public sealed class DashboardDataService(
                 Status = status,
                 GmailMessageId = sendResult.MessageId,
                 Failure = sendResult.Success ? null : sendResult.Error,
+                SampleType = originalSampleTypeName,
                 IsOverride = isOverride
             }),
             cancellationToken);
@@ -2119,12 +2183,12 @@ public sealed class DashboardDataService(
     private static bool IsReceiptSampleTypeName(string name)
     {
         var normalized = NormalizeSampleTypeName(name);
-        return normalized is "receiving sample" or "door sample" or "lot sample";
+        return normalized is "receiving sample" or "truck sample" or "door sample" or "lot sample";
     }
 
     private static int ReceiptSampleTypeSort(string name) => NormalizeSampleTypeName(name) switch
     {
-        "receiving sample" => 0,
+        "receiving sample" or "truck sample" => 0,
         "door sample" => 1,
         "lot sample" => 2,
         _ => 99
@@ -2390,10 +2454,11 @@ public sealed class DashboardDataService(
         var weightMissing = completedRows.Count(x => x.WeightGrams is null);
         var gradeMissing = completedRows.Count(x => x.GradeId is null);
         var starchMissing = completedRows.Count(x => x.StarchScaleValueId is null);
+        var starchRequired = IsStarchRequiredForEmail(sampleTypeName);
 
         if (completedRows.Count == 0) missing.Add("At least one completed fruit row is required.");
         if (invalidRows > 0) missing.Add("All completed fruit rows require Pressure 1, Pressure 2, weight, and grade.");
-        if (starchMissing > 0) missing.Add("Starch is required for all completed fruit rows.");
+        if (starchRequired && starchMissing > 0) missing.Add("Starch is required for all completed fruit rows.");
         var hasBinTruck = receiptPhotos.Contains("BinTruck");
         var hasSampleBeforeCutting = samplePhotos.Contains("SampleBeforeCutting");
         var hasCutFruit = samplePhotos.Contains("CutFruit");
@@ -2407,7 +2472,9 @@ public sealed class DashboardDataService(
             ChecklistItem("Required data", "Pressure 1 and Pressure 2 for every completed fruit row", completedRows.Count == 0 || pressureMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing"),
             ChecklistItem("Required data", "Weight for every completed fruit row", completedRows.Count == 0 || weightMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing"),
             ChecklistItem("Required data", "Grade for every completed fruit row", completedRows.Count == 0 || gradeMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing"),
-            ChecklistItem("Required data", "Starch for every completed fruit row", completedRows.Count == 0 || starchMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing")
+            starchRequired
+                ? ChecklistItem("Required data", "Starch for every completed fruit row", completedRows.Count == 0 || starchMissing == 0, completedRows.Count == 0 ? "Not applicable" : "Missing")
+                : new ReadinessChecklistItem("Required data", "Starch for every completed fruit row", "Optional", "pending")
         };
         checklist.AddRange(requiredPhotoChecklist);
 
@@ -2424,6 +2491,13 @@ public sealed class DashboardDataService(
             HasFruitAfterStarch = hasFruitAfterStarch,
             RequiredPhotoChecklist = requiredPhotoChecklist
         };
+    }
+
+    private static bool IsStarchRequiredForEmail(string? sampleTypeName)
+    {
+        var normalized = sampleTypeName ?? string.Empty;
+        return normalized.Contains("receiving", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("truck", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task RefreshSampleStatusesAsync(QcSample sample, CancellationToken cancellationToken)
