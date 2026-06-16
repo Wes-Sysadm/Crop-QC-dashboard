@@ -1,4 +1,5 @@
 using CropQc.Web.Controllers;
+using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using System.Reflection;
 
@@ -268,10 +269,63 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("CurrentLotKey", service);
         Assert.Contains("currentLots.Select(CurrentLotKey).Distinct", service);
         Assert.Contains("BuildAdjustmentOnlyLotSummariesAsync", service);
-        Assert.Contains(".GroupBy(x => $\"{x.RoomId}|{x.LotNumber", service);
-        Assert.DoesNotContain("SourceRoomCode ?? \"\").Trim().ToUpperInvariant()}|{x.LotNumber", service);
-        Assert.Contains("StartingInventoryKey(adjustment.RoomId, adjustment.LotNumber", import);
-        Assert.DoesNotContain("StartingInventoryKey(adjustment.RoomId, adjustment.LotNumber, adjustment.VarietyCode ?? \"\", adjustment.Source ?? adjustment.Reason ?? \"\", adjustment.SourceRoomCode", import);
+        Assert.Contains("RoomInventoryImportService.CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? \"\")", service);
+        Assert.DoesNotContain("x.Source ?? x.Reason ?? \"\").Trim().ToUpperInvariant()", service);
+        Assert.Contains("CurrentStorageLotKey(adjustment.RoomId, adjustment.LotNumber, adjustment.VarietyCode ?? \"\")", import);
+        Assert.DoesNotContain("StartingInventoryKey(adjustment.RoomId, adjustment.LotNumber, adjustment.VarietyCode ?? \"\", adjustment.Source", import);
+        Assert.Equal(
+            RoomInventoryImportService.CurrentStorageLotKey(12, "EBS-ROOM-12-LOT", "GALA"),
+            RoomInventoryImportService.CurrentStorageLotKey(12, " ebs-room-12-lot ", "gala"));
+    }
+
+    [Fact]
+    public void EbsStorageImport_MapsBlueMountainRoom4Aliases()
+    {
+        Assert.Equal("BM-4", RoomInventoryImportService.NormalizeCropQcRoomName("Blue Mountain Room 4"));
+        Assert.Equal("BM-4", RoomInventoryImportService.NormalizeCropQcRoomName("Blue Mountain 4"));
+        Assert.Equal("BM-4", RoomInventoryImportService.MasterRoomCodeFor("Blue Mountain Room 4", ""));
+        Assert.Equal("BM", RoomInventoryImportService.DetermineEbsSubLocation("Blue Mountain Room 4"));
+        Assert.Equal(
+            RoomInventoryImportService.CurrentStorageLotKey(4, "1001", "PINK"),
+            RoomInventoryImportService.CurrentStorageLotKey(4, "1001", "pink"));
+    }
+
+    [Fact]
+    public void EbsStorageCounts_DoNotMultiplyByChildJoins()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+
+        Assert.Contains("var samples = await QuerySamples()", service);
+        Assert.Contains("var samplesByReceipt = samples.GroupBy(x => x.ReceiptId)", service);
+        Assert.Contains("var lotSamples = samplesByReceipt.GetValueOrDefault(receipt.Id", service);
+        Assert.Contains("receipt.BinCount - depleted", service);
+        Assert.DoesNotContain("receiptsQuery.Include(x => x.Samples)", service);
+        Assert.DoesNotContain("receiptsQuery.Include(x => x.Photos)", service);
+        Assert.DoesNotContain("receiptsQuery.Include(x => x.FruitReadings)", service);
+    }
+
+    [Fact]
+    public void EbsDailyBinsEmail_IsConfigurableAndUsesDedupedDashboardCounts()
+    {
+        var emailService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "EbsDailyBinsEmailService.cs"));
+        var admin = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "AdminManagementService.cs"));
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "ConfigurationController.cs"));
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Configuration", "Index.cshtml"));
+        var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
+
+        Assert.Contains("EbsDailyBinsEmailSettings.RecipientsKey", admin);
+        Assert.Contains("EbsDailyBinsEmailSettings.EnabledKey", admin);
+        Assert.Contains("EbsDailyBinsEmailSettings.SendHourLocalKey", admin);
+        Assert.Contains("EbsDailyBinsEmailSettings.SenderEmailKey", admin);
+        Assert.Contains("GetHomeDashboardAsync", emailService);
+        Assert.Contains("new RoomSummaryFilterForm { Facility = \"EBS\"", emailService);
+        Assert.Contains("Total bins currently in EBS storage", emailService);
+        Assert.Contains("SendEbsDailyBinsNow", controller);
+        Assert.Contains("SendEbsDailyBinsTest", controller);
+        Assert.Contains("EBS Daily Bin Availability", view);
+        Assert.Contains("EbsDailyBins/SendNow", view);
+        Assert.Contains("EbsDailyBins/Test", view);
+        Assert.Contains("AddHostedService<EbsDailyBinsEmailHostedService>", program);
     }
 
     [Fact]

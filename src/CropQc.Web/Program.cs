@@ -168,11 +168,13 @@ builder.Services.AddScoped<IReceivingExportService, ReceivingExportService>();
 builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService>();
 builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportService>();
+builder.Services.AddScoped<IEbsDailyBinsEmailService, EbsDailyBinsEmailService>();
 builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 builder.Services.AddScoped<IQcStationAdminService, QcStationAdminService>();
 builder.Services.AddScoped<ICropYearService, CropYearService>();
 builder.Services.AddScoped<IDataCleanupService, DataCleanupService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
+builder.Services.AddHostedService<EbsDailyBinsEmailHostedService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
 builder.Services.AddSingleton(CreateGoogleDriveStorageOptions(builder.Configuration));
 builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorageService(

@@ -2,12 +2,16 @@
 @{
     ViewData["Title"] = "Configuration";
     var qcRecipientsItem = Model.Items.FirstOrDefault(x => x.Key == "QcEmailDefaultRecipients");
+    var ebsRecipientsItem = Model.Items.FirstOrDefault(x => x.Key == "EbsDailyBinsEmailRecipients");
     var generalItems = Model.Items
-        .Where(x => x.Key != "QcEmailDefaultRecipients" && x.Key != "DefaultQcSummaryRecipient" && x.Key != "DefaultQcSummaryFromAddress")
+        .Where(x => x.Key != "QcEmailDefaultRecipients" && x.Key != "EbsDailyBinsEmailRecipients" && x.Key != "EbsDailyBinsEmailLastSentDate" && x.Key != "DefaultQcSummaryRecipient" && x.Key != "DefaultQcSummaryFromAddress")
         .ToList();
     var qcRecipientsText = qcRecipientsItem is null
         ? ""
         : string.Join(Environment.NewLine, QcEmailRecipientParser.Parse(qcRecipientsItem.Value).Recipients);
+    var ebsRecipientsText = ebsRecipientsItem is null
+        ? ""
+        : string.Join(Environment.NewLine, QcEmailRecipientParser.Parse(ebsRecipientsItem.Value).Recipients);
 }
 
 <h1>Configuration</h1>
@@ -96,6 +100,23 @@
             <p class="muted">Normal company domains are fruitandland.com, earlbrownandsons.com, and wp-packingllc.com, but recipients do not need to be login users.</p>
         }
     </section>
+    <section class="panel">
+        <h2>EBS Daily Bin Availability</h2>
+        <p class="muted">These recipients receive the end-of-day EBS current bin availability email. Counts use the deduplicated dashboard storage source.</p>
+        @if (ebsRecipientsItem is null)
+        {
+            <p class="notice warning">EBS daily bin email recipient setting is not initialized yet. Reload this page, or verify the DashboardConfigurations table is available.</p>
+        }
+        else
+        {
+            <label for="ebs-daily-bin-recipients">Daily To recipients</label>
+            <textarea id="ebs-daily-bin-recipients" name="Values[@ebsRecipientsItem.Id]" rows="5">@ebsRecipientsText</textarea>
+        }
+        <div class="button-row">
+            <button type="submit" form="ebs-daily-bin-test-form">Send Test</button>
+            <button type="submit" form="ebs-daily-bin-send-form">Send Now</button>
+        </div>
+    </section>
     <div class="table-wrap">
         <table>
             <thead>
@@ -119,3 +140,5 @@
     </div>
     <p class="button-row"><button type="submit">Save Configuration</button></p>
 </form>
+<form id="ebs-daily-bin-test-form" method="post" action="/Admin/Configuration/EbsDailyBins/Test"></form>
+<form id="ebs-daily-bin-send-form" method="post" action="/Admin/Configuration/EbsDailyBins/SendNow"></form>

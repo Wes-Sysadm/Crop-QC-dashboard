@@ -33,6 +33,11 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         ("OfflineSessionDays", "7", "Offline session days", "Integer"),
         ("DefaultQcSummaryRecipient", "rob@earlbrownandsons.com,wes@fruitandland.com", "Legacy default QC summary testing recipients. Use QcEmailDefaultRecipients for active sends.", "String"),
         (QcEmailRecipientSettings.Key, EmailOptions.TestingQcDefaultRecipients, "Default QC Summary email recipients. Enter one email per line or comma-separated.", "EmailList"),
+        (EbsDailyBinsEmailSettings.RecipientsKey, EbsDailyBinsEmailSettings.DefaultRecipients, "Daily end-of-day EBS bin availability email recipients. Enter one email per line or comma-separated.", "EmailList"),
+        (EbsDailyBinsEmailSettings.EnabledKey, "false", "Send daily end-of-day EBS bin availability email automatically.", "Boolean"),
+        (EbsDailyBinsEmailSettings.SendHourLocalKey, "17", "Local Pacific hour when automatic EBS bin availability email may send, 0-23.", "Integer"),
+        (EbsDailyBinsEmailSettings.SenderEmailKey, "wes@fruitandland.com", "Active Gmail-connected user used by the scheduled EBS bin availability email.", "Email"),
+        (EbsDailyBinsEmailSettings.LastSentDateKey, "", "Last successful automatic EBS bin availability email date. Managed by the system.", "Date"),
         ("PhotoRetentionCropYearsAfterCurrent", "3", "Photo retention crop years after current. Planning value only; no automatic photo deletion currently runs.", "Integer"),
         ("AllowOverrideSendWithMissingData", "true", "Allow override send with missing data", "Boolean")
     ];
@@ -182,12 +187,14 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         foreach (var config in configs)
         {
             var submittedValue = form.Values[config.Id]?.Trim() ?? "";
-            if (config.Key == QcEmailRecipientSettings.Key)
+            if (config.Key is QcEmailRecipientSettings.Key or EbsDailyBinsEmailSettings.RecipientsKey)
             {
                 var parsed = QcEmailRecipientParser.Parse(submittedValue);
                 if (parsed.InvalidRecipients.Count > 0)
                 {
-                    return $"Invalid QC email recipient: {string.Join(", ", parsed.InvalidRecipients)}.";
+                    return config.Key == QcEmailRecipientSettings.Key
+                        ? $"Invalid QC email recipient: {string.Join(", ", parsed.InvalidRecipients)}."
+                        : $"Invalid EBS daily bin email recipient: {string.Join(", ", parsed.InvalidRecipients)}.";
                 }
 
                 submittedValue = string.Join(Environment.NewLine, parsed.Recipients);
