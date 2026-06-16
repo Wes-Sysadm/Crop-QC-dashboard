@@ -72,4 +72,44 @@ public sealed class ReadinessEvaluatorTests
         Assert.False(result.PhotoStatus.HasCutFruit);
         Assert.False(result.PhotoStatus.HasFruitAfterStarch);
     }
+
+    [Theory]
+    [InlineData("Receiving Sample")]
+    [InlineData("Truck Sample")]
+    public void Evaluate_RequiresStarchForTruckSamples(string sampleType)
+    {
+        var input = ReadyInput(sampleType, hasStarch: false);
+
+        var result = ReadinessEvaluator.Evaluate(input);
+
+        Assert.False(result.IsReady);
+        Assert.Equal(1, result.StarchMissingCount);
+        Assert.Contains(result.MissingItems, x => x.Contains("Starch", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("Lot Sample")]
+    [InlineData("Door Sample")]
+    public void Evaluate_DoesNotRequireStarchForLotOrDoorSamples(string sampleType)
+    {
+        var input = ReadyInput(sampleType, hasStarch: false);
+
+        var result = ReadinessEvaluator.Evaluate(input);
+
+        Assert.True(result.IsReady);
+        Assert.Equal(1, result.StarchMissingCount);
+        Assert.DoesNotContain(result.MissingItems, x => x.Contains("Starch", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static ReadinessEvaluationInput ReadyInput(string sampleType, bool hasStarch) =>
+        new(
+            true,
+            sampleType,
+            [new ReadinessFruitRow(true, true, true, true, true, hasStarch)],
+            true,
+            true,
+            true,
+            true,
+            true,
+            true);
 }

@@ -48,6 +48,16 @@ public sealed class SamplesController(
         return RedirectToAction(nameof(Details), new { id });
     }
 
+    [HttpPost("{id:long}/sample-type")]
+    [Authorize(Policy = "RequireQcUserOrHigher")]
+    public async Task<IActionResult> UpdateSampleType(long id, UpdateSampleTypeForm form, CancellationToken cancellationToken)
+    {
+        form.SampleId = id;
+        var error = await dataService.UpdateSampleTypeAsync(form, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Sample type updated.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
     [HttpGet("{id:long}/Starch")]
     public async Task<IActionResult> Starch(long id, CancellationToken cancellationToken) =>
         View(await dataService.GetStarchTestAsync(id, cancellationToken));

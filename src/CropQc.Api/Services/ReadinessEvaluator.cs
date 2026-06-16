@@ -39,7 +39,7 @@ public static class ReadinessEvaluator
         }
 
         var starchMissingCount = completedRows.Count(x => !x.HasStarch);
-        if (starchMissingCount > 0)
+        if (IsStarchRequiredForEmail(input.SampleTypeName) && starchMissingCount > 0)
         {
             missingItems.Add("Starch is required for all completed fruit rows.");
         }
@@ -98,5 +98,12 @@ public static class ReadinessEvaluator
             ("Whole sample", input.HasSampleBeforeCuttingPhoto),
             ("Cut apples", input.HasCutFruitPhoto)
         ];
+    }
+
+    private static bool IsStarchRequiredForEmail(string? sampleTypeName)
+    {
+        var normalized = sampleTypeName ?? string.Empty;
+        return normalized.Contains("receiving", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("truck", StringComparison.OrdinalIgnoreCase);
     }
 }

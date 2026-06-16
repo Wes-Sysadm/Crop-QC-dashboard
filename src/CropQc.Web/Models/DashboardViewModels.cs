@@ -624,6 +624,7 @@ public sealed class SampleDetailViewModel
 {
     public string? DataWarning { get; set; }
     public SampleListItemViewModel? Sample { get; set; }
+    public IReadOnlyList<SampleType> SampleTypes { get; set; } = [];
     public IReadOnlyList<FruitReadingRowViewModel> FruitRows { get; set; } = [];
     public IReadOnlyList<PhotoGroupViewModel> PhotoGroups { get; set; } = [];
     public ReadinessViewModel Readiness { get; set; } = new();
@@ -743,6 +744,12 @@ public sealed class AddPhotoMetadataForm
 
 public sealed class CreateReceiptSampleForm
 {
+    public int SampleTypeId { get; set; }
+}
+
+public sealed class UpdateSampleTypeForm
+{
+    public long SampleId { get; set; }
     public int SampleTypeId { get; set; }
 }
 
