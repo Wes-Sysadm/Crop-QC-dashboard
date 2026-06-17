@@ -16,6 +16,7 @@ public sealed class ConfigurationController(
     IAdminAuthorizationService authorizationService,
     EmailOptions emailOptions,
     IQcEmailRecipientResolver qcEmailRecipientResolver,
+    IEbsDailyBinsEmailService ebsDailyBinsEmailService,
     GoogleAuthenticationOptions googleAuthOptions,
     IGoogleCredentialStore googleCredentialStore,
     CropQcDbContext dbContext) : Controller
@@ -33,6 +34,22 @@ public sealed class ConfigurationController(
     {
         var error = await adminService.SaveConfigurationAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Configuration saved.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost("EbsDailyBins/SendNow")]
+    public async Task<IActionResult> SendEbsDailyBinsNow(CancellationToken cancellationToken)
+    {
+        var result = await ebsDailyBinsEmailService.SendAsync(authorizationService.GetEmail(User), isTest: false, cancellationToken);
+        TempData[result.Success ? "Success" : "Error"] = result.Message;
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost("EbsDailyBins/Test")]
+    public async Task<IActionResult> SendEbsDailyBinsTest(CancellationToken cancellationToken)
+    {
+        var result = await ebsDailyBinsEmailService.SendAsync(authorizationService.GetEmail(User), isTest: true, cancellationToken);
+        TempData[result.Success ? "Success" : "Error"] = result.Message;
         return RedirectToAction(nameof(Index));
     }
 

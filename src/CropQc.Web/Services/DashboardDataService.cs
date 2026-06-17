@@ -1796,7 +1796,7 @@ public sealed class DashboardDataService(
 
         var adjustments = await query.ToListAsync(cancellationToken);
         return adjustments
-            .GroupBy(x => $"{x.RoomId}|{x.LotNumber.Trim().ToUpperInvariant()}|{(x.VarietyCode ?? "").Trim().ToUpperInvariant()}|{(x.Source ?? x.Reason ?? "").Trim().ToUpperInvariant()}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(x => RoomInventoryImportService.CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? ""), StringComparer.OrdinalIgnoreCase)
             .Select(x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First())
             .Where(x => x.NewBinCount > 0)
             .Select(x => new RoomLotSummaryViewModel

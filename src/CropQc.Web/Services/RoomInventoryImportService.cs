@@ -209,14 +209,6 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
                 continue;
             }
 
-            var uploadKey = $"{facility}|{NormalizeCode(cropQcRoomName)}|{NormalizeCode(compuTechRoomCode)}|{lotNumber}|{row.Variety}|{source}";
-            if (seenRows.TryGetValue(uploadKey, out var firstRow))
-            {
-                previewRows.Add(Invalid(row, $"Duplicate inventory row conflicts with CSV row {firstRow}.", "Duplicate"));
-                continue;
-            }
-            seenRows.Add(uploadKey, rowNumber);
-
             var warehouse = warehouses.SingleOrDefault(x => string.Equals(x.Code, facility, StringComparison.OrdinalIgnoreCase));
             if (warehouse is null)
             {
@@ -238,6 +230,14 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
 
             row.RoomId = room.Id;
             row.NormalizedRoomCode = room.Code;
+            var uploadKey = CurrentStorageLotKey(row.RoomId.Value, lotNumber, row.Variety);
+            if (seenRows.TryGetValue(uploadKey, out var firstRow))
+            {
+                previewRows.Add(Invalid(row, $"Duplicate inventory row conflicts with CSV row {firstRow}.", "Duplicate"));
+                continue;
+            }
+            seenRows.Add(uploadKey, rowNumber);
+
             var messages = new List<string>();
             if (string.IsNullOrWhiteSpace(subLocation) || subLocation == "Other EBS")
             {
@@ -280,7 +280,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
                 row.Variety = fruitProfile.VarietyCode;
             }
 
-            var existingKey = StartingInventoryKey(row.RoomId.Value, row.LotNumber, row.Variety, row.Source);
+            var existingKey = CurrentStorageLotKey(row.RoomId.Value, row.LotNumber, row.Variety);
             if (!currentByKey.TryGetValue(existingKey, out var current))
             {
                 row.Action = "Add";
@@ -458,10 +458,10 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
     }
 
     private static string StartingInventoryKey(RoomInventoryAdjustment adjustment) =>
-        StartingInventoryKey(adjustment.RoomId, adjustment.LotNumber, adjustment.VarietyCode ?? "", adjustment.Source ?? adjustment.Reason ?? "");
+        CurrentStorageLotKey(adjustment.RoomId, adjustment.LotNumber, adjustment.VarietyCode ?? "");
 
-    private static string StartingInventoryKey(int roomId, string lotNumber, string variety, string source) =>
-        $"{roomId}|{lotNumber.Trim().ToUpperInvariant()}|{NormalizeVariety(variety)}|{source.Trim().ToUpperInvariant()}";
+    public static string CurrentStorageLotKey(int roomId, string lotNumber, string variety) =>
+        $"{roomId}|{lotNumber.Trim().ToUpperInvariant()}|{NormalizeVariety(variety)}";
 
     private static string JoinMessages(string first, IReadOnlyList<string> messages) =>
         messages.Count == 0 ? first : $"{first} {string.Join(" ", messages)}";
@@ -471,7 +471,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
         var normalized = NormalizeCode($"{cropQcRoomName} {compuTechRoomCode}");
         if (normalized.StartsWith("EVANCA", StringComparison.OrdinalIgnoreCase) || normalized.StartsWith("EVANS", StringComparison.OrdinalIgnoreCase)) return "Evans";
         if (normalized.StartsWith("LAMBCA", StringComparison.OrdinalIgnoreCase) || normalized.StartsWith("LAMB", StringComparison.OrdinalIgnoreCase)) return "Lamb";
-        if (normalized.StartsWith("BLUECA", StringComparison.OrdinalIgnoreCase) || normalized.StartsWith("BM", StringComparison.OrdinalIgnoreCase)) return "BM";
+        if (normalized.StartsWith("BLUECA", StringComparison.OrdinalIgnoreCase) || normalized.StartsWith("BM", StringComparison.OrdinalIgnoreCase) || normalized.Contains("BLUEMOUNTAIN", StringComparison.OrdinalIgnoreCase)) return "BM";
         return "Other EBS";
     }
 
@@ -505,7 +505,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             "BLUECA01" => "BM-1",
             "EVANCA01" => "EVANS-1",
             "LAMBCA17" => "LAMB-17",
-            _ => NormalizeCode(cropQcRoomName)
+            _ => NormalizeCropQcRoomName(cropQcRoomName)
         };
 
     public static string NormalizeCropQcRoomName(string roomName)
@@ -518,6 +518,10 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             "EVANS12" => "Evans-12",
             "BM4" => "BM-4",
             "BM1" => "BM-1",
+            "BLUEMOUNTAINROOM4" => "BM-4",
+            "BLUEMOUNTAIN4" => "BM-4",
+            "BLUEMTROOM4" => "BM-4",
+            "BLUEMT4" => "BM-4",
             "EVANS1" => "Evans-01",
             "EVANS01" => "Evans-01",
             "LAMB17" => "Lamb-17",
