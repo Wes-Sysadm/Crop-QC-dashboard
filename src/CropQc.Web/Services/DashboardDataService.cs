@@ -39,6 +39,7 @@ public interface IDashboardDataService
     Task<string?> RemoveSamplePhotoAsync(long sampleId, long photoId, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken);
     Task<RoomDetailViewModel> GetRoomDetailAsync(int roomId, CancellationToken cancellationToken);
+    Task<RoomCountBreakdownViewModel> GetRoomCountBreakdownAsync(int roomId, CancellationToken cancellationToken);
     Task<string?> CreateRoomDepletionAsync(RoomDepletionForm form, CancellationToken cancellationToken);
     Task<string?> VoidRoomDepletionAsync(VoidRoomDepletionForm form, CancellationToken cancellationToken);
     Task<string?> CreateRoomInventoryTrueUpAsync(RoomInventoryTrueUpForm form, CancellationToken cancellationToken);
@@ -343,6 +344,29 @@ public sealed class DashboardDataService(
         catch
         {
             return new RoomDetailViewModel { DataWarning = DataWarning };
+        }
+    }
+
+    public async Task<RoomCountBreakdownViewModel> GetRoomCountBreakdownAsync(int roomId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var summaries = await BuildRoomSummariesAsync(cancellationToken, roomId);
+            var summary = summaries.SingleOrDefault();
+            if (summary is null)
+            {
+                return new RoomCountBreakdownViewModel { DataWarning = "Room not found." };
+            }
+
+            return new RoomCountBreakdownViewModel
+            {
+                Summary = summary,
+                Rows = await BuildRoomCountBreakdownRowsAsync(roomId, cancellationToken)
+            };
+        }
+        catch
+        {
+            return new RoomCountBreakdownViewModel { DataWarning = DataWarning };
         }
     }
 
@@ -1976,6 +2000,103 @@ public sealed class DashboardDataService(
             _ => null
         };
 
+    private async Task<IReadOnlyList<RoomCountBreakdownRowViewModel>> BuildRoomCountBreakdownRowsAsync(int roomId, CancellationToken cancellationToken)
+    {
+        var receipts = await dbContext.Receipts.AsNoTracking()
+            .Include(x => x.FruitProfile)
+            .Where(x => x.RoomId == roomId)
+            .OrderByDescending(x => x.ReceivedAt)
+            .ThenByDescending(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var receiptIds = receipts.Select(x => x.Id).ToList();
+        var samplesByReceipt = (await QuerySamples()
+                .Where(x => receiptIds.Contains(x.ReceiptId))
+                .Select(x => new { x.ReceiptId, SampleType = x.SampleType.Name })
+                .ToListAsync(cancellationToken))
+            .GroupBy(x => x.ReceiptId)
+            .ToDictionary(
+                x => x.Key,
+                x => string.Join(", ", x.Select(y => y.SampleType).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(y => y)));
+        var depletionByReceipt = await dbContext.RoomDepletions.AsNoTracking()
+            .Where(x => receiptIds.Contains(x.ReceiptId) && !x.IsVoided)
+            .GroupBy(x => x.ReceiptId)
+            .Select(x => new { ReceiptId = x.Key, Bins = x.Sum(y => y.BinCountDepleted) })
+            .ToDictionaryAsync(x => x.ReceiptId, x => x.Bins, cancellationToken);
+        var latestAdjustmentByReceipt = (await dbContext.RoomInventoryAdjustments.AsNoTracking()
+                .Where(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
+                .ToListAsync(cancellationToken))
+            .GroupBy(x => x.ReceiptId!.Value)
+            .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First());
+        var roomCorrectionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
+        var includedReceiptIds = receipts
+            .Where(x => !x.IsDeleted)
+            .Where(x => string.Equals(x.ReceiptType, "Truck receipt", StringComparison.OrdinalIgnoreCase))
+            .Where(x => !IsSupersededByRoomCurrentBalanceCorrection(x, roomCorrectionCutoffs))
+            .GroupBy(ReceiptDedupeKey, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.OrderByDescending(y => y.UpdatedAt).ThenByDescending(y => y.Id).First().Id)
+            .ToHashSet();
+
+        var rows = receipts.Select(receipt =>
+        {
+            var bins = CurrentReceiptBins(receipt, depletionByReceipt, latestAdjustmentByReceipt);
+            var included = includedReceiptIds.Contains(receipt.Id);
+            return new RoomCountBreakdownRowViewModel
+            {
+                SourceType = "Receipt",
+                ReceiptId = receipt.Id,
+                DisplayReceiptId = receipt.CompuTechReceiptId,
+                SampleType = samplesByReceipt.GetValueOrDefault(receipt.Id) ?? receipt.ReceiptType,
+                Grower = receipt.GrowerName,
+                Lot = !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode,
+                Variety = receipt.FruitProfile.VarietyCode,
+                Bins = included ? bins : Math.Max(0, receipt.BinCount),
+                Status = receipt.IsDeleted ? "Deleted" : receipt.ReceiptType,
+                Date = receipt.ReceivedAt,
+                IsIncluded = included,
+                DecisionReason = ReceiptBreakdownDecision(receipt, roomCorrectionCutoffs, includedReceiptIds)
+            };
+        }).ToList();
+
+        var adjustments = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Include(x => x.Receipt)
+            .Where(x => x.RoomId == roomId)
+            .OrderByDescending(x => x.AdjustmentAt)
+            .ThenByDescending(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var includedAdjustmentIds = adjustments
+            .Where(IsAdjustmentOnlyCurrentStorageSource)
+            .GroupBy(x => RoomInventoryImportService.CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? ""), StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First())
+            .Where(x => x.NewBinCount > 0)
+            .Select(x => x.Id)
+            .ToHashSet();
+        rows.AddRange(adjustments.Select(adjustment =>
+        {
+            var included = includedAdjustmentIds.Contains(adjustment.Id);
+            return new RoomCountBreakdownRowViewModel
+            {
+                SourceType = adjustment.AdjustmentType,
+                ReceiptId = adjustment.ReceiptId,
+                DisplayReceiptId = adjustment.Receipt?.CompuTechReceiptId,
+                SampleType = adjustment.Receipt?.ReceiptType ?? adjustment.AdjustmentType,
+                Grower = adjustment.GrowerName,
+                Lot = adjustment.LotNumber,
+                Variety = adjustment.VarietyCode ?? "",
+                Bins = Math.Max(0, adjustment.NewBinCount),
+                Status = adjustment.NewBinCount > 0 ? "Current" : "Zero",
+                Date = adjustment.AdjustmentAt,
+                IsIncluded = included,
+                DecisionReason = AdjustmentBreakdownDecision(adjustment, included)
+            };
+        }));
+
+        return rows
+            .OrderByDescending(x => x.IsIncluded)
+            .ThenByDescending(x => x.Date)
+            .ThenBy(x => x.SourceType)
+            .ToList();
+    }
+
     private async Task<IReadOnlyList<RoomSummaryItemViewModel>> BuildRoomSummariesAsync(CancellationToken cancellationToken, int? roomId = null, RoomSummaryFilterForm? roomSummaryFilter = null)
     {
         var filter = NormalizeRoomSummaryFilter(roomSummaryFilter);
@@ -2086,7 +2207,12 @@ public sealed class DashboardDataService(
             .ToListAsync(cancellationToken);
         var samplesByReceipt = samples.GroupBy(x => x.ReceiptId).ToDictionary(x => x.Key, x => x.ToList());
 
-        var receiptLotSummaries = receipts.Select(receipt =>
+        var roomCorrectionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
+        var receiptLotSummaries = receipts
+            .Where(receipt => !IsSupersededByRoomCurrentBalanceCorrection(receipt, roomCorrectionCutoffs))
+            .GroupBy(ReceiptDedupeKey, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.OrderByDescending(y => y.UpdatedAt).ThenByDescending(y => y.Id).First())
+            .Select(receipt =>
         {
             var depleted = depletionByReceipt.GetValueOrDefault(receipt.Id);
             var latestAdjustment = latestAdjustmentByReceipt.GetValueOrDefault(receipt.Id);
@@ -2325,6 +2451,90 @@ public sealed class DashboardDataService(
         lot.ReceiptId is not null
             ? $"R:{lot.ReceiptId.Value}"
             : $"A:{lot.InventoryAdjustmentId ?? 0}:{RoomInventoryImportService.CurrentStorageLotKey(lot.RoomId, lot.LotCode, lot.VarietyCode)}";
+
+    private async Task<Dictionary<int, DateTimeOffset>> BuildCurrentBalanceCorrectionCutoffsAsync(int? roomId, CancellationToken cancellationToken)
+    {
+        var query = dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.ReceiptId == null && x.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType);
+        if (roomId is not null)
+        {
+            query = query.Where(x => x.RoomId == roomId);
+        }
+
+        return await query
+            .GroupBy(x => x.RoomId)
+            .Select(x => new { RoomId = x.Key, Cutoff = x.Max(y => y.AdjustmentAt) })
+            .ToDictionaryAsync(x => x.RoomId, x => x.Cutoff, cancellationToken);
+    }
+
+    private static bool IsCurrentBalanceCorrection(RoomInventoryAdjustment adjustment) =>
+        adjustment.ReceiptId == null
+        && adjustment.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType;
+
+    private static bool IsAdjustmentOnlyCurrentStorageSource(RoomInventoryAdjustment adjustment) =>
+        adjustment.ReceiptId == null
+        || adjustment.AdjustmentType == "TransferIn";
+
+    private static bool IsSupersededByRoomCurrentBalanceCorrection(Receipt receipt, IReadOnlyDictionary<int, DateTimeOffset> correctionCutoffs) =>
+        correctionCutoffs.TryGetValue(receipt.RoomId, out var cutoff)
+        && receipt.ReceivedAt <= cutoff;
+
+    private static string ReceiptDedupeKey(Receipt receipt) =>
+        !string.IsNullOrWhiteSpace(receipt.CompuTechReceiptId)
+            ? $"Receipt:{receipt.CompuTechReceiptId.Trim()}"
+            : $"Lot:{receipt.RoomId}:{(receipt.GrowerNumber ?? receipt.LotCode).Trim()}:{receipt.FruitProfileId}:{receipt.BinCount}:{receipt.ReceivedAt:O}";
+
+    private static int CurrentReceiptBins(
+        Receipt receipt,
+        IReadOnlyDictionary<long, int> depletionByReceipt,
+        IReadOnlyDictionary<long, RoomInventoryAdjustment> latestAdjustmentByReceipt)
+    {
+        if (latestAdjustmentByReceipt.TryGetValue(receipt.Id, out var latestAdjustment))
+        {
+            return Math.Max(0, latestAdjustment.NewBinCount);
+        }
+
+        return Math.Max(0, receipt.BinCount - depletionByReceipt.GetValueOrDefault(receipt.Id));
+    }
+
+    private static string ReceiptBreakdownDecision(Receipt receipt, IReadOnlyDictionary<int, DateTimeOffset> correctionCutoffs, IReadOnlySet<long> includedReceiptIds)
+    {
+        if (receipt.IsDeleted)
+        {
+            return "Excluded: receipt is soft-deleted.";
+        }
+
+        if (!string.Equals(receipt.ReceiptType, "Truck receipt", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Excluded: Door Sample and Lot Sample receipts do not add storage bins.";
+        }
+
+        if (IsSupersededByRoomCurrentBalanceCorrection(receipt, correctionCutoffs))
+        {
+            return "Excluded: superseded by the latest room current-balance correction.";
+        }
+
+        return includedReceiptIds.Contains(receipt.Id)
+            ? "Included: valid Truck Receipt current storage row."
+            : "Excluded: duplicate receipt row; latest matching receipt row is counted.";
+    }
+
+    private static string AdjustmentBreakdownDecision(RoomInventoryAdjustment adjustment, bool included)
+    {
+        if (included && IsCurrentBalanceCorrection(adjustment))
+        {
+            return "Included: current-balance correction is authoritative for this room as of its date.";
+        }
+
+        if (included)
+        {
+            return "Included: latest adjustment/transfer row for this room lot.";
+        }
+
+        return IsAdjustmentOnlyCurrentStorageSource(adjustment)
+            ? "Excluded: older adjustment for the same room lot; latest row is counted."
+            : "Excluded: receipt-linked adjustment is applied through its receipt row.";
+    }
 
     private async Task<int> GetCurrentBinsForReceiptAsync(long receiptId, CancellationToken cancellationToken)
     {

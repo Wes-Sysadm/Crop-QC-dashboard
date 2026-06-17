@@ -42,6 +42,9 @@
             <dt>Defects</dt><dd>@Model.Summary.DefectSummary</dd>
             <dt>Last sample</dt><dd>@(Model.Summary.LastSampleDate?.LocalDateTime.ToString("g") ?? "No data")</dd>
         </dl>
+        <div class="action-bar">
+            <a class="button secondary-button" href="/Rooms/@Model.Summary.RoomId/CountBreakdown">View Count Breakdown</a>
+        </div>
         @if (Model.Summary.ReviewFlags.Count > 0)
         {
             <h3>Review Flags</h3>
