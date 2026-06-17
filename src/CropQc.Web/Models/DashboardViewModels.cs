@@ -483,7 +483,7 @@ public sealed record ReceiptListItemViewModel(
     string QcStatus = "",
     DateTimeOffset? LastUpdatedAt = null);
 
-public sealed class CreateReceiptForm
+public class CreateReceiptForm
 {
     public int CropYear { get; set; } = DateTimeOffset.Now.Year;
     public DateTimeOffset ReceivedAt { get; set; } = DateTimeOffset.Now;
@@ -499,6 +499,27 @@ public sealed class CreateReceiptForm
     public string GrowerName { get; set; } = "";
     public string LotCode { get; set; } = "";
     public int BinCount { get; set; }
+}
+
+public sealed class EditReceiptPageViewModel
+{
+    public string? DataWarning { get; set; }
+    public UpdateReceiptForm Form { get; set; } = new();
+    public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
+    public IReadOnlyList<Room> Rooms { get; set; } = [];
+    public IReadOnlyList<FruitProfile> FruitProfiles { get; set; } = [];
+    public IReadOnlyList<GrowerLot> GrowerLots { get; set; } = [];
+}
+
+public sealed class UpdateReceiptForm : CreateReceiptForm
+{
+    public long Id { get; set; }
+}
+
+public sealed class DeleteReceiptForm
+{
+    public long Id { get; set; }
+    public string Reason { get; set; } = "";
 }
 
 public sealed class StorageFacilitySummaryViewModel

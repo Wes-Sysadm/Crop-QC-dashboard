@@ -1,6 +1,7 @@
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using CropQc.Shared.Storage;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CropQc.Web.Controllers;
@@ -39,6 +40,33 @@ public sealed class ReceiptsController(
     [HttpGet("{id:long}")]
     public async Task<IActionResult> Details(long id, CancellationToken cancellationToken) =>
         View(await dataService.GetReceiptDetailAsync(id, cancellationToken));
+
+    [Authorize(Policy = "RequireAdmin")]
+    [HttpGet("{id:long}/Edit")]
+    public async Task<IActionResult> Edit(long id, CancellationToken cancellationToken) =>
+        View(await dataService.GetReceiptEditAsync(id, cancellationToken));
+
+    [Authorize(Policy = "RequireAdmin")]
+    [HttpPost("{id:long}/Edit")]
+    public async Task<IActionResult> Edit(long id, UpdateReceiptForm form, CancellationToken cancellationToken)
+    {
+        form.Id = id;
+        var error = await dataService.UpdateReceiptAsync(form, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Receipt updated.";
+        return error is null
+            ? RedirectToAction(nameof(Details), new { id })
+            : RedirectToAction(nameof(Edit), new { id });
+    }
+
+    [Authorize(Policy = "RequireAdmin")]
+    [HttpPost("{id:long}/Delete")]
+    public async Task<IActionResult> Delete(long id, DeleteReceiptForm form, CancellationToken cancellationToken)
+    {
+        form.Id = id;
+        var error = await dataService.SoftDeleteReceiptAsync(form, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Receipt deleted.";
+        return RedirectToAction(nameof(Index));
+    }
 
     [HttpPost("{id:long}/samples")]
     public async Task<IActionResult> CreateSample(long id, CreateReceiptSampleForm form, CancellationToken cancellationToken)

@@ -5,6 +5,7 @@ using CropQc.Web.Auth;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace CropQc.Web.Services;
 
@@ -17,6 +18,9 @@ public interface IDashboardDataService
     Task<ReceiptListViewModel> SearchReceiptsAsync(ReceiptSearchForm search, CancellationToken cancellationToken);
     Task<string?> CreateReceiptAsync(CreateReceiptForm form, CancellationToken cancellationToken);
     Task<ReceiptDetailViewModel> GetReceiptDetailAsync(long id, CancellationToken cancellationToken);
+    Task<EditReceiptPageViewModel> GetReceiptEditAsync(long id, CancellationToken cancellationToken);
+    Task<string?> UpdateReceiptAsync(UpdateReceiptForm form, CancellationToken cancellationToken);
+    Task<string?> SoftDeleteReceiptAsync(DeleteReceiptForm form, CancellationToken cancellationToken);
     Task<(long? SampleId, int? SampleSequenceNumber, string? Warning, string? Error)> CreateSampleAsync(long receiptId, int sampleTypeId, CancellationToken cancellationToken);
     Task<SampleDetailViewModel> GetSampleDetailAsync(long id, CancellationToken cancellationToken);
     Task<SampleRefreshViewModel?> GetSampleRefreshAsync(long id, CancellationToken cancellationToken);
@@ -632,7 +636,7 @@ public sealed class DashboardDataService(
             PoolStart = null,
             GrowerName = growerName,
             LotCode = lotNumber,
-            BinCount = IsInventoryReceiptType(receiptType) ? form.BinCount : 0,
+            BinCount = Math.Max(0, form.BinCount),
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -660,6 +664,55 @@ public sealed class DashboardDataService(
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
     }
+
+    private async Task<string?> ValidateReceiptFormAsync(CreateReceiptForm form, string receiptType, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(form.CompuTechReceiptId)
+            || (form.GrowerLotId is null && (string.IsNullOrWhiteSpace(form.GrowerName) || string.IsNullOrWhiteSpace(form.GrowerNumber)))
+            || (IsInventoryReceiptType(receiptType) && form.BinCount <= 0))
+        {
+            return "Receipt ID, grower, Lot #, receipt type, and bin count for truck receipts are required.";
+        }
+
+        var room = await dbContext.Rooms.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.RoomId, cancellationToken);
+        if (room is null)
+        {
+            return "Selected room was not found.";
+        }
+
+        if (room.WarehouseId != form.WarehouseId)
+        {
+            return "Selected room does not belong to the selected warehouse.";
+        }
+
+        if (!await dbContext.FruitProfiles.AsNoTracking().AnyAsync(x => x.Id == form.FruitProfileId, cancellationToken))
+        {
+            return "Selected variety was not found.";
+        }
+
+        if (cropYearService.RequiresConfirmation(form.ReceivedAt, form.CropYear) && !form.ConfirmCropYear)
+        {
+            var candidates = string.Join(", ", cropYearService.GetCandidateCropYears(form.ReceivedAt));
+            return $"Confirm Crop Year before saving. Suggested crop year option(s) for this received date: {candidates}.";
+        }
+
+        if (form.GrowerLotId is not null
+            && !await dbContext.GrowerLots.AsNoTracking().AnyAsync(x => x.Id == form.GrowerLotId && x.IsActive, cancellationToken))
+        {
+            return "Selected grower lot was not found or is inactive.";
+        }
+
+        return null;
+    }
+
+    private async Task<EditReceiptPageViewModel> BuildReceiptEditPageAsync(CancellationToken cancellationToken) =>
+        new()
+        {
+            Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
+            Rooms = await dbContext.Rooms.AsNoTracking().OrderBy(x => x.WarehouseId).ThenBy(x => x.SubLocation).ThenBy(x => x.SortOrder).ThenBy(x => x.CropQcRoomName ?? x.Code).ToListAsync(cancellationToken),
+            FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
+            GrowerLots = await dbContext.GrowerLots.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Grower).ThenBy(x => x.LotNumber).ToListAsync(cancellationToken)
+        };
 
     public async Task<ReceiptDetailViewModel> GetReceiptDetailAsync(long id, CancellationToken cancellationToken)
     {
@@ -693,6 +746,160 @@ public sealed class DashboardDataService(
         {
             return new ReceiptDetailViewModel { DataWarning = DataWarning };
         }
+    }
+
+    public async Task<EditReceiptPageViewModel> GetReceiptEditAsync(long id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var receipt = await dbContext.Receipts.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
+            if (receipt is null)
+            {
+                return new EditReceiptPageViewModel { DataWarning = "Receipt not found." };
+            }
+
+            var model = await BuildReceiptEditPageAsync(cancellationToken);
+            model.Form = new UpdateReceiptForm
+            {
+                Id = receipt.Id,
+                CropYear = receipt.CropYear,
+                ReceivedAt = receipt.ReceivedAt,
+                CompuTechReceiptId = receipt.CompuTechReceiptId,
+                ReceiptType = NormalizeReceiptType(receipt.ReceiptType),
+                WarehouseId = receipt.WarehouseId,
+                RoomId = receipt.RoomId,
+                FruitProfileId = receipt.FruitProfileId,
+                GrowerLotId = receipt.GrowerLotId,
+                GrowerNumber = receipt.GrowerNumber ?? "",
+                GrowerName = receipt.GrowerName,
+                LotCode = receipt.LotCode,
+                BinCount = receipt.BinCount,
+                ConfirmCropYear = true
+            };
+            return model;
+        }
+        catch
+        {
+            return new EditReceiptPageViewModel { DataWarning = DataWarning };
+        }
+    }
+
+    public async Task<string?> UpdateReceiptAsync(UpdateReceiptForm form, CancellationToken cancellationToken)
+    {
+        var receipt = await dbContext.Receipts.Include(x => x.Warehouse).Include(x => x.Room).SingleOrDefaultAsync(x => x.Id == form.Id && !x.IsDeleted, cancellationToken);
+        if (receipt is null)
+        {
+            return "Receipt not found.";
+        }
+
+        var receiptType = NormalizeReceiptType(form.ReceiptType);
+        var validationError = await ValidateReceiptFormAsync(form, receiptType, cancellationToken);
+        if (validationError is not null)
+        {
+            return validationError;
+        }
+
+        GrowerLot? growerLot = null;
+        if (form.GrowerLotId is not null)
+        {
+            growerLot = await dbContext.GrowerLots.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.GrowerLotId && x.IsActive, cancellationToken);
+        }
+
+        var before = JsonSerializer.Serialize(new
+        {
+            receipt.CropYear,
+            receipt.ReceivedAt,
+            receipt.CompuTechReceiptId,
+            receipt.ReceiptType,
+            receipt.WarehouseId,
+            receipt.RoomId,
+            receipt.FruitProfileId,
+            receipt.GrowerLotId,
+            receipt.GrowerNumber,
+            receipt.GrowerName,
+            receipt.LotCode,
+            receipt.BinCount
+        });
+        var wasInventory = IsInventoryReceiptType(receipt.ReceiptType);
+        var currentBins = wasInventory ? await GetCurrentBinsForReceiptAsync(receipt.Id, cancellationToken) : 0;
+        var growerName = growerLot?.Grower ?? form.GrowerName.Trim();
+        var lotNumber = growerLot?.LotNumber ?? form.GrowerNumber.Trim();
+
+        receipt.CropYear = form.CropYear;
+        receipt.ReceivedAt = form.ReceivedAt;
+        receipt.CompuTechReceiptId = form.CompuTechReceiptId.Trim();
+        receipt.ReceiptType = receiptType;
+        receipt.WarehouseId = form.WarehouseId;
+        receipt.RoomId = form.RoomId;
+        receipt.FruitProfileId = form.FruitProfileId;
+        receipt.GrowerLotId = growerLot?.Id;
+        receipt.GrowerNumber = string.IsNullOrWhiteSpace(lotNumber) ? null : lotNumber;
+        receipt.PoolStart = null;
+        receipt.GrowerName = growerName;
+        receipt.LotCode = lotNumber;
+        receipt.BinCount = Math.Max(0, form.BinCount);
+        receipt.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var currentUser = await GetCurrentUserAsync(cancellationToken);
+        if (IsInventoryReceiptType(receiptType))
+        {
+            AddRoomInventoryAdjustment(
+                receipt,
+                currentUser,
+                "ReceiptEdit",
+                oldBinCount: wasInventory ? currentBins : null,
+                changeAmount: receipt.BinCount - (wasInventory ? currentBins : 0),
+                newBinCount: receipt.BinCount,
+                adjustmentAt: DateTimeOffset.UtcNow,
+                reason: "Admin receipt correction",
+                notes: $"Admin corrected receipt {receipt.CompuTechReceiptId}; current bins set to {receipt.BinCount}.",
+                roomDepletionId: null);
+        }
+
+        await AddAuditAsync("Update", nameof(Receipt), receipt.Id.ToString(), currentUser?.Email ?? "unknown", before, JsonSerializer.Serialize(new
+        {
+            receipt.CropYear,
+            receipt.ReceivedAt,
+            receipt.CompuTechReceiptId,
+            receipt.ReceiptType,
+            receipt.WarehouseId,
+            receipt.RoomId,
+            receipt.FruitProfileId,
+            receipt.GrowerLotId,
+            receipt.GrowerNumber,
+            receipt.GrowerName,
+            receipt.LotCode,
+            receipt.BinCount
+        }), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
+    public async Task<string?> SoftDeleteReceiptAsync(DeleteReceiptForm form, CancellationToken cancellationToken)
+    {
+        var receipt = await dbContext.Receipts.SingleOrDefaultAsync(x => x.Id == form.Id && !x.IsDeleted, cancellationToken);
+        if (receipt is null)
+        {
+            return "Receipt not found.";
+        }
+
+        var currentUser = await GetCurrentUserAsync(cancellationToken);
+        var before = JsonSerializer.Serialize(new { receipt.Id, receipt.CompuTechReceiptId, receipt.ReceiptType, receipt.BinCount, receipt.IsDeleted });
+        receipt.IsDeleted = true;
+        receipt.DeletedAt = DateTimeOffset.UtcNow;
+        receipt.DeletedByUserId = currentUser?.Id;
+        receipt.DeleteReason = string.IsNullOrWhiteSpace(form.Reason) ? "Admin deleted receipt." : form.Reason.Trim();
+        receipt.UpdatedAt = DateTimeOffset.UtcNow;
+        await AddAuditAsync("Delete", nameof(Receipt), receipt.Id.ToString(), currentUser?.Email ?? "unknown", before, JsonSerializer.Serialize(new
+        {
+            receipt.Id,
+            receipt.CompuTechReceiptId,
+            receipt.IsDeleted,
+            receipt.DeletedAt,
+            receipt.DeleteReason
+        }), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
     }
 
     public async Task<(long? SampleId, int? SampleSequenceNumber, string? Warning, string? Error)> CreateSampleAsync(long receiptId, int sampleTypeId, CancellationToken cancellationToken)
@@ -1699,7 +1906,7 @@ public sealed class DashboardDataService(
             .Include(x => x.Room)
                 .ThenInclude(x => x.Warehouse)
             .Include(x => x.FruitProfile)
-            .Where(x => !x.IsDeleted);
+            .Where(x => !x.IsDeleted && x.ReceiptType == "Truck receipt");
         if (roomId is not null)
         {
             receiptsQuery = receiptsQuery.Where(x => x.RoomId == roomId);
@@ -1885,6 +2092,15 @@ public sealed class DashboardDataService(
 
     private async Task<int> GetCurrentBinsForReceiptAsync(long receiptId, CancellationToken cancellationToken)
     {
+        var receipt = await dbContext.Receipts.AsNoTracking()
+            .Where(x => x.Id == receiptId)
+            .Select(x => new { x.ReceiptType, x.IsDeleted, x.BinCount })
+            .SingleAsync(cancellationToken);
+        if (receipt.IsDeleted || !string.Equals(receipt.ReceiptType, "Truck receipt", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
         var latestAdjustment = await dbContext.RoomInventoryAdjustments.AsNoTracking()
             .Where(x => x.ReceiptId == receiptId)
             .OrderByDescending(x => x.AdjustmentAt)
@@ -1895,14 +2111,10 @@ public sealed class DashboardDataService(
             return Math.Max(0, latestAdjustment.NewBinCount);
         }
 
-        var receiptBins = await dbContext.Receipts.AsNoTracking()
-            .Where(x => x.Id == receiptId)
-            .Select(x => x.BinCount)
-            .SingleAsync(cancellationToken);
         var depleted = await dbContext.RoomDepletions.AsNoTracking()
             .Where(x => x.ReceiptId == receiptId && !x.IsVoided)
             .SumAsync(x => (int?)x.BinCountDepleted, cancellationToken) ?? 0;
-        return Math.Max(0, receiptBins - depleted);
+        return Math.Max(0, receipt.BinCount - depleted);
     }
 
     private void AddRoomInventoryAdjustment(
