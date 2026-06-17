@@ -32,9 +32,14 @@ public sealed class RoomSummaryItemViewModel
     public string LocationGroup { get; set; } = "";
     public string RoomCode { get; set; } = "";
     public string RoomName { get; set; } = "";
+    public string CompuTechCode { get; set; } = "";
     public string Status { get; set; } = "Empty";
     public int CurrentLotsCount { get; set; }
     public int? CurrentBinsCount { get; set; }
+    public int StartingSeasonBins { get; set; }
+    public int NetChangeBins { get; set; }
+    public string VarietyStatusSummary { get; set; } = "";
+    public DateTimeOffset? LastActivityAt { get; set; }
     public string LotSummary { get; set; } = "Empty";
     public decimal? AveragePressureLbs { get; set; }
     public decimal? PressureStdDevLbs { get; set; }
@@ -58,10 +63,23 @@ public sealed class RoomDetailViewModel
     public IReadOnlyList<RoomLotSummaryViewModel> DepletedLots { get; set; } = [];
     public IReadOnlyList<RoomDepletionListItemViewModel> Depletions { get; set; } = [];
     public IReadOnlyList<RoomInventoryAdjustmentListItemViewModel> InventoryAdjustments { get; set; } = [];
+    public IReadOnlyList<ReceiptListItemViewModel> LinkedReceipts { get; set; } = [];
     public IReadOnlyList<RoomReceiptOptionViewModel> DepletionReceiptOptions { get; set; } = [];
+    public IReadOnlyList<RoomInventoryLotOptionViewModel> TransferLotOptions { get; set; } = [];
+    public IReadOnlyList<RoomTransferDestinationViewModel> TransferDestinationOptions { get; set; } = [];
     public RoomDepletionForm DepletionForm { get; set; } = new();
     public RoomInventoryTrueUpForm TrueUpForm { get; set; } = new();
+    public RoomTransferForm TransferForm { get; set; } = new();
     public bool CanManageDepletions { get; set; }
+}
+
+public sealed class RoomsPageViewModel
+{
+    public string? DataWarning { get; set; }
+    public RoomSummaryFilterForm Filter { get; set; } = new() { RoomStatus = "All" };
+    public IReadOnlyList<RoomSummaryItemViewModel> Rooms { get; set; } = [];
+    public IReadOnlyList<string> FacilityOptions { get; set; } = ["All", "MCD", "WP", "EBS", "DH"];
+    public IReadOnlyList<string> EbsLocationOptions { get; set; } = ["All EBS", "Evans", "Lamb", "BM"];
 }
 
 public sealed class RoomLotSummaryViewModel
@@ -97,6 +115,8 @@ public sealed class RoomLotSummaryViewModel
 }
 
 public sealed record RoomReceiptOptionViewModel(long ReceiptId, string Label, int CurrentBins);
+public sealed record RoomInventoryLotOptionViewModel(string LotKey, string Label, int CurrentBins);
+public sealed record RoomTransferDestinationViewModel(int RoomId, string Label);
 public sealed record RoomSampleLinkViewModel(long SampleId, string DisplayReceiptId, string SampleType);
 
 public sealed class RoomInventoryAdjustmentListItemViewModel
@@ -151,6 +171,18 @@ public sealed class RoomInventoryTrueUpForm
     public DateTimeOffset AdjustmentAt { get; set; } = DateTimeOffset.Now;
     public string Reason { get; set; } = "";
     public string? Notes { get; set; }
+}
+
+public sealed class RoomTransferForm
+{
+    public int FromRoomId { get; set; }
+    public int ToRoomId { get; set; }
+    public string SourceLotKey { get; set; } = "";
+    public int BinCount { get; set; }
+    public DateTimeOffset TransferAt { get; set; } = DateTimeOffset.Now;
+    public string Reason { get; set; } = "";
+    public string? Notes { get; set; }
+    public bool ConfirmOverTransfer { get; set; }
 }
 
 public sealed class RoomInventoryImportPageViewModel
