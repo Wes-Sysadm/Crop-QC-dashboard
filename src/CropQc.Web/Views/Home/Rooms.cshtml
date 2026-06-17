@@ -1,0 +1,79 @@
+@model RoomsPageViewModel
+@{
+    ViewData["Title"] = "Rooms";
+}
+
+<h1>Rooms</h1>
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+
+<form class="toolbar" method="get" action="/Rooms">
+    <label class="field">Facility
+        <select name="Facility">
+            @foreach (var facility in Model.FacilityOptions)
+            {
+                <option value="@facility" selected="@IsSelected(Model.Filter.Facility, facility)">@facility</option>
+            }
+        </select>
+    </label>
+    <label class="field">EBS location
+        <select name="EbsLocation">
+            @foreach (var location in Model.EbsLocationOptions)
+            {
+                <option value="@location" selected="@IsSelected(Model.Filter.EbsLocation, location)">@location</option>
+            }
+        </select>
+    </label>
+    <label class="field">Rooms
+        <select name="RoomStatus">
+            <option value="All" selected="@IsSelected(Model.Filter.RoomStatus, "All")">All rooms</option>
+            <option value="WithFruit" selected="@IsSelected(Model.Filter.RoomStatus, "WithFruit")">Rooms with fruit</option>
+            <option value="Empty" selected="@IsSelected(Model.Filter.RoomStatus, "Empty")">Empty rooms</option>
+        </select>
+    </label>
+    <button type="submit">Apply</button>
+</form>
+
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Warehouse</th>
+                <th>Room</th>
+                <th>Compu-Tech</th>
+                <th>Current Bins</th>
+                <th>Starting Season</th>
+                <th>Net Change</th>
+                <th>Variety / Status</th>
+                <th>Last Activity</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var room in Model.Rooms.OrderBy(x => x.Warehouse).ThenBy(x => x.LocationGroup).ThenBy(x => x.RoomCode))
+        {
+            <tr>
+                <td>@room.Warehouse</td>
+                <td>
+                    <strong>@room.RoomCode</strong><br />
+                    <span class="muted">@room.RoomName</span>
+                </td>
+                <td>@(string.IsNullOrWhiteSpace(room.CompuTechCode) ? "-" : room.CompuTechCode)</td>
+                <td>@(room.CurrentBinsCount?.ToString() ?? "0")</td>
+                <td>@room.StartingSeasonBins</td>
+                <td>@FormatSigned(room.NetChangeBins)</td>
+                <td>@room.VarietyStatusSummary</td>
+                <td>@(room.LastActivityAt?.LocalDateTime.ToString("g") ?? "-")</td>
+                <td><a class="inline-action" href="/Rooms/@room.RoomId">View Room</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@functions {
+    private static bool IsSelected(string current, string option) => string.Equals(current, option, StringComparison.OrdinalIgnoreCase);
+    private static string FormatSigned(int value) => value > 0 ? $"+{value}" : value.ToString();
+}

@@ -179,11 +179,55 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("ReceiptAdd", service);
         Assert.Contains("Depletion", service);
         Assert.Contains("Void/Reversal", service);
-        Assert.Contains("Bin Count History", room);
+        Assert.Contains("Room Transaction History", room);
         Assert.Contains("True Up Current Lot Bins", room);
         Assert.Contains("Weakest lot", home);
         Assert.Contains("Weakest lot signal", partial);
         Assert.Contains("FindWeakestLot", service);
+    }
+
+    [Fact]
+    public void RoomsTab_ShowsInventoryFillManagement()
+    {
+        var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "HomeController.cs"));
+        var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
+        var rooms = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Rooms.cshtml"));
+        var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
+
+        Assert.Contains("<a href=\"/Rooms\">Rooms</a>", layout);
+        Assert.Contains("[HttpGet(\"/Rooms\")]", controller);
+        Assert.Contains("[HttpGet(\"/Rooms/{roomId:int}\")]", controller);
+        Assert.Contains("RoomsPageViewModel", model);
+        Assert.Contains("StartingSeasonBins", model);
+        Assert.Contains("NetChangeBins", model);
+        Assert.Contains("CompuTechCode", model);
+        Assert.Contains("LastActivityAt", model);
+        Assert.Contains("Current Bins", rooms);
+        Assert.Contains("Starting Season", rooms);
+        Assert.Contains("Linked Receipts", room);
+        Assert.Contains("Room Transaction History", room);
+    }
+
+    [Fact]
+    public void RoomTransfers_AreAuditedAndPermissioned()
+    {
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "HomeController.cs"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
+        var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
+
+        Assert.Contains("[HttpPost(\"/Dashboard/Rooms/{roomId:int}/Transfer\")]", controller);
+        Assert.Contains("[Authorize(Policy = \"RequireManagerOrAdmin\")]", controller);
+        Assert.Contains("CreateRoomTransferAsync", service);
+        Assert.Contains("\"TransferOut\"", service);
+        Assert.Contains("\"TransferIn\"", service);
+        Assert.Contains("AddAuditAsync(\"Transfer\", nameof(RoomInventoryAdjustment)", service);
+        Assert.Contains("RoomTransferForm", model);
+        Assert.Contains("TransferLotOptions", model);
+        Assert.Contains("Record Transfer", room);
+        Assert.Contains("Bins in", room);
+        Assert.Contains("Bins out", room);
     }
 
     [Fact]

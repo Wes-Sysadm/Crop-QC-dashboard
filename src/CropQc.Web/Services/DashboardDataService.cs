@@ -12,6 +12,7 @@ namespace CropQc.Web.Services;
 public interface IDashboardDataService
 {
     Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken);
+    Task<RoomsPageViewModel> GetRoomsAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken);
     Task<CurrentGrowerLotsPageViewModel> GetCurrentGrowerLotsAsync(CurrentGrowerLotsFilterForm filter, CancellationToken cancellationToken);
     Task<CropYearReviewPageViewModel> GetCropYearReviewAsync(CropYearReviewFilterForm filter, CancellationToken cancellationToken);
     Task<MasterDataPageViewModel> GetMasterDataPageAsync(string type, CancellationToken cancellationToken);
@@ -41,6 +42,7 @@ public interface IDashboardDataService
     Task<string?> CreateRoomDepletionAsync(RoomDepletionForm form, CancellationToken cancellationToken);
     Task<string?> VoidRoomDepletionAsync(VoidRoomDepletionForm form, CancellationToken cancellationToken);
     Task<string?> CreateRoomInventoryTrueUpAsync(RoomInventoryTrueUpForm form, CancellationToken cancellationToken);
+    Task<string?> CreateRoomTransferAsync(RoomTransferForm form, CancellationToken cancellationToken);
 }
 
 public enum FruitRowEntryStatus
@@ -127,6 +129,24 @@ public sealed class DashboardDataService(
                 RoomSummaryFilter = normalizedRoomFilter,
                 RoomSummaries = []
             };
+        }
+    }
+
+    public async Task<RoomsPageViewModel> GetRoomsAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
+    {
+        var normalizedRoomFilter = NormalizeRoomSummaryFilter(roomSummaryFilter);
+        normalizedRoomFilter.RoomStatus = string.IsNullOrWhiteSpace(roomSummaryFilter?.RoomStatus) ? "All" : normalizedRoomFilter.RoomStatus;
+        try
+        {
+            return new RoomsPageViewModel
+            {
+                Filter = normalizedRoomFilter,
+                Rooms = await BuildRoomSummariesAsync(cancellationToken, roomSummaryFilter: normalizedRoomFilter)
+            };
+        }
+        catch
+        {
+            return new RoomsPageViewModel { Filter = normalizedRoomFilter, DataWarning = DataWarning };
         }
     }
 
@@ -294,6 +314,8 @@ public sealed class DashboardDataService(
             var depletedLots = lotSummaries.Where(x => x.CurrentBins <= 0 && x.OriginalBins > 0).ToList();
             var depletions = await BuildRoomDepletionHistoryAsync(roomId, cancellationToken);
             var inventoryAdjustments = await BuildRoomInventoryAdjustmentHistoryAsync(roomId, cancellationToken);
+            var linkedReceipts = await BuildRoomLinkedReceiptsAsync(roomId, cancellationToken);
+            var transferDestinations = await BuildRoomTransferDestinationsAsync(roomId, cancellationToken);
             var canManage = IsManagerOrAdmin();
 
             return new RoomDetailViewModel
@@ -303,12 +325,18 @@ public sealed class DashboardDataService(
                 DepletedLots = depletedLots,
                 Depletions = depletions,
                 InventoryAdjustments = inventoryAdjustments,
+                LinkedReceipts = linkedReceipts,
                 DepletionReceiptOptions = activeLots
                     .Where(x => x.ReceiptId is not null)
                     .Select(x => new RoomReceiptOptionViewModel(x.ReceiptId!.Value, $"{x.DisplayReceiptId} - {x.GrowerName} {x.LotCode} {x.VarietyCode} ({x.CurrentBins} bins current)", x.CurrentBins))
                     .ToList(),
+                TransferLotOptions = activeLots
+                    .Select(x => new RoomInventoryLotOptionViewModel(RoomLotKey(x), $"{x.DisplayReceiptId} - {x.GrowerName} {x.LotCode} {x.VarietyCode} ({x.CurrentBins} bins current)", x.CurrentBins))
+                    .ToList(),
+                TransferDestinationOptions = transferDestinations,
                 DepletionForm = new RoomDepletionForm { RoomId = roomId, DepletedAt = DateTimeOffset.Now },
                 TrueUpForm = new RoomInventoryTrueUpForm { RoomId = roomId, AdjustmentAt = DateTimeOffset.Now },
+                TransferForm = new RoomTransferForm { FromRoomId = roomId, TransferAt = DateTimeOffset.Now },
                 CanManageDepletions = canManage
             };
         }
@@ -476,6 +504,124 @@ public sealed class DashboardDataService(
             notes: string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim(),
             roomDepletionId: null);
         await AddAuditAsync("BinCountChange", nameof(RoomInventoryAdjustment), receipt.Id.ToString(), currentUser?.Email ?? "unknown", null, $"ManualTrueUp changed bins from {oldCount} to {form.NewBinCount}. Reason: {form.Reason.Trim()}", cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
+    public async Task<string?> CreateRoomTransferAsync(RoomTransferForm form, CancellationToken cancellationToken)
+    {
+        if (!IsManagerOrAdmin())
+        {
+            return "Only Managers and Admins can transfer room inventory.";
+        }
+
+        if (form.BinCount <= 0)
+        {
+            return "Transfer bin count must be positive.";
+        }
+
+        if (form.ToRoomId <= 0 || form.ToRoomId == form.FromRoomId)
+        {
+            return "Select a different destination room.";
+        }
+
+        if (string.IsNullOrWhiteSpace(form.SourceLotKey))
+        {
+            return "Select a source lot.";
+        }
+
+        if (string.IsNullOrWhiteSpace(form.Reason))
+        {
+            return "Reason is required for room transfers.";
+        }
+
+        var sourceLots = (await BuildRoomLotSummariesAsync(form.FromRoomId, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
+        var sourceLot = sourceLots.SingleOrDefault(x => string.Equals(RoomLotKey(x), form.SourceLotKey, StringComparison.OrdinalIgnoreCase));
+        if (sourceLot is null)
+        {
+            return "Source lot was not found in this room.";
+        }
+
+        if (form.BinCount > sourceLot.CurrentBins && !form.ConfirmOverTransfer)
+        {
+            return $"Cannot transfer {form.BinCount} bins because only {sourceLot.CurrentBins} bins are currently known for this lot. Confirm override if the current bin count needs correction.";
+        }
+
+        var fromRoom = await dbContext.Rooms.AsNoTracking().Include(x => x.Warehouse).SingleOrDefaultAsync(x => x.Id == form.FromRoomId, cancellationToken);
+        var toRoom = await dbContext.Rooms.AsNoTracking().Include(x => x.Warehouse).SingleOrDefaultAsync(x => x.Id == form.ToRoomId, cancellationToken);
+        if (fromRoom is null || toRoom is null)
+        {
+            return "Source or destination room was not found.";
+        }
+
+        var currentUser = await GetCurrentUserAsync(cancellationToken);
+        var reason = form.Reason.Trim();
+        var notes = string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim();
+        var sourceReceipt = sourceLot.ReceiptId is null
+            ? null
+            : await dbContext.Receipts.Include(x => x.Warehouse).Include(x => x.Room).Include(x => x.FruitProfile).SingleOrDefaultAsync(x => x.Id == sourceLot.ReceiptId && !x.IsDeleted, cancellationToken);
+        var fruitProfile = await dbContext.FruitProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.VarietyCode == sourceLot.VarietyCode, cancellationToken);
+        var destinationCurrent = (await BuildRoomLotSummariesAsync(form.ToRoomId, cancellationToken))
+            .Where(x => x.CurrentBins > 0)
+            .Where(x => string.Equals(x.LotCode, sourceLot.LotCode, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(x.VarietyCode, sourceLot.VarietyCode, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(x.GrowerName, sourceLot.GrowerName, StringComparison.OrdinalIgnoreCase))
+            .Sum(x => x.CurrentBins);
+
+        if (sourceReceipt is not null)
+        {
+            AddRoomInventoryAdjustment(
+                sourceReceipt,
+                currentUser,
+                "TransferOut",
+                oldBinCount: sourceLot.CurrentBins,
+                changeAmount: -form.BinCount,
+                newBinCount: Math.Max(0, sourceLot.CurrentBins - form.BinCount),
+                adjustmentAt: form.TransferAt,
+                reason: reason,
+                notes: $"Transfer to {toRoom.Warehouse.Code}/{toRoom.Code}. {notes}".Trim(),
+                roomDepletionId: null);
+        }
+        else
+        {
+            AddRoomInventoryAdjustmentRaw(
+                receiptId: null,
+                warehouseId: fromRoom.WarehouseId,
+                roomId: fromRoom.Id,
+                growerLotId: null,
+                fruitProfileId: fruitProfile?.Id,
+                growerName: sourceLot.GrowerName,
+                lotNumber: sourceLot.LotCode,
+                varietyCode: sourceLot.VarietyCode,
+                oldBinCount: sourceLot.CurrentBins,
+                changeAmount: -form.BinCount,
+                newBinCount: Math.Max(0, sourceLot.CurrentBins - form.BinCount),
+                adjustmentType: "TransferOut",
+                adjustmentAt: form.TransferAt,
+                currentUser: currentUser,
+                reason: reason,
+                notes: $"Transfer to {toRoom.Warehouse.Code}/{toRoom.Code}. {notes}".Trim());
+        }
+
+        AddRoomInventoryAdjustmentRaw(
+            receiptId: sourceLot.ReceiptId,
+            warehouseId: toRoom.WarehouseId,
+            roomId: toRoom.Id,
+            growerLotId: sourceReceipt?.GrowerLotId,
+            fruitProfileId: fruitProfile?.Id ?? sourceReceipt?.FruitProfileId,
+            growerName: sourceLot.GrowerName,
+            lotNumber: sourceLot.LotCode,
+            varietyCode: sourceLot.VarietyCode,
+            oldBinCount: destinationCurrent,
+            changeAmount: form.BinCount,
+            newBinCount: destinationCurrent + form.BinCount,
+            adjustmentType: "TransferIn",
+            adjustmentAt: form.TransferAt,
+            currentUser: currentUser,
+            reason: reason,
+            notes: $"Transfer from {fromRoom.Warehouse.Code}/{fromRoom.Code}. {notes}".Trim());
+
+        await AddAuditAsync("Transfer", nameof(RoomInventoryAdjustment), $"{form.FromRoomId}->{form.ToRoomId}:{form.SourceLotKey}", currentUser?.Email ?? "unknown", null, $"Transferred {form.BinCount} bins of {sourceLot.GrowerName} {sourceLot.LotCode} {sourceLot.VarietyCode}. Reason: {reason}", cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
     }
@@ -1846,6 +1992,8 @@ public sealed class DashboardDataService(
         var lots = roomId is null
             ? await BuildRoomLotSummariesAsync(null, cancellationToken)
             : await BuildRoomLotSummariesAsync(roomId.Value, cancellationToken);
+        var startingBinsByRoom = await BuildStartingSeasonBinsByRoomAsync(cancellationToken);
+        var latestActivityByRoom = await BuildLatestRoomActivityByRoomAsync(cancellationToken);
         var currentLotsByRoom = lots
             .Where(x => x.CurrentBins > 0)
             .GroupBy(x => x.RoomId)
@@ -1869,6 +2017,9 @@ public sealed class DashboardDataService(
             var weakestLot = FindWeakestLot(roomLots);
             var sourceRoomCodes = roomLots.Select(x => x.RoomCode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var displayRoomCode = room.CropQcRoomName ?? room.DisplayName ?? (sourceRoomCodes.Count == 1 ? sourceRoomCodes[0] : room.Code);
+            var latestActivity = latestActivityByRoom.TryGetValue(room.Id, out var activity)
+                ? activity
+                : roomSamples.Select(x => (DateTimeOffset?)x.SampleTakenAt).DefaultIfEmpty().Max();
             return new RoomSummaryItemViewModel
             {
                 RoomId = room.Id,
@@ -1877,9 +2028,14 @@ public sealed class DashboardDataService(
                 LocationGroup = RoomLocationGroup(room),
                 RoomCode = displayRoomCode,
                 RoomName = room.DisplayName ?? room.Name,
+                CompuTechCode = room.CompuTechRoomCode ?? "",
                 Status = status,
                 CurrentLotsCount = roomLots.Count,
                 CurrentBinsCount = roomLots.Count == 0 ? null : currentBins,
+                StartingSeasonBins = startingBinsByRoom.GetValueOrDefault(room.Id),
+                NetChangeBins = currentBins - startingBinsByRoom.GetValueOrDefault(room.Id),
+                VarietyStatusSummary = BuildVarietyStatusSummary(roomLots),
+                LastActivityAt = latestActivity,
                 LotSummary = roomLots.Count == 0 ? "Empty" : string.Join(", ", roomLots.Take(4).Select(x => $"{x.GrowerName} {x.LotCode} {x.VarietyCode}")),
                 AveragePressureLbs = AverageOrNull(pressures),
                 PressureStdDevLbs = StandardDeviationOrNull(pressures),
@@ -1995,7 +2151,8 @@ public sealed class DashboardDataService(
             .Include(x => x.Warehouse)
             .Include(x => x.Room)
                 .ThenInclude(x => x.Warehouse)
-            .Where(x => x.ReceiptId == null && x.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType);
+            .Include(x => x.Receipt)
+            .Where(x => x.ReceiptId == null || x.AdjustmentType == "TransferIn");
         if (roomId is not null)
         {
             query = query.Where(x => x.RoomId == roomId);
@@ -2015,7 +2172,7 @@ public sealed class DashboardDataService(
                 Facility = FacilityCode(x.Warehouse.Code, x.Warehouse.Name),
                 LocationGroup = !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : RoomLocationGroup(x.Room),
                 RoomCode = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
-                DisplayReceiptId = x.Source ?? x.Reason ?? "Starting inventory",
+                DisplayReceiptId = x.Receipt != null ? x.Receipt.CompuTechReceiptId : x.Source ?? x.Reason ?? "Starting inventory",
                 GrowerNumber = x.LotNumber,
                 PoolStart = x.PoolStart ?? "",
                 GrowerName = x.GrowerName,
@@ -2090,6 +2247,85 @@ public sealed class DashboardDataService(
             })
             .ToListAsync(cancellationToken);
 
+    private async Task<IReadOnlyList<ReceiptListItemViewModel>> BuildRoomLinkedReceiptsAsync(int roomId, CancellationToken cancellationToken)
+    {
+        var adjustmentReceiptIds = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.RoomId == roomId && x.ReceiptId != null)
+            .Select(x => x.ReceiptId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var receipts = await dbContext.Receipts.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .Include(x => x.Room)
+            .Include(x => x.FruitProfile)
+            .Where(x => !x.IsDeleted && (x.RoomId == roomId || adjustmentReceiptIds.Contains(x.Id)))
+            .OrderByDescending(x => x.ReceivedAt)
+            .ThenBy(x => x.CompuTechReceiptId)
+            .Take(100)
+            .ToListAsync(cancellationToken);
+        return receipts.Select(x => ReceiptListItem(x)).ToList();
+    }
+
+    private async Task<IReadOnlyList<RoomTransferDestinationViewModel>> BuildRoomTransferDestinationsAsync(int currentRoomId, CancellationToken cancellationToken) =>
+        await dbContext.Rooms.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .Where(x => x.Id != currentRoomId && x.IsActive)
+            .OrderBy(x => x.Warehouse.Code)
+            .ThenBy(x => x.SubLocation)
+            .ThenBy(x => x.SortOrder)
+            .ThenBy(x => x.CropQcRoomName ?? x.Code)
+            .Select(x => new RoomTransferDestinationViewModel(x.Id, $"{x.Warehouse.Code} / {(x.CropQcRoomName ?? x.DisplayName ?? x.Code)}"))
+            .ToListAsync(cancellationToken);
+
+    private async Task<Dictionary<int, int>> BuildStartingSeasonBinsByRoomAsync(CancellationToken cancellationToken)
+    {
+        var adjustments = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType)
+            .ToListAsync(cancellationToken);
+        return adjustments
+            .GroupBy(x => RoomInventoryImportService.CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? ""), StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First())
+            .GroupBy(x => x.RoomId)
+            .ToDictionary(x => x.Key, x => x.Sum(y => Math.Max(0, y.NewBinCount)));
+    }
+
+    private async Task<Dictionary<int, DateTimeOffset>> BuildLatestRoomActivityByRoomAsync(CancellationToken cancellationToken)
+    {
+        var adjustmentActivity = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .GroupBy(x => x.RoomId)
+            .Select(x => new { RoomId = x.Key, LastAt = x.Max(y => y.AdjustmentAt) })
+            .ToListAsync(cancellationToken);
+        var receiptActivity = await dbContext.Receipts.AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .GroupBy(x => x.RoomId)
+            .Select(x => new { RoomId = x.Key, LastAt = x.Max(y => y.UpdatedAt) })
+            .ToListAsync(cancellationToken);
+        return adjustmentActivity
+            .Concat(receiptActivity)
+            .GroupBy(x => x.RoomId)
+            .ToDictionary(x => x.Key, x => x.Max(y => y.LastAt));
+    }
+
+    private static string BuildVarietyStatusSummary(IReadOnlyList<RoomLotSummaryViewModel> lots)
+    {
+        if (lots.Count == 0)
+        {
+            return "Empty";
+        }
+
+        return string.Join(", ", lots
+            .GroupBy(x => x.VarietyCode)
+            .OrderByDescending(x => x.Sum(y => y.CurrentBins))
+            .ThenBy(x => x.Key)
+            .Take(4)
+            .Select(x => $"{x.Key}: {x.Sum(y => y.CurrentBins)} bins"));
+    }
+
+    private static string RoomLotKey(RoomLotSummaryViewModel lot) =>
+        lot.ReceiptId is not null
+            ? $"R:{lot.ReceiptId.Value}"
+            : $"A:{lot.InventoryAdjustmentId ?? 0}:{RoomInventoryImportService.CurrentStorageLotKey(lot.RoomId, lot.LotCode, lot.VarietyCode)}";
+
     private async Task<int> GetCurrentBinsForReceiptAsync(long receiptId, CancellationToken cancellationToken)
     {
         var receipt = await dbContext.Receipts.AsNoTracking()
@@ -2141,6 +2377,49 @@ public sealed class DashboardDataService(
             LotNumber = !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode,
             PoolStart = receipt.PoolStart,
             VarietyCode = receipt.FruitProfile?.VarietyCode,
+            OldBinCount = oldBinCount,
+            ChangeAmount = changeAmount,
+            NewBinCount = Math.Max(0, newBinCount),
+            AdjustmentType = adjustmentType,
+            Source = reason,
+            Reason = reason,
+            Notes = notes,
+            AdjustmentAt = adjustmentAt,
+            CreatedByUserId = currentUser?.Id,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+    }
+
+    private void AddRoomInventoryAdjustmentRaw(
+        long? receiptId,
+        int warehouseId,
+        int roomId,
+        int? growerLotId,
+        int? fruitProfileId,
+        string growerName,
+        string lotNumber,
+        string varietyCode,
+        int? oldBinCount,
+        int changeAmount,
+        int newBinCount,
+        string adjustmentType,
+        DateTimeOffset adjustmentAt,
+        User? currentUser,
+        string? reason,
+        string? notes)
+    {
+        dbContext.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
+        {
+            ReceiptId = receiptId,
+            RoomDepletionId = null,
+            WarehouseId = warehouseId,
+            RoomId = roomId,
+            GrowerLotId = growerLotId,
+            FruitProfileId = fruitProfileId,
+            GrowerName = growerName,
+            LotNumber = lotNumber,
+            PoolStart = null,
+            VarietyCode = varietyCode,
             OldBinCount = oldBinCount,
             ChangeAmount = changeAmount,
             NewBinCount = Math.Max(0, newBinCount),

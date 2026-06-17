@@ -30,6 +30,11 @@
         <dl class="summary-list">
             <dt>Current lots</dt><dd>@Model.Summary.CurrentLotsCount</dd>
             <dt>Current bins</dt><dd>@(Model.Summary.CurrentBinsCount?.ToString() ?? "Empty")</dd>
+            <dt>Starting season bins</dt><dd>@Model.Summary.StartingSeasonBins</dd>
+            <dt>Net change</dt><dd>@FormatSigned(Model.Summary.NetChangeBins)</dd>
+            <dt>Compu-Tech code</dt><dd>@(string.IsNullOrWhiteSpace(Model.Summary.CompuTechCode) ? "-" : Model.Summary.CompuTechCode)</dd>
+            <dt>Variety/status</dt><dd>@Model.Summary.VarietyStatusSummary</dd>
+            <dt>Last activity</dt><dd>@(Model.Summary.LastActivityAt?.LocalDateTime.ToString("g") ?? "No activity")</dd>
             <dt>Average pressure</dt><dd>@Format(Model.Summary.AveragePressureLbs)</dd>
             <dt>Pressure std dev</dt><dd>@Format(Model.Summary.PressureStdDevLbs)</dd>
             <dt>Month-over-month pressure</dt><dd>@FormatChange(Model.Summary.MonthOverMonthPressureChangeLbs)</dd>
@@ -89,6 +94,48 @@
 
 @if (Model.CanManageDepletions && Model.Summary is not null)
 {
+    <section class="panel">
+        <h2>Transfer Bins</h2>
+        <p class="muted">Transfer records create audited Transfer Out and Transfer In transactions. They do not delete receipts, samples, photos, or email history.</p>
+        <form class="form-grid" method="post" action="/Dashboard/Rooms/@Model.Summary.RoomId/Transfer">
+            <label class="field">Source lot
+                <select name="SourceLotKey" required>
+                    <option value="">Select current lot</option>
+                    @foreach (var option in Model.TransferLotOptions)
+                    {
+                        <option value="@option.LotKey">@option.Label</option>
+                    }
+                </select>
+            </label>
+            <label class="field">Destination room
+                <select name="ToRoomId" required>
+                    <option value="">Select destination</option>
+                    @foreach (var option in Model.TransferDestinationOptions)
+                    {
+                        <option value="@option.RoomId">@option.Label</option>
+                    }
+                </select>
+            </label>
+            <label class="field">Bins to transfer
+                <input type="number" min="1" name="BinCount" required />
+            </label>
+            <label class="field">Date/time
+                <input type="datetime-local" name="TransferAt" value="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")" required />
+            </label>
+            <label class="field wide">Reason
+                <input name="Reason" maxlength="500" required placeholder="Room transfer, storage move, or correction" />
+            </label>
+            <label class="field wide">Notes
+                <textarea name="Notes" maxlength="1000"></textarea>
+            </label>
+            <label class="checkbox-field wide">
+                <input type="checkbox" name="ConfirmOverTransfer" value="true" />
+                Allow override if current bin count is unknown or correction is needed
+            </label>
+            <button type="submit">Record Transfer</button>
+        </form>
+    </section>
+
     <section class="panel">
         <h2>True Up Current Lot Bins</h2>
         <p class="muted">Use true-up to correct the current bin count for a lot already in this room. This creates an audited adjustment and does not delete receipts, samples, photos, or email history.</p>
@@ -153,7 +200,36 @@
 }
 
 <section class="panel">
-    <h2>Bin Count History</h2>
+    <h2>Linked Receipts</h2>
+    @if (Model.LinkedReceipts.Count == 0)
+    {
+        <p class="muted">No receipts are linked to this room yet.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Receipt</th><th>Type</th><th>Grower/Lot</th><th>Variety</th><th>Bins</th><th>Received</th></tr></thead>
+                <tbody>
+                @foreach (var receipt in Model.LinkedReceipts)
+                {
+                    <tr>
+                        <td><a href="/Receipts/@receipt.Id">@receipt.CompuTechReceiptId</a></td>
+                        <td>@receipt.ReceiptType</td>
+                        <td>@receipt.GrowerName @receipt.LotCode</td>
+                        <td>@receipt.VarietyCode</td>
+                        <td>@receipt.BinCount</td>
+                        <td>@receipt.ReceivedAt.LocalDateTime.ToString("g")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<section class="panel">
+    <h2>Room Transaction History</h2>
     @if (Model.InventoryAdjustments.Count == 0)
     {
         <p class="muted">No bin count adjustments have been recorded for this room.</p>
@@ -172,6 +248,9 @@
                     <span class="status @(adjustment.ChangeAmount < 0 ? "missing" : "ready")">@(adjustment.ChangeAmount >= 0 ? "+" : "")@adjustment.ChangeAmount bins</span>
                 </div>
                 <dl class="station-meta">
+                    <dt>Room</dt><dd>@adjustment.Room</dd>
+                    <dt>Bins in</dt><dd>@(adjustment.ChangeAmount > 0 ? adjustment.ChangeAmount.ToString() : "-")</dd>
+                    <dt>Bins out</dt><dd>@(adjustment.ChangeAmount < 0 ? Math.Abs(adjustment.ChangeAmount).ToString() : "-")</dd>
                     <dt>Old count</dt><dd>@(adjustment.OldBinCount?.ToString() ?? "-")</dd>
                     <dt>New count</dt><dd>@adjustment.NewBinCount</dd>
                     <dt>When</dt><dd>@adjustment.AdjustmentAt.LocalDateTime</dd>
@@ -262,6 +341,7 @@
         status.Contains("empty", StringComparison.OrdinalIgnoreCase) ? "pending" : "";
 
     private static string Format(decimal? value) => value?.ToString("0.##") ?? "No data";
+    private static string FormatSigned(int value) => value > 0 ? $"+{value}" : value.ToString();
     private static string FormatChange(decimal? value) => value is null
         ? "N/A"
         : value == 0
