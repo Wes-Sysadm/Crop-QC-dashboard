@@ -104,7 +104,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Truck receipt", receiptView);
         Assert.Contains("Door sample", receiptView);
         Assert.Contains("Lot sample", receiptView);
-        Assert.Contains("IsInventoryReceiptType(receiptType) ? form.BinCount : 0", service);
+        Assert.Contains("BinCount = Math.Max(0, form.BinCount)", service);
+        Assert.Contains(".Where(x => !x.IsDeleted && x.ReceiptType == \"Truck receipt\")", service);
         Assert.Contains("PoolStart = null", service);
         Assert.Contains("public string? GrowerNumber", receiptModel);
         Assert.Contains("public string? PoolStart", receiptModel);
@@ -195,17 +196,19 @@ public sealed class RoomSummaryDepletionTests
             .Select(line => line.Split(','))
             .ToList();
 
-        Assert.Equal(23, rows.Count);
+        Assert.Equal(6, rows.Count);
         Assert.StartsWith("Facility,SubLocation,CropQcRoomName,CompuTechRoomCode", csv);
-        Assert.Equal(132, SumBins(rows, "evans-5"));
+        Assert.Equal(0, SumBins(rows, "evans-5"));
         Assert.Equal(1469, SumBins(rows, "Evans-12"));
-        Assert.Equal(362, SumBins(rows, "BM-4"));
+        Assert.Equal(186, SumBins(rows, "BM-4"));
         Assert.Equal(1178, SumBins(rows, "BM-1"));
         Assert.Equal(1462, SumBins(rows, "Evans-01"));
-        Assert.Equal(1585, SumBins(rows, "Lamb-17"));
+        Assert.Equal(1918, SumBins(rows, "Lamb-17"));
+        Assert.Equal(786, SumBins(rows, "BM-6"));
         Assert.Contains("EBS,Evans,Evans-12,evanca12", csv);
         Assert.Contains("EBS,BM,BM-1,blueca01", csv);
-        Assert.Contains("Compu-Tech Starting Inventory", csv);
+        Assert.Contains("EBS,BM,BM-6,Blueca06,GSMT,Sealed,786", csv);
+        Assert.Contains("Wes Corrected Current Inventory 2026-06-15", csv);
     }
 
     [Fact]
@@ -222,6 +225,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("\"EVANCA05\" => \"Evans-5\"", service);
         Assert.Contains("\"EVANCA12\" => \"Evans-12\"", service);
         Assert.Contains("\"BLUECA04\" => \"BM-4\"", service);
+        Assert.Contains("\"BLUECA06\" => \"BM-6\"", service);
         Assert.Contains("\"BLUECA01\" => \"BM-1\"", service);
         Assert.Contains("\"EVANCA01\" => \"Evans-01\"", service);
         Assert.Contains("\"LAMBCA17\" => \"Lamb-17\"", service);
@@ -242,6 +246,9 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Import Preview", view);
         Assert.Contains("Crop QC Room", view);
         Assert.Contains("Compu-Tech Code", view);
+        Assert.Contains("CanApplyEbsCorrectionSeed", controller);
+        Assert.Contains("wes@fruitandland.com", controller);
+        Assert.Contains("return Forbid()", controller);
     }
 
     [Fact]
@@ -326,6 +333,60 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("EbsDailyBins/SendNow", view);
         Assert.Contains("EbsDailyBins/Test", view);
         Assert.Contains("AddHostedService<EbsDailyBinsEmailHostedService>", program);
+    }
+
+    [Fact]
+    public void ReceiptBinCounts_OnlyTruckReceiptsContributeToStorage()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+
+        Assert.Contains("BinCount = Math.Max(0, form.BinCount)", service);
+        Assert.Contains(".Where(x => !x.IsDeleted && x.ReceiptType == \"Truck receipt\")", service);
+        Assert.Contains("if (receipt.IsDeleted || !string.Equals(receipt.ReceiptType, \"Truck receipt\"", service);
+        Assert.Contains("!x.IsDeleted", service);
+        Assert.Contains("Truck receipt", service);
+        Assert.Contains("Door sample", service);
+        Assert.Contains("Lot sample", service);
+    }
+
+    [Fact]
+    public void AdminCanEditAndSoftDeleteReceipts()
+    {
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "ReceiptsController.cs"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
+        var detail = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Details.cshtml"));
+        var edit = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Edit.cshtml"));
+
+        Assert.Contains("[Authorize(Policy = \"RequireAdmin\")]", controller);
+        Assert.Contains("UpdateReceiptAsync", service);
+        Assert.Contains("SoftDeleteReceiptAsync", service);
+        Assert.Contains("receipt.IsDeleted = true", service);
+        Assert.Contains("receipt.DeletedAt", service);
+        Assert.Contains("receipt.DeletedByUserId", service);
+        Assert.Contains("AddAuditAsync(\"Delete\", nameof(Receipt)", service);
+        Assert.Contains("UpdateReceiptForm", model);
+        Assert.Contains("DeleteReceiptForm", model);
+        Assert.Contains("/Receipts/@Model.Receipt.Id/Edit", detail);
+        Assert.Contains("Delete Receipt", edit);
+        Assert.Contains("name=\"BinCount\"", edit);
+    }
+
+    [Fact]
+    public void EbsCorrectedSeedTotals_MatchWesCurrentRoomTotals()
+    {
+        var csvPath = FindRepositoryFile("src", "CropQc.Web", "Data", "Seed", "ebs-starting-room-inventory.csv");
+        var rows = File.ReadLines(csvPath).Skip(1)
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Select(line => line.Split(','))
+            .ToList();
+
+        Assert.Equal(1462, SumBins(rows, "Evans-01"));
+        Assert.Equal(1469, SumBins(rows, "Evans-12"));
+        Assert.Equal(1918, SumBins(rows, "Lamb-17"));
+        Assert.Equal(1178, SumBins(rows, "BM-1"));
+        Assert.Equal(186, SumBins(rows, "BM-4"));
+        Assert.Equal(786, SumBins(rows, "BM-6"));
     }
 
     [Fact]

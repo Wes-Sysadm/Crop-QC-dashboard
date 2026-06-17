@@ -27,6 +27,10 @@
         <p>@Model.Receipt.CropYear | @Model.Receipt.ReceivedAt.LocalDateTime | @Model.Receipt.ReceiptType | @Model.Receipt.Warehouse / @Model.Receipt.Room | Lot # @(string.IsNullOrWhiteSpace(Model.Receipt.GrowerNumber) ? "-" : Model.Receipt.GrowerNumber) | @Model.Receipt.GrowerName | @Model.Receipt.VarietyCode | @Model.Receipt.BinCount bins</p>
         <div class="action-bar">
             <a class="button secondary-button" href="/Dashboard/Rooms/@Model.Receipt.RoomId">View Room Summary</a>
+            @if (User.IsInRole("Admin"))
+            {
+                <a class="button secondary-button" href="/Receipts/@Model.Receipt.Id/Edit">Edit Receipt</a>
+            }
         </div>
         @if (Model.Samples.Any())
         {

@@ -2,6 +2,7 @@ using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace CropQc.Web.Controllers;
 
@@ -25,6 +26,11 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
     [HttpPost("ImportEbsStartingInventory")]
     public async Task<IActionResult> ImportEbsStartingInventory(CancellationToken cancellationToken)
     {
+        if (!CanApplyEbsCorrectionSeed())
+        {
+            return Forbid();
+        }
+
         var form = new RoomInventoryImportForm { UseBuiltInSeed = true, Facility = "EBS" };
         var preview = await roomInventoryImportService.PreviewAsync(form, cancellationToken);
         var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
@@ -35,6 +41,11 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
     [HttpPost("Apply")]
     public async Task<IActionResult> Apply(RoomInventoryImportForm form, CancellationToken cancellationToken)
     {
+        if (form.UseBuiltInSeed && !CanApplyEbsCorrectionSeed())
+        {
+            return Forbid();
+        }
+
         form.ConfirmImport = true;
         var (preview, error) = await roomInventoryImportService.ApplyAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         if (error is not null)
@@ -48,4 +59,8 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
         TempData["Success"] = $"Room inventory imported. Added {preview.AddCount}, updated {preview.UpdateCount}, unchanged {preview.UnchangedCount}, warnings {preview.WarningCount}.";
         return RedirectToAction(nameof(Index), new { Facility = "EBS" });
     }
+
+    private bool CanApplyEbsCorrectionSeed() =>
+        User.IsInRole("Admin")
+        || string.Equals(User.FindFirstValue(ClaimTypes.Email), "wes@fruitandland.com", StringComparison.OrdinalIgnoreCase);
 }

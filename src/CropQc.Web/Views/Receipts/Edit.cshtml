@@ -1,0 +1,151 @@
+@model EditReceiptPageViewModel
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Edit Receipt";
+    var form = Model.Form;
+    var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, code = x.CropQcRoomName ?? x.DisplayName ?? x.Code, name = x.DisplayName ?? x.Name, subLocation = x.SubLocation ?? "", compuTech = x.CompuTechRoomCode ?? "" }));
+    var growerLotsJson = JsonSerializer.Serialize(Model.GrowerLots.Select(x => new { id = x.Id, grower = x.Grower, lot = x.LotNumber, label = $"{x.Grower} - {x.LotNumber}" }));
+}
+
+<h1>Edit Receipt</h1>
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+@if (TempData["Error"] is string error)
+{
+    <p class="notice warning">@error</p>
+}
+
+<section class="panel">
+    <form class="form-grid" method="post" action="/Receipts/@form.Id/Edit">
+        <input type="hidden" name="Id" value="@form.Id" />
+        <div class="field"><label>Crop Year</label><input name="CropYear" value="@form.CropYear" required /></div>
+        <div class="field"><label>Received At</label><input name="ReceivedAt" type="datetime-local" value="@form.ReceivedAt.LocalDateTime.ToString("yyyy-MM-ddTHH:mm")" required /></div>
+        <div class="field"><label>Receipt ID</label><input name="CompuTechReceiptId" value="@form.CompuTechReceiptId" required /></div>
+        <div class="field">
+            <label>Receipt Type</label>
+            <select name="ReceiptType">
+                @foreach (var type in new[] { "Truck receipt", "Door sample", "Lot sample" })
+                {
+                    <option selected="@(form.ReceiptType == type ? "selected" : null)">@type</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label>Warehouse</label>
+            <select id="editWarehouseId" name="WarehouseId" required>
+                @foreach (var item in Model.Warehouses)
+                {
+                    <option value="@item.Id" selected="@(form.WarehouseId == item.Id ? "selected" : null)">@item.Code</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label>Room</label>
+            <select id="editRoomId" name="RoomId" data-selected-room-id="@form.RoomId" required></select>
+        </div>
+        <div class="field">
+            <label>Variety</label>
+            <select name="FruitProfileId" required>
+                @foreach (var item in Model.FruitProfiles)
+                {
+                    <option value="@item.Id" selected="@(form.FruitProfileId == item.Id ? "selected" : null)">@item.VarietyCode - @item.Name</option>
+                }
+            </select>
+        </div>
+        <div class="field wide">
+            <label>Grower Lot</label>
+            <select id="editGrowerLotId" name="GrowerLotId">
+                <option value="">Manual entry</option>
+                @foreach (var lot in Model.GrowerLots)
+                {
+                    <option value="@lot.Id" data-grower="@lot.Grower" data-lot="@lot.LotNumber" selected="@(form.GrowerLotId == lot.Id ? "selected" : null)">@lot.Grower - @lot.LotNumber</option>
+                }
+            </select>
+        </div>
+        <div class="field"><label>Grower</label><input name="GrowerName" value="@form.GrowerName" required /></div>
+        <div class="field"><label>Lot #</label><input id="editGrowerNumber" name="GrowerNumber" value="@form.GrowerNumber" maxlength="50" list="editGrowerLotOptions" required /></div>
+        <datalist id="editGrowerLotOptions">
+            @foreach (var lot in Model.GrowerLots)
+            {
+                <option value="@lot.LotNumber" label="@lot.Grower - @lot.LotNumber"></option>
+            }
+        </datalist>
+        <div class="field"><label>Bin Count</label><input name="BinCount" type="number" min="0" value="@form.BinCount" required /></div>
+        <label class="checkbox-field"><input type="checkbox" name="ConfirmCropYear" value="true" checked /> Confirm Crop Year</label><input type="hidden" name="ConfirmCropYear" value="false" />
+        <div class="button-row">
+            <button type="submit">Save Receipt</button>
+            <a class="button secondary-button" href="/Receipts/@form.Id">Cancel</a>
+        </div>
+    </form>
+</section>
+
+<section class="panel danger-zone">
+    <h2>Delete Receipt</h2>
+    <p class="muted">This soft-deletes the receipt and removes it from room/storage totals. Samples and audit history are retained.</p>
+    <form method="post" action="/Receipts/@form.Id/Delete" class="toolbar">
+        <input type="hidden" name="Id" value="@form.Id" />
+        <div class="field wide"><label>Reason</label><input name="Reason" placeholder="Reason for deleting this receipt" required /></div>
+        <button type="submit">Delete Receipt</button>
+    </form>
+</section>
+
+<script>
+    (() => {
+        const rooms = @Html.Raw(roomOptionsJson);
+        const growerLots = @Html.Raw(growerLotsJson);
+
+        const warehouseSelect = document.getElementById("editWarehouseId");
+        const roomSelect = document.getElementById("editRoomId");
+        function populateRooms(keepSelection) {
+            const warehouseId = Number(warehouseSelect.value);
+            const selectedRoomId = keepSelection ? roomSelect.dataset.selectedRoomId : "";
+            roomSelect.innerHTML = "";
+            for (const room of rooms.filter(item => item.warehouseId === warehouseId)) {
+                const option = document.createElement("option");
+                option.value = room.id;
+                const prefix = room.subLocation ? `${room.subLocation} - ` : "";
+                const legacy = room.compuTech ? ` (Compu-Tech: ${room.compuTech})` : "";
+                option.textContent = `${prefix}${room.code}${legacy}`;
+                if (selectedRoomId && Number(selectedRoomId) === room.id) {
+                    option.selected = true;
+                }
+
+                roomSelect.appendChild(option);
+            }
+
+            roomSelect.dataset.selectedRoomId = roomSelect.value;
+        }
+
+        populateRooms(true);
+        warehouseSelect?.addEventListener("change", () => {
+            roomSelect.dataset.selectedRoomId = "";
+            populateRooms(false);
+        });
+
+        const growerLotSelect = document.getElementById("editGrowerLotId");
+        const growerNumberInput = document.getElementById("editGrowerNumber");
+        const growerNameInput = document.querySelector("input[name='GrowerName']");
+        function fillGrowerLot(lot) {
+            growerNameInput.value = lot.grower || "";
+            growerNumberInput.value = lot.lot || "";
+            growerLotSelect.value = lot.id || "";
+        }
+
+        growerLotSelect?.addEventListener("change", () => {
+            const selected = growerLotSelect.selectedOptions[0];
+            if (!selected || !selected.value) return;
+            fillGrowerLot({ id: selected.value, grower: selected.dataset.grower || "", lot: selected.dataset.lot || "" });
+        });
+        growerNumberInput?.addEventListener("change", () => {
+            const value = growerNumberInput.value.trim();
+            const matches = growerLots.filter(lot => (lot.lot || "").toLowerCase() === value.toLowerCase());
+            if (matches.length === 1) {
+                fillGrowerLot(matches[0]);
+            } else {
+                growerLotSelect.value = "";
+            }
+        });
+    })();
+</script>

@@ -320,6 +320,7 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
             "EVANS-5" => ("Evans-5", "evanca05", "Evans", 1005),
             "EVANS-12" => ("Evans-12", "evanca12", "Evans", 1012),
             "BM-4" => ("BM-4", "Blueca04", "BM", 2004),
+            "BM-6" => ("BM-6", "Blueca06", "BM", 2006),
             "BM-1" => ("BM-1", "blueca01", "BM", 2001),
             "EVANS-1" => ("Evans-01", "Evanca01", "Evans", 1001),
             "LAMB-17" => ("Lamb-17", "Lambca17", "Lamb", 3017),
