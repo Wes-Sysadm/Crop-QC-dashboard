@@ -66,7 +66,10 @@
                 <td>@FormatSigned(room.NetChangeBins)</td>
                 <td>@room.VarietyStatusSummary</td>
                 <td>@(room.LastActivityAt?.LocalDateTime.ToString("g") ?? "-")</td>
-                <td><a class="inline-action" href="/Rooms/@room.RoomId">View Room</a></td>
+                <td>
+                    <a class="inline-action" href="/Rooms/@room.RoomId">View Room</a>
+                    <a class="inline-action" href="/Rooms/@room.RoomId/CountBreakdown">Breakdown</a>
+                </td>
             </tr>
         }
         </tbody>

@@ -73,6 +73,30 @@ public sealed class RoomDetailViewModel
     public bool CanManageDepletions { get; set; }
 }
 
+public sealed class RoomCountBreakdownViewModel
+{
+    public string? DataWarning { get; set; }
+    public RoomSummaryItemViewModel? Summary { get; set; }
+    public IReadOnlyList<RoomCountBreakdownRowViewModel> Rows { get; set; } = [];
+    public int IncludedBins => Rows.Where(x => x.IsIncluded).Sum(x => x.Bins);
+}
+
+public sealed class RoomCountBreakdownRowViewModel
+{
+    public string SourceType { get; set; } = "";
+    public long? ReceiptId { get; set; }
+    public string? DisplayReceiptId { get; set; }
+    public string SampleType { get; set; } = "";
+    public string Grower { get; set; } = "";
+    public string Lot { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public int Bins { get; set; }
+    public string Status { get; set; } = "";
+    public DateTimeOffset Date { get; set; }
+    public bool IsIncluded { get; set; }
+    public string DecisionReason { get; set; } = "";
+}
+
 public sealed class RoomsPageViewModel
 {
     public string? DataWarning { get; set; }

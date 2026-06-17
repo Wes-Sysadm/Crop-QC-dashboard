@@ -37,6 +37,10 @@ public sealed class HomeController(IDashboardDataService dataService) : Controll
     public async Task<IActionResult> Room(int roomId, CancellationToken cancellationToken) =>
         View(await dataService.GetRoomDetailAsync(roomId, cancellationToken));
 
+    [HttpGet("/Rooms/{roomId:int}/CountBreakdown")]
+    public async Task<IActionResult> RoomCountBreakdown(int roomId, CancellationToken cancellationToken) =>
+        View(await dataService.GetRoomCountBreakdownAsync(roomId, cancellationToken));
+
     [HttpPost("/Dashboard/Rooms/{roomId:int}/Deplete")]
     [Authorize(Policy = "RequireManagerOrAdmin")]
     public async Task<IActionResult> DepleteRoom(int roomId, RoomDepletionForm form, CancellationToken cancellationToken)

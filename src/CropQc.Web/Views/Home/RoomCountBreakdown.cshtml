@@ -1,0 +1,84 @@
+@model RoomCountBreakdownViewModel
+@{
+    ViewData["Title"] = "Room Count Breakdown";
+}
+
+<h1>Room Count Breakdown</h1>
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+
+@if (Model.Summary is not null)
+{
+    <section class="panel">
+        <div class="room-card-header">
+            <div>
+                <h2>@Model.Summary.Warehouse / @Model.Summary.RoomCode</h2>
+                <p>@Model.Summary.RoomName</p>
+            </div>
+            <span class="status @RoomStatusClass(Model.Summary.Status)">@Model.Summary.Status</span>
+        </div>
+        <dl class="summary-list">
+            <dt>Current bins</dt><dd>@(Model.Summary.CurrentBinsCount?.ToString() ?? "0")</dd>
+            <dt>Breakdown included bins</dt><dd>@Model.IncludedBins</dd>
+            <dt>Variety/status</dt><dd>@Model.Summary.VarietyStatusSummary</dd>
+            <dt>Last activity</dt><dd>@(Model.Summary.LastActivityAt?.LocalDateTime.ToString("g") ?? "No activity")</dd>
+        </dl>
+        <a class="button secondary-button" href="/Rooms/@Model.Summary.RoomId">Back to Room</a>
+    </section>
+}
+
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Source Type</th>
+                <th>Receipt ID</th>
+                <th>Sample Type</th>
+                <th>Grower</th>
+                <th>Lot</th>
+                <th>Variety</th>
+                <th>Bins</th>
+                <th>Status</th>
+                <th>Date</th>
+                <th>Included / Excluded</th>
+                <th>Reason</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var row in Model.Rows)
+        {
+            <tr>
+                <td>@row.SourceType</td>
+                <td>
+                    @if (row.ReceiptId is not null)
+                    {
+                        <a href="/Receipts/@row.ReceiptId">@(row.DisplayReceiptId ?? row.ReceiptId.ToString())</a>
+                    }
+                    else
+                    {
+                        <span>-</span>
+                    }
+                </td>
+                <td>@row.SampleType</td>
+                <td>@row.Grower</td>
+                <td>@row.Lot</td>
+                <td>@row.Variety</td>
+                <td>@row.Bins</td>
+                <td>@row.Status</td>
+                <td>@row.Date.LocalDateTime.ToString("g")</td>
+                <td><span class="status @(row.IsIncluded ? "ready" : "missing")">@(row.IsIncluded ? "Included" : "Excluded")</span></td>
+                <td>@row.DecisionReason</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@functions {
+    private static string RoomStatusClass(string status) =>
+        status.Contains("review", StringComparison.OrdinalIgnoreCase) ? "review" :
+        status.Contains("active", StringComparison.OrdinalIgnoreCase) ? "ready" :
+        status.Contains("empty", StringComparison.OrdinalIgnoreCase) ? "pending" : "";
+}
