@@ -232,7 +232,7 @@ public sealed class RoomSummaryDepletionTests
     }
 
     [Fact]
-    public void EbsStartingInventoryImport_IncludesCompuTechSeedFileAndExpectedRoomTotals()
+    public void EbsCurrentInventoryBaseline_IncludesCompuTechSeedFileAndExpectedRoomTotals()
     {
         var csvPath = FindRepositoryFile("src", "CropQc.Web", "Data", "Seed", "ebs-starting-room-inventory.csv");
         var csv = File.ReadAllText(csvPath);
@@ -242,7 +242,7 @@ public sealed class RoomSummaryDepletionTests
             .ToList();
 
         Assert.Equal(18, rows.Count);
-        Assert.StartsWith("Facility,SubLocation,CropQcRoomName,CompuTechRoomCode", csv);
+        Assert.StartsWith("CropYear,Facility,SubLocation,CropQcRoomName,CompuTechRoomCode", csv);
         Assert.Equal(0, SumBins(rows, "evans-5"));
         Assert.Equal(1022, SumBins(rows, "Evans-12"));
         Assert.Equal(0, SumBins(rows, "BM-4"));
@@ -250,16 +250,16 @@ public sealed class RoomSummaryDepletionTests
         Assert.Equal(1201, SumBins(rows, "Evans-01"));
         Assert.Equal(1918, SumBins(rows, "Lamb-17"));
         Assert.Equal(514, SumBins(rows, "BM-6"));
-        Assert.Contains("EBS,Evans,Evans-12,evanca12,FUJI,1570,819", csv);
-        Assert.Contains("EBS,Evans,Evans-01,Evanca01,RED,9660,1039", csv);
-        Assert.Contains("EBS,Lamb,Lamb-17,Lambca17,PINK,1020,559", csv);
-        Assert.Contains("EBS,BM,BM-1,blueca01,RED,9560,608", csv);
-        Assert.Contains("EBS,BM,BM-6,Blueca06,GSMT,1290,281", csv);
-        Assert.Contains("Wes Verified Current Inventory 2026-06-17", csv);
+        Assert.Contains("2026,EBS,Evans,Evans-12,evanca12,FUJI,1570,819,Sealed", csv);
+        Assert.Contains("2026,EBS,Evans,Evans-01,Evanca01,RED,9660,1039,", csv);
+        Assert.Contains("2026,EBS,Lamb,Lamb-17,Lambca17,PINK,1020,559,Sealed", csv);
+        Assert.Contains("2026,EBS,BM,BM-1,blueca01,RED,9560,608,Sealed", csv);
+        Assert.Contains("2026,EBS,BM,BM-6,Blueca06,GSMT,1290,281,Sealed", csv);
+        Assert.Contains("Wes Verified Current Inventory Baseline 2026-06-18", csv);
     }
 
     [Fact]
-    public void EbsStartingInventoryImport_MapsShortCodesAndAuditsBinChanges()
+    public void EbsCurrentInventoryBaseline_MapsShortCodesAndAuditsBinChanges()
     {
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "RoomInventoryImportService.cs"));
         var qcEntity = File.ReadAllText(FindRepositoryFile("src", "CropQc.Data", "Entities", "QcModels.cs"));
@@ -280,16 +280,26 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Grower not found in Master Data", service);
         Assert.Contains("Duplicate inventory row", service);
         Assert.Contains("StartingInventoryImport", service);
+        Assert.Contains("CurrentInventoryBaselineType", service);
+        Assert.Contains("ParseCropYear", service);
+        Assert.Contains("ParseEffectiveDate", service);
         Assert.Contains("BinCountChange", service);
+        Assert.Contains("public int? CropYear", qcEntity);
         Assert.Contains("public string? CropQcRoomName", masterEntity);
         Assert.Contains("public string? CompuTechRoomCode", masterEntity);
         Assert.Contains("public string? Source", qcEntity);
         Assert.Contains("public string? SourceRoomCode", qcEntity);
+        Assert.Contains("public string? InventoryStatus", qcEntity);
         Assert.Contains("EnsureRoomMetadataSchemaAsync", program);
+        Assert.Contains("ADD COLUMN IF NOT EXISTS \"CropYear\"", program);
+        Assert.Contains("ADD COLUMN IF NOT EXISTS \"InventoryStatus\"", program);
         Assert.Contains("ADD COLUMN IF NOT EXISTS \"SourceRoomCode\"", program);
         Assert.Contains("ADD COLUMN IF NOT EXISTS \"CropQcRoomName\"", program);
         Assert.Contains("[Authorize(Policy = \"RequireManagerOrAdmin\")]", controller);
-        Assert.Contains("Import EBS Starting Inventory", view);
+        Assert.Contains("Import EBS Current Baseline", view);
+        Assert.Contains("Current Inventory Baseline", view);
+        Assert.Contains("Effective", view);
+        Assert.Contains("Status", view);
         Assert.Contains("Import Preview", view);
         Assert.Contains("Crop QC Room", view);
         Assert.Contains("Compu-Tech Code", view);
@@ -389,7 +399,10 @@ public sealed class RoomSummaryDepletionTests
 
         Assert.Contains("BinCount = Math.Max(0, form.BinCount)", service);
         Assert.Contains("ReceiptStorageExclusionReason", service);
-        Assert.Contains("if (receipt.IsDeleted || !string.Equals(receipt.ReceiptType, \"Truck receipt\"", service);
+        Assert.Contains("if (receipt.IsDeleted", service);
+        Assert.Contains("HasStorageExcludedIdentifierPrefix(receipt.CompuTechReceiptId, \"LS\")", service);
+        Assert.Contains("HasStorageExcludedIdentifierPrefix(receipt.CompuTechReceiptId, \"DS\")", service);
+        Assert.Contains("!string.Equals(receipt.ReceiptType, \"Truck receipt\"", service);
         Assert.Contains("HasStorageExcludedIdentifierPrefix", service);
         Assert.Contains("Excluded: LS prefix.", service);
         Assert.Contains("Excluded: DS prefix.", service);
@@ -442,7 +455,7 @@ public sealed class RoomSummaryDepletionTests
     }
 
     [Fact]
-    public void DashboardRoomSummary_IncludesAdjustmentOnlyStartingInventory()
+    public void DashboardRoomSummary_IncludesAdjustmentOnlyCurrentInventoryBaseline()
     {
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
         var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
@@ -452,8 +465,11 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("BuildAdjustmentOnlyLotSummariesAsync", service);
         Assert.Contains("ReceiptId == null", service);
         Assert.Contains("RoomInventoryImportService.StartingInventoryAdjustmentType", service);
+        Assert.Contains("BreakdownSourceType", service);
+        Assert.Contains("Current Inventory Baseline", service);
         Assert.Contains("InventoryAdjustmentId", model);
-        Assert.Contains("Starting inventory; no receipt history yet.", partial);
+        Assert.Contains("InventoryStatus", model);
+        Assert.Contains("Current inventory baseline; no receipt history yet.", partial);
         Assert.Contains("/Admin/RoomInventory", layout);
         Assert.Contains("Current Lots", layout);
     }
@@ -536,7 +552,7 @@ public sealed class RoomSummaryDepletionTests
     }
 
     private static int SumBins(IEnumerable<string[]> rows, string cropQcRoomName) =>
-        rows.Where(x => x.Length >= 7 && x[2].Equals(cropQcRoomName, StringComparison.OrdinalIgnoreCase)).Sum(x => int.Parse(x[6]));
+        rows.Where(x => x.Length >= 8 && x[3].Equals(cropQcRoomName, StringComparison.OrdinalIgnoreCase)).Sum(x => int.Parse(x[7]));
 
     private static string FindRepositoryFile(params string[] pathParts)
     {

@@ -155,7 +155,7 @@ public sealed class DashboardDataService(
     {
         return
         [
-            new("Total Bins In Storage", currentBins, "/GrowerLots/Current", "ready", "Deduplicated current bins across receipts and starting inventory."),
+            new("Total Bins In Storage", currentBins, "/GrowerLots/Current", "ready", "Deduplicated current bins across receipts and current inventory baselines."),
             new("Grower Lots In Storage", currentGrowerLots, "/GrowerLots/Current", "info", "Grower lots with fruit currently left in storage."),
             new("Today's Receiving Samples", todaySamples, "/Receipts?DateFilter=today&SampleType=Receiving", "info", "Receipts with receiving QC activity today."),
             new("Samples Ready to Email", ready, "/DailyQc?status=ReadyToSend", "ready", "Samples with required data and photos ready for QC summary email."),
@@ -2077,7 +2077,7 @@ public sealed class DashboardDataService(
             var included = includedAdjustmentIds.Contains(adjustment.Id);
             return new RoomCountBreakdownRowViewModel
             {
-                SourceType = adjustment.AdjustmentType,
+                SourceType = BreakdownSourceType(adjustment),
                 ReceiptId = adjustment.ReceiptId,
                 DisplayReceiptId = adjustment.Receipt?.CompuTechReceiptId,
                 SampleType = adjustment.Receipt?.ReceiptType ?? adjustment.AdjustmentType,
@@ -2085,7 +2085,9 @@ public sealed class DashboardDataService(
                 Lot = adjustment.LotNumber,
                 Variety = adjustment.VarietyCode ?? "",
                 Bins = Math.Max(0, adjustment.NewBinCount),
-                Status = adjustment.NewBinCount > 0 ? "Current" : "Zero",
+                Status = string.IsNullOrWhiteSpace(adjustment.InventoryStatus)
+                    ? adjustment.NewBinCount > 0 ? "Current" : "Zero"
+                    : adjustment.InventoryStatus!,
                 Date = adjustment.AdjustmentAt,
                 IsIncluded = included,
                 DecisionReason = AdjustmentBreakdownDecision(adjustment, included, adjustmentCorrectionCutoffs)
@@ -2241,6 +2243,7 @@ public sealed class DashboardDataService(
                 GrowerName = receipt.GrowerName,
                 LotCode = receipt.LotCode,
                 VarietyCode = receipt.FruitProfile.VarietyCode,
+                InventoryStatus = "",
                 OriginalBins = receipt.BinCount,
                 DepletedBins = depleted,
                 CurrentBins = currentBins,
@@ -2305,12 +2308,13 @@ public sealed class DashboardDataService(
                 Facility = FacilityCode(x.Warehouse.Code, x.Warehouse.Name),
                 LocationGroup = !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : RoomLocationGroup(x.Room),
                 RoomCode = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
-                DisplayReceiptId = x.Receipt != null ? x.Receipt.CompuTechReceiptId : x.Source ?? x.Reason ?? "Starting inventory",
+                DisplayReceiptId = x.Receipt != null ? x.Receipt.CompuTechReceiptId : x.Source ?? x.Reason ?? "Current inventory baseline",
                 GrowerNumber = x.LotNumber,
                 PoolStart = x.PoolStart ?? "",
                 GrowerName = x.GrowerName,
                 LotCode = x.LotNumber,
                 VarietyCode = x.VarietyCode ?? "",
+                InventoryStatus = x.InventoryStatus ?? "",
                 OriginalBins = x.NewBinCount,
                 DepletedBins = 0,
                 CurrentBins = x.NewBinCount,
@@ -2447,7 +2451,7 @@ public sealed class DashboardDataService(
         }
 
         return string.Join(", ", lots
-            .GroupBy(x => x.VarietyCode)
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.InventoryStatus) ? x.VarietyCode : $"{x.VarietyCode} {x.InventoryStatus}")
             .OrderByDescending(x => x.Sum(y => y.CurrentBins))
             .ThenBy(x => x.Key)
             .Take(4)
@@ -2477,6 +2481,9 @@ public sealed class DashboardDataService(
     private static bool IsCurrentBalanceCorrection(RoomInventoryAdjustment adjustment) =>
         adjustment.ReceiptId == null
         && adjustment.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType;
+
+    private static string BreakdownSourceType(RoomInventoryAdjustment adjustment) =>
+        IsCurrentBalanceCorrection(adjustment) ? "Current Inventory Baseline" : adjustment.AdjustmentType;
 
     private static bool IsAdjustmentOnlyCurrentStorageSource(RoomInventoryAdjustment adjustment) =>
         adjustment.ReceiptId == null
@@ -2546,7 +2553,7 @@ public sealed class DashboardDataService(
 
         if (IsSupersededByRoomCurrentBalanceCorrection(receipt, correctionCutoffs))
         {
-            return "Excluded: superseded by the latest room current-balance correction.";
+            return "Excluded: superseded by the latest room current inventory baseline.";
         }
 
         return null;
@@ -2587,12 +2594,12 @@ public sealed class DashboardDataService(
     {
         if (!included && IsSupersededByRoomCurrentBalanceCorrection(adjustment, correctionCutoffs))
         {
-            return "Excluded: superseded by the latest room current-balance correction.";
+            return "Excluded: superseded by the latest room current inventory baseline.";
         }
 
         if (included && IsCurrentBalanceCorrection(adjustment))
         {
-            return "Included: current-balance correction is authoritative for this room as of its date.";
+            return "Included: current inventory baseline is authoritative for this room as of its effective date.";
         }
 
         if (included)
@@ -2609,9 +2616,12 @@ public sealed class DashboardDataService(
     {
         var receipt = await dbContext.Receipts.AsNoTracking()
             .Where(x => x.Id == receiptId)
-            .Select(x => new { x.ReceiptType, x.IsDeleted, x.BinCount })
+            .Select(x => new { x.ReceiptType, x.CompuTechReceiptId, x.IsDeleted, x.BinCount })
             .SingleAsync(cancellationToken);
-        if (receipt.IsDeleted || !string.Equals(receipt.ReceiptType, "Truck receipt", StringComparison.OrdinalIgnoreCase))
+        if (receipt.IsDeleted
+            || HasStorageExcludedIdentifierPrefix(receipt.CompuTechReceiptId, "LS")
+            || HasStorageExcludedIdentifierPrefix(receipt.CompuTechReceiptId, "DS")
+            || !string.Equals(receipt.ReceiptType, "Truck receipt", StringComparison.OrdinalIgnoreCase))
         {
             return 0;
         }
@@ -2646,6 +2656,7 @@ public sealed class DashboardDataService(
     {
         dbContext.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
         {
+            CropYear = receipt.CropYear,
             ReceiptId = receipt.Id == 0 ? null : receipt.Id,
             RoomDepletionId = roomDepletionId,
             WarehouseId = receipt.WarehouseId,
@@ -2661,6 +2672,7 @@ public sealed class DashboardDataService(
             NewBinCount = Math.Max(0, newBinCount),
             AdjustmentType = adjustmentType,
             Source = reason,
+            InventoryStatus = null,
             Reason = reason,
             Notes = notes,
             AdjustmentAt = adjustmentAt,
@@ -2689,6 +2701,7 @@ public sealed class DashboardDataService(
     {
         dbContext.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
         {
+            CropYear = cropYearService.GetCurrentCropYear(adjustmentAt),
             ReceiptId = receiptId,
             RoomDepletionId = null,
             WarehouseId = warehouseId,
@@ -2704,6 +2717,7 @@ public sealed class DashboardDataService(
             NewBinCount = Math.Max(0, newBinCount),
             AdjustmentType = adjustmentType,
             Source = reason,
+            InventoryStatus = null,
             Reason = reason,
             Notes = notes,
             AdjustmentAt = adjustmentAt,

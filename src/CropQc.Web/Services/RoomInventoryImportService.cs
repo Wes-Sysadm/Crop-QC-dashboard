@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using CropQc.Data;
@@ -14,11 +15,12 @@ public interface IRoomInventoryImportService
     Task<(RoomInventoryImportPreviewViewModel Preview, string? Error)> ApplyAsync(RoomInventoryImportForm form, string changedByEmail, CancellationToken cancellationToken);
 }
 
-public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHostEnvironment environment) : IRoomInventoryImportService
+public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHostEnvironment environment, ICropYearService cropYearService) : IRoomInventoryImportService
 {
     public const string BuiltInEbsSeedFileName = "ebs-starting-room-inventory.csv";
     public const string StartingInventoryAdjustmentType = "StartingInventoryImport";
-    public const string DefaultStartingInventorySource = "Compu-Tech Starting Inventory";
+    public const string CurrentInventoryBaselineType = StartingInventoryAdjustmentType;
+    public const string DefaultStartingInventorySource = "Current Inventory Baseline";
 
     public async Task<RoomInventoryImportPageViewModel> GetPageAsync(RoomInventoryImportForm filter, CancellationToken cancellationToken)
     {
@@ -57,6 +59,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             var newCount = row.NewBinCount ?? 0;
             var adjustment = new RoomInventoryAdjustment
             {
+                CropYear = row.CropYear,
                 ReceiptId = null,
                 RoomDepletionId = null,
                 WarehouseId = row.WarehouseId!.Value,
@@ -74,9 +77,10 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
                 Source = row.Source,
                 SourceRoomCode = row.CompuTechRoomCode,
                 SourceSubLocation = row.SubLocation,
+                InventoryStatus = string.IsNullOrWhiteSpace(row.InventoryStatus) ? null : row.InventoryStatus,
                 Reason = row.Source,
-                Notes = $"Imported from {row.Source}; Crop QC room {row.CropQcRoomName}; Compu-Tech room {row.CompuTechRoomCode}; mapped to master room {row.NormalizedRoomCode}.",
-                AdjustmentAt = now,
+                Notes = $"Current inventory baseline imported from {row.Source}; Crop year {row.CropYear}; status {DisplayOrDash(row.InventoryStatus)}; Crop QC room {row.CropQcRoomName}; Compu-Tech room {row.CompuTechRoomCode}; mapped to master room {row.NormalizedRoomCode}.",
+                AdjustmentAt = row.EffectiveDate,
                 CreatedByUserId = user?.Id,
                 CreatedAt = now
             };
@@ -87,8 +91,8 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
                 EntityName = nameof(RoomInventoryAdjustment),
                 EntityKey = $"{row.Facility}:{row.CropQcRoomName}:{row.CompuTechRoomCode}:{row.LotNumber}:{row.Variety}",
                 UserId = user?.Id,
-                BeforeValuesJson = oldCount is null ? null : JsonSerializer.Serialize(new { row.Facility, row.SubLocation, row.CropQcRoomName, row.CompuTechRoomCode, row.LotNumber, row.Variety, BinCount = oldCount }),
-                AfterValuesJson = JsonSerializer.Serialize(new { row.Facility, row.SubLocation, row.CropQcRoomName, row.CompuTechRoomCode, row.LotNumber, row.Variety, BinCount = newCount, row.Source }),
+                BeforeValuesJson = oldCount is null ? null : JsonSerializer.Serialize(new { row.CropYear, row.Facility, row.SubLocation, row.CropQcRoomName, row.CompuTechRoomCode, row.LotNumber, row.Variety, row.InventoryStatus, BinCount = oldCount }),
+                AfterValuesJson = JsonSerializer.Serialize(new { row.CropYear, row.Facility, row.SubLocation, row.CropQcRoomName, row.CompuTechRoomCode, row.LotNumber, row.Variety, row.InventoryStatus, BinCount = newCount, row.Source, row.EffectiveDate }),
                 SourceApplication = "Web",
                 CreatedAt = now
             });
@@ -108,7 +112,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
                 CsvText = "",
                 IsBuiltInSeed = isBuiltInSeed,
                 InvalidCount = 1,
-                Rows = [new() { RowNumber = 0, Action = "Invalid", Message = "Upload a CSV or use the built-in EBS starting inventory file." }]
+                Rows = [new() { RowNumber = 0, Action = "Invalid", Message = "Upload a CSV or use the built-in EBS current inventory baseline file." }]
             };
         }
 
@@ -125,6 +129,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
         }
 
         var headers = parsedRows[0].Select(NormalizeHeader).ToList();
+        var cropYearIndex = FindHeader(headers, ["cropyear", "crop"]);
         var facilityIndex = FindHeader(headers, ["facility"]);
         var subLocationIndex = FindHeader(headers, ["sublocation", "location"]);
         var cropQcRoomIndex = FindHeader(headers, ["cropqcroomname", "cropqcname", "cropqcroom", "displayroom", "roomname"]);
@@ -132,6 +137,8 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
         var varietyIndex = FindHeader(headers, ["variety"]);
         var lotIndex = FindHeader(headers, ["lotnumber", "lot#", "lot", "growernumber", "grower#"]);
         var binIndex = FindHeader(headers, ["bincount", "count", "bins"]);
+        var statusIndex = FindHeader(headers, ["status", "inventorystatus", "sealedstatus"]);
+        var effectiveDateIndex = FindHeader(headers, ["effectivedate", "baselineeffective", "baselineeffectiveat", "date"]);
         var sourceIndex = FindHeader(headers, ["source"]);
         if (facilityIndex < 0 || compuTechRoomIndex < 0 || varietyIndex < 0 || lotIndex < 0 || binIndex < 0)
         {
@@ -150,6 +157,8 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             .GroupBy(x => x.LotNumber.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
         var fruitProfiles = await dbContext.FruitProfiles.AsNoTracking().ToListAsync(cancellationToken);
+        var defaultEffectiveDate = DateTimeOffset.UtcNow;
+        var defaultCropYear = cropYearService.GetCurrentCropYear(defaultEffectiveDate);
         var currentByKey = (await dbContext.RoomInventoryAdjustments.AsNoTracking()
                 .Where(x => x.ReceiptId == null && x.AdjustmentType == StartingInventoryAdjustmentType)
                 .ToListAsync(cancellationToken))
@@ -168,9 +177,12 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             var variety = GetCell(raw, varietyIndex).Trim();
             var lotNumber = GetCell(raw, lotIndex).Trim();
             var binText = GetCell(raw, binIndex).Trim();
+            var status = statusIndex >= 0 ? GetCell(raw, statusIndex).Trim() : "";
             var source = sourceIndex >= 0 ? GetCell(raw, sourceIndex).Trim() : DefaultStartingInventorySource;
             source = string.IsNullOrWhiteSpace(source) ? DefaultStartingInventorySource : source;
             var subLocation = subLocationIndex >= 0 ? GetCell(raw, subLocationIndex).Trim() : "";
+            var effectiveDate = ParseEffectiveDate(GetCell(raw, effectiveDateIndex), defaultEffectiveDate);
+            var cropYear = ParseCropYear(GetCell(raw, cropYearIndex), cropYearService.GetCurrentCropYear(effectiveDate), defaultCropYear);
             cropQcRoomName = string.IsNullOrWhiteSpace(cropQcRoomName) ? CropQcRoomNameForCompuTechCode(compuTechRoomCode) : NormalizeCropQcRoomName(cropQcRoomName);
             subLocation = string.IsNullOrWhiteSpace(subLocation) ? DetermineEbsSubLocation(cropQcRoomName, compuTechRoomCode) : subLocation;
             var mappedRoomCode = MasterRoomCodeFor(cropQcRoomName, compuTechRoomCode);
@@ -178,6 +190,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             var row = new RoomInventoryImportPreviewRow
             {
                 RowNumber = rowNumber,
+                CropYear = cropYear,
                 Facility = facility,
                 SubLocation = subLocation,
                 CropQcRoomName = cropQcRoomName,
@@ -186,6 +199,8 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
                 NormalizedRoomCode = mappedRoomCode,
                 Variety = NormalizeVariety(variety),
                 LotNumber = lotNumber,
+                InventoryStatus = status,
+                EffectiveDate = effectiveDate,
                 Source = source
             };
 
@@ -205,7 +220,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             row.NewBinCount = binCount;
             if (!string.Equals(facility, "EBS", StringComparison.OrdinalIgnoreCase))
             {
-                previewRows.Add(Invalid(row, "This starting inventory import currently supports EBS rows only."));
+                previewRows.Add(Invalid(row, "This current inventory baseline import currently supports EBS rows only."));
                 continue;
             }
 
@@ -284,7 +299,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             if (!currentByKey.TryGetValue(existingKey, out var current))
             {
                 row.Action = "Add";
-                row.Message = JoinMessages("New starting inventory row.", messages);
+                row.Message = JoinMessages("New current inventory baseline row.", messages);
                 previewRows.Add(row);
                 continue;
             }
@@ -332,6 +347,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
             .Select(x => new RoomInventoryCurrentLotViewModel
             {
                 RoomId = x.RoomId,
+                CropYear = x.CropYear,
                 Facility = x.Warehouse.Code,
                 SubLocation = !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : DetermineEbsSubLocation(x.Room.CropQcRoomName ?? x.Room.Code, x.SourceRoomCode ?? x.Room.CompuTechRoomCode ?? ""),
                 CropQcRoomName = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
@@ -342,6 +358,7 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
                 LotNumber = x.LotNumber,
                 PoolStart = x.PoolStart ?? "",
                 Variety = x.VarietyCode ?? "",
+                InventoryStatus = x.InventoryStatus ?? "",
                 CurrentBins = x.NewBinCount,
                 Source = x.Source ?? x.Reason ?? "",
                 LastAdjustmentAt = x.AdjustmentAt
@@ -459,6 +476,19 @@ public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHo
 
     private static string StartingInventoryKey(RoomInventoryAdjustment adjustment) =>
         CurrentStorageLotKey(adjustment.RoomId, adjustment.LotNumber, adjustment.VarietyCode ?? "");
+
+    private static DateTimeOffset ParseEffectiveDate(string value, DateTimeOffset fallback) =>
+        DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var parsed)
+            ? parsed
+            : fallback;
+
+    private static int ParseCropYear(string value, int effectiveDateCropYear, int fallback) =>
+        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed > 2000
+            ? parsed
+            : effectiveDateCropYear > 2000 ? effectiveDateCropYear : fallback;
+
+    private static string DisplayOrDash(string value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
 
     public static string CurrentStorageLotKey(int roomId, string lotNumber, string variety) =>
         $"{roomId}|{lotNumber.Trim().ToUpperInvariant()}|{NormalizeVariety(variety)}";

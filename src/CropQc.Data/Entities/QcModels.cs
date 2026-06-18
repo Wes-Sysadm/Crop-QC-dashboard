@@ -64,6 +64,7 @@ public sealed class RoomDepletion
 public sealed class RoomInventoryAdjustment
 {
     public long Id { get; set; }
+    public int? CropYear { get; set; }
     public long? ReceiptId { get; set; }
     public Receipt? Receipt { get; set; }
     public long? RoomDepletionId { get; set; }
@@ -87,6 +88,7 @@ public sealed class RoomInventoryAdjustment
     public string? Source { get; set; }
     public string? SourceRoomCode { get; set; }
     public string? SourceSubLocation { get; set; }
+    public string? InventoryStatus { get; set; }
     public string? Reason { get; set; }
     public string? Notes { get; set; }
     public DateTimeOffset AdjustmentAt { get; set; }

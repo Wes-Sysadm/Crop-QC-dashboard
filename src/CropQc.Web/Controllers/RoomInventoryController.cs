@@ -17,6 +17,11 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
     [HttpPost("Preview")]
     public async Task<IActionResult> Preview(RoomInventoryImportForm form, CancellationToken cancellationToken)
     {
+        if (!CanApplyEbsCorrectionSeed())
+        {
+            return Forbid();
+        }
+
         var preview = await roomInventoryImportService.PreviewAsync(form, cancellationToken);
         var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
         model.ImportPreview = preview;
@@ -41,7 +46,7 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
     [HttpPost("Apply")]
     public async Task<IActionResult> Apply(RoomInventoryImportForm form, CancellationToken cancellationToken)
     {
-        if (form.UseBuiltInSeed && !CanApplyEbsCorrectionSeed())
+        if (!CanApplyEbsCorrectionSeed())
         {
             return Forbid();
         }

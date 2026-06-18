@@ -35,16 +35,37 @@ public sealed class Evanca12RoomCountTests
         Assert.Equal(40, truckDetail.Summary?.CurrentBinsCount);
         Assert.NotNull(detail.Summary);
         Assert.Equal(1022, detail.Summary!.CurrentBinsCount);
-        Assert.Equal("FUJI: 1022 bins", detail.Summary.VarietyStatusSummary);
+        Assert.Equal("FUJI Sealed: 1022 bins", detail.Summary.VarietyStatusSummary);
         Assert.Equal(3, detail.CurrentLots.Count);
         Assert.Equal(1022, breakdown.IncludedBins);
-        Assert.Contains(breakdown.Rows, x => x.SourceType == RoomInventoryImportService.StartingInventoryAdjustmentType && x.IsIncluded && x.Lot == "1570" && x.Bins == 819 && x.Variety == "FUJI");
-        Assert.Contains(breakdown.Rows, x => x.SourceType == RoomInventoryImportService.StartingInventoryAdjustmentType && !x.IsIncluded && x.Bins == 1469 && x.DecisionReason.Contains("superseded", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(detail.CurrentLots, x => x.InventoryStatus == "Sealed" && x.LotCode == "1570" && x.CurrentBins == 819);
+        Assert.Contains(breakdown.Rows, x => x.SourceType == "Current Inventory Baseline" && x.IsIncluded && x.Lot == "1570" && x.Bins == 819 && x.Variety == "FUJI" && x.Status == "Sealed");
+        Assert.Contains(breakdown.Rows, x => x.SourceType == "Current Inventory Baseline" && !x.IsIncluded && x.Bins == 1469 && x.DecisionReason.Contains("superseded", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.SampleType.Contains("Truck Sample", StringComparison.OrdinalIgnoreCase) && !x.IsIncluded && x.DecisionReason.Contains("superseded", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.DisplayReceiptId == "LS-EVANCA12-1" && !x.IsIncluded && x.DecisionReason == "Excluded: LS prefix.");
         Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.DisplayReceiptId == "DS-EVANCA12-1" && !x.IsIncluded && x.DecisionReason == "Excluded: DS prefix.");
         Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.DisplayReceiptId == "EVANCA12-DOOR-TYPE" && x.SampleType.Contains("Door Sample", StringComparison.OrdinalIgnoreCase) && !x.IsIncluded && x.DecisionReason == "Excluded: Door Sample.");
         Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.DisplayReceiptId == "EVANCA12-LOT-TYPE" && x.SampleType.Contains("Lot Sample", StringComparison.OrdinalIgnoreCase) && !x.IsIncluded && x.DecisionReason == "Excluded: Lot Sample.");
+    }
+
+    [Fact]
+    public async Task CurrentInventoryBaseline_AllowsFutureTruckReceiptsAfterBaseline()
+    {
+        await using var db = CreateDbContext();
+        await SeedVerifiedEbsInventoryAsync(db);
+        var warehouse = await db.Warehouses.FirstAsync(x => x.Code == "EBS");
+        var room = await db.Rooms.FirstAsync(x => x.Code == "EVANCA12");
+        var fuji = await db.FruitProfiles.FirstAsync(x => x.VarietyCode == "FUJI");
+        var receivedAt = DateTimeOffset.Parse("2026-06-18T07:30:00-07:00");
+        db.Receipts.Add(Receipt(130, "EVANCA12-FUTURE-TRUCK", "Truck receipt", 10, receivedAt, warehouse, room, fuji));
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var detail = await service.GetRoomDetailAsync(12, CancellationToken.None);
+        var breakdown = await service.GetRoomCountBreakdownAsync(12, CancellationToken.None);
+
+        Assert.Equal(1032, detail.Summary?.CurrentBinsCount);
+        Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.DisplayReceiptId == "EVANCA12-FUTURE-TRUCK" && x.IsIncluded && x.DecisionReason == "Included: Truck Receipt.");
     }
 
     [Fact]
@@ -59,6 +80,8 @@ public sealed class Evanca12RoomCountTests
         Assert.Contains("GetRoomCountBreakdownAsync", service);
         Assert.Contains("BuildCurrentBalanceCorrectionCutoffsAsync", service);
         Assert.Contains("IsSupersededByRoomCurrentBalanceCorrection", service);
+        Assert.Contains("BreakdownSourceType", service);
+        Assert.Contains("Current Inventory Baseline", service);
         Assert.Contains("ReceiptStorageExclusionReason", service);
         Assert.Contains("HasStorageExcludedIdentifierPrefix", service);
         Assert.Contains("Excluded: LS prefix.", service);
@@ -156,29 +179,29 @@ public sealed class Evanca12RoomCountTests
             Sample(202, 103, lotSample));
         var oldAt = DateTimeOffset.Parse("2026-06-15T17:00:00-07:00");
         db.RoomInventoryAdjustments.AddRange(
-            CurrentCorrection(300, warehouse, roomByCode["EVANCA12"], fuji, "Sealed", 1469, oldAt, "Wes Corrected Current Inventory 2026-06-15"),
-            CurrentCorrection(301, warehouse, roomByCode["EVANCA01"], red, "Sealed", 1462, oldAt, "Wes Corrected Current Inventory 2026-06-15"),
+            CurrentCorrection(300, warehouse, roomByCode["EVANCA12"], fuji, "Current", 1469, oldAt, "Wes Corrected Current Inventory 2026-06-15", "Sealed"),
+            CurrentCorrection(301, warehouse, roomByCode["EVANCA01"], red, "Current", 1462, oldAt, "Wes Corrected Current Inventory 2026-06-15", "Sealed"),
             CurrentCorrection(302, warehouse, roomByCode["BLUECA04"], red, "Current", 186, oldAt, "Wes Corrected Current Inventory 2026-06-15"));
-        var verifiedAt = DateTimeOffset.Parse("2026-06-17T17:00:00-07:00");
+        var verifiedAt = DateTimeOffset.Parse("2026-06-18T00:00:00-07:00");
         db.RoomInventoryAdjustments.AddRange(
-            CurrentCorrection(400, warehouse, roomByCode["EVANCA01"], red, "9285", 48, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(401, warehouse, roomByCode["EVANCA01"], red, "9490", 13, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(402, warehouse, roomByCode["EVANCA01"], red, "9570", 101, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(403, warehouse, roomByCode["EVANCA01"], red, "9660", 1039, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(404, warehouse, roomByCode["EVANCA12"], fuji, "1560", 118, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(405, warehouse, roomByCode["EVANCA12"], fuji, "1570", 819, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(406, warehouse, roomByCode["EVANCA12"], fuji, "1030", 85, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(407, warehouse, roomByCode["LAMBCA17"], pink, "1020", 559, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(408, warehouse, roomByCode["LAMBCA17"], pink, "1050", 1359, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(409, warehouse, roomByCode["BLUECA01"], red, "9510", 264, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(410, warehouse, roomByCode["BLUECA01"], red, "9550", 306, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(411, warehouse, roomByCode["BLUECA01"], red, "9560", 608, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(412, warehouse, roomByCode["BLUECA04"], red, "Current", 0, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(413, warehouse, roomByCode["BLUECA06"], gsmt, "1290", 281, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(414, warehouse, roomByCode["BLUECA06"], gsmt, "1560", 183, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(415, warehouse, roomByCode["BLUECA06"], gsmt, "3200", 3, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(416, warehouse, roomByCode["BLUECA06"], gsmt, "9450", 26, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
-            CurrentCorrection(417, warehouse, roomByCode["BLUECA06"], gsmt, "9750", 21, verifiedAt, "Wes Verified Current Inventory 2026-06-17"));
+            CurrentCorrection(400, warehouse, roomByCode["EVANCA01"], red, "9285", 48, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18"),
+            CurrentCorrection(401, warehouse, roomByCode["EVANCA01"], red, "9490", 13, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18"),
+            CurrentCorrection(402, warehouse, roomByCode["EVANCA01"], red, "9570", 101, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18"),
+            CurrentCorrection(403, warehouse, roomByCode["EVANCA01"], red, "9660", 1039, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18"),
+            CurrentCorrection(404, warehouse, roomByCode["EVANCA12"], fuji, "1560", 118, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18", "Sealed"),
+            CurrentCorrection(405, warehouse, roomByCode["EVANCA12"], fuji, "1570", 819, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18", "Sealed"),
+            CurrentCorrection(406, warehouse, roomByCode["EVANCA12"], fuji, "1030", 85, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18", "Sealed"),
+            CurrentCorrection(407, warehouse, roomByCode["LAMBCA17"], pink, "1020", 559, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18", "Sealed"),
+            CurrentCorrection(408, warehouse, roomByCode["LAMBCA17"], pink, "1050", 1359, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18", "Sealed"),
+            CurrentCorrection(409, warehouse, roomByCode["BLUECA01"], red, "9510", 264, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18", "Sealed"),
+            CurrentCorrection(410, warehouse, roomByCode["BLUECA01"], red, "9550", 306, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18", "Sealed"),
+            CurrentCorrection(411, warehouse, roomByCode["BLUECA01"], red, "9560", 608, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18", "Sealed"),
+            CurrentCorrection(412, warehouse, roomByCode["BLUECA04"], red, "Current", 0, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18"),
+            CurrentCorrection(413, warehouse, roomByCode["BLUECA06"], gsmt, "1290", 281, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18", "Sealed"),
+            CurrentCorrection(414, warehouse, roomByCode["BLUECA06"], gsmt, "1560", 183, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18", "Sealed"),
+            CurrentCorrection(415, warehouse, roomByCode["BLUECA06"], gsmt, "3200", 3, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18", "Sealed"),
+            CurrentCorrection(416, warehouse, roomByCode["BLUECA06"], gsmt, "9450", 26, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18", "Sealed"),
+            CurrentCorrection(417, warehouse, roomByCode["BLUECA06"], gsmt, "9750", 21, verifiedAt, "Wes Verified Current Inventory Baseline 2026-06-18", "Sealed"));
         var afterCorrection = verifiedAt.AddMinutes(10);
         db.Receipts.AddRange(
             Receipt(110, "LS-EVANCA12-1", "Truck receipt", 700, afterCorrection, warehouse, roomByCode["EVANCA12"], fuji),
@@ -207,9 +230,10 @@ public sealed class Evanca12RoomCountTests
         SubLocation = subLocation
     };
 
-    private static RoomInventoryAdjustment CurrentCorrection(long id, Warehouse warehouse, Room room, FruitProfile fruitProfile, string lot, int bins, DateTimeOffset at, string source) => new()
+    private static RoomInventoryAdjustment CurrentCorrection(long id, Warehouse warehouse, Room room, FruitProfile fruitProfile, string lot, int bins, DateTimeOffset at, string source, string? status = null) => new()
     {
         Id = id,
+        CropYear = 2026,
         WarehouseId = warehouse.Id,
         Warehouse = warehouse,
         RoomId = room.Id,
@@ -223,6 +247,7 @@ public sealed class Evanca12RoomCountTests
         ChangeAmount = bins,
         NewBinCount = bins,
         AdjustmentType = RoomInventoryImportService.StartingInventoryAdjustmentType,
+        InventoryStatus = status,
         Source = source,
         Reason = source,
         AdjustmentAt = at,

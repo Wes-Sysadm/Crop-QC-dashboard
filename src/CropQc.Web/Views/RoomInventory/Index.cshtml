@@ -3,7 +3,7 @@
     ViewData["Title"] = "Current Lots / Room Inventory";
 }
 
-<h1>Current Lots / Room Inventory</h1>
+<h1>Current Inventory Baseline</h1>
 @await Html.PartialAsync("_PageRefreshControls")
 @if (TempData["Success"] is string success)
 {
@@ -15,11 +15,11 @@
 }
 
 <section class="panel">
-    <h2>Import Starting Inventory</h2>
-    <p class="muted">Imports are previewed first, never delete existing inventory, and record audited bin count adjustments.</p>
+    <h2>Import Current Inventory Baseline</h2>
+    <p class="muted">Imports are previewed first, never delete existing inventory, and record audited current-balance adjustments by crop year, room, lot, variety, status, and effective date.</p>
     <div class="action-bar">
         <form method="post" action="/Admin/RoomInventory/ImportEbsStartingInventory">
-            <button type="submit">Import EBS Starting Inventory</button>
+            <button type="submit">Import EBS Current Baseline</button>
         </form>
     </div>
     <form class="form-grid" method="post" enctype="multipart/form-data" action="/Admin/RoomInventory/Preview">
@@ -53,6 +53,7 @@
                     <thead>
                     <tr>
                         <th class="compact-cell">Row</th>
+                        <th>Crop Year</th>
                         <th>Action</th>
                         <th>Facility</th>
                         <th>Location</th>
@@ -62,6 +63,8 @@
                         <th>Grower</th>
                         <th>Pool</th>
                         <th>Variety</th>
+                        <th>Status</th>
+                        <th>Effective</th>
                         <th class="numeric-cell">Old</th>
                         <th class="numeric-cell">New</th>
                         <th class="wide-cell">Message</th>
@@ -72,6 +75,7 @@
                     {
                         <tr>
                             <td class="compact-cell">@row.RowNumber</td>
+                            <td>@row.CropYear</td>
                             <td><span class="status @StatusClass(row.Action, row.IsWarning)">@row.Action</span></td>
                             <td>@row.Facility</td>
                             <td>@row.SubLocation</td>
@@ -81,6 +85,8 @@
                             <td class="wrap-cell">@(string.IsNullOrWhiteSpace(row.Grower) ? "-" : row.Grower)</td>
                             <td>@(string.IsNullOrWhiteSpace(row.PoolStart) ? "-" : row.PoolStart)</td>
                             <td>@row.Variety</td>
+                            <td>@(string.IsNullOrWhiteSpace(row.InventoryStatus) ? "-" : row.InventoryStatus)</td>
+                            <td>@row.EffectiveDate.LocalDateTime.ToString("g")</td>
                             <td class="numeric-cell">@(row.OldBinCount?.ToString() ?? "-")</td>
                             <td class="numeric-cell">@(row.NewBinCount?.ToString() ?? "-")</td>
                             <td class="wide-cell">@row.Message</td>
@@ -93,7 +99,7 @@
         <form method="post" action="/Admin/RoomInventory/Apply" class="action-bar">
             <input type="hidden" name="CsvText" value="@Model.ImportPreview.CsvText" />
             <input type="hidden" name="UseBuiltInSeed" value="@(Model.ImportPreview.IsBuiltInSeed ? "true" : "false")" />
-            <button type="submit" @(Model.ImportPreview.CanApply ? "" : "disabled")>Import Room Inventory</button>
+            <button type="submit" @(Model.ImportPreview.CanApply ? "" : "disabled")>Import Current Baseline</button>
             @if (!Model.ImportPreview.CanApply)
             {
                 <span class="muted">Resolve invalid or duplicate rows before applying.</span>
@@ -103,7 +109,7 @@
 }
 
 <section class="panel">
-    <h2>Current Imported Inventory</h2>
+    <h2>Current Baseline Lots</h2>
     <form class="toolbar" method="get" action="/Admin/RoomInventory">
         <label class="field">Facility
             <select name="Facility">
@@ -152,7 +158,7 @@
 
     @if (Model.CurrentLots.Count == 0)
     {
-        <p class="muted">No imported current inventory rows match the selected filters.</p>
+        <p class="muted">No current inventory baseline rows match the selected filters.</p>
     }
     else
     {
@@ -163,7 +169,7 @@
                 <div class="station-card-header">
                     <div>
                         <h3>@lot.CropQcRoomName | Lot # @lot.LotNumber</h3>
-                        <p class="station-code">@lot.Facility / @lot.SubLocation / Compu-Tech @lot.CompuTechRoomCode / master room @lot.MasterRoomCode</p>
+                        <p class="station-code">Crop Year @(lot.CropYear?.ToString() ?? "-") / @lot.Facility / @lot.SubLocation / Compu-Tech @lot.CompuTechRoomCode / master room @lot.MasterRoomCode</p>
                     </div>
                     <span class="status ready">@lot.CurrentBins bins</span>
                 </div>
@@ -173,6 +179,7 @@
                     <dt>Compu-Tech Code</dt><dd>@lot.CompuTechRoomCode</dd>
                     <dt>Pool Start</dt><dd>@(string.IsNullOrWhiteSpace(lot.PoolStart) ? "-" : lot.PoolStart)</dd>
                     <dt>Variety</dt><dd>@lot.Variety</dd>
+                    <dt>Status</dt><dd>@(string.IsNullOrWhiteSpace(lot.InventoryStatus) ? "-" : lot.InventoryStatus)</dd>
                     <dt>Source</dt><dd>@lot.Source</dd>
                     <dt>Last adjustment</dt><dd>@lot.LastAdjustmentAt.LocalDateTime</dd>
                 </dl>

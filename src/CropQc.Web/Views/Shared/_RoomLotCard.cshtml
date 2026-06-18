@@ -4,7 +4,7 @@
     <div class="station-card-header">
         <div>
             <h3>@Model.GrowerName @(string.IsNullOrWhiteSpace(Model.GrowerNumber) ? "" : $"Lot # {Model.GrowerNumber}")</h3>
-            <p class="station-code">@Model.DisplayReceiptId | @Model.Warehouse / @Model.RoomCode | Pool Start @(string.IsNullOrWhiteSpace(Model.PoolStart) ? "-" : Model.PoolStart) | @Model.VarietyCode</p>
+            <p class="station-code">@Model.DisplayReceiptId | @Model.Warehouse / @Model.RoomCode | Pool Start @(string.IsNullOrWhiteSpace(Model.PoolStart) ? "-" : Model.PoolStart) | @Model.VarietyCode@(string.IsNullOrWhiteSpace(Model.InventoryStatus) ? "" : $" / {Model.InventoryStatus}")</p>
         </div>
         <span class="status @(Model.CurrentBins > 0 ? "ready" : "pending")">@Model.DepletionStatus</span>
     </div>
@@ -40,7 +40,7 @@
         }
         else
         {
-            <span class="muted">Starting inventory; no receipt history yet.</span>
+            <span class="muted">Current inventory baseline; no receipt history yet.</span>
         }
         @foreach (var sample in Model.Samples.Take(4))
         {
