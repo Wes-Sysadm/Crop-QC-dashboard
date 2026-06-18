@@ -105,7 +105,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Door sample", receiptView);
         Assert.Contains("Lot sample", receiptView);
         Assert.Contains("BinCount = Math.Max(0, form.BinCount)", service);
-        Assert.Contains(".Where(x => !x.IsDeleted && x.ReceiptType == \"Truck receipt\")", service);
+        Assert.Contains("ReceiptStorageExclusionReason", service);
+        Assert.Contains("only Truck Receipt records add storage bins", service);
         Assert.Contains("PoolStart = null", service);
         Assert.Contains("public string? GrowerNumber", receiptModel);
         Assert.Contains("public string? PoolStart", receiptModel);
@@ -387,8 +388,13 @@ public sealed class RoomSummaryDepletionTests
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
 
         Assert.Contains("BinCount = Math.Max(0, form.BinCount)", service);
-        Assert.Contains(".Where(x => !x.IsDeleted && x.ReceiptType == \"Truck receipt\")", service);
+        Assert.Contains("ReceiptStorageExclusionReason", service);
         Assert.Contains("if (receipt.IsDeleted || !string.Equals(receipt.ReceiptType, \"Truck receipt\"", service);
+        Assert.Contains("HasStorageExcludedIdentifierPrefix", service);
+        Assert.Contains("Excluded: LS prefix.", service);
+        Assert.Contains("Excluded: DS prefix.", service);
+        Assert.Contains("Excluded: Door Sample.", service);
+        Assert.Contains("Excluded: Lot Sample.", service);
         Assert.Contains("!x.IsDeleted", service);
         Assert.Contains("Truck receipt", service);
         Assert.Contains("Door sample", service);
