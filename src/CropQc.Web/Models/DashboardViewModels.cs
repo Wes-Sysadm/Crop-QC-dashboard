@@ -121,6 +121,7 @@ public sealed class RoomLotSummaryViewModel
     public string GrowerName { get; set; } = "";
     public string LotCode { get; set; } = "";
     public string VarietyCode { get; set; } = "";
+    public string InventoryStatus { get; set; } = "";
     public int OriginalBins { get; set; }
     public int DepletedBins { get; set; }
     public int CurrentBins { get; set; }
@@ -249,6 +250,7 @@ public sealed class RoomInventoryImportPreviewViewModel
 public sealed class RoomInventoryImportPreviewRow
 {
     public int RowNumber { get; set; }
+    public int CropYear { get; set; }
     public string Facility { get; set; } = "";
     public string SubLocation { get; set; } = "";
     public string CropQcRoomName { get; set; } = "";
@@ -257,6 +259,8 @@ public sealed class RoomInventoryImportPreviewRow
     public string NormalizedRoomCode { get; set; } = "";
     public string Variety { get; set; } = "";
     public string LotNumber { get; set; } = "";
+    public string InventoryStatus { get; set; } = "";
+    public DateTimeOffset EffectiveDate { get; set; }
     public int? BinCount { get; set; }
     public string Source { get; set; } = "";
     public string Action { get; set; } = "";
@@ -275,6 +279,7 @@ public sealed class RoomInventoryImportPreviewRow
 public sealed class RoomInventoryCurrentLotViewModel
 {
     public int RoomId { get; set; }
+    public int? CropYear { get; set; }
     public string Facility { get; set; } = "";
     public string SubLocation { get; set; } = "";
     public string CropQcRoomName { get; set; } = "";
@@ -285,6 +290,7 @@ public sealed class RoomInventoryCurrentLotViewModel
     public string LotNumber { get; set; } = "";
     public string PoolStart { get; set; } = "";
     public string Variety { get; set; } = "";
+    public string InventoryStatus { get; set; } = "";
     public int CurrentBins { get; set; }
     public string Source { get; set; } = "";
     public DateTimeOffset LastAdjustmentAt { get; set; }

@@ -1,19 +1,19 @@
-Facility,SubLocation,CropQcRoomName,CompuTechRoomCode,Variety,LotNumber,BinCount,Source
-EBS,Evans,Evans-01,Evanca01,RED,9285,48,Wes Verified Current Inventory 2026-06-17
-EBS,Evans,Evans-01,Evanca01,RED,9490,13,Wes Verified Current Inventory 2026-06-17
-EBS,Evans,Evans-01,Evanca01,RED,9570,101,Wes Verified Current Inventory 2026-06-17
-EBS,Evans,Evans-01,Evanca01,RED,9660,1039,Wes Verified Current Inventory 2026-06-17
-EBS,Evans,Evans-12,evanca12,FUJI,1560,118,Wes Verified Current Inventory 2026-06-17
-EBS,Evans,Evans-12,evanca12,FUJI,1570,819,Wes Verified Current Inventory 2026-06-17
-EBS,Evans,Evans-12,evanca12,FUJI,1030,85,Wes Verified Current Inventory 2026-06-17
-EBS,Lamb,Lamb-17,Lambca17,PINK,1020,559,Wes Verified Current Inventory 2026-06-17
-EBS,Lamb,Lamb-17,Lambca17,PINK,1050,1359,Wes Verified Current Inventory 2026-06-17
-EBS,BM,BM-1,blueca01,RED,9510,264,Wes Verified Current Inventory 2026-06-17
-EBS,BM,BM-1,blueca01,RED,9550,306,Wes Verified Current Inventory 2026-06-17
-EBS,BM,BM-1,blueca01,RED,9560,608,Wes Verified Current Inventory 2026-06-17
-EBS,BM,BM-4,Blueca04,RED,Current,0,Wes Verified Current Inventory 2026-06-17
-EBS,BM,BM-6,Blueca06,GSMT,1290,281,Wes Verified Current Inventory 2026-06-17
-EBS,BM,BM-6,Blueca06,GSMT,1560,183,Wes Verified Current Inventory 2026-06-17
-EBS,BM,BM-6,Blueca06,GSMT,3200,3,Wes Verified Current Inventory 2026-06-17
-EBS,BM,BM-6,Blueca06,GSMT,9450,26,Wes Verified Current Inventory 2026-06-17
-EBS,BM,BM-6,Blueca06,GSMT,9750,21,Wes Verified Current Inventory 2026-06-17
+CropYear,Facility,SubLocation,CropQcRoomName,CompuTechRoomCode,Variety,LotNumber,BinCount,Status,EffectiveDate,Source
+2026,EBS,Evans,Evans-01,Evanca01,RED,9285,48,,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,Evans,Evans-01,Evanca01,RED,9490,13,,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,Evans,Evans-01,Evanca01,RED,9570,101,,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,Evans,Evans-01,Evanca01,RED,9660,1039,,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,Evans,Evans-12,evanca12,FUJI,1560,118,Sealed,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,Evans,Evans-12,evanca12,FUJI,1570,819,Sealed,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,Evans,Evans-12,evanca12,FUJI,1030,85,Sealed,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,Lamb,Lamb-17,Lambca17,PINK,1020,559,Sealed,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,Lamb,Lamb-17,Lambca17,PINK,1050,1359,Sealed,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,BM,BM-1,blueca01,RED,9510,264,Sealed,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,BM,BM-1,blueca01,RED,9550,306,Sealed,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,BM,BM-1,blueca01,RED,9560,608,Sealed,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,BM,BM-4,Blueca04,RED,Current,0,,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,BM,BM-6,Blueca06,GSMT,1290,281,Sealed,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,BM,BM-6,Blueca06,GSMT,1560,183,Sealed,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,BM,BM-6,Blueca06,GSMT,3200,3,Sealed,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,BM,BM-6,Blueca06,GSMT,9450,26,Sealed,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
+2026,EBS,BM,BM-6,Blueca06,GSMT,9750,21,Sealed,2026-06-18T00:00:00-07:00,Wes Verified Current Inventory Baseline 2026-06-18
