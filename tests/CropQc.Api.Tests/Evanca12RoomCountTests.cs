@@ -24,6 +24,7 @@ public sealed class Evanca12RoomCountTests
 
         var detail = await service.GetRoomDetailAsync(12, CancellationToken.None);
         var breakdown = await service.GetRoomCountBreakdownAsync(12, CancellationToken.None);
+        var truckDetail = await service.GetRoomDetailAsync(200, CancellationToken.None);
 
         await AssertRoomTotalAsync(service, 1, 1201);
         await AssertRoomTotalAsync(service, 12, 1022);
@@ -31,6 +32,7 @@ public sealed class Evanca12RoomCountTests
         await AssertRoomTotalAsync(service, 101, 1178);
         await AssertRoomTotalAsync(service, 106, 514);
         await AssertRoomTotalAsync(service, 104, 0);
+        Assert.Equal(40, truckDetail.Summary?.CurrentBinsCount);
         Assert.NotNull(detail.Summary);
         Assert.Equal(1022, detail.Summary!.CurrentBinsCount);
         Assert.Equal("FUJI: 1022 bins", detail.Summary.VarietyStatusSummary);
@@ -39,8 +41,10 @@ public sealed class Evanca12RoomCountTests
         Assert.Contains(breakdown.Rows, x => x.SourceType == RoomInventoryImportService.StartingInventoryAdjustmentType && x.IsIncluded && x.Lot == "1570" && x.Bins == 819 && x.Variety == "FUJI");
         Assert.Contains(breakdown.Rows, x => x.SourceType == RoomInventoryImportService.StartingInventoryAdjustmentType && !x.IsIncluded && x.Bins == 1469 && x.DecisionReason.Contains("superseded", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.SampleType.Contains("Truck Sample", StringComparison.OrdinalIgnoreCase) && !x.IsIncluded && x.DecisionReason.Contains("superseded", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.SampleType.Contains("Door Sample", StringComparison.OrdinalIgnoreCase) && !x.IsIncluded);
-        Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.SampleType.Contains("Lot Sample", StringComparison.OrdinalIgnoreCase) && !x.IsIncluded);
+        Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.DisplayReceiptId == "LS-EVANCA12-1" && !x.IsIncluded && x.DecisionReason == "Excluded: LS prefix.");
+        Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.DisplayReceiptId == "DS-EVANCA12-1" && !x.IsIncluded && x.DecisionReason == "Excluded: DS prefix.");
+        Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.DisplayReceiptId == "EVANCA12-DOOR-TYPE" && x.SampleType.Contains("Door Sample", StringComparison.OrdinalIgnoreCase) && !x.IsIncluded && x.DecisionReason == "Excluded: Door Sample.");
+        Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.DisplayReceiptId == "EVANCA12-LOT-TYPE" && x.SampleType.Contains("Lot Sample", StringComparison.OrdinalIgnoreCase) && !x.IsIncluded && x.DecisionReason == "Excluded: Lot Sample.");
     }
 
     [Fact]
@@ -55,6 +59,14 @@ public sealed class Evanca12RoomCountTests
         Assert.Contains("GetRoomCountBreakdownAsync", service);
         Assert.Contains("BuildCurrentBalanceCorrectionCutoffsAsync", service);
         Assert.Contains("IsSupersededByRoomCurrentBalanceCorrection", service);
+        Assert.Contains("ReceiptStorageExclusionReason", service);
+        Assert.Contains("HasStorageExcludedIdentifierPrefix", service);
+        Assert.Contains("Excluded: LS prefix.", service);
+        Assert.Contains("Excluded: DS prefix.", service);
+        Assert.Contains("Excluded: Door Sample.", service);
+        Assert.Contains("Excluded: Lot Sample.", service);
+        Assert.Contains("Included: Truck Receipt.", service);
+        Assert.Contains("Excluded: duplicate.", service);
         Assert.Contains("ReceiptDedupeKey", service);
         Assert.Contains("Source Type", view);
         Assert.Contains("Receipt ID", view);
@@ -62,6 +74,22 @@ public sealed class Evanca12RoomCountTests
         Assert.Contains("Included / Excluded", view);
         Assert.Contains("DecisionReason", view);
         Assert.Contains("View Count Breakdown", room);
+    }
+
+    [Fact]
+    public void DashboardRoomsGrowerLotsAndEbsEmailUseSharedRoomLotCountService()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var email = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "EbsDailyBinsEmailService.cs"));
+
+        Assert.Contains("GetHomeDashboardAsync", service);
+        Assert.Contains("GetRoomsAsync", service);
+        Assert.Contains("GetCurrentGrowerLotsAsync", service);
+        Assert.Contains("BuildRoomLotSummariesAsync", service);
+        Assert.Contains("await BuildRoomLotSummariesAsync(null, cancellationToken)", service);
+        Assert.Contains("await BuildRoomSummariesAsync", service);
+        Assert.Contains("dashboardDataService.GetHomeDashboardAsync", email);
+        Assert.Contains("new RoomSummaryFilterForm { Facility = \"EBS\"", email);
     }
 
     private static CropQcDbContext CreateDbContext()
@@ -100,7 +128,8 @@ public sealed class Evanca12RoomCountTests
             Room(17, "LAMBCA17", "Lamb 17", "Lamb-17", "LAMBCA17", "Lamb", warehouse),
             Room(101, "BLUECA01", "Blue Mountain 1", "BM-1", "BLUECA01", "BM", warehouse),
             Room(104, "BLUECA04", "Blue Mountain 4", "BM-4", "BLUECA04", "BM", warehouse),
-            Room(106, "BLUECA06", "Blue Mountain 6", "BM-6", "BLUECA06", "BM", warehouse)
+            Room(106, "BLUECA06", "Blue Mountain 6", "BM-6", "BLUECA06", "BM", warehouse),
+            Room(200, "TESTTRUCK", "Truck Count Test", "Truck Count Test", "TESTTRUCK", "Test", warehouse)
         };
         var roomByCode = rooms.ToDictionary(x => x.Code);
         var red = new FruitProfile { Id = 901, Name = "Red Delicious", VarietyCode = "RED", FruitType = "Apple", ProductionType = "Conventional" };
@@ -150,6 +179,18 @@ public sealed class Evanca12RoomCountTests
             CurrentCorrection(415, warehouse, roomByCode["BLUECA06"], gsmt, "3200", 3, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
             CurrentCorrection(416, warehouse, roomByCode["BLUECA06"], gsmt, "9450", 26, verifiedAt, "Wes Verified Current Inventory 2026-06-17"),
             CurrentCorrection(417, warehouse, roomByCode["BLUECA06"], gsmt, "9750", 21, verifiedAt, "Wes Verified Current Inventory 2026-06-17"));
+        var afterCorrection = verifiedAt.AddMinutes(10);
+        db.Receipts.AddRange(
+            Receipt(110, "LS-EVANCA12-1", "Truck receipt", 700, afterCorrection, warehouse, roomByCode["EVANCA12"], fuji),
+            Receipt(111, "DS-EVANCA12-1", "Truck receipt", 800, afterCorrection.AddMinutes(1), warehouse, roomByCode["EVANCA12"], fuji),
+            Receipt(112, "EVANCA12-DOOR-TYPE", "Truck receipt", 900, afterCorrection.AddMinutes(2), warehouse, roomByCode["EVANCA12"], fuji),
+            Receipt(113, "EVANCA12-LOT-TYPE", "Truck receipt", 1000, afterCorrection.AddMinutes(3), warehouse, roomByCode["EVANCA12"], fuji),
+            Receipt(120, "TRUCK-COUNT-1", "Truck receipt", 40, afterCorrection.AddMinutes(4), warehouse, roomByCode["TESTTRUCK"], red));
+        db.QcSamples.AddRange(
+            Sample(210, 112, doorSample),
+            Sample(211, 113, lotSample),
+            Sample(220, 120, truckSample),
+            Sample(221, 120, truckSample));
         await db.SaveChangesAsync();
     }
 

@@ -2030,7 +2030,7 @@ public sealed class DashboardDataService(
         var roomCorrectionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
         var includedReceiptIds = receipts
             .Where(x => !x.IsDeleted)
-            .Where(x => string.Equals(x.ReceiptType, "Truck receipt", StringComparison.OrdinalIgnoreCase))
+            .Where(x => ReceiptStorageExclusionReason(x, samplesByReceipt.GetValueOrDefault(x.Id, ""), roomCorrectionCutoffs) is null)
             .Where(x => !IsSupersededByRoomCurrentBalanceCorrection(x, roomCorrectionCutoffs))
             .GroupBy(ReceiptDedupeKey, StringComparer.OrdinalIgnoreCase)
             .Select(x => x.OrderByDescending(y => y.UpdatedAt).ThenByDescending(y => y.Id).First().Id)
@@ -2053,7 +2053,7 @@ public sealed class DashboardDataService(
                 Status = receipt.IsDeleted ? "Deleted" : receipt.ReceiptType,
                 Date = receipt.ReceivedAt,
                 IsIncluded = included,
-                DecisionReason = ReceiptBreakdownDecision(receipt, roomCorrectionCutoffs, includedReceiptIds)
+                DecisionReason = ReceiptBreakdownDecision(receipt, samplesByReceipt.GetValueOrDefault(receipt.Id, ""), roomCorrectionCutoffs, includedReceiptIds)
             };
         }).ToList();
 
@@ -2185,7 +2185,7 @@ public sealed class DashboardDataService(
             .Include(x => x.Room)
                 .ThenInclude(x => x.Warehouse)
             .Include(x => x.FruitProfile)
-            .Where(x => !x.IsDeleted && x.ReceiptType == "Truck receipt");
+            .Where(x => !x.IsDeleted);
         if (roomId is not null)
         {
             receiptsQuery = receiptsQuery.Where(x => x.RoomId == roomId);
@@ -2211,7 +2211,10 @@ public sealed class DashboardDataService(
 
         var roomCorrectionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
         var receiptLotSummaries = receipts
-            .Where(receipt => !IsSupersededByRoomCurrentBalanceCorrection(receipt, roomCorrectionCutoffs))
+            .Where(receipt => ReceiptStorageExclusionReason(
+                receipt,
+                string.Join(", ", samplesByReceipt.GetValueOrDefault(receipt.Id, []).Select(x => x.SampleType.Name).Distinct(StringComparer.OrdinalIgnoreCase)),
+                roomCorrectionCutoffs) is null)
             .GroupBy(ReceiptDedupeKey, StringComparer.OrdinalIgnoreCase)
             .Select(x => x.OrderByDescending(y => y.UpdatedAt).ThenByDescending(y => y.Id).First())
             .Select(receipt =>
@@ -2505,16 +2508,40 @@ public sealed class DashboardDataService(
         return Math.Max(0, receipt.BinCount - depletionByReceipt.GetValueOrDefault(receipt.Id));
     }
 
-    private static string ReceiptBreakdownDecision(Receipt receipt, IReadOnlyDictionary<int, DateTimeOffset> correctionCutoffs, IReadOnlySet<long> includedReceiptIds)
+    private static string? ReceiptStorageExclusionReason(Receipt receipt, string sampleTypes, IReadOnlyDictionary<int, DateTimeOffset> correctionCutoffs)
     {
         if (receipt.IsDeleted)
         {
             return "Excluded: receipt is soft-deleted.";
         }
 
+        if (HasStorageExcludedIdentifierPrefix(receipt.CompuTechReceiptId, "LS"))
+        {
+            return "Excluded: LS prefix.";
+        }
+
+        if (HasStorageExcludedIdentifierPrefix(receipt.CompuTechReceiptId, "DS"))
+        {
+            return "Excluded: DS prefix.";
+        }
+
         if (!string.Equals(receipt.ReceiptType, "Truck receipt", StringComparison.OrdinalIgnoreCase))
         {
-            return "Excluded: Door Sample and Lot Sample receipts do not add storage bins.";
+            return IsLotSampleLabel(receipt.ReceiptType)
+                ? "Excluded: Lot Sample."
+                : IsDoorSampleLabel(receipt.ReceiptType)
+                    ? "Excluded: Door Sample."
+                    : "Excluded: only Truck Receipt records add storage bins.";
+        }
+
+        if (ContainsLotSampleLabel(sampleTypes))
+        {
+            return "Excluded: Lot Sample.";
+        }
+
+        if (ContainsDoorSampleLabel(sampleTypes))
+        {
+            return "Excluded: Door Sample.";
         }
 
         if (IsSupersededByRoomCurrentBalanceCorrection(receipt, correctionCutoffs))
@@ -2522,10 +2549,39 @@ public sealed class DashboardDataService(
             return "Excluded: superseded by the latest room current-balance correction.";
         }
 
-        return includedReceiptIds.Contains(receipt.Id)
-            ? "Included: valid Truck Receipt current storage row."
-            : "Excluded: duplicate receipt row; latest matching receipt row is counted.";
+        return null;
     }
+
+    private static string ReceiptBreakdownDecision(Receipt receipt, string sampleTypes, IReadOnlyDictionary<int, DateTimeOffset> correctionCutoffs, IReadOnlySet<long> includedReceiptIds)
+    {
+        var exclusionReason = ReceiptStorageExclusionReason(receipt, sampleTypes, correctionCutoffs);
+        if (exclusionReason is not null)
+        {
+            return exclusionReason;
+        }
+
+        return includedReceiptIds.Contains(receipt.Id)
+            ? "Included: Truck Receipt."
+            : "Excluded: duplicate.";
+    }
+
+    private static bool HasStorageExcludedIdentifierPrefix(string? identifier, string prefix) =>
+        !string.IsNullOrWhiteSpace(identifier)
+        && identifier.TrimStart().StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+
+    private static bool ContainsDoorSampleLabel(string sampleTypes) =>
+        sampleTypes.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Any(IsDoorSampleLabel);
+
+    private static bool ContainsLotSampleLabel(string sampleTypes) =>
+        sampleTypes.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Any(IsLotSampleLabel);
+
+    private static bool IsDoorSampleLabel(string value) =>
+        value.Contains("Door Sample", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("Door sample", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsLotSampleLabel(string value) =>
+        value.Contains("Lot Sample", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("Lot sample", StringComparison.OrdinalIgnoreCase);
 
     private static string AdjustmentBreakdownDecision(RoomInventoryAdjustment adjustment, bool included, IReadOnlyDictionary<int, DateTimeOffset> correctionCutoffs)
     {
