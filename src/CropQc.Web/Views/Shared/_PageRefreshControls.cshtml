@@ -1,0 +1,11 @@
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
+@{
+    var autoRefresh = string.Equals(ViewData["AutoRefresh"] as string, "true", StringComparison.OrdinalIgnoreCase);
+    var enabled = bool.TryParse(Configuration["PageRefresh:Enabled"], out var parsedEnabled) ? parsedEnabled : true;
+    var intervalSeconds = int.TryParse(Configuration["PageRefresh:IntervalSeconds"], out var parsedInterval) ? Math.Clamp(parsedInterval, 15, 300) : 20;
+}
+<div class="page-refresh-bar" data-page-refresh data-auto-refresh="@((autoRefresh && enabled).ToString().ToLowerInvariant())" data-refresh-interval-seconds="@intervalSeconds">
+    <button type="button" class="secondary-button" data-refresh-button>Refresh</button>
+    <span class="muted" data-refresh-status>Last updated: @DateTime.Now.ToString("h:mm:ss tt")</span>
+    <span class="notice warning page-refresh-dirty" data-refresh-dirty-warning hidden>New data may be available. Save or discard your changes to refresh.</span>
+</div>

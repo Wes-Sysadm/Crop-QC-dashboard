@@ -88,6 +88,17 @@
     <main class="page">
         @RenderBody()
     </main>
+    <dialog id="page-refresh-dialog">
+        <form method="dialog" class="stack-form">
+            <h2>Unsaved changes</h2>
+            <p>Save changes or discard changes before refreshing this page.</p>
+            <div class="button-row">
+                <button type="button" data-refresh-save>Save changes</button>
+                <button type="button" class="secondary-button" data-refresh-discard>Discard changes</button>
+                <button type="button" class="secondary-button" data-refresh-cancel>Cancel</button>
+            </div>
+        </form>
+    </dialog>
     <script>
         (() => {
             const dropdowns = document.querySelectorAll(".nav-dropdown");
@@ -108,6 +119,104 @@
                     });
                 });
             });
+        })();
+        (() => {
+            const bars = Array.from(document.querySelectorAll("[data-page-refresh]"));
+            if (bars.length === 0) return;
+            const dialog = document.querySelector("#page-refresh-dialog");
+
+            function status(bar, message) {
+                const target = bar.querySelector("[data-refresh-status]");
+                if (target) target.textContent = message;
+            }
+
+            function dirtyForms() {
+                return Array.from(document.querySelectorAll("form[data-dirty='true']"));
+            }
+
+            function isDirty() {
+                return dirtyForms().length > 0 || document.body.dataset.pageDirty === "true";
+            }
+
+            function setDirty(form, value) {
+                if (!form) {
+                    document.body.dataset.pageDirty = value ? "true" : "false";
+                    return;
+                }
+                form.dataset.dirty = value ? "true" : "false";
+            }
+
+            function reloadPage() {
+                sessionStorage.setItem("cropqc-refresh-scroll", String(window.scrollY));
+                window.location.reload();
+            }
+
+            function requestRefresh(bar, manual) {
+                const warning = bar.querySelector("[data-refresh-dirty-warning]");
+                if (isDirty()) {
+                    if (warning) warning.hidden = false;
+                    status(bar, manual ? "Refresh paused: unsaved changes." : "New data may be available.");
+                    if (manual && dialog) {
+                        dialog.showModal();
+                    }
+                    return;
+                }
+
+                if (warning) warning.hidden = true;
+                status(bar, "Refreshing...");
+                reloadPage();
+            }
+
+            document.addEventListener("input", event => {
+                const field = event.target;
+                if (!(field instanceof HTMLElement) || field.closest("#page-refresh-dialog")) return;
+                if (field.matches("input, select, textarea")) setDirty(field.closest("form"), true);
+            });
+            document.addEventListener("change", event => {
+                const field = event.target;
+                if (!(field instanceof HTMLElement) || field.closest("#page-refresh-dialog")) return;
+                if (field.matches("input, select, textarea")) setDirty(field.closest("form"), true);
+            });
+            document.addEventListener("submit", event => setDirty(event.target, false));
+            window.addEventListener("beforeunload", () => {
+                if (!isDirty()) return;
+                sessionStorage.removeItem("cropqc-refresh-scroll");
+            });
+            window.addEventListener("load", () => {
+                const scroll = sessionStorage.getItem("cropqc-refresh-scroll");
+                if (scroll) {
+                    sessionStorage.removeItem("cropqc-refresh-scroll");
+                    window.scrollTo(0, Number(scroll));
+                }
+            });
+
+            dialog?.querySelector("[data-refresh-cancel]")?.addEventListener("click", () => {
+                dialog.close();
+            });
+            dialog?.querySelector("[data-refresh-discard]")?.addEventListener("click", () => {
+                for (const form of dirtyForms()) setDirty(form, false);
+                setDirty(null, false);
+                dialog.close();
+                reloadPage();
+            });
+            dialog?.querySelector("[data-refresh-save]")?.addEventListener("click", () => {
+                const form = dirtyForms()[0];
+                if (!form) {
+                    dialog.close();
+                    reloadPage();
+                    return;
+                }
+                dialog.close();
+                form.requestSubmit();
+            });
+
+            for (const bar of bars) {
+                bar.querySelector("[data-refresh-button]")?.addEventListener("click", () => requestRefresh(bar, true));
+                if (bar.dataset.autoRefresh === "true") {
+                    const seconds = Number(bar.dataset.refreshIntervalSeconds || "20");
+                    window.setInterval(() => requestRefresh(bar, false), Math.max(15, seconds) * 1000);
+                }
+            }
         })();
     </script>
 </body>
