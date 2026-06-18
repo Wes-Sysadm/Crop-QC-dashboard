@@ -1,7 +1,19 @@
 Facility,SubLocation,CropQcRoomName,CompuTechRoomCode,Variety,LotNumber,BinCount,Source
-EBS,Evans,Evans-01,Evanca01,red,Sealed,1462,Wes Corrected Current Inventory 2026-06-15
-EBS,Evans,Evans-12,evanca12,Fuji,Sealed,1469,Wes Corrected Current Inventory 2026-06-15
-EBS,Lamb,Lamb-17,Lambca17,Pink,Sealed,1918,Wes Corrected Current Inventory 2026-06-15
-EBS,BM,BM-1,blueca01,red,Sealed,1178,Wes Corrected Current Inventory 2026-06-15
-EBS,BM,BM-4,Blueca04,red,Current,186,Wes Corrected Current Inventory 2026-06-15
-EBS,BM,BM-6,Blueca06,GSMT,Sealed,786,Wes Corrected Current Inventory 2026-06-15
+EBS,Evans,Evans-01,Evanca01,RED,9285,48,Wes Verified Current Inventory 2026-06-17
+EBS,Evans,Evans-01,Evanca01,RED,9490,13,Wes Verified Current Inventory 2026-06-17
+EBS,Evans,Evans-01,Evanca01,RED,9570,101,Wes Verified Current Inventory 2026-06-17
+EBS,Evans,Evans-01,Evanca01,RED,9660,1039,Wes Verified Current Inventory 2026-06-17
+EBS,Evans,Evans-12,evanca12,FUJI,1560,118,Wes Verified Current Inventory 2026-06-17
+EBS,Evans,Evans-12,evanca12,FUJI,1570,819,Wes Verified Current Inventory 2026-06-17
+EBS,Evans,Evans-12,evanca12,FUJI,1030,85,Wes Verified Current Inventory 2026-06-17
+EBS,Lamb,Lamb-17,Lambca17,PINK,1020,559,Wes Verified Current Inventory 2026-06-17
+EBS,Lamb,Lamb-17,Lambca17,PINK,1050,1359,Wes Verified Current Inventory 2026-06-17
+EBS,BM,BM-1,blueca01,RED,9510,264,Wes Verified Current Inventory 2026-06-17
+EBS,BM,BM-1,blueca01,RED,9550,306,Wes Verified Current Inventory 2026-06-17
+EBS,BM,BM-1,blueca01,RED,9560,608,Wes Verified Current Inventory 2026-06-17
+EBS,BM,BM-4,Blueca04,RED,Current,0,Wes Verified Current Inventory 2026-06-17
+EBS,BM,BM-6,Blueca06,GSMT,1290,281,Wes Verified Current Inventory 2026-06-17
+EBS,BM,BM-6,Blueca06,GSMT,1560,183,Wes Verified Current Inventory 2026-06-17
+EBS,BM,BM-6,Blueca06,GSMT,3200,3,Wes Verified Current Inventory 2026-06-17
+EBS,BM,BM-6,Blueca06,GSMT,9450,26,Wes Verified Current Inventory 2026-06-17
+EBS,BM,BM-6,Blueca06,GSMT,9750,21,Wes Verified Current Inventory 2026-06-17
