@@ -4,6 +4,7 @@
 }
 
 <h1>Dashboard</h1>
+@await Html.PartialAsync("_PageRefreshControls")
 @if (Model.DataWarning is not null)
 {
     <p class="notice warning">@Model.DataWarning</p>

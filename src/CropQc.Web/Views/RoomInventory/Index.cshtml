@@ -4,6 +4,7 @@
 }
 
 <h1>Current Lots / Room Inventory</h1>
+@await Html.PartialAsync("_PageRefreshControls")
 @if (TempData["Success"] is string success)
 {
     <p class="notice success">@success</p>

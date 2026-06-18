@@ -1,9 +1,11 @@
 @model ReceiptDetailViewModel
 @{
     ViewData["Title"] = "Receipt Detail";
+    ViewData["AutoRefresh"] = "true";
 }
 
 <h1>Receipt Detail</h1>
+@await Html.PartialAsync("_PageRefreshControls")
 @if (TempData["Success"] is string success)
 {
     <p class="notice success">@success</p>

@@ -1,9 +1,11 @@
 @model SampleDetailViewModel
 @using System.Text.Json
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 @{
     ViewData["Title"] = "QC Sample Detail";
     var defectOptionsJson = JsonSerializer.Serialize(Model.DefectTypes.Select(x => new { id = x.Id, name = x.Name }));
-    var refreshIntervalMs = 15000;
+    var pageRefreshEnabled = bool.TryParse(Configuration["PageRefresh:Enabled"], out var parsedRefreshEnabled) ? parsedRefreshEnabled : true;
+    var refreshIntervalMs = (int.TryParse(Configuration["PageRefresh:IntervalSeconds"], out var parsedRefreshInterval) ? Math.Clamp(parsedRefreshInterval, 15, 300) : 20) * 1000;
 }
 
 <h1>QC Sample Detail</h1>
@@ -124,8 +126,8 @@
                     }
                 </select>
             </label>
-            <button type="button" class="secondary-button" id="refresh-sample-data">Refresh sample data</button>
-            <span class="muted" id="sample-refresh-status" aria-live="polite"></span>
+            <button type="button" class="secondary-button" id="refresh-sample-data">Refresh</button>
+            <span class="muted" id="sample-refresh-status" aria-live="polite">Last updated: @DateTime.Now.ToString("h:mm:ss tt")</span>
         </div>
         <p class="notice warning" id="sample-size-warning" hidden>Reducing target sample size does not delete existing saved rows. Existing entered rows remain visible unless manually cleared.</p>
         <p class="notice warning" id="server-update-warning" hidden>New pressure data is available from QC Station. Save or discard your changes to refresh.</p>
@@ -238,11 +240,11 @@
 <dialog id="unsaved-dialog">
     <form method="dialog" class="stack-form">
         <h2>Unsaved changes</h2>
-        <p>You have unsaved QC sample changes.</p>
+        <p>You have unsaved QC sample changes. Save changes or discard changes before refreshing.</p>
         <div class="button-row">
-            <button type="button" id="save-then-navigate">Save Changes</button>
-            <button type="button" class="secondary-button" id="discard-then-navigate">Discard Changes</button>
-            <button type="button" class="secondary-button" id="stay-on-page">Cancel / Stay on Page</button>
+            <button type="button" id="save-then-navigate">Save changes</button>
+            <button type="button" class="secondary-button" id="discard-then-navigate">Discard changes</button>
+            <button type="button" class="secondary-button" id="stay-on-page">Cancel</button>
         </div>
     </form>
 </dialog>
@@ -250,6 +252,7 @@
 <script>
     (() => {
         const defects = @Html.Raw(defectOptionsJson);
+        const refreshEnabled = @JsonSerializer.Serialize(pageRefreshEnabled);
         const refreshIntervalMs = @refreshIntervalMs;
         const form = document.querySelector("#qc-rows-form");
         const refreshStatus = document.querySelector("#sample-refresh-status");
@@ -259,6 +262,7 @@
         const unsavedDialog = document.querySelector("#unsaved-dialog");
         let dirty = false;
         let pendingNavigation = null;
+        let pendingRefreshAfterSave = false;
 
         function setDirty(value) {
             dirty = value;
@@ -398,20 +402,32 @@
 
         document.querySelector("#stay-on-page")?.addEventListener("click", () => {
             pendingNavigation = null;
+            pendingRefreshAfterSave = false;
             unsavedDialog?.close();
         });
 
         document.querySelector("#discard-then-navigate")?.addEventListener("click", () => {
             setDirty(false);
             unsavedDialog?.close();
+            if (pendingRefreshAfterSave) {
+                pendingRefreshAfterSave = false;
+                refreshSampleData(true);
+                return;
+            }
             if (pendingNavigation) window.location.href = pendingNavigation;
         });
 
         document.querySelector("#save-then-navigate")?.addEventListener("click", async () => {
-            if (!form || !pendingNavigation) return;
+            if (!form || (!pendingNavigation && !pendingRefreshAfterSave)) return;
             const response = await fetch(form.action, { method: "POST", body: new FormData(form), credentials: "same-origin" });
             if (response.ok) {
                 setDirty(false);
+                if (pendingRefreshAfterSave) {
+                    pendingRefreshAfterSave = false;
+                    unsavedDialog?.close();
+                    await refreshSampleData(true);
+                    return;
+                }
                 window.location.href = pendingNavigation;
             } else {
                 showStatus("Save failed. Stay on this page and try again.");
@@ -450,7 +466,12 @@
             if (!form) return;
             if (dirty) {
                 if (serverUpdateWarning) serverUpdateWarning.hidden = false;
-                if (manual) showStatus("Save or discard changes before refreshing.");
+                if (manual) {
+                    pendingNavigation = null;
+                    pendingRefreshAfterSave = true;
+                    unsavedDialog?.showModal();
+                    showStatus("Refresh paused: unsaved changes.");
+                }
                 return;
             }
 
@@ -463,11 +484,11 @@
             const data = await response.json();
             updateRows(data.rows);
             if (serverUpdateWarning) serverUpdateWarning.hidden = true;
-            showStatus("Updated from QC Station.");
+            showStatus(`Updated from QC Station. Last updated: ${new Date().toLocaleTimeString()}`);
         }
 
         document.querySelector("#refresh-sample-data")?.addEventListener("click", () => refreshSampleData(true));
-        if (form) {
+        if (form && refreshEnabled) {
             window.setInterval(() => refreshSampleData(false), refreshIntervalMs);
         }
     })();
