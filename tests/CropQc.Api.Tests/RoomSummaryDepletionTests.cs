@@ -240,19 +240,21 @@ public sealed class RoomSummaryDepletionTests
             .Select(line => line.Split(','))
             .ToList();
 
-        Assert.Equal(6, rows.Count);
+        Assert.Equal(18, rows.Count);
         Assert.StartsWith("Facility,SubLocation,CropQcRoomName,CompuTechRoomCode", csv);
         Assert.Equal(0, SumBins(rows, "evans-5"));
-        Assert.Equal(1469, SumBins(rows, "Evans-12"));
-        Assert.Equal(186, SumBins(rows, "BM-4"));
+        Assert.Equal(1022, SumBins(rows, "Evans-12"));
+        Assert.Equal(0, SumBins(rows, "BM-4"));
         Assert.Equal(1178, SumBins(rows, "BM-1"));
-        Assert.Equal(1462, SumBins(rows, "Evans-01"));
+        Assert.Equal(1201, SumBins(rows, "Evans-01"));
         Assert.Equal(1918, SumBins(rows, "Lamb-17"));
-        Assert.Equal(786, SumBins(rows, "BM-6"));
-        Assert.Contains("EBS,Evans,Evans-12,evanca12", csv);
-        Assert.Contains("EBS,BM,BM-1,blueca01", csv);
-        Assert.Contains("EBS,BM,BM-6,Blueca06,GSMT,Sealed,786", csv);
-        Assert.Contains("Wes Corrected Current Inventory 2026-06-15", csv);
+        Assert.Equal(514, SumBins(rows, "BM-6"));
+        Assert.Contains("EBS,Evans,Evans-12,evanca12,FUJI,1570,819", csv);
+        Assert.Contains("EBS,Evans,Evans-01,Evanca01,RED,9660,1039", csv);
+        Assert.Contains("EBS,Lamb,Lamb-17,Lambca17,PINK,1020,559", csv);
+        Assert.Contains("EBS,BM,BM-1,blueca01,RED,9560,608", csv);
+        Assert.Contains("EBS,BM,BM-6,Blueca06,GSMT,1290,281", csv);
+        Assert.Contains("Wes Verified Current Inventory 2026-06-17", csv);
     }
 
     [Fact]
@@ -425,12 +427,12 @@ public sealed class RoomSummaryDepletionTests
             .Select(line => line.Split(','))
             .ToList();
 
-        Assert.Equal(1462, SumBins(rows, "Evans-01"));
-        Assert.Equal(1469, SumBins(rows, "Evans-12"));
+        Assert.Equal(1201, SumBins(rows, "Evans-01"));
+        Assert.Equal(1022, SumBins(rows, "Evans-12"));
         Assert.Equal(1918, SumBins(rows, "Lamb-17"));
         Assert.Equal(1178, SumBins(rows, "BM-1"));
-        Assert.Equal(186, SumBins(rows, "BM-4"));
-        Assert.Equal(786, SumBins(rows, "BM-6"));
+        Assert.Equal(0, SumBins(rows, "BM-4"));
+        Assert.Equal(514, SumBins(rows, "BM-6"));
     }
 
     [Fact]

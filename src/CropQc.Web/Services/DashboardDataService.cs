@@ -2063,8 +2063,10 @@ public sealed class DashboardDataService(
             .OrderByDescending(x => x.AdjustmentAt)
             .ThenByDescending(x => x.Id)
             .ToListAsync(cancellationToken);
+        var adjustmentCorrectionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
         var includedAdjustmentIds = adjustments
             .Where(IsAdjustmentOnlyCurrentStorageSource)
+            .Where(x => !IsSupersededByRoomCurrentBalanceCorrection(x, adjustmentCorrectionCutoffs))
             .GroupBy(x => RoomInventoryImportService.CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? ""), StringComparer.OrdinalIgnoreCase)
             .Select(x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First())
             .Where(x => x.NewBinCount > 0)
@@ -2086,7 +2088,7 @@ public sealed class DashboardDataService(
                 Status = adjustment.NewBinCount > 0 ? "Current" : "Zero",
                 Date = adjustment.AdjustmentAt,
                 IsIncluded = included,
-                DecisionReason = AdjustmentBreakdownDecision(adjustment, included)
+                DecisionReason = AdjustmentBreakdownDecision(adjustment, included, adjustmentCorrectionCutoffs)
             };
         }));
 
@@ -2285,7 +2287,9 @@ public sealed class DashboardDataService(
         }
 
         var adjustments = await query.ToListAsync(cancellationToken);
+        var correctionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
         return adjustments
+            .Where(x => !IsSupersededByRoomCurrentBalanceCorrection(x, correctionCutoffs))
             .GroupBy(x => RoomInventoryImportService.CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? ""), StringComparer.OrdinalIgnoreCase)
             .Select(x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First())
             .Where(x => x.NewBinCount > 0)
@@ -2479,6 +2483,10 @@ public sealed class DashboardDataService(
         correctionCutoffs.TryGetValue(receipt.RoomId, out var cutoff)
         && receipt.ReceivedAt <= cutoff;
 
+    private static bool IsSupersededByRoomCurrentBalanceCorrection(RoomInventoryAdjustment adjustment, IReadOnlyDictionary<int, DateTimeOffset> correctionCutoffs) =>
+        correctionCutoffs.TryGetValue(adjustment.RoomId, out var cutoff)
+        && adjustment.AdjustmentAt < cutoff;
+
     private static string ReceiptDedupeKey(Receipt receipt) =>
         !string.IsNullOrWhiteSpace(receipt.CompuTechReceiptId)
             ? $"Receipt:{receipt.CompuTechReceiptId.Trim()}"
@@ -2519,8 +2527,13 @@ public sealed class DashboardDataService(
             : "Excluded: duplicate receipt row; latest matching receipt row is counted.";
     }
 
-    private static string AdjustmentBreakdownDecision(RoomInventoryAdjustment adjustment, bool included)
+    private static string AdjustmentBreakdownDecision(RoomInventoryAdjustment adjustment, bool included, IReadOnlyDictionary<int, DateTimeOffset> correctionCutoffs)
     {
+        if (!included && IsSupersededByRoomCurrentBalanceCorrection(adjustment, correctionCutoffs))
+        {
+            return "Excluded: superseded by the latest room current-balance correction.";
+        }
+
         if (included && IsCurrentBalanceCorrection(adjustment))
         {
             return "Included: current-balance correction is authoritative for this room as of its date.";
