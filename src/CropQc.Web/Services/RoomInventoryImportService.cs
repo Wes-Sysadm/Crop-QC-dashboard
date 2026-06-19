@@ -114,7 +114,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
             });
         }
 
-        await UpdateEbsRoomMetadataAsync(preview.Rows.Where(x => x.Action is "Add" or "Update" or "Unchanged"), cancellationToken);
+        await UpdateEbsRoomMetadataAsync(preview.Rows.Where(x => x.Action is "Add" or "Update" or "Replace" or "Unchanged"), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return (preview, null);
     }
@@ -134,7 +134,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
                 CsvText = "",
                 IsBuiltInSeed = isBuiltInSeed,
                 InvalidCount = 1,
-                Rows = [new() { RowNumber = 0, Action = "Invalid", Message = "Upload a CSV or use the built-in EBS current inventory baseline file." }]
+                Rows = [Invalid(new() { RowNumber = 0 }, "File", "Upload a CSV or use the built-in EBS current inventory baseline file.")]
             };
         }
 
@@ -146,7 +146,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
                 CsvText = csvText,
                 IsBuiltInSeed = isBuiltInSeed,
                 InvalidCount = 1,
-                Rows = [new() { RowNumber = 0, Action = "Invalid", Message = "CSV must include a header row and at least one inventory row." }]
+                Rows = [Invalid(new() { RowNumber = 0 }, "File", "CSV must include a header row and at least one inventory row.")]
             };
         }
 
@@ -178,7 +178,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
                 CsvText = csvText,
                 IsBuiltInSeed = isBuiltInSeed,
                 InvalidCount = 1,
-                Rows = [new() { RowNumber = 0, Action = "Invalid", Message = $"CSV headers are missing required column(s): {string.Join(", ", missingHeaders)}. Required format: {TemplateHeader}." }]
+                Rows = [Invalid(new() { RowNumber = 0 }, "Headers", $"CSV headers are missing required column(s): {string.Join(", ", missingHeaders)}. Required format: {TemplateHeader}.")]
             };
         }
 
@@ -245,31 +245,38 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
 
             if (string.IsNullOrWhiteSpace(facility) || string.IsNullOrWhiteSpace(compuTechRoomCode) || string.IsNullOrWhiteSpace(variety) || string.IsNullOrWhiteSpace(lotNumber) || string.IsNullOrWhiteSpace(cropYearText) || string.IsNullOrWhiteSpace(effectiveDateText))
             {
-                previewRows.Add(Invalid(row, $"CropYear, Warehouse, RoomCode, Lot, Variety, Bins, and EffectiveDate are required. Read values: CropYear={DisplayOrDash(cropYearText)}, Warehouse={DisplayOrDash(facility)}, RoomCode={DisplayOrDash(compuTechRoomCode)}, Lot={DisplayOrDash(lotNumber)}, Variety={DisplayOrDash(variety)}, Bins={DisplayOrDash(binText)}, EffectiveDate={DisplayOrDash(effectiveDateText)}."));
+                previewRows.Add(Invalid(row, MissingRequiredColumn(
+                    (cropYearText, "CropYear"),
+                    (facility, "Warehouse"),
+                    (compuTechRoomCode, "RoomCode"),
+                    (lotNumber, "Lot"),
+                    (variety, "Variety"),
+                    (binText, "Bins"),
+                    (effectiveDateText, "EffectiveDate")), $"CropYear, Warehouse, RoomCode, Lot, Variety, Bins, and EffectiveDate are required. Read values: CropYear={DisplayOrDash(cropYearText)}, Warehouse={DisplayOrDash(facility)}, RoomCode={DisplayOrDash(compuTechRoomCode)}, Lot={DisplayOrDash(lotNumber)}, Variety={DisplayOrDash(variety)}, Bins={DisplayOrDash(binText)}, EffectiveDate={DisplayOrDash(effectiveDateText)}."));
                 continue;
             }
 
             if (!IsValidCropYear(cropYearText))
             {
-                previewRows.Add(Invalid(row, "CropYear must be a four-digit year."));
+                previewRows.Add(Invalid(row, "CropYear", "CropYear must be a four-digit year."));
                 continue;
             }
 
             if (!int.TryParse(binText, out var binCount) || binCount < 0)
             {
-                previewRows.Add(Invalid(row, "Bins must be zero or a positive whole number."));
+                previewRows.Add(Invalid(row, "Bins", $"Bins must be zero or a positive whole number. Read value: {DisplayOrDash(binText)}."));
                 continue;
             }
 
             if (!IsValidEffectiveDate(effectiveDateText))
             {
-                previewRows.Add(Invalid(row, "EffectiveDate must use YYYY-MM-DD format."));
+                previewRows.Add(Invalid(row, "EffectiveDate", $"EffectiveDate must use YYYY-MM-DD format. Read value: {DisplayOrDash(effectiveDateText)}."));
                 continue;
             }
 
             if (!IsValidStatus(status))
             {
-                previewRows.Add(Invalid(row, "Status must be blank, Sealed, or Open."));
+                previewRows.Add(Invalid(row, "Status", $"Status must be blank, Sealed, or Open. Read value: {DisplayOrDash(status)}."));
                 continue;
             }
 
@@ -280,7 +287,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
                 .FirstOrDefault(x => string.Equals(x.Code, facility, StringComparison.OrdinalIgnoreCase));
             if (warehouse is null)
             {
-                previewRows.Add(Invalid(row, $"Warehouse {facility} was not found in Master Data."));
+                previewRows.Add(Invalid(row, "Warehouse", $"Warehouse {facility} was not found in Master Data."));
                 continue;
             }
 
@@ -292,7 +299,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
                 ?? rooms.FirstOrDefault(x => x.WarehouseId == warehouse.Id && string.Equals(x.Code, mappedRoomCode, StringComparison.OrdinalIgnoreCase));
             if (room is null)
             {
-                previewRows.Add(Invalid(row, $"Room {cropQcRoomName} / Compu-Tech code {compuTechRoomCode} was not recognized. Expected mappings include evanca05 -> Evans-5, evanca12 -> Evans-12, Blueca04 -> BM-4, blueca01 -> BM-1, Evanca01 -> Evans-01, and Lambca17 -> Lamb-17."));
+                previewRows.Add(Invalid(row, "RoomCode", $"RoomCode {compuTechRoomCode} was not recognized. Expected mappings include evanca05 -> Evans-5, evanca12 -> Evans-12, Blueca04 -> BM-4, blueca01 -> BM-1, Evanca01 -> Evans-01, and Lambca17 -> Lamb-17."));
                 continue;
             }
 
@@ -301,7 +308,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
             var uploadKey = BaselineBatchKey(row.CropYear, row.RoomId.Value, lotNumber, row.Variety, row.EffectiveDate);
             if (seenRows.TryGetValue(uploadKey, out var firstRow))
             {
-                previewRows.Add(Invalid(row, $"Duplicate inventory row conflicts with CSV row {firstRow}.", "Duplicate"));
+                previewRows.Add(Invalid(row, "Lot", $"Duplicate inventory row conflicts with CSV row {firstRow}.", "Duplicate"));
                 continue;
             }
             seenRows.Add(uploadKey, rowNumber);
@@ -541,12 +548,25 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         return await reader.ReadToEndAsync(cancellationToken);
     }
 
-    private static RoomInventoryImportPreviewRow Invalid(RoomInventoryImportPreviewRow row, string message, string action = "Invalid")
+    public static RoomInventoryImportPreviewViewModel ServerFailurePreview(string referenceId, string safeMessage) => new()
     {
+        InvalidCount = 1,
+        Rows =
+        [
+            Invalid(new RoomInventoryImportPreviewRow { RowNumber = 0 }, "Server", $"Import failed before it could complete. Reference {referenceId}. {safeMessage}")
+        ]
+    };
+
+    private static RoomInventoryImportPreviewRow Invalid(RoomInventoryImportPreviewRow row, string column, string message, string action = "Invalid")
+    {
+        row.Column = column;
         row.Action = action;
         row.Message = message;
         return row;
     }
+
+    private static string MissingRequiredColumn(params (string Value, string Column)[] values) =>
+        values.FirstOrDefault(x => string.IsNullOrWhiteSpace(x.Value)).Column ?? "Required";
 
     private static string StartingInventoryKey(RoomInventoryAdjustment adjustment) =>
         CurrentStorageLotKey(adjustment.RoomId, adjustment.LotNumber, adjustment.VarietyCode ?? "");

@@ -101,6 +101,7 @@
                     <thead>
                     <tr>
                         <th class="compact-cell">Row</th>
+                        <th>Column</th>
                         <th>Crop Year</th>
                         <th>Action</th>
                         <th>Facility</th>
@@ -123,6 +124,7 @@
                     {
                         <tr>
                             <td class="compact-cell">@row.RowNumber</td>
+                            <td>@(string.IsNullOrWhiteSpace(row.Column) ? "-" : row.Column)</td>
                             <td>@row.CropYear</td>
                             <td><span class="status @StatusClass(row.Action, row.IsWarning)">@row.Action</span></td>
                             <td>@row.Facility</td>

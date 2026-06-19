@@ -98,6 +98,28 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
     }
 
     [Fact]
+    public async Task CurrentInventoryBaselineImport_ValidImportAppliesBaseline()
+    {
+        await using var db = CreateDbContext();
+        SeedImportMasterData(db);
+        var service = CreateImportService(db);
+        var csv = """
+CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
+2025,EBS,evanca12,,1560,Fuji,118,Sealed,2026-06-18,Wes verified baseline
+2025,EBS,evanca12,,1570,Fuji,819,Sealed,2026-06-18,Wes verified baseline
+2025,EBS,evanca12,,1030,Fuji,85,Sealed,2026-06-18,Wes verified baseline
+""";
+
+        var result = await service.ApplyAsync(new RoomInventoryImportForm { CsvText = csv, ConfirmImport = true }, "wes@fruitandland.com", CancellationToken.None);
+
+        Assert.Null(result.Error);
+        Assert.Equal(3, await db.RoomInventoryAdjustments.CountAsync(CancellationToken.None));
+        var current = await CreateService(db).GetRoomDetailAsync(12, CancellationToken.None);
+        Assert.Equal(1022, current.Summary?.CurrentBinsCount);
+        Assert.Equal("FUJI Sealed: 1022 bins", current.Summary?.VarietyStatusSummary);
+    }
+
+    [Fact]
     public async Task CurrentInventoryBaselineImport_BadColumnsShowValidationError()
     {
         await using var db = CreateDbContext();
@@ -114,7 +136,70 @@ EBS,EVANCA12,1570,FUJI,819
 
         Assert.False(preview.CanApply);
         Assert.Equal(1, preview.InvalidCount);
-        Assert.Contains(preview.Rows, x => x.Message.Contains("CropYear", StringComparison.OrdinalIgnoreCase) && x.Message.Contains("EffectiveDate", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(preview.Rows, x => x.Column == "Headers" && x.Message.Contains("CropYear", StringComparison.OrdinalIgnoreCase) && x.Message.Contains("EffectiveDate", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task CurrentInventoryBaselineImport_InvalidBinsShowsRowAndColumn()
+    {
+        await using var db = CreateDbContext();
+        SeedImportMasterData(db);
+        var service = CreateImportService(db);
+
+        var preview = await service.PreviewAsync(new RoomInventoryImportForm
+        {
+            CsvText = """
+CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
+2025,EBS,EVANCA12,,1570,FUJI,not-a-number,Sealed,2026-06-18,Wes verified baseline
+"""
+        }, CancellationToken.None);
+
+        var error = Assert.Single(preview.Rows);
+        Assert.Equal(2, error.RowNumber);
+        Assert.Equal("Bins", error.Column);
+        Assert.Contains("not-a-number", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CurrentInventoryBaselineImport_InvalidDateShowsRowAndColumn()
+    {
+        await using var db = CreateDbContext();
+        SeedImportMasterData(db);
+        var service = CreateImportService(db);
+
+        var preview = await service.PreviewAsync(new RoomInventoryImportForm
+        {
+            CsvText = """
+CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
+2025,EBS,EVANCA12,,1570,FUJI,819,Sealed,06/18/2026,Wes verified baseline
+"""
+        }, CancellationToken.None);
+
+        var error = Assert.Single(preview.Rows);
+        Assert.Equal(2, error.RowNumber);
+        Assert.Equal("EffectiveDate", error.Column);
+        Assert.Contains("YYYY-MM-DD", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CurrentInventoryBaselineImport_UnknownRoomCodeShowsClearRowError()
+    {
+        await using var db = CreateDbContext();
+        SeedImportMasterData(db);
+        var service = CreateImportService(db);
+
+        var preview = await service.PreviewAsync(new RoomInventoryImportForm
+        {
+            CsvText = """
+CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
+2025,EBS,UNKNOWN99,,1570,FUJI,819,Sealed,2026-06-18,Wes verified baseline
+"""
+        }, CancellationToken.None);
+
+        var error = Assert.Single(preview.Rows);
+        Assert.Equal(2, error.RowNumber);
+        Assert.Equal("RoomCode", error.Column);
+        Assert.Contains("UNKNOWN99", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -134,6 +219,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         var secondPreview = await service.PreviewAsync(new RoomInventoryImportForm { CsvText = csv }, CancellationToken.None);
         Assert.False(secondPreview.CanApply);
         Assert.Equal(1, secondPreview.UnchangedCount);
+        Assert.Equal(819, secondPreview.RoomTotals.Single().BinCount);
 
         var changedCsv = csv.Replace(",819,", ",820,", StringComparison.Ordinal);
         var replacement = await service.ApplyAsync(new RoomInventoryImportForm { CsvText = changedCsv, ConfirmImport = true }, "wes@fruitandland.com", CancellationToken.None);
@@ -145,6 +231,21 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         Assert.Equal(2, await db.RoomInventoryAdjustments.CountAsync(CancellationToken.None));
         var current = await CreateService(db).GetRoomDetailAsync(12, CancellationToken.None);
         Assert.Equal(820, current.Summary?.CurrentBinsCount);
+    }
+
+    [Fact]
+    public void CurrentInventoryBaselineImport_PageDoesNotOnlyShowGenericError()
+    {
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "RoomInventoryController.cs"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "RoomInventoryImportService.cs"));
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "RoomInventory", "Index.cshtml"));
+
+        Assert.Contains("logger.LogError(exception", controller);
+        Assert.Contains("ImportFailureAsync", controller);
+        Assert.Contains("ServerFailurePreview", service);
+        Assert.Contains("<th>Column</th>", view);
+        Assert.Contains("row.Column", view);
+        Assert.Contains("Import failed before it could complete", service);
     }
 
     [Fact]
