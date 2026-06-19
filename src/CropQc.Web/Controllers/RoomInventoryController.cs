@@ -11,8 +11,17 @@ namespace CropQc.Web.Controllers;
 public sealed class RoomInventoryController(IRoomInventoryImportService roomInventoryImportService, IAdminAuthorizationService authorizationService, ILogger<RoomInventoryController> logger) : Controller
 {
     [HttpGet("")]
-    public async Task<IActionResult> Index([FromQuery] RoomInventoryImportForm filter, CancellationToken cancellationToken) =>
-        View(await roomInventoryImportService.GetPageAsync(filter, cancellationToken));
+    public async Task<IActionResult> Index([FromQuery] RoomInventoryImportForm filter, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return View(await roomInventoryImportService.GetPageAsync(filter, cancellationToken));
+        }
+        catch (Exception ex)
+        {
+            return CurrentLotsFailure(filter, ex, "load");
+        }
+    }
 
     [HttpGet("Template")]
     public IActionResult Template() =>
@@ -98,6 +107,28 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
         var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
         model.ImportPreview = RoomInventoryImportService.ServerFailurePreview(referenceId, "The full server error was logged without exposing secrets.");
         return View("Index", model);
+    }
+
+    private IActionResult CurrentLotsFailure(RoomInventoryImportForm form, Exception exception, string stage)
+    {
+        var referenceId = Guid.NewGuid().ToString("N")[..10];
+        logger.LogError(exception, "Current Lots {Stage} failed. Reference {ReferenceId}.", stage, referenceId);
+        return View("Index", new RoomInventoryImportPageViewModel
+        {
+            Form = form,
+            CsvTemplateHeader = roomInventoryImportService.GetCsvTemplate().Trim(),
+            CsvExample = roomInventoryImportService.GetCsvExample(),
+            CurrentLotWarning = $"Current Lots could not fully load during {stage}. Reference {referenceId}. The full exception was logged without exposing secrets.",
+            CurrentLotBreakdown =
+            [
+                new CurrentInventorySourceRowViewModel
+                {
+                    SourceType = "Server",
+                    IsIncluded = false,
+                    DecisionReason = $"Current Lots failed before row details could be loaded. Reference {referenceId}. Check the server log for failed room code, grower/lot/variety, room mapping, duplicate/current balance conflict, or null/format details."
+                }
+            ]
+        });
     }
 
     private bool CanApplyEbsCorrectionSeed() =>

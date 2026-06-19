@@ -33,10 +33,17 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
 
     public async Task<RoomInventoryImportPageViewModel> GetPageAsync(RoomInventoryImportForm filter, CancellationToken cancellationToken)
     {
+        filter.Facility = string.IsNullOrWhiteSpace(filter.Facility) ? "All" : filter.Facility;
+        filter.EbsLocation = string.IsNullOrWhiteSpace(filter.EbsLocation) ? "All EBS" : filter.EbsLocation;
+        var (currentLots, breakdown) = await GetCurrentLotsAsync(filter, cancellationToken);
         return new RoomInventoryImportPageViewModel
         {
             Form = filter,
-            CurrentLots = await GetCurrentLotsAsync(filter, cancellationToken),
+            CurrentLots = currentLots,
+            CurrentLotBreakdown = breakdown,
+            CurrentLotWarning = breakdown.Any(x => !x.IsIncluded) || (currentLots.Count == 0 && breakdown.Count > 0)
+                ? "Some current inventory source rows were excluded. Review the source breakdown below for row-level room, lot, variety, duplicate, and format details."
+                : null,
             CsvTemplateHeader = TemplateHeader,
             CsvExample = ExampleCsv
         };
@@ -414,29 +421,51 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         };
     }
 
-    private async Task<IReadOnlyList<RoomInventoryCurrentLotViewModel>> GetCurrentLotsAsync(RoomInventoryImportForm filter, CancellationToken cancellationToken)
+    private async Task<(IReadOnlyList<RoomInventoryCurrentLotViewModel> Lots, IReadOnlyList<CurrentInventorySourceRowViewModel> Breakdown)> GetCurrentLotsAsync(RoomInventoryImportForm filter, CancellationToken cancellationToken)
     {
         var adjustments = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Include(x => x.Warehouse)
             .Include(x => x.Room)
                 .ThenInclude(x => x.Warehouse)
             .Where(x => x.ReceiptId == null && x.AdjustmentType == StartingInventoryAdjustmentType)
             .ToListAsync(cancellationToken);
-        var latest = adjustments
-            .GroupBy(StartingInventoryKey)
-            .Select(x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First())
+        var validAdjustments = adjustments
+            .Where(x => CurrentLotInvalidReason(x) is null)
+            .ToList();
+        var includedIds = validAdjustments
+            .GroupBy(StartingInventoryKey, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(x =>
+            {
+                var latestEffectiveDate = x.Max(y => y.AdjustmentAt);
+                var latestRows = x.Where(y => y.AdjustmentAt == latestEffectiveDate).ToList();
+                var latestCreatedAt = latestRows.Max(y => y.CreatedAt);
+                return latestRows.Where(y => y.CreatedAt == latestCreatedAt && y.NewBinCount > 0);
+            })
+            .Select(x => x.Id)
+            .ToHashSet();
+        var breakdown = adjustments
+            .OrderByDescending(x => includedIds.Contains(x.Id))
+            .ThenBy(x => x.Room?.Warehouse?.Code ?? x.Warehouse?.Code ?? "")
+            .ThenBy(x => x.Room?.Code ?? x.SourceRoomCode ?? "")
+            .ThenBy(x => x.LotNumber ?? "")
+            .ThenBy(x => x.Id)
+            .Select(x => CurrentLotBreakdownRow(x, includedIds))
+            .ToList();
+        var latest = validAdjustments
+            .Where(x => includedIds.Contains(x.Id))
             .Where(x => x.NewBinCount > 0)
             .Select(x => new RoomInventoryCurrentLotViewModel
             {
                 RoomId = x.RoomId,
                 CropYear = x.CropYear,
-                Facility = x.Warehouse.Code,
+                Facility = x.Room.Warehouse.Code,
                 SubLocation = !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : DetermineEbsSubLocation(x.Room.CropQcRoomName ?? x.Room.Code, x.SourceRoomCode ?? x.Room.CompuTechRoomCode ?? ""),
                 CropQcRoomName = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
                 CompuTechRoomCode = x.SourceRoomCode ?? x.Room.CompuTechRoomCode ?? "",
                 RoomCode = x.Room.CropQcRoomName ?? x.Room.Code,
                 MasterRoomCode = x.Room.Code,
-                Grower = x.GrowerName,
-                LotNumber = x.LotNumber,
+                Grower = x.GrowerName ?? "",
+                LotNumber = x.LotNumber ?? "",
                 PoolStart = x.PoolStart ?? "",
                 Variety = x.VarietyCode ?? "",
                 InventoryStatus = x.InventoryStatus ?? "",
@@ -460,31 +489,104 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
 
         if (!string.IsNullOrWhiteSpace(filter.RoomCode))
         {
-            latest = latest.Where(x => x.CropQcRoomName.Contains(filter.RoomCode, StringComparison.OrdinalIgnoreCase) || x.CompuTechRoomCode.Contains(filter.RoomCode, StringComparison.OrdinalIgnoreCase) || x.MasterRoomCode.Contains(filter.RoomCode, StringComparison.OrdinalIgnoreCase)).ToList();
+            latest = latest.Where(x => ContainsIgnoreCase(x.CropQcRoomName, filter.RoomCode) || ContainsIgnoreCase(x.CompuTechRoomCode, filter.RoomCode) || ContainsIgnoreCase(x.MasterRoomCode, filter.RoomCode)).ToList();
         }
 
         if (!string.IsNullOrWhiteSpace(filter.LotNumber))
         {
-            latest = latest.Where(x => x.LotNumber.Contains(filter.LotNumber, StringComparison.OrdinalIgnoreCase)).ToList();
+            latest = latest.Where(x => ContainsIgnoreCase(x.LotNumber, filter.LotNumber)).ToList();
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Grower))
         {
-            latest = latest.Where(x => x.Grower.Contains(filter.Grower, StringComparison.OrdinalIgnoreCase)).ToList();
+            latest = latest.Where(x => ContainsIgnoreCase(x.Grower, filter.Grower)).ToList();
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Variety))
         {
-            latest = latest.Where(x => x.Variety.Contains(filter.Variety, StringComparison.OrdinalIgnoreCase)).ToList();
+            latest = latest.Where(x => ContainsIgnoreCase(x.Variety, filter.Variety)).ToList();
         }
 
-        return latest
+        return (latest
             .OrderBy(x => x.Facility)
             .ThenBy(x => x.SubLocation)
             .ThenBy(x => x.RoomCode, StringComparer.OrdinalIgnoreCase)
             .ThenBy(x => x.LotNumber)
-            .ToList();
+            .ToList(),
+            breakdown);
     }
+
+    private static string? CurrentLotInvalidReason(RoomInventoryAdjustment adjustment)
+    {
+        if (adjustment.Room is null)
+        {
+            return $"Invalid baseline row: missing room mapping for RoomId {adjustment.RoomId} / source room {DisplayOrDash(adjustment.SourceRoomCode ?? "")}.";
+        }
+
+        if (adjustment.Room.Warehouse is null)
+        {
+            return $"Invalid baseline row: missing warehouse mapping for room {adjustment.Room.Code}.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(adjustment.SourceRoomCode)
+            && !string.Equals(NormalizeCode(adjustment.SourceRoomCode), NormalizeCode(adjustment.Room.CompuTechRoomCode ?? ""), StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(NormalizeCode(adjustment.SourceRoomCode), NormalizeCode(adjustment.Room.Code), StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(MasterRoomCodeFor(adjustment.Room.CropQcRoomName ?? adjustment.Room.DisplayName ?? adjustment.Room.Code, adjustment.SourceRoomCode), adjustment.Room.Code, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"Invalid baseline row: source RoomCode {adjustment.SourceRoomCode} does not map to room {adjustment.Room.Code}.";
+        }
+
+        if (string.IsNullOrWhiteSpace(adjustment.LotNumber))
+        {
+            return $"Invalid baseline row: missing lot for room {adjustment.Room.Code}.";
+        }
+
+        if (string.IsNullOrWhiteSpace(adjustment.VarietyCode))
+        {
+            return $"Invalid baseline row: missing variety for room {adjustment.Room.Code}, lot {adjustment.LotNumber}.";
+        }
+
+        if (adjustment.NewBinCount < 0)
+        {
+            return $"Invalid baseline row: invalid bin count {adjustment.NewBinCount} for room {adjustment.Room.Code}, lot {adjustment.LotNumber}.";
+        }
+
+        return null;
+    }
+
+    private static CurrentInventorySourceRowViewModel CurrentLotBreakdownRow(RoomInventoryAdjustment adjustment, IReadOnlySet<long> includedIds)
+    {
+        var invalidReason = CurrentLotInvalidReason(adjustment);
+        var included = invalidReason is null && includedIds.Contains(adjustment.Id);
+        return new CurrentInventorySourceRowViewModel
+        {
+            SourceType = BreakdownSourceType(adjustment),
+            SourceId = adjustment.Id,
+            RoomCode = adjustment.Room?.Code ?? DisplayOrDash(adjustment.SourceRoomCode ?? ""),
+            CompuTechRoomCode = adjustment.SourceRoomCode ?? adjustment.Room?.CompuTechRoomCode ?? "",
+            Grower = adjustment.GrowerName ?? "",
+            Lot = adjustment.LotNumber ?? "",
+            Variety = adjustment.VarietyCode ?? "",
+            Bins = Math.Max(0, adjustment.NewBinCount),
+            Status = adjustment.InventoryStatus ?? "",
+            Date = adjustment.AdjustmentAt,
+            IsIncluded = included,
+            DecisionReason = invalidReason
+                ?? (included
+                    ? "Included: current inventory baseline row."
+                    : "Excluded: duplicate/current balance conflict; a newer row for the same room, lot, and variety is counted.")
+        };
+    }
+
+    private static string BreakdownSourceType(RoomInventoryAdjustment adjustment) =>
+        adjustment.AdjustmentType == StartingInventoryAdjustmentType
+            ? "Current Inventory Baseline"
+            : adjustment.AdjustmentType;
+
+    private static bool ContainsIgnoreCase(string? value, string? search) =>
+        !string.IsNullOrWhiteSpace(value)
+        && !string.IsNullOrWhiteSpace(search)
+        && value.Contains(search, StringComparison.OrdinalIgnoreCase);
 
     private async Task UpdateEbsRoomMetadataAsync(IEnumerable<RoomInventoryImportPreviewRow> rows, CancellationToken cancellationToken)
     {

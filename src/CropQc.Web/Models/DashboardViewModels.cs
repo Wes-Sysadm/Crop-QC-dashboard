@@ -215,10 +215,12 @@ public sealed class RoomInventoryImportPageViewModel
     public RoomInventoryImportForm Form { get; set; } = new();
     public RoomInventoryImportPreviewViewModel? ImportPreview { get; set; }
     public IReadOnlyList<RoomInventoryCurrentLotViewModel> CurrentLots { get; set; } = [];
+    public IReadOnlyList<CurrentInventorySourceRowViewModel> CurrentLotBreakdown { get; set; } = [];
     public IReadOnlyList<string> FacilityOptions { get; set; } = ["All", "MCD", "WP", "EBS", "DH"];
     public IReadOnlyList<string> EbsLocationOptions { get; set; } = ["All EBS", "Evans", "Lamb", "BM"];
     public string CsvTemplateHeader { get; set; } = "";
     public string CsvExample { get; set; } = "";
+    public string? CurrentLotWarning { get; set; }
 }
 
 public sealed class RoomInventoryImportForm
@@ -312,6 +314,23 @@ public sealed class RoomInventoryCurrentLotViewModel
     public int CurrentBins { get; set; }
     public string Source { get; set; } = "";
     public DateTimeOffset LastAdjustmentAt { get; set; }
+}
+
+public sealed class CurrentInventorySourceRowViewModel
+{
+    public string SourceType { get; set; } = "";
+    public long? SourceId { get; set; }
+    public int? RowNumber { get; set; }
+    public string RoomCode { get; set; } = "";
+    public string CompuTechRoomCode { get; set; } = "";
+    public string Grower { get; set; } = "";
+    public string Lot { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public int Bins { get; set; }
+    public string Status { get; set; } = "";
+    public DateTimeOffset? Date { get; set; }
+    public bool IsIncluded { get; set; }
+    public string DecisionReason { get; set; } = "";
 }
 
 public sealed class VoidRoomDepletionForm
