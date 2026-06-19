@@ -62,6 +62,7 @@
                 <th>Bins Currently In Storage</th>
                 <th>Receipt/First Received</th>
                 <th>Last QC Sample</th>
+                <th>Latest QC Source</th>
                 <th>Latest Avg Pressure</th>
                 <th>Latest Starch</th>
             </tr>
@@ -78,6 +79,7 @@
                 <td class="numeric-cell">@lot.CurrentBins</td>
                 <td>@(lot.FirstReceivedAt?.LocalDateTime.ToString("g") ?? "Current inventory baseline")</td>
                 <td>@(lot.LastQcSampleAt?.LocalDateTime.ToString("g") ?? "-")</td>
+                <td>@(string.IsNullOrWhiteSpace(lot.LatestQcSource) ? "-" : lot.LatestQcSource)</td>
                 <td>@Format(lot.LatestAveragePressure)</td>
                 <td>@Format(lot.LatestStarch)</td>
             </tr>
