@@ -250,6 +250,55 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
     }
 
     [Fact]
+    public async Task LotAndDoorSamplesUpdateCurrentConditionWithoutAddingBins()
+    {
+        await using var db = CreateDbContext();
+        await SeedVerifiedEbsInventoryAsync(db);
+        var warehouse = await db.Warehouses.FirstAsync(x => x.Code == "EBS");
+        var room = await db.Rooms.FirstAsync(x => x.Code == "EVANCA12");
+        var fuji = await db.FruitProfiles.FirstAsync(x => x.VarietyCode == "FUJI");
+        var lotSample = await db.SampleTypes.FirstAsync(x => x.Name == "Lot Sample");
+        var doorSample = await db.SampleTypes.FirstAsync(x => x.Name == "Door Sample");
+        var firstAt = DateTimeOffset.Parse("2026-06-18T10:00:00-07:00");
+        var latestAt = DateTimeOffset.Parse("2026-06-19T10:00:00-07:00");
+        var doorAt = DateTimeOffset.Parse("2026-06-19T11:00:00-07:00");
+        var lotReceipt1 = Receipt(930, "LS-EVANCA12-1570-A", "Truck receipt", 700, firstAt, warehouse, room, fuji);
+        var lotReceipt2 = Receipt(931, "LS-EVANCA12-1570-B", "Truck receipt", 800, latestAt, warehouse, room, fuji);
+        var doorReceipt = Receipt(932, "DS-EVANCA12-1030", "Truck receipt", 900, doorAt, warehouse, room, fuji);
+        lotReceipt1.GrowerNumber = "1570";
+        lotReceipt1.LotCode = "1570";
+        lotReceipt2.GrowerNumber = "1570";
+        lotReceipt2.LotCode = "1570";
+        doorReceipt.GrowerNumber = "1030";
+        doorReceipt.LotCode = "1030";
+        db.Receipts.AddRange(lotReceipt1, lotReceipt2, doorReceipt);
+        db.QcSamples.AddRange(
+            Sample(9300, lotReceipt1.Id, lotSample, firstAt),
+            Sample(9301, lotReceipt2.Id, lotSample, latestAt),
+            Sample(9302, doorReceipt.Id, doorSample, doorAt));
+        db.QcFruitReadings.AddRange(
+            FruitReading(93000, 9300, 14m),
+            FruitReading(93001, 9301, 12m),
+            FruitReading(93002, 9302, 10m));
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var detail = await service.GetRoomDetailAsync(12, CancellationToken.None);
+        var currentLots = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { CropYear = 2026, RoomId = 12 }, CancellationToken.None);
+        var review = await service.GetCropYearReviewAsync(new CropYearReviewFilterForm { CropYear = 2026, WarehouseId = warehouse.Id }, CancellationToken.None);
+
+        Assert.Equal(1022, detail.Summary?.CurrentBinsCount);
+        Assert.Contains(detail.CurrentLots, x => x.LotCode == "1570" && x.CurrentBins == 819 && x.AveragePressureLbs == 12m && x.LatestQcSource == "Lot Sample");
+        Assert.Contains(detail.CurrentLots, x => x.LotCode == "1030" && x.CurrentBins == 85 && x.AveragePressureLbs == 10m && x.LatestQcSource == "Door Sample");
+        Assert.Contains(detail.CurrentLots.Single(x => x.LotCode == "1570").Samples, x => x.DisplayReceiptId == "LS-EVANCA12-1570-B" && x.SampleType == "Lot Sample");
+        Assert.Contains(detail.CurrentLots.Single(x => x.LotCode == "1030").Samples, x => x.DisplayReceiptId == "DS-EVANCA12-1030" && x.SampleType == "Door Sample");
+        Assert.Contains(currentLots.Lots, x => x.Lot == "1570" && x.CurrentBins == 819 && x.LatestAveragePressure == 12m && x.LatestQcSource == "Lot Sample");
+        Assert.Contains(currentLots.Lots, x => x.Lot == "1030" && x.CurrentBins == 85 && x.LatestAveragePressure == 10m && x.LatestQcSource == "Door Sample");
+        Assert.Contains(review.Rows, x => x.Lot == "1570" && x.SampleType == "Lot Sample" && x.AveragePressure == 12m && x.PressureChange == -2m && x.PressureLossPerWeek == 14m);
+        Assert.Contains(review.Rows, x => x.Lot == "1030" && x.SampleType == "Door Sample" && x.AveragePressure == 10m);
+    }
+
+    [Fact]
     public async Task CurrentLots_HandlesDuplicateLotNumbersMissingGrowerAndBlankStatus()
     {
         await using var db = CreateDbContext();
@@ -560,7 +609,10 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         UpdatedAt = receivedAt
     };
 
-    private static QcSample Sample(long id, long receiptId, SampleType sampleType) => new()
+    private static QcSample Sample(long id, long receiptId, SampleType sampleType) =>
+        Sample(id, receiptId, sampleType, DateTimeOffset.Parse("2026-06-14T10:00:00-07:00"));
+
+    private static QcSample Sample(long id, long receiptId, SampleType sampleType, DateTimeOffset sampleTakenAt) => new()
     {
         Id = id,
         ReceiptId = receiptId,
@@ -571,9 +623,21 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         PhotoStatus = "Photos Complete",
         EmailStatus = "Not Sent",
         ActualSampleSize = 10,
-        SampleTakenAt = DateTimeOffset.Parse("2026-06-14T10:00:00-07:00"),
+        SampleTakenAt = sampleTakenAt,
         CreatedAt = DateTimeOffset.UtcNow,
         UpdatedAt = DateTimeOffset.UtcNow
+    };
+
+    private static QcFruitReading FruitReading(long id, long sampleId, decimal pressure) => new()
+    {
+        Id = id,
+        QcSampleId = sampleId,
+        RowNumber = 1,
+        Pressure1Lbs = pressure,
+        Pressure2Lbs = pressure,
+        SizeStatus = "Not Entered",
+        IsCompleted = true,
+        CreatedAt = DateTimeOffset.UtcNow
     };
 
     private static DashboardDataService CreateService(CropQcDbContext db)

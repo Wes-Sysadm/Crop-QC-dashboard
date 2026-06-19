@@ -174,12 +174,10 @@ public sealed class DashboardDataService(
             var receipts = await dbContext.Receipts.AsNoTracking()
                 .Where(x => receiptIds.Contains(x.Id))
                 .ToDictionaryAsync(x => x.Id, cancellationToken);
-            var latestSamples = await BuildLatestSampleSummariesAsync(receiptIds, cancellationToken);
 
             var rows = currentLots.Select(lot =>
             {
                 receipts.TryGetValue(lot.ReceiptId ?? 0, out var receipt);
-                latestSamples.TryGetValue(lot.ReceiptId ?? 0, out var latestSample);
                 return new CurrentGrowerLotViewModel
                 {
                     Grower = lot.GrowerName ?? "",
@@ -189,9 +187,10 @@ public sealed class DashboardDataService(
                     Room = lot.RoomCode ?? "",
                     CurrentBins = lot.CurrentBins,
                     FirstReceivedAt = receipt?.ReceivedAt,
-                    LastQcSampleAt = latestSample?.SampleDate,
-                    LatestAveragePressure = latestSample?.AveragePressure,
-                    LatestStarch = latestSample?.AverageStarch
+                    LastQcSampleAt = lot.LastSampleDate,
+                    LatestQcSource = lot.LatestQcSource,
+                    LatestAveragePressure = lot.AveragePressureLbs,
+                    LatestStarch = lot.AverageStarch
                 };
             }).ToList();
 
@@ -255,14 +254,14 @@ public sealed class DashboardDataService(
 
             var samples = await query.OrderBy(x => x.SampleTakenAt).Take(1000).ToListAsync(cancellationToken);
             var pressureByLot = samples
-                .GroupBy(x => $"{x.Receipt.GrowerName}|{ReceiptLotNumber(x.Receipt)}|{x.Receipt.FruitProfile.VarietyCode}", StringComparer.OrdinalIgnoreCase)
+                .GroupBy(x => QcConditionLotKey(x.Receipt), StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(x => x.Key, x => x.Select(s => new { Sample = s, Pressure = AverageOrNull(PressureValues([s]).ToList()) }).Where(y => y.Pressure is not null).OrderBy(y => y.Sample.SampleTakenAt).ToList(), StringComparer.OrdinalIgnoreCase);
 
             var rows = samples.Select(sample =>
             {
                 var pressures = PressureValues([sample]).ToList();
                 var starch = StarchValues([sample]).ToList();
-                var key = $"{sample.Receipt.GrowerName}|{ReceiptLotNumber(sample.Receipt)}|{sample.Receipt.FruitProfile.VarietyCode}";
+                var key = QcConditionLotKey(sample.Receipt);
                 pressureByLot.TryGetValue(key, out var lotPressures);
                 var first = lotPressures?.FirstOrDefault();
                 var last = lotPressures?.LastOrDefault();
@@ -2127,19 +2126,13 @@ public sealed class DashboardDataService(
             .Where(x => x.CurrentBins > 0)
             .GroupBy(x => x.RoomId)
             .ToDictionary(x => x.Key, x => x.ToList());
-        var currentReceiptIds = currentLotsByRoom.Values.SelectMany(x => x).Where(x => x.ReceiptId is not null).Select(x => x.ReceiptId!.Value).Distinct().ToList();
-        var samples = await QuerySamples()
-            .Where(x => currentReceiptIds.Contains(x.ReceiptId))
-            .ToListAsync(cancellationToken);
-        var samplesByRoom = samples.GroupBy(x => x.Receipt.RoomId).ToDictionary(x => x.Key, x => x.ToList());
-
         var summaries = rooms.Select(room =>
         {
             var roomLots = currentLotsByRoom.GetValueOrDefault(room.Id, []);
-            var roomSamples = samplesByRoom.GetValueOrDefault(room.Id, []);
-            var pressures = PressureValues(roomSamples).ToList();
-            var starch = StarchValues(roomSamples).ToList();
-            var flags = BuildRoomReviewFlags(pressures, starch, roomSamples.SelectMany(x => x.FruitReadings).ToList(), MonthPressureChange(room.Id, currentMonth: true, roomSamples));
+            var pressures = roomLots.Where(x => x.AveragePressureLbs is not null).Select(x => x.AveragePressureLbs!.Value).ToList();
+            var starch = roomLots.Where(x => x.AverageStarch is not null).Select(x => x.AverageStarch!.Value).ToList();
+            var monthPressureChange = AverageOrNull(roomLots.Where(x => x.MonthOverMonthPressureChangeLbs is not null).Select(x => x.MonthOverMonthPressureChangeLbs!.Value).ToList());
+            var flags = roomLots.SelectMany(x => x.ReviewFlags).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var currentBins = roomLots.Sum(x => x.CurrentBins);
             var status = roomLots.Count == 0 ? "Empty" : flags.Count > 0 ? "Needs Review" : "Active";
             var facility = FacilityCode(room.Warehouse.Code, room.Warehouse.Name);
@@ -2148,7 +2141,7 @@ public sealed class DashboardDataService(
             var displayRoomCode = room.CropQcRoomName ?? room.DisplayName ?? (sourceRoomCodes.Count == 1 ? sourceRoomCodes[0] : room.Code);
             var latestActivity = latestActivityByRoom.TryGetValue(room.Id, out var activity)
                 ? activity
-                : roomSamples.Select(x => (DateTimeOffset?)x.SampleTakenAt).DefaultIfEmpty().Max();
+                : roomLots.Select(x => x.LastSampleDate).Where(x => x is not null).DefaultIfEmpty().Max();
             return new RoomSummaryItemViewModel
             {
                 RoomId = room.Id,
@@ -2168,12 +2161,12 @@ public sealed class DashboardDataService(
                 LotSummary = roomLots.Count == 0 ? "Empty" : string.Join(", ", roomLots.Take(4).Select(x => $"{x.GrowerName} {x.LotCode} {x.VarietyCode}")),
                 AveragePressureLbs = AverageOrNull(pressures),
                 PressureStdDevLbs = StandardDeviationOrNull(pressures),
-                MonthOverMonthPressureChangeLbs = MonthPressureChange(room.Id, currentMonth: true, roomSamples),
+                MonthOverMonthPressureChangeLbs = monthPressureChange,
                 AverageStarch = AverageOrNull(starch),
-                DefectSummary = SummarizeDefects(roomSamples),
-                LastSampleDate = roomSamples.Count == 0 ? null : roomSamples.Max(x => x.SampleTakenAt),
-                SampleCount = roomSamples.Count,
-                EnteredFruitCount = roomSamples.SelectMany(x => x.FruitReadings).Count(HasEnteredFruitData),
+                DefectSummary = SummarizeLotDefects(roomLots),
+                LastSampleDate = roomLots.Select(x => x.LastSampleDate).Where(x => x is not null).DefaultIfEmpty().Max(),
+                SampleCount = roomLots.Sum(x => x.SampleCount),
+                EnteredFruitCount = roomLots.Sum(x => x.EnteredFruitCount),
                 ReviewFlags = flags,
                 WeakestLotLabel = weakestLot?.Label,
                 WeakestLotReason = weakestLot?.Reason,
@@ -2214,6 +2207,9 @@ public sealed class DashboardDataService(
             .Where(x => receiptIds.Contains(x.ReceiptId))
             .ToListAsync(cancellationToken);
         var samplesByReceipt = samples.GroupBy(x => x.ReceiptId).ToDictionary(x => x.Key, x => x.ToList());
+        var conditionSamplesByLot = samples
+            .GroupBy(x => QcConditionLotKey(x.Receipt), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.SampleTakenAt).ThenByDescending(y => y.Id).ToList(), StringComparer.OrdinalIgnoreCase);
 
         var roomCorrectionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
         var receiptLotSummaries = receipts
@@ -2270,6 +2266,7 @@ public sealed class DashboardDataService(
 
         var startingInventoryLotSummaries = await BuildAdjustmentOnlyLotSummariesAsync(roomId, cancellationToken);
         var lotSummaries = receiptLotSummaries.Concat(startingInventoryLotSummaries).ToList();
+        ApplyQcConditionData(lotSummaries, conditionSamplesByLot);
 
         foreach (var group in lotSummaries.Where(x => x.CurrentBins > 0).GroupBy(x => x.RoomId))
         {
@@ -2281,6 +2278,37 @@ public sealed class DashboardDataService(
         }
 
         return lotSummaries;
+    }
+
+    private void ApplyQcConditionData(
+        IReadOnlyList<RoomLotSummaryViewModel> lotSummaries,
+        IReadOnlyDictionary<string, List<QcSample>> conditionSamplesByLot)
+    {
+        foreach (var lot in lotSummaries)
+        {
+            if (!conditionSamplesByLot.TryGetValue(QcConditionLotKey(lot.RoomId, lot.GrowerNumber, lot.LotCode, lot.VarietyCode), out var lotSamples)
+                || lotSamples.Count == 0)
+            {
+                continue;
+            }
+
+            var pressures = PressureValues(lotSamples).ToList();
+            var starch = StarchValues(lotSamples).ToList();
+            var latest = lotSamples[0];
+            lot.AveragePressureLbs = AverageOrNull(PressureValues([latest]).ToList()) ?? AverageOrNull(pressures);
+            lot.PressureStdDevLbs = StandardDeviationOrNull(PressureValues([latest]).ToList()) ?? StandardDeviationOrNull(pressures);
+            lot.MonthOverMonthPressureChangeLbs = MonthPressureChange(lot.RoomId, currentMonth: true, lotSamples);
+            lot.AverageStarch = AverageOrNull(StarchValues([latest]).ToList()) ?? AverageOrNull(starch);
+            lot.DefectSummary = SummarizeDefects(lotSamples);
+            lot.LastSampleDate = latest.SampleTakenAt;
+            lot.LatestQcSource = latest.SampleType.Name;
+            lot.SampleCount = lotSamples.Count;
+            lot.EnteredFruitCount = lotSamples.SelectMany(x => x.FruitReadings).Count(HasEnteredFruitData);
+            lot.ReviewFlags = BuildRoomReviewFlags(pressures, starch, lotSamples.SelectMany(x => x.FruitReadings).ToList(), lot.MonthOverMonthPressureChangeLbs);
+            lot.Samples = lotSamples
+                .Select(x => new RoomSampleLinkViewModel(x.Id, x.SampleSequenceNumber <= 1 ? x.Receipt.CompuTechReceiptId : $"{x.Receipt.CompuTechReceiptId}({x.SampleSequenceNumber})", x.SampleType.Name))
+                .ToList();
+        }
     }
 
     private async Task<IReadOnlyList<RoomLotSummaryViewModel>> BuildAdjustmentOnlyLotSummariesAsync(int? roomId, CancellationToken cancellationToken)
@@ -2929,6 +2957,17 @@ public sealed class DashboardDataService(
         return groups.Count == 0 ? "None" : string.Join(", ", groups);
     }
 
+    private static string SummarizeLotDefects(IEnumerable<RoomLotSummaryViewModel> lots)
+    {
+        var summaries = lots
+            .Select(x => x.DefectSummary)
+            .Where(x => !string.IsNullOrWhiteSpace(x) && !x.Equals("None", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
+        return summaries.Count == 0 ? "None" : string.Join(", ", summaries);
+    }
+
     private static decimal? AverageOrNull(IReadOnlyList<decimal> values) =>
         values.Count == 0 ? null : decimal.Round(values.Average(), 2);
 
@@ -3418,6 +3457,15 @@ public sealed class DashboardDataService(
 
     private static string ReceiptLotNumber(Receipt receipt) =>
         !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode;
+
+    private static string QcConditionLotKey(Receipt receipt) =>
+        QcConditionLotKey(receipt.RoomId, ReceiptLotNumber(receipt), receipt.LotCode, receipt.FruitProfile.VarietyCode);
+
+    private static string QcConditionLotKey(int roomId, string growerNumber, string lotCode, string varietyCode)
+    {
+        var lot = !string.IsNullOrWhiteSpace(growerNumber) ? growerNumber : lotCode;
+        return $"{roomId}|{lot.Trim().ToUpperInvariant()}|{(varietyCode ?? "").Trim().ToUpperInvariant()}";
+    }
 
     private static string NormalizeReceiptType(string? receiptType)
     {

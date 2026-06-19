@@ -19,6 +19,7 @@
         <dt>Samples</dt><dd>@Model.SampleCount</dd>
         <dt>Fruit rows</dt><dd>@Model.EnteredFruitCount</dd>
         <dt>Last sample</dt><dd>@(Model.LastSampleDate?.LocalDateTime.ToString("g") ?? "No data")</dd>
+        <dt>Latest QC source</dt><dd>@(string.IsNullOrWhiteSpace(Model.LatestQcSource) ? "No data" : Model.LatestQcSource)</dd>
     </dl>
     @if (Model.ReviewFlags.Count > 0)
     {

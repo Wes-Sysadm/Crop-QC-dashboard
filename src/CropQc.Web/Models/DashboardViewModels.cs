@@ -47,6 +47,7 @@ public sealed class RoomSummaryItemViewModel
     public decimal? AverageStarch { get; set; }
     public string DefectSummary { get; set; } = "None";
     public DateTimeOffset? LastSampleDate { get; set; }
+    public string LatestQcSource { get; set; } = "";
     public int SampleCount { get; set; }
     public int EnteredFruitCount { get; set; }
     public IReadOnlyList<string> ReviewFlags { get; set; } = [];
@@ -131,6 +132,7 @@ public sealed class RoomLotSummaryViewModel
     public decimal? AverageStarch { get; set; }
     public string DefectSummary { get; set; } = "None";
     public DateTimeOffset? LastSampleDate { get; set; }
+    public string LatestQcSource { get; set; } = "";
     public int SampleCount { get; set; }
     public int EnteredFruitCount { get; set; }
     public string DepletionStatus { get; set; } = "Current";
@@ -661,6 +663,7 @@ public sealed class CurrentGrowerLotViewModel
     public int CurrentBins { get; set; }
     public DateTimeOffset? FirstReceivedAt { get; set; }
     public DateTimeOffset? LastQcSampleAt { get; set; }
+    public string LatestQcSource { get; set; } = "";
     public decimal? LatestAveragePressure { get; set; }
     public decimal? LatestStarch { get; set; }
 }
