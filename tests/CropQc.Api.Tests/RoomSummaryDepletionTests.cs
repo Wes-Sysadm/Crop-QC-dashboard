@@ -242,19 +242,19 @@ public sealed class RoomSummaryDepletionTests
             .ToList();
 
         Assert.Equal(18, rows.Count);
-        Assert.StartsWith("CropYear,Facility,SubLocation,CropQcRoomName,CompuTechRoomCode", csv);
-        Assert.Equal(0, SumBins(rows, "evans-5"));
-        Assert.Equal(1022, SumBins(rows, "Evans-12"));
-        Assert.Equal(0, SumBins(rows, "BM-4"));
-        Assert.Equal(1178, SumBins(rows, "BM-1"));
-        Assert.Equal(1201, SumBins(rows, "Evans-01"));
-        Assert.Equal(1918, SumBins(rows, "Lamb-17"));
-        Assert.Equal(514, SumBins(rows, "BM-6"));
-        Assert.Contains("2026,EBS,Evans,Evans-12,evanca12,FUJI,1570,819,Sealed", csv);
-        Assert.Contains("2026,EBS,Evans,Evans-01,Evanca01,RED,9660,1039,", csv);
-        Assert.Contains("2026,EBS,Lamb,Lamb-17,Lambca17,PINK,1020,559,Sealed", csv);
-        Assert.Contains("2026,EBS,BM,BM-1,blueca01,RED,9560,608,Sealed", csv);
-        Assert.Contains("2026,EBS,BM,BM-6,Blueca06,GSMT,1290,281,Sealed", csv);
+        Assert.StartsWith("CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes", csv);
+        Assert.Equal(0, SumBins(rows, "evanca05"));
+        Assert.Equal(1022, SumBins(rows, "EVANCA12"));
+        Assert.Equal(0, SumBins(rows, "BLUECA04"));
+        Assert.Equal(1178, SumBins(rows, "BLUECA01"));
+        Assert.Equal(1201, SumBins(rows, "EVANCA01"));
+        Assert.Equal(1918, SumBins(rows, "LAMBCA17"));
+        Assert.Equal(514, SumBins(rows, "BLUECA06"));
+        Assert.Contains("2026,EBS,EVANCA12,,1570,FUJI,819,Sealed,2026-06-18", csv);
+        Assert.Contains("2026,EBS,EVANCA01,,9660,RED,1039,,2026-06-18", csv);
+        Assert.Contains("2026,EBS,LAMBCA17,,1020,PINK,559,Sealed,2026-06-18", csv);
+        Assert.Contains("2026,EBS,BLUECA01,,9560,RED,608,Sealed,2026-06-18", csv);
+        Assert.Contains("2026,EBS,BLUECA06,,1290,GSMT,281,Sealed,2026-06-18", csv);
         Assert.Contains("Wes Verified Current Inventory Baseline 2026-06-18", csv);
     }
 
@@ -283,6 +283,10 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("CurrentInventoryBaselineType", service);
         Assert.Contains("ParseCropYear", service);
         Assert.Contains("ParseEffectiveDate", service);
+        Assert.Contains("GetCsvTemplate", service);
+        Assert.Contains("GetCsvExample", service);
+        Assert.Contains("BuildRoomTotalPreview", service);
+        Assert.Contains("ConfirmReplaceExistingBatch", service);
         Assert.Contains("BinCountChange", service);
         Assert.Contains("public int? CropYear", qcEntity);
         Assert.Contains("public string? CropQcRoomName", masterEntity);
@@ -296,7 +300,12 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("ADD COLUMN IF NOT EXISTS \"SourceRoomCode\"", program);
         Assert.Contains("ADD COLUMN IF NOT EXISTS \"CropQcRoomName\"", program);
         Assert.Contains("[Authorize(Policy = \"RequireManagerOrAdmin\")]", controller);
+        Assert.Contains("[HttpGet(\"Template\")]", controller);
         Assert.Contains("Import EBS Current Baseline", view);
+        Assert.Contains("Download CSV Template", view);
+        Assert.Contains("Show Example", view);
+        Assert.Contains("Room Totals Preview", view);
+        Assert.Contains("Confirm replacement of existing baseline batch rows", view);
         Assert.Contains("Current Inventory Baseline", view);
         Assert.Contains("Effective", view);
         Assert.Contains("Status", view);
@@ -446,12 +455,12 @@ public sealed class RoomSummaryDepletionTests
             .Select(line => line.Split(','))
             .ToList();
 
-        Assert.Equal(1201, SumBins(rows, "Evans-01"));
-        Assert.Equal(1022, SumBins(rows, "Evans-12"));
-        Assert.Equal(1918, SumBins(rows, "Lamb-17"));
-        Assert.Equal(1178, SumBins(rows, "BM-1"));
-        Assert.Equal(0, SumBins(rows, "BM-4"));
-        Assert.Equal(514, SumBins(rows, "BM-6"));
+        Assert.Equal(1201, SumBins(rows, "EVANCA01"));
+        Assert.Equal(1022, SumBins(rows, "EVANCA12"));
+        Assert.Equal(1918, SumBins(rows, "LAMBCA17"));
+        Assert.Equal(1178, SumBins(rows, "BLUECA01"));
+        Assert.Equal(0, SumBins(rows, "BLUECA04"));
+        Assert.Equal(514, SumBins(rows, "BLUECA06"));
     }
 
     [Fact]
@@ -552,7 +561,7 @@ public sealed class RoomSummaryDepletionTests
     }
 
     private static int SumBins(IEnumerable<string[]> rows, string cropQcRoomName) =>
-        rows.Where(x => x.Length >= 8 && x[3].Equals(cropQcRoomName, StringComparison.OrdinalIgnoreCase)).Sum(x => int.Parse(x[7]));
+        rows.Where(x => x.Length >= 7 && x[2].Equals(cropQcRoomName, StringComparison.OrdinalIgnoreCase)).Sum(x => int.Parse(x[6]));
 
     private static string FindRepositoryFile(params string[] pathParts)
     {

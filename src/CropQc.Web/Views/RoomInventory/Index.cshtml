@@ -16,12 +16,20 @@
 
 <section class="panel">
     <h2>Import Current Inventory Baseline</h2>
-    <p class="muted">Imports are previewed first, never delete existing inventory, and record audited current-balance adjustments by crop year, room, lot, variety, status, and effective date.</p>
+    <p class="muted">One row equals one current baseline lot balance in one room. Required columns: CropYear, Warehouse, RoomCode, Lot, Variety, Bins, EffectiveDate. Optional columns: Grower, Status, Notes.</p>
     <div class="action-bar">
+        <a class="button secondary-button" href="/Admin/RoomInventory/Template">Download CSV Template</a>
         <form method="post" action="/Admin/RoomInventory/ImportEbsStartingInventory">
             <button type="submit">Import EBS Current Baseline</button>
         </form>
     </div>
+    <details class="notice info">
+        <summary>Show Example</summary>
+        <p class="muted">Supported CSV columns: @Model.CsvTemplateHeader</p>
+        <p class="muted">RoomCode maps to a room Compu-Tech code or room code, such as EVANCA12 or BLUECA06. EffectiveDate accepts YYYY-MM-DD. Status accepts blank, Sealed, or Open.</p>
+        <pre><code>@Model.CsvExample</code></pre>
+        <p class="muted">This example previews EVANCA12 as 1,022 FUJI Sealed from lots 1560=118, 1570=819, and 1030=85.</p>
+    </details>
     <form class="form-grid" method="post" enctype="multipart/form-data" action="/Admin/RoomInventory/Preview">
         <label class="field wide">Upload room inventory CSV
             <input type="file" name="CsvFile" accept=".csv,text/csv" />
@@ -37,11 +45,51 @@
         <div class="metric-grid">
             <div><strong>@Model.ImportPreview.AddCount</strong><span>Add</span></div>
             <div><strong>@Model.ImportPreview.UpdateCount</strong><span>Update</span></div>
+            <div><strong>@Model.ImportPreview.ReplaceBatchCount</strong><span>Replace</span></div>
             <div><strong>@Model.ImportPreview.UnchangedCount</strong><span>Unchanged</span></div>
             <div><strong>@Model.ImportPreview.WarningCount</strong><span>Warnings</span></div>
             <div><strong>@Model.ImportPreview.DuplicateCount</strong><span>Duplicates</span></div>
             <div><strong>@Model.ImportPreview.InvalidCount</strong><span>Invalid</span></div>
         </div>
+        @if (Model.ImportPreview.RoomTotals.Count > 0)
+        {
+            <h3>Room Totals Preview</h3>
+            <div class="table-wrap contained-table">
+                <table class="responsive-table">
+                    <thead>
+                    <tr>
+                        <th>Crop Year</th>
+                        <th>Warehouse</th>
+                        <th>Room</th>
+                        <th>Variety</th>
+                        <th>Status</th>
+                        <th>Effective</th>
+                        <th class="numeric-cell">Lots</th>
+                        <th class="numeric-cell">Bins</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var total in Model.ImportPreview.RoomTotals)
+                    {
+                        <tr>
+                            <td>@total.CropYear</td>
+                            <td>@total.Warehouse</td>
+                            <td>@total.RoomCode</td>
+                            <td>@total.Variety</td>
+                            <td>@total.Status</td>
+                            <td>@total.EffectiveDate.LocalDateTime.ToString("d")</td>
+                            <td class="numeric-cell">@total.LotCount</td>
+                            <td class="numeric-cell">@total.BinCount</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+        @if (Model.ImportPreview.RequiresReplaceConfirmation)
+        {
+            <p class="notice warning">This preview includes rows from an existing baseline batch. Confirm replacement to apply a new audited baseline row for the same crop year, room, lot, variety, and effective date.</p>
+        }
         @if (Model.ImportPreview.Rows.Count == 0)
         {
             <p class="muted">No rows were found in the import file.</p>
@@ -99,6 +147,10 @@
         <form method="post" action="/Admin/RoomInventory/Apply" class="action-bar">
             <input type="hidden" name="CsvText" value="@Model.ImportPreview.CsvText" />
             <input type="hidden" name="UseBuiltInSeed" value="@(Model.ImportPreview.IsBuiltInSeed ? "true" : "false")" />
+            @if (Model.ImportPreview.RequiresReplaceConfirmation)
+            {
+                <label class="checkbox-field"><input type="checkbox" name="ConfirmReplaceExistingBatch" value="true" /> Confirm replacement of existing baseline batch rows</label><input type="hidden" name="ConfirmReplaceExistingBatch" value="false" />
+            }
             <button type="submit" @(Model.ImportPreview.CanApply ? "" : "disabled")>Import Current Baseline</button>
             @if (!Model.ImportPreview.CanApply)
             {

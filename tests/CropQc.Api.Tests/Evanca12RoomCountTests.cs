@@ -5,9 +5,11 @@ using CropQc.Web.Auth;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Security.Claims;
 
@@ -66,6 +68,83 @@ public sealed class Evanca12RoomCountTests
 
         Assert.Equal(1032, detail.Summary?.CurrentBinsCount);
         Assert.Contains(breakdown.Rows, x => x.SourceType == "Receipt" && x.DisplayReceiptId == "EVANCA12-FUTURE-TRUCK" && x.IsIncluded && x.DecisionReason == "Included: Truck Receipt.");
+    }
+
+    [Fact]
+    public async Task CurrentInventoryBaselineImport_ValidExamplePreviewsRoomTotal()
+    {
+        await using var db = CreateDbContext();
+        SeedImportMasterData(db);
+        var service = CreateImportService(db);
+
+        var preview = await service.PreviewAsync(new RoomInventoryImportForm
+        {
+            CsvText = """
+CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
+2026,EBS,EVANCA12,,1560,FUJI,118,Sealed,2026-06-18,Wes verified baseline
+2026,EBS,EVANCA12,,1570,FUJI,819,Sealed,2026-06-18,Wes verified baseline
+2026,EBS,EVANCA12,,1030,FUJI,85,Sealed,2026-06-18,Wes verified baseline
+"""
+        }, CancellationToken.None);
+
+        Assert.True(preview.CanApply, string.Join(" | ", preview.Rows.Select(x => $"{x.RowNumber}:{x.Action}:{x.Message}")));
+        Assert.Equal(3, preview.AddCount);
+        var total = Assert.Single(preview.RoomTotals);
+        Assert.Equal("EVANCA12", total.RoomCode);
+        Assert.Equal("FUJI", total.Variety);
+        Assert.Equal("Sealed", total.Status);
+        Assert.Equal(3, total.LotCount);
+        Assert.Equal(1022, total.BinCount);
+    }
+
+    [Fact]
+    public async Task CurrentInventoryBaselineImport_BadColumnsShowValidationError()
+    {
+        await using var db = CreateDbContext();
+        SeedImportMasterData(db);
+        var service = CreateImportService(db);
+
+        var preview = await service.PreviewAsync(new RoomInventoryImportForm
+        {
+            CsvText = """
+Warehouse,RoomCode,Lot,Variety,Bins
+EBS,EVANCA12,1570,FUJI,819
+"""
+        }, CancellationToken.None);
+
+        Assert.False(preview.CanApply);
+        Assert.Equal(1, preview.InvalidCount);
+        Assert.Contains(preview.Rows, x => x.Message.Contains("CropYear", StringComparison.OrdinalIgnoreCase) && x.Message.Contains("EffectiveDate", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task CurrentInventoryBaselineImport_PreventsSilentDuplicateBatchImport()
+    {
+        await using var db = CreateDbContext();
+        SeedImportMasterData(db);
+        var service = CreateImportService(db);
+        var csv = """
+CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
+2026,EBS,EVANCA12,,1570,FUJI,819,Sealed,2026-06-18,Wes verified baseline
+""";
+
+        var first = await service.ApplyAsync(new RoomInventoryImportForm { CsvText = csv, ConfirmImport = true }, "wes@fruitandland.com", CancellationToken.None);
+        Assert.Null(first.Error);
+
+        var secondPreview = await service.PreviewAsync(new RoomInventoryImportForm { CsvText = csv }, CancellationToken.None);
+        Assert.False(secondPreview.CanApply);
+        Assert.Equal(1, secondPreview.UnchangedCount);
+
+        var changedCsv = csv.Replace(",819,", ",820,", StringComparison.Ordinal);
+        var replacement = await service.ApplyAsync(new RoomInventoryImportForm { CsvText = changedCsv, ConfirmImport = true }, "wes@fruitandland.com", CancellationToken.None);
+        Assert.NotNull(replacement.Error);
+        Assert.True(replacement.Preview.RequiresReplaceConfirmation);
+
+        var confirmed = await service.ApplyAsync(new RoomInventoryImportForm { CsvText = changedCsv, ConfirmImport = true, ConfirmReplaceExistingBatch = true }, "wes@fruitandland.com", CancellationToken.None);
+        Assert.Null(confirmed.Error);
+        Assert.Equal(2, await db.RoomInventoryAdjustments.CountAsync(CancellationToken.None));
+        var current = await CreateService(db).GetRoomDetailAsync(12, CancellationToken.None);
+        Assert.Equal(820, current.Summary?.CurrentBinsCount);
     }
 
     [Fact]
@@ -217,6 +296,17 @@ public sealed class Evanca12RoomCountTests
         await db.SaveChangesAsync();
     }
 
+    private static void SeedImportMasterData(CropQcDbContext db)
+    {
+        var warehouse = new Warehouse { Id = 901, Code = "EBS", Name = "Earl Brown and Sons" };
+        var room = Room(12, "EVANCA12", "Evans 12", "Evans-12", "EVANCA12", "Evans", warehouse);
+        var fuji = new FruitProfile { Id = 902, Name = "Fuji", VarietyCode = "FUJI", FruitType = "Apple", ProductionType = "Conventional" };
+        db.Warehouses.Add(warehouse);
+        db.Rooms.Add(room);
+        db.FruitProfiles.Add(fuji);
+        db.SaveChanges();
+    }
+
     private static Room Room(int id, string code, string name, string cropQcRoomName, string compuTechCode, string subLocation, Warehouse warehouse) => new()
     {
         Id = id,
@@ -321,6 +411,15 @@ public sealed class Evanca12RoomCountTests
             NullLogger<DashboardDataService>.Instance);
     }
 
+    private static RoomInventoryImportService CreateImportService(CropQcDbContext db)
+    {
+        var configuration = new ConfigurationBuilder().Build();
+        return new RoomInventoryImportService(
+            db,
+            new FakeWebHostEnvironment(),
+            new CropYearService(db, configuration));
+    }
+
     private sealed class StableEmailComposer : IQcSummaryEmailComposer
     {
         public Task<QcEmailContent> ComposeAsync(QcSample sample, ReadinessViewModel readiness, User? sendingUser, bool isOverride, string? overrideReason, CancellationToken cancellationToken) =>
@@ -354,6 +453,16 @@ public sealed class Evanca12RoomCountTests
         public Task<FileStorageReference?> GetMetadataAsync(string storageKey, CancellationToken cancellationToken = default) => Task.FromResult<FileStorageReference?>(null);
         public Task<Stream?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default) => Task.FromResult<Stream?>(null);
         public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class FakeWebHostEnvironment : IWebHostEnvironment
+    {
+        public string ApplicationName { get; set; } = "CropQc.Tests";
+        public IFileProvider WebRootFileProvider { get; set; } = new NullFileProvider();
+        public string WebRootPath { get; set; } = "";
+        public string EnvironmentName { get; set; } = "Development";
+        public string ContentRootPath { get; set; } = Directory.GetCurrentDirectory();
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 
     private static string FindRepositoryFile(params string[] pathParts)

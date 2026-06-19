@@ -217,6 +217,8 @@ public sealed class RoomInventoryImportPageViewModel
     public IReadOnlyList<RoomInventoryCurrentLotViewModel> CurrentLots { get; set; } = [];
     public IReadOnlyList<string> FacilityOptions { get; set; } = ["All", "MCD", "WP", "EBS", "DH"];
     public IReadOnlyList<string> EbsLocationOptions { get; set; } = ["All EBS", "Evans", "Lamb", "BM"];
+    public string CsvTemplateHeader { get; set; } = "";
+    public string CsvExample { get; set; } = "";
 }
 
 public sealed class RoomInventoryImportForm
@@ -225,6 +227,7 @@ public sealed class RoomInventoryImportForm
     public string? CsvText { get; set; }
     public bool UseBuiltInSeed { get; set; }
     public bool ConfirmImport { get; set; }
+    public bool ConfirmReplaceExistingBatch { get; set; }
     public string Facility { get; set; } = "All";
     public string EbsLocation { get; set; } = "All EBS";
     public string? RoomCode { get; set; }
@@ -237,6 +240,7 @@ public sealed class RoomInventoryImportPreviewViewModel
 {
     public int AddCount { get; set; }
     public int UpdateCount { get; set; }
+    public int ReplaceBatchCount { get; set; }
     public int UnchangedCount { get; set; }
     public int WarningCount { get; set; }
     public int DuplicateCount { get; set; }
@@ -244,7 +248,9 @@ public sealed class RoomInventoryImportPreviewViewModel
     public string CsvText { get; set; } = "";
     public bool IsBuiltInSeed { get; set; }
     public IReadOnlyList<RoomInventoryImportPreviewRow> Rows { get; set; } = [];
-    public bool CanApply => DuplicateCount == 0 && InvalidCount == 0 && Rows.Any(x => x.Action is "Add" or "Update");
+    public IReadOnlyList<RoomInventoryImportRoomTotalPreview> RoomTotals { get; set; } = [];
+    public bool RequiresReplaceConfirmation => ReplaceBatchCount > 0;
+    public bool CanApply => DuplicateCount == 0 && InvalidCount == 0 && Rows.Any(x => x.Action is "Add" or "Update" or "Replace");
 }
 
 public sealed class RoomInventoryImportPreviewRow
@@ -263,6 +269,7 @@ public sealed class RoomInventoryImportPreviewRow
     public DateTimeOffset EffectiveDate { get; set; }
     public int? BinCount { get; set; }
     public string Source { get; set; } = "";
+    public string Notes { get; set; } = "";
     public string Action { get; set; } = "";
     public string Message { get; set; } = "";
     public bool IsWarning { get; set; }
@@ -275,6 +282,16 @@ public sealed class RoomInventoryImportPreviewRow
     public int? OldBinCount { get; set; }
     public int? NewBinCount { get; set; }
 }
+
+public sealed record RoomInventoryImportRoomTotalPreview(
+    int CropYear,
+    string Warehouse,
+    string RoomCode,
+    string Variety,
+    string Status,
+    DateTimeOffset EffectiveDate,
+    int LotCount,
+    int BinCount);
 
 public sealed class RoomInventoryCurrentLotViewModel
 {
