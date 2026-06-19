@@ -256,6 +256,7 @@ public sealed class RoomInventoryImportPreviewViewModel
 public sealed class RoomInventoryImportPreviewRow
 {
     public int RowNumber { get; set; }
+    public string Column { get; set; } = "";
     public int CropYear { get; set; }
     public string Facility { get; set; } = "";
     public string SubLocation { get; set; } = "";

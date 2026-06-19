@@ -8,7 +8,7 @@ namespace CropQc.Web.Controllers;
 
 [Route("Admin/RoomInventory")]
 [Authorize(Policy = "RequireManagerOrAdmin")]
-public sealed class RoomInventoryController(IRoomInventoryImportService roomInventoryImportService, IAdminAuthorizationService authorizationService) : Controller
+public sealed class RoomInventoryController(IRoomInventoryImportService roomInventoryImportService, IAdminAuthorizationService authorizationService, ILogger<RoomInventoryController> logger) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index([FromQuery] RoomInventoryImportForm filter, CancellationToken cancellationToken) =>
@@ -26,10 +26,17 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
             return Forbid();
         }
 
-        var preview = await roomInventoryImportService.PreviewAsync(form, cancellationToken);
-        var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
-        model.ImportPreview = preview;
-        return View("Index", model);
+        try
+        {
+            var preview = await roomInventoryImportService.PreviewAsync(form, cancellationToken);
+            var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
+            model.ImportPreview = preview;
+            return View("Index", model);
+        }
+        catch (Exception ex)
+        {
+            return await ImportFailureAsync(form, ex, "preview", cancellationToken);
+        }
     }
 
     [HttpPost("ImportEbsStartingInventory")]
@@ -41,10 +48,17 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
         }
 
         var form = new RoomInventoryImportForm { UseBuiltInSeed = true, Facility = "EBS" };
-        var preview = await roomInventoryImportService.PreviewAsync(form, cancellationToken);
-        var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
-        model.ImportPreview = preview;
-        return View("Index", model);
+        try
+        {
+            var preview = await roomInventoryImportService.PreviewAsync(form, cancellationToken);
+            var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
+            model.ImportPreview = preview;
+            return View("Index", model);
+        }
+        catch (Exception ex)
+        {
+            return await ImportFailureAsync(form, ex, "built-in baseline preview", cancellationToken);
+        }
     }
 
     [HttpPost("Apply")]
@@ -55,18 +69,35 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
             return Forbid();
         }
 
-        form.ConfirmImport = true;
-        var (preview, error) = await roomInventoryImportService.ApplyAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
-        if (error is not null)
+        try
         {
-            TempData["Error"] = error;
-            var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
-            model.ImportPreview = preview;
-            return View("Index", model);
-        }
+            form.ConfirmImport = true;
+            var (preview, error) = await roomInventoryImportService.ApplyAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
+            if (error is not null)
+            {
+                TempData["Error"] = error;
+                var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
+                model.ImportPreview = preview;
+                return View("Index", model);
+            }
 
-        TempData["Success"] = $"Room inventory imported. Added {preview.AddCount}, updated {preview.UpdateCount}, unchanged {preview.UnchangedCount}, warnings {preview.WarningCount}.";
-        return RedirectToAction(nameof(Index), new { Facility = "EBS" });
+            TempData["Success"] = $"Room inventory imported. Added {preview.AddCount}, updated {preview.UpdateCount}, unchanged {preview.UnchangedCount}, warnings {preview.WarningCount}.";
+            return RedirectToAction(nameof(Index), new { Facility = "EBS" });
+        }
+        catch (Exception ex)
+        {
+            return await ImportFailureAsync(form, ex, "apply", cancellationToken);
+        }
+    }
+
+    private async Task<IActionResult> ImportFailureAsync(RoomInventoryImportForm form, Exception exception, string stage, CancellationToken cancellationToken)
+    {
+        var referenceId = Guid.NewGuid().ToString("N")[..10];
+        logger.LogError(exception, "Current Inventory Baseline import {Stage} failed. Reference {ReferenceId}.", stage, referenceId);
+        TempData["Error"] = $"Current Inventory Baseline import failed during {stage}. Reference {referenceId}. The full exception was logged for troubleshooting.";
+        var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
+        model.ImportPreview = RoomInventoryImportService.ServerFailurePreview(referenceId, "The full server error was logged without exposing secrets.");
+        return View("Index", model);
     }
 
     private bool CanApplyEbsCorrectionSeed() =>
