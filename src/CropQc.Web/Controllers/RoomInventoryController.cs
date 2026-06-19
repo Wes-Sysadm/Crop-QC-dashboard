@@ -14,6 +14,10 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
     public async Task<IActionResult> Index([FromQuery] RoomInventoryImportForm filter, CancellationToken cancellationToken) =>
         View(await roomInventoryImportService.GetPageAsync(filter, cancellationToken));
 
+    [HttpGet("Template")]
+    public IActionResult Template() =>
+        File(System.Text.Encoding.UTF8.GetBytes(roomInventoryImportService.GetCsvTemplate()), "text/csv", "current-inventory-baseline-template.csv");
+
     [HttpPost("Preview")]
     public async Task<IActionResult> Preview(RoomInventoryImportForm form, CancellationToken cancellationToken)
     {
