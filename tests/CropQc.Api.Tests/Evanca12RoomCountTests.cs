@@ -234,6 +234,99 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
     }
 
     [Fact]
+    public async Task CurrentLots_LoadsBaselineRowsAndExcludesLsDsRows()
+    {
+        await using var db = CreateDbContext();
+        await SeedVerifiedEbsInventoryAsync(db);
+        var service = CreateService(db);
+
+        var page = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { CropYear = 2026, RoomId = 12 }, CancellationToken.None);
+
+        Assert.Null(page.DataWarning);
+        Assert.Equal(3, page.Lots.Count);
+        Assert.Equal(1022, page.Lots.Sum(x => x.CurrentBins));
+        Assert.Contains(page.Lots, x => x.Lot == "1570" && x.Variety == "FUJI" && x.CurrentBins == 819);
+        Assert.DoesNotContain(page.Lots, x => x.CurrentBins is 700 or 800);
+    }
+
+    [Fact]
+    public async Task CurrentLots_HandlesDuplicateLotNumbersMissingGrowerAndBlankStatus()
+    {
+        await using var db = CreateDbContext();
+        await SeedVerifiedEbsInventoryAsync(db);
+        var warehouse = await db.Warehouses.FirstAsync(x => x.Code == "EBS");
+        var room = await db.Rooms.FirstAsync(x => x.Code == "LAMBCA17");
+        var pink = await db.FruitProfiles.FirstAsync(x => x.VarietyCode == "PINK");
+        var at = DateTimeOffset.Parse("2026-06-19T00:00:00-07:00");
+        db.RoomInventoryAdjustments.AddRange(
+            CurrentCorrection(900, warehouse, room, pink, "1020", 226, at, "Duplicate lot regression"),
+            CurrentCorrection(901, warehouse, room, pink, "1020", 333, at, "Duplicate lot regression"),
+            CurrentCorrection(902, warehouse, room, pink, "1050", 1359, at, "Duplicate lot regression", "Sealed"));
+        db.RoomInventoryAdjustments.Local.Single(x => x.Id == 900).GrowerName = "";
+        db.RoomInventoryAdjustments.Local.Single(x => x.Id == 901).GrowerName = "";
+        db.RoomInventoryAdjustments.Local.Single(x => x.Id == 900).InventoryStatus = "";
+        db.RoomInventoryAdjustments.Local.Single(x => x.Id == 901).InventoryStatus = "";
+        var batchCreatedAt = DateTimeOffset.Parse("2026-06-19T08:00:00-07:00");
+        db.RoomInventoryAdjustments.Local.Single(x => x.Id == 900).CreatedAt = batchCreatedAt;
+        db.RoomInventoryAdjustments.Local.Single(x => x.Id == 901).CreatedAt = batchCreatedAt;
+        db.RoomInventoryAdjustments.Local.Single(x => x.Id == 902).CreatedAt = batchCreatedAt;
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var detail = await service.GetRoomDetailAsync(17, CancellationToken.None);
+        var page = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { CropYear = 2026, RoomId = 17 }, CancellationToken.None);
+
+        Assert.Equal(1918, detail.Summary?.CurrentBinsCount);
+        Assert.Contains(detail.CurrentLots, x => x.LotCode == "1020" && x.CurrentBins == 226);
+        Assert.Contains(detail.CurrentLots, x => x.LotCode == "1020" && x.CurrentBins == 333);
+        Assert.Contains(page.Lots, x => x.Lot == "1020" && x.CurrentBins == 226 && x.Grower == "");
+        Assert.Contains(page.Lots, x => x.Lot == "1020" && x.CurrentBins == 333 && x.Grower == "");
+    }
+
+    [Fact]
+    public async Task CurrentLots_AdminPageShowsClearDiagnosticForUnknownRoomMapping()
+    {
+        await using var db = CreateDbContext();
+        SeedImportMasterData(db);
+        var warehouse = await db.Warehouses.FirstAsync(x => x.Code == "EBS");
+        var room = await db.Rooms.FirstAsync(x => x.Code == "EVANCA12");
+        var fuji = await db.FruitProfiles.FirstAsync(x => x.VarietyCode == "FUJI");
+        db.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
+        {
+            Id = 920,
+            CropYear = 2026,
+            WarehouseId = warehouse.Id,
+            Warehouse = warehouse,
+            RoomId = room.Id,
+            Room = room,
+            FruitProfileId = fuji.Id,
+            FruitProfile = fuji,
+            GrowerName = "",
+            LotNumber = "1570",
+            VarietyCode = "FUJI",
+            ChangeAmount = 819,
+            NewBinCount = 819,
+            AdjustmentType = RoomInventoryImportService.StartingInventoryAdjustmentType,
+            SourceRoomCode = "UNKNOWN99",
+            Source = "Bad row regression",
+            Reason = "Bad row regression",
+            AdjustmentAt = DateTimeOffset.Parse("2026-06-18T00:00:00-07:00"),
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+        var service = CreateImportService(db);
+
+        var page = await service.GetPageAsync(new RoomInventoryImportForm { Facility = "EBS" }, CancellationToken.None);
+
+        Assert.Empty(page.CurrentLots);
+        Assert.NotNull(page.CurrentLotWarning);
+        var row = Assert.Single(page.CurrentLotBreakdown);
+        Assert.False(row.IsIncluded);
+        Assert.Equal("UNKNOWN99", row.CompuTechRoomCode);
+        Assert.Contains("does not map", row.DecisionReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void CurrentInventoryBaselineImport_PageDoesNotOnlyShowGenericError()
     {
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "RoomInventoryController.cs"));

@@ -182,11 +182,11 @@ public sealed class DashboardDataService(
                 latestSamples.TryGetValue(lot.ReceiptId ?? 0, out var latestSample);
                 return new CurrentGrowerLotViewModel
                 {
-                    Grower = lot.GrowerName,
-                    Lot = lot.GrowerNumber,
-                    Variety = lot.VarietyCode,
-                    Warehouse = lot.Warehouse,
-                    Room = lot.RoomCode,
+                    Grower = lot.GrowerName ?? "",
+                    Lot = lot.GrowerNumber ?? lot.LotCode ?? "",
+                    Variety = lot.VarietyCode ?? "",
+                    Warehouse = lot.Warehouse ?? "",
+                    Room = lot.RoomCode ?? "",
                     CurrentBins = lot.CurrentBins,
                     FirstReceivedAt = receipt?.ReceivedAt,
                     LastQcSampleAt = latestSample?.SampleDate,
@@ -217,7 +217,7 @@ public sealed class DashboardDataService(
             if (!string.IsNullOrWhiteSpace(filter.Search))
             {
                 var search = filter.Search.Trim();
-                rows = rows.Where(x => x.Lot.Contains(search, StringComparison.OrdinalIgnoreCase) || x.Grower.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+                rows = rows.Where(x => ContainsIgnoreCase(x.Lot, search) || ContainsIgnoreCase(x.Grower, search)).ToList();
             }
 
             return new CurrentGrowerLotsPageViewModel
@@ -231,9 +231,15 @@ public sealed class DashboardDataService(
                 Varieties = rows.Select(x => x.Variety).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList()
             };
         }
-        catch
+        catch (Exception ex)
         {
-            return new CurrentGrowerLotsPageViewModel { Filter = filter, DataWarning = DataWarning };
+            var referenceId = Guid.NewGuid().ToString("N")[..10];
+            logger.LogError(ex, "Current Grower Lots page failed. Reference {ReferenceId}.", referenceId);
+            return new CurrentGrowerLotsPageViewModel
+            {
+                Filter = filter,
+                DataWarning = $"Current Lots could not fully load. Reference {referenceId}. The full exception was logged without exposing secrets."
+            };
         }
     }
 
@@ -2064,11 +2070,9 @@ public sealed class DashboardDataService(
             .ThenByDescending(x => x.Id)
             .ToListAsync(cancellationToken);
         var adjustmentCorrectionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
-        var includedAdjustmentIds = adjustments
-            .Where(IsAdjustmentOnlyCurrentStorageSource)
-            .Where(x => !IsSupersededByRoomCurrentBalanceCorrection(x, adjustmentCorrectionCutoffs))
-            .GroupBy(x => RoomInventoryImportService.CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? ""), StringComparer.OrdinalIgnoreCase)
-            .Select(x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First())
+        var includedAdjustmentIds = ApplyLatestCurrentBalanceRows(adjustments
+                .Where(IsAdjustmentOnlyCurrentStorageSource)
+                .Where(x => !IsSupersededByRoomCurrentBalanceCorrection(x, adjustmentCorrectionCutoffs)))
             .Where(x => x.NewBinCount > 0)
             .Select(x => x.Id)
             .ToHashSet();
@@ -2294,10 +2298,8 @@ public sealed class DashboardDataService(
 
         var adjustments = await query.ToListAsync(cancellationToken);
         var correctionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
-        return adjustments
-            .Where(x => !IsSupersededByRoomCurrentBalanceCorrection(x, correctionCutoffs))
-            .GroupBy(x => RoomInventoryImportService.CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? ""), StringComparer.OrdinalIgnoreCase)
-            .Select(x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First())
+        return ApplyLatestCurrentBalanceRows(adjustments
+                .Where(x => !IsSupersededByRoomCurrentBalanceCorrection(x, correctionCutoffs)))
             .Where(x => x.NewBinCount > 0)
             .Select(x => new RoomLotSummaryViewModel
             {
@@ -2419,9 +2421,7 @@ public sealed class DashboardDataService(
         var adjustments = await dbContext.RoomInventoryAdjustments.AsNoTracking()
             .Where(x => x.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType)
             .ToListAsync(cancellationToken);
-        return adjustments
-            .GroupBy(x => RoomInventoryImportService.CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? ""), StringComparer.OrdinalIgnoreCase)
-            .Select(x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First())
+        return ApplyLatestCurrentBalanceRows(adjustments)
             .GroupBy(x => x.RoomId)
             .ToDictionary(x => x.Key, x => x.Sum(y => Math.Max(0, y.NewBinCount)));
     }
@@ -2488,6 +2488,18 @@ public sealed class DashboardDataService(
     private static bool IsAdjustmentOnlyCurrentStorageSource(RoomInventoryAdjustment adjustment) =>
         adjustment.ReceiptId == null
         || adjustment.AdjustmentType == "TransferIn";
+
+    private static IEnumerable<RoomInventoryAdjustment> ApplyLatestCurrentBalanceRows(IEnumerable<RoomInventoryAdjustment> adjustments) =>
+        adjustments
+            .Where(x => !string.IsNullOrWhiteSpace(x.LotNumber))
+            .GroupBy(x => RoomInventoryImportService.CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? ""), StringComparer.OrdinalIgnoreCase)
+            .SelectMany(group =>
+            {
+                var latestEffectiveDate = group.Max(x => x.AdjustmentAt);
+                var latestRows = group.Where(x => x.AdjustmentAt == latestEffectiveDate).ToList();
+                var latestCreatedAt = latestRows.Max(x => x.CreatedAt);
+                return latestRows.Where(x => x.CreatedAt == latestCreatedAt);
+            });
 
     private static bool IsSupersededByRoomCurrentBalanceCorrection(Receipt receipt, IReadOnlyDictionary<int, DateTimeOffset> correctionCutoffs) =>
         correctionCutoffs.TryGetValue(receipt.RoomId, out var cutoff)
@@ -2575,6 +2587,10 @@ public sealed class DashboardDataService(
     private static bool HasStorageExcludedIdentifierPrefix(string? identifier, string prefix) =>
         !string.IsNullOrWhiteSpace(identifier)
         && identifier.TrimStart().StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+
+    private static bool ContainsIgnoreCase(string? value, string search) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value.Contains(search, StringComparison.OrdinalIgnoreCase);
 
     private static bool ContainsDoorSampleLabel(string sampleTypes) =>
         sampleTypes.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Any(IsDoorSampleLabel);

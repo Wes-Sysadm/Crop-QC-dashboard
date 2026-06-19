@@ -164,6 +164,10 @@
 
 <section class="panel">
     <h2>Current Baseline Lots</h2>
+    @if (Model.CurrentLotWarning is not null)
+    {
+        <p class="notice warning">@Model.CurrentLotWarning</p>
+    }
     <form class="toolbar" method="get" action="/Admin/RoomInventory">
         <label class="field">Facility
             <select name="Facility">
@@ -245,6 +249,53 @@
         </div>
     }
 </section>
+
+@if (Model.CurrentLotBreakdown.Count > 0)
+{
+    <section class="panel">
+        <h2>Current Inventory Source Breakdown</h2>
+        <p class="muted">Included rows contribute to Current Lots. Excluded rows show bad room mappings, invalid baseline values, older duplicate/current-balance rows, or other source conflicts.</p>
+        <div class="table-wrap contained-table">
+            <table class="responsive-table">
+                <thead>
+                <tr>
+                    <th>Included</th>
+                    <th>Source</th>
+                    <th>Source ID</th>
+                    <th>Room</th>
+                    <th>Compu-Tech Code</th>
+                    <th>Grower</th>
+                    <th>Lot</th>
+                    <th>Variety</th>
+                    <th>Status</th>
+                    <th class="numeric-cell">Bins</th>
+                    <th>Date</th>
+                    <th class="wide-cell">Reason</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach (var row in Model.CurrentLotBreakdown)
+                {
+                    <tr>
+                        <td><span class="status @(row.IsIncluded ? "ready" : "missing")">@(row.IsIncluded ? "Included" : "Excluded")</span></td>
+                        <td>@row.SourceType</td>
+                        <td>@(row.SourceId?.ToString() ?? "-")</td>
+                        <td>@(string.IsNullOrWhiteSpace(row.RoomCode) ? "-" : row.RoomCode)</td>
+                        <td>@(string.IsNullOrWhiteSpace(row.CompuTechRoomCode) ? "-" : row.CompuTechRoomCode)</td>
+                        <td class="wrap-cell">@(string.IsNullOrWhiteSpace(row.Grower) ? "-" : row.Grower)</td>
+                        <td>@(string.IsNullOrWhiteSpace(row.Lot) ? "-" : row.Lot)</td>
+                        <td>@(string.IsNullOrWhiteSpace(row.Variety) ? "-" : row.Variety)</td>
+                        <td>@(string.IsNullOrWhiteSpace(row.Status) ? "-" : row.Status)</td>
+                        <td class="numeric-cell">@row.Bins</td>
+                        <td>@(row.Date?.LocalDateTime.ToString("g") ?? "-")</td>
+                        <td class="wide-cell">@row.DecisionReason</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
 
 @functions {
     private static string StatusClass(string action, bool warning) =>
