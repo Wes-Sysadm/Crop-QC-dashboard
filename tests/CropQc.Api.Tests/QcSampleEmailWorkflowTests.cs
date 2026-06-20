@@ -54,7 +54,7 @@ public sealed class QcSampleEmailWorkflowTests
 
         var error = await service.UpdateSampleTypeAsync(new UpdateSampleTypeForm { SampleId = sample.Id, SampleTypeId = doorSampleTypeId }, CancellationToken.None);
 
-        Assert.Contains("Only Admin users can change sample type after QC Summary email has been sent.", error);
+            Assert.Contains("Daily QC Admin access is required to change sample type after QC Summary email has been sent.", error);
         Assert.Equal("Lot Sample", await SampleTypeNameAsync(db, sample.Id));
         Assert.Empty(await db.AuditLogs.ToListAsync());
     }

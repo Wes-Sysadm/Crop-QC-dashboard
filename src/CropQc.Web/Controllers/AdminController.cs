@@ -15,12 +15,12 @@ public sealed class AdminController(
     IConfiguration configuration) : Controller
 {
     [HttpGet("Users")]
-    [Authorize(Policy = "RequireAdmin")]
+    [Authorize(Policy = AccessPolicyNames.UsersAdmin)]
     public async Task<IActionResult> Users(CancellationToken cancellationToken) =>
         View(await userAdminService.GetUsersAsync(cancellationToken));
 
     [HttpGet("Downloads")]
-    [Authorize(Policy = "RequireAdmin")]
+    [Authorize(Policy = AccessPolicyNames.DownloadsView)]
     public IActionResult Downloads()
     {
         var masterFolderUrl = configuration["Downloads:MasterFolderUrl"];
@@ -47,7 +47,7 @@ public sealed class AdminController(
     }
 
     [HttpGet("DataCleanup")]
-    [Authorize(Policy = "RequireAdmin")]
+    [Authorize(Policy = AccessPolicyNames.DataCleanupAdmin)]
     public async Task<IActionResult> DataCleanup([FromQuery] DataCleanupFilterForm filter, CancellationToken cancellationToken)
     {
         if (!IsDataCleanupAllowed())
@@ -59,7 +59,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("DataCleanup/Execute")]
-    [Authorize(Policy = "RequireAdmin")]
+    [Authorize(Policy = AccessPolicyNames.DataCleanupAdmin)]
     public async Task<IActionResult> ExecuteDataCleanup(DataCleanupFilterForm filter, CancellationToken cancellationToken)
     {
         if (!IsDataCleanupAllowed())
@@ -73,12 +73,12 @@ public sealed class AdminController(
     }
 
     [HttpGet("QcStations")]
-    [Authorize(Policy = "RequireManagerOrAdmin")]
+    [Authorize(Policy = AccessPolicyNames.QcStationsView)]
     public async Task<IActionResult> QcStations([FromQuery] string? search, [FromQuery] string? warehouseCode, [FromQuery] string activeFilter = "Active", CancellationToken cancellationToken = default) =>
         View(await qcStationAdminService.GetStationsAsync(search, warehouseCode, activeFilter, cancellationToken));
 
     [HttpPost("QcStations/Create")]
-    [Authorize(Policy = "RequireManagerOrAdmin")]
+    [Authorize(Policy = AccessPolicyNames.QcStationsAdmin)]
     public async Task<IActionResult> CreateQcStation(QcStationForm form, CancellationToken cancellationToken = default)
     {
         var (error, download) = await qcStationAdminService.CreateAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -92,7 +92,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("QcStations/Update")]
-    [Authorize(Policy = "RequireManagerOrAdmin")]
+    [Authorize(Policy = AccessPolicyNames.QcStationsAdmin)]
     public async Task<IActionResult> UpdateQcStation(QcStationForm form, CancellationToken cancellationToken)
     {
         var error = await qcStationAdminService.UpdateAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -101,7 +101,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("QcStations/Deactivate")]
-    [Authorize(Policy = "RequireManagerOrAdmin")]
+    [Authorize(Policy = AccessPolicyNames.QcStationsAdmin)]
     public async Task<IActionResult> DeactivateQcStation(int id, CancellationToken cancellationToken)
     {
         var error = await qcStationAdminService.SetActiveAsync(id, false, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -110,7 +110,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("QcStations/Reactivate")]
-    [Authorize(Policy = "RequireManagerOrAdmin")]
+    [Authorize(Policy = AccessPolicyNames.QcStationsAdmin)]
     public async Task<IActionResult> ReactivateQcStation(int id, CancellationToken cancellationToken)
     {
         var error = await qcStationAdminService.SetActiveAsync(id, true, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -119,7 +119,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("QcStations/RotateKey")]
-    [Authorize(Policy = "RequireManagerOrAdmin")]
+    [Authorize(Policy = AccessPolicyNames.QcStationsAdmin)]
     public async Task<IActionResult> RotateQcStationKey(int id, CancellationToken cancellationToken = default)
     {
         var (error, download) = await qcStationAdminService.RotateKeyAsync(id, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -133,7 +133,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("QcStations/DownloadConfig")]
-    [Authorize(Policy = "RequireManagerOrAdmin")]
+    [Authorize(Policy = AccessPolicyNames.QcStationsAdmin)]
     public IActionResult DownloadExistingQcStationConfig()
     {
         TempData["Error"] = "Rotate key to generate a new downloadable station config. Raw station keys are not stored after creation or rotation.";
@@ -168,7 +168,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("Users/Add")]
-    [Authorize(Policy = "RequireAdmin")]
+    [Authorize(Policy = AccessPolicyNames.UsersAdmin)]
     public async Task<IActionResult> AddUser(AddUserForm form, CancellationToken cancellationToken)
     {
         var error = await userAdminService.AddUserAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -177,11 +177,20 @@ public sealed class AdminController(
     }
 
     [HttpPost("Users/Update")]
-    [Authorize(Policy = "RequireAdmin")]
+    [Authorize(Policy = AccessPolicyNames.UsersAdmin)]
     public async Task<IActionResult> UpdateUser(UpdateUserAccessForm form, CancellationToken cancellationToken)
     {
         var error = await userAdminService.UpdateUserAccessAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "User access updated.";
+        return RedirectToAction(nameof(Users));
+    }
+
+    [HttpPost("Users/Matrix")]
+    [Authorize(Policy = AccessPolicyNames.UsersAdmin)]
+    public async Task<IActionResult> UpdateUserMatrix(UserAccessMatrixForm form, CancellationToken cancellationToken)
+    {
+        var error = await userAdminService.UpdateUserMatrixAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "User access matrix updated.";
         return RedirectToAction(nameof(Users));
     }
 

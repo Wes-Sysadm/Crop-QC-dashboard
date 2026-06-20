@@ -5,15 +5,16 @@ using Microsoft.AspNetCore.Mvc;
 namespace CropQc.Web.Controllers;
 
 [Route("MasterData")]
-[Authorize(Policy = "RequireManagerOrAdmin")]
 public sealed class MasterDataController(IAdminManagementService adminService, IAdminAuthorizationService authorizationService) : Controller
 {
     [HttpGet("")]
     [HttpGet("{type}")]
+    [Authorize(Policy = AccessPolicyNames.MasterDataView)]
     public async Task<IActionResult> Index(string? type, CancellationToken cancellationToken) =>
         View(await adminService.GetMasterDataAsync(type ?? "index", authorizationService.IsManagerOrAdmin(User), cancellationToken));
 
     [HttpGet("{type}/Edit/{id:int}")]
+    [Authorize(Policy = AccessPolicyNames.MasterDataEdit)]
     public async Task<IActionResult> Edit(string type, int id, CancellationToken cancellationToken)
     {
         var form = await adminService.GetEditFormAsync(type, id, cancellationToken);
@@ -22,6 +23,7 @@ public sealed class MasterDataController(IAdminManagementService adminService, I
     }
 
     [HttpPost("{type}/Save")]
+    [Authorize(Policy = AccessPolicyNames.MasterDataEdit)]
     public async Task<IActionResult> Save(string type, CropQc.Web.Models.MasterDataEditForm form, CancellationToken cancellationToken)
     {
         form.Type = type;
@@ -36,6 +38,7 @@ public sealed class MasterDataController(IAdminManagementService adminService, I
     }
 
     [HttpPost("{type}/Deactivate/{id:int}")]
+    [Authorize(Policy = AccessPolicyNames.MasterDataAdmin)]
     public async Task<IActionResult> Deactivate(string type, int id, CancellationToken cancellationToken)
     {
         var error = await adminService.DeactivateAsync(type, id, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -44,6 +47,7 @@ public sealed class MasterDataController(IAdminManagementService adminService, I
     }
 
     [HttpPost("grower-lots/ImportPreview")]
+    [Authorize(Policy = AccessPolicyNames.MasterDataEdit)]
     public async Task<IActionResult> PreviewGrowerLotImport(CropQc.Web.Models.GrowerLotImportForm form, CancellationToken cancellationToken)
     {
         var preview = await adminService.PreviewGrowerLotImportAsync(form, cancellationToken);
@@ -52,6 +56,7 @@ public sealed class MasterDataController(IAdminManagementService adminService, I
     }
 
     [HttpPost("grower-lots/ImportApply")]
+    [Authorize(Policy = AccessPolicyNames.MasterDataEdit)]
     public async Task<IActionResult> ApplyGrowerLotImport(CropQc.Web.Models.GrowerLotImportForm form, CancellationToken cancellationToken)
     {
         form.ConfirmImport = true;

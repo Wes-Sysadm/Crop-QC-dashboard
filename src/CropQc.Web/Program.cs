@@ -143,10 +143,32 @@ builder.Services.AddAuthorization(options =>
     options.FallbackPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
-    options.AddPolicy("RequireAdmin", policy => policy.RequireRole("Admin"));
-    options.AddPolicy("RequireManagerOrAdmin", policy => policy.RequireRole("Admin", "Manager"));
-    options.AddPolicy("RequireQcUserOrHigher", policy => policy.RequireRole("Admin", "Manager", "QC User"));
     options.AddPolicy("RequireAuthenticatedUser", policy => policy.RequireAuthenticatedUser());
+    AddAccessPolicy(options, AccessPolicyNames.DashboardView, ApplicationAreas.Dashboard, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.DailyQcView, ApplicationAreas.DailyQc, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.DailyQcEdit, ApplicationAreas.DailyQc, PageAccessLevel.Edit);
+    AddAccessPolicy(options, AccessPolicyNames.DailyQcAdmin, ApplicationAreas.DailyQc, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.ReceiptsView, ApplicationAreas.Receipts, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.ReceiptsEdit, ApplicationAreas.Receipts, PageAccessLevel.Edit);
+    AddAccessPolicy(options, AccessPolicyNames.ReceiptEditEdit, ApplicationAreas.ReceiptEdit, PageAccessLevel.Edit);
+    AddAccessPolicy(options, AccessPolicyNames.ReceiptDeleteAdmin, ApplicationAreas.ReceiptDelete, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.CurrentLotsView, ApplicationAreas.CurrentLots, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.CurrentLotsAdmin, ApplicationAreas.CurrentLots, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.RoomsView, ApplicationAreas.Rooms, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.RoomTransactionsEdit, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit);
+    AddAccessPolicy(options, AccessPolicyNames.RoomTransactionsAdmin, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.GrowerLotsView, ApplicationAreas.GrowerLots, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.CropYearReviewView, ApplicationAreas.CropYearReview, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.MasterDataView, ApplicationAreas.MasterData, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.MasterDataEdit, ApplicationAreas.MasterData, PageAccessLevel.Edit);
+    AddAccessPolicy(options, AccessPolicyNames.MasterDataAdmin, ApplicationAreas.MasterData, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.UsersAdmin, ApplicationAreas.Users, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.QcStationsView, ApplicationAreas.QcStations, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.QcStationsAdmin, ApplicationAreas.QcStations, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.DownloadsView, ApplicationAreas.Downloads, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.ConfigurationAdmin, ApplicationAreas.Configuration, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.BackupsAdmin, ApplicationAreas.Backups, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.DataCleanupAdmin, ApplicationAreas.DataCleanup, PageAccessLevel.Admin);
 });
 builder.Services.AddDbContext<CropQcDbContext>(options =>
     CropQcDatabase.Configure(
@@ -166,6 +188,8 @@ builder.Services.AddScoped<IQcEmailRecipientResolver, QcEmailRecipientResolver>(
 builder.Services.AddScoped<IMasterDataSeeder, MasterDataSeeder>();
 builder.Services.AddScoped<IReceivingExportService, ReceivingExportService>();
 builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService>();
+builder.Services.AddScoped<IUserAccessService, UserAccessService>();
+builder.Services.AddScoped<IAuthorizationHandler, PageAccessAuthorizationHandler>();
 builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportService>();
 builder.Services.AddScoped<IEbsDailyBinsEmailService, EbsDailyBinsEmailService>();
@@ -212,6 +236,7 @@ await EnsureGrowerLotSchemaAsync(app.Services);
 await EnsureRoomMetadataSchemaAsync(app.Services);
 await EnsureRoomInventoryAdjustmentSchemaAsync(app.Services);
 await EnsureRequiredSampleTypesAsync(app.Services);
+await EnsureAccessMatrixAsync(app.Services);
 
 if (useForwardedHeaders)
 {
@@ -283,7 +308,7 @@ app.MapGet("/health/storage", (FileStorageOptions fileStorageOptions, GoogleDriv
             || !string.IsNullOrWhiteSpace(googleDriveOptions.ServiceAccountJsonPath),
         googleDriveApplicationNameConfigured = !string.IsNullOrWhiteSpace(googleDriveOptions.ApplicationName)
     });
-}).RequireAuthorization("RequireAdmin");
+}).RequireAuthorization(AccessPolicyNames.ConfigurationAdmin);
 app.MapGet("/health/environment", (AppEnvironmentOptions appEnvironment, BackupOptions backupOptions) =>
 {
     return Results.Ok(new
@@ -294,7 +319,7 @@ app.MapGet("/health/environment", (AppEnvironmentOptions appEnvironment, BackupO
         backupOptions.Provider,
         backupFolderConfigured = backupOptions.GoogleDriveFolderConfigured
     });
-}).RequireAuthorization("RequireAdmin");
+}).RequireAuthorization(AccessPolicyNames.BackupsAdmin);
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
@@ -854,4 +879,18 @@ static void ConfigureDataProtection(IServiceCollection services, IConfiguration 
 
     Directory.CreateDirectory(keysPath);
     dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+}
+
+static void AddAccessPolicy(AuthorizationOptions options, string policyName, string areaKey, PageAccessLevel minimumLevel)
+{
+    options.AddPolicy(policyName, policy => policy
+        .RequireAuthenticatedUser()
+        .AddRequirements(new PageAccessRequirement(areaKey, minimumLevel)));
+}
+
+static async Task EnsureAccessMatrixAsync(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var accessService = scope.ServiceProvider.GetRequiredService<IUserAccessService>();
+    await accessService.EnsureAccessMatrixAsync(CancellationToken.None);
 }

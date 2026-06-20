@@ -14,8 +14,21 @@ public sealed class User
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
     public ICollection<UserRole> UserRoles { get; } = new List<UserRole>();
+    public ICollection<UserPageAccess> PageAccesses { get; } = new List<UserPageAccess>();
     public ICollection<QcSample> TakenSamples { get; } = new List<QcSample>();
     public ICollection<UserGoogleCredential> GoogleCredentials { get; } = new List<UserGoogleCredential>();
+}
+
+public sealed class UserPageAccess
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public User User { get; set; } = null!;
+    public required string AreaKey { get; set; }
+    public required string AccessLevel { get; set; }
+    public int? UpdatedByUserId { get; set; }
+    public User? UpdatedByUser { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 public sealed class UserGoogleCredential

@@ -13,10 +13,12 @@ public sealed class SamplesController(
     ILogger<SamplesController> logger) : Controller
 {
     [HttpGet("{id:long}")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcView)]
     public async Task<IActionResult> Details(long id, CancellationToken cancellationToken) =>
         View(await dataService.GetSampleDetailAsync(id, cancellationToken));
 
     [HttpGet("{id:long}/refresh")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcView)]
     public async Task<IActionResult> Refresh(long id, CancellationToken cancellationToken)
     {
         var model = await dataService.GetSampleRefreshAsync(id, cancellationToken);
@@ -24,12 +26,12 @@ public sealed class SamplesController(
     }
 
     [HttpGet("{id:long}/Delete")]
-    [Authorize(Policy = "RequireAdmin")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcAdmin)]
     public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken) =>
         View(await dataService.GetDeleteSampleConfirmationAsync(id, cancellationToken));
 
     [HttpPost("{id:long}/Delete")]
-    [Authorize(Policy = "RequireAdmin")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcAdmin)]
     public async Task<IActionResult> ConfirmDelete(long id, DeleteSampleConfirmationViewModel form, CancellationToken cancellationToken)
     {
         var (receiptId, error) = await dataService.SoftDeleteSampleAsync(id, form.Reason, cancellationToken);
@@ -40,6 +42,7 @@ public sealed class SamplesController(
     }
 
     [HttpPost("{id:long}/rows")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcEdit)]
     public async Task<IActionResult> SaveRows(long id, SaveFruitReadingsForm form, CancellationToken cancellationToken)
     {
         form.SampleId = id;
@@ -49,7 +52,7 @@ public sealed class SamplesController(
     }
 
     [HttpPost("{id:long}/sample-type")]
-    [Authorize(Policy = "RequireQcUserOrHigher")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcEdit)]
     public async Task<IActionResult> UpdateSampleType(long id, UpdateSampleTypeForm form, CancellationToken cancellationToken)
     {
         form.SampleId = id;
@@ -59,10 +62,12 @@ public sealed class SamplesController(
     }
 
     [HttpGet("{id:long}/Starch")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcView)]
     public async Task<IActionResult> Starch(long id, CancellationToken cancellationToken) =>
         View(await dataService.GetStarchTestAsync(id, cancellationToken));
 
     [HttpPost("{id:long}/Starch")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcEdit)]
     public async Task<IActionResult> SaveStarch(long id, SaveStarchTestForm form, CancellationToken cancellationToken)
     {
         form.SampleId = id;
@@ -72,6 +77,7 @@ public sealed class SamplesController(
     }
 
     [HttpPost("{id:long}/Starch/photos")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcEdit)]
     public async Task<IActionResult> AddStarchPhoto(long id, AddPhotoMetadataForm form, CancellationToken cancellationToken)
     {
         LogPhotoUploadStart("starch", id, form);
@@ -85,12 +91,12 @@ public sealed class SamplesController(
     }
 
     [HttpGet("{id:long}/OverrideSend")]
-    [Authorize(Policy = "RequireManagerOrAdmin")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcAdmin)]
     public async Task<IActionResult> OverrideSend(long id, CancellationToken cancellationToken) =>
         View(await dataService.GetOverrideSendAsync(id, cancellationToken));
 
     [HttpPost("{id:long}/Send")]
-    [Authorize(Policy = "RequireQcUserOrHigher")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcEdit)]
     public async Task<IActionResult> SendQcSummary(long id, CancellationToken cancellationToken)
     {
         var error = await dataService.SendQcSummaryAsync(id, cancellationToken);
@@ -99,7 +105,7 @@ public sealed class SamplesController(
     }
 
     [HttpPost("{id:long}/OverrideSend")]
-    [Authorize(Policy = "RequireManagerOrAdmin")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcAdmin)]
     public async Task<IActionResult> LogOverrideSend(long id, OverrideSendForm form, CancellationToken cancellationToken)
     {
         form.SampleId = id;
@@ -115,6 +121,7 @@ public sealed class SamplesController(
     }
 
     [HttpPost("{id:long}/photos")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcEdit)]
     public async Task<IActionResult> AddPhoto(long id, AddPhotoMetadataForm form, CancellationToken cancellationToken)
     {
         LogPhotoUploadStart("sample", id, form);
@@ -124,7 +131,7 @@ public sealed class SamplesController(
     }
 
     [HttpPost("{id:long}/photos/{photoId:long}/remove")]
-    [Authorize(Policy = "RequireQcUserOrHigher")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcEdit)]
     public async Task<IActionResult> RemovePhoto(long id, long photoId, CancellationToken cancellationToken)
     {
         var error = await dataService.RemoveSamplePhotoAsync(id, photoId, cancellationToken);

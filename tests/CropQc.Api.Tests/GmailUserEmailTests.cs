@@ -353,8 +353,8 @@ public sealed class GmailUserEmailTests
     {
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "SamplesController.cs"));
 
-        Assert.Contains("[Authorize(Policy = \"RequireQcUserOrHigher\")]", controller);
-        Assert.Contains("[Authorize(Policy = \"RequireManagerOrAdmin\")]", controller);
+        Assert.Contains("AccessPolicyNames.DailyQcEdit", controller);
+        Assert.Contains("AccessPolicyNames.DailyQcAdmin", controller);
         Assert.Contains("SendQcSummaryAsync", controller);
         Assert.Contains("LogOverrideSendAsync", controller);
     }
@@ -380,7 +380,7 @@ public sealed class GmailUserEmailTests
         Assert.Contains("Invalid QC email recipient", adminManagementService);
         Assert.Contains("No QC email recipients are configured. Admins can set them under Admin -> Configuration -> QC Email Recipients.", dashboardDataService);
         Assert.Contains("qcEmailRecipientResolver.ResolveAsync", dashboardDataService);
-        Assert.Contains("[Authorize(Policy = \"RequireAdmin\")]", configurationController);
+        Assert.Contains("AccessPolicyNames.ConfigurationAdmin", configurationController);
     }
 
     private static string DecodeBase64Url(string value)

@@ -1,10 +1,12 @@
 @model ReceiptListViewModel
 @using System.Text.Json
+@inject IUserAccessService UserAccess
 @{
     ViewData["Title"] = "Receipts";
     var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, code = x.CropQcRoomName ?? x.DisplayName ?? x.Code, name = x.DisplayName ?? x.Name, subLocation = x.SubLocation ?? "", compuTech = x.CompuTechRoomCode ?? "" }));
     var growerLotsJson = JsonSerializer.Serialize(Model.GrowerLots.Select(x => new { id = x.Id, grower = x.Grower, lot = x.LotNumber, label = $"{x.Grower} - {x.LotNumber}" }));
     var hasRequiredMasterData = Model.Warehouses.Count > 0 && Model.Rooms.Count > 0 && Model.FruitProfiles.Count > 0;
+    var canEditReceipts = await UserAccess.HasAccessAsync(User, ApplicationAreas.Receipts, PageAccessLevel.Edit, Context.RequestAborted);
 }
 
 <h1>Receipts</h1>
@@ -41,7 +43,7 @@
             }
         </select>
     </div>
-    @if (User.IsInRole("Admin") || User.IsInRole("Manager"))
+    @if (canEditReceipts)
     {
         <label class="checkbox-field"><input type="checkbox" name="AllCropYears" value="true" checked="@Model.Search.AllCropYears" /> All crop years</label><input type="hidden" name="AllCropYears" value="false" />
     }
@@ -69,6 +71,8 @@
 </form>
 <p class="muted">@Model.CropYearHelpText</p>
 
+@if (canEditReceipts)
+{
 <h2>Add Receipt</h2>
 <form class="toolbar" method="post" action="/Receipts/Create">
     <div class="field"><label>Crop Year</label><input name="CropYear" value="@Model.CurrentCropYear" required /></div>
@@ -91,6 +95,7 @@
     <label class="checkbox-field"><input type="checkbox" name="ConfirmCropYear" value="true" /> Confirm Crop Year</label><input type="hidden" name="ConfirmCropYear" value="false" />
     <button type="submit" disabled="@(!hasRequiredMasterData)">Add Receipt</button>
 </form>
+}
 <p class="muted">If the received date falls in an overlap window, confirm the crop year before saving.</p>
 <p id="growerLotWarning" class="notice warning" hidden>Lot # not found in Master Data. Add it under Master Data &rarr; Grower Lots or continue as manual entry.</p>
 

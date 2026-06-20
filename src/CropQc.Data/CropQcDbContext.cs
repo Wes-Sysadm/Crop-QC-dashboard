@@ -7,6 +7,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<UserGoogleCredential> UserGoogleCredentials => Set<UserGoogleCredential>();
+    public DbSet<UserPageAccess> UserPageAccesses => Set<UserPageAccess>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
@@ -71,6 +72,21 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .WithMany(x => x.GoogleCredentials)
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserPageAccess>(entity =>
+        {
+            entity.Property(x => x.AreaKey).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.AccessLevel).HasMaxLength(25).IsRequired();
+            entity.HasIndex(x => new { x.UserId, x.AreaKey }).IsUnique();
+            entity.HasOne(x => x.User)
+                .WithMany(x => x.PageAccesses)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.UpdatedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.UpdatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Role>(entity =>

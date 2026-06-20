@@ -1,7 +1,10 @@
 @model ReceiptDetailViewModel
+@inject IUserAccessService UserAccess
 @{
     ViewData["Title"] = "Receipt Detail";
     ViewData["AutoRefresh"] = "true";
+    var canEditReceipt = await UserAccess.HasAccessAsync(User, ApplicationAreas.ReceiptEdit, PageAccessLevel.Edit, Context.RequestAborted);
+    var canCreateSample = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.Edit, Context.RequestAborted);
 }
 
 <h1>Receipt Detail</h1>
@@ -29,7 +32,7 @@
         <p>@Model.Receipt.CropYear | @Model.Receipt.ReceivedAt.LocalDateTime | @Model.Receipt.ReceiptType | @Model.Receipt.Warehouse / @Model.Receipt.Room | Lot # @(string.IsNullOrWhiteSpace(Model.Receipt.GrowerNumber) ? "-" : Model.Receipt.GrowerNumber) | @Model.Receipt.GrowerName | @Model.Receipt.VarietyCode | @Model.Receipt.BinCount bins</p>
         <div class="action-bar">
             <a class="button secondary-button" href="/Dashboard/Rooms/@Model.Receipt.RoomId">View Room Summary</a>
-            @if (User.IsInRole("Admin"))
+            @if (canEditReceipt)
             {
                 <a class="button secondary-button" href="/Receipts/@Model.Receipt.Id/Edit">Edit Receipt</a>
             }
@@ -38,6 +41,8 @@
         {
             <p class="notice warning">This receipt already has a QC sample. Creating another sample of the same type will assign the next sample sequence, such as @(Model.Receipt.CompuTechReceiptId)(2), and mark it Needs Review.</p>
         }
+        @if (canCreateSample)
+        {
         <form id="add-sample" method="post" action="/Receipts/@Model.Receipt.Id/samples">
             <label class="field">
                 Sample type
@@ -51,6 +56,7 @@
             <button type="submit">Create QC Sample</button>
             <p class="muted">Sample types come from Master Data. Use Receiving Sample, Door Sample, or Lot Sample for receipt QC.</p>
         </form>
+        }
     </section>
 }
 

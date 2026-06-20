@@ -7,7 +7,7 @@ using System.Security.Claims;
 namespace CropQc.Web.Controllers;
 
 [Route("Admin/Backups")]
-[Authorize(Policy = "RequireAdmin")]
+[Authorize(Policy = AccessPolicyNames.BackupsAdmin)]
 public sealed class BackupsController(IBackupService backupService) : Controller
 {
     [HttpGet("")]

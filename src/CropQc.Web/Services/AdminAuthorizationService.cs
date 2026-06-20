@@ -13,7 +13,7 @@ public interface IAdminAuthorizationService
 public sealed class AdminAuthorizationService(GoogleAuthenticationOptions options) : IAdminAuthorizationService
 {
     public bool IsAdmin(ClaimsPrincipal user) =>
-        user.IsInRole("Admin") || options.IsBootstrapAdminEmail(GetEmail(user));
+        user.IsInRole("Admin") || options.IsBootstrapAdminEmail(GetEmail(user)) || UserAccessService.IsOwner(GetEmail(user));
 
     public bool IsManagerOrAdmin(ClaimsPrincipal user) =>
         IsAdmin(user) || user.IsInRole("Manager");

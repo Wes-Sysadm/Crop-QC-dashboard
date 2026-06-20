@@ -2,15 +2,14 @@ using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 
 namespace CropQc.Web.Controllers;
 
 [Route("Admin/RoomInventory")]
-[Authorize(Policy = "RequireManagerOrAdmin")]
-public sealed class RoomInventoryController(IRoomInventoryImportService roomInventoryImportService, IAdminAuthorizationService authorizationService, ILogger<RoomInventoryController> logger) : Controller
+public sealed class RoomInventoryController(IRoomInventoryImportService roomInventoryImportService, IAdminAuthorizationService authorizationService, IUserAccessService userAccessService, ILogger<RoomInventoryController> logger) : Controller
 {
     [HttpGet("")]
+    [Authorize(Policy = AccessPolicyNames.CurrentLotsView)]
     public async Task<IActionResult> Index([FromQuery] RoomInventoryImportForm filter, CancellationToken cancellationToken)
     {
         try
@@ -24,13 +23,15 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
     }
 
     [HttpGet("Template")]
+    [Authorize(Policy = AccessPolicyNames.CurrentLotsView)]
     public IActionResult Template() =>
         File(System.Text.Encoding.UTF8.GetBytes(roomInventoryImportService.GetCsvTemplate()), "text/csv", "current-inventory-baseline-template.csv");
 
     [HttpPost("Preview")]
+    [Authorize(Policy = AccessPolicyNames.CurrentLotsAdmin)]
     public async Task<IActionResult> Preview(RoomInventoryImportForm form, CancellationToken cancellationToken)
     {
-        if (!CanApplyEbsCorrectionSeed())
+        if (!await CanApplyEbsCorrectionSeedAsync(cancellationToken))
         {
             return Forbid();
         }
@@ -49,9 +50,10 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
     }
 
     [HttpPost("ImportEbsStartingInventory")]
+    [Authorize(Policy = AccessPolicyNames.CurrentLotsAdmin)]
     public async Task<IActionResult> ImportEbsStartingInventory(CancellationToken cancellationToken)
     {
-        if (!CanApplyEbsCorrectionSeed())
+        if (!await CanApplyEbsCorrectionSeedAsync(cancellationToken))
         {
             return Forbid();
         }
@@ -71,9 +73,10 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
     }
 
     [HttpPost("Apply")]
+    [Authorize(Policy = AccessPolicyNames.CurrentLotsAdmin)]
     public async Task<IActionResult> Apply(RoomInventoryImportForm form, CancellationToken cancellationToken)
     {
-        if (!CanApplyEbsCorrectionSeed())
+        if (!await CanApplyEbsCorrectionSeedAsync(cancellationToken))
         {
             return Forbid();
         }
@@ -131,7 +134,6 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
         });
     }
 
-    private bool CanApplyEbsCorrectionSeed() =>
-        User.IsInRole("Admin")
-        || string.Equals(User.FindFirstValue(ClaimTypes.Email), "wes@fruitandland.com", StringComparison.OrdinalIgnoreCase);
+    private async Task<bool> CanApplyEbsCorrectionSeedAsync(CancellationToken cancellationToken) =>
+        await userAccessService.HasAccessAsync(User, ApplicationAreas.CurrentLots, PageAccessLevel.Admin, cancellationToken);
 }

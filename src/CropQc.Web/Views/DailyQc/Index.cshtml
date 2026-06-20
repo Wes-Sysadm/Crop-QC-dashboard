@@ -1,6 +1,9 @@
 @model DailyQcDashboardViewModel
+@inject IUserAccessService UserAccess
 @{
     ViewData["Title"] = "Daily QC";
+    var canSendQcSummary = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.Edit, Context.RequestAborted);
+    var canOverrideQcSummary = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.Admin, Context.RequestAborted);
 }
 
 <h1>Daily QC Dashboard</h1>
@@ -104,7 +107,7 @@
                     <a class="inline-action" href="cropqcstation://sample/@sample.Id">Open in QC Station</a>
                     @if (sample.IsReady)
                     {
-                        @if (User.IsInRole("Admin") || User.IsInRole("Manager") || User.IsInRole("QC User"))
+                        @if (canSendQcSummary)
                         {
                             <form method="post" action="/Samples/@sample.Id/Send" class="inline-form">
                                 <button type="submit">Send QC Summary</button>
@@ -114,7 +117,7 @@
                     else
                     {
                         <button type="button" disabled>Send QC Summary</button>
-                        @if (User.IsInRole("Admin") || User.IsInRole("Manager"))
+                        @if (canOverrideQcSummary)
                         {
                             <a class="inline-action" href="/Samples/@sample.Id/OverrideSend">Override Send</a>
                         }

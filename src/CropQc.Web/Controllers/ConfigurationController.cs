@@ -10,7 +10,7 @@ using System.Security.Claims;
 namespace CropQc.Web.Controllers;
 
 [Route("Admin/Configuration")]
-[Authorize(Policy = "RequireAdmin")]
+[Authorize(Policy = AccessPolicyNames.ConfigurationAdmin)]
 public sealed class ConfigurationController(
     IAdminManagementService adminService,
     IAdminAuthorizationService authorizationService,

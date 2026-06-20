@@ -1,5 +1,6 @@
 using System.Reflection;
 using CropQc.Web.Controllers;
+using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 
 namespace CropQc.Api.Tests;
@@ -14,8 +15,8 @@ public sealed class RoleNavigationAuthorizationTests
         Assert.Contains("href=\"/\"", layout);
         Assert.Contains("href=\"/DailyQc\"", layout);
         Assert.Contains("href=\"/Receipts\"", layout);
-        Assert.Contains("AdminAuthorization.IsManagerOrAdmin(User)", layout);
-        Assert.Contains("AdminAuthorization.IsAdmin(User)", layout);
+        Assert.Contains("IUserAccessService UserAccess", layout);
+        Assert.Contains("UserAccess.HasAccessAsync", layout);
         Assert.Contains("class=\"nav-dropdown\"", layout);
         Assert.Contains("<summary>Admin</summary>", layout);
         Assert.Contains("showAdminMenu", layout);
@@ -51,47 +52,45 @@ public sealed class RoleNavigationAuthorizationTests
     public void AdminController_AuthorizationMatchesRoleNavigation()
     {
         AssertControllerPolicy<AdminController>("RequireAuthenticatedUser");
-        AssertActionPolicy<AdminController>(nameof(AdminController.Users), "RequireAdmin");
-        AssertActionPolicy<AdminController>(nameof(AdminController.Downloads), "RequireAdmin");
-        AssertActionPolicy<AdminController>(nameof(AdminController.QcStations), "RequireManagerOrAdmin");
-        AssertActionPolicy<AdminController>(nameof(AdminController.CreateQcStation), "RequireManagerOrAdmin");
-        AssertActionPolicy<AdminController>(nameof(AdminController.UpdateQcStation), "RequireManagerOrAdmin");
-        AssertActionPolicy<AdminController>(nameof(AdminController.DeactivateQcStation), "RequireManagerOrAdmin");
-        AssertActionPolicy<AdminController>(nameof(AdminController.ReactivateQcStation), "RequireManagerOrAdmin");
-        AssertActionPolicy<AdminController>(nameof(AdminController.RotateQcStationKey), "RequireManagerOrAdmin");
-        AssertActionPolicy<AdminController>(nameof(AdminController.DownloadExistingQcStationConfig), "RequireManagerOrAdmin");
-        AssertActionPolicy<AdminController>(nameof(AdminController.AddUser), "RequireAdmin");
-        AssertActionPolicy<AdminController>(nameof(AdminController.UpdateUser), "RequireAdmin");
+        AssertActionPolicy<AdminController>(nameof(AdminController.Users), AccessPolicyNames.UsersAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.Downloads), AccessPolicyNames.DownloadsView);
+        AssertActionPolicy<AdminController>(nameof(AdminController.QcStations), AccessPolicyNames.QcStationsView);
+        AssertActionPolicy<AdminController>(nameof(AdminController.CreateQcStation), AccessPolicyNames.QcStationsAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.UpdateQcStation), AccessPolicyNames.QcStationsAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.DeactivateQcStation), AccessPolicyNames.QcStationsAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.ReactivateQcStation), AccessPolicyNames.QcStationsAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.RotateQcStationKey), AccessPolicyNames.QcStationsAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.DownloadExistingQcStationConfig), AccessPolicyNames.QcStationsAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.AddUser), AccessPolicyNames.UsersAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.UpdateUser), AccessPolicyNames.UsersAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.UpdateUserMatrix), AccessPolicyNames.UsersAdmin);
     }
 
     [Fact]
-    public void MasterData_AllowsManagerOrAdmin()
+    public void MasterData_UsesMatrixPolicies()
     {
-        AssertControllerPolicy<MasterDataController>("RequireManagerOrAdmin");
-        AssertNoActionPolicy<MasterDataController>(nameof(MasterDataController.Edit), "RequireAdmin");
-        AssertNoActionPolicy<MasterDataController>(nameof(MasterDataController.Save), "RequireAdmin");
-        AssertNoActionPolicy<MasterDataController>(nameof(MasterDataController.Deactivate), "RequireAdmin");
+        AssertActionPolicy<MasterDataController>(nameof(MasterDataController.Index), AccessPolicyNames.MasterDataView);
+        AssertActionPolicy<MasterDataController>(nameof(MasterDataController.Edit), AccessPolicyNames.MasterDataEdit);
+        AssertActionPolicy<MasterDataController>(nameof(MasterDataController.Save), AccessPolicyNames.MasterDataEdit);
+        AssertActionPolicy<MasterDataController>(nameof(MasterDataController.Deactivate), AccessPolicyNames.MasterDataAdmin);
     }
 
     [Fact]
     public void Configuration_RemainsAdminOnly()
     {
-        AssertControllerPolicy<ConfigurationController>("RequireAdmin");
+        AssertControllerPolicy<ConfigurationController>(AccessPolicyNames.ConfigurationAdmin);
     }
 
     [Fact]
     public void RolePermissionMatrix_MatchesNavigationAccess()
     {
-        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "UserAdminService.cs"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "UserAccessService.cs"));
 
-        Assert.Contains("new(\"View dashboard\", \"Yes\", \"Yes\", \"Yes\", \"Yes\")", service);
-        Assert.Contains("new(\"View Daily QC\", \"Yes\", \"Yes\", \"Yes\", \"Yes\")", service);
-        Assert.Contains("new(\"View receipts/samples\", \"Yes\", \"Yes\", \"Yes\", \"Yes\")", service);
-        Assert.Contains("new(\"View Master Data\", \"Yes\", \"Yes\", \"No\", \"No\")", service);
-        Assert.Contains("new(\"Manage QC Stations\", \"Yes\", \"Yes\", \"No\", \"No\")", service);
-        Assert.Contains("new(\"Manage users/roles\", \"Yes\", \"No\", \"No\", \"No\")", service);
-        Assert.Contains("new(\"Open Admin Downloads\", \"Yes\", \"No\", \"No\", \"No\")", service);
-        Assert.Contains("new(\"Edit configuration\", \"Yes\", \"No\", \"No\", \"No\")", service);
+        Assert.Contains("ApplicationAreas.All", service);
+        Assert.Contains("DefaultForRole", service);
+        Assert.Contains("UserPageAccesses", service);
+        Assert.Contains("user-page-access", service);
+        Assert.Contains("wes@fruitandland.com", service);
     }
 
     private static void AssertControllerPolicy<TController>(string policy)
