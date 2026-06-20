@@ -1,11 +1,14 @@
 @model SampleDetailViewModel
 @using System.Text.Json
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
+@inject IUserAccessService UserAccess
 @{
     ViewData["Title"] = "QC Sample Detail";
     var defectOptionsJson = JsonSerializer.Serialize(Model.DefectTypes.Select(x => new { id = x.Id, name = x.Name }));
     var pageRefreshEnabled = bool.TryParse(Configuration["PageRefresh:Enabled"], out var parsedRefreshEnabled) ? parsedRefreshEnabled : true;
     var refreshIntervalMs = (int.TryParse(Configuration["PageRefresh:IntervalSeconds"], out var parsedRefreshInterval) ? Math.Clamp(parsedRefreshInterval, 15, 300) : 20) * 1000;
+    var canEditDailyQc = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.Edit, Context.RequestAborted);
+    var canAdminDailyQc = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.Admin, Context.RequestAborted);
 }
 
 <h1>QC Sample Detail</h1>
@@ -31,7 +34,7 @@
         <h2>@Model.Sample.DisplayReceiptId</h2>
         <p>@Model.Sample.Warehouse | @Model.Sample.SampleType | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Target sample size: @Model.TargetSampleSize | Entered fruit count: @Model.EnteredFruitCount</p>
         <p>@StarchSummary(Model.Readiness)</p>
-        @if (CanChangeSampleType(Model.Sample.EmailStatus))
+        @if (CanChangeSampleType(Model.Sample.EmailStatus, canEditDailyQc, canAdminDailyQc))
         {
             <form method="post" action="/Samples/@Model.Sample.Id/sample-type" class="inline-form">
                 <label>
@@ -49,7 +52,7 @@
         <p>
             <a class="button" href="/Samples/@Model.Sample.Id/Starch">Starch Input</a>
             <a href="/Receipts/@Model.Sample.ReceiptId">Back to receipt</a>
-            @if (User.IsInRole("Admin"))
+            @if (canAdminDailyQc)
             {
                 <a class="button secondary-button danger-link" href="/Samples/@Model.Sample.Id/Delete">Delete Sample</a>
             }
@@ -86,7 +89,7 @@
     }
     @if (Model.Readiness.IsReady)
     {
-        @if (User.IsInRole("Admin") || User.IsInRole("Manager") || User.IsInRole("QC User"))
+        @if (canEditDailyQc)
         {
             <form method="post" action="/Samples/@Model.Sample?.Id/Send" class="inline-form">
                 <p class="muted">Sending from: @User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value</p>
@@ -104,7 +107,7 @@
         <button type="button" disabled>Send QC Summary</button>
         @if (Model.Sample is not null)
         {
-            @if (User.IsInRole("Admin") || User.IsInRole("Manager"))
+            @if (canAdminDailyQc)
             {
                 <a class="button secondary-button" href="/Samples/@Model.Sample.Id/OverrideSend">Override Send With Missing Data - Manager/Admin</a>
             }
@@ -516,10 +519,8 @@
             : $"Starch status: {readiness.StarchMissingCount} of {readiness.CompletedFruitCount} completed rows missing starch.";
     }
 
-    private bool CanChangeSampleType(string emailStatus) =>
-        User.IsInRole("Admin")
-        || (!emailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase)
-            && (User.IsInRole("Manager") || User.IsInRole("QC User")));
+    private static bool CanChangeSampleType(string emailStatus, bool canEditDailyQc, bool canAdminDailyQc) =>
+        canAdminDailyQc || (!emailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase) && canEditDailyQc);
 
     private static string NormalizePhotoType(string? photoType)
     {

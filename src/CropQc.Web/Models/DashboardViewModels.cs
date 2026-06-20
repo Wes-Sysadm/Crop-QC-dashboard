@@ -1,4 +1,5 @@
 using CropQc.Data.Entities;
+using CropQc.Web.Services;
 using Microsoft.AspNetCore.Http;
 
 namespace CropQc.Web.Models;
@@ -513,12 +514,16 @@ public sealed class UserAdminPageViewModel
 {
     public string? DataWarning { get; set; }
     public IReadOnlyList<UserAdminListItem> Users { get; set; } = [];
+    public IReadOnlyList<UserAccessMatrixRow> AccessMatrix { get; set; } = [];
+    public IReadOnlyList<ApplicationAreaViewModel> Areas { get; set; } = [];
     public IReadOnlyList<RoleOptionViewModel> Roles { get; set; } = [];
     public IReadOnlyList<RolePermissionViewModel> RolePermissions { get; set; } = [];
     public AddUserForm AddUserForm { get; set; } = new();
 }
 
 public sealed record UserAdminListItem(int Id, string Email, string DisplayName, string Domain, string Role, string RoleSummary, bool IsActive, DateTimeOffset? LastLoginAt);
+public sealed record ApplicationAreaViewModel(string Key, string Name, string Group, string Route);
+public sealed record UserAccessMatrixRow(int Id, string Email, string DisplayName, bool IsActive, string Role, IReadOnlyDictionary<string, PageAccessLevel> Access);
 public sealed record RoleOptionViewModel(int Id, string Name, string Summary);
 public sealed record RolePermissionViewModel(string Permission, string Admin, string Manager, string QcUser, string Viewer);
 
@@ -535,6 +540,13 @@ public sealed class UpdateUserAccessForm
     public int UserId { get; set; }
     public int RoleId { get; set; }
     public bool IsActive { get; set; }
+}
+
+public sealed class UserAccessMatrixForm
+{
+    public int UserId { get; set; }
+    public bool IsActive { get; set; }
+    public Dictionary<string, string> Access { get; set; } = [];
 }
 
 public sealed class ReceiptListViewModel

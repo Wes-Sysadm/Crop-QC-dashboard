@@ -63,10 +63,10 @@ public sealed class AdminCleanupCropYearTests
     [Fact]
     public void SampleDeleteAndDataCleanup_AreAdminOnly()
     {
-        AssertActionPolicy<SamplesController>(nameof(SamplesController.Delete), "RequireAdmin");
-        AssertActionPolicy<SamplesController>(nameof(SamplesController.ConfirmDelete), "RequireAdmin");
-        AssertActionPolicy<AdminController>(nameof(AdminController.DataCleanup), "RequireAdmin");
-        AssertActionPolicy<AdminController>(nameof(AdminController.ExecuteDataCleanup), "RequireAdmin");
+        AssertActionPolicy<SamplesController>(nameof(SamplesController.Delete), AccessPolicyNames.DailyQcAdmin);
+        AssertActionPolicy<SamplesController>(nameof(SamplesController.ConfirmDelete), AccessPolicyNames.DailyQcAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.DataCleanup), AccessPolicyNames.DataCleanupAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.ExecuteDataCleanup), AccessPolicyNames.DataCleanupAdmin);
     }
 
     [Fact]
@@ -80,7 +80,7 @@ public sealed class AdminCleanupCropYearTests
         Assert.Contains("wes@fruitandland.com", controller);
         Assert.Contains("return Forbid();", controller);
         Assert.Contains("IsDataCleanupAllowed()", controller);
-        Assert.Contains("DataCleanup:AllowedEmails", layout);
+        Assert.Contains("ApplicationAreas.DataCleanup", layout);
         Assert.Contains("canAccessDataCleanup", layout);
         Assert.Contains("wes@fruitandland.com", settings);
     }
@@ -106,7 +106,7 @@ public sealed class AdminCleanupCropYearTests
         Assert.Contains("SoftDeleteSampleAsync", service);
         Assert.Contains("sample.IsDeleted = true", service);
         Assert.Contains("DeleteReason", service);
-        Assert.Contains("Only Admin users can delete QC samples.", service);
+        Assert.Contains("Daily QC Admin access is required to delete QC samples.", service);
         Assert.Contains("query = query.Where(x => !x.IsDeleted)", service);
         Assert.Contains("Confirm Crop Year before saving", service);
     }

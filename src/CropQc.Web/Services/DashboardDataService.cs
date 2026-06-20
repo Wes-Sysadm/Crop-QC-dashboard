@@ -78,7 +78,8 @@ public sealed class DashboardDataService(
     ICropYearService cropYearService,
     IHttpContextAccessor httpContextAccessor,
     IConfiguration configuration,
-    ILogger<DashboardDataService> logger) : IDashboardDataService
+    ILogger<DashboardDataService> logger,
+    IUserAccessService? userAccessService = null) : IDashboardDataService
 {
     private const string DataWarning = "Database is not available yet. The dashboard shell is running with empty data.";
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
@@ -322,7 +323,7 @@ public sealed class DashboardDataService(
             var inventoryAdjustments = await BuildRoomInventoryAdjustmentHistoryAsync(roomId, cancellationToken);
             var linkedReceipts = await BuildRoomLinkedReceiptsAsync(roomId, cancellationToken);
             var transferDestinations = await BuildRoomTransferDestinationsAsync(roomId, cancellationToken);
-            var canManage = IsManagerOrAdmin();
+            var canManage = await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
 
             return new RoomDetailViewModel
             {
@@ -377,9 +378,9 @@ public sealed class DashboardDataService(
 
     public async Task<string?> CreateRoomDepletionAsync(RoomDepletionForm form, CancellationToken cancellationToken)
     {
-        if (!IsManagerOrAdmin())
+        if (!await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken))
         {
-            return "Only Managers and Admins can record room depletion.";
+            return "Room Transactions Edit access is required to record room depletion.";
         }
 
         if (form.BinCount <= 0)
@@ -440,9 +441,9 @@ public sealed class DashboardDataService(
 
     public async Task<string?> VoidRoomDepletionAsync(VoidRoomDepletionForm form, CancellationToken cancellationToken)
     {
-        if (!IsManagerOrAdmin())
+        if (!await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken))
         {
-            return "Only Managers and Admins can void room depletion records.";
+            return "Room Transactions Admin access is required to void room depletion records.";
         }
 
         if (string.IsNullOrWhiteSpace(form.Reason))
@@ -493,9 +494,9 @@ public sealed class DashboardDataService(
 
     public async Task<string?> CreateRoomInventoryTrueUpAsync(RoomInventoryTrueUpForm form, CancellationToken cancellationToken)
     {
-        if (!IsManagerOrAdmin())
+        if (!await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken))
         {
-            return "Only Managers and Admins can true up room inventory.";
+            return "Room Transactions Admin access is required to true up room inventory.";
         }
 
         if (form.NewBinCount < 0)
@@ -539,9 +540,9 @@ public sealed class DashboardDataService(
 
     public async Task<string?> CreateRoomTransferAsync(RoomTransferForm form, CancellationToken cancellationToken)
     {
-        if (!IsManagerOrAdmin())
+        if (!await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken))
         {
-            return "Only Managers and Admins can transfer room inventory.";
+            return "Room Transactions Edit access is required to transfer room inventory.";
         }
 
         if (form.BinCount <= 0)
@@ -907,7 +908,7 @@ public sealed class DashboardDataService(
                 Samples = await EnrichSamplesAsync(samples, cancellationToken),
                 SampleTypes = await GetReceiptSampleTypesAsync(cancellationToken),
                 PhotoGroups = GroupPhotos(photos, canDelete: false),
-                CanDeleteSamples = httpContextAccessor.HttpContext?.User.IsInRole("Admin") == true,
+                CanDeleteSamples = await HasAccessAsync(ApplicationAreas.DailyQc, PageAccessLevel.Admin, cancellationToken),
                 AddPhotoForm = new AddPhotoMetadataForm
                 {
                     ReceiptId = receipt.Id,
@@ -1151,7 +1152,7 @@ public sealed class DashboardDataService(
                 Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
                 SampleTypes = await GetReceiptSampleTypesAsync(cancellationToken),
                 FruitRows = rowModels,
-                PhotoGroups = GroupPhotos(photos, CanEditSamples(), sample.Id),
+                PhotoGroups = GroupPhotos(photos, await CanEditSamplesAsync(cancellationToken), sample.Id),
                 Readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken),
                 RecipientEmail = recipientResolution.IsConfigured ? recipientResolution.Header : null,
                 AllowedSampleSizes = allowedSampleSizes,
@@ -1248,10 +1249,9 @@ public sealed class DashboardDataService(
 
     public async Task<(long? ReceiptId, string? Error)> SoftDeleteSampleAsync(long id, string? reason, CancellationToken cancellationToken)
     {
-        var user = httpContextAccessor.HttpContext?.User;
-        if (user?.IsInRole("Admin") != true)
+        if (!await HasAccessAsync(ApplicationAreas.DailyQc, PageAccessLevel.Admin, cancellationToken))
         {
-            return (null, "Only Admin users can delete QC samples.");
+            return (null, "Daily QC Admin access is required to delete QC samples.");
         }
 
         var sample = await dbContext.QcSamples
@@ -1289,9 +1289,9 @@ public sealed class DashboardDataService(
 
     public async Task<string?> UpdateSampleTypeAsync(UpdateSampleTypeForm form, CancellationToken cancellationToken)
     {
-        if (!CanEditSamples())
+        if (!await CanEditSamplesAsync(cancellationToken))
         {
-            return "Only QC Users, Managers, and Admins can change sample type.";
+            return "Daily QC Edit access is required to change sample type.";
         }
 
         var sample = await dbContext.QcSamples
@@ -1315,10 +1315,10 @@ public sealed class DashboardDataService(
         }
 
         var isSent = sample.EmailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase);
-        var isAdmin = httpContextAccessor.HttpContext?.User.IsInRole("Admin") == true;
+        var isAdmin = await HasAccessAsync(ApplicationAreas.DailyQc, PageAccessLevel.Admin, cancellationToken);
         if (isSent && !isAdmin)
         {
-            return "Only Admin users can change sample type after QC Summary email has been sent.";
+            return "Daily QC Admin access is required to change sample type after QC Summary email has been sent.";
         }
 
         var changedBy = GetCurrentUserEmail() ?? "unknown";
@@ -1470,7 +1470,7 @@ public sealed class DashboardDataService(
                 FruitRows = rowModels,
                 StarchScaleValues = await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken),
                 Readiness = readiness,
-                PhotoGroups = GroupPhotos(photos, CanEditSamples(), sample.Id),
+                PhotoGroups = GroupPhotos(photos, await CanEditSamplesAsync(cancellationToken), sample.Id),
                 AddPhotoForm = new AddPhotoMetadataForm
                 {
                     QcSampleId = sample.Id,
@@ -1894,7 +1894,7 @@ public sealed class DashboardDataService(
 
     public async Task<string?> RemoveSamplePhotoAsync(long sampleId, long photoId, CancellationToken cancellationToken)
     {
-        if (!CanEditSamples())
+        if (!await CanEditSamplesAsync(cancellationToken))
         {
             return "You do not have permission to remove photos.";
         }
@@ -2992,18 +2992,27 @@ public sealed class DashboardDataService(
         row.SizeCategory is not null ||
         row.Defects.Count > 0;
 
-    private bool IsManagerOrAdmin()
-    {
-        var user = httpContextAccessor.HttpContext?.User;
-        return user?.IsInRole("Admin") == true || user?.IsInRole("Manager") == true;
-    }
+    private Task<bool> CanEditSamplesAsync(CancellationToken cancellationToken) =>
+        HasAccessAsync(ApplicationAreas.DailyQc, PageAccessLevel.Edit, cancellationToken);
 
-    private bool CanEditSamples()
+    private Task<bool> HasAccessAsync(string areaKey, PageAccessLevel minimumLevel, CancellationToken cancellationToken)
     {
         var user = httpContextAccessor.HttpContext?.User;
-        return user?.IsInRole("Admin") == true
-            || user?.IsInRole("Manager") == true
-            || user?.IsInRole("QC User") == true;
+        if (user is null)
+        {
+            return Task.FromResult(false);
+        }
+
+        if (userAccessService is null)
+        {
+            return Task.FromResult(
+                UserAccessService.IsOwner(user.FindFirstValue(ClaimTypes.Email))
+                || user.IsInRole("Admin")
+                || (minimumLevel <= PageAccessLevel.Edit && (user.IsInRole("Manager") || user.IsInRole("QC User")))
+                || (minimumLevel == PageAccessLevel.View && user.Identity?.IsAuthenticated == true));
+        }
+
+        return userAccessService.HasAccessAsync(user, areaKey, minimumLevel, cancellationToken);
     }
 
     private async Task<IReadOnlyList<SampleType>> GetReceiptSampleTypesAsync(CancellationToken cancellationToken)

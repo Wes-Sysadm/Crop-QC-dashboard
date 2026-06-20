@@ -33,32 +33,45 @@
 </section>
 
 <section class="panel">
-    <h2>Role Permissions</h2>
-    <p class="muted">This matrix shows the intended MVP 1 access levels. Admins can update user roles here; application enforcement is tightened around admin-only areas first.</p>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>Permission</th>
-                    <th>Admin</th>
-                    <th>Manager</th>
-                    <th>QC User</th>
-                    <th>Viewer</th>
-                </tr>
-            </thead>
-            <tbody>
-            @foreach (var permission in Model.RolePermissions)
-            {
-                <tr>
-                    <td>@permission.Permission</td>
-                    <td>@permission.Admin</td>
-                    <td>@permission.Manager</td>
-                    <td>@permission.QcUser</td>
-                    <td>@permission.Viewer</td>
-                </tr>
-            }
-            </tbody>
-        </table>
+    <h2>Access Matrix</h2>
+    <p class="muted">Page access is the primary permission source. Roles are retained as migration metadata. Wes (wes@fruitandland.com) always has emergency Owner/Admin access even if these rows are cleared.</p>
+    <div class="access-matrix">
+        @foreach (var user in Model.AccessMatrix)
+        {
+            <form class="access-user-card" method="post" action="/Admin/Users/Matrix">
+                <input type="hidden" name="UserId" value="@user.Id" />
+                <div class="access-user-header">
+                    <div>
+                        <h3>@user.DisplayName</h3>
+                        <div class="muted">@user.Email</div>
+                        <span class="status">@user.Role</span>
+                    </div>
+                    <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@user.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" />
+                </div>
+                @foreach (var group in Model.Areas.GroupBy(x => x.Group))
+                {
+                    <section class="access-group">
+                        <h4>@group.Key</h4>
+                        <div class="access-grid">
+                            @foreach (var area in group)
+                            {
+                                var current = user.Access.TryGetValue(area.Key, out var level) ? level : PageAccessLevel.None;
+                                <label class="field">
+                                    <span>@area.Name</span>
+                                    <select name="Access[@area.Key]" disabled="@(user.Email.Equals("wes@fruitandland.com", StringComparison.OrdinalIgnoreCase) ? "disabled" : null)">
+                                        @foreach (var option in Enum.GetValues<PageAccessLevel>())
+                                        {
+                                            <option value="@option" selected="@(option == current ? "selected" : null)">@option</option>
+                                        }
+                                    </select>
+                                </label>
+                            }
+                        </div>
+                    </section>
+                }
+                <button class="secondary-button" type="submit" disabled="@(user.Email.Equals("wes@fruitandland.com", StringComparison.OrdinalIgnoreCase) ? "disabled" : null)">Save Matrix</button>
+            </form>
+        }
     </div>
 </section>
 

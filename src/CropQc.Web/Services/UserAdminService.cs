@@ -12,9 +12,10 @@ public interface IUserAdminService
     Task<UserAdminPageViewModel> GetUsersAsync(CancellationToken cancellationToken);
     Task<string?> AddUserAsync(AddUserForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> UpdateUserAccessAsync(UpdateUserAccessForm form, string changedByEmail, CancellationToken cancellationToken);
+    Task<string?> UpdateUserMatrixAsync(UserAccessMatrixForm form, string changedByEmail, CancellationToken cancellationToken);
 }
 
-public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthenticationOptions authOptions) : IUserAdminService
+public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthenticationOptions authOptions, IUserAccessService userAccessService) : IUserAdminService
 {
     private static readonly IReadOnlyDictionary<string, string> RoleSummaries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -64,6 +65,8 @@ public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthentica
         {
             Roles = roles,
             RolePermissions = RolePermissionRows,
+            Areas = ApplicationAreas.All.Select(x => new ApplicationAreaViewModel(x.Key, x.Name, x.Group, x.Route)).ToList(),
+            AccessMatrix = await userAccessService.GetMatrixAsync(cancellationToken),
             AddUserForm = new AddUserForm { RoleId = roles.FirstOrDefault(x => x.Name == "Viewer")?.Id ?? roles.FirstOrDefault()?.Id ?? 0 },
             Users = users.Select(x =>
             {
@@ -143,6 +146,9 @@ public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthentica
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
     }
+
+    public async Task<string?> UpdateUserMatrixAsync(UserAccessMatrixForm form, string changedByEmail, CancellationToken cancellationToken) =>
+        await userAccessService.SaveMatrixAsync(form, changedByEmail, cancellationToken);
 
     private async Task<bool> HasAnotherActiveAdminAsync(int userId, CancellationToken cancellationToken) =>
         await dbContext.Users.AnyAsync(x => x.Id != userId && x.IsActive && x.UserRoles.Any(role => role.Role.Name == "Admin"), cancellationToken);

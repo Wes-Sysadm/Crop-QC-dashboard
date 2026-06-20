@@ -8,19 +8,22 @@ namespace CropQc.Web.Controllers;
 
 public sealed class HomeController(IDashboardDataService dataService) : Controller
 {
+    [Authorize(Policy = AccessPolicyNames.DashboardView)]
     public async Task<IActionResult> Index([FromQuery] RoomSummaryFilterForm roomSummaryFilter, CancellationToken cancellationToken) =>
         View(await dataService.GetHomeDashboardAsync(roomSummaryFilter, cancellationToken));
 
     [HttpGet("/GrowerLots/Current")]
+    [Authorize(Policy = AccessPolicyNames.GrowerLotsView)]
     public async Task<IActionResult> CurrentGrowerLots([FromQuery] CurrentGrowerLotsFilterForm filter, CancellationToken cancellationToken) =>
         View("GrowerLots", await dataService.GetCurrentGrowerLotsAsync(filter, cancellationToken));
 
     [HttpGet("/Rooms")]
+    [Authorize(Policy = AccessPolicyNames.RoomsView)]
     public async Task<IActionResult> Rooms([FromQuery] RoomSummaryFilterForm roomSummaryFilter, CancellationToken cancellationToken) =>
         View(await dataService.GetRoomsAsync(roomSummaryFilter, cancellationToken));
 
     [HttpGet("/CropYearReview")]
-    [Authorize]
+    [Authorize(Policy = AccessPolicyNames.CropYearReviewView)]
     public async Task<IActionResult> CropYearReview([FromQuery] CropYearReviewFilterForm filter, CancellationToken cancellationToken)
     {
         var email = User.FindFirstValue(ClaimTypes.Email);
@@ -34,15 +37,17 @@ public sealed class HomeController(IDashboardDataService dataService) : Controll
 
     [HttpGet("/Dashboard/Rooms/{roomId:int}")]
     [HttpGet("/Rooms/{roomId:int}")]
+    [Authorize(Policy = AccessPolicyNames.RoomsView)]
     public async Task<IActionResult> Room(int roomId, CancellationToken cancellationToken) =>
         View(await dataService.GetRoomDetailAsync(roomId, cancellationToken));
 
     [HttpGet("/Rooms/{roomId:int}/CountBreakdown")]
+    [Authorize(Policy = AccessPolicyNames.RoomsView)]
     public async Task<IActionResult> RoomCountBreakdown(int roomId, CancellationToken cancellationToken) =>
         View(await dataService.GetRoomCountBreakdownAsync(roomId, cancellationToken));
 
     [HttpPost("/Dashboard/Rooms/{roomId:int}/Deplete")]
-    [Authorize(Policy = "RequireManagerOrAdmin")]
+    [Authorize(Policy = AccessPolicyNames.RoomTransactionsEdit)]
     public async Task<IActionResult> DepleteRoom(int roomId, RoomDepletionForm form, CancellationToken cancellationToken)
     {
         form.RoomId = roomId;
@@ -52,7 +57,7 @@ public sealed class HomeController(IDashboardDataService dataService) : Controll
     }
 
     [HttpPost("/Dashboard/Rooms/{roomId:int}/Depletions/{depletionId:long}/Void")]
-    [Authorize(Policy = "RequireManagerOrAdmin")]
+    [Authorize(Policy = AccessPolicyNames.RoomTransactionsAdmin)]
     public async Task<IActionResult> VoidRoomDepletion(int roomId, long depletionId, VoidRoomDepletionForm form, CancellationToken cancellationToken)
     {
         form.RoomId = roomId;
@@ -63,7 +68,7 @@ public sealed class HomeController(IDashboardDataService dataService) : Controll
     }
 
     [HttpPost("/Dashboard/Rooms/{roomId:int}/InventoryTrueUp")]
-    [Authorize(Policy = "RequireManagerOrAdmin")]
+    [Authorize(Policy = AccessPolicyNames.RoomTransactionsAdmin)]
     public async Task<IActionResult> InventoryTrueUp(int roomId, RoomInventoryTrueUpForm form, CancellationToken cancellationToken)
     {
         form.RoomId = roomId;
@@ -73,7 +78,7 @@ public sealed class HomeController(IDashboardDataService dataService) : Controll
     }
 
     [HttpPost("/Dashboard/Rooms/{roomId:int}/Transfer")]
-    [Authorize(Policy = "RequireManagerOrAdmin")]
+    [Authorize(Policy = AccessPolicyNames.RoomTransactionsEdit)]
     public async Task<IActionResult> TransferRoomBins(int roomId, RoomTransferForm form, CancellationToken cancellationToken)
     {
         form.FromRoomId = roomId;

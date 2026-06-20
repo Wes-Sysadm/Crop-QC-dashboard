@@ -14,10 +14,12 @@ public sealed class ReceiptsController(
     ILogger<ReceiptsController> logger) : Controller
 {
     [HttpGet("")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsView)]
     public async Task<IActionResult> Index([FromQuery] ReceiptSearchForm search, CancellationToken cancellationToken) =>
         View(await dataService.SearchReceiptsAsync(search, cancellationToken));
 
     [HttpGet("Export")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsView)]
     public async Task<IActionResult> Export(CancellationToken cancellationToken)
     {
         var content = await exportService.ExportReceivingDataAsync(cancellationToken);
@@ -26,6 +28,7 @@ public sealed class ReceiptsController(
     }
 
     [HttpPost("Create")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
     public async Task<IActionResult> Create(CreateReceiptForm form, CancellationToken cancellationToken)
     {
         var error = await dataService.CreateReceiptAsync(form, cancellationToken);
@@ -38,15 +41,16 @@ public sealed class ReceiptsController(
     }
 
     [HttpGet("{id:long}")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsView)]
     public async Task<IActionResult> Details(long id, CancellationToken cancellationToken) =>
         View(await dataService.GetReceiptDetailAsync(id, cancellationToken));
 
-    [Authorize(Policy = "RequireAdmin")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptEditEdit)]
     [HttpGet("{id:long}/Edit")]
     public async Task<IActionResult> Edit(long id, CancellationToken cancellationToken) =>
         View(await dataService.GetReceiptEditAsync(id, cancellationToken));
 
-    [Authorize(Policy = "RequireAdmin")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptEditEdit)]
     [HttpPost("{id:long}/Edit")]
     public async Task<IActionResult> Edit(long id, UpdateReceiptForm form, CancellationToken cancellationToken)
     {
@@ -58,7 +62,7 @@ public sealed class ReceiptsController(
             : RedirectToAction(nameof(Edit), new { id });
     }
 
-    [Authorize(Policy = "RequireAdmin")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptDeleteAdmin)]
     [HttpPost("{id:long}/Delete")]
     public async Task<IActionResult> Delete(long id, DeleteReceiptForm form, CancellationToken cancellationToken)
     {
@@ -69,6 +73,7 @@ public sealed class ReceiptsController(
     }
 
     [HttpPost("{id:long}/samples")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcEdit)]
     public async Task<IActionResult> CreateSample(long id, CreateReceiptSampleForm form, CancellationToken cancellationToken)
     {
         var result = await dataService.CreateSampleAsync(id, form.SampleTypeId, cancellationToken);
@@ -87,6 +92,7 @@ public sealed class ReceiptsController(
     }
 
     [HttpPost("{id:long}/photos")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
     public async Task<IActionResult> AddPhoto(long id, AddPhotoMetadataForm form, CancellationToken cancellationToken)
     {
         LogPhotoUploadStart("receipt", id, form);

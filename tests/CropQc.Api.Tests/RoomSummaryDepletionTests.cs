@@ -141,11 +141,11 @@ public sealed class RoomSummaryDepletionTests
     }
 
     [Fact]
-    public void DepletionCommands_AreManagerOrAdminOnly()
+    public void DepletionCommands_UseRoomTransactionMatrixAccess()
     {
-        AssertActionPolicy<HomeController>(nameof(HomeController.DepleteRoom), "RequireManagerOrAdmin");
-        AssertActionPolicy<HomeController>(nameof(HomeController.VoidRoomDepletion), "RequireManagerOrAdmin");
-        AssertActionPolicy<HomeController>(nameof(HomeController.InventoryTrueUp), "RequireManagerOrAdmin");
+        AssertActionPolicy<HomeController>(nameof(HomeController.DepleteRoom), AccessPolicyNames.RoomTransactionsEdit);
+        AssertActionPolicy<HomeController>(nameof(HomeController.VoidRoomDepletion), AccessPolicyNames.RoomTransactionsAdmin);
+        AssertActionPolicy<HomeController>(nameof(HomeController.InventoryTrueUp), AccessPolicyNames.RoomTransactionsAdmin);
     }
 
     [Fact]
@@ -219,7 +219,7 @@ public sealed class RoomSummaryDepletionTests
         var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
 
         Assert.Contains("[HttpPost(\"/Dashboard/Rooms/{roomId:int}/Transfer\")]", controller);
-        Assert.Contains("[Authorize(Policy = \"RequireManagerOrAdmin\")]", controller);
+        Assert.Contains("AccessPolicyNames.RoomTransactionsEdit", controller);
         Assert.Contains("CreateRoomTransferAsync", service);
         Assert.Contains("\"TransferOut\"", service);
         Assert.Contains("\"TransferIn\"", service);
@@ -299,7 +299,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("ADD COLUMN IF NOT EXISTS \"InventoryStatus\"", program);
         Assert.Contains("ADD COLUMN IF NOT EXISTS \"SourceRoomCode\"", program);
         Assert.Contains("ADD COLUMN IF NOT EXISTS \"CropQcRoomName\"", program);
-        Assert.Contains("[Authorize(Policy = \"RequireManagerOrAdmin\")]", controller);
+        Assert.Contains("AccessPolicyNames.CurrentLotsView", controller);
         Assert.Contains("[HttpGet(\"Template\")]", controller);
         Assert.Contains("Import EBS Current Baseline", view);
         Assert.Contains("Download CSV Template", view);
@@ -313,7 +313,10 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Crop QC Room", view);
         Assert.Contains("Compu-Tech Code", view);
         Assert.Contains("CanApplyEbsCorrectionSeed", controller);
-        Assert.Contains("wes@fruitandland.com", controller);
+        Assert.Contains("ApplicationAreas.CurrentLots", controller);
+        var accessService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "UserAccessService.cs"));
+        Assert.Contains("IsOwner", accessService);
+        Assert.Contains("wes@fruitandland.com", accessService);
         Assert.Contains("return Forbid()", controller);
     }
 
@@ -432,7 +435,8 @@ public sealed class RoomSummaryDepletionTests
         var detail = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Details.cshtml"));
         var edit = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Edit.cshtml"));
 
-        Assert.Contains("[Authorize(Policy = \"RequireAdmin\")]", controller);
+        Assert.Contains("AccessPolicyNames.ReceiptEditEdit", controller);
+        Assert.Contains("AccessPolicyNames.ReceiptDeleteAdmin", controller);
         Assert.Contains("UpdateReceiptAsync", service);
         Assert.Contains("SoftDeleteReceiptAsync", service);
         Assert.Contains("receipt.IsDeleted = true", service);
