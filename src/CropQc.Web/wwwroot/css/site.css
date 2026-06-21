@@ -195,6 +195,13 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 .photo-preview img { display: block; max-width: 100%; max-height: 180px; object-fit: contain; }
 .camera-placeholder { display: flex; align-items: center; justify-content: center; min-height: 160px; margin-bottom: 12px; border: 1px dashed #9fb2c3; border-radius: 5px; background: white; color: #66717c; font-weight: 700; }
 .metadata-summary { display: grid; gap: 5px; padding: 10px 12px; border: 1px solid #d9e1e8; border-radius: 5px; background: #fbfcfd; color: #334; }
+.device-capture-panel { display: grid; gap: 12px; }
+.device-status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 16px; padding: 10px 12px; border: 1px solid #d9e1e8; border-radius: 6px; background: #fbfcfd; }
+.device-preview-row { display: grid; gap: 8px; }
+.device-video { width: min(100%, 520px); max-height: 320px; border: 1px solid #9fb2c3; border-radius: 6px; background: #111; }
+.device-actions { align-items: stretch; }
+.device-message.warning-text { color: #9b2c2c; font-weight: 800; }
+.device-selected-row { outline: 3px solid rgba(35, 90, 151, .35); outline-offset: -3px; }
 .list { margin: 0; padding-left: 18px; }
 .muted { color: #66717c; }
 @media (hover: hover) and (pointer: fine) {

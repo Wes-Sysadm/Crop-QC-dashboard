@@ -909,6 +909,7 @@ public sealed class DashboardDataService(
                 SampleTypes = await GetReceiptSampleTypesAsync(cancellationToken),
                 PhotoGroups = GroupPhotos(photos, canDelete: false),
                 CanDeleteSamples = await HasAccessAsync(ApplicationAreas.DailyQc, PageAccessLevel.Admin, cancellationToken),
+                DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
                 AddPhotoForm = new AddPhotoMetadataForm
                 {
                     ReceiptId = receipt.Id,
@@ -1163,6 +1164,7 @@ public sealed class DashboardDataService(
                     .ToList(),
                 Grades = grades,
                 DefectTypes = defectTypes,
+                DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
                 FruitReadingForm = new SaveFruitReadingsForm
                 {
                     SampleId = sample.Id,
@@ -1471,6 +1473,7 @@ public sealed class DashboardDataService(
                 StarchScaleValues = await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken),
                 Readiness = readiness,
                 PhotoGroups = GroupPhotos(photos, await CanEditSamplesAsync(cancellationToken), sample.Id),
+                DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
                 AddPhotoForm = new AddPhotoMetadataForm
                 {
                     QcSampleId = sample.Id,
@@ -3474,6 +3477,29 @@ public sealed class DashboardDataService(
     {
         var lot = !string.IsNullOrWhiteSpace(growerNumber) ? growerNumber : lotCode;
         return $"{roomId}|{lot.Trim().ToUpperInvariant()}|{(varietyCode ?? "").Trim().ToUpperInvariant()}";
+    }
+
+    private async Task<DeviceCaptureSettingsViewModel> GetDeviceCaptureSettingsAsync(CancellationToken cancellationToken)
+    {
+        var values = await dbContext.DashboardConfigurations.AsNoTracking()
+            .Where(x => x.Key.StartsWith("DeviceCapture__"))
+            .ToDictionaryAsync(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase, cancellationToken);
+
+        bool Read(string key)
+        {
+            if (values.TryGetValue($"DeviceCapture__{key}", out var configured))
+            {
+                return bool.TryParse(configured, out var parsed) && parsed;
+            }
+
+            return configuration.GetValue<bool>($"DeviceCapture:{key}");
+        }
+
+        return new DeviceCaptureSettingsViewModel(
+            Read("Enabled"),
+            Read("BrioEnabled"),
+            Read("ObsbotEnabled"),
+            Read("ScaleEnabled"));
     }
 
     private static string NormalizeReceiptType(string? receiptType)

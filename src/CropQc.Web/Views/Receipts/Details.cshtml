@@ -58,6 +58,14 @@
         </form>
         }
     </section>
+
+    @if (canEditReceipt)
+    {
+        @await Html.PartialAsync("_DeviceCapturePanel", new DeviceCapturePanelViewModel(
+            Model.DeviceCapture,
+            ReceiptPhotoAction: $"/Receipts/{Model.Receipt.Id}/photos",
+            ShowTruckPhotos: true))
+    }
 }
 
 <div class="grid-two">

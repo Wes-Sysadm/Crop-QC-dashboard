@@ -70,6 +70,16 @@
         </p>
         <p class="muted">Requires the Crop QC Station app installer to be installed and a station config imported. If nothing opens, install the QC Station App Installer from Admin -> Downloads. If the app opens but cannot connect, rotate/download station config from Admin -> QC Stations and import it through Station Setup -> Import Station Config. The link sends only the sample ID; the station code and API key stay in the local config.</p>
     </section>
+
+    @if (canEditDailyQc)
+    {
+        @await Html.PartialAsync("_DeviceCapturePanel", new DeviceCapturePanelViewModel(
+            Model.DeviceCapture,
+            SamplePhotoAction: $"/Samples/{Model.Sample.Id}/photos",
+            ShowTruckPhotos: true,
+            ShowApplePhotos: true,
+            ShowScale: true))
+    }
 }
 
 <section class="panel">
