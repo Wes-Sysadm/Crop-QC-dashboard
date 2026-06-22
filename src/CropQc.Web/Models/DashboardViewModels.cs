@@ -561,6 +561,7 @@ public sealed class ReceiptListViewModel
     public IReadOnlyList<int> AvailableCropYears { get; set; } = [];
     public int CurrentCropYear { get; set; }
     public string CropYearHelpText { get; set; } = "";
+    public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
 }
 
 public sealed class ReceiptSearchForm
@@ -808,7 +809,8 @@ public sealed record DeviceCapturePanelViewModel(
     string? StarchPhotoAction = null,
     bool ShowTruckPhotos = false,
     bool ShowApplePhotos = false,
-    bool ShowScale = false);
+    bool ShowScale = false,
+    string? RequiresSavedTargetMessage = null);
 
 public sealed class FruitReadingRowViewModel
 {
