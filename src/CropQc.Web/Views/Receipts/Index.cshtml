@@ -95,6 +95,13 @@
     <label class="checkbox-field"><input type="checkbox" name="ConfirmCropYear" value="true" /> Confirm Crop Year</label><input type="hidden" name="ConfirmCropYear" value="false" />
     <button type="submit" disabled="@(!hasRequiredMasterData)">Add Receipt</button>
 </form>
+
+@await Html.PartialAsync("_DeviceCapturePanel", new DeviceCapturePanelViewModel(
+    Model.DeviceCapture,
+    ShowTruckPhotos: true,
+    ShowApplePhotos: true,
+    ShowScale: true,
+    RequiresSavedTargetMessage: "Save the receipt first to attach photos."))
 }
 <p class="muted">If the received date falls in an overlap window, confirm the crop year before saving.</p>
 <p id="growerLotWarning" class="notice warning" hidden>Lot # not found in Master Data. Add it under Master Data &rarr; Grower Lots or continue as manual entry.</p>

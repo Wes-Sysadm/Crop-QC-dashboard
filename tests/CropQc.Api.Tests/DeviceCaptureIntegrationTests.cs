@@ -21,22 +21,37 @@ public sealed class DeviceCaptureIntegrationTests
     }
 
     [Fact]
-    public void DisabledDevices_HideCapturePanelAndEnabledDevicesShowControls()
+    public void NewReceiptPage_ShowsDeviceCapturePanelAndSaveFirstGuidance()
+    {
+        var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var receiptIndexView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Index.cshtml"));
+
+        Assert.Contains("public DeviceCaptureSettingsViewModel DeviceCapture", model);
+        Assert.Contains("DeviceCapture = await GetDeviceCaptureSettingsAsync", service);
+        Assert.Contains("Html.PartialAsync(\"_DeviceCapturePanel\"", receiptIndexView);
+        Assert.Contains("Save the receipt first to attach photos.", receiptIndexView);
+    }
+
+    [Fact]
+    public void DisabledState_ShowsLocalEnableAndSetupControls()
     {
         var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
         var panel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_DeviceCapturePanel.cshtml"));
 
         Assert.Contains("DeviceCaptureSettingsViewModel.Disabled", model);
-        Assert.Contains("Settings.AnyEnabled", panel);
-        Assert.Contains("Model.Settings.BrioEnabled", panel);
-        Assert.Contains("Model.Settings.ObsbotEnabled", panel);
-        Assert.Contains("Model.Settings.ScaleEnabled", panel);
-        Assert.Contains("Device disabled in configuration", panel);
+        Assert.DoesNotContain("@if (Model.Settings.AnyEnabled)", panel);
+        Assert.Contains("Device capture is disabled.", panel);
+        Assert.Contains("Enable Device Capture on this browser", panel);
+        Assert.Contains("Device Setup / Select Cameras", panel);
+        Assert.Contains("Test Camera Preview", panel);
+        Assert.Contains("Save device choices", panel);
+        Assert.Contains("Reset Device Settings", panel);
+        Assert.Contains("cropqc.deviceCapture.enabled", panel);
         Assert.Contains("Capture Truck Photo", panel);
         Assert.Contains("Capture Whole Apple Photo", panel);
         Assert.Contains("Read Weight from Scale", panel);
         Assert.Contains("Capture Next Fruit Weight", panel);
-        Assert.Contains("Device Settings / Select Devices", panel);
     }
 
     [Fact]
@@ -50,6 +65,9 @@ public sealed class DeviceCaptureIntegrationTests
         Assert.Contains("navigator.mediaDevices.getUserMedia", panel);
         Assert.Contains("navigator.mediaDevices.enumerateDevices", panel);
         Assert.Contains("localStorage.setItem(storageKeys[role]", panel);
+        Assert.Contains("video.srcObject = stream", panel);
+        Assert.Contains("await video.play()", panel);
+        Assert.Contains("await startCamera(role)", panel);
         Assert.Contains("OBSBOT Tiny 2 Lite", panel);
         Assert.Contains("Logitech Brio 4K", panel);
         Assert.Contains("form.append(\"PhotoFile\"", panel);
@@ -65,6 +83,11 @@ public sealed class DeviceCaptureIntegrationTests
     {
         var panel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_DeviceCapturePanel.cshtml"));
 
+        Assert.Contains("Allow camera access to identify cameras.", panel);
+        Assert.Contains("Allow Camera Access", panel);
+        Assert.Contains("Camera connected.", panel);
+        Assert.Contains("Camera permission denied.", panel);
+        Assert.Contains("Browser camera API unavailable.", panel);
         Assert.Contains("value.includes(\"obsbot\") || value.includes(\"tiny\")", panel);
         Assert.Contains("value.includes(\"brio\") || value.includes(\"logitech\")", panel);
         Assert.Contains("data-capture-photo=\"BinTruck\"", panel);

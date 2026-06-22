@@ -1,353 +1,495 @@
 @model DeviceCapturePanelViewModel
-@if (Model.Settings.AnyEnabled)
-{
+@{
     var panelId = $"device-capture-{Guid.NewGuid():N}";
-    <section class="panel device-capture-panel"
-             id="@panelId"
-             data-receipt-photo-action="@Model.ReceiptPhotoAction"
-             data-sample-photo-action="@Model.SamplePhotoAction"
-             data-starch-photo-action="@Model.StarchPhotoAction"
-             data-brio-enabled="@Model.Settings.BrioEnabled.ToString().ToLowerInvariant()"
-             data-obsbot-enabled="@Model.Settings.ObsbotEnabled.ToString().ToLowerInvariant()"
-             data-scale-enabled="@Model.Settings.ScaleEnabled.ToString().ToLowerInvariant()">
-        <h2>Capture from Devices</h2>
-        <div class="device-status-grid" aria-live="polite">
-            <div><strong>Brio camera:</strong> <span data-device-status="apple">@(Model.Settings.BrioEnabled ? "Not selected" : "Device disabled in configuration")</span></div>
-            <div><strong>OBSBOT camera:</strong> <span data-device-status="truck">@(Model.Settings.ObsbotEnabled ? "Not selected" : "Device disabled in configuration")</span></div>
-            <div><strong>Scale:</strong> <span data-device-status="scale">@(Model.Settings.ScaleEnabled ? "Not connected" : "Device disabled in configuration")</span></div>
-            <div><strong>Last weight:</strong> <span data-device-status="last-weight">None</span></div>
-            <div><strong>Last photo:</strong> <span data-device-status="last-photo">None</span></div>
-        </div>
-        <div class="device-preview-row">
-            <video class="device-video" autoplay playsinline muted hidden></video>
-            <canvas class="device-canvas" hidden></canvas>
-        </div>
-        <div class="button-row device-actions">
-            @if (Model.ShowTruckPhotos && Model.Settings.ObsbotEnabled)
-            {
-                <button type="button" data-capture-photo="BinTruck" data-camera-role="truck">Capture Truck Photo</button>
-                <button type="button" class="secondary-button" data-capture-photo="TopOfTruck" data-camera-role="truck">Capture Top of Truck</button>
-            }
-            @if (Model.ShowApplePhotos && Model.Settings.BrioEnabled)
-            {
-                <button type="button" data-capture-photo="SampleBeforeCutting" data-camera-role="apple">Capture Whole Apple Photo</button>
-                <button type="button" class="secondary-button" data-capture-photo="CutFruit" data-camera-role="apple">Capture Cut Apple Photo</button>
-                <button type="button" class="secondary-button" data-capture-photo="FruitAfterStarch" data-camera-role="apple">Capture Starch Photo</button>
-            }
-            @if (Model.ShowScale && Model.Settings.ScaleEnabled)
-            {
-                <button type="button" data-scale-connect>Connect Scale</button>
-                <button type="button" class="secondary-button" data-scale-read>Read Weight from Scale</button>
-                <button type="button" class="secondary-button" data-scale-next>Capture Next Fruit Weight</button>
-            }
-            <button type="button" class="secondary-button" data-device-settings>Device Settings / Select Devices</button>
-        </div>
-        <details class="device-settings" hidden>
-            <summary>Device Selection</summary>
-            <div class="form-grid">
-                <label class="field">Truck camera
-                    <select data-camera-select="truck"></select>
-                </label>
-                <label class="field">Apple camera
-                    <select data-camera-select="apple"></select>
-                </label>
-            </div>
-        </details>
-        <p class="muted device-message" data-device-message>Manual upload and manual weight entry remain available. Device capture is optional.</p>
-    </section>
-    <script>
-        (() => {
-            const panel = document.getElementById("@panelId");
-            if (!panel || panel.dataset.initialized === "true") return;
-            panel.dataset.initialized = "true";
-
-            const storageKeys = {
-                apple: "cropqc.deviceCapture.appleCameraId",
-                truck: "cropqc.deviceCapture.truckCameraId"
-            };
-            const video = panel.querySelector(".device-video");
-            const canvas = panel.querySelector(".device-canvas");
-            const message = panel.querySelector("[data-device-message]");
-            const settings = panel.querySelector(".device-settings");
-            const cameraSelects = {
-                apple: panel.querySelector("[data-camera-select='apple']"),
-                truck: panel.querySelector("[data-camera-select='truck']")
-            };
-            let stream = null;
-            let activeRole = null;
-            let serialPort = null;
-            let serialReader = null;
-            let lastWeight = null;
-            let nextWeightRowIndex = 0;
-
-            function status(name, value) {
-                const target = panel.querySelector(`[data-device-status='${name}']`);
-                if (target) target.textContent = value;
-            }
-
-            function show(messageText, warning = false) {
-                message.textContent = messageText;
-                message.classList.toggle("warning-text", warning);
-            }
-
-            function friendlyPhotoType(photoType) {
-                return {
-                    BinTruck: "Truck photo",
-                    TopOfTruck: "Top of truck",
-                    SampleBeforeCutting: "Whole apple photo",
-                    CutFruit: "Cut apple photo",
-                    FruitAfterStarch: "Starch photo"
-                }[photoType] || photoType;
-            }
-
-            function actionFor(photoType) {
-                if (photoType === "BinTruck" || photoType === "TopOfTruck") {
-                    return panel.dataset.receiptPhotoAction || panel.dataset.samplePhotoAction;
-                }
-
-                if (photoType === "FruitAfterStarch" && panel.dataset.starchPhotoAction) {
-                    return panel.dataset.starchPhotoAction;
-                }
-
-                return panel.dataset.samplePhotoAction || panel.dataset.starchPhotoAction;
-            }
-
-            function defaultRoleForDevice(label) {
-                const value = (label || "").toLowerCase();
-                if (value.includes("obsbot") || value.includes("tiny")) return "truck";
-                if (value.includes("brio") || value.includes("logitech")) return "apple";
-                return null;
-            }
-
-            async function ensureCameraList() {
-                if (!navigator.mediaDevices?.enumerateDevices) {
-                    show("Browser does not support camera device listing.", true);
-                    return;
-                }
-
-                let devices = await navigator.mediaDevices.enumerateDevices();
-                if (!devices.some(device => device.kind === "videoinput" && device.label)) {
-                    try {
-                        const permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                        permissionStream.getTracks().forEach(track => track.stop());
-                        devices = await navigator.mediaDevices.enumerateDevices();
-                    } catch (error) {
-                        show(error?.name === "NotAllowedError" ? "Camera permission denied." : "Camera not found.", true);
-                    }
-                }
-
-                const cameras = devices.filter(device => device.kind === "videoinput");
-                for (const role of ["truck", "apple"]) {
-                    const select = cameraSelects[role];
-                    if (!select) continue;
-                    select.innerHTML = "";
-                    for (const camera of cameras) {
-                        const option = document.createElement("option");
-                        option.value = camera.deviceId;
-                        option.textContent = camera.label || `Camera ${select.options.length + 1}`;
-                        select.appendChild(option);
-                    }
-
-                    const stored = localStorage.getItem(storageKeys[role]);
-                    const mapped = cameras.find(camera => defaultRoleForDevice(camera.label) === role)?.deviceId;
-                    select.value = stored || mapped || cameras[0]?.deviceId || "";
-                    if (select.value) {
-                        localStorage.setItem(storageKeys[role], select.value);
-                        status(role, select.options[select.selectedIndex]?.textContent || "Selected");
-                    }
-                }
-            }
-
-            async function startCamera(role) {
-                if (!navigator.mediaDevices?.getUserMedia) {
-                    show("Browser does not support camera capture.", true);
-                    return false;
-                }
-
-                await ensureCameraList();
-                const deviceId = localStorage.getItem(storageKeys[role]) || cameraSelects[role]?.value;
-                if (!deviceId) {
-                    show(role === "truck" ? "OBSBOT camera not found." : "Brio camera not found.", true);
-                    return false;
-                }
-
-                if (stream && activeRole !== role) {
-                    stream.getTracks().forEach(track => track.stop());
-                    stream = null;
-                }
-
-                if (!stream) {
-                    try {
-                        stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId } }, audio: false });
-                        video.srcObject = stream;
-                        video.hidden = false;
-                        activeRole = role;
-                    } catch (error) {
-                        const permissionDenied = error?.name === "NotAllowedError" || error?.name === "SecurityError";
-                        show(permissionDenied ? "Camera permission denied." : "Camera not found.", true);
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            async function capturePhoto(photoType, role) {
-                const action = actionFor(photoType);
-                if (!action) {
-                    show("No upload endpoint is available for this photo type on this page.", true);
-                    return;
-                }
-
-                const started = await startCamera(role);
-                if (!started) return;
-                await new Promise(resolve => setTimeout(resolve, 150));
-                const width = video.videoWidth || 1280;
-                const height = video.videoHeight || 720;
-                canvas.width = width;
-                canvas.height = height;
-                canvas.getContext("2d").drawImage(video, 0, 0, width, height);
-                const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.92));
-                if (!blob) {
-                    show("Could not capture photo from camera.", true);
-                    return;
-                }
-
-                const safeType = photoType.replace(/[^A-Za-z0-9_-]/g, "");
-                const fileName = `${safeType}_${new Date().toISOString().replace(/[:.]/g, "-")}.jpg`;
-                const form = new FormData();
-                form.append("PhotoType", photoType);
-                form.append("PhotoSource", role === "truck" ? "OBSBOT Tiny 2 Lite" : "Logitech Brio 4K");
-                form.append("PhotoFile", new File([blob], fileName, { type: "image/jpeg" }));
-                form.append("FileName", fileName);
-                form.append("ContentType", "image/jpeg");
-                form.append("FileSizeBytes", String(blob.size));
-
-                show(`Uploading ${friendlyPhotoType(photoType)}...`);
-                const response = await fetch(action, {
-                    method: "POST",
-                    body: form,
-                    credentials: "same-origin"
-                });
-
-                if (!response.ok) {
-                    show(`Photo upload failed (${response.status}). Manual upload is still available.`, true);
-                    return;
-                }
-
-                status("last-photo", `${friendlyPhotoType(photoType)} captured`);
-                show(`${friendlyPhotoType(photoType)} captured. Reloading...`);
-                window.location.reload();
-            }
-
-            async function connectScale() {
-                if ("serial" in navigator) {
-                    try {
-                        serialPort = await navigator.serial.requestPort();
-                        await serialPort.open({ baudRate: 9600 });
-                        status("scale", "Connected");
-                        show("Scale connected. If no weight appears, confirm the scale exposes serial output.");
-                        readScaleLoop();
-                    } catch (error) {
-                        show("Scale not connected.", true);
-                    }
-                    return;
-                }
-
-                if ("usb" in navigator) {
-                    show("WebUSB is available, but this scale is not configured as a browser USB device. Use manual entry or a QC Station/local helper if it does not expose Web Serial.", true);
-                    return;
-                }
-
-                show("Browser does not support Web Serial/WebUSB. Use manual entry or QC Station/local helper.", true);
-            }
-
-            async function readScaleLoop() {
-                if (!serialPort?.readable || serialReader) return;
-                const decoder = new TextDecoder();
-                serialReader = serialPort.readable.getReader();
-                let buffer = "";
-                try {
-                    while (true) {
-                        const { value, done } = await serialReader.read();
-                        if (done) break;
-                        buffer += decoder.decode(value);
-                        const match = buffer.match(/(-?\d+(?:\.\d+)?)\s*g?/i);
-                        if (match) {
-                            lastWeight = Number(match[1]);
-                            status("last-weight", `${lastWeight} g`);
-                            buffer = "";
-                        }
-                    }
-                } catch {
-                    status("scale", "Disconnected");
-                } finally {
-                    serialReader.releaseLock();
-                    serialReader = null;
-                }
-            }
-
-            function selectedWeightInput() {
-                const rows = Array.from(document.querySelectorAll("tr.fruit-row"));
-                if (rows.length === 0) return null;
-                const active = document.querySelector("tr.fruit-row.device-selected-row");
-                const row = active || rows[Math.min(nextWeightRowIndex, rows.length - 1)];
-                return row?.querySelector("input[name$='.WeightGrams']");
-            }
-
-            function captureWeight(advance) {
-                if (lastWeight === null) {
-                    show("Scale not connected or no current weight is available.", true);
-                    return;
-                }
-
-                const input = selectedWeightInput();
-                if (!input) {
-                    show("No fruit weight row is available on this page.", true);
-                    return;
-                }
-
-                input.value = String(lastWeight);
-                input.dispatchEvent(new Event("input", { bubbles: true }));
-                status("last-weight", `${lastWeight} g captured`);
-                show(`Captured ${lastWeight} g into the selected fruit row.`);
-                if (advance) {
-                    const rows = Array.from(document.querySelectorAll("tr.fruit-row"));
-                    nextWeightRowIndex = Math.min(rows.length - 1, rows.indexOf(input.closest("tr")) + 1);
-                    rows.forEach(row => row.classList.remove("device-selected-row"));
-                    rows[nextWeightRowIndex]?.classList.add("device-selected-row");
-                }
-            }
-
-            for (const row of document.querySelectorAll("tr.fruit-row")) {
-                row.addEventListener("click", () => {
-                    document.querySelectorAll("tr.fruit-row").forEach(item => item.classList.remove("device-selected-row"));
-                    row.classList.add("device-selected-row");
-                    nextWeightRowIndex = Array.from(document.querySelectorAll("tr.fruit-row")).indexOf(row);
-                });
-            }
-
-            panel.querySelector("[data-device-settings]")?.addEventListener("click", async () => {
-                settings.hidden = !settings.hidden;
-                if (!settings.hidden) await ensureCameraList();
-            });
-            for (const role of ["truck", "apple"]) {
-                cameraSelects[role]?.addEventListener("change", event => {
-                    localStorage.setItem(storageKeys[role], event.target.value);
-                    status(role, event.target.options[event.target.selectedIndex]?.textContent || "Selected");
-                    if (stream && activeRole === role) {
-                        stream.getTracks().forEach(track => track.stop());
-                        stream = null;
-                    }
-                });
-            }
-            for (const button of panel.querySelectorAll("[data-capture-photo]")) {
-                button.addEventListener("click", () => capturePhoto(button.dataset.capturePhoto, button.dataset.cameraRole));
-            }
-            panel.querySelector("[data-scale-connect]")?.addEventListener("click", connectScale);
-            panel.querySelector("[data-scale-read]")?.addEventListener("click", () => captureWeight(false));
-            panel.querySelector("[data-scale-next]")?.addEventListener("click", () => captureWeight(true));
-            ensureCameraList();
-        })();
-    </script>
+    var hasPhotoAction = !string.IsNullOrWhiteSpace(Model.ReceiptPhotoAction)
+        || !string.IsNullOrWhiteSpace(Model.SamplePhotoAction)
+        || !string.IsNullOrWhiteSpace(Model.StarchPhotoAction);
+    var saveFirstMessage = Model.RequiresSavedTargetMessage
+        ?? (!hasPhotoAction && (Model.ShowTruckPhotos || Model.ShowApplePhotos) ? "Save the receipt first to attach photos." : null);
 }
+<section class="panel device-capture-panel"
+         id="@panelId"
+         data-receipt-photo-action="@Model.ReceiptPhotoAction"
+         data-sample-photo-action="@Model.SamplePhotoAction"
+         data-starch-photo-action="@Model.StarchPhotoAction"
+         data-global-enabled="@Model.Settings.Enabled.ToString().ToLowerInvariant()"
+         data-brio-enabled="@Model.Settings.BrioEnabled.ToString().ToLowerInvariant()"
+         data-obsbot-enabled="@Model.Settings.ObsbotEnabled.ToString().ToLowerInvariant()"
+         data-scale-enabled="@Model.Settings.ScaleEnabled.ToString().ToLowerInvariant()">
+    <h2>Capture from Devices</h2>
+    <p class="notice warning" data-device-disabled>Device capture is disabled.</p>
+    <div class="button-row">
+        <button type="button" data-device-enable>Enable Device Capture on this browser</button>
+        <button type="button" class="secondary-button" data-device-settings>Device Setup / Select Cameras</button>
+        <button type="button" class="secondary-button" data-device-reset>Reset Device Settings</button>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(saveFirstMessage))
+    {
+        <p class="notice" data-device-save-first>@saveFirstMessage</p>
+    }
+    <div class="device-status-grid" aria-live="polite">
+        <div><strong>Brio camera:</strong> <span data-device-status="apple">Not selected</span></div>
+        <div><strong>OBSBOT camera:</strong> <span data-device-status="truck">Not selected</span></div>
+        <div><strong>Scale:</strong> <span data-device-status="scale">Not connected</span></div>
+        <div><strong>Last weight:</strong> <span data-device-status="last-weight">None</span></div>
+        <div><strong>Last photo:</strong> <span data-device-status="last-photo">None</span></div>
+    </div>
+    <div class="device-preview-row">
+        <video class="device-video" autoplay playsinline muted hidden></video>
+        <canvas class="device-canvas" hidden></canvas>
+    </div>
+    <details class="device-settings" hidden>
+        <summary>Device Selection</summary>
+        <p class="muted" data-camera-permission-message hidden>Allow camera access to identify cameras.</p>
+        <div class="button-row">
+            <button type="button" class="secondary-button" data-camera-permission>Allow Camera Access</button>
+            <button type="button" class="secondary-button" data-camera-test>Test Camera Preview</button>
+            <button type="button" class="secondary-button" data-device-save>Save device choices</button>
+        </div>
+        <div class="form-grid">
+            <label class="field">Apple camera
+                <select data-camera-select="apple"></select>
+            </label>
+            <label class="field">Truck camera
+                <select data-camera-select="truck"></select>
+            </label>
+            <label class="field">Scale
+                <select data-scale-select>
+                    <option value="">Browser scale connection</option>
+                    <option value="web-serial">Web Serial</option>
+                    <option value="web-usb">WebUSB</option>
+                </select>
+            </label>
+        </div>
+        <p class="muted">Manual upload and manual weight entry remain available. Device capture is optional.</p>
+    </details>
+    <div class="button-row device-actions" data-device-actions hidden>
+        @if (Model.ShowTruckPhotos)
+        {
+            <button type="button" data-capture-photo="BinTruck" data-camera-role="truck" disabled="@(!hasPhotoAction)">Capture Truck Photo</button>
+            <button type="button" class="secondary-button" data-capture-photo="TopOfTruck" data-camera-role="truck" disabled="@(!hasPhotoAction)">Capture Top of Truck</button>
+        }
+        @if (Model.ShowApplePhotos)
+        {
+            <button type="button" data-capture-photo="SampleBeforeCutting" data-camera-role="apple" disabled="@(!hasPhotoAction)">Capture Whole Apple Photo</button>
+            <button type="button" class="secondary-button" data-capture-photo="CutFruit" data-camera-role="apple" disabled="@(!hasPhotoAction)">Capture Cut Apple Photo</button>
+            <button type="button" class="secondary-button" data-capture-photo="FruitAfterStarch" data-camera-role="apple" disabled="@(!hasPhotoAction)">Capture Starch Photo</button>
+        }
+        @if (Model.ShowScale)
+        {
+            <button type="button" data-scale-connect>Connect Scale</button>
+            <button type="button" class="secondary-button" data-scale-read>Read Weight from Scale</button>
+            <button type="button" class="secondary-button" data-scale-next>Capture Next Fruit Weight</button>
+        }
+    </div>
+    <p class="muted device-message" data-device-message>Manual upload and manual weight entry remain available. Device capture is optional.</p>
+</section>
+<script>
+    (() => {
+        const panel = document.getElementById("@panelId");
+        if (!panel || panel.dataset.initialized === "true") return;
+        panel.dataset.initialized = "true";
+
+        const storageKeys = {
+            enabled: "cropqc.deviceCapture.enabled",
+            apple: "cropqc.deviceCapture.appleCameraId",
+            truck: "cropqc.deviceCapture.truckCameraId",
+            scale: "cropqc.deviceCapture.scaleSelection"
+        };
+        const video = panel.querySelector(".device-video");
+        const canvas = panel.querySelector(".device-canvas");
+        const message = panel.querySelector("[data-device-message]");
+        const disabledMessage = panel.querySelector("[data-device-disabled]");
+        const actions = panel.querySelector("[data-device-actions]");
+        const settings = panel.querySelector(".device-settings");
+        const permissionMessage = panel.querySelector("[data-camera-permission-message]");
+        const scaleSelect = panel.querySelector("[data-scale-select]");
+        const cameraSelects = {
+            apple: panel.querySelector("[data-camera-select='apple']"),
+            truck: panel.querySelector("[data-camera-select='truck']")
+        };
+        let stream = null;
+        let activeRole = null;
+        let serialPort = null;
+        let serialReader = null;
+        let lastWeight = null;
+        let nextWeightRowIndex = 0;
+
+        function localCaptureEnabled() {
+            return localStorage.getItem(storageKeys.enabled) === "true";
+        }
+
+        function setEnabled(enabled) {
+            localStorage.setItem(storageKeys.enabled, enabled ? "true" : "false");
+            disabledMessage.hidden = enabled;
+            actions.hidden = !enabled;
+            if (enabled) {
+                show("Device capture is enabled on this browser. Select a camera to start live preview.");
+            } else {
+                stopCamera();
+                show("Manual upload and manual weight entry remain available. Device capture is optional.");
+            }
+        }
+
+        function status(name, value) {
+            const target = panel.querySelector(`[data-device-status='${name}']`);
+            if (target) target.textContent = value;
+        }
+
+        function show(messageText, warning = false) {
+            message.textContent = messageText;
+            message.classList.toggle("warning-text", warning);
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            activeRole = null;
+            video.srcObject = null;
+            video.hidden = true;
+        }
+
+        function friendlyPhotoType(photoType) {
+            return {
+                BinTruck: "Truck photo",
+                TopOfTruck: "Top of truck",
+                SampleBeforeCutting: "Whole apple photo",
+                CutFruit: "Cut apple photo",
+                FruitAfterStarch: "Starch photo"
+            }[photoType] || photoType;
+        }
+
+        function actionFor(photoType) {
+            if (photoType === "BinTruck" || photoType === "TopOfTruck") {
+                return panel.dataset.receiptPhotoAction || panel.dataset.samplePhotoAction;
+            }
+
+            if (photoType === "FruitAfterStarch" && panel.dataset.starchPhotoAction) {
+                return panel.dataset.starchPhotoAction;
+            }
+
+            return panel.dataset.samplePhotoAction || panel.dataset.starchPhotoAction;
+        }
+
+        function defaultRoleForDevice(label) {
+            const value = (label || "").toLowerCase();
+            if (value.includes("obsbot") || value.includes("tiny")) return "truck";
+            if (value.includes("brio") || value.includes("logitech")) return "apple";
+            return null;
+        }
+
+        function friendlyCameraError(error, role) {
+            if (error?.name === "NotAllowedError" || error?.name === "SecurityError") {
+                return "Camera permission denied.";
+            }
+
+            if (error?.name === "NotFoundError" || error?.name === "OverconstrainedError") {
+                return role === "truck" ? "OBSBOT camera not found." : "Brio camera not found.";
+            }
+
+            return "Camera not found.";
+        }
+
+        async function requestCameraPermission() {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                show("Browser camera API unavailable.", true);
+                return false;
+            }
+
+            try {
+                const permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                permissionStream.getTracks().forEach(track => track.stop());
+                await ensureCameraList();
+                show("Camera access allowed. Select a camera to preview it.");
+                return true;
+            } catch (error) {
+                show(friendlyCameraError(error), true);
+                return false;
+            }
+        }
+
+        async function ensureCameraList() {
+            if (!navigator.mediaDevices?.enumerateDevices) {
+                show("Browser camera API unavailable.", true);
+                return [];
+            }
+
+            let devices = await navigator.mediaDevices.enumerateDevices();
+            let cameras = devices.filter(device => device.kind === "videoinput");
+            const hasLabels = cameras.some(device => device.label);
+            permissionMessage.hidden = cameras.length === 0 || hasLabels;
+            if (cameras.length > 0 && !hasLabels) {
+                show("Allow camera access to identify cameras.");
+            }
+
+            for (const role of ["apple", "truck"]) {
+                const select = cameraSelects[role];
+                if (!select) continue;
+                const previous = select.value || localStorage.getItem(storageKeys[role]) || "";
+                select.innerHTML = "";
+                if (cameras.length === 0) {
+                    const option = document.createElement("option");
+                    option.value = "";
+                    option.textContent = "No camera found";
+                    select.appendChild(option);
+                    status(role, "Camera not found");
+                    continue;
+                }
+
+                for (const camera of cameras) {
+                    const option = document.createElement("option");
+                    option.value = camera.deviceId;
+                    option.textContent = camera.label || `USB camera ${select.options.length + 1}`;
+                    select.appendChild(option);
+                }
+
+                const mapped = cameras.find(camera => defaultRoleForDevice(camera.label) === role)?.deviceId;
+                const nextValue = cameras.some(camera => camera.deviceId === previous)
+                    ? previous
+                    : mapped || cameras[0]?.deviceId || "";
+                select.value = nextValue;
+                if (nextValue) {
+                    localStorage.setItem(storageKeys[role], nextValue);
+                    status(role, select.options[select.selectedIndex]?.textContent || "Selected");
+                }
+            }
+
+            return cameras;
+        }
+
+        async function startCamera(role) {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                show("Browser camera API unavailable.", true);
+                return false;
+            }
+
+            await ensureCameraList();
+            const deviceId = cameraSelects[role]?.value || localStorage.getItem(storageKeys[role]);
+            if (!deviceId) {
+                show(role === "truck" ? "OBSBOT camera not found." : "Brio camera not found.", true);
+                return false;
+            }
+
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId } }, audio: false });
+                video.srcObject = stream;
+                video.hidden = false;
+                await video.play();
+                activeRole = role;
+                const label = cameraSelects[role]?.options[cameraSelects[role]?.selectedIndex]?.textContent || "Camera";
+                status(role, `${label} connected`);
+                show("Camera connected.");
+                return true;
+            } catch (error) {
+                stopCamera();
+                show(friendlyCameraError(error, role), true);
+                return false;
+            }
+        }
+
+        async function capturePhoto(photoType, role) {
+            const action = actionFor(photoType);
+            if (!action) {
+                show("Save the receipt first to attach photos.", true);
+                return;
+            }
+
+            const started = activeRole === role && stream ? true : await startCamera(role);
+            if (!started) return;
+            await new Promise(resolve => setTimeout(resolve, 150));
+            const width = video.videoWidth || 1280;
+            const height = video.videoHeight || 720;
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext("2d").drawImage(video, 0, 0, width, height);
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.92));
+            if (!blob) {
+                show("Could not capture photo from camera.", true);
+                return;
+            }
+
+            const safeType = photoType.replace(/[^A-Za-z0-9_-]/g, "");
+            const fileName = `${safeType}_${new Date().toISOString().replace(/[:.]/g, "-")}.jpg`;
+            const form = new FormData();
+            form.append("PhotoType", photoType);
+            form.append("PhotoSource", role === "truck" ? "OBSBOT Tiny 2 Lite" : "Logitech Brio 4K");
+            form.append("PhotoFile", new File([blob], fileName, { type: "image/jpeg" }));
+            form.append("FileName", fileName);
+            form.append("ContentType", "image/jpeg");
+            form.append("FileSizeBytes", String(blob.size));
+
+            show(`Uploading ${friendlyPhotoType(photoType)}...`);
+            const response = await fetch(action, {
+                method: "POST",
+                body: form,
+                credentials: "same-origin"
+            });
+
+            if (!response.ok) {
+                show(`Photo upload failed (${response.status}). Manual upload is still available.`, true);
+                return;
+            }
+
+            status("last-photo", `${friendlyPhotoType(photoType)} captured`);
+            show(`${friendlyPhotoType(photoType)} captured. Reloading...`);
+            window.location.reload();
+        }
+
+        async function connectScale() {
+            localStorage.setItem(storageKeys.scale, scaleSelect?.value || "");
+            if ("serial" in navigator) {
+                try {
+                    serialPort = await navigator.serial.requestPort();
+                    await serialPort.open({ baudRate: 9600 });
+                    status("scale", "Connected");
+                    show("Scale connected. If no weight appears, confirm the scale exposes serial output.");
+                    readScaleLoop();
+                } catch (error) {
+                    show("Scale not connected.", true);
+                }
+                return;
+            }
+
+            if ("usb" in navigator) {
+                show("WebUSB is available, but this scale is not configured as a browser USB device. Use manual entry or a QC Station/local helper if it does not expose Web Serial.", true);
+                return;
+            }
+
+            show("Browser does not support Web Serial/WebUSB. Use manual entry or QC Station/local helper.", true);
+        }
+
+        async function readScaleLoop() {
+            if (!serialPort?.readable || serialReader) return;
+            const decoder = new TextDecoder();
+            serialReader = serialPort.readable.getReader();
+            let buffer = "";
+            try {
+                while (true) {
+                    const { value, done } = await serialReader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value);
+                    const match = buffer.match(/(-?\d+(?:\.\d+)?)\s*g?/i);
+                    if (match) {
+                        lastWeight = Number(match[1]);
+                        status("last-weight", `${lastWeight} g`);
+                        buffer = "";
+                    }
+                }
+            } catch {
+                status("scale", "Disconnected");
+            } finally {
+                serialReader.releaseLock();
+                serialReader = null;
+            }
+        }
+
+        function selectedWeightInput() {
+            const rows = Array.from(document.querySelectorAll("tr.fruit-row"));
+            if (rows.length === 0) return null;
+            const active = document.querySelector("tr.fruit-row.device-selected-row");
+            const row = active || rows[Math.min(nextWeightRowIndex, rows.length - 1)];
+            return row?.querySelector("input[name$='.WeightGrams']");
+        }
+
+        function captureWeight(advance) {
+            if (lastWeight === null) {
+                show("Scale not connected or no current weight is available.", true);
+                return;
+            }
+
+            const input = selectedWeightInput();
+            if (!input) {
+                show("No fruit weight row is available on this page.", true);
+                return;
+            }
+
+            input.value = String(lastWeight);
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            status("last-weight", `${lastWeight} g captured`);
+            show(`Captured ${lastWeight} g into the selected fruit row.`);
+            if (advance) {
+                const rows = Array.from(document.querySelectorAll("tr.fruit-row"));
+                nextWeightRowIndex = Math.min(rows.length - 1, rows.indexOf(input.closest("tr")) + 1);
+                rows.forEach(row => row.classList.remove("device-selected-row"));
+                rows[nextWeightRowIndex]?.classList.add("device-selected-row");
+            }
+        }
+
+        for (const row of document.querySelectorAll("tr.fruit-row")) {
+            row.addEventListener("click", () => {
+                document.querySelectorAll("tr.fruit-row").forEach(item => item.classList.remove("device-selected-row"));
+                row.classList.add("device-selected-row");
+                nextWeightRowIndex = Array.from(document.querySelectorAll("tr.fruit-row")).indexOf(row);
+            });
+        }
+
+        panel.querySelector("[data-device-enable]")?.addEventListener("click", async () => {
+            setEnabled(true);
+            settings.hidden = false;
+            settings.open = true;
+            await ensureCameraList();
+        });
+        panel.querySelector("[data-device-settings]")?.addEventListener("click", async () => {
+            settings.hidden = !settings.hidden;
+            if (!settings.hidden) {
+                settings.open = true;
+                await ensureCameraList();
+            }
+        });
+        panel.querySelector("[data-device-reset]")?.addEventListener("click", () => {
+            stopCamera();
+            localStorage.removeItem(storageKeys.enabled);
+            localStorage.removeItem(storageKeys.apple);
+            localStorage.removeItem(storageKeys.truck);
+            localStorage.removeItem(storageKeys.scale);
+            setEnabled(false);
+            status("apple", "Not selected");
+            status("truck", "Not selected");
+            status("scale", "Not connected");
+        });
+        panel.querySelector("[data-camera-permission]")?.addEventListener("click", requestCameraPermission);
+        panel.querySelector("[data-camera-test]")?.addEventListener("click", async () => {
+            await startCamera(cameraSelects.apple?.value ? "apple" : "truck");
+        });
+        panel.querySelector("[data-device-save]")?.addEventListener("click", () => {
+            for (const role of ["apple", "truck"]) {
+                if (cameraSelects[role]?.value) {
+                    localStorage.setItem(storageKeys[role], cameraSelects[role].value);
+                }
+            }
+            localStorage.setItem(storageKeys.scale, scaleSelect?.value || "");
+            setEnabled(true);
+            show("Device choices saved on this browser.");
+        });
+        for (const role of ["apple", "truck"]) {
+            cameraSelects[role]?.addEventListener("change", async event => {
+                localStorage.setItem(storageKeys[role], event.target.value);
+                status(role, event.target.options[event.target.selectedIndex]?.textContent || "Selected");
+                if (localCaptureEnabled()) {
+                    await startCamera(role);
+                }
+            });
+        }
+        for (const button of panel.querySelectorAll("[data-capture-photo]")) {
+            button.addEventListener("click", () => capturePhoto(button.dataset.capturePhoto, button.dataset.cameraRole));
+        }
+        panel.querySelector("[data-scale-connect]")?.addEventListener("click", connectScale);
+        panel.querySelector("[data-scale-read]")?.addEventListener("click", () => captureWeight(false));
+        panel.querySelector("[data-scale-next]")?.addEventListener("click", () => captureWeight(true));
+
+        if (localStorage.getItem(storageKeys.scale) && scaleSelect) {
+            scaleSelect.value = localStorage.getItem(storageKeys.scale);
+        }
+        setEnabled(localCaptureEnabled());
+        if (localCaptureEnabled()) {
+            ensureCameraList();
+        }
+    })();
+</script>

@@ -745,7 +745,8 @@ public sealed class DashboardDataService(
                 GrowerLots = await dbContext.GrowerLots.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Grower).ThenBy(x => x.LotNumber).ToListAsync(cancellationToken),
                 AvailableCropYears = await cropYearService.GetAvailableCropYearsAsync(cancellationToken),
                 CurrentCropYear = cropYearService.GetCurrentCropYear(DateTimeOffset.Now),
-                CropYearHelpText = "Crop years use the starting-year convention by default: CropYear 2026 starts 2026-08-01 and ends 2027-07-31. Confirm crop year when season dates overlap."
+                CropYearHelpText = "Crop years use the starting-year convention by default: CropYear 2026 starts 2026-08-01 and ends 2027-07-31. Confirm crop year when season dates overlap.",
+                DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken)
             };
         }
         catch
