@@ -39,7 +39,11 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         (EbsDailyBinsEmailSettings.SenderEmailKey, "wes@fruitandland.com", "Active Gmail-connected user used by the scheduled EBS bin availability email.", "Email"),
         (EbsDailyBinsEmailSettings.LastSentDateKey, "", "Last successful automatic EBS bin availability email date. Managed by the system.", "Date"),
         ("PhotoRetentionCropYearsAfterCurrent", "3", "Photo retention crop years after current. Planning value only; no automatic photo deletion currently runs.", "Integer"),
-        ("AllowOverrideSendWithMissingData", "true", "Allow override send with missing data", "Boolean")
+        ("AllowOverrideSendWithMissingData", "true", "Allow override send with missing data", "Boolean"),
+        ("DeviceCapture__Enabled", "false", "Enable optional browser/local testing-device capture controls. Manual workflow remains available.", "Boolean"),
+        ("DeviceCapture__BrioEnabled", "false", "Enable Logitech Brio 4K apple photo capture controls.", "Boolean"),
+        ("DeviceCapture__ObsbotEnabled", "false", "Enable OBSBOT Tiny 2 Lite truck/top-of-truck photo capture controls.", "Boolean"),
+        ("DeviceCapture__ScaleEnabled", "false", "Enable optional browser scale controls for US Solid USS-DB28-50 grams capture.", "Boolean")
     ];
 
     public async Task<MasterDataPageViewModel> GetMasterDataAsync(string type, bool canEdit, CancellationToken cancellationToken) =>

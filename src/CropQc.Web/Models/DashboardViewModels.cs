@@ -728,6 +728,7 @@ public sealed class ReceiptDetailViewModel
     public IReadOnlyList<PhotoGroupViewModel> PhotoGroups { get; set; } = [];
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
     public bool CanDeleteSamples { get; set; }
+    public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
 }
 
 public sealed class SampleListItemViewModel
@@ -773,6 +774,7 @@ public sealed class SampleDetailViewModel
     public string? RecipientEmail { get; set; }
     public SaveFruitReadingsForm FruitReadingForm { get; set; } = new();
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
+    public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
 }
 
 public sealed record ReadinessChecklistItem(string Category, string Label, string Status, string CssClass);
@@ -789,7 +791,24 @@ public sealed class StarchTestViewModel
     public IReadOnlyList<PhotoGroupViewModel> PhotoGroups { get; set; } = [];
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
     public SaveStarchTestForm StarchForm { get; set; } = new();
+    public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
 }
+
+public sealed record DeviceCaptureSettingsViewModel(bool Enabled, bool BrioEnabled, bool ObsbotEnabled, bool ScaleEnabled)
+{
+    public static DeviceCaptureSettingsViewModel Disabled { get; } = new(false, false, false, false);
+    public bool AnyCameraEnabled => Enabled && (BrioEnabled || ObsbotEnabled);
+    public bool AnyEnabled => Enabled && (BrioEnabled || ObsbotEnabled || ScaleEnabled);
+}
+
+public sealed record DeviceCapturePanelViewModel(
+    DeviceCaptureSettingsViewModel Settings,
+    string? ReceiptPhotoAction = null,
+    string? SamplePhotoAction = null,
+    string? StarchPhotoAction = null,
+    bool ShowTruckPhotos = false,
+    bool ShowApplePhotos = false,
+    bool ShowScale = false);
 
 public sealed class FruitReadingRowViewModel
 {

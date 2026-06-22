@@ -1,9 +1,11 @@
 @model StarchTestViewModel
+@inject IUserAccessService UserAccess
 @{
     ViewData["Title"] = Model.Sample is null ? "Starch Input" : $"Starch Input - {Model.Sample.DisplayReceiptId}";
     var trayPositions = Enumerable.Range(0, 5)
         .SelectMany(trayRow => Enumerable.Range(0, 5).Select(trayColumn => trayColumn * 5 + trayRow + 1))
         .ToList();
+    var canEditDailyQc = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.Edit, Context.RequestAborted);
 }
 
 <h1>@ViewData["Title"]</h1>
@@ -47,6 +49,14 @@
         <p>FruitAfterStarch photo: <span class="status @(Model.Readiness.HasFruitAfterStarch ? "ready" : "missing")">@(Model.Readiness.HasFruitAfterStarch ? "Complete" : "Missing")</span></p>
         <p class="muted">The after-starch photo is required before the normal QC Summary send can be used.</p>
     </section>
+
+    @if (canEditDailyQc)
+    {
+        @await Html.PartialAsync("_DeviceCapturePanel", new DeviceCapturePanelViewModel(
+            Model.DeviceCapture,
+            StarchPhotoAction: $"/Samples/{Model.Sample.Id}/Starch/photos",
+            ShowApplePhotos: true))
+    }
 
     <form method="post" action="/Samples/@Model.Sample.Id/Starch">
         <input type="hidden" name="SampleId" value="@Model.Sample.Id" />
