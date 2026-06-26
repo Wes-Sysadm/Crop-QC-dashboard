@@ -27,6 +27,7 @@
 <form class="toolbar" method="get">
     <input type="hidden" name="DateFilter" value="@Model.Search.DateFilter" />
     <input type="hidden" name="SampleType" value="@Model.Search.SampleType" />
+    <input type="hidden" name="ReceiptType" value="@Model.Search.ReceiptType" />
     @if (string.Equals(Model.Search.DateFilter, "today", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(Model.Search.SampleType))
     {
         <div class="notice">
@@ -71,6 +72,18 @@
 </form>
 <p class="muted">@Model.CropYearHelpText</p>
 
+<nav class="type-tabs" aria-label="Receipt type filter">
+    @foreach (var tab in Model.ReceiptTypeCounts)
+    {
+        var isActive = string.Equals(Model.Search.ReceiptType, tab.Key, StringComparison.OrdinalIgnoreCase)
+            || (tab.Key == "All" && string.IsNullOrWhiteSpace(Model.Search.ReceiptType));
+        <a class="type-tab @(isActive ? "active" : "")" href="@tab.Href">
+            <span>@tab.Label</span>
+            <strong>@tab.Count</strong>
+        </a>
+    }
+</nav>
+
 @if (canEditReceipts)
 {
 <h2>Add Receipt</h2>
@@ -78,7 +91,7 @@
     <div class="field"><label>Crop Year</label><input name="CropYear" value="@Model.CurrentCropYear" required /></div>
     <div class="field"><label>Received At</label><input name="ReceivedAt" type="datetime-local" value="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")" required /></div>
     <div class="field"><label>Receipt ID</label><input name="CompuTechReceiptId" required /></div>
-    <div class="field"><label>Receipt Type</label><select name="ReceiptType"><option selected>Truck receipt</option><option>Door sample</option><option>Lot sample</option></select></div>
+    <div class="field"><label>Receipt Type</label><select name="ReceiptType"><option selected="@IsReceiptTypeSelected("Truck receipt")">Truck receipt</option><option selected="@IsReceiptTypeSelected("Door sample")">Door sample</option><option selected="@IsReceiptTypeSelected("Lot sample")">Lot sample</option></select></div>
     <div class="field"><label>Warehouse</label><select id="addWarehouseId" name="WarehouseId" required><option value="">Select</option>@foreach (var item in Model.Warehouses){<option value="@item.Id">@item.Code</option>}</select></div>
     <div class="field"><label>Room</label><select id="addRoomId" name="RoomId" required disabled><option value="">Select warehouse first</option></select></div>
     <div class="field"><label>Variety</label><select name="FruitProfileId" required><option value="">Select</option>@foreach (var item in Model.FruitProfiles){<option value="@item.Id">@item.VarietyCode - @item.Name</option>}</select></div>
@@ -135,6 +148,14 @@
     </article>
 }
 </div>
+
+@functions {
+    private bool IsReceiptTypeSelected(string receiptType)
+    {
+        var selected = string.IsNullOrWhiteSpace(Model.Search.ReceiptType) ? "Truck receipt" : Model.Search.ReceiptType;
+        return string.Equals(selected, receiptType, StringComparison.OrdinalIgnoreCase);
+    }
+}
 
 <script>
     (() => {

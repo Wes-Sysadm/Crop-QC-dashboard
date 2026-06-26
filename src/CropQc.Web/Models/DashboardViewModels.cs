@@ -554,6 +554,7 @@ public sealed class ReceiptListViewModel
     public string? DataWarning { get; set; }
     public ReceiptSearchForm Search { get; set; } = new();
     public IReadOnlyList<ReceiptListItemViewModel> Receipts { get; set; } = [];
+    public IReadOnlyList<ReceiptTypeCountViewModel> ReceiptTypeCounts { get; set; } = [];
     public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
     public IReadOnlyList<Room> Rooms { get; set; } = [];
     public IReadOnlyList<FruitProfile> FruitProfiles { get; set; } = [];
@@ -570,6 +571,7 @@ public sealed class ReceiptSearchForm
     public bool AllCropYears { get; set; }
     public string? DateFilter { get; set; }
     public string? SampleType { get; set; }
+    public string? ReceiptType { get; set; }
     public string? ReceiptId { get; set; }
     public string? Grower { get; set; }
     public string? Lot { get; set; }
@@ -577,6 +579,8 @@ public sealed class ReceiptSearchForm
     public int? RoomId { get; set; }
     public int? FruitProfileId { get; set; }
 }
+
+public sealed record ReceiptTypeCountViewModel(string Key, string Label, int Count, string Href);
 
 public sealed record ReceiptListItemViewModel(
     long Id,
@@ -745,6 +749,8 @@ public sealed class SampleListItemViewModel
     public string StarchStatus { get; set; } = "";
     public string PhotoStatus { get; set; } = "";
     public string EmailStatus { get; set; } = "";
+    public DateTimeOffset? EmailSentAt { get; set; }
+    public string? EmailSentBy { get; set; }
     public string? TakenBy { get; set; }
     public DateTimeOffset SampleTakenAt { get; set; }
     public int? ActualSampleSize { get; set; }

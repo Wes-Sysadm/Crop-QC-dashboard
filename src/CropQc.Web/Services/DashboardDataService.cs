@@ -97,7 +97,7 @@ public sealed class DashboardDataService(
             var currentGrowerLots = currentLots.Select(CurrentLotKey).Distinct(StringComparer.OrdinalIgnoreCase).Count();
             var cards = BuildHomeCards(
                 enriched.Count(x => x.SampleType.Contains("Receiving", StringComparison.OrdinalIgnoreCase)),
-                enriched.Count(x => x.IsReady),
+                enriched.Count(IsReadyToEmail),
                 enriched.Count(x => !x.IsReady),
                 enriched.Count(x => x.EmailStatus == "Sent"),
                 enriched.Count(x => x.ReviewReasons.Count > 0),
@@ -160,6 +160,7 @@ public sealed class DashboardDataService(
             new("Grower Lots In Storage", currentGrowerLots, "/GrowerLots/Current", "info", "Grower lots with fruit currently left in storage."),
             new("Today's Receiving Samples", todaySamples, "/Receipts?DateFilter=today&SampleType=Receiving", "info", "Receipts with receiving QC activity today."),
             new("Samples Ready to Email", ready, "/DailyQc?status=ReadyToSend", "ready", "Samples with required data and photos ready for QC summary email."),
+            new("QC Emails Sent", sent, "/DailyQc?status=Sent", "sent", "Samples with a QC Summary email sent today."),
             new("Samples Missing Data", missing, "/DailyQc?status=MissingData", "missing", "Samples missing required fields/photos."),
             new("Samples Needing Review", review, "/DailyQc?status=NeedsReview", "review", "Samples with pressure, starch, defect, or variance review flags.")
         ];
@@ -721,6 +722,12 @@ public sealed class DashboardDataService(
                     && sample.ReceiptId == x.Id
                     && sample.SampleType.Name.Contains(sampleType)));
             }
+            var receiptTypeCountRows = await query.ToListAsync(cancellationToken);
+            if (!string.IsNullOrWhiteSpace(search.ReceiptType))
+            {
+                var receiptType = NormalizeReceiptType(search.ReceiptType);
+                query = query.Where(x => x.ReceiptType == receiptType);
+            }
 
             var receipts = await query.OrderByDescending(x => x.ReceivedAt).Take(500).ToListAsync(cancellationToken);
             var receiptIds = receipts.Select(x => x.Id).ToList();
@@ -739,6 +746,7 @@ public sealed class DashboardDataService(
             {
                 Search = search,
                 Receipts = receipts.Select(receipt => ReceiptListItem(receipt, sampleSummaries.GetValueOrDefault(receipt.Id))).ToList(),
+                ReceiptTypeCounts = BuildReceiptTypeCounts(search, receiptTypeCountRows),
                 Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
                 Rooms = await dbContext.Rooms.AsNoTracking().OrderBy(x => x.WarehouseId).ThenBy(x => x.SubLocation).ThenBy(x => x.SortOrder).ThenBy(x => x.CropQcRoomName ?? x.Code).ToListAsync(cancellationToken),
                 FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
@@ -1330,6 +1338,7 @@ public sealed class DashboardDataService(
         sample.SampleType = sampleType;
         sample.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await MarkSampleNeedsResendIfSentAsync(sample, "sample-type-change", changedBy, before, cancellationToken);
         await RefreshSampleStatusesAsync(sample, cancellationToken);
 
         if (isSent)
@@ -1391,6 +1400,7 @@ public sealed class DashboardDataService(
             .Include(x => x.Defects)
             .Where(x => x.QcSampleId == sample.Id)
             .ToListAsync(cancellationToken);
+        var beforeSnapshot = BuildFruitReadingSnapshot(sample, existingRows);
         sample.ActualSampleSize = form.TargetSampleSize;
 
         foreach (var submittedRow in form.Rows.OrderBy(x => x.RowNumber))
@@ -1446,6 +1456,16 @@ public sealed class DashboardDataService(
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        var afterRows = await dbContext.QcFruitReadings
+            .AsNoTracking()
+            .Include(x => x.Defects)
+            .Where(x => x.QcSampleId == sample.Id)
+            .ToListAsync(cancellationToken);
+        var afterSnapshot = BuildFruitReadingSnapshot(sample, afterRows);
+        if (!string.Equals(beforeSnapshot, afterSnapshot, StringComparison.Ordinal))
+        {
+            await MarkSampleNeedsResendIfSentAsync(sample, "fruit-row-change", GetCurrentUserEmail() ?? "unknown", beforeSnapshot, cancellationToken);
+        }
         await RefreshSampleStatusesAsync(sample, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
@@ -1528,6 +1548,7 @@ public sealed class DashboardDataService(
         var existingRows = await dbContext.QcFruitReadings
             .Where(x => x.QcSampleId == sample.Id)
             .ToListAsync(cancellationToken);
+        var beforeSnapshot = BuildStarchSnapshot(sample, existingRows);
         foreach (var submittedRow in form.Rows.OrderBy(x => x.RowNumber))
         {
             var reading = existingRows.SingleOrDefault(x => x.RowNumber == submittedRow.RowNumber);
@@ -1554,6 +1575,12 @@ public sealed class DashboardDataService(
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        var afterRows = await dbContext.QcFruitReadings.AsNoTracking().Where(x => x.QcSampleId == sample.Id).ToListAsync(cancellationToken);
+        var afterSnapshot = BuildStarchSnapshot(sample, afterRows);
+        if (!string.Equals(beforeSnapshot, afterSnapshot, StringComparison.Ordinal))
+        {
+            await MarkSampleNeedsResendIfSentAsync(sample, "starch-change", GetCurrentUserEmail() ?? "unknown", beforeSnapshot, cancellationToken);
+        }
         await RefreshSampleStatusesAsync(sample, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
@@ -1663,6 +1690,8 @@ public sealed class DashboardDataService(
         var message = new QcEmailMessage(sender.Email, recipients, sample.TakenByUser?.Email, emailContent.Subject, emailContent.TextBody, emailContent.HtmlBody, emailContent.InlineImages);
 
         var now = DateTimeOffset.UtcNow;
+        var isResend = sample.EmailStatus.Contains("resend", StringComparison.OrdinalIgnoreCase)
+            || sample.EmailStatus.Contains("Changed after sent", StringComparison.OrdinalIgnoreCase);
         var sendResult = await emailSender.SendAsync(sender, message, cancellationToken);
         var status = sendResult.Success ? "Sent" : "Failed";
 
@@ -1678,7 +1707,7 @@ public sealed class DashboardDataService(
             MessageId = sendResult.MessageId,
             SentByUserId = sender.Id,
             SentAt = sendResult.Success ? now : null,
-            IsResend = false,
+            IsResend = isResend,
             IsOverride = isOverride,
             OverrideReason = overrideReason,
             MissingItemsSnapshot = string.Join(Environment.NewLine, readiness.MissingItems),
@@ -1856,6 +1885,7 @@ public sealed class DashboardDataService(
             photo.FolderId ?? photo.SharePointDriveId);
         if (sample is not null)
         {
+            await MarkSampleNeedsResendIfSentAsync(sample, "photo-added", GetCurrentUserEmail() ?? "unknown", null, cancellationToken);
             await RefreshSampleStatusesAsync(sample, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -1864,6 +1894,7 @@ public sealed class DashboardDataService(
             var receiptSamples = await dbContext.QcSamples.Where(x => x.ReceiptId == form.ReceiptId).ToListAsync(cancellationToken);
             foreach (var receiptSample in receiptSamples)
             {
+                await MarkSampleNeedsResendIfSentAsync(receiptSample, "receipt-photo-added", GetCurrentUserEmail() ?? "unknown", null, cancellationToken);
                 await RefreshSampleStatusesAsync(receiptSample, cancellationToken);
             }
 
@@ -1949,11 +1980,13 @@ public sealed class DashboardDataService(
             var receiptSamples = await dbContext.QcSamples.Where(x => x.ReceiptId == sample.ReceiptId && !x.IsDeleted).ToListAsync(cancellationToken);
             foreach (var receiptSample in receiptSamples)
             {
+                await MarkSampleNeedsResendIfSentAsync(receiptSample, "photo-removed", changedBy, before, cancellationToken);
                 await RefreshSampleStatusesAsync(receiptSample, cancellationToken);
             }
         }
         else
         {
+            await MarkSampleNeedsResendIfSentAsync(sample, "photo-removed", changedBy, before, cancellationToken);
             await RefreshSampleStatusesAsync(sample, cancellationToken);
         }
 
@@ -1992,7 +2025,7 @@ public sealed class DashboardDataService(
     private static IReadOnlyList<SampleListItemViewModel> FilterDailyQcSamples(IReadOnlyList<SampleListItemViewModel> samples, string? status) =>
         status?.Trim().ToLowerInvariant() switch
         {
-            "readytosend" => samples.Where(x => x.IsReady).ToList(),
+            "readytosend" => samples.Where(IsReadyToEmail).ToList(),
             "missingdata" => samples.Where(x => !x.IsReady).ToList(),
             "needsreview" => samples.Where(x => x.ReviewReasons.Count > 0).ToList(),
             "sent" => samples.Where(x => x.EmailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase)).ToList(),
@@ -3086,10 +3119,30 @@ public sealed class DashboardDataService(
     private async Task<IReadOnlyList<SampleListItemViewModel>> EnrichSamplesAsync(IReadOnlyList<QcSample> samples, CancellationToken cancellationToken)
     {
         var result = new List<SampleListItemViewModel>();
+        var sampleIds = samples.Select(x => x.Id).ToList();
+        var sentLogs = sampleIds.Count == 0
+            ? new Dictionary<long, QcSummaryEmailSentInfo>()
+            : (await dbContext.QcSummaryEmailLogs
+                .AsNoTracking()
+                .Include(x => x.SentByUser)
+                .Where(x => x.QcSampleId != null
+                    && sampleIds.Contains(x.QcSampleId.Value)
+                    && x.Status == "Sent"
+                    && x.SentAt != null)
+                .ToListAsync(cancellationToken))
+                .GroupBy(x => x.QcSampleId!.Value)
+                .ToDictionary(
+                    x => x.Key,
+                    x =>
+                    {
+                        var latest = x.OrderByDescending(y => y.SentAt).ThenByDescending(y => y.Id).First();
+                        return new QcSummaryEmailSentInfo(latest.SentAt, latest.SentByUser?.DisplayName ?? latest.FromAddress);
+                    });
         foreach (var sample in samples)
         {
             var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
             var averagePressure = AveragePressure(sample.FruitReadings);
+            sentLogs.TryGetValue(sample.Id, out var sentInfo);
             result.Add(new SampleListItemViewModel
             {
                 Id = sample.Id,
@@ -3103,6 +3156,8 @@ public sealed class DashboardDataService(
                 StarchStatus = sample.StarchStatus,
                 PhotoStatus = sample.PhotoStatus,
                 EmailStatus = sample.EmailStatus,
+                EmailSentAt = sentInfo?.SentAt,
+                EmailSentBy = sentInfo?.SentBy,
                 TakenBy = sample.TakenByUser?.DisplayName,
                 SampleTakenAt = sample.SampleTakenAt,
                 ActualSampleSize = sample.ActualSampleSize,
@@ -3118,6 +3173,12 @@ public sealed class DashboardDataService(
 
         return result;
     }
+
+    private static bool IsReadyToEmail(SampleListItemViewModel sample) =>
+        sample.IsReady
+        && !sample.EmailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase)
+        && !sample.EmailStatus.Contains("resend", StringComparison.OrdinalIgnoreCase)
+        && !sample.EmailStatus.Contains("Changed after sent", StringComparison.OrdinalIgnoreCase);
 
     private IReadOnlyList<string> BuildReviewReasons(QcSample sample, decimal? averagePressureLbs)
     {
@@ -3361,7 +3422,16 @@ public sealed class DashboardDataService(
         sample.PhotoStatus = readiness.RequiredPhotoChecklist.All(x => x.Status == "Complete")
             ? "Photos Complete"
             : "Photo Pending";
-        if (!sample.Status.Contains("Needs Review", StringComparison.OrdinalIgnoreCase) && sample.EmailStatus != "Sent")
+        if (sample.EmailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase))
+        {
+            sample.Status = "Sent";
+        }
+        else if (sample.EmailStatus.Contains("resend", StringComparison.OrdinalIgnoreCase)
+            || sample.EmailStatus.Contains("Changed after sent", StringComparison.OrdinalIgnoreCase))
+        {
+            sample.Status = "Needs Resend";
+        }
+        else if (!sample.Status.Contains("Needs Review", StringComparison.OrdinalIgnoreCase))
         {
             sample.Status = readiness.IsReady
                 ? "Ready to Send"
@@ -3372,6 +3442,58 @@ public sealed class DashboardDataService(
 
         sample.UpdatedAt = DateTimeOffset.UtcNow;
     }
+
+    private async Task MarkSampleNeedsResendIfSentAsync(QcSample sample, string reason, string changedBy, string? beforeValuesJson, CancellationToken cancellationToken)
+    {
+        if (!sample.EmailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        sample.EmailStatus = "Needs Resend";
+        sample.Status = "Needs Resend";
+        sample.UpdatedAt = DateTimeOffset.UtcNow;
+        await AddAuditAsync(
+            "changed-after-send",
+            nameof(QcSample),
+            sample.Id.ToString(),
+            changedBy,
+            beforeValuesJson,
+            JsonSerializer.Serialize(new { sample.Id, sample.EmailStatus, Reason = reason }),
+            cancellationToken);
+    }
+
+    private static string BuildFruitReadingSnapshot(QcSample sample, IEnumerable<QcFruitReading> rows) =>
+        JsonSerializer.Serialize(new
+        {
+            sample.ActualSampleSize,
+            Rows = rows
+                .OrderBy(x => x.RowNumber)
+                .Select(x => new
+                {
+                    x.RowNumber,
+                    x.Pressure1Lbs,
+                    x.Pressure2Lbs,
+                    x.WeightGrams,
+                    x.GradeId,
+                    x.StarchScaleValueId,
+                    Defects = x.Defects
+                        .OrderBy(y => y.DefectTypeId)
+                        .Select(y => new { y.DefectTypeId, y.Notes })
+                        .ToList()
+                })
+                .ToList()
+        });
+
+    private static string BuildStarchSnapshot(QcSample sample, IEnumerable<QcFruitReading> rows) =>
+        JsonSerializer.Serialize(new
+        {
+            sample.ActualSampleSize,
+            Rows = rows
+                .OrderBy(x => x.RowNumber)
+                .Select(x => new { x.RowNumber, x.StarchScaleValueId })
+                .ToList()
+        });
 
     private static (int? SizeCategory, string SizeStatus) CalculateSize(decimal? weightGrams, IEnumerable<FruitSizeConversionThreshold> thresholds)
     {
@@ -3405,6 +3527,54 @@ public sealed class DashboardDataService(
         sampleSummary?.SampleCount ?? 0,
         BuildReceiptQcStatus(sampleSummary),
         sampleSummary?.LastUpdatedAt ?? receipt.UpdatedAt);
+
+    private static IReadOnlyList<ReceiptTypeCountViewModel> BuildReceiptTypeCounts(ReceiptSearchForm search, IReadOnlyList<Receipt> receipts)
+    {
+        static string Url(ReceiptSearchForm form, string? receiptType)
+        {
+            var query = new List<string>();
+            void Add(string name, object? value)
+            {
+                if (value is null)
+                {
+                    return;
+                }
+
+                var text = value.ToString();
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    return;
+                }
+
+                query.Add($"{Uri.EscapeDataString(name)}={Uri.EscapeDataString(text)}");
+            }
+
+            Add(nameof(ReceiptSearchForm.CropYear), form.CropYear);
+            if (form.AllCropYears)
+            {
+                Add(nameof(ReceiptSearchForm.AllCropYears), true);
+            }
+            Add(nameof(ReceiptSearchForm.DateFilter), form.DateFilter);
+            Add(nameof(ReceiptSearchForm.SampleType), form.SampleType);
+            Add(nameof(ReceiptSearchForm.ReceiptId), form.ReceiptId);
+            Add(nameof(ReceiptSearchForm.Grower), form.Grower);
+            Add(nameof(ReceiptSearchForm.Lot), form.Lot);
+            Add(nameof(ReceiptSearchForm.WarehouseId), form.WarehouseId);
+            Add(nameof(ReceiptSearchForm.RoomId), form.RoomId);
+            Add(nameof(ReceiptSearchForm.FruitProfileId), form.FruitProfileId);
+            Add(nameof(ReceiptSearchForm.ReceiptType), receiptType);
+            return query.Count == 0 ? "/Receipts" : $"/Receipts?{string.Join("&", query)}";
+        }
+
+        int Count(string receiptType) => receipts.Count(x => string.Equals(x.ReceiptType, receiptType, StringComparison.OrdinalIgnoreCase));
+        return
+        [
+            new("All", "All", receipts.Count, Url(search, null)),
+            new("Truck receipt", "Truck Receipts", Count("Truck receipt"), Url(search, "Truck receipt")),
+            new("Door sample", "Door Samples", Count("Door sample"), Url(search, "Door sample")),
+            new("Lot sample", "Lot Samples", Count("Lot sample"), Url(search, "Lot sample"))
+        ];
+    }
 
     private static string BuildReceiptQcStatus(ReceiptSampleSummary? sampleSummary)
     {
@@ -3440,6 +3610,7 @@ public sealed class DashboardDataService(
 
     private sealed record ReceiptSampleSummary(long ReceiptId, int SampleCount, DateTimeOffset LastUpdatedAt, bool HasReady, bool HasReview, bool HasSent);
     private sealed record LatestSampleSummary(DateTimeOffset SampleDate, decimal? AveragePressure, decimal? AverageStarch);
+    private sealed record QcSummaryEmailSentInfo(DateTimeOffset? SentAt, string? SentBy);
 
     private async Task<IReadOnlyDictionary<long, LatestSampleSummary>> BuildLatestSampleSummariesAsync(IReadOnlyList<long> receiptIds, CancellationToken cancellationToken)
     {

@@ -102,10 +102,16 @@
                         </ul>
                     }
                 </td>
-                <td>@sample.EmailStatus</td>
+                <td>
+                    <span class="status @StatusClass(sample.EmailStatus)">@sample.EmailStatus</span>
+                    @if (sample.EmailSentAt is not null)
+                    {
+                        <div class="muted">Sent @sample.EmailSentAt.Value.LocalDateTime.ToString("g") by @(sample.EmailSentBy ?? "unknown")</div>
+                    }
+                </td>
                 <td>
                     <a class="inline-action" href="cropqcstation://sample/@sample.Id">Open in QC Station</a>
-                    @if (sample.IsReady)
+                    @if (CanSendEmail(sample))
                     {
                         @if (canSendQcSummary)
                         {
@@ -132,7 +138,12 @@
 @functions {
     private static string StatusClass(string status) =>
         status.Contains("review", StringComparison.OrdinalIgnoreCase) ? "review" :
+        status.Contains("resend", StringComparison.OrdinalIgnoreCase) ? "review" :
         status.Contains("ready", StringComparison.OrdinalIgnoreCase) ? "ready" :
         status.Contains("sent", StringComparison.OrdinalIgnoreCase) ? "sent" :
         status.Contains("pending", StringComparison.OrdinalIgnoreCase) ? "pending" : "";
+
+    private static bool CanSendEmail(SampleListItemViewModel sample) =>
+        sample.IsReady
+        && !sample.EmailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase);
 }

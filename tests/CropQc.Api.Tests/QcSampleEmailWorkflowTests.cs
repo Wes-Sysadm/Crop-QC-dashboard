@@ -71,11 +71,72 @@ public sealed class QcSampleEmailWorkflowTests
 
         Assert.Null(error);
         Assert.Equal("Door Sample", await SampleTypeNameAsync(db, sample.Id));
-        var audit = Assert.Single(await db.AuditLogs.ToListAsync());
-        Assert.Equal("sample-type-change-after-send", audit.Action);
-        Assert.Equal(nameof(QcSample), audit.EntityName);
-        Assert.Contains("Lot Sample", audit.BeforeValuesJson);
-        Assert.Contains("Door Sample", audit.AfterValuesJson);
+        var audits = await db.AuditLogs.ToListAsync();
+        var typeAudit = Assert.Single(audits, x => x.Action == "sample-type-change-after-send");
+        Assert.Equal(nameof(QcSample), typeAudit.EntityName);
+        Assert.Contains("Lot Sample", typeAudit.BeforeValuesJson);
+        Assert.Contains("Door Sample", typeAudit.AfterValuesJson);
+        var resendAudit = Assert.Single(audits, x => x.Action == "changed-after-send");
+        Assert.Contains("sample-type-change", resendAudit.AfterValuesJson);
+    }
+
+    [Fact]
+    public async Task SentSample_NoLongerAppearsInReadyToSendList()
+    {
+        await using var db = CreateDbContext();
+        var sample = await SeedSampleAsync(db, "Lot Sample", emailStatus: "Not Sent", hasStarch: false);
+        sample.SampleTakenAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+        var service = CreateService(db, role: "QC User");
+
+        var sendError = await service.SendQcSummaryAsync(sample.Id, CancellationToken.None);
+        var ready = await service.GetDailyQcDashboardAsync(null, "ReadyToSend", CancellationToken.None);
+        var sent = await service.GetDailyQcDashboardAsync(null, "Sent", CancellationToken.None);
+        var detail = await service.GetSampleDetailAsync(sample.Id, CancellationToken.None);
+
+        Assert.Null(sendError);
+        Assert.Empty(ready.Samples);
+        var sentSample = Assert.Single(sent.Samples);
+        Assert.Equal("Sent", sentSample.EmailStatus);
+        Assert.NotNull(sentSample.EmailSentAt);
+        Assert.Equal("QC User", sentSample.EmailSentBy);
+        Assert.Equal("Sent", detail.Sample?.EmailStatus);
+        Assert.NotNull(detail.Sample?.EmailSentAt);
+    }
+
+    [Fact]
+    public async Task SavingUnchangedRowsAfterSend_DoesNotMarkNeedsResend()
+    {
+        await using var db = CreateDbContext();
+        var sample = await SeedSampleAsync(db, "Lot Sample", emailStatus: "Not Sent", hasStarch: false);
+        var service = CreateService(db, role: "QC User");
+
+        Assert.Null(await service.SendQcSummaryAsync(sample.Id, CancellationToken.None));
+        var saveError = await service.SaveFruitReadingsAsync(RowForm(sample.Id, 12m), CancellationToken.None);
+
+        Assert.Null(saveError);
+        var status = await db.QcSamples.AsNoTracking().Where(x => x.Id == sample.Id).Select(x => new { x.EmailStatus, x.Status }).SingleAsync();
+        Assert.Equal("Sent", status.EmailStatus);
+        Assert.Equal("Sent", status.Status);
+        Assert.DoesNotContain(await db.AuditLogs.ToListAsync(), x => x.Action == "changed-after-send");
+    }
+
+    [Fact]
+    public async Task SavingChangedRowsAfterSend_MarksNeedsResendAndAudits()
+    {
+        await using var db = CreateDbContext();
+        var sample = await SeedSampleAsync(db, "Lot Sample", emailStatus: "Not Sent", hasStarch: false);
+        var service = CreateService(db, role: "QC User");
+
+        Assert.Null(await service.SendQcSummaryAsync(sample.Id, CancellationToken.None));
+        var saveError = await service.SaveFruitReadingsAsync(RowForm(sample.Id, 14m), CancellationToken.None);
+
+        Assert.Null(saveError);
+        var status = await db.QcSamples.AsNoTracking().Where(x => x.Id == sample.Id).Select(x => new { x.EmailStatus, x.Status }).SingleAsync();
+        Assert.Equal("Needs Resend", status.EmailStatus);
+        Assert.Equal("Needs Resend", status.Status);
+        var audit = Assert.Single(await db.AuditLogs.ToListAsync(), x => x.Action == "changed-after-send");
+        Assert.Contains("fruit-row-change", audit.AfterValuesJson);
     }
 
     [Theory]
@@ -220,6 +281,23 @@ public sealed class QcSampleEmailWorkflowTests
 
     private static async Task<string> SampleTypeNameAsync(CropQcDbContext db, long sampleId) =>
         await db.QcSamples.AsNoTracking().Where(x => x.Id == sampleId).Select(x => x.SampleType.Name).SingleAsync();
+
+    private static SaveFruitReadingsForm RowForm(long sampleId, decimal pressure1) => new()
+    {
+        SampleId = sampleId,
+        TargetSampleSize = 10,
+        Rows =
+        [
+            new FruitReadingEditRow
+            {
+                RowNumber = 1,
+                Pressure1Lbs = pressure1,
+                Pressure2Lbs = 13m,
+                WeightGrams = 180m,
+                GradeId = 1
+            }
+        ]
+    };
 
     private static DashboardDataService CreateService(CropQcDbContext db, string role, IQcSummaryEmailComposer? composer = null)
     {

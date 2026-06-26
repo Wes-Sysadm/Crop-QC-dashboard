@@ -33,6 +33,14 @@
     <section class="panel">
         <h2>@Model.Sample.DisplayReceiptId</h2>
         <p>@Model.Sample.Warehouse | @Model.Sample.SampleType | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Target sample size: @Model.TargetSampleSize | Entered fruit count: @Model.EnteredFruitCount</p>
+        @if (Model.Sample.EmailSentAt is not null)
+        {
+            <p class="notice success">QC Summary sent @Model.Sample.EmailSentAt.Value.LocalDateTime.ToString("g") by @(Model.Sample.EmailSentBy ?? "unknown").</p>
+        }
+        @if (Model.Sample.EmailStatus.Contains("resend", StringComparison.OrdinalIgnoreCase))
+        {
+            <p class="notice warning">This sample changed after the last QC Summary email. Review the changes and resend if needed.</p>
+        }
         <p>@StarchSummary(Model.Readiness)</p>
         @if (CanChangeSampleType(Model.Sample.EmailStatus, canEditDailyQc, canAdminDailyQc))
         {
@@ -97,7 +105,7 @@
         }
         </ul>
     }
-    @if (Model.Readiness.IsReady)
+    @if (Model.Readiness.IsReady && CanSendEmail(Model.Sample))
     {
         @if (canEditDailyQc)
         {
@@ -531,6 +539,10 @@
 
     private static bool CanChangeSampleType(string emailStatus, bool canEditDailyQc, bool canAdminDailyQc) =>
         canAdminDailyQc || (!emailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase) && canEditDailyQc);
+
+    private static bool CanSendEmail(SampleListItemViewModel? sample) =>
+        sample is not null
+        && !sample.EmailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase);
 
     private static string NormalizePhotoType(string? photoType)
     {
