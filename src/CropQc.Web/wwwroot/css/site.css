@@ -23,7 +23,7 @@ a:hover { text-decoration: underline; }
 .logout-form { margin: 0; }
 .link-button { height: auto; min-height: 0; padding: 0; border: 0; background: transparent; color: white; font-weight: 700; }
 .link-button:hover { text-decoration: underline; }
-.page { width: 100%; padding: 24px; max-width: min(94vw, 1920px); margin: 0 auto; overflow-wrap: normal; word-break: normal; }
+.page { width: 100%; padding: 24px; max-width: min(98vw, 2240px); margin: 0 auto; overflow-wrap: normal; word-break: normal; }
 h1 { margin: 0 0 18px; font-size: 28px; }
 h2 { margin: 28px 0 12px; font-size: 20px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 12px; margin-bottom: 24px; }
@@ -97,6 +97,11 @@ tr:last-child td { border-bottom: 0; }
 .receipt-card-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px 14px; margin: 0; }
 .receipt-card-meta dt { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #4a5968; white-space: nowrap; }
 .receipt-card-meta dd { margin: 0; min-width: 0; overflow-wrap: normal; word-break: normal; }
+.type-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 22px; }
+.type-tab { display: inline-flex; align-items: center; justify-content: space-between; gap: 14px; min-width: 170px; min-height: 42px; padding: 9px 12px; border: 1px solid #c8d4df; border-radius: 6px; background: white; color: #16324f; font-weight: 800; }
+.type-tab:hover { text-decoration: none; border-color: #235a97; background: #f7fafc; }
+.type-tab.active { border-color: #235a97; background: #eaf2f8; box-shadow: inset 0 0 0 1px #235a97; }
+.type-tab strong { display: inline-flex; min-width: 30px; justify-content: center; padding: 2px 7px; border-radius: 999px; background: #d9e7f3; color: #16324f; }
 .download-card { max-width: 760px; }
 .download-description, .download-notes, .help-text { max-width: 720px; white-space: normal; overflow-wrap: break-word; word-break: normal; }
 .help-text { display: block; margin-top: 5px; color: #66717c; font-size: 13px; line-height: 1.35; text-transform: none; font-weight: 600; }
@@ -209,9 +214,16 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     .nav-dropdown:focus-within .nav-dropdown-menu { display: grid; }
 }
 @media (min-width: 1800px) {
+    .page { padding-inline: 32px; }
     .cards { grid-template-columns: repeat(6, minmax(180px, 1fr)); }
     .room-card-grid { grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
+    .receipt-result-grid { grid-template-columns: repeat(auto-fit, minmax(620px, 1fr)); }
     .responsive-card-grid { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+}
+@media (min-width: 2400px) {
+    .page { max-width: 2320px; }
+    .receipt-result-grid { grid-template-columns: repeat(auto-fit, minmax(700px, 1fr)); }
+    .room-card-grid { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
 }
 @media (max-width: 1100px) {
     .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
