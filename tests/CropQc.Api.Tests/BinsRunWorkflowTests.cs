@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Security.Claims;
+using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Web.Controllers;
@@ -20,7 +21,7 @@ public sealed class BinsRunWorkflowTests
         var access = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "UserAccessService.cs"));
         var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
         var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
-        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "BinsRunService.cs"));
+        var projectionMath = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "ProjectionDistributionMath.cs"));
 
         Assert.Contains("ApplicationAreas.BinsRun", access);
         Assert.Contains("AccessPolicyNames.BinsRunView", program);
@@ -34,7 +35,7 @@ public sealed class BinsRunWorkflowTests
         Assert.Contains("Lot Inventory", view);
         Assert.Contains("No sizing data is available for the current inventory in this room.", view);
         Assert.Contains("No grade information is available for the current inventory in this room.", view);
-        Assert.Contains("32, 36, 40, 48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216", service);
+        Assert.Contains("32, 36, 40, 48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216", projectionMath);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Index), AccessPolicyNames.BinsRunView);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Projection), AccessPolicyNames.BinsRunView);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Create), AccessPolicyNames.BinsRunEdit);
@@ -94,8 +95,9 @@ public sealed class BinsRunWorkflowTests
 
         Assert.Equal(32, summary.SizeDistribution.First().Size);
         Assert.Equal(216, summary.SizeDistribution.Last().Size);
-        Assert.Equal(60m, summary.SizeDistribution.Single(x => x.Size == 80).EstimatedBins);
-        Assert.Equal(90m, summary.SizeDistribution.Single(x => x.Size == 100).EstimatedBins);
+        Assert.Equal(40m, summary.SizeDistribution.Single(x => x.Size == 80).Percentage);
+        Assert.Equal(60m, summary.SizeDistribution.Single(x => x.Size == 100).Percentage);
+        Assert.Equal(100m, summary.SizeDistribution.Sum(x => x.Percentage));
         Assert.Equal(60m, summary.GradeSummary.Single(x => x.Grade == "W1").EstimatedBins);
         Assert.Equal(90m, summary.GradeSummary.Single(x => x.Grade == "W2").EstimatedBins);
         Assert.Equal(2, summary.SizeDataLotCount);
@@ -105,6 +107,91 @@ public sealed class BinsRunWorkflowTests
         Assert.Equal(40, summary.Projection.SizeMissingBins);
         Assert.Equal(150, summary.Projection.GradeRepresentedBins);
         Assert.Equal(40, summary.Projection.GradeMissingBins);
+    }
+
+    [Theory]
+    [InlineData(10, 4, 40)]
+    [InlineData(25, 10, 40)]
+    [InlineData(50, 20, 40)]
+    public void SizeProjection_ConvertsSupportedSampleSizesToPercentages(int sampleSize, int size80Count, decimal expectedSize80Percent)
+    {
+        var readings = Enumerable.Range(1, sampleSize)
+            .Select(row => new QcFruitReading
+            {
+                RowNumber = row,
+                SizeCategory = row <= size80Count ? 80 : 100,
+                SizeStatus = "Sized"
+            })
+            .ToList();
+
+        var distribution = ProjectionDistributionMath.BuildSizePercentages(readings);
+
+        Assert.Equal(sampleSize, distribution.DenominatorFruitCount);
+        Assert.Equal(expectedSize80Percent / 100m, distribution.Percentages[80]);
+        Assert.Equal(100m, decimal.Round(distribution.Percentages.Values.Sum() * 100m, 2));
+    }
+
+    [Fact]
+    public void SizeProjection_UsesEnteredFruitRowsAsDenominatorForIncompleteSamples()
+    {
+        var readings = Enumerable.Range(1, 10)
+            .Select(row => new QcFruitReading
+            {
+                RowNumber = row,
+                SizeCategory = row <= 6 ? 80 : row <= 8 ? 100 : null,
+                WeightGrams = row > 8 ? 180 : null,
+                SizeStatus = row <= 8 ? "Sized" : "NotCalculated"
+            })
+            .ToList();
+
+        var distribution = ProjectionDistributionMath.BuildSizePercentages(readings);
+
+        Assert.Equal(10, distribution.DenominatorFruitCount);
+        Assert.Equal(8, distribution.ClassifiedFruitCount);
+        Assert.Equal(2, distribution.UnclassifiedFruitCount);
+        Assert.Equal(60m, distribution.Percentages[80] * 100m);
+        Assert.Equal(20m, decimal.Round(distribution.UnclassifiedPercentage * 100m, 2));
+    }
+
+    [Fact]
+    public void SizeProjection_CombinesLotsUsingCurrentBinWeightedPercentages()
+    {
+        var lots = new[]
+        {
+            new { Key = "A", Bins = 300 },
+            new { Key = "B", Bins = 100 }
+        };
+        var sampleData = new Dictionary<string, SizeSampleDistribution>
+        {
+            ["A"] = new(new Dictionary<int, decimal> { [72] = 0.8m, [80] = 0.2m }, 10, 10, 0),
+            ["B"] = new(new Dictionary<int, decimal> { [72] = 0.2m, [80] = 0.8m }, 50, 50, 0)
+        };
+
+        var points = ProjectionDistributionMath.CombineWeightedSizePercentages(lots, sampleData, lot => lot.Key, lot => lot.Bins);
+
+        Assert.Equal(65m, points.Single(x => x.Size == 72).Percentage);
+        Assert.Equal(35m, points.Single(x => x.Size == 80).Percentage);
+        Assert.Equal(100m, points.Sum(x => x.Percentage));
+    }
+
+    [Fact]
+    public void SizeProjection_DifferingSampleSizesDoNotReceiveExtraWeight()
+    {
+        var lots = new[]
+        {
+            new { Key = "TEN", Bins = 100 },
+            new { Key = "FIFTY", Bins = 100 }
+        };
+        var sampleData = new Dictionary<string, SizeSampleDistribution>
+        {
+            ["TEN"] = ProjectionDistributionMath.BuildSizePercentages(Enumerable.Range(1, 10).Select(row => new QcFruitReading { RowNumber = row, SizeCategory = row <= 8 ? 72 : 80, SizeStatus = "Sized" })),
+            ["FIFTY"] = ProjectionDistributionMath.BuildSizePercentages(Enumerable.Range(1, 50).Select(row => new QcFruitReading { RowNumber = row, SizeCategory = row <= 10 ? 72 : 80, SizeStatus = "Sized" }))
+        };
+
+        var points = ProjectionDistributionMath.CombineWeightedSizePercentages(lots, sampleData, lot => lot.Key, lot => lot.Bins);
+
+        Assert.Equal(50m, points.Single(x => x.Size == 72).Percentage);
+        Assert.Equal(50m, points.Single(x => x.Size == 80).Percentage);
     }
 
     [Fact]
@@ -118,8 +205,8 @@ public sealed class BinsRunWorkflowTests
         Assert.Equal("Room summary", projection.Label);
         Assert.Equal(3, projection.LotCount);
         Assert.Equal(190, projection.AvailableBins);
-        Assert.Equal(60m, projection.SizeDistribution.Single(x => x.Size == 80).EstimatedBins);
-        Assert.Equal(90m, projection.SizeDistribution.Single(x => x.Size == 100).EstimatedBins);
+        Assert.Equal(40m, projection.SizeDistribution.Single(x => x.Size == 80).Percentage);
+        Assert.Equal(60m, projection.SizeDistribution.Single(x => x.Size == 100).Percentage);
         Assert.Equal(60m, projection.GradeSummary.Single(x => x.Grade == "W1").EstimatedBins);
         Assert.Equal(90m, projection.GradeSummary.Single(x => x.Grade == "W2").EstimatedBins);
     }
@@ -140,8 +227,8 @@ public sealed class BinsRunWorkflowTests
         Assert.Equal(120, projection.AvailableBins);
         Assert.Equal(32, projection.SizeDistribution.First().Size);
         Assert.Equal(216, projection.SizeDistribution.Last().Size);
-        Assert.Equal(60m, projection.SizeDistribution.Single(x => x.Size == 80).EstimatedBins);
-        Assert.Equal(60m, projection.SizeDistribution.Single(x => x.Size == 100).EstimatedBins);
+        Assert.Equal(50m, projection.SizeDistribution.Single(x => x.Size == 80).Percentage);
+        Assert.Equal(50m, projection.SizeDistribution.Single(x => x.Size == 100).Percentage);
         Assert.Equal(60m, projection.GradeSummary.Single(x => x.Grade == "W1").EstimatedBins);
         Assert.Equal(60m, projection.GradeSummary.Single(x => x.Grade == "W2").EstimatedBins);
         Assert.Equal(120, projection.SizeRepresentedBins);
@@ -167,8 +254,8 @@ public sealed class BinsRunWorkflowTests
 
         Assert.Equal(2, projection.LotCount);
         Assert.Equal(150, projection.AvailableBins);
-        Assert.Equal(60m, projection.SizeDistribution.Single(x => x.Size == 80).EstimatedBins);
-        Assert.Equal(90m, projection.SizeDistribution.Single(x => x.Size == 100).EstimatedBins);
+        Assert.Equal(40m, projection.SizeDistribution.Single(x => x.Size == 80).Percentage);
+        Assert.Equal(60m, projection.SizeDistribution.Single(x => x.Size == 100).Percentage);
         Assert.Equal(60m, projection.GradeSummary.Single(x => x.Grade == "W1").EstimatedBins);
         Assert.Equal(90m, projection.GradeSummary.Single(x => x.Grade == "W2").EstimatedBins);
         Assert.DoesNotContain(page.AvailableInventory.Where(x => x.InventoryKey != unselectedHistory.InventoryKey), x => x.InventoryKey == unselectedHistory.InventoryKey);
@@ -197,9 +284,23 @@ public sealed class BinsRunWorkflowTests
         Assert.Equal(160, projection.AvailableBins);
         Assert.Equal(120, projection.SizeRepresentedBins);
         Assert.Equal(40, projection.SizeMissingBins);
+        Assert.Equal(75m, projection.SizeCoveragePercent);
         Assert.Equal(120, projection.GradeRepresentedBins);
         Assert.Equal(40, projection.GradeMissingBins);
-        Assert.DoesNotContain(projection.SizeDistribution, x => x.Size == 80 && x.EstimatedBins == 0);
+        Assert.DoesNotContain(projection.SizeDistribution, x => x.Size == 80 && x.Percentage == 0);
+    }
+
+    [Fact]
+    public async Task Projection_ApiShapeDoesNotExposeRawSizeCounts()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+
+        var projection = await CreateService(db).GetProjectionAsync(new BinsRunProjectionRequest { RoomId = 1001 }, Principal("viewer@fruitandland.com"), CancellationToken.None);
+        var json = JsonSerializer.Serialize(projection, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+
+        Assert.Contains("\"percentage\"", json);
+        Assert.DoesNotContain("\"estimatedBins\"", JsonSerializer.Serialize(projection.SizeDistribution, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
     }
 
     [Fact]

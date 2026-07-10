@@ -561,6 +561,8 @@ public sealed class RoomSummaryDepletionTests
     {
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "HomeController.cs"));
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var binsRunService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "BinsRunService.cs"));
+        var projectionMath = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "ProjectionDistributionMath.cs"));
         var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
         var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
         var css = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css"));
@@ -573,11 +575,14 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("SampleTimeline", model);
         Assert.Contains("RoomProjectionRequest", model);
         Assert.Contains("BinsRunProjectionViewModel", model);
-        Assert.Contains("RoomProjectionSizeDisplayOrder = [32, 36, 40, 48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216]", service);
+        Assert.Contains("SizeDisplayOrder = [32, 36, 40, 48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216]", projectionMath);
         Assert.Contains("BuildRoomProjection(activeLots, sampleDistributions, isSelection: false)", service);
         Assert.Contains("BuildRoomProjection(lots, sampleDistributions, isSelection)", service);
-        Assert.Contains("lot.CurrentBins * percentage", service);
+        Assert.Contains("ProjectionDistributionMath.CombineWeightedSizePercentages", service);
+        Assert.Contains("ProjectionDistributionMath.CombineWeightedSizePercentages", binsRunService);
+        Assert.Contains("currentBins(lot) * percentage", projectionMath);
         Assert.Contains("lot.CurrentBins * grade.Value", service);
+        Assert.Contains("Percentages use entered fruit rows as the denominator", room);
         Assert.Contains("SizeRepresentedBins", service);
         Assert.Contains("SizeMissingBins", service);
         Assert.Contains("GradeRepresentedBins", service);

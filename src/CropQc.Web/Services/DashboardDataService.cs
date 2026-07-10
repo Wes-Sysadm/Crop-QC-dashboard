@@ -85,7 +85,6 @@ public sealed class DashboardDataService(
     private const string DataWarning = "Database is not available yet. The dashboard shell is running with empty data.";
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
     private static readonly string[] ReceiptTypeOptions = ["Truck receipt", "Door sample", "Lot sample"];
-    private static readonly int[] RoomProjectionSizeDisplayOrder = [32, 36, 40, 48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216];
 
     public async Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
     {
@@ -2454,16 +2453,12 @@ public sealed class DashboardDataService(
 
     private static RoomLotProjectionDistribution BuildRoomLotProjectionDistribution(QcSample sample)
     {
-        var sizeCounts = sample.FruitReadings
-            .Where(x => x.SizeCategory is not null)
-            .GroupBy(x => x.SizeCategory!.Value)
-            .ToDictionary(x => x.Key, x => x.Count());
         var gradeCounts = sample.FruitReadings
             .Where(x => x.Grade is not null)
             .GroupBy(x => x.Grade!.Code)
             .ToDictionary(x => x.Key, x => x.Count(), StringComparer.OrdinalIgnoreCase);
 
-        return new RoomLotProjectionDistribution(Percentages(sizeCounts), Percentages(gradeCounts), sample.SampleTakenAt);
+        return new RoomLotProjectionDistribution(ProjectionDistributionMath.BuildSizePercentages(sample.FruitReadings), Percentages(gradeCounts), sample.SampleTakenAt);
     }
 
     private static BinsRunProjectionViewModel BuildRoomProjection(
@@ -2473,7 +2468,7 @@ public sealed class DashboardDataService(
     {
         var availableBins = lots.Sum(x => x.CurrentBins);
         var sizeRepresentedBins = lots
-            .Where(x => sampleDistributions.TryGetValue(RoomProjectionLotKey(x), out var data) && data.SizePercentages.Count > 0)
+            .Where(x => sampleDistributions.TryGetValue(RoomProjectionLotKey(x), out var data) && data.SizeDistribution.Percentages.Count > 0)
             .Sum(x => x.CurrentBins);
         var gradeRepresentedBins = lots
             .Where(x => sampleDistributions.TryGetValue(RoomProjectionLotKey(x), out var data) && data.GradePercentages.Count > 0)
@@ -2489,10 +2484,16 @@ public sealed class DashboardDataService(
             AvailableBins = availableBins,
             SizeDistribution = BuildRoomWeightedSizeDistribution(lots, sampleDistributions),
             GradeSummary = BuildRoomWeightedGradeSummary(lots, sampleDistributions),
-            SizeDataLotCount = lots.Count(x => sampleDistributions.TryGetValue(RoomProjectionLotKey(x), out var data) && data.SizePercentages.Count > 0),
+            SizeDataLotCount = lots.Count(x => sampleDistributions.TryGetValue(RoomProjectionLotKey(x), out var data) && data.SizeDistribution.Percentages.Count > 0),
             GradeDataLotCount = lots.Count(x => sampleDistributions.TryGetValue(RoomProjectionLotKey(x), out var data) && data.GradePercentages.Count > 0),
             SizeRepresentedBins = sizeRepresentedBins,
             SizeMissingBins = Math.Max(0, availableBins - sizeRepresentedBins),
+            SizeCoveragePercent = availableBins <= 0 ? 0m : decimal.Round(sizeRepresentedBins / (decimal)availableBins * 100m, 1),
+            SizeUnclassifiedPercent = ProjectionDistributionMath.CombineWeightedUnclassifiedPercent(
+                lots,
+                sampleDistributions.ToDictionary(x => x.Key, x => x.Value.SizeDistribution, StringComparer.OrdinalIgnoreCase),
+                RoomProjectionLotKey,
+                lot => lot.CurrentBins),
             GradeRepresentedBins = gradeRepresentedBins,
             GradeMissingBins = Math.Max(0, availableBins - gradeRepresentedBins)
         };
@@ -2502,15 +2503,12 @@ public sealed class DashboardDataService(
         IReadOnlyList<RoomLotSummaryViewModel> lots,
         IReadOnlyDictionary<string, RoomLotProjectionDistribution> sampleDistributions)
     {
-        var points = RoomProjectionSizeDisplayOrder
-            .Select(size => new BinsRunSizeDistributionPoint(
-                size,
-                lots.Sum(lot => sampleDistributions.TryGetValue(RoomProjectionLotKey(lot), out var data)
-                    && data.SizePercentages.TryGetValue(size, out var percentage)
-                        ? lot.CurrentBins * percentage
-                        : 0m)))
-            .ToList();
-        return points.Any(x => x.EstimatedBins > 0) ? points : [];
+        var sizeData = sampleDistributions.ToDictionary(x => x.Key, x => x.Value.SizeDistribution, StringComparer.OrdinalIgnoreCase);
+        return ProjectionDistributionMath.CombineWeightedSizePercentages(
+            lots,
+            sizeData,
+            RoomProjectionLotKey,
+            lot => lot.CurrentBins);
     }
 
     private static IReadOnlyList<BinsRunGradeSummaryPoint> BuildRoomWeightedGradeSummary(
@@ -2550,7 +2548,7 @@ public sealed class DashboardDataService(
             {
                 sampleDistributions.TryGetValue(RoomProjectionLotKey(lot), out var distribution);
                 var indicators = new List<string>();
-                if (distribution is null || distribution.SizePercentages.Count == 0) indicators.Add("Missing sizing");
+                if (distribution is null || distribution.SizeDistribution.Percentages.Count == 0) indicators.Add("Missing sizing");
                 if (distribution is null || distribution.GradePercentages.Count == 0) indicators.Add("Missing grade");
                 if (lot.SampleCount <= 0) indicators.Add("No QC samples");
                 if (lot.LastSampleDate is DateTimeOffset sampleDate && (now - sampleDate).TotalDays >= 14) indicators.Add($"Sample is {(int)(now - sampleDate).TotalDays} days old");
@@ -3853,14 +3851,6 @@ public sealed class DashboardDataService(
         return $"{roomId}|{lot.Trim().ToUpperInvariant()}|{(varietyCode ?? "").Trim().ToUpperInvariant()}";
     }
 
-    private static IReadOnlyDictionary<int, decimal> Percentages(IReadOnlyDictionary<int, int> counts)
-    {
-        var total = counts.Values.Sum();
-        return total == 0
-            ? new Dictionary<int, decimal>()
-            : counts.ToDictionary(x => x.Key, x => x.Value / (decimal)total);
-    }
-
     private static IReadOnlyDictionary<string, decimal> Percentages(IReadOnlyDictionary<string, int> counts)
     {
         var total = counts.Values.Sum();
@@ -3882,7 +3872,7 @@ public sealed class DashboardDataService(
         return string.Join(", ", sizes
             .GroupBy(x => x)
             .OrderByDescending(x => x.Count())
-            .ThenBy(x => Array.IndexOf(RoomProjectionSizeDisplayOrder, x.Key))
+            .ThenBy(x => Array.IndexOf(ProjectionDistributionMath.SizeDisplayOrder, x.Key))
             .Take(3)
             .Select(x => $"{x.Key} ({x.Count()})"));
     }
@@ -3899,7 +3889,7 @@ public sealed class DashboardDataService(
     }
 
     private sealed record RoomLotProjectionDistribution(
-        IReadOnlyDictionary<int, decimal> SizePercentages,
+        SizeSampleDistribution SizeDistribution,
         IReadOnlyDictionary<string, decimal> GradePercentages,
         DateTimeOffset SampleTakenAt);
 
