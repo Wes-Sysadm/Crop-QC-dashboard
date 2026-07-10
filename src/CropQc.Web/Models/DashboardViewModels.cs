@@ -66,6 +66,9 @@ public sealed class RoomDetailViewModel
     public IReadOnlyList<RoomDepletionListItemViewModel> Depletions { get; set; } = [];
     public IReadOnlyList<RoomInventoryAdjustmentListItemViewModel> InventoryAdjustments { get; set; } = [];
     public IReadOnlyList<ReceiptListItemViewModel> LinkedReceipts { get; set; } = [];
+    public BinsRunProjectionViewModel BaselineProjection { get; set; } = new();
+    public IReadOnlyList<RoomProjectionLotViewModel> ProjectionLots { get; set; } = [];
+    public IReadOnlyList<RoomSampleTimelineItemViewModel> SampleTimeline { get; set; } = [];
     public IReadOnlyList<RoomReceiptOptionViewModel> DepletionReceiptOptions { get; set; } = [];
     public IReadOnlyList<RoomInventoryLotOptionViewModel> TransferLotOptions { get; set; } = [];
     public IReadOnlyList<RoomTransferDestinationViewModel> TransferDestinationOptions { get; set; } = [];
@@ -73,6 +76,36 @@ public sealed class RoomDetailViewModel
     public RoomInventoryTrueUpForm TrueUpForm { get; set; } = new();
     public RoomTransferForm TransferForm { get; set; } = new();
     public bool CanManageDepletions { get; set; }
+}
+
+public sealed class RoomProjectionRequest
+{
+    public List<string> InventoryKeys { get; set; } = [];
+}
+
+public sealed class RoomProjectionLotViewModel
+{
+    public string InventoryKey { get; set; } = "";
+    public string Grower { get; set; } = "";
+    public string Lot { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public int CurrentBins { get; set; }
+    public string GradeSummary { get; set; } = "";
+    public DateTimeOffset? LastSampleDate { get; set; }
+    public IReadOnlyList<string> Indicators { get; set; } = [];
+}
+
+public sealed class RoomSampleTimelineItemViewModel
+{
+    public DateTimeOffset SampleDate { get; set; }
+    public string Lot { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public string SampleType { get; set; } = "";
+    public int EnteredFruitCount { get; set; }
+    public decimal? AveragePressureLbs { get; set; }
+    public decimal? AverageStarch { get; set; }
+    public string SizeSummary { get; set; } = "";
+    public string GradeSummary { get; set; } = "";
 }
 
 public sealed class RoomCountBreakdownViewModel

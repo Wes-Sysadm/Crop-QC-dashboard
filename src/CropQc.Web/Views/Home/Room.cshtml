@@ -2,6 +2,9 @@
 @{
     ViewData["Title"] = "Room Summary";
     ViewData["AutoRefresh"] = "true";
+    var baseline = Model.BaselineProjection;
+    var maxSizeBins = baseline.SizeDistribution.Count > 0 ? baseline.SizeDistribution.Max(x => x.EstimatedBins) : 0m;
+    var maxGradeBins = baseline.GradeSummary.Count > 0 ? baseline.GradeSummary.Max(x => x.EstimatedBins) : 0m;
 }
 
 <h1>Room Summary</h1>
@@ -72,6 +75,140 @@
                 <span>@Model.Summary.WeakestLotReason</span>
             </p>
         }
+    </section>
+}
+
+@if (Model.Summary is not null)
+{
+    <section class="panel room-insights">
+        <div class="room-insight-header">
+            <div>
+                <h2>Room Insights</h2>
+                <p class="muted">Know what fruit is in this room. Projections are read-only and do not change inventory.</p>
+            </div>
+        </div>
+        <div class="room-summary-metrics">
+            <div class="metric-card"><span class="metric-label">Current Bins</span><strong>@(Model.Summary.CurrentBinsCount ?? 0)</strong></div>
+            <div class="metric-card"><span class="metric-label">Active Lots</span><strong>@Model.Summary.CurrentLotsCount</strong></div>
+            <div class="metric-card"><span class="metric-label">Sizing Coverage</span><strong>@baseline.SizeRepresentedBins / @baseline.AvailableBins</strong><span>@baseline.SizeMissingBins missing</span></div>
+            <div class="metric-card"><span class="metric-label">Grade Coverage</span><strong>@baseline.GradeRepresentedBins / @baseline.AvailableBins</strong><span>@baseline.GradeMissingBins missing</span></div>
+            <div class="metric-card"><span class="metric-label">Oldest Sample</span><strong>@(Model.ProjectionLots.Select(x => x.LastSampleDate).Where(x => x is not null).OrderBy(x => x).FirstOrDefault()?.LocalDateTime.ToString("g") ?? "No data")</strong></div>
+            <div class="metric-card"><span class="metric-label">Newest Sample</span><strong>@(Model.ProjectionLots.Select(x => x.LastSampleDate).Where(x => x is not null).OrderByDescending(x => x).FirstOrDefault()?.LocalDateTime.ToString("g") ?? "No data")</strong></div>
+        </div>
+    </section>
+
+    <section class="grid-two">
+        <div class="panel-section">
+            <h2>Baseline Size Distribution</h2>
+            <p class="muted">@ProjectionContext(baseline, "Sizing")</p>
+            @if (baseline.SizeDistribution.Count == 0)
+            {
+                <p class="empty-state">No sizing data is available for the current inventory in this room.</p>
+            }
+            else
+            {
+                <div class="size-chart" aria-label="Room baseline size distribution">
+                    @foreach (var point in baseline.SizeDistribution)
+                    {
+                        var height = point.EstimatedBins <= 0 || maxSizeBins <= 0 ? 0 : Math.Max(4, (int)Math.Round(point.EstimatedBins / maxSizeBins * 100m));
+                        <div class="size-chart-column">
+                            <span class="size-bar-value">@(point.EstimatedBins > 0 ? point.EstimatedBins.ToString("0.#") : "")</span>
+                            <span class="size-bar" style="height: @height%"></span>
+                            <span class="size-label">@point.Size</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+        <div class="panel-section">
+            <h2>Baseline Expected Grade</h2>
+            <p class="muted">@ProjectionContext(baseline, "Grade")</p>
+            @if (baseline.GradeSummary.Count == 0)
+            {
+                <p class="empty-state">No grade information is available for the current inventory in this room.</p>
+            }
+            else
+            {
+                <div class="grade-summary">
+                    @foreach (var grade in baseline.GradeSummary)
+                    {
+                        var width = maxGradeBins <= 0 ? 0 : Math.Max(4, (int)Math.Round(grade.EstimatedBins / maxGradeBins * 100m));
+                        <div class="grade-summary-row">
+                            <span class="grade-label">@grade.Grade</span>
+                            <span class="grade-bar-track"><span class="grade-bar" style="width: @width%"></span></span>
+                            <span class="grade-value">@grade.EstimatedBins.ToString("0.#")</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="room-insight-header">
+            <div>
+                <h2>Packout Projections</h2>
+                <p class="muted">Create temporary comparisons from selected lots. These selections are not saved and do not deplete inventory.</p>
+            </div>
+            <div class="button-row">
+                <button type="button" class="secondary-button" data-select-flagged-lots>Select flagged lots</button>
+                <button type="button" class="secondary-button" data-exclude-flagged-lots>Exclude flagged lots</button>
+                <button type="button" class="secondary-button" data-clear-room-projection>Clear selection</button>
+            </div>
+        </div>
+        <div class="room-projection-grid">
+            <div>
+                <h3>Active Lot Inventory</h3>
+                @if (Model.ProjectionLots.Count == 0)
+                {
+                    <p class="muted">No active lots are currently available for projection.</p>
+                }
+                else
+                {
+                    <div class="room-projection-lots">
+                        <div class="room-projection-lot-header" aria-hidden="true">
+                            <span>Project</span><span>Grower / Lot</span><span>Variety</span><span>Grade</span><span>Bins</span><span>Indicators</span>
+                        </div>
+                        @foreach (var lot in Model.ProjectionLots)
+                        {
+                            <label class="room-projection-lot @(lot.Indicators.Count > 0 ? "flagged" : "")">
+                                <span><input type="checkbox" data-room-project-lot value="@lot.InventoryKey" data-flagged="@(lot.Indicators.Count > 0 ? "true" : "false")" /></span>
+                                <span><strong>@lot.Grower</strong><small>Lot @lot.Lot</small></span>
+                                <span>@lot.Variety</span>
+                                <span>@lot.GradeSummary</span>
+                                <strong>@lot.CurrentBins</strong>
+                                <span class="indicator-list">@((lot.Indicators.Count == 0) ? "OK" : string.Join(", ", lot.Indicators.Take(3)))</span>
+                            </label>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="room-projection-results">
+                <div class="projection-control-row">
+                    <label>Projection label
+                        <input data-projection-label value="Custom selection" maxlength="80" />
+                    </label>
+                    <button type="button" data-save-projection-a>Set Projection A</button>
+                    <button type="button" class="secondary-button" data-save-projection-b>Set Projection B</button>
+                </div>
+                <div class="projection-comparison">
+                    <article class="projection-card" data-projection-card="baseline">
+                        <h3>Room Baseline</h3>
+                        <p>@baseline.LotCount lots / @baseline.AvailableBins bins</p>
+                        <p>Sizing @baseline.SizeRepresentedBins represented, @baseline.SizeMissingBins missing</p>
+                        <p>Grade @baseline.GradeRepresentedBins represented, @baseline.GradeMissingBins missing</p>
+                    </article>
+                    <article class="projection-card" data-projection-card="a">
+                        <h3>Projection A</h3>
+                        <p class="muted">Select lots and set Projection A.</p>
+                    </article>
+                    <article class="projection-card" data-projection-card="b">
+                        <h3>Projection B</h3>
+                        <p class="muted">Select lots and set Projection B.</p>
+                    </article>
+                </div>
+            </div>
+        </div>
     </section>
 }
 
@@ -203,6 +340,38 @@
         </form>
     </section>
 }
+
+<section class="panel">
+    <h2>Change Over Time</h2>
+    @if (Model.SampleTimeline.Count == 0)
+    {
+        <p class="muted">No QC sample history is available for this room yet.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Sample date</th><th>Lot</th><th>Variety</th><th>Type</th><th>Rows</th><th>Avg pressure</th><th>Starch</th><th>Top sizes</th><th>Grades</th></tr></thead>
+                <tbody>
+                @foreach (var item in Model.SampleTimeline)
+                {
+                    <tr>
+                        <td>@item.SampleDate.LocalDateTime.ToString("g")</td>
+                        <td>@item.Lot</td>
+                        <td>@item.Variety</td>
+                        <td>@item.SampleType</td>
+                        <td>@item.EnteredFruitCount</td>
+                        <td>@Format(item.AveragePressureLbs)</td>
+                        <td>@Format(item.AverageStarch)</td>
+                        <td>@item.SizeSummary</td>
+                        <td>@item.GradeSummary</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
 
 <section class="panel">
     <h2>Linked Receipts</h2>
@@ -346,6 +515,15 @@
         status.Contains("empty", StringComparison.OrdinalIgnoreCase) ? "pending" : "";
 
     private static string Format(decimal? value) => value?.ToString("0.##") ?? "No data";
+    private static string ProjectionContext(BinsRunProjectionViewModel projection, string dataKind)
+    {
+        var represented = dataKind == "Sizing" ? projection.SizeRepresentedBins : projection.GradeRepresentedBins;
+        var missing = dataKind == "Sizing" ? projection.SizeMissingBins : projection.GradeMissingBins;
+        return missing > 0
+            ? $"{dataKind} data represents {represented} of {projection.AvailableBins} bins; {missing} bins have no {dataKind.ToLowerInvariant()} data."
+            : $"Estimated bins, weighted by current available-bin balance across {projection.AvailableBins} bins.";
+    }
+
     private static string FormatSigned(int value) => value > 0 ? $"+{value}" : value.ToString();
     private static string FormatChange(decimal? value) => value is null
         ? "N/A"
@@ -353,3 +531,62 @@
             ? "unchanged"
             : $"{(value > 0 ? "+" : "")}{value:0.##} lbs";
 }
+
+<script>
+    (() => {
+        const roomId = @(Model.Summary is null ? "null" : Model.Summary.RoomId.ToString());
+        const checks = Array.from(document.querySelectorAll("[data-room-project-lot]"));
+        const label = document.querySelector("[data-projection-label]");
+        let requestId = 0;
+        let abortController = null;
+
+        if (!roomId || checks.length === 0) {
+            return;
+        }
+
+        function selectedKeys() {
+            return checks.filter(x => x.checked).map(x => x.value);
+        }
+
+        async function fetchProjection() {
+            const id = ++requestId;
+            if (abortController) abortController.abort();
+            abortController = new AbortController();
+            try {
+                const response = await fetch(`/Dashboard/Rooms/${roomId}/Projection`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ inventoryKeys: selectedKeys() }),
+                    signal: abortController.signal
+                });
+                if (!response.ok) return null;
+                const data = await response.json();
+                return id === requestId ? data : null;
+            } catch (error) {
+                if (error.name !== "AbortError") console.warn("Room projection failed.", error);
+                return null;
+            }
+        }
+
+        function renderCard(slot, data, name) {
+            const card = document.querySelector(`[data-projection-card="${slot}"]`);
+            if (!card || !data) return;
+            card.innerHTML = `<h3>${name}</h3>
+                <p>${data.lotCount} lots / ${data.availableBins} bins selected</p>
+                <p>Sizing ${data.sizeRepresentedBins} represented, ${data.sizeMissingBins} missing</p>
+                <p>Grade ${data.gradeRepresentedBins} represented, ${data.gradeMissingBins} missing</p>
+                <p class="muted">Weighted by current available bins. Selection is informational only.</p>`;
+        }
+
+        async function saveProjection(slot) {
+            const data = await fetchProjection();
+            renderCard(slot, data, label?.value || (slot === "a" ? "Projection A" : "Projection B"));
+        }
+
+        document.querySelector("[data-save-projection-a]")?.addEventListener("click", () => saveProjection("a"));
+        document.querySelector("[data-save-projection-b]")?.addEventListener("click", () => saveProjection("b"));
+        document.querySelector("[data-clear-room-projection]")?.addEventListener("click", () => checks.forEach(x => x.checked = false));
+        document.querySelector("[data-select-flagged-lots]")?.addEventListener("click", () => checks.forEach(x => x.checked = x.dataset.flagged === "true"));
+        document.querySelector("[data-exclude-flagged-lots]")?.addEventListener("click", () => checks.forEach(x => x.checked = x.dataset.flagged !== "true"));
+    })();
+</script>

@@ -556,6 +556,57 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("word-break: normal", css);
     }
 
+    [Fact]
+    public void DashboardRoomDetail_ReusesRoomProjectionSummariesAndPreservesExistingSections()
+    {
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "HomeController.cs"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
+        var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
+        var css = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css"));
+
+        Assert.Contains("[HttpPost(\"/Dashboard/Rooms/{roomId:int}/Projection\")]", controller);
+        Assert.Contains("AccessPolicyNames.RoomsView", controller);
+        Assert.Contains("GetRoomProjectionAsync", controller);
+        Assert.Contains("BaselineProjection", model);
+        Assert.Contains("ProjectionLots", model);
+        Assert.Contains("SampleTimeline", model);
+        Assert.Contains("RoomProjectionRequest", model);
+        Assert.Contains("BinsRunProjectionViewModel", model);
+        Assert.Contains("RoomProjectionSizeDisplayOrder = [32, 36, 40, 48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216]", service);
+        Assert.Contains("BuildRoomProjection(activeLots, sampleDistributions, isSelection: false)", service);
+        Assert.Contains("BuildRoomProjection(lots, sampleDistributions, isSelection)", service);
+        Assert.Contains("lot.CurrentBins * percentage", service);
+        Assert.Contains("lot.CurrentBins * grade.Value", service);
+        Assert.Contains("SizeRepresentedBins", service);
+        Assert.Contains("SizeMissingBins", service);
+        Assert.Contains("GradeRepresentedBins", service);
+        Assert.Contains("GradeMissingBins", service);
+        Assert.Contains("Missing sizing", service);
+        Assert.Contains("Missing grade", service);
+        Assert.Contains("Sample is", service);
+        Assert.Contains("Room Insights", room);
+        Assert.Contains("Baseline Size Distribution", room);
+        Assert.Contains("Baseline Expected Grade", room);
+        Assert.Contains("Packout Projections", room);
+        Assert.Contains("Projection A", room);
+        Assert.Contains("Projection B", room);
+        Assert.Contains("Select flagged lots", room);
+        Assert.Contains("Exclude flagged lots", room);
+        Assert.Contains("Change Over Time", room);
+        Assert.Contains("Projections are read-only and do not change inventory.", room);
+        Assert.Contains("Current Lots", room);
+        Assert.Contains("Linked Receipts", room);
+        Assert.Contains("Room Transaction History", room);
+        Assert.Contains("Depletion History", room);
+        Assert.Contains("Depleted / Historical Lots", room);
+        Assert.Contains("AbortController", room);
+        Assert.Contains("data-room-project-lot", room);
+        Assert.Contains("room-projection-grid", css);
+        Assert.Contains("room-projection-lot", css);
+        Assert.Contains("projection-comparison", css);
+    }
+
     private static void AssertActionPolicy<TController>(string actionName, string policy)
     {
         var method = typeof(TController).GetMethod(actionName);
