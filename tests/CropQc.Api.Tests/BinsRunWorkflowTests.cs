@@ -19,6 +19,8 @@ public sealed class BinsRunWorkflowTests
         var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
         var access = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "UserAccessService.cs"));
         var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "BinsRunService.cs"));
 
         Assert.Contains("ApplicationAreas.BinsRun", access);
         Assert.Contains("AccessPolicyNames.BinsRunView", program);
@@ -26,6 +28,13 @@ public sealed class BinsRunWorkflowTests
         Assert.Contains("AccessPolicyNames.BinsRunAdmin", program);
         Assert.Contains("canAccessBinsRun", layout);
         Assert.Contains("<a href=\"/BinsRun\">Bins Run</a>", layout);
+        Assert.Contains("Select Room", view);
+        Assert.Contains("Size Distribution", view);
+        Assert.Contains("Expected Grade", view);
+        Assert.Contains("Lot Inventory", view);
+        Assert.Contains("No sizing data is available for the current inventory in this room.", view);
+        Assert.Contains("No grade information is available for the current inventory in this room.", view);
+        Assert.Contains("32, 36, 40, 48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216", service);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Index), AccessPolicyNames.BinsRunView);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Create), AccessPolicyNames.BinsRunEdit);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Edit), AccessPolicyNames.BinsRunEdit);
@@ -50,21 +59,62 @@ public sealed class BinsRunWorkflowTests
         }, viewOnly, CancellationToken.None);
 
         Assert.False(page.CanRecord);
+        Assert.NotNull((await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, viewOnly, CancellationToken.None)).RoomSummary);
         Assert.Equal("Bins Run Edit access is required to record bins run.", error);
         Assert.Empty(await db.BinsRunEntries.ToListAsync());
     }
 
     [Fact]
-    public async Task RoomSelection_ReturnsOnlyAvailableInventoryForThatRoom()
+    public async Task RoomSummaryAndLotSubmenu_UseOnlyCurrentAvailableInventoryForSelectedRoom()
     {
         using var db = CreateDbContext();
         await SeedInventoryAsync(db);
         var page = await CreateService(db).GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, Principal("manager@fruitandland.com"), CancellationToken.None);
 
+        Assert.NotNull(page.RoomSummary);
+        Assert.Equal("Evans-12", page.RoomSummary!.RoomName);
+        Assert.Equal("EBS", page.RoomSummary.Facility);
+        Assert.Equal(190, page.RoomSummary.TotalAvailableBins);
+        Assert.Equal(3, page.RoomSummary.ActiveLotCount);
         Assert.All(page.AvailableInventory, x => Assert.Equal(1001, x.RoomId));
         Assert.Contains(page.AvailableInventory, x => x.Lot == "LOT-120" && x.CurrentBins == 120);
+        Assert.Contains(page.AvailableInventory, x => x.Lot == "LOT-30" && x.CurrentBins == 30);
+        Assert.Contains(page.AvailableInventory, x => x.Lot == "HISTORY" && x.CurrentBins == 40);
         Assert.DoesNotContain(page.AvailableInventory, x => x.Lot == "LOT-ZERO");
         Assert.DoesNotContain(page.AvailableInventory, x => x.RoomId == 1002);
+    }
+
+    [Fact]
+    public async Task RoomSummary_WeightsSizingAndGradeByCurrentAvailableBins()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var summary = (await CreateService(db).GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, Principal("manager@fruitandland.com"), CancellationToken.None)).RoomSummary!;
+
+        Assert.Equal(32, summary.SizeDistribution.First().Size);
+        Assert.Equal(216, summary.SizeDistribution.Last().Size);
+        Assert.Equal(60m, summary.SizeDistribution.Single(x => x.Size == 80).EstimatedBins);
+        Assert.Equal(90m, summary.SizeDistribution.Single(x => x.Size == 100).EstimatedBins);
+        Assert.Equal(60m, summary.GradeSummary.Single(x => x.Grade == "W1").EstimatedBins);
+        Assert.Equal(90m, summary.GradeSummary.Single(x => x.Grade == "W2").EstimatedBins);
+        Assert.Equal(2, summary.SizeDataLotCount);
+        Assert.Equal(2, summary.GradeDataLotCount);
+    }
+
+    [Fact]
+    public async Task MissingSizingAndGradeData_ProduceEmptySummaryStates()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        db.QcFruitReadings.RemoveRange(db.QcFruitReadings);
+        await db.SaveChangesAsync();
+
+        var summary = (await CreateService(db).GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, Principal("viewer@fruitandland.com"), CancellationToken.None)).RoomSummary!;
+
+        Assert.Empty(summary.SizeDistribution);
+        Assert.Empty(summary.GradeSummary);
+        Assert.Equal(0, summary.SizeDataLotCount);
+        Assert.Equal(0, summary.GradeDataLotCount);
     }
 
     [Fact]
@@ -91,6 +141,7 @@ public sealed class BinsRunWorkflowTests
         Assert.Null(error);
         var refreshed = await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, user, CancellationToken.None);
         Assert.Equal(90, refreshed.AvailableInventory.Single(x => x.Lot == "LOT-120").CurrentBins);
+        Assert.Equal(160, refreshed.RoomSummary!.TotalAvailableBins);
         var entry = Assert.Single(await db.BinsRunEntries.ToListAsync());
         Assert.Equal(120, entry.PreviousAvailableBins);
         Assert.Equal(30, entry.BinsRun);
@@ -171,8 +222,10 @@ public sealed class BinsRunWorkflowTests
 
         Assert.Null(editError);
         Assert.Equal(75, afterEdit.AvailableInventory.Single(x => x.Lot == "LOT-120").CurrentBins);
+        Assert.Equal(145, afterEdit.RoomSummary!.TotalAvailableBins);
         Assert.Null(reverseError);
         Assert.Equal(120, afterReverse.AvailableInventory.Single(x => x.Lot == "LOT-120").CurrentBins);
+        Assert.Equal(190, afterReverse.RoomSummary!.TotalAvailableBins);
         Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "Update" && x.EntityName == nameof(BinsRunEntry));
         Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "Reverse" && x.EntityName == nameof(BinsRunEntry));
         Assert.True((await db.BinsRunEntries.SingleAsync()).IsReversed);
@@ -195,19 +248,24 @@ public sealed class BinsRunWorkflowTests
         var otherRoom = new Room { Id = 1002, WarehouseId = warehouse.Id, Warehouse = warehouse, Code = "LAMBCA17", Name = "Lamb 17", CropQcRoomName = "Lamb-17", IsActive = true };
         var fruit = new FruitProfile { Id = 1000, Name = "Fuji", VarietyCode = "FUJI", FruitType = "Apple", ProductionType = "Conventional", IsActive = true };
         var sampleType = new SampleType { Id = 1000, Name = "Receiving Sample", IsActive = true };
+        var doorSampleType = new SampleType { Id = 1001, Name = "Door Sample", IsActive = true };
+        var grade1 = new Grade { Id = 1000, Code = "W1", Name = "W1", IsActive = true };
+        var grade2 = new Grade { Id = 1001, Code = "W2", Name = "W2", IsActive = true };
         db.Warehouses.Add(warehouse);
         db.Rooms.AddRange(room, otherRoom);
         db.FruitProfiles.Add(fruit);
-        db.SampleTypes.Add(sampleType);
+        db.SampleTypes.AddRange(sampleType, doorSampleType);
+        db.Grades.AddRange(grade1, grade2);
         db.Users.AddRange(
             User(1000, "admin@fruitandland.com", PageAccessLevel.Admin),
             User(1001, "manager@fruitandland.com", PageAccessLevel.Edit),
             User(1002, "viewer@fruitandland.com", PageAccessLevel.View));
         db.RoomInventoryAdjustments.AddRange(
             Adjustment(8001, warehouse, room, fruit, "LOT-120", 120),
+            Adjustment(8004, warehouse, room, fruit, "LOT-30", 30),
             Adjustment(8002, warehouse, room, fruit, "LOT-ZERO", 0),
             Adjustment(8003, warehouse, otherRoom, fruit, "LOT-OTHER", 60));
-        db.Receipts.Add(new Receipt
+        db.Receipts.AddRange(new Receipt
         {
             Id = 7001,
             CropYear = 2026,
@@ -225,7 +283,9 @@ public sealed class BinsRunWorkflowTests
             BinCount = 40,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
-        });
+        },
+        SampleReceipt(7002, "QC-LOT-120", "LOT-120", warehouse, room, fruit),
+        SampleReceipt(7003, "QC-LOT-30", "LOT-30", warehouse, room, fruit));
         db.QcSamples.Add(new QcSample
         {
             Id = 7101,
@@ -239,8 +299,37 @@ public sealed class BinsRunWorkflowTests
             SampleTakenAt = DateTimeOffset.UtcNow,
             CreatedAt = DateTimeOffset.UtcNow
         });
+        db.QcSamples.AddRange(
+            Sample(7102, 7002, doorSampleType, DateTimeOffset.Parse("2026-07-09T08:00:00-07:00")),
+            Sample(7103, 7003, doorSampleType, DateTimeOffset.Parse("2026-07-09T09:00:00-07:00")));
+        db.QcFruitReadings.AddRange(
+            FruitReading(7201, 7102, 1, 80, grade1),
+            FruitReading(7202, 7102, 2, 100, grade2),
+            FruitReading(7203, 7103, 1, 100, grade2),
+            FruitReading(7204, 7103, 2, 100, grade2));
         await db.SaveChangesAsync();
     }
+
+    private static Receipt SampleReceipt(long id, string receiptId, string lot, Warehouse warehouse, Room room, FruitProfile fruit) => new()
+    {
+        Id = id,
+        CropYear = 2026,
+        ReceivedAt = DateTimeOffset.Parse("2026-07-09T07:00:00-07:00"),
+        CompuTechReceiptId = receiptId,
+        ReceiptType = "Door sample",
+        WarehouseId = warehouse.Id,
+        Warehouse = warehouse,
+        RoomId = room.Id,
+        Room = room,
+        FruitProfileId = fruit.Id,
+        FruitProfile = fruit,
+        GrowerName = "QC Grower",
+        GrowerNumber = lot,
+        LotCode = lot,
+        BinCount = 999,
+        CreatedAt = DateTimeOffset.UtcNow,
+        UpdatedAt = DateTimeOffset.UtcNow
+    };
 
     private static User User(int id, string email, PageAccessLevel binsRunLevel) => new()
     {
@@ -276,6 +365,33 @@ public sealed class BinsRunWorkflowTests
         Source = "Current Inventory Baseline",
         Reason = "Test seed",
         AdjustmentAt = DateTimeOffset.Parse("2026-06-18T00:00:00-07:00"),
+        CreatedAt = DateTimeOffset.UtcNow
+    };
+
+    private static QcSample Sample(long id, long receiptId, SampleType sampleType, DateTimeOffset sampleTakenAt) => new()
+    {
+        Id = id,
+        ReceiptId = receiptId,
+        SampleTypeId = sampleType.Id,
+        SampleType = sampleType,
+        Status = "Complete",
+        StarchStatus = "Complete",
+        PhotoStatus = "Complete",
+        EmailStatus = "Not Sent",
+        SampleTakenAt = sampleTakenAt,
+        CreatedAt = DateTimeOffset.UtcNow
+    };
+
+    private static QcFruitReading FruitReading(long id, long sampleId, int row, int size, Grade grade) => new()
+    {
+        Id = id,
+        QcSampleId = sampleId,
+        RowNumber = row,
+        GradeId = grade.Id,
+        Grade = grade,
+        SizeCategory = size,
+        SizeStatus = "Sized",
+        IsCompleted = true,
         CreatedAt = DateTimeOffset.UtcNow
     };
 

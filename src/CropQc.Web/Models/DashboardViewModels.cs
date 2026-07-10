@@ -325,6 +325,7 @@ public sealed class BinsRunPageViewModel
     public BinsRunForm Form { get; set; } = new();
     public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
     public IReadOnlyList<Room> Rooms { get; set; } = [];
+    public BinsRunRoomSummaryViewModel? RoomSummary { get; set; }
     public IReadOnlyList<BinsRunInventoryOptionViewModel> AvailableInventory { get; set; } = [];
     public IReadOnlyList<BinsRunHistoryItemViewModel> History { get; set; } = [];
     public bool CanRecord { get; set; }
@@ -336,9 +337,6 @@ public sealed class BinsRunFilterForm
 {
     public int? WarehouseId { get; set; }
     public int? RoomId { get; set; }
-    public string? Grower { get; set; }
-    public string? Variety { get; set; }
-    public string? Lot { get; set; }
     public DateTime? FromDate { get; set; }
     public DateTime? ToDate { get; set; }
 }
@@ -363,7 +361,27 @@ public sealed record BinsRunInventoryOptionViewModel(
     string Lot,
     string Variety,
     string Room,
-    int CurrentBins);
+    int CurrentBins,
+    string GradeSummary,
+    DateTimeOffset? ReceiptDate);
+
+public sealed class BinsRunRoomSummaryViewModel
+{
+    public int WarehouseId { get; set; }
+    public int RoomId { get; set; }
+    public string Facility { get; set; } = "";
+    public string Location { get; set; } = "";
+    public string RoomName { get; set; } = "";
+    public int TotalAvailableBins { get; set; }
+    public int ActiveLotCount { get; set; }
+    public IReadOnlyList<BinsRunSizeDistributionPoint> SizeDistribution { get; set; } = [];
+    public IReadOnlyList<BinsRunGradeSummaryPoint> GradeSummary { get; set; } = [];
+    public int SizeDataLotCount { get; set; }
+    public int GradeDataLotCount { get; set; }
+}
+
+public sealed record BinsRunSizeDistributionPoint(int Size, decimal EstimatedBins);
+public sealed record BinsRunGradeSummaryPoint(string Grade, decimal EstimatedBins);
 
 public sealed class BinsRunHistoryItemViewModel
 {
