@@ -26,6 +26,7 @@ public static class ApplicationAreas
     public const string ReceiptEdit = "receipt-edit";
     public const string ReceiptDelete = "receipt-delete";
     public const string CurrentLots = "current-lots";
+    public const string BinsRun = "bins-run";
     public const string Rooms = "rooms";
     public const string RoomTransactions = "room-transactions";
     public const string GrowerLots = "grower-lots";
@@ -47,6 +48,7 @@ public static class ApplicationAreas
         new(ReceiptEdit, "Receipt Edit", "Operations", "/Receipts"),
         new(ReceiptDelete, "Receipt Delete", "Operations", "/Receipts"),
         new(CurrentLots, "Current Lots", "Inventory", "/Admin/RoomInventory"),
+        new(BinsRun, "Bins Run", "Inventory", "/BinsRun"),
         new(Rooms, "Rooms", "Inventory", "/Rooms"),
         new(RoomTransactions, "Room Transactions", "Inventory", "/Rooms"),
         new(GrowerLots, "Grower Lots", "Inventory", "/GrowerLots/Current"),
@@ -73,6 +75,9 @@ public static class AccessPolicyNames
     public const string ReceiptDeleteAdmin = "ReceiptDeleteAdmin";
     public const string CurrentLotsView = "CurrentLotsView";
     public const string CurrentLotsAdmin = "CurrentLotsAdmin";
+    public const string BinsRunView = "BinsRunView";
+    public const string BinsRunEdit = "BinsRunEdit";
+    public const string BinsRunAdmin = "BinsRunAdmin";
     public const string RoomsView = "RoomsView";
     public const string RoomTransactionsEdit = "RoomTransactionsEdit";
     public const string RoomTransactionsAdmin = "RoomTransactionsAdmin";
@@ -231,6 +236,8 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
         {
             return areaKey is ApplicationAreas.QcStations or ApplicationAreas.MasterData or ApplicationAreas.CurrentLots or ApplicationAreas.RoomTransactions
                 ? PageAccessLevel.Admin
+                : areaKey is ApplicationAreas.BinsRun
+                    ? PageAccessLevel.Edit
                 : PageAccessLevel.Edit;
         }
 
