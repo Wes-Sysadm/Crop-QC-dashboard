@@ -41,6 +41,21 @@ public sealed class HomeController(IDashboardDataService dataService) : Controll
     public async Task<IActionResult> Room(int roomId, CancellationToken cancellationToken) =>
         View(await dataService.GetRoomDetailAsync(roomId, cancellationToken));
 
+    [HttpPost("/Dashboard/Rooms/{roomId:int}/Projection")]
+    [HttpPost("/Rooms/{roomId:int}/Projection")]
+    [Authorize(Policy = AccessPolicyNames.RoomsView)]
+    public async Task<IActionResult> RoomProjection(int roomId, [FromBody] RoomProjectionRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await dataService.GetRoomProjectionAsync(roomId, request, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("/Rooms/{roomId:int}/CountBreakdown")]
     [Authorize(Policy = AccessPolicyNames.RoomsView)]
     public async Task<IActionResult> RoomCountBreakdown(int roomId, CancellationToken cancellationToken) =>

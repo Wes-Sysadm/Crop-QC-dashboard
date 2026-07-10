@@ -468,6 +468,95 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     margin-top: -8px;
 }
 
+.room-insight-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-start;
+    justify-content: space-between;
+}
+
+.room-projection-grid {
+    display: grid;
+    grid-template-columns: minmax(520px, 1.3fr) minmax(360px, 0.7fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.room-projection-lots {
+    display: grid;
+    gap: 8px;
+}
+
+.room-projection-lot-header,
+.room-projection-lot {
+    display: grid;
+    grid-template-columns: 72px minmax(180px, 1.4fr) minmax(110px, 0.7fr) minmax(150px, 0.9fr) 70px minmax(190px, 1.1fr);
+    gap: 12px;
+    align-items: center;
+}
+
+.room-projection-lot-header {
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 0 12px;
+    text-transform: uppercase;
+}
+
+.room-projection-lot {
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 12px;
+    background: #fff;
+}
+
+.room-projection-lot.flagged {
+    border-color: #f59e0b;
+    background: #fffbeb;
+}
+
+.room-projection-lot small {
+    display: block;
+    color: #64748b;
+    margin-top: 2px;
+}
+
+.indicator-list {
+    color: #475569;
+    overflow-wrap: anywhere;
+}
+
+.projection-control-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) auto auto;
+    gap: 10px;
+    align-items: end;
+    margin-bottom: 14px;
+}
+
+.projection-control-row label {
+    display: grid;
+    gap: 6px;
+    font-weight: 700;
+}
+
+.projection-comparison {
+    display: grid;
+    gap: 10px;
+}
+
+.projection-card {
+    border: 1px solid #d9e1e8;
+    border-radius: 8px;
+    padding: 14px;
+    background: #f8fafc;
+}
+
+.projection-card h3 {
+    margin-top: 0;
+}
+
 .selected-lot-summary {
     display: grid;
     grid-template-columns: minmax(260px, 1fr) minmax(140px, max-content);
@@ -590,6 +679,13 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
         display: grid;
         gap: 6px;
     }
+    .room-projection-grid { grid-template-columns: 1fr; }
+    .room-projection-lot-header { display: none; }
+    .room-projection-lot {
+        grid-template-columns: 1fr 1fr;
+        align-items: start;
+    }
+    .projection-control-row { grid-template-columns: 1fr; }
     .selected-lot-summary { grid-template-columns: 1fr; }
     .selected-lot-bins {
         justify-self: start;

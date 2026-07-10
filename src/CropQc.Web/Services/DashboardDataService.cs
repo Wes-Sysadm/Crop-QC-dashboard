@@ -39,6 +39,7 @@ public interface IDashboardDataService
     Task<string?> RemoveSamplePhotoAsync(long sampleId, long photoId, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken);
     Task<RoomDetailViewModel> GetRoomDetailAsync(int roomId, CancellationToken cancellationToken);
+    Task<BinsRunProjectionViewModel> GetRoomProjectionAsync(int roomId, RoomProjectionRequest request, CancellationToken cancellationToken);
     Task<RoomCountBreakdownViewModel> GetRoomCountBreakdownAsync(int roomId, CancellationToken cancellationToken);
     Task<string?> CreateRoomDepletionAsync(RoomDepletionForm form, CancellationToken cancellationToken);
     Task<string?> VoidRoomDepletionAsync(VoidRoomDepletionForm form, CancellationToken cancellationToken);
@@ -84,6 +85,7 @@ public sealed class DashboardDataService(
     private const string DataWarning = "Database is not available yet. The dashboard shell is running with empty data.";
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
     private static readonly string[] ReceiptTypeOptions = ["Truck receipt", "Door sample", "Lot sample"];
+    private static readonly int[] RoomProjectionSizeDisplayOrder = [32, 36, 40, 48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216];
 
     public async Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
     {
@@ -324,6 +326,7 @@ public sealed class DashboardDataService(
             var inventoryAdjustments = await BuildRoomInventoryAdjustmentHistoryAsync(roomId, cancellationToken);
             var linkedReceipts = await BuildRoomLinkedReceiptsAsync(roomId, cancellationToken);
             var transferDestinations = await BuildRoomTransferDestinationsAsync(roomId, cancellationToken);
+            var sampleDistributions = await BuildRoomProjectionSampleDataAsync(roomId, cancellationToken);
             var canManage = await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
 
             return new RoomDetailViewModel
@@ -334,6 +337,9 @@ public sealed class DashboardDataService(
                 Depletions = depletions,
                 InventoryAdjustments = inventoryAdjustments,
                 LinkedReceipts = linkedReceipts,
+                BaselineProjection = BuildRoomProjection(activeLots, sampleDistributions, isSelection: false),
+                ProjectionLots = BuildRoomProjectionLots(activeLots, sampleDistributions),
+                SampleTimeline = await BuildRoomSampleTimelineAsync(roomId, cancellationToken),
                 DepletionReceiptOptions = activeLots
                     .Where(x => x.ReceiptId is not null)
                     .Select(x => new RoomReceiptOptionViewModel(x.ReceiptId!.Value, $"{x.DisplayReceiptId} - {x.GrowerName} {x.LotCode} {x.VarietyCode} ({x.CurrentBins} bins current)", x.CurrentBins))
@@ -352,6 +358,38 @@ public sealed class DashboardDataService(
         {
             return new RoomDetailViewModel { DataWarning = DataWarning };
         }
+    }
+
+    public async Task<BinsRunProjectionViewModel> GetRoomProjectionAsync(int roomId, RoomProjectionRequest request, CancellationToken cancellationToken)
+    {
+        if (!await HasAccessAsync(ApplicationAreas.Rooms, PageAccessLevel.View, cancellationToken))
+        {
+            throw new InvalidOperationException("Room view access is required.");
+        }
+
+        var activeLots = (await BuildRoomLotSummariesAsync(roomId, cancellationToken))
+            .Where(x => x.CurrentBins > 0)
+            .ToList();
+        var selectedKeys = request.InventoryKeys
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var lots = activeLots;
+        var isSelection = selectedKeys.Count > 0;
+        if (isSelection)
+        {
+            var byKey = activeLots.ToDictionary(RoomProjectionInventoryKey, StringComparer.OrdinalIgnoreCase);
+            if (selectedKeys.Any(x => !byKey.ContainsKey(x)))
+            {
+                throw new InvalidOperationException("Selected inventory is not available in this room.");
+            }
+
+            lots = selectedKeys.Select(x => byKey[x]).ToList();
+        }
+
+        var sampleDistributions = await BuildRoomProjectionSampleDataAsync(roomId, cancellationToken);
+        return BuildRoomProjection(lots, sampleDistributions, isSelection);
     }
 
     public async Task<RoomCountBreakdownViewModel> GetRoomCountBreakdownAsync(int roomId, CancellationToken cancellationToken)
@@ -2400,6 +2438,162 @@ public sealed class DashboardDataService(
             .ToList();
     }
 
+    private async Task<IReadOnlyDictionary<string, RoomLotProjectionDistribution>> BuildRoomProjectionSampleDataAsync(int roomId, CancellationToken cancellationToken)
+    {
+        var samples = await QuerySamples()
+            .Where(x => x.Receipt.RoomId == roomId)
+            .ToListAsync(cancellationToken);
+
+        return samples
+            .GroupBy(x => QcConditionLotKey(x.Receipt), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                x => x.Key,
+                x => BuildRoomLotProjectionDistribution(x.OrderByDescending(y => y.SampleTakenAt).ThenByDescending(y => y.Id).First()),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static RoomLotProjectionDistribution BuildRoomLotProjectionDistribution(QcSample sample)
+    {
+        var sizeCounts = sample.FruitReadings
+            .Where(x => x.SizeCategory is not null)
+            .GroupBy(x => x.SizeCategory!.Value)
+            .ToDictionary(x => x.Key, x => x.Count());
+        var gradeCounts = sample.FruitReadings
+            .Where(x => x.Grade is not null)
+            .GroupBy(x => x.Grade!.Code)
+            .ToDictionary(x => x.Key, x => x.Count(), StringComparer.OrdinalIgnoreCase);
+
+        return new RoomLotProjectionDistribution(Percentages(sizeCounts), Percentages(gradeCounts), sample.SampleTakenAt);
+    }
+
+    private static BinsRunProjectionViewModel BuildRoomProjection(
+        IReadOnlyList<RoomLotSummaryViewModel> lots,
+        IReadOnlyDictionary<string, RoomLotProjectionDistribution> sampleDistributions,
+        bool isSelection)
+    {
+        var availableBins = lots.Sum(x => x.CurrentBins);
+        var sizeRepresentedBins = lots
+            .Where(x => sampleDistributions.TryGetValue(RoomProjectionLotKey(x), out var data) && data.SizePercentages.Count > 0)
+            .Sum(x => x.CurrentBins);
+        var gradeRepresentedBins = lots
+            .Where(x => sampleDistributions.TryGetValue(RoomProjectionLotKey(x), out var data) && data.GradePercentages.Count > 0)
+            .Sum(x => x.CurrentBins);
+
+        return new BinsRunProjectionViewModel
+        {
+            IsSelection = isSelection,
+            Label = isSelection
+                ? $"Projected mix for {lots.Count} selected lot{(lots.Count == 1 ? "" : "s")}"
+                : "Room baseline",
+            LotCount = lots.Count,
+            AvailableBins = availableBins,
+            SizeDistribution = BuildRoomWeightedSizeDistribution(lots, sampleDistributions),
+            GradeSummary = BuildRoomWeightedGradeSummary(lots, sampleDistributions),
+            SizeDataLotCount = lots.Count(x => sampleDistributions.TryGetValue(RoomProjectionLotKey(x), out var data) && data.SizePercentages.Count > 0),
+            GradeDataLotCount = lots.Count(x => sampleDistributions.TryGetValue(RoomProjectionLotKey(x), out var data) && data.GradePercentages.Count > 0),
+            SizeRepresentedBins = sizeRepresentedBins,
+            SizeMissingBins = Math.Max(0, availableBins - sizeRepresentedBins),
+            GradeRepresentedBins = gradeRepresentedBins,
+            GradeMissingBins = Math.Max(0, availableBins - gradeRepresentedBins)
+        };
+    }
+
+    private static IReadOnlyList<BinsRunSizeDistributionPoint> BuildRoomWeightedSizeDistribution(
+        IReadOnlyList<RoomLotSummaryViewModel> lots,
+        IReadOnlyDictionary<string, RoomLotProjectionDistribution> sampleDistributions)
+    {
+        var points = RoomProjectionSizeDisplayOrder
+            .Select(size => new BinsRunSizeDistributionPoint(
+                size,
+                lots.Sum(lot => sampleDistributions.TryGetValue(RoomProjectionLotKey(lot), out var data)
+                    && data.SizePercentages.TryGetValue(size, out var percentage)
+                        ? lot.CurrentBins * percentage
+                        : 0m)))
+            .ToList();
+        return points.Any(x => x.EstimatedBins > 0) ? points : [];
+    }
+
+    private static IReadOnlyList<BinsRunGradeSummaryPoint> BuildRoomWeightedGradeSummary(
+        IReadOnlyList<RoomLotSummaryViewModel> lots,
+        IReadOnlyDictionary<string, RoomLotProjectionDistribution> sampleDistributions)
+    {
+        var estimatedBinsByGrade = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var lot in lots)
+        {
+            if (!sampleDistributions.TryGetValue(RoomProjectionLotKey(lot), out var data))
+            {
+                continue;
+            }
+
+            foreach (var grade in data.GradePercentages)
+            {
+                estimatedBinsByGrade[grade.Key] = estimatedBinsByGrade.GetValueOrDefault(grade.Key) + lot.CurrentBins * grade.Value;
+            }
+        }
+
+        return estimatedBinsByGrade
+            .Select(x => new BinsRunGradeSummaryPoint(x.Key, x.Value))
+            .OrderByDescending(x => x.EstimatedBins)
+            .ThenBy(x => x.Grade)
+            .ToList();
+    }
+
+    private static IReadOnlyList<RoomProjectionLotViewModel> BuildRoomProjectionLots(
+        IReadOnlyList<RoomLotSummaryViewModel> lots,
+        IReadOnlyDictionary<string, RoomLotProjectionDistribution> sampleDistributions)
+    {
+        var now = DateTimeOffset.Now;
+        return lots
+            .OrderBy(x => x.GrowerName)
+            .ThenBy(x => x.LotCode)
+            .Select(lot =>
+            {
+                sampleDistributions.TryGetValue(RoomProjectionLotKey(lot), out var distribution);
+                var indicators = new List<string>();
+                if (distribution is null || distribution.SizePercentages.Count == 0) indicators.Add("Missing sizing");
+                if (distribution is null || distribution.GradePercentages.Count == 0) indicators.Add("Missing grade");
+                if (lot.SampleCount <= 0) indicators.Add("No QC samples");
+                if (lot.LastSampleDate is DateTimeOffset sampleDate && (now - sampleDate).TotalDays >= 14) indicators.Add($"Sample is {(int)(now - sampleDate).TotalDays} days old");
+                indicators.AddRange(lot.ReviewFlags.Take(2));
+                if (!string.IsNullOrWhiteSpace(lot.WeakestReason)) indicators.Add(lot.WeakestReason!);
+
+                return new RoomProjectionLotViewModel
+                {
+                    InventoryKey = RoomProjectionInventoryKey(lot),
+                    Grower = lot.GrowerName,
+                    Lot = !string.IsNullOrWhiteSpace(lot.GrowerNumber) ? lot.GrowerNumber : lot.LotCode,
+                    Variety = lot.VarietyCode,
+                    CurrentBins = lot.CurrentBins,
+                    GradeSummary = distribution is null || distribution.GradePercentages.Count == 0 ? "No grade data" : FormatProjectionGradeSummary(distribution.GradePercentages),
+                    LastSampleDate = distribution?.SampleTakenAt ?? lot.LastSampleDate,
+                    Indicators = indicators.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                };
+            })
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<RoomSampleTimelineItemViewModel>> BuildRoomSampleTimelineAsync(int roomId, CancellationToken cancellationToken)
+    {
+        var samples = await QuerySamples()
+            .Where(x => x.Receipt.RoomId == roomId)
+            .OrderByDescending(x => x.SampleTakenAt)
+            .Take(24)
+            .ToListAsync(cancellationToken);
+
+        return samples.Select(sample => new RoomSampleTimelineItemViewModel
+        {
+            SampleDate = sample.SampleTakenAt,
+            Lot = ReceiptLotNumber(sample.Receipt),
+            Variety = sample.Receipt.FruitProfile.VarietyCode,
+            SampleType = sample.SampleType.Name,
+            EnteredFruitCount = sample.FruitReadings.Count(HasEnteredFruitData),
+            AveragePressureLbs = AverageOrNull(PressureValues([sample]).ToList()),
+            AverageStarch = AverageOrNull(StarchValues([sample]).ToList()),
+            SizeSummary = FormatSizeSummary(sample.FruitReadings.Where(x => x.SizeCategory is not null).Select(x => x.SizeCategory!.Value).ToList()),
+            GradeSummary = FormatGradeSummary(sample.FruitReadings.Where(x => x.Grade is not null).Select(x => x.Grade!.Code).ToList())
+        }).ToList();
+    }
+
     private async Task<IReadOnlyList<RoomDepletionListItemViewModel>> BuildRoomDepletionHistoryAsync(int roomId, CancellationToken cancellationToken) =>
         await dbContext.RoomDepletions.AsNoTracking()
             .Include(x => x.Receipt)
@@ -3639,6 +3833,14 @@ public sealed class DashboardDataService(
     private static string CurrentLotKey(RoomLotSummaryViewModel lot) =>
         $"{lot.GrowerName}|{lot.GrowerNumber}|{lot.VarietyCode}";
 
+    private static string RoomProjectionInventoryKey(RoomLotSummaryViewModel lot) =>
+        lot.ReceiptId is not null
+            ? $"R:{lot.ReceiptId.Value}"
+            : $"A:{lot.InventoryAdjustmentId}:{RoomProjectionLotKey(lot)}";
+
+    private static string RoomProjectionLotKey(RoomLotSummaryViewModel lot) =>
+        QcConditionLotKey(lot.RoomId, lot.GrowerNumber, lot.LotCode, lot.VarietyCode);
+
     private static string ReceiptLotNumber(Receipt receipt) =>
         !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode;
 
@@ -3650,6 +3852,56 @@ public sealed class DashboardDataService(
         var lot = !string.IsNullOrWhiteSpace(growerNumber) ? growerNumber : lotCode;
         return $"{roomId}|{lot.Trim().ToUpperInvariant()}|{(varietyCode ?? "").Trim().ToUpperInvariant()}";
     }
+
+    private static IReadOnlyDictionary<int, decimal> Percentages(IReadOnlyDictionary<int, int> counts)
+    {
+        var total = counts.Values.Sum();
+        return total == 0
+            ? new Dictionary<int, decimal>()
+            : counts.ToDictionary(x => x.Key, x => x.Value / (decimal)total);
+    }
+
+    private static IReadOnlyDictionary<string, decimal> Percentages(IReadOnlyDictionary<string, int> counts)
+    {
+        var total = counts.Values.Sum();
+        return total == 0
+            ? new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
+            : counts.ToDictionary(x => x.Key, x => x.Value / (decimal)total, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string FormatProjectionGradeSummary(IReadOnlyDictionary<string, decimal> gradePercentages) =>
+        string.Join(", ", gradePercentages
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.Key)
+            .Take(3)
+            .Select(x => $"{x.Key} {x.Value:P0}"));
+
+    private static string FormatSizeSummary(IReadOnlyList<int> sizes)
+    {
+        if (sizes.Count == 0) return "No sizing data";
+        return string.Join(", ", sizes
+            .GroupBy(x => x)
+            .OrderByDescending(x => x.Count())
+            .ThenBy(x => Array.IndexOf(RoomProjectionSizeDisplayOrder, x.Key))
+            .Take(3)
+            .Select(x => $"{x.Key} ({x.Count()})"));
+    }
+
+    private static string FormatGradeSummary(IReadOnlyList<string> grades)
+    {
+        if (grades.Count == 0) return "No grade data";
+        return string.Join(", ", grades
+            .GroupBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(x => x.Count())
+            .ThenBy(x => x.Key)
+            .Take(3)
+            .Select(x => $"{x.Key} ({x.Count()})"));
+    }
+
+    private sealed record RoomLotProjectionDistribution(
+        IReadOnlyDictionary<int, decimal> SizePercentages,
+        IReadOnlyDictionary<string, decimal> GradePercentages,
+        DateTimeOffset SampleTakenAt);
 
     private async Task<DeviceCaptureSettingsViewModel> GetDeviceCaptureSettingsAsync(CancellationToken cancellationToken)
     {
