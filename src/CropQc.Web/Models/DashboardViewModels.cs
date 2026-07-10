@@ -352,6 +352,13 @@ public sealed class BinsRunForm
     public string? Notes { get; set; }
 }
 
+public sealed class BinsRunProjectionRequest
+{
+    public int? WarehouseId { get; set; }
+    public int? RoomId { get; set; }
+    public List<string> InventoryKeys { get; set; } = [];
+}
+
 public sealed record BinsRunInventoryOptionViewModel(
     string InventoryKey,
     int WarehouseId,
@@ -378,10 +385,27 @@ public sealed class BinsRunRoomSummaryViewModel
     public IReadOnlyList<BinsRunGradeSummaryPoint> GradeSummary { get; set; } = [];
     public int SizeDataLotCount { get; set; }
     public int GradeDataLotCount { get; set; }
+    public BinsRunProjectionViewModel Projection { get; set; } = new();
 }
 
 public sealed record BinsRunSizeDistributionPoint(int Size, decimal EstimatedBins);
 public sealed record BinsRunGradeSummaryPoint(string Grade, decimal EstimatedBins);
+
+public sealed class BinsRunProjectionViewModel
+{
+    public bool IsSelection { get; set; }
+    public string Label { get; set; } = "Room summary";
+    public int LotCount { get; set; }
+    public int AvailableBins { get; set; }
+    public int SizeDataLotCount { get; set; }
+    public int GradeDataLotCount { get; set; }
+    public int SizeRepresentedBins { get; set; }
+    public int SizeMissingBins { get; set; }
+    public int GradeRepresentedBins { get; set; }
+    public int GradeMissingBins { get; set; }
+    public IReadOnlyList<BinsRunSizeDistributionPoint> SizeDistribution { get; set; } = [];
+    public IReadOnlyList<BinsRunGradeSummaryPoint> GradeSummary { get; set; } = [];
+}
 
 public sealed class BinsRunHistoryItemViewModel
 {

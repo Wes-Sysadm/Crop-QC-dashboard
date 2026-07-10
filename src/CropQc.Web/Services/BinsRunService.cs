@@ -12,6 +12,7 @@ namespace CropQc.Web.Services;
 public interface IBinsRunService
 {
     Task<BinsRunPageViewModel> GetPageAsync(BinsRunFilterForm filter, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<BinsRunProjectionViewModel> GetProjectionAsync(BinsRunProjectionRequest request, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> CreateAsync(BinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> UpdateAsync(long id, BinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> ReverseAsync(ReverseBinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
@@ -102,6 +103,43 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
             CanAdmin = canAdmin,
             SelectedAvailableBins = options.FirstOrDefault()?.CurrentBins
         };
+    }
+
+    public async Task<BinsRunProjectionViewModel> GetProjectionAsync(BinsRunProjectionRequest request, ClaimsPrincipal user, CancellationToken cancellationToken)
+    {
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.View, cancellationToken))
+        {
+            throw new UnauthorizedAccessException("Bins Run View access is required.");
+        }
+
+        if (request.RoomId is null)
+        {
+            throw new InvalidOperationException("Select a room before reviewing lot projections.");
+        }
+
+        var snapshots = await GetCurrentInventorySnapshotsAsync(request.WarehouseId, request.RoomId, cancellationToken);
+        var currentSnapshots = snapshots.Where(x => x.CurrentBins > 0).ToList();
+        var sampleData = await GetLatestSampleDataByLotAsync(currentSnapshots, cancellationToken);
+        var selectedKeys = request.InventoryKeys
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var lots = currentSnapshots;
+        var isSelection = selectedKeys.Count > 0;
+        if (isSelection)
+        {
+            var byKey = currentSnapshots.ToDictionary(x => x.InventoryKey, StringComparer.OrdinalIgnoreCase);
+            if (selectedKeys.Any(x => !byKey.ContainsKey(x)))
+            {
+                throw new InvalidOperationException("Selected inventory is not available in this room.");
+            }
+
+            lots = selectedKeys.Select(x => byKey[x]).ToList();
+        }
+
+        return BuildProjection(lots, sampleData, isSelection);
     }
 
     public async Task<string?> CreateAsync(BinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken)
@@ -340,6 +378,7 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         }
 
         var roomLots = currentSnapshots.Where(x => x.RoomId == roomId && x.CurrentBins > 0).ToList();
+        var projection = BuildProjection(roomLots, sampleData, isSelection: false);
         return new BinsRunRoomSummaryViewModel
         {
             WarehouseId = room.WarehouseId,
@@ -349,10 +388,11 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
             RoomName = room.CropQcRoomName ?? room.DisplayName ?? room.Code,
             TotalAvailableBins = roomLots.Sum(x => x.CurrentBins),
             ActiveLotCount = roomLots.Count,
-            SizeDistribution = BuildWeightedSizeDistribution(roomLots, sampleData),
-            GradeSummary = BuildWeightedGradeSummary(roomLots, sampleData),
-            SizeDataLotCount = roomLots.Count(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.SizePercentages.Count > 0),
-            GradeDataLotCount = roomLots.Count(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.GradePercentages.Count > 0)
+            SizeDistribution = projection.SizeDistribution,
+            GradeSummary = projection.GradeSummary,
+            SizeDataLotCount = projection.SizeDataLotCount,
+            GradeDataLotCount = projection.GradeDataLotCount,
+            Projection = projection
         };
     }
 
@@ -426,6 +466,38 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                         : 0m)))
             .ToList();
         return points.Any(x => x.EstimatedBins > 0) ? points : [];
+    }
+
+    private static BinsRunProjectionViewModel BuildProjection(
+        IReadOnlyList<InventorySnapshot> lots,
+        IReadOnlyDictionary<string, LotSampleDistribution> sampleData,
+        bool isSelection)
+    {
+        var availableBins = lots.Sum(x => x.CurrentBins);
+        var sizeRepresentedBins = lots
+            .Where(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.SizePercentages.Count > 0)
+            .Sum(x => x.CurrentBins);
+        var gradeRepresentedBins = lots
+            .Where(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.GradePercentages.Count > 0)
+            .Sum(x => x.CurrentBins);
+
+        return new BinsRunProjectionViewModel
+        {
+            IsSelection = isSelection,
+            Label = isSelection
+                ? $"Projected mix for {lots.Count} selected lot{(lots.Count == 1 ? "" : "s")}"
+                : "Room summary",
+            LotCount = lots.Count,
+            AvailableBins = availableBins,
+            SizeDistribution = BuildWeightedSizeDistribution(lots, sampleData),
+            GradeSummary = BuildWeightedGradeSummary(lots, sampleData),
+            SizeDataLotCount = lots.Count(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.SizePercentages.Count > 0),
+            GradeDataLotCount = lots.Count(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.GradePercentages.Count > 0),
+            SizeRepresentedBins = sizeRepresentedBins,
+            SizeMissingBins = Math.Max(0, availableBins - sizeRepresentedBins),
+            GradeRepresentedBins = gradeRepresentedBins,
+            GradeMissingBins = Math.Max(0, availableBins - gradeRepresentedBins)
+        };
     }
 
     private static IReadOnlyList<BinsRunGradeSummaryPoint> BuildWeightedGradeSummary(

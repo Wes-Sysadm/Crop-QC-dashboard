@@ -268,10 +268,6 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     gap: 10px;
 }
 
-.bins-run-form {
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
 .wide-field {
     grid-column: 1 / -1;
 }
@@ -358,26 +354,55 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 .lot-submenu summary {
     cursor: pointer;
     font-weight: 700;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
 }
 
 .lot-list {
     display: grid;
-    gap: 8px;
+    gap: 10px;
+}
+
+.lot-selection-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    color: #475569;
+}
+
+.lot-list-header {
+    display: grid;
+    grid-template-columns: minmax(230px, 1.7fr) minmax(120px, 0.8fr) minmax(150px, 1fr) minmax(150px, 1fr) minmax(100px, 0.5fr) minmax(150px, 0.8fr) minmax(120px, 0.6fr);
+    gap: 16px;
+    padding: 0 16px 2px;
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.lot-list-header span:nth-child(5) {
+    text-align: right;
 }
 
 .lot-option {
     display: grid;
-    grid-template-columns: minmax(220px, 1.4fr) minmax(120px, 0.8fr) minmax(140px, 0.8fr) minmax(80px, 0.4fr);
-    gap: 12px;
+    grid-template-columns: minmax(230px, 1.7fr) minmax(120px, 0.8fr) minmax(150px, 1fr) minmax(150px, 1fr) minmax(100px, 0.5fr) minmax(150px, 0.8fr) minmax(120px, 0.6fr);
+    gap: 16px;
     align-items: center;
     width: 100%;
     text-align: left;
     border: 1px solid #cbd5e1;
     background: #fff;
     color: #0f172a;
-    border-radius: 6px;
-    padding: 10px 12px;
+    border-radius: 8px;
+    padding: 16px;
+    min-height: 86px;
+    line-height: 1.35;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .lot-option:hover,
@@ -386,18 +411,130 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     background: #eff6ff;
 }
 
-.lot-option span {
+.lot-option:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.35);
+    outline-offset: 2px;
+}
+
+.lot-option.selected {
+    box-shadow: inset 4px 0 0 #2563eb, 0 1px 4px rgba(37, 99, 235, 0.16);
+}
+
+.lot-option.run-selected {
+    border-color: #16a34a;
+}
+
+.lot-cell {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.lot-primary {
     display: grid;
-    gap: 2px;
+    gap: 4px;
+}
+
+.lot-primary strong {
+    color: #0f172a;
+    font-size: 0.98rem;
+}
+
+.lot-primary span,
+.lot-cell {
+    color: #475569;
+}
+
+.lot-bins {
+    color: #0f172a;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.lot-project-cell,
+.lot-run-cell {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+    color: #334155;
+    font-weight: 700;
+}
+
+.lot-run-cell input:disabled + span {
+    color: #94a3b8;
+}
+
+.projection-selection-summary {
+    margin-top: -8px;
 }
 
 .selected-lot-summary {
     display: grid;
-    gap: 4px;
+    grid-template-columns: minmax(260px, 1fr) minmax(140px, max-content);
+    gap: 18px;
+    align-items: center;
     border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    padding: 12px;
+    border-radius: 8px;
+    padding: 16px 18px;
     background: #f8fafc;
+}
+
+.selected-lot-summary strong {
+    display: block;
+    margin-top: 3px;
+    font-size: 1.05rem;
+    overflow-wrap: anywhere;
+}
+
+.selected-lot-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-top: 8px;
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.selected-lot-bins {
+    justify-self: end;
+    text-align: right;
+}
+
+.selected-lot-bins strong {
+    font-size: 2.1rem;
+    line-height: 1;
+}
+
+.bins-run-form {
+    display: grid;
+    gap: 18px;
+    max-width: 980px;
+    border: 1px solid #d9e1e8;
+    border-radius: 8px;
+    padding: 20px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.bins-run-form-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 240px) minmax(240px, 320px);
+    gap: 18px;
+    align-items: end;
+}
+
+.bins-run-form label {
+    display: grid;
+    gap: 6px;
+    font-weight: 700;
+}
+
+.bins-run-form input {
+    width: 100%;
+}
+
+.bins-run-form .button-row {
+    margin-top: 2px;
 }
 
 .empty-state {
@@ -406,6 +543,10 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     border-radius: 6px;
     padding: 16px;
     background: #f8fafc;
+}
+
+.hidden {
+    display: none !important;
 }
 
 .inline-form {
@@ -426,7 +567,34 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 @media (max-width: 1100px) {
     .bins-run-room-summary { grid-template-columns: 1fr; }
     .room-summary-metrics { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
-    .lot-option { grid-template-columns: 1fr 1fr; }
+    .lot-list-header { display: none; }
+    .lot-option {
+        grid-template-columns: minmax(220px, 1.2fr) minmax(160px, 0.8fr) minmax(130px, 0.6fr);
+        align-items: start;
+    }
+    .lot-cell[data-label]::before,
+    .lot-bins::before,
+    .lot-project-cell::before,
+    .lot-run-cell::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 3px;
+        color: #64748b;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+    .lot-bins { text-align: left; }
+    .lot-project-cell,
+    .lot-run-cell {
+        display: grid;
+        gap: 6px;
+    }
+    .selected-lot-summary { grid-template-columns: 1fr; }
+    .selected-lot-bins {
+        justify-self: start;
+        text-align: left;
+    }
 }
 
 @media (max-width: 760px) {
@@ -434,4 +602,6 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     .size-label { font-size: 0.65rem; }
     .size-bar-value { display: none; }
     .lot-option { grid-template-columns: 1fr; }
+    .bins-run-form-row { grid-template-columns: 1fr; }
+    .bins-run-form { padding: 16px; }
 }
