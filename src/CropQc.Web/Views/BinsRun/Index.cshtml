@@ -135,8 +135,17 @@ else
             <details class="lot-submenu" open>
                 <summary>@Model.AvailableInventory.Count active lots currently available</summary>
                 <div class="lot-list">
+                    <div class="lot-list-header" aria-hidden="true">
+                        <span>Grower / Lot</span>
+                        <span>Variety</span>
+                        <span>Expected grade</span>
+                        <span>Source</span>
+                        <span>Available</span>
+                        <span>Status</span>
+                    </div>
                     @foreach (var lot in Model.AvailableInventory)
                     {
+                        var sourceLabel = lot.ReceiptDate is null ? "Current baseline" : lot.ReceiptDate.Value.ToLocalTime().ToString("g");
                         <button type="button"
                                 class="lot-option"
                                 data-select-lot
@@ -144,14 +153,19 @@ else
                                 data-available="@lot.CurrentBins"
                                 data-warehouse="@lot.WarehouseId"
                                 data-room="@lot.RoomId"
-                                data-label="@lot.Grower / @lot.Variety / @lot.Lot">
-                            <span>
+                                data-label="@lot.Grower / @lot.Variety / @lot.Lot"
+                                data-grade="@lot.GradeSummary"
+                                data-source="@sourceLabel"
+                                aria-pressed="false">
+                            <span class="lot-cell lot-primary">
                                 <strong>@lot.Grower</strong>
-                                <span>@lot.Variety / Lot @lot.Lot</span>
+                                <span>Lot @lot.Lot</span>
                             </span>
-                            <span>@lot.GradeSummary</span>
-                            <span>@(lot.ReceiptDate is null ? "Current baseline" : lot.ReceiptDate.Value.ToLocalTime().ToString("g"))</span>
-                            <strong>@lot.CurrentBins bins</strong>
+                            <span class="lot-cell" data-label="Variety">@lot.Variety</span>
+                            <span class="lot-cell" data-label="Expected grade">@lot.GradeSummary</span>
+                            <span class="lot-cell" data-label="Source">@sourceLabel</span>
+                            <strong class="lot-cell lot-bins" data-label="Available">@lot.CurrentBins bins</strong>
+                            <span class="lot-selected-marker" aria-hidden="true">Select</span>
                         </button>
                     }
                 </div>
@@ -171,23 +185,34 @@ else
         }
         else
         {
-            <form class="form-grid bins-run-form" method="post" action="/BinsRun/Create">
+            <form class="bins-run-form" method="post" action="/BinsRun/Create">
                 <input type="hidden" name="WarehouseId" value="@(selected?.WarehouseId ?? Model.Filter.WarehouseId)" data-bins-run-warehouse />
                 <input type="hidden" name="RoomId" value="@(selected?.RoomId ?? Model.Filter.RoomId)" data-bins-run-room />
                 <input type="hidden" name="InventoryKey" value="@(selected?.InventoryKey ?? "")" data-bins-run-inventory />
                 <input type="hidden" name="ExpectedAvailableBins" value="@(selected?.CurrentBins ?? 0)" data-bins-run-expected />
-                <div class="selected-lot-summary wide-field">
-                    <span class="metric-label">Selected lot</span>
-                    <strong data-selected-lot>@(selected is null ? "Select a lot above" : $"{selected.Grower} / {selected.Variety} / {selected.Lot}")</strong>
-                    <span><span data-bins-run-current>@(selected?.CurrentBins ?? 0)</span> bins available</span>
+                <div class="selected-lot-summary">
+                    <div>
+                        <span class="metric-label">Selected lot</span>
+                        <strong data-selected-lot>@(selected is null ? "Select a lot above" : $"{selected.Grower} / {selected.Variety} / {selected.Lot}")</strong>
+                        <span class="selected-lot-meta">
+                            <span data-selected-grade>@(selected?.GradeSummary ?? "Grade not available")</span>
+                            <span data-selected-source>@(selected is null ? "Choose a lot to populate source details" : selected.ReceiptDate is null ? "Current baseline" : selected.ReceiptDate.Value.ToLocalTime().ToString("g"))</span>
+                        </span>
+                    </div>
+                    <div class="selected-lot-bins">
+                        <span class="metric-label">Available bins</span>
+                        <strong data-bins-run-current>@(selected?.CurrentBins ?? 0)</strong>
+                    </div>
                 </div>
-                <label>Bins run
-                    <input type="number" min="1" name="BinsRun" required />
-                </label>
-                <label>Run date/time
-                    <input type="datetime-local" name="RunAt" value="@Model.Form.RunAt.ToString("yyyy-MM-ddTHH:mm")" required />
-                </label>
-                <label class="wide-field">Notes
+                <div class="bins-run-form-row">
+                    <label>Bins run
+                        <input type="number" min="1" name="BinsRun" required />
+                    </label>
+                    <label>Run date/time
+                        <input type="datetime-local" name="RunAt" value="@Model.Form.RunAt.ToString("yyyy-MM-ddTHH:mm")" required />
+                    </label>
+                </div>
+                <label>Notes
                     <input name="Notes" maxlength="1000" />
                 </label>
                 <div class="button-row">
@@ -272,13 +297,21 @@ else
 
         function selectLot(button) {
             if (!button) return;
-            lotButtons.forEach(x => x.classList.toggle("selected", x === button));
+            lotButtons.forEach(x => {
+                const isSelected = x === button;
+                x.classList.toggle("selected", isSelected);
+                x.setAttribute("aria-pressed", isSelected ? "true" : "false");
+            });
             if (inventory) inventory.value = button.dataset.key || "";
             if (expected) expected.value = button.dataset.available || "0";
             if (warehouse) warehouse.value = button.dataset.warehouse || "";
             if (room) room.value = button.dataset.room || "";
             if (current) current.textContent = button.dataset.available || "0";
             if (selectedLot) selectedLot.textContent = button.dataset.label || "Selected lot";
+            const selectedGrade = document.querySelector("[data-selected-grade]");
+            const selectedSource = document.querySelector("[data-selected-source]");
+            if (selectedGrade) selectedGrade.textContent = button.dataset.grade || "Grade not available";
+            if (selectedSource) selectedSource.textContent = button.dataset.source || "";
         }
 
         lotButtons.forEach(button => button.addEventListener("click", () => selectLot(button)));
