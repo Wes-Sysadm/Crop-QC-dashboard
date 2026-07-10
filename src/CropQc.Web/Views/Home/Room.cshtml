@@ -3,7 +3,7 @@
     ViewData["Title"] = "Room Summary";
     ViewData["AutoRefresh"] = "true";
     var baseline = Model.BaselineProjection;
-    var maxSizeBins = baseline.SizeDistribution.Count > 0 ? baseline.SizeDistribution.Max(x => x.EstimatedBins) : 0m;
+    var maxSizePercent = baseline.SizeDistribution.Count > 0 ? baseline.SizeDistribution.Max(x => x.Percentage) : 0m;
     var maxGradeBins = baseline.GradeSummary.Count > 0 ? baseline.GradeSummary.Max(x => x.EstimatedBins) : 0m;
 }
 
@@ -101,6 +101,7 @@
         <div class="panel-section">
             <h2>Baseline Size Distribution</h2>
             <p class="muted">@ProjectionContext(baseline, "Sizing")</p>
+            <p class="muted">Vertical axis: Percent of sampled fruit.</p>
             @if (baseline.SizeDistribution.Count == 0)
             {
                 <p class="empty-state">No sizing data is available for the current inventory in this room.</p>
@@ -110,9 +111,9 @@
                 <div class="size-chart" aria-label="Room baseline size distribution">
                     @foreach (var point in baseline.SizeDistribution)
                     {
-                        var height = point.EstimatedBins <= 0 || maxSizeBins <= 0 ? 0 : Math.Max(4, (int)Math.Round(point.EstimatedBins / maxSizeBins * 100m));
+                        var height = point.Percentage <= 0 || maxSizePercent <= 0 ? 0 : Math.Max(4, (int)Math.Round(point.Percentage / maxSizePercent * 100m));
                         <div class="size-chart-column">
-                            <span class="size-bar-value">@(point.EstimatedBins > 0 ? point.EstimatedBins.ToString("0.#") : "")</span>
+                            <span class="size-bar-value">@(point.Percentage > 0 ? $"{point.Percentage:0.#}%" : "")</span>
                             <span class="size-bar" style="height: @height%"></span>
                             <span class="size-label">@point.Size</span>
                         </div>
@@ -195,7 +196,7 @@
                     <article class="projection-card" data-projection-card="baseline">
                         <h3>Room Baseline</h3>
                         <p>@baseline.LotCount lots / @baseline.AvailableBins bins</p>
-                        <p>Sizing @baseline.SizeRepresentedBins represented, @baseline.SizeMissingBins missing</p>
+                <p>Sizing @baseline.SizeRepresentedBins represented, @baseline.SizeMissingBins missing (@baseline.SizeCoveragePercent.ToString("0.#")% coverage)</p>
                         <p>Grade @baseline.GradeRepresentedBins represented, @baseline.GradeMissingBins missing</p>
                     </article>
                     <article class="projection-card" data-projection-card="a">
@@ -520,8 +521,12 @@
         var represented = dataKind == "Sizing" ? projection.SizeRepresentedBins : projection.GradeRepresentedBins;
         var missing = dataKind == "Sizing" ? projection.SizeMissingBins : projection.GradeMissingBins;
         return missing > 0
-            ? $"{dataKind} data represents {represented} of {projection.AvailableBins} bins; {missing} bins have no {dataKind.ToLowerInvariant()} data."
-            : $"Estimated bins, weighted by current available-bin balance across {projection.AvailableBins} bins.";
+            ? dataKind == "Sizing"
+                ? $"Sizing projection covers {represented} of {projection.AvailableBins} bins ({projection.SizeCoveragePercent:0.#}%). Percentages use entered fruit rows as the denominator; rows without size remain unclassified."
+                : $"{dataKind} data represents {represented} of {projection.AvailableBins} bins; {missing} bins have no {dataKind.ToLowerInvariant()} data."
+            : dataKind == "Sizing"
+                ? $"Percent of sampled fruit, weighted by current available-bin balance across {projection.AvailableBins} bins. Percentages use entered fruit rows as the denominator."
+                : $"Estimated bins, weighted by current available-bin balance across {projection.AvailableBins} bins.";
     }
 
     private static string FormatSigned(int value) => value > 0 ? $"+{value}" : value.ToString();
@@ -573,9 +578,9 @@
             if (!card || !data) return;
             card.innerHTML = `<h3>${name}</h3>
                 <p>${data.lotCount} lots / ${data.availableBins} bins selected</p>
-                <p>Sizing ${data.sizeRepresentedBins} represented, ${data.sizeMissingBins} missing</p>
+                <p>Sizing ${data.sizeRepresentedBins} represented, ${data.sizeMissingBins} missing (${Number(data.sizeCoveragePercent || 0).toFixed(1)}% coverage)</p>
                 <p>Grade ${data.gradeRepresentedBins} represented, ${data.gradeMissingBins} missing</p>
-                <p class="muted">Weighted by current available bins. Selection is informational only.</p>`;
+                <p class="muted">Size distribution is percent of sampled fruit, weighted by current available bins. Selection is informational only.</p>`;
         }
 
         async function saveProjection(slot) {

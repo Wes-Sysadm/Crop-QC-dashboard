@@ -421,7 +421,7 @@ public sealed class BinsRunRoomSummaryViewModel
     public BinsRunProjectionViewModel Projection { get; set; } = new();
 }
 
-public sealed record BinsRunSizeDistributionPoint(int Size, decimal EstimatedBins);
+public sealed record BinsRunSizeDistributionPoint(int Size, decimal Percentage);
 public sealed record BinsRunGradeSummaryPoint(string Grade, decimal EstimatedBins);
 
 public sealed class BinsRunProjectionViewModel
@@ -434,6 +434,8 @@ public sealed class BinsRunProjectionViewModel
     public int GradeDataLotCount { get; set; }
     public int SizeRepresentedBins { get; set; }
     public int SizeMissingBins { get; set; }
+    public decimal SizeCoveragePercent { get; set; }
+    public decimal SizeUnclassifiedPercent { get; set; }
     public int GradeRepresentedBins { get; set; }
     public int GradeMissingBins { get; set; }
     public IReadOnlyList<BinsRunSizeDistributionPoint> SizeDistribution { get; set; } = [];

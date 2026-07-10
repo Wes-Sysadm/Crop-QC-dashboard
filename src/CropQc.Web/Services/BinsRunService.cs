@@ -23,7 +23,6 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
     public const string AdjustmentType = "BinsRun";
     public const string ReversalAdjustmentType = "BinsRunReversal";
     public const string SourceApplication = "CropQc.Web";
-    private static readonly int[] SizeDisplayOrder = [32, 36, 40, 48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216];
 
     public async Task<BinsRunPageViewModel> GetPageAsync(BinsRunFilterForm filter, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
@@ -422,27 +421,15 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
 
     private static LotSampleDistribution BuildLotSampleDistribution(QcSample sample)
     {
-        var sizeCounts = sample.FruitReadings
-            .Where(x => x.SizeCategory is not null)
-            .GroupBy(x => x.SizeCategory!.Value)
-            .ToDictionary(x => x.Key, x => x.Count());
         var gradeCounts = sample.FruitReadings
             .Where(x => x.Grade is not null)
             .GroupBy(x => x.Grade!.Code)
             .ToDictionary(x => x.Key, x => x.Count(), StringComparer.OrdinalIgnoreCase);
 
         return new LotSampleDistribution(
-            Percentages(sizeCounts),
+            ProjectionDistributionMath.BuildSizePercentages(sample.FruitReadings),
             Percentages(gradeCounts),
             sample.SampleTakenAt);
-    }
-
-    private static IReadOnlyDictionary<int, decimal> Percentages(IReadOnlyDictionary<int, int> counts)
-    {
-        var total = counts.Values.Sum();
-        return total == 0
-            ? new Dictionary<int, decimal>()
-            : counts.ToDictionary(x => x.Key, x => x.Value / (decimal)total);
     }
 
     private static IReadOnlyDictionary<string, decimal> Percentages(IReadOnlyDictionary<string, int> counts)
@@ -457,15 +444,12 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         IReadOnlyList<InventorySnapshot> roomLots,
         IReadOnlyDictionary<string, LotSampleDistribution> sampleData)
     {
-        var points = SizeDisplayOrder
-            .Select(size => new BinsRunSizeDistributionPoint(
-                size,
-                roomLots.Sum(lot => sampleData.TryGetValue(CurrentStorageLotKey(lot.RoomId, lot.Lot, lot.Variety), out var data)
-                    && data.SizePercentages.TryGetValue(size, out var percentage)
-                        ? lot.CurrentBins * percentage
-                        : 0m)))
-            .ToList();
-        return points.Any(x => x.EstimatedBins > 0) ? points : [];
+        var sizeData = sampleData.ToDictionary(x => x.Key, x => x.Value.SizeDistribution, StringComparer.OrdinalIgnoreCase);
+        return ProjectionDistributionMath.CombineWeightedSizePercentages(
+            roomLots,
+            sizeData,
+            lot => CurrentStorageLotKey(lot.RoomId, lot.Lot, lot.Variety),
+            lot => lot.CurrentBins);
     }
 
     private static BinsRunProjectionViewModel BuildProjection(
@@ -475,7 +459,7 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
     {
         var availableBins = lots.Sum(x => x.CurrentBins);
         var sizeRepresentedBins = lots
-            .Where(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.SizePercentages.Count > 0)
+            .Where(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.SizeDistribution.Percentages.Count > 0)
             .Sum(x => x.CurrentBins);
         var gradeRepresentedBins = lots
             .Where(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.GradePercentages.Count > 0)
@@ -491,10 +475,16 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
             AvailableBins = availableBins,
             SizeDistribution = BuildWeightedSizeDistribution(lots, sampleData),
             GradeSummary = BuildWeightedGradeSummary(lots, sampleData),
-            SizeDataLotCount = lots.Count(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.SizePercentages.Count > 0),
+            SizeDataLotCount = lots.Count(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.SizeDistribution.Percentages.Count > 0),
             GradeDataLotCount = lots.Count(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.GradePercentages.Count > 0),
             SizeRepresentedBins = sizeRepresentedBins,
             SizeMissingBins = Math.Max(0, availableBins - sizeRepresentedBins),
+            SizeCoveragePercent = availableBins <= 0 ? 0m : decimal.Round(sizeRepresentedBins / (decimal)availableBins * 100m, 1),
+            SizeUnclassifiedPercent = ProjectionDistributionMath.CombineWeightedUnclassifiedPercent(
+                lots,
+                sampleData.ToDictionary(x => x.Key, x => x.Value.SizeDistribution, StringComparer.OrdinalIgnoreCase),
+                lot => CurrentStorageLotKey(lot.RoomId, lot.Lot, lot.Variety),
+                lot => lot.CurrentBins),
             GradeRepresentedBins = gradeRepresentedBins,
             GradeMissingBins = Math.Max(0, availableBins - gradeRepresentedBins)
         };
@@ -780,7 +770,7 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         DateTimeOffset? ReceiptDate);
 
     private sealed record LotSampleDistribution(
-        IReadOnlyDictionary<int, decimal> SizePercentages,
+        SizeSampleDistribution SizeDistribution,
         IReadOnlyDictionary<string, decimal> GradePercentages,
         DateTimeOffset SampleTakenAt);
 }
