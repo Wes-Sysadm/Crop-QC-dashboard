@@ -2,6 +2,8 @@
 @{
     ViewData["Title"] = "Bins Run";
     var selected = Model.AvailableInventory.FirstOrDefault(x => x.InventoryKey == Model.Form.InventoryKey);
+    var maxSizeBins = Model.RoomSummary?.SizeDistribution.Count > 0 ? Model.RoomSummary.SizeDistribution.Max(x => x.EstimatedBins) : 0m;
+    var maxGradeBins = Model.RoomSummary?.GradeSummary.Count > 0 ? Model.RoomSummary.GradeSummary.Max(x => x.EstimatedBins) : 0m;
 }
 
 <h1>Bins Run</h1>
@@ -16,11 +18,11 @@
 }
 
 <section class="panel-section">
-    <h2>Find Inventory</h2>
+    <h2>Select Room</h2>
     <form class="toolbar bins-run-filter" method="get" action="/BinsRun">
         <label>Facility
-            <select name="WarehouseId">
-                <option value="">All facilities</option>
+            <select name="WarehouseId" onchange="this.form.submit()">
+                <option value="">Select facility</option>
                 @foreach (var warehouse in Model.Warehouses)
                 {
                     <option value="@warehouse.Id" selected="@(Model.Filter.WarehouseId == warehouse.Id)">@warehouse.Code</option>
@@ -28,79 +30,179 @@
             </select>
         </label>
         <label>Room
-            <select name="RoomId">
-                <option value="">All rooms</option>
+            <select name="RoomId" onchange="this.form.submit()">
+                <option value="">Select room</option>
                 @foreach (var room in Model.Rooms)
                 {
                     <option value="@room.Id" selected="@(Model.Filter.RoomId == room.Id)">@room.Warehouse.Code / @(room.CropQcRoomName ?? room.DisplayName ?? room.Code)</option>
                 }
             </select>
         </label>
-        <label>Grower
-            <input name="Grower" value="@Model.Filter.Grower" />
-        </label>
-        <label>Variety
-            <input name="Variety" value="@Model.Filter.Variety" />
-        </label>
-        <label>Lot
-            <input name="Lot" value="@Model.Filter.Lot" />
-        </label>
-        <button type="submit">Filter</button>
+        <button type="submit">View Room</button>
     </form>
 </section>
 
-<section class="panel-section">
-    <h2>Record Bins Run</h2>
-    @if (!Model.CanRecord)
-    {
-        <p class="muted">View-only access. Entries cannot be created, edited, or reversed.</p>
-    }
-    else if (Model.AvailableInventory.Count == 0)
-    {
-        <p class="muted">No available inventory matches the current filters.</p>
-    }
-    else
-    {
-        <form class="form-grid bins-run-form" method="post" action="/BinsRun/Create">
-            <input type="hidden" name="WarehouseId" value="@(selected?.WarehouseId ?? Model.Filter.WarehouseId)" />
-            <input type="hidden" name="RoomId" value="@(selected?.RoomId ?? Model.Filter.RoomId)" />
-            <input type="hidden" name="ExpectedAvailableBins" value="@(selected?.CurrentBins ?? 0)" data-bins-run-expected />
-            <label class="wide-field">Available inventory
-                <select name="InventoryKey" required data-bins-run-inventory>
-                    @foreach (var option in Model.AvailableInventory)
+@if (Model.RoomSummary is null)
+{
+    <section class="panel-section">
+        <p class="muted">Select a facility and room to review current inventory before recording bins run.</p>
+    </section>
+}
+else
+{
+    <section class="panel-section bins-run-room-summary">
+        <div>
+            <h2>@Model.RoomSummary.RoomName</h2>
+            <p class="muted">@Model.RoomSummary.Facility / @Model.RoomSummary.Location</p>
+        </div>
+        <div class="room-summary-metrics">
+            <div class="metric-card">
+                <span class="metric-label">Available Bins</span>
+                <strong data-room-total>@Model.RoomSummary.TotalAvailableBins</strong>
+            </div>
+            <div class="metric-card">
+                <span class="metric-label">Active Lots</span>
+                <strong>@Model.RoomSummary.ActiveLotCount</strong>
+            </div>
+            <div class="metric-card">
+                <span class="metric-label">Sizing Data</span>
+                <strong>@Model.RoomSummary.SizeDataLotCount</strong>
+                <span>lots</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-label">Grade Data</span>
+                <strong>@Model.RoomSummary.GradeDataLotCount</strong>
+                <span>lots</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="grid-two">
+        <div class="panel-section">
+            <h2>Size Distribution</h2>
+            <p class="muted">Estimated bins, weighted by each current lot's available-bin balance.</p>
+            @if (Model.RoomSummary.SizeDistribution.Count == 0)
+            {
+                <p class="empty-state">No sizing data is available for the current inventory in this room.</p>
+            }
+            else
+            {
+                <div class="size-chart" aria-label="Size distribution chart">
+                    @foreach (var point in Model.RoomSummary.SizeDistribution)
                     {
-                        <option value="@option.InventoryKey" data-available="@option.CurrentBins" data-warehouse="@option.WarehouseId" data-room="@option.RoomId" selected="@(option.InventoryKey == Model.Form.InventoryKey)">
-                            @option.Room - @option.Label
-                        </option>
+                        var height = point.EstimatedBins <= 0 || maxSizeBins <= 0 ? 0 : Math.Max(4, (int)Math.Round(point.EstimatedBins / maxSizeBins * 100m));
+                        <div class="size-chart-column">
+                            <span class="size-bar-value">@(point.EstimatedBins > 0 ? point.EstimatedBins.ToString("0.#") : "")</span>
+                            <span class="size-bar" style="height: @height%"></span>
+                            <span class="size-label">@point.Size</span>
+                        </div>
                     }
-                </select>
-            </label>
-            <div class="metric-card bins-run-current">
-                <span class="metric-label">Available now</span>
-                <strong data-bins-run-current>@(selected?.CurrentBins ?? Model.SelectedAvailableBins ?? 0)</strong>
-                <span>bins</span>
-            </div>
-            <label>Bins run
-                <input type="number" min="1" name="BinsRun" required />
-            </label>
-            <label>Run date/time
-                <input type="datetime-local" name="RunAt" value="@Model.Form.RunAt.ToString("yyyy-MM-ddTHH:mm")" required />
-            </label>
-            <label class="wide-field">Notes
-                <input name="Notes" maxlength="1000" />
-            </label>
-            <div class="button-row">
-                <button type="submit">Save Bins Run</button>
-            </div>
-        </form>
-    }
-</section>
+                </div>
+            }
+        </div>
+        <div class="panel-section">
+            <h2>Expected Grade</h2>
+            <p class="muted">Estimated bins, weighted by each current lot's available-bin balance.</p>
+            @if (Model.RoomSummary.GradeSummary.Count == 0)
+            {
+                <p class="empty-state">No grade information is available for the current inventory in this room.</p>
+            }
+            else
+            {
+                <div class="grade-summary">
+                    @foreach (var grade in Model.RoomSummary.GradeSummary)
+                    {
+                        var width = maxGradeBins <= 0 ? 0 : Math.Max(4, (int)Math.Round(grade.EstimatedBins / maxGradeBins * 100m));
+                        <div class="grade-summary-row">
+                            <span class="grade-label">@grade.Grade</span>
+                            <span class="grade-bar-track"><span class="grade-bar" style="width: @width%"></span></span>
+                            <span class="grade-value">@grade.EstimatedBins.ToString("0.#")</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </section>
+
+    <section class="panel-section">
+        <h2>Lot Inventory</h2>
+        @if (Model.AvailableInventory.Count == 0)
+        {
+            <p class="muted">No available lots remain in this room.</p>
+        }
+        else
+        {
+            <details class="lot-submenu" open>
+                <summary>@Model.AvailableInventory.Count active lots currently available</summary>
+                <div class="lot-list">
+                    @foreach (var lot in Model.AvailableInventory)
+                    {
+                        <button type="button"
+                                class="lot-option"
+                                data-select-lot
+                                data-key="@lot.InventoryKey"
+                                data-available="@lot.CurrentBins"
+                                data-warehouse="@lot.WarehouseId"
+                                data-room="@lot.RoomId"
+                                data-label="@lot.Grower / @lot.Variety / @lot.Lot">
+                            <span>
+                                <strong>@lot.Grower</strong>
+                                <span>@lot.Variety / Lot @lot.Lot</span>
+                            </span>
+                            <span>@lot.GradeSummary</span>
+                            <span>@(lot.ReceiptDate is null ? "Current baseline" : lot.ReceiptDate.Value.ToLocalTime().ToString("g"))</span>
+                            <strong>@lot.CurrentBins bins</strong>
+                        </button>
+                    }
+                </div>
+            </details>
+        }
+    </section>
+
+    <section class="panel-section">
+        <h2>Record Bins Run</h2>
+        @if (!Model.CanRecord)
+        {
+            <p class="muted">View-only access. Entries cannot be created, edited, or reversed.</p>
+        }
+        else if (Model.AvailableInventory.Count == 0)
+        {
+            <p class="muted">Select a room with available inventory before recording bins run.</p>
+        }
+        else
+        {
+            <form class="form-grid bins-run-form" method="post" action="/BinsRun/Create">
+                <input type="hidden" name="WarehouseId" value="@(selected?.WarehouseId ?? Model.Filter.WarehouseId)" data-bins-run-warehouse />
+                <input type="hidden" name="RoomId" value="@(selected?.RoomId ?? Model.Filter.RoomId)" data-bins-run-room />
+                <input type="hidden" name="InventoryKey" value="@(selected?.InventoryKey ?? "")" data-bins-run-inventory />
+                <input type="hidden" name="ExpectedAvailableBins" value="@(selected?.CurrentBins ?? 0)" data-bins-run-expected />
+                <div class="selected-lot-summary wide-field">
+                    <span class="metric-label">Selected lot</span>
+                    <strong data-selected-lot>@(selected is null ? "Select a lot above" : $"{selected.Grower} / {selected.Variety} / {selected.Lot}")</strong>
+                    <span><span data-bins-run-current>@(selected?.CurrentBins ?? 0)</span> bins available</span>
+                </div>
+                <label>Bins run
+                    <input type="number" min="1" name="BinsRun" required />
+                </label>
+                <label>Run date/time
+                    <input type="datetime-local" name="RunAt" value="@Model.Form.RunAt.ToString("yyyy-MM-ddTHH:mm")" required />
+                </label>
+                <label class="wide-field">Notes
+                    <input name="Notes" maxlength="1000" />
+                </label>
+                <div class="button-row">
+                    <button type="submit">Save Bins Run</button>
+                </div>
+            </form>
+        }
+    </section>
+}
 
 <section class="panel-section">
     <h2>Recent Bins Run History</h2>
     @if (Model.History.Count == 0)
     {
-        <p class="muted">No Bins Run transactions match the current filters.</p>
+        <p class="muted">No Bins Run transactions match the current room.</p>
     }
     else
     {
@@ -160,21 +262,26 @@
 
 <script>
     (() => {
-        const select = document.querySelector("[data-bins-run-inventory]");
-        if (!select) return;
-        const current = document.querySelector("[data-bins-run-current]");
+        const lotButtons = Array.from(document.querySelectorAll("[data-select-lot]"));
+        const inventory = document.querySelector("[data-bins-run-inventory]");
         const expected = document.querySelector("[data-bins-run-expected]");
-        const warehouse = document.querySelector("input[name='WarehouseId']");
-        const room = document.querySelector("input[name='RoomId']");
-        const refresh = () => {
-            const option = select.selectedOptions[0];
-            if (!option) return;
-            if (current) current.textContent = option.dataset.available || "0";
-            if (expected) expected.value = option.dataset.available || "0";
-            if (warehouse) warehouse.value = option.dataset.warehouse || "";
-            if (room) room.value = option.dataset.room || "";
-        };
-        select.addEventListener("change", refresh);
-        refresh();
+        const warehouse = document.querySelector("[data-bins-run-warehouse]");
+        const room = document.querySelector("[data-bins-run-room]");
+        const current = document.querySelector("[data-bins-run-current]");
+        const selectedLot = document.querySelector("[data-selected-lot]");
+
+        function selectLot(button) {
+            if (!button) return;
+            lotButtons.forEach(x => x.classList.toggle("selected", x === button));
+            if (inventory) inventory.value = button.dataset.key || "";
+            if (expected) expected.value = button.dataset.available || "0";
+            if (warehouse) warehouse.value = button.dataset.warehouse || "";
+            if (room) room.value = button.dataset.room || "";
+            if (current) current.textContent = button.dataset.available || "0";
+            if (selectedLot) selectedLot.textContent = button.dataset.label || "Selected lot";
+        }
+
+        lotButtons.forEach(button => button.addEventListener("click", () => selectLot(button)));
+        selectLot(lotButtons[0]);
     })();
 </script>

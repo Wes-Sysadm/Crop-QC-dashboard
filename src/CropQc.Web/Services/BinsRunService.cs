@@ -22,26 +22,17 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
     public const string AdjustmentType = "BinsRun";
     public const string ReversalAdjustmentType = "BinsRunReversal";
     public const string SourceApplication = "CropQc.Web";
+    private static readonly int[] SizeDisplayOrder = [32, 36, 40, 48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216];
 
     public async Task<BinsRunPageViewModel> GetPageAsync(BinsRunFilterForm filter, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
         var canRecord = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Edit, cancellationToken);
         var canAdmin = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Admin, cancellationToken);
-        var options = await GetAvailableInventoryAsync(filter.WarehouseId, filter.RoomId, cancellationToken);
-        if (!string.IsNullOrWhiteSpace(filter.Grower))
-        {
-            options = options.Where(x => x.Grower.Contains(filter.Grower, StringComparison.OrdinalIgnoreCase)).ToList();
-        }
-
-        if (!string.IsNullOrWhiteSpace(filter.Variety))
-        {
-            options = options.Where(x => x.Variety.Contains(filter.Variety, StringComparison.OrdinalIgnoreCase)).ToList();
-        }
-
-        if (!string.IsNullOrWhiteSpace(filter.Lot))
-        {
-            options = options.Where(x => x.Lot.Contains(filter.Lot, StringComparison.OrdinalIgnoreCase)).ToList();
-        }
+        var snapshots = await GetCurrentInventorySnapshotsAsync(filter.WarehouseId, filter.RoomId, cancellationToken);
+        var currentSnapshots = snapshots.Where(x => x.CurrentBins > 0).ToList();
+        var sampleData = await GetLatestSampleDataByLotAsync(currentSnapshots, cancellationToken);
+        var options = BuildAvailableInventoryOptions(currentSnapshots, sampleData);
+        var roomSummary = filter.RoomId is null ? null : await BuildRoomSummaryAsync(filter.RoomId.Value, currentSnapshots, sampleData, cancellationToken);
 
         var historyQuery = dbContext.BinsRunEntries.AsNoTracking()
             .Include(x => x.Room)
@@ -57,21 +48,6 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         if (filter.ToDate is DateTime toDate)
         {
             historyQuery = historyQuery.Where(x => x.RunAt < new DateTimeOffset(toDate.Date.AddDays(1)));
-        }
-
-        if (!string.IsNullOrWhiteSpace(filter.Grower))
-        {
-            historyQuery = historyQuery.Where(x => x.GrowerName.Contains(filter.Grower));
-        }
-
-        if (!string.IsNullOrWhiteSpace(filter.Variety))
-        {
-            historyQuery = historyQuery.Where(x => (x.VarietyCode ?? "").Contains(filter.Variety));
-        }
-
-        if (!string.IsNullOrWhiteSpace(filter.Lot))
-        {
-            historyQuery = historyQuery.Where(x => x.LotNumber.Contains(filter.Lot));
         }
 
         var rooms = await dbContext.Rooms.AsNoTracking()
@@ -96,6 +72,7 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
             },
             Warehouses = await dbContext.Warehouses.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Code).ToListAsync(cancellationToken),
             Rooms = rooms,
+            RoomSummary = roomSummary,
             AvailableInventory = options,
             History = await historyQuery
                 .OrderByDescending(x => x.RunAt)
@@ -321,17 +298,19 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         return null;
     }
 
-    private async Task<IReadOnlyList<BinsRunInventoryOptionViewModel>> GetAvailableInventoryAsync(int? warehouseId, int? roomId, CancellationToken cancellationToken)
-    {
-        var snapshots = await GetCurrentInventorySnapshotsAsync(warehouseId, roomId, cancellationToken);
-        return snapshots
-            .Where(x => x.CurrentBins > 0)
+    private static IReadOnlyList<BinsRunInventoryOptionViewModel> BuildAvailableInventoryOptions(
+        IReadOnlyList<InventorySnapshot> snapshots,
+        IReadOnlyDictionary<string, LotSampleDistribution> sampleData) =>
+        snapshots
             .OrderBy(x => x.Facility)
             .ThenBy(x => x.Room)
             .ThenBy(x => x.Grower)
             .ThenBy(x => x.Variety)
             .ThenBy(x => x.Lot)
-            .Select(x => new BinsRunInventoryOptionViewModel(
+            .Select(x =>
+            {
+                sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var distribution);
+                return new BinsRunInventoryOptionViewModel(
                 x.InventoryKey,
                 x.WarehouseId,
                 x.RoomId,
@@ -340,9 +319,146 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                 x.Lot,
                 x.Variety,
                 $"{x.Facility} / {x.Room}",
-                x.CurrentBins))
+                    x.CurrentBins,
+                    distribution is null || distribution.GradePercentages.Count == 0 ? "No grade data" : FormatGradeSummary(distribution.GradePercentages),
+                    x.ReceiptDate);
+            })
+            .ToList();
+
+    private async Task<BinsRunRoomSummaryViewModel?> BuildRoomSummaryAsync(
+        int roomId,
+        IReadOnlyList<InventorySnapshot> currentSnapshots,
+        IReadOnlyDictionary<string, LotSampleDistribution> sampleData,
+        CancellationToken cancellationToken)
+    {
+        var room = await dbContext.Rooms.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .SingleOrDefaultAsync(x => x.Id == roomId, cancellationToken);
+        if (room is null)
+        {
+            return null;
+        }
+
+        var roomLots = currentSnapshots.Where(x => x.RoomId == roomId && x.CurrentBins > 0).ToList();
+        return new BinsRunRoomSummaryViewModel
+        {
+            WarehouseId = room.WarehouseId,
+            RoomId = room.Id,
+            Facility = room.Warehouse.Code,
+            Location = string.IsNullOrWhiteSpace(room.SubLocation) ? room.Warehouse.Name : room.SubLocation!,
+            RoomName = room.CropQcRoomName ?? room.DisplayName ?? room.Code,
+            TotalAvailableBins = roomLots.Sum(x => x.CurrentBins),
+            ActiveLotCount = roomLots.Count,
+            SizeDistribution = BuildWeightedSizeDistribution(roomLots, sampleData),
+            GradeSummary = BuildWeightedGradeSummary(roomLots, sampleData),
+            SizeDataLotCount = roomLots.Count(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.SizePercentages.Count > 0),
+            GradeDataLotCount = roomLots.Count(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.GradePercentages.Count > 0)
+        };
+    }
+
+    private async Task<IReadOnlyDictionary<string, LotSampleDistribution>> GetLatestSampleDataByLotAsync(IReadOnlyList<InventorySnapshot> currentSnapshots, CancellationToken cancellationToken)
+    {
+        if (currentSnapshots.Count == 0)
+        {
+            return new Dictionary<string, LotSampleDistribution>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var roomIds = currentSnapshots.Select(x => x.RoomId).Distinct().ToList();
+        var samples = await dbContext.QcSamples.AsNoTracking()
+            .Include(x => x.Receipt)
+                .ThenInclude(x => x.FruitProfile)
+            .Include(x => x.FruitReadings)
+                .ThenInclude(x => x.Grade)
+            .Where(x => !x.IsDeleted && roomIds.Contains(x.Receipt.RoomId))
+            .ToListAsync(cancellationToken);
+
+        return samples
+            .GroupBy(x => CurrentStorageLotKey(x.Receipt.RoomId, ReceiptLotNumber(x.Receipt), x.Receipt.FruitProfile.VarietyCode), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                x => x.Key,
+                x => BuildLotSampleDistribution(x.OrderByDescending(y => y.SampleTakenAt).ThenByDescending(y => y.Id).First()),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static LotSampleDistribution BuildLotSampleDistribution(QcSample sample)
+    {
+        var sizeCounts = sample.FruitReadings
+            .Where(x => x.SizeCategory is not null)
+            .GroupBy(x => x.SizeCategory!.Value)
+            .ToDictionary(x => x.Key, x => x.Count());
+        var gradeCounts = sample.FruitReadings
+            .Where(x => x.Grade is not null)
+            .GroupBy(x => x.Grade!.Code)
+            .ToDictionary(x => x.Key, x => x.Count(), StringComparer.OrdinalIgnoreCase);
+
+        return new LotSampleDistribution(
+            Percentages(sizeCounts),
+            Percentages(gradeCounts),
+            sample.SampleTakenAt);
+    }
+
+    private static IReadOnlyDictionary<int, decimal> Percentages(IReadOnlyDictionary<int, int> counts)
+    {
+        var total = counts.Values.Sum();
+        return total == 0
+            ? new Dictionary<int, decimal>()
+            : counts.ToDictionary(x => x.Key, x => x.Value / (decimal)total);
+    }
+
+    private static IReadOnlyDictionary<string, decimal> Percentages(IReadOnlyDictionary<string, int> counts)
+    {
+        var total = counts.Values.Sum();
+        return total == 0
+            ? new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
+            : counts.ToDictionary(x => x.Key, x => x.Value / (decimal)total, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<BinsRunSizeDistributionPoint> BuildWeightedSizeDistribution(
+        IReadOnlyList<InventorySnapshot> roomLots,
+        IReadOnlyDictionary<string, LotSampleDistribution> sampleData)
+    {
+        var points = SizeDisplayOrder
+            .Select(size => new BinsRunSizeDistributionPoint(
+                size,
+                roomLots.Sum(lot => sampleData.TryGetValue(CurrentStorageLotKey(lot.RoomId, lot.Lot, lot.Variety), out var data)
+                    && data.SizePercentages.TryGetValue(size, out var percentage)
+                        ? lot.CurrentBins * percentage
+                        : 0m)))
+            .ToList();
+        return points.Any(x => x.EstimatedBins > 0) ? points : [];
+    }
+
+    private static IReadOnlyList<BinsRunGradeSummaryPoint> BuildWeightedGradeSummary(
+        IReadOnlyList<InventorySnapshot> roomLots,
+        IReadOnlyDictionary<string, LotSampleDistribution> sampleData)
+    {
+        var estimatedBinsByGrade = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var lot in roomLots)
+        {
+            if (!sampleData.TryGetValue(CurrentStorageLotKey(lot.RoomId, lot.Lot, lot.Variety), out var data))
+            {
+                continue;
+            }
+
+            foreach (var grade in data.GradePercentages)
+            {
+                estimatedBinsByGrade[grade.Key] = estimatedBinsByGrade.GetValueOrDefault(grade.Key) + lot.CurrentBins * grade.Value;
+            }
+        }
+
+        return estimatedBinsByGrade
+            .Select(x => new BinsRunGradeSummaryPoint(x.Key, x.Value))
+            .OrderByDescending(x => x.EstimatedBins)
+            .ThenBy(x => x.Grade)
             .ToList();
     }
+
+    private static string FormatGradeSummary(IReadOnlyDictionary<string, decimal> gradePercentages) =>
+        string.Join(", ", gradePercentages
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.Key)
+            .Take(3)
+            .Select(x => $"{x.Key} {x.Value:P0}"));
 
     private async Task<InventorySnapshot?> GetCurrentInventoryByKeyAsync(string inventoryKey, CancellationToken cancellationToken)
     {
@@ -442,7 +558,8 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                 receipt.PoolStart,
                 receipt.FruitProfile.VarietyCode,
                 "",
-                currentBins);
+                currentBins,
+                receipt.ReceivedAt);
         });
 
         var adjustmentQuery = dbContext.RoomInventoryAdjustments.AsNoTracking()
@@ -468,7 +585,8 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                 x.PoolStart,
                 x.VarietyCode ?? "",
                 x.InventoryStatus ?? "",
-                Math.Max(0, x.NewBinCount)));
+                Math.Max(0, x.NewBinCount),
+                null));
 
         return receiptSnapshots.Concat(adjustmentSnapshots).ToList();
     }
@@ -568,6 +686,9 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
     private static string CurrentStorageLotKey(int roomId, string lot, string variety) =>
         RoomInventoryImportService.CurrentStorageLotKey(roomId, lot, variety);
 
+    private static string ReceiptLotNumber(Receipt receipt) =>
+        !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode;
+
     private sealed record InventorySnapshot(
         string InventoryKey,
         long? ReceiptId,
@@ -583,5 +704,11 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         string? PoolStart,
         string Variety,
         string InventoryStatus,
-        int CurrentBins);
+        int CurrentBins,
+        DateTimeOffset? ReceiptDate);
+
+    private sealed record LotSampleDistribution(
+        IReadOnlyDictionary<int, decimal> SizePercentages,
+        IReadOnlyDictionary<string, decimal> GradePercentages,
+        DateTimeOffset SampleTakenAt);
 }
