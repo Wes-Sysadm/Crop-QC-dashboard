@@ -362,9 +362,19 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     gap: 10px;
 }
 
+.lot-selection-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    color: #475569;
+}
+
 .lot-list-header {
     display: grid;
-    grid-template-columns: minmax(240px, 1.8fr) minmax(130px, 0.9fr) minmax(160px, 1fr) minmax(160px, 1fr) minmax(110px, 0.55fr) minmax(90px, 0.5fr);
+    grid-template-columns: minmax(230px, 1.7fr) minmax(120px, 0.8fr) minmax(150px, 1fr) minmax(150px, 1fr) minmax(100px, 0.5fr) minmax(150px, 0.8fr) minmax(120px, 0.6fr);
     gap: 16px;
     padding: 0 16px 2px;
     color: #64748b;
@@ -379,7 +389,7 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 
 .lot-option {
     display: grid;
-    grid-template-columns: minmax(240px, 1.8fr) minmax(130px, 0.9fr) minmax(160px, 1fr) minmax(160px, 1fr) minmax(110px, 0.55fr) minmax(90px, 0.5fr);
+    grid-template-columns: minmax(230px, 1.7fr) minmax(120px, 0.8fr) minmax(150px, 1fr) minmax(150px, 1fr) minmax(100px, 0.5fr) minmax(150px, 0.8fr) minmax(120px, 0.6fr);
     gap: 16px;
     align-items: center;
     width: 100%;
@@ -410,6 +420,10 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     box-shadow: inset 4px 0 0 #2563eb, 0 1px 4px rgba(37, 99, 235, 0.16);
 }
 
+.lot-option.run-selected {
+    border-color: #16a34a;
+}
+
 .lot-cell {
     min-width: 0;
     overflow-wrap: anywhere;
@@ -436,35 +450,22 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     white-space: nowrap;
 }
 
-.lot-selected-marker {
-    justify-self: end;
-    min-width: 76px;
-    border: 1px solid #cbd5e1;
-    border-radius: 999px;
-    padding: 5px 10px;
-    color: #475569;
-    font-size: 0.82rem;
+.lot-project-cell,
+.lot-run-cell {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+    color: #334155;
     font-weight: 700;
-    text-align: center;
-    background: #fff;
 }
 
-.lot-option.selected .lot-selected-marker {
-    border-color: #2563eb;
-    color: #1d4ed8;
-    background: #dbeafe;
+.lot-run-cell input:disabled + span {
+    color: #94a3b8;
 }
 
-.lot-option.selected .lot-selected-marker::before {
-    content: "Selected";
-}
-
-.lot-option.selected .lot-selected-marker {
-    font-size: 0;
-}
-
-.lot-option.selected .lot-selected-marker::before {
-    font-size: 0.82rem;
+.projection-selection-summary {
+    margin-top: -8px;
 }
 
 .selected-lot-summary {
@@ -544,6 +545,10 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     background: #f8fafc;
 }
 
+.hidden {
+    display: none !important;
+}
+
 .inline-form {
     display: inline-flex;
     align-items: center;
@@ -568,7 +573,9 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
         align-items: start;
     }
     .lot-cell[data-label]::before,
-    .lot-bins::before {
+    .lot-bins::before,
+    .lot-project-cell::before,
+    .lot-run-cell::before {
         content: attr(data-label);
         display: block;
         margin-bottom: 3px;
@@ -578,7 +585,11 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
         text-transform: uppercase;
     }
     .lot-bins { text-align: left; }
-    .lot-selected-marker { justify-self: start; }
+    .lot-project-cell,
+    .lot-run-cell {
+        display: grid;
+        gap: 6px;
+    }
     .selected-lot-summary { grid-template-columns: 1fr; }
     .selected-lot-bins {
         justify-self: start;

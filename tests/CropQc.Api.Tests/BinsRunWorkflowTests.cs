@@ -36,6 +36,7 @@ public sealed class BinsRunWorkflowTests
         Assert.Contains("No grade information is available for the current inventory in this room.", view);
         Assert.Contains("32, 36, 40, 48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216", service);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Index), AccessPolicyNames.BinsRunView);
+        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Projection), AccessPolicyNames.BinsRunView);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Create), AccessPolicyNames.BinsRunEdit);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Edit), AccessPolicyNames.BinsRunEdit);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Reverse), AccessPolicyNames.BinsRunAdmin);
@@ -99,6 +100,124 @@ public sealed class BinsRunWorkflowTests
         Assert.Equal(90m, summary.GradeSummary.Single(x => x.Grade == "W2").EstimatedBins);
         Assert.Equal(2, summary.SizeDataLotCount);
         Assert.Equal(2, summary.GradeDataLotCount);
+        Assert.Equal(190, summary.Projection.AvailableBins);
+        Assert.Equal(150, summary.Projection.SizeRepresentedBins);
+        Assert.Equal(40, summary.Projection.SizeMissingBins);
+        Assert.Equal(150, summary.Projection.GradeRepresentedBins);
+        Assert.Equal(40, summary.Projection.GradeMissingBins);
+    }
+
+    [Fact]
+    public async Task Projection_DefaultsToWholeRoomWhenNoLotsAreSelected()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var projection = await CreateService(db).GetProjectionAsync(new BinsRunProjectionRequest { RoomId = 1001 }, Principal("viewer@fruitandland.com"), CancellationToken.None);
+
+        Assert.False(projection.IsSelection);
+        Assert.Equal("Room summary", projection.Label);
+        Assert.Equal(3, projection.LotCount);
+        Assert.Equal(190, projection.AvailableBins);
+        Assert.Equal(60m, projection.SizeDistribution.Single(x => x.Size == 80).EstimatedBins);
+        Assert.Equal(90m, projection.SizeDistribution.Single(x => x.Size == 100).EstimatedBins);
+        Assert.Equal(60m, projection.GradeSummary.Single(x => x.Grade == "W1").EstimatedBins);
+        Assert.Equal(90m, projection.GradeSummary.Single(x => x.Grade == "W2").EstimatedBins);
+    }
+
+    [Fact]
+    public async Task Projection_SelectingOneLotReturnsOnlyThatLot()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var lot = (await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, Principal("viewer@fruitandland.com"), CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+
+        var projection = await service.GetProjectionAsync(new BinsRunProjectionRequest { RoomId = 1001, InventoryKeys = [lot.InventoryKey] }, Principal("viewer@fruitandland.com"), CancellationToken.None);
+
+        Assert.True(projection.IsSelection);
+        Assert.Equal(1, projection.LotCount);
+        Assert.Equal(120, projection.AvailableBins);
+        Assert.Equal(32, projection.SizeDistribution.First().Size);
+        Assert.Equal(216, projection.SizeDistribution.Last().Size);
+        Assert.Equal(60m, projection.SizeDistribution.Single(x => x.Size == 80).EstimatedBins);
+        Assert.Equal(60m, projection.SizeDistribution.Single(x => x.Size == 100).EstimatedBins);
+        Assert.Equal(60m, projection.GradeSummary.Single(x => x.Grade == "W1").EstimatedBins);
+        Assert.Equal(60m, projection.GradeSummary.Single(x => x.Grade == "W2").EstimatedBins);
+        Assert.Equal(120, projection.SizeRepresentedBins);
+        Assert.Equal(0, projection.SizeMissingBins);
+    }
+
+    [Fact]
+    public async Task Projection_SelectingMultipleLotsCombinesWeightedSelectedLotsOnly()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var page = await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, Principal("viewer@fruitandland.com"), CancellationToken.None);
+        var lot120 = page.AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var lot30 = page.AvailableInventory.Single(x => x.Lot == "LOT-30");
+        var unselectedHistory = page.AvailableInventory.Single(x => x.Lot == "HISTORY");
+
+        var projection = await service.GetProjectionAsync(new BinsRunProjectionRequest
+        {
+            RoomId = 1001,
+            InventoryKeys = [lot120.InventoryKey, lot30.InventoryKey]
+        }, Principal("viewer@fruitandland.com"), CancellationToken.None);
+
+        Assert.Equal(2, projection.LotCount);
+        Assert.Equal(150, projection.AvailableBins);
+        Assert.Equal(60m, projection.SizeDistribution.Single(x => x.Size == 80).EstimatedBins);
+        Assert.Equal(90m, projection.SizeDistribution.Single(x => x.Size == 100).EstimatedBins);
+        Assert.Equal(60m, projection.GradeSummary.Single(x => x.Grade == "W1").EstimatedBins);
+        Assert.Equal(90m, projection.GradeSummary.Single(x => x.Grade == "W2").EstimatedBins);
+        Assert.DoesNotContain(page.AvailableInventory.Where(x => x.InventoryKey != unselectedHistory.InventoryKey), x => x.InventoryKey == unselectedHistory.InventoryKey);
+        Assert.Equal(150, projection.SizeRepresentedBins);
+        Assert.Equal(0, projection.SizeMissingBins);
+        Assert.Empty(await db.BinsRunEntries.ToListAsync());
+        Assert.DoesNotContain(await db.RoomInventoryAdjustments.ToListAsync(), x => x.AdjustmentType == BinsRunService.AdjustmentType);
+    }
+
+    [Fact]
+    public async Task Projection_ReportsMissingSizingAndGradeBinsSeparately()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var page = await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, Principal("viewer@fruitandland.com"), CancellationToken.None);
+        var lot120 = page.AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var history = page.AvailableInventory.Single(x => x.Lot == "HISTORY");
+
+        var projection = await service.GetProjectionAsync(new BinsRunProjectionRequest
+        {
+            RoomId = 1001,
+            InventoryKeys = [lot120.InventoryKey, history.InventoryKey]
+        }, Principal("viewer@fruitandland.com"), CancellationToken.None);
+
+        Assert.Equal(160, projection.AvailableBins);
+        Assert.Equal(120, projection.SizeRepresentedBins);
+        Assert.Equal(40, projection.SizeMissingBins);
+        Assert.Equal(120, projection.GradeRepresentedBins);
+        Assert.Equal(40, projection.GradeMissingBins);
+        Assert.DoesNotContain(projection.SizeDistribution, x => x.Size == 80 && x.EstimatedBins == 0);
+    }
+
+    [Fact]
+    public async Task Projection_RejectsOtherRoomAndDepletedInventory()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var otherRoomLot = (await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1002 }, Principal("viewer@fruitandland.com"), CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-OTHER");
+
+        var otherRoomError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.GetProjectionAsync(new BinsRunProjectionRequest { RoomId = 1001, InventoryKeys = [otherRoomLot.InventoryKey] }, Principal("viewer@fruitandland.com"), CancellationToken.None));
+        var depletedError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.GetProjectionAsync(new BinsRunProjectionRequest { RoomId = 1001, InventoryKeys = ["A:8002:1001|LOT-ZERO|FUJI"] }, Principal("viewer@fruitandland.com"), CancellationToken.None));
+
+        Assert.Equal("Selected inventory is not available in this room.", otherRoomError.Message);
+        Assert.Equal("Selected inventory is not available in this room.", depletedError.Message);
     }
 
     [Fact]

@@ -13,6 +13,20 @@ public sealed class BinsRunController(IBinsRunService binsRunService) : Controll
     public async Task<IActionResult> Index([FromQuery] BinsRunFilterForm filter, CancellationToken cancellationToken) =>
         View(await binsRunService.GetPageAsync(filter, User, cancellationToken));
 
+    [HttpPost("Projection")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunView)]
+    public async Task<IActionResult> Projection([FromBody] BinsRunProjectionRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await binsRunService.GetProjectionAsync(request, User, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("Create")]
     [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
     public async Task<IActionResult> Create(BinsRunForm form, CancellationToken cancellationToken)

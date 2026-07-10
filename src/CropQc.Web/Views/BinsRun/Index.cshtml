@@ -1,9 +1,9 @@
 @model BinsRunPageViewModel
 @{
     ViewData["Title"] = "Bins Run";
-    var selected = Model.AvailableInventory.FirstOrDefault(x => x.InventoryKey == Model.Form.InventoryKey);
-    var maxSizeBins = Model.RoomSummary?.SizeDistribution.Count > 0 ? Model.RoomSummary.SizeDistribution.Max(x => x.EstimatedBins) : 0m;
-    var maxGradeBins = Model.RoomSummary?.GradeSummary.Count > 0 ? Model.RoomSummary.GradeSummary.Max(x => x.EstimatedBins) : 0m;
+    var projection = Model.RoomSummary?.Projection;
+    var maxSizeBins = projection?.SizeDistribution.Count > 0 ? projection.SizeDistribution.Max(x => x.EstimatedBins) : 0m;
+    var maxGradeBins = projection?.GradeSummary.Count > 0 ? projection.GradeSummary.Max(x => x.EstimatedBins) : 0m;
 }
 
 <h1>Bins Run</h1>
@@ -79,16 +79,13 @@ else
 
     <section class="grid-two">
         <div class="panel-section">
-            <h2>Size Distribution</h2>
-            <p class="muted">Estimated bins, weighted by each current lot's available-bin balance.</p>
-            @if (Model.RoomSummary.SizeDistribution.Count == 0)
-            {
-                <p class="empty-state">No sizing data is available for the current inventory in this room.</p>
-            }
-            else
-            {
-                <div class="size-chart" aria-label="Size distribution chart">
-                    @foreach (var point in Model.RoomSummary.SizeDistribution)
+            <h2 data-projection-size-title>Size Distribution</h2>
+            <p class="muted" data-projection-size-context>@ProjectionContext(projection, dataKind: "Sizing")</p>
+            <p class="empty-state @(projection?.SizeDistribution.Count == 0 ? "" : "hidden")" data-size-empty>No sizing data is available for the current inventory in this room.</p>
+            <div class="size-chart @(projection?.SizeDistribution.Count == 0 ? "hidden" : "")" aria-label="Size distribution chart" data-size-chart>
+                @if (projection is not null)
+                {
+                    @foreach (var point in projection.SizeDistribution)
                     {
                         var height = point.EstimatedBins <= 0 || maxSizeBins <= 0 ? 0 : Math.Max(4, (int)Math.Round(point.EstimatedBins / maxSizeBins * 100m));
                         <div class="size-chart-column">
@@ -97,20 +94,17 @@ else
                             <span class="size-label">@point.Size</span>
                         </div>
                     }
-                </div>
-            }
+                }
+            </div>
         </div>
         <div class="panel-section">
-            <h2>Expected Grade</h2>
-            <p class="muted">Estimated bins, weighted by each current lot's available-bin balance.</p>
-            @if (Model.RoomSummary.GradeSummary.Count == 0)
-            {
-                <p class="empty-state">No grade information is available for the current inventory in this room.</p>
-            }
-            else
-            {
-                <div class="grade-summary">
-                    @foreach (var grade in Model.RoomSummary.GradeSummary)
+            <h2 data-projection-grade-title>Expected Grade</h2>
+            <p class="muted" data-projection-grade-context>@ProjectionContext(projection, dataKind: "Grade")</p>
+            <p class="empty-state @(projection?.GradeSummary.Count == 0 ? "" : "hidden")" data-grade-empty>No grade information is available for the current inventory in this room.</p>
+            <div class="grade-summary @(projection?.GradeSummary.Count == 0 ? "hidden" : "")" data-grade-summary>
+                @if (projection is not null)
+                {
+                    @foreach (var grade in projection.GradeSummary)
                     {
                         var width = maxGradeBins <= 0 ? 0 : Math.Max(4, (int)Math.Round(grade.EstimatedBins / maxGradeBins * 100m));
                         <div class="grade-summary-row">
@@ -119,8 +113,8 @@ else
                             <span class="grade-value">@grade.EstimatedBins.ToString("0.#")</span>
                         </div>
                     }
-                </div>
-            }
+                }
+            </div>
         </div>
     </section>
 
@@ -134,6 +128,13 @@ else
         {
             <details class="lot-submenu" open>
                 <summary>@Model.AvailableInventory.Count active lots currently available</summary>
+                <div class="lot-selection-toolbar">
+                    <span data-projection-status>No lots selected. Showing whole-room projection.</span>
+                    <span class="button-row">
+                        <button type="button" class="secondary-button" data-select-all-lots>Select all available lots</button>
+                        <button type="button" class="secondary-button" data-clear-lot-selection>Clear selection</button>
+                    </span>
+                </div>
                 <div class="lot-list">
                     <div class="lot-list-header" aria-hidden="true">
                         <span>Grower / Lot</span>
@@ -141,22 +142,21 @@ else
                         <span>Expected grade</span>
                         <span>Source</span>
                         <span>Available</span>
-                        <span>Status</span>
+                        <span>Projection</span>
+                        <span>Run lot</span>
                     </div>
                     @foreach (var lot in Model.AvailableInventory)
                     {
                         var sourceLabel = lot.ReceiptDate is null ? "Current baseline" : lot.ReceiptDate.Value.ToLocalTime().ToString("g");
-                        <button type="button"
-                                class="lot-option"
-                                data-select-lot
-                                data-key="@lot.InventoryKey"
-                                data-available="@lot.CurrentBins"
-                                data-warehouse="@lot.WarehouseId"
-                                data-room="@lot.RoomId"
-                                data-label="@lot.Grower / @lot.Variety / @lot.Lot"
-                                data-grade="@lot.GradeSummary"
-                                data-source="@sourceLabel"
-                                aria-pressed="false">
+                        <div class="lot-option"
+                             data-lot-row
+                             data-key="@lot.InventoryKey"
+                             data-available="@lot.CurrentBins"
+                             data-warehouse="@lot.WarehouseId"
+                             data-room="@lot.RoomId"
+                             data-label="@lot.Grower / @lot.Variety / @lot.Lot"
+                             data-grade="@lot.GradeSummary"
+                             data-source="@sourceLabel">
                             <span class="lot-cell lot-primary">
                                 <strong>@lot.Grower</strong>
                                 <span>Lot @lot.Lot</span>
@@ -165,12 +165,43 @@ else
                             <span class="lot-cell" data-label="Expected grade">@lot.GradeSummary</span>
                             <span class="lot-cell" data-label="Source">@sourceLabel</span>
                             <strong class="lot-cell lot-bins" data-label="Available">@lot.CurrentBins bins</strong>
-                            <span class="lot-selected-marker" aria-hidden="true">Select</span>
-                        </button>
+                            <label class="lot-project-cell" data-label="Projection">
+                                <input type="checkbox" data-project-lot value="@lot.InventoryKey" />
+                                <span>Selected for projection</span>
+                            </label>
+                            <label class="lot-run-cell" data-label="Run lot">
+                                <input type="radio" name="RunInventoryKey" data-run-lot value="@lot.InventoryKey" />
+                                <span>Run this lot</span>
+                            </label>
+                        </div>
                     }
                 </div>
             </details>
         }
+    </section>
+
+    <section class="panel-section projection-selection-summary" data-selection-summary>
+        <h2>Selection Summary</h2>
+        <div class="room-summary-metrics">
+            <div class="metric-card">
+                <span class="metric-label">Selected Lots</span>
+                <strong data-selected-lot-count>0</strong>
+            </div>
+            <div class="metric-card">
+                <span class="metric-label">Selected Bins</span>
+                <strong data-selected-bin-total>0</strong>
+            </div>
+            <div class="metric-card">
+                <span class="metric-label">Sizing Coverage</span>
+                <strong><span data-size-represented>@(projection?.SizeRepresentedBins ?? 0)</span> / <span data-size-total>@(projection?.AvailableBins ?? 0)</span></strong>
+                <span data-size-missing>@(projection?.SizeMissingBins ?? 0) missing</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-label">Grade Coverage</span>
+                <strong><span data-grade-represented>@(projection?.GradeRepresentedBins ?? 0)</span> / <span data-grade-total>@(projection?.AvailableBins ?? 0)</span></strong>
+                <span data-grade-missing>@(projection?.GradeMissingBins ?? 0) missing</span>
+            </div>
+        </div>
     </section>
 
     <section class="panel-section">
@@ -186,22 +217,22 @@ else
         else
         {
             <form class="bins-run-form" method="post" action="/BinsRun/Create">
-                <input type="hidden" name="WarehouseId" value="@(selected?.WarehouseId ?? Model.Filter.WarehouseId)" data-bins-run-warehouse />
-                <input type="hidden" name="RoomId" value="@(selected?.RoomId ?? Model.Filter.RoomId)" data-bins-run-room />
-                <input type="hidden" name="InventoryKey" value="@(selected?.InventoryKey ?? "")" data-bins-run-inventory />
-                <input type="hidden" name="ExpectedAvailableBins" value="@(selected?.CurrentBins ?? 0)" data-bins-run-expected />
+                <input type="hidden" name="WarehouseId" value="@(Model.Filter.WarehouseId)" data-bins-run-warehouse />
+                <input type="hidden" name="RoomId" value="@(Model.Filter.RoomId)" data-bins-run-room />
+                <input type="hidden" name="InventoryKey" value="" data-bins-run-inventory />
+                <input type="hidden" name="ExpectedAvailableBins" value="0" data-bins-run-expected />
                 <div class="selected-lot-summary">
                     <div>
-                        <span class="metric-label">Selected lot</span>
-                        <strong data-selected-lot>@(selected is null ? "Select a lot above" : $"{selected.Grower} / {selected.Variety} / {selected.Lot}")</strong>
+                        <span class="metric-label">Lot being run</span>
+                        <strong data-selected-lot>Choose the lot being depleted</strong>
                         <span class="selected-lot-meta">
-                            <span data-selected-grade>@(selected?.GradeSummary ?? "Grade not available")</span>
-                            <span data-selected-source>@(selected is null ? "Choose a lot to populate source details" : selected.ReceiptDate is null ? "Current baseline" : selected.ReceiptDate.Value.ToLocalTime().ToString("g"))</span>
+                            <span data-selected-grade>Select exactly which inventory record this Bins Run will reduce.</span>
+                            <span data-selected-source>Projection selection alone does not change inventory.</span>
                         </span>
                     </div>
                     <div class="selected-lot-bins">
                         <span class="metric-label">Available bins</span>
-                        <strong data-bins-run-current>@(selected?.CurrentBins ?? 0)</strong>
+                        <strong data-bins-run-current>0</strong>
                     </div>
                 </div>
                 <div class="bins-run-form-row">
@@ -287,34 +318,230 @@ else
 
 <script>
     (() => {
-        const lotButtons = Array.from(document.querySelectorAll("[data-select-lot]"));
+        const lotRows = Array.from(document.querySelectorAll("[data-lot-row]"));
+        const projectCheckboxes = Array.from(document.querySelectorAll("[data-project-lot]"));
+        const runRadios = Array.from(document.querySelectorAll("[data-run-lot]"));
+        const selectAll = document.querySelector("[data-select-all-lots]");
+        const clearSelection = document.querySelector("[data-clear-lot-selection]");
+        const projectionStatus = document.querySelector("[data-projection-status]");
         const inventory = document.querySelector("[data-bins-run-inventory]");
         const expected = document.querySelector("[data-bins-run-expected]");
         const warehouse = document.querySelector("[data-bins-run-warehouse]");
         const room = document.querySelector("[data-bins-run-room]");
         const current = document.querySelector("[data-bins-run-current]");
         const selectedLot = document.querySelector("[data-selected-lot]");
+        const selectedGrade = document.querySelector("[data-selected-grade]");
+        const selectedSource = document.querySelector("[data-selected-source]");
+        let projectionRequestId = 0;
+        let projectionAbortController = null;
 
-        function selectLot(button) {
-            if (!button) return;
-            lotButtons.forEach(x => {
-                const isSelected = x === button;
-                x.classList.toggle("selected", isSelected);
-                x.setAttribute("aria-pressed", isSelected ? "true" : "false");
-            });
-            if (inventory) inventory.value = button.dataset.key || "";
-            if (expected) expected.value = button.dataset.available || "0";
-            if (warehouse) warehouse.value = button.dataset.warehouse || "";
-            if (room) room.value = button.dataset.room || "";
-            if (current) current.textContent = button.dataset.available || "0";
-            if (selectedLot) selectedLot.textContent = button.dataset.label || "Selected lot";
-            const selectedGrade = document.querySelector("[data-selected-grade]");
-            const selectedSource = document.querySelector("[data-selected-source]");
-            if (selectedGrade) selectedGrade.textContent = button.dataset.grade || "Grade not available";
-            if (selectedSource) selectedSource.textContent = button.dataset.source || "";
+        function selectedKeys() {
+            return projectCheckboxes.filter(x => x.checked).map(x => x.value);
         }
 
-        lotButtons.forEach(button => button.addEventListener("click", () => selectLot(button)));
-        selectLot(lotButtons[0]);
+        function rowForKey(key) {
+            return lotRows.find(x => x.dataset.key === key);
+        }
+
+        function setRunLot(row) {
+            if (!row) {
+                if (inventory) inventory.value = "";
+                if (expected) expected.value = "0";
+                if (current) current.textContent = "0";
+                if (selectedLot) selectedLot.textContent = "Choose the lot being depleted";
+                if (selectedGrade) selectedGrade.textContent = "Select exactly which inventory record this Bins Run will reduce.";
+                if (selectedSource) selectedSource.textContent = "Projection selection alone does not change inventory.";
+                runRadios.forEach(x => x.checked = false);
+                lotRows.forEach(x => x.classList.remove("run-selected"));
+                return;
+            }
+
+            if (inventory) inventory.value = row.dataset.key || "";
+            if (expected) expected.value = row.dataset.available || "0";
+            if (warehouse) warehouse.value = row.dataset.warehouse || "";
+            if (room) room.value = row.dataset.room || "";
+            if (current) current.textContent = row.dataset.available || "0";
+            if (selectedLot) selectedLot.textContent = row.dataset.label || "Selected lot";
+            if (selectedGrade) selectedGrade.textContent = row.dataset.grade || "Grade not available";
+            if (selectedSource) selectedSource.textContent = row.dataset.source || "";
+            runRadios.forEach(x => x.checked = x.value === row.dataset.key);
+            lotRows.forEach(x => x.classList.toggle("run-selected", x === row));
+        }
+
+        function syncLotSelection() {
+            const keys = selectedKeys();
+            const keySet = new Set(keys);
+            lotRows.forEach(row => row.classList.toggle("selected", keySet.has(row.dataset.key)));
+            runRadios.forEach(radio => {
+                radio.disabled = keys.length > 0 && !keySet.has(radio.value);
+            });
+
+            if (projectionStatus) {
+                projectionStatus.textContent = keys.length === 0
+                    ? "No lots selected. Showing whole-room projection."
+                    : `${keys.length} lot${keys.length === 1 ? "" : "s"} selected for projected line mix.`;
+            }
+
+            const currentRunKey = inventory?.value || "";
+            if (keys.length === 1) {
+                setRunLot(rowForKey(keys[0]));
+            } else if (keys.length > 1 && !keySet.has(currentRunKey)) {
+                setRunLot(null);
+            } else if (keys.length === 0 && currentRunKey) {
+                const row = rowForKey(currentRunKey);
+                setRunLot(row || null);
+            }
+        }
+
+        function renderSizeChart(points) {
+            const chart = document.querySelector("[data-size-chart]");
+            const empty = document.querySelector("[data-size-empty]");
+            if (!chart || !empty) return;
+            chart.innerHTML = "";
+            if (!points || points.length === 0) {
+                chart.classList.add("hidden");
+                empty.classList.remove("hidden");
+                return;
+            }
+
+            const max = Math.max(...points.map(x => Number(x.estimatedBins || x.EstimatedBins || 0)));
+            for (const point of points) {
+                const estimated = Number(point.estimatedBins || point.EstimatedBins || 0);
+                const height = estimated <= 0 || max <= 0 ? 0 : Math.max(4, Math.round(estimated / max * 100));
+                const size = point.size || point.Size;
+                const column = document.createElement("div");
+                column.className = "size-chart-column";
+                column.innerHTML = `<span class="size-bar-value">${estimated > 0 ? estimated.toFixed(estimated % 1 === 0 ? 0 : 1) : ""}</span><span class="size-bar" style="height: ${height}%"></span><span class="size-label">${size}</span>`;
+                chart.appendChild(column);
+            }
+
+            empty.classList.add("hidden");
+            chart.classList.remove("hidden");
+        }
+
+        function renderGradeSummary(points) {
+            const summary = document.querySelector("[data-grade-summary]");
+            const empty = document.querySelector("[data-grade-empty]");
+            if (!summary || !empty) return;
+            summary.innerHTML = "";
+            if (!points || points.length === 0) {
+                summary.classList.add("hidden");
+                empty.classList.remove("hidden");
+                return;
+            }
+
+            const max = Math.max(...points.map(x => Number(x.estimatedBins || x.EstimatedBins || 0)));
+            for (const point of points) {
+                const estimated = Number(point.estimatedBins || point.EstimatedBins || 0);
+                const width = estimated <= 0 || max <= 0 ? 0 : Math.max(4, Math.round(estimated / max * 100));
+                const grade = point.grade || point.Grade;
+                const row = document.createElement("div");
+                row.className = "grade-summary-row";
+                row.innerHTML = `<span class="grade-label">${grade}</span><span class="grade-bar-track"><span class="grade-bar" style="width: ${width}%"></span></span><span class="grade-value">${estimated.toFixed(estimated % 1 === 0 ? 0 : 1)}</span>`;
+                summary.appendChild(row);
+            }
+
+            empty.classList.add("hidden");
+            summary.classList.remove("hidden");
+        }
+
+        function projectionContext(data, kind) {
+            const represented = kind === "size" ? data.sizeRepresentedBins : data.gradeRepresentedBins;
+            const missing = kind === "size" ? data.sizeMissingBins : data.gradeMissingBins;
+            const prefix = data.isSelection ? `${data.label}: ${data.availableBins} selected bins.` : `Room summary: ${data.availableBins} bins currently available.`;
+            if (missing > 0) {
+                return `${prefix} ${kind === "size" ? "Sizing" : "Grade"} data represents ${represented} of ${data.availableBins} bins; ${missing} bins have no ${kind === "size" ? "sizing" : "grade"} data.`;
+            }
+
+            return `${prefix} Estimated bins, weighted by current available-bin balance.`;
+        }
+
+        function renderProjection(data) {
+            const sizeTitle = document.querySelector("[data-projection-size-title]");
+            const gradeTitle = document.querySelector("[data-projection-grade-title]");
+            const sizeContext = document.querySelector("[data-projection-size-context]");
+            const gradeContext = document.querySelector("[data-projection-grade-context]");
+            if (sizeTitle) sizeTitle.textContent = data.isSelection ? `Size Distribution - ${data.label}` : "Size Distribution - Room Summary";
+            if (gradeTitle) gradeTitle.textContent = data.isSelection ? `Expected Grade - ${data.label}` : "Expected Grade - Room Summary";
+            if (sizeContext) sizeContext.textContent = projectionContext(data, "size");
+            if (gradeContext) gradeContext.textContent = projectionContext(data, "grade");
+            const selectedLotCount = document.querySelector("[data-selected-lot-count]");
+            const selectedBinTotal = document.querySelector("[data-selected-bin-total]");
+            const sizeRepresented = document.querySelector("[data-size-represented]");
+            const sizeTotal = document.querySelector("[data-size-total]");
+            const sizeMissing = document.querySelector("[data-size-missing]");
+            const gradeRepresented = document.querySelector("[data-grade-represented]");
+            const gradeTotal = document.querySelector("[data-grade-total]");
+            const gradeMissing = document.querySelector("[data-grade-missing]");
+            if (selectedLotCount) selectedLotCount.textContent = data.isSelection ? data.lotCount : 0;
+            if (selectedBinTotal) selectedBinTotal.textContent = data.isSelection ? data.availableBins : 0;
+            if (sizeRepresented) sizeRepresented.textContent = data.sizeRepresentedBins;
+            if (sizeTotal) sizeTotal.textContent = data.availableBins;
+            if (sizeMissing) sizeMissing.textContent = `${data.sizeMissingBins} missing`;
+            if (gradeRepresented) gradeRepresented.textContent = data.gradeRepresentedBins;
+            if (gradeTotal) gradeTotal.textContent = data.availableBins;
+            if (gradeMissing) gradeMissing.textContent = `${data.gradeMissingBins} missing`;
+            renderSizeChart(data.sizeDistribution);
+            renderGradeSummary(data.gradeSummary);
+        }
+
+        async function refreshProjection() {
+            const requestId = ++projectionRequestId;
+            if (projectionAbortController) projectionAbortController.abort();
+            projectionAbortController = new AbortController();
+            try {
+                const response = await fetch("/BinsRun/Projection", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        warehouseId: warehouse?.value ? Number(warehouse.value) : null,
+                        roomId: room?.value ? Number(room.value) : null,
+                        inventoryKeys: selectedKeys()
+                    }),
+                    signal: projectionAbortController.signal
+                });
+                if (!response.ok) return;
+                const data = await response.json();
+                if (requestId === projectionRequestId) renderProjection(data);
+            } catch (error) {
+                if (error.name !== "AbortError") console.warn("Bins Run projection refresh failed.", error);
+            }
+        }
+
+        projectCheckboxes.forEach(checkbox => checkbox.addEventListener("change", () => {
+            syncLotSelection();
+            refreshProjection();
+        }));
+        runRadios.forEach(radio => radio.addEventListener("change", () => setRunLot(rowForKey(radio.value))));
+        selectAll?.addEventListener("click", () => {
+            projectCheckboxes.forEach(x => x.checked = true);
+            syncLotSelection();
+            refreshProjection();
+        });
+        clearSelection?.addEventListener("click", () => {
+            projectCheckboxes.forEach(x => x.checked = false);
+            syncLotSelection();
+            refreshProjection();
+        });
+        syncLotSelection();
     })();
 </script>
+
+@functions {
+    private static string ProjectionContext(BinsRunProjectionViewModel? projection, string dataKind)
+    {
+        if (projection is null)
+        {
+            return "Estimated bins, weighted by each current lot's available-bin balance.";
+        }
+
+        var represented = dataKind == "Sizing" ? projection.SizeRepresentedBins : projection.GradeRepresentedBins;
+        var missing = dataKind == "Sizing" ? projection.SizeMissingBins : projection.GradeMissingBins;
+        var prefix = projection.IsSelection
+            ? $"{projection.Label}: {projection.AvailableBins} selected bins."
+            : $"Room summary: {projection.AvailableBins} bins currently available.";
+        return missing > 0
+            ? $"{prefix} {dataKind} data represents {represented} of {projection.AvailableBins} bins; {missing} bins have no {dataKind.ToLowerInvariant()} data."
+            : $"{prefix} Estimated bins, weighted by current available-bin balance.";
+    }
+}
