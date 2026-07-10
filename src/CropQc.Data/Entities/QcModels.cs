@@ -97,6 +97,44 @@ public sealed class RoomInventoryAdjustment
     public DateTimeOffset CreatedAt { get; set; }
 }
 
+public sealed class BinsRunEntry
+{
+    public long Id { get; set; }
+    public long? ReceiptId { get; set; }
+    public Receipt? Receipt { get; set; }
+    public long? SourceInventoryAdjustmentId { get; set; }
+    public RoomInventoryAdjustment? SourceInventoryAdjustment { get; set; }
+    public long InventoryAdjustmentId { get; set; }
+    public RoomInventoryAdjustment InventoryAdjustment { get; set; } = null!;
+    public int WarehouseId { get; set; }
+    public Warehouse Warehouse { get; set; } = null!;
+    public int RoomId { get; set; }
+    public Room Room { get; set; } = null!;
+    public int? GrowerLotId { get; set; }
+    public GrowerLot? GrowerLot { get; set; }
+    public int? FruitProfileId { get; set; }
+    public FruitProfile? FruitProfile { get; set; }
+    public required string GrowerName { get; set; }
+    public required string LotNumber { get; set; }
+    public string? PoolStart { get; set; }
+    public string? VarietyCode { get; set; }
+    public string? InventoryStatus { get; set; }
+    public int PreviousAvailableBins { get; set; }
+    public int BinsRun { get; set; }
+    public int NewAvailableBins { get; set; }
+    public string? Notes { get; set; }
+    public DateTimeOffset RunAt { get; set; }
+    public int? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public bool IsReversed { get; set; }
+    public DateTimeOffset? ReversedAt { get; set; }
+    public int? ReversedByUserId { get; set; }
+    public User? ReversedByUser { get; set; }
+    public string? ReverseReason { get; set; }
+}
+
 public sealed class QcSample
 {
     public long Id { get; set; }

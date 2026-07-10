@@ -319,6 +319,76 @@ public sealed class RoomInventoryCurrentLotViewModel
     public DateTimeOffset LastAdjustmentAt { get; set; }
 }
 
+public sealed class BinsRunPageViewModel
+{
+    public BinsRunFilterForm Filter { get; set; } = new();
+    public BinsRunForm Form { get; set; } = new();
+    public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
+    public IReadOnlyList<Room> Rooms { get; set; } = [];
+    public IReadOnlyList<BinsRunInventoryOptionViewModel> AvailableInventory { get; set; } = [];
+    public IReadOnlyList<BinsRunHistoryItemViewModel> History { get; set; } = [];
+    public bool CanRecord { get; set; }
+    public bool CanAdmin { get; set; }
+    public int? SelectedAvailableBins { get; set; }
+}
+
+public sealed class BinsRunFilterForm
+{
+    public int? WarehouseId { get; set; }
+    public int? RoomId { get; set; }
+    public string? Grower { get; set; }
+    public string? Variety { get; set; }
+    public string? Lot { get; set; }
+    public DateTime? FromDate { get; set; }
+    public DateTime? ToDate { get; set; }
+}
+
+public sealed class BinsRunForm
+{
+    public int? WarehouseId { get; set; }
+    public int? RoomId { get; set; }
+    public string InventoryKey { get; set; } = "";
+    public int BinsRun { get; set; }
+    public int ExpectedAvailableBins { get; set; }
+    public DateTimeOffset RunAt { get; set; } = DateTimeOffset.Now;
+    public string? Notes { get; set; }
+}
+
+public sealed record BinsRunInventoryOptionViewModel(
+    string InventoryKey,
+    int WarehouseId,
+    int RoomId,
+    string Label,
+    string Grower,
+    string Lot,
+    string Variety,
+    string Room,
+    int CurrentBins);
+
+public sealed class BinsRunHistoryItemViewModel
+{
+    public long Id { get; set; }
+    public string InventoryKey { get; set; } = "";
+    public int WarehouseId { get; set; }
+    public int RoomId { get; set; }
+    public string Room { get; set; } = "";
+    public string Inventory { get; set; } = "";
+    public int PreviousAvailableBins { get; set; }
+    public int BinsRun { get; set; }
+    public int NewAvailableBins { get; set; }
+    public DateTimeOffset RunAt { get; set; }
+    public string CreatedBy { get; set; } = "";
+    public bool IsReversed { get; set; }
+    public string? ReverseReason { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class ReverseBinsRunForm
+{
+    public long Id { get; set; }
+    public string Reason { get; set; } = "";
+}
+
 public sealed class CurrentInventorySourceRowViewModel
 {
     public string SourceType { get; set; } = "";

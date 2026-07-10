@@ -250,3 +250,41 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     .responsive-admin-table tr { border-bottom: 1px solid #d9e1e8; padding: 10px; }
     .responsive-admin-table td { border: 0; padding: 5px 0; }
 }
+
+.bins-run-filter {
+    align-items: end;
+}
+
+.bins-run-form {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.wide-field {
+    grid-column: 1 / -1;
+}
+
+.bins-run-current {
+    min-height: 82px;
+}
+
+.bins-run-current strong {
+    display: inline-block;
+    font-size: 2rem;
+    line-height: 1;
+    min-width: 3ch;
+}
+
+.inline-form {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.15rem 0;
+}
+
+.inline-form input[type="number"] {
+    width: 6rem;
+}
+
+.muted-row {
+    opacity: 0.68;
+}

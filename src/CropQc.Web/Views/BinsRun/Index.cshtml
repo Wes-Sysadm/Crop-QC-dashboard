@@ -1,0 +1,180 @@
+@model BinsRunPageViewModel
+@{
+    ViewData["Title"] = "Bins Run";
+    var selected = Model.AvailableInventory.FirstOrDefault(x => x.InventoryKey == Model.Form.InventoryKey);
+}
+
+<h1>Bins Run</h1>
+
+@if (TempData["Error"] is string error)
+{
+    <div class="alert error">@error</div>
+}
+@if (TempData["Success"] is string success)
+{
+    <div class="alert success">@success</div>
+}
+
+<section class="panel-section">
+    <h2>Find Inventory</h2>
+    <form class="toolbar bins-run-filter" method="get" action="/BinsRun">
+        <label>Facility
+            <select name="WarehouseId">
+                <option value="">All facilities</option>
+                @foreach (var warehouse in Model.Warehouses)
+                {
+                    <option value="@warehouse.Id" selected="@(Model.Filter.WarehouseId == warehouse.Id)">@warehouse.Code</option>
+                }
+            </select>
+        </label>
+        <label>Room
+            <select name="RoomId">
+                <option value="">All rooms</option>
+                @foreach (var room in Model.Rooms)
+                {
+                    <option value="@room.Id" selected="@(Model.Filter.RoomId == room.Id)">@room.Warehouse.Code / @(room.CropQcRoomName ?? room.DisplayName ?? room.Code)</option>
+                }
+            </select>
+        </label>
+        <label>Grower
+            <input name="Grower" value="@Model.Filter.Grower" />
+        </label>
+        <label>Variety
+            <input name="Variety" value="@Model.Filter.Variety" />
+        </label>
+        <label>Lot
+            <input name="Lot" value="@Model.Filter.Lot" />
+        </label>
+        <button type="submit">Filter</button>
+    </form>
+</section>
+
+<section class="panel-section">
+    <h2>Record Bins Run</h2>
+    @if (!Model.CanRecord)
+    {
+        <p class="muted">View-only access. Entries cannot be created, edited, or reversed.</p>
+    }
+    else if (Model.AvailableInventory.Count == 0)
+    {
+        <p class="muted">No available inventory matches the current filters.</p>
+    }
+    else
+    {
+        <form class="form-grid bins-run-form" method="post" action="/BinsRun/Create">
+            <input type="hidden" name="WarehouseId" value="@(selected?.WarehouseId ?? Model.Filter.WarehouseId)" />
+            <input type="hidden" name="RoomId" value="@(selected?.RoomId ?? Model.Filter.RoomId)" />
+            <input type="hidden" name="ExpectedAvailableBins" value="@(selected?.CurrentBins ?? 0)" data-bins-run-expected />
+            <label class="wide-field">Available inventory
+                <select name="InventoryKey" required data-bins-run-inventory>
+                    @foreach (var option in Model.AvailableInventory)
+                    {
+                        <option value="@option.InventoryKey" data-available="@option.CurrentBins" data-warehouse="@option.WarehouseId" data-room="@option.RoomId" selected="@(option.InventoryKey == Model.Form.InventoryKey)">
+                            @option.Room - @option.Label
+                        </option>
+                    }
+                </select>
+            </label>
+            <div class="metric-card bins-run-current">
+                <span class="metric-label">Available now</span>
+                <strong data-bins-run-current>@(selected?.CurrentBins ?? Model.SelectedAvailableBins ?? 0)</strong>
+                <span>bins</span>
+            </div>
+            <label>Bins run
+                <input type="number" min="1" name="BinsRun" required />
+            </label>
+            <label>Run date/time
+                <input type="datetime-local" name="RunAt" value="@Model.Form.RunAt.ToString("yyyy-MM-ddTHH:mm")" required />
+            </label>
+            <label class="wide-field">Notes
+                <input name="Notes" maxlength="1000" />
+            </label>
+            <div class="button-row">
+                <button type="submit">Save Bins Run</button>
+            </div>
+        </form>
+    }
+</section>
+
+<section class="panel-section">
+    <h2>Recent Bins Run History</h2>
+    @if (Model.History.Count == 0)
+    {
+        <p class="muted">No Bins Run transactions match the current filters.</p>
+    }
+    else
+    {
+        <table class="data-table responsive-admin-table">
+            <thead>
+                <tr>
+                    <th>Run At</th>
+                    <th>Room</th>
+                    <th>Inventory</th>
+                    <th>Previous</th>
+                    <th>Run</th>
+                    <th>Remaining</th>
+                    <th>User</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.History)
+                {
+                    <tr class="@(item.IsReversed ? "muted-row" : "")">
+                        <td>@item.RunAt.ToLocalTime().ToString("g")</td>
+                        <td>@item.Room</td>
+                        <td>@item.Inventory</td>
+                        <td>@item.PreviousAvailableBins</td>
+                        <td>@item.BinsRun</td>
+                        <td>@item.NewAvailableBins</td>
+                        <td>@item.CreatedBy</td>
+                        <td>@(item.IsReversed ? $"Reversed: {item.ReverseReason}" : "Active")</td>
+                        <td>
+                            @if (Model.CanRecord && !item.IsReversed)
+                            {
+                                <form class="inline-form" method="post" action="/BinsRun/@item.Id/Edit">
+                                    <input type="hidden" name="WarehouseId" value="@item.WarehouseId" />
+                                    <input type="hidden" name="RoomId" value="@item.RoomId" />
+                                    <input type="hidden" name="InventoryKey" value="@item.InventoryKey" />
+                                    <input type="hidden" name="ExpectedAvailableBins" value="@item.NewAvailableBins" />
+                                    <input type="hidden" name="RunAt" value="@item.RunAt.ToString("O")" />
+                                    <input type="number" min="1" name="BinsRun" value="@item.BinsRun" aria-label="Bins run" />
+                                    <button type="submit" class="secondary-button">Edit</button>
+                                </form>
+                            }
+                            @if (Model.CanAdmin && !item.IsReversed)
+                            {
+                                <form class="inline-form" method="post" action="/BinsRun/@item.Id/Reverse">
+                                    <input name="Reason" maxlength="1000" required placeholder="Reason" />
+                                    <button type="submit" class="secondary-button">Reverse</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<script>
+    (() => {
+        const select = document.querySelector("[data-bins-run-inventory]");
+        if (!select) return;
+        const current = document.querySelector("[data-bins-run-current]");
+        const expected = document.querySelector("[data-bins-run-expected]");
+        const warehouse = document.querySelector("input[name='WarehouseId']");
+        const room = document.querySelector("input[name='RoomId']");
+        const refresh = () => {
+            const option = select.selectedOptions[0];
+            if (!option) return;
+            if (current) current.textContent = option.dataset.available || "0";
+            if (expected) expected.value = option.dataset.available || "0";
+            if (warehouse) warehouse.value = option.dataset.warehouse || "";
+            if (room) room.value = option.dataset.room || "";
+        };
+        select.addEventListener("change", refresh);
+        refresh();
+    })();
+</script>
