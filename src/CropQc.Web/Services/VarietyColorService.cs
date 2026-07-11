@@ -22,13 +22,23 @@ public sealed record VarietyColorResolved(string VarietyKey, string VarietyName,
 public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVarietyColorService
 {
     private static readonly Regex HexColorRegex = HexColorPattern();
+    private static readonly IReadOnlyDictionary<string, VarietyAlias> CanonicalVarietyAliases =
+        new[]
+        {
+            new VarietyAlias("GSMT", "Granny Smith", 2),
+            new VarietyAlias("Grannysmith", "Granny Smith", 1),
+            new VarietyAlias("Pink", "Pink Lady", 2),
+            new VarietyAlias("Pink Lady", "Pink Lady", 0),
+            new VarietyAlias("Red", "Red Delicious", 2),
+            new VarietyAlias("Red Delicious", "Red Delicious", 0)
+        }.ToDictionary(x => AliasLookupKey(x.Alias), StringComparer.OrdinalIgnoreCase);
 
     public async Task<VarietyColorsAdminViewModel> GetAdminPageAsync(bool canManage, CancellationToken cancellationToken)
     {
         await EnsureSchemaAsync(cancellationToken);
+        await ConsolidateAliasConfigurationsAsync(cancellationToken);
         var identities = await GetKnownVarietiesAsync(cancellationToken);
-        var configs = await dbContext.VarietyColorConfigurations.AsNoTracking()
-            .ToDictionaryAsync(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase, cancellationToken);
+        var configs = await GetResolvedConfigurationRowsAsync(cancellationToken);
 
         var rows = identities
             .OrderBy(x => x.Name)
@@ -59,15 +69,17 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
     public async Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsAsync(IEnumerable<string> varietyKeys, CancellationToken cancellationToken)
     {
         await EnsureSchemaAsync(cancellationToken);
-        var keys = varietyKeys.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var keys = varietyKeys
+            .Select(x => NormalizeIdentity(x, x).Key)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         if (keys.Count == 0)
         {
             return new Dictionary<string, VarietyColorResolved>(StringComparer.OrdinalIgnoreCase);
         }
 
-        var configs = await dbContext.VarietyColorConfigurations.AsNoTracking()
-            .Where(x => keys.Contains(x.VarietyKey))
-            .ToDictionaryAsync(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase, cancellationToken);
+        var configs = await GetResolvedConfigurationRowsAsync(cancellationToken);
         var names = (await GetKnownVarietiesAsync(cancellationToken))
             .ToDictionary(x => x.Key, x => x.Name, StringComparer.OrdinalIgnoreCase);
 
@@ -77,9 +89,10 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
             {
                 configs.TryGetValue(key, out var config);
                 names.TryGetValue(key, out var name);
+                var identity = NormalizeIdentity(config?.VarietyName ?? name ?? key, key);
                 return new VarietyColorResolved(
                     key,
-                    config?.VarietyName ?? name ?? key,
+                    name ?? identity.Name,
                     config?.HexColor ?? FallbackColor(key),
                     config is not null);
             },
@@ -89,6 +102,7 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
     public async Task<string?> SaveAsync(VarietyColorForm form, string changedByEmail, CancellationToken cancellationToken)
     {
         await EnsureSchemaAsync(cancellationToken);
+        await ConsolidateAliasConfigurationsAsync(cancellationToken);
         var identity = NormalizeIdentity(form.VarietyName, form.VarietyKey);
         var color = NormalizeHex(form.HexColor);
         if (identity.Key.Length == 0)
@@ -143,13 +157,14 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
     public async Task<string?> ResetAsync(VarietyColorForm form, string changedByEmail, CancellationToken cancellationToken)
     {
         await EnsureSchemaAsync(cancellationToken);
-        var key = NormalizeVarietyKey(string.IsNullOrWhiteSpace(form.VarietyKey) ? form.VarietyName : form.VarietyKey);
-        if (key.Length == 0)
+        await ConsolidateAliasConfigurationsAsync(cancellationToken);
+        var identity = NormalizeIdentity(form.VarietyName, form.VarietyKey);
+        if (identity.Key.Length == 0)
         {
             return "Variety is required.";
         }
 
-        var existing = await dbContext.VarietyColorConfigurations.SingleOrDefaultAsync(x => x.VarietyKey == key, cancellationToken);
+        var existing = await dbContext.VarietyColorConfigurations.SingleOrDefaultAsync(x => x.VarietyKey == identity.Key, cancellationToken);
         if (existing is null)
         {
             return null;
@@ -162,10 +177,10 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
         {
             Action = "reset-to-default",
             EntityName = nameof(VarietyColorConfiguration),
-            EntityKey = key,
+            EntityKey = identity.Key,
             UserId = user?.Id,
             BeforeValuesJson = before,
-            AfterValuesJson = JsonSerializer.Serialize(new { VarietyKey = key, FallbackColor = FallbackColor(key) }),
+            AfterValuesJson = JsonSerializer.Serialize(new { VarietyKey = identity.Key, FallbackColor = FallbackColor(identity.Key) }),
             SourceApplication = "CropQc.Web",
             CreatedAt = DateTimeOffset.UtcNow
         });
@@ -190,6 +205,12 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
         if (name.StartsWith("Organic ", StringComparison.OrdinalIgnoreCase))
         {
             name = name["Organic ".Length..].Trim();
+        }
+
+        if (TryGetCanonicalAlias(name, out var canonicalAlias)
+            || TryGetCanonicalAlias(fallbackKey, out canonicalAlias))
+        {
+            name = canonicalAlias.CanonicalName;
         }
 
         var key = NormalizeVarietyKey(name.Length == 0 ? fallbackKey : name);
@@ -247,6 +268,139 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
             .Select(x => x.OrderBy(y => y.Name.Length).First())
             .ToList();
     }
+
+    private async Task<Dictionary<string, VarietyColorConfiguration>> GetResolvedConfigurationRowsAsync(CancellationToken cancellationToken)
+    {
+        var configs = await dbContext.VarietyColorConfigurations.AsNoTracking().ToListAsync(cancellationToken);
+        return configs
+            .GroupBy(x => NormalizeConfigurationIdentity(x).Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                x => x.Key,
+                x => PickPreferredConfiguration(x.ToList()),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task ConsolidateAliasConfigurationsAsync(CancellationToken cancellationToken)
+    {
+        var configs = await dbContext.VarietyColorConfigurations.ToListAsync(cancellationToken);
+        var groups = configs
+            .Where(HasKnownAlias)
+            .GroupBy(x => NormalizeConfigurationIdentity(x).Key, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1 || group.Any(row =>
+            {
+                var identity = NormalizeConfigurationIdentity(row);
+                return !row.VarietyKey.Equals(identity.Key, StringComparison.OrdinalIgnoreCase)
+                    || !row.VarietyName.Equals(identity.Name, StringComparison.Ordinal);
+            }))
+            .ToList();
+
+        if (groups.Count == 0)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        foreach (var group in groups)
+        {
+            var rows = group.ToList();
+            var identity = NormalizeConfigurationIdentity(rows[0]);
+            var winner = PickPreferredConfiguration(rows);
+            var before = JsonSerializer.Serialize(rows
+                .OrderBy(x => x.VarietyKey)
+                .ThenBy(x => x.VarietyName)
+                .Select(x => new { x.VarietyKey, x.VarietyName, x.HexColor, x.CreatedAt, x.UpdatedAt }));
+
+            foreach (var row in rows.Where(x => x.Id != winner.Id))
+            {
+                dbContext.VarietyColorConfigurations.Remove(row);
+            }
+
+            winner.VarietyKey = identity.Key;
+            winner.VarietyName = identity.Name;
+            winner.UpdatedAt = now;
+
+            dbContext.AuditLogs.Add(new AuditLog
+            {
+                Action = "consolidate-variety-alias",
+                EntityName = nameof(VarietyColorConfiguration),
+                EntityKey = identity.Key,
+                BeforeValuesJson = before,
+                AfterValuesJson = JsonSerializer.Serialize(new
+                {
+                    CanonicalVarietyKey = identity.Key,
+                    CanonicalVarietyName = identity.Name,
+                    ResultingColor = winner.HexColor,
+                    MigrationActor = "system:variety-alias-consolidation"
+                }),
+                SourceApplication = "CropQc.Web",
+                CreatedAt = now
+            });
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static VarietyColorConfiguration PickPreferredConfiguration(IReadOnlyList<VarietyColorConfiguration> rows) =>
+        rows
+            .OrderByDescending(IsCanonicalConfiguration)
+            .ThenByDescending(x => x.UpdatedAt)
+            .ThenByDescending(x => x.CreatedAt)
+            .ThenBy(x => AliasPriority(x.VarietyName))
+            .ThenBy(x => AliasPriority(x.VarietyKey))
+            .ThenBy(x => x.VarietyName)
+            .ThenBy(x => x.VarietyKey)
+            .First();
+
+    private static VarietyIdentity NormalizeConfigurationIdentity(VarietyColorConfiguration configuration)
+    {
+        if (TryGetCanonicalAlias(configuration.VarietyName, out var alias)
+            || TryGetCanonicalAlias(configuration.VarietyKey, out alias))
+        {
+            return NormalizeIdentity(alias.CanonicalName, alias.CanonicalName);
+        }
+
+        return new VarietyIdentity(configuration.VarietyKey, configuration.VarietyName);
+    }
+
+    private static bool HasKnownAlias(VarietyColorConfiguration configuration) =>
+        TryGetCanonicalAlias(configuration.VarietyName, out _)
+        || TryGetCanonicalAlias(configuration.VarietyKey, out _);
+
+    private static bool IsCanonicalConfiguration(VarietyColorConfiguration configuration)
+    {
+        var identity = NormalizeConfigurationIdentity(configuration);
+        return configuration.VarietyKey.Equals(identity.Key, StringComparison.OrdinalIgnoreCase)
+            || configuration.VarietyName.Trim().Equals(identity.Name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int AliasPriority(string? value) =>
+        TryGetCanonicalAlias(value, out var alias) ? alias.Priority : 100;
+
+    private static bool TryGetCanonicalAlias(string? value, out VarietyAlias alias)
+    {
+        alias = default;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return CanonicalVarietyAliases.TryGetValue(AliasLookupKey(value), out alias);
+    }
+
+    private static string AliasLookupKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "";
+        }
+
+        return new string(value
+            .Where(char.IsLetterOrDigit)
+            .Select(char.ToUpperInvariant)
+            .ToArray());
+    }
+
+    private readonly record struct VarietyAlias(string Alias, string CanonicalName, int Priority);
 
     private async Task EnsureSchemaAsync(CancellationToken cancellationToken)
     {
