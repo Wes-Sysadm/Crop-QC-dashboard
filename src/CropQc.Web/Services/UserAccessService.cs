@@ -36,6 +36,7 @@ public static class ApplicationAreas
     public const string QcStations = "qc-stations";
     public const string Downloads = "downloads";
     public const string Configuration = "configuration";
+    public const string VarietyColors = "variety-colors";
     public const string Backups = "backups";
     public const string DataCleanup = "data-cleanup";
     public const string OwnerEmail = "wes@fruitandland.com";
@@ -58,6 +59,7 @@ public static class ApplicationAreas
         new(QcStations, "QC Stations", "Admin/System", "/Admin/QcStations"),
         new(Downloads, "Downloads", "Admin/System", "/Admin/Downloads"),
         new(Configuration, "Configuration", "Admin/System", "/Admin/Configuration"),
+        new(VarietyColors, "Variety Colors", "Admin/System", "/Admin/VarietyColors"),
         new(Backups, "Backups", "Admin/System", "/Admin/Backups"),
         new(DataCleanup, "Data Cleanup", "Admin/System", "/Admin/DataCleanup")
     ];
@@ -91,6 +93,8 @@ public static class AccessPolicyNames
     public const string QcStationsAdmin = "QcStationsAdmin";
     public const string DownloadsView = "DownloadsView";
     public const string ConfigurationAdmin = "ConfigurationAdmin";
+    public const string VarietyColorsView = "VarietyColorsView";
+    public const string VarietyColorsAdmin = "VarietyColorsAdmin";
     public const string BackupsAdmin = "BackupsAdmin";
     public const string DataCleanupAdmin = "DataCleanupAdmin";
 }
@@ -227,7 +231,7 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
     {
         var role = roles.FirstOrDefault() ?? "Viewer";
         if (string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase)) return PageAccessLevel.Admin;
-        if (areaKey is ApplicationAreas.Users or ApplicationAreas.Configuration or ApplicationAreas.Backups or ApplicationAreas.Downloads or ApplicationAreas.DataCleanup or ApplicationAreas.CropYearReview)
+        if (areaKey is ApplicationAreas.Users or ApplicationAreas.Configuration or ApplicationAreas.VarietyColors or ApplicationAreas.Backups or ApplicationAreas.Downloads or ApplicationAreas.DataCleanup or ApplicationAreas.CropYearReview)
         {
             return PageAccessLevel.None;
         }

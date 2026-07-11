@@ -12,6 +12,8 @@ public sealed class AdminController(
     IAdminAuthorizationService authorizationService,
     IQcStationAdminService qcStationAdminService,
     IDataCleanupService dataCleanupService,
+    IVarietyColorService varietyColorService,
+    IUserAccessService userAccessService,
     IConfiguration configuration) : Controller
 {
     [HttpGet("Users")]
@@ -44,6 +46,31 @@ public sealed class AdminController(
         };
 
         return View(model);
+    }
+
+    [HttpGet("VarietyColors")]
+    [Authorize(Policy = AccessPolicyNames.VarietyColorsView)]
+    public async Task<IActionResult> VarietyColors(CancellationToken cancellationToken) =>
+        View(await varietyColorService.GetAdminPageAsync(
+            await userAccessService.HasAccessAsync(User, ApplicationAreas.VarietyColors, PageAccessLevel.Admin, cancellationToken),
+            cancellationToken));
+
+    [HttpPost("VarietyColors/Save")]
+    [Authorize(Policy = AccessPolicyNames.VarietyColorsAdmin)]
+    public async Task<IActionResult> SaveVarietyColor(VarietyColorForm form, CancellationToken cancellationToken)
+    {
+        var error = await varietyColorService.SaveAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Variety color saved.";
+        return RedirectToAction(nameof(VarietyColors));
+    }
+
+    [HttpPost("VarietyColors/Reset")]
+    [Authorize(Policy = AccessPolicyNames.VarietyColorsAdmin)]
+    public async Task<IActionResult> ResetVarietyColor(VarietyColorForm form, CancellationToken cancellationToken)
+    {
+        var error = await varietyColorService.ResetAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Variety color reset to default.";
+        return RedirectToAction(nameof(VarietyColors));
     }
 
     [HttpGet("DataCleanup")]

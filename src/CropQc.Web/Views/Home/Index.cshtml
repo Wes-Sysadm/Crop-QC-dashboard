@@ -1,4 +1,5 @@
 @model HomeDashboardViewModel
+@using System.Globalization
 @{
     ViewData["Title"] = "Dashboard";
 }
@@ -77,39 +78,55 @@ else
                 <div class="room-card-grid">
                 @foreach (var room in locationGroup.OrderBy(x => x.AttentionSort).ThenByDescending(x => x.QcMissingBins == 0 ? 0m : x.QcMissingBins / (decimal)(x.CurrentBinsCount ?? 1)).ThenBy(x => x.LastSampleDate ?? DateTimeOffset.MinValue).ThenBy(x => x.RoomCode))
                 {
-                    <a class="room-card @RoomStatusClass(room.Status)" href="/Dashboard/Rooms/@room.RoomId">
-                        <div class="room-card-header">
-                            <div>
-                                <h3>@room.Warehouse / @room.RoomCode</h3>
-                                <p>@room.RoomName</p>
+                    <a class="room-card @RoomStatusClass(room.Status) variety-colored @(room.IsMajorityOrganic ? "majority-organic" : "")" href="/Dashboard/Rooms/@room.RoomId" style="--room-variety-bg: @BuildVarietyBandBackground(room.VarietyColorSegments)">
+                        <div class="room-card-content">
+                            <div class="room-card-header">
+                                <div>
+                                    <h3>@room.Warehouse / @room.RoomCode</h3>
+                                    <p>@room.RoomName</p>
+                                </div>
+                                <span class="status @RoomStatusClass(room.Status)">@room.Status</span>
                             </div>
-                            <span class="status @RoomStatusClass(room.Status)">@room.Status</span>
-                        </div>
-                        <dl class="room-metrics">
-                            <div><dt>Current bins</dt><dd>@(room.CurrentBinsCount?.ToString() ?? "0")</dd></div>
-                            <div><dt>Lots</dt><dd>@room.CurrentLotsCount</dd></div>
-                            <div><dt>QC coverage</dt><dd>@room.QcRepresentedBins / @(room.CurrentBinsCount ?? 0) bins (@room.QcCoveragePercent.ToString("0.#")%)</dd></div>
-                            <div><dt>Last sample</dt><dd>@(room.LastSampleDate?.LocalDateTime.ToString("g") ?? "No data")</dd></div>
-                        </dl>
-                        <p class="room-lots"><strong>@room.AttentionCategory:</strong> @room.RankingReason</p>
-                        @if (!string.IsNullOrWhiteSpace(room.MajorWeakLotIndicator))
-                        {
-                            <p class="room-lots"><strong>Indicator:</strong> @room.MajorWeakLotIndicator</p>
-                        }
-                        <p class="room-lots">@room.LotSummary</p>
-                        @if (!string.IsNullOrWhiteSpace(room.WeakestLotLabel))
-                        {
-                            <p class="room-lots"><strong>Weakest lot:</strong> @room.WeakestLotLabel - @room.WeakestLotReason</p>
-                        }
-                        @if (room.ReviewFlags.Count > 0)
-                        {
-                            <ul class="compact-list">
-                            @foreach (var flag in room.ReviewFlags.Take(3))
+                            <dl class="room-metrics">
+                                <div><dt>Current bins</dt><dd>@(room.CurrentBinsCount?.ToString() ?? "0")</dd></div>
+                                <div><dt>Lots</dt><dd>@room.CurrentLotsCount</dd></div>
+                                <div><dt>QC coverage</dt><dd>@room.QcRepresentedBins / @(room.CurrentBinsCount ?? 0) bins (@room.QcCoveragePercent.ToString("0.#")%)</dd></div>
+                                <div><dt>Last sample</dt><dd>@(room.LastSampleDate?.LocalDateTime.ToString("g") ?? "No data")</dd></div>
+                            </dl>
+                            <div class="variety-legend" aria-label="Current varieties by bins">
+                                @foreach (var segment in room.VarietyColorSegments.Take(4))
+                                {
+                                    <span><i style="background: @segment.HexColor"></i>@segment.VarietyName - @segment.CurrentBins bins</span>
+                                }
+                            </div>
+                            @if (room.IsMajorityOrganic)
                             {
-                                <li>@flag</li>
+                                <p class="room-lots"><strong>Majority organic:</strong> @room.OrganicBins / @(room.CurrentBinsCount ?? 0) bins (@room.OrganicPercent.ToString("0.#")%)</p>
                             }
-                            </ul>
-                        }
+                            @if (room.UnknownOrganicStatusBins > 0)
+                            {
+                                <p class="room-lots"><strong>Organic status unknown:</strong> @room.UnknownOrganicStatusBins bins</p>
+                            }
+                            <p class="room-lots"><strong>@room.AttentionCategory:</strong> @room.RankingReason</p>
+                            @if (!string.IsNullOrWhiteSpace(room.MajorWeakLotIndicator))
+                            {
+                                <p class="room-lots"><strong>Indicator:</strong> @room.MajorWeakLotIndicator</p>
+                            }
+                            <p class="room-lots">@room.LotSummary</p>
+                            @if (!string.IsNullOrWhiteSpace(room.WeakestLotLabel))
+                            {
+                                <p class="room-lots"><strong>Weakest lot:</strong> @room.WeakestLotLabel - @room.WeakestLotReason</p>
+                            }
+                            @if (room.ReviewFlags.Count > 0)
+                            {
+                                <ul class="compact-list">
+                                @foreach (var flag in room.ReviewFlags.Take(3))
+                                {
+                                    <li>@flag</li>
+                                }
+                                </ul>
+                            }
+                        </div>
                     </a>
                 }
             </div>
@@ -188,4 +205,21 @@ else
     private static bool IsSelected(string current, string value) => string.Equals(current, value, StringComparison.OrdinalIgnoreCase);
     private static int FacilitySort(string facility) => facility switch { "MCD" => 0, "WP" => 1, "EBS" => 2, "DH" => 3, _ => 9 };
     private static int LocationSort(string location) => location switch { "Evans" => 0, "Lamb" => 1, "BM" => 2, _ => 9 };
+    private static string BuildVarietyBandBackground(IReadOnlyList<RoomVarietyColorSegmentViewModel> segments)
+    {
+        if (segments.Count == 0) return "#ffffff";
+        var stops = new List<string>();
+        var start = 0m;
+        foreach (var segment in segments)
+        {
+            var end = Math.Min(100m, start + segment.Percent);
+            stops.Add($"{segment.HexColor} {start.ToString("0.###", CultureInfo.InvariantCulture)}% {end.ToString("0.###", CultureInfo.InvariantCulture)}%");
+            start = end;
+        }
+        if (start < 100m)
+        {
+            stops.Add($"{segments[^1].HexColor} {start.ToString("0.###", CultureInfo.InvariantCulture)}% 100%");
+        }
+        return segments.Count == 1 ? segments[0].HexColor : $"linear-gradient(90deg, {string.Join(", ", stops)})";
+    }
 }

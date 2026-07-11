@@ -94,6 +94,69 @@ public sealed class RoomSummaryDepletionTests
     }
 
     [Fact]
+    public void Dashboard_RoomCardsUseCurrentVarietyColorSegmentsAndOrganicStripes()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
+        var dashboard = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Index.cshtml"));
+        var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
+        var css = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css"));
+
+        Assert.Contains("RoomVarietyColorSegmentViewModel", model);
+        Assert.Contains("VarietyColorSegments", model);
+        Assert.Contains("OrganicBins", model);
+        Assert.Contains("ConventionalBins", model);
+        Assert.Contains("UnknownOrganicStatusBins", model);
+        Assert.Contains("IsMajorityOrganic", model);
+        Assert.Contains("VarietyColorService.IdentityFromProfile(receipt.FruitProfile)", service);
+        Assert.Contains("x.FruitProfile?.IsOrganic", service);
+        Assert.Contains("GroupBy(x => x.VarietyKey", service);
+        Assert.Contains("bins / (decimal)totalBins * 100m", service);
+        Assert.Contains("organicBins / (decimal)currentBins > 0.51m", service);
+        Assert.Contains("varietyColorService.GetResolvedColorsAsync(keys", service);
+        Assert.Contains("BuildVarietyBandBackground(room.VarietyColorSegments)", dashboard);
+        Assert.Contains("majority-organic", dashboard);
+        Assert.Contains("Majority organic", dashboard);
+        Assert.Contains("Organic status unknown", dashboard);
+        Assert.Contains("variety-legend", dashboard);
+        Assert.Contains("Organic status", room);
+        Assert.Contains("stripes", room);
+        Assert.Contains("repeating-linear-gradient(135deg", css);
+        Assert.Contains("background: var(--room-variety-bg", css);
+    }
+
+    [Fact]
+    public void Admin_VarietyColorsArePermissionedValidatedAndAudited()
+    {
+        var entity = File.ReadAllText(FindRepositoryFile("src", "CropQc.Data", "Entities", "MasterDataModels.cs"));
+        var db = File.ReadAllText(FindRepositoryFile("src", "CropQc.Data", "CropQcDbContext.cs"));
+        var access = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "UserAccessService.cs"));
+        var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "AdminController.cs"));
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "VarietyColorService.cs"));
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Admin", "VarietyColors.cshtml"));
+        var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+
+        Assert.Contains("public sealed class VarietyColorConfiguration", entity);
+        Assert.Contains("DbSet<VarietyColorConfiguration>", db);
+        Assert.Contains("IX_VarietyColorConfigurations_VarietyKey", service);
+        Assert.Contains("ApplicationAreas.VarietyColors", program);
+        Assert.Contains("AccessPolicyNames.VarietyColorsView", controller);
+        Assert.Contains("AccessPolicyNames.VarietyColorsAdmin", controller);
+        Assert.Contains("VarietyColorsView", access);
+        Assert.Contains("VarietyColorsAdmin", access);
+        Assert.Contains("Variety Colors", layout);
+        Assert.Contains("HexColorPattern", service);
+        Assert.Contains("AuditLogs.Add", service);
+        Assert.Contains("reset-to-default", service);
+        Assert.Contains("FallbackColor", service);
+        Assert.Contains("type=\"color\"", view);
+        Assert.Contains("pattern=\"#[0-9A-Fa-f]{6}\"", view);
+        Assert.Contains("Configured", view);
+        Assert.Contains("Fallback", view);
+    }
+
+    [Fact]
     public void RoomInventory_SeparatesReceivingInventoryFromObservationalSamples()
     {
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));

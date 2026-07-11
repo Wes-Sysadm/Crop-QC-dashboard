@@ -496,7 +496,7 @@ public sealed class QcStationInstallerWorkflowTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(values)
             .Build();
-        return new AdminController(null!, null!, null!, null!, configuration);
+        return new AdminController(null!, null!, null!, null!, null!, null!, configuration);
     }
 
     private static string ExtractBetween(string value, string start, string end)

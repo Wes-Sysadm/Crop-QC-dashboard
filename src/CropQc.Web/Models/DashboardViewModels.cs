@@ -47,6 +47,12 @@ public sealed class RoomSummaryItemViewModel
     public int StartingSeasonBins { get; set; }
     public int NetChangeBins { get; set; }
     public string VarietyStatusSummary { get; set; } = "";
+    public IReadOnlyList<RoomVarietyColorSegmentViewModel> VarietyColorSegments { get; set; } = [];
+    public int OrganicBins { get; set; }
+    public int ConventionalBins { get; set; }
+    public int UnknownOrganicStatusBins { get; set; }
+    public decimal OrganicPercent { get; set; }
+    public bool IsMajorityOrganic { get; set; }
     public DateTimeOffset? LastActivityAt { get; set; }
     public string LotSummary { get; set; } = "Empty";
     public decimal? AveragePressureLbs { get; set; }
@@ -62,6 +68,16 @@ public sealed class RoomSummaryItemViewModel
     public string? WeakestLotLabel { get; set; }
     public string? WeakestLotReason { get; set; }
     public long? WeakestLotReceiptId { get; set; }
+}
+
+public sealed class RoomVarietyColorSegmentViewModel
+{
+    public string VarietyKey { get; set; } = "";
+    public string VarietyName { get; set; } = "";
+    public int CurrentBins { get; set; }
+    public decimal Percent { get; set; }
+    public string HexColor { get; set; } = "#607D8B";
+    public bool IsConfiguredColor { get; set; }
 }
 
 public sealed class RoomDetailViewModel
@@ -1145,6 +1161,31 @@ public sealed class DataCleanupPreviewViewModel
     public int DriveFilesAffected { get; set; }
     public bool IsProduction { get; set; }
     public bool IsAllCropYears { get; set; }
+}
+
+public sealed class VarietyColorsAdminViewModel
+{
+    public string? DataWarning { get; set; }
+    public IReadOnlyList<VarietyColorRowViewModel> Varieties { get; set; } = [];
+    public bool CanManage { get; set; }
+}
+
+public sealed class VarietyColorRowViewModel
+{
+    public string VarietyKey { get; set; } = "";
+    public string VarietyName { get; set; } = "";
+    public string HexColor { get; set; } = "";
+    public string FallbackColor { get; set; } = "";
+    public bool IsConfigured { get; set; }
+    public int HistoricalProfileCount { get; set; }
+    public int CurrentBins { get; set; }
+}
+
+public sealed class VarietyColorForm
+{
+    public string VarietyKey { get; set; } = "";
+    public string VarietyName { get; set; } = "";
+    public string HexColor { get; set; } = "";
 }
 
 public sealed class OverrideSendForm
