@@ -88,9 +88,49 @@ else
                                 <span class="status @RoomStatusClass(room.Status)">@room.Status</span>
                             </div>
                             <dl class="room-metrics">
-                                <div><dt>Current bins</dt><dd>@(room.CurrentBinsCount?.ToString() ?? "0")</dd></div>
+                                <div>
+                                    <dt>Current bins / capacity</dt>
+                                    <dd>@FormatBins(room.CurrentBinsCount ?? 0) / @(room.IsCapacityConfigured ? FormatBins(room.RoomCapacityBins) : "Not configured")</dd>
+                                </div>
+                                <div>
+                                    <dt>Room fill</dt>
+                                    <dd>
+                                        @(room.PercentFull is null ? "Capacity not configured" : $"{room.PercentFull:0.#}% full")
+                                        @if (room.IsOverCapacity)
+                                        {
+                                            <span class="metric-warning">Over capacity</span>
+                                        }
+                                    </dd>
+                                </div>
                                 <div><dt>Lots</dt><dd>@room.CurrentLotsCount</dd></div>
                                 <div><dt>QC coverage</dt><dd>@room.QcRepresentedBins / @(room.CurrentBinsCount ?? 0) bins (@room.QcCoveragePercent.ToString("0.#")%)</dd></div>
+                            </dl>
+                            <dl class="room-metrics room-qc-metrics">
+                                <div>
+                                    <dt>Receiving starch</dt>
+                                    <dd>@Format(room.AverageStarch)</dd>
+                                    <small>@Coverage(room.ReceivingStarchRepresentedBins, room.CurrentBinsCount ?? 0)</small>
+                                </div>
+                                <div>
+                                    <dt>Receiving pressure</dt>
+                                    <dd>@FormatLbs(room.AveragePressureLbs)</dd>
+                                    <small>@Coverage(room.ReceivingPressureRepresentedBins, room.CurrentBinsCount ?? 0)</small>
+                                </div>
+                                <div>
+                                    <dt>Latest pressure</dt>
+                                    <dd>@FormatLbs(room.LatestPressureLbs)</dd>
+                                    <small>@(room.LatestPressureDate?.LocalDateTime.ToString("g") ?? Coverage(room.LatestPressureRepresentedBins, room.CurrentBinsCount ?? 0))</small>
+                                </div>
+                                <div>
+                                    <dt>30-day pressure change</dt>
+                                    <dd>@FormatChange(room.MonthOverMonthPressureChangeLbs)</dd>
+                                    <small>@Coverage(room.PressureChangeRepresentedBins, room.CurrentBinsCount ?? 0)</small>
+                                </div>
+                                <div>
+                                    <dt>Latest pressure SD</dt>
+                                    <dd>@(room.PressureStdDevLbs is null ? "Insufficient readings" : $"{room.PressureStdDevLbs:0.##} lb")</dd>
+                                    <small>@room.PressureReadingCount pressure readings / @Coverage(room.PressureStandardDeviationRepresentedBins, room.CurrentBinsCount ?? 0)</small>
+                                </div>
                                 <div><dt>Last sample</dt><dd>@(room.LastSampleDate?.LocalDateTime.ToString("g") ?? "No data")</dd></div>
                             </dl>
                             <div class="variety-legend" aria-label="Current varieties by bins">
@@ -197,11 +237,15 @@ else
         status.Contains("empty", StringComparison.OrdinalIgnoreCase) ? "pending" : "";
 
     private static string Format(decimal? value) => value?.ToString("0.##") ?? "No data";
+    private static string FormatLbs(decimal? value) => value is null ? "No data" : $"{value:0.##} lb";
+    private static string FormatBins(int value) => value.ToString("N0", CultureInfo.CurrentCulture);
     private static string FormatChange(decimal? value) => value is null
-        ? "N/A"
+        ? "Not enough history"
         : value == 0
-            ? "unchanged"
-            : $"{(value > 0 ? "+" : "")}{value:0.##} lbs";
+            ? "Unchanged"
+            : $"{(value > 0 ? "+" : "")}{value:0.##} lb/month";
+    private static string Coverage(int representedBins, int totalBins) =>
+        totalBins <= 0 ? "No current bins" : $"{FormatBins(representedBins)} of {FormatBins(totalBins)} bins";
     private static bool IsSelected(string current, string value) => string.Equals(current, value, StringComparison.OrdinalIgnoreCase);
     private static int FacilitySort(string facility) => facility switch { "MCD" => 0, "WP" => 1, "EBS" => 2, "DH" => 3, _ => 9 };
     private static int LocationSort(string location) => location switch { "Evans" => 0, "Lamb" => 1, "BM" => 2, _ => 9 };
