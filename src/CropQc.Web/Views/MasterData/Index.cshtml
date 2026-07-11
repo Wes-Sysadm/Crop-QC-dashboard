@@ -160,6 +160,60 @@
     }
 }
 
+@if (Model.Type == "canonical-growers" && Model.UnmappedGrowers.Count > 0)
+{
+    <section class="panel">
+        <div class="room-card-header">
+            <div>
+                <h2>Unmapped source growers</h2>
+                <p class="muted">Resolve source grower names or numbers that do not yet map to a canonical grower.</p>
+            </div>
+            <span class="status pending">@Model.UnmappedGrowers.Count need review</span>
+        </div>
+        <div class="table-wrap contained-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source grower</th>
+                        <th>Grower number</th>
+                        <th>Facility</th>
+                        <th>Crop years</th>
+                        <th>Receipts</th>
+                        <th>Lots</th>
+                        <th>Bins received</th>
+                        @if (Model.CanEdit)
+                        {
+                            <th>Action</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var source in Model.UnmappedGrowers.Take(50))
+                {
+                    <tr>
+                        <td>@source.SourceGrowerName</td>
+                        <td>@(string.IsNullOrWhiteSpace(source.GrowerNumber) ? "-" : source.GrowerNumber)</td>
+                        <td>@(string.IsNullOrWhiteSpace(source.Facility) ? "-" : source.Facility)</td>
+                        <td>@(source.CropYears.Count == 0 ? "-" : string.Join(", ", source.CropYears))</td>
+                        <td class="numeric-cell">@source.ReceiptCount</td>
+                        <td class="numeric-cell">@source.LotCount</td>
+                        <td class="numeric-cell">@source.BinsReceived</td>
+                        @if (Model.CanEdit)
+                        {
+                            <td><a class="button secondary-button" href="@Url.Action("MapGrower", "MasterData", new { sourceGrowerName = source.SourceGrowerName, growerNumber = source.GrowerNumber, facility = source.Facility, cropYear = source.CropYears.LastOrDefault(), returnUrl = Context.Request.Path + Context.Request.QueryString })">Map grower</a></td>
+                        }
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        @if (Model.UnmappedGrowers.Count > 50)
+        {
+            <p class="muted">Showing first 50 unmapped source growers.</p>
+        }
+    </section>
+}
+
 <div class="table-wrap">
     <table>
         <thead>

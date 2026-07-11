@@ -1,4 +1,6 @@
 using CropQc.Data;
+using CropQc.Data.Entities;
+using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -107,6 +109,97 @@ public sealed class CanonicalGrowerReviewTests
         Assert.Contains("Vantage Orchard Non Chilean", migration);
         Assert.Contains("Stayman Flats Non Chilean", migration);
         Assert.DoesNotContain("CanonicalGrowerId", receipt);
+    }
+
+    [Fact]
+    public void UnmappedCropYearReviewCard_ProvidesClearMappingAction()
+    {
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "CropYearReview.cshtml"));
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "MasterDataController.cs"));
+        var mapView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "MasterData", "MapGrower.cshtml"));
+        var masterIndex = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "MasterData", "Index.cshtml"));
+
+        Assert.Contains("Map grower", view);
+        Assert.Contains("An administrator must map this grower", view);
+        Assert.Contains("ApplicationAreas.MasterData", view);
+        Assert.Contains("PageAccessLevel.Edit", view);
+        Assert.Contains("sourceGrowerName = grower.SourceGrowerName", view);
+        Assert.Contains("Grower mapping needed", view);
+        Assert.Contains("[Authorize(Policy = AccessPolicyNames.MasterDataEdit)]", controller);
+        Assert.Contains("SaveGrowerMappingAsync", controller);
+        Assert.Contains("Mapping choice", mapView);
+        Assert.Contains("Create new canonical grower", mapView);
+        Assert.Contains("Suggested matches", mapView);
+        Assert.Contains("Unmapped source growers", masterIndex);
+    }
+
+    [Fact]
+    public async Task MappingWorkflow_MapsSourceToExistingGrowerAndAudits()
+    {
+        await using var db = CreateDbContext();
+        var canonical = new CanonicalGrower
+        {
+            DisplayName = "Dennis Burks",
+            NormalizedKey = CanonicalGrowerService.NormalizeGrowerKey("Dennis Burks"),
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        db.CanonicalGrowers.Add(canonical);
+        await db.SaveChangesAsync();
+        var service = new AdminManagementService(db, new VarietyColorService(db), new CanonicalGrowerService(db));
+
+        var error = await service.SaveGrowerMappingAsync(new GrowerMappingForm
+        {
+            SourceGrowerName = "DENNIS BURKS - PESCIALLO",
+            GrowerNumber = "9490",
+            Facility = "EBS",
+            CropYear = 2026,
+            MappingMode = "Existing",
+            CanonicalGrowerId = canonical.Id,
+            ConfirmMapping = true
+        }, "wes@fruitandland.com", CancellationToken.None);
+
+        Assert.Null(error);
+        var saved = await db.CanonicalGrowers.Include(x => x.Aliases).Include(x => x.GrowerNumbers).SingleAsync(x => x.Id == canonical.Id);
+        Assert.Contains(saved.Aliases, x => x.AliasName == "DENNIS BURKS - PESCIALLO");
+        Assert.Contains(saved.GrowerNumbers, x => x.GrowerNumber == "9490");
+        Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.EntityName == "canonical-grower-mapping" && x.Action == "map-grower-source");
+    }
+
+    [Fact]
+    public async Task MappingWorkflow_CreatesNewGrowerAndRejectsConflictingNumber()
+    {
+        await using var db = CreateDbContext();
+        var service = new AdminManagementService(db, new VarietyColorService(db), new CanonicalGrowerService(db));
+
+        var error = await service.SaveGrowerMappingAsync(new GrowerMappingForm
+        {
+            SourceGrowerName = "NEW GROWER",
+            GrowerNumber = "1001",
+            Facility = "EBS",
+            CropYear = 2026,
+            MappingMode = "New",
+            NewCanonicalGrowerName = "New Grower",
+            ConfirmMapping = true
+        }, "wes@fruitandland.com", CancellationToken.None);
+
+        Assert.Null(error);
+        var created = await db.CanonicalGrowers.Include(x => x.Aliases).Include(x => x.GrowerNumbers).SingleAsync(x => x.DisplayName == "New Grower");
+        Assert.Contains(created.Aliases, x => x.AliasName == "NEW GROWER");
+        Assert.Contains(created.GrowerNumbers, x => x.GrowerNumber == "1001");
+        Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.EntityName == "canonical-grower-mapping" && x.Action == "create-and-map-grower-source");
+
+        var conflict = await service.SaveGrowerMappingAsync(new GrowerMappingForm
+        {
+            SourceGrowerName = "OTHER SOURCE",
+            GrowerNumber = "1001",
+            MappingMode = "New",
+            NewCanonicalGrowerName = "Other Source",
+            ConfirmMapping = true
+        }, "wes@fruitandland.com", CancellationToken.None);
+
+        Assert.Contains("already mapped", conflict, StringComparison.OrdinalIgnoreCase);
     }
 
     private static CropQcDbContext CreateDbContext()

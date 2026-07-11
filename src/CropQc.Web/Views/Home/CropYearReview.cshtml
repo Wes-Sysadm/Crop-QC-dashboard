@@ -1,6 +1,9 @@
 @model CropYearReviewPageViewModel
+@inject CropQc.Web.Services.IUserAccessService UserAccess
 @{
     ViewData["Title"] = "Crop Year Review";
+    var canMapGrowers = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.MasterData, CropQc.Web.Services.PageAccessLevel.Edit, Context.RequestAborted);
+    var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
 }
 
 <h1>Crop Year Review</h1>
@@ -47,12 +50,33 @@
                     @(grower.IsMapped ? $"{grower.SourceIdentityCount} source identities combined" : "Unmapped grower - mapping needed")
                     @if (grower.GrowerNumbers.Count > 0)
                     {
-                        <span> · @grower.GrowerNumbers.Count grower number@(grower.GrowerNumbers.Count == 1 ? "" : "s")</span>
+                        <span> - @grower.GrowerNumbers.Count grower number@(grower.GrowerNumbers.Count == 1 ? "" : "s")</span>
                     }
                 </p>
             </div>
-            <span class="status @(grower.IsMapped ? "ready" : "pending")">@(grower.IsMapped ? "Canonical" : "Unmapped")</span>
+            <div class="crop-year-grower-status">
+                <span class="status @(grower.IsMapped ? "ready" : "pending")">@(grower.IsMapped ? "Canonical" : "Unmapped")</span>
+                @if (!grower.IsMapped)
+                {
+                    @if (canMapGrowers)
+                    {
+                        <a class="button" href="@Url.Action("MapGrower", "MasterData", new { sourceGrowerName = grower.SourceGrowerName, growerNumber = grower.SourceGrowerNumber, facility = grower.SourceFacility, cropYear = Model.Filter.CropYear, returnUrl })">Map grower</a>
+                    }
+                    else
+                    {
+                        <span class="muted">An administrator must map this grower.</span>
+                    }
+                }
+            </div>
         </div>
+        @if (!grower.IsMapped)
+        {
+            <div class="notice warning crop-year-mapping-notice">
+                <strong>Grower mapping needed</strong>
+                <span>Source name: @(string.IsNullOrWhiteSpace(grower.SourceGrowerName) ? "-" : grower.SourceGrowerName)</span>
+                <span>Grower number: @(string.IsNullOrWhiteSpace(grower.SourceGrowerNumber) ? "-" : grower.SourceGrowerNumber)</span>
+            </div>
+        }
         <div class="metric-grid">
             <div><strong>@grower.TotalReceipts</strong><span>Receipts</span></div>
             <div><strong>@grower.TotalLots</strong><span>Lots</span></div>

@@ -46,6 +46,26 @@ public sealed class MasterDataController(IAdminManagementService adminService, I
         return RedirectToAction(nameof(Index), new { type });
     }
 
+    [HttpGet("canonical-growers/Map")]
+    [Authorize(Policy = AccessPolicyNames.MasterDataEdit)]
+    public async Task<IActionResult> MapGrower([FromQuery] CropQc.Web.Models.GrowerMappingForm form, CancellationToken cancellationToken) =>
+        View("MapGrower", await adminService.GetGrowerMappingAsync(form, cancellationToken));
+
+    [HttpPost("canonical-growers/Map")]
+    [Authorize(Policy = AccessPolicyNames.MasterDataEdit)]
+    public async Task<IActionResult> SaveGrowerMapping(CropQc.Web.Models.GrowerMappingForm form, CancellationToken cancellationToken)
+    {
+        var error = await adminService.SaveGrowerMappingAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
+        if (error is not null)
+        {
+            TempData["Error"] = error;
+            return View("MapGrower", await adminService.GetGrowerMappingAsync(form, cancellationToken));
+        }
+
+        TempData["Success"] = "Grower mapping saved.";
+        return LocalRedirect(SafeReturnUrl(form.ReturnUrl));
+    }
+
     [HttpPost("grower-lots/ImportPreview")]
     [Authorize(Policy = AccessPolicyNames.MasterDataEdit)]
     public async Task<IActionResult> PreviewGrowerLotImport(CropQc.Web.Models.GrowerLotImportForm form, CancellationToken cancellationToken)
@@ -71,4 +91,9 @@ public sealed class MasterDataController(IAdminManagementService adminService, I
         TempData["Success"] = $"Grower lots imported. Added {preview.AddCount}, updated {preview.UpdateCount}, unchanged {preview.UnchangedCount}.";
         return RedirectToAction(nameof(Index), new { type = "grower-lots" });
     }
+
+    private static string SafeReturnUrl(string? returnUrl) =>
+        !string.IsNullOrWhiteSpace(returnUrl) && returnUrl.StartsWith("/", StringComparison.Ordinal) && !returnUrl.StartsWith("//", StringComparison.Ordinal)
+            ? returnUrl
+            : "/CropYearReview";
 }
