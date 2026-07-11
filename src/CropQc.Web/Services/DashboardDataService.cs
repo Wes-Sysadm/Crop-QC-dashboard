@@ -82,7 +82,8 @@ public sealed class DashboardDataService(
     IConfiguration configuration,
     ILogger<DashboardDataService> logger,
     IUserAccessService? userAccessService = null,
-    IVarietyColorService? varietyColorService = null) : IDashboardDataService
+    IVarietyColorService? varietyColorService = null,
+    ICanonicalGrowerService? canonicalGrowerService = null) : IDashboardDataService
 {
     private const string DataWarning = "Database is not available yet. The dashboard shell is running with empty data.";
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
@@ -258,15 +259,15 @@ public sealed class DashboardDataService(
             filter.CropYear ??= cropYearService.GetCurrentCropYear(DateTimeOffset.Now);
             var query = QuerySamples().Where(x => x.Receipt.CropYear == filter.CropYear);
             if (filter.WarehouseId is not null) query = query.Where(x => x.Receipt.WarehouseId == filter.WarehouseId);
-            if (!string.IsNullOrWhiteSpace(filter.Grower)) query = query.Where(x => x.Receipt.GrowerName.Contains(filter.Grower));
             if (!string.IsNullOrWhiteSpace(filter.Variety)) query = query.Where(x => x.Receipt.FruitProfile.VarietyCode.Contains(filter.Variety));
 
             var samples = await query.OrderBy(x => x.SampleTakenAt).Take(1000).ToListAsync(cancellationToken);
+            var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
             var pressureByLot = samples
                 .GroupBy(x => QcConditionLotKey(x.Receipt), StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(x => x.Key, x => x.Select(s => new { Sample = s, Pressure = AverageOrNull(PressureValues([s]).ToList()) }).Where(y => y.Pressure is not null).OrderBy(y => y.Sample.SampleTakenAt).ToList(), StringComparer.OrdinalIgnoreCase);
 
-            var rows = samples.Select(sample =>
+            var sampleRows = samples.Select(sample =>
             {
                 var pressures = PressureValues([sample]).ToList();
                 var starch = StarchValues([sample]).ToList();
@@ -295,16 +296,73 @@ public sealed class DashboardDataService(
                     DaysBetweenSamples = days,
                     PressureLossPerWeek = days is > 0 && change < 0 ? decimal.Round(Math.Abs(change.Value) / days.Value * 7m, 2) : null
                 };
-            }).OrderByDescending(x => x.SampleDate).ToList();
+            }).ToList();
+
+            var growerRows = samples.Zip(sampleRows, (sample, row) => new
+                {
+                    Sample = sample,
+                    Row = row,
+                    Identity = growerResolver.Resolve(sample.Receipt.GrowerName, sample.Receipt.GrowerNumber)
+                })
+                .ToList();
+
+            if (!string.IsNullOrWhiteSpace(filter.Grower))
+            {
+                var search = filter.Grower.Trim();
+                growerRows = growerRows
+                    .Where(x => ContainsIgnoreCase(x.Identity.DisplayName, search)
+                        || ContainsIgnoreCase(x.Sample.Receipt.GrowerName, search)
+                        || ContainsIgnoreCase(x.Sample.Receipt.GrowerNumber, search)
+                        || ContainsIgnoreCase(x.Sample.Receipt.LotCode, search)
+                        || ContainsIgnoreCase(string.Join(" ", x.Identity.Key.Split('_')), search))
+                    .ToList();
+            }
+
+            var growers = growerRows
+                .GroupBy(x => x.Identity.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(group =>
+                {
+                    var rows = group.Select(x => x.Row).OrderByDescending(x => x.SampleDate).ToList();
+                    var receipts = group.Select(x => x.Sample.Receipt).DistinctBy(x => x.Id).ToList();
+                    return new CropYearReviewGrowerViewModel
+                    {
+                        CanonicalGrowerKey = group.First().Identity.Key,
+                        CanonicalGrowerName = group.First().Identity.DisplayName,
+                        IsMapped = group.First().Identity.IsMapped,
+                        GrowerNumbers = receipts.Select(x => x.GrowerNumber ?? "").Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+                        SourceGrowerNames = receipts.Select(x => x.GrowerName).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+                        SourceIdentityCount = receipts.Select(x => $"{x.GrowerName}|{x.GrowerNumber}".ToUpperInvariant()).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                        TotalReceipts = receipts.Count,
+                        TotalLots = receipts.Select(x => ReceiptLotNumber(x)).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                        TotalBinsReceived = receipts.Sum(x => x.BinCount),
+                        QcSampleCount = group.Select(x => x.Sample.Id).Distinct().Count(),
+                        Varieties = receipts.Select(x => x.FruitProfile.VarietyCode).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+                        Warehouses = receipts.Select(x => x.Warehouse.Code).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+                        FirstSampleDate = rows.LastOrDefault()?.SampleDate,
+                        LastSampleDate = rows.FirstOrDefault()?.SampleDate,
+                        AveragePressure = AverageOrNull(rows.Where(x => x.AveragePressure is not null).Select(x => x.AveragePressure!.Value).ToList()),
+                        LatestPressure = rows.Where(x => x.AveragePressure is not null).OrderByDescending(x => x.SampleDate).Select(x => x.AveragePressure).FirstOrDefault(),
+                        StarchAverage = AverageOrNull(rows.Where(x => x.StarchAverage is not null).Select(x => x.StarchAverage!.Value).ToList()),
+                        Rows = rows
+                    };
+                })
+                .OrderBy(x => x.CanonicalGrowerName)
+                .ThenBy(x => x.CanonicalGrowerKey)
+                .ToList();
 
             return new CropYearReviewPageViewModel
             {
                 Filter = filter,
-                Rows = rows,
+                Growers = growers,
                 CropYears = await cropYearService.GetAvailableCropYearsAsync(cancellationToken),
                 Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Code).ToListAsync(cancellationToken),
-                Growers = rows.Select(x => x.Grower).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
-                Varieties = rows.Select(x => x.Variety).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList()
+                GrowerOptions = growers
+                    .SelectMany(x => new[] { x.CanonicalGrowerName }.Concat(x.SourceGrowerNames).Concat(x.GrowerNumbers))
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(x => x)
+                    .ToList(),
+                Varieties = growers.SelectMany(x => x.Varieties).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList()
             };
         }
         catch

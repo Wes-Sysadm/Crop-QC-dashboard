@@ -38,6 +38,20 @@ else if (Model.Type == "grower-lots")
     <div class="field wide"><label>Notes</label><input name="Description" value="@Model.Description" maxlength="1000" /></div>
     <p class="muted wide">Pool Start is the first two letters/characters of the pool and is stored for future final-results analysis.</p>
 }
+else if (Model.Type == "canonical-growers")
+{
+    <div class="field wide"><label>Canonical grower name</label><input name="Name" value="@Model.Name" required maxlength="200" /></div>
+    <div class="field wide">
+        <label>Aliases / source names</label>
+        <textarea name="GrowerAliases" rows="6" placeholder="One alias per line">@Model.GrowerAliases</textarea>
+        <span class="muted">Original receipt and sample values stay unchanged. These aliases only group reporting cards.</span>
+    </div>
+    <div class="field wide">
+        <label>Grower numbers</label>
+        <textarea name="GrowerNumbers" rows="5" placeholder="One grower number per line">@Model.GrowerNumbers</textarea>
+        <span class="muted">Numbers are mapped to this canonical grower for review/search. If a number is reused in a different scope, leave it unmapped until scoped mapping is added.</span>
+    </div>
+}
 else if (Model.Type == "fruit-profiles")
 {
     <div class="field"><label>Variety Code</label><input name="Code" value="@Model.Code" required /></div>

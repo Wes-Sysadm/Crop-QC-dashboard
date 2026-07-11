@@ -682,6 +682,8 @@ public sealed class MasterDataEditForm
     public string VarietyFallbackColor { get; set; } = "";
     public bool VarietyColorIsConfigured { get; set; }
     public bool ResetVarietyColor { get; set; }
+    public string GrowerAliases { get; set; } = "";
+    public string GrowerNumbers { get; set; } = "";
 }
 
 public sealed class ConfigurationPageViewModel
@@ -894,10 +896,11 @@ public sealed class CropYearReviewPageViewModel
 {
     public string? DataWarning { get; set; }
     public CropYearReviewFilterForm Filter { get; set; } = new();
-    public IReadOnlyList<CropYearReviewRowViewModel> Rows { get; set; } = [];
+    public IReadOnlyList<CropYearReviewGrowerViewModel> Growers { get; set; } = [];
+    public IReadOnlyList<CropYearReviewRowViewModel> Rows => Growers.SelectMany(x => x.Rows).ToList();
     public IReadOnlyList<int> CropYears { get; set; } = [];
     public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
-    public IReadOnlyList<string> Growers { get; set; } = [];
+    public IReadOnlyList<string> GrowerOptions { get; set; } = [];
     public IReadOnlyList<string> Varieties { get; set; } = [];
 }
 
@@ -907,6 +910,28 @@ public sealed class CropYearReviewFilterForm
     public int? WarehouseId { get; set; }
     public string? Grower { get; set; }
     public string? Variety { get; set; }
+}
+
+public sealed class CropYearReviewGrowerViewModel
+{
+    public string CanonicalGrowerKey { get; set; } = "";
+    public string CanonicalGrowerName { get; set; } = "";
+    public bool IsMapped { get; set; }
+    public IReadOnlyList<string> GrowerNumbers { get; set; } = [];
+    public IReadOnlyList<string> SourceGrowerNames { get; set; } = [];
+    public int SourceIdentityCount { get; set; }
+    public int TotalReceipts { get; set; }
+    public int TotalLots { get; set; }
+    public int TotalBinsReceived { get; set; }
+    public int QcSampleCount { get; set; }
+    public IReadOnlyList<string> Varieties { get; set; } = [];
+    public IReadOnlyList<string> Warehouses { get; set; } = [];
+    public DateTimeOffset? FirstSampleDate { get; set; }
+    public DateTimeOffset? LastSampleDate { get; set; }
+    public decimal? AveragePressure { get; set; }
+    public decimal? LatestPressure { get; set; }
+    public decimal? StarchAverage { get; set; }
+    public IReadOnlyList<CropYearReviewRowViewModel> Rows { get; set; } = [];
 }
 
 public sealed class CropYearReviewRowViewModel

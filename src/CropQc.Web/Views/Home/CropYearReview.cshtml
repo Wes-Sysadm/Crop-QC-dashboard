@@ -29,59 +29,98 @@
             }
         </select>
     </div>
-    <div class="field"><label>Grower</label><input name="Grower" value="@Model.Filter.Grower" list="review-growers" /></div>
-    <datalist id="review-growers">@foreach (var grower in Model.Growers){<option value="@grower"></option>}</datalist>
+    <div class="field"><label>Grower, alias, or number</label><input name="Grower" value="@Model.Filter.Grower" list="review-growers" /></div>
+    <datalist id="review-growers">@foreach (var grower in Model.GrowerOptions){<option value="@grower"></option>}</datalist>
     <div class="field"><label>Variety</label><input name="Variety" value="@Model.Filter.Variety" list="review-varieties" /></div>
     <datalist id="review-varieties">@foreach (var variety in Model.Varieties){<option value="@variety"></option>}</datalist>
     <button type="submit">Apply</button>
 </form>
 
-<div class="table-wrap operational-table-wrap">
-    <table class="operational-table crop-year-review-table">
-        <thead>
-            <tr>
-                <th>Sample Date</th>
-                <th>Grower</th>
-                <th>Lot</th>
-                <th>Variety</th>
-                <th>Warehouse</th>
-                <th>Room</th>
-                <th>Sample Type</th>
-                <th>Average Pressure</th>
-                <th>Pressure Std Dev</th>
-                <th>Starch Average</th>
-                <th>Entered Fruit Count</th>
-                <th>Earliest Pressure</th>
-                <th>Latest Pressure</th>
-                <th>Pressure Change</th>
-                <th>Days Between Samples</th>
-                <th>Pressure Loss/Week</th>
-            </tr>
-        </thead>
-        <tbody>
-        @foreach (var row in Model.Rows)
-        {
-            <tr>
-                <td>@row.SampleDate.LocalDateTime.ToString("g")</td>
-                <td>@row.Grower</td>
-                <td>@row.Lot</td>
-                <td>@row.Variety</td>
-                <td>@row.Warehouse</td>
-                <td>@row.Room</td>
-                <td>@row.SampleType</td>
-                <td>@Format(row.AveragePressure)</td>
-                <td>@Format(row.PressureStdDev)</td>
-                <td>@Format(row.StarchAverage)</td>
-                <td class="numeric-cell">@row.EnteredFruitCount</td>
-                <td>@Format(row.EarliestPressure)</td>
-                <td>@Format(row.LatestPressure)</td>
-                <td>@FormatChange(row.PressureChange)</td>
-                <td>@(row.DaysBetweenSamples?.ToString() ?? "-")</td>
-                <td>@Format(row.PressureLossPerWeek)</td>
-            </tr>
-        }
-        </tbody>
-    </table>
+<div class="crop-year-grower-grid">
+@foreach (var grower in Model.Growers)
+{
+    <article class="panel crop-year-grower-card">
+        <div class="room-card-header">
+            <div>
+                <h2>@grower.CanonicalGrowerName</h2>
+                <p class="muted">
+                    @(grower.IsMapped ? $"{grower.SourceIdentityCount} source identities combined" : "Unmapped grower - mapping needed")
+                    @if (grower.GrowerNumbers.Count > 0)
+                    {
+                        <span> · @grower.GrowerNumbers.Count grower number@(grower.GrowerNumbers.Count == 1 ? "" : "s")</span>
+                    }
+                </p>
+            </div>
+            <span class="status @(grower.IsMapped ? "ready" : "pending")">@(grower.IsMapped ? "Canonical" : "Unmapped")</span>
+        </div>
+        <div class="metric-grid">
+            <div><strong>@grower.TotalReceipts</strong><span>Receipts</span></div>
+            <div><strong>@grower.TotalLots</strong><span>Lots</span></div>
+            <div><strong>@grower.TotalBinsReceived</strong><span>Bins received</span></div>
+            <div><strong>@grower.QcSampleCount</strong><span>QC samples</span></div>
+            <div><strong>@Format(grower.AveragePressure)</strong><span>Avg pressure</span></div>
+            <div><strong>@Format(grower.LatestPressure)</strong><span>Latest pressure</span></div>
+            <div><strong>@Format(grower.StarchAverage)</strong><span>Starch avg</span></div>
+            <div><strong>@(grower.FirstSampleDate?.LocalDateTime.ToString("d") ?? "-")</strong><span>First sample</span></div>
+        </div>
+        <div class="crop-year-grower-meta">
+            <p><strong>Varieties:</strong> @(grower.Varieties.Count == 0 ? "-" : string.Join(", ", grower.Varieties))</p>
+            <p><strong>Facilities:</strong> @(grower.Warehouses.Count == 0 ? "-" : string.Join(", ", grower.Warehouses))</p>
+            <p><strong>Grower numbers:</strong> @(grower.GrowerNumbers.Count == 0 ? "-" : string.Join(", ", grower.GrowerNumbers))</p>
+            <p><strong>Source names:</strong> @(grower.SourceGrowerNames.Count == 0 ? "-" : string.Join(", ", grower.SourceGrowerNames))</p>
+        </div>
+        <details>
+            <summary>View supporting receipts, lots, and samples</summary>
+            <div class="table-wrap operational-table-wrap">
+                <table class="operational-table crop-year-review-table">
+                    <thead>
+                        <tr>
+                            <th>Sample Date</th>
+                            <th>Source Grower</th>
+                            <th>Lot</th>
+                            <th>Variety</th>
+                            <th>Warehouse</th>
+                            <th>Room</th>
+                            <th>Sample Type</th>
+                            <th>Average Pressure</th>
+                            <th>Pressure Std Dev</th>
+                            <th>Starch Average</th>
+                            <th>Entered Fruit Count</th>
+                            <th>Earliest Pressure</th>
+                            <th>Latest Pressure</th>
+                            <th>Pressure Change</th>
+                            <th>Days Between Samples</th>
+                            <th>Pressure Loss/Week</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in grower.Rows)
+                    {
+                        <tr>
+                            <td>@row.SampleDate.LocalDateTime.ToString("g")</td>
+                            <td>@row.Grower</td>
+                            <td>@row.Lot</td>
+                            <td>@row.Variety</td>
+                            <td>@row.Warehouse</td>
+                            <td>@row.Room</td>
+                            <td>@row.SampleType</td>
+                            <td>@Format(row.AveragePressure)</td>
+                            <td>@Format(row.PressureStdDev)</td>
+                            <td>@Format(row.StarchAverage)</td>
+                            <td class="numeric-cell">@row.EnteredFruitCount</td>
+                            <td>@Format(row.EarliestPressure)</td>
+                            <td>@Format(row.LatestPressure)</td>
+                            <td>@FormatChange(row.PressureChange)</td>
+                            <td>@(row.DaysBetweenSamples?.ToString() ?? "-")</td>
+                            <td>@Format(row.PressureLossPerWeek)</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    </article>
+}
 </div>
 
 @functions {

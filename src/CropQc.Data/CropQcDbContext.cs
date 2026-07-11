@@ -15,6 +15,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<GrowerLot> GrowerLots => Set<GrowerLot>();
+    public DbSet<CanonicalGrower> CanonicalGrowers => Set<CanonicalGrower>();
+    public DbSet<CanonicalGrowerAlias> CanonicalGrowerAliases => Set<CanonicalGrowerAlias>();
+    public DbSet<CanonicalGrowerNumber> CanonicalGrowerNumbers => Set<CanonicalGrowerNumber>();
     public DbSet<FruitProfile> FruitProfiles => Set<FruitProfile>();
     public DbSet<VarietyColorConfiguration> VarietyColorConfigurations => Set<VarietyColorConfiguration>();
     public DbSet<SampleType> SampleTypes => Set<SampleType>();
@@ -144,6 +147,44 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.PoolStart).HasMaxLength(20);
             entity.Property(x => x.Notes).HasMaxLength(1000);
             entity.HasIndex(x => new { x.Grower, x.LotNumber }).IsUnique();
+        });
+
+        modelBuilder.Entity<CanonicalGrower>(entity =>
+        {
+            entity.Property(x => x.DisplayName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.NormalizedKey).HasMaxLength(200).IsRequired();
+            entity.HasIndex(x => x.NormalizedKey);
+            entity.HasOne(x => x.MergedIntoCanonicalGrower)
+                .WithMany()
+                .HasForeignKey(x => x.MergedIntoCanonicalGrowerId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CanonicalGrowerAlias>(entity =>
+        {
+            entity.Property(x => x.AliasName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.NormalizedAliasKey).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.SourceSystem).HasMaxLength(100);
+            entity.HasIndex(x => x.NormalizedAliasKey);
+            entity.HasIndex(x => new { x.CanonicalGrowerId, x.NormalizedAliasKey });
+            entity.HasOne(x => x.CanonicalGrower)
+                .WithMany(x => x.Aliases)
+                .HasForeignKey(x => x.CanonicalGrowerId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CanonicalGrowerNumber>(entity =>
+        {
+            entity.Property(x => x.GrowerNumber).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.NormalizedGrowerNumber).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.SourceSystem).HasMaxLength(100);
+            entity.Property(x => x.Facility).HasMaxLength(100);
+            entity.HasIndex(x => x.NormalizedGrowerNumber);
+            entity.HasIndex(x => new { x.CanonicalGrowerId, x.NormalizedGrowerNumber });
+            entity.HasOne(x => x.CanonicalGrower)
+                .WithMany(x => x.GrowerNumbers)
+                .HasForeignKey(x => x.CanonicalGrowerId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<FruitProfile>(entity =>
