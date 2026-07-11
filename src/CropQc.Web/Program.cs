@@ -31,6 +31,7 @@ builder.Services.AddSingleton(gmailOptions);
 builder.Services.AddSingleton(appEnvironmentOptions);
 builder.Services.AddSingleton(EmailOptionsFactory.Create(builder.Configuration, builder.Environment.IsProduction()));
 builder.Services.AddSingleton(BackupOptions.FromConfiguration(builder.Configuration));
+builder.Services.AddSingleton(PerformanceDiagnosticsOptions.FromConfiguration(builder.Configuration, builder.Environment));
 var authenticationBuilder = builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -175,12 +176,18 @@ builder.Services.AddAuthorization(options =>
     AddAccessPolicy(options, AccessPolicyNames.BackupsAdmin, ApplicationAreas.Backups, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.DataCleanupAdmin, ApplicationAreas.DataCleanup, PageAccessLevel.Admin);
 });
-builder.Services.AddDbContext<CropQcDbContext>(options =>
+builder.Services.AddScoped<PerformanceQueryCounter>();
+builder.Services.AddScoped<IPerformanceQueryCounter>(services => services.GetRequiredService<PerformanceQueryCounter>());
+builder.Services.AddScoped<PerformanceDbCommandInterceptor>();
+builder.Services.AddDbContext<CropQcDbContext>((services, options) =>
+{
     CropQcDatabase.Configure(
         options,
         builder.Configuration["DATABASE_PROVIDER"] ?? builder.Configuration["Database:Provider"],
         builder.Configuration.GetConnectionString(builder.Configuration["Database:ConnectionStringName"] ?? CropQcDatabase.DefaultConnectionStringName),
-        sqlOptions => sqlOptions.CommandTimeout(3)));
+        sqlOptions => sqlOptions.CommandTimeout(3));
+    options.AddInterceptors(services.GetRequiredService<PerformanceDbCommandInterceptor>());
+});
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IDashboardDataService, DashboardDataService>();
@@ -250,6 +257,8 @@ if (useForwardedHeaders)
 {
     app.UseForwardedHeaders();
 }
+
+app.UseMiddleware<RequestPerformanceDiagnosticsMiddleware>();
 
 if (!app.Environment.IsDevelopment())
 {

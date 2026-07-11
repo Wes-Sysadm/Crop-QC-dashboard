@@ -1,6 +1,7 @@
 using CropQc.Api.Dtos;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared;
 using Microsoft.EntityFrameworkCore;
 
 namespace CropQc.Api.Services;
@@ -16,13 +17,13 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
 {
     public async Task<IReadOnlyList<QcStationSampleListItemDto>> GetTodaySamplesAsync(string? warehouseCode, CancellationToken cancellationToken)
     {
-        var today = DateTimeOffset.UtcNow.Date;
+        var todayRange = UtcDayRange.ForUtcDay(DateTimeOffset.UtcNow);
         var query = dbContext.QcSamples.AsNoTracking()
             .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
             .Include(x => x.Receipt).ThenInclude(x => x.Room)
             .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
             .Include(x => x.FruitReadings)
-            .Where(x => !x.IsDeleted && x.SampleTakenAt.Date == today);
+            .Where(x => !x.IsDeleted && x.SampleTakenAt >= todayRange.Start && x.SampleTakenAt < todayRange.End);
 
         if (!string.IsNullOrWhiteSpace(warehouseCode))
         {

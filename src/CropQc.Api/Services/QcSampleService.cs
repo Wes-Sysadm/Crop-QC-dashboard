@@ -1,6 +1,7 @@
 using CropQc.Api.Dtos;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared;
 using Microsoft.EntityFrameworkCore;
 
 namespace CropQc.Api.Services;
@@ -69,9 +70,9 @@ public sealed class QcSampleService(CropQcDbContext dbContext, IAuditService aud
 
     public async Task<IReadOnlyList<QcSampleDto>> GetTodayByWarehouseAsync(int warehouseId, CancellationToken cancellationToken)
     {
-        var today = DateTimeOffset.UtcNow.Date;
+        var todayRange = UtcDayRange.ForUtcDay(DateTimeOffset.UtcNow);
         return await dbContext.QcSamples.AsNoTracking().Include(x => x.Receipt)
-            .Where(x => !x.IsDeleted && x.Receipt.WarehouseId == warehouseId && x.SampleTakenAt.Date == today)
+            .Where(x => !x.IsDeleted && x.Receipt.WarehouseId == warehouseId && x.SampleTakenAt >= todayRange.Start && x.SampleTakenAt < todayRange.End)
             .OrderByDescending(x => x.SampleTakenAt)
             .Select(x => ToDto(x, x.Receipt.CompuTechReceiptId))
             .ToListAsync(cancellationToken);
