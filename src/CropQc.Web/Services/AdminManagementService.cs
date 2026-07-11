@@ -19,7 +19,7 @@ public interface IAdminManagementService
     Task<string?> SaveConfigurationAsync(ConfigurationEditForm form, string changedByEmail, CancellationToken cancellationToken);
 }
 
-public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyColorService varietyColorService) : IAdminManagementService
+public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyColorService varietyColorService, ICanonicalGrowerService? canonicalGrowerService = null) : IAdminManagementService
 {
     private static readonly string[] DefaultCommodityOptions = ["Apple", "Pear"];
 
@@ -55,6 +55,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
             "grades" => await GradesPage(canEdit, cancellationToken),
             "defects" => await DefectsPage(canEdit, cancellationToken),
             "sample-types" => await SampleTypesPage(canEdit, cancellationToken),
+            "canonical-growers" => await CanonicalGrowersPage(canEdit, cancellationToken),
             "starch-scale-values" => await StarchPage(canEdit, cancellationToken),
             "size-thresholds" => await SizeThresholdsPage(canEdit, cancellationToken),
             "grower-lots" => await GrowerLotsPage(canEdit, cancellationToken),
@@ -71,6 +72,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
             "grades" => await dbContext.Grades.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.Code, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "defects" => await dbContext.DefectTypes.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "sample-types" => await dbContext.SampleTypes.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
+            "canonical-growers" => await GetCanonicalGrowerEditFormAsync(type, id, cancellationToken),
             "grower-lots" => await dbContext.GrowerLots.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Grower, Code = x.LotNumber, PoolStart = x.PoolStart, Description = x.Notes, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "starch-scale-values" => await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Value = x.Value, SortOrder = x.SortOrder, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "size-thresholds" => await WithCommodityOptions(await dbContext.FruitSizeConversionThresholds.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, FruitType = x.FruitType, SizeCategory = x.SizeCategory, MinimumWeightGrams = x.MinimumWeightGrams, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken),
@@ -88,6 +90,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
             "grades" => await SaveGrade(form, changedByEmail, cancellationToken),
             "defects" => await SaveDefect(form, changedByEmail, cancellationToken),
             "sample-types" => await SaveSampleType(form, changedByEmail, cancellationToken),
+            "canonical-growers" => await SaveCanonicalGrower(form, changedByEmail, cancellationToken),
             "grower-lots" => await SaveGrowerLot(form, changedByEmail, cancellationToken),
             "starch-scale-values" => await SaveStarchValue(form, changedByEmail, cancellationToken),
             "size-thresholds" => await SaveSizeThreshold(form, changedByEmail, cancellationToken),
@@ -105,6 +108,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
             "grades" => await dbContext.Grades.FindAsync([id], cancellationToken),
             "defects" => await dbContext.DefectTypes.FindAsync([id], cancellationToken),
             "sample-types" => await dbContext.SampleTypes.FindAsync([id], cancellationToken),
+            "canonical-growers" => await dbContext.CanonicalGrowers.FindAsync([id], cancellationToken),
             "grower-lots" => await dbContext.GrowerLots.FindAsync([id], cancellationToken),
             "starch-scale-values" => await dbContext.StarchScaleValues.FindAsync([id], cancellationToken),
             "size-thresholds" => await dbContext.FruitSizeConversionThresholds.FindAsync([id], cancellationToken),
@@ -328,6 +332,137 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
             .Select(x => new MasterDataEditItem(x.Id, new[] { x.Grower, x.LotNumber, x.PoolStart ?? "", x.Notes ?? "", YesNo(x.IsActive) }, x.IsActive, null))
             .ToListAsync(ct);
         return Page("Grower Lots", "grower-lots", ["Grower", "Lot #", "Pool Start", "Notes", "Active"], rows, canEdit);
+    }
+
+    private async Task<MasterDataPageViewModel> CanonicalGrowersPage(bool canEdit, CancellationToken ct)
+    {
+        var growerService = canonicalGrowerService ?? new CanonicalGrowerService(dbContext);
+        await growerService.EnsureSeedMappingsAsync(ct);
+        var growers = await dbContext.CanonicalGrowers.AsNoTracking()
+            .Include(x => x.Aliases)
+            .Include(x => x.GrowerNumbers)
+            .OrderBy(x => x.DisplayName)
+            .ToListAsync(ct);
+        var receiptSummaries = await dbContext.Receipts.AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .Select(x => new { x.GrowerName, x.GrowerNumber, x.CropYear })
+            .ToListAsync(ct);
+        var resolver = await growerService.LoadResolutionSetAsync(ct);
+        var counts = receiptSummaries
+            .Select(x => new { Identity = resolver.Resolve(x.GrowerName, x.GrowerNumber), x.CropYear })
+            .GroupBy(x => x.Identity.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                x => x.Key,
+                x => new
+                {
+                    Receipts = x.Count(),
+                    CropYears = string.Join(", ", x.Select(y => y.CropYear).Distinct().OrderBy(y => y))
+                },
+                StringComparer.OrdinalIgnoreCase);
+
+        var rows = growers.Select(grower =>
+        {
+            counts.TryGetValue(grower.NormalizedKey, out var count);
+            return new MasterDataEditItem(
+                grower.Id,
+                [
+                    grower.DisplayName,
+                    string.Join(", ", grower.GrowerNumbers.Where(x => x.IsActive).Select(x => x.GrowerNumber).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x)),
+                    string.Join(", ", grower.Aliases.Where(x => x.IsActive).Select(x => x.AliasName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x)),
+                    count?.Receipts.ToString() ?? "0",
+                    count?.CropYears ?? "",
+                    YesNo(grower.IsActive)
+                ],
+                grower.IsActive,
+                null);
+        }).ToList();
+
+        return Page("Canonical Growers", "canonical-growers", ["Canonical Grower", "Grower Numbers", "Aliases / Source Names", "Receipts", "Crop Years", "Active"], rows, canEdit);
+    }
+
+    private async Task<MasterDataEditForm?> GetCanonicalGrowerEditFormAsync(string type, int id, CancellationToken ct)
+    {
+        var grower = await dbContext.CanonicalGrowers.AsNoTracking()
+            .Include(x => x.Aliases)
+            .Include(x => x.GrowerNumbers)
+            .SingleOrDefaultAsync(x => x.Id == id, ct);
+        if (grower is null) return null;
+        return new MasterDataEditForm
+        {
+            Type = type,
+            Id = grower.Id,
+            Name = grower.DisplayName,
+            IsActive = grower.IsActive,
+            GrowerAliases = string.Join(Environment.NewLine, grower.Aliases.Where(x => x.IsActive).Select(x => x.AliasName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x)),
+            GrowerNumbers = string.Join(Environment.NewLine, grower.GrowerNumbers.Where(x => x.IsActive).Select(x => x.GrowerNumber).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x))
+        };
+    }
+
+    private async Task<string?> SaveCanonicalGrower(MasterDataEditForm form, string by, CancellationToken ct)
+    {
+        if (Blank(form.Name)) return "Canonical grower name is required.";
+        var normalizedKey = CanonicalGrowerService.NormalizeGrowerKey(form.Name);
+        if (await dbContext.CanonicalGrowers.AnyAsync(x => x.NormalizedKey == normalizedKey && x.Id != (form.Id ?? 0), ct))
+        {
+            return "A canonical grower with that normalized name already exists.";
+        }
+
+        var aliasNames = ParseLines(form.GrowerAliases).Append(form.Name.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var aliasKeys = aliasNames.Select(CanonicalGrowerService.NormalizeGrowerKey).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var existingAliasConflict = await dbContext.CanonicalGrowerAliases
+            .Include(x => x.CanonicalGrower)
+            .Where(x => x.IsActive && aliasKeys.Contains(x.NormalizedAliasKey) && x.CanonicalGrowerId != (form.Id ?? 0))
+            .Select(x => x.CanonicalGrower.DisplayName)
+            .Distinct()
+            .ToListAsync(ct);
+        if (existingAliasConflict.Count > 0)
+        {
+            return $"Alias already belongs to another canonical grower: {string.Join(", ", existingAliasConflict)}.";
+        }
+
+        var numberValues = ParseLines(form.GrowerNumbers).ToList();
+        var numberKeys = numberValues.Select(CanonicalGrowerService.NormalizeGrowerNumber).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var numberConflicts = await dbContext.CanonicalGrowerNumbers
+            .Include(x => x.CanonicalGrower)
+            .Where(x => x.IsActive && numberKeys.Contains(x.NormalizedGrowerNumber) && x.CanonicalGrowerId != (form.Id ?? 0))
+            .Select(x => x.CanonicalGrower.DisplayName)
+            .Distinct()
+            .ToListAsync(ct);
+        if (numberConflicts.Count > 0)
+        {
+            return $"Grower number already belongs to another canonical grower: {string.Join(", ", numberConflicts)}.";
+        }
+
+        var entity = form.Id is null
+            ? new CanonicalGrower { DisplayName = "", NormalizedKey = "" }
+            : await dbContext.CanonicalGrowers.Include(x => x.Aliases).Include(x => x.GrowerNumbers).SingleOrDefaultAsync(x => x.Id == form.Id.Value, ct);
+        if (entity is null) return "Canonical grower not found.";
+        var before = form.Id is null ? null : JsonSerializer.Serialize(entity, new JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles });
+        entity.DisplayName = form.Name.Trim();
+        entity.NormalizedKey = normalizedKey;
+        entity.IsActive = form.IsActive;
+        entity.UpdatedAt = DateTimeOffset.UtcNow;
+        if (form.Id is null)
+        {
+            entity.CreatedAt = entity.UpdatedAt;
+            dbContext.CanonicalGrowers.Add(entity);
+        }
+
+        ReplaceCanonicalGrowerAliases(entity, aliasNames);
+        ReplaceCanonicalGrowerNumbers(entity, numberValues);
+
+        await dbContext.SaveChangesAsync(ct);
+        await AddAuditAsync(form.Id is null ? "create" : "update", "canonical-growers", entity.Id.ToString(), by, before, JsonSerializer.Serialize(new
+        {
+            entity.Id,
+            entity.DisplayName,
+            entity.NormalizedKey,
+            Aliases = entity.Aliases.Where(x => x.IsActive).Select(x => x.AliasName).OrderBy(x => x),
+            GrowerNumbers = entity.GrowerNumbers.Where(x => x.IsActive).Select(x => x.GrowerNumber).OrderBy(x => x),
+            entity.IsActive
+        }), ct);
+        await dbContext.SaveChangesAsync(ct);
+        return null;
     }
 
     private async Task<string?> SaveGrowerLot(MasterDataEditForm form, string by, CancellationToken ct)
@@ -836,6 +971,79 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
     private static string NormalizeProductionType(string value) =>
         string.Equals(value.Trim(), "Organic", StringComparison.OrdinalIgnoreCase) ? "Organic" : "Conventional";
 
+    private static IReadOnlyList<string> ParseLines(string? value) =>
+        (value ?? "")
+            .Split(['\r', '\n', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !Blank(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private static void ReplaceCanonicalGrowerAliases(CanonicalGrower grower, IReadOnlyList<string> aliasNames)
+    {
+        foreach (var alias in grower.Aliases)
+        {
+            alias.IsActive = false;
+            alias.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        foreach (var aliasName in aliasNames)
+        {
+            var key = CanonicalGrowerService.NormalizeGrowerKey(aliasName);
+            if (key.Length == 0) continue;
+            var alias = grower.Aliases.FirstOrDefault(x => x.NormalizedAliasKey.Equals(key, StringComparison.OrdinalIgnoreCase));
+            if (alias is null)
+            {
+                grower.Aliases.Add(new CanonicalGrowerAlias
+                {
+                    AliasName = aliasName.Trim(),
+                    NormalizedAliasKey = key,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    UpdatedAt = DateTimeOffset.UtcNow,
+                    IsActive = true
+                });
+            }
+            else
+            {
+                alias.AliasName = aliasName.Trim();
+                alias.IsActive = true;
+                alias.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+        }
+    }
+
+    private static void ReplaceCanonicalGrowerNumbers(CanonicalGrower grower, IReadOnlyList<string> numberValues)
+    {
+        foreach (var number in grower.GrowerNumbers)
+        {
+            number.IsActive = false;
+            number.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        foreach (var numberValue in numberValues)
+        {
+            var key = CanonicalGrowerService.NormalizeGrowerNumber(numberValue);
+            if (key.Length == 0) continue;
+            var number = grower.GrowerNumbers.FirstOrDefault(x => x.NormalizedGrowerNumber.Equals(key, StringComparison.OrdinalIgnoreCase));
+            if (number is null)
+            {
+                grower.GrowerNumbers.Add(new CanonicalGrowerNumber
+                {
+                    GrowerNumber = numberValue.Trim(),
+                    NormalizedGrowerNumber = key,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    UpdatedAt = DateTimeOffset.UtcNow,
+                    IsActive = true
+                });
+            }
+            else
+            {
+                number.GrowerNumber = numberValue.Trim();
+                number.IsActive = true;
+                number.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+        }
+    }
+
     private static bool Blank(string? value) => string.IsNullOrWhiteSpace(value);
     private static string YesNo(bool value) => value ? "Yes" : "No";
     private static IReadOnlyList<(string Label, string Href)> MasterDataLinks() =>
@@ -846,6 +1054,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
         ("Grades", "/MasterData/grades"),
         ("Defects", "/MasterData/defects"),
         ("Sample types", "/MasterData/sample-types"),
+        ("Canonical Growers", "/MasterData/canonical-growers"),
         ("Grower Lots", "/MasterData/grower-lots"),
         ("Starch scale values", "/MasterData/starch-scale-values"),
         ("Size thresholds", "/MasterData/size-thresholds")

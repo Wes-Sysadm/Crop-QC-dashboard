@@ -126,6 +126,16 @@ tr:last-child td { border-bottom: 0; }
 .operational-table { table-layout: auto; min-width: 0; }
 .operational-table th, .operational-table td { white-space: normal; overflow-wrap: break-word; word-break: normal; }
 .crop-year-review-table th, .crop-year-review-table td { font-size: 13px; }
+.crop-year-grower-grid { display: grid; gap: 16px; margin-top: 16px; }
+.crop-year-grower-card { display: grid; gap: 12px; }
+.crop-year-grower-card h2 { margin: 0; font-size: 22px; }
+.crop-year-grower-meta { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 6px 18px; }
+.crop-year-grower-meta p { margin: 0; overflow-wrap: anywhere; }
+.crop-year-grower-card details { border-top: 1px solid #d9e1e8; padding-top: 10px; }
+.crop-year-grower-card summary { cursor: pointer; font-weight: 800; }
+@media (max-width: 900px) {
+    .crop-year-grower-meta { grid-template-columns: 1fr; }
+}
 .user-admin-list { display: grid; gap: 12px; max-width: 100%; }
 .responsive-admin-table { table-layout: fixed; background: white; border: 1px solid #d9e1e8; border-radius: 6px; overflow: hidden; }
 .responsive-admin-table th, .responsive-admin-table td { white-space: normal; overflow-wrap: break-word; word-break: normal; }

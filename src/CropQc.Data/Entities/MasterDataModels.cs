@@ -38,6 +38,48 @@ public sealed class GrowerLot
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
+public sealed class CanonicalGrower
+{
+    public int Id { get; set; }
+    public required string DisplayName { get; set; }
+    public string NormalizedKey { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    public int? MergedIntoCanonicalGrowerId { get; set; }
+    public CanonicalGrower? MergedIntoCanonicalGrower { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public ICollection<CanonicalGrowerAlias> Aliases { get; } = new List<CanonicalGrowerAlias>();
+    public ICollection<CanonicalGrowerNumber> GrowerNumbers { get; } = new List<CanonicalGrowerNumber>();
+}
+
+public sealed class CanonicalGrowerAlias
+{
+    public int Id { get; set; }
+    public int CanonicalGrowerId { get; set; }
+    public CanonicalGrower CanonicalGrower { get; set; } = null!;
+    public required string AliasName { get; set; }
+    public string NormalizedAliasKey { get; set; } = "";
+    public string? SourceSystem { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+public sealed class CanonicalGrowerNumber
+{
+    public int Id { get; set; }
+    public int CanonicalGrowerId { get; set; }
+    public CanonicalGrower CanonicalGrower { get; set; } = null!;
+    public required string GrowerNumber { get; set; }
+    public string NormalizedGrowerNumber { get; set; } = "";
+    public string? SourceSystem { get; set; }
+    public string? Facility { get; set; }
+    public int? CropYear { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
 public sealed class FruitProfile
 {
     public int Id { get; set; }
