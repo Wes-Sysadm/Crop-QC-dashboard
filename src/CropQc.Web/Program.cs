@@ -170,6 +170,8 @@ builder.Services.AddAuthorization(options =>
     AddAccessPolicy(options, AccessPolicyNames.QcStationsAdmin, ApplicationAreas.QcStations, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.DownloadsView, ApplicationAreas.Downloads, PageAccessLevel.View);
     AddAccessPolicy(options, AccessPolicyNames.ConfigurationAdmin, ApplicationAreas.Configuration, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.VarietyColorsView, ApplicationAreas.VarietyColors, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.VarietyColorsAdmin, ApplicationAreas.VarietyColors, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.BackupsAdmin, ApplicationAreas.Backups, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.DataCleanupAdmin, ApplicationAreas.DataCleanup, PageAccessLevel.Admin);
 });
@@ -201,6 +203,7 @@ builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 builder.Services.AddScoped<IQcStationAdminService, QcStationAdminService>();
 builder.Services.AddScoped<ICropYearService, CropYearService>();
 builder.Services.AddScoped<IDataCleanupService, DataCleanupService>();
+builder.Services.AddScoped<IVarietyColorService, VarietyColorService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddHostedService<EbsDailyBinsEmailHostedService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));

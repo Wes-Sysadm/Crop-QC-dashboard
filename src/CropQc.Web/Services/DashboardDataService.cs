@@ -80,7 +80,8 @@ public sealed class DashboardDataService(
     IHttpContextAccessor httpContextAccessor,
     IConfiguration configuration,
     ILogger<DashboardDataService> logger,
-    IUserAccessService? userAccessService = null) : IDashboardDataService
+    IUserAccessService? userAccessService = null,
+    IVarietyColorService? varietyColorService = null) : IDashboardDataService
 {
     private const string DataWarning = "Database is not available yet. The dashboard shell is running with empty data.";
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
@@ -2197,6 +2198,8 @@ public sealed class DashboardDataService(
             : await BuildRoomLotSummariesAsync(roomId.Value, cancellationToken);
         var startingBinsByRoom = await BuildStartingSeasonBinsByRoomAsync(cancellationToken);
         var latestActivityByRoom = await BuildLatestRoomActivityByRoomAsync(cancellationToken);
+        var colorLots = roomId is null ? [] : (await BuildDashboardCurrentInventorySnapshotsAsync(roomId.Value, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
+        var colorMap = await ResolveDashboardVarietyColorsAsync(colorLots, cancellationToken);
         var currentLotsByRoom = lots
             .Where(x => x.CurrentBins > 0)
             .GroupBy(x => x.RoomId)
@@ -2209,6 +2212,11 @@ public sealed class DashboardDataService(
             var monthPressureChange = AverageOrNull(roomLots.Where(x => x.MonthOverMonthPressureChangeLbs is not null).Select(x => x.MonthOverMonthPressureChangeLbs!.Value).ToList());
             var flags = roomLots.SelectMany(x => x.ReviewFlags).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var currentBins = roomLots.Sum(x => x.CurrentBins);
+            var roomColorLots = colorLots.Where(x => x.RoomId == room.Id).ToList();
+            var colorCurrentBins = roomColorLots.Sum(x => x.CurrentBins);
+            var organicBins = roomColorLots.Where(x => x.IsOrganic == true).Sum(x => x.CurrentBins);
+            var conventionalBins = roomColorLots.Where(x => x.IsOrganic == false).Sum(x => x.CurrentBins);
+            var unknownOrganicBins = roomColorLots.Where(x => x.IsOrganic is null).Sum(x => x.CurrentBins);
             var status = roomLots.Count == 0 ? "Empty" : flags.Count > 0 ? "Needs Review" : "Active";
             var facility = FacilityCode(room.Warehouse.Code, room.Warehouse.Name);
             var weakestLot = FindWeakestLot(roomLots);
@@ -2229,6 +2237,12 @@ public sealed class DashboardDataService(
                 Status = status,
                 CurrentLotsCount = roomLots.Count,
                 CurrentBinsCount = roomLots.Count == 0 ? null : currentBins,
+                VarietyColorSegments = BuildRoomVarietyColorSegments(roomColorLots, colorMap),
+                OrganicBins = organicBins,
+                ConventionalBins = conventionalBins,
+                UnknownOrganicStatusBins = unknownOrganicBins,
+                OrganicPercent = colorCurrentBins <= 0 ? 0m : decimal.Round(organicBins / (decimal)colorCurrentBins * 100m, 1),
+                IsMajorityOrganic = colorCurrentBins > 0 && organicBins / (decimal)colorCurrentBins > 0.51m,
                 StartingSeasonBins = startingBinsByRoom.GetValueOrDefault(room.Id),
                 NetChangeBins = currentBins - startingBinsByRoom.GetValueOrDefault(room.Id),
                 VarietyStatusSummary = BuildVarietyStatusSummary(roomLots),
@@ -2277,6 +2291,7 @@ public sealed class DashboardDataService(
         var includedRoomIds = rooms.Select(x => x.Id).ToHashSet();
         occupiedLots = occupiedLots.Where(x => includedRoomIds.Contains(x.RoomId)).ToList();
         var latestSamplesByLot = await BuildDashboardLatestSampleByLotAsync(occupiedLots, cancellationToken);
+        var colorMap = await ResolveDashboardVarietyColorsAsync(occupiedLots, cancellationToken);
         var today = DateTimeOffset.Now;
 
         return rooms.Select(room =>
@@ -2301,6 +2316,11 @@ public sealed class DashboardDataService(
                 var missingBins = Math.Max(0, currentBins - representedBins);
                 var coverage = currentBins <= 0 ? 0m : decimal.Round(representedBins / (decimal)currentBins * 100m, 1);
                 var attention = BuildDashboardRoomAttention(roomLots, representedBins, missingBins, coverage, staleLots, statusLots, latestSampleDate, today);
+                var varietySegments = BuildRoomVarietyColorSegments(roomLots, colorMap);
+                var organicBins = roomLots.Where(x => x.IsOrganic == true).Sum(x => x.CurrentBins);
+                var conventionalBins = roomLots.Where(x => x.IsOrganic == false).Sum(x => x.CurrentBins);
+                var unknownOrganicBins = roomLots.Where(x => x.IsOrganic is null).Sum(x => x.CurrentBins);
+                var organicPercent = currentBins <= 0 ? 0m : decimal.Round(organicBins / (decimal)currentBins * 100m, 1);
                 var displayRoomCode = room.CropQcRoomName ?? room.DisplayName ?? room.Code;
 
                 return new RoomSummaryItemViewModel
@@ -2322,6 +2342,12 @@ public sealed class DashboardDataService(
                     MajorWeakLotIndicator = attention.Indicator,
                     CurrentLotsCount = roomLots.Count,
                     CurrentBinsCount = currentBins,
+                    VarietyColorSegments = varietySegments,
+                    OrganicBins = organicBins,
+                    ConventionalBins = conventionalBins,
+                    UnknownOrganicStatusBins = unknownOrganicBins,
+                    OrganicPercent = organicPercent,
+                    IsMajorityOrganic = currentBins > 0 && organicBins / (decimal)currentBins > 0.51m,
                     LastSampleDate = latestSampleDate,
                     LatestQcSource = latestSampleDate is null ? "" : "Latest lot QC sample",
                     LotSummary = string.Join(", ", roomLots.Take(4).Select(x => $"{x.Grower} {x.Lot} {x.Variety}")),
@@ -2377,6 +2403,7 @@ public sealed class DashboardDataService(
             var currentBins = latest is null
                 ? Math.Max(0, receipt.BinCount - depletionByReceipt.GetValueOrDefault(receipt.Id))
                 : Math.Max(0, latest.NewBinCount);
+            var variety = VarietyColorService.IdentityFromProfile(receipt.FruitProfile);
             return new DashboardInventorySnapshot(
                 receipt.RoomId,
                 receipt.Warehouse.Code,
@@ -2386,6 +2413,9 @@ public sealed class DashboardDataService(
                 receipt.GrowerName,
                 !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode,
                 receipt.FruitProfile.VarietyCode,
+                variety.Key,
+                variety.Name,
+                receipt.FruitProfile.IsOrganic,
                 "",
                 currentBins,
                 receipt.ReceivedAt);
@@ -2395,6 +2425,7 @@ public sealed class DashboardDataService(
             .Include(x => x.Warehouse)
             .Include(x => x.Room)
                 .ThenInclude(x => x.Warehouse)
+            .Include(x => x.FruitProfile)
             .Where(x => x.ReceiptId == null || x.AdjustmentType == "TransferIn");
         if (roomId is not null)
         {
@@ -2404,18 +2435,27 @@ public sealed class DashboardDataService(
         var correctionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
         var adjustmentSnapshots = ApplyLatestCurrentBalanceRows((await adjustmentQuery.ToListAsync(cancellationToken))
                 .Where(x => !IsSupersededByRoomCurrentBalanceCorrection(x, correctionCutoffs)))
-            .Select(x => new DashboardInventorySnapshot(
-                x.RoomId,
-                x.Warehouse.Code,
-                FacilityCode(x.Warehouse.Code, x.Warehouse.Name),
-                !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : RoomLocationGroup(x.Room),
-                x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
-                x.GrowerName,
-                x.LotNumber,
-                x.VarietyCode ?? "",
-                x.InventoryStatus ?? "",
-                Math.Max(0, x.NewBinCount),
-                null));
+            .Select(x =>
+            {
+                var variety = x.FruitProfile is null
+                    ? VarietyColorService.NormalizeIdentity(x.VarietyCode, x.VarietyCode)
+                    : VarietyColorService.IdentityFromProfile(x.FruitProfile);
+                return new DashboardInventorySnapshot(
+                    x.RoomId,
+                    x.Warehouse.Code,
+                    FacilityCode(x.Warehouse.Code, x.Warehouse.Name),
+                    !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : RoomLocationGroup(x.Room),
+                    x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
+                    x.GrowerName,
+                    x.LotNumber,
+                    x.VarietyCode ?? "",
+                    variety.Key,
+                    variety.Name,
+                    x.FruitProfile?.IsOrganic,
+                    x.InventoryStatus ?? "",
+                    Math.Max(0, x.NewBinCount),
+                    null);
+            });
 
         return receiptSnapshots.Concat(adjustmentSnapshots)
             .Where(x => x.CurrentBins > 0)
@@ -2491,11 +2531,64 @@ public sealed class DashboardDataService(
 
     private static string BuildDashboardVarietySummary(IReadOnlyList<DashboardInventorySnapshot> roomLots) =>
         string.Join(", ", roomLots
-            .GroupBy(x => x.Variety)
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.VarietyName) ? x.Variety : x.VarietyName)
             .OrderByDescending(x => x.Sum(y => y.CurrentBins))
             .ThenBy(x => x.Key)
             .Take(3)
             .Select(x => $"{x.Key}: {x.Sum(y => y.CurrentBins)} bins"));
+
+    private async Task<IReadOnlyDictionary<string, VarietyColorResolved>> ResolveDashboardVarietyColorsAsync(
+        IReadOnlyList<DashboardInventorySnapshot> lots,
+        CancellationToken cancellationToken)
+    {
+        var keys = lots.Select(x => x.VarietyKey).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (keys.Count == 0)
+        {
+            return new Dictionary<string, VarietyColorResolved>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (varietyColorService is not null)
+        {
+            return await varietyColorService.GetResolvedColorsAsync(keys, cancellationToken);
+        }
+
+        return keys.ToDictionary(
+            x => x,
+            x => new VarietyColorResolved(x, x, VarietyColorService.FallbackColor(x), false),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<RoomVarietyColorSegmentViewModel> BuildRoomVarietyColorSegments(
+        IReadOnlyList<DashboardInventorySnapshot> roomLots,
+        IReadOnlyDictionary<string, VarietyColorResolved> colorMap)
+    {
+        var totalBins = roomLots.Sum(x => x.CurrentBins);
+        if (totalBins <= 0)
+        {
+            return [];
+        }
+
+        return roomLots
+            .GroupBy(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var bins = group.Sum(x => x.CurrentBins);
+                colorMap.TryGetValue(group.Key, out var resolved);
+                var name = resolved?.VarietyName ?? group.Select(x => x.VarietyName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? group.Key;
+                return new RoomVarietyColorSegmentViewModel
+                {
+                    VarietyKey = group.Key,
+                    VarietyName = name,
+                    CurrentBins = bins,
+                    Percent = decimal.Round(bins / (decimal)totalBins * 100m, 1),
+                    HexColor = resolved?.HexColor ?? VarietyColorService.FallbackColor(group.Key),
+                    IsConfiguredColor = resolved?.IsConfigured == true
+                };
+            })
+            .OrderByDescending(x => x.CurrentBins)
+            .ThenBy(x => x.VarietyName)
+            .ToList();
+    }
 
     private static string CurrentDashboardLotKey(int roomId, string lot, string variety) =>
         RoomInventoryImportService.CurrentStorageLotKey(roomId, lot, variety);
@@ -4377,6 +4470,9 @@ public sealed class DashboardDataService(
         string Grower,
         string Lot,
         string Variety,
+        string VarietyKey,
+        string VarietyName,
+        bool? IsOrganic,
         string InventoryStatus,
         int CurrentBins,
         DateTimeOffset? ReceiptDate);

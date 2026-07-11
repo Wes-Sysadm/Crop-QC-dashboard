@@ -16,6 +16,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<GrowerLot> GrowerLots => Set<GrowerLot>();
     public DbSet<FruitProfile> FruitProfiles => Set<FruitProfile>();
+    public DbSet<VarietyColorConfiguration> VarietyColorConfigurations => Set<VarietyColorConfiguration>();
     public DbSet<SampleType> SampleTypes => Set<SampleType>();
     public DbSet<Grade> Grades => Set<Grade>();
     public DbSet<DefectType> DefectTypes => Set<DefectType>();
@@ -153,6 +154,18 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.FruitType).HasMaxLength(25).IsRequired();
             entity.Property(x => x.ProductionType).HasMaxLength(25).IsRequired();
             entity.HasIndex(x => x.VarietyCode).IsUnique();
+        });
+
+        modelBuilder.Entity<VarietyColorConfiguration>(entity =>
+        {
+            entity.Property(x => x.VarietyKey).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.VarietyName).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.HexColor).HasMaxLength(7).IsRequired();
+            entity.HasIndex(x => x.VarietyKey).IsUnique();
+            entity.HasOne(x => x.UpdatedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.UpdatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<SampleType>(entity =>

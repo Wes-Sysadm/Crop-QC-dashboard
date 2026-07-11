@@ -39,6 +39,20 @@
             <dt>Net change</dt><dd>@FormatSigned(Model.Summary.NetChangeBins)</dd>
             <dt>Compu-Tech code</dt><dd>@(string.IsNullOrWhiteSpace(Model.Summary.CompuTechCode) ? "-" : Model.Summary.CompuTechCode)</dd>
             <dt>Variety/status</dt><dd>@Model.Summary.VarietyStatusSummary</dd>
+            <dt>Variety colors</dt>
+            <dd>
+                <div class="variety-legend">
+                    @foreach (var segment in Model.Summary.VarietyColorSegments)
+                    {
+                        <span><i style="background: @segment.HexColor"></i>@segment.VarietyName - @segment.CurrentBins bins@(segment.IsConfiguredColor ? "" : " (fallback)")</span>
+                    }
+                </div>
+            </dd>
+            <dt>Organic status</dt>
+            <dd>
+                @Model.Summary.OrganicBins organic / @Model.Summary.ConventionalBins conventional / @Model.Summary.UnknownOrganicStatusBins unknown
+                <span class="muted">(@Model.Summary.OrganicPercent.ToString("0.#")% organic; stripes @(Model.Summary.IsMajorityOrganic ? "active" : "inactive"))</span>
+            </dd>
             <dt>Last activity</dt><dd>@(Model.Summary.LastActivityAt?.LocalDateTime.ToString("g") ?? "No activity")</dd>
             <dt>Average pressure</dt><dd>@Format(Model.Summary.AveragePressureLbs)</dd>
             <dt>Pressure std dev</dt><dd>@Format(Model.Summary.PressureStdDevLbs)</dd>

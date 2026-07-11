@@ -25,6 +25,7 @@ public sealed class RoleNavigationAuthorizationTests
         Assert.Contains("href=\"/Admin/Users\"", layout);
         Assert.Contains("href=\"/Admin/Downloads\"", layout);
         Assert.Contains("href=\"/Admin/Configuration\"", layout);
+        Assert.Contains("href=\"/Admin/VarietyColors\"", layout);
         Assert.Contains("href=\"/Admin/Backups\"", layout);
         Assert.Contains("href=\"/Admin/DataCleanup\"", layout);
         Assert.Contains("canAccessDataCleanup", layout);
@@ -54,6 +55,9 @@ public sealed class RoleNavigationAuthorizationTests
         AssertControllerPolicy<AdminController>("RequireAuthenticatedUser");
         AssertActionPolicy<AdminController>(nameof(AdminController.Users), AccessPolicyNames.UsersAdmin);
         AssertActionPolicy<AdminController>(nameof(AdminController.Downloads), AccessPolicyNames.DownloadsView);
+        AssertActionPolicy<AdminController>(nameof(AdminController.VarietyColors), AccessPolicyNames.VarietyColorsView);
+        AssertActionPolicy<AdminController>(nameof(AdminController.SaveVarietyColor), AccessPolicyNames.VarietyColorsAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.ResetVarietyColor), AccessPolicyNames.VarietyColorsAdmin);
         AssertActionPolicy<AdminController>(nameof(AdminController.QcStations), AccessPolicyNames.QcStationsView);
         AssertActionPolicy<AdminController>(nameof(AdminController.CreateQcStation), AccessPolicyNames.QcStationsAdmin);
         AssertActionPolicy<AdminController>(nameof(AdminController.UpdateQcStation), AccessPolicyNames.QcStationsAdmin);

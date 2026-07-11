@@ -39,9 +39,10 @@
                 var canAccessBinsRun = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.BinsRun, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessDownloads = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Downloads, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessConfiguration = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Configuration, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
+                var canAccessVarietyColors = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.VarietyColors, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessBackups = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Backups, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
                 var canAccessDataCleanup = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.DataCleanup, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
-                var showAdminMenu = canAccessUsers || canAccessQcStations || canAccessMasterData || canAccessCurrentLots || canAccessDownloads || canAccessConfiguration || canAccessBackups || canAccessDataCleanup;
+                var showAdminMenu = canAccessUsers || canAccessQcStations || canAccessMasterData || canAccessCurrentLots || canAccessDownloads || canAccessConfiguration || canAccessVarietyColors || canAccessBackups || canAccessDataCleanup;
                 @if (canAccessDashboard)
                 {
                     <a href="/">Dashboard</a>
@@ -98,6 +99,10 @@
                             @if (canAccessConfiguration)
                             {
                                 <a href="/Admin/Configuration">Configuration</a>
+                            }
+                            @if (canAccessVarietyColors)
+                            {
+                                <a href="/Admin/VarietyColors">Variety Colors</a>
                             }
                             @if (canAccessBackups)
                             {

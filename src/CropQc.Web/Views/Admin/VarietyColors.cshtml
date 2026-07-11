@@ -1,0 +1,87 @@
+@model VarietyColorsAdminViewModel
+@{
+    ViewData["Title"] = "Variety Colors";
+}
+
+<h1>Variety Colors</h1>
+@if (TempData["Error"] is not null)
+{
+    <p class="notice warning">@TempData["Error"]</p>
+}
+@if (TempData["Success"] is not null)
+{
+    <p class="notice success">@TempData["Success"]</p>
+}
+
+<section class="panel">
+    <div class="room-card-header">
+        <div>
+            <h2>Dashboard Room Colors</h2>
+            <p class="muted">Configured colors apply to all users. Organic fruit uses the same variety color; majority-organic rooms receive the Dashboard stripe treatment.</p>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table class="responsive-admin-table variety-color-table">
+            <thead>
+                <tr>
+                    <th>Variety</th>
+                    <th>Preview</th>
+                    <th>Color</th>
+                    <th>Status</th>
+                    <th>Save</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var variety in Model.Varieties)
+            {
+                <tr>
+                    <td>
+                        <strong>@variety.VarietyName</strong>
+                        <div class="muted">@variety.VarietyKey</div>
+                    </td>
+                    <td>
+                        <span class="variety-color-preview" style="--variety-color: @variety.HexColor" aria-label="@variety.VarietyName color preview"></span>
+                    </td>
+                    <td>
+                        <form class="button-row variety-color-form" method="post" action="/Admin/VarietyColors/Save">
+                            <input type="hidden" name="VarietyKey" value="@variety.VarietyKey" />
+                            <input type="hidden" name="VarietyName" value="@variety.VarietyName" />
+                            <label class="field">
+                                <span>Picker</span>
+                                <input type="color" value="@variety.HexColor" data-color-picker disabled="@(!Model.CanManage ? "disabled" : null)" />
+                            </label>
+                            <label class="field">
+                                <span>Hex</span>
+                                <input name="HexColor" value="@variety.HexColor" pattern="#[0-9A-Fa-f]{6}" maxlength="7" data-color-hex disabled="@(!Model.CanManage ? "disabled" : null)" />
+                            </label>
+                            <button class="secondary-button" type="submit" disabled="@(!Model.CanManage ? "disabled" : null)">Save</button>
+                        </form>
+                    </td>
+                    <td>
+                        <span class="status @(variety.IsConfigured ? "ready" : "pending")">@(variety.IsConfigured ? "Configured" : "Fallback")</span>
+                        <div class="muted">Default @variety.FallbackColor</div>
+                    </td>
+                    <td>
+                        <form method="post" action="/Admin/VarietyColors/Reset">
+                            <input type="hidden" name="VarietyKey" value="@variety.VarietyKey" />
+                            <input type="hidden" name="VarietyName" value="@variety.VarietyName" />
+                            <button class="secondary-button" type="submit" disabled="@(!Model.CanManage || !variety.IsConfigured ? "disabled" : null)">Reset to default</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<script>
+    document.querySelectorAll(".variety-color-form").forEach(form => {
+        const picker = form.querySelector("[data-color-picker]");
+        const hex = form.querySelector("[data-color-hex]");
+        picker?.addEventListener("input", () => { hex.value = picker.value.toUpperCase(); });
+        hex?.addEventListener("input", () => {
+            if (/^#[0-9A-Fa-f]{6}$/.test(hex.value)) picker.value = hex.value;
+        });
+    });
+</script>

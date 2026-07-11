@@ -51,6 +51,18 @@ public sealed class FruitProfile
     public ICollection<Receipt> Receipts { get; } = new List<Receipt>();
 }
 
+public sealed class VarietyColorConfiguration
+{
+    public int Id { get; set; }
+    public required string VarietyKey { get; set; }
+    public required string VarietyName { get; set; }
+    public required string HexColor { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public int? UpdatedByUserId { get; set; }
+    public User? UpdatedByUser { get; set; }
+}
+
 public sealed class SampleType
 {
     public int Id { get; set; }
