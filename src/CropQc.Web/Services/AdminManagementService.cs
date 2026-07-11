@@ -13,6 +13,8 @@ public interface IAdminManagementService
     Task<MasterDataEditForm?> GetEditFormAsync(string type, int id, CancellationToken cancellationToken);
     Task<string?> SaveMasterDataAsync(MasterDataEditForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> DeactivateAsync(string type, int id, string changedByEmail, CancellationToken cancellationToken);
+    Task<GrowerMappingPageViewModel> GetGrowerMappingAsync(GrowerMappingForm form, CancellationToken cancellationToken);
+    Task<string?> SaveGrowerMappingAsync(GrowerMappingForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<GrowerLotImportPreviewViewModel> PreviewGrowerLotImportAsync(GrowerLotImportForm form, CancellationToken cancellationToken);
     Task<(GrowerLotImportPreviewViewModel Preview, string? Error)> ApplyGrowerLotImportAsync(GrowerLotImportForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<ConfigurationPageViewModel> GetConfigurationAsync(bool canEdit, CancellationToken cancellationToken);
@@ -119,6 +121,159 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
         var before = JsonSerializer.Serialize(entity);
         entity.GetType().GetProperty("IsActive")?.SetValue(entity, false);
         await AddAuditAsync("deactivate", type, id.ToString(), changedByEmail, before, JsonSerializer.Serialize(entity), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
+    public async Task<GrowerMappingPageViewModel> GetGrowerMappingAsync(GrowerMappingForm form, CancellationToken cancellationToken)
+    {
+        var growerService = canonicalGrowerService ?? new CanonicalGrowerService(dbContext);
+        var resolver = await growerService.LoadResolutionSetAsync(cancellationToken);
+        var current = resolver.Resolve(form.SourceGrowerName, form.GrowerNumber);
+        var source = await BuildUnmappedSourceSummaryAsync(form.SourceGrowerName, form.GrowerNumber, form.Facility, form.CropYear, cancellationToken);
+        var growers = await GetCanonicalGrowerOptionsAsync(cancellationToken);
+        var suggested = BuildSuggestedGrowers(form, growers);
+        form.NewCanonicalGrowerName = string.IsNullOrWhiteSpace(form.NewCanonicalGrowerName)
+            ? CleanSuggestedCanonicalName(form.SourceGrowerName)
+            : form.NewCanonicalGrowerName;
+
+        return new GrowerMappingPageViewModel
+        {
+            Form = form,
+            Source = source,
+            ExistingGrowers = growers,
+            SuggestedGrowers = suggested,
+            AlreadyMappedTo = current.IsMapped ? current.DisplayName : null
+        };
+    }
+
+    public async Task<string?> SaveGrowerMappingAsync(GrowerMappingForm form, string changedByEmail, CancellationToken cancellationToken)
+    {
+        if (!form.ConfirmMapping)
+        {
+            return "Confirm the grower mapping before saving.";
+        }
+
+        if (Blank(form.SourceGrowerName))
+        {
+            return "Source grower name is required.";
+        }
+
+        var growerService = canonicalGrowerService ?? new CanonicalGrowerService(dbContext);
+        var resolver = await growerService.LoadResolutionSetAsync(cancellationToken);
+        var current = resolver.Resolve(form.SourceGrowerName, form.GrowerNumber);
+        if (current.IsMapped)
+        {
+            return $"This source identity is already mapped to {current.DisplayName}. Reload Crop Year Review.";
+        }
+
+        CanonicalGrower? target;
+        var action = "map-grower-source";
+        if (string.Equals(form.MappingMode, "New", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Blank(form.NewCanonicalGrowerName))
+            {
+                return "Canonical grower name is required.";
+            }
+
+            var normalizedName = CanonicalGrowerService.NormalizeGrowerKey(form.NewCanonicalGrowerName);
+            if (await dbContext.CanonicalGrowers.AnyAsync(x => x.NormalizedKey == normalizedName && x.IsActive, cancellationToken))
+            {
+                return "A canonical grower with that normalized name already exists. Choose the existing grower instead.";
+            }
+
+            target = new CanonicalGrower
+            {
+                DisplayName = form.NewCanonicalGrowerName.Trim(),
+                NormalizedKey = normalizedName,
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+            dbContext.CanonicalGrowers.Add(target);
+            action = "create-and-map-grower-source";
+        }
+        else
+        {
+            if (form.CanonicalGrowerId is null)
+            {
+                return "Select a canonical grower.";
+            }
+
+            target = await dbContext.CanonicalGrowers
+                .Include(x => x.Aliases)
+                .Include(x => x.GrowerNumbers)
+                .SingleOrDefaultAsync(x => x.Id == form.CanonicalGrowerId.Value, cancellationToken);
+            if (target is null || !target.IsActive || target.MergedIntoCanonicalGrowerId is not null)
+            {
+                return "Selected canonical grower is not active.";
+            }
+        }
+
+        var aliasKey = CanonicalGrowerService.NormalizeGrowerKey(form.SourceGrowerName);
+        var aliasConflict = await dbContext.CanonicalGrowerAliases
+            .Include(x => x.CanonicalGrower)
+            .Where(x => x.IsActive && x.NormalizedAliasKey == aliasKey && x.CanonicalGrowerId != target.Id)
+            .Select(x => x.CanonicalGrower.DisplayName)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (aliasConflict is not null)
+        {
+            return $"Source name is already mapped to {aliasConflict}.";
+        }
+
+        var numberKey = CanonicalGrowerService.NormalizeGrowerNumber(form.GrowerNumber);
+        if (numberKey.Length > 0)
+        {
+            var numberConflict = await dbContext.CanonicalGrowerNumbers
+                .Include(x => x.CanonicalGrower)
+                .Where(x => x.IsActive && x.NormalizedGrowerNumber == numberKey && x.CanonicalGrowerId != target.Id)
+                .Select(x => x.CanonicalGrower.DisplayName)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (numberConflict is not null)
+            {
+                return $"Grower number is already mapped to {numberConflict}.";
+            }
+        }
+
+        if (!target.Aliases.Any(x => x.IsActive && x.NormalizedAliasKey == aliasKey))
+        {
+            target.Aliases.Add(new CanonicalGrowerAlias
+            {
+                AliasName = form.SourceGrowerName.Trim(),
+                NormalizedAliasKey = aliasKey,
+                SourceSystem = Blank(form.Facility) ? null : form.Facility.Trim(),
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
+        }
+
+        if (numberKey.Length > 0 && !target.GrowerNumbers.Any(x => x.IsActive && x.NormalizedGrowerNumber == numberKey))
+        {
+            target.GrowerNumbers.Add(new CanonicalGrowerNumber
+            {
+                GrowerNumber = form.GrowerNumber.Trim(),
+                NormalizedGrowerNumber = numberKey,
+                Facility = Blank(form.Facility) ? null : form.Facility.Trim(),
+                CropYear = form.CropYear,
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
+        }
+
+        target.UpdatedAt = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await AddAuditAsync(action, "canonical-grower-mapping", target.Id.ToString(), changedByEmail, null, JsonSerializer.Serialize(new
+        {
+            SourceGrowerName = form.SourceGrowerName,
+            form.GrowerNumber,
+            Facility = form.Facility,
+            form.CropYear,
+            CanonicalGrowerId = target.Id,
+            CanonicalGrowerName = target.DisplayName,
+            MappingMode = form.MappingMode
+        }), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
     }
@@ -377,7 +532,146 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
                 null);
         }).ToList();
 
-        return Page("Canonical Growers", "canonical-growers", ["Canonical Grower", "Grower Numbers", "Aliases / Source Names", "Receipts", "Crop Years", "Active"], rows, canEdit);
+        return Page("Canonical Growers", "canonical-growers", ["Canonical Grower", "Grower Numbers", "Aliases / Source Names", "Receipts", "Crop Years", "Active"], rows, canEdit)
+            with { UnmappedGrowers = await BuildUnmappedGrowerSourcesAsync(ct) };
+    }
+
+    private async Task<IReadOnlyList<UnmappedGrowerSourceViewModel>> BuildUnmappedGrowerSourcesAsync(CancellationToken ct)
+    {
+        var growerService = canonicalGrowerService ?? new CanonicalGrowerService(dbContext);
+        var resolver = await growerService.LoadResolutionSetAsync(ct);
+        var receipts = await dbContext.Receipts.AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .Select(x => new
+            {
+                x.GrowerName,
+                x.GrowerNumber,
+                Facility = x.Warehouse.Code,
+                x.CropYear,
+                x.Id,
+                x.LotCode,
+                x.BinCount
+            })
+            .ToListAsync(ct);
+
+        return receipts
+            .Where(x => !resolver.Resolve(x.GrowerName, x.GrowerNumber).IsMapped)
+            .GroupBy(x => new
+            {
+                GrowerKey = CanonicalGrowerService.NormalizeGrowerKey(x.GrowerName),
+                NumberKey = CanonicalGrowerService.NormalizeGrowerNumber(x.GrowerNumber),
+                x.Facility
+            })
+            .Select(group => new UnmappedGrowerSourceViewModel
+            {
+                SourceGrowerName = group.Select(x => x.GrowerName).FirstOrDefault(x => !Blank(x)) ?? "",
+                GrowerNumber = group.Select(x => x.GrowerNumber ?? "").FirstOrDefault(x => !Blank(x)) ?? "",
+                Facility = group.Key.Facility,
+                CropYears = group.Select(x => x.CropYear).Distinct().OrderBy(x => x).ToList(),
+                ReceiptCount = group.Select(x => x.Id).Distinct().Count(),
+                LotCount = group.Select(x => x.LotCode).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                BinsReceived = group.Sum(x => x.BinCount)
+            })
+            .OrderByDescending(x => x.ReceiptCount)
+            .ThenBy(x => x.SourceGrowerName)
+            .ToList();
+    }
+
+    private async Task<UnmappedGrowerSourceViewModel> BuildUnmappedSourceSummaryAsync(string sourceGrowerName, string growerNumber, string facility, int? cropYear, CancellationToken ct)
+    {
+        var query = dbContext.Receipts.AsNoTracking()
+            .Where(x => !x.IsDeleted && x.GrowerName == sourceGrowerName);
+        if (!Blank(growerNumber))
+        {
+            query = query.Where(x => x.GrowerNumber == growerNumber);
+        }
+
+        if (!Blank(facility))
+        {
+            query = query.Where(x => x.Warehouse.Code == facility);
+        }
+
+        if (cropYear is not null)
+        {
+            query = query.Where(x => x.CropYear == cropYear);
+        }
+
+        var rows = await query.Select(x => new { x.Id, x.GrowerName, x.GrowerNumber, Facility = x.Warehouse.Code, x.CropYear, x.LotCode, x.BinCount }).ToListAsync(ct);
+        return new UnmappedGrowerSourceViewModel
+        {
+            SourceGrowerName = sourceGrowerName,
+            GrowerNumber = growerNumber,
+            Facility = facility,
+            CropYears = rows.Select(x => x.CropYear).DefaultIfEmpty(cropYear ?? 0).Where(x => x > 0).Distinct().OrderBy(x => x).ToList(),
+            ReceiptCount = rows.Select(x => x.Id).Distinct().Count(),
+            LotCount = rows.Select(x => x.LotCode).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+            BinsReceived = rows.Sum(x => x.BinCount)
+        };
+    }
+
+    private async Task<IReadOnlyList<CanonicalGrowerOptionViewModel>> GetCanonicalGrowerOptionsAsync(CancellationToken ct)
+    {
+        var growers = await dbContext.CanonicalGrowers.AsNoTracking()
+            .Include(x => x.Aliases)
+            .Include(x => x.GrowerNumbers)
+            .Where(x => x.IsActive && x.MergedIntoCanonicalGrowerId == null)
+            .OrderBy(x => x.DisplayName)
+            .ToListAsync(ct);
+
+        return growers
+            .Select(x => new CanonicalGrowerOptionViewModel
+            {
+                Id = x.Id,
+                DisplayName = x.DisplayName,
+                Aliases = string.Join(", ", x.Aliases.Where(a => a.IsActive).Select(a => a.AliasName).OrderBy(a => a)),
+                GrowerNumbers = string.Join(", ", x.GrowerNumbers.Where(n => n.IsActive).Select(n => n.GrowerNumber).OrderBy(n => n))
+            })
+            .ToList();
+    }
+
+    private static IReadOnlyList<CanonicalGrowerOptionViewModel> BuildSuggestedGrowers(GrowerMappingForm form, IReadOnlyList<CanonicalGrowerOptionViewModel> growers)
+    {
+        var sourceKey = CanonicalGrowerService.NormalizeGrowerKey(form.SourceGrowerName);
+        var sourceNumber = CanonicalGrowerService.NormalizeGrowerNumber(form.GrowerNumber);
+        return growers
+            .Select(grower =>
+            {
+                var nameKey = CanonicalGrowerService.NormalizeGrowerKey(grower.DisplayName);
+                var aliasKeys = ParseLines(grower.Aliases).Select(CanonicalGrowerService.NormalizeGrowerKey).ToList();
+                var numberKeys = ParseLines(grower.GrowerNumbers).Select(CanonicalGrowerService.NormalizeGrowerNumber).ToList();
+                var reason = "";
+                if (sourceNumber.Length > 0 && numberKeys.Contains(sourceNumber, StringComparer.OrdinalIgnoreCase))
+                {
+                    reason = "Exact grower-number match";
+                }
+                else if (nameKey.Equals(sourceKey, StringComparison.OrdinalIgnoreCase) || aliasKeys.Contains(sourceKey, StringComparer.OrdinalIgnoreCase))
+                {
+                    reason = "Exact normalized name or alias match";
+                }
+                else if (sourceKey.EndsWith("_NON_CHILEAN", StringComparison.OrdinalIgnoreCase)
+                    && nameKey.Equals(sourceKey[..^"_NON_CHILEAN".Length], StringComparison.OrdinalIgnoreCase))
+                {
+                    reason = "Name matches after Non Chilean suffix";
+                }
+
+                grower.IsSuggested = reason.Length > 0;
+                grower.SuggestionReason = reason;
+                return grower;
+            })
+            .Where(x => x.IsSuggested)
+            .OrderBy(x => x.DisplayName)
+            .ToList();
+    }
+
+    private static string CleanSuggestedCanonicalName(string value)
+    {
+        var name = value.Trim();
+        if (name.EndsWith(" Non Chilean", StringComparison.OrdinalIgnoreCase))
+        {
+            name = name[..^" Non Chilean".Length].Trim();
+        }
+
+        return name;
     }
 
     private async Task<MasterDataEditForm?> GetCanonicalGrowerEditFormAsync(string type, int id, CancellationToken ct)

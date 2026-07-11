@@ -1,0 +1,158 @@
+@model GrowerMappingPageViewModel
+@{
+    ViewData["Title"] = "Map Grower";
+    var form = Model.Form;
+}
+
+<h1>Map Grower</h1>
+
+@if (TempData["Error"] is not null)
+{
+    <p class="notice warning">@TempData["Error"]</p>
+}
+@if (TempData["Success"] is not null)
+{
+    <p class="notice success">@TempData["Success"]</p>
+}
+
+<section class="panel grower-mapping-panel">
+    <div class="room-card-header">
+        <div>
+            <h2>@Model.Source.SourceGrowerName</h2>
+            <p class="muted">Resolve this source identity without changing historical receipt or sample values.</p>
+        </div>
+        <span class="status pending">Grower mapping needed</span>
+    </div>
+    <div class="metric-grid">
+        <div><strong>@(string.IsNullOrWhiteSpace(Model.Source.GrowerNumber) ? "-" : Model.Source.GrowerNumber)</strong><span>Grower number</span></div>
+        <div><strong>@(string.IsNullOrWhiteSpace(Model.Source.Facility) ? "-" : Model.Source.Facility)</strong><span>Facility</span></div>
+        <div><strong>@(Model.Source.CropYears.Count == 0 ? "-" : string.Join(", ", Model.Source.CropYears))</strong><span>Crop year</span></div>
+        <div><strong>@Model.Source.ReceiptCount</strong><span>Receipts</span></div>
+        <div><strong>@Model.Source.LotCount</strong><span>Lots</span></div>
+        <div><strong>@Model.Source.BinsReceived</strong><span>Bins received</span></div>
+    </div>
+    @if (Model.AlreadyMappedTo is not null)
+    {
+        <p class="notice warning">This source currently resolves to <strong>@Model.AlreadyMappedTo</strong>. If another user mapped it, return to Crop Year Review and reload.</p>
+    }
+</section>
+
+@if (Model.SuggestedGrowers.Count > 0)
+{
+    <section class="panel">
+        <h2>Suggested matches</h2>
+        <div class="table-wrap contained-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Canonical grower</th>
+                        <th>Reason</th>
+                        <th>Grower numbers</th>
+                        <th>Aliases</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var grower in Model.SuggestedGrowers)
+                {
+                    <tr>
+                        <td>@grower.DisplayName</td>
+                        <td>@grower.SuggestionReason</td>
+                        <td>@(string.IsNullOrWhiteSpace(grower.GrowerNumbers) ? "-" : grower.GrowerNumbers)</td>
+                        <td>@(string.IsNullOrWhiteSpace(grower.Aliases) ? "-" : grower.Aliases)</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <p class="muted">Suggestions are advisory only. Select and confirm the canonical grower below before saving.</p>
+    </section>
+}
+
+<section class="panel grower-mapping-panel">
+    <h2>Resolve mapping</h2>
+    <form class="form-grid" method="post" action="/MasterData/canonical-growers/Map">
+        <input type="hidden" name="SourceGrowerName" value="@form.SourceGrowerName" />
+        <input type="hidden" name="GrowerNumber" value="@form.GrowerNumber" />
+        <input type="hidden" name="Facility" value="@form.Facility" />
+        <input type="hidden" name="CropYear" value="@form.CropYear" />
+        <input type="hidden" name="ReturnUrl" value="@form.ReturnUrl" />
+
+        <div class="field wide">
+            <label>Mapping choice</label>
+            <select name="MappingMode" id="mappingMode">
+                <option value="Existing" selected="@(form.MappingMode != "New" ? "selected" : null)">Map to existing canonical grower</option>
+                <option value="New" selected="@(form.MappingMode == "New" ? "selected" : null)">Create new canonical grower</option>
+            </select>
+        </div>
+
+        <div class="field wide" data-existing-grower-field>
+            <label>Existing canonical grower</label>
+            <select name="CanonicalGrowerId">
+                <option value="">Select canonical grower</option>
+                @foreach (var grower in Model.ExistingGrowers)
+                {
+                    <option value="@grower.Id" selected="@(form.CanonicalGrowerId == grower.Id ? "selected" : null)">@grower.DisplayName</option>
+                }
+            </select>
+            <span class="muted">Searchable by browser find; aliases and grower numbers are shown below for review.</span>
+        </div>
+
+        <div class="field wide" data-new-grower-field>
+            <label>New canonical grower name</label>
+            <input name="NewCanonicalGrowerName" value="@form.NewCanonicalGrowerName" maxlength="200" />
+            <span class="muted">Prepopulated from the source name. Correct it before saving if needed.</span>
+        </div>
+
+        <label class="checkbox-field wide">
+            <input type="checkbox" name="ConfirmMapping" value="true" />
+            Confirm this source alias and grower number should map to the selected canonical grower.
+        </label>
+        <input type="hidden" name="ConfirmMapping" value="false" />
+
+        <div class="action-bar wide">
+            <button type="submit">Save mapping</button>
+            <a class="button secondary-button" href="@form.ReturnUrl">Cancel</a>
+            <a class="button secondary-button" href="/MasterData/canonical-growers">Review all canonical growers</a>
+        </div>
+    </form>
+</section>
+
+<section class="panel">
+    <h2>Existing canonical growers</h2>
+    <div class="table-wrap contained-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>Canonical grower</th>
+                    <th>Grower numbers</th>
+                    <th>Aliases</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var grower in Model.ExistingGrowers)
+            {
+                <tr>
+                    <td>@grower.DisplayName</td>
+                    <td>@(string.IsNullOrWhiteSpace(grower.GrowerNumbers) ? "-" : grower.GrowerNumbers)</td>
+                    <td>@(string.IsNullOrWhiteSpace(grower.Aliases) ? "-" : grower.Aliases)</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<script>
+    (() => {
+        const mode = document.getElementById("mappingMode");
+        const existing = document.querySelector("[data-existing-grower-field]");
+        const created = document.querySelector("[data-new-grower-field]");
+        const update = () => {
+            const isNew = mode.value === "New";
+            existing.style.display = isNew ? "none" : "";
+            created.style.display = isNew ? "" : "none";
+        };
+        mode.addEventListener("change", update);
+        update();
+    })();
+</script>

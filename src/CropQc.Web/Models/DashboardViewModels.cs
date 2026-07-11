@@ -543,6 +543,7 @@ public sealed record MasterDataPageViewModel(
 {
     public IReadOnlyList<MasterDataEditItem> Items { get; init; } = Items ?? [];
     public GrowerLotImportPreviewViewModel? ImportPreview { get; init; }
+    public IReadOnlyList<UnmappedGrowerSourceViewModel> UnmappedGrowers { get; init; } = [];
 }
 
 public sealed record MasterDataEditItem(int Id, IReadOnlyList<string> Cells, bool IsActive, MasterDataVarietyColorViewModel? VarietyColor = null);
@@ -577,6 +578,48 @@ public sealed class GrowerLotImportPreviewViewModel
 }
 
 public sealed record GrowerLotImportPreviewRow(int RowNumber, string Grower, string LotNumber, string PoolStart, string Action, string Message, bool IsInactive);
+public sealed class UnmappedGrowerSourceViewModel
+{
+    public string SourceGrowerName { get; set; } = "";
+    public string GrowerNumber { get; set; } = "";
+    public string Facility { get; set; } = "";
+    public IReadOnlyList<int> CropYears { get; set; } = [];
+    public int ReceiptCount { get; set; }
+    public int LotCount { get; set; }
+    public int BinsReceived { get; set; }
+}
+
+public sealed class GrowerMappingPageViewModel
+{
+    public GrowerMappingForm Form { get; set; } = new();
+    public UnmappedGrowerSourceViewModel Source { get; set; } = new();
+    public IReadOnlyList<CanonicalGrowerOptionViewModel> ExistingGrowers { get; set; } = [];
+    public IReadOnlyList<CanonicalGrowerOptionViewModel> SuggestedGrowers { get; set; } = [];
+    public string? AlreadyMappedTo { get; set; }
+}
+
+public sealed class CanonicalGrowerOptionViewModel
+{
+    public int Id { get; set; }
+    public string DisplayName { get; set; } = "";
+    public string Aliases { get; set; } = "";
+    public string GrowerNumbers { get; set; } = "";
+    public bool IsSuggested { get; set; }
+    public string SuggestionReason { get; set; } = "";
+}
+
+public sealed class GrowerMappingForm
+{
+    public string SourceGrowerName { get; set; } = "";
+    public string GrowerNumber { get; set; } = "";
+    public string Facility { get; set; } = "";
+    public int? CropYear { get; set; }
+    public string ReturnUrl { get; set; } = "/CropYearReview";
+    public string MappingMode { get; set; } = "Existing";
+    public int? CanonicalGrowerId { get; set; }
+    public string NewCanonicalGrowerName { get; set; } = "";
+    public bool ConfirmMapping { get; set; }
+}
 public sealed record AdminDownloadItem(string Name, string FileName, string Description, string Url, string Notes, bool IsAvailable = true, bool OpensInNewTab = false, string ActionText = "Open");
 
 public sealed class AdminDownloadsViewModel
@@ -919,6 +962,9 @@ public sealed class CropYearReviewGrowerViewModel
     public bool IsMapped { get; set; }
     public IReadOnlyList<string> GrowerNumbers { get; set; } = [];
     public IReadOnlyList<string> SourceGrowerNames { get; set; } = [];
+    public string SourceGrowerName { get; set; } = "";
+    public string SourceGrowerNumber { get; set; } = "";
+    public string SourceFacility { get; set; } = "";
     public int SourceIdentityCount { get; set; }
     public int TotalReceipts { get; set; }
     public int TotalLots { get; set; }
