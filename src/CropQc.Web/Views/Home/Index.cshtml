@@ -40,13 +40,6 @@
             }
         </select>
     </label>
-    <label class="field">Rooms
-        <select name="RoomStatus">
-            <option value="WithFruit" selected="@IsSelected(Model.RoomSummaryFilter.RoomStatus, "WithFruit")">Rooms with fruit</option>
-            <option value="Empty" selected="@IsSelected(Model.RoomSummaryFilter.RoomStatus, "Empty")">Empty rooms</option>
-            <option value="All" selected="@IsSelected(Model.RoomSummaryFilter.RoomStatus, "All")">All rooms</option>
-        </select>
-    </label>
     <button type="submit">Apply</button>
     <a class="button secondary-button" href="/GrowerLots/Current">View grower lots</a>
 </form>
@@ -82,7 +75,7 @@ else
                     <h4>@locationGroup.Key</h4>
                 }
                 <div class="room-card-grid">
-                @foreach (var room in locationGroup.OrderBy(x => x.RoomCode))
+                @foreach (var room in locationGroup.OrderBy(x => x.AttentionSort).ThenByDescending(x => x.QcMissingBins == 0 ? 0m : x.QcMissingBins / (decimal)(x.CurrentBinsCount ?? 1)).ThenBy(x => x.LastSampleDate ?? DateTimeOffset.MinValue).ThenBy(x => x.RoomCode))
                 {
                     <a class="room-card @RoomStatusClass(room.Status)" href="/Dashboard/Rooms/@room.RoomId">
                         <div class="room-card-header">
@@ -93,15 +86,16 @@ else
                             <span class="status @RoomStatusClass(room.Status)">@room.Status</span>
                         </div>
                         <dl class="room-metrics">
+                            <div><dt>Current bins</dt><dd>@(room.CurrentBinsCount?.ToString() ?? "0")</dd></div>
                             <div><dt>Lots</dt><dd>@room.CurrentLotsCount</dd></div>
-                            <div><dt>Bins</dt><dd>@(room.CurrentBinsCount?.ToString() ?? "Empty")</dd></div>
-                            <div><dt>Avg pressure</dt><dd>@Format(room.AveragePressureLbs)</dd></div>
-                            <div><dt>Pressure std dev</dt><dd>@Format(room.PressureStdDevLbs)</dd></div>
-                            <div><dt>MoM pressure</dt><dd>@FormatChange(room.MonthOverMonthPressureChangeLbs)</dd></div>
-                            <div><dt>Harvest starch</dt><dd>@Format(room.AverageStarch)</dd></div>
+                            <div><dt>QC coverage</dt><dd>@room.QcRepresentedBins / @(room.CurrentBinsCount ?? 0) bins (@room.QcCoveragePercent.ToString("0.#")%)</dd></div>
                             <div><dt>Last sample</dt><dd>@(room.LastSampleDate?.LocalDateTime.ToString("g") ?? "No data")</dd></div>
-                            <div><dt>Fruit rows</dt><dd>@room.EnteredFruitCount</dd></div>
                         </dl>
+                        <p class="room-lots"><strong>@room.AttentionCategory:</strong> @room.RankingReason</p>
+                        @if (!string.IsNullOrWhiteSpace(room.MajorWeakLotIndicator))
+                        {
+                            <p class="room-lots"><strong>Indicator:</strong> @room.MajorWeakLotIndicator</p>
+                        }
                         <p class="room-lots">@room.LotSummary</p>
                         @if (!string.IsNullOrWhiteSpace(room.WeakestLotLabel))
                         {
@@ -178,7 +172,10 @@ else
         status.Contains("pending", StringComparison.OrdinalIgnoreCase) ? "pending" : "";
 
     private static string RoomStatusClass(string status) =>
+        status.Contains("attention", StringComparison.OrdinalIgnoreCase) ? "review" :
+        status.Contains("watch", StringComparison.OrdinalIgnoreCase) ? "review" :
         status.Contains("review", StringComparison.OrdinalIgnoreCase) ? "review" :
+        status.Contains("stable", StringComparison.OrdinalIgnoreCase) ? "ready" :
         status.Contains("active", StringComparison.OrdinalIgnoreCase) ? "ready" :
         status.Contains("empty", StringComparison.OrdinalIgnoreCase) ? "pending" : "";
 

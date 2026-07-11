@@ -8,21 +8,22 @@ namespace CropQc.Api.Tests;
 public sealed class RoomSummaryDepletionTests
 {
     [Fact]
-    public void Dashboard_RoomSummaryUsesAllRoomsAndShowsEmptyRooms()
+    public void Dashboard_RoomSummaryShowsOnlyOccupiedCurrentRooms()
     {
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
         var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Index.cshtml"));
 
-        Assert.Contains("BuildRoomSummariesAsync", service);
-        Assert.Contains("dbContext.Rooms.AsNoTracking()", service);
-        Assert.Contains("Status = status", service);
-        Assert.Contains("roomLots.Count == 0 ? \"Empty\"", service);
+        Assert.Contains("BuildDashboardCurrentInventorySnapshotsAsync", service);
+        Assert.Contains("BuildDashboardRoomSummariesAsync", service);
+        Assert.Contains(".Where(x => x.CurrentBins > 0)", service);
+        Assert.Contains(".Where(x => (x.CurrentBinsCount ?? 0) > 0)", service);
         Assert.Contains("Room Summary", view);
         Assert.Contains("Model.RoomSummaries", view);
         Assert.Contains("/Dashboard/Rooms/@room.RoomId", view);
-        Assert.Contains("Rooms with fruit", view);
-        Assert.Contains("Empty rooms", view);
-        Assert.Contains("All rooms", view);
+        Assert.Contains("Current bins", view);
+        Assert.DoesNotContain("Fruit rows", view);
+        Assert.DoesNotContain("Empty rooms", view);
+        Assert.DoesNotContain("All rooms", view);
     }
 
     [Fact]
@@ -35,8 +36,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("latestAdjustment.NewBinCount", service);
         Assert.Contains("receipt.BinCount - depleted", service);
         Assert.Contains("CurrentBins > 0", service);
-        Assert.Contains("GroupBy(x => x.RoomId)", service);
-        Assert.Contains("var roomLots = currentLotsByRoom.GetValueOrDefault(room.Id", service);
+        Assert.Contains("BuildDashboardCurrentInventorySnapshotsAsync", service);
+        Assert.Contains("BuildDashboardRoomSummariesAsync", service);
     }
 
     [Fact]
@@ -57,6 +58,39 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Evans", view);
         Assert.Contains("Lamb", view);
         Assert.Contains("BM", view);
+    }
+
+    [Fact]
+    public void Dashboard_RoomCardsUseCompactCurrentInventoryRanking()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
+        var dashboard = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Index.cshtml"));
+        var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
+
+        Assert.Contains("AttentionCategory", model);
+        Assert.Contains("RankingReason", model);
+        Assert.Contains("QcRepresentedBins", model);
+        Assert.Contains("QcMissingBins", model);
+        Assert.Contains("MajorWeakLotIndicator", model);
+        Assert.Contains("BuildDashboardLatestSampleByLotAsync", service);
+        Assert.Contains("dbContext.QcSamples.AsNoTracking()", service);
+        Assert.Contains("CurrentDashboardLotKey", service);
+        Assert.Contains("Needs attention", service);
+        Assert.Contains("Needs review", service);
+        Assert.Contains("Watch", service);
+        Assert.Contains("Stable", service);
+        Assert.Contains("QC data missing", service);
+        Assert.Contains("Latest QC data is", service);
+        Assert.Contains("OrderBy(x => x.AttentionSort)", service);
+        Assert.Contains("OrderBy(x => x.AttentionSort)", dashboard);
+        Assert.Contains("room.RankingReason", dashboard);
+        Assert.Contains("room.QcRepresentedBins", dashboard);
+        Assert.Contains("room.MajorWeakLotIndicator", dashboard);
+        Assert.DoesNotContain("Fruit rows", dashboard);
+        Assert.Contains("Baseline Size Distribution", room);
+        Assert.Contains("Packout Projections", room);
+        Assert.Contains("Change Over Time", room);
     }
 
     [Fact]
@@ -343,7 +377,7 @@ public sealed class RoomSummaryDepletionTests
         var import = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "RoomInventoryImportService.cs"));
 
         Assert.Contains("CurrentLotKey", service);
-        Assert.Contains("currentLots.Select(CurrentLotKey).Distinct", service);
+        Assert.Contains("dashboardLots.Select(x => CurrentDashboardLotKey", service);
         Assert.Contains("BuildAdjustmentOnlyLotSummariesAsync", service);
         Assert.Contains("RoomInventoryImportService.CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? \"\")", service);
         Assert.DoesNotContain("x.Source ?? x.Reason ?? \"\").Trim().ToUpperInvariant()", service);
