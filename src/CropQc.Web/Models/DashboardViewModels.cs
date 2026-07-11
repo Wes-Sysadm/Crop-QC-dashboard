@@ -37,6 +37,13 @@ public sealed class RoomSummaryItemViewModel
     public string Status { get; set; } = "Empty";
     public int CurrentLotsCount { get; set; }
     public int? CurrentBinsCount { get; set; }
+    public string AttentionCategory { get; set; } = "Stable";
+    public int AttentionSort { get; set; } = 4;
+    public string RankingReason { get; set; } = "No current concerns identified";
+    public int QcRepresentedBins { get; set; }
+    public int QcMissingBins { get; set; }
+    public decimal QcCoveragePercent { get; set; }
+    public string MajorWeakLotIndicator { get; set; } = "";
     public int StartingSeasonBins { get; set; }
     public int NetChangeBins { get; set; }
     public string VarietyStatusSummary { get; set; } = "";

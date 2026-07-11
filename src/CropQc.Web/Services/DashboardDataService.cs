@@ -93,9 +93,10 @@ public sealed class DashboardDataService(
         {
             var todaySamples = await QuerySamples().Where(x => x.SampleTakenAt.Date == DateTimeOffset.UtcNow.Date).ToListAsync(cancellationToken);
             var enriched = await EnrichSamplesAsync(todaySamples, cancellationToken);
-            var currentLots = (await BuildRoomLotSummariesAsync(null, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
-            var totalCurrentBins = currentLots.Sum(x => x.CurrentBins);
-            var currentGrowerLots = currentLots.Select(CurrentLotKey).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            var dashboardLots = (await BuildDashboardCurrentInventorySnapshotsAsync(null, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
+            var roomSummaries = await BuildDashboardRoomSummariesAsync(dashboardLots, normalizedRoomFilter, cancellationToken);
+            var totalCurrentBins = dashboardLots.Sum(x => x.CurrentBins);
+            var currentGrowerLots = dashboardLots.Select(x => CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
             var cards = BuildHomeCards(
                 enriched.Count(x => x.SampleType.Contains("Receiving", StringComparison.OrdinalIgnoreCase)),
                 enriched.Count(IsReadyToEmail),
@@ -109,14 +110,14 @@ public sealed class DashboardDataService(
                 Cards = cards,
                 TodaySamples = enriched,
                 RoomSummaryFilter = normalizedRoomFilter,
-                RoomSummaries = await BuildRoomSummariesAsync(cancellationToken, roomSummaryFilter: normalizedRoomFilter),
-                StorageByFacility = currentLots
+                RoomSummaries = roomSummaries,
+                StorageByFacility = dashboardLots
                     .GroupBy(x => x.Facility)
                     .Select(x => new StorageFacilitySummaryViewModel
                     {
                         Facility = x.Key,
                         CurrentBins = x.Sum(y => y.CurrentBins),
-                        CurrentGrowerLots = x.Select(CurrentLotKey).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                        CurrentGrowerLots = x.Select(y => CurrentDashboardLotKey(y.RoomId, y.Lot, y.Variety)).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
                         CurrentRooms = x.Select(y => y.RoomId).Distinct().Count()
                     })
                     .OrderBy(x => x.Facility)
@@ -2251,6 +2252,254 @@ public sealed class DashboardDataService(
         return roomId is not null ? summaries : ApplyRoomStatusFilter(summaries, filter.RoomStatus);
     }
 
+    private async Task<IReadOnlyList<RoomSummaryItemViewModel>> BuildDashboardRoomSummariesAsync(
+        IReadOnlyList<DashboardInventorySnapshot> currentLots,
+        RoomSummaryFilterForm roomSummaryFilter,
+        CancellationToken cancellationToken)
+    {
+        var occupiedLots = currentLots.Where(x => x.CurrentBins > 0).ToList();
+        if (occupiedLots.Count == 0)
+        {
+            return [];
+        }
+
+        var occupiedRoomIds = occupiedLots.Select(x => x.RoomId).Distinct().ToList();
+        var rooms = await dbContext.Rooms.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .Where(x => x.IsActive && occupiedRoomIds.Contains(x.Id))
+            .ToListAsync(cancellationToken);
+
+        rooms = rooms
+            .Where(room => RoomMatchesFacilityFilter(room, roomSummaryFilter.Facility))
+            .Where(room => RoomMatchesEbsLocationFilter(room, roomSummaryFilter.EbsLocation))
+            .ToList();
+
+        var includedRoomIds = rooms.Select(x => x.Id).ToHashSet();
+        occupiedLots = occupiedLots.Where(x => includedRoomIds.Contains(x.RoomId)).ToList();
+        var latestSamplesByLot = await BuildDashboardLatestSampleByLotAsync(occupiedLots, cancellationToken);
+        var today = DateTimeOffset.Now;
+
+        return rooms.Select(room =>
+            {
+                var roomLots = occupiedLots.Where(x => x.RoomId == room.Id).ToList();
+                var currentBins = roomLots.Sum(x => x.CurrentBins);
+                var representedBins = roomLots
+                    .Where(x => latestSamplesByLot.ContainsKey(CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety)))
+                    .Sum(x => x.CurrentBins);
+                var latestSampleDate = roomLots
+                    .Select(x => latestSamplesByLot.GetValueOrDefault(CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety))?.SampleTakenAt)
+                    .Where(x => x is not null)
+                    .DefaultIfEmpty()
+                    .Max();
+                var staleLots = roomLots
+                    .Where(x => latestSamplesByLot.TryGetValue(CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety), out var sample)
+                        && (today - sample.SampleTakenAt).TotalDays >= 14)
+                    .ToList();
+                var statusLots = roomLots
+                    .Where(x => !string.IsNullOrWhiteSpace(x.InventoryStatus))
+                    .ToList();
+                var missingBins = Math.Max(0, currentBins - representedBins);
+                var coverage = currentBins <= 0 ? 0m : decimal.Round(representedBins / (decimal)currentBins * 100m, 1);
+                var attention = BuildDashboardRoomAttention(roomLots, representedBins, missingBins, coverage, staleLots, statusLots, latestSampleDate, today);
+                var displayRoomCode = room.CropQcRoomName ?? room.DisplayName ?? room.Code;
+
+                return new RoomSummaryItemViewModel
+                {
+                    RoomId = room.Id,
+                    Warehouse = room.Warehouse.Code,
+                    Facility = FacilityCode(room.Warehouse.Code, room.Warehouse.Name),
+                    LocationGroup = RoomLocationGroup(room),
+                    RoomCode = displayRoomCode,
+                    RoomName = room.DisplayName ?? room.Name,
+                    CompuTechCode = room.CompuTechRoomCode ?? "",
+                    Status = attention.Category,
+                    AttentionCategory = attention.Category,
+                    AttentionSort = attention.Sort,
+                    RankingReason = attention.Reason,
+                    QcRepresentedBins = representedBins,
+                    QcMissingBins = missingBins,
+                    QcCoveragePercent = coverage,
+                    MajorWeakLotIndicator = attention.Indicator,
+                    CurrentLotsCount = roomLots.Count,
+                    CurrentBinsCount = currentBins,
+                    LastSampleDate = latestSampleDate,
+                    LatestQcSource = latestSampleDate is null ? "" : "Latest lot QC sample",
+                    LotSummary = string.Join(", ", roomLots.Take(4).Select(x => $"{x.Grower} {x.Lot} {x.Variety}")),
+                    VarietyStatusSummary = BuildDashboardVarietySummary(roomLots),
+                    LastActivityAt = latestSampleDate ?? roomLots.Select(x => x.ReceiptDate).Where(x => x is not null).DefaultIfEmpty().Max(),
+                    ReviewFlags = attention.Flag is null ? [] : [attention.Flag],
+                    WeakestLotLabel = attention.WeakestLotLabel,
+                    WeakestLotReason = attention.Indicator
+                };
+            })
+            .Where(x => (x.CurrentBinsCount ?? 0) > 0)
+            .OrderBy(x => x.AttentionSort)
+            .ThenByDescending(x => x.QcMissingBins == 0 ? 0m : x.QcMissingBins / (decimal)(x.CurrentBinsCount ?? 1))
+            .ThenBy(x => x.LastSampleDate ?? DateTimeOffset.MinValue)
+            .ThenBy(x => x.RoomCode)
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<DashboardInventorySnapshot>> BuildDashboardCurrentInventorySnapshotsAsync(int? roomId, CancellationToken cancellationToken)
+    {
+        var receiptsQuery = dbContext.Receipts.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .Include(x => x.Room)
+                .ThenInclude(x => x.Warehouse)
+            .Include(x => x.FruitProfile)
+            .Where(x => !x.IsDeleted)
+            .Where(x => x.ReceiptType == "Truck receipt");
+        if (roomId is not null)
+        {
+            receiptsQuery = receiptsQuery.Where(x => x.RoomId == roomId);
+        }
+
+        var receipts = await receiptsQuery.ToListAsync(cancellationToken);
+        var roomCorrectionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
+        receipts = receipts
+            .Where(x => ReceiptStorageExclusionReason(x, "", roomCorrectionCutoffs) is null)
+            .ToList();
+        var receiptIds = receipts.Select(x => x.Id).ToList();
+        var depletionByReceipt = await dbContext.RoomDepletions.AsNoTracking()
+            .Where(x => receiptIds.Contains(x.ReceiptId) && !x.IsVoided)
+            .GroupBy(x => x.ReceiptId)
+            .Select(x => new { ReceiptId = x.Key, Bins = x.Sum(y => y.BinCountDepleted) })
+            .ToDictionaryAsync(x => x.ReceiptId, x => x.Bins, cancellationToken);
+        var latestAdjustmentByReceipt = (await dbContext.RoomInventoryAdjustments.AsNoTracking()
+                .Where(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
+                .ToListAsync(cancellationToken))
+            .GroupBy(x => x.ReceiptId!.Value)
+            .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First());
+
+        var receiptSnapshots = receipts.Select(receipt =>
+        {
+            var latest = latestAdjustmentByReceipt.GetValueOrDefault(receipt.Id);
+            var currentBins = latest is null
+                ? Math.Max(0, receipt.BinCount - depletionByReceipt.GetValueOrDefault(receipt.Id))
+                : Math.Max(0, latest.NewBinCount);
+            return new DashboardInventorySnapshot(
+                receipt.RoomId,
+                receipt.Warehouse.Code,
+                FacilityCode(receipt.Warehouse.Code, receipt.Warehouse.Name),
+                RoomLocationGroup(receipt.Room),
+                receipt.Room.CropQcRoomName ?? receipt.Room.DisplayName ?? receipt.Room.Code,
+                receipt.GrowerName,
+                !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode,
+                receipt.FruitProfile.VarietyCode,
+                "",
+                currentBins,
+                receipt.ReceivedAt);
+        });
+
+        var adjustmentQuery = dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .Include(x => x.Room)
+                .ThenInclude(x => x.Warehouse)
+            .Where(x => x.ReceiptId == null || x.AdjustmentType == "TransferIn");
+        if (roomId is not null)
+        {
+            adjustmentQuery = adjustmentQuery.Where(x => x.RoomId == roomId);
+        }
+
+        var correctionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
+        var adjustmentSnapshots = ApplyLatestCurrentBalanceRows((await adjustmentQuery.ToListAsync(cancellationToken))
+                .Where(x => !IsSupersededByRoomCurrentBalanceCorrection(x, correctionCutoffs)))
+            .Select(x => new DashboardInventorySnapshot(
+                x.RoomId,
+                x.Warehouse.Code,
+                FacilityCode(x.Warehouse.Code, x.Warehouse.Name),
+                !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : RoomLocationGroup(x.Room),
+                x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
+                x.GrowerName,
+                x.LotNumber,
+                x.VarietyCode ?? "",
+                x.InventoryStatus ?? "",
+                Math.Max(0, x.NewBinCount),
+                null));
+
+        return receiptSnapshots.Concat(adjustmentSnapshots)
+            .Where(x => x.CurrentBins > 0)
+            .ToList();
+    }
+
+    private async Task<IReadOnlyDictionary<string, DashboardSampleMarker>> BuildDashboardLatestSampleByLotAsync(
+        IReadOnlyList<DashboardInventorySnapshot> currentLots,
+        CancellationToken cancellationToken)
+    {
+        var roomIds = currentLots.Select(x => x.RoomId).Distinct().ToList();
+        if (roomIds.Count == 0)
+        {
+            return new Dictionary<string, DashboardSampleMarker>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var sampleRows = await dbContext.QcSamples.AsNoTracking()
+            .Where(x => !x.IsDeleted && roomIds.Contains(x.Receipt.RoomId))
+            .Select(x => new
+            {
+                x.SampleTakenAt,
+                RoomId = x.Receipt.RoomId,
+                Lot = x.Receipt.GrowerNumber ?? x.Receipt.LotCode,
+                Variety = x.Receipt.FruitProfile.VarietyCode,
+                SampleType = x.SampleType.Name
+            })
+            .ToListAsync(cancellationToken);
+
+        return sampleRows
+            .GroupBy(x => CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                x => x.Key,
+                x =>
+                {
+                    var latest = x.OrderByDescending(y => y.SampleTakenAt).First();
+                    return new DashboardSampleMarker(latest.SampleTakenAt, latest.SampleType);
+                },
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static DashboardRoomAttention BuildDashboardRoomAttention(
+        IReadOnlyList<DashboardInventorySnapshot> roomLots,
+        int representedBins,
+        int missingBins,
+        decimal coverage,
+        IReadOnlyList<DashboardInventorySnapshot> staleLots,
+        IReadOnlyList<DashboardInventorySnapshot> statusLots,
+        DateTimeOffset? latestSampleDate,
+        DateTimeOffset now)
+    {
+        var currentBins = roomLots.Sum(x => x.CurrentBins);
+        if (statusLots.Count > 0)
+        {
+            var bins = statusLots.Sum(x => x.CurrentBins);
+            return new("Needs attention", 1, $"{bins} current bins have inventory status notes", statusLots[0].InventoryStatus, "Inventory status note", $"{statusLots[0].Grower} {statusLots[0].Lot}");
+        }
+
+        if (missingBins > 0)
+        {
+            var percent = currentBins <= 0 ? 0m : decimal.Round(missingBins / (decimal)currentBins * 100m, 1);
+            var category = representedBins == 0 ? "Needs review" : "Watch";
+            return new(category, representedBins == 0 ? 2 : 3, $"QC data missing for {missingBins} bins ({percent}% of current bins)", "Incomplete QC coverage", "Missing current QC data", null);
+        }
+
+        if (staleLots.Count > 0)
+        {
+            var oldest = latestSampleDate is null ? 0 : (int)Math.Floor((now - latestSampleDate.Value).TotalDays);
+            return new("Watch", 3, $"Latest QC data is {oldest} days old", "Stale QC data", "Stale QC data", null);
+        }
+
+        return new("Stable", 4, $"QC data covers {representedBins} of {currentBins} bins ({coverage}%)", "No current concerns identified", null, null);
+    }
+
+    private static string BuildDashboardVarietySummary(IReadOnlyList<DashboardInventorySnapshot> roomLots) =>
+        string.Join(", ", roomLots
+            .GroupBy(x => x.Variety)
+            .OrderByDescending(x => x.Sum(y => y.CurrentBins))
+            .ThenBy(x => x.Key)
+            .Take(3)
+            .Select(x => $"{x.Key}: {x.Sum(y => y.CurrentBins)} bins"));
+
+    private static string CurrentDashboardLotKey(int roomId, string lot, string variety) =>
+        RoomInventoryImportService.CurrentStorageLotKey(roomId, lot, variety);
+
     private async Task<IReadOnlyList<RoomLotSummaryViewModel>> BuildRoomLotSummariesAsync(int? roomId, CancellationToken cancellationToken)
     {
         var receiptsQuery = dbContext.Receipts.AsNoTracking()
@@ -4118,4 +4367,27 @@ public sealed class DashboardDataService(
         ("Starch scale values", "/MasterData/starch-scale-values"),
         ("Size thresholds", "/MasterData/size-thresholds")
     ];
+
+    private sealed record DashboardInventorySnapshot(
+        int RoomId,
+        string Warehouse,
+        string Facility,
+        string LocationGroup,
+        string Room,
+        string Grower,
+        string Lot,
+        string Variety,
+        string InventoryStatus,
+        int CurrentBins,
+        DateTimeOffset? ReceiptDate);
+
+    private sealed record DashboardSampleMarker(DateTimeOffset SampleTakenAt, string SampleType);
+
+    private sealed record DashboardRoomAttention(
+        string Category,
+        int Sort,
+        string Reason,
+        string Indicator,
+        string? Flag,
+        string? WeakestLotLabel);
 }
