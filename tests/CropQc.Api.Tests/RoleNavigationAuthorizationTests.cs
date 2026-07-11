@@ -25,7 +25,7 @@ public sealed class RoleNavigationAuthorizationTests
         Assert.Contains("href=\"/Admin/Users\"", layout);
         Assert.Contains("href=\"/Admin/Downloads\"", layout);
         Assert.Contains("href=\"/Admin/Configuration\"", layout);
-        Assert.Contains("href=\"/Admin/VarietyColors\"", layout);
+        Assert.Contains("href=\"/MasterData/fruit-profiles\"", layout);
         Assert.Contains("href=\"/Admin/Backups\"", layout);
         Assert.Contains("href=\"/Admin/DataCleanup\"", layout);
         Assert.Contains("canAccessDataCleanup", layout);

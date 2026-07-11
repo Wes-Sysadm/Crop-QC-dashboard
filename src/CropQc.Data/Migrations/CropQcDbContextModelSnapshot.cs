@@ -496,6 +496,51 @@ namespace CropQc.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("CropQc.Data.Entities.VarietyColorConfiguration", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("FruitProfileId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("HexColor")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VarietyKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("VarietyName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FruitProfileId");
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.HasIndex("VarietyKey")
+                        .IsUnique();
+
+                    b.ToTable("VarietyColorConfigurations");
+                });
+
             modelBuilder.Entity("CropQc.Data.Entities.FruitSizeConversionThreshold", b =>
                 {
                     b.Property<int>("Id")
@@ -2165,6 +2210,23 @@ namespace CropQc.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("StarchScale");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.VarietyColorConfiguration", b =>
+                {
+                    b.HasOne("CropQc.Data.Entities.FruitProfile", "FruitProfile")
+                        .WithMany()
+                        .HasForeignKey("FruitProfileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.User", "UpdatedByUser")
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("FruitProfile");
+
+                    b.Navigation("UpdatedByUser");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.UserRole", b =>

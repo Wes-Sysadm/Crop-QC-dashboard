@@ -12,6 +12,7 @@ public interface IVarietyColorService
 {
     Task<VarietyColorsAdminViewModel> GetAdminPageAsync(bool canManage, CancellationToken cancellationToken);
     Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsAsync(IEnumerable<string> varietyKeys, CancellationToken cancellationToken);
+    Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsForMasterDataAsync(CancellationToken cancellationToken);
     Task<string?> SaveAsync(VarietyColorForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> ResetAsync(VarietyColorForm form, string changedByEmail, CancellationToken cancellationToken);
 }
@@ -99,6 +100,14 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
             StringComparer.OrdinalIgnoreCase);
     }
 
+    public async Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsForMasterDataAsync(CancellationToken cancellationToken)
+    {
+        await EnsureSchemaAsync(cancellationToken);
+        await ConsolidateAliasConfigurationsAsync(cancellationToken);
+        var identities = await GetKnownVarietiesAsync(cancellationToken);
+        return await GetResolvedColorsAsync(identities.Select(x => x.Key), cancellationToken);
+    }
+
     public async Task<string?> SaveAsync(VarietyColorForm form, string changedByEmail, CancellationToken cancellationToken)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -115,13 +124,15 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
             return "Enter a valid hex color such as #2F80ED.";
         }
 
+        var masterProfileId = await FindCanonicalFruitProfileIdAsync(identity, cancellationToken);
         var user = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Email == changedByEmail, cancellationToken);
         var existing = await dbContext.VarietyColorConfigurations.SingleOrDefaultAsync(x => x.VarietyKey == identity.Key, cancellationToken);
-        var before = existing is null ? null : JsonSerializer.Serialize(new { existing.VarietyKey, existing.VarietyName, existing.HexColor });
+        var before = existing is null ? null : JsonSerializer.Serialize(new { existing.FruitProfileId, existing.VarietyKey, existing.VarietyName, existing.HexColor });
         if (existing is null)
         {
             existing = new VarietyColorConfiguration
             {
+                FruitProfileId = masterProfileId,
                 VarietyKey = identity.Key,
                 VarietyName = identity.Name,
                 HexColor = color,
@@ -133,6 +144,7 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
         }
         else
         {
+            existing.FruitProfileId = masterProfileId;
             existing.VarietyName = identity.Name;
             existing.HexColor = color;
             existing.UpdatedAt = DateTimeOffset.UtcNow;
@@ -146,7 +158,7 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
             EntityKey = identity.Key,
             UserId = user?.Id,
             BeforeValuesJson = before,
-            AfterValuesJson = JsonSerializer.Serialize(new { existing.VarietyKey, existing.VarietyName, existing.HexColor }),
+            AfterValuesJson = JsonSerializer.Serialize(new { existing.FruitProfileId, existing.VarietyKey, existing.VarietyName, existing.HexColor }),
             SourceApplication = "CropQc.Web",
             CreatedAt = DateTimeOffset.UtcNow
         });
@@ -171,7 +183,7 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
         }
 
         var user = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Email == changedByEmail, cancellationToken);
-        var before = JsonSerializer.Serialize(new { existing.VarietyKey, existing.VarietyName, existing.HexColor });
+        var before = JsonSerializer.Serialize(new { existing.FruitProfileId, existing.VarietyKey, existing.VarietyName, existing.HexColor });
         dbContext.VarietyColorConfigurations.Remove(existing);
         dbContext.AuditLogs.Add(new AuditLog
         {
@@ -251,6 +263,18 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
     public static bool IsValidHexColor(string? value) =>
         value is not null && HexColorRegex.IsMatch(value);
 
+    public static string AliasesForIdentity(VarietyIdentity identity)
+    {
+        var aliases = CanonicalVarietyAliases.Values
+            .Where(x => x.CanonicalName.Equals(identity.Name, StringComparison.OrdinalIgnoreCase) && !x.Alias.Equals(identity.Name, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.Priority)
+            .ThenBy(x => x.Alias)
+            .Select(x => x.Alias)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return aliases.Count == 0 ? "" : string.Join(", ", aliases);
+    }
+
     private async Task<IReadOnlyList<VarietyIdentity>> GetKnownVarietiesAsync(CancellationToken cancellationToken)
     {
         var profiles = await dbContext.FruitProfiles.AsNoTracking().ToListAsync(cancellationToken);
@@ -317,6 +341,7 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
 
             winner.VarietyKey = identity.Key;
             winner.VarietyName = identity.Name;
+            winner.FruitProfileId = await FindCanonicalFruitProfileIdAsync(identity, cancellationToken);
             winner.UpdatedAt = now;
 
             dbContext.AuditLogs.Add(new AuditLog
@@ -329,6 +354,7 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
                 {
                     CanonicalVarietyKey = identity.Key,
                     CanonicalVarietyName = identity.Name,
+                    MasterFruitProfileId = winner.FruitProfileId,
                     ResultingColor = winner.HexColor,
                     MigrationActor = "system:variety-alias-consolidation"
                 }),
@@ -338,6 +364,20 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<int?> FindCanonicalFruitProfileIdAsync(VarietyIdentity identity, CancellationToken cancellationToken)
+    {
+        var profiles = await dbContext.FruitProfiles.AsNoTracking().ToListAsync(cancellationToken);
+        return profiles
+            .Where(x => IdentityFromProfile(x).Key.Equals(identity.Key, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.IsOrganic)
+            .ThenByDescending(x => x.Name.Trim().Equals(identity.Name, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(x => x.IsActive)
+            .ThenBy(x => x.Name.Length)
+            .ThenBy(x => x.Id)
+            .Select(x => (int?)x.Id)
+            .FirstOrDefault();
     }
 
     private static VarietyColorConfiguration PickPreferredConfiguration(IReadOnlyList<VarietyColorConfiguration> rows) =>
@@ -410,6 +450,7 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
             await dbContext.Database.ExecuteSqlRawAsync("""
                 CREATE TABLE IF NOT EXISTS "VarietyColorConfigurations" (
                     "Id" integer GENERATED BY DEFAULT AS IDENTITY,
+                    "FruitProfileId" integer NULL,
                     "VarietyKey" character varying(100) NOT NULL,
                     "VarietyName" character varying(150) NOT NULL,
                     "HexColor" character varying(7) NOT NULL,
@@ -417,9 +458,12 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
                     "UpdatedAt" timestamp with time zone NOT NULL,
                     "UpdatedByUserId" integer NULL,
                     CONSTRAINT "PK_VarietyColorConfigurations" PRIMARY KEY ("Id"),
+                    CONSTRAINT "FK_VarietyColorConfigurations_FruitProfiles_FruitProfileId" FOREIGN KEY ("FruitProfileId") REFERENCES "FruitProfiles" ("Id") ON DELETE SET NULL,
                     CONSTRAINT "FK_VarietyColorConfigurations_Users_UpdatedByUserId" FOREIGN KEY ("UpdatedByUserId") REFERENCES "Users" ("Id") ON DELETE SET NULL
                 );
+                ALTER TABLE "VarietyColorConfigurations" ADD COLUMN IF NOT EXISTS "FruitProfileId" integer NULL;
                 CREATE UNIQUE INDEX IF NOT EXISTS "IX_VarietyColorConfigurations_VarietyKey" ON "VarietyColorConfigurations" ("VarietyKey");
+                CREATE INDEX IF NOT EXISTS "IX_VarietyColorConfigurations_FruitProfileId" ON "VarietyColorConfigurations" ("FruitProfileId");
                 """, cancellationToken);
         }
         else if (provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
@@ -429,6 +473,7 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
                 BEGIN
                     CREATE TABLE [VarietyColorConfigurations] (
                         [Id] int IDENTITY(1,1) NOT NULL,
+                        [FruitProfileId] int NULL,
                         [VarietyKey] nvarchar(100) NOT NULL,
                         [VarietyName] nvarchar(150) NOT NULL,
                         [HexColor] nvarchar(7) NOT NULL,
@@ -436,9 +481,16 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
                         [UpdatedAt] datetimeoffset NOT NULL,
                         [UpdatedByUserId] int NULL,
                         CONSTRAINT [PK_VarietyColorConfigurations] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_VarietyColorConfigurations_FruitProfiles_FruitProfileId] FOREIGN KEY ([FruitProfileId]) REFERENCES [FruitProfiles] ([Id]) ON DELETE SET NULL,
                         CONSTRAINT [FK_VarietyColorConfigurations_Users_UpdatedByUserId] FOREIGN KEY ([UpdatedByUserId]) REFERENCES [Users] ([Id]) ON DELETE SET NULL
                     );
+                    CREATE INDEX [IX_VarietyColorConfigurations_FruitProfileId] ON [VarietyColorConfigurations] ([FruitProfileId]);
                     CREATE UNIQUE INDEX [IX_VarietyColorConfigurations_VarietyKey] ON [VarietyColorConfigurations] ([VarietyKey]);
+                END
+                IF COL_LENGTH(N'[VarietyColorConfigurations]', N'FruitProfileId') IS NULL
+                BEGIN
+                    ALTER TABLE [VarietyColorConfigurations] ADD [FruitProfileId] int NULL;
+                    CREATE INDEX [IX_VarietyColorConfigurations_FruitProfileId] ON [VarietyColorConfigurations] ([FruitProfileId]);
                 END
                 """, cancellationToken);
         }

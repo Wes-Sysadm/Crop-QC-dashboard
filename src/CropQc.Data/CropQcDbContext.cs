@@ -158,10 +158,16 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
 
         modelBuilder.Entity<VarietyColorConfiguration>(entity =>
         {
+            entity.Property(x => x.FruitProfileId);
             entity.Property(x => x.VarietyKey).HasMaxLength(100).IsRequired();
             entity.Property(x => x.VarietyName).HasMaxLength(150).IsRequired();
             entity.Property(x => x.HexColor).HasMaxLength(7).IsRequired();
             entity.HasIndex(x => x.VarietyKey).IsUnique();
+            entity.HasIndex(x => x.FruitProfileId);
+            entity.HasOne(x => x.FruitProfile)
+                .WithMany()
+                .HasForeignKey(x => x.FruitProfileId)
+                .OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.UpdatedByUser)
                 .WithMany()
                 .HasForeignKey(x => x.UpdatedByUserId)

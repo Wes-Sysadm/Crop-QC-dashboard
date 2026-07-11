@@ -177,9 +177,26 @@
         @foreach (var item in Model.Items.Count > 0 ? Model.Items : Model.Rows.Select((row, index) => new MasterDataEditItem(index, row, true)))
         {
             <tr class="@(Model.Type == "rooms" ? "room-row" : null)" data-warehouse="@(Model.Type == "rooms" ? item.Cells[0] : null)" data-active="@(Model.Type == "rooms" ? item.Cells[^1] : null)">
-            @foreach (var cell in item.Cells)
+            @for (var i = 0; i < item.Cells.Count; i++)
             {
-                <td>@cell</td>
+                @if (Model.Type == "fruit-profiles" && i == 5 && item.VarietyColor is not null)
+                {
+                    <td>
+                        <span class="variety-color-preview" style="--variety-color: @item.VarietyColor.HexColor" aria-label="@item.VarietyColor.VarietyName color preview"></span>
+                        <span class="nowrap-cell">@item.VarietyColor.HexColor</span>
+                    </td>
+                }
+                else if (Model.Type == "fruit-profiles" && i == 6 && item.VarietyColor is not null)
+                {
+                    <td>
+                        <span class="status @(item.VarietyColor.IsConfigured ? "ready" : "pending")">@(item.VarietyColor.IsConfigured ? "Configured" : "Fallback")</span>
+                        <div class="muted">Default @item.VarietyColor.FallbackColor</div>
+                    </td>
+                }
+                else
+                {
+                    <td>@item.Cells[i]</td>
+                }
             }
             @if (Model.CanEdit && Model.Type != "index")
             {

@@ -55,6 +55,44 @@ else if (Model.Type == "fruit-profiles")
         <span class="muted">Choose an existing commodity or type a new one, such as Cherry, Peach, Nectarine, or Apricot.</span>
     </div>
     <div class="field"><label>Production Type</label><select name="ProductionType" required><option selected="@(Model.ProductionType == "Conventional" ? "selected" : null)">Conventional</option><option selected="@(Model.ProductionType == "Organic" ? "selected" : null)">Organic</option></select></div>
+    <input type="hidden" name="VarietyColorKey" value="@Model.VarietyColorKey" />
+    <input type="hidden" name="CanonicalVarietyName" value="@Model.CanonicalVarietyName" />
+    <input type="hidden" name="VarietyFallbackColor" value="@Model.VarietyFallbackColor" />
+    <input type="hidden" name="VarietyColorIsConfigured" value="@(Model.VarietyColorIsConfigured ? "true" : "false")" />
+    <section class="panel wide variety-master-color-panel">
+        <div class="room-card-header">
+            <div>
+                <h3>Dashboard color</h3>
+                <p class="muted">Managed with the variety master data. Aliases use the same canonical color.</p>
+            </div>
+            <span class="status @(Model.VarietyColorIsConfigured ? "ready" : "pending")">@(Model.VarietyColorIsConfigured ? "Configured" : "Fallback")</span>
+        </div>
+        <div class="form-grid compact-form-grid">
+            <div class="field">
+                <label>Canonical variety</label>
+                <input value="@(string.IsNullOrWhiteSpace(Model.CanonicalVarietyName) ? Model.Name : Model.CanonicalVarietyName)" readonly />
+            </div>
+            <div class="field">
+                <label>Known aliases</label>
+                <input name="VarietyAliases" value="@(string.IsNullOrWhiteSpace(Model.VarietyAliases) ? "None configured" : Model.VarietyAliases)" readonly />
+            </div>
+            <label class="field">
+                <span>Picker</span>
+                <input type="color" value="@(string.IsNullOrWhiteSpace(Model.VarietyHexColor) ? "#2F80ED" : Model.VarietyHexColor)" data-master-color-picker />
+            </label>
+            <label class="field">
+                <span>Hex</span>
+                <input name="VarietyHexColor" value="@Model.VarietyHexColor" pattern="#[0-9A-Fa-f]{6}" maxlength="7" data-master-color-hex />
+            </label>
+            <div class="field">
+                <label>Preview</label>
+                <span class="variety-color-preview large-preview" style="--variety-color: @(string.IsNullOrWhiteSpace(Model.VarietyHexColor) ? "#2F80ED" : Model.VarietyHexColor)" data-master-color-preview aria-label="Variety color preview"></span>
+                <span class="muted">Fallback @Model.VarietyFallbackColor</span>
+            </div>
+            <p class="muted wide" data-master-color-contrast>Text is shown over a protected content panel on room cards; use a distinct color for quick scanning.</p>
+            <button class="secondary-button" type="submit" name="ResetVarietyColor" value="true" disabled="@(!Model.VarietyColorIsConfigured ? "disabled" : null)">Reset color to fallback</button>
+        </div>
+    </section>
 }
 else if (Model.Type is "defects" or "sample-types")
 {
@@ -83,3 +121,31 @@ else if (Model.Type == "size-thresholds")
 }
 
 <label class="checkbox-field wide"><input type="checkbox" name="IsActive" value="true" checked="@Model.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" />
+
+@if (Model.Type == "fruit-profiles")
+{
+    <script>
+        document.querySelectorAll(".variety-master-color-panel").forEach(panel => {
+            const picker = panel.querySelector("[data-master-color-picker]");
+            const hex = panel.querySelector("[data-master-color-hex]");
+            const preview = panel.querySelector("[data-master-color-preview]");
+            const contrast = panel.querySelector("[data-master-color-contrast]");
+            const apply = value => {
+                if (!/^#[0-9A-Fa-f]{6}$/.test(value)) return;
+                const color = value.toUpperCase();
+                picker.value = color;
+                hex.value = color;
+                preview.style.setProperty("--variety-color", color);
+                const red = parseInt(color.slice(1, 3), 16);
+                const green = parseInt(color.slice(3, 5), 16);
+                const blue = parseInt(color.slice(5, 7), 16);
+                const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+                contrast.textContent = luminance > 0.78
+                    ? "Very light colors may need the protected room-card text panel for readability."
+                    : "Text is shown over a protected content panel on room cards; use a distinct color for quick scanning.";
+            };
+            picker?.addEventListener("input", () => apply(picker.value));
+            hex?.addEventListener("input", () => apply(hex.value));
+        });
+    </script>
+}
