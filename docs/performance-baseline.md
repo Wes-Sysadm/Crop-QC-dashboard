@@ -57,7 +57,7 @@ Use deterministic non-production data. Do not copy identifiable production data 
 Minimum recommended scale:
 
 - 3 or more facilities.
-- At least 30 occupied rooms.
+- 30 to 50 occupied rooms.
 - Several fully depleted rooms.
 - 3 to 8 active lots per representative occupied room.
 - Multiple receipts per canonical grower.
@@ -143,6 +143,40 @@ Representative authenticated data was still not available in this checkout, so w
 | `dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj --no-build` | Passed |
 
 Use the report template above in staging or a seeded local database before changing query shapes.
+
+## Dashboard Summary Optimization Fixture
+
+The Dashboard summary optimization PR adds a deterministic in-memory fixture for the initial Dashboard load. It is not production-like timing data because the EF in-memory provider does not produce relational database command timings, but it exercises the card-building path at representative scale and protects the intended payload/query shape.
+
+Fixture shape:
+
+- 3 facilities.
+- 40 occupied rooms and 6 empty rooms.
+- 3 active receipt lots per occupied room.
+- 120 receiving samples dated for the Dashboard day.
+- 360 total samples across Receiving, Door, and Lot sample types.
+- 10, 25, and 50 fruit samples.
+- Single-variety and multi-variety rooms.
+- Conventional and organic inventory.
+- Room capacities, current bins, room depletions, pressure, starch, grade, size, defects, and photo metadata.
+- No email sends, Google Drive calls, OAuth refreshes, or photo binary writes.
+
+Dashboard initial load data path before the optimization:
+
+1. `HomeController.Index` called `DashboardDataService.GetHomeDashboardAsync`.
+2. `GetHomeDashboardAsync` used `QuerySamples()` for same-day samples.
+3. `QuerySamples()` loaded a broad graph including receipts, warehouses, rooms, fruit profiles, photos, fruit readings, grades, starch values, defects, defect types, and users.
+4. `EnrichSamplesAsync` calculated readiness and sent-status details for every loaded sample.
+
+Dashboard initial load data path after the optimization:
+
+1. `HomeController.Index` still calls `DashboardDataService.GetHomeDashboardAsync`.
+2. `GetHomeDashboardAsync` calls `BuildTodayDashboardSamplesAsync` for same-day sample cards.
+3. The compact path batch-loads sample headers, fruit-row scalar fields, receipt photo types, sample photo types, and sent-email metadata.
+4. The compact path does not use `.Include(...)` and does not materialize full fruit-reading, defect, photo, receipt, audit, or email-log graphs for the initial Dashboard cards.
+5. Occupied-room summaries continue to use the existing current-inventory and room-summary calculations.
+
+Measured endpoint timings still need to be captured in an authenticated local SQL Server/PostgreSQL or staging environment with the PR #120 middleware enabled. The in-memory fixture is a regression harness for representative data shape, not a replacement for relational query-count measurements.
 
 ## Findings To Validate
 
