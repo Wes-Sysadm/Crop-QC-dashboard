@@ -29,7 +29,8 @@ public sealed class GoogleCredentialStore(
     IDataProtectionProvider dataProtectionProvider,
     GoogleAuthenticationOptions authOptions,
     IHttpClientFactory httpClientFactory,
-    ILogger<GoogleCredentialStore> logger) : IGoogleCredentialStore
+    ILogger<GoogleCredentialStore> logger,
+    IPerformanceExternalCallCounter externalCallCounter) : IGoogleCredentialStore
 {
     private const string ProviderName = "Google";
     private readonly IDataProtector protector = dataProtectionProvider.CreateProtector("CropQc.GoogleOAuthTokens.v1");
@@ -149,6 +150,7 @@ public sealed class GoogleCredentialStore(
         try
         {
             var client = httpClientFactory.CreateClient("GoogleOAuth");
+            externalCallCounter.Increment("GoogleOAuth");
             using var response = await client.PostAsync("https://oauth2.googleapis.com/token", content, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {

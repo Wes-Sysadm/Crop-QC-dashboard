@@ -178,6 +178,8 @@ builder.Services.AddAuthorization(options =>
 });
 builder.Services.AddScoped<PerformanceQueryCounter>();
 builder.Services.AddScoped<IPerformanceQueryCounter>(services => services.GetRequiredService<PerformanceQueryCounter>());
+builder.Services.AddSingleton<IPerformanceExternalCallCounter, PerformanceExternalCallCounter>();
+builder.Services.AddSingleton<IPerformanceRequestMetricSink, BoundedPerformanceRequestMetricSink>();
 builder.Services.AddScoped<PerformanceDbCommandInterceptor>();
 builder.Services.AddDbContext<CropQcDbContext>((services, options) =>
 {
@@ -219,7 +221,8 @@ builder.Services.AddSingleton(CreateGoogleDriveStorageOptions(builder.Configurat
 builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorageService(
     services.GetRequiredService<FileStorageOptions>(),
     services.GetRequiredService<GoogleDriveStorageOptions>(),
-    services.GetRequiredService<ILogger<GoogleDriveStorageService>>()));
+    services.GetRequiredService<ILogger<GoogleDriveStorageService>>(),
+    services.GetRequiredService<IPerformanceExternalCallCounter>()));
 
 var app = builder.Build();
 LogEmailConfiguration(app);
@@ -399,14 +402,20 @@ static void LogEnvironmentConfiguration(WebApplication app)
 static IFileStorageService CreateFileStorageService(
     FileStorageOptions fileStorageOptions,
     GoogleDriveStorageOptions googleDriveOptions,
-    ILogger<GoogleDriveStorageService> googleDriveLogger)
+    ILogger<GoogleDriveStorageService> googleDriveLogger,
+    IPerformanceExternalCallCounter externalCallCounter)
 {
+    IFileStorageService storage;
     if (string.Equals(fileStorageOptions.Provider, FileStorageProviders.GoogleDrive, StringComparison.OrdinalIgnoreCase))
     {
-        return new GoogleDriveStorageService(googleDriveOptions, logger: googleDriveLogger);
+        storage = new GoogleDriveStorageService(googleDriveOptions, logger: googleDriveLogger);
+    }
+    else
+    {
+        storage = new LocalFileStorageService(fileStorageOptions);
     }
 
-    return new LocalFileStorageService(fileStorageOptions);
+    return new InstrumentedFileStorageService(storage, externalCallCounter);
 }
 
 static async Task EnsurePhotoStorageColumnsAsync(IServiceProvider services)

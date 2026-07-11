@@ -399,7 +399,8 @@ public sealed class GmailUserEmailTests
             },
             credentialStore,
             new FakeHttpClientFactory(httpHandler),
-            NullLogger<GmailUserEmailSender>.Instance);
+            NullLogger<GmailUserEmailSender>.Instance,
+            new PerformanceExternalCallCounter());
 
     private static User User(string email) => new()
     {

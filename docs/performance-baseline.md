@@ -1,65 +1,159 @@
-# Performance Baseline Diagnostics
+# Performance Baseline Harness
 
-This document describes the lightweight request and Entity Framework diagnostics used to capture repeatable performance baselines before larger query changes.
+This document describes the repeatable performance baseline harness for high-traffic Crop QC Dashboard workflows.
+
+The harness extends the existing `PerformanceDiagnostics` request and EF diagnostics. It is intended for local development, automated integration tests, approved staging, and carefully enabled production observation. It does not log SQL text, SQL parameter values, OAuth tokens, Google credentials, cookies, authorization headers, email bodies, QC notes, photo URLs, request bodies, response bodies, fruit-row values, or grower-sensitive details.
+
+## Commit
+
+Baseline harness added from latest `main`:
+
+`cd4204aabfa3e51fad8357e433bd7e6fa4742fba`
+
+Previous architecture review baseline:
+
+`606705d7bc79b734019e0a866ab62e9bbb7ad075`
 
 ## Configuration
 
 Configuration section: `PerformanceDiagnostics`
 
 - `Enabled`: when omitted, diagnostics are enabled outside Production and disabled in Production.
-- `RequestTimingEnabled`: logs request method, path, status, elapsed milliseconds, trace identifier, and EF command count.
-- `EfQueryCountingEnabled`: counts EF database commands during a request.
-- `QueryCountWarningThreshold`: logs a warning instead of an information event when a request exceeds the configured command count.
-- `IncludeUserIdentifier`: defaults to `false`; when enabled, logs the authenticated user identifier available from the current claims principal.
+- `RequestTimingEnabled`: captures method, route path, endpoint display name, status, elapsed milliseconds, response bytes, trace identifier, and optional user identifier.
+- `EfQueryCountingEnabled`: counts EF database commands and cumulative command elapsed time during a request.
+- `QueryCountWarningThreshold`: emits a warning when a request exceeds the configured command count.
+- `RequestElapsedWarningThresholdMs`: optional warning threshold for total request time.
+- `DatabaseElapsedWarningThresholdMs`: optional warning threshold for cumulative EF command time.
+- `ResponseBytesWarningThreshold`: optional warning threshold for response bytes.
+- `RecentRequestLimit`: maximum in-memory recent request metrics retained for local/staging diagnostics. Set to `0` to disable retention.
+- `IncludeUserIdentifier`: defaults to `false`; when enabled, logs the authenticated user identifier available from claims.
 
-Diagnostics do not log SQL text, SQL parameter values, cookies, authorization headers, OAuth tokens, Google credentials, email bodies, photo URLs, notes, or connection strings.
+Thresholds warn only. They do not fail or block production requests.
 
-## Log Output
+## Captured Fields
 
-Request timing and query-count diagnostics use the existing ASP.NET Core logging providers. In Development, entries appear in the console/debug logs with structured fields:
+Each measured request records:
 
-- `RequestMethod`
-- `RequestPath`
-- `StatusCode`
-- `ElapsedMilliseconds`
-- `EfQueryCount`
+- `Route` / request path
+- `EndpointName`
+- `Method`
+- `Status`
+- `ElapsedMs`
+- `DatabaseCommandCount`
+- `DatabaseElapsedMs`
+- `DatabaseCommandFailureCount`
+- `ResponseBytes`
+- `ExternalCallCount`
+- `ExternalProviderCounts`
+- `WarningThresholdExceeded`
 - `TraceIdentifier`
-- `UserIdentifier`
 
-`UserIdentifier` remains null unless `PerformanceDiagnostics:IncludeUserIdentifier` is explicitly enabled.
+External provider counts are aggregate-only. They currently identify Google Drive file-storage operations, Gmail API sends, and Google OAuth token refresh attempts.
 
-## Capturing A Baseline
+## Representative Dataset Design
 
-Use a local or staging environment with representative non-sensitive test data. Do not run load tests against production.
+Use deterministic non-production data. Do not copy identifiable production data into source control.
 
-1. Enable diagnostics if needed:
+Minimum recommended scale:
+
+- 3 or more facilities.
+- At least 30 occupied rooms.
+- Several fully depleted rooms.
+- 3 to 8 active lots per representative occupied room.
+- Multiple receipts per canonical grower.
+- Both mapped and unmapped growers.
+- Multiple QC samples per lot.
+- 10, 25, and 50 fruit samples.
+- Photo metadata and defect metadata.
+- Receiving starch, receiving pressure, latest pressure, and pressure history.
+- Bins Run entries and reversals.
+- Several users with Viewer, QC, Manager, and Admin-style permissions.
+
+Preferred setup order:
+
+1. Generate users and permission rows.
+2. Seed warehouses, rooms, fruit profiles, sample types, grades, defects, and starch scales through existing master-data paths.
+3. Create receipts and QC samples through existing service/test builders.
+4. Add current inventory through receiving/current-inventory workflows.
+5. Add Bins Run transactions and reversals through Bins Run services.
+6. Add photo metadata without storing photo binaries or private production URLs.
+7. Verify the Dashboard shows occupied rooms and Crop Year Review includes mapped and unmapped growers.
+
+## Workflow Catalog
+
+The authoritative workflow catalog is `PerformanceBaselineWorkflowCatalog.Workflows`.
+
+| # | Workflow | Method | Route/template | Scale signal |
+| ---: | --- | --- | --- | --- |
+| 1 | Dashboard initial load | GET | `/` | occupied room cards |
+| 2 | Dashboard room-summary data | GET | `/Dashboard/Rooms/{roomId}/Summary` | active lots in selected room |
+| 3 | Room detail open | GET | `/Dashboard/Rooms/{roomId}` | room lots and sample history |
+| 4 | Room projection update | POST | `/Dashboard/Rooms/{roomId}/Projection` | selected lots |
+| 5 | Bins Run initial load | GET | `/BinsRun` | occupied rooms |
+| 6 | Bins Run room selection | GET | `/BinsRun?WarehouseId={warehouseId}&RoomId={roomId}` | active lots in selected room |
+| 7 | Bins Run selected-lot projection | POST | `/BinsRun/Projection` | selected lots |
+| 8 | Daily QC | GET | `/DailyQc` | samples for UTC day |
+| 9 | Ready-to-Email | GET | `/ReadyToEmail` | ready samples |
+| 10 | Receipts list | GET | `/Receipts` | receipt rows |
+| 11 | Receipt detail | GET | `/Receipts/Details/{receiptId}` | samples and photos for receipt |
+| 12 | QC sample detail | GET | `/Samples/Details/{sampleId}` | fruit rows |
+| 13 | Crop Year Review initial card list | GET | `/CropYearReview?cropYear={cropYear}` | canonical grower cards |
+| 14 | Crop Year Review grower detail | GET | `/CropYearReview/Grower/{growerKey}` | receipts and lots for grower |
+| 15 | Master Data varieties | GET | `/MasterData#varieties` | known varieties |
+| 16 | Master Data growers | GET | `/MasterData#growers` | canonical growers and source identities |
+| 17 | Permissions matrix | GET | `/Users` | users and access rows |
+| 18 | Audit history | GET | `/Admin/Audit` | audit rows |
+| 19 | Photo metadata section opening | GET | `/Receipts/Details/{receiptId}#photos` | photo metadata rows |
+
+Some routes are server-rendered pages and some are API-style postbacks. If the concrete route differs in a future controller refactor, keep the workflow name stable and update the route/template.
+
+## Capture Procedure
+
+1. Enable diagnostics in local/staging:
    - `PerformanceDiagnostics__Enabled=true`
    - `PerformanceDiagnostics__RequestTimingEnabled=true`
    - `PerformanceDiagnostics__EfQueryCountingEnabled=true`
+   - `PerformanceDiagnostics__RecentRequestLimit=200`
 2. Warm the application once.
-3. Open each workflow manually or with an authenticated test browser session.
-4. Record request duration, EF command count, response size from browser network tools, and visible row/object counts.
-5. Repeat after each query-focused PR and compare the same endpoints.
+3. Run each workflow at least four times:
+   - one cold or first-request run
+   - three warm runs
+4. Record:
+   - first run
+   - median warm run
+   - slowest warm run
+5. Capture browser network payload size for server-rendered pages when needed; the middleware records bytes written by the ASP.NET response stream.
+6. Record the number of rooms, lots, samples, receipts, grower cards, or rows returned for each request where practical.
 
-## Initial Baseline Status
+## Baseline Report Template
 
-Representative production-like local data was not available in this checkout, so endpoint timings below should be captured in staging or a seeded local database before larger query changes are made.
+| Workflow | Route | Returned count | First elapsed ms | Median warm ms | Slowest warm ms | First EF commands | Median EF commands | Median DB ms | Median response bytes | External calls | Notes |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Dashboard initial load | `/` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | Requires representative authenticated data. |
+| Crop Year Review initial card list | `/CropYearReview?cropYear={cropYear}` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | Validate broad sample loading finding. |
 
-| Workflow | Endpoint or page | Initial duration | EF commands | Response size | Notes |
-| --- | --- | ---: | ---: | ---: | --- |
-| Dashboard initial load | `/` | Not captured | Not captured | Not captured | Requires authenticated data-bearing environment. |
-| Room detail | `/Dashboard/Rooms/{roomId}` | Not captured | Not captured | Not captured | Capture for a room with multiple active lots. |
-| Bins Run page | `/BinsRun?WarehouseId={id}&RoomId={id}` | Not captured | Not captured | Not captured | Capture after selecting an occupied room. |
-| Daily QC | `/DailyQc` | Not captured | Not captured | Not captured | Uses UTC-day sample filtering. |
-| Receipt detail | `/Receipts/Details/{id}` | Not captured | Not captured | Not captured | Capture a receipt with samples and photos. |
-| QC sample detail | `/Samples/Details/{id}` | Not captured | Not captured | Not captured | Capture a 10/25/50 sample with partial rows. |
+## Initial Local Results
 
-## Current Low-Risk Query Change
+Representative authenticated data was still not available in this checkout, so workflow endpoint timings remain `TBD`. The branch verification baseline is:
 
-The existing user-visible definition of "today" uses `DateTimeOffset.UtcNow.Date`. This PR preserves that UTC-day behavior while making the query predicates index-friendly:
+| Check | Result |
+| --- | --- |
+| `dotnet restore CropQc.sln` | Passed |
+| `dotnet build CropQc.sln --no-restore` | Passed |
+| `dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj --no-build` | Passed |
 
-```csharp
-SampleTakenAt >= todayRange.Start && SampleTakenAt < todayRange.End
-```
+Use the report template above in staging or a seeded local database before changing query shapes.
 
-The same bounded range pattern is used for receipt `ReceivedAt` filtering and QC Station today samples.
+## Findings To Validate
+
+The first captured baseline should validate or reject these suspected bottlenecks:
+
+- Broad sample graph loading through `DashboardDataService.QuerySamples()`.
+- Readiness query scaling from `EnrichSamplesAsync`.
+- Repeated layout permission checks.
+- Crop Year Review initial list loading full sample details.
+- Variety color read-path schema/consolidation work.
+- Canonical grower read-path seeding/mapping work.
+- Summary pages unexpectedly touching Google Drive, Gmail, or OAuth.
+
+Do not optimize these paths until the baseline identifies the largest measured cost.

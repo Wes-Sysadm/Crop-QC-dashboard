@@ -44,6 +44,8 @@ public sealed class PerformanceDiagnosticsTests
             EfQueryCountingEnabled = true
         };
         var counter = new PerformanceQueryCounter();
+        var externalCounter = new PerformanceExternalCallCounter();
+        var metricSink = new BoundedPerformanceRequestMetricSink(options);
         counter.Increment();
         counter.Increment();
         var middleware = new RequestPerformanceDiagnosticsMiddleware(
@@ -55,11 +57,16 @@ public sealed class PerformanceDiagnosticsTests
                 return Task.CompletedTask;
             },
             NullLogger<RequestPerformanceDiagnosticsMiddleware>.Instance,
-            options);
+            options,
+            metricSink,
+            externalCounter);
 
         await middleware.InvokeAsync(new DefaultHttpContext(), counter);
 
         Assert.Equal(1, counter.Count);
+        var metric = Assert.Single(metricSink.Snapshot());
+        Assert.Equal(1, metric.EfCommandCount);
+        Assert.Equal(StatusCodes.Status204NoContent, metric.StatusCode);
     }
 
     [Fact]
@@ -72,6 +79,132 @@ public sealed class PerformanceDiagnosticsTests
         counter.Reset();
 
         Assert.Equal(0, counter.Count);
+    }
+
+    [Fact]
+    public void QueryCounter_TracksDatabaseElapsedAndFailures()
+    {
+        var counter = new PerformanceQueryCounter();
+
+        counter.Increment();
+        counter.AddElapsed(TimeSpan.FromMilliseconds(12.5));
+        counter.IncrementFailed();
+
+        Assert.Equal(1, counter.Count);
+        Assert.Equal(12.5, counter.ElapsedMilliseconds, precision: 1);
+        Assert.Equal(1, counter.FailedCount);
+
+        counter.Reset();
+
+        Assert.Equal(0, counter.Count);
+        Assert.Equal(0, counter.ElapsedMilliseconds);
+        Assert.Equal(0, counter.FailedCount);
+    }
+
+    [Fact]
+    public async Task RequestDiagnostics_CapturesResponseSizeAndExternalCalls()
+    {
+        var options = new PerformanceDiagnosticsOptions
+        {
+            Enabled = true,
+            RequestTimingEnabled = true,
+            EfQueryCountingEnabled = true
+        };
+        var counter = new PerformanceQueryCounter();
+        var externalCounter = new PerformanceExternalCallCounter();
+        var metricSink = new BoundedPerformanceRequestMetricSink(options);
+        var middleware = new RequestPerformanceDiagnosticsMiddleware(
+            async context =>
+            {
+                externalCounter.Increment("GoogleDrive");
+                await context.Response.WriteAsync("baseline");
+            },
+            NullLogger<RequestPerformanceDiagnosticsMiddleware>.Instance,
+            options,
+            metricSink,
+            externalCounter);
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await middleware.InvokeAsync(context, counter);
+
+        var metric = Assert.Single(metricSink.Snapshot());
+        Assert.Equal(8, metric.ResponseBytes);
+        Assert.Equal(1, metric.ExternalCallCount);
+        Assert.Equal(1, metric.ExternalProviderCounts["GoogleDrive"]);
+    }
+
+    [Fact]
+    public async Task RequestDiagnostics_DisabledDoesNotRecordMetrics()
+    {
+        var options = new PerformanceDiagnosticsOptions
+        {
+            Enabled = false,
+            RequestTimingEnabled = false,
+            EfQueryCountingEnabled = false
+        };
+        var counter = new PerformanceQueryCounter();
+        var externalCounter = new PerformanceExternalCallCounter();
+        var metricSink = new BoundedPerformanceRequestMetricSink(options);
+        var middleware = new RequestPerformanceDiagnosticsMiddleware(
+            context =>
+            {
+                counter.Increment();
+                externalCounter.Increment("GmailApi");
+                context.Response.StatusCode = StatusCodes.Status204NoContent;
+                return Task.CompletedTask;
+            },
+            NullLogger<RequestPerformanceDiagnosticsMiddleware>.Instance,
+            options,
+            metricSink,
+            externalCounter);
+
+        await middleware.InvokeAsync(new DefaultHttpContext(), counter);
+
+        Assert.Empty(metricSink.Snapshot());
+    }
+
+    [Fact]
+    public async Task ExternalCallCounter_IsIsolatedAcrossConcurrentRequests()
+    {
+        var options = new PerformanceDiagnosticsOptions
+        {
+            Enabled = true,
+            RequestTimingEnabled = true,
+            EfQueryCountingEnabled = true
+        };
+        var externalCounter = new PerformanceExternalCallCounter();
+        var metricSink = new BoundedPerformanceRequestMetricSink(options);
+
+        async Task InvokeAsync(string provider, int expected)
+        {
+            var counter = new PerformanceQueryCounter();
+            var middleware = new RequestPerformanceDiagnosticsMiddleware(
+                async context =>
+                {
+                    for (var i = 0; i < expected; i++)
+                    {
+                        externalCounter.Increment(provider);
+                        await Task.Yield();
+                    }
+
+                    context.Response.StatusCode = StatusCodes.Status204NoContent;
+                },
+                NullLogger<RequestPerformanceDiagnosticsMiddleware>.Instance,
+                options,
+                metricSink,
+                externalCounter);
+            await middleware.InvokeAsync(new DefaultHttpContext(), counter);
+        }
+
+        await Task.WhenAll(
+            InvokeAsync("GmailApi", 2),
+            InvokeAsync("GoogleDrive", 3));
+
+        var metrics = metricSink.Snapshot();
+        Assert.Equal(2, metrics.Count);
+        Assert.Contains(metrics, x => x.ExternalProviderCounts.TryGetValue("GmailApi", out var count) && count == 2 && x.ExternalCallCount == 2);
+        Assert.Contains(metrics, x => x.ExternalProviderCounts.TryGetValue("GoogleDrive", out var count) && count == 3 && x.ExternalCallCount == 3);
     }
 
     [Fact]
@@ -117,9 +250,28 @@ public sealed class PerformanceDiagnosticsTests
 
         Assert.Contains("PerformanceDiagnosticsOptions.FromConfiguration", program);
         Assert.Contains("PerformanceDbCommandInterceptor", program);
+        Assert.Contains("BoundedPerformanceRequestMetricSink", program);
+        Assert.Contains("PerformanceExternalCallCounter", program);
         Assert.Contains("UseMiddleware<RequestPerformanceDiagnosticsMiddleware>", program);
         Assert.Contains("\"PerformanceDiagnostics\"", settings);
         Assert.Contains("\"QueryCountWarningThreshold\"", settings);
+        Assert.Contains("\"ResponseBytesWarningThreshold\"", settings);
+    }
+
+    [Fact]
+    public void BaselineWorkflowCatalog_CoversRequestedHighTrafficWorkflows()
+    {
+        var workflows = PerformanceBaselineWorkflowCatalog.Workflows;
+
+        Assert.Equal(19, workflows.Count);
+        Assert.Contains(workflows, x => x.Name == "Dashboard initial load");
+        Assert.Contains(workflows, x => x.Name == "Crop Year Review initial card list");
+        Assert.Contains(workflows, x => x.Name == "Photo metadata section opening");
+        Assert.All(workflows, workflow =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(workflow.RouteTemplate));
+            Assert.False(string.IsNullOrWhiteSpace(workflow.ExpectedScaleSignal));
+        });
     }
 
     private static string FindRepositoryFile(params string[] pathParts)
