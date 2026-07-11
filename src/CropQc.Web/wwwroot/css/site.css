@@ -55,7 +55,10 @@ h2 { margin: 28px 0 12px; font-size: 20px; }
 .room-metrics { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 8px; margin: 0; }
 .room-metrics div { min-width: 0; padding: 8px; border-radius: 4px; background: #f8fafc; }
 .room-metrics dt { font-size: 11px; font-weight: 800; color: #4a5968; text-transform: uppercase; white-space: normal; }
-.room-metrics dd { margin: 3px 0 0; font-weight: 800; color: #17202a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-metrics dd { margin: 3px 0 0; font-weight: 800; color: #17202a; white-space: normal; overflow-wrap: anywhere; }
+.room-metrics small { display: block; margin-top: 3px; color: #66717c; font-size: 11px; font-weight: 700; line-height: 1.25; }
+.room-qc-metrics { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
+.metric-warning { display: inline-block; margin-left: 4px; color: #b42318; font-size: 11px; font-weight: 900; text-transform: uppercase; }
 .room-lots { margin: 0; color: #4a5968; white-space: normal; overflow-wrap: break-word; word-break: normal; }
 .variety-legend { display: flex; flex-wrap: wrap; gap: 6px; }
 .variety-legend span { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 3px 7px; border-radius: 999px; background: rgba(248,250,252,.92); color: #263747; font-size: 12px; font-weight: 800; }
@@ -245,6 +248,7 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 }
 @media (max-width: 1100px) {
     .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .room-qc-metrics { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
     .grid-two { grid-template-columns: 1fr; }
     .detail-grid { grid-template-columns: 1fr; }
     .readiness-checklist { grid-template-columns: 1fr; }

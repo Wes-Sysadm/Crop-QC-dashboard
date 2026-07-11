@@ -37,6 +37,12 @@ public sealed class RoomSummaryItemViewModel
     public string Status { get; set; } = "Empty";
     public int CurrentLotsCount { get; set; }
     public int? CurrentBinsCount { get; set; }
+    public int RoomCapacityBins { get; set; }
+    public bool IsCapacityConfigured => RoomCapacityBins > 0;
+    public decimal? PercentFull => CurrentBinsCount is int currentBins && RoomCapacityBins > 0
+        ? decimal.Round(currentBins / (decimal)RoomCapacityBins * 100m, 1)
+        : null;
+    public bool IsOverCapacity => PercentFull > 100m;
     public string AttentionCategory { get; set; } = "Stable";
     public int AttentionSort { get; set; } = 4;
     public string RankingReason { get; set; } = "No current concerns identified";
@@ -59,6 +65,18 @@ public sealed class RoomSummaryItemViewModel
     public decimal? PressureStdDevLbs { get; set; }
     public decimal? MonthOverMonthPressureChangeLbs { get; set; }
     public decimal? AverageStarch { get; set; }
+    public int ReceivingStarchRepresentedBins { get; set; }
+    public int ReceivingStarchMissingBins { get; set; }
+    public int ReceivingPressureRepresentedBins { get; set; }
+    public int ReceivingPressureMissingBins { get; set; }
+    public decimal? LatestPressureLbs { get; set; }
+    public DateTimeOffset? LatestPressureDate { get; set; }
+    public int LatestPressureRepresentedBins { get; set; }
+    public int LatestPressureMissingBins { get; set; }
+    public int PressureChangeRepresentedBins { get; set; }
+    public int PressureChangeMissingBins { get; set; }
+    public int PressureStandardDeviationRepresentedBins { get; set; }
+    public int PressureReadingCount { get; set; }
     public string DefectSummary { get; set; } = "None";
     public DateTimeOffset? LastSampleDate { get; set; }
     public string LatestQcSource { get; set; } = "";

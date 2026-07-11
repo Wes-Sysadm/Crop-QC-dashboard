@@ -2296,6 +2296,7 @@ public sealed class DashboardDataService(
         var includedRoomIds = rooms.Select(x => x.Id).ToHashSet();
         occupiedLots = occupiedLots.Where(x => includedRoomIds.Contains(x.RoomId)).ToList();
         var latestSamplesByLot = await BuildDashboardLatestSampleByLotAsync(occupiedLots, cancellationToken);
+        var roomQcSummaries = await BuildDashboardRoomQcSummariesAsync(occupiedLots, cancellationToken);
         var colorMap = await ResolveDashboardVarietyColorsAsync(occupiedLots, cancellationToken);
         var today = DateTimeOffset.Now;
 
@@ -2320,7 +2321,8 @@ public sealed class DashboardDataService(
                     .ToList();
                 var missingBins = Math.Max(0, currentBins - representedBins);
                 var coverage = currentBins <= 0 ? 0m : decimal.Round(representedBins / (decimal)currentBins * 100m, 1);
-                var attention = BuildDashboardRoomAttention(roomLots, representedBins, missingBins, coverage, staleLots, statusLots, latestSampleDate, today);
+                var qcSummary = roomQcSummaries.GetValueOrDefault(room.Id) ?? RoomQcSummary.Empty(currentBins);
+                var attention = BuildDashboardRoomAttention(roomLots, qcSummary, representedBins, missingBins, coverage, staleLots, statusLots, latestSampleDate, today);
                 var varietySegments = BuildRoomVarietyColorSegments(roomLots, colorMap);
                 var organicBins = roomLots.Where(x => x.IsOrganic == true).Sum(x => x.CurrentBins);
                 var conventionalBins = roomLots.Where(x => x.IsOrganic == false).Sum(x => x.CurrentBins);
@@ -2337,6 +2339,7 @@ public sealed class DashboardDataService(
                     RoomCode = displayRoomCode,
                     RoomName = room.DisplayName ?? room.Name,
                     CompuTechCode = room.CompuTechRoomCode ?? "",
+                    RoomCapacityBins = room.CapacityBins,
                     Status = attention.Category,
                     AttentionCategory = attention.Category,
                     AttentionSort = attention.Sort,
@@ -2358,6 +2361,22 @@ public sealed class DashboardDataService(
                     LotSummary = string.Join(", ", roomLots.Take(4).Select(x => $"{x.Grower} {x.Lot} {x.Variety}")),
                     VarietyStatusSummary = BuildDashboardVarietySummary(roomLots),
                     LastActivityAt = latestSampleDate ?? roomLots.Select(x => x.ReceiptDate).Where(x => x is not null).DefaultIfEmpty().Max(),
+                    AverageStarch = qcSummary.ReceivingStarch,
+                    ReceivingStarchRepresentedBins = qcSummary.ReceivingStarchRepresentedBins,
+                    ReceivingStarchMissingBins = qcSummary.ReceivingStarchMissingBins,
+                    AveragePressureLbs = qcSummary.ReceivingPressureLbs,
+                    ReceivingPressureRepresentedBins = qcSummary.ReceivingPressureRepresentedBins,
+                    ReceivingPressureMissingBins = qcSummary.ReceivingPressureMissingBins,
+                    LatestPressureLbs = qcSummary.LatestPressureLbs,
+                    LatestPressureDate = qcSummary.LatestPressureDate,
+                    LatestPressureRepresentedBins = qcSummary.LatestPressureRepresentedBins,
+                    LatestPressureMissingBins = qcSummary.LatestPressureMissingBins,
+                    MonthOverMonthPressureChangeLbs = qcSummary.PressureChange30DayLbs,
+                    PressureChangeRepresentedBins = qcSummary.PressureChangeRepresentedBins,
+                    PressureChangeMissingBins = qcSummary.PressureChangeMissingBins,
+                    PressureStdDevLbs = qcSummary.LatestPressureStandardDeviationLbs,
+                    PressureStandardDeviationRepresentedBins = qcSummary.PressureStandardDeviationRepresentedBins,
+                    PressureReadingCount = qcSummary.PressureReadingCount,
                     ReviewFlags = attention.Flag is null ? [] : [attention.Flag],
                     WeakestLotLabel = attention.WeakestLotLabel,
                     WeakestLotReason = attention.Indicator
@@ -2501,8 +2520,152 @@ public sealed class DashboardDataService(
                 StringComparer.OrdinalIgnoreCase);
     }
 
-    private static DashboardRoomAttention BuildDashboardRoomAttention(
+    private async Task<IReadOnlyDictionary<int, RoomQcSummary>> BuildDashboardRoomQcSummariesAsync(
+        IReadOnlyList<DashboardInventorySnapshot> currentLots,
+        CancellationToken cancellationToken)
+    {
+        var occupiedLots = currentLots.Where(x => x.CurrentBins > 0).ToList();
+        var roomIds = occupiedLots.Select(x => x.RoomId).Distinct().ToList();
+        if (roomIds.Count == 0)
+        {
+            return new Dictionary<int, RoomQcSummary>();
+        }
+
+        var sampleTypes = new[] { "Receiving Sample", "Door Sample", "Lot Sample" };
+        var measurements = await dbContext.QcFruitReadings.AsNoTracking()
+            .Where(row => !row.QcSample.IsDeleted
+                && roomIds.Contains(row.QcSample.Receipt.RoomId)
+                && sampleTypes.Contains(row.QcSample.SampleType.Name))
+            .Select(row => new DashboardQcMeasurement(
+                row.QcSampleId,
+                row.QcSample.SampleTakenAt,
+                row.QcSample.SampleType.Name,
+                row.QcSample.Receipt.RoomId,
+                row.QcSample.Receipt.GrowerNumber ?? row.QcSample.Receipt.LotCode,
+                row.QcSample.Receipt.FruitProfile.VarietyCode,
+                row.Pressure1Lbs,
+                row.Pressure2Lbs,
+                row.StarchScaleValue == null ? null : row.StarchScaleValue.Value))
+            .ToListAsync(cancellationToken);
+
+        var measurementsByLot = measurements
+            .GroupBy(x => CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        return occupiedLots
+            .GroupBy(x => x.RoomId)
+            .ToDictionary(
+                x => x.Key,
+                x => BuildRoomQcSummary(x.ToList(), measurementsByLot));
+    }
+
+    private static RoomQcSummary BuildRoomQcSummary(
         IReadOnlyList<DashboardInventorySnapshot> roomLots,
+        IReadOnlyDictionary<string, List<DashboardQcMeasurement>> measurementsByLot)
+    {
+        var totalBins = roomLots.Sum(x => x.CurrentBins);
+        var receivingStarch = new List<(decimal Value, decimal Weight)>();
+        var receivingPressure = new List<(decimal Value, decimal Weight)>();
+        var latestPressure = new List<(decimal Value, decimal Weight)>();
+        var pressureChange = new List<(decimal Value, decimal Weight)>();
+        var weightedPressureReadings = new List<(decimal Value, decimal Weight)>();
+        var receivingStarchBins = 0;
+        var receivingPressureBins = 0;
+        var latestPressureBins = 0;
+        var pressureChangeBins = 0;
+        var stdDevBins = 0;
+        var pressureReadingCount = 0;
+        DateTimeOffset? latestPressureDate = null;
+
+        foreach (var lot in roomLots)
+        {
+            if (!measurementsByLot.TryGetValue(CurrentDashboardLotKey(lot.RoomId, lot.Lot, lot.Variety), out var lotRows))
+            {
+                continue;
+            }
+
+            var samples = lotRows
+                .GroupBy(x => x.SampleId)
+                .Select(x => DashboardQcSample.FromMeasurements(x.ToList()))
+                .OrderByDescending(x => x.SampleTakenAt)
+                .ThenByDescending(x => x.SampleId)
+                .ToList();
+
+            var receivingSample = samples
+                .Where(x => x.SampleType.Equals("Receiving Sample", StringComparison.OrdinalIgnoreCase))
+                .FirstOrDefault();
+            if (receivingSample?.AverageStarch is decimal starch)
+            {
+                receivingStarch.Add((starch, lot.CurrentBins));
+                receivingStarchBins += lot.CurrentBins;
+            }
+
+            if (receivingSample?.AveragePressureLbs is decimal receivingPressureValue)
+            {
+                receivingPressure.Add((receivingPressureValue, lot.CurrentBins));
+                receivingPressureBins += lot.CurrentBins;
+            }
+
+            var latestPressureSample = samples.FirstOrDefault(x => x.AveragePressureLbs is not null);
+            if (latestPressureSample?.AveragePressureLbs is decimal latestPressureValue)
+            {
+                latestPressure.Add((latestPressureValue, lot.CurrentBins));
+                latestPressureBins += lot.CurrentBins;
+                latestPressureDate = latestPressureDate is null || latestPressureSample.SampleTakenAt > latestPressureDate
+                    ? latestPressureSample.SampleTakenAt
+                    : latestPressureDate;
+
+                var readings = latestPressureSample.PressureReadings;
+                if (readings.Count >= 2)
+                {
+                    var perReadingWeight = lot.CurrentBins / (decimal)readings.Count;
+                    weightedPressureReadings.AddRange(readings.Select(x => (x, perReadingWeight)));
+                    pressureReadingCount += readings.Count;
+                    stdDevBins += lot.CurrentBins;
+                }
+
+                var priorSample = samples
+                    .Where(x => x.AveragePressureLbs is not null)
+                    .Select(x => new { Sample = x, Days = (latestPressureSample.SampleTakenAt - x.SampleTakenAt).TotalDays })
+                    .Where(x => x.Days >= 21 && x.Days <= 45)
+                    .OrderBy(x => Math.Abs(x.Days - 30))
+                    .ThenByDescending(x => x.Sample.SampleTakenAt)
+                    .FirstOrDefault();
+                if (priorSample is not null)
+                {
+                    var normalizedChange = WeightedStatistics.NormalizeChangeToThirtyDays(
+                        latestPressureValue,
+                        priorSample.Sample.AveragePressureLbs!.Value,
+                        priorSample.Days);
+                    pressureChange.Add((normalizedChange, lot.CurrentBins));
+                    pressureChangeBins += lot.CurrentBins;
+                }
+            }
+        }
+
+        return new RoomQcSummary(
+            totalBins,
+            RoundOrNull(WeightedStatistics.WeightedMean(receivingStarch)),
+            receivingStarchBins,
+            Math.Max(0, totalBins - receivingStarchBins),
+            RoundOrNull(WeightedStatistics.WeightedMean(receivingPressure)),
+            receivingPressureBins,
+            Math.Max(0, totalBins - receivingPressureBins),
+            RoundOrNull(WeightedStatistics.WeightedMean(latestPressure)),
+            latestPressureDate,
+            latestPressureBins,
+            Math.Max(0, totalBins - latestPressureBins),
+            RoundOrNull(WeightedStatistics.WeightedMean(pressureChange)),
+            pressureChangeBins,
+            Math.Max(0, totalBins - pressureChangeBins),
+            RoundOrNull(WeightedStatistics.WeightedSampleStandardDeviation(weightedPressureReadings)),
+            stdDevBins,
+            pressureReadingCount);
+    }
+
+    private DashboardRoomAttention BuildDashboardRoomAttention(
+        IReadOnlyList<DashboardInventorySnapshot> roomLots,
+        RoomQcSummary qcSummary,
         int representedBins,
         int missingBins,
         decimal coverage,
@@ -2516,6 +2679,39 @@ public sealed class DashboardDataService(
         {
             var bins = statusLots.Sum(x => x.CurrentBins);
             return new("Needs attention", 1, $"{bins} current bins have inventory status notes", statusLots[0].InventoryStatus, "Inventory status note", $"{statusLots[0].Grower} {statusLots[0].Lot}");
+        }
+
+        if (qcSummary.PressureChange30DayLbs is decimal change && change < 0)
+        {
+            var drop = Math.Abs(change);
+            var configuredDropThreshold = ReadDashboardThreshold("DashboardReview:PressureDropLbs");
+            if (configuredDropThreshold is not null && drop > configuredDropThreshold.Value)
+            {
+                return new("Needs attention", 1, $"Pressure declined {drop:0.##} lb over 30 days", "Pressure decline", "Pressure decline", null);
+            }
+
+            return new("Watch", 3, $"Pressure declined {drop:0.##} lb over 30 days", "Pressure decline", "Pressure decline", null);
+        }
+
+        if (qcSummary.LatestPressureStandardDeviationLbs is decimal stdDev
+            && ReadDashboardThreshold("DashboardReview:HighPressureVarianceLbs") is decimal highVariance
+            && stdDev > highVariance)
+        {
+            return new("Watch", 3, $"Latest pressure SD {stdDev:0.##} lb exceeds configured variance threshold {highVariance:0.##} lb", "High pressure variability", "High pressure variability", null);
+        }
+
+        if (qcSummary.ReceivingStarch is decimal receivingStarch
+            && ReadDashboardThreshold("DashboardReview:HighStarch") is decimal highStarch
+            && receivingStarch > highStarch)
+        {
+            return new("Watch", 3, $"Receiving starch {receivingStarch:0.##} exceeds configured threshold {highStarch:0.##}", "Advanced receiving starch", "Advanced receiving starch", null);
+        }
+
+        if (qcSummary.LatestPressureLbs is decimal latestPressure
+            && ReadDashboardThreshold("DashboardReview:LowPressureLbs") is decimal lowPressure
+            && latestPressure < lowPressure)
+        {
+            return new("Watch", 3, $"Latest pressure {latestPressure:0.##} lb is below configured threshold {lowPressure:0.##} lb", "Low latest pressure", "Low latest pressure", null);
         }
 
         if (missingBins > 0)
@@ -2533,6 +2729,9 @@ public sealed class DashboardDataService(
 
         return new("Stable", 4, $"QC data covers {representedBins} of {currentBins} bins ({coverage}%)", "No current concerns identified", null, null);
     }
+
+    private decimal? ReadDashboardThreshold(string key) =>
+        decimal.TryParse(configuration[key], out var threshold) ? threshold : null;
 
     private static string BuildDashboardVarietySummary(IReadOnlyList<DashboardInventorySnapshot> roomLots) =>
         string.Join(", ", roomLots
@@ -3547,6 +3746,9 @@ public sealed class DashboardDataService(
     private static decimal? AverageOrNull(IReadOnlyList<decimal> values) =>
         values.Count == 0 ? null : decimal.Round(values.Average(), 2);
 
+    private static decimal? RoundOrNull(decimal? value) =>
+        value is null ? null : decimal.Round(value.Value, 2);
+
     private static decimal? StandardDeviationOrNull(IReadOnlyList<decimal> values)
     {
         if (values.Count < 2)
@@ -4481,6 +4683,59 @@ public sealed class DashboardDataService(
         string InventoryStatus,
         int CurrentBins,
         DateTimeOffset? ReceiptDate);
+
+    private sealed record DashboardQcMeasurement(
+        long SampleId,
+        DateTimeOffset SampleTakenAt,
+        string SampleType,
+        int RoomId,
+        string Lot,
+        string Variety,
+        decimal? Pressure1Lbs,
+        decimal? Pressure2Lbs,
+        decimal? Starch);
+
+    private sealed record DashboardQcSample(
+        long SampleId,
+        DateTimeOffset SampleTakenAt,
+        string SampleType,
+        IReadOnlyList<decimal> PressureReadings,
+        IReadOnlyList<decimal> StarchValues)
+    {
+        public decimal? AveragePressureLbs => RoundOrNull(WeightedStatistics.WeightedMean(PressureReadings.Select(x => (x, 1m))));
+        public decimal? AverageStarch => RoundOrNull(WeightedStatistics.WeightedMean(StarchValues.Select(x => (x, 1m))));
+
+        public static DashboardQcSample FromMeasurements(IReadOnlyList<DashboardQcMeasurement> rows) =>
+            new(
+                rows[0].SampleId,
+                rows[0].SampleTakenAt,
+                rows[0].SampleType,
+                rows.Select(x => AverageFlexible(x.Pressure1Lbs, x.Pressure2Lbs)).Where(x => x is not null).Select(x => x!.Value).ToList(),
+                rows.Where(x => x.Starch is not null).Select(x => x.Starch!.Value).ToList());
+    }
+
+    private sealed record RoomQcSummary(
+        int TotalBins,
+        decimal? ReceivingStarch,
+        int ReceivingStarchRepresentedBins,
+        int ReceivingStarchMissingBins,
+        decimal? ReceivingPressureLbs,
+        int ReceivingPressureRepresentedBins,
+        int ReceivingPressureMissingBins,
+        decimal? LatestPressureLbs,
+        DateTimeOffset? LatestPressureDate,
+        int LatestPressureRepresentedBins,
+        int LatestPressureMissingBins,
+        decimal? PressureChange30DayLbs,
+        int PressureChangeRepresentedBins,
+        int PressureChangeMissingBins,
+        decimal? LatestPressureStandardDeviationLbs,
+        int PressureStandardDeviationRepresentedBins,
+        int PressureReadingCount)
+    {
+        public static RoomQcSummary Empty(int totalBins) =>
+            new(totalBins, null, 0, totalBins, null, 0, totalBins, null, null, 0, totalBins, null, 0, totalBins, null, 0, 0);
+    }
 
     private sealed record DashboardSampleMarker(DateTimeOffset SampleTakenAt, string SampleType);
 
