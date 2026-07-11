@@ -32,7 +32,8 @@ public sealed class GmailUserEmailSender(
     GoogleAuthenticationOptions authOptions,
     IGoogleCredentialStore credentialStore,
     IHttpClientFactory httpClientFactory,
-    ILogger<GmailUserEmailSender> logger) : IQcEmailSender
+    ILogger<GmailUserEmailSender> logger,
+    IPerformanceExternalCallCounter externalCallCounter) : IQcEmailSender
 {
     public const long MaxInlineImageBytesPerMessage = 15_000_000;
 
@@ -99,6 +100,7 @@ public sealed class GmailUserEmailSender(
         {
             logger.LogInformation("Gmail send started for sender {SenderEmail}. To: {To}. Subject: {Subject}.", sender.Email, message.To, message.Subject);
             var client = httpClientFactory.CreateClient("GmailApi");
+            externalCallCounter.Increment("GmailApi");
             using var response = await client.SendAsync(request, cancellationToken);
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
