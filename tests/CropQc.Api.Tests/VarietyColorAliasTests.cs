@@ -1,5 +1,6 @@
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -187,6 +188,74 @@ public sealed class VarietyColorAliasTests
 
         Assert.Contains(await db.RoomInventoryAdjustments.ToListAsync(), x => x.VarietyCode == "GSMT");
         Assert.Contains(await db.RoomInventoryAdjustments.ToListAsync(), x => x.VarietyCode == "Grannysmith");
+    }
+
+    [Fact]
+    public async Task MasterDataFruitProfiles_ShowOneCanonicalColorRowForAliases()
+    {
+        await using var db = CreateDbContext();
+        db.VarietyColorConfigurations.Add(Config("GSMT", "GSMT", "#123456", DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync();
+        var colorService = new VarietyColorService(db);
+        var masterData = new AdminManagementService(db, colorService);
+
+        var page = await masterData.GetMasterDataAsync("fruit-profiles", canEdit: true, CancellationToken.None);
+
+        var granny = Assert.Single(page.Items, x => x.VarietyColor?.VarietyKey == "GRANNY_SMITH");
+        Assert.Equal("#123456", granny.VarietyColor!.HexColor);
+        Assert.Contains("GSMT", granny.Cells[0]);
+        Assert.Contains("ORGS", granny.Cells[0]);
+        Assert.Contains("Grannysmith", granny.Cells[4]);
+        Assert.DoesNotContain(page.Items, x => x.VarietyColor?.VarietyKey == "GSMT");
+    }
+
+    [Fact]
+    public async Task MasterDataFruitProfileEdit_SavesConfiguredColorWithMasterFruitProfileLink()
+    {
+        await using var db = CreateDbContext();
+        var colorService = new VarietyColorService(db);
+        var masterData = new AdminManagementService(db, colorService);
+
+        var error = await masterData.SaveMasterDataAsync(new MasterDataEditForm
+        {
+            Type = "fruit-profiles",
+            Id = 4,
+            Code = "GSMT",
+            Name = "Granny Smith",
+            FruitType = "Apple",
+            ProductionType = "Conventional",
+            IsActive = true,
+            VarietyHexColor = "#ABCDEF"
+        }, "admin@fruitandland.com", CancellationToken.None);
+
+        Assert.Null(error);
+        var config = await db.VarietyColorConfigurations.SingleAsync(x => x.VarietyKey == "GRANNY_SMITH");
+        Assert.Equal("#ABCDEF", config.HexColor);
+        Assert.Equal(4, config.FruitProfileId);
+        Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.EntityName == nameof(VarietyColorConfiguration) && x.EntityKey == "GRANNY_SMITH");
+    }
+
+    [Fact]
+    public async Task MasterDataFruitProfileEdit_RejectsInvalidColorServerSide()
+    {
+        await using var db = CreateDbContext();
+        var colorService = new VarietyColorService(db);
+        var masterData = new AdminManagementService(db, colorService);
+
+        var error = await masterData.SaveMasterDataAsync(new MasterDataEditForm
+        {
+            Type = "fruit-profiles",
+            Id = 4,
+            Code = "GSMT",
+            Name = "Granny Smith",
+            FruitType = "Apple",
+            ProductionType = "Conventional",
+            IsActive = true,
+            VarietyHexColor = "not-a-color"
+        }, "admin@fruitandland.com", CancellationToken.None);
+
+        Assert.Equal("Enter a valid hex color such as #2F80ED.", error);
+        Assert.Empty(await db.VarietyColorConfigurations.ToListAsync());
     }
 
     [Fact]

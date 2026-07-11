@@ -545,7 +545,17 @@ public sealed record MasterDataPageViewModel(
     public GrowerLotImportPreviewViewModel? ImportPreview { get; init; }
 }
 
-public sealed record MasterDataEditItem(int Id, IReadOnlyList<string> Cells, bool IsActive);
+public sealed record MasterDataEditItem(int Id, IReadOnlyList<string> Cells, bool IsActive, MasterDataVarietyColorViewModel? VarietyColor = null);
+
+public sealed class MasterDataVarietyColorViewModel
+{
+    public string VarietyKey { get; set; } = "";
+    public string VarietyName { get; set; } = "";
+    public string Aliases { get; set; } = "";
+    public string HexColor { get; set; } = "";
+    public string FallbackColor { get; set; } = "";
+    public bool IsConfigured { get; set; }
+}
 public sealed class GrowerLotImportForm
 {
     public IFormFile? CsvFile { get; set; }
@@ -665,6 +675,13 @@ public sealed class MasterDataEditForm
     public string? PoolStart { get; set; }
     public bool IsActive { get; set; } = true;
     public IReadOnlyList<string> CommodityOptions { get; set; } = [];
+    public string VarietyColorKey { get; set; } = "";
+    public string CanonicalVarietyName { get; set; } = "";
+    public string VarietyAliases { get; set; } = "";
+    public string VarietyHexColor { get; set; } = "";
+    public string VarietyFallbackColor { get; set; } = "";
+    public bool VarietyColorIsConfigured { get; set; }
+    public bool ResetVarietyColor { get; set; }
 }
 
 public sealed class ConfigurationPageViewModel

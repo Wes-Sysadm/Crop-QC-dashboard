@@ -54,6 +54,8 @@ public sealed class FruitProfile
 public sealed class VarietyColorConfiguration
 {
     public int Id { get; set; }
+    public int? FruitProfileId { get; set; }
+    public FruitProfile? FruitProfile { get; set; }
     public required string VarietyKey { get; set; }
     public required string VarietyName { get; set; }
     public required string HexColor { get; set; }

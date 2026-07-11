@@ -150,8 +150,18 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("AuditLogs.Add", service);
         Assert.Contains("reset-to-default", service);
         Assert.Contains("FallbackColor", service);
-        Assert.Contains("type=\"color\"", view);
-        Assert.Contains("pattern=\"#[0-9A-Fa-f]{6}\"", view);
+        var masterDataFields = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "MasterData", "_MasterDataFields.cshtml"));
+        var masterDataIndex = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "MasterData", "Index.cshtml"));
+
+        Assert.Contains("FruitProfileId", entity);
+        Assert.Contains("HasOne(x => x.FruitProfile)", db);
+        Assert.Contains("GetResolvedColorsForMasterDataAsync", service);
+        Assert.Contains("Redirect(\"/MasterData/fruit-profiles\")", controller);
+        Assert.Contains("href=\"/MasterData/fruit-profiles\"", layout);
+        Assert.Contains("type=\"color\"", masterDataFields);
+        Assert.Contains("pattern=\"#[0-9A-Fa-f]{6}\"", masterDataFields);
+        Assert.Contains("Reset color to fallback", masterDataFields);
+        Assert.Contains("item.VarietyColor", masterDataIndex);
         Assert.Contains("Configured", view);
         Assert.Contains("Fallback", view);
     }

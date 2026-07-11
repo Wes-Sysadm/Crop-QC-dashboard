@@ -19,7 +19,7 @@ public interface IAdminManagementService
     Task<string?> SaveConfigurationAsync(ConfigurationEditForm form, string changedByEmail, CancellationToken cancellationToken);
 }
 
-public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminManagementService
+public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyColorService varietyColorService) : IAdminManagementService
 {
     private static readonly string[] DefaultCommodityOptions = ["Apple", "Pear"];
 
@@ -67,7 +67,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         {
             "warehouses" => await dbContext.Warehouses.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.Code, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "rooms" => await dbContext.Rooms.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, WarehouseId = x.WarehouseId, Code = x.Code, Name = x.Name, CompuTechCode = x.CompuTechRoomCode, CapacityBins = x.CapacityBins, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
-            "fruit-profiles" => await WithCommodityOptions(await dbContext.FruitProfiles.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.VarietyCode, Name = x.Name, Description = x.Description, FruitType = x.FruitType, ProductionType = x.ProductionType, IsOrganic = x.IsOrganic, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken),
+            "fruit-profiles" => await WithFruitProfileColorAsync(await WithCommodityOptions(await dbContext.FruitProfiles.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.VarietyCode, Name = x.Name, Description = x.Description, FruitType = x.FruitType, ProductionType = x.ProductionType, IsOrganic = x.IsOrganic, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken), cancellationToken),
             "grades" => await dbContext.Grades.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.Code, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "defects" => await dbContext.DefectTypes.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "sample-types" => await dbContext.SampleTypes.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
@@ -216,7 +216,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
 
     private async Task<MasterDataPageViewModel> WarehousesPage(bool canEdit, CancellationToken ct)
     {
-        var rows = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Name).Select(x => new MasterDataEditItem(x.Id, new[] { x.Code, x.Name, YesNo(x.IsActive) }, x.IsActive)).ToListAsync(ct);
+        var rows = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Name).Select(x => new MasterDataEditItem(x.Id, new[] { x.Code, x.Name, YesNo(x.IsActive) }, x.IsActive, null)).ToListAsync(ct);
         return Page("Warehouses", "warehouses", ["Code", "Name", "Active"], rows, canEdit);
     }
 
@@ -228,48 +228,95 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
             .ThenBy(x => x.SubLocation)
             .ThenBy(x => x.SortOrder)
             .ThenBy(x => x.CropQcRoomName ?? x.Code)
-            .Select(x => new MasterDataEditItem(x.Id, new[] { x.Warehouse.Code, x.Warehouse.Name, x.CropQcRoomName ?? x.Code, x.CompuTechRoomCode ?? "", x.SubLocation ?? "", x.Name, x.CapacityBins.ToString(), YesNo(x.IsActive) }, x.IsActive))
+            .Select(x => new MasterDataEditItem(x.Id, new[] { x.Warehouse.Code, x.Warehouse.Name, x.CropQcRoomName ?? x.Code, x.CompuTechRoomCode ?? "", x.SubLocation ?? "", x.Name, x.CapacityBins.ToString(), YesNo(x.IsActive) }, x.IsActive, null))
             .ToListAsync(ct);
         return Page("Rooms", "rooms", ["Warehouse Code", "Warehouse Name", "Crop QC Room", "Compu-Tech Code", "SubLocation", "Room Name", "Capacity Bins", "Active"], rows, canEdit);
     }
 
     private async Task<MasterDataPageViewModel> FruitProfilesPage(bool canEdit, CancellationToken ct)
     {
-        var rows = await dbContext.FruitProfiles.AsNoTracking()
+        var colorMap = await varietyColorService.GetResolvedColorsForMasterDataAsync(ct);
+        var profiles = await dbContext.FruitProfiles.AsNoTracking()
             .OrderBy(x => x.FruitType)
             .ThenBy(x => x.Name)
-            .Select(x => new MasterDataEditItem(x.Id, new[] { x.VarietyCode, x.Name, x.FruitType, x.ProductionType, YesNo(x.IsActive) }, x.IsActive))
             .ToListAsync(ct);
-        return await PageWithCommodityOptions("Fruit profiles / variety codes", "fruit-profiles", ["Variety Code", "Name", "Commodity", "Production Type", "Active"], rows, canEdit, ct);
+        var rows = profiles
+            .GroupBy(x => VarietyColorService.IdentityFromProfile(x).Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var primary = group
+                    .OrderBy(x => x.IsOrganic)
+                    .ThenByDescending(x => x.IsActive)
+                    .ThenBy(x => x.Name.Length)
+                    .ThenBy(x => x.Id)
+                    .First();
+                var identity = VarietyColorService.IdentityFromProfile(primary);
+                colorMap.TryGetValue(identity.Key, out var color);
+                var fallback = VarietyColorService.FallbackColor(identity.Key);
+                var aliases = string.Join(", ", group
+                    .SelectMany(x => new[] { x.VarietyCode, x.Name })
+                    .Append(VarietyColorService.AliasesForIdentity(identity))
+                    .SelectMany(x => (x ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                    .Where(x => !x.Equals(identity.Name, StringComparison.OrdinalIgnoreCase) && !x.Equals(identity.Key, StringComparison.OrdinalIgnoreCase))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(x => x));
+                var colorInfo = new MasterDataVarietyColorViewModel
+                {
+                    VarietyKey = identity.Key,
+                    VarietyName = color?.VarietyName ?? identity.Name,
+                    Aliases = aliases,
+                    HexColor = color?.HexColor ?? fallback,
+                    FallbackColor = fallback,
+                    IsConfigured = color?.IsConfigured == true
+                };
+                return new MasterDataEditItem(
+                    primary.Id,
+                    [
+                        string.Join(", ", group.Select(x => x.VarietyCode).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x)),
+                        identity.Name,
+                        string.Join(", ", group.Select(x => x.FruitType).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x)),
+                        string.Join(", ", group.Select(x => x.ProductionType).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x)),
+                        aliases,
+                        colorInfo.HexColor,
+                        colorInfo.IsConfigured ? "Configured" : "Fallback",
+                        YesNo(group.Any(x => x.IsActive))
+                    ],
+                    group.Any(x => x.IsActive),
+                    colorInfo);
+            })
+            .OrderBy(x => x.Cells[2])
+            .ThenBy(x => x.VarietyColor?.VarietyName ?? x.Cells[1])
+            .ToList();
+        return await PageWithCommodityOptions("Fruit profiles / variety codes", "fruit-profiles", ["Variety Code(s)", "Canonical Variety", "Commodity", "Production Type", "Aliases", "Color", "Color Status", "Active"], rows, canEdit, ct);
     }
 
     private async Task<MasterDataPageViewModel> GradesPage(bool canEdit, CancellationToken ct)
     {
-        var rows = await dbContext.Grades.AsNoTracking().OrderBy(x => x.Id).Select(x => new MasterDataEditItem(x.Id, new[] { x.Code, x.Name, YesNo(x.IsActive) }, x.IsActive)).ToListAsync(ct);
+        var rows = await dbContext.Grades.AsNoTracking().OrderBy(x => x.Id).Select(x => new MasterDataEditItem(x.Id, new[] { x.Code, x.Name, YesNo(x.IsActive) }, x.IsActive, null)).ToListAsync(ct);
         return Page("Grades", "grades", ["Code", "Name", "Active"], rows, canEdit);
     }
 
     private async Task<MasterDataPageViewModel> DefectsPage(bool canEdit, CancellationToken ct)
     {
-        var rows = await dbContext.DefectTypes.AsNoTracking().OrderBy(x => x.Name).Select(x => new MasterDataEditItem(x.Id, new[] { x.Name, YesNo(x.IsActive) }, x.IsActive)).ToListAsync(ct);
+        var rows = await dbContext.DefectTypes.AsNoTracking().OrderBy(x => x.Name).Select(x => new MasterDataEditItem(x.Id, new[] { x.Name, YesNo(x.IsActive) }, x.IsActive, null)).ToListAsync(ct);
         return Page("Defects", "defects", ["Name", "Active"], rows, canEdit);
     }
 
     private async Task<MasterDataPageViewModel> SampleTypesPage(bool canEdit, CancellationToken ct)
     {
-        var rows = await dbContext.SampleTypes.AsNoTracking().OrderBy(x => x.Id).Select(x => new MasterDataEditItem(x.Id, new[] { x.Name, YesNo(x.IsActive) }, x.IsActive)).ToListAsync(ct);
+        var rows = await dbContext.SampleTypes.AsNoTracking().OrderBy(x => x.Id).Select(x => new MasterDataEditItem(x.Id, new[] { x.Name, YesNo(x.IsActive) }, x.IsActive, null)).ToListAsync(ct);
         return Page("Sample types", "sample-types", ["Name", "Active"], rows, canEdit);
     }
 
     private async Task<MasterDataPageViewModel> StarchPage(bool canEdit, CancellationToken ct)
     {
-        var rows = await dbContext.StarchScaleValues.AsNoTracking().OrderBy(x => x.SortOrder).Select(x => new MasterDataEditItem(x.Id, new[] { x.Value.ToString("0.0"), x.SortOrder.ToString(), YesNo(x.IsActive) }, x.IsActive)).ToListAsync(ct);
+        var rows = await dbContext.StarchScaleValues.AsNoTracking().OrderBy(x => x.SortOrder).Select(x => new MasterDataEditItem(x.Id, new[] { x.Value.ToString("0.0"), x.SortOrder.ToString(), YesNo(x.IsActive) }, x.IsActive, null)).ToListAsync(ct);
         return Page("Starch scale values", "starch-scale-values", ["Value", "Display Order", "Active"], rows, canEdit);
     }
 
     private async Task<MasterDataPageViewModel> SizeThresholdsPage(bool canEdit, CancellationToken ct)
     {
-        var rows = await dbContext.FruitSizeConversionThresholds.AsNoTracking().OrderBy(x => x.FruitType).ThenByDescending(x => x.MinimumWeightGrams).Select(x => new MasterDataEditItem(x.Id, new[] { x.FruitType, x.SizeCategory.ToString(), x.MinimumWeightGrams.ToString("0.0000"), YesNo(x.IsActive) }, x.IsActive)).ToListAsync(ct);
+        var rows = await dbContext.FruitSizeConversionThresholds.AsNoTracking().OrderBy(x => x.FruitType).ThenByDescending(x => x.MinimumWeightGrams).Select(x => new MasterDataEditItem(x.Id, new[] { x.FruitType, x.SizeCategory.ToString(), x.MinimumWeightGrams.ToString("0.0000"), YesNo(x.IsActive) }, x.IsActive, null)).ToListAsync(ct);
         return await PageWithCommodityOptions("Size thresholds", "size-thresholds", ["Commodity", "Size", "Minimum Weight (g)", "Active"], rows, canEdit, ct);
     }
 
@@ -278,7 +325,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         var rows = await dbContext.GrowerLots.AsNoTracking()
             .OrderBy(x => x.Grower)
             .ThenBy(x => x.LotNumber)
-            .Select(x => new MasterDataEditItem(x.Id, new[] { x.Grower, x.LotNumber, x.PoolStart ?? "", x.Notes ?? "", YesNo(x.IsActive) }, x.IsActive))
+            .Select(x => new MasterDataEditItem(x.Id, new[] { x.Grower, x.LotNumber, x.PoolStart ?? "", x.Notes ?? "", YesNo(x.IsActive) }, x.IsActive, null))
             .ToListAsync(ct);
         return Page("Grower Lots", "grower-lots", ["Grower", "Lot #", "Pool Start", "Notes", "Active"], rows, canEdit);
     }
@@ -550,6 +597,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
     {
         if (Blank(form.Code) || Blank(form.Name) || Blank(form.FruitType) || Blank(form.ProductionType)) return "Variety code, name, commodity, and production type are required.";
         if (!IsValidProductionType(form.ProductionType)) return "Production type must be Conventional or Organic.";
+        if (!form.ResetVarietyColor && !Blank(form.VarietyHexColor) && !VarietyColorService.IsValidHexColor(VarietyColorService.NormalizeHex(form.VarietyHexColor))) return "Enter a valid hex color such as #2F80ED.";
         if (await dbContext.FruitProfiles.AnyAsync(x => x.VarietyCode == form.Code.Trim() && x.Id != (form.Id ?? 0), ct)) return "Variety code must be unique.";
         var entity = form.Id is null ? new FruitProfile { VarietyCode = "", Name = "", FruitType = "", ProductionType = "" } : await dbContext.FruitProfiles.FindAsync([form.Id.Value], ct);
         if (entity is null) return "Fruit profile not found.";
@@ -567,7 +615,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         await dbContext.SaveChangesAsync(ct);
         await AddAuditAsync(action, "fruit-profiles", entity.Id.ToString(), by, before, JsonSerializer.Serialize(entity), ct);
         await dbContext.SaveChangesAsync(ct);
-        return null;
+        return await SaveFruitProfileColorAsync(entity, form, by, ct);
     }
 
     private async Task<string?> SaveGrade(MasterDataEditForm form, string by, CancellationToken ct)
@@ -704,6 +752,58 @@ public sealed class AdminManagementService(CropQcDbContext dbContext) : IAdminMa
         if (form is null) return null;
         form.CommodityOptions = await GetCommodityOptionsAsync(ct);
         return form;
+    }
+
+    private async Task<MasterDataEditForm?> WithFruitProfileColorAsync(MasterDataEditForm? form, CancellationToken ct)
+    {
+        if (form is null) return null;
+        var profile = new FruitProfile
+        {
+            Name = form.Name,
+            VarietyCode = form.Code,
+            FruitType = form.FruitType,
+            ProductionType = form.ProductionType,
+            IsOrganic = NormalizeProductionType(form.ProductionType) == "Organic",
+            IsActive = form.IsActive
+        };
+        var identity = VarietyColorService.IdentityFromProfile(profile);
+        var colorMap = await varietyColorService.GetResolvedColorsAsync([identity.Key], ct);
+        colorMap.TryGetValue(identity.Key, out var color);
+        form.VarietyColorKey = identity.Key;
+        form.CanonicalVarietyName = color?.VarietyName ?? identity.Name;
+        form.VarietyAliases = VarietyColorService.AliasesForIdentity(identity);
+        form.VarietyFallbackColor = VarietyColorService.FallbackColor(identity.Key);
+        form.VarietyHexColor = color?.HexColor ?? form.VarietyFallbackColor;
+        form.VarietyColorIsConfigured = color?.IsConfigured == true;
+        return form;
+    }
+
+    private async Task<string?> SaveFruitProfileColorAsync(FruitProfile profile, MasterDataEditForm form, string by, CancellationToken ct)
+    {
+        var identity = VarietyColorService.IdentityFromProfile(profile);
+        var fallback = VarietyColorService.FallbackColor(identity.Key);
+        if (form.ResetVarietyColor)
+        {
+            return await varietyColorService.ResetAsync(new VarietyColorForm { VarietyKey = identity.Key, VarietyName = identity.Name }, by, ct);
+        }
+
+        if (Blank(form.VarietyHexColor))
+        {
+            return null;
+        }
+
+        var color = VarietyColorService.NormalizeHex(form.VarietyHexColor);
+        if (!VarietyColorService.IsValidHexColor(color))
+        {
+            return "Enter a valid hex color such as #2F80ED.";
+        }
+
+        if (!form.VarietyColorIsConfigured && color.Equals(fallback, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return await varietyColorService.SaveAsync(new VarietyColorForm { VarietyKey = identity.Key, VarietyName = identity.Name, HexColor = color }, by, ct);
     }
 
     private async Task<IReadOnlyList<string>> GetCommodityOptionsAsync(CancellationToken ct)
