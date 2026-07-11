@@ -1,5 +1,6 @@
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared;
 using CropQc.Shared.Storage;
 using CropQc.Web.Auth;
 using CropQc.Web.Models;
@@ -92,7 +93,10 @@ public sealed class DashboardDataService(
         var normalizedRoomFilter = NormalizeRoomSummaryFilter(roomSummaryFilter);
         try
         {
-            var todaySamples = await QuerySamples().Where(x => x.SampleTakenAt.Date == DateTimeOffset.UtcNow.Date).ToListAsync(cancellationToken);
+            var todayRange = UtcDayRange.ForUtcDay(DateTimeOffset.UtcNow);
+            var todaySamples = await QuerySamples()
+                .Where(x => x.SampleTakenAt >= todayRange.Start && x.SampleTakenAt < todayRange.End)
+                .ToListAsync(cancellationToken);
             var enriched = await EnrichSamplesAsync(todaySamples, cancellationToken);
             var dashboardLots = (await BuildDashboardCurrentInventorySnapshotsAsync(null, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
             var roomSummaries = await BuildDashboardRoomSummariesAsync(dashboardLots, normalizedRoomFilter, cancellationToken);
@@ -743,8 +747,8 @@ public sealed class DashboardDataService(
             if (!search.AllCropYears && search.CropYear is not null) query = query.Where(x => x.CropYear == search.CropYear);
             if (string.Equals(search.DateFilter, "today", StringComparison.OrdinalIgnoreCase))
             {
-                var today = DateTimeOffset.UtcNow.Date;
-                query = query.Where(x => x.ReceivedAt.Date == today);
+                var todayRange = UtcDayRange.ForUtcDay(DateTimeOffset.UtcNow);
+                query = query.Where(x => x.ReceivedAt >= todayRange.Start && x.ReceivedAt < todayRange.End);
             }
 
             if (!string.IsNullOrWhiteSpace(search.ReceiptId)) query = query.Where(x => x.CompuTechReceiptId.Contains(search.ReceiptId));
@@ -2037,7 +2041,8 @@ public sealed class DashboardDataService(
     {
         try
         {
-            var query = QuerySamples().Where(x => x.SampleTakenAt.Date == DateTimeOffset.UtcNow.Date);
+            var todayRange = UtcDayRange.ForUtcDay(DateTimeOffset.UtcNow);
+            var query = QuerySamples().Where(x => x.SampleTakenAt >= todayRange.Start && x.SampleTakenAt < todayRange.End);
             if (warehouseId is not null)
             {
                 query = query.Where(x => x.Receipt.WarehouseId == warehouseId);

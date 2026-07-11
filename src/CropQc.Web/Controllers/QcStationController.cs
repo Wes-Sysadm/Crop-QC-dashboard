@@ -1,6 +1,8 @@
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared;
 using CropQc.Shared.Security;
+using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -22,13 +24,13 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
             return auth.Result;
         }
 
-        var today = DateTimeOffset.UtcNow.Date;
+        var todayRange = UtcDayRange.ForUtcDay(DateTimeOffset.UtcNow);
         var query = dbContext.QcSamples.AsNoTracking()
             .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
             .Include(x => x.Receipt).ThenInclude(x => x.Room)
             .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
             .Include(x => x.FruitReadings)
-            .Where(x => !x.IsDeleted && x.SampleTakenAt.Date == today);
+            .Where(x => !x.IsDeleted && x.SampleTakenAt >= todayRange.Start && x.SampleTakenAt < todayRange.End);
 
         if (!string.IsNullOrWhiteSpace(warehouseCode))
         {
