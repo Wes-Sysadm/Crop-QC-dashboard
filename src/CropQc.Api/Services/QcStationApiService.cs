@@ -23,7 +23,7 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
             .Include(x => x.Receipt).ThenInclude(x => x.Room)
             .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
             .Include(x => x.FruitReadings)
-            .Where(x => !x.IsDeleted && x.SampleTakenAt >= todayRange.Start && x.SampleTakenAt < todayRange.End);
+            .Where(x => !x.IsDeleted && x.ReceiptId != null && x.SampleTakenAt >= todayRange.Start && x.SampleTakenAt < todayRange.End);
 
         if (!string.IsNullOrWhiteSpace(warehouseCode))
         {
@@ -34,7 +34,7 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
             .OrderByDescending(x => x.SampleTakenAt)
             .Select(x => new QcStationSampleListItemDto(
                 x.Id,
-                x.ReceiptId,
+                x.ReceiptId!.Value,
                 x.SampleSequenceNumber <= 1 ? x.Receipt.CompuTechReceiptId : x.Receipt.CompuTechReceiptId + "(" + x.SampleSequenceNumber + ")",
                 x.Receipt.Warehouse.Code,
                 x.Receipt.Room.Code,
@@ -58,7 +58,7 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
             .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
             .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
             .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType)
-            .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted, cancellationToken);
+            .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted && x.ReceiptId != null, cancellationToken);
 
         return sample is null ? null : ToDetailDto(sample);
     }
@@ -72,7 +72,7 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
             .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
             .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
             .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType)
-            .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted, cancellationToken);
+            .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted && x.ReceiptId != null, cancellationToken);
 
         if (sample is null)
         {
@@ -155,7 +155,7 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
         var rowCount = Math.Max(targetSampleSize, sample.FruitReadings.Count == 0 ? 0 : sample.FruitReadings.Max(x => x.RowNumber));
         return new(
             sample.Id,
-            sample.ReceiptId,
+            sample.ReceiptId!.Value,
             sample.GetDisplayReceiptId(),
             sample.Receipt.CompuTechReceiptId,
             sample.Receipt.GrowerName,

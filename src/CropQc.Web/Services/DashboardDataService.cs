@@ -833,10 +833,10 @@ public sealed class DashboardDataService(
             var receipts = await query.OrderByDescending(x => x.ReceivedAt).Take(500).ToListAsync(cancellationToken);
             var receiptIds = receipts.Select(x => x.Id).ToList();
             var sampleSummaries = await dbContext.QcSamples.AsNoTracking()
-                .Where(x => receiptIds.Contains(x.ReceiptId) && !x.IsDeleted)
+                .Where(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value) && !x.IsDeleted)
                 .GroupBy(x => x.ReceiptId)
                 .Select(x => new ReceiptSampleSummary(
-                    x.Key,
+                    x.Key!.Value,
                     x.Count(),
                     x.Max(s => s.UpdatedAt ?? s.CreatedAt),
                     x.Any(s => s.Status == "Ready to Send"),
@@ -1264,7 +1264,7 @@ public sealed class DashboardDataService(
                 SampleTypes = await GetReceiptSampleTypesAsync(cancellationToken),
                 FruitRows = rowModels,
                 PhotoGroups = GroupPhotos(photos, await CanEditSamplesAsync(cancellationToken), sample.Id),
-                Readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken),
+                Readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId!.Value, cancellationToken),
                 RecipientEmail = recipientResolution.IsConfigured ? recipientResolution.Header : null,
                 AllowedSampleSizes = allowedSampleSizes,
                 TargetSampleSize = targetSampleSize,
@@ -1346,7 +1346,7 @@ public sealed class DashboardDataService(
         return new DeleteSampleConfirmationViewModel
         {
             SampleId = sample.Id,
-            ReceiptId = sample.ReceiptId,
+            ReceiptId = sample.ReceiptId!.Value,
             CropYear = sample.Receipt.CropYear,
             DisplayReceiptId = sample.GetDisplayReceiptId(),
             Warehouse = sample.Receipt.Warehouse.Code,
@@ -1585,7 +1585,7 @@ public sealed class DashboardDataService(
             var allowedSampleSizes = await GetAllowedSampleSizesAsync(cancellationToken);
             var targetSampleSize = ResolveTargetSampleSize(sample.ActualSampleSize, allowedSampleSizes);
             var rowModels = await GetFruitReadingRowsAsync(id, targetSampleSize, cancellationToken);
-            var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+            var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId!.Value, cancellationToken);
             var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.QcSampleId == id && !x.IsDeleted && (x.PhotoType == "FruitAfterStarch" || x.PhotoType == "Other")).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
             return new StarchTestViewModel
             {
@@ -1697,7 +1697,7 @@ public sealed class DashboardDataService(
                 return new OverrideSendViewModel { DataWarning = "QC sample not found." };
             }
 
-            var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+            var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId!.Value, cancellationToken);
             var sender = await GetCurrentUserAsync(cancellationToken);
             var senderEmail = sender?.Email ?? GetCurrentUserEmail();
             var senderDomain = GoogleAuthenticationOptions.GetEmailDomain(senderEmail);
@@ -1739,7 +1739,7 @@ public sealed class DashboardDataService(
             return "QC sample not found.";
         }
 
-        var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+        var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId!.Value, cancellationToken);
         if (!readiness.IsReady)
         {
             return "QC Summary cannot be sent until required data, starch, and photos are complete. Use Manager/Admin override if needed.";
@@ -1766,7 +1766,7 @@ public sealed class DashboardDataService(
             return "QC sample not found.";
         }
 
-        var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+        var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId!.Value, cancellationToken);
         return await SendAndLogQcSummaryAsync(sample, readiness, isOverride: true, overrideReason: form.OverrideReason.Trim(), cancellationToken);
     }
 
@@ -1798,7 +1798,7 @@ public sealed class DashboardDataService(
 
         dbContext.QcSummaryEmailLogs.Add(new QcSummaryEmailLog
         {
-            ReceiptId = sample.ReceiptId,
+            ReceiptId = sample.ReceiptId!.Value,
             QcSampleId = sample.Id,
             FromAddress = sender.Email,
             ToAddress = recipients,
@@ -2154,10 +2154,10 @@ public sealed class DashboardDataService(
             .ToListAsync(cancellationToken);
         var receiptIds = receipts.Select(x => x.Id).ToList();
         var samplesByReceipt = (await QuerySamples()
-                .Where(x => receiptIds.Contains(x.ReceiptId))
+                .Where(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
                 .Select(x => new { x.ReceiptId, SampleType = x.SampleType.Name })
                 .ToListAsync(cancellationToken))
-            .GroupBy(x => x.ReceiptId)
+            .GroupBy(x => x.ReceiptId!.Value)
             .ToDictionary(
                 x => x.Key,
                 x => string.Join(", ", x.Select(y => y.SampleType).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(y => y)));
@@ -3110,9 +3110,9 @@ public sealed class DashboardDataService(
             .GroupBy(x => x.ReceiptId!.Value)
             .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First());
         var samples = await QuerySamples()
-            .Where(x => receiptIds.Contains(x.ReceiptId))
+            .Where(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
             .ToListAsync(cancellationToken);
-        var samplesByReceipt = samples.GroupBy(x => x.ReceiptId).ToDictionary(x => x.Key, x => x.ToList());
+        var samplesByReceipt = samples.GroupBy(x => x.ReceiptId!.Value).ToDictionary(x => x.Key, x => x.ToList());
         var conditionSamplesByLot = samples
             .GroupBy(x => QcConditionLotKey(x.Receipt), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.SampleTakenAt).ThenByDescending(y => y.Id).ToList(), StringComparer.OrdinalIgnoreCase);
@@ -4124,7 +4124,7 @@ public sealed class DashboardDataService(
 
     private IQueryable<QcSample> QuerySamples(bool includeDeleted = false)
     {
-        var query = dbContext.QcSamples.AsNoTracking();
+        var query = dbContext.QcSamples.AsNoTracking().Where(x => x.ReceiptId != null);
         if (!includeDeleted)
         {
             query = query.Where(x => !x.IsDeleted);
@@ -4167,13 +4167,13 @@ public sealed class DashboardDataService(
                     });
         foreach (var sample in samples)
         {
-            var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+            var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId!.Value, cancellationToken);
             var averagePressure = AveragePressure(sample.FruitReadings);
             sentLogs.TryGetValue(sample.Id, out var sentInfo);
             result.Add(new SampleListItemViewModel
             {
                 Id = sample.Id,
-                ReceiptId = sample.ReceiptId,
+                ReceiptId = sample.ReceiptId!.Value,
                 CropYear = sample.Receipt.CropYear,
                 ReceiptIdText = sample.Receipt.CompuTechReceiptId,
                 DisplayReceiptId = sample.SampleSequenceNumber <= 1 ? sample.Receipt.CompuTechReceiptId : $"{sample.Receipt.CompuTechReceiptId}({sample.SampleSequenceNumber})",
@@ -4442,7 +4442,7 @@ public sealed class DashboardDataService(
 
     private async Task RefreshSampleStatusesAsync(QcSample sample, CancellationToken cancellationToken)
     {
-        var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId, cancellationToken);
+        var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId!.Value, cancellationToken);
         sample.StarchStatus = readiness.CompletedFruitCount > 0 && readiness.StarchMissingCount == 0
             ? "Starch Complete"
             : "Starch Pending";
@@ -4647,10 +4647,10 @@ public sealed class DashboardDataService(
         }
 
         var samples = await QuerySamples()
-            .Where(x => receiptIds.Contains(x.ReceiptId))
+            .Where(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
             .ToListAsync(cancellationToken);
         return samples
-            .GroupBy(x => x.ReceiptId)
+            .GroupBy(x => x.ReceiptId!.Value)
             .ToDictionary(
                 x => x.Key,
                 x =>

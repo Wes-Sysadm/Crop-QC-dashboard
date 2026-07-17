@@ -149,6 +149,9 @@ builder.Services.AddAuthorization(options =>
     AddAccessPolicy(options, AccessPolicyNames.DailyQcView, ApplicationAreas.DailyQc, PageAccessLevel.View);
     AddAccessPolicy(options, AccessPolicyNames.DailyQcEdit, ApplicationAreas.DailyQc, PageAccessLevel.Edit);
     AddAccessPolicy(options, AccessPolicyNames.DailyQcAdmin, ApplicationAreas.DailyQc, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.FieldSamplesView, ApplicationAreas.FieldSamples, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.FieldSamplesEdit, ApplicationAreas.FieldSamples, PageAccessLevel.Edit);
+    AddAccessPolicy(options, AccessPolicyNames.FieldSamplesAdmin, ApplicationAreas.FieldSamples, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.ReceiptsView, ApplicationAreas.Receipts, PageAccessLevel.View);
     AddAccessPolicy(options, AccessPolicyNames.ReceiptsEdit, ApplicationAreas.Receipts, PageAccessLevel.Edit);
     AddAccessPolicy(options, AccessPolicyNames.ReceiptEditEdit, ApplicationAreas.ReceiptEdit, PageAccessLevel.Edit);
@@ -214,6 +217,7 @@ builder.Services.AddScoped<ICropYearService, CropYearService>();
 builder.Services.AddScoped<IDataCleanupService, DataCleanupService>();
 builder.Services.AddScoped<IVarietyColorService, VarietyColorService>();
 builder.Services.AddScoped<ICanonicalGrowerService, CanonicalGrowerService>();
+builder.Services.AddScoped<IFieldSampleService, FieldSampleService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddHostedService<EbsDailyBinsEmailHostedService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));

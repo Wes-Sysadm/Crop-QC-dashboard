@@ -58,6 +58,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
             "defects" => await DefectsPage(canEdit, cancellationToken),
             "sample-types" => await SampleTypesPage(canEdit, cancellationToken),
             "canonical-growers" => await CanonicalGrowersPage(canEdit, cancellationToken),
+            "orchard-blocks" => await OrchardBlocksPage(canEdit, cancellationToken),
             "starch-scale-values" => await StarchPage(canEdit, cancellationToken),
             "size-thresholds" => await SizeThresholdsPage(canEdit, cancellationToken),
             "grower-lots" => await GrowerLotsPage(canEdit, cancellationToken),
@@ -75,6 +76,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
             "defects" => await dbContext.DefectTypes.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "sample-types" => await dbContext.SampleTypes.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "canonical-growers" => await GetCanonicalGrowerEditFormAsync(type, id, cancellationToken),
+            "orchard-blocks" => await GetOrchardBlockEditFormAsync(type, id, cancellationToken),
             "grower-lots" => await dbContext.GrowerLots.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Grower, Code = x.LotNumber, PoolStart = x.PoolStart, Description = x.Notes, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "starch-scale-values" => await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Value = x.Value, SortOrder = x.SortOrder, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "size-thresholds" => await WithCommodityOptions(await dbContext.FruitSizeConversionThresholds.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, FruitType = x.FruitType, SizeCategory = x.SizeCategory, MinimumWeightGrams = x.MinimumWeightGrams, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken),
@@ -93,6 +95,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
             "defects" => await SaveDefect(form, changedByEmail, cancellationToken),
             "sample-types" => await SaveSampleType(form, changedByEmail, cancellationToken),
             "canonical-growers" => await SaveCanonicalGrower(form, changedByEmail, cancellationToken),
+            "orchard-blocks" => await SaveOrchardBlock(form, changedByEmail, cancellationToken),
             "grower-lots" => await SaveGrowerLot(form, changedByEmail, cancellationToken),
             "starch-scale-values" => await SaveStarchValue(form, changedByEmail, cancellationToken),
             "size-thresholds" => await SaveSizeThreshold(form, changedByEmail, cancellationToken),
@@ -111,6 +114,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
             "defects" => await dbContext.DefectTypes.FindAsync([id], cancellationToken),
             "sample-types" => await dbContext.SampleTypes.FindAsync([id], cancellationToken),
             "canonical-growers" => await dbContext.CanonicalGrowers.FindAsync([id], cancellationToken),
+            "orchard-blocks" => await dbContext.CanonicalOrchardBlocks.FindAsync([id], cancellationToken),
             "grower-lots" => await dbContext.GrowerLots.FindAsync([id], cancellationToken),
             "starch-scale-values" => await dbContext.StarchScaleValues.FindAsync([id], cancellationToken),
             "size-thresholds" => await dbContext.FruitSizeConversionThresholds.FindAsync([id], cancellationToken),
@@ -489,6 +493,45 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
         return Page("Grower Lots", "grower-lots", ["Grower", "Lot #", "Pool Start", "Notes", "Active"], rows, canEdit);
     }
 
+    private async Task<MasterDataPageViewModel> OrchardBlocksPage(bool canEdit, CancellationToken ct)
+    {
+        var sampleCounts = await dbContext.QcSamples.AsNoTracking()
+            .Where(x => x.CanonicalOrchardBlockId != null && x.SampleType.Name == "Field Sample" && !x.IsDeleted)
+            .GroupBy(x => x.CanonicalOrchardBlockId!.Value)
+            .Select(x => new
+            {
+                BlockId = x.Key,
+                Count = x.Count(),
+                First = x.Min(y => y.SampleTakenAt),
+                Latest = x.Max(y => y.SampleTakenAt)
+            })
+            .ToDictionaryAsync(x => x.BlockId, ct);
+        var rows = await dbContext.CanonicalOrchardBlocks.AsNoTracking()
+            .Include(x => x.Aliases)
+            .OrderBy(x => x.OrchardName)
+            .ThenBy(x => x.CanonicalBlockName)
+            .ToListAsync(ct);
+
+        var items = rows.Select(block =>
+        {
+            sampleCounts.TryGetValue(block.Id, out var count);
+            return new MasterDataEditItem(
+                block.Id,
+                [
+                    block.OrchardName,
+                    block.CanonicalBlockName,
+                    string.Join(", ", block.Aliases.Where(x => x.IsActive).Select(x => x.AliasName).OrderBy(x => x)),
+                    count?.Count.ToString() ?? "0",
+                    count?.First.LocalDateTime.ToString("d") ?? "",
+                    count?.Latest.LocalDateTime.ToString("d") ?? "",
+                    YesNo(block.IsActive)
+                ],
+                block.IsActive,
+                null);
+        }).ToList();
+        return Page("Orchard Blocks", "orchard-blocks", ["Orchard / Grower", "Canonical Block", "Aliases", "Samples", "First Sample", "Latest Sample", "Active"], items, canEdit);
+    }
+
     private async Task<MasterDataPageViewModel> CanonicalGrowersPage(bool canEdit, CancellationToken ct)
     {
         var growerService = canonicalGrowerService ?? new CanonicalGrowerService(dbContext);
@@ -783,6 +826,119 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
 
         await dbContext.SaveChangesAsync(ct);
         await AddAuditAsync(action, "grower-lots", entity.Id.ToString(), by, before, JsonSerializer.Serialize(entity), ct);
+        await dbContext.SaveChangesAsync(ct);
+        return null;
+    }
+
+    private async Task<MasterDataEditForm?> GetOrchardBlockEditFormAsync(string type, int id, CancellationToken ct)
+    {
+        var block = await dbContext.CanonicalOrchardBlocks.AsNoTracking()
+            .Include(x => x.Aliases)
+            .SingleOrDefaultAsync(x => x.Id == id, ct);
+        if (block is null)
+        {
+            return null;
+        }
+
+        return new MasterDataEditForm
+        {
+            Type = type,
+            Id = block.Id,
+            Name = block.OrchardName,
+            Code = block.CanonicalBlockName,
+            Description = block.Notes,
+            BlockAliases = string.Join(Environment.NewLine, block.Aliases.Where(x => x.IsActive).Select(x => x.AliasName).OrderBy(x => x)),
+            IsActive = block.IsActive
+        };
+    }
+
+    private async Task<string?> SaveOrchardBlock(MasterDataEditForm form, string by, CancellationToken ct)
+    {
+        if (Blank(form.Name) || Blank(form.Code))
+        {
+            return "Orchard/grower and canonical block are required.";
+        }
+
+        var orchardName = form.Name.Trim();
+        var blockName = form.Code.Trim();
+        var orchardKey = OrchardBlockMatcher.Normalize(orchardName);
+        var blockKey = OrchardBlockMatcher.Normalize(blockName);
+        if (await dbContext.CanonicalOrchardBlocks.AnyAsync(x => x.NormalizedOrchardKey == orchardKey && x.NormalizedBlockKey == blockKey && x.Id != (form.Id ?? 0), ct))
+        {
+            return "That canonical block already exists for this orchard/grower.";
+        }
+
+        var entity = form.Id is null
+            ? new CanonicalOrchardBlock { OrchardName = "", CanonicalBlockName = "" }
+            : await dbContext.CanonicalOrchardBlocks.Include(x => x.Aliases).SingleOrDefaultAsync(x => x.Id == form.Id.Value, ct);
+        if (entity is null)
+        {
+            return "Orchard block not found.";
+        }
+
+        var before = form.Id is null ? null : JsonSerializer.Serialize(entity, new JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles });
+        entity.OrchardName = orchardName;
+        entity.CanonicalBlockName = blockName;
+        entity.NormalizedOrchardKey = orchardKey;
+        entity.NormalizedBlockKey = blockKey;
+        entity.Notes = string.IsNullOrWhiteSpace(form.Description) ? null : form.Description.Trim();
+        entity.IsActive = form.IsActive;
+        entity.UpdatedAt = DateTimeOffset.UtcNow;
+        if (form.Id is null)
+        {
+            entity.CreatedAt = entity.UpdatedAt;
+            dbContext.CanonicalOrchardBlocks.Add(entity);
+        }
+
+        var aliasNames = SplitLines(form.BlockAliases)
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        foreach (var alias in entity.Aliases)
+        {
+            alias.IsActive = aliasNames.Any(x => string.Equals(OrchardBlockMatcher.Normalize(x), alias.NormalizedAliasKey, StringComparison.Ordinal));
+            alias.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        foreach (var aliasName in aliasNames)
+        {
+            var aliasKey = OrchardBlockMatcher.Normalize(aliasName);
+            if (string.Equals(aliasKey, blockKey, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var alias = entity.Aliases.SingleOrDefault(x => x.NormalizedAliasKey == aliasKey);
+            if (alias is null)
+            {
+                entity.Aliases.Add(new OrchardBlockAlias
+                {
+                    AliasName = aliasName,
+                    NormalizedAliasKey = aliasKey,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                });
+            }
+            else
+            {
+                alias.AliasName = aliasName;
+                alias.IsActive = true;
+                alias.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+        }
+
+        await dbContext.SaveChangesAsync(ct);
+        await AddAuditAsync(form.Id is null ? "create" : "update", "orchard-blocks", entity.Id.ToString(), by, before, JsonSerializer.Serialize(new
+        {
+            entity.Id,
+            entity.OrchardName,
+            entity.CanonicalBlockName,
+            entity.NormalizedOrchardKey,
+            entity.NormalizedBlockKey,
+            Aliases = entity.Aliases.Where(x => x.IsActive).Select(x => x.AliasName).OrderBy(x => x),
+            entity.IsActive
+        }), ct);
         await dbContext.SaveChangesAsync(ct);
         return null;
     }
@@ -1339,6 +1495,8 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
     }
 
     private static bool Blank(string? value) => string.IsNullOrWhiteSpace(value);
+    private static IEnumerable<string> SplitLines(string? value) =>
+        (value ?? "").Split(['\r', '\n', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     private static string YesNo(bool value) => value ? "Yes" : "No";
     private static IReadOnlyList<(string Label, string Href)> MasterDataLinks() =>
     [
@@ -1349,6 +1507,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
         ("Defects", "/MasterData/defects"),
         ("Sample types", "/MasterData/sample-types"),
         ("Canonical Growers", "/MasterData/canonical-growers"),
+        ("Orchard Blocks", "/MasterData/orchard-blocks"),
         ("Grower Lots", "/MasterData/grower-lots"),
         ("Starch scale values", "/MasterData/starch-scale-values"),
         ("Size thresholds", "/MasterData/size-thresholds")

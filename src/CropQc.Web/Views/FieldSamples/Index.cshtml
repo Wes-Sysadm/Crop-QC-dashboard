@@ -1,0 +1,88 @@
+@model FieldSampleIndexViewModel
+@{
+    ViewData["Title"] = "Field Samples";
+}
+
+<h1>Field Samples</h1>
+@if (TempData["Success"] is string success)
+{
+    <p class="notice success">@success</p>
+}
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+
+<section class="panel">
+    <div class="section-heading-row">
+        <div>
+            <h2>Preharvest samples</h2>
+            <p class="muted">Field Samples are tied to orchard/grower and canonical block. They do not add inventory or require truck photos.</p>
+        </div>
+        @if (Model.CanCreate)
+        {
+            <a class="button" href="/FieldSamples/Create">Create Field Sample</a>
+        }
+    </div>
+    <form method="get" class="filter-bar">
+        <label>Search <input name="Search" value="@Model.Search.Search" placeholder="Orchard, block, alias, grower #" /></label>
+        <label>
+            Variety
+            <select name="FruitProfileId">
+                <option value="">All</option>
+                @foreach (var fruit in Model.FruitProfiles)
+                {
+                    <option value="@fruit.Id" selected="@(Model.Search.FruitProfileId == fruit.Id ? "selected" : null)">@fruit.Name</option>
+                }
+            </select>
+        </label>
+        <label>Start <input type="date" name="StartDate" value="@Model.Search.StartDate?.ToString("yyyy-MM-dd")" /></label>
+        <label>End <input type="date" name="EndDate" value="@Model.Search.EndDate?.ToString("yyyy-MM-dd")" /></label>
+        <button type="submit">Filter</button>
+    </form>
+</section>
+
+<section class="panel">
+    <h2>Recent Field Samples</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Sample date</th>
+                    <th>Orchard / grower</th>
+                    <th>Block</th>
+                    <th>Variety</th>
+                    <th>Entered fruit</th>
+                    <th>Avg weight</th>
+                    <th>Avg pressure</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var sample in Model.Samples)
+                {
+                    <tr>
+                        <td>@sample.SampleTakenAt.LocalDateTime.ToString("g")</td>
+                        <td>@sample.OrchardName</td>
+                        <td>
+                            <strong>@sample.BlockName</strong>
+                            @if (!string.Equals(sample.BlockName, sample.OriginalBlockName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="muted">entered as @sample.OriginalBlockName</span>
+                            }
+                        </td>
+                        <td>@sample.Variety</td>
+                        <td>@sample.EnteredFruitCount / 10</td>
+                        <td>@(sample.AverageWeightGrams?.ToString("0.##") ?? "Missing") g</td>
+                        <td>@(sample.AveragePressureLbs?.ToString("0.##") ?? "Missing") lb</td>
+                        <td><a class="button secondary-button" href="/FieldSamples/@sample.Id">Open</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

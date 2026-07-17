@@ -90,6 +90,11 @@ public sealed class QcSampleService(CropQcDbContext dbContext, IAuditService aud
         sample.StarchStatus = request.StarchStatus;
         sample.PhotoStatus = request.PhotoStatus;
         sample.EmailStatus = request.EmailStatus;
+        if (sample.Receipt is null || sample.ReceiptId is null)
+        {
+            return (null, "Receipt-backed QC sample not found.");
+        }
+
         sample.Notes = request.Notes;
         sample.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -100,7 +105,7 @@ public sealed class QcSampleService(CropQcDbContext dbContext, IAuditService aud
 
     public static QcSampleDto ToDto(QcSample sample, string compuTechReceiptId) => new(
         sample.Id,
-        sample.ReceiptId,
+        sample.ReceiptId!.Value,
         sample.SampleTypeId,
         sample.SampleSequenceNumber,
         sample.SampleSequenceNumber <= 1 ? compuTechReceiptId : $"{compuTechReceiptId}({sample.SampleSequenceNumber})",

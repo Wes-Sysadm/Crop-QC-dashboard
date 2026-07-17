@@ -221,7 +221,7 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
 
     private async Task SeedSampleTypesAsync(CancellationToken cancellationToken)
     {
-        foreach (var name in new[] { "Receiving Sample", "Door Sample", "Lot Sample", "Line QC Sample" })
+        foreach (var name in new[] { "Receiving Sample", "Door Sample", "Lot Sample", "Line QC Sample", "Field Sample" })
         {
             if (!await dbContext.SampleTypes.AnyAsync(x => x.Name == name, cancellationToken))
             {
