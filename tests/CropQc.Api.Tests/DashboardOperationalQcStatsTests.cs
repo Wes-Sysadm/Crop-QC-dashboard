@@ -56,6 +56,25 @@ public sealed class DashboardOperationalQcStatsTests
     }
 
     [Fact]
+    public void DashboardInitialLoadUsesCompactTodaySampleProjection()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var start = service.IndexOf("public async Task<HomeDashboardViewModel> GetHomeDashboardAsync", StringComparison.Ordinal);
+        var end = service.IndexOf("private IReadOnlyList<StatusCountCard> BuildHomeCards", StringComparison.Ordinal);
+        var homeMethod = service[start..end];
+        var compactStart = service.IndexOf("private async Task<IReadOnlyList<SampleListItemViewModel>> BuildTodayDashboardSamplesAsync", StringComparison.Ordinal);
+        var compactEnd = service.IndexOf("private ReadinessViewModel BuildCompactReadiness", StringComparison.Ordinal);
+        var compactMethod = service[compactStart..compactEnd];
+
+        Assert.Contains("BuildTodayDashboardSamplesAsync(todayRange", homeMethod);
+        Assert.DoesNotContain("QuerySamples()", homeMethod);
+        Assert.Contains("dbContext.QcSamples.AsNoTracking()", compactMethod);
+        Assert.Contains("new DashboardSampleSummaryRow", compactMethod);
+        Assert.Contains("new DashboardSampleFruitRow", compactMethod);
+        Assert.DoesNotContain(".Include(", compactMethod);
+    }
+
+    [Fact]
     public void RoomCapacityIsExistingMasterDataField()
     {
         var entity = File.ReadAllText(FindRepositoryFile("src", "CropQc.Data", "Entities", "MasterDataModels.cs"));
