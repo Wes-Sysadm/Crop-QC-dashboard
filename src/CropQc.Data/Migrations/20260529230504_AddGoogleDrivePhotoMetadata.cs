@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -14,28 +14,28 @@ namespace CropQc.Data.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "DriveId",
                 table: "QcPhotos",
-                type: "nvarchar(200)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(200)", "character varying(200)"),
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "FileId",
                 table: "QcPhotos",
-                type: "nvarchar(200)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(200)", "character varying(200)"),
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "FolderId",
                 table: "QcPhotos",
-                type: "nvarchar(200)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(200)", "character varying(200)"),
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "StorageProvider",
                 table: "QcPhotos",
-                type: "nvarchar(50)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"),
                 maxLength: 50,
                 nullable: false,
                 defaultValue: "Legacy");
@@ -43,7 +43,7 @@ namespace CropQc.Data.Migrations
             migrationBuilder.AddColumn<DateTimeOffset>(
                 name: "UploadedAt",
                 table: "QcPhotos",
-                type: "datetimeoffset",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"),
                 nullable: true);
 
             migrationBuilder.CreateIndex(

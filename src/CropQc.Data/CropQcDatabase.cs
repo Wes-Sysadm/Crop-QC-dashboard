@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace CropQc.Data;
@@ -32,7 +33,12 @@ public static class CropQcDatabase
                     throw new InvalidOperationException("PostgreSql provider requires a configured connection string.");
                 }
 
-                options.UseNpgsql(connectionString);
+                options
+                    .UseNpgsql(connectionString)
+                    // The model snapshot is generated from the SQL Server provider, while
+                    // production also supports PostgreSQL. EF Core 9 raises provider-specific
+                    // snapshot differences as a pending-model warning before migrations run.
+                    .ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported database provider '{provider}'. Supported providers: SqlServer, PostgreSql.");

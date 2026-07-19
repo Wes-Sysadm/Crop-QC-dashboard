@@ -72,6 +72,250 @@ namespace CropQc.Data.Migrations
                     b.ToTable("AuditLogs");
                 });
 
+            modelBuilder.Entity("CropQc.Data.Entities.BinsRunEntry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("BinsRun")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FruitProfileId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GrowerLotId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("GrowerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<long>("InventoryAdjustmentId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("InventoryStatus")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("IsReversed")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LotNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("NewAvailableBins")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("PoolStart")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("PreviousAvailableBins")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("ReceiptId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ReverseReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("ReversedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("ReversedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RoomId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("RunAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("SourceInventoryAdjustmentId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("VarietyCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("WarehouseId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("FruitProfileId");
+
+                    b.HasIndex("GrowerLotId");
+
+                    b.HasIndex("InventoryAdjustmentId");
+
+                    b.HasIndex("ReversedByUserId");
+
+                    b.HasIndex("SourceInventoryAdjustmentId");
+
+                    b.HasIndex("WarehouseId");
+
+                    b.HasIndex("ReceiptId", "IsReversed");
+
+                    b.HasIndex("RoomId", "RunAt");
+
+                    b.ToTable("BinsRunEntries");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.CanonicalGrower", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("MergedIntoCanonicalGrowerId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NormalizedKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MergedIntoCanonicalGrowerId");
+
+                    b.HasIndex("NormalizedKey");
+
+                    b.ToTable("CanonicalGrowers");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.CanonicalGrowerAlias", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AliasName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("CanonicalGrowerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NormalizedAliasKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SourceSystem")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedAliasKey");
+
+                    b.HasIndex("CanonicalGrowerId", "NormalizedAliasKey");
+
+                    b.ToTable("CanonicalGrowerAliases");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.CanonicalGrowerNumber", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CanonicalGrowerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("CropYear")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Facility")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("GrowerNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NormalizedGrowerNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("SourceSystem")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedGrowerNumber");
+
+                    b.HasIndex("CanonicalGrowerId", "NormalizedGrowerNumber");
+
+                    b.ToTable("CanonicalGrowerNumbers");
+                });
+
             modelBuilder.Entity("CropQc.Data.Entities.DashboardConfiguration", b =>
                 {
                     b.Property<int>("Id")
@@ -496,51 +740,6 @@ namespace CropQc.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("CropQc.Data.Entities.VarietyColorConfiguration", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("FruitProfileId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("HexColor")
-                        .IsRequired()
-                        .HasMaxLength(7)
-                        .HasColumnType("nvarchar(7)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("VarietyKey")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("VarietyName")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FruitProfileId");
-
-                    b.HasIndex("UpdatedByUserId");
-
-                    b.HasIndex("VarietyKey")
-                        .IsUnique();
-
-                    b.ToTable("VarietyColorConfigurations");
-                });
-
             modelBuilder.Entity("CropQc.Data.Entities.FruitSizeConversionThreshold", b =>
                 {
                     b.Property<int>("Id")
@@ -903,6 +1102,49 @@ namespace CropQc.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("CropQc.Data.Entities.GrowerLot", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Grower")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LotNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("PoolStart")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Grower", "LotNumber")
+                        .IsUnique();
+
+                    b.ToTable("GrowerLots");
+                });
+
             modelBuilder.Entity("CropQc.Data.Entities.OfflineSyncItem", b =>
                 {
                     b.Property<long>("Id")
@@ -1130,6 +1372,16 @@ namespace CropQc.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("DeleteReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
                     b.Property<string>("DriveId")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
@@ -1149,6 +1401,9 @@ namespace CropQc.Data.Migrations
                     b.Property<string>("FolderId")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
 
                     b.Property<string>("PhotoSource")
                         .IsRequired()
@@ -1194,9 +1449,11 @@ namespace CropQc.Data.Migrations
 
                     b.HasIndex("CapturedByUserId");
 
-                    b.HasIndex("QcSampleId");
+                    b.HasIndex("DeletedByUserId");
 
-                    b.HasIndex("ReceiptId");
+                    b.HasIndex("QcSampleId", "IsDeleted");
+
+                    b.HasIndex("ReceiptId", "IsDeleted");
 
                     b.HasIndex("SharePointDriveId", "SharePointItemId")
                         .IsUnique();
@@ -1223,10 +1480,26 @@ namespace CropQc.Data.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("DeleteReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
                     b.Property<string>("EmailStatus")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsTestData")
+                        .HasColumnType("bit");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(1000)
@@ -1275,6 +1548,8 @@ namespace CropQc.Data.Migrations
                     b.HasIndex("SampleTypeId");
 
                     b.HasIndex("TakenByUserId");
+
+                    b.HasIndex("ReceiptId", "IsDeleted");
 
                     b.HasIndex("ReceiptId", "SampleSequenceNumber")
                         .IsUnique();
@@ -1483,7 +1758,20 @@ namespace CropQc.Data.Migrations
                     b.Property<int>("CropYear")
                         .HasColumnType("int");
 
+                    b.Property<string>("DeleteReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
                     b.Property<int>("FruitProfileId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GrowerLotId")
                         .HasColumnType("int");
 
                     b.Property<string>("GrowerName")
@@ -1491,10 +1779,31 @@ namespace CropQc.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("GrowerNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsTestData")
+                        .HasColumnType("bit");
+
                     b.Property<string>("LotCode")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PoolStart")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ReceiptType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("Truck receipt");
 
                     b.Property<DateTimeOffset>("ReceivedAt")
                         .HasColumnType("datetimeoffset");
@@ -1514,9 +1823,13 @@ namespace CropQc.Data.Migrations
 
                     b.HasIndex("FruitProfileId");
 
+                    b.HasIndex("GrowerLotId");
+
                     b.HasIndex("RoomId");
 
                     b.HasIndex("WarehouseId");
+
+                    b.HasIndex("CropYear", "IsDeleted");
 
                     b.ToTable("Receipts");
                 });
@@ -1624,11 +1937,30 @@ namespace CropQc.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<string>("CompuTechRoomCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("CropQcRoomName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SubLocation")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
@@ -1640,10 +1972,205 @@ namespace CropQc.Data.Migrations
                     b.HasIndex("WarehouseId", "Code")
                         .IsUnique();
 
+                    b.HasIndex("WarehouseId", "CompuTechRoomCode");
+
                     b.HasIndex("WarehouseId", "Name")
                         .IsUnique();
 
                     b.ToTable("Rooms");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.RoomDepletion", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("BinCountDepleted")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("DepletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Destination")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("FruitProfileId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("GrowerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsVoided")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LotCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<long>("ReceiptId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("RoomId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("VoidedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("VoidedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WarehouseId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("FruitProfileId");
+
+                    b.HasIndex("VoidedByUserId");
+
+                    b.HasIndex("WarehouseId");
+
+                    b.HasIndex("ReceiptId", "IsVoided");
+
+                    b.HasIndex("RoomId", "IsVoided", "DepletedAt");
+
+                    b.ToTable("RoomDepletions");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.RoomInventoryAdjustment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("AdjustmentAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("AdjustmentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("ChangeAmount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CropYear")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FruitProfileId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GrowerLotId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("GrowerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("InventoryStatus")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("LotNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("NewBinCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int?>("OldBinCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PoolStart")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<long?>("ReceiptId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("RoomDepletionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("RoomId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("SourceRoomCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("SourceSubLocation")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("VarietyCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("WarehouseId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("FruitProfileId");
+
+                    b.HasIndex("GrowerLotId");
+
+                    b.HasIndex("RoomDepletionId");
+
+                    b.HasIndex("WarehouseId");
+
+                    b.HasIndex("ReceiptId", "AdjustmentAt");
+
+                    b.HasIndex("RoomId", "AdjustmentAt");
+
+                    b.ToTable("RoomInventoryAdjustments");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.SampleType", b =>
@@ -1687,6 +2214,12 @@ namespace CropQc.Data.Migrations
                             Id = 3,
                             IsActive = true,
                             Name = "Line QC Sample"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            IsActive = true,
+                            Name = "Lot Sample"
                         });
                 });
 
@@ -1915,6 +2448,92 @@ namespace CropQc.Data.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("CropQc.Data.Entities.UserGoogleCredential", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccessTokenEncrypted")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("RefreshTokenEncrypted")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Provider")
+                        .IsUnique();
+
+                    b.ToTable("UserGoogleCredentials");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.UserPageAccess", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccessLevel")
+                        .IsRequired()
+                        .HasMaxLength(25)
+                        .HasColumnType("nvarchar(25)");
+
+                    b.Property<string>("AreaKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.HasIndex("UserId", "AreaKey")
+                        .IsUnique();
+
+                    b.ToTable("UserPageAccesses");
+                });
+
             modelBuilder.Entity("CropQc.Data.Entities.UserRole", b =>
                 {
                     b.Property<int>("UserId")
@@ -1928,6 +2547,53 @@ namespace CropQc.Data.Migrations
                     b.HasIndex("RoleId");
 
                     b.ToTable("UserRoles");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.VarietyColorConfiguration", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("FruitProfileId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("HexColor")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VarietyKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("VarietyName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FruitProfileId");
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.HasIndex("VarietyKey")
+                        .IsUnique();
+
+                    b.ToTable("VarietyColorConfigurations");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.Warehouse", b =>
@@ -1998,6 +2664,107 @@ namespace CropQc.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("CropQc.Data.Entities.BinsRunEntry", b =>
+                {
+                    b.HasOne("CropQc.Data.Entities.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.FruitProfile", "FruitProfile")
+                        .WithMany()
+                        .HasForeignKey("FruitProfileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.GrowerLot", "GrowerLot")
+                        .WithMany()
+                        .HasForeignKey("GrowerLotId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.RoomInventoryAdjustment", "InventoryAdjustment")
+                        .WithMany()
+                        .HasForeignKey("InventoryAdjustmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CropQc.Data.Entities.Receipt", "Receipt")
+                        .WithMany()
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.User", "ReversedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReversedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.Room", "Room")
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CropQc.Data.Entities.RoomInventoryAdjustment", "SourceInventoryAdjustment")
+                        .WithMany()
+                        .HasForeignKey("SourceInventoryAdjustmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("FruitProfile");
+
+                    b.Navigation("GrowerLot");
+
+                    b.Navigation("InventoryAdjustment");
+
+                    b.Navigation("Receipt");
+
+                    b.Navigation("ReversedByUser");
+
+                    b.Navigation("Room");
+
+                    b.Navigation("SourceInventoryAdjustment");
+
+                    b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.CanonicalGrower", b =>
+                {
+                    b.HasOne("CropQc.Data.Entities.CanonicalGrower", "MergedIntoCanonicalGrower")
+                        .WithMany()
+                        .HasForeignKey("MergedIntoCanonicalGrowerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("MergedIntoCanonicalGrower");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.CanonicalGrowerAlias", b =>
+                {
+                    b.HasOne("CropQc.Data.Entities.CanonicalGrower", "CanonicalGrower")
+                        .WithMany("Aliases")
+                        .HasForeignKey("CanonicalGrowerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CanonicalGrower");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.CanonicalGrowerNumber", b =>
+                {
+                    b.HasOne("CropQc.Data.Entities.CanonicalGrower", "CanonicalGrower")
+                        .WithMany("GrowerNumbers")
+                        .HasForeignKey("CanonicalGrowerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CanonicalGrower");
+                });
+
             modelBuilder.Entity("CropQc.Data.Entities.OfflineSyncItem", b =>
                 {
                     b.HasOne("CropQc.Data.Entities.QcStation", "QcStation")
@@ -2057,6 +2824,11 @@ namespace CropQc.Data.Migrations
                         .WithMany()
                         .HasForeignKey("CapturedByUserId");
 
+                    b.HasOne("CropQc.Data.Entities.User", "DeletedByUser")
+                        .WithMany()
+                        .HasForeignKey("DeletedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CropQc.Data.Entities.QcSample", "QcSample")
                         .WithMany("Photos")
                         .HasForeignKey("QcSampleId")
@@ -2068,6 +2840,8 @@ namespace CropQc.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("CapturedByUser");
+
+                    b.Navigation("DeletedByUser");
 
                     b.Navigation("QcSample");
 
@@ -2151,6 +2925,11 @@ namespace CropQc.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("CropQc.Data.Entities.GrowerLot", "GrowerLot")
+                        .WithMany()
+                        .HasForeignKey("GrowerLotId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("CropQc.Data.Entities.Room", "Room")
                         .WithMany()
                         .HasForeignKey("RoomId")
@@ -2164,6 +2943,8 @@ namespace CropQc.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("FruitProfile");
+
+                    b.Navigation("GrowerLot");
 
                     b.Navigation("Room");
 
@@ -2192,6 +2973,109 @@ namespace CropQc.Data.Migrations
                     b.Navigation("Warehouse");
                 });
 
+            modelBuilder.Entity("CropQc.Data.Entities.RoomDepletion", b =>
+                {
+                    b.HasOne("CropQc.Data.Entities.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.FruitProfile", "FruitProfile")
+                        .WithMany()
+                        .HasForeignKey("FruitProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CropQc.Data.Entities.Receipt", "Receipt")
+                        .WithMany("RoomDepletions")
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CropQc.Data.Entities.Room", "Room")
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CropQc.Data.Entities.User", "VoidedByUser")
+                        .WithMany()
+                        .HasForeignKey("VoidedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("FruitProfile");
+
+                    b.Navigation("Receipt");
+
+                    b.Navigation("Room");
+
+                    b.Navigation("VoidedByUser");
+
+                    b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.RoomInventoryAdjustment", b =>
+                {
+                    b.HasOne("CropQc.Data.Entities.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.FruitProfile", "FruitProfile")
+                        .WithMany()
+                        .HasForeignKey("FruitProfileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.GrowerLot", "GrowerLot")
+                        .WithMany()
+                        .HasForeignKey("GrowerLotId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.Receipt", "Receipt")
+                        .WithMany("RoomInventoryAdjustments")
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.RoomDepletion", "RoomDepletion")
+                        .WithMany()
+                        .HasForeignKey("RoomDepletionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.Room", "Room")
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CropQc.Data.Entities.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("FruitProfile");
+
+                    b.Navigation("GrowerLot");
+
+                    b.Navigation("Receipt");
+
+                    b.Navigation("Room");
+
+                    b.Navigation("RoomDepletion");
+
+                    b.Navigation("Warehouse");
+                });
+
             modelBuilder.Entity("CropQc.Data.Entities.StarchScale", b =>
                 {
                     b.HasOne("CropQc.Data.Entities.FruitProfile", "FruitProfile")
@@ -2212,21 +3096,33 @@ namespace CropQc.Data.Migrations
                     b.Navigation("StarchScale");
                 });
 
-            modelBuilder.Entity("CropQc.Data.Entities.VarietyColorConfiguration", b =>
+            modelBuilder.Entity("CropQc.Data.Entities.UserGoogleCredential", b =>
                 {
-                    b.HasOne("CropQc.Data.Entities.FruitProfile", "FruitProfile")
-                        .WithMany()
-                        .HasForeignKey("FruitProfileId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                    b.HasOne("CropQc.Data.Entities.User", "User")
+                        .WithMany("GoogleCredentials")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.UserPageAccess", b =>
+                {
                     b.HasOne("CropQc.Data.Entities.User", "UpdatedByUser")
                         .WithMany()
                         .HasForeignKey("UpdatedByUserId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.Navigation("FruitProfile");
+                    b.HasOne("CropQc.Data.Entities.User", "User")
+                        .WithMany("PageAccesses")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("UpdatedByUser");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.UserRole", b =>
@@ -2246,6 +3142,30 @@ namespace CropQc.Data.Migrations
                     b.Navigation("Role");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.VarietyColorConfiguration", b =>
+                {
+                    b.HasOne("CropQc.Data.Entities.FruitProfile", "FruitProfile")
+                        .WithMany()
+                        .HasForeignKey("FruitProfileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.User", "UpdatedByUser")
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("FruitProfile");
+
+                    b.Navigation("UpdatedByUser");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.CanonicalGrower", b =>
+                {
+                    b.Navigation("Aliases");
+
+                    b.Navigation("GrowerNumbers");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.FruitProfile", b =>
@@ -2274,6 +3194,10 @@ namespace CropQc.Data.Migrations
                 {
                     b.Navigation("Photos");
 
+                    b.Navigation("RoomDepletions");
+
+                    b.Navigation("RoomInventoryAdjustments");
+
                     b.Navigation("Samples");
 
                     b.Navigation("SummaryEmailLogs");
@@ -2298,6 +3222,10 @@ namespace CropQc.Data.Migrations
 
             modelBuilder.Entity("CropQc.Data.Entities.User", b =>
                 {
+                    b.Navigation("GoogleCredentials");
+
+                    b.Navigation("PageAccesses");
+
                     b.Navigation("TakenSamples");
 
                     b.Navigation("UserRoles");

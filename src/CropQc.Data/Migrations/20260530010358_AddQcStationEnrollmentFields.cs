@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -14,79 +14,79 @@ namespace CropQc.Data.Migrations
             migrationBuilder.AddColumn<DateTimeOffset>(
                 name: "ApiKeyCreatedAt",
                 table: "QcStations",
-                type: "datetimeoffset",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"),
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "ApiKeyHash",
                 table: "QcStations",
-                type: "nvarchar(200)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(200)", "character varying(200)"),
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "ApiKeyLastFour",
                 table: "QcStations",
-                type: "nvarchar(12)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(12)", "character varying(12)"),
                 maxLength: 12,
                 nullable: true);
 
             migrationBuilder.AddColumn<DateTimeOffset>(
                 name: "ApiKeyRotatedAt",
                 table: "QcStations",
-                type: "datetimeoffset",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"),
                 nullable: true);
 
             migrationBuilder.AddColumn<DateTimeOffset>(
                 name: "CreatedAt",
                 table: "QcStations",
-                type: "datetimeoffset",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"),
                 nullable: false,
                 defaultValue: new DateTimeOffset(new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)));
 
             migrationBuilder.AddColumn<int>(
                 name: "CreatedByUserId",
                 table: "QcStations",
-                type: "int",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"),
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "Description",
                 table: "QcStations",
-                type: "nvarchar(500)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(500)", "character varying(500)"),
                 maxLength: 500,
                 nullable: true);
 
             migrationBuilder.AddColumn<DateTimeOffset>(
                 name: "LastSeenAt",
                 table: "QcStations",
-                type: "datetimeoffset",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"),
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "LastSeenIp",
                 table: "QcStations",
-                type: "nvarchar(100)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(100)", "character varying(100)"),
                 maxLength: 100,
                 nullable: true);
 
             migrationBuilder.AddColumn<DateTimeOffset>(
                 name: "LastSyncAt",
                 table: "QcStations",
-                type: "datetimeoffset",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"),
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "Notes",
                 table: "QcStations",
-                type: "nvarchar(1000)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(1000)", "character varying(1000)"),
                 maxLength: 1000,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "StationName",
                 table: "QcStations",
-                type: "nvarchar(150)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"),
                 maxLength: 150,
                 nullable: false,
                 defaultValue: "");
@@ -94,17 +94,24 @@ namespace CropQc.Data.Migrations
             migrationBuilder.AddColumn<DateTimeOffset>(
                 name: "UpdatedAt",
                 table: "QcStations",
-                type: "datetimeoffset",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"),
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "WarehouseCode",
                 table: "QcStations",
-                type: "nvarchar(25)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(25)", "character varying(25)"),
                 maxLength: 25,
                 nullable: true);
 
-            migrationBuilder.Sql("UPDATE [QcStations] SET [StationName] = [Name] WHERE [StationName] = N'';");
+            if (migrationBuilder.ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
+            {
+                migrationBuilder.Sql("""UPDATE "QcStations" SET "StationName" = "Name" WHERE "StationName" = '';""");
+            }
+            else
+            {
+                migrationBuilder.Sql("UPDATE [QcStations] SET [StationName] = [Name] WHERE [StationName] = N'';");
+            }
 
             migrationBuilder.CreateIndex(
                 name: "IX_QcStations_CreatedByUserId",

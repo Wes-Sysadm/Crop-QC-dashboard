@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -14,7 +14,7 @@ namespace CropQc.Data.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "Domain",
                 table: "Users",
-                type: "nvarchar(150)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"),
                 maxLength: 150,
                 nullable: false,
                 defaultValue: "");
@@ -22,14 +22,14 @@ namespace CropQc.Data.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "GoogleSubjectId",
                 table: "Users",
-                type: "nvarchar(200)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(200)", "character varying(200)"),
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<DateTimeOffset>(
                 name: "LastLoginAt",
                 table: "Users",
-                type: "datetimeoffset",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"),
                 nullable: true);
 
             migrationBuilder.CreateIndex(
