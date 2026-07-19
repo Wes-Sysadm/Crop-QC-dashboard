@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -17,10 +17,10 @@ namespace CropQc.Data.Migrations
                 name: "DefectTypes",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
+                    Name = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(100)", "character varying(100)"), maxLength: 100, nullable: false),
+                    IsActive = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -31,15 +31,15 @@ namespace CropQc.Data.Migrations
                 name: "FruitProfiles",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    Name = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    VarietyCode = table.Column<string>(type: "nvarchar(25)", maxLength: 25, nullable: false),
-                    FruitType = table.Column<string>(type: "nvarchar(25)", maxLength: 25, nullable: false),
-                    ProductionType = table.Column<string>(type: "nvarchar(25)", maxLength: 25, nullable: false),
-                    IsOrganic = table.Column<bool>(type: "bit", nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
+                    Name = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"), maxLength: 150, nullable: false),
+                    Description = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(500)", "character varying(500)"), maxLength: 500, nullable: true),
+                    VarietyCode = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(25)", "character varying(25)"), maxLength: 25, nullable: false),
+                    FruitType = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(25)", "character varying(25)"), maxLength: 25, nullable: false),
+                    ProductionType = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(25)", "character varying(25)"), maxLength: 25, nullable: false),
+                    IsOrganic = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false),
+                    IsActive = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -50,12 +50,12 @@ namespace CropQc.Data.Migrations
                 name: "FruitSizeConversionThresholds",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    FruitType = table.Column<string>(type: "nvarchar(25)", maxLength: 25, nullable: false),
-                    SizeCategory = table.Column<int>(type: "int", nullable: false),
-                    MinimumWeightGrams = table.Column<decimal>(type: "decimal(8,4)", precision: 8, scale: 4, nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
+                    FruitType = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(25)", "character varying(25)"), maxLength: 25, nullable: false),
+                    SizeCategory = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    MinimumWeightGrams = table.Column<decimal>(type: MigrationProviderTypes.StoreType(migrationBuilder, "decimal(8,4)", "numeric(8,4)"), precision: 8, scale: 4, nullable: false),
+                    IsActive = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -66,11 +66,11 @@ namespace CropQc.Data.Migrations
                 name: "Grades",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    Code = table.Column<string>(type: "nvarchar(25)", maxLength: 25, nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
+                    Code = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(25)", "character varying(25)"), maxLength: 25, nullable: false),
+                    Name = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(100)", "character varying(100)"), maxLength: 100, nullable: false),
+                    IsActive = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -81,16 +81,16 @@ namespace CropQc.Data.Migrations
                 name: "PasswordPolicies",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    MinimumLength = table.Column<int>(type: "int", nullable: false),
-                    RequireUppercase = table.Column<bool>(type: "bit", nullable: false),
-                    RequireLowercase = table.Column<bool>(type: "bit", nullable: false),
-                    RequireNumber = table.Column<bool>(type: "bit", nullable: false),
-                    RequireSymbol = table.Column<bool>(type: "bit", nullable: false),
-                    PasswordExpirationDays = table.Column<int>(type: "int", nullable: false),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                    MinimumLength = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    RequireUppercase = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false),
+                    RequireLowercase = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false),
+                    RequireNumber = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false),
+                    RequireSymbol = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false),
+                    PasswordExpirationDays = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: true)
                 },
                 constraints: table =>
                 {
@@ -101,11 +101,11 @@ namespace CropQc.Data.Migrations
                 name: "Roles",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    IsSystemRole = table.Column<bool>(type: "bit", nullable: false)
+                    Name = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(100)", "character varying(100)"), maxLength: 100, nullable: false),
+                    Description = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(500)", "character varying(500)"), maxLength: 500, nullable: true),
+                    IsSystemRole = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -116,10 +116,10 @@ namespace CropQc.Data.Migrations
                 name: "SampleTypes",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
+                    Name = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(100)", "character varying(100)"), maxLength: 100, nullable: false),
+                    IsActive = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -130,15 +130,15 @@ namespace CropQc.Data.Migrations
                 name: "Users",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    Email = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: false),
-                    DisplayName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    PasswordHash = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    PasswordLastChangedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                    Email = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(320)", "character varying(320)"), maxLength: 320, nullable: false),
+                    DisplayName = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(200)", "character varying(200)"), maxLength: 200, nullable: false),
+                    PasswordHash = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(500)", "character varying(500)"), maxLength: 500, nullable: true),
+                    PasswordLastChangedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: true),
+                    IsActive = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: true)
                 },
                 constraints: table =>
                 {
@@ -149,11 +149,11 @@ namespace CropQc.Data.Migrations
                 name: "Warehouses",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    Code = table.Column<string>(type: "nvarchar(25)", maxLength: 25, nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
+                    Code = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(25)", "character varying(25)"), maxLength: 25, nullable: false),
+                    Name = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(100)", "character varying(100)"), maxLength: 100, nullable: false),
+                    IsActive = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -164,12 +164,12 @@ namespace CropQc.Data.Migrations
                 name: "StarchScales",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    FruitType = table.Column<string>(type: "nvarchar(25)", maxLength: 25, nullable: true),
-                    FruitProfileId = table.Column<int>(type: "int", nullable: true),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
+                    Name = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(100)", "character varying(100)"), maxLength: 100, nullable: false),
+                    FruitType = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(25)", "character varying(25)"), maxLength: 25, nullable: true),
+                    FruitProfileId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    IsActive = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -185,11 +185,11 @@ namespace CropQc.Data.Migrations
                 name: "RolePermissions",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    RoleId = table.Column<int>(type: "int", nullable: false),
-                    PermissionKey = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false)
+                    RoleId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    PermissionKey = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"), maxLength: 150, nullable: false),
+                    Description = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(500)", "character varying(500)"), maxLength: 500, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -206,16 +206,16 @@ namespace CropQc.Data.Migrations
                 name: "AuditLogs",
                 columns: table => new
                 {
-                    Id = table.Column<long>(type: "bigint", nullable: false)
+                    Id = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    UserId = table.Column<int>(type: "int", nullable: true),
-                    Action = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    EntityName = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
-                    EntityKey = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
-                    BeforeValuesJson = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    AfterValuesJson = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    SourceApplication = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                    UserId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    Action = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    EntityName = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"), maxLength: 150, nullable: false),
+                    EntityKey = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"), maxLength: 150, nullable: false),
+                    BeforeValuesJson = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(max)", "text"), nullable: true),
+                    AfterValuesJson = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(max)", "text"), nullable: true),
+                    SourceApplication = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(100)", "character varying(100)"), maxLength: 100, nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -231,8 +231,8 @@ namespace CropQc.Data.Migrations
                 name: "UserRoles",
                 columns: table => new
                 {
-                    UserId = table.Column<int>(type: "int", nullable: false),
-                    RoleId = table.Column<int>(type: "int", nullable: false)
+                    UserId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    RoleId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -255,13 +255,13 @@ namespace CropQc.Data.Migrations
                 name: "QcStations",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    StationCode = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
-                    WarehouseId = table.Column<int>(type: "int", nullable: true),
-                    DeviceIdentifier = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
+                    StationCode = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    Name = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"), maxLength: 150, nullable: false),
+                    WarehouseId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    DeviceIdentifier = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(200)", "character varying(200)"), maxLength: 200, nullable: true),
+                    IsActive = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -277,13 +277,13 @@ namespace CropQc.Data.Migrations
                 name: "Rooms",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    WarehouseId = table.Column<int>(type: "int", nullable: false),
-                    Code = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    CapacityBins = table.Column<int>(type: "int", nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
+                    WarehouseId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    Code = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    Name = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(100)", "character varying(100)"), maxLength: 100, nullable: false),
+                    CapacityBins = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    IsActive = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -300,12 +300,12 @@ namespace CropQc.Data.Migrations
                 name: "StarchScaleValues",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    StarchScaleId = table.Column<int>(type: "int", nullable: false),
-                    Value = table.Column<decimal>(type: "decimal(4,1)", precision: 4, scale: 1, nullable: false),
-                    SortOrder = table.Column<int>(type: "int", nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
+                    StarchScaleId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    Value = table.Column<decimal>(type: MigrationProviderTypes.StoreType(migrationBuilder, "decimal(4,1)", "numeric(4,1)"), precision: 4, scale: 1, nullable: false),
+                    SortOrder = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    IsActive = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -322,18 +322,18 @@ namespace CropQc.Data.Migrations
                 name: "OfflineSyncItems",
                 columns: table => new
                 {
-                    Id = table.Column<long>(type: "bigint", nullable: false)
+                    Id = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    QcStationId = table.Column<int>(type: "int", nullable: true),
-                    EntityName = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
-                    LocalEntityId = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
-                    ServerEntityId = table.Column<long>(type: "bigint", nullable: true),
-                    SyncStatus = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    AttemptCount = table.Column<int>(type: "int", nullable: false),
-                    LastError = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    LastAttemptedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    SyncedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                    QcStationId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    EntityName = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"), maxLength: 150, nullable: false),
+                    LocalEntityId = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"), maxLength: 150, nullable: false),
+                    ServerEntityId = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: true),
+                    SyncStatus = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    AttemptCount = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    LastError = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(2000)", "character varying(2000)"), maxLength: 2000, nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false),
+                    LastAttemptedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: true),
+                    SyncedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: true)
                 },
                 constraints: table =>
                 {
@@ -349,19 +349,19 @@ namespace CropQc.Data.Migrations
                 name: "Receipts",
                 columns: table => new
                 {
-                    Id = table.Column<long>(type: "bigint", nullable: false)
+                    Id = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    CropYear = table.Column<int>(type: "int", nullable: false),
-                    ReceivedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    CompuTechReceiptId = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    WarehouseId = table.Column<int>(type: "int", nullable: false),
-                    RoomId = table.Column<int>(type: "int", nullable: false),
-                    FruitProfileId = table.Column<int>(type: "int", nullable: false),
-                    GrowerName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    LotCode = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    BinCount = table.Column<int>(type: "int", nullable: false),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                    CropYear = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    ReceivedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false),
+                    CompuTechReceiptId = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    WarehouseId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    RoomId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    FruitProfileId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    GrowerName = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(200)", "character varying(200)"), maxLength: 200, nullable: false),
+                    LotCode = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(100)", "character varying(100)"), maxLength: 100, nullable: false),
+                    BinCount = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -390,22 +390,22 @@ namespace CropQc.Data.Migrations
                 name: "QcSamples",
                 columns: table => new
                 {
-                    Id = table.Column<long>(type: "bigint", nullable: false)
+                    Id = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    ReceiptId = table.Column<long>(type: "bigint", nullable: false),
-                    SampleTypeId = table.Column<int>(type: "int", nullable: false),
-                    SampleSequenceNumber = table.Column<int>(type: "int", nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    StarchStatus = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    PhotoStatus = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    EmailStatus = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    TakenByUserId = table.Column<int>(type: "int", nullable: true),
-                    QcStationId = table.Column<int>(type: "int", nullable: true),
-                    ActualSampleSize = table.Column<int>(type: "int", nullable: true),
-                    Notes = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    SampleTakenAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                    ReceiptId = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: false),
+                    SampleTypeId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    SampleSequenceNumber = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    Status = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    StarchStatus = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    PhotoStatus = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    EmailStatus = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    TakenByUserId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    QcStationId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    ActualSampleSize = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    Notes = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(1000)", "character varying(1000)"), maxLength: 1000, nullable: true),
+                    SampleTakenAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: true)
                 },
                 constraints: table =>
                 {
@@ -438,28 +438,28 @@ namespace CropQc.Data.Migrations
                 name: "QcFruitReadings",
                 columns: table => new
                 {
-                    Id = table.Column<long>(type: "bigint", nullable: false)
+                    Id = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    QcSampleId = table.Column<long>(type: "bigint", nullable: false),
-                    RowNumber = table.Column<int>(type: "int", nullable: false),
-                    Pressure1Lbs = table.Column<decimal>(type: "decimal(6,2)", precision: 6, scale: 2, nullable: true),
-                    Pressure1Source = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
-                    Pressure2Lbs = table.Column<decimal>(type: "decimal(6,2)", precision: 6, scale: 2, nullable: true),
-                    Pressure2Source = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
-                    WeightGrams = table.Column<decimal>(type: "decimal(8,4)", precision: 8, scale: 4, nullable: true),
-                    GradeId = table.Column<int>(type: "int", nullable: true),
-                    StarchScaleValueId = table.Column<int>(type: "int", nullable: true),
-                    SizeCategory = table.Column<int>(type: "int", nullable: true),
-                    SizeStatus = table.Column<string>(type: "nvarchar(25)", maxLength: 25, nullable: false, defaultValue: "NotCalculated"),
-                    IsCompleted = table.Column<bool>(type: "bit", nullable: false),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                    QcSampleId = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: false),
+                    RowNumber = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    Pressure1Lbs = table.Column<decimal>(type: MigrationProviderTypes.StoreType(migrationBuilder, "decimal(6,2)", "numeric(6,2)"), precision: 6, scale: 2, nullable: true),
+                    Pressure1Source = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: true),
+                    Pressure2Lbs = table.Column<decimal>(type: MigrationProviderTypes.StoreType(migrationBuilder, "decimal(6,2)", "numeric(6,2)"), precision: 6, scale: 2, nullable: true),
+                    Pressure2Source = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: true),
+                    WeightGrams = table.Column<decimal>(type: MigrationProviderTypes.StoreType(migrationBuilder, "decimal(8,4)", "numeric(8,4)"), precision: 8, scale: 4, nullable: true),
+                    GradeId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    StarchScaleValueId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    SizeCategory = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    SizeStatus = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(25)", "character varying(25)"), maxLength: 25, nullable: false, defaultValue: "NotCalculated"),
+                    IsCompleted = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: true)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_QcFruitReadings", x => x.Id);
-                    table.CheckConstraint("CK_QcFruitReadings_CompletedRequiresCoreFields", "([IsCompleted] = 0) OR ([Pressure1Lbs] IS NOT NULL AND [Pressure2Lbs] IS NOT NULL AND [WeightGrams] IS NOT NULL AND [GradeId] IS NOT NULL)");
-                    table.CheckConstraint("CK_QcFruitReadings_RowNumber_1_25", "[RowNumber] >= 1 AND [RowNumber] <= 25");
+                    table.CheckConstraint("CK_QcFruitReadings_CompletedRequiresCoreFields", MigrationProviderTypes.Sql(migrationBuilder, "([IsCompleted] = 0) OR ([Pressure1Lbs] IS NOT NULL AND [Pressure2Lbs] IS NOT NULL AND [WeightGrams] IS NOT NULL AND [GradeId] IS NOT NULL)", "(\"IsCompleted\" = FALSE) OR (\"Pressure1Lbs\" IS NOT NULL AND \"Pressure2Lbs\" IS NOT NULL AND \"WeightGrams\" IS NOT NULL AND \"GradeId\" IS NOT NULL)"));
+                    table.CheckConstraint("CK_QcFruitReadings_RowNumber_1_25", MigrationProviderTypes.Sql(migrationBuilder, "[RowNumber] >= 1 AND [RowNumber] <= 25", "\"RowNumber\" >= 1 AND \"RowNumber\" <= 25"));
                     table.ForeignKey(
                         name: "FK_QcFruitReadings_Grades_GradeId",
                         column: x => x.GradeId,
@@ -484,25 +484,25 @@ namespace CropQc.Data.Migrations
                 name: "QcPhotos",
                 columns: table => new
                 {
-                    Id = table.Column<long>(type: "bigint", nullable: false)
+                    Id = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    ReceiptId = table.Column<long>(type: "bigint", nullable: true),
-                    QcSampleId = table.Column<long>(type: "bigint", nullable: true),
-                    PhotoType = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    PhotoSource = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    FileName = table.Column<string>(type: "nvarchar(260)", maxLength: 260, nullable: false),
-                    ContentType = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    FileSizeBytes = table.Column<long>(type: "bigint", nullable: true),
-                    SharePointDriveId = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    SharePointItemId = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    WebUrl = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    CapturedByUserId = table.Column<int>(type: "int", nullable: true),
-                    CapturedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                    ReceiptId = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: true),
+                    QcSampleId = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: true),
+                    PhotoType = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    PhotoSource = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    FileName = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(260)", "character varying(260)"), maxLength: 260, nullable: false),
+                    ContentType = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(100)", "character varying(100)"), maxLength: 100, nullable: false),
+                    FileSizeBytes = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: true),
+                    SharePointDriveId = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(200)", "character varying(200)"), maxLength: 200, nullable: false),
+                    SharePointItemId = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(200)", "character varying(200)"), maxLength: 200, nullable: false),
+                    WebUrl = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(1000)", "character varying(1000)"), maxLength: 1000, nullable: true),
+                    CapturedByUserId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    CapturedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_QcPhotos", x => x.Id);
-                    table.CheckConstraint("CK_QcPhotos_ReceiptOrSample", "([ReceiptId] IS NOT NULL AND [QcSampleId] IS NULL) OR ([ReceiptId] IS NULL AND [QcSampleId] IS NOT NULL)");
+                    table.CheckConstraint("CK_QcPhotos_ReceiptOrSample", MigrationProviderTypes.Sql(migrationBuilder, "([ReceiptId] IS NOT NULL AND [QcSampleId] IS NULL) OR ([ReceiptId] IS NULL AND [QcSampleId] IS NOT NULL)", "(\"ReceiptId\" IS NOT NULL AND \"QcSampleId\" IS NULL) OR (\"ReceiptId\" IS NULL AND \"QcSampleId\" IS NOT NULL)"));
                     table.ForeignKey(
                         name: "FK_QcPhotos_QcSamples_QcSampleId",
                         column: x => x.QcSampleId,
@@ -526,24 +526,24 @@ namespace CropQc.Data.Migrations
                 name: "QcSummaryEmailLogs",
                 columns: table => new
                 {
-                    Id = table.Column<long>(type: "bigint", nullable: false)
+                    Id = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    ReceiptId = table.Column<long>(type: "bigint", nullable: false),
-                    QcSampleId = table.Column<long>(type: "bigint", nullable: true),
-                    FromAddress = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: false),
-                    ToAddress = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: false),
-                    ReplyToAddress = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: true),
-                    Subject = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    MessageId = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    SentByUserId = table.Column<int>(type: "int", nullable: true),
-                    SentAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    IsResend = table.Column<bool>(type: "bit", nullable: false),
-                    ResendReason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    EmailBodySnapshot = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    ReportSnapshotReference = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                    ReceiptId = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: false),
+                    QcSampleId = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: true),
+                    FromAddress = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(320)", "character varying(320)"), maxLength: 320, nullable: false),
+                    ToAddress = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(320)", "character varying(320)"), maxLength: 320, nullable: false),
+                    ReplyToAddress = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(320)", "character varying(320)"), maxLength: 320, nullable: true),
+                    Subject = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(300)", "character varying(300)"), maxLength: 300, nullable: false),
+                    Status = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    MessageId = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(500)", "character varying(500)"), maxLength: 500, nullable: true),
+                    SentByUserId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    SentAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: true),
+                    IsResend = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: false),
+                    ResendReason = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(1000)", "character varying(1000)"), maxLength: 1000, nullable: true),
+                    EmailBodySnapshot = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(max)", "text"), nullable: true),
+                    ReportSnapshotReference = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(1000)", "character varying(1000)"), maxLength: 1000, nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: true)
                 },
                 constraints: table =>
                 {
@@ -570,11 +570,11 @@ namespace CropQc.Data.Migrations
                 name: "QcFruitDefects",
                 columns: table => new
                 {
-                    Id = table.Column<long>(type: "bigint", nullable: false)
+                    Id = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    QcFruitReadingId = table.Column<long>(type: "bigint", nullable: false),
-                    DefectTypeId = table.Column<int>(type: "int", nullable: false),
-                    Notes = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true)
+                    QcFruitReadingId = table.Column<long>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bigint", "bigint"), nullable: false),
+                    DefectTypeId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    Notes = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(500)", "character varying(500)"), maxLength: 500, nullable: true)
                 },
                 constraints: table =>
                 {
@@ -593,9 +593,11 @@ namespace CropQc.Data.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
-            migrationBuilder.InsertData(
+            InsertData(
+                migrationBuilder,
                 table: "DefectTypes",
                 columns: new[] { "Id", "IsActive", "Name" },
+                postgresColumnTypes: new[] { "integer", "boolean", "character varying(100)" },
                 values: new object[,]
                 {
                     { 1, true, "Bruise" },
@@ -611,9 +613,11 @@ namespace CropQc.Data.Migrations
                     { 11, true, "Other" }
                 });
 
-            migrationBuilder.InsertData(
+            InsertData(
+                migrationBuilder,
                 table: "FruitProfiles",
                 columns: new[] { "Id", "Description", "FruitType", "IsActive", "IsOrganic", "Name", "ProductionType", "VarietyCode" },
+                postgresColumnTypes: new[] { "integer", "character varying(500)", "character varying(25)", "boolean", "boolean", "character varying(150)", "character varying(25)", "character varying(25)" },
                 values: new object[,]
                 {
                     { 1, "Fuji", "Apple", true, false, "Fuji", "Conventional", "FUJI" },
@@ -640,9 +644,11 @@ namespace CropQc.Data.Migrations
                     { 22, "Autumn Glory", "Apple", true, false, "Autumn Glory", "Conventional", "ATGL" }
                 });
 
-            migrationBuilder.InsertData(
+            InsertData(
+                migrationBuilder,
                 table: "FruitSizeConversionThresholds",
                 columns: new[] { "Id", "FruitType", "IsActive", "MinimumWeightGrams", "SizeCategory" },
+                postgresColumnTypes: new[] { "integer", "character varying(25)", "boolean", "numeric(8,4)", "integer" },
                 values: new object[,]
                 {
                     { 1, "Apple", true, 405.0000m, 48 },
@@ -677,9 +683,11 @@ namespace CropQc.Data.Migrations
                     { 30, "Pear", true, 81.0000m, 225 }
                 });
 
-            migrationBuilder.InsertData(
+            InsertData(
+                migrationBuilder,
                 table: "Grades",
                 columns: new[] { "Id", "Code", "IsActive", "Name" },
+                postgresColumnTypes: new[] { "integer", "character varying(25)", "boolean", "character varying(100)" },
                 values: new object[,]
                 {
                     { 1, "W1", true, "W1" },
@@ -692,14 +700,18 @@ namespace CropQc.Data.Migrations
                     { 8, "USF", true, "USF" }
                 });
 
-            migrationBuilder.InsertData(
+            InsertData(
+                migrationBuilder,
                 table: "PasswordPolicies",
                 columns: new[] { "Id", "CreatedAt", "MinimumLength", "PasswordExpirationDays", "RequireLowercase", "RequireNumber", "RequireSymbol", "RequireUppercase", "UpdatedAt" },
+                postgresColumnTypes: new[] { "integer", "timestamp with time zone", "integer", "integer", "boolean", "boolean", "boolean", "boolean", "timestamp with time zone" },
                 values: new object[] { 1, new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 8, 365, true, true, true, true, null });
 
-            migrationBuilder.InsertData(
+            InsertData(
+                migrationBuilder,
                 table: "Roles",
                 columns: new[] { "Id", "Description", "IsSystemRole", "Name" },
+                postgresColumnTypes: new[] { "integer", "character varying(500)", "boolean", "character varying(100)" },
                 values: new object[,]
                 {
                     { 1, "Full dashboard and configuration access.", true, "Admin" },
@@ -708,9 +720,11 @@ namespace CropQc.Data.Migrations
                     { 4, "Read-only dashboard access.", true, "Viewer" }
                 });
 
-            migrationBuilder.InsertData(
+            InsertData(
+                migrationBuilder,
                 table: "SampleTypes",
                 columns: new[] { "Id", "IsActive", "Name" },
+                postgresColumnTypes: new[] { "integer", "boolean", "character varying(100)" },
                 values: new object[,]
                 {
                     { 1, true, "Receiving Sample" },
@@ -718,14 +732,18 @@ namespace CropQc.Data.Migrations
                     { 3, true, "Line QC Sample" }
                 });
 
-            migrationBuilder.InsertData(
+            InsertData(
+                migrationBuilder,
                 table: "StarchScales",
                 columns: new[] { "Id", "FruitProfileId", "FruitType", "IsActive", "Name" },
+                postgresColumnTypes: new[] { "integer", "integer", "character varying(25)", "boolean", "character varying(100)" },
                 values: new object[] { 1, null, null, true, "6-point starch scale" });
 
-            migrationBuilder.InsertData(
+            InsertData(
+                migrationBuilder,
                 table: "Warehouses",
                 columns: new[] { "Id", "Code", "IsActive", "Name" },
+                postgresColumnTypes: new[] { "integer", "character varying(25)", "boolean", "character varying(100)" },
                 values: new object[,]
                 {
                     { 1, "EBS", true, "EBS" },
@@ -734,9 +752,11 @@ namespace CropQc.Data.Migrations
                     { 4, "WP", true, "WP" }
                 });
 
-            migrationBuilder.InsertData(
+            InsertData(
+                migrationBuilder,
                 table: "StarchScaleValues",
                 columns: new[] { "Id", "IsActive", "SortOrder", "StarchScaleId", "Value" },
+                postgresColumnTypes: new[] { "integer", "boolean", "integer", "integer", "numeric(4,1)" },
                 values: new object[,]
                 {
                     { 1, true, 10, 1, 1.0m },
@@ -802,7 +822,7 @@ namespace CropQc.Data.Migrations
                 table: "OfflineSyncItems",
                 columns: new[] { "QcStationId", "EntityName", "LocalEntityId" },
                 unique: true,
-                filter: "[QcStationId] IS NOT NULL");
+                filter: MigrationProviderTypes.Sql(migrationBuilder, "[QcStationId] IS NOT NULL", "\"QcStationId\" IS NOT NULL"));
 
             migrationBuilder.CreateIndex(
                 name: "IX_QcFruitDefects_DefectTypeId",
@@ -959,7 +979,7 @@ namespace CropQc.Data.Migrations
                 table: "StarchScales",
                 columns: new[] { "Name", "FruitType", "FruitProfileId" },
                 unique: true,
-                filter: "[FruitType] IS NOT NULL AND [FruitProfileId] IS NOT NULL");
+                filter: MigrationProviderTypes.Sql(migrationBuilder, "[FruitType] IS NOT NULL AND [FruitProfileId] IS NOT NULL", "\"FruitType\" IS NOT NULL AND \"FruitProfileId\" IS NOT NULL"));
 
             migrationBuilder.CreateIndex(
                 name: "IX_StarchScaleValues_StarchScaleId_Value",
@@ -1057,5 +1077,54 @@ namespace CropQc.Data.Migrations
             migrationBuilder.DropTable(
                 name: "Warehouses");
         }
+
+        private static void InsertData(
+            MigrationBuilder migrationBuilder,
+            string table,
+            string[] columns,
+            string[] postgresColumnTypes,
+            object[,] values)
+        {
+            if (IsPostgreSql(migrationBuilder))
+            {
+                migrationBuilder.InsertData(
+                    table: table,
+                    columns: columns,
+                    columnTypes: postgresColumnTypes,
+                    values: values);
+                return;
+            }
+
+            migrationBuilder.InsertData(
+                table: table,
+                columns: columns,
+                values: values);
+        }
+
+        private static void InsertData(
+            MigrationBuilder migrationBuilder,
+            string table,
+            string[] columns,
+            string[] postgresColumnTypes,
+            object[] values)
+        {
+            if (IsPostgreSql(migrationBuilder))
+            {
+                migrationBuilder.InsertData(
+                    table: table,
+                    columns: columns,
+                    columnTypes: postgresColumnTypes,
+                    values: values);
+                return;
+            }
+
+            migrationBuilder.InsertData(
+                table: table,
+                columns: columns,
+                values: values);
+        }
+
+        private static bool IsPostgreSql(MigrationBuilder migrationBuilder) =>
+            migrationBuilder.ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase);
     }
 }

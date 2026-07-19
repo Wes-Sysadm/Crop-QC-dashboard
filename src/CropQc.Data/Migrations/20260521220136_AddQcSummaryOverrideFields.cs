@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -13,20 +13,20 @@ namespace CropQc.Data.Migrations
             migrationBuilder.AddColumn<bool>(
                 name: "IsOverride",
                 table: "QcSummaryEmailLogs",
-                type: "bit",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"),
                 nullable: false,
                 defaultValue: false);
 
             migrationBuilder.AddColumn<string>(
                 name: "MissingItemsSnapshot",
                 table: "QcSummaryEmailLogs",
-                type: "nvarchar(max)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(max)", "text"),
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "OverrideReason",
                 table: "QcSummaryEmailLogs",
-                type: "nvarchar(1000)",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(1000)", "character varying(1000)"),
                 maxLength: 1000,
                 nullable: true);
         }
