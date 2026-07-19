@@ -53,6 +53,7 @@ public sealed class FieldSampleWorkflowTests
             OrchardName = "WP Orchard",
             BlockName = "North Block 12",
             FruitProfileId = 1,
+            ConfirmCreateNewBlock = true,
             SampleTakenAt = new DateTimeOffset(2026, 7, 17, 8, 0, 0, TimeSpan.Zero)
         }, Owner(), CancellationToken.None);
         Assert.Null(create.Error);
@@ -68,6 +69,27 @@ public sealed class FieldSampleWorkflowTests
         Assert.Equal("North Block 12", sample.CanonicalOrchardBlock!.CanonicalBlockName);
         Assert.Empty(await db.RoomInventoryAdjustments.ToListAsync());
         Assert.Empty(await db.BinsRunEntries.ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateAsync_DoesNotAutomaticallyApplyFuzzyBlockSuggestion()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        await CreateSampleAsync(service, "North Block 12", new DateTimeOffset(2026, 7, 10, 8, 0, 0, TimeSpan.Zero));
+
+        var result = await service.CreateAsync(new FieldSampleCreateForm
+        {
+            OrchardName = "WP Orchard",
+            BlockName = "Nort Block 12",
+            FruitProfileId = 1,
+            SampleTakenAt = new DateTimeOffset(2026, 7, 17, 8, 0, 0, TimeSpan.Zero)
+        }, Owner(), CancellationToken.None);
+
+        Assert.Null(result.SampleId);
+        Assert.Equal("Select an existing block or confirm that this is a new canonical block.", result.Error);
+        Assert.Empty(await db.OrchardBlockAliases.Where(x => x.AliasName == "Nort Block 12").ToListAsync());
     }
 
     [Fact]
@@ -127,6 +149,81 @@ public sealed class FieldSampleWorkflowTests
     }
 
     [Fact]
+    public async Task DetailSummary_UsesRowPressureAveragesAndValidEnteredValuesOnly()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "North Block 12", new DateTimeOffset(2026, 7, 17, 8, 0, 0, TimeSpan.Zero));
+
+        var error = await service.SaveRowsAsync(sampleId, new SaveFruitReadingsForm
+        {
+            SampleId = sampleId,
+            TargetSampleSize = 10,
+            Rows =
+            [
+                new FruitReadingEditRow { RowNumber = 1, Pressure1Lbs = 10m, Pressure2Lbs = 12m, WeightGrams = 266m, StarchScaleValueId = 1 },
+                new FruitReadingEditRow { RowNumber = 2, Pressure1Lbs = 14m, WeightGrams = 238m, StarchScaleValueId = 2 },
+                new FruitReadingEditRow { RowNumber = 3, WeightGrams = 100m }
+            ]
+        }, Owner(), CancellationToken.None);
+        Assert.Null(error);
+
+        var detail = await service.GetDetailAsync(sampleId, Owner(), CancellationToken.None);
+
+        Assert.Equal(3, detail.CurrentSummary.EnteredFruitCount);
+        Assert.Equal(201.33m, detail.CurrentSummary.AverageWeightGrams);
+        Assert.Equal(266m, detail.CurrentSummary.PeakWeightGrams);
+        Assert.Equal(100m, detail.CurrentSummary.MinimumWeightGrams);
+        Assert.Equal(2, detail.CurrentSummary.StarchRepresentedFruitCount);
+        Assert.Equal(3.5m, detail.CurrentSummary.AverageStarch);
+        Assert.Equal(2, detail.CurrentSummary.PressureReadingCount);
+        Assert.Equal(12.5m, detail.CurrentSummary.AveragePressureLbs);
+        Assert.Equal(14m, detail.CurrentSummary.PeakPressureLbs);
+        Assert.Equal(11m, detail.CurrentSummary.MinimumPressureLbs);
+        Assert.Equal(2.12m, detail.CurrentSummary.PressureStandardDeviationLbs);
+    }
+
+    [Fact]
+    public async Task DetailSizeDistribution_UsesEnteredRowsAsDenominatorAndBusinessOrder()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "North Block 12", new DateTimeOffset(2026, 7, 17, 8, 0, 0, TimeSpan.Zero));
+
+        var error = await service.SaveRowsAsync(sampleId, new SaveFruitReadingsForm
+        {
+            SampleId = sampleId,
+            TargetSampleSize = 10,
+            Rows =
+            [
+                new FruitReadingEditRow { RowNumber = 1, WeightGrams = 266m },
+                new FruitReadingEditRow { RowNumber = 2, WeightGrams = 238m },
+                new FruitReadingEditRow { RowNumber = 3, Pressure1Lbs = 12m }
+            ]
+        }, Owner(), CancellationToken.None);
+        Assert.Null(error);
+
+        var detail = await service.GetDetailAsync(sampleId, Owner(), CancellationToken.None);
+
+        Assert.Equal([72, 80], detail.SizeDistribution.Select(x => x.Size).ToArray());
+        Assert.Equal([33.33m, 33.33m], detail.SizeDistribution.Select(x => x.Percentage).ToArray());
+    }
+
+    [Fact]
+    public void DashboardInitialLoad_ExcludesReceiptlessFieldSamplesFromReceiptBackedProjection()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var start = service.IndexOf("private async Task<IReadOnlyList<SampleListItemViewModel>> BuildTodayDashboardSamplesAsync", StringComparison.Ordinal);
+        var end = service.IndexOf("private ReadinessViewModel BuildCompactReadiness", StringComparison.Ordinal);
+        var method = service[start..end];
+
+        Assert.Contains("&& x.ReceiptId != null", method);
+        Assert.Contains("x.ReceiptId!.Value", method);
+    }
+
+    [Fact]
     public async Task SearchByAlias_ReturnsSamplesUnderCanonicalBlock()
     {
         await using var db = CreateDbContext();
@@ -156,6 +253,7 @@ public sealed class FieldSampleWorkflowTests
             OrchardName = "WP Orchard",
             BlockName = blockName,
             FruitProfileId = 1,
+            ConfirmCreateNewBlock = true,
             SampleTakenAt = sampleDate
         }, Owner(), CancellationToken.None);
         Assert.Null(create.Error);

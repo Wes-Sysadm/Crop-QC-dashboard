@@ -2826,13 +2826,14 @@ public sealed class DashboardDataService(
     {
         var samples = await dbContext.QcSamples.AsNoTracking()
             .Where(x => !x.IsDeleted
+                && x.ReceiptId != null
                 && x.SampleTakenAt >= todayRange.Start
                 && x.SampleTakenAt < todayRange.End)
             .OrderByDescending(x => x.SampleTakenAt)
             .ThenByDescending(x => x.Id)
             .Select(x => new DashboardSampleSummaryRow(
                 x.Id,
-                x.ReceiptId,
+                x.ReceiptId!.Value,
                 x.Receipt.CropYear,
                 x.Receipt.CompuTechReceiptId,
                 x.SampleSequenceNumber,

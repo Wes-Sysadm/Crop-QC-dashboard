@@ -173,7 +173,12 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             return (null, "Field Sample type is not configured.");
         }
 
-        var block = await ResolveBlockAsync(form, user, cancellationToken);
+        var (block, blockError) = await ResolveBlockAsync(form, user, cancellationToken);
+        if (blockError is not null || block is null)
+        {
+            return (null, blockError ?? "Block could not be resolved.");
+        }
+
         var now = DateTimeOffset.UtcNow;
         var sample = new QcSample
         {
@@ -374,7 +379,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         return null;
     }
 
-    private async Task<CanonicalOrchardBlock> ResolveBlockAsync(FieldSampleCreateForm form, ClaimsPrincipal user, CancellationToken cancellationToken)
+    private async Task<(CanonicalOrchardBlock? Block, string? Error)> ResolveBlockAsync(FieldSampleCreateForm form, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
         if (form.CanonicalOrchardBlockId is not null)
         {
@@ -382,8 +387,10 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             if (selected is not null && string.Equals(selected.NormalizedOrchardKey, OrchardBlockMatcher.Normalize(form.OrchardName), StringComparison.Ordinal))
             {
                 await EnsureAliasAsync(selected, form.BlockName, user, "manual", cancellationToken);
-                return selected;
+                return (selected, null);
             }
+
+            return (null, "Selected block was not found for this orchard/grower.");
         }
 
         var orchardKey = OrchardBlockMatcher.Normalize(form.OrchardName);
@@ -394,16 +401,12 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
                 && (x.NormalizedBlockKey == blockKey || x.Aliases.Any(alias => alias.IsActive && alias.NormalizedAliasKey == blockKey)), cancellationToken);
         if (exact is not null)
         {
-            return exact;
+            return (exact, null);
         }
 
-        var suggestions = await GetBlockSuggestionsAsync(form.OrchardName, form.BlockName, cancellationToken);
-        var auto = suggestions.Where(x => x.Confidence >= OrchardBlockMatcher.AutomaticMatchThreshold).ToList();
-        if (auto.Count == 1)
+        if (!form.ConfirmCreateNewBlock)
         {
-            var block = await dbContext.CanonicalOrchardBlocks.SingleAsync(x => x.Id == auto[0].BlockId, cancellationToken);
-            await EnsureAliasAsync(block, form.BlockName, user, "automatic-high-confidence", cancellationToken);
-            return block;
+            return (null, "Select an existing block or confirm that this is a new canonical block.");
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -419,7 +422,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         dbContext.CanonicalOrchardBlocks.Add(created);
         await dbContext.SaveChangesAsync(cancellationToken);
         await AuditAsync("create", nameof(CanonicalOrchardBlock), created.Id.ToString(), user, null, new { created.OrchardName, created.CanonicalBlockName }, cancellationToken);
-        return created;
+        return (created, null);
     }
 
     private async Task EnsureAliasAsync(CanonicalOrchardBlock block, string aliasName, ClaimsPrincipal user, string resolution, CancellationToken cancellationToken)

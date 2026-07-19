@@ -55,6 +55,11 @@
             Notes
             <textarea name="Notes" maxlength="1000">@Model.Form.Notes</textarea>
         </label>
+        <label class="checkbox-line">
+            <input name="ConfirmCreateNewBlock" type="checkbox" value="true" checked="@Model.Form.ConfirmCreateNewBlock" />
+            Create a new canonical block if no exact block or alias matches
+        </label>
+        <p class="muted">Fuzzy block matches are suggestions only. Select a suggested block to map this sample to it, or confirm new-block creation explicitly.</p>
         <div class="button-row">
             <button type="submit">Create 10-fruit Field Sample</button>
             <a href="/FieldSamples">Cancel</a>

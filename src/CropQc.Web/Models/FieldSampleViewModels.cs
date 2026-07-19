@@ -45,6 +45,7 @@ public sealed class FieldSampleCreateForm
     public string? GrowerNumber { get; set; }
     public string BlockName { get; set; } = "";
     public int? CanonicalOrchardBlockId { get; set; }
+    public bool ConfirmCreateNewBlock { get; set; }
     public int FruitProfileId { get; set; }
     public DateTimeOffset SampleTakenAt { get; set; } = DateTimeOffset.UtcNow;
     public string? Notes { get; set; }
