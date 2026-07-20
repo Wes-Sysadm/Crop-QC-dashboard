@@ -21,11 +21,11 @@
     <div class="section-heading-row">
         <div>
             <h2>Preharvest samples</h2>
-            <p class="muted">Field Samples are tied to orchard/grower and canonical block. They do not add inventory or require truck photos.</p>
+            <p class="muted">Field Samples are tied to orchard/grower and canonical block. They do not add inventory or require receiving photos.</p>
         </div>
         @if (Model.CanCreate)
         {
-            <a class="button" href="/FieldSamples/Create">Create Field Sample</a>
+            <a class="button" href="/FieldSamples/Create">New Field Sample</a>
         }
     </div>
     <form method="get" class="filter-bar">
@@ -42,6 +42,15 @@
         </label>
         <label>Start <input type="date" name="StartDate" value="@Model.Search.StartDate?.ToString("yyyy-MM-dd")" /></label>
         <label>End <input type="date" name="EndDate" value="@Model.Search.EndDate?.ToString("yyyy-MM-dd")" /></label>
+        <label>
+            Completion
+            <select name="CompletionStatus">
+                <option value="">All</option>
+                <option value="Empty" selected="@(Model.Search.CompletionStatus == "Empty" ? "selected" : null)">Empty</option>
+                <option value="Partial" selected="@(Model.Search.CompletionStatus == "Partial" ? "selected" : null)">Partial</option>
+                <option value="Complete" selected="@(Model.Search.CompletionStatus == "Complete" ? "selected" : null)">Complete</option>
+            </select>
+        </label>
         <button type="submit">Filter</button>
     </form>
 </section>
@@ -58,11 +67,19 @@
                     <th>Variety</th>
                     <th>Entered fruit</th>
                     <th>Avg weight</th>
+                    <th>Avg starch</th>
                     <th>Avg pressure</th>
-                    <th></th>
+                    <th>Status</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
+                @if (Model.Samples.Count == 0)
+                {
+                    <tr>
+                        <td colspan="9" class="muted">No Field Samples match these filters.</td>
+                    </tr>
+                }
                 @foreach (var sample in Model.Samples)
                 {
                     <tr>
@@ -78,8 +95,16 @@
                         <td>@sample.Variety</td>
                         <td>@sample.EnteredFruitCount / 10</td>
                         <td>@(sample.AverageWeightGrams?.ToString("0.##") ?? "Missing") g</td>
+                        <td>@(sample.AverageStarch?.ToString("0.##") ?? "Missing")</td>
                         <td>@(sample.AveragePressureLbs?.ToString("0.##") ?? "Missing") lb</td>
-                        <td><a class="button secondary-button" href="/FieldSamples/@sample.Id">Open</a></td>
+                        <td>@sample.CompletionStatus</td>
+                        <td>
+                            <a class="button secondary-button" href="/FieldSamples/@sample.Id">View</a>
+                            @if (sample.CanEdit)
+                            {
+                                <a class="button secondary-button" href="/FieldSamples/@sample.Id/Edit">Edit</a>
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>

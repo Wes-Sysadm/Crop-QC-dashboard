@@ -27,7 +27,7 @@
                 <input name="BlockName" value="@Model.Form.BlockName" maxlength="150" required />
             </label>
             <label>
-                Use existing block
+                Existing block
                 <select name="CanonicalOrchardBlockId">
                     <option value="">Resolve automatically or create a new block</option>
                     @foreach (var block in Model.Blocks)
@@ -57,9 +57,9 @@
         </label>
         <label class="checkbox-line">
             <input name="ConfirmCreateNewBlock" type="checkbox" value="true" checked="@Model.Form.ConfirmCreateNewBlock" />
-            Create a new canonical block if no exact block or alias matches
+            Create new block if no exact block or alias matches
         </label>
-        <p class="muted">Fuzzy block matches are suggestions only. Select a suggested block to map this sample to it, or confirm new-block creation explicitly.</p>
+        <p class="muted">Suggested block matches require selection. Choosing a suggestion maps this sample to that block and saves this spelling as an alias.</p>
         <div class="button-row">
             <button type="submit">Create 10-fruit Field Sample</button>
             <a href="/FieldSamples">Cancel</a>
@@ -69,7 +69,7 @@
 
 <section class="panel">
     <h2>Block matching</h2>
-    <p class="muted">Exact aliases are used automatically. Similar block names in the same orchard are suggestions only unless there is one high-confidence match.</p>
+    <p class="muted">Exact block names and known aliases are used automatically. Similar block names are suggestions only and require you to choose the block.</p>
     <div id="block-suggestions" class="compact-list" aria-live="polite">Enter orchard and block to review suggestions.</div>
 </section>
 
@@ -97,7 +97,7 @@
             button.type = "button";
             button.className = "chip chip-action";
             button.dataset.blockId = item.blockId;
-            button.textContent = `${item.canonicalBlockName} - ${(item.confidence * 100).toFixed(1)}% - ${item.reason}`;
+            button.textContent = `Suggested block: ${item.canonicalBlockName} - Use this block`;
             return button;
         }));
         target.querySelectorAll("[data-block-id]").forEach(button => {

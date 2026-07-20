@@ -24,6 +24,15 @@ public sealed class FieldSampleWorkflowTests
         Assert.Contains("canAccessFieldSamples", layout);
         Assert.Contains("<a href=\"/FieldSamples\">Field Samples</a>", layout);
         Assert.Contains("Contains(\"field\"", photoPolicy);
+
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "FieldSamplesController.cs"));
+        Assert.Contains("[HttpGet(\"\")]", controller);
+        Assert.Contains("[HttpGet(\"Create\")]", controller);
+        Assert.Contains("[HttpPost(\"Create\")]", controller);
+        Assert.Contains("[HttpGet(\"{id:long}\")]", controller);
+        Assert.Contains("[HttpGet(\"{id:long}/Edit\")]", controller);
+        Assert.Contains("[HttpPost(\"{id:long}/rows\")]", controller);
+        Assert.Contains("[HttpGet(\"Suggestions\")]", controller);
     }
 
     [Theory]
@@ -67,6 +76,15 @@ public sealed class FieldSampleWorkflowTests
         Assert.Equal("Not Applicable", sample.EmailStatus);
         Assert.Equal("North Block 12", sample.FieldSampleOriginalBlockName);
         Assert.Equal("North Block 12", sample.CanonicalOrchardBlock!.CanonicalBlockName);
+        Assert.Equal(10, await db.QcFruitReadings.CountAsync(x => x.QcSampleId == sampleId));
+        Assert.All(await db.QcFruitReadings.Where(x => x.QcSampleId == sampleId).ToListAsync(), row =>
+        {
+            Assert.Null(row.WeightGrams);
+            Assert.Null(row.Pressure1Lbs);
+            Assert.Null(row.Pressure2Lbs);
+            Assert.Null(row.StarchScaleValueId);
+            Assert.False(row.IsCompleted);
+        });
         Assert.Empty(await db.RoomInventoryAdjustments.ToListAsync());
         Assert.Empty(await db.BinsRunEntries.ToListAsync());
     }
@@ -114,12 +132,19 @@ public sealed class FieldSampleWorkflowTests
 
         Assert.Null(error);
         var rows = await db.QcFruitReadings.Where(x => x.QcSampleId == sampleId).OrderBy(x => x.RowNumber).ToListAsync();
-        Assert.Equal(3, rows.Count);
+        Assert.Equal(10, rows.Count);
         Assert.Equal(15.2m, rows[0].Pressure1Lbs);
         Assert.Null(rows[0].WeightGrams);
         Assert.Null(rows[0].GradeId);
         Assert.Equal(1, rows[1].StarchScaleValueId);
         Assert.Equal(72, rows[2].SizeCategory);
+        Assert.All(rows.Skip(3), row =>
+        {
+            Assert.Null(row.WeightGrams);
+            Assert.Null(row.Pressure1Lbs);
+            Assert.Null(row.Pressure2Lbs);
+            Assert.Null(row.StarchScaleValueId);
+        });
     }
 
     [Fact]
@@ -208,7 +233,34 @@ public sealed class FieldSampleWorkflowTests
         var detail = await service.GetDetailAsync(sampleId, Owner(), CancellationToken.None);
 
         Assert.Equal([72, 80], detail.SizeDistribution.Select(x => x.Size).ToArray());
-        Assert.Equal([33.33m, 33.33m], detail.SizeDistribution.Select(x => x.Percentage).ToArray());
+        Assert.Equal([50m, 50m], detail.SizeDistribution.Select(x => x.Percentage).ToArray());
+    }
+
+    [Fact]
+    public async Task UpdateMetadataAsync_ReassignsBlockWithoutReceiptFields()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "North Block 12", new DateTimeOffset(2026, 7, 17, 8, 0, 0, TimeSpan.Zero));
+
+        var error = await service.UpdateMetadataAsync(sampleId, new FieldSampleMetadataForm
+        {
+            SampleId = sampleId,
+            OrchardName = "WP Orchard",
+            BlockName = "River Bottom",
+            FruitProfileId = 1,
+            ConfirmCreateNewBlock = true,
+            SampleTakenAt = new DateTimeOffset(2026, 7, 18, 9, 0, 0, TimeSpan.Zero),
+            Notes = "Checked after cool morning"
+        }, Owner(), CancellationToken.None);
+
+        Assert.Null(error);
+        var sample = await db.QcSamples.Include(x => x.CanonicalOrchardBlock).SingleAsync(x => x.Id == sampleId);
+        Assert.Null(sample.ReceiptId);
+        Assert.Equal("River Bottom", sample.FieldSampleOriginalBlockName);
+        Assert.Equal("River Bottom", sample.CanonicalOrchardBlock!.CanonicalBlockName);
+        Assert.Equal("Checked after cool morning", sample.Notes);
     }
 
     [Fact]
@@ -244,6 +296,28 @@ public sealed class FieldSampleWorkflowTests
         var page = await service.GetIndexAsync(new FieldSampleSearchForm { Search = "NB12" }, Owner(), CancellationToken.None);
 
         Assert.Contains(page.Samples, x => x.Id == sampleId);
+    }
+
+    [Fact]
+    public void FieldSampleViews_AreDedicatedAndDoNotExposeReceiptWorkflowFields()
+    {
+        var index = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "FieldSamples", "Index.cshtml"));
+        var create = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "FieldSamples", "Create.cshtml"));
+        var detail = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "FieldSamples", "Details.cshtml"));
+
+        Assert.Contains("New Field Sample", index);
+        Assert.Contains("Avg starch", index);
+        Assert.Contains("Completion", index);
+        Assert.Contains("Create 10-fruit Field Sample", create);
+        Assert.Contains("Suggested block:", create);
+        Assert.DoesNotContain("confidence", create, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Weight Trend", detail);
+        Assert.Contains("Starch Trend", detail);
+        Assert.Contains("Pressure Trend", detail);
+        Assert.Contains("Size Trend", detail);
+        Assert.Contains("Save Field Sample", detail);
+        Assert.DoesNotContain("ReceiptId", index + create + detail);
+        Assert.DoesNotContain("Truck", index + create + detail, StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<long> CreateSampleAsync(IFieldSampleService service, string blockName, DateTimeOffset sampleDate)

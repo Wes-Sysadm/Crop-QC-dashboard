@@ -14,6 +14,7 @@ public interface IFieldSampleService
     Task<IReadOnlyList<FieldSampleBlockSuggestion>> GetBlockSuggestionsAsync(string orchardName, string blockName, CancellationToken cancellationToken);
     Task<(long? SampleId, string? Error)> CreateAsync(FieldSampleCreateForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<FieldSampleDetailViewModel> GetDetailAsync(long sampleId, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<string?> UpdateMetadataAsync(long sampleId, FieldSampleMetadataForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> SaveRowsAsync(long sampleId, SaveFruitReadingsForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
 }
 
@@ -64,7 +65,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
 
         var samples = await query
             .OrderByDescending(x => x.SampleTakenAt)
-            .ThenByDescending(x => x.Id)
+            .ThenBy(x => x.CanonicalOrchardBlock == null ? x.FieldSampleOriginalBlockName : x.CanonicalOrchardBlock.CanonicalBlockName)
             .Take(200)
             .Select(x => new
             {
@@ -81,6 +82,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
                     row.Pressure2Lbs,
                     row.WeightGrams,
                     row.GradeId,
+                    Starch = row.StarchScaleValue == null ? (decimal?)null : row.StarchScaleValue.Value,
                     row.StarchScaleValueId,
                     row.SizeCategory,
                     DefectCount = row.Defects.Count
@@ -88,34 +90,47 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             })
             .ToListAsync(cancellationToken);
 
+        var canEdit = await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken);
+        var list = samples.Select(sample =>
+        {
+            var pressures = sample.Rows.Select(x => AverageFlexible(x.Pressure1Lbs, x.Pressure2Lbs)).Where(x => x is not null).Select(x => x!.Value).ToList();
+            var weights = sample.Rows.Where(x => x.WeightGrams is not null).Select(x => x.WeightGrams!.Value).ToList();
+            var starch = sample.Rows.Where(x => x.Starch is not null).Select(x => x.Starch!.Value).ToList();
+            var entered = sample.Rows.Count(x =>
+                x.Pressure1Lbs is not null
+                || x.Pressure2Lbs is not null
+                || x.WeightGrams is not null
+                || x.StarchScaleValueId is not null
+                || x.SizeCategory is not null
+                || x.DefectCount > 0);
+            return new FieldSampleListItemViewModel
+            {
+                Id = sample.Id,
+                OrchardName = sample.FieldSampleGrowerName ?? "",
+                BlockName = sample.BlockName ?? "",
+                OriginalBlockName = sample.FieldSampleOriginalBlockName ?? "",
+                Variety = sample.Variety,
+                SampleTakenAt = sample.SampleTakenAt,
+                EnteredFruitCount = entered,
+                AverageWeightGrams = weights.Count == 0 ? null : decimal.Round(weights.Average(), 2),
+                AverageStarch = starch.Count == 0 ? null : decimal.Round(starch.Average(), 2),
+                AveragePressureLbs = pressures.Count == 0 ? null : decimal.Round(pressures.Average(), 2),
+                CompletionStatus = entered == 0 ? "Empty" : entered >= FieldSampleSize ? "Complete" : "Partial",
+                CanEdit = canEdit
+            };
+        }).ToList();
+
+        if (!string.IsNullOrWhiteSpace(search.CompletionStatus))
+        {
+            list = list.Where(x => string.Equals(x.CompletionStatus, search.CompletionStatus, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
         return new FieldSampleIndexViewModel
         {
             Search = search,
-            CanCreate = await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken),
+            CanCreate = canEdit,
             FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync(cancellationToken),
-            Samples = samples.Select(sample =>
-            {
-                var pressures = sample.Rows.Select(x => AverageFlexible(x.Pressure1Lbs, x.Pressure2Lbs)).Where(x => x is not null).Select(x => x!.Value).ToList();
-                var weights = sample.Rows.Where(x => x.WeightGrams is not null).Select(x => x.WeightGrams!.Value).ToList();
-                return new FieldSampleListItemViewModel
-                {
-                    Id = sample.Id,
-                    OrchardName = sample.FieldSampleGrowerName ?? "",
-                    BlockName = sample.BlockName ?? "",
-                    OriginalBlockName = sample.FieldSampleOriginalBlockName ?? "",
-                    Variety = sample.Variety,
-                    SampleTakenAt = sample.SampleTakenAt,
-                    EnteredFruitCount = sample.Rows.Count(x =>
-                        x.Pressure1Lbs is not null
-                        || x.Pressure2Lbs is not null
-                        || x.WeightGrams is not null
-                        || x.StarchScaleValueId is not null
-                        || x.SizeCategory is not null
-                        || x.DefectCount > 0),
-                    AverageWeightGrams = weights.Count == 0 ? null : decimal.Round(weights.Average(), 2),
-                    AveragePressureLbs = pressures.Count == 0 ? null : decimal.Round(pressures.Average(), 2)
-                };
-            }).ToList()
+            Samples = list
         };
     }
 
@@ -202,6 +217,16 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         };
         dbContext.QcSamples.Add(sample);
         await dbContext.SaveChangesAsync(cancellationToken);
+        for (var rowNumber = 1; rowNumber <= FieldSampleSize; rowNumber++)
+        {
+            dbContext.QcFruitReadings.Add(new QcFruitReading
+            {
+                QcSampleId = sample.Id,
+                RowNumber = rowNumber,
+                SizeStatus = "NotCalculated",
+                CreatedAt = now
+            });
+        }
 
         await AuditAsync("create", nameof(QcSample), sample.Id.ToString(), user, null, new
         {
@@ -241,6 +266,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         var currentTrend = trend.SingleOrDefault(x => x.SampleId == sample.Id);
         var prior = trend.Where(x => x.SampleTakenAt < sample.SampleTakenAt && x.Summary.AveragePressureLbs is not null)
             .OrderByDescending(x => x.SampleTakenAt)
+            .ThenByDescending(x => x.SampleId)
             .FirstOrDefault();
         var currentSummary = currentTrend?.Summary ?? BuildSummary(rows);
         if (prior?.Summary.AveragePressureLbs is not null && currentSummary.AveragePressureLbs is not null)
@@ -263,6 +289,19 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             SampleTakenAt = sample.SampleTakenAt,
             Notes = sample.Notes,
             CanEdit = await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken),
+            MetadataForm = new FieldSampleMetadataForm
+            {
+                SampleId = sample.Id,
+                OrchardName = sample.FieldSampleGrowerName ?? sample.CanonicalOrchardBlock?.OrchardName ?? "",
+                GrowerNumber = sample.FieldSampleGrowerNumber,
+                BlockName = sample.FieldSampleOriginalBlockName ?? sample.CanonicalOrchardBlock?.CanonicalBlockName ?? "",
+                CanonicalOrchardBlockId = sample.CanonicalOrchardBlockId,
+                FruitProfileId = sample.FieldSampleFruitProfileId ?? 0,
+                SampleTakenAt = sample.SampleTakenAt,
+                Notes = sample.Notes
+            },
+            FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync(cancellationToken),
+            Blocks = await dbContext.CanonicalOrchardBlocks.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.OrchardName).ThenBy(x => x.CanonicalBlockName).ToListAsync(cancellationToken),
             CurrentSummary = currentSummary,
             SizeDistribution = currentTrend?.SizeDistribution ?? BuildSizeDistribution(rows),
             Trend = trend,
@@ -282,6 +321,72 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
                 }).ToList()
             }
         };
+    }
+
+    public async Task<string?> UpdateMetadataAsync(long sampleId, FieldSampleMetadataForm form, ClaimsPrincipal user, CancellationToken cancellationToken)
+    {
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken))
+        {
+            return "Field Samples Edit access is required.";
+        }
+
+        if (string.IsNullOrWhiteSpace(form.OrchardName) || string.IsNullOrWhiteSpace(form.BlockName))
+        {
+            return "Orchard/grower and block are required.";
+        }
+
+        if (!await dbContext.FruitProfiles.AsNoTracking().AnyAsync(x => x.Id == form.FruitProfileId && x.IsActive, cancellationToken))
+        {
+            return "Selected variety was not found.";
+        }
+
+        var sample = await dbContext.QcSamples
+            .Include(x => x.SampleType)
+            .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted, cancellationToken);
+        if (sample is null || sample.SampleType.Name != FieldSampleTypeName)
+        {
+            return "Field Sample not found.";
+        }
+
+        var before = new
+        {
+            sample.FieldSampleGrowerName,
+            sample.FieldSampleGrowerNumber,
+            sample.FieldSampleOriginalBlockName,
+            sample.CanonicalOrchardBlockId,
+            sample.FieldSampleFruitProfileId,
+            sample.SampleTakenAt,
+            sample.Notes
+        };
+
+        var (block, blockError) = await ResolveBlockAsync(form, user, cancellationToken);
+        if (blockError is not null || block is null)
+        {
+            return blockError ?? "Block could not be resolved.";
+        }
+
+        sample.FieldSampleGrowerName = form.OrchardName.Trim();
+        sample.FieldSampleGrowerNumber = string.IsNullOrWhiteSpace(form.GrowerNumber) ? null : form.GrowerNumber.Trim();
+        sample.FieldSampleOriginalBlockName = form.BlockName.Trim();
+        sample.CanonicalOrchardBlockId = block.Id;
+        sample.FieldSampleFruitProfileId = form.FruitProfileId;
+        sample.SampleTakenAt = form.SampleTakenAt;
+        sample.Notes = string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim();
+        sample.FieldSampleBlockResolution = block.CanonicalBlockName.Equals(form.BlockName.Trim(), StringComparison.OrdinalIgnoreCase) ? "ExactOrCreated" : "Resolved";
+        sample.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await AuditAsync("edit-metadata", nameof(QcSample), sample.Id.ToString(), user, before, new
+        {
+            sample.FieldSampleGrowerName,
+            sample.FieldSampleGrowerNumber,
+            sample.FieldSampleOriginalBlockName,
+            sample.CanonicalOrchardBlockId,
+            sample.FieldSampleFruitProfileId,
+            sample.SampleTakenAt,
+            sample.Notes
+        }, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
     }
 
     public async Task<string?> SaveRowsAsync(long sampleId, SaveFruitReadingsForm form, ClaimsPrincipal user, CancellationToken cancellationToken)
@@ -461,6 +566,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
                 && x.SampleTakenAt >= start
                 && x.SampleTakenAt <= end)
             .OrderBy(x => x.SampleTakenAt)
+            .ThenBy(x => x.Id)
             .Select(x => new TrendSampleRow(
                 x.Id,
                 x.SampleTakenAt,
@@ -538,14 +644,14 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
 
     private static IReadOnlyList<FieldSampleSizePoint> BuildSizeDistribution(IReadOnlyList<FruitReadingRowViewModel> rows)
     {
-        var entered = rows.Where(HasEnteredData).ToList();
-        if (entered.Count == 0)
+        var represented = rows.Where(x => x.SizeCategory is not null).ToList();
+        if (represented.Count == 0)
         {
             return [];
         }
 
         return ProjectionDistributionMath.SizeDisplayOrder
-            .Select(size => new FieldSampleSizePoint(size, decimal.Round(entered.Count(x => x.SizeCategory == size) / (decimal)entered.Count * 100m, 2)))
+            .Select(size => new FieldSampleSizePoint(size, decimal.Round(represented.Count(x => x.SizeCategory == size) / (decimal)represented.Count * 100m, 2)))
             .Where(x => x.Percentage > 0)
             .ToList();
     }

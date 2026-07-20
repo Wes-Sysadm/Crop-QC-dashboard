@@ -43,6 +43,25 @@ public sealed class FieldSamplesController(IFieldSampleService fieldSampleServic
     public async Task<IActionResult> Details(long id, CancellationToken cancellationToken) =>
         View(await fieldSampleService.GetDetailAsync(id, User, cancellationToken));
 
+    [HttpGet("{id:long}/Edit")]
+    [Authorize(Policy = AccessPolicyNames.FieldSamplesEdit)]
+    public async Task<IActionResult> Edit(long id, CancellationToken cancellationToken)
+    {
+        var model = await fieldSampleService.GetDetailAsync(id, User, cancellationToken);
+        model.IsEditingMetadata = true;
+        return View("Details", model);
+    }
+
+    [HttpPost("{id:long}/metadata")]
+    [Authorize(Policy = AccessPolicyNames.FieldSamplesEdit)]
+    public async Task<IActionResult> SaveMetadata(long id, FieldSampleMetadataForm form, CancellationToken cancellationToken)
+    {
+        form.SampleId = id;
+        var error = await fieldSampleService.UpdateMetadataAsync(id, form, User, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Field Sample details saved.";
+        return RedirectToAction(error is null ? nameof(Details) : nameof(Edit), new { id });
+    }
+
     [HttpPost("{id:long}/rows")]
     [Authorize(Policy = AccessPolicyNames.FieldSamplesEdit)]
     public async Task<IActionResult> SaveRows(long id, SaveFruitReadingsForm form, CancellationToken cancellationToken)

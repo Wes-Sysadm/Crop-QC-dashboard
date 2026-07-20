@@ -17,6 +17,7 @@ public sealed class FieldSampleSearchForm
     public int? FruitProfileId { get; set; }
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
+    public string? CompletionStatus { get; set; }
 }
 
 public sealed class FieldSampleListItemViewModel
@@ -29,7 +30,10 @@ public sealed class FieldSampleListItemViewModel
     public DateTimeOffset SampleTakenAt { get; set; }
     public int EnteredFruitCount { get; set; }
     public decimal? AverageWeightGrams { get; set; }
+    public decimal? AverageStarch { get; set; }
     public decimal? AveragePressureLbs { get; set; }
+    public string CompletionStatus { get; set; } = "";
+    public bool CanEdit { get; set; }
 }
 
 public sealed class FieldSampleCreatePageViewModel
@@ -39,7 +43,7 @@ public sealed class FieldSampleCreatePageViewModel
     public IReadOnlyList<CanonicalOrchardBlock> Blocks { get; set; } = [];
 }
 
-public sealed class FieldSampleCreateForm
+public class FieldSampleCreateForm
 {
     public string OrchardName { get; set; } = "";
     public string? GrowerNumber { get; set; }
@@ -49,6 +53,11 @@ public sealed class FieldSampleCreateForm
     public int FruitProfileId { get; set; }
     public DateTimeOffset SampleTakenAt { get; set; } = DateTimeOffset.UtcNow;
     public string? Notes { get; set; }
+}
+
+public sealed class FieldSampleMetadataForm : FieldSampleCreateForm
+{
+    public long SampleId { get; set; }
 }
 
 public sealed class FieldSampleDetailViewModel
@@ -63,6 +72,10 @@ public sealed class FieldSampleDetailViewModel
     public DateTimeOffset SampleTakenAt { get; set; }
     public string? Notes { get; set; }
     public bool CanEdit { get; set; }
+    public bool IsEditingMetadata { get; set; }
+    public FieldSampleMetadataForm MetadataForm { get; set; } = new();
+    public IReadOnlyList<FruitProfile> FruitProfiles { get; set; } = [];
+    public IReadOnlyList<CanonicalOrchardBlock> Blocks { get; set; } = [];
     public FieldSampleMetricSummary CurrentSummary { get; set; } = new();
     public IReadOnlyList<FieldSampleSizePoint> SizeDistribution { get; set; } = [];
     public IReadOnlyList<FieldSampleTrendPoint> Trend { get; set; } = [];
