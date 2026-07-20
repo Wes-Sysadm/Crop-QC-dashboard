@@ -29,13 +29,13 @@ Staging / Test Site:
 
 - Branch: `staging`, a PR branch, or `main` with manual deploys.
 - Uses a separate staging Postgres database.
-- Uses separate staging Google Drive photo and backup folders.
+- Uses isolated staging storage. The repository blueprint defaults to local storage on the staging persistent disk.
 - Uses staging OAuth redirect URI/settings.
-- Uses test-only email recipients.
+- Disables operational email with `Email__Provider=None`.
 - Uses fake/demo QC Station configs only.
 - Can be reset/purged.
 - Set `AppEnvironment__Kind=Staging` and `AppEnvironment__DisplayName=Crop QC Staging`.
-- The app shows `TEST SITE — DO NOT ENTER REAL QC DATA`.
+- The app shows `STAGING - Non-production data`.
 
 Staging and production must never share the same Postgres database, Google Drive photo folder, Google Drive backup folder, OAuth redirect URI, email recipient list, or QC Station API keys/configs.
 
@@ -63,6 +63,8 @@ Create a new Render Blueprint from the repository. The included `render.yaml` de
 - `FileStorage__Provider=GoogleDrive` with the provided Google Shared Drive root folder ID.
 
 The Render Blueprint syntax uses `fromDatabase` with `property: connectionString` for database connection string injection, matching Render's Blueprint environment variable reference pattern.
+
+The blueprint also defines the staging service `crop-qc-dashboard-staging` and the isolated staging database `crop-qc-dashboard-staging-db`. Staging uses the same Docker image, a separate data-protection application name, local staging file storage, disabled email, and the existing Google OAuth configuration supplied through staging secrets.
 
 ## Manual Web Service Setup
 

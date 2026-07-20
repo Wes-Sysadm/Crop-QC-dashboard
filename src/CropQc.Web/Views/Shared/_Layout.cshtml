@@ -12,10 +12,10 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
-    @if (AppEnvironment.IsStagingLike)
+    @if (AppEnvironment.IsStaging)
     {
-        <div class="environment-banner">
-            TEST SITE — DO NOT ENTER REAL QC DATA
+        <div class="environment-banner" role="status" aria-label="Staging environment">
+            STAGING - Non-production data
             <span>@AppEnvironment.DisplayName</span>
         </div>
     }

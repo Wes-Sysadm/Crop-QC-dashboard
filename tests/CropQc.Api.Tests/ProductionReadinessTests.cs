@@ -54,9 +54,11 @@ public sealed class ProductionReadinessTests
             .Build(), new FakeHostEnvironment("Production"));
 
         Assert.True(staging.IsStagingLike);
+        Assert.True(staging.IsStaging);
         Assert.False(staging.IsProduction);
         Assert.True(production.IsProduction);
         Assert.False(production.IsStagingLike);
+        Assert.False(production.IsStaging);
     }
 
     [Fact]
@@ -77,7 +79,7 @@ public sealed class ProductionReadinessTests
 
         Assert.Contains("AccessPolicyNames.BackupsAdmin", controller);
         Assert.Contains("/Admin/Backups", layout);
-        Assert.Contains("TEST SITE — DO NOT ENTER REAL QC DATA", layout);
+        Assert.Contains("STAGING - Non-production data", layout);
     }
 
     [Fact]
@@ -124,7 +126,7 @@ public sealed class ProductionReadinessTests
         Assert.Contains("Backups__GoogleDriveFolderId", renderDocs);
         Assert.Contains("restore", restoreDocs, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Production backup completed before deploy", releaseChecklist);
-        Assert.Contains("TEST SITE", stagingChecklist);
+        Assert.Contains("STAGING - Non-production data", stagingChecklist);
     }
 
     [Fact]
