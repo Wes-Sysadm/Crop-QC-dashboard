@@ -25,7 +25,7 @@ Production / Live Site:
 - Real data must be retained through future revisions unless explicitly deleted by an approved Admin cleanup process.
 - Set `AppEnvironment__Kind=Production` and `AppEnvironment__DisplayName=Production`.
 
-Staging / Test Site:
+- The app shows `STAGING - Non-production data`.
 
 - Branch: `staging`, a PR branch, or `main` with manual deploys.
 - Uses a separate staging Postgres database.
@@ -35,7 +35,9 @@ Staging / Test Site:
 - Uses fake/demo QC Station configs only.
 - Can be reset/purged.
 - Set `AppEnvironment__Kind=Staging` and `AppEnvironment__DisplayName=Crop QC Staging`.
-- The app shows `TEST SITE — DO NOT ENTER REAL QC DATA`.
+- Require `Staging__AllowedTestUserEmails` so Google-authenticated users must also be explicitly approved for staging.
+- Staging diagnostics are available at `/Admin/Diagnostics/Requests` only to Configuration Admin users.
+- The app shows `STAGING - Non-production data`.
 
 Staging and production must never share the same Postgres database, Google Drive photo folder, Google Drive backup folder, OAuth redirect URI, email recipient list, or QC Station API keys/configs.
 
@@ -63,6 +65,8 @@ Create a new Render Blueprint from the repository. The included `render.yaml` de
 - `FileStorage__Provider=GoogleDrive` with the provided Google Shared Drive root folder ID.
 
 The Render Blueprint syntax uses `fromDatabase` with `property: connectionString` for database connection string injection, matching Render's Blueprint environment variable reference pattern.
+
+The blueprint also defines the staging service `crop-qc-dashboard-staging` and the isolated staging database `crop-qc-dashboard-staging-db`. Staging uses the same Docker image, a separate data-protection application name, local staging file storage, disabled email, explicit test-user allowlisting, and request diagnostics for validation.
 
 ## Manual Web Service Setup
 
