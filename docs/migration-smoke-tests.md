@@ -24,6 +24,25 @@ powershell -ExecutionPolicy Bypass -File scripts\test-migration-smoke.ps1 `
   -ConnectionString 'Host=127.0.0.1;Port=55432;Database=cropqc_pg_fresh_main;Username=postgres;Password='
 ```
 
+When validating PRs that include Field Sample support, add `-ValidateFieldSamples`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\test-migration-smoke.ps1 `
+  -Provider PostgreSql `
+  -ConnectionString 'Host=127.0.0.1;Port=55432;Database=cropqc_pg_fresh_main;Username=postgres;Password=' `
+  -ValidateFieldSamples
+```
+
+The Field Sample validation checks:
+
+- `QcSamples.ReceiptId` is nullable.
+- `SampleTypes` contains id 5, `Field Sample`.
+- `CanonicalOrchardBlocks` and `OrchardBlockAliases` exist.
+- The receipt/sample sequence unique index is filtered to receipt-backed samples.
+- Receipt-backed duplicate sample sequence inserts are rejected.
+- Multiple receiptless Field Samples can be inserted.
+- Same block names at different orchards remain separate.
+
 Verify required seed data:
 
 ```sql

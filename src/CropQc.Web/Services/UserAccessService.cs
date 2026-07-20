@@ -22,6 +22,7 @@ public static class ApplicationAreas
 {
     public const string Dashboard = "dashboard";
     public const string DailyQc = "daily-qc";
+    public const string FieldSamples = "field-samples";
     public const string Receipts = "receipts";
     public const string ReceiptEdit = "receipt-edit";
     public const string ReceiptDelete = "receipt-delete";
@@ -45,6 +46,7 @@ public static class ApplicationAreas
     [
         new(Dashboard, "Dashboard", "Operations", "/"),
         new(DailyQc, "Daily QC", "QC", "/DailyQc"),
+        new(FieldSamples, "Field Samples", "QC", "/FieldSamples"),
         new(Receipts, "Receipts", "Operations", "/Receipts"),
         new(ReceiptEdit, "Receipt Edit", "Operations", "/Receipts"),
         new(ReceiptDelete, "Receipt Delete", "Operations", "/Receipts"),
@@ -71,6 +73,9 @@ public static class AccessPolicyNames
     public const string DailyQcView = "DailyQcView";
     public const string DailyQcEdit = "DailyQcEdit";
     public const string DailyQcAdmin = "DailyQcAdmin";
+    public const string FieldSamplesView = "FieldSamplesView";
+    public const string FieldSamplesEdit = "FieldSamplesEdit";
+    public const string FieldSamplesAdmin = "FieldSamplesAdmin";
     public const string ReceiptsView = "ReceiptsView";
     public const string ReceiptsEdit = "ReceiptsEdit";
     public const string ReceiptEditEdit = "ReceiptEditEdit";
@@ -247,12 +252,12 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
 
         if (string.Equals(role, "QC User", StringComparison.OrdinalIgnoreCase))
         {
-            return areaKey is ApplicationAreas.Dashboard or ApplicationAreas.Receipts or ApplicationAreas.DailyQc or ApplicationAreas.ReceiptEdit
+            return areaKey is ApplicationAreas.Dashboard or ApplicationAreas.Receipts or ApplicationAreas.DailyQc or ApplicationAreas.FieldSamples or ApplicationAreas.ReceiptEdit
                 ? PageAccessLevel.Edit
                 : areaKey is ApplicationAreas.Rooms or ApplicationAreas.GrowerLots ? PageAccessLevel.View : PageAccessLevel.None;
         }
 
-        return areaKey is ApplicationAreas.Dashboard or ApplicationAreas.Receipts or ApplicationAreas.DailyQc ? PageAccessLevel.View : PageAccessLevel.None;
+        return areaKey is ApplicationAreas.Dashboard or ApplicationAreas.Receipts or ApplicationAreas.DailyQc or ApplicationAreas.FieldSamples ? PageAccessLevel.View : PageAccessLevel.None;
     }
 
     private async Task EnsureSchemaAsync(CancellationToken cancellationToken)

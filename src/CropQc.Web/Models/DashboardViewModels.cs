@@ -727,6 +727,7 @@ public sealed class MasterDataEditForm
     public bool ResetVarietyColor { get; set; }
     public string GrowerAliases { get; set; } = "";
     public string GrowerNumbers { get; set; } = "";
+    public string BlockAliases { get; set; } = "";
 }
 
 public sealed class ConfigurationPageViewModel

@@ -80,6 +80,35 @@ public sealed class CanonicalGrowerNumber
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
+public sealed class CanonicalOrchardBlock
+{
+    public int Id { get; set; }
+    public int? CanonicalGrowerId { get; set; }
+    public CanonicalGrower? CanonicalGrower { get; set; }
+    public required string OrchardName { get; set; }
+    public required string CanonicalBlockName { get; set; }
+    public string NormalizedOrchardKey { get; set; } = "";
+    public string NormalizedBlockKey { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    public string? Notes { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public ICollection<OrchardBlockAlias> Aliases { get; } = new List<OrchardBlockAlias>();
+    public ICollection<QcSample> FieldSamples { get; } = new List<QcSample>();
+}
+
+public sealed class OrchardBlockAlias
+{
+    public int Id { get; set; }
+    public int CanonicalOrchardBlockId { get; set; }
+    public CanonicalOrchardBlock CanonicalOrchardBlock { get; set; } = null!;
+    public required string AliasName { get; set; }
+    public string NormalizedAliasKey { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
 public sealed class FruitProfile
 {
     public int Id { get; set; }

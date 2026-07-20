@@ -1,0 +1,353 @@
+@model FieldSampleDetailViewModel
+@{
+    ViewData["Title"] = "Field Sample Detail";
+    var pressureChange = Model.CurrentSummary.AveragePressureChangeFromPriorLbs;
+    var orderedTrend = Model.Trend.OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleId).ToList();
+    var currentTrend = orderedTrend.SingleOrDefault(x => x.SampleId == Model.SampleId);
+    var priorTrend = orderedTrend.Where(x => x.SampleTakenAt < Model.SampleTakenAt).OrderByDescending(x => x.SampleTakenAt).ThenByDescending(x => x.SampleId).FirstOrDefault();
+    var earliestTrend = orderedTrend.FirstOrDefault(x => x.SampleId != Model.SampleId) ?? currentTrend;
+    var sizeTrend = orderedTrend.Where(x => x.SizeDistribution.Count > 0).ToList();
+    var trendSizes = sizeTrend.SelectMany(x => x.SizeDistribution.Select(point => point.Size)).Distinct().OrderBy(x => x).ToList();
+}
+
+<h1>Field Sample Detail</h1>
+@if (TempData["Success"] is string success)
+{
+    <p class="notice success">@success</p>
+}
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
+@if (Model.DataWarning is not null)
+{
+    <p class="notice warning">@Model.DataWarning</p>
+}
+
+@if (Model.SampleId > 0)
+{
+    <section class="panel">
+        <div class="section-heading-row">
+            <div>
+                <h2>@Model.OrchardName - @Model.CanonicalBlockName</h2>
+                <p>Field Sample | @Model.Variety | @Model.SampleTakenAt.LocalDateTime.ToString("g") | Target sample size: 10 fruit</p>
+            </div>
+            @if (Model.CanEdit && !Model.IsEditingMetadata)
+            {
+                <a class="button secondary-button" href="/FieldSamples/@Model.SampleId/Edit">Edit Field Sample</a>
+            }
+        </div>
+        @if (!string.Equals(Model.CanonicalBlockName, Model.OriginalBlockName, StringComparison.OrdinalIgnoreCase))
+        {
+            <p class="muted">Original entered block: @Model.OriginalBlockName</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(Model.Notes))
+        {
+            <p>@Model.Notes</p>
+        }
+    </section>
+
+    @if (Model.IsEditingMetadata && Model.CanEdit)
+    {
+        <form method="post" action="/FieldSamples/@Model.SampleId/metadata" class="panel stack-form">
+            <h2>Edit Field Sample Details</h2>
+            <input type="hidden" name="SampleId" value="@Model.SampleId" />
+            <div class="grid-two">
+                <label>Orchard / grower <input name="OrchardName" value="@Model.MetadataForm.OrchardName" maxlength="200" required /></label>
+                <label>Grower number <input name="GrowerNumber" value="@Model.MetadataForm.GrowerNumber" maxlength="50" /></label>
+                <label>Block name entered <input name="BlockName" value="@Model.MetadataForm.BlockName" maxlength="150" required /></label>
+                <label>
+                    Existing block
+                    <select name="CanonicalOrchardBlockId">
+                        <option value="">Resolve automatically or create a new block</option>
+                        @foreach (var block in Model.Blocks)
+                        {
+                            <option value="@block.Id" selected="@(Model.MetadataForm.CanonicalOrchardBlockId == block.Id ? "selected" : null)">@block.OrchardName - @block.CanonicalBlockName</option>
+                        }
+                    </select>
+                </label>
+                <label>
+                    Variety
+                    <select name="FruitProfileId" required>
+                        @foreach (var fruit in Model.FruitProfiles)
+                        {
+                            <option value="@fruit.Id" selected="@(Model.MetadataForm.FruitProfileId == fruit.Id ? "selected" : null)">@fruit.Name</option>
+                        }
+                    </select>
+                </label>
+                <label>Sample date/time <input name="SampleTakenAt" type="datetime-local" value="@Model.MetadataForm.SampleTakenAt.LocalDateTime.ToString("yyyy-MM-ddTHH:mm")" required /></label>
+            </div>
+            <label>Notes <textarea name="Notes" maxlength="1000">@Model.MetadataForm.Notes</textarea></label>
+            <label class="checkbox-line">
+                <input name="ConfirmCreateNewBlock" type="checkbox" value="true" checked="@Model.MetadataForm.ConfirmCreateNewBlock" />
+                Create new block if no exact block or alias matches
+            </label>
+            <div class="button-row">
+                <button type="submit">Save Field Sample Details</button>
+                <a href="/FieldSamples/@Model.SampleId">Cancel</a>
+            </div>
+        </form>
+    }
+
+    <section class="panel">
+        <h2>Current Sample Overview</h2>
+        <div class="summary-grid">
+            <div><span class="metric-label">Average weight</span><strong>@Format(Model.CurrentSummary.AverageWeightGrams) g</strong><span class="muted">Peak @Format(Model.CurrentSummary.PeakWeightGrams) g | Min @Format(Model.CurrentSummary.MinimumWeightGrams) g | @Model.CurrentSummary.WeightRepresentedFruitCount represented</span></div>
+            <div><span class="metric-label">Average starch</span><strong>@Format(Model.CurrentSummary.AverageStarch)</strong><span class="muted">@Model.CurrentSummary.StarchRepresentedFruitCount represented | @Model.CurrentSummary.MissingStarchCount missing</span></div>
+            <div><span class="metric-label">Average pressure</span><strong>@Format(Model.CurrentSummary.AveragePressureLbs) lb</strong><span class="muted">Peak @Format(Model.CurrentSummary.PeakPressureLbs) lb | Min @Format(Model.CurrentSummary.MinimumPressureLbs) lb</span></div>
+            <div><span class="metric-label">Pressure variation</span><strong>@(Model.CurrentSummary.PressureStandardDeviationLbs?.ToString("0.##") ?? "Insufficient readings")</strong><span class="muted">@Model.CurrentSummary.PressureReadingCount represented fruit</span></div>
+            <div><span class="metric-label">Fruit represented</span><strong>@Model.CurrentSummary.EnteredFruitCount / 10</strong><span class="muted">Blank values remain missing, not zero</span></div>
+        </div>
+        <p class="notice @(pressureChange is null ? "warning" : pressureChange < 0 ? "warning" : "success")">
+            @if (pressureChange is null)
+            {
+                <span>No earlier pressure sample in the last 30 days.</span>
+            }
+            else if (pressureChange < 0)
+            {
+                <span>Down @Math.Abs(pressureChange.Value).ToString("0.##") lb since @Model.CurrentSummary.PriorPressureSampleDate?.LocalDateTime.ToString("MMM d").</span>
+            }
+            else if (pressureChange > 0)
+            {
+                <span>Up @pressureChange.Value.ToString("0.##") lb since @Model.CurrentSummary.PriorPressureSampleDate?.LocalDateTime.ToString("MMM d").</span>
+            }
+            else
+            {
+                <span>No meaningful pressure change since @Model.CurrentSummary.PriorPressureSampleDate?.LocalDateTime.ToString("MMM d").</span>
+            }
+        </p>
+    </section>
+
+    <section class="panel">
+        <h2>Current Size Distribution</h2>
+        @if (Model.SizeDistribution.Count == 0)
+        {
+            <p class="muted">No sizing data is available for this Field Sample.</p>
+        }
+        else
+        {
+            <div class="size-chart compact-chart">
+                @foreach (var point in Model.SizeDistribution)
+                {
+                    <div class="size-bar">
+                        <div class="bar" style="height:@Math.Max(4, (int)point.Percentage)%"></div>
+                        <span>@point.Size</span>
+                        <small>@point.Percentage.ToString("0.#")%</small>
+                    </div>
+                }
+            </div>
+            <p class="muted">Percentages use fruit rows with a valid size. Missing sizes are unclassified.</p>
+        }
+    </section>
+
+    <section class="panel">
+        <h2>Weight Trend</h2>
+        @if (Model.Trend.Count <= 1)
+        {
+            <p class="muted">No earlier Field Sample for this block in the last 30 days.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Variety</th>
+                            <th>Avg weight</th>
+                            <th>Peak weight</th>
+                            <th>Rows represented</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var point in orderedTrend)
+                        {
+                            <tr class="@(point.SampleId == Model.SampleId ? "selected-row" : null)">
+                                <td>@point.SampleTakenAt.LocalDateTime.ToString("MMM d, h:mm tt")</td>
+                                <td>@point.Variety</td>
+                                <td>@Format(point.Summary.AverageWeightGrams) g</td>
+                                <td>@Format(point.Summary.PeakWeightGrams) g</td>
+                                <td>@point.Summary.WeightRepresentedFruitCount / 10</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="muted">Average weight change since prior sample: @FormatChange(Change(currentTrend?.Summary.AverageWeightGrams, priorTrend?.Summary.AverageWeightGrams), "g"). Change from earliest sample in window: @FormatChange(Change(currentTrend?.Summary.AverageWeightGrams, earliestTrend?.Summary.AverageWeightGrams), "g").</p>
+        }
+    </section>
+
+    <section class="panel">
+        <h2>Starch Trend</h2>
+        @if (Model.Trend.Count <= 1)
+        {
+            <p class="muted">No earlier starch history for this block in the last 30 days.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Date</th><th>Avg starch</th><th>Represented fruit</th></tr></thead>
+                    <tbody>
+                        @foreach (var point in orderedTrend)
+                        {
+                            <tr class="@(point.SampleId == Model.SampleId ? "selected-row" : null)">
+                                <td>@point.SampleTakenAt.LocalDateTime.ToString("MMM d, h:mm tt")</td>
+                                <td>@Format(point.Summary.AverageStarch)</td>
+                                <td>@point.Summary.StarchRepresentedFruitCount / 10</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="muted">Starch change since prior sample: @FormatChange(Change(currentTrend?.Summary.AverageStarch, priorTrend?.Summary.AverageStarch), ""). Change from earliest sample in window: @FormatChange(Change(currentTrend?.Summary.AverageStarch, earliestTrend?.Summary.AverageStarch), "").</p>
+        }
+    </section>
+
+    <section class="panel">
+        <h2>Pressure Trend</h2>
+        @if (Model.Trend.Count <= 1)
+        {
+            <p class="muted">No earlier pressure history for this block in the last 30 days.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Date</th><th>Avg pressure</th><th>Peak pressure</th><th>Pressure SD</th><th>Represented fruit</th></tr></thead>
+                    <tbody>
+                        @foreach (var point in orderedTrend)
+                        {
+                            <tr class="@(point.SampleId == Model.SampleId ? "selected-row" : null)">
+                                <td>@point.SampleTakenAt.LocalDateTime.ToString("MMM d, h:mm tt")</td>
+                                <td>@Format(point.Summary.AveragePressureLbs) lb</td>
+                                <td>@Format(point.Summary.PeakPressureLbs) lb</td>
+                                <td>@(point.Summary.PressureStandardDeviationLbs?.ToString("0.##") ?? "Insufficient")</td>
+                                <td>@point.Summary.PressureReadingCount / 10</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="muted">Average pressure change from earliest sample in window: @FormatChange(Change(currentTrend?.Summary.AveragePressureLbs, earliestTrend?.Summary.AveragePressureLbs), "lb").</p>
+        }
+    </section>
+
+    <section class="panel">
+        <h2>Size Trend</h2>
+        @if (sizeTrend.Count <= 1 || trendSizes.Count == 0)
+        {
+            <p class="muted">No earlier size distribution for this block in the last 30 days.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            @foreach (var size in trendSizes)
+                            {
+                                <th>@size</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var point in sizeTrend)
+                        {
+                            <tr class="@(point.SampleId == Model.SampleId ? "selected-row" : null)">
+                                <td>@point.SampleTakenAt.LocalDateTime.ToString("MMM d")</td>
+                                @foreach (var size in trendSizes)
+                                {
+                                    <td>@(point.SizeDistribution.SingleOrDefault(x => x.Size == size)?.Percentage.ToString("0.#") ?? "0")%</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="muted">Size trend values are percentage-point distributions by represented size rows.</p>
+        }
+    </section>
+
+    @if (Model.CanEdit)
+    {
+        <form method="post" action="/FieldSamples/@Model.SampleId/rows" class="panel">
+            <input type="hidden" name="SampleId" value="@Model.SampleId" />
+            <input type="hidden" name="TargetSampleSize" value="10" />
+            <h2>Fruit Rows</h2>
+            <p class="muted">Field Samples save partially. Weight, starch, and pressure are optional per row until the sample is complete.</p>
+            <div class="table-wrap">
+                <table class="qc-grid">
+                    <thead>
+                        <tr>
+                            <th>Row</th>
+                            <th>P1 lbs</th>
+                            <th>P2 lbs</th>
+                            <th>Avg lbs</th>
+                            <th>Weight g</th>
+                            <th>Size</th>
+                            <th>Starch</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (var i = 0; i < Model.FruitRows.Count; i++)
+                        {
+                            var row = Model.FruitRows[i];
+                            <tr>
+                                <td>@row.RowNumber<input type="hidden" name="Rows[@i].RowNumber" value="@row.RowNumber" /></td>
+                                <td><input class="number-input" name="Rows[@i].Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /></td>
+                                <td><input class="number-input" name="Rows[@i].Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /></td>
+                                <td>@row.PressureAverageLbs</td>
+                                <td><input class="number-input" name="Rows[@i].WeightGrams" type="number" step="0.0001" min="0" value="@row.WeightGrams" /></td>
+                                <td>@row.SizeCategory</td>
+                                <td>
+                                    <select name="Rows[@i].StarchScaleValueId">
+                                        <option value="">--</option>
+                                        @foreach (var starch in Model.StarchScaleValues)
+                                        {
+                                            <option value="@starch.Id" selected="@(row.StarchScaleValueId == starch.Id ? "selected" : null)">@starch.Value.ToString("0.0")</option>
+                                        }
+                                    </select>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <button type="submit">Save Field Sample</button>
+        </form>
+    }
+    else
+    {
+        <section class="panel">
+            <h2>Fruit Rows</h2>
+            <p class="muted">View-only users cannot edit Field Sample rows.</p>
+            <div class="table-wrap">
+                <table class="qc-grid">
+                    <thead><tr><th>Row</th><th>P1 lbs</th><th>P2 lbs</th><th>Avg lbs</th><th>Weight g</th><th>Size</th><th>Starch</th></tr></thead>
+                    <tbody>
+                        @foreach (var row in Model.FruitRows)
+                        {
+                            <tr>
+                                <td>@row.RowNumber</td>
+                                <td>@Format(row.Pressure1Lbs)</td>
+                                <td>@Format(row.Pressure2Lbs)</td>
+                                <td>@Format(row.PressureAverageLbs)</td>
+                                <td>@Format(row.WeightGrams)</td>
+                                <td>@(row.SizeCategory?.ToString() ?? "Missing")</td>
+                                <td>@(row.Starch ?? "Missing")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+}
+
+@functions {
+    private static string Format(decimal? value) => value?.ToString("0.##") ?? "Missing";
+    private static decimal? Change(decimal? current, decimal? prior) => current is null || prior is null ? null : decimal.Round(current.Value - prior.Value, 2);
+    private static string FormatChange(decimal? change, string unit) => change is null ? "Not available" : $"{(change.Value > 0 ? "+" : "")}{change.Value:0.##}{(string.IsNullOrWhiteSpace(unit) ? "" : " " + unit)}";
+}

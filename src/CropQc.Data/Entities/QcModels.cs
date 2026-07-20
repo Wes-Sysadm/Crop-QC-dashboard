@@ -138,8 +138,8 @@ public sealed class BinsRunEntry
 public sealed class QcSample
 {
     public long Id { get; set; }
-    public long ReceiptId { get; set; }
-    public Receipt Receipt { get; set; } = null!;
+    public long? ReceiptId { get; set; }
+    public Receipt? Receipt { get; set; }
     public int SampleTypeId { get; set; }
     public SampleType SampleType { get; set; } = null!;
     public int SampleSequenceNumber { get; set; } = 1;
@@ -153,6 +153,14 @@ public sealed class QcSample
     public QcStation? QcStation { get; set; }
     public int? ActualSampleSize { get; set; }
     public string? Notes { get; set; }
+    public int? FieldSampleFruitProfileId { get; set; }
+    public FruitProfile? FieldSampleFruitProfile { get; set; }
+    public int? CanonicalOrchardBlockId { get; set; }
+    public CanonicalOrchardBlock? CanonicalOrchardBlock { get; set; }
+    public string? FieldSampleGrowerName { get; set; }
+    public string? FieldSampleGrowerNumber { get; set; }
+    public string? FieldSampleOriginalBlockName { get; set; }
+    public string? FieldSampleBlockResolution { get; set; }
     public DateTimeOffset SampleTakenAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
@@ -165,9 +173,11 @@ public sealed class QcSample
     public ICollection<QcPhoto> Photos { get; } = new List<QcPhoto>();
 
     public string GetDisplayReceiptId() =>
-        SampleSequenceNumber <= 1
-            ? Receipt.CompuTechReceiptId
-            : $"{Receipt.CompuTechReceiptId}({SampleSequenceNumber})";
+        Receipt is null
+            ? $"FIELD-{Id}"
+            : SampleSequenceNumber <= 1
+                ? Receipt.CompuTechReceiptId
+                : $"{Receipt.CompuTechReceiptId}({SampleSequenceNumber})";
 }
 
 public sealed class QcFruitReading

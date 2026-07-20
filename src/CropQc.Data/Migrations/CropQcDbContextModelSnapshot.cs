@@ -316,6 +316,60 @@ namespace CropQc.Data.Migrations
                     b.ToTable("CanonicalGrowerNumbers");
                 });
 
+            modelBuilder.Entity("CropQc.Data.Entities.CanonicalOrchardBlock", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CanonicalBlockName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int?>("CanonicalGrowerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NormalizedBlockKey")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("NormalizedOrchardKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("OrchardName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CanonicalGrowerId");
+
+                    b.HasIndex("NormalizedOrchardKey", "NormalizedBlockKey")
+                        .IsUnique();
+
+                    b.ToTable("CanonicalOrchardBlocks");
+                });
+
             modelBuilder.Entity("CropQc.Data.Entities.DashboardConfiguration", b =>
                 {
                     b.Property<int>("Id")
@@ -1199,6 +1253,44 @@ namespace CropQc.Data.Migrations
                     b.ToTable("OfflineSyncItems");
                 });
 
+            modelBuilder.Entity("CropQc.Data.Entities.OrchardBlockAlias", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AliasName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("CanonicalOrchardBlockId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NormalizedAliasKey")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CanonicalOrchardBlockId", "NormalizedAliasKey")
+                        .IsUnique();
+
+                    b.ToTable("OrchardBlockAliases");
+                });
+
             modelBuilder.Entity("CropQc.Data.Entities.PasswordPolicy", b =>
                 {
                     b.Property<int>("Id")
@@ -1477,6 +1569,9 @@ namespace CropQc.Data.Migrations
                     b.Property<int?>("ActualSampleSize")
                         .HasColumnType("int");
 
+                    b.Property<int?>("CanonicalOrchardBlockId")
+                        .HasColumnType("int");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -1494,6 +1589,25 @@ namespace CropQc.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("FieldSampleBlockResolution")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("FieldSampleFruitProfileId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FieldSampleGrowerName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("FieldSampleGrowerNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("FieldSampleOriginalBlockName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -1513,7 +1627,7 @@ namespace CropQc.Data.Migrations
                     b.Property<int?>("QcStationId")
                         .HasColumnType("int");
 
-                    b.Property<long>("ReceiptId")
+                    b.Property<long?>("ReceiptId")
                         .HasColumnType("bigint");
 
                     b.Property<int>("SampleSequenceNumber")
@@ -1543,6 +1657,8 @@ namespace CropQc.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("FieldSampleFruitProfileId");
+
                     b.HasIndex("QcStationId");
 
                     b.HasIndex("SampleTypeId");
@@ -1552,7 +1668,10 @@ namespace CropQc.Data.Migrations
                     b.HasIndex("ReceiptId", "IsDeleted");
 
                     b.HasIndex("ReceiptId", "SampleSequenceNumber")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[ReceiptId] IS NOT NULL");
+
+                    b.HasIndex("CanonicalOrchardBlockId", "SampleTypeId", "SampleTakenAt");
 
                     b.ToTable("QcSamples");
                 });
@@ -2220,6 +2339,12 @@ namespace CropQc.Data.Migrations
                             Id = 4,
                             IsActive = true,
                             Name = "Lot Sample"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            IsActive = true,
+                            Name = "Field Sample"
                         });
                 });
 
@@ -2765,6 +2890,16 @@ namespace CropQc.Data.Migrations
                     b.Navigation("CanonicalGrower");
                 });
 
+            modelBuilder.Entity("CropQc.Data.Entities.CanonicalOrchardBlock", b =>
+                {
+                    b.HasOne("CropQc.Data.Entities.CanonicalGrower", "CanonicalGrower")
+                        .WithMany()
+                        .HasForeignKey("CanonicalGrowerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CanonicalGrower");
+                });
+
             modelBuilder.Entity("CropQc.Data.Entities.OfflineSyncItem", b =>
                 {
                     b.HasOne("CropQc.Data.Entities.QcStation", "QcStation")
@@ -2772,6 +2907,17 @@ namespace CropQc.Data.Migrations
                         .HasForeignKey("QcStationId");
 
                     b.Navigation("QcStation");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.OrchardBlockAlias", b =>
+                {
+                    b.HasOne("CropQc.Data.Entities.CanonicalOrchardBlock", "CanonicalOrchardBlock")
+                        .WithMany("Aliases")
+                        .HasForeignKey("CanonicalOrchardBlockId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CanonicalOrchardBlock");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.QcFruitDefect", b =>
@@ -2850,6 +2996,16 @@ namespace CropQc.Data.Migrations
 
             modelBuilder.Entity("CropQc.Data.Entities.QcSample", b =>
                 {
+                    b.HasOne("CropQc.Data.Entities.CanonicalOrchardBlock", "CanonicalOrchardBlock")
+                        .WithMany("FieldSamples")
+                        .HasForeignKey("CanonicalOrchardBlockId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.FruitProfile", "FieldSampleFruitProfile")
+                        .WithMany()
+                        .HasForeignKey("FieldSampleFruitProfileId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CropQc.Data.Entities.QcStation", "QcStation")
                         .WithMany("Samples")
                         .HasForeignKey("QcStationId");
@@ -2857,8 +3013,7 @@ namespace CropQc.Data.Migrations
                     b.HasOne("CropQc.Data.Entities.Receipt", "Receipt")
                         .WithMany("Samples")
                         .HasForeignKey("ReceiptId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("CropQc.Data.Entities.SampleType", "SampleType")
                         .WithMany("Samples")
@@ -2869,6 +3024,10 @@ namespace CropQc.Data.Migrations
                     b.HasOne("CropQc.Data.Entities.User", "TakenByUser")
                         .WithMany("TakenSamples")
                         .HasForeignKey("TakenByUserId");
+
+                    b.Navigation("CanonicalOrchardBlock");
+
+                    b.Navigation("FieldSampleFruitProfile");
 
                     b.Navigation("QcStation");
 
@@ -3166,6 +3325,13 @@ namespace CropQc.Data.Migrations
                     b.Navigation("Aliases");
 
                     b.Navigation("GrowerNumbers");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.CanonicalOrchardBlock", b =>
+                {
+                    b.Navigation("Aliases");
+
+                    b.Navigation("FieldSamples");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.FruitProfile", b =>

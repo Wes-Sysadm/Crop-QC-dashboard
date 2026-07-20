@@ -28,6 +28,7 @@
                 var currentEmail = User.FindFirstValue(ClaimTypes.Email) ?? "";
                 var canAccessDashboard = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Dashboard, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessDailyQc = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.DailyQc, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
+                var canAccessFieldSamples = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.FieldSamples, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessReceipts = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Receipts, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessRooms = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Rooms, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessGrowerLots = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.GrowerLots, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
@@ -50,6 +51,10 @@
                 @if (canAccessDailyQc)
                 {
                     <a href="/DailyQc">Daily QC</a>
+                }
+                @if (canAccessFieldSamples)
+                {
+                    <a href="/FieldSamples">Field Samples</a>
                 }
                 @if (canAccessReceipts)
                 {

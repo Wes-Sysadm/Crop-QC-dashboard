@@ -479,7 +479,7 @@ public sealed class RoomSummaryDepletionTests
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
 
         Assert.Contains("var samples = await QuerySamples()", service);
-        Assert.Contains("var samplesByReceipt = samples.GroupBy(x => x.ReceiptId)", service);
+        Assert.Contains("var samplesByReceipt = samples.GroupBy(x => x.ReceiptId!.Value)", service);
         Assert.Contains("var lotSamples = samplesByReceipt.GetValueOrDefault(receipt.Id", service);
         Assert.Contains("receipt.BinCount - depleted", service);
         Assert.DoesNotContain("receiptsQuery.Include(x => x.Samples)", service);

@@ -30,7 +30,7 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
             .Include(x => x.Receipt).ThenInclude(x => x.Room)
             .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
             .Include(x => x.FruitReadings)
-            .Where(x => !x.IsDeleted && x.SampleTakenAt >= todayRange.Start && x.SampleTakenAt < todayRange.End);
+            .Where(x => !x.IsDeleted && x.ReceiptId != null && x.SampleTakenAt >= todayRange.Start && x.SampleTakenAt < todayRange.End);
 
         if (!string.IsNullOrWhiteSpace(warehouseCode))
         {
@@ -41,7 +41,7 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
             .OrderByDescending(x => x.SampleTakenAt)
             .Select(x => new QcStationSampleListItem(
                 x.Id,
-                x.ReceiptId,
+                x.ReceiptId!.Value,
                 x.SampleSequenceNumber <= 1 ? x.Receipt.CompuTechReceiptId : x.Receipt.CompuTechReceiptId + "(" + x.SampleSequenceNumber + ")",
                 x.Receipt.Warehouse.Code,
                 x.Receipt.Room.Code,
@@ -240,7 +240,7 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
         var rowCount = Math.Max(targetSampleSize, sample.FruitReadings.Count == 0 ? 0 : sample.FruitReadings.Max(x => x.RowNumber));
         return new(
             sample.Id,
-            sample.ReceiptId,
+            sample.ReceiptId!.Value,
             sample.GetDisplayReceiptId(),
             sample.Receipt.CompuTechReceiptId,
             sample.Receipt.GrowerName,

@@ -146,7 +146,7 @@ public sealed class DataCleanupService(
     {
         var receiptQuery = BuildReceiptQuery(filter, tracking: false).Select(x => x.Id);
         var query = tracking ? dbContext.QcSamples.AsQueryable() : dbContext.QcSamples.AsNoTracking();
-        query = query.Where(x => receiptQuery.Contains(x.ReceiptId));
+        query = query.Where(x => x.ReceiptId != null && receiptQuery.Contains(x.ReceiptId.Value));
         if (!filter.IncludeDeletedSamples) query = query.Where(x => !x.IsDeleted);
         if (filter.SampleTypeId is not null) query = query.Where(x => x.SampleTypeId == filter.SampleTypeId);
         if (!filter.IncludeEmailedSamples) query = query.Where(x => x.EmailStatus != "Sent");
