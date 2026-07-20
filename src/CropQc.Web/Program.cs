@@ -26,11 +26,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 var googleAuthOptions = GoogleAuthenticationOptions.FromConfiguration(builder.Configuration);
 var gmailOptions = CreateGmailOptions(builder.Configuration);
 var appEnvironmentOptions = AppEnvironmentOptions.FromConfiguration(builder.Configuration, builder.Environment);
-var stagingEnvironmentOptions = StagingEnvironmentOptions.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(googleAuthOptions);
 builder.Services.AddSingleton(gmailOptions);
 builder.Services.AddSingleton(appEnvironmentOptions);
-builder.Services.AddSingleton(stagingEnvironmentOptions);
 builder.Services.AddSingleton(EmailOptionsFactory.Create(builder.Configuration, builder.Environment.IsProduction()));
 builder.Services.AddSingleton(BackupOptions.FromConfiguration(builder.Configuration));
 builder.Services.AddSingleton(PerformanceDiagnosticsOptions.FromConfiguration(builder.Configuration, builder.Environment));
@@ -83,8 +81,6 @@ if (googleAuthOptions.IsGoogleConfigured)
         {
             var sessionLifetime = TimeSpan.FromDays(googleAuthOptions.SessionDays);
             var configuredOptions = context.HttpContext.RequestServices.GetRequiredService<GoogleAuthenticationOptions>();
-            var appEnvironment = context.HttpContext.RequestServices.GetRequiredService<AppEnvironmentOptions>();
-            var stagingOptions = context.HttpContext.RequestServices.GetRequiredService<StagingEnvironmentOptions>();
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("GoogleAuth");
             var provisioner = context.HttpContext.RequestServices.GetRequiredService<IGoogleUserProvisioningService>();
             var credentialStore = context.HttpContext.RequestServices.GetRequiredService<IGoogleCredentialStore>();
@@ -97,13 +93,6 @@ if (googleAuthOptions.IsGoogleConfigured)
                 var domain = GoogleAuthenticationOptions.GetEmailDomain(email) ?? "(missing)";
                 logger.LogWarning("Google login rejected for {Email}; domain {Domain} is not allowed.", email ?? "(missing)", domain);
                 context.Fail("This Google account is not allowed for the Crop QC Dashboard.");
-                return;
-            }
-
-            if (appEnvironment.IsStaging && !stagingOptions.IsAllowedTestUser(email))
-            {
-                logger.LogWarning("Google login rejected for {Email}; account is not on the staging allowlist.", email ?? "(missing)");
-                context.Fail("This Google account is not on the staging test-user allowlist.");
                 return;
             }
 
@@ -236,15 +225,6 @@ builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorage
     services.GetRequiredService<IPerformanceExternalCallCounter>()));
 
 var app = builder.Build();
-StagingEnvironmentValidator.Validate(
-    app.Configuration,
-    app.Services.GetRequiredService<AppEnvironmentOptions>(),
-    app.Services.GetRequiredService<StagingEnvironmentOptions>(),
-    app.Services.GetRequiredService<GoogleAuthenticationOptions>(),
-    app.Services.GetRequiredService<EmailOptions>(),
-    app.Services.GetRequiredService<FileStorageOptions>(),
-    app.Services.GetRequiredService<GoogleDriveStorageOptions>(),
-    app.Services.GetRequiredService<PerformanceDiagnosticsOptions>());
 LogEmailConfiguration(app);
 LogEnvironmentConfiguration(app);
 var isRender = !string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_HOSTNAME"])

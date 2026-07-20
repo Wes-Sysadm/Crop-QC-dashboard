@@ -99,10 +99,6 @@
                             @if (canAccessConfiguration)
                             {
                                 <a href="/Admin/Configuration">Configuration</a>
-                                @if (AppEnvironment.IsStaging)
-                                {
-                                    <a href="/Admin/Diagnostics/Requests">Performance Diagnostics</a>
-                                }
                             }
                             @if (canAccessVarietyColors)
                             {
