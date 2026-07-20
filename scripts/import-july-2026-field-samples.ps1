@@ -118,7 +118,7 @@ Console.WriteLine();
 var fieldSampleType = await db.SampleTypes.SingleOrDefaultAsync(x => x.Name == FieldSampleTypeName && x.IsActive)
     ?? throw new InvalidOperationException("Active Field Sample sample type was not found.");
 var fruitProfiles = await db.FruitProfiles.AsNoTracking().ToListAsync();
-var grades = await db.Grades.AsNoTracking().Where(x => x.IsActive).ToListAsync();
+var grades = await db.Grades.Where(x => x.IsActive).ToListAsync();
 var gradeByCode = grades.ToDictionary(x => x.Code.Trim(), x => x, StringComparer.OrdinalIgnoreCase);
 var fieldSampleService = new FieldSampleService(db, new ImportAccessService(), new ConfigurationBuilder().Build());
 var importUser = new ClaimsPrincipal(new ClaimsIdentity(
@@ -145,7 +145,31 @@ var missingGrades = samples
     .ToList();
 if (missingGrades.Count > 0)
 {
-    throw new InvalidOperationException($"Missing active grade records: {string.Join(", ", missingGrades)}.");
+    if (!apply)
+    {
+        Console.WriteLine($"  Missing active grades that would be created on apply: {string.Join(", ", missingGrades)}");
+    }
+    else
+    {
+        foreach (var grade in missingGrades)
+        {
+            var existingGrade = await db.Grades.SingleOrDefaultAsync(x => x.Code == grade);
+            if (existingGrade is null)
+            {
+                existingGrade = new Grade { Code = grade, Name = grade, IsActive = true };
+                db.Grades.Add(existingGrade);
+            }
+            else if (!existingGrade.IsActive)
+            {
+                existingGrade.IsActive = true;
+            }
+        }
+
+        await db.SaveChangesAsync();
+        grades = await db.Grades.Where(x => x.IsActive).ToListAsync();
+        gradeByCode = grades.ToDictionary(x => x.Code.Trim(), x => x, StringComparer.OrdinalIgnoreCase);
+        Console.WriteLine($"  Created or reactivated missing grades: {string.Join(", ", missingGrades)}");
+    }
 }
 
 var beforeCounts = new SideEffectCounts(
