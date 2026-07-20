@@ -26,15 +26,15 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
 
         var todayRange = UtcDayRange.ForUtcDay(DateTimeOffset.UtcNow);
         var query = dbContext.QcSamples.AsNoTracking()
-            .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
-            .Include(x => x.Receipt).ThenInclude(x => x.Room)
-            .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
+            .Include(x => x.Receipt!).ThenInclude(x => x.Warehouse)
+            .Include(x => x.Receipt!).ThenInclude(x => x.Room)
+            .Include(x => x.Receipt!).ThenInclude(x => x.FruitProfile)
             .Include(x => x.FruitReadings)
             .Where(x => !x.IsDeleted && x.ReceiptId != null && x.SampleTakenAt >= todayRange.Start && x.SampleTakenAt < todayRange.End);
 
         if (!string.IsNullOrWhiteSpace(warehouseCode))
         {
-            query = query.Where(x => x.Receipt.Warehouse.Code == warehouseCode);
+            query = query.Where(x => x.Receipt!.Warehouse.Code == warehouseCode);
         }
 
         var samples = await query
@@ -42,12 +42,12 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
             .Select(x => new QcStationSampleListItem(
                 x.Id,
                 x.ReceiptId!.Value,
-                x.SampleSequenceNumber <= 1 ? x.Receipt.CompuTechReceiptId : x.Receipt.CompuTechReceiptId + "(" + x.SampleSequenceNumber + ")",
-                x.Receipt.Warehouse.Code,
-                x.Receipt.Room.Code,
-                x.Receipt.GrowerName,
-                x.Receipt.LotCode,
-                x.Receipt.FruitProfile.VarietyCode,
+                x.SampleSequenceNumber <= 1 ? x.Receipt!.CompuTechReceiptId : x.Receipt!.CompuTechReceiptId + "(" + x.SampleSequenceNumber + ")",
+                x.Receipt!.Warehouse.Code,
+                x.Receipt!.Room.Code,
+                x.Receipt!.GrowerName,
+                x.Receipt!.LotCode,
+                x.Receipt!.FruitProfile.VarietyCode,
                 x.Status,
                 x.StarchStatus,
                 x.EmailStatus,
@@ -180,9 +180,11 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
     private Task<QcSample?> LoadSampleAsync(long sampleId, bool asTracking, CancellationToken cancellationToken)
     {
         var query = dbContext.QcSamples
-            .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
-            .Include(x => x.Receipt).ThenInclude(x => x.Room)
-            .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
+            .Include(x => x.Receipt!).ThenInclude(x => x.Warehouse)
+            .Include(x => x.Receipt!).ThenInclude(x => x.Room)
+            .Include(x => x.Receipt!).ThenInclude(x => x.FruitProfile)
+            .Include(x => x.FieldSampleFruitProfile)
+            .Include(x => x.CanonicalOrchardBlock)
             .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
             .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
             .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType)
@@ -238,24 +240,32 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
     {
         var targetSampleSize = ResolveTargetSampleSize(sample);
         var rowCount = Math.Max(targetSampleSize, sample.FruitReadings.Count == 0 ? 0 : sample.FruitReadings.Max(x => x.RowNumber));
+        var receipt = sample.Receipt;
+        var fieldBlock = sample.CanonicalOrchardBlock;
+        var displayId = receipt is null ? $"Field Sample #{sample.Id}" : sample.GetDisplayReceiptId();
+        var originalId = receipt?.CompuTechReceiptId ?? sample.FieldSampleOriginalBlockName ?? displayId;
+        var readingsByRow = sample.FruitReadings
+            .GroupBy(x => x.RowNumber)
+            .ToDictionary(x => x.Key, x => x.OrderByDescending(row => row.Id).First());
+
         return new(
             sample.Id,
-            sample.ReceiptId!.Value,
-            sample.GetDisplayReceiptId(),
-            sample.Receipt.CompuTechReceiptId,
-            sample.Receipt.GrowerName,
-            sample.Receipt.LotCode,
-            sample.Receipt.FruitProfile.Name,
-            sample.Receipt.FruitProfile.VarietyCode,
-            sample.Receipt.Warehouse.Code,
-            sample.Receipt.Room.Code,
+            sample.ReceiptId,
+            displayId,
+            originalId,
+            receipt?.GrowerName ?? sample.FieldSampleGrowerName ?? fieldBlock?.OrchardName ?? "",
+            receipt?.LotCode ?? fieldBlock?.CanonicalBlockName ?? sample.FieldSampleOriginalBlockName ?? "",
+            receipt?.FruitProfile.Name ?? sample.FieldSampleFruitProfile?.Name ?? "",
+            receipt?.FruitProfile.VarietyCode ?? sample.FieldSampleFruitProfile?.VarietyCode ?? "",
+            receipt?.Warehouse.Code ?? "FIELD",
+            receipt?.Room.Code ?? "Field",
             sample.Status,
             sample.StarchStatus,
             sample.EmailStatus,
             sample.SampleTakenAt,
             targetSampleSize,
             Enumerable.Range(1, rowCount)
-                .Select(rowNumber => ToFruitReading(rowNumber, sample.FruitReadings.SingleOrDefault(x => x.RowNumber == rowNumber)))
+                .Select(rowNumber => ToFruitReading(rowNumber, readingsByRow.GetValueOrDefault(rowNumber)))
                 .ToList());
     }
 
@@ -310,7 +320,7 @@ public sealed record QcStationSampleListItem(
 
 public sealed record QcStationSampleDetail(
     long SampleId,
-    long ReceiptId,
+    long? ReceiptId,
     string DisplayReceiptId,
     string OriginalReceiptId,
     string GrowerName,

@@ -4,6 +4,7 @@ using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace CropQc.Web.Services;
 
@@ -18,10 +19,11 @@ public interface IFieldSampleService
     Task<string?> SaveRowsAsync(long sampleId, SaveFruitReadingsForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
 }
 
-public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessService userAccessService) : IFieldSampleService
+public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessService userAccessService, IConfiguration configuration) : IFieldSampleService
 {
     private const string FieldSampleTypeName = "Field Sample";
     private const int FieldSampleSize = 10;
+    private const int MaxFieldSampleSize = 50;
 
     public async Task<FieldSampleIndexViewModel> GetIndexAsync(FieldSampleSearchForm search, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
@@ -260,7 +262,8 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             return new FieldSampleDetailViewModel { DataWarning = "Field Sample not found." };
         }
 
-        var rows = await GetFruitRowsAsync(sample.Id, cancellationToken);
+        var targetSampleSize = ResolveFieldSampleTargetSize(sample);
+        var rows = await GetFruitRowsAsync(sample.Id, targetSampleSize, cancellationToken);
         var trendRows = await LoadTrendRowsAsync(sample, cancellationToken);
         var trend = BuildTrend(trendRows);
         var currentTrend = trend.SingleOrDefault(x => x.SampleId == sample.Id);
@@ -288,7 +291,9 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             Variety = sample.FieldSampleFruitProfile?.Name ?? "",
             SampleTakenAt = sample.SampleTakenAt,
             Notes = sample.Notes,
+            TargetSampleSize = targetSampleSize,
             CanEdit = await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken),
+            DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
             MetadataForm = new FieldSampleMetadataForm
             {
                 SampleId = sample.Id,
@@ -310,7 +315,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             FruitReadingForm = new SaveFruitReadingsForm
             {
                 SampleId = sample.Id,
-                TargetSampleSize = FieldSampleSize,
+                TargetSampleSize = targetSampleSize,
                 Rows = rows.Select(row => new FruitReadingEditRow
                 {
                     RowNumber = row.RowNumber,
@@ -405,15 +410,15 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             return "Field Sample not found.";
         }
 
-        if (form.TargetSampleSize != FieldSampleSize)
+        if (form.TargetSampleSize < FieldSampleSize || form.TargetSampleSize > MaxFieldSampleSize)
         {
-            return "Field Samples must use exactly 10 fruit.";
+            return $"Field Samples start with 10 fruit and may be expanded up to {MaxFieldSampleSize} rows.";
         }
 
         var rowsByNumber = form.Rows.GroupBy(x => x.RowNumber).ToList();
-        if (rowsByNumber.Any(x => x.Key < 1 || x.Key > FieldSampleSize) || rowsByNumber.Any(x => x.Count() > 1))
+        if (rowsByNumber.Any(x => x.Key < 1 || x.Key > form.TargetSampleSize) || rowsByNumber.Any(x => x.Count() > 1))
         {
-            return "Rows must be unique and numbered 1 through 10.";
+            return $"Rows must be unique and numbered 1 through {form.TargetSampleSize}.";
         }
 
         var validStarchIds = await dbContext.StarchScaleValues.AsNoTracking().Select(x => x.Id).ToHashSetAsync(cancellationToken);
@@ -467,7 +472,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             reading.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
-        sample.ActualSampleSize = FieldSampleSize;
+        sample.ActualSampleSize = Math.Max(FieldSampleSize, form.TargetSampleSize);
         sample.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
         var afterRows = await dbContext.QcFruitReadings.AsNoTracking()
@@ -600,7 +605,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         return trend;
     }
 
-    private async Task<IReadOnlyList<FruitReadingRowViewModel>> GetFruitRowsAsync(long sampleId, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<FruitReadingRowViewModel>> GetFruitRowsAsync(long sampleId, int targetSampleSize, CancellationToken cancellationToken)
     {
         var rows = await dbContext.QcFruitReadings.AsNoTracking()
             .Include(x => x.StarchScaleValue)
@@ -608,11 +613,38 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             .OrderBy(x => x.RowNumber)
             .ToListAsync(cancellationToken);
         var byRow = rows.ToDictionary(x => x.RowNumber);
-        return Enumerable.Range(1, FieldSampleSize)
+        var rowCount = Math.Clamp(Math.Max(targetSampleSize, byRow.Count == 0 ? 0 : byRow.Keys.Max()), FieldSampleSize, MaxFieldSampleSize);
+        return Enumerable.Range(1, rowCount)
             .Select(rowNumber => byRow.TryGetValue(rowNumber, out var row)
                 ? ToFruitReadingRow(row)
                 : new FruitReadingRowViewModel { RowNumber = rowNumber, SizeStatus = "NotCalculated", EntryStatus = "Empty" })
             .ToList();
+    }
+
+    private static int ResolveFieldSampleTargetSize(QcSample sample) =>
+        Math.Clamp(Math.Max(FieldSampleSize, sample.ActualSampleSize ?? FieldSampleSize), FieldSampleSize, MaxFieldSampleSize);
+
+    private async Task<DeviceCaptureSettingsViewModel> GetDeviceCaptureSettingsAsync(CancellationToken cancellationToken)
+    {
+        var values = await dbContext.DashboardConfigurations.AsNoTracking()
+            .Where(x => x.Key.StartsWith("DeviceCapture__"))
+            .ToDictionaryAsync(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase, cancellationToken);
+
+        bool Read(string key)
+        {
+            if (values.TryGetValue($"DeviceCapture__{key}", out var configured))
+            {
+                return bool.TryParse(configured, out var parsed) && parsed;
+            }
+
+            return configuration.GetValue<bool>($"DeviceCapture:{key}");
+        }
+
+        return new DeviceCaptureSettingsViewModel(
+            Read("Enabled"),
+            Read("BrioEnabled"),
+            Read("ObsbotEnabled"),
+            Read("ScaleEnabled"));
     }
 
     private static FieldSampleMetricSummary BuildSummary(IReadOnlyList<FruitReadingRowViewModel> rows)

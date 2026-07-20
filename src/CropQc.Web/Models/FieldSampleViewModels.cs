@@ -71,8 +71,10 @@ public sealed class FieldSampleDetailViewModel
     public string Variety { get; set; } = "";
     public DateTimeOffset SampleTakenAt { get; set; }
     public string? Notes { get; set; }
+    public int TargetSampleSize { get; set; } = 10;
     public bool CanEdit { get; set; }
     public bool IsEditingMetadata { get; set; }
+    public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
     public FieldSampleMetadataForm MetadataForm { get; set; } = new();
     public IReadOnlyList<FruitProfile> FruitProfiles { get; set; } = [];
     public IReadOnlyList<CanonicalOrchardBlock> Blocks { get; set; } = [];

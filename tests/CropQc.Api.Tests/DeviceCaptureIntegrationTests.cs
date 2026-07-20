@@ -105,6 +105,7 @@ public sealed class DeviceCaptureIntegrationTests
     {
         var panel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_DeviceCapturePanel.cshtml"));
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var fieldSamples = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "FieldSamples", "Details.cshtml"));
 
         Assert.Contains("\"serial\" in navigator", panel);
         Assert.Contains("\"usb\" in navigator", panel);
@@ -112,8 +113,12 @@ public sealed class DeviceCaptureIntegrationTests
         Assert.Contains("Scale not connected or no current weight is available", panel);
         Assert.Contains("input[name$='.WeightGrams']", panel);
         Assert.Contains("input.dispatchEvent(new Event(\"input\"", panel);
+        Assert.Contains("event.target?.closest?.(\"tr.fruit-row\")", panel);
         Assert.Contains("reading.WeightGrams = submittedRow.WeightGrams", service);
         Assert.Contains("In-progress rows are saved", FindRepositoryFileText("src", "CropQc.Web", "Views", "Samples", "Details.cshtml"));
+        Assert.Contains("ShowScale: true", fieldSamples);
+        Assert.Contains("data-add-field-row", fieldSamples);
+        Assert.Contains("Rows[${index}].WeightGrams", fieldSamples);
     }
 
     private static string FindRepositoryFileText(params string[] pathParts) =>

@@ -17,7 +17,7 @@ public sealed record QcStationSampleListItem(
 
 public sealed record QcStationSampleDetail(
     long SampleId,
-    long ReceiptId,
+    long? ReceiptId,
     string DisplayReceiptId,
     string OriginalReceiptId,
     string GrowerName,
