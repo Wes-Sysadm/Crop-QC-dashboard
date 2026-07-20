@@ -35,7 +35,7 @@ Admin-reviewed archive/delete workflows are future work. Until that workflow exi
 
 ## Environment Boundary
 
-Production and staging/test are separate operational environments. Production runs real users, receipts, samples, photos, emails, and QC Station connections. Staging/test runs fake data only and must be visibly labeled with `TEST SITE — DO NOT ENTER REAL QC DATA`. The app reads `AppEnvironment__Kind` (`Production`, `Staging`, or `Development`) and `AppEnvironment__DisplayName` to drive the visible label and production safety warnings.
+Production and staging/test are separate operational environments. Production runs real users, receipts, samples, photos, emails, and QC Station connections. Staging/test runs fake data only and must be visibly labeled with `STAGING - Non-production data`. The app reads `AppEnvironment__Kind` (`Production`, `Staging`, or `Development`) and `AppEnvironment__DisplayName` to drive the visible label and production safety warnings.
 
 Production and staging must use separate Postgres databases, Google Drive photo folders, Google Drive backup folders, OAuth redirect URIs, email recipients, and QC Station configs/API keys. No staging service should point at a production database or production Drive folder.
 

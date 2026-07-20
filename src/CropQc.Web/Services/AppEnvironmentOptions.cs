@@ -8,6 +8,7 @@ public sealed class AppEnvironmentOptions
     public string DisplayName { get; init; } = "Development";
 
     public bool IsProduction => string.Equals(Kind, AppEnvironmentKinds.Production, StringComparison.OrdinalIgnoreCase);
+    public bool IsStaging => string.Equals(Kind, AppEnvironmentKinds.Staging, StringComparison.OrdinalIgnoreCase);
     public bool IsStagingLike =>
         string.Equals(Kind, AppEnvironmentKinds.Staging, StringComparison.OrdinalIgnoreCase)
         || string.Equals(Kind, AppEnvironmentKinds.Development, StringComparison.OrdinalIgnoreCase);

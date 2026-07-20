@@ -61,8 +61,93 @@ services:
         value: None
       - key: QcStation__ApiBaseUrl
         value: https://crop-qc-dashboard.onrender.com
+  - type: web
+    name: crop-qc-dashboard-staging
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    disks:
+      - name: crop-qc-dashboard-staging-data
+        mountPath: /var/data
+        sizeGB: 1
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: AppEnvironment__Kind
+        value: Staging
+      - key: AppEnvironment__DisplayName
+        value: Crop QC Staging
+      - key: DATABASE_PROVIDER
+        value: PostgreSql
+      - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+        value: true
+      - key: ConnectionStrings__CropQc
+        fromDatabase:
+          name: crop-qc-dashboard-staging-db
+          property: connectionString
+      - key: Database__EnsureCreatedOnStartup
+        value: false
+      - key: Database__SeedMasterDataOnStartup
+        value: false
+      - key: Authentication__AllowedGoogleDomains
+        value: wp-packing.com,earlbrownandsons.com,fruitandland.com
+      - key: Authentication__BootstrapAdminEmails
+        sync: false
+      - key: Authentication__SessionDays
+        value: 7
+      - key: Authentication__Google__ClientId
+        sync: false
+      - key: Authentication__Google__ClientSecret
+        sync: false
+      - key: Staging__AllowedTestUserEmails
+        sync: false
+      - key: Staging__ProductionDatabaseMarkers
+        value: crop-qc-dashboard-db,crop-qc-dashboard.onrender.com,Database=cropqc;,Database Name=cropqc;,/cropqc?
+      - key: Staging__ProductionGoogleDriveFolderIds
+        value: 0ADHRTHdG9u98Uk9PVA
+      - key: Staging__GoogleDriveIsolationConfirmed
+        value: false
+      - key: DataProtection__PersistKeysToFileSystem
+        value: true
+      - key: DataProtection__KeysPath
+        value: /var/data/dataprotection-keys
+      - key: DataProtection__ApplicationName
+        value: CropQcDashboardStaging
+      - key: FileStorage__Provider
+        value: Local
+      - key: FileStorage__LocalRootPath
+        value: /var/data/cropqc-staging-files
+      - key: FileStorage__BasePath
+        value: Crop QC Staging Files
+      - key: GoogleDrive__UseSharedDrive
+        value: false
+      - key: GoogleDrive__RootFolderId
+        value: ""
+      - key: GoogleDrive__SharedDriveId
+        value: ""
+      - key: GoogleDrive__ServiceAccountJson
+        sync: false
+      - key: GoogleDrive__ApplicationName
+        value: Crop QC Dashboard Staging
+      - key: GoogleDrive__BaseFolderName
+        value: Photos
+      - key: Email__Provider
+        value: None
+      - key: Email__QcDefaultRecipients
+        value: ""
+      - key: PerformanceDiagnostics__Enabled
+        value: true
+      - key: PerformanceDiagnostics__RecentRequestLimit
+        value: 250
+      - key: PerformanceDiagnostics__IncludeUserIdentifier
+        value: false
+      - key: QcStation__ApiBaseUrl
+        value: https://crop-qc-dashboard-staging.onrender.com
 
 databases:
   - name: crop-qc-dashboard-db
     databaseName: cropqc
     user: cropqc
+  - name: crop-qc-dashboard-staging-db
+    databaseName: cropqc_staging
+    user: cropqc_staging

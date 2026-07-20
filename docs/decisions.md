@@ -30,7 +30,7 @@ Dashboard metric cards must click through to filtered pages that explain or reso
 
 ## ADR-0008 - Production/Staging Separation And Backups
 
-Production is the live system of record and must retain real receipts, samples, photos, emails, QC Station records, and audit logs through future revisions. Staging/test is isolated fake data only and must show a prominent `TEST SITE — DO NOT ENTER REAL QC DATA` banner. Production and staging use separate databases, Google Drive folders, OAuth redirect URIs, email recipients, and QC Station configs. Google Drive is the backup target for app-generated backup artifacts: PostgreSQL logical dumps when `pg_dump` is available, non-secret configuration snapshots, and photo/storage manifests.
+Production is the live system of record and must retain real receipts, samples, photos, emails, QC Station records, and audit logs through future revisions. Staging/test is isolated fake data only and must show a prominent `STAGING - Non-production data` banner. Production and staging use separate databases, Google Drive folders, OAuth redirect URIs, email recipients, and QC Station configs. Google Drive is the backup target for app-generated backup artifacts: PostgreSQL logical dumps when `pg_dump` is available, non-secret configuration snapshots, and photo/storage manifests.
 
 ## ADR-0006: Design for Offline QC Station Sync
 
