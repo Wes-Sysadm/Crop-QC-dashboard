@@ -5,11 +5,10 @@ Staging/Test is for fake data only. It must be visually labeled and isolated fro
 - Deploy the PR or branch to the staging Render service.
 - Confirm the page banner says `STAGING - Non-production data`.
 - Confirm `AppEnvironment__Kind=Staging`.
-- Confirm `Staging__AllowedTestUserEmails` lists only approved staging test users.
 - Confirm staging uses a separate staging Postgres database.
-- Confirm staging uses separate Google Drive photo and backup folders.
+- Confirm staging uses local disk or another isolated non-production storage location.
 - Confirm staging OAuth redirect URI is separate from production.
-- Confirm staging email recipients are test-only.
+- Confirm staging email sending is disabled.
 - Create fake receipts and fake QC samples only.
 - Verify sample creation and editing.
 - Verify partial row saves.

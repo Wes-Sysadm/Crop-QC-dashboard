@@ -99,14 +99,6 @@ services:
         sync: false
       - key: Authentication__Google__ClientSecret
         sync: false
-      - key: Staging__AllowedTestUserEmails
-        sync: false
-      - key: Staging__ProductionDatabaseMarkers
-        value: crop-qc-dashboard-db,crop-qc-dashboard.onrender.com,Database=cropqc;,Database Name=cropqc;,/cropqc?
-      - key: Staging__ProductionGoogleDriveFolderIds
-        value: 0ADHRTHdG9u98Uk9PVA
-      - key: Staging__GoogleDriveIsolationConfirmed
-        value: false
       - key: DataProtection__PersistKeysToFileSystem
         value: true
       - key: DataProtection__KeysPath
