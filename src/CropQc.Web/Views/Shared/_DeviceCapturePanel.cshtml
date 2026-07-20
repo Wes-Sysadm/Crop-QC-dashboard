@@ -422,13 +422,14 @@
             }
         }
 
-        for (const row of document.querySelectorAll("tr.fruit-row")) {
-            row.addEventListener("click", () => {
-                document.querySelectorAll("tr.fruit-row").forEach(item => item.classList.remove("device-selected-row"));
-                row.classList.add("device-selected-row");
-                nextWeightRowIndex = Array.from(document.querySelectorAll("tr.fruit-row")).indexOf(row);
-            });
-        }
+        document.addEventListener("click", event => {
+            const row = event.target?.closest?.("tr.fruit-row");
+            if (!row) return;
+            const rows = Array.from(document.querySelectorAll("tr.fruit-row"));
+            rows.forEach(item => item.classList.remove("device-selected-row"));
+            row.classList.add("device-selected-row");
+            nextWeightRowIndex = Math.max(0, rows.indexOf(row));
+        });
 
         panel.querySelector("[data-device-enable]")?.addEventListener("click", async () => {
             setEnabled(true);

@@ -237,6 +237,37 @@ public sealed class FieldSampleWorkflowTests
     }
 
     [Fact]
+    public async Task SaveRowsAsync_AllowsExpandedRowsForDeviceCapturedMeasurements()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "North Block 12", new DateTimeOffset(2026, 7, 17, 8, 0, 0, TimeSpan.Zero));
+
+        var error = await service.SaveRowsAsync(sampleId, new SaveFruitReadingsForm
+        {
+            SampleId = sampleId,
+            TargetSampleSize = 50,
+            Rows =
+            [
+                new FruitReadingEditRow { RowNumber = 11, WeightGrams = 266m },
+                new FruitReadingEditRow { RowNumber = 20, Pressure1Lbs = 12.5m, Pressure2Lbs = 13.5m },
+                new FruitReadingEditRow { RowNumber = 50, WeightGrams = 312m }
+            ]
+        }, Owner(), CancellationToken.None);
+
+        Assert.Null(error);
+        var sample = await db.QcSamples.SingleAsync(x => x.Id == sampleId);
+        Assert.Equal(50, sample.ActualSampleSize);
+        var detail = await service.GetDetailAsync(sampleId, Owner(), CancellationToken.None);
+        Assert.Equal(50, detail.TargetSampleSize);
+        Assert.Equal(50, detail.FruitRows.Count);
+        Assert.Equal(266m, detail.FruitRows.Single(x => x.RowNumber == 11).WeightGrams);
+        Assert.Equal(13m, detail.FruitRows.Single(x => x.RowNumber == 20).PressureAverageLbs);
+        Assert.Equal(312m, detail.FruitRows.Single(x => x.RowNumber == 50).WeightGrams);
+    }
+
+    [Fact]
     public async Task UpdateMetadataAsync_ReassignsBlockWithoutReceiptFields()
     {
         await using var db = CreateDbContext();
@@ -316,6 +347,11 @@ public sealed class FieldSampleWorkflowTests
         Assert.Contains("Pressure Trend", detail);
         Assert.Contains("Size Trend", detail);
         Assert.Contains("Save Field Sample", detail);
+        Assert.Contains("Open in QC Station", detail);
+        Assert.Contains("Html.PartialAsync(\"_DeviceCapturePanel\"", detail);
+        Assert.Contains("ShowScale: true", detail);
+        Assert.Contains("class=\"fruit-row\"", detail);
+        Assert.Contains("data-add-field-row", detail);
         Assert.DoesNotContain("ReceiptId", index + create + detail);
         Assert.DoesNotContain("Truck", index + create + detail, StringComparison.OrdinalIgnoreCase);
     }
@@ -345,8 +381,11 @@ public sealed class FieldSampleWorkflowTests
         Assert.Null(error);
     }
 
-    private static FieldSampleService CreateService(CropQcDbContext db) =>
-        new(db, new UserAccessService(db, new ConfigurationBuilder().Build()));
+    private static FieldSampleService CreateService(CropQcDbContext db)
+    {
+        var configuration = new ConfigurationBuilder().Build();
+        return new(db, new UserAccessService(db, configuration), configuration);
+    }
 
     private static CropQcDbContext CreateDbContext()
     {
