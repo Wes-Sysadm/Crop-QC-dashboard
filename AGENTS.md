@@ -1,32 +1,191 @@
-# Codex Guidance
+# Crop QC Dashboard — Codex Repository Instructions
 
-This repository is for the Crop QC Dashboard.
+These instructions apply to all Codex work in this repository unless the user explicitly overrides them for a specific request.
 
-## Scope Discipline
+## Repository
 
-- Keep MVP 1 focused on Receiving/QC only.
-- Do not implement future phases unless explicitly requested.
-- Prefer small, reviewable PRs.
-- Use clear names and comments.
+- Repository: `Wes-Sysadm/Crop-QC-dashboard`
+- Default branch: `main`
+- This is production Receiving and QC software. Favor stability, focused changes, auditability, and production-data safety.
 
-## Data and File Storage
+## Default Git and PR workflow
 
-- Do not store photos directly in SQL.
-- Use provider-based database configuration. SQL Server remains supported for local development, and Render Postgres is the target production database.
-- Use provider-based file storage. Local storage is for development, and Google Shared Drive is the target production store for photos, attachments, and other files.
-- Gmail API or Google Workspace SMTP relay will be added later for QC Summary email.
+For each new development request:
 
-## Audit and Sync
+1. Fetch the current GitHub state and start from the latest `origin/main`.
+2. Create a new, clearly named `codex/` branch.
+3. Keep the branch and pull request focused on the requested work.
+4. Implement the requested behavior and avoid unrelated cleanup or redesign.
+5. Run the required verification described below.
+6. Commit the completed work with a clear commit message.
+7. Push the branch to `origin`.
+8. Open one new pull request into `main`.
+9. Do not create stacked pull requests.
+10. Do not add commits to an existing or merged pull request unless the user explicitly says to continue that pull request.
+11. Do not merge, deploy, install on production systems, or modify production data unless the user explicitly authorizes it.
 
-- Audit logging is required for all create, edit, delete, send, import, and export actions.
-- Offline QC Station support is required later, so design with sync boundaries in mind.
-- The Windows QC Station will use a SQLite local cache later for offline capture and sync.
+When the user explicitly says to continue an existing branch or pull request, update that work instead of creating a new branch or pull request.
 
-## Deferred Work
+Before creating a new branch or pull request, check current GitHub state. Do not assume that a previously mentioned branch or pull request is still open, unmerged, or current.
 
-- Do not build storage inventory yet.
-- Do not build room controller imports yet.
-- Do not build Mexico qualification yet.
-- Do not build packout imports yet.
-- Do not build pool closing imports yet.
-- Do not build long-term performance analytics yet.
+## Required completion report
+
+At completion, report:
+
+- current `origin/main` commit
+- branch name
+- final commit
+- base commit
+- pull request number and link
+- whether the branch required updating from newer `main`
+- restore result
+- build result
+- test count and result
+- migration/model consistency result
+- formatting and `git diff --check` results
+- GitHub Actions checks and status
+- MSI version, filename, build process, and artifact location when WinForms code changes
+- known limitations and required onsite verification
+- confirmation that nothing was merged or deployed
+- confirmation that production data was not modified
+
+Do not claim a browser, database, hardware, installer, or deployment test was completed unless it was actually run.
+
+## Production safety and protected behavior
+
+Do not change the following unless the user explicitly requests it or the requested fix strictly requires a narrowly scoped change:
+
+- low-level FTA communication protocols
+- low-level scale communication protocols
+- QC Station enrollment
+- QC Station authentication
+- QC Station installer behavior
+- QC Station configuration behavior
+- Google Drive photo-storage architecture
+- Gmail sending
+- current inventory rules
+- Bins Run
+- Receiving behavior
+- Door Sample behavior
+- Lot Sample behavior
+- permissive partial fruit-row saves
+- existing 10-, 25-, and 50-fruit sample support
+- historical production data
+
+Do not delete, reset, reseed, rewrite, or otherwise alter production data.
+
+Do not include credentials, enrollment files, machine-specific configuration, local paths, generated build output, or secrets in commits.
+
+Audit create, edit, delete, send, import, export, device-capture, photo, and configuration changes wherever the application’s existing audit patterns apply.
+
+## Scope discipline
+
+- Make only the changes needed for the requested application behavior.
+- Do not drift into staging, OAuth, screenshots, infrastructure, deployment, or unrelated architecture unless the user specifically asks.
+- Reuse established repository patterns before introducing a new subsystem.
+- Do not invent a new branch, installer, packaging, versioning, storage, authentication, or migration process when an established one exists.
+- Preserve backward compatibility unless the user explicitly approves a breaking change.
+- Resolve merge conflicts only within the requested scope; do not use conflicts as an opportunity for unrelated cleanup.
+
+## Normal verification
+
+Run from the repository root:
+
+```powershell
+dotnet restore CropQc.sln
+dotnet build CropQc.sln --no-restore
+dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj --no-build
+dotnet ef migrations has-pending-model-changes --project src/CropQc.Data/CropQc.Data.csproj --startup-project src/CropQc.Data/CropQc.Data.csproj --no-build
+git diff --check
+```
+
+Also run the repository’s existing formatting verification process.
+
+If a required tool or disposable dependency is missing, report the exact limitation. Do not substitute production services or production data for a disposable test environment.
+
+## WinForms and MSI rules
+
+Rebuild the WinForms MSI only when WinForms or QC Station code changes.
+
+When an MSI is required:
+
+- use the repository’s existing installer workflow
+- follow the established installer versioning convention
+- do not invent a new packaging or release process
+- verify the artifact was actually produced
+- report the MSI version, filename, build command or workflow, and artifact location
+- do not install the MSI on a production workstation without explicit authorization
+
+## Field Sample invariants
+
+Field Samples are a separate preharvest workflow.
+
+They:
+
+- are receiptless
+- do not affect inventory
+- do not affect Bins Run
+- do not affect room Dashboard cards
+- do not enter Receiving email workflows
+- have dedicated list, create, edit, and detail pages
+- track orchard/grower and canonical block
+- show 30-day same-block size, starch, weight, and pressure trends
+- support partial saves
+- support the existing QC fruit-count range, including 10-, 25-, and 50-fruit workflows
+- support manual entry
+- support browser scale capture
+- support FTA pressure capture through QC Station
+- use fuzzy block matches as suggestions only and require user confirmation
+- may use existing photo storage and audit patterns without redesigning Google Drive storage
+
+Keep the normal QC Station Receiving queue receipt-backed unless the user explicitly requests a queue change. Receiptless Field Samples may be exposed through a separate or explicitly distinguished QC Station workflow, but must not silently alter Receiving queue semantics.
+
+## Data and synchronization safeguards
+
+For browser, API, QC Station, and device-capture work:
+
+- preserve partial samples
+- preserve arbitrary supported fruit counts
+- prevent stale browser forms from overwriting newer device readings
+- prevent one reading from overwriting unrelated fruit or pressure positions
+- record the originating station where existing auditing supports it
+- keep retry and failure states from erasing entered data
+- display actionable user-facing errors while logging technical detail without credentials
+
+## Database changes
+
+- Prefer reviewed EF migrations for persistent schema changes.
+- Run the pending-model-change check after model changes.
+- Do not add a migration when the existing schema already supports the requested behavior.
+- Do not run migrations against production unless explicitly authorized.
+- Do not use runtime schema repair as a substitute for a required reviewed migration unless that is already the established design and the user requested work within it.
+
+## Pull request expectations
+
+Every pull request should explain:
+
+- what problem was reported
+- root cause
+- what changed
+- user-facing behavior before and after
+- safety or synchronization safeguards
+- major files or components changed
+- tests added or updated
+- full verification results
+- database or migration impact
+- installer impact
+- known limitations
+- onsite or hardware verification still required
+
+Keep the PR limited to the requested work. Do not merge it unless the user explicitly authorizes the merge.
+
+## Review behavior
+
+When asked to review Codex work or a pull request:
+
+1. Read this file first.
+2. Check current GitHub and branch state rather than relying on stale prompt history.
+3. Compare the implementation against the user’s requested behavior and these repository constraints.
+4. Look specifically for production-data risk, unintended scope expansion, audit gaps, stale-write risk, partial-save regressions, unsupported fruit-count assumptions, installer omissions, and unverified claims.
+5. Distinguish application defects from environment-specific issues that require onsite testing.
+6. Do not approve or merge automatically.
