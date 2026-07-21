@@ -1,0 +1,84 @@
+@model CropQc.Web.Models.OrchardRecipientMatrixViewModel
+@{
+    ViewData["Title"] = "Orchard QC Recipients";
+}
+
+<section class="page-header">
+    <div>
+        <h1>Orchard QC Recipients</h1>
+        <p class="muted">Every QC report includes <strong>qc@fruitandland.com</strong>. Active addresses below are added only when the report has a confirmed canonical orchard.</p>
+    </div>
+</section>
+
+<section class="panel">
+    <h2>Add orchard manager</h2>
+    <form method="post" action="/Admin/OrchardRecipients/Save" class="stack-form">
+        <label>Orchard
+            <select name="CanonicalOrchardId" required>
+                <option value="">Select an orchard</option>
+                @foreach (var orchard in Model.Orchards)
+                {
+                    <option value="@orchard.Id">@orchard.OrchardName@(string.IsNullOrWhiteSpace(orchard.Growers) ? "" : $" — {orchard.Growers}")</option>
+                }
+            </select>
+        </label>
+        <label>Manager email
+            <input type="email" name="EmailAddress" maxlength="320" required />
+        </label>
+        <label><input type="checkbox" name="IsActive" value="true" checked /> Enabled</label>
+        <button type="submit">Add recipient</button>
+    </form>
+</section>
+
+<section class="panel">
+    <form method="get" class="filter-row">
+        <label>Search orchard, grower, or email
+            <input type="search" name="search" value="@Model.Search" />
+        </label>
+        <button type="submit">Search</button>
+        <a class="button-link secondary-button" href="/Admin/OrchardRecipients">Clear</a>
+    </form>
+</section>
+
+<section class="panel table-scroll">
+    <table>
+        <thead><tr><th>Orchard</th><th>Grower</th><th>Manager email</th><th>Enabled</th><th>Last modified</th><th>Last modified by</th><th>Actions</th></tr></thead>
+        <tbody>
+        @foreach (var row in Model.Rows)
+        {
+            <tr>
+                <td>@row.OrchardName</td>
+                <td>@(string.IsNullOrWhiteSpace(row.Growers) ? "—" : row.Growers)</td>
+                @if (row.IsMissingConfiguration)
+                {
+                    <td colspan="5"><span class="status warning">No manager configured</span></td>
+                }
+                else
+                {
+                    <td>
+                        <form id="recipient-@row.RecipientId" method="post" action="/Admin/OrchardRecipients/Save" class="inline-form">
+                            <input type="hidden" name="Id" value="@row.RecipientId" />
+                            <input type="hidden" name="CanonicalOrchardId" value="@row.CanonicalOrchardId" />
+                            <input type="email" name="EmailAddress" value="@row.EmailAddress" maxlength="320" required />
+                            <input type="hidden" name="IsActive" value="@row.IsActive.ToString().ToLowerInvariant()" />
+                        </form>
+                    </td>
+                    <td>@(row.IsActive ? "Yes" : "No")</td>
+                    <td>@row.LastModifiedAt?.ToLocalTime().ToString("g")</td>
+                    <td>@row.LastModifiedBy</td>
+                    <td class="button-row">
+                        <button type="submit" form="recipient-@row.RecipientId">Save</button>
+                        <form method="post" action="/Admin/OrchardRecipients/@row.RecipientId/Enabled" class="inline-form">
+                            <input type="hidden" name="enabled" value="@(!row.IsActive).ToString().ToLowerInvariant()" />
+                            <button type="submit" class="secondary-button">@(row.IsActive ? "Disable" : "Enable")</button>
+                        </form>
+                        <form method="post" action="/Admin/OrchardRecipients/@row.RecipientId/Delete" class="inline-form" onsubmit="return confirm('Remove this orchard recipient?');">
+                            <button type="submit" class="danger-button">Remove</button>
+                        </form>
+                    </td>
+                }
+            </tr>
+        }
+        </tbody>
+    </table>
+</section>

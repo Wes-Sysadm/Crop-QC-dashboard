@@ -36,7 +36,7 @@ public sealed class QcSummaryEmailLogService(CropQcDbContext dbContext, IAuditSe
             ReceiptId = receiptId,
             QcSampleId = request.QcSampleId,
             FromAddress = string.IsNullOrWhiteSpace(request.FromAddress) ? "HL@fruitandland.com" : request.FromAddress,
-            ToAddress = string.IsNullOrWhiteSpace(request.ToAddress) ? "rob@earlbrownandsons.com,wes@fruitandland.com" : request.ToAddress,
+            ToAddress = string.IsNullOrWhiteSpace(request.ToAddress) ? QcReportEmailDefaults.RequiredRecipient : request.ToAddress,
             ReplyToAddress = replyTo,
             Subject = request.Subject,
             Status = request.Status,

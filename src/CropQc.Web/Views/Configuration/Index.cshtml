@@ -1,14 +1,10 @@
 @model ConfigurationPageViewModel
 @{
     ViewData["Title"] = "Configuration";
-    var qcRecipientsItem = Model.Items.FirstOrDefault(x => x.Key == "QcEmailDefaultRecipients");
     var ebsRecipientsItem = Model.Items.FirstOrDefault(x => x.Key == "EbsDailyBinsEmailRecipients");
     var generalItems = Model.Items
         .Where(x => x.Key != "QcEmailDefaultRecipients" && x.Key != "EbsDailyBinsEmailRecipients" && x.Key != "EbsDailyBinsEmailLastSentDate" && x.Key != "DefaultQcSummaryRecipient" && x.Key != "DefaultQcSummaryFromAddress")
         .ToList();
-    var qcRecipientsText = qcRecipientsItem is null
-        ? ""
-        : string.Join(Environment.NewLine, QcEmailRecipientParser.Parse(qcRecipientsItem.Value).Recipients);
     var ebsRecipientsText = ebsRecipientsItem is null
         ? ""
         : string.Join(Environment.NewLine, QcEmailRecipientParser.Parse(ebsRecipientsItem.Value).Recipients);
@@ -88,17 +84,8 @@
 <form method="post" action="/Admin/Configuration/Save">
     <section class="panel">
         <h2>QC Email Recipients</h2>
-        <p class="muted">These recipients receive QC Summary emails by default. Enter one email per line or comma-separated. You can edit this list without changing Render settings.</p>
-        @if (qcRecipientsItem is null)
-        {
-            <p class="notice warning">QC email recipient setting is not initialized yet. Reload this page, or verify the DashboardConfigurations table is available.</p>
-        }
-        else
-        {
-            <label for="qc-email-recipients">Default To recipients</label>
-            <textarea id="qc-email-recipients" name="Values[@qcRecipientsItem.Id]" rows="5">@qcRecipientsText</textarea>
-            <p class="muted">Normal company domains are fruitandland.com, earlbrownandsons.com, and wp-packingllc.com, but recipients do not need to be login users.</p>
-        }
+        <p><strong>qc@fruitandland.com</strong> is required on every QC report. Orchard managers are added from confirmed orchard associations.</p>
+        <a class="button-link" href="/Admin/OrchardRecipients">Manage orchard QC recipients</a>
     </section>
     <section class="panel">
         <h2>EBS Daily Bin Availability</h2>

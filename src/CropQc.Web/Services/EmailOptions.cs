@@ -7,21 +7,20 @@ namespace CropQc.Web.Services;
 
 public sealed class EmailOptions
 {
-    public const string TestingQcDefaultRecipients = "rob@earlbrownandsons.com,wes@fruitandland.com";
-
     public string Provider { get; init; } = EmailProviders.None;
     public string FromAddress { get; init; } = "HL@fruitandland.com";
     public string ToAddress { get; init; } = "";
     public string QcDefaultRecipients { get; init; } = "";
+    public string QcReportDefaultRecipient { get; init; } = QcReportEmailDefaults.RequiredRecipient;
     public bool IsProduction { get; init; }
 
     public string QcRecipientHeader =>
         string.Join(", ", QcRecipientList);
 
     public IReadOnlyList<string> QcRecipientList =>
-        QcEmailRecipientParser.Parse(QcDefaultRecipients).Recipients.Count > 0
-            ? QcEmailRecipientParser.Parse(QcDefaultRecipients).Recipients
-            : QcEmailRecipientParser.Parse(ToAddress).Recipients;
+        QcEmailRecipientParser.Parse(QcReportDefaultRecipient).Recipients.Count > 0
+            ? QcEmailRecipientParser.Parse(QcReportDefaultRecipient).Recipients
+            : [QcReportEmailDefaults.RequiredRecipient];
 }
 
 public static class QcEmailRecipientSettings
@@ -31,8 +30,33 @@ public static class QcEmailRecipientSettings
 
 public sealed record QcEmailRecipientParseResult(IReadOnlyList<string> Recipients, IReadOnlyList<string> InvalidRecipients);
 
-public sealed record QcEmailRecipientResolution(IReadOnlyList<string> Recipients, string Source)
+public sealed record QcEmailRecipientResolution(
+    string RequiredDefaultRecipient,
+    int? ResolvedOrchardId,
+    string? ResolvedOrchardName,
+    IReadOnlyList<string> ActiveManagerRecipients,
+    IReadOnlyList<string> AdditionalRecipients,
+    IReadOnlyList<string> Recipients,
+    IReadOnlyList<string> SkippedInvalidAddresses,
+    bool OrchardHadNoConfiguredManager,
+    bool OrchardCouldNotBeResolved,
+    string Source)
 {
+    public QcEmailRecipientResolution(IReadOnlyList<string> recipients, string source)
+        : this(
+            recipients.FirstOrDefault() ?? QcReportEmailDefaults.RequiredRecipient,
+            null,
+            null,
+            [],
+            [],
+            recipients,
+            [],
+            false,
+            true,
+            source)
+    {
+    }
+
     public string Header => string.Join(", ", Recipients);
     public bool IsConfigured => Recipients.Count > 0;
 }
@@ -40,7 +64,7 @@ public sealed record QcEmailRecipientResolution(IReadOnlyList<string> Recipients
 public static class QcEmailRecipientSources
 {
     public const string AdminConfiguration = "Admin Configuration";
-    public const string FallbackConfiguration = "Render/appsettings fallback";
+    public const string FallbackConfiguration = "Email:QcReportDefaultRecipient";
     public const string NotConfigured = "Not configured";
 }
 
@@ -83,28 +107,110 @@ public static class QcEmailRecipientParser
 public interface IQcEmailRecipientResolver
 {
     Task<QcEmailRecipientResolution> ResolveAsync(CancellationToken cancellationToken);
+    Task<QcEmailRecipientResolution> ResolveForSampleAsync(long sampleId, IReadOnlyCollection<string>? additionalRecipients, CancellationToken cancellationToken) =>
+        ResolveAsync(cancellationToken);
 }
 
-public sealed class QcEmailRecipientResolver(CropQcDbContext dbContext, EmailOptions emailOptions) : IQcEmailRecipientResolver
+public sealed class QcEmailRecipientResolver(
+    CropQcDbContext dbContext,
+    EmailOptions emailOptions,
+    ILogger<QcEmailRecipientResolver> logger) : IQcEmailRecipientResolver
 {
-    public async Task<QcEmailRecipientResolution> ResolveAsync(CancellationToken cancellationToken)
+    public Task<QcEmailRecipientResolution> ResolveAsync(CancellationToken cancellationToken) =>
+        ResolveCoreAsync(null, null, cancellationToken);
+
+    public Task<QcEmailRecipientResolution> ResolveForSampleAsync(long sampleId, IReadOnlyCollection<string>? additionalRecipients, CancellationToken cancellationToken) =>
+        ResolveCoreAsync(sampleId, additionalRecipients, cancellationToken);
+
+    private async Task<QcEmailRecipientResolution> ResolveCoreAsync(long? sampleId, IReadOnlyCollection<string>? additionalRecipients, CancellationToken cancellationToken)
     {
-        var configuredValue = await dbContext.DashboardConfigurations.AsNoTracking()
-            .Where(x => x.Key == QcEmailRecipientSettings.Key)
-            .Select(x => x.Value)
-            .SingleOrDefaultAsync(cancellationToken);
-        var configured = QcEmailRecipientParser.Parse(configuredValue);
-        if (configured.Recipients.Count > 0)
+        var configuredDefault = QcEmailRecipientParser.Parse(emailOptions.QcReportDefaultRecipient);
+        var requiredDefault = QcReportEmailDefaults.RequiredRecipient;
+        if (configuredDefault.InvalidRecipients.Count > 0
+            || configuredDefault.Recipients.Count != 1
+            || !string.Equals(configuredDefault.Recipients[0], requiredDefault, StringComparison.OrdinalIgnoreCase))
         {
-            return new QcEmailRecipientResolution(configured.Recipients, QcEmailRecipientSources.AdminConfiguration);
+            logger.LogWarning(
+                "Invalid Email:QcReportDefaultRecipient configuration was ignored; using the required QC recipient {RequiredRecipient}.",
+                QcReportEmailDefaults.RequiredRecipient);
         }
 
-        if (emailOptions.QcRecipientList.Count > 0)
+        int? orchardId = null;
+        string? orchardName = null;
+        if (sampleId is not null)
         {
-            return new QcEmailRecipientResolution(emailOptions.QcRecipientList, QcEmailRecipientSources.FallbackConfiguration);
+            var orchard = await dbContext.QcSamples.AsNoTracking()
+                .Where(x => x.Id == sampleId.Value)
+                .Select(x => new
+                {
+                    DirectId = x.CanonicalOrchardBlock == null ? (int?)null : x.CanonicalOrchardBlock.CanonicalOrchardId,
+                    ReceiptId = x.Receipt == null || x.Receipt.CanonicalOrchardBlock == null
+                        ? (int?)null
+                        : x.Receipt.CanonicalOrchardBlock.CanonicalOrchardId
+                })
+                .SingleOrDefaultAsync(cancellationToken);
+            orchardId = orchard?.DirectId ?? orchard?.ReceiptId;
+            if (orchardId is not null)
+            {
+                orchardName = await dbContext.CanonicalOrchards.AsNoTracking()
+                    .Where(x => x.Id == orchardId.Value)
+                    .Select(x => x.OrchardName)
+                    .SingleOrDefaultAsync(cancellationToken);
+            }
         }
 
-        return new QcEmailRecipientResolution([], QcEmailRecipientSources.NotConfigured);
+        List<string> managerValues = orchardId is null
+            ? []
+            : await dbContext.OrchardReportRecipients.AsNoTracking()
+                .Where(x => x.CanonicalOrchardId == orchardId.Value && x.IsActive && !x.IsDeleted)
+                .OrderBy(x => x.EmailAddress)
+                .Select(x => x.EmailAddress)
+                .ToListAsync(cancellationToken);
+        var managers = QcEmailRecipientParser.Parse(string.Join(';', managerValues));
+        var additional = QcEmailRecipientParser.Parse(string.Join(';', additionalRecipients ?? []));
+        var skipped = managers.InvalidRecipients.Concat(additional.InvalidRecipients)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (skipped.Length > 0)
+        {
+            logger.LogWarning(
+                "Skipped {InvalidRecipientCount} invalid QC report recipient address(es) for sample {SampleId} and orchard {OrchardId}.",
+                skipped.Length,
+                sampleId,
+                orchardId);
+        }
+
+        var recipients = new[] { requiredDefault }
+            .Concat(managers.Recipients)
+            .Concat(additional.Recipients)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var unresolved = orchardId is null;
+        if (sampleId is not null && unresolved)
+        {
+            logger.LogInformation(
+                "QC report sample {SampleId} has no confirmed canonical orchard; only the required QC recipient will be used.",
+                sampleId);
+        }
+        else if (sampleId is not null && managers.Recipients.Count == 0)
+        {
+            logger.LogInformation(
+                "QC report sample {SampleId} resolved orchard {OrchardId}, but no active valid manager recipient is configured.",
+                sampleId,
+                orchardId);
+        }
+
+        return new QcEmailRecipientResolution(
+            requiredDefault,
+            orchardId,
+            orchardName,
+            managers.Recipients,
+            additional.Recipients,
+            recipients,
+            skipped,
+            orchardId is not null && managers.Recipients.Count == 0,
+            unresolved,
+            QcEmailRecipientSources.FallbackConfiguration);
     }
 }
 
@@ -139,6 +245,7 @@ public static class EmailOptionsFactory
             FromAddress = configuration["Email:FromAddress"] ?? "HL@fruitandland.com",
             ToAddress = configuration["Email:ToAddress"] ?? configuration["Email:QcDefaultRecipients"] ?? "",
             QcDefaultRecipients = configuration["Email:QcDefaultRecipients"] ?? configuration["Email:ToAddress"] ?? "",
+            QcReportDefaultRecipient = configuration["Email:QcReportDefaultRecipient"] ?? QcReportEmailDefaults.RequiredRecipient,
             IsProduction = isProduction
         };
     }

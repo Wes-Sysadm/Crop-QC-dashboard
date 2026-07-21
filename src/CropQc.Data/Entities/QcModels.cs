@@ -15,6 +15,8 @@ public sealed class Receipt
     public FruitProfile FruitProfile { get; set; } = null!;
     public int? GrowerLotId { get; set; }
     public GrowerLot? GrowerLot { get; set; }
+    public int? CanonicalOrchardBlockId { get; set; }
+    public CanonicalOrchardBlock? CanonicalOrchardBlock { get; set; }
     public string? GrowerNumber { get; set; }
     public string? PoolStart { get; set; }
     public required string GrowerName { get; set; }
