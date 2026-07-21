@@ -120,6 +120,19 @@ public sealed class TestFruitPressureCaptureTests
     }
 
     [Fact]
+    public void SetTargetFruitCount_AllowsExpandedFieldSampleSizeThatIsNotPreset()
+    {
+        var capture = new TestFruitPressureCapture();
+        capture.SetTargetFruitCount(12);
+        capture.FruitNumber = 12;
+
+        capture.Capture(PressureReading.Success(13.25m, PressureReadingSource.FTA, "Field Station"), PressureCaptureTarget.Pressure1);
+
+        Assert.Equal(12, capture.TargetFruitCount);
+        Assert.Equal(13.25m, capture.Rows.Single(x => x.FruitNumber == 12).Pressure1Lbs);
+    }
+
+    [Fact]
     public void ShouldCaptureReading_PreventsDuplicateReadingId()
     {
         var capture = new TestFruitPressureCapture();

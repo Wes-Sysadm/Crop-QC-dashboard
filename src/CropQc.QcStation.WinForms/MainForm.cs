@@ -16,6 +16,7 @@ public sealed class MainForm : Form
     private QcStationApiClient? apiClient;
     private QcStationSampleDetail? selectedSample;
     private bool hasUnsavedPressureChanges;
+    private readonly HashSet<int> dirtyPressureRows = [];
     private readonly Dictionary<string, Label> valueLabels = [];
     private readonly TextBox apiBaseUrlTextBox = new() { Width = 260 };
     private readonly TextBox warehouseFilterTextBox = new() { Width = 80 };
@@ -542,7 +543,10 @@ public sealed class MainForm : Form
         var clearButton = CreateButton("Clear Test Fruit");
         clearButton.Click += (_, _) =>
         {
+            var clearedFruit = testFruitCapture.FruitNumber;
             testFruitCapture.ClearCurrentFruit();
+            dirtyPressureRows.Add(clearedFruit);
+            hasUnsavedPressureChanges = true;
             RefreshCaptureDisplay();
             AppendLog("Local test fruit cleared.");
         };
@@ -815,6 +819,7 @@ public sealed class MainForm : Form
             }
 
             LoadSelectedSampleIntoCaptureGrid();
+            dirtyPressureRows.Clear();
             hasUnsavedPressureChanges = false;
             RefreshSampleStatusDisplay();
             RefreshCaptureDisplay();
@@ -840,6 +845,7 @@ public sealed class MainForm : Form
             }
 
             LoadSelectedSampleIntoCaptureGrid();
+            dirtyPressureRows.Clear();
             hasUnsavedPressureChanges = false;
             RefreshSampleStatusDisplay();
             RefreshCaptureDisplay();
@@ -915,7 +921,7 @@ public sealed class MainForm : Form
 
         apiClient ??= CreateApiClient();
         var rows = testFruitCapture.Rows
-            .Where(row => row.Pressure1Lbs is not null || row.Pressure2Lbs is not null)
+            .Where(row => dirtyPressureRows.Contains(row.FruitNumber))
             .Select(row => new QcStationPressureRowUpdate(row.FruitNumber, row.Pressure1Lbs, row.Pressure2Lbs))
             .ToList();
         if (rows.Count == 0)
@@ -940,7 +946,8 @@ public sealed class MainForm : Form
             }
 
             selectedSample = await apiClient.SavePressuresAsync(selectedSample.SampleId, rows);
-            hasUnsavedPressureChanges = false;
+            dirtyPressureRows.ExceptWith(rows.Select(row => row.RowNumber));
+            hasUnsavedPressureChanges = dirtyPressureRows.Count > 0;
             lastSaveResultTextBox.Text = autoSave && capture is not null
                 ? $"Saved Fruit {capture.FruitNumber} {capture.TargetSlot}."
                 : "Saved pressures to dashboard.";
@@ -1100,6 +1107,7 @@ public sealed class MainForm : Form
             apiClient = null;
             selectedSample = null;
             sampleListView.Items.Clear();
+            dirtyPressureRows.Clear();
             hasUnsavedPressureChanges = false;
             apiStatusTextBox.Text = "Config missing";
             selectedSampleTextBox.Text = "(none)";
@@ -1450,6 +1458,7 @@ public sealed class MainForm : Form
 
         var capturedFruit = testFruitCapture.FruitNumber;
         var slot = testFruitCapture.Capture(reading, target);
+        dirtyPressureRows.Add(capturedFruit);
         hasUnsavedPressureChanges = true;
         continuousStatusTextBox.Text = "Reading captured.";
         AppendLog(FormatCapturedReadingLog(reading, capturedFruit, slot));

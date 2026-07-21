@@ -2,7 +2,7 @@ namespace CropQc.QcStation.Api;
 
 public sealed record QcStationSampleListItem(
     long SampleId,
-    long ReceiptId,
+    long? ReceiptId,
     string DisplayReceiptId,
     string WarehouseCode,
     string RoomCode,

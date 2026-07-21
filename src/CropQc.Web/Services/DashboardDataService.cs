@@ -1594,6 +1594,7 @@ public sealed class DashboardDataService(
                 FruitRows = rowModels,
                 StarchScaleValues = await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken),
                 Readiness = readiness,
+                QcStationStatus = BuildQcStationStatus(sample.QcStation),
                 PhotoGroups = GroupPhotos(photos, await CanEditSamplesAsync(cancellationToken), sample.Id),
                 DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
                 AddPhotoForm = new AddPhotoMetadataForm
@@ -1614,9 +1615,10 @@ public sealed class DashboardDataService(
                 }
             };
         }
-        catch
+        catch (Exception ex)
         {
-            return new StarchTestViewModel { DataWarning = DataWarning };
+            logger.LogError(ex, "Starch page model failed for SampleId {SampleId}. ErrorType: {ErrorType}. Message: {Message}", id, ex.GetType().Name, SafeErrorMessage(ex));
+            return new StarchTestViewModel { DataWarning = $"Starch sample {id} could not be loaded. The failure was logged with Sample ID {id}; retry the page or contact support." };
         }
     }
 
@@ -1910,17 +1912,22 @@ public sealed class DashboardDataService(
             return "QC sample not found.";
         }
 
+        var capturedAt = DateTimeOffset.UtcNow;
         receipt ??= sample?.Receipt;
-        if (receipt is null)
+        var storageContext = receipt is not null
+            ? new FileStorageTargetContext(receipt.CropYear, receipt.Warehouse.Code, receipt.CompuTechReceiptId, form.PhotoType.Trim(), capturedAt)
+            : sample is not null && sample.SampleType.Name.Contains("field", StringComparison.OrdinalIgnoreCase)
+                ? new FileStorageTargetContext(sample.SampleTakenAt.Year, "FIELD", $"FieldSample-{sample.Id}", form.PhotoType.Trim(), capturedAt)
+                : null;
+        if (storageContext is null)
         {
-            return "Receipt context is required for photo storage.";
+            return "Receipt or Field Sample context is required for photo storage.";
         }
 
-        var capturedAt = DateTimeOffset.UtcNow;
         FileStorageReference reference;
         try
         {
-            reference = await SavePhotoFileOrPlaceholderAsync(form, receipt, capturedAt, cancellationToken);
+            reference = await SavePhotoFileOrPlaceholderAsync(form, storageContext, cancellationToken);
         }
         catch (InvalidOperationException ex)
         {
@@ -1978,6 +1985,14 @@ public sealed class DashboardDataService(
         dbContext.QcPhotos.Add(photo);
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await AddAuditAsync(
+            "add-photo",
+            nameof(QcPhoto),
+            photo.Id.ToString(),
+            GetCurrentUserEmail() ?? "unknown",
+            null,
+            JsonSerializer.Serialize(new { photo.Id, photo.ReceiptId, photo.QcSampleId, photo.PhotoType, photo.FileName, photo.StorageProvider, photo.FileId }),
+            cancellationToken);
         logger.LogInformation(
             "QcPhoto metadata insert succeeded. QcPhotoId: {QcPhotoId}. StorageProvider: {StorageProvider}. FileId: {FileId}. FolderId: {FolderId}.",
             photo.Id,
@@ -1986,8 +2001,16 @@ public sealed class DashboardDataService(
             photo.FolderId ?? photo.SharePointDriveId);
         if (sample is not null)
         {
-            await MarkSampleNeedsResendIfSentAsync(sample, "photo-added", GetCurrentUserEmail() ?? "unknown", null, cancellationToken);
-            await RefreshSampleStatusesAsync(sample, cancellationToken);
+            if (sample.ReceiptId is null)
+            {
+                sample.PhotoStatus = "Optional Photos Attached";
+                sample.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+            else
+            {
+                await MarkSampleNeedsResendIfSentAsync(sample, "photo-added", GetCurrentUserEmail() ?? "unknown", null, cancellationToken);
+                await RefreshSampleStatusesAsync(sample, cancellationToken);
+            }
             await dbContext.SaveChangesAsync(cancellationToken);
         }
         else if (form.ReceiptId is not null)
@@ -2030,17 +2053,21 @@ public sealed class DashboardDataService(
 
     public async Task<string?> RemoveSamplePhotoAsync(long sampleId, long photoId, CancellationToken cancellationToken)
     {
-        if (!await CanEditSamplesAsync(cancellationToken))
-        {
-            return "You do not have permission to remove photos.";
-        }
-
         var sample = await dbContext.QcSamples
             .Include(x => x.Receipt)
+            .Include(x => x.SampleType)
             .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted, cancellationToken);
         if (sample is null)
         {
             return "QC sample not found.";
+        }
+
+        var canEdit = sample.SampleType.Name.Contains("field", StringComparison.OrdinalIgnoreCase)
+            ? await HasAccessAsync(ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken)
+            : await CanEditSamplesAsync(cancellationToken);
+        if (!canEdit)
+        {
+            return "You do not have permission to remove photos.";
         }
 
         var photo = await dbContext.QcPhotos
@@ -2087,8 +2114,18 @@ public sealed class DashboardDataService(
         }
         else
         {
-            await MarkSampleNeedsResendIfSentAsync(sample, "photo-removed", changedBy, before, cancellationToken);
-            await RefreshSampleStatusesAsync(sample, cancellationToken);
+            if (sample.ReceiptId is null)
+            {
+                sample.PhotoStatus = await dbContext.QcPhotos.AnyAsync(x => x.QcSampleId == sample.Id && !x.IsDeleted && x.Id != photo.Id, cancellationToken)
+                    ? "Optional Photos Attached"
+                    : "Not Required";
+                sample.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+            else
+            {
+                await MarkSampleNeedsResendIfSentAsync(sample, "photo-removed", changedBy, before, cancellationToken);
+                await RefreshSampleStatusesAsync(sample, cancellationToken);
+            }
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -4138,10 +4175,38 @@ public sealed class DashboardDataService(
             .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
             .Include(x => x.Receipt).ThenInclude(x => x.Photos)
             .Include(x => x.TakenByUser)
+            .Include(x => x.QcStation)
             .Include(x => x.Photos)
             .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
             .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
             .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType);
+    }
+
+    private static FieldSampleQcStationStatusViewModel BuildQcStationStatus(QcStation? station)
+    {
+        if (station is null)
+        {
+            return new FieldSampleQcStationStatusViewModel
+            {
+                Message = "No QC Station has synchronized this sample. The Starch form and browser camera remain available."
+            };
+        }
+
+        var lastContact = station.LastSyncAt ?? station.LastSeenAt;
+        var connected = station.IsActive && lastContact is not null && lastContact >= DateTimeOffset.UtcNow.AddMinutes(-5);
+        return new FieldSampleQcStationStatusViewModel
+        {
+            State = !station.IsActive ? "Error" : connected ? "Connected" : "Disconnected",
+            Message = !station.IsActive
+                ? $"{station.StationName} is inactive. The Starch form remains available; ask an administrator to reactivate the station."
+                : connected
+                    ? $"{station.StationName} recently synchronized this sample."
+                    : $"{station.StationName} is not currently reporting. The Starch form remains available; reopen QC Station to retry.",
+            StationCode = station.StationCode,
+            StationName = station.StationName,
+            LastSeenAt = station.LastSeenAt,
+            LastSyncAt = station.LastSyncAt
+        };
     }
 
     private async Task<IReadOnlyList<SampleListItemViewModel>> EnrichSamplesAsync(IReadOnlyList<QcSample> samples, CancellationToken cancellationToken)
@@ -4768,20 +4833,14 @@ public sealed class DashboardDataService(
             .Select(x => new PhotoGroupViewModel(x.Key, x.Select(photo => new PhotoMetadataViewModel(photo.Id, photo.QcSampleId, deleteFromSampleId, QcPhotoRequirementPolicy.NormalizePhotoType(photo.PhotoType), photo.PhotoSource, photo.FileName, photo.ContentType, photo.FileSizeBytes, photo.WebUrl, photo.CapturedAt, canDelete)).ToList()))
             .ToList();
 
-    private async Task<FileStorageReference> SavePhotoFileOrPlaceholderAsync(AddPhotoMetadataForm form, Receipt receipt, DateTimeOffset capturedAt, CancellationToken cancellationToken)
+    private async Task<FileStorageReference> SavePhotoFileOrPlaceholderAsync(AddPhotoMetadataForm form, FileStorageTargetContext context, CancellationToken cancellationToken)
     {
-        var context = new FileStorageTargetContext(
-            receipt.CropYear,
-            receipt.Warehouse.Code,
-            receipt.CompuTechReceiptId,
-            form.PhotoType.Trim(),
-            capturedAt);
         var targetPath = fileStorageService.GenerateTargetPath(context);
         logger.LogInformation(
             "Storage save started. Provider: {StorageProvider}. TargetPath: {TargetPath}. ReceiptId: {ReceiptId}. PhotoType: {PhotoType}. Uploaded file present: {HasFile}.",
             fileStorageOptions.Provider,
             targetPath,
-            receipt.CompuTechReceiptId,
+            context.ReceiptId,
             form.PhotoType,
             form.PhotoFile is not null);
 
@@ -4792,7 +4851,7 @@ public sealed class DashboardDataService(
                 throw new InvalidOperationException("No photo file was selected.");
             }
 
-            var placeholderName = GeneratePhotoFileName(receipt.CompuTechReceiptId, form.PhotoType, capturedAt, ".jpg");
+            var placeholderName = GeneratePhotoFileName(context.ReceiptId, form.PhotoType, context.CapturedAt, ".jpg");
             var placeholderReference = new FileStorageReference(
                 FileStorageProviders.Placeholder,
                 $"{targetPath}/{placeholderName}",
@@ -4816,7 +4875,7 @@ public sealed class DashboardDataService(
             extension = ".jpg";
         }
 
-        var fileName = GeneratePhotoFileName(receipt.CompuTechReceiptId, form.PhotoType, capturedAt, extension);
+        var fileName = GeneratePhotoFileName(context.ReceiptId, form.PhotoType, context.CapturedAt, extension);
         await using var stream = form.PhotoFile.OpenReadStream();
         try
         {

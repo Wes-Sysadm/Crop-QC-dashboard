@@ -352,8 +352,46 @@ public sealed class FieldSampleWorkflowTests
         Assert.Contains("ShowScale: true", detail);
         Assert.Contains("class=\"fruit-row\"", detail);
         Assert.Contains("data-add-field-row", detail);
-        Assert.DoesNotContain("ReceiptId", index + create + detail);
+        Assert.DoesNotContain("ReceiptId", index + create);
         Assert.DoesNotContain("Truck", index + create + detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SaveRowsAsync_PreservesNewerQcStationPressureWhenOnlyOtherFieldsWereEdited()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "Concurrency Block", DateTimeOffset.UtcNow);
+        var captured = await db.QcFruitReadings.SingleAsync(x => x.QcSampleId == sampleId && x.RowNumber == 1);
+        captured.Pressure1Lbs = 12.5m;
+        captured.Pressure1Source = "FTA";
+        captured.Pressure2Lbs = 13.5m;
+        captured.Pressure2Source = "FTA";
+        await db.SaveChangesAsync();
+
+        var error = await service.SaveRowsAsync(sampleId, new SaveFruitReadingsForm
+        {
+            SampleId = sampleId,
+            TargetSampleSize = 10,
+            Rows = [new FruitReadingEditRow
+            {
+                RowNumber = 1,
+                Pressure1Lbs = null,
+                Pressure2Lbs = null,
+                OriginalPressure1Lbs = null,
+                OriginalPressure2Lbs = null,
+                WeightGrams = 180m
+            }]
+        }, Owner(), CancellationToken.None);
+
+        Assert.Null(error);
+        var row = await db.QcFruitReadings.SingleAsync(x => x.QcSampleId == sampleId && x.RowNumber == 1);
+        Assert.Equal(12.5m, row.Pressure1Lbs);
+        Assert.Equal(13.5m, row.Pressure2Lbs);
+        Assert.Equal("FTA", row.Pressure1Source);
+        Assert.Equal("FTA", row.Pressure2Source);
+        Assert.Equal(180m, row.WeightGrams);
     }
 
     private static async Task<long> CreateSampleAsync(IFieldSampleService service, string blockName, DateTimeOffset sampleDate)

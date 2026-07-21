@@ -15,6 +15,7 @@ public interface IFieldSampleService
     Task<IReadOnlyList<FieldSampleBlockSuggestion>> GetBlockSuggestionsAsync(string orchardName, string blockName, CancellationToken cancellationToken);
     Task<(long? SampleId, string? Error)> CreateAsync(FieldSampleCreateForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<FieldSampleDetailViewModel> GetDetailAsync(long sampleId, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<FieldSampleRefreshViewModel?> GetRefreshAsync(long sampleId, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> UpdateMetadataAsync(long sampleId, FieldSampleMetadataForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> SaveRowsAsync(long sampleId, SaveFruitReadingsForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
 }
@@ -256,6 +257,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             .Include(x => x.SampleType)
             .Include(x => x.FieldSampleFruitProfile)
             .Include(x => x.CanonicalOrchardBlock)
+            .Include(x => x.QcStation)
             .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted && x.SampleType.Name == FieldSampleTypeName, cancellationToken);
         if (sample is null)
         {
@@ -264,6 +266,10 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
 
         var targetSampleSize = ResolveFieldSampleTargetSize(sample);
         var rows = await GetFruitRowsAsync(sample.Id, targetSampleSize, cancellationToken);
+        var photos = await dbContext.QcPhotos.AsNoTracking()
+            .Where(x => x.QcSampleId == sample.Id && !x.IsDeleted)
+            .OrderByDescending(x => x.CapturedAt)
+            .ToListAsync(cancellationToken);
         var trendRows = await LoadTrendRowsAsync(sample, cancellationToken);
         var trend = BuildTrend(trendRows);
         var currentTrend = trend.SingleOrDefault(x => x.SampleId == sample.Id);
@@ -294,6 +300,8 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             TargetSampleSize = targetSampleSize,
             CanEdit = await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken),
             DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
+            QcStationStatus = BuildQcStationStatus(sample.QcStation),
+            PhotoGroups = GroupPhotos(photos, canDelete: await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken), sample.Id),
             MetadataForm = new FieldSampleMetadataForm
             {
                 SampleId = sample.Id,
@@ -321,11 +329,46 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
                     RowNumber = row.RowNumber,
                     Pressure1Lbs = row.Pressure1Lbs,
                     Pressure2Lbs = row.Pressure2Lbs,
+                    OriginalPressure1Lbs = row.Pressure1Lbs,
+                    OriginalPressure2Lbs = row.Pressure2Lbs,
                     WeightGrams = row.WeightGrams,
                     StarchScaleValueId = row.StarchScaleValueId
                 }).ToList()
             }
         };
+    }
+
+    public async Task<FieldSampleRefreshViewModel?> GetRefreshAsync(long sampleId, ClaimsPrincipal user, CancellationToken cancellationToken)
+    {
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.View, cancellationToken))
+        {
+            return null;
+        }
+
+        var sample = await dbContext.QcSamples.AsNoTracking()
+            .Include(x => x.SampleType)
+            .Include(x => x.QcStation)
+            .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted && x.SampleType.Name == FieldSampleTypeName, cancellationToken);
+        if (sample is null)
+        {
+            return null;
+        }
+
+        var targetSampleSize = ResolveFieldSampleTargetSize(sample);
+        var rows = await GetFruitRowsAsync(sample.Id, targetSampleSize, cancellationToken);
+        return new FieldSampleRefreshViewModel(
+            sample.Id,
+            targetSampleSize,
+            sample.UpdatedAt,
+            BuildQcStationStatus(sample.QcStation),
+            rows.Select(row => new FieldSampleRefreshRowViewModel(
+                row.RowNumber,
+                row.Pressure1Lbs,
+                row.Pressure2Lbs,
+                row.PressureAverageLbs,
+                row.WeightGrams,
+                row.SizeCategory,
+                row.StarchScaleValueId)).ToList());
     }
 
     public async Task<string?> UpdateMetadataAsync(long sampleId, FieldSampleMetadataForm form, ClaimsPrincipal user, CancellationToken cancellationToken)
@@ -460,10 +503,16 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             }
 
             var size = CalculateSize(submitted.WeightGrams, thresholds);
-            reading.Pressure1Lbs = submitted.Pressure1Lbs;
-            reading.Pressure1Source = submitted.Pressure1Lbs is null ? null : "Manual";
-            reading.Pressure2Lbs = submitted.Pressure2Lbs;
-            reading.Pressure2Source = submitted.Pressure2Lbs is null ? null : "Manual";
+            if (submitted.Pressure1Lbs != submitted.OriginalPressure1Lbs)
+            {
+                reading.Pressure1Lbs = submitted.Pressure1Lbs;
+                reading.Pressure1Source = submitted.Pressure1Lbs is null ? null : "Manual";
+            }
+            if (submitted.Pressure2Lbs != submitted.OriginalPressure2Lbs)
+            {
+                reading.Pressure2Lbs = submitted.Pressure2Lbs;
+                reading.Pressure2Source = submitted.Pressure2Lbs is null ? null : "Manual";
+            }
             reading.WeightGrams = submitted.WeightGrams;
             reading.StarchScaleValueId = submitted.StarchScaleValueId;
             reading.SizeCategory = size.SizeCategory;
@@ -725,6 +774,61 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
 
     private static bool HasEnteredData(TrendFruitRow row) =>
         row.Pressure1Lbs is not null || row.Pressure2Lbs is not null || row.WeightGrams is not null || row.StarchScaleValueId is not null || row.SizeCategory is not null;
+
+    private static FieldSampleQcStationStatusViewModel BuildQcStationStatus(QcStation? station)
+    {
+        if (station is null)
+        {
+            return new FieldSampleQcStationStatusViewModel();
+        }
+
+        var lastContact = station.LastSyncAt ?? station.LastSeenAt;
+        if (!station.IsActive)
+        {
+            return new FieldSampleQcStationStatusViewModel
+            {
+                State = "Error",
+                Message = $"{station.StationName} is enrolled but inactive. Ask an administrator to reactivate or replace its configuration.",
+                StationCode = station.StationCode,
+                StationName = station.StationName,
+                LastSeenAt = station.LastSeenAt,
+                LastSyncAt = station.LastSyncAt
+            };
+        }
+
+        var recentlyConnected = lastContact is not null && lastContact >= DateTimeOffset.UtcNow.AddMinutes(-5);
+        return new FieldSampleQcStationStatusViewModel
+        {
+            State = recentlyConnected ? "Connected" : "Disconnected",
+            Message = recentlyConnected
+                ? $"{station.StationName} recently synchronized this Field Sample."
+                : $"{station.StationName} synchronized this Field Sample previously but is not currently reporting. Open QC Station to reconnect.",
+            StationCode = station.StationCode,
+            StationName = station.StationName,
+            LastSeenAt = station.LastSeenAt,
+            LastSyncAt = station.LastSyncAt
+        };
+    }
+
+    private static IReadOnlyList<PhotoGroupViewModel> GroupPhotos(IReadOnlyList<QcPhoto> photos, bool canDelete, long sampleId) =>
+        photos.GroupBy(x => QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType))
+            .OrderBy(x => x.Key)
+            .Select(group => new PhotoGroupViewModel(
+                group.Key,
+                group.Select(photo => new PhotoMetadataViewModel(
+                    photo.Id,
+                    photo.QcSampleId,
+                    sampleId,
+                    QcPhotoRequirementPolicy.NormalizePhotoType(photo.PhotoType),
+                    photo.PhotoSource,
+                    photo.FileName,
+                    photo.ContentType,
+                    photo.FileSizeBytes,
+                    photo.WebUrl,
+                    photo.CapturedAt,
+                    canDelete,
+                    $"/FieldSamples/{sampleId}/photos/{photo.Id}/remove")).ToList()))
+            .ToList();
 
     private static (int? SizeCategory, string SizeStatus) CalculateSize(decimal? weightGrams, IEnumerable<FruitSizeConversionThreshold> thresholds)
     {

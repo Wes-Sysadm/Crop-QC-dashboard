@@ -2,8 +2,11 @@
 @inject IUserAccessService UserAccess
 @{
     ViewData["Title"] = Model.Sample is null ? "Starch Input" : $"Starch Input - {Model.Sample.DisplayReceiptId}";
+    var availableFruitNumbers = Model.FruitRows.Select(x => x.RowNumber).ToHashSet();
     var trayPositions = Enumerable.Range(0, 5)
         .SelectMany(trayRow => Enumerable.Range(0, 5).Select(trayColumn => trayColumn * 5 + trayRow + 1))
+        .Where(availableFruitNumbers.Contains)
+        .Concat(availableFruitNumbers.Where(x => x > 25).OrderBy(x => x))
         .ToList();
     var canEditDailyQc = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.Edit, Context.RequestAborted);
 }
@@ -41,6 +44,18 @@
             <a href="/Receipts/@Model.Sample.ReceiptId">Back to receipt detail</a>
             <a class="inline-action" href="/Samples/@Model.Sample.Id">Back to sample detail</a>
         </p>
+    </section>
+
+    <section class="panel">
+        <h2>QC Station and Browser Capture Status</h2>
+        <p class="notice" data-starch-station-state="@Model.QcStationStatus.State">
+            <strong>QC Station: @Model.QcStationStatus.State.</strong> @Model.QcStationStatus.Message
+        </p>
+        <p class="muted" data-starch-browser-status>The Starch form loads independently from QC Station and camera access. Camera diagnostics will appear in the device panel below.</p>
+        <div class="button-row">
+            <a class="button secondary-button" href="cropqcstation://sample/@Model.Sample.Id">Open / Retry QC Station</a>
+            <button type="button" class="secondary-button" data-retry-starch-capture>Retry browser capture</button>
+        </div>
     </section>
 
     <section class="panel">
@@ -169,6 +184,24 @@
                 }
             });
         }
+
+        const browserStatus = document.querySelector("[data-starch-browser-status]");
+        function updateBrowserStatus() {
+            if (!window.isSecureContext) {
+                browserStatus.textContent = "Camera access is blocked because this page is not in a secure HTTPS context. The Starch form remains usable; use file upload or open the HTTPS dashboard URL.";
+                return;
+            }
+            if (!navigator.mediaDevices?.getUserMedia) {
+                browserStatus.textContent = "This browser does not expose camera capture. The Starch form remains usable; use file upload or a supported browser.";
+                return;
+            }
+            browserStatus.textContent = "Browser camera API is available. Use Device Setup below to grant permission or reconnect the camera.";
+        }
+        document.querySelector("[data-retry-starch-capture]")?.addEventListener("click", () => {
+            updateBrowserStatus();
+            document.querySelector("[data-device-settings]")?.click();
+        });
+        updateBrowserStatus();
     })();
 </script>
 

@@ -59,7 +59,7 @@ public sealed record QcFruitReadingDto(
 
 public sealed record QcStationSampleListItemDto(
     long SampleId,
-    long ReceiptId,
+    long? ReceiptId,
     string DisplayReceiptId,
     string WarehouseCode,
     string RoomCode,

@@ -114,13 +114,27 @@
         let serialReader = null;
         let lastWeight = null;
         let nextWeightRowIndex = 0;
+        const storage = {
+            getItem(key) {
+                try { return window.localStorage.getItem(key); }
+                catch { return null; }
+            },
+            setItem(key, value) {
+                try { window.localStorage.setItem(key, value); return true; }
+                catch { show("Browser storage is blocked. Device choices will work for this page only and must be selected again next time.", true); return false; }
+            },
+            removeItem(key) {
+                try { window.localStorage.removeItem(key); }
+                catch { }
+            }
+        };
 
         function localCaptureEnabled() {
-            return localStorage.getItem(storageKeys.enabled) === "true";
+            return storage.getItem(storageKeys.enabled) === "true";
         }
 
         function setEnabled(enabled) {
-            localStorage.setItem(storageKeys.enabled, enabled ? "true" : "false");
+            storage.setItem(storageKeys.enabled, enabled ? "true" : "false");
             disabledMessage.hidden = enabled;
             actions.hidden = !enabled;
             if (enabled) {
@@ -181,15 +195,22 @@
         }
 
         function friendlyCameraError(error, role) {
+            if (!window.isSecureContext) {
+                return "Camera access requires HTTPS (or localhost). The form remains available; use file upload on this connection.";
+            }
             if (error?.name === "NotAllowedError" || error?.name === "SecurityError") {
-                return "Camera permission denied.";
+                return "Camera permission denied. Allow camera access in browser site settings, then retry. The form remains available.";
             }
 
             if (error?.name === "NotFoundError" || error?.name === "OverconstrainedError") {
                 return role === "truck" ? "OBSBOT camera not found." : "Brio camera not found.";
             }
 
-            return "Camera not found.";
+            if (error?.name === "NotReadableError" || error?.name === "AbortError") {
+                return "Camera is busy or unavailable. Close other camera applications, reconnect it, then retry.";
+            }
+
+            return `Camera connection failed (${error?.name || "unknown error"}). Retry Device Setup or use manual upload.`;
         }
 
         async function requestCameraPermission() {
@@ -216,7 +237,13 @@
                 return [];
             }
 
-            let devices = await navigator.mediaDevices.enumerateDevices();
+            let devices;
+            try {
+                devices = await navigator.mediaDevices.enumerateDevices();
+            } catch (error) {
+                show(friendlyCameraError(error, "apple"), true);
+                return [];
+            }
             let cameras = devices.filter(device => device.kind === "videoinput");
             const hasLabels = cameras.some(device => device.label);
             permissionMessage.hidden = cameras.length === 0 || hasLabels;
@@ -227,7 +254,7 @@
             for (const role of ["apple", "truck"]) {
                 const select = cameraSelects[role];
                 if (!select) continue;
-                const previous = select.value || localStorage.getItem(storageKeys[role]) || "";
+                const previous = select.value || storage.getItem(storageKeys[role]) || "";
                 select.innerHTML = "";
                 if (cameras.length === 0) {
                     const option = document.createElement("option");
@@ -251,7 +278,7 @@
                     : mapped || cameras[0]?.deviceId || "";
                 select.value = nextValue;
                 if (nextValue) {
-                    localStorage.setItem(storageKeys[role], nextValue);
+                    storage.setItem(storageKeys[role], nextValue);
                     status(role, select.options[select.selectedIndex]?.textContent || "Selected");
                 }
             }
@@ -266,7 +293,7 @@
             }
 
             await ensureCameraList();
-            const deviceId = cameraSelects[role]?.value || localStorage.getItem(storageKeys[role]);
+            const deviceId = cameraSelects[role]?.value || storage.getItem(storageKeys[role]);
             if (!deviceId) {
                 show(role === "truck" ? "OBSBOT camera not found." : "Brio camera not found.", true);
                 return false;
@@ -343,7 +370,7 @@
         }
 
         async function connectScale() {
-            localStorage.setItem(storageKeys.scale, scaleSelect?.value || "");
+            storage.setItem(storageKeys.scale, scaleSelect?.value || "");
             if ("serial" in navigator) {
                 try {
                     serialPort = await navigator.serial.requestPort();
@@ -446,10 +473,10 @@
         });
         panel.querySelector("[data-device-reset]")?.addEventListener("click", () => {
             stopCamera();
-            localStorage.removeItem(storageKeys.enabled);
-            localStorage.removeItem(storageKeys.apple);
-            localStorage.removeItem(storageKeys.truck);
-            localStorage.removeItem(storageKeys.scale);
+            storage.removeItem(storageKeys.enabled);
+            storage.removeItem(storageKeys.apple);
+            storage.removeItem(storageKeys.truck);
+            storage.removeItem(storageKeys.scale);
             setEnabled(false);
             status("apple", "Not selected");
             status("truck", "Not selected");
@@ -462,16 +489,16 @@
         panel.querySelector("[data-device-save]")?.addEventListener("click", () => {
             for (const role of ["apple", "truck"]) {
                 if (cameraSelects[role]?.value) {
-                    localStorage.setItem(storageKeys[role], cameraSelects[role].value);
+                    storage.setItem(storageKeys[role], cameraSelects[role].value);
                 }
             }
-            localStorage.setItem(storageKeys.scale, scaleSelect?.value || "");
+            storage.setItem(storageKeys.scale, scaleSelect?.value || "");
             setEnabled(true);
             show("Device choices saved on this browser.");
         });
         for (const role of ["apple", "truck"]) {
             cameraSelects[role]?.addEventListener("change", async event => {
-                localStorage.setItem(storageKeys[role], event.target.value);
+                storage.setItem(storageKeys[role], event.target.value);
                 status(role, event.target.options[event.target.selectedIndex]?.textContent || "Selected");
                 if (localCaptureEnabled()) {
                     await startCamera(role);
@@ -485,12 +512,12 @@
         panel.querySelector("[data-scale-read]")?.addEventListener("click", () => captureWeight(false));
         panel.querySelector("[data-scale-next]")?.addEventListener("click", () => captureWeight(true));
 
-        if (localStorage.getItem(storageKeys.scale) && scaleSelect) {
-            scaleSelect.value = localStorage.getItem(storageKeys.scale);
+        if (storage.getItem(storageKeys.scale) && scaleSelect) {
+            scaleSelect.value = storage.getItem(storageKeys.scale);
         }
         setEnabled(localCaptureEnabled());
         if (localCaptureEnabled()) {
-            ensureCameraList();
+            ensureCameraList().catch(error => show(friendlyCameraError(error, "apple"), true));
         }
     })();
 </script>
