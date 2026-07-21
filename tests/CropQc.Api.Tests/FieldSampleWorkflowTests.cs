@@ -394,6 +394,19 @@ public sealed class FieldSampleWorkflowTests
         Assert.Equal(180m, row.WeightGrams);
     }
 
+    [Fact]
+    public void FieldSamplePhotoAdd_UsesSampleTypeSpecificEditPermission()
+    {
+        var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var start = service.IndexOf("public async Task<string?> AddSamplePhotoMetadataAsync", StringComparison.Ordinal);
+        var end = service.IndexOf("public async Task<string?> RemoveSamplePhotoAsync", start, StringComparison.Ordinal);
+        var method = service[start..end];
+
+        Assert.Contains("ApplicationAreas.FieldSamples, PageAccessLevel.Edit", method, StringComparison.Ordinal);
+        Assert.Contains("CanEditSamplesAsync(cancellationToken)", method, StringComparison.Ordinal);
+        Assert.Contains("You do not have permission to add photos.", method, StringComparison.Ordinal);
+    }
+
     private static async Task<long> CreateSampleAsync(IFieldSampleService service, string blockName, DateTimeOffset sampleDate)
     {
         var create = await service.CreateAsync(new FieldSampleCreateForm

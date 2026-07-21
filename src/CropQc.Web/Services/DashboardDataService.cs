@@ -2038,6 +2038,14 @@ public sealed class DashboardDataService(
             return "QC sample not found.";
         }
 
+        var canEdit = sample.SampleType.Name.Contains("field", StringComparison.OrdinalIgnoreCase)
+            ? await HasAccessAsync(ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken)
+            : await CanEditSamplesAsync(cancellationToken);
+        if (!canEdit)
+        {
+            return "You do not have permission to add photos.";
+        }
+
         form.PhotoType = QcPhotoRequirementPolicy.NormalizePhotoType(form.PhotoType);
         var available = photoRequirementPolicy.GetAvailablePhotoTypes(sample.SampleType.Name);
         var selected = available.SingleOrDefault(x => string.Equals(x.PhotoType, form.PhotoType, StringComparison.OrdinalIgnoreCase));
