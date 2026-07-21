@@ -75,6 +75,8 @@ public sealed class FieldSampleDetailViewModel
     public bool CanEdit { get; set; }
     public bool IsEditingMetadata { get; set; }
     public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
+    public FieldSampleQcStationStatusViewModel QcStationStatus { get; set; } = new();
+    public IReadOnlyList<PhotoGroupViewModel> PhotoGroups { get; set; } = [];
     public FieldSampleMetadataForm MetadataForm { get; set; } = new();
     public IReadOnlyList<FruitProfile> FruitProfiles { get; set; } = [];
     public IReadOnlyList<CanonicalOrchardBlock> Blocks { get; set; } = [];
@@ -85,6 +87,32 @@ public sealed class FieldSampleDetailViewModel
     public IReadOnlyList<StarchScaleValue> StarchScaleValues { get; set; } = [];
     public SaveFruitReadingsForm FruitReadingForm { get; set; } = new();
 }
+
+public sealed class FieldSampleQcStationStatusViewModel
+{
+    public string State { get; set; } = "NotConfigured";
+    public string Message { get; set; } = "No QC Station has synchronized this Field Sample yet.";
+    public string? StationCode { get; set; }
+    public string? StationName { get; set; }
+    public DateTimeOffset? LastSeenAt { get; set; }
+    public DateTimeOffset? LastSyncAt { get; set; }
+}
+
+public sealed record FieldSampleRefreshViewModel(
+    long SampleId,
+    int TargetSampleSize,
+    DateTimeOffset? UpdatedAt,
+    FieldSampleQcStationStatusViewModel QcStation,
+    IReadOnlyList<FieldSampleRefreshRowViewModel> Rows);
+
+public sealed record FieldSampleRefreshRowViewModel(
+    int RowNumber,
+    decimal? Pressure1Lbs,
+    decimal? Pressure2Lbs,
+    decimal? PressureAverageLbs,
+    decimal? WeightGrams,
+    int? SizeCategory,
+    int? StarchScaleValueId);
 
 public sealed class FieldSampleMetricSummary
 {

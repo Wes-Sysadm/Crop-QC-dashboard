@@ -142,9 +142,26 @@ public sealed class QcStationApiServiceTests
         Assert.Equal("FTA", row50.Pressure1Source);
         Assert.Equal("FTA", row50.Pressure2Source);
         Assert.Null((await db.QcSamples.SingleAsync(x => x.Id == sample.Id)).ReceiptId);
+        Assert.Equal(station.Id, (await db.QcSamples.SingleAsync(x => x.Id == sample.Id)).QcStationId);
         Assert.Empty(await db.RoomInventoryAdjustments.ToListAsync());
         Assert.Empty(await db.BinsRunEntries.ToListAsync());
         Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.SourceApplication == "CropQc.QcStation:Field FTA");
+    }
+
+    [Fact]
+    public async Task QcStationApi_TodayListIncludesReceiptlessFieldSamplesWithWarehouseFilter()
+    {
+        await using var db = CreateDbContext();
+        var sample = await SeedFieldSampleAsync(db, actualSampleSize: 10);
+        var service = new QcStationApiService(db, new AuditService(db));
+
+        var samples = await service.GetTodaySamplesAsync("WP", CancellationToken.None);
+
+        var listed = Assert.Single(samples);
+        Assert.Equal(sample.Id, listed.SampleId);
+        Assert.Null(listed.ReceiptId);
+        Assert.Equal("FIELD", listed.WarehouseCode);
+        Assert.Equal($"Field Sample #{sample.Id}", listed.DisplayReceiptId);
     }
 
     private static string FindRepositoryFile(params string[] pathParts)

@@ -4,6 +4,7 @@ namespace CropQc.Web.Services;
 
 public static class PhotoUploadValidator
 {
+    public const long MaxPhotoSizeBytes = 15 * 1024 * 1024;
     private static readonly HashSet<string> AllowedPhotoContentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "image/jpeg",
@@ -14,14 +15,16 @@ public static class PhotoUploadValidator
 
     public static string? Validate(AddPhotoMetadataForm form)
     {
-        if (!string.Equals(form.PhotoSource, "Upload File", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
         if (form.PhotoFile is null || form.PhotoFile.Length <= 0)
         {
-            return "No photo file was selected.";
+            return string.Equals(form.PhotoSource, "Upload File", StringComparison.OrdinalIgnoreCase)
+                ? "No photo file was selected."
+                : null;
+        }
+
+        if (form.PhotoFile.Length > MaxPhotoSizeBytes)
+        {
+            return "Photos must be 15 MB or smaller.";
         }
 
         if (!AllowedPhotoContentTypes.Contains(form.PhotoFile.ContentType))

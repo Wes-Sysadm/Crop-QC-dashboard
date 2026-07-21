@@ -1076,6 +1076,7 @@ public sealed class StarchTestViewModel
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
     public SaveStarchTestForm StarchForm { get; set; } = new();
     public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
+    public FieldSampleQcStationStatusViewModel QcStationStatus { get; set; } = new();
 }
 
 public sealed record DeviceCaptureSettingsViewModel(bool Enabled, bool BrioEnabled, bool ObsbotEnabled, bool ScaleEnabled)
@@ -1147,6 +1148,8 @@ public sealed class FruitReadingEditRow
     public int RowNumber { get; set; }
     public decimal? Pressure1Lbs { get; set; }
     public decimal? Pressure2Lbs { get; set; }
+    public decimal? OriginalPressure1Lbs { get; set; }
+    public decimal? OriginalPressure2Lbs { get; set; }
     public decimal? WeightGrams { get; set; }
     public int? GradeId { get; set; }
     public int? StarchScaleValueId { get; set; }
@@ -1313,7 +1316,7 @@ public sealed class PhotoPlaceholderFormViewModel
     public string ReceiptId { get; set; } = "";
 }
 
-public sealed record PhotoMetadataViewModel(long Id, long? QcSampleId, long? DeleteFromSampleId, string PhotoType, string PhotoSource, string FileName, string ContentType, long? FileSizeBytes, string? WebUrl, DateTimeOffset CapturedAt, bool CanDelete);
+public sealed record PhotoMetadataViewModel(long Id, long? QcSampleId, long? DeleteFromSampleId, string PhotoType, string PhotoSource, string FileName, string ContentType, long? FileSizeBytes, string? WebUrl, DateTimeOffset CapturedAt, bool CanDelete, string? DeleteAction = null);
 public sealed record PhotoGroupViewModel(string PhotoType, IReadOnlyList<PhotoMetadataViewModel> Photos);
 
 public sealed class ReadinessViewModel

@@ -21,9 +21,10 @@
                         <td>@photo.FileSizeBytes</td>
                         <td>@photo.CapturedAt.LocalDateTime</td>
                         <td>
-                            @if (photo.CanDelete && photo.DeleteFromSampleId is long sampleId)
+                            @if (photo.CanDelete && (!string.IsNullOrWhiteSpace(photo.DeleteAction) || photo.DeleteFromSampleId is long))
                             {
-                                <form class="inline-form" method="post" action="/Samples/@sampleId/photos/@photo.Id/remove" onsubmit="return confirm('Remove this photo from the sample?');">
+                                var deleteAction = photo.DeleteAction ?? $"/Samples/{photo.DeleteFromSampleId}/photos/{photo.Id}/remove";
+                                <form class="inline-form" method="post" action="@deleteAction" onsubmit="return confirm('Remove this photo from the sample?');">
                                     <button type="submit" class="link-button danger-link">Remove Photo</button>
                                 </form>
                             }

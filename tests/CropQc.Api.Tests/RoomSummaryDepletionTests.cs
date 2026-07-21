@@ -658,6 +658,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("responsive-card-grid", room);
         Assert.Contains("action-bar", partial);
         Assert.Contains("Open QC Station", partial);
+        Assert.Equal(1, partial.Split("Open QC Station", StringSplitOptions.None).Length - 1);
+        Assert.Contains("Model.Samples.FirstOrDefault()", partial);
         Assert.Contains("View Receipt", partial);
         Assert.Contains("overflow-x: hidden", css);
         Assert.Contains("word-break: normal", css);

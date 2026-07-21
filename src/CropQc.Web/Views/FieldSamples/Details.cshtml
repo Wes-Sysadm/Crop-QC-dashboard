@@ -280,12 +280,20 @@
             <p>
                 <button type="button" class="secondary-button" data-copy-sample-id="@Model.SampleId">Copy Sample ID</button>
                 <a class="button secondary-button" href="cropqcstation://sample/@Model.SampleId">Open in QC Station</a>
+                <button type="button" class="secondary-button" data-refresh-field-sample>Refresh readings</button>
             </p>
-            <p class="muted">The QC Station app targets this sample by Sample ID, so no receipt-backed workflow is required.</p>
+            <div class="notice" data-qc-station-state="@Model.QcStationStatus.State">
+                <strong>QC Station: <span data-qc-station-label>@Model.QcStationStatus.State</span></strong>
+                <span data-qc-station-message>@Model.QcStationStatus.Message</span>
+            </div>
+            <p class="notice warning" data-field-server-update hidden>New readings are available, but refresh is paused to protect unsaved Field Sample changes. Save or discard those changes, then retry.</p>
+            <p class="muted">The installed QC Station reads its enrolled workstation configuration, opens this exact sample ID, and synchronizes pressure-only changes through the dashboard API. This page checks for returned readings automatically.</p>
         </section>
 
         @await Html.PartialAsync("_DeviceCapturePanel", new DeviceCapturePanelViewModel(
             Model.DeviceCapture,
+            SamplePhotoAction: $"/FieldSamples/{Model.SampleId}/photos",
+            ShowApplePhotos: true,
             ShowScale: true,
             RequiresSavedTargetMessage: "Field Sample rows are saved on this page. Scale capture fills the selected weight input; save the Field Sample to persist it."))
 
@@ -313,11 +321,11 @@
                             var row = Model.FruitRows[i];
                             <tr class="fruit-row" data-row-index="@i" data-row-number="@row.RowNumber">
                                 <td>@row.RowNumber<input type="hidden" name="Rows[@i].RowNumber" value="@row.RowNumber" /></td>
-                                <td><input class="number-input" name="Rows[@i].Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /></td>
-                                <td><input class="number-input" name="Rows[@i].Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /></td>
-                                <td>@row.PressureAverageLbs</td>
+                                <td><input class="number-input" name="Rows[@i].Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /><input type="hidden" name="Rows[@i].OriginalPressure1Lbs" value="@row.Pressure1Lbs" /></td>
+                                <td><input class="number-input" name="Rows[@i].Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /><input type="hidden" name="Rows[@i].OriginalPressure2Lbs" value="@row.Pressure2Lbs" /></td>
+                                <td data-pressure-average>@row.PressureAverageLbs</td>
                                 <td><input class="number-input" name="Rows[@i].WeightGrams" type="number" step="0.0001" min="0" value="@row.WeightGrams" /></td>
-                                <td>@row.SizeCategory</td>
+                                <td data-size-category>@row.SizeCategory</td>
                                 <td>
                                     <select name="Rows[@i].StarchScaleValueId">
                                         <option value="">--</option>
@@ -364,6 +372,29 @@
             </div>
         </section>
     }
+
+    <section>
+        <h2>Field Sample Photos</h2>
+        <div class="grid-two">
+            <div class="panel">
+                <h3>Saved Photos</h3>
+                @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
+            </div>
+            @if (Model.CanEdit)
+            {
+                @await Html.PartialAsync("_PhotoPlaceholderForm", new PhotoPlaceholderFormViewModel
+                {
+                    FormAction = $"/FieldSamples/{Model.SampleId}/photos",
+                    Title = "Add Field Sample Photo",
+                    DefaultPhotoType = "SampleBeforeCutting",
+                    PhotoTypes = ["SampleBeforeCutting", "CutFruit", "FruitAfterStarch", "Other"],
+                    CropYear = Model.SampleTakenAt.Year,
+                    Warehouse = "FIELD",
+                    ReceiptId = $"FieldSample-{Model.SampleId}"
+                })
+            }
+        </div>
+    </section>
 }
 
 <script>
@@ -381,6 +412,61 @@
 
         const form = document.querySelector("#field-sample-rows-form");
         const addButton = document.querySelector("[data-add-field-row]");
+        let dirty = false;
+        const updateWarning = document.querySelector("[data-field-server-update]");
+
+        function markDirty() {
+            dirty = true;
+        }
+
+        form?.addEventListener("input", markDirty);
+        form?.addEventListener("change", markDirty);
+
+        function updateStationStatus(station) {
+            const state = document.querySelector("[data-qc-station-state]");
+            const label = document.querySelector("[data-qc-station-label]");
+            const message = document.querySelector("[data-qc-station-message]");
+            if (state) state.dataset.qcStationState = station?.state || "Error";
+            if (label) label.textContent = station?.state || "Error";
+            if (message) message.textContent = station?.message || "QC Station status could not be checked. Use Retry after confirming network access.";
+        }
+
+        function updateRows(rows) {
+            for (const row of rows || []) {
+                const tr = document.querySelector(`.fruit-row[data-row-number='${row.rowNumber}']`);
+                if (!tr) continue;
+                for (const slot of [1, 2]) {
+                    const value = row[`pressure${slot}Lbs`] ?? "";
+                    const input = tr.querySelector(`[name$='.Pressure${slot}Lbs']`);
+                    const original = tr.querySelector(`[name$='.OriginalPressure${slot}Lbs']`);
+                    if (input) input.value = value;
+                    if (original) original.value = value;
+                }
+                tr.querySelector("[data-pressure-average]")?.replaceChildren(document.createTextNode(row.pressureAverageLbs ?? ""));
+                tr.querySelector("[data-size-category]")?.replaceChildren(document.createTextNode(row.sizeCategory ?? ""));
+            }
+        }
+
+        async function refreshFieldSample(manual = false) {
+            if (dirty) {
+                if (updateWarning) updateWarning.hidden = false;
+                return;
+            }
+            try {
+                const response = await fetch(`/FieldSamples/@Model.SampleId/refresh`, { credentials: "same-origin", cache: "no-store" });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                updateRows(data.rows);
+                updateStationStatus(data.qcStation);
+                if (updateWarning) updateWarning.hidden = true;
+            } catch (error) {
+                updateStationStatus({ state: "Error", message: `QC Station status check failed (${error.message}). Check dashboard connectivity, then retry.` });
+            }
+        }
+
+        document.querySelector("[data-refresh-field-sample]")?.addEventListener("click", () => refreshFieldSample(true));
+        window.setInterval(() => refreshFieldSample(false), 3000);
+
         if (!form || !addButton) return;
 
         const targetSizeInput = form.querySelector("[data-field-target-size]");
@@ -391,6 +477,7 @@
             .join("");
 
         addButton.addEventListener("click", () => {
+            markDirty();
             const rows = Array.from(tbody.querySelectorAll("tr.fruit-row"));
             if (rows.length >= maxRows) {
                 addButton.disabled = true;
@@ -405,11 +492,11 @@
             tr.dataset.rowNumber = String(rowNumber);
             tr.innerHTML = `
                 <td>${rowNumber}<input type="hidden" name="Rows[${index}].RowNumber" value="${rowNumber}" /></td>
-                <td><input class="number-input" name="Rows[${index}].Pressure1Lbs" type="number" step="0.01" min="0" /></td>
-                <td><input class="number-input" name="Rows[${index}].Pressure2Lbs" type="number" step="0.01" min="0" /></td>
-                <td></td>
+                <td><input class="number-input" name="Rows[${index}].Pressure1Lbs" type="number" step="0.01" min="0" /><input type="hidden" name="Rows[${index}].OriginalPressure1Lbs" /></td>
+                <td><input class="number-input" name="Rows[${index}].Pressure2Lbs" type="number" step="0.01" min="0" /><input type="hidden" name="Rows[${index}].OriginalPressure2Lbs" /></td>
+                <td data-pressure-average></td>
                 <td><input class="number-input" name="Rows[${index}].WeightGrams" type="number" step="0.0001" min="0" /></td>
-                <td></td>
+                <td data-size-category></td>
                 <td><select name="Rows[${index}].StarchScaleValueId">${starchOptions}</select></td>`;
             tbody.querySelectorAll("tr.fruit-row").forEach(row => row.classList.remove("device-selected-row"));
             tbody.appendChild(tr);

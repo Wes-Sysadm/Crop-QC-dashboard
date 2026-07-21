@@ -34,7 +34,7 @@
     <input type="hidden" name="WebUrl" class="photo-web-url" />
 
     <div class="source-panel upload-panel wide">
-        <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="photo-file-input" name="PhotoFile" hidden />
+        <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" capture="environment" class="photo-file-input" name="PhotoFile" hidden />
         <button type="button" class="upload-zone">
             <span>Drop photo here or click to browse</span>
         </button>
@@ -44,12 +44,16 @@
     </div>
 
     <div class="source-panel camera-panel wide" hidden>
-        <div class="camera-placeholder">USB camera preview will appear here.</div>
+        <video class="photo-camera-video" autoplay playsinline muted hidden></video>
+        <canvas class="photo-camera-canvas" hidden></canvas>
+        <p class="camera-placeholder" aria-live="polite">Start the camera to preview it.</p>
         <div class="button-row">
             <button type="button" class="camera-start">Start Camera Preview</button>
             <button type="button" class="camera-capture">Capture Photo</button>
         </div>
     </div>
+
+    <p class="notice warning photo-validation-message wide" role="alert" hidden></p>
 
     <div class="metadata-summary wide" aria-live="polite">
         <div><strong>Target folder:</strong> <span class="target-folder"></span></div>
@@ -59,7 +63,7 @@
         <div><strong>Content type:</strong> <span class="selected-content-type">image/jpeg</span></div>
     </div>
 
-    <p class="muted wide">Upload File saves the photo through the configured storage provider and stores metadata only in the database. USB camera capture remains a placeholder until the QC Station camera workflow is connected.</p>
+    <p class="muted wide">Photos are validated, saved through the configured storage provider, and associated with this record. Maximum file size: 15 MB.</p>
     <button type="submit">Save Photo</button>
 </form>
 
@@ -88,7 +92,15 @@
         const selectedContentType = form.querySelector(".selected-content-type");
         const cameraStart = form.querySelector(".camera-start");
         const cameraCapture = form.querySelector(".camera-capture");
+        const cameraVideo = form.querySelector(".photo-camera-video");
+        const cameraCanvas = form.querySelector(".photo-camera-canvas");
+        const cameraMessage = form.querySelector(".camera-placeholder");
+        const validationMessage = form.querySelector(".photo-validation-message");
         let selectedUploadFile = null;
+        let cameraStream = null;
+        let previewUrl = null;
+        const maxPhotoSize = 15 * 1024 * 1024;
+        const allowedTypes = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 
         function pad(value) {
             return value.toString().padStart(2, "0");
@@ -130,6 +142,10 @@
         }
 
         function showPreview(file) {
+            if (previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+                previewUrl = null;
+            }
             preview.innerHTML = "";
             if (!file) {
                 preview.appendChild(document.createTextNode("No photo selected"));
@@ -139,7 +155,8 @@
             if (file.type.startsWith("image/")) {
                 const image = document.createElement("img");
                 image.alt = "Selected photo preview";
-                image.src = URL.createObjectURL(file);
+                previewUrl = URL.createObjectURL(file);
+                image.src = previewUrl;
                 preview.appendChild(image);
             } else {
                 preview.appendChild(document.createTextNode(file.name));
@@ -147,6 +164,15 @@
         }
 
         function setUploadFile(file) {
+            if (file && (!allowedTypes.has((file.type || "").toLowerCase()) || file.size > maxPhotoSize)) {
+                validationMessage.textContent = file.size > maxPhotoSize
+                    ? "Photo is larger than 15 MB. Choose or capture a smaller image."
+                    : "Only JPG, PNG, or WEBP images are allowed.";
+                validationMessage.hidden = false;
+                return false;
+            }
+            validationMessage.hidden = true;
+            validationMessage.textContent = "";
             selectedUploadFile = file;
             if (file && window.DataTransfer) {
                 const dataTransfer = new DataTransfer();
@@ -155,6 +181,44 @@
             }
             buildMetadata(file);
             showPreview(file);
+            return true;
+        }
+
+        function stopCamera() {
+            cameraStream?.getTracks().forEach(track => track.stop());
+            cameraStream = null;
+            cameraVideo.srcObject = null;
+            cameraVideo.hidden = true;
+        }
+
+        function cameraError(error) {
+            if (!window.isSecureContext) return "Camera access requires HTTPS (or localhost). Use file selection on this connection.";
+            if (error?.name === "NotAllowedError" || error?.name === "SecurityError") return "Camera permission was denied. Allow camera access in browser site settings, then retry, or select a file.";
+            if (error?.name === "NotFoundError") return "No camera was found. Connect a camera or select a file.";
+            if (error?.name === "NotReadableError" || error?.name === "AbortError") return "The camera is busy or unavailable. Close other camera apps, then retry.";
+            return `Camera could not start (${error?.name || "unknown error"}). Select a file or retry.`;
+        }
+
+        async function startCamera() {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                cameraMessage.textContent = window.isSecureContext
+                    ? "This browser does not provide camera capture. Select a photo file instead."
+                    : "Camera access is blocked on this non-HTTPS page. Select a photo file instead.";
+                return false;
+            }
+            try {
+                stopCamera();
+                cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+                cameraVideo.srcObject = cameraStream;
+                cameraVideo.hidden = false;
+                await cameraVideo.play();
+                cameraMessage.textContent = "Camera connected. Review the preview, then capture.";
+                return true;
+            } catch (error) {
+                stopCamera();
+                cameraMessage.textContent = cameraError(error);
+                return false;
+            }
         }
 
         function syncSource() {
@@ -165,6 +229,8 @@
             if (isCamera) {
                 preview.innerHTML = "";
                 preview.appendChild(document.createTextNode("No photo selected"));
+            } else {
+                stopCamera();
             }
         }
 
@@ -187,16 +253,28 @@
             if (file) setUploadFile(file);
         });
 
-        cameraStart.addEventListener("click", () => {
-            form.querySelector(".camera-placeholder").textContent = "USB camera preview will appear here.";
-        });
-        cameraCapture.addEventListener("click", () => {
-            buildMetadata(null);
+        cameraStart.addEventListener("click", startCamera);
+        cameraCapture.addEventListener("click", async () => {
+            if (!cameraStream && !await startCamera()) return;
+            const width = cameraVideo.videoWidth || 1280;
+            const height = cameraVideo.videoHeight || 720;
+            cameraCanvas.width = width;
+            cameraCanvas.height = height;
+            cameraCanvas.getContext("2d").drawImage(cameraVideo, 0, 0, width, height);
+            const blob = await new Promise(resolve => cameraCanvas.toBlob(resolve, "image/jpeg", 0.9));
+            if (!blob) {
+                cameraMessage.textContent = "The browser could not create an image from the camera. Retry or select a file.";
+                return;
+            }
+            const file = new File([blob], `camera-${Date.now()}.jpg`, { type: "image/jpeg" });
+            if (setUploadFile(file)) cameraMessage.textContent = "Photo captured. Review the preview, then save.";
         });
         form.addEventListener("submit", event => {
             const hasPostedFile = fileInput.files && fileInput.files.length > 0;
-            if (photoSource.value === "Upload File" && !hasPostedFile) {
+            if (!hasPostedFile) {
                 event.preventDefault();
+                validationMessage.textContent = "Choose or capture a photo before saving.";
+                validationMessage.hidden = false;
                 uploadZone.focus();
                 uploadZone.classList.add("drag-over");
                 return;
@@ -207,6 +285,10 @@
 
         buildMetadata(null);
         syncSource();
+        window.addEventListener("pagehide", () => {
+            stopCamera();
+            if (previewUrl) URL.revokeObjectURL(previewUrl);
+        });
     })();
 </script>
 

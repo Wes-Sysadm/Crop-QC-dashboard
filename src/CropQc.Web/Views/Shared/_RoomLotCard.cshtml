@@ -46,7 +46,10 @@
         @foreach (var sample in Model.Samples.Take(4))
         {
             <a class="button secondary-button" href="/Samples/@sample.SampleId">View @sample.DisplayReceiptId</a>
-            <a class="button secondary-button" href="cropqcstation://sample/@sample.SampleId">Open QC Station</a>
+        }
+        @if (Model.Samples.FirstOrDefault() is { } latestSample)
+        {
+            <a class="button secondary-button" href="cropqcstation://sample/@latestSample.SampleId">Open QC Station</a>
         }
     </div>
 </article>

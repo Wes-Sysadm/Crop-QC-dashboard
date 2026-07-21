@@ -64,7 +64,7 @@ public sealed class DeviceCaptureIntegrationTests
 
         Assert.Contains("navigator.mediaDevices.getUserMedia", panel);
         Assert.Contains("navigator.mediaDevices.enumerateDevices", panel);
-        Assert.Contains("localStorage.setItem(storageKeys[role]", panel);
+        Assert.Contains("storage.setItem(storageKeys[role]", panel);
         Assert.Contains("video.srcObject = stream", panel);
         Assert.Contains("await video.play()", panel);
         Assert.Contains("await startCamera(role)", panel);
@@ -119,6 +119,22 @@ public sealed class DeviceCaptureIntegrationTests
         Assert.Contains("ShowScale: true", fieldSamples);
         Assert.Contains("data-add-field-row", fieldSamples);
         Assert.Contains("Rows[${index}].WeightGrams", fieldSamples);
+    }
+
+    [Fact]
+    public void StarchPage_DynamicallyMapsActualRowsAndKeepsRetryControlsVisible()
+    {
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Samples", "Starch.cshtml"));
+        var panel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_DeviceCapturePanel.cshtml"));
+
+        Assert.Contains("availableFruitNumbers", view);
+        Assert.Contains(".Where(availableFruitNumbers.Contains)", view);
+        Assert.DoesNotContain("Enumerable.Range(1, 25).Single", view);
+        Assert.Contains("Open / Retry QC Station", view);
+        Assert.Contains("data-retry-starch-capture", view);
+        Assert.Contains("window.isSecureContext", panel);
+        Assert.Contains("NotReadableError", panel);
+        Assert.Contains("Browser storage is blocked", panel);
     }
 
     private static string FindRepositoryFileText(params string[] pathParts) =>

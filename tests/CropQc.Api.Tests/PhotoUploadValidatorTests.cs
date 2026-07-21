@@ -51,6 +51,26 @@ public sealed class PhotoUploadValidatorTests
         Assert.Null(error);
     }
 
+    [Fact]
+    public void Oversized_image_returns_clear_validation_error()
+    {
+        var stream = new MemoryStream([1]);
+        var file = new FormFile(stream, 0, PhotoUploadValidator.MaxPhotoSizeBytes + 1, "PhotoFile", "large.jpg")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/jpeg"
+        };
+
+        var error = PhotoUploadValidator.Validate(new AddPhotoMetadataForm
+        {
+            PhotoSource = "USB Camera",
+            PhotoType = "SampleBeforeCutting",
+            PhotoFile = file
+        });
+
+        Assert.Equal("Photos must be 15 MB or smaller.", error);
+    }
+
     private static IFormFile FormFile(string fileName, string contentType)
     {
         var stream = new MemoryStream([1, 2, 3]);

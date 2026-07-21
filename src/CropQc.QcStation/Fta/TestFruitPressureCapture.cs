@@ -37,11 +37,6 @@ public sealed class TestFruitPressureCapture
 
     public void SetTargetFruitCount(int targetFruitCount)
     {
-        if (targetFruitCount is not (10 or 25 or 50))
-        {
-            targetFruitCount = 10;
-        }
-
         TargetFruitCount = targetFruitCount;
         FruitNumber = Math.Min(FruitNumber, TargetFruitCount);
         SyncCurrentTargetToFruit();

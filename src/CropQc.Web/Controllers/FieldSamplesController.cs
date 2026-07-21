@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CropQc.Web.Controllers;
 
 [Route("[controller]")]
-public sealed class FieldSamplesController(IFieldSampleService fieldSampleService) : Controller
+public sealed class FieldSamplesController(IFieldSampleService fieldSampleService, IDashboardDataService dashboardDataService) : Controller
 {
     [HttpGet("")]
     [Authorize(Policy = AccessPolicyNames.FieldSamplesView)]
@@ -43,6 +43,14 @@ public sealed class FieldSamplesController(IFieldSampleService fieldSampleServic
     public async Task<IActionResult> Details(long id, CancellationToken cancellationToken) =>
         View(await fieldSampleService.GetDetailAsync(id, User, cancellationToken));
 
+    [HttpGet("{id:long}/refresh")]
+    [Authorize(Policy = AccessPolicyNames.FieldSamplesView)]
+    public async Task<IActionResult> Refresh(long id, CancellationToken cancellationToken)
+    {
+        var model = await fieldSampleService.GetRefreshAsync(id, User, cancellationToken);
+        return model is null ? NotFound() : Json(model);
+    }
+
     [HttpGet("{id:long}/Edit")]
     [Authorize(Policy = AccessPolicyNames.FieldSamplesEdit)]
     public async Task<IActionResult> Edit(long id, CancellationToken cancellationToken)
@@ -69,6 +77,24 @@ public sealed class FieldSamplesController(IFieldSampleService fieldSampleServic
         form.SampleId = id;
         var error = await fieldSampleService.SaveRowsAsync(id, form, User, cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Field Sample rows saved.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost("{id:long}/photos")]
+    [Authorize(Policy = AccessPolicyNames.FieldSamplesEdit)]
+    public async Task<IActionResult> AddPhoto(long id, AddPhotoMetadataForm form, CancellationToken cancellationToken)
+    {
+        var error = await dashboardDataService.AddSamplePhotoMetadataAsync(id, form, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Field Sample photo uploaded successfully.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost("{id:long}/photos/{photoId:long}/remove")]
+    [Authorize(Policy = AccessPolicyNames.FieldSamplesEdit)]
+    public async Task<IActionResult> RemovePhoto(long id, long photoId, CancellationToken cancellationToken)
+    {
+        var error = await dashboardDataService.RemoveSamplePhotoAsync(id, photoId, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Field Sample photo removed.";
         return RedirectToAction(nameof(Details), new { id });
     }
 }
