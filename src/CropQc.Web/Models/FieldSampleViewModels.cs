@@ -30,6 +30,7 @@ public sealed class FieldSampleListItemViewModel
     public string Variety { get; set; } = "";
     public DateTimeOffset SampleTakenAt { get; set; }
     public int EnteredFruitCount { get; set; }
+    public int TargetSampleSize { get; set; } = 10;
     public decimal? AverageWeightGrams { get; set; }
     public decimal? AverageStarch { get; set; }
     public decimal? AveragePressureLbs { get; set; }
@@ -72,6 +73,15 @@ public sealed class FieldSampleDetailViewModel
     public string Variety { get; set; } = "";
     public DateTimeOffset SampleTakenAt { get; set; }
     public string? Notes { get; set; }
+    public string LifecycleStatus { get; set; } = "In Progress";
+    public string EmailStatus { get; set; } = "Not Sent";
+    public bool ChangedSinceLastSend { get; set; }
+    public DateTimeOffset? LastSentAt { get; set; }
+    public string? LastSentBy { get; set; }
+    public string? LastRecipientSnapshot { get; set; }
+    public IReadOnlyList<string> CompletionMissingItems { get; set; } = [];
+    public bool CanMarkComplete { get; set; }
+    public bool CanSend { get; set; }
     public int TargetSampleSize { get; set; } = 10;
     public bool CanEdit { get; set; }
     public bool IsEditingMetadata { get; set; }
@@ -86,7 +96,33 @@ public sealed class FieldSampleDetailViewModel
     public IReadOnlyList<FieldSampleTrendPoint> Trend { get; set; } = [];
     public IReadOnlyList<FruitReadingRowViewModel> FruitRows { get; set; } = [];
     public IReadOnlyList<StarchScaleValue> StarchScaleValues { get; set; } = [];
+    public IReadOnlyList<FieldSampleSizeThreshold> SizeThresholds { get; set; } = [];
+    public IReadOnlyList<FieldSampleSendHistoryItem> SendHistory { get; set; } = [];
     public SaveFruitReadingsForm FruitReadingForm { get; set; } = new();
+}
+
+public sealed record FieldSampleSizeThreshold(int SizeCategory, decimal MinimumWeightGrams);
+
+public sealed record FieldSampleSendHistoryItem(
+    long Id,
+    string Status,
+    DateTimeOffset? SentAt,
+    string? SentBy,
+    string Recipients,
+    string Subject,
+    bool IsResend,
+    string? Failure);
+
+public sealed class FieldSampleReportPreviewViewModel
+{
+    public long SampleId { get; set; }
+    public string Subject { get; set; } = "";
+    public string Recipients { get; set; } = "";
+    public string HtmlBody { get; set; } = "";
+    public bool CanSend { get; set; }
+    public bool IsResend { get; set; }
+    public bool ChangedSinceLastSend { get; set; }
+    public IReadOnlyList<string> MissingItems { get; set; } = [];
 }
 
 public sealed class FieldSampleQcStationStatusViewModel
@@ -127,6 +163,8 @@ public sealed class FieldSampleMetricSummary
     public int StarchRepresentedFruitCount { get; set; }
     public int MissingStarchCount { get; set; }
     public decimal? AveragePressureLbs { get; set; }
+    public decimal? AveragePressure1Lbs { get; set; }
+    public decimal? AveragePressure2Lbs { get; set; }
     public decimal? PeakPressureLbs { get; set; }
     public decimal? MinimumPressureLbs { get; set; }
     public decimal? PressureStandardDeviationLbs { get; set; }
@@ -135,9 +173,12 @@ public sealed class FieldSampleMetricSummary
     public decimal? AveragePressureChangeFromPriorLbs { get; set; }
     public decimal? AveragePressureChangeFromPriorPercent { get; set; }
     public DateTimeOffset? PriorPressureSampleDate { get; set; }
+    public IReadOnlyList<FieldSampleDistributionPoint> GradeDistribution { get; set; } = [];
+    public IReadOnlyList<FieldSampleDistributionPoint> StarchDistribution { get; set; } = [];
 }
 
 public sealed record FieldSampleSizePoint(int Size, decimal Percentage);
+public sealed record FieldSampleDistributionPoint(string Label, decimal Percentage);
 
 public sealed class FieldSampleTrendPoint
 {

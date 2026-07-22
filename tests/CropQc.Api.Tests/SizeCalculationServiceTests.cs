@@ -1,4 +1,4 @@
-using CropQc.Api.Services;
+using CropQc.Data;
 using CropQc.Data.Entities;
 
 namespace CropQc.Api.Tests;

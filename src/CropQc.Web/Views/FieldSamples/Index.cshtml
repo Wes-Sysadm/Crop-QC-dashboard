@@ -46,9 +46,10 @@
             Completion
             <select name="CompletionStatus">
                 <option value="">All</option>
-                <option value="Empty" selected="@(Model.Search.CompletionStatus == "Empty" ? "selected" : null)">Empty</option>
-                <option value="Partial" selected="@(Model.Search.CompletionStatus == "Partial" ? "selected" : null)">Partial</option>
+                <option value="In Progress" selected="@(Model.Search.CompletionStatus == "In Progress" ? "selected" : null)">In Progress</option>
                 <option value="Complete" selected="@(Model.Search.CompletionStatus == "Complete" ? "selected" : null)">Complete</option>
+                <option value="Sent" selected="@(Model.Search.CompletionStatus == "Sent" ? "selected" : null)">Sent</option>
+                <option value="Changed Since Last Send" selected="@(Model.Search.CompletionStatus == "Changed Since Last Send" ? "selected" : null)">Changed Since Last Send</option>
             </select>
         </label>
         <button type="submit">Filter</button>
@@ -95,7 +96,7 @@
                             }
                         </td>
                         <td>@sample.Variety</td>
-                        <td>@sample.EnteredFruitCount / 10</td>
+                        <td>@sample.EnteredFruitCount / @sample.TargetSampleSize</td>
                         <td>@(sample.AverageWeightGrams?.ToString("0.##") ?? "Missing") g</td>
                         <td>@(sample.AverageStarch?.ToString("0.##") ?? "Missing")</td>
                         <td>@(sample.AveragePressureLbs?.ToString("0.##") ?? "Missing") lb</td>

@@ -172,7 +172,7 @@ public sealed record CreateEmailLogRequest(
 
 public sealed record QcSummaryEmailLogDto(
     long Id,
-    long ReceiptId,
+    long? ReceiptId,
     long? QcSampleId,
     string FromAddress,
     string ToAddress,

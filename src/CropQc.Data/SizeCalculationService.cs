@@ -1,6 +1,6 @@
 using CropQc.Data.Entities;
 
-namespace CropQc.Api.Services;
+namespace CropQc.Data;
 
 public sealed record SizeCalculationResult(int? SizeCategory, string SizeStatus);
 
@@ -9,6 +9,7 @@ public static class SizeCalculationService
     public const string NotCalculated = "NotCalculated";
     public const string Undersized = "Undersized";
     public const string Sized = "Sized";
+    public const string Manual = "Manual";
 
     public static SizeCalculationResult Calculate(decimal? weightGrams, IEnumerable<FruitSizeConversionThreshold> thresholds)
     {
@@ -17,12 +18,11 @@ public static class SizeCalculationService
             return new SizeCalculationResult(null, NotCalculated);
         }
 
-        var orderedThresholds = thresholds
+        var match = thresholds
             .Where(x => x.IsActive)
             .OrderByDescending(x => x.MinimumWeightGrams)
-            .ToList();
+            .FirstOrDefault(x => weightGrams.Value >= x.MinimumWeightGrams);
 
-        var match = orderedThresholds.FirstOrDefault(x => weightGrams.Value >= x.MinimumWeightGrams);
         return match is null
             ? new SizeCalculationResult(null, Undersized)
             : new SizeCalculationResult(match.SizeCategory, Sized);

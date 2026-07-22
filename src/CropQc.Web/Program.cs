@@ -220,6 +220,7 @@ builder.Services.AddScoped<IDataCleanupService, DataCleanupService>();
 builder.Services.AddScoped<IVarietyColorService, VarietyColorService>();
 builder.Services.AddScoped<ICanonicalGrowerService, CanonicalGrowerService>();
 builder.Services.AddScoped<IFieldSampleService, FieldSampleService>();
+builder.Services.AddScoped<IFieldSampleReportService, FieldSampleReportService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddHostedService<EbsDailyBinsEmailHostedService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));

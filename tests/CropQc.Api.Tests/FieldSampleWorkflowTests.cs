@@ -1,10 +1,12 @@
 using System.Security.Claims;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Storage;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CropQc.Api.Tests;
 
@@ -73,7 +75,7 @@ public sealed class FieldSampleWorkflowTests
         Assert.Equal(10, sample.ActualSampleSize);
         Assert.Equal("Field Sample", (await db.SampleTypes.SingleAsync(x => x.Id == sample.SampleTypeId)).Name);
         Assert.Equal("Not Required", sample.PhotoStatus);
-        Assert.Equal("Not Applicable", sample.EmailStatus);
+        Assert.Equal("Not Sent", sample.EmailStatus);
         Assert.Equal("North Block 12", sample.FieldSampleOriginalBlockName);
         Assert.Equal("North Block 12", sample.CanonicalOrchardBlock!.CanonicalBlockName);
         Assert.Equal(10, await db.QcFruitReadings.CountAsync(x => x.QcSampleId == sampleId));
@@ -138,6 +140,7 @@ public sealed class FieldSampleWorkflowTests
         Assert.Null(rows[0].GradeId);
         Assert.Equal(1, rows[1].StarchScaleValueId);
         Assert.Equal(72, rows[2].SizeCategory);
+        Assert.All(rows.Take(3), row => Assert.False(row.IsCompleted));
         Assert.All(rows.Skip(3), row =>
         {
             Assert.Null(row.WeightGrams);
@@ -268,6 +271,133 @@ public sealed class FieldSampleWorkflowTests
     }
 
     [Fact]
+    public async Task HistoricalExpandedSample_CanSaveWhenStoredSampleSizeIsStale()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "Historical Block", new DateTimeOffset(2026, 7, 1, 8, 0, 0, TimeSpan.Zero));
+        for (var rowNumber = 11; rowNumber <= 15; rowNumber++)
+        {
+            db.QcFruitReadings.Add(new QcFruitReading
+            {
+                QcSampleId = sampleId,
+                RowNumber = rowNumber,
+                WeightGrams = 238m,
+                SizeCategory = 80,
+                SizeStatus = SizeCalculationService.Sized,
+                IsCompleted = true,
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+        }
+        await db.SaveChangesAsync();
+
+        var before = await service.GetDetailAsync(sampleId, Owner(), CancellationToken.None);
+        Assert.Equal(15, before.TargetSampleSize);
+
+        var error = await service.SaveRowsAsync(sampleId, new SaveFruitReadingsForm
+        {
+            SampleId = sampleId,
+            TargetSampleSize = 10,
+            Rows = [new FruitReadingEditRow { RowNumber = 15, WeightGrams = 266m, OriginalWeightGrams = 238m, SizeCategory = 80, OriginalSizeCategory = 80 }]
+        }, Owner(), CancellationToken.None);
+
+        Assert.Null(error);
+        var sample = await db.QcSamples.SingleAsync(x => x.Id == sampleId);
+        var row = await db.QcFruitReadings.SingleAsync(x => x.QcSampleId == sampleId && x.RowNumber == 15);
+        Assert.Equal(15, sample.ActualSampleSize);
+        Assert.Equal(266m, row.WeightGrams);
+        Assert.Equal(72, row.SizeCategory);
+    }
+
+    [Fact]
+    public async Task SaveRowsAsync_RecalculatesSizeForWeightAndPreservesManualOverride()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "Size Block", DateTimeOffset.UtcNow);
+
+        var firstError = await service.SaveRowsAsync(sampleId, new SaveFruitReadingsForm
+        {
+            SampleId = sampleId,
+            TargetSampleSize = 10,
+            Rows = [new FruitReadingEditRow { RowNumber = 1, WeightGrams = 266m }]
+        }, Owner(), CancellationToken.None);
+        Assert.Null(firstError);
+        var calculated = await db.QcFruitReadings.SingleAsync(x => x.QcSampleId == sampleId && x.RowNumber == 1);
+        Assert.Equal(72, calculated.SizeCategory);
+        Assert.Equal(SizeCalculationService.Sized, calculated.SizeStatus);
+
+        var overrideError = await service.SaveRowsAsync(sampleId, new SaveFruitReadingsForm
+        {
+            SampleId = sampleId,
+            TargetSampleSize = 10,
+            Rows = [new FruitReadingEditRow
+            {
+                RowNumber = 1,
+                WeightGrams = 266m,
+                OriginalWeightGrams = 266m,
+                SizeCategory = 80,
+                OriginalSizeCategory = 72
+            }]
+        }, Owner(), CancellationToken.None);
+        Assert.Null(overrideError);
+        var overridden = await db.QcFruitReadings.SingleAsync(x => x.QcSampleId == sampleId && x.RowNumber == 1);
+        Assert.Equal(80, overridden.SizeCategory);
+        Assert.Equal(SizeCalculationService.Manual, overridden.SizeStatus);
+    }
+
+    [Fact]
+    public async Task CompleteFieldSample_RemainsEditableAndChangesAfterSendRequireResend()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "Lifecycle Block", DateTimeOffset.UtcNow);
+        await SavePressureAsync(service, sampleId, 12m, 13m);
+
+        Assert.Null(await service.MarkCompleteAsync(sampleId, Owner(), CancellationToken.None));
+        var completed = await db.QcSamples.SingleAsync(x => x.Id == sampleId);
+        Assert.Equal("Complete", completed.Status);
+        Assert.Equal("Not Sent", completed.EmailStatus);
+
+        completed.Status = "Sent";
+        completed.EmailStatus = "Sent";
+        db.QcSummaryEmailLogs.Add(new QcSummaryEmailLog
+        {
+            QcSampleId = sampleId,
+            FromAddress = ApplicationAreas.OwnerEmail,
+            ToAddress = "qc@fruitandland.com",
+            Subject = "Prior Field Sample report",
+            Status = "Sent",
+            SentAt = DateTimeOffset.UtcNow,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var editError = await service.SaveRowsAsync(sampleId, new SaveFruitReadingsForm
+        {
+            SampleId = sampleId,
+            TargetSampleSize = 10,
+            Rows = [new FruitReadingEditRow
+            {
+                RowNumber = 1,
+                Pressure1Lbs = 11m,
+                OriginalPressure1Lbs = 12m,
+                Pressure2Lbs = 13m,
+                OriginalPressure2Lbs = 13m
+            }]
+        }, Owner(), CancellationToken.None);
+
+        Assert.Null(editError);
+        var changed = await db.QcSamples.SingleAsync(x => x.Id == sampleId);
+        Assert.Equal("Changed Since Last Send", changed.Status);
+        Assert.Equal("Needs Resend", changed.EmailStatus);
+        Assert.Single(await db.QcSummaryEmailLogs.Where(x => x.QcSampleId == sampleId).ToListAsync());
+    }
+
+    [Fact]
     public async Task UpdateMetadataAsync_ReassignsBlockWithoutReceiptFields()
     {
         await using var db = CreateDbContext();
@@ -350,6 +480,10 @@ public sealed class FieldSampleWorkflowTests
         Assert.Contains("Open in QC Station", detail);
         Assert.Contains("Html.PartialAsync(\"_DeviceCapturePanel\"", detail);
         Assert.Contains("ShowScale: true", detail);
+        Assert.Contains("id=\"sample-photos\"", detail);
+        Assert.Contains("AllowMultiple = true", detail);
+        Assert.Contains("Preview Report", detail);
+        Assert.Contains("sizeThresholdJson", detail);
         Assert.Contains("class=\"fruit-row\"", detail);
         Assert.Contains("data-add-field-row", detail);
         Assert.DoesNotContain("ReceiptId", index + create);
@@ -405,6 +539,125 @@ public sealed class FieldSampleWorkflowTests
         Assert.Contains("ApplicationAreas.FieldSamples, PageAccessLevel.Edit", method, StringComparison.Ordinal);
         Assert.Contains("CanEditSamplesAsync(cancellationToken)", method, StringComparison.Ordinal);
         Assert.Contains("You do not have permission to add photos.", method, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FieldSampleReport_PreviewsConfirmedOrchardRecipientsAndPreservesSendHistory()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        db.Users.Add(new User
+        {
+            Id = 1,
+            Email = ApplicationAreas.OwnerEmail,
+            DisplayName = "Test Owner",
+            Domain = "fruitandland.com",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+        var fieldSampleService = CreateService(db);
+        var create = await fieldSampleService.CreateAsync(new FieldSampleCreateForm
+        {
+            OrchardName = "WP ORCHARD",
+            GrowerNumber = "1080",
+            BlockName = "Report Block",
+            FruitProfileId = 1,
+            ConfirmCreateNewBlock = true,
+            SampleTakenAt = new DateTimeOffset(2026, 7, 22, 8, 30, 0, TimeSpan.Zero)
+        }, Owner(), CancellationToken.None);
+        Assert.Null(create.Error);
+        var sampleId = create.SampleId!.Value;
+        await SavePressureAsync(fieldSampleService, sampleId, 12m, 14m);
+        Assert.Null(await fieldSampleService.MarkCompleteAsync(sampleId, Owner(), CancellationToken.None));
+
+        var orchardId = await db.CanonicalOrchardBlocks
+            .Where(x => x.FieldSamples.Any(sample => sample.Id == sampleId))
+            .Select(x => x.CanonicalOrchardId)
+            .SingleAsync();
+        db.OrchardReportRecipients.Add(new OrchardReportRecipient
+        {
+            CanonicalOrchardId = orchardId,
+            EmailAddress = "manager@example.com",
+            NormalizedEmailAddress = "manager@example.com",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        db.QcPhotos.Add(new QcPhoto
+        {
+            QcSampleId = sampleId,
+            PhotoType = "SampleBeforeCutting",
+            PhotoSource = "Test",
+            FileName = "field-sample.png",
+            ContentType = "image/png",
+            FileSizeBytes = FieldSamplePng.Length,
+            StorageProvider = "Test",
+            FileId = "field-photo-1",
+            SharePointDriveId = "",
+            SharePointItemId = "field-photo-1",
+            CapturedAt = DateTimeOffset.UtcNow,
+            UploadedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var access = new UserAccessService(db, new ConfigurationBuilder().Build());
+        var resolver = new QcEmailRecipientResolver(db, new EmailOptions(), NullLogger<QcEmailRecipientResolver>.Instance);
+        var sender = new CapturingFieldSampleEmailSender();
+        var reportService = new FieldSampleReportService(
+            db,
+            fieldSampleService,
+            access,
+            resolver,
+            sender,
+            new FieldSamplePhotoStorageService(),
+            NullLogger<FieldSampleReportService>.Instance);
+
+        var (preview, previewError) = await reportService.PreviewAsync(sampleId, Owner(), CancellationToken.None);
+        Assert.Null(previewError);
+        Assert.NotNull(preview);
+        Assert.Equal("qc@fruitandland.com, manager@example.com", preview!.Recipients);
+        Assert.Contains("WP ORCHARD", preview.Subject);
+        Assert.Contains("Report Block", preview.Subject);
+        Assert.Contains("Grower number</th><td>1080", preview.HtmlBody);
+        Assert.Contains("Same-Block Trends", preview.HtmlBody);
+        Assert.Contains("data:image/jpeg;base64,", preview.HtmlBody);
+
+        Assert.Null(await reportService.SendAsync(sampleId, Owner(), CancellationToken.None));
+        Assert.NotNull(sender.Message);
+        Assert.Equal("qc@fruitandland.com, manager@example.com", sender.Message!.To);
+        Assert.Single(sender.Message.InlineImages);
+        var sentSample = await db.QcSamples.SingleAsync(x => x.Id == sampleId);
+        Assert.Equal("Sent", sentSample.Status);
+        Assert.Equal("Sent", sentSample.EmailStatus);
+        var history = await db.QcSummaryEmailLogs.SingleAsync(x => x.QcSampleId == sampleId);
+        Assert.Null(history.ReceiptId);
+        Assert.Equal("gmail-field-1", history.MessageId);
+        Assert.False(history.IsResend);
+        Assert.Equal("This Field Sample report was already sent and the sample has not changed.",
+            await reportService.SendAsync(sampleId, Owner(), CancellationToken.None));
+
+        Assert.Null(await fieldSampleService.SaveRowsAsync(sampleId, new SaveFruitReadingsForm
+        {
+            SampleId = sampleId,
+            TargetSampleSize = 10,
+            Rows = [new FruitReadingEditRow
+            {
+                RowNumber = 1,
+                Pressure1Lbs = 11.5m,
+                OriginalPressure1Lbs = 12m,
+                Pressure2Lbs = 14m,
+                OriginalPressure2Lbs = 14m
+            }]
+        }, Owner(), CancellationToken.None));
+        var changed = await db.QcSamples.SingleAsync(x => x.Id == sampleId);
+        Assert.Equal("Needs Resend", changed.EmailStatus);
+
+        Assert.Null(await reportService.SendAsync(sampleId, Owner(), CancellationToken.None));
+        var sendHistory = await db.QcSummaryEmailLogs.Where(x => x.QcSampleId == sampleId).OrderBy(x => x.Id).ToListAsync();
+        Assert.Equal(2, sendHistory.Count);
+        Assert.False(sendHistory[0].IsResend);
+        Assert.True(sendHistory[1].IsResend);
     }
 
     private static async Task<long> CreateSampleAsync(IFieldSampleService service, string blockName, DateTimeOffset sampleDate)
@@ -469,6 +722,33 @@ public sealed class FieldSampleWorkflowTests
 
     private static ClaimsPrincipal Owner() =>
         new(new ClaimsIdentity([new Claim(ClaimTypes.Email, ApplicationAreas.OwnerEmail)], "Test"));
+
+    private sealed class CapturingFieldSampleEmailSender : IQcEmailSender
+    {
+        public QcEmailMessage? Message { get; private set; }
+
+        public Task<QcEmailSendResult> SendAsync(User sender, QcEmailMessage message, CancellationToken cancellationToken)
+        {
+            Message = message;
+            return Task.FromResult(QcEmailSendResult.Sent("gmail-field-1"));
+        }
+    }
+
+    private static readonly byte[] FieldSamplePng = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+
+    private sealed class FieldSamplePhotoStorageService : IFileStorageService
+    {
+        public string GenerateTargetPath(FileStorageTargetContext context) => "unused";
+        public Task<FileStorageReference> SaveAsync(FileStorageSaveRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+        public Task<FileStorageReference?> GetMetadataAsync(string storageKey, CancellationToken cancellationToken = default) =>
+            Task.FromResult<FileStorageReference?>(null);
+        public Task<Stream?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream?>(storageKey == "field-photo-1" ? new MemoryStream(FieldSamplePng, writable: false) : null);
+        public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
 
     private static string FindRepositoryFile(params string[] parts)
     {
