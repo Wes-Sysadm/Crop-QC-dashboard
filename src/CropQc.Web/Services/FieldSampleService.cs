@@ -110,6 +110,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             {
                 Id = sample.Id,
                 OrchardName = sample.FieldSampleGrowerName ?? "",
+                GrowerNumber = sample.FieldSampleGrowerNumber ?? "",
                 BlockName = sample.BlockName ?? "",
                 OriginalBlockName = sample.FieldSampleOriginalBlockName ?? "",
                 Variety = sample.Variety,
@@ -142,11 +143,16 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         {
             Form = form ?? new FieldSampleCreateForm { SampleTakenAt = DateTimeOffset.UtcNow },
             FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync(cancellationToken),
-            Blocks = await dbContext.CanonicalOrchardBlocks.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.OrchardName).ThenBy(x => x.CanonicalBlockName).ToListAsync(cancellationToken)
+            Blocks = await GetActiveOrchardBlocksAsync(cancellationToken)
         };
 
     public async Task<IReadOnlyList<FieldSampleBlockSuggestion>> GetBlockSuggestionsAsync(string orchardName, string blockName, CancellationToken cancellationToken)
     {
+        if (OrchardIdentityClassifier.IsStandaloneFourDigitGrowerNumber(orchardName))
+        {
+            return [];
+        }
+
         var orchardKey = OrchardBlockMatcher.Normalize(orchardName);
         var blocks = await dbContext.CanonicalOrchardBlocks.AsNoTracking()
             .Include(x => x.Aliases)
@@ -177,7 +183,13 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
 
         if (string.IsNullOrWhiteSpace(form.OrchardName) || string.IsNullOrWhiteSpace(form.BlockName))
         {
-            return (null, "Orchard/grower and block are required.");
+            return (null, "Orchard and block are required.");
+        }
+
+        var orchardIdentityError = ValidateAmbiguousOrchardIdentity(form.OrchardName);
+        if (orchardIdentityError is not null)
+        {
+            return (null, orchardIdentityError);
         }
 
         if (!await dbContext.FruitProfiles.AsNoTracking().AnyAsync(x => x.Id == form.FruitProfileId && x.IsActive, cancellationToken))
@@ -211,7 +223,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             FieldSampleFruitProfileId = form.FruitProfileId,
             CanonicalOrchardBlockId = block.Id,
             FieldSampleGrowerName = form.OrchardName.Trim(),
-            FieldSampleGrowerNumber = string.IsNullOrWhiteSpace(form.GrowerNumber) ? null : form.GrowerNumber.Trim(),
+            FieldSampleGrowerNumber = NormalizeOptionalGrowerNumber(form.GrowerNumber),
             FieldSampleOriginalBlockName = form.BlockName.Trim(),
             FieldSampleBlockResolution = block.CanonicalBlockName.Equals(form.BlockName.Trim(), StringComparison.OrdinalIgnoreCase) ? "ExactOrCreated" : "Resolved",
             Notes = string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim(),
@@ -314,7 +326,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
                 Notes = sample.Notes
             },
             FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync(cancellationToken),
-            Blocks = await dbContext.CanonicalOrchardBlocks.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.OrchardName).ThenBy(x => x.CanonicalBlockName).ToListAsync(cancellationToken),
+            Blocks = await GetActiveOrchardBlocksAsync(cancellationToken),
             CurrentSummary = currentSummary,
             SizeDistribution = currentTrend?.SizeDistribution ?? BuildSizeDistribution(rows),
             Trend = trend,
@@ -380,7 +392,13 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
 
         if (string.IsNullOrWhiteSpace(form.OrchardName) || string.IsNullOrWhiteSpace(form.BlockName))
         {
-            return "Orchard/grower and block are required.";
+            return "Orchard and block are required.";
+        }
+
+        var orchardIdentityError = ValidateAmbiguousOrchardIdentity(form.OrchardName);
+        if (orchardIdentityError is not null)
+        {
+            return orchardIdentityError;
         }
 
         if (!await dbContext.FruitProfiles.AsNoTracking().AnyAsync(x => x.Id == form.FruitProfileId && x.IsActive, cancellationToken))
@@ -414,7 +432,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         }
 
         sample.FieldSampleGrowerName = form.OrchardName.Trim();
-        sample.FieldSampleGrowerNumber = string.IsNullOrWhiteSpace(form.GrowerNumber) ? null : form.GrowerNumber.Trim();
+        sample.FieldSampleGrowerNumber = NormalizeOptionalGrowerNumber(form.GrowerNumber);
         sample.FieldSampleOriginalBlockName = form.BlockName.Trim();
         sample.CanonicalOrchardBlockId = block.Id;
         sample.FieldSampleFruitProfileId = form.FruitProfileId;
@@ -543,13 +561,15 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         if (form.CanonicalOrchardBlockId is not null)
         {
             var selected = await dbContext.CanonicalOrchardBlocks.SingleOrDefaultAsync(x => x.Id == form.CanonicalOrchardBlockId && x.IsActive, cancellationToken);
-            if (selected is not null && string.Equals(selected.NormalizedOrchardKey, OrchardBlockMatcher.Normalize(form.OrchardName), StringComparison.Ordinal))
+            if (selected is not null
+                && !OrchardIdentityClassifier.IsStandaloneFourDigitGrowerNumber(selected.OrchardName)
+                && string.Equals(selected.NormalizedOrchardKey, OrchardBlockMatcher.Normalize(form.OrchardName), StringComparison.Ordinal))
             {
                 await EnsureAliasAsync(selected, form.BlockName, user, "manual", cancellationToken);
                 return (selected, null);
             }
 
-            return (null, "Selected block was not found for this orchard/grower.");
+            return (null, "Selected block was not found for this orchard.");
         }
 
         var orchardKey = OrchardBlockMatcher.Normalize(form.OrchardName);
@@ -596,6 +616,32 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         await dbContext.SaveChangesAsync(cancellationToken);
         await AuditAsync("create", nameof(CanonicalOrchardBlock), created.Id.ToString(), user, null, new { created.OrchardName, created.CanonicalBlockName }, cancellationToken);
         return (created, null);
+    }
+
+    private async Task<IReadOnlyList<CanonicalOrchardBlock>> GetActiveOrchardBlocksAsync(CancellationToken cancellationToken)
+    {
+        var blocks = await dbContext.CanonicalOrchardBlocks.AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.OrchardName)
+            .ThenBy(x => x.CanonicalBlockName)
+            .ToListAsync(cancellationToken);
+        return blocks
+            .Where(x => !OrchardIdentityClassifier.IsStandaloneFourDigitGrowerNumber(x.OrchardName))
+            .ToList();
+    }
+
+    private static string? ValidateAmbiguousOrchardIdentity(string orchardName)
+    {
+        var identity = OrchardIdentityClassifier.Classify(orchardName, OrchardIdentitySource.AmbiguousOrchardOrGrower);
+        return identity.Kind == OrchardIdentityKind.GrowerNumber
+            ? $"{identity.Value} looks like a four-digit grower number. Enter the orchard name in Orchard and keep the number in Grower number."
+            : null;
+    }
+
+    private static string? NormalizeOptionalGrowerNumber(string? value)
+    {
+        var normalized = OrchardIdentityClassifier.NormalizeGrowerNumber(value);
+        return normalized.Length == 0 ? null : normalized;
     }
 
     private async Task EnsureAliasAsync(CanonicalOrchardBlock block, string aliasName, ClaimsPrincipal user, string resolution, CancellationToken cancellationToken)

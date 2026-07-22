@@ -21,9 +21,29 @@ public sealed class OrchardRecipientAdminService(CropQcDbContext dbContext) : IO
         var normalizedSearch = search?.Trim() ?? "";
         var orchards = await dbContext.CanonicalOrchards.AsNoTracking()
             .Where(x => x.IsActive && x.Blocks.Any())
-            .Include(x => x.Blocks).ThenInclude(x => x.CanonicalGrower)
+            .Include(x => x.Blocks).ThenInclude(x => x.CanonicalGrower).ThenInclude(x => x!.GrowerNumbers)
             .Include(x => x.ReportRecipients.Where(recipient => !recipient.IsDeleted)).ThenInclude(x => x.UpdatedByUser)
             .OrderBy(x => x.OrchardName)
+            .ToListAsync(cancellationToken);
+        orchards = orchards
+            .Where(x => !OrchardIdentityClassifier.IsStandaloneFourDigitGrowerNumber(x.OrchardName))
+            .ToList();
+
+        var orchardIds = orchards.Select(x => x.Id).ToArray();
+        var fieldSampleNumbers = await dbContext.QcSamples.AsNoTracking()
+            .Where(x => x.CanonicalOrchardBlock != null
+                && orchardIds.Contains(x.CanonicalOrchardBlock.CanonicalOrchardId)
+                && x.ReceiptId == null
+                && x.FieldSampleGrowerNumber != null
+                && x.FieldSampleGrowerNumber != "")
+            .Select(x => new { x.CanonicalOrchardBlock!.CanonicalOrchardId, GrowerNumber = x.FieldSampleGrowerNumber! })
+            .ToListAsync(cancellationToken);
+        var receiptNumbers = await dbContext.Receipts.AsNoTracking()
+            .Where(x => x.CanonicalOrchardBlock != null
+                && orchardIds.Contains(x.CanonicalOrchardBlock.CanonicalOrchardId)
+                && x.GrowerNumber != null
+                && x.GrowerNumber != "")
+            .Select(x => new { x.CanonicalOrchardBlock!.CanonicalOrchardId, GrowerNumber = x.GrowerNumber! })
             .ToListAsync(cancellationToken);
 
         var rows = new List<OrchardRecipientMatrixRow>();
@@ -35,11 +55,21 @@ public sealed class OrchardRecipientAdminService(CropQcDbContext dbContext) : IO
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(x => x));
-            options.Add(new OrchardRecipientOrchardOption(orchard.Id, orchard.OrchardName, growers));
+            var growerNumbers = string.Join(", ", orchard.Blocks
+                .SelectMany(x => x.CanonicalGrower?.GrowerNumbers ?? [])
+                .Where(x => x.IsActive)
+                .Select(x => x.GrowerNumber)
+                .Concat(fieldSampleNumbers.Where(x => x.CanonicalOrchardId == orchard.Id).Select(x => x.GrowerNumber))
+                .Concat(receiptNumbers.Where(x => x.CanonicalOrchardId == orchard.Id).Select(x => x.GrowerNumber))
+                .Select(OrchardIdentityClassifier.NormalizeGrowerNumber)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x));
+            options.Add(new OrchardRecipientOrchardOption(orchard.Id, orchard.OrchardName, growers, growerNumbers));
             var recipients = orchard.ReportRecipients.OrderBy(x => x.EmailAddress).ToList();
             if (recipients.Count == 0)
             {
-                rows.Add(new OrchardRecipientMatrixRow(orchard.Id, orchard.OrchardName, growers, null, "", false, null, "", true));
+                rows.Add(new OrchardRecipientMatrixRow(orchard.Id, orchard.OrchardName, growers, growerNumbers, null, "", false, null, "", true));
                 continue;
             }
 
@@ -47,6 +77,7 @@ public sealed class OrchardRecipientAdminService(CropQcDbContext dbContext) : IO
                 orchard.Id,
                 orchard.OrchardName,
                 growers,
+                growerNumbers,
                 recipient.Id,
                 recipient.EmailAddress,
                 recipient.IsActive,
@@ -60,6 +91,7 @@ public sealed class OrchardRecipientAdminService(CropQcDbContext dbContext) : IO
             rows = rows.Where(x =>
                     x.OrchardName.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)
                     || x.Growers.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)
+                    || x.GrowerNumbers.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)
                     || x.EmailAddress.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase))
                 .ToList();
         }
@@ -179,11 +211,21 @@ public sealed class OrchardRecipientAdminService(CropQcDbContext dbContext) : IO
     {
         if (orchardId is not null)
         {
-            var exists = await dbContext.CanonicalOrchards.AnyAsync(x => x.Id == orchardId && x.IsActive, cancellationToken);
-            return exists ? (orchardId, null, false, false) : (null, "Orchard was not found.", false, true);
+            var orchardName = await dbContext.CanonicalOrchards.AsNoTracking()
+                .Where(x => x.Id == orchardId && x.IsActive)
+                .Select(x => x.OrchardName)
+                .SingleOrDefaultAsync(cancellationToken);
+            return orchardName is not null && !OrchardIdentityClassifier.IsStandaloneFourDigitGrowerNumber(orchardName)
+                ? (orchardId, null, false, false)
+                : (null, "Orchard was not found.", false, true);
         }
 
         if (string.IsNullOrWhiteSpace(identity)) return (null, "Orchard is required.", false, true);
+        if (OrchardIdentityClassifier.IsStandaloneFourDigitGrowerNumber(identity))
+        {
+            return (null, "A four-digit grower number cannot be used as an orchard identity.", false, true);
+        }
+
         var key = OrchardBlockMatcher.Normalize(identity);
         var matches = await dbContext.CanonicalOrchards.AsNoTracking()
             .Where(x => x.IsActive && x.NormalizedOrchardKey == key)

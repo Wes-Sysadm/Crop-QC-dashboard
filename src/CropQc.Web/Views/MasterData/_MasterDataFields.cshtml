@@ -54,12 +54,12 @@ else if (Model.Type == "canonical-growers")
 }
 else if (Model.Type == "orchard-blocks")
 {
-    <div class="field wide"><label>Orchard / grower</label><input name="Name" value="@Model.Name" required maxlength="200" /></div>
+    <div class="field wide"><label>Orchard</label><input name="Name" value="@Model.Name" required maxlength="200" /></div>
     <div class="field wide"><label>Canonical block name</label><input name="Code" value="@Model.Code" required maxlength="150" /></div>
     <div class="field wide">
         <label>Aliases / alternate block spellings</label>
         <textarea name="BlockAliases" rows="5" placeholder="One alias per line">@Model.BlockAliases</textarea>
-        <span class="muted">Aliases are scoped to the orchard/grower. Original Field Sample block text remains unchanged.</span>
+        <span class="muted">Aliases are scoped to the orchard. Original Field Sample block text remains unchanged.</span>
     </div>
     <div class="field wide"><label>Notes</label><input name="Description" value="@Model.Description" maxlength="1000" /></div>
 }

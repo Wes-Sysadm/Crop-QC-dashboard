@@ -156,6 +156,15 @@ public sealed class QcEmailRecipientResolver(
                     .Where(x => x.Id == orchardId.Value)
                     .Select(x => x.OrchardName)
                     .SingleOrDefaultAsync(cancellationToken);
+                if (OrchardIdentityClassifier.IsStandaloneFourDigitGrowerNumber(orchardName))
+                {
+                    logger.LogWarning(
+                        "QC report sample {SampleId} resolved an invalid numeric orchard identity {OrchardId}; orchard-manager recipients were not included.",
+                        sampleId,
+                        orchardId);
+                    orchardId = null;
+                    orchardName = null;
+                }
             }
         }
 

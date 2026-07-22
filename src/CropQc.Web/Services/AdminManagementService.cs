@@ -857,16 +857,22 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
     {
         if (Blank(form.Name) || Blank(form.Code))
         {
-            return "Orchard/grower and canonical block are required.";
+            return "Orchard and canonical block are required.";
         }
 
         var orchardName = form.Name.Trim();
         var blockName = form.Code.Trim();
+        var orchardIdentity = OrchardIdentityClassifier.Classify(orchardName, OrchardIdentitySource.AmbiguousOrchardOrGrower);
+        if (orchardIdentity.Kind == OrchardIdentityKind.GrowerNumber)
+        {
+            return $"{orchardIdentity.Value} looks like a four-digit grower number, not an orchard. Enter the orchard name separately.";
+        }
+
         var orchardKey = OrchardBlockMatcher.Normalize(orchardName);
         var blockKey = OrchardBlockMatcher.Normalize(blockName);
         if (await dbContext.CanonicalOrchardBlocks.AnyAsync(x => x.NormalizedOrchardKey == orchardKey && x.NormalizedBlockKey == blockKey && x.Id != (form.Id ?? 0), ct))
         {
-            return "That canonical block already exists for this orchard/grower.";
+            return "That canonical block already exists for this orchard.";
         }
 
         var entity = form.Id is null

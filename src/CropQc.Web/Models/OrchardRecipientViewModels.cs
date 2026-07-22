@@ -11,6 +11,7 @@ public sealed record OrchardRecipientMatrixRow(
     int CanonicalOrchardId,
     string OrchardName,
     string Growers,
+    string GrowerNumbers,
     int? RecipientId,
     string EmailAddress,
     bool IsActive,
@@ -18,7 +19,7 @@ public sealed record OrchardRecipientMatrixRow(
     string LastModifiedBy,
     bool IsMissingConfiguration);
 
-public sealed record OrchardRecipientOrchardOption(int Id, string OrchardName, string Growers);
+public sealed record OrchardRecipientOrchardOption(int Id, string OrchardName, string Growers, string GrowerNumbers);
 
 public sealed class OrchardRecipientEditForm
 {

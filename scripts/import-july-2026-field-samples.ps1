@@ -86,13 +86,18 @@ const string SourceLabel = "Historical field sample image import - July 2026";
 const string OrchardName = "WP ORCHARD";
 const string WarehouseCode = "WP";
 const string CropYear = "2026";
-const string LotSourceReference = "1080";
+const string GrowerNumber = "1080";
 const string FieldSampleTypeName = "Field Sample";
 
 var provider = Environment.GetEnvironmentVariable("DATABASE_PROVIDER") ?? "SqlServer";
 var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__CropQc");
 var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Development";
 var apply = string.Equals(Environment.GetEnvironmentVariable("CROPQC_IMPORT_APPLY"), "true", StringComparison.OrdinalIgnoreCase);
+
+if (OrchardIdentityClassifier.IsStandaloneFourDigitGrowerNumber(OrchardName))
+{
+    throw new InvalidOperationException("The configured orchard is a four-digit grower number. Keep orchard and grower number separate.");
+}
 
 var samples = BuildSamples();
 Console.WriteLine();
@@ -242,7 +247,7 @@ foreach (var item in plan)
         var (sampleId, createError) = await fieldSampleService.CreateAsync(new FieldSampleCreateForm
         {
             OrchardName = OrchardName,
-            GrowerNumber = LotSourceReference,
+            GrowerNumber = GrowerNumber,
             BlockName = item.Sample.Block,
             FruitProfileId = item.FruitProfile.Id,
             SampleTakenAt = sampleTakenAt,
@@ -300,7 +305,7 @@ foreach (var item in plan)
                 SourceLabel,
                 WarehouseCode,
                 CropYear,
-                LotSourceReference,
+                GrowerNumber,
                 item.Sample.DoneBy,
                 OrchardName,
                 item.Sample.Block,
@@ -380,7 +385,7 @@ static string BuildNotes(ImportSample sample) =>
         SourceLabel,
         $"Warehouse/facility: {WarehouseCode}",
         $"Crop year: {CropYear}",
-        $"Lot/source reference: {LotSourceReference}",
+        $"Grower number/source reference: {GrowerNumber}",
         $"Done by: {sample.DoneBy}",
         sample.Note
     }.Where(x => !string.IsNullOrWhiteSpace(x)));

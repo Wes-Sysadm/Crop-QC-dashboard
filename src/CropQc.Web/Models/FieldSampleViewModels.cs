@@ -24,6 +24,7 @@ public sealed class FieldSampleListItemViewModel
 {
     public long Id { get; set; }
     public string OrchardName { get; set; } = "";
+    public string GrowerNumber { get; set; } = "";
     public string BlockName { get; set; } = "";
     public string OriginalBlockName { get; set; } = "";
     public string Variety { get; set; } = "";
