@@ -85,7 +85,6 @@ public sealed class DashboardDataService(
     IVarietyColorService? varietyColorService = null,
     ICanonicalGrowerService? canonicalGrowerService = null) : IDashboardDataService
 {
-    private const string DataWarning = "Database is not available yet. The dashboard shell is running with empty data.";
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
     private static readonly string[] ReceiptTypeOptions = ["Truck receipt", "Door sample", "Lot sample"];
 
@@ -127,11 +126,11 @@ public sealed class DashboardDataService(
                     .ToList()
             };
         }
-        catch
+        catch (Exception ex)
         {
             return new HomeDashboardViewModel
             {
-                DataWarning = DataWarning,
+                DataWarning = DatabaseWarning(ex, "Home dashboard"),
                 Cards = BuildHomeCards(0, 0, 0, 0, 0, 0, 0),
                 RoomSummaryFilter = normalizedRoomFilter,
                 RoomSummaries = []
@@ -151,9 +150,9 @@ public sealed class DashboardDataService(
                 Rooms = await BuildRoomSummariesAsync(cancellationToken, roomSummaryFilter: normalizedRoomFilter)
             };
         }
-        catch
+        catch (Exception ex)
         {
-            return new RoomsPageViewModel { Filter = normalizedRoomFilter, DataWarning = DataWarning };
+            return new RoomsPageViewModel { Filter = normalizedRoomFilter, DataWarning = DatabaseWarning(ex, "Rooms dashboard") };
         }
     }
 
@@ -365,9 +364,9 @@ public sealed class DashboardDataService(
                 Varieties = growers.SelectMany(x => x.Varieties).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList()
             };
         }
-        catch
+        catch (Exception ex)
         {
-            return new CropYearReviewPageViewModel { Filter = filter, DataWarning = DataWarning };
+            return new CropYearReviewPageViewModel { Filter = filter, DataWarning = DatabaseWarning(ex, "Crop year review") };
         }
     }
 
@@ -417,9 +416,9 @@ public sealed class DashboardDataService(
                 CanManageDepletions = canManage
             };
         }
-        catch
+        catch (Exception ex)
         {
-            return new RoomDetailViewModel { DataWarning = DataWarning };
+            return new RoomDetailViewModel { DataWarning = DatabaseWarning(ex, "Room detail") };
         }
     }
 
@@ -472,9 +471,9 @@ public sealed class DashboardDataService(
                 Rows = await BuildRoomCountBreakdownRowsAsync(roomId, cancellationToken)
             };
         }
-        catch
+        catch (Exception ex)
         {
-            return new RoomCountBreakdownViewModel { DataWarning = DataWarning };
+            return new RoomCountBreakdownViewModel { DataWarning = DatabaseWarning(ex, "Room count breakdown") };
         }
     }
 
@@ -775,9 +774,9 @@ public sealed class DashboardDataService(
                 _ => new("Master data", null, ["Page"], MasterDataLinks().Select(x => Row(x.Label)).ToList())
             };
         }
-        catch
+        catch (Exception ex)
         {
-            return new MasterDataPageViewModel("Master data", DataWarning, ["Page"], MasterDataLinks().Select(x => Row(x.Label)).ToList());
+            return new MasterDataPageViewModel("Master data", DatabaseWarning(ex, "Master data"), ["Page"], MasterDataLinks().Select(x => Row(x.Label)).ToList());
         }
     }
 
@@ -858,9 +857,9 @@ public sealed class DashboardDataService(
                 DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken)
             };
         }
-        catch
+        catch (Exception ex)
         {
-            return new ReceiptListViewModel { Search = search, DataWarning = DataWarning };
+            return new ReceiptListViewModel { Search = search, DataWarning = DatabaseWarning(ex, "Receipt list") };
         }
     }
 
@@ -1029,9 +1028,9 @@ public sealed class DashboardDataService(
                 }
             };
         }
-        catch
+        catch (Exception ex)
         {
-            return new ReceiptDetailViewModel { DataWarning = DataWarning };
+            return new ReceiptDetailViewModel { DataWarning = DatabaseWarning(ex, "Receipt detail") };
         }
     }
 
@@ -1065,9 +1064,9 @@ public sealed class DashboardDataService(
             };
             return model;
         }
-        catch
+        catch (Exception ex)
         {
-            return new EditReceiptPageViewModel { DataWarning = DataWarning };
+            return new EditReceiptPageViewModel { DataWarning = DatabaseWarning(ex, "Receipt edit") };
         }
     }
 
@@ -1299,9 +1298,9 @@ public sealed class DashboardDataService(
                 }
             };
         }
-        catch
+        catch (Exception ex)
         {
-            return new SampleDetailViewModel { DataWarning = DataWarning };
+            return new SampleDetailViewModel { DataWarning = DatabaseWarning(ex, "QC sample detail") };
         }
     }
 
@@ -1727,9 +1726,9 @@ public sealed class DashboardDataService(
                 Form = new OverrideSendForm { SampleId = sample.Id }
             };
         }
-        catch
+        catch (Exception ex)
         {
-            return new OverrideSendViewModel { DataWarning = DataWarning };
+            return new OverrideSendViewModel { DataWarning = DatabaseWarning(ex, "QC email override") };
         }
     }
 
@@ -2167,9 +2166,9 @@ public sealed class DashboardDataService(
                 Samples = enriched
             };
         }
-        catch
+        catch (Exception ex)
         {
-            return new DailyQcDashboardViewModel { WarehouseId = warehouseId, Status = status, DataWarning = DataWarning };
+            return new DailyQcDashboardViewModel { WarehouseId = warehouseId, Status = status, DataWarning = DatabaseWarning(ex, "Daily QC dashboard") };
         }
     }
 
@@ -4969,6 +4968,21 @@ public sealed class DashboardDataService(
     {
         var invalidChars = Path.GetInvalidFileNameChars();
         return string.Concat(value.Select(ch => invalidChars.Contains(ch) || char.IsWhiteSpace(ch) ? '_' : ch));
+    }
+
+    private string DatabaseWarning(Exception exception, string operation)
+    {
+        var diagnostic = DatabaseFailureDiagnostics.Classify(exception);
+        var reference = Guid.NewGuid().ToString("N")[..8];
+        logger.LogError(
+            exception,
+            "Database operation failed. Operation {Operation}; category {Category}; provider {Provider}; provider code {ProviderCode}; reference {Reference}.",
+            operation,
+            diagnostic.Category,
+            dbContext.Database.ProviderName ?? "Unknown",
+            diagnostic.ProviderCode ?? "None",
+            reference);
+        return $"{diagnostic.SafeMessage} Reference {reference}.";
     }
 
     private static string SafeErrorMessage(Exception exception)

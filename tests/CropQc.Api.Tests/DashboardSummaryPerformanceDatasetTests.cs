@@ -63,7 +63,9 @@ public sealed class DashboardSummaryPerformanceDatasetTests
 
     private static async Task SeedRepresentativeDashboardDatasetAsync(CropQcDbContext db)
     {
-        var now = DateTimeOffset.UtcNow;
+        // Keep all generated "today" samples inside one UTC day even when this test
+        // runs shortly after midnight and subtracts up to eleven hours below.
+        var now = new DateTimeOffset(DateTime.UtcNow.Date.AddHours(12), TimeSpan.Zero);
         var warehouses = Enumerable.Range(1, 3)
             .Select(i => new Warehouse { Id = i, Code = i == 1 ? "EBS" : i == 2 ? "WP" : "MCD", Name = i == 1 ? "Earl Brown Storage" : i == 2 ? "WP Packing" : "McDougall" })
             .ToList();
