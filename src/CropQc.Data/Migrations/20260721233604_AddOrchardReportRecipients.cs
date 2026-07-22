@@ -25,23 +25,25 @@ namespace CropQc.Data.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "ToAddress",
                 table: "QcSummaryEmailLogs",
+                type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "character varying(2000)" : "nvarchar(2000)",
                 maxLength: 2000,
                 nullable: false,
                 oldClrType: typeof(string),
+                oldType: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "character varying(320)" : "nvarchar(320)",
                 oldMaxLength: 320);
 
             migrationBuilder.CreateTable(
                 name: "CanonicalOrchards",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "integer" : "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1")
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    OrchardName = table.Column<string>(maxLength: 200, nullable: false),
-                    NormalizedOrchardKey = table.Column<string>(maxLength: 200, nullable: false),
-                    IsActive = table.Column<bool>(nullable: false),
-                    CreatedAt = table.Column<DateTimeOffset>(nullable: false),
-                    UpdatedAt = table.Column<DateTimeOffset>(nullable: false)
+                    OrchardName = table.Column<string>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "character varying(200)" : "nvarchar(200)", maxLength: 200, nullable: false),
+                    NormalizedOrchardKey = table.Column<string>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "character varying(200)" : "nvarchar(200)", maxLength: 200, nullable: false),
+                    IsActive = table.Column<bool>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "boolean" : "bit", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "timestamp with time zone" : "datetimeoffset", nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "timestamp with time zone" : "datetimeoffset", nullable: false)
                 },
                 constraints: table => table.PrimaryKey("PK_CanonicalOrchards", x => x.Id));
 
@@ -87,20 +89,20 @@ namespace CropQc.Data.Migrations
                 name: "OrchardReportRecipients",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "integer" : "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1")
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    CanonicalOrchardId = table.Column<int>(type: "int", nullable: false),
-                    EmailAddress = table.Column<string>(maxLength: 320, nullable: false),
-                    NormalizedEmailAddress = table.Column<string>(maxLength: 320, nullable: false),
-                    IsActive = table.Column<bool>(nullable: false),
-                    IsDeleted = table.Column<bool>(nullable: false),
-                    CreatedAt = table.Column<DateTimeOffset>(nullable: false),
-                    CreatedByUserId = table.Column<int>(type: "int", nullable: true),
-                    UpdatedAt = table.Column<DateTimeOffset>(nullable: false),
-                    UpdatedByUserId = table.Column<int>(type: "int", nullable: true),
-                    DeletedAt = table.Column<DateTimeOffset>(nullable: true),
-                    DeletedByUserId = table.Column<int>(type: "int", nullable: true)
+                    CanonicalOrchardId = table.Column<int>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "integer" : "int", nullable: false),
+                    EmailAddress = table.Column<string>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "character varying(320)" : "nvarchar(320)", maxLength: 320, nullable: false),
+                    NormalizedEmailAddress = table.Column<string>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "character varying(320)" : "nvarchar(320)", maxLength: 320, nullable: false),
+                    IsActive = table.Column<bool>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "boolean" : "bit", nullable: false),
+                    IsDeleted = table.Column<bool>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "boolean" : "bit", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "timestamp with time zone" : "datetimeoffset", nullable: false),
+                    CreatedByUserId = table.Column<int>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "integer" : "int", nullable: true),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "timestamp with time zone" : "datetimeoffset", nullable: false),
+                    UpdatedByUserId = table.Column<int>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "integer" : "int", nullable: true),
+                    DeletedAt = table.Column<DateTimeOffset>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "timestamp with time zone" : "datetimeoffset", nullable: true),
+                    DeletedByUserId = table.Column<int>(type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "integer" : "int", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -142,9 +144,11 @@ namespace CropQc.Data.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "ToAddress",
                 table: "QcSummaryEmailLogs",
+                type: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "character varying(320)" : "nvarchar(320)",
                 maxLength: 320,
                 nullable: false,
                 oldClrType: typeof(string),
+                oldType: ActiveProvider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? "character varying(2000)" : "nvarchar(2000)",
                 oldMaxLength: 2000);
         }
     }

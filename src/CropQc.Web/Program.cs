@@ -243,6 +243,8 @@ if (app.Configuration.GetValue<bool>("Database:EnsureCreatedOnStartup"))
     await dbContext.Database.EnsureCreatedAsync();
 }
 
+await DatabaseStartupDiagnostics.InspectAsync(app.Services, app.Configuration, app.Environment);
+
 if (app.Configuration.GetValue<bool>("Database:SeedMasterDataOnStartup"))
 {
     using var scope = app.Services.CreateScope();
