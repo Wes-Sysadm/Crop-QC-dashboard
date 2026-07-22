@@ -83,6 +83,8 @@ public sealed class CanonicalGrowerNumber
 public sealed class CanonicalOrchardBlock
 {
     public int Id { get; set; }
+    public int CanonicalOrchardId { get; set; }
+    public CanonicalOrchard CanonicalOrchard { get; set; } = null!;
     public int? CanonicalGrowerId { get; set; }
     public CanonicalGrower? CanonicalGrower { get; set; }
     public required string OrchardName { get; set; }
@@ -95,6 +97,38 @@ public sealed class CanonicalOrchardBlock
     public DateTimeOffset UpdatedAt { get; set; }
     public ICollection<OrchardBlockAlias> Aliases { get; } = new List<OrchardBlockAlias>();
     public ICollection<QcSample> FieldSamples { get; } = new List<QcSample>();
+}
+
+public sealed class CanonicalOrchard
+{
+    public int Id { get; set; }
+    public required string OrchardName { get; set; }
+    public string NormalizedOrchardKey { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public ICollection<CanonicalOrchardBlock> Blocks { get; } = new List<CanonicalOrchardBlock>();
+    public ICollection<OrchardReportRecipient> ReportRecipients { get; } = new List<OrchardReportRecipient>();
+}
+
+public sealed class OrchardReportRecipient
+{
+    public int Id { get; set; }
+    public int CanonicalOrchardId { get; set; }
+    public CanonicalOrchard CanonicalOrchard { get; set; } = null!;
+    public required string EmailAddress { get; set; }
+    public string NormalizedEmailAddress { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    public bool IsDeleted { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public int? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public int? UpdatedByUserId { get; set; }
+    public User? UpdatedByUser { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
+    public int? DeletedByUserId { get; set; }
+    public User? DeletedByUser { get; set; }
 }
 
 public sealed class OrchardBlockAlias

@@ -16,6 +16,43 @@ namespace CropQc.Api.Tests;
 public sealed class QcSampleEmailWorkflowTests
 {
     [Fact]
+    public async Task SendPassesResolvedDefaultAndConfirmedOrchardManagerToGmailSender()
+    {
+        await using var db = CreateDbContext();
+        var sample = await SeedSampleAsync(db, "Lot Sample", emailStatus: "Not Sent", hasStarch: false);
+        var now = DateTimeOffset.UtcNow;
+        var orchard = new CanonicalOrchard { OrchardName = "Windy Point", NormalizedOrchardKey = "WINDYPOINT", CreatedAt = now, UpdatedAt = now };
+        var block = new CanonicalOrchardBlock
+        {
+            CanonicalOrchard = orchard,
+            OrchardName = orchard.OrchardName,
+            CanonicalBlockName = "A",
+            NormalizedOrchardKey = orchard.NormalizedOrchardKey,
+            NormalizedBlockKey = "A",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        db.OrchardReportRecipients.Add(new OrchardReportRecipient
+        {
+            CanonicalOrchard = orchard,
+            EmailAddress = "manager@example.com",
+            NormalizedEmailAddress = "MANAGER@EXAMPLE.COM",
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        sample.Receipt!.CanonicalOrchardBlock = block;
+        await db.SaveChangesAsync();
+        var sender = new CapturingEmailSender();
+        var resolver = new QcEmailRecipientResolver(db, new EmailOptions(), NullLogger<QcEmailRecipientResolver>.Instance);
+        var service = CreateService(db, role: "QC User", recipientResolver: resolver, emailSender: sender);
+
+        Assert.Null(await service.SendQcSummaryAsync(sample.Id, CancellationToken.None));
+        Assert.NotNull(sender.Message);
+        Assert.Equal("qc@fruitandland.com, manager@example.com", sender.Message!.To);
+        Assert.Empty(sender.Message.InlineImages);
+    }
+
+    [Fact]
     public async Task LotSample_RemainsLotSampleAfterPreview()
     {
         await using var db = CreateDbContext();
@@ -54,7 +91,7 @@ public sealed class QcSampleEmailWorkflowTests
 
         var error = await service.UpdateSampleTypeAsync(new UpdateSampleTypeForm { SampleId = sample.Id, SampleTypeId = doorSampleTypeId }, CancellationToken.None);
 
-            Assert.Contains("Daily QC Admin access is required to change sample type after QC Summary email has been sent.", error);
+        Assert.Contains("Daily QC Admin access is required to change sample type after QC Summary email has been sent.", error);
         Assert.Equal("Lot Sample", await SampleTypeNameAsync(db, sample.Id));
         Assert.Empty(await db.AuditLogs.ToListAsync());
     }
@@ -299,7 +336,12 @@ public sealed class QcSampleEmailWorkflowTests
         ]
     };
 
-    private static DashboardDataService CreateService(CropQcDbContext db, string role, IQcSummaryEmailComposer? composer = null)
+    private static DashboardDataService CreateService(
+        CropQcDbContext db,
+        string role,
+        IQcSummaryEmailComposer? composer = null,
+        IQcEmailRecipientResolver? recipientResolver = null,
+        IQcEmailSender? emailSender = null)
     {
         var httpContext = new DefaultHttpContext
         {
@@ -316,10 +358,10 @@ public sealed class QcSampleEmailWorkflowTests
             new FakeFileStorageService(),
             new FileStorageOptions(),
             new EmailOptions { Provider = EmailProviders.GmailUser, QcDefaultRecipients = "qc-recipient@fruitandland.com" },
-            new FakeRecipientResolver(),
+            recipientResolver ?? new FakeRecipientResolver(),
             new GoogleAuthenticationOptions { AllowedDomains = new HashSet<string>(["fruitandland.com"], StringComparer.OrdinalIgnoreCase) },
             new FakeCredentialStore(),
-            new FakeEmailSender(),
+            emailSender ?? new FakeEmailSender(),
             new QcPhotoRequirementPolicy(),
             composer ?? new StableEmailComposer(),
             new CropYearService(db, configuration),
@@ -347,6 +389,17 @@ public sealed class QcSampleEmailWorkflowTests
     {
         public Task<QcEmailSendResult> SendAsync(User sender, QcEmailMessage message, CancellationToken cancellationToken) =>
             Task.FromResult(QcEmailSendResult.Sent("gmail-1"));
+    }
+
+    private sealed class CapturingEmailSender : IQcEmailSender
+    {
+        public QcEmailMessage? Message { get; private set; }
+
+        public Task<QcEmailSendResult> SendAsync(User sender, QcEmailMessage message, CancellationToken cancellationToken)
+        {
+            Message = message;
+            return Task.FromResult(QcEmailSendResult.Sent("gmail-1"));
+        }
     }
 
     private sealed class FakeRecipientResolver : IQcEmailRecipientResolver

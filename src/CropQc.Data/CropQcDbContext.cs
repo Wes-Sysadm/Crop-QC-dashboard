@@ -18,7 +18,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<CanonicalGrower> CanonicalGrowers => Set<CanonicalGrower>();
     public DbSet<CanonicalGrowerAlias> CanonicalGrowerAliases => Set<CanonicalGrowerAlias>();
     public DbSet<CanonicalGrowerNumber> CanonicalGrowerNumbers => Set<CanonicalGrowerNumber>();
+    public DbSet<CanonicalOrchard> CanonicalOrchards => Set<CanonicalOrchard>();
     public DbSet<CanonicalOrchardBlock> CanonicalOrchardBlocks => Set<CanonicalOrchardBlock>();
+    public DbSet<OrchardReportRecipient> OrchardReportRecipients => Set<OrchardReportRecipient>();
     public DbSet<OrchardBlockAlias> OrchardBlockAliases => Set<OrchardBlockAlias>();
     public DbSet<FruitProfile> FruitProfiles => Set<FruitProfile>();
     public DbSet<VarietyColorConfiguration> VarietyColorConfigurations => Set<VarietyColorConfiguration>();
@@ -45,7 +47,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureAuth(modelBuilder);
-        ConfigureMasterData(modelBuilder);
+        ConfigureMasterData(modelBuilder, IsPostgreSqlProvider());
         ConfigureQc(modelBuilder, IsPostgreSqlProvider());
         ConfigureAudit(modelBuilder);
         ConfigureDashboardConfiguration(modelBuilder);
@@ -116,7 +118,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         });
     }
 
-    private static void ConfigureMasterData(ModelBuilder modelBuilder)
+    private static void ConfigureMasterData(ModelBuilder modelBuilder, bool isPostgreSqlProvider)
     {
         modelBuilder.Entity<Warehouse>(entity =>
         {
@@ -197,10 +199,37 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.NormalizedBlockKey).HasMaxLength(150).IsRequired();
             entity.Property(x => x.Notes).HasMaxLength(1000);
             entity.HasIndex(x => new { x.NormalizedOrchardKey, x.NormalizedBlockKey }).IsUnique();
+            entity.HasOne(x => x.CanonicalOrchard)
+                .WithMany(x => x.Blocks)
+                .HasForeignKey(x => x.CanonicalOrchardId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.CanonicalGrower)
                 .WithMany()
                 .HasForeignKey(x => x.CanonicalGrowerId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<CanonicalOrchard>(entity =>
+        {
+            entity.Property(x => x.OrchardName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.NormalizedOrchardKey).HasMaxLength(200).IsRequired();
+            entity.HasIndex(x => x.NormalizedOrchardKey).IsUnique();
+        });
+
+        modelBuilder.Entity<OrchardReportRecipient>(entity =>
+        {
+            entity.Property(x => x.EmailAddress).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.NormalizedEmailAddress).HasMaxLength(320).IsRequired();
+            var uniqueRecipient = entity.HasIndex(x => new { x.CanonicalOrchardId, x.NormalizedEmailAddress }).IsUnique();
+            uniqueRecipient.HasFilter(isPostgreSqlProvider ? "\"IsDeleted\" = FALSE" : "[IsDeleted] = 0");
+            entity.HasIndex(x => new { x.CanonicalOrchardId, x.IsActive, x.IsDeleted });
+            entity.HasOne(x => x.CanonicalOrchard)
+                .WithMany(x => x.ReportRecipients)
+                .HasForeignKey(x => x.CanonicalOrchardId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.DeletedByUser).WithMany().HasForeignKey(x => x.DeletedByUserId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<OrchardBlockAlias>(entity =>
@@ -315,6 +344,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.GrowerLot)
                 .WithMany()
                 .HasForeignKey(x => x.GrowerLotId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.CanonicalOrchardBlock)
+                .WithMany()
+                .HasForeignKey(x => x.CanonicalOrchardBlockId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
@@ -560,7 +593,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         modelBuilder.Entity<QcSummaryEmailLog>(entity =>
         {
             entity.Property(x => x.FromAddress).HasMaxLength(320).IsRequired();
-            entity.Property(x => x.ToAddress).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.ToAddress).HasMaxLength(2000).IsRequired();
             entity.Property(x => x.ReplyToAddress).HasMaxLength(320);
             entity.Property(x => x.Subject).HasMaxLength(300).IsRequired();
             entity.Property(x => x.Status).HasMaxLength(50).IsRequired();

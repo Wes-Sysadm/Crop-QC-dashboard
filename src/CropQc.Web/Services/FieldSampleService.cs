@@ -569,8 +569,22 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         }
 
         var now = DateTimeOffset.UtcNow;
+        var canonicalOrchard = await dbContext.CanonicalOrchards.SingleOrDefaultAsync(x => x.NormalizedOrchardKey == orchardKey, cancellationToken);
+        if (canonicalOrchard is null)
+        {
+            canonicalOrchard = new CanonicalOrchard
+            {
+                OrchardName = form.OrchardName.Trim(),
+                NormalizedOrchardKey = orchardKey,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            dbContext.CanonicalOrchards.Add(canonicalOrchard);
+        }
+
         var created = new CanonicalOrchardBlock
         {
+            CanonicalOrchard = canonicalOrchard,
             OrchardName = form.OrchardName.Trim(),
             CanonicalBlockName = form.BlockName.Trim(),
             NormalizedOrchardKey = orchardKey,

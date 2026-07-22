@@ -33,8 +33,8 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
         ("UnsyncedWarningHours", "2", "Unsynced warning hours", "Integer"),
         ("UnsyncedCriticalHours", "12", "Unsynced critical hours", "Integer"),
         ("OfflineSessionDays", "7", "Offline session days", "Integer"),
-        ("DefaultQcSummaryRecipient", "rob@earlbrownandsons.com,wes@fruitandland.com", "Legacy default QC summary testing recipients. Use QcEmailDefaultRecipients for active sends.", "String"),
-        (QcEmailRecipientSettings.Key, EmailOptions.TestingQcDefaultRecipients, "Default QC Summary email recipients. Enter one email per line or comma-separated.", "EmailList"),
+        ("DefaultQcSummaryRecipient", QcReportEmailDefaults.RequiredRecipient, "Legacy display value. Active QC report sends use Email:QcReportDefaultRecipient.", "String"),
+        (QcEmailRecipientSettings.Key, QcReportEmailDefaults.RequiredRecipient, "Legacy display value. Active QC report sends always include the required QC recipient.", "EmailList"),
         (EbsDailyBinsEmailSettings.RecipientsKey, EbsDailyBinsEmailSettings.DefaultRecipients, "Daily end-of-day EBS bin availability email recipients. Enter one email per line or comma-separated.", "EmailList"),
         (EbsDailyBinsEmailSettings.EnabledKey, "false", "Send daily end-of-day EBS bin availability email automatically.", "Boolean"),
         (EbsDailyBinsEmailSettings.SendHourLocalKey, "17", "Local Pacific hour when automatic EBS bin availability email may send, 0-23.", "Integer"),
@@ -576,7 +576,8 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
         }).ToList();
 
         return Page("Canonical Growers", "canonical-growers", ["Canonical Grower", "Grower Numbers", "Aliases / Source Names", "Receipts", "Crop Years", "Active"], rows, canEdit)
-            with { UnmappedGrowers = await BuildUnmappedGrowerSourcesAsync(ct) };
+            with
+        { UnmappedGrowers = await BuildUnmappedGrowerSourcesAsync(ct) };
     }
 
     private async Task<IReadOnlyList<UnmappedGrowerSourceViewModel>> BuildUnmappedGrowerSourcesAsync(CancellationToken ct)
@@ -877,6 +878,20 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
         }
 
         var before = form.Id is null ? null : JsonSerializer.Serialize(entity, new JsonSerializerOptions { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles });
+        var canonicalOrchard = await dbContext.CanonicalOrchards.SingleOrDefaultAsync(x => x.NormalizedOrchardKey == orchardKey, ct);
+        if (canonicalOrchard is null)
+        {
+            canonicalOrchard = new CanonicalOrchard
+            {
+                OrchardName = orchardName,
+                NormalizedOrchardKey = orchardKey,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+            dbContext.CanonicalOrchards.Add(canonicalOrchard);
+        }
+
+        entity.CanonicalOrchard = canonicalOrchard;
         entity.OrchardName = orchardName;
         entity.CanonicalBlockName = blockName;
         entity.NormalizedOrchardKey = orchardKey;

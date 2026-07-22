@@ -1,3 +1,4 @@
+using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Web.Auth;
 using CropQc.Web.Services;
@@ -11,16 +12,16 @@ namespace CropQc.Api.Tests;
 public sealed class GmailUserEmailTests
 {
     [Fact]
-    public void EmailOptions_DefaultQcRecipientsAreEmptyUntilConfigured()
+    public void EmailOptions_DefaultQcRecipientIsRequiredQcMailbox()
     {
         var options = new EmailOptions();
 
-        Assert.Equal("", options.QcRecipientHeader);
-        Assert.Empty(options.QcRecipientList);
+        Assert.Equal(QcReportEmailDefaults.RequiredRecipient, options.QcRecipientHeader);
+        Assert.Equal([QcReportEmailDefaults.RequiredRecipient], options.QcRecipientList);
     }
 
     [Fact]
-    public void EmailOptions_ConfiguredQcDefaultRecipientsOverrideLegacyToAddress()
+    public void EmailOptions_QcReportDefaultDoesNotUseLegacyRecipientLists()
     {
         var options = new EmailOptions
         {
@@ -28,8 +29,8 @@ public sealed class GmailUserEmailTests
             QcDefaultRecipients = "rob@earlbrownandsons.com,wes@fruitandland.com"
         };
 
-        Assert.Equal("rob@earlbrownandsons.com, wes@fruitandland.com", options.QcRecipientHeader);
-        Assert.DoesNotContain("QC@fruitandland.com", options.QcRecipientHeader);
+        Assert.Equal(QcReportEmailDefaults.RequiredRecipient, options.QcRecipientHeader);
+        Assert.DoesNotContain("rob@earlbrownandsons.com", options.QcRecipientHeader);
     }
 
     [Fact]
@@ -299,7 +300,7 @@ public sealed class GmailUserEmailTests
         Assert.Contains("\"Provider\": \"GmailUser\"", productionSettings);
         Assert.Contains("\"SendScope\": \"https://www.googleapis.com/auth/gmail.send\"", productionSettings);
         Assert.Contains("fruitandland.com,earlbrownandsons.com,wp-packingllc.com", productionSettings);
-        Assert.Contains("\"QcDefaultRecipients\": \"rob@earlbrownandsons.com,wes@fruitandland.com\"", productionSettings);
+        Assert.Contains("\"QcReportDefaultRecipient\": \"qc@fruitandland.com\"", productionSettings);
     }
 
     [Fact]
@@ -315,7 +316,7 @@ public sealed class GmailUserEmailTests
         Assert.Contains("Email Status", view);
         Assert.Contains("QC Email Recipients", view);
         Assert.Contains("Default QC recipients source", view);
-        Assert.Contains("Default To recipients", view);
+        Assert.Contains("Manage orchard QC recipients", view);
         Assert.Contains("Email__Provider=GmailUser", view);
         Assert.Contains("Reconnect Google/Gmail", view);
         Assert.Contains("Email provider:", program);
@@ -360,7 +361,7 @@ public sealed class GmailUserEmailTests
     }
 
     [Fact]
-    public void WebEmailConfiguration_UsesTestingQcDefaultRecipients()
+    public void WebEmailConfiguration_UsesRequiredQcRecipientAndOrchardResolver()
     {
         var emailOptions = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "EmailOptions.cs"));
         var productionSettings = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "appsettings.Production.json"));
@@ -368,18 +369,15 @@ public sealed class GmailUserEmailTests
         var dashboardDataService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
         var configurationController = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "ConfigurationController.cs"));
 
-        Assert.Contains("Email:QcDefaultRecipients", emailOptions);
+        Assert.Contains("Email:QcReportDefaultRecipient", emailOptions);
         Assert.Contains("EmailOptionsFactory", emailOptions);
         Assert.Contains("QcEmailRecipientResolver", emailOptions);
         Assert.Contains("QcEmailDefaultRecipients", emailOptions);
-        Assert.Contains("Admin Configuration", emailOptions);
-        Assert.Contains("Render/appsettings fallback", emailOptions);
-        Assert.Contains("rob@earlbrownandsons.com,wes@fruitandland.com", productionSettings);
-        Assert.Contains("rob@earlbrownandsons.com,wes@fruitandland.com", adminManagementService);
-        Assert.Contains("QcEmailDefaultRecipients", adminManagementService);
+        Assert.Contains("qc@fruitandland.com", productionSettings);
+        Assert.Contains("QcReportEmailDefaults.RequiredRecipient", adminManagementService);
         Assert.Contains("Invalid QC email recipient", adminManagementService);
         Assert.Contains("No QC email recipients are configured. Admins can set them under Admin -> Configuration -> QC Email Recipients.", dashboardDataService);
-        Assert.Contains("qcEmailRecipientResolver.ResolveAsync", dashboardDataService);
+        Assert.Contains("qcEmailRecipientResolver.ResolveForSampleAsync", dashboardDataService);
         Assert.Contains("AccessPolicyNames.ConfigurationAdmin", configurationController);
     }
 

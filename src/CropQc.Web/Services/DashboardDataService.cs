@@ -296,11 +296,11 @@ public sealed class DashboardDataService(
             }).ToList();
 
             var growerRows = samples.Zip(sampleRows, (sample, row) => new
-                {
-                    Sample = sample,
-                    Row = row,
-                    Identity = growerResolver.Resolve(sample.Receipt.GrowerName, sample.Receipt.GrowerNumber)
-                })
+            {
+                Sample = sample,
+                Row = row,
+                Identity = growerResolver.Resolve(sample.Receipt.GrowerName, sample.Receipt.GrowerNumber)
+            })
                 .ToList();
 
             if (!string.IsNullOrWhiteSpace(filter.Grower))
@@ -1257,7 +1257,7 @@ public sealed class DashboardDataService(
                 .ToListAsync(cancellationToken);
             var grades = await dbContext.Grades.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Id).ToListAsync(cancellationToken);
             var defectTypes = await dbContext.DefectTypes.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync(cancellationToken);
-            var recipientResolution = await qcEmailRecipientResolver.ResolveAsync(cancellationToken);
+            var recipientResolution = await qcEmailRecipientResolver.ResolveForSampleAsync(sample.Id, null, cancellationToken);
             return new SampleDetailViewModel
             {
                 Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
@@ -1707,7 +1707,7 @@ public sealed class DashboardDataService(
                 ? new GoogleCredentialDiagnostic(false, false)
                 : await googleCredentialStore.GetDiagnosticAsync(sender, cancellationToken);
 
-            var recipientResolution = await qcEmailRecipientResolver.ResolveAsync(cancellationToken);
+            var recipientResolution = await qcEmailRecipientResolver.ResolveForSampleAsync(sample.Id, null, cancellationToken);
             return new OverrideSendViewModel
             {
                 Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
@@ -1782,7 +1782,7 @@ public sealed class DashboardDataService(
             return "A logged-in user is required to send QC Summary email.";
         }
 
-        var recipientResolution = await qcEmailRecipientResolver.ResolveAsync(cancellationToken);
+        var recipientResolution = await qcEmailRecipientResolver.ResolveForSampleAsync(sample.Id, null, cancellationToken);
         if (!recipientResolution.IsConfigured)
         {
             return "No QC email recipients are configured. Admins can set them under Admin -> Configuration -> QC Email Recipients.";
@@ -1844,6 +1844,10 @@ public sealed class DashboardDataService(
                 Status = status,
                 GmailMessageId = sendResult.MessageId,
                 Failure = sendResult.Success ? null : sendResult.Error,
+                recipientResolution.ResolvedOrchardId,
+                recipientResolution.OrchardCouldNotBeResolved,
+                recipientResolution.OrchardHadNoConfiguredManager,
+                SkippedInvalidRecipientCount = recipientResolution.SkippedInvalidAddresses.Count,
                 SampleType = originalSampleTypeName,
                 IsOverride = isOverride
             }),
