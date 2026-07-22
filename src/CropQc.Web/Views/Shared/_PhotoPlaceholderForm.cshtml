@@ -34,7 +34,7 @@
     <input type="hidden" name="WebUrl" class="photo-web-url" />
 
     <div class="source-panel upload-panel wide">
-        <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" capture="environment" class="photo-file-input" name="PhotoFile" hidden />
+        <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" capture="environment" class="photo-file-input" name="@Model.FileInputName" multiple="@(Model.AllowMultiple ? "multiple" : null)" hidden />
         <button type="button" class="upload-zone">
             <span>Drop photo here or click to browse</span>
         </button>
@@ -96,7 +96,7 @@
         const cameraCanvas = form.querySelector(".photo-camera-canvas");
         const cameraMessage = form.querySelector(".camera-placeholder");
         const validationMessage = form.querySelector(".photo-validation-message");
-        let selectedUploadFile = null;
+        let selectedUploadFiles = [];
         let cameraStream = null;
         let previewUrl = null;
         const maxPhotoSize = 15 * 1024 * 1024;
@@ -141,46 +141,49 @@
             selectedContentType.textContent = file?.type || "image/jpeg";
         }
 
-        function showPreview(file) {
+        function showPreview(files) {
             if (previewUrl) {
                 URL.revokeObjectURL(previewUrl);
                 previewUrl = null;
             }
             preview.innerHTML = "";
-            if (!file) {
+            if (!files || files.length === 0) {
                 preview.appendChild(document.createTextNode("No photo selected"));
                 return;
             }
 
-            if (file.type.startsWith("image/")) {
+            for (const file of files) {
                 const image = document.createElement("img");
-                image.alt = "Selected photo preview";
-                previewUrl = URL.createObjectURL(file);
-                image.src = previewUrl;
+                image.alt = `Selected photo preview: ${file.name}`;
+                image.src = URL.createObjectURL(file);
                 preview.appendChild(image);
-            } else {
-                preview.appendChild(document.createTextNode(file.name));
             }
         }
 
-        function setUploadFile(file) {
-            if (file && (!allowedTypes.has((file.type || "").toLowerCase()) || file.size > maxPhotoSize)) {
-                validationMessage.textContent = file.size > maxPhotoSize
-                    ? "Photo is larger than 15 MB. Choose or capture a smaller image."
-                    : "Only JPG, PNG, or WEBP images are allowed.";
+        function setUploadFiles(files) {
+            const selected = Array.from(files || []);
+            const invalid = selected.find(file => !allowedTypes.has((file.type || "").toLowerCase()) || file.size > maxPhotoSize);
+            if (invalid) {
+                validationMessage.textContent = invalid.size > maxPhotoSize
+                    ? `${invalid.name} is larger than 15 MB. Choose or capture a smaller image.`
+                    : `${invalid.name} is not a supported image. Only JPG, PNG, or WEBP images are allowed.`;
                 validationMessage.hidden = false;
                 return false;
             }
             validationMessage.hidden = true;
             validationMessage.textContent = "";
-            selectedUploadFile = file;
-            if (file && window.DataTransfer) {
+            selectedUploadFiles = @Model.AllowMultiple.ToString().ToLowerInvariant() ? selected : selected.slice(0, 1);
+            if (selectedUploadFiles.length > 0 && window.DataTransfer) {
                 const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
+                selectedUploadFiles.forEach(file => dataTransfer.items.add(file));
                 fileInput.files = dataTransfer.files;
             }
-            buildMetadata(file);
-            showPreview(file);
+            buildMetadata(selectedUploadFiles[0] || null);
+            showPreview(selectedUploadFiles);
+            selectedFile.textContent = selectedUploadFiles.length > 1
+                ? `${selectedUploadFiles.length} photos selected`
+                : selectedUploadFiles[0]?.name || "None";
+            selectedSize.textContent = formatBytes(selectedUploadFiles.reduce((total, file) => total + file.size, 0));
             return true;
         }
 
@@ -225,7 +228,7 @@
             const isCamera = photoSource.value === "USB Camera";
             uploadPanel.hidden = isCamera;
             cameraPanel.hidden = !isCamera;
-            buildMetadata(isCamera ? null : selectedUploadFile);
+            buildMetadata(isCamera ? null : selectedUploadFiles[0]);
             if (isCamera) {
                 preview.innerHTML = "";
                 preview.appendChild(document.createTextNode("No photo selected"));
@@ -234,7 +237,7 @@
             }
         }
 
-        photoType.addEventListener("change", () => buildMetadata(photoSource.value === "USB Camera" ? null : selectedUploadFile));
+        photoType.addEventListener("change", () => buildMetadata(photoSource.value === "USB Camera" ? null : selectedUploadFiles[0]));
         photoSource.addEventListener("change", syncSource);
         uploadZone.addEventListener("click", () => fileInput.click());
         uploadZone.addEventListener("dragover", event => {
@@ -245,12 +248,10 @@
         uploadZone.addEventListener("drop", event => {
             event.preventDefault();
             uploadZone.classList.remove("drag-over");
-            const file = event.dataTransfer.files?.[0];
-            if (file) setUploadFile(file);
+            if (event.dataTransfer.files?.length) setUploadFiles(event.dataTransfer.files);
         });
         fileInput.addEventListener("change", () => {
-            const file = fileInput.files?.[0];
-            if (file) setUploadFile(file);
+            if (fileInput.files?.length) setUploadFiles(fileInput.files);
         });
 
         cameraStart.addEventListener("click", startCamera);
@@ -267,7 +268,7 @@
                 return;
             }
             const file = new File([blob], `camera-${Date.now()}.jpg`, { type: "image/jpeg" });
-            if (setUploadFile(file)) cameraMessage.textContent = "Photo captured. Review the preview, then save.";
+            if (setUploadFiles([file])) cameraMessage.textContent = "Photo captured. Review the preview, then save.";
         });
         form.addEventListener("submit", event => {
             const hasPostedFile = fileInput.files && fileInput.files.length > 0;
@@ -280,7 +281,7 @@
                 return;
             }
 
-            buildMetadata(photoSource.value === "USB Camera" ? null : selectedUploadFile);
+            buildMetadata(photoSource.value === "USB Camera" ? null : selectedUploadFiles[0]);
         });
 
         buildMetadata(null);

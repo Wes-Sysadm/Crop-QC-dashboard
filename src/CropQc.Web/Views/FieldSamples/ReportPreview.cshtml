@@ -1,0 +1,55 @@
+@model FieldSampleReportPreviewViewModel
+@{
+    ViewData["Title"] = "Field Sample Report Preview";
+}
+
+<h1>Field Sample Report Preview</h1>
+<section class="panel">
+    <p><strong>Recipients:</strong> @Model.Recipients</p>
+    <p><strong>Subject:</strong> @Model.Subject</p>
+    @if (Model.ChangedSinceLastSend)
+    {
+        <p class="notice warning">This sample changed after its most recent send. Sending will preserve the earlier send record and create a corrected-report record.</p>
+    }
+    @if (Model.MissingItems.Count > 0)
+    {
+        <p class="notice warning"><strong>This report is not sendable yet.</strong></p>
+        <ul>
+            @foreach (var item in Model.MissingItems)
+            {
+                <li>@item</li>
+            }
+        </ul>
+    }
+</section>
+
+<section class="panel field-sample-report-preview">
+    @Html.Raw(Model.HtmlBody)
+</section>
+
+<div class="button-row">
+    <a class="button secondary-button" href="/FieldSamples/@Model.SampleId">Back to Field Sample</a>
+    @if (Model.CanSend)
+    {
+        <form method="post" action="/FieldSamples/@Model.SampleId/report/send" data-field-report-send-form>
+            <label class="checkbox-line">
+                <input type="checkbox" name="confirmSend" value="true" required />
+                Confirm the recipients and send this @(Model.IsResend ? "corrected " : "")Field Sample report
+            </label>
+            <button type="submit" data-field-report-send>@(Model.IsResend ? "Resend Corrected Report" : "Send Field Sample Report")</button>
+            <span class="muted" data-field-report-sending hidden>Sending report…</span>
+        </form>
+    }
+</div>
+
+<script>
+    (() => {
+        const form = document.querySelector("[data-field-report-send-form]");
+        const button = document.querySelector("[data-field-report-send]");
+        const sending = document.querySelector("[data-field-report-sending]");
+        form?.addEventListener("submit", () => {
+            if (button) button.disabled = true;
+            if (sending) sending.hidden = false;
+        });
+    })();
+</script>

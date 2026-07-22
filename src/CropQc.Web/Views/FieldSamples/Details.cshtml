@@ -8,6 +8,7 @@
     var earliestTrend = orderedTrend.FirstOrDefault(x => x.SampleId != Model.SampleId) ?? currentTrend;
     var sizeTrend = orderedTrend.Where(x => x.SizeDistribution.Count > 0).ToList();
     var trendSizes = sizeTrend.SelectMany(x => x.SizeDistribution.Select(point => point.Size)).Distinct().OrderBy(x => x).ToList();
+    var sizeThresholdJson = System.Text.Json.JsonSerializer.Serialize(Model.SizeThresholds.Select(x => new { sizeCategory = x.SizeCategory, minimumWeightGrams = x.MinimumWeightGrams }));
 }
 
 <h1>Field Sample Detail</h1>
@@ -34,7 +35,11 @@
             </div>
             @if (Model.CanEdit && !Model.IsEditingMetadata)
             {
-                <a class="button secondary-button" href="/FieldSamples/@Model.SampleId/Edit">Edit Field Sample</a>
+                <div class="button-row">
+                    <a class="button secondary-button" href="/FieldSamples/@Model.SampleId/Edit">Edit Field Sample</a>
+                    <a class="button secondary-button" href="#sample-photos">Sample Photos</a>
+                    <a class="button secondary-button" href="/FieldSamples/@Model.SampleId/report">Preview Report</a>
+                </div>
             }
         </div>
         @if (!string.Equals(Model.CanonicalBlockName, Model.OriginalBlockName, StringComparison.OrdinalIgnoreCase))
@@ -88,6 +93,45 @@
             </div>
         </form>
     }
+
+    <section class="panel">
+        <div class="section-heading-row">
+            <div>
+                <h2>Field Sample Lifecycle</h2>
+                <p><strong>Status:</strong> @Model.LifecycleStatus | <strong>Email:</strong> @Model.EmailStatus</p>
+                @if (Model.LastSentAt is not null)
+                {
+                    <p class="muted">Last sent @Model.LastSentAt.Value.LocalDateTime.ToString("g") by @Model.LastSentBy to @Model.LastRecipientSnapshot</p>
+                }
+            </div>
+            @if (Model.CanEdit)
+            {
+                <div class="button-row">
+                    @if (Model.CanMarkComplete)
+                    {
+                        <form method="post" action="/FieldSamples/@Model.SampleId/complete">
+                            <button type="submit">Mark Complete</button>
+                        </form>
+                    }
+                    <a class="button secondary-button" href="/FieldSamples/@Model.SampleId/report">Preview Report</a>
+                </div>
+            }
+        </div>
+        @if (Model.ChangedSinceLastSend)
+        {
+            <p class="notice warning">This Field Sample changed after its most recent send. Preview and explicitly resend the corrected report when ready.</p>
+        }
+        @if (Model.CompletionMissingItems.Count > 0)
+        {
+            <p class="muted">Before this sample can be completed or sent:</p>
+            <ul>
+                @foreach (var item in Model.CompletionMissingItems)
+                {
+                    <li>@item</li>
+                }
+            </ul>
+        }
+    </section>
 
     <section class="panel">
         <h2>Current Sample Overview</h2>
@@ -324,8 +368,24 @@
                                 <td><input class="number-input" name="Rows[@i].Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /><input type="hidden" name="Rows[@i].OriginalPressure1Lbs" value="@row.Pressure1Lbs" /></td>
                                 <td><input class="number-input" name="Rows[@i].Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /><input type="hidden" name="Rows[@i].OriginalPressure2Lbs" value="@row.Pressure2Lbs" /></td>
                                 <td data-pressure-average>@row.PressureAverageLbs</td>
-                                <td><input class="number-input" name="Rows[@i].WeightGrams" type="number" step="0.0001" min="0" value="@row.WeightGrams" /></td>
-                                <td data-size-category>@row.SizeCategory</td>
+                                <td>
+                                    <input class="number-input" name="Rows[@i].WeightGrams" data-field-weight type="number" step="0.0001" min="0" value="@row.WeightGrams" />
+                                    <input type="hidden" name="Rows[@i].OriginalWeightGrams" value="@row.WeightGrams" />
+                                </td>
+                                <td>
+                                    <select name="Rows[@i].SizeCategory" data-size-category aria-label="Fruit @row.RowNumber size">
+                                        <option value="">--</option>
+                                        @if (row.SizeCategory is not null && !Model.SizeThresholds.Any(x => x.SizeCategory == row.SizeCategory))
+                                        {
+                                            <option value="@row.SizeCategory" selected>@row.SizeCategory</option>
+                                        }
+                                        @foreach (var threshold in Model.SizeThresholds.Select(x => x.SizeCategory).Distinct())
+                                        {
+                                            <option value="@threshold" selected="@(row.SizeCategory == threshold ? "selected" : null)">@threshold</option>
+                                        }
+                                    </select>
+                                    <input type="hidden" name="Rows[@i].OriginalSizeCategory" value="@row.SizeCategory" />
+                                </td>
                                 <td>
                                     <select name="Rows[@i].StarchScaleValueId">
                                         <option value="">--</option>
@@ -373,10 +433,11 @@
         </section>
     }
 
-    <section>
-        <h2>Field Sample Photos</h2>
+    <section id="sample-photos" class="panel">
+        <h2>Sample Photos</h2>
+        <p>Add one or more JPG, PNG, or WEBP pictures. You can choose files or use the browser camera where supported.</p>
         <div class="grid-two">
-            <div class="panel">
+            <div>
                 <h3>Saved Photos</h3>
                 @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
             </div>
@@ -390,11 +451,37 @@
                     PhotoTypes = ["SampleBeforeCutting", "CutFruit", "FruitAfterStarch", "Other"],
                     CropYear = Model.SampleTakenAt.Year,
                     Warehouse = "FIELD",
-                    ReceiptId = $"FieldSample-{Model.SampleId}"
+                    ReceiptId = $"FieldSample-{Model.SampleId}",
+                    AllowMultiple = true,
+                    FileInputName = "photoFiles"
                 })
             }
         </div>
     </section>
+
+    @if (Model.SendHistory.Count > 0)
+    {
+        <section class="panel">
+            <h2>Report Send History</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Status</th><th>Sent</th><th>Sender</th><th>Recipients</th><th>Subject</th></tr></thead>
+                    <tbody>
+                        @foreach (var send in Model.SendHistory)
+                        {
+                            <tr>
+                                <td>@send.Status@(send.IsResend ? " (corrected report)" : "")</td>
+                                <td>@(send.SentAt?.LocalDateTime.ToString("g") ?? "Not sent")</td>
+                                <td>@send.SentBy</td>
+                                <td>@send.Recipients</td>
+                                <td>@send.Subject</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
 }
 
 <script>
@@ -443,7 +530,8 @@
                     if (original) original.value = value;
                 }
                 tr.querySelector("[data-pressure-average]")?.replaceChildren(document.createTextNode(row.pressureAverageLbs ?? ""));
-                tr.querySelector("[data-size-category]")?.replaceChildren(document.createTextNode(row.sizeCategory ?? ""));
+                const sizeControl = tr.querySelector("[data-size-category]");
+                if (sizeControl) sizeControl.value = row.sizeCategory ?? "";
             }
         }
 
@@ -472,9 +560,36 @@
         const targetSizeInput = form.querySelector("[data-field-target-size]");
         const tbody = form.querySelector("tbody");
         const maxRows = 50;
+        const sizeThresholds = @Html.Raw(sizeThresholdJson);
         const starchOptions = Array.from(form.querySelectorAll("select[name$='.StarchScaleValueId'] option"))
             .map(option => `<option value="${option.value}">${option.textContent}</option>`)
             .join("");
+
+        function sizeOptionsHtml(selected = "") {
+            const values = [...new Set(sizeThresholds.map(item => item.sizeCategory))];
+            return `<option value="">--</option>${values.map(value => `<option value="${value}"${String(value) === String(selected) ? " selected" : ""}>${value}</option>`).join("")}`;
+        }
+
+        function recalculateSize(weightInput) {
+            const row = weightInput.closest("tr.fruit-row");
+            const sizeSelect = row?.querySelector("[data-size-category]");
+            if (!sizeSelect) return;
+            const raw = weightInput.value.trim();
+            if (!raw) {
+                sizeSelect.value = "";
+                return;
+            }
+            const weight = Number(raw);
+            if (!Number.isFinite(weight)) return;
+            const match = sizeThresholds
+                .filter(item => weight >= Number(item.minimumWeightGrams))
+                .sort((left, right) => Number(right.minimumWeightGrams) - Number(left.minimumWeightGrams))[0];
+            sizeSelect.value = match ? String(match.sizeCategory) : "";
+        }
+
+        form.addEventListener("input", event => {
+            if (event.target.matches("[data-field-weight]")) recalculateSize(event.target);
+        });
 
         addButton.addEventListener("click", () => {
             markDirty();
@@ -495,8 +610,8 @@
                 <td><input class="number-input" name="Rows[${index}].Pressure1Lbs" type="number" step="0.01" min="0" /><input type="hidden" name="Rows[${index}].OriginalPressure1Lbs" /></td>
                 <td><input class="number-input" name="Rows[${index}].Pressure2Lbs" type="number" step="0.01" min="0" /><input type="hidden" name="Rows[${index}].OriginalPressure2Lbs" /></td>
                 <td data-pressure-average></td>
-                <td><input class="number-input" name="Rows[${index}].WeightGrams" type="number" step="0.0001" min="0" /></td>
-                <td data-size-category></td>
+                <td><input class="number-input" name="Rows[${index}].WeightGrams" data-field-weight type="number" step="0.0001" min="0" /><input type="hidden" name="Rows[${index}].OriginalWeightGrams" /></td>
+                <td><select name="Rows[${index}].SizeCategory" data-size-category aria-label="Fruit ${rowNumber} size">${sizeOptionsHtml()}</select><input type="hidden" name="Rows[${index}].OriginalSizeCategory" /></td>
                 <td><select name="Rows[${index}].StarchScaleValueId">${starchOptions}</select></td>`;
             tbody.querySelectorAll("tr.fruit-row").forEach(row => row.classList.remove("device-selected-row"));
             tbody.appendChild(tr);

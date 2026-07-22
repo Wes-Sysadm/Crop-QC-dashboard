@@ -1151,6 +1151,9 @@ public sealed class FruitReadingEditRow
     public decimal? OriginalPressure1Lbs { get; set; }
     public decimal? OriginalPressure2Lbs { get; set; }
     public decimal? WeightGrams { get; set; }
+    public decimal? OriginalWeightGrams { get; set; }
+    public int? SizeCategory { get; set; }
+    public int? OriginalSizeCategory { get; set; }
     public int? GradeId { get; set; }
     public int? StarchScaleValueId { get; set; }
     public List<int> DefectTypeIds { get; set; } = [];
@@ -1314,9 +1317,11 @@ public sealed class PhotoPlaceholderFormViewModel
     public int CropYear { get; set; }
     public string Warehouse { get; set; } = "";
     public string ReceiptId { get; set; } = "";
+    public bool AllowMultiple { get; set; }
+    public string FileInputName { get; set; } = "PhotoFile";
 }
 
-public sealed record PhotoMetadataViewModel(long Id, long? QcSampleId, long? DeleteFromSampleId, string PhotoType, string PhotoSource, string FileName, string ContentType, long? FileSizeBytes, string? WebUrl, DateTimeOffset CapturedAt, bool CanDelete, string? DeleteAction = null);
+public sealed record PhotoMetadataViewModel(long Id, long? QcSampleId, long? DeleteFromSampleId, string PhotoType, string PhotoSource, string FileName, string ContentType, long? FileSizeBytes, string? WebUrl, DateTimeOffset CapturedAt, bool CanDelete, string? DeleteAction = null, bool DisplayAsThumbnail = false);
 public sealed record PhotoGroupViewModel(string PhotoType, IReadOnlyList<PhotoMetadataViewModel> Photos);
 
 public sealed class ReadinessViewModel

@@ -173,6 +173,7 @@ public sealed class QcSample
     public string? DeleteReason { get; set; }
     public ICollection<QcFruitReading> FruitReadings { get; } = new List<QcFruitReading>();
     public ICollection<QcPhoto> Photos { get; } = new List<QcPhoto>();
+    public ICollection<QcSummaryEmailLog> SummaryEmailLogs { get; } = new List<QcSummaryEmailLog>();
 
     public string GetDisplayReceiptId() =>
         Receipt is null
@@ -248,8 +249,8 @@ public sealed class QcPhoto
 public sealed class QcSummaryEmailLog
 {
     public long Id { get; set; }
-    public long ReceiptId { get; set; }
-    public Receipt Receipt { get; set; } = null!;
+    public long? ReceiptId { get; set; }
+    public Receipt? Receipt { get; set; }
     public long? QcSampleId { get; set; }
     public QcSample? QcSample { get; set; }
     public required string FromAddress { get; set; }

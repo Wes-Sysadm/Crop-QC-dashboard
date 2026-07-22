@@ -2006,6 +2006,7 @@ public sealed class DashboardDataService(
         {
             if (sample.ReceiptId is null)
             {
+                await MarkSampleNeedsResendIfSentAsync(sample, "photo-added", GetCurrentUserEmail() ?? "unknown", null, cancellationToken);
                 sample.PhotoStatus = "Optional Photos Attached";
                 sample.UpdatedAt = DateTimeOffset.UtcNow;
             }
@@ -2127,6 +2128,7 @@ public sealed class DashboardDataService(
         {
             if (sample.ReceiptId is null)
             {
+                await MarkSampleNeedsResendIfSentAsync(sample, "photo-removed", changedBy, before, cancellationToken);
                 sample.PhotoStatus = await dbContext.QcPhotos.AnyAsync(x => x.QcSampleId == sample.Id && !x.IsDeleted && x.Id != photo.Id, cancellationToken)
                     ? "Optional Photos Attached"
                     : "Not Required";

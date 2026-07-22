@@ -15,7 +15,22 @@
                 @foreach (var photo in group.Photos)
                 {
                     <tr>
-                        <td>@if (photo.WebUrl is not null){<a href="@photo.WebUrl">@photo.FileName</a>}else{@photo.FileName}</td>
+                        <td>
+                            @if (photo.WebUrl is not null)
+                            {
+                                <a href="@photo.WebUrl" target="_blank" rel="noopener">
+                                    @if (photo.DisplayAsThumbnail)
+                                    {
+                                        <img src="@photo.WebUrl" alt="@photo.FileName" style="max-width:180px;max-height:120px;width:auto;height:auto;display:block;" loading="lazy" />
+                                    }
+                                    @photo.FileName
+                                </a>
+                            }
+                            else
+                            {
+                                @photo.FileName
+                            }
+                        </td>
                         <td>@photo.PhotoSource</td>
                         <td>@photo.ContentType</td>
                         <td>@photo.FileSizeBytes</td>

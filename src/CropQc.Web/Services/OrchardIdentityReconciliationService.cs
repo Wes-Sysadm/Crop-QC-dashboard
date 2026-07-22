@@ -181,7 +181,7 @@ public sealed class OrchardIdentityReconciliationService(CropQcDbContext dbConte
             await dbContext.QcPhotos.CountAsync(x => !x.IsDeleted
                 && ((x.QcSampleId != null && sampleIds.Contains(x.QcSampleId.Value))
                     || (x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))), cancellationToken),
-            await dbContext.QcSummaryEmailLogs.CountAsync(x => receiptIds.Contains(x.ReceiptId), cancellationToken),
+            await dbContext.QcSummaryEmailLogs.CountAsync(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value), cancellationToken),
             await dbContext.AuditLogs.CountAsync(x => auditKeys.Contains(x.EntityKey)
                 && (x.EntityName == nameof(CanonicalOrchard) || x.EntityName == nameof(CanonicalOrchardBlock)), cancellationToken));
 

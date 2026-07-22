@@ -603,6 +603,14 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.ReportSnapshotReference).HasMaxLength(1000);
             entity.HasIndex(x => x.ReceiptId);
             entity.HasIndex(x => x.QcSampleId);
+            entity.HasOne(x => x.Receipt)
+                .WithMany(x => x.SummaryEmailLogs)
+                .HasForeignKey(x => x.ReceiptId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.QcSample)
+                .WithMany(x => x.SummaryEmailLogs)
+                .HasForeignKey(x => x.QcSampleId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<QcStation>(entity =>
