@@ -37,6 +37,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<RunProjection> RunProjections => Set<RunProjection>();
     public DbSet<RunProjectionSource> RunProjectionSources => Set<RunProjectionSource>();
     public DbSet<RunProjectionSizeResult> RunProjectionSizeResults => Set<RunProjectionSizeResult>();
+    public DbSet<RunProjectionGradeResult> RunProjectionGradeResults => Set<RunProjectionGradeResult>();
     public DbSet<QcSample> QcSamples => Set<QcSample>();
     public DbSet<QcFruitReading> QcFruitReadings => Set<QcFruitReading>();
     public DbSet<QcFruitDefect> QcFruitDefects => Set<QcFruitDefect>();
@@ -82,6 +83,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.StandardBoxWeightPounds).HasPrecision(10, 2);
             entity.Property(x => x.TotalProjectedPounds).HasPrecision(18, 2);
             entity.Property(x => x.TotalProjectedBoxes).HasPrecision(18, 4);
+            entity.Property(x => x.TotalPackedProjectedPounds).HasPrecision(18, 2);
+            entity.Property(x => x.TotalPackedProjectedBoxes).HasPrecision(18, 4);
+            entity.Property(x => x.TotalCullProjectedPounds).HasPrecision(18, 2);
+            entity.Property(x => x.TotalCullProjectedBoxes).HasPrecision(18, 4);
             entity.Property(x => x.ConcurrencyVersion).IsConcurrencyToken();
             entity.Property(x => x.CancelReason).HasMaxLength(1000);
             entity.HasIndex(x => new { x.PlannedRunDate, x.Status });
@@ -101,6 +106,12 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.PoundsPerBinUsed).HasPrecision(10, 2);
             entity.Property(x => x.ProjectedPounds).HasPrecision(18, 2);
             entity.Property(x => x.ProjectedBoxes).HasPrecision(18, 4);
+            entity.Property(x => x.ExpectedPackoutPercent).HasPrecision(5, 2);
+            entity.Property(x => x.ExpectedCullPercent).HasPrecision(5, 2);
+            entity.Property(x => x.PackedProjectedPounds).HasPrecision(18, 2);
+            entity.Property(x => x.PackedProjectedBoxes).HasPrecision(18, 4);
+            entity.Property(x => x.CullProjectedPounds).HasPrecision(18, 2);
+            entity.Property(x => x.CullProjectedBoxes).HasPrecision(18, 4);
             entity.Property(x => x.SourceLabelSnapshot).HasMaxLength(500).IsRequired();
             entity.Property(x => x.FacilitySnapshot).HasMaxLength(50);
             entity.Property(x => x.RoomSnapshot).HasMaxLength(100);
@@ -115,6 +126,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.GradeSummarySnapshot).HasMaxLength(1000);
             entity.Property(x => x.DefectSummarySnapshot).HasMaxLength(1000);
             entity.Property(x => x.ProjectionWarning).HasMaxLength(1000);
+            entity.Property(x => x.QcSampleTypeSnapshot).HasMaxLength(100);
+            entity.Property(x => x.QcSampleStatusSnapshot).HasMaxLength(50);
+            entity.Property(x => x.CalculationVersion).HasMaxLength(25).IsRequired();
             entity.HasIndex(x => new { x.RunProjectionId, x.SortOrder });
             entity.HasIndex(x => x.InventoryKey);
             entity.HasIndex(x => new { x.CanonicalOrchardBlockId, x.FruitProfileId });
@@ -135,8 +149,21 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.Commodity).HasMaxLength(25).IsRequired();
             entity.Property(x => x.Percentage).HasPrecision(9, 6);
             entity.Property(x => x.UnroundedProjectedBoxes).HasPrecision(18, 6);
+            entity.Property(x => x.PackedProjectedBoxes).HasPrecision(18, 6);
+            entity.Property(x => x.CullProjectedBoxes).HasPrecision(18, 6);
             entity.HasIndex(x => new { x.RunProjectionSourceId, x.Commodity, x.SizeCategory }).IsUnique();
             entity.HasOne(x => x.RunProjectionSource).WithMany(x => x.SizeResults).HasForeignKey(x => x.RunProjectionSourceId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RunProjectionGradeResult>(entity =>
+        {
+            entity.Property(x => x.GradeCode).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Percentage).HasPrecision(9, 6);
+            entity.Property(x => x.GrossProjectedBoxes).HasPrecision(18, 6);
+            entity.Property(x => x.PackedProjectedBoxes).HasPrecision(18, 6);
+            entity.Property(x => x.CullProjectedBoxes).HasPrecision(18, 6);
+            entity.HasIndex(x => new { x.RunProjectionSourceId, x.GradeCode }).IsUnique();
+            entity.HasOne(x => x.RunProjectionSource).WithMany(x => x.GradeResults).HasForeignKey(x => x.RunProjectionSourceId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 

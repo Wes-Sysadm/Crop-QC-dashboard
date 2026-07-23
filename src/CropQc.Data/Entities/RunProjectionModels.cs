@@ -41,6 +41,12 @@ public sealed class RunProjection
     public decimal TotalProjectedPounds { get; set; }
     public decimal TotalProjectedBoxes { get; set; }
     public int TotalRoundedProjectedBoxes { get; set; }
+    public decimal TotalPackedProjectedPounds { get; set; }
+    public decimal TotalPackedProjectedBoxes { get; set; }
+    public int TotalRoundedPackedProjectedBoxes { get; set; }
+    public decimal TotalCullProjectedPounds { get; set; }
+    public decimal TotalCullProjectedBoxes { get; set; }
+    public int TotalRoundedCullProjectedBoxes { get; set; }
     public long ConcurrencyVersion { get; set; } = 1;
     public DateTimeOffset? ExpiresAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
@@ -90,6 +96,14 @@ public sealed class RunProjectionSource
     public decimal ProjectedPounds { get; set; }
     public decimal ProjectedBoxes { get; set; }
     public int RoundedProjectedBoxes { get; set; }
+    public decimal? ExpectedPackoutPercent { get; set; }
+    public decimal? ExpectedCullPercent { get; set; }
+    public decimal PackedProjectedPounds { get; set; }
+    public decimal PackedProjectedBoxes { get; set; }
+    public int RoundedPackedProjectedBoxes { get; set; }
+    public decimal CullProjectedPounds { get; set; }
+    public decimal CullProjectedBoxes { get; set; }
+    public int RoundedCullProjectedBoxes { get; set; }
     public required string SourceLabelSnapshot { get; set; }
     public string? FacilitySnapshot { get; set; }
     public string? RoomSnapshot { get; set; }
@@ -100,17 +114,24 @@ public sealed class RunProjectionSource
     public string? BlockSnapshot { get; set; }
     public required string VarietySnapshot { get; set; }
     public DateTimeOffset? QcSampleDateSnapshot { get; set; }
+    public string? QcSampleTypeSnapshot { get; set; }
+    public string? QcSampleStatusSnapshot { get; set; }
     public int? QcFruitCountSnapshot { get; set; }
+    public int SizeBasisFruitCount { get; set; }
+    public int GradeBasisFruitCount { get; set; }
+    public int JointSizeGradeBasisFruitCount { get; set; }
     public decimal? AverageWeightGramsSnapshot { get; set; }
     public decimal? AveragePressureLbsSnapshot { get; set; }
     public string? GradeSummarySnapshot { get; set; }
     public string? DefectSummarySnapshot { get; set; }
     public string? ProjectionWarning { get; set; }
+    public string CalculationVersion { get; set; } = "1.0";
     public long? ActualBinsRunEntryId { get; set; }
     public BinsRunEntry? ActualBinsRunEntry { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public ICollection<RunProjectionSizeResult> SizeResults { get; } = new List<RunProjectionSizeResult>();
+    public ICollection<RunProjectionGradeResult> GradeResults { get; } = new List<RunProjectionGradeResult>();
 }
 
 public sealed class RunProjectionSizeResult
@@ -124,4 +145,24 @@ public sealed class RunProjectionSizeResult
     public decimal Percentage { get; set; }
     public decimal UnroundedProjectedBoxes { get; set; }
     public int RoundedProjectedBoxes { get; set; }
+    public decimal PackedProjectedBoxes { get; set; }
+    public int RoundedPackedProjectedBoxes { get; set; }
+    public decimal CullProjectedBoxes { get; set; }
+    public int RoundedCullProjectedBoxes { get; set; }
+}
+
+public sealed class RunProjectionGradeResult
+{
+    public long Id { get; set; }
+    public long RunProjectionSourceId { get; set; }
+    public RunProjectionSource RunProjectionSource { get; set; } = null!;
+    public required string GradeCode { get; set; }
+    public int SampleCount { get; set; }
+    public decimal Percentage { get; set; }
+    public decimal GrossProjectedBoxes { get; set; }
+    public int RoundedGrossProjectedBoxes { get; set; }
+    public decimal PackedProjectedBoxes { get; set; }
+    public int RoundedPackedProjectedBoxes { get; set; }
+    public decimal CullProjectedBoxes { get; set; }
+    public int RoundedCullProjectedBoxes { get; set; }
 }

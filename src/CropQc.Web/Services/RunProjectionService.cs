@@ -17,6 +17,8 @@ public interface IRunProjectionService
     Task<string?> UpdateHeaderAsync(RunProjectionHeaderForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> AddSourceAsync(RunProjectionAddSourceForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> UpdateSourceAsync(RunProjectionUpdateSourceForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<string?> ApplyPackoutToAllAsync(RunProjectionApplyPackoutForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<string?> RefreshSourceAsync(long projectionId, long sourceId, long concurrencyVersion, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> RemoveSourceAsync(long projectionId, long sourceId, long concurrencyVersion, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> MarkReadyAsync(RunProjectionStatusForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> CancelAsync(RunProjectionStatusForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
@@ -31,10 +33,13 @@ public static class RunProjectionSettings
     public const string DraftExpirationDaysKey = "RunProjection__DraftExpirationDays";
     public const string VisibilityPastDaysKey = "RunProjection__VisibilityPastDays";
     public const string VisibilityFutureDaysKey = "RunProjection__VisibilityFutureDays";
+    public const string DefaultExpectedPackoutPercentKey = "RunProjection__DefaultExpectedPackoutPercent";
+    public const string MinimumDistributionFruitKey = "RunProjection__MinimumDistributionFruit";
 
     public const int DefaultDraftExpirationDays = 14;
     public const int DefaultVisibilityPastDays = 30;
     public const int DefaultVisibilityFutureDays = 14;
+    public const int DefaultMinimumDistributionFruit = 10;
 }
 
 public sealed class RunProjectionService(
@@ -284,7 +289,16 @@ public sealed class RunProjectionService(
         var (projection, error, userId) = await LoadForEditAsync(form.ProjectionId, form.ConcurrencyVersion, user, cancellationToken);
         if (error is not null || projection is null) return error;
         if (form.PlannedBins <= 0) return "Planned bins must be greater than zero.";
-        var source = await ResolveSourceAsync(projection, form.SourceKey, form.SelectedQcSource, form.PlannedBins, form.AvailabilityOverrideAcknowledged, cancellationToken);
+        var settings = await LoadSettingsAsync(cancellationToken);
+        var source = await ResolveSourceAsync(
+            projection,
+            form.SourceKey,
+            form.SelectedQcSource,
+            form.PlannedBins,
+            form.ExpectedPackoutPercent ?? settings.DefaultExpectedPackoutPercent,
+            settings.MinimumDistributionFruit,
+            form.AvailabilityOverrideAcknowledged,
+            cancellationToken);
         if (source.Error is not null || source.Entity is null) return source.Error;
         if (projection.Sources.Any(x => string.Equals(x.SourceType, source.Entity.SourceType, StringComparison.OrdinalIgnoreCase)
             && string.Equals(x.InventoryKey, source.Entity.InventoryKey, StringComparison.OrdinalIgnoreCase)
@@ -310,6 +324,8 @@ public sealed class RunProjectionService(
         if (source is null) return "Projection source was not found.";
         if (source.ActualBinsRunEntryId is not null) return "A source linked to an actual run cannot be changed.";
         if (form.PlannedBins <= 0) return "Planned bins must be greater than zero.";
+        if (form.ExpectedPackoutPercent is < 0 or > 100) return "Expected Packout % must be between 0 and 100.";
+        var settings = await LoadSettingsAsync(cancellationToken);
 
         var before = SourceSnapshot(source);
         source.PlannedBins = form.PlannedBins;
@@ -321,13 +337,82 @@ public sealed class RunProjectionService(
             return $"Planned bins exceed the saved available quantity of {available}. Confirm the planning override to continue.";
         }
 
-        var qc = await ResolveQcSampleAsync(projection.CropYear, source, form.SelectedQcSource, cancellationToken);
-        if (qc.Error is not null) return qc.Error;
-        ApplyQcAndCalculation(projection, source, qc.Sample, qc.SourceType);
+        var requestedChoice = string.IsNullOrWhiteSpace(form.SelectedQcSource)
+            ? RunProjectionQcSourceTypes.Automatic
+            : form.SelectedQcSource.Trim();
+        var selectionChanged = !ChoiceMatchesSnapshot(source, requestedChoice);
+        source.ExpectedPackoutPercent = form.ExpectedPackoutPercent;
+        if (selectionChanged)
+        {
+            var qc = await ResolveQcSampleAsync(projection.CropYear, source, requestedChoice, cancellationToken);
+            if (qc.Error is not null) return qc.Error;
+            ApplyQcAndCalculation(projection, source, qc.Sample, qc.SourceType, settings.MinimumDistributionFruit);
+        }
+        else
+        {
+            RecalculateFromSnapshot(projection, source, settings.MinimumDistributionFruit);
+        }
         source.UpdatedAt = businessTime.UtcNow;
         RecalculateTotals(projection);
         Touch(projection, userId);
         await AddAuditAsync("UpdateSource", projection, userId, before, SourceSnapshot(source), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
+    public async Task<string?> ApplyPackoutToAllAsync(
+        RunProjectionApplyPackoutForm form,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        if (form.ExpectedPackoutPercent is < 0 or > 100) return "Expected Packout % must be between 0 and 100.";
+        var (projection, error, userId) = await LoadForEditAsync(form.ProjectionId, form.ConcurrencyVersion, user, cancellationToken);
+        if (error is not null || projection is null) return error;
+        var before = projection.Sources.Select(x => new { x.Id, x.ExpectedPackoutPercent }).ToList();
+        var settings = await LoadSettingsAsync(cancellationToken);
+        foreach (var source in projection.Sources.Where(x => x.ActualBinsRunEntryId is null))
+        {
+            source.ExpectedPackoutPercent = decimal.Round(form.ExpectedPackoutPercent, 2);
+            RecalculateFromSnapshot(projection, source, settings.MinimumDistributionFruit);
+            source.UpdatedAt = businessTime.UtcNow;
+        }
+        RecalculateTotals(projection);
+        Touch(projection, userId);
+        await AddAuditAsync(
+            "ApplyPackoutToAll",
+            projection,
+            userId,
+            before,
+            new { form.ExpectedPackoutPercent, Sources = projection.Sources.Select(x => new { x.Id, x.ExpectedPackoutPercent }) },
+            cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
+    public async Task<string?> RefreshSourceAsync(
+        long projectionId,
+        long sourceId,
+        long concurrencyVersion,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        var (projection, error, userId) = await LoadForEditAsync(projectionId, concurrencyVersion, user, cancellationToken);
+        if (error is not null || projection is null) return error;
+        var source = projection.Sources.SingleOrDefault(x => x.Id == sourceId);
+        if (source is null) return "Projection source was not found.";
+        if (source.SelectedQcSampleId is null) return "Select a QC sample before refreshing.";
+        var before = SourceSnapshot(source);
+        var settings = await LoadSettingsAsync(cancellationToken);
+        var choice = source.SelectedQcSourceType == RunProjectionQcSourceTypes.FieldSample
+            ? $"FieldSample:{source.SelectedQcSampleId}"
+            : $"ReceiptQc:{source.SelectedQcSampleId}";
+        var qc = await ResolveQcSampleAsync(projection.CropYear, source, choice, cancellationToken);
+        if (qc.Error is not null || qc.Sample is null) return qc.Error ?? "The selected QC sample is no longer available.";
+        ApplyQcAndCalculation(projection, source, qc.Sample, qc.SourceType, settings.MinimumDistributionFruit);
+        source.UpdatedAt = businessTime.UtcNow;
+        RecalculateTotals(projection);
+        Touch(projection, userId);
+        await AddAuditAsync("RefreshQcSnapshot", projection, userId, before, SourceSnapshot(source), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
     }
@@ -360,6 +445,18 @@ public sealed class RunProjectionService(
         if (projection.Sources.Count == 0) return "Add at least one source before marking the projection Ready.";
         if (projection.Sources.Any(x => x.Commodity == "Unknown")) return "Resolve every source commodity before marking the projection Ready.";
         if (projection.Sources.Any(x => x.SizeResults.Count == 0)) return "Every source needs usable calculated size data before the projection can be Ready.";
+        if (projection.Sources.Any(x => x.ExpectedPackoutPercent is null))
+        {
+            await AddAuditAsync(
+                "ReadyBlockedMissingPackout",
+                projection,
+                userId,
+                new { projection.Status },
+                new { MissingSourceIds = projection.Sources.Where(x => x.ExpectedPackoutPercent is null).Select(x => x.Id) },
+                cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return "Expected Packout % is required for every source before marking the projection Ready.";
+        }
         var before = projection.Status;
         projection.Status = RunProjectionStatuses.Ready;
         Touch(projection, userId);
@@ -422,6 +519,12 @@ public sealed class RunProjectionService(
             TotalProjectedPounds = sourceProjection.TotalProjectedPounds,
             TotalProjectedBoxes = sourceProjection.TotalProjectedBoxes,
             TotalRoundedProjectedBoxes = sourceProjection.TotalRoundedProjectedBoxes,
+            TotalPackedProjectedPounds = sourceProjection.TotalPackedProjectedPounds,
+            TotalPackedProjectedBoxes = sourceProjection.TotalPackedProjectedBoxes,
+            TotalRoundedPackedProjectedBoxes = sourceProjection.TotalRoundedPackedProjectedBoxes,
+            TotalCullProjectedPounds = sourceProjection.TotalCullProjectedPounds,
+            TotalCullProjectedBoxes = sourceProjection.TotalCullProjectedBoxes,
+            TotalRoundedCullProjectedBoxes = sourceProjection.TotalRoundedCullProjectedBoxes,
             ExpiresAt = now.AddDays((await LoadSettingsAsync(cancellationToken)).DraftExpirationDays),
             CreatedAt = now,
             UpdatedAt = now,
@@ -474,8 +577,13 @@ public sealed class RunProjectionService(
                 SelectedQcSampleId = source.SelectedQcSampleId,
                 QcBasis = QcBasis(source),
                 QcSampleDate = source.QcSampleDateSnapshot,
+                QcSampleType = source.QcSampleTypeSnapshot,
+                QcSampleStatus = source.QcSampleStatusSnapshot,
                 QcSampleId = source.SelectedQcSampleId,
                 QcFruitCount = source.QcFruitCountSnapshot,
+                SizeBasisFruitCount = source.SizeBasisFruitCount,
+                GradeBasisFruitCount = source.GradeBasisFruitCount,
+                JointSizeGradeBasisFruitCount = source.JointSizeGradeBasisFruitCount,
                 AverageWeightGrams = source.AverageWeightGramsSnapshot,
                 AveragePressureLbs = source.AveragePressureLbsSnapshot,
                 GradeSummary = source.GradeSummarySnapshot,
@@ -484,10 +592,30 @@ public sealed class RunProjectionService(
                 ProjectedPounds = source.ProjectedPounds,
                 ProjectedBoxes = source.ProjectedBoxes,
                 RoundedProjectedBoxes = source.RoundedProjectedBoxes,
+                ExpectedPackoutPercent = source.ExpectedPackoutPercent,
+                ExpectedCullPercent = source.ExpectedCullPercent,
+                PackedProjectedPounds = source.PackedProjectedPounds,
+                PackedProjectedBoxes = source.PackedProjectedBoxes,
+                RoundedPackedProjectedBoxes = source.RoundedPackedProjectedBoxes,
+                CullProjectedPounds = source.CullProjectedPounds,
+                CullProjectedBoxes = source.CullProjectedBoxes,
+                RoundedCullProjectedBoxes = source.RoundedCullProjectedBoxes,
+                CalculationVersion = source.CalculationVersion,
                 Warning = source.ProjectionWarning,
                 ActualBinsRunEntryId = source.ActualBinsRunEntryId,
                 SizeResults = source.SizeResults.OrderBy(x => x.SizeCategory)
-                    .Select(x => new RunProjectionSizeResultViewModel(x.Commodity, x.SizeCategory, x.SampleCount, x.Percentage, x.UnroundedProjectedBoxes, x.RoundedProjectedBoxes))
+                    .Select(x => new RunProjectionSizeResultViewModel(
+                        x.Commodity, x.SizeCategory, x.SampleCount, x.Percentage,
+                        x.UnroundedProjectedBoxes, x.RoundedProjectedBoxes,
+                        x.PackedProjectedBoxes, x.RoundedPackedProjectedBoxes,
+                        x.CullProjectedBoxes, x.RoundedCullProjectedBoxes))
+                    .ToList(),
+                GradeResults = source.GradeResults.OrderBy(x => x.GradeCode)
+                    .Select(x => new RunProjectionGradeResultViewModel(
+                        x.GradeCode, x.SampleCount, x.Percentage,
+                        x.GrossProjectedBoxes, x.RoundedGrossProjectedBoxes,
+                        x.PackedProjectedBoxes, x.RoundedPackedProjectedBoxes,
+                        x.CullProjectedBoxes, x.RoundedCullProjectedBoxes))
                     .ToList(),
                 QcChoices = choices
             });
@@ -507,6 +635,12 @@ public sealed class RunProjectionService(
             TotalProjectedPounds = projection.TotalProjectedPounds,
             TotalProjectedBoxes = projection.TotalProjectedBoxes,
             TotalRoundedProjectedBoxes = projection.TotalRoundedProjectedBoxes,
+            TotalPackedProjectedPounds = projection.TotalPackedProjectedPounds,
+            TotalPackedProjectedBoxes = projection.TotalPackedProjectedBoxes,
+            TotalRoundedPackedProjectedBoxes = projection.TotalRoundedPackedProjectedBoxes,
+            TotalCullProjectedPounds = projection.TotalCullProjectedPounds,
+            TotalCullProjectedBoxes = projection.TotalCullProjectedBoxes,
+            TotalRoundedCullProjectedBoxes = projection.TotalRoundedCullProjectedBoxes,
             ConcurrencyVersion = projection.ConcurrencyVersion,
             Creator = projection.CreatedByUser?.DisplayName ?? "",
             UpdatedAt = projection.UpdatedAt,
@@ -523,7 +657,24 @@ public sealed class RunProjectionService(
                     x.Key.Commodity,
                     x.Key.Size,
                     x.Sum(y => y.UnroundedBoxes),
-                    x.Sum(y => y.RoundedBoxes)))
+                    x.Sum(y => y.RoundedBoxes),
+                    x.Sum(y => y.PackedBoxes),
+                    x.Sum(y => y.RoundedPackedBoxes),
+                    x.Sum(y => y.CullBoxes),
+                    x.Sum(y => y.RoundedCullBoxes)))
+                .ToList(),
+            CombinedGrades = sourceModels
+                .SelectMany(x => x.GradeResults)
+                .GroupBy(x => x.Grade, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x.Key)
+                .Select(x => new RunProjectionCombinedGradeViewModel(
+                    x.Key,
+                    x.Sum(y => y.GrossBoxes),
+                    x.Sum(y => y.RoundedGrossBoxes),
+                    x.Sum(y => y.PackedBoxes),
+                    x.Sum(y => y.RoundedPackedBoxes),
+                    x.Sum(y => y.CullBoxes),
+                    x.Sum(y => y.RoundedCullBoxes)))
                 .ToList(),
             CanEditRecord = canEdit && RunProjectionStatuses.Editable.Contains(projection.Status)
         };
@@ -534,6 +685,8 @@ public sealed class RunProjectionService(
         string sourceKey,
         string selectedQcSource,
         int plannedBins,
+        decimal? expectedPackoutPercent,
+        int minimumDistributionFruit,
         bool availabilityOverride,
         CancellationToken cancellationToken)
     {
@@ -556,6 +709,7 @@ public sealed class RunProjectionService(
                 AvailableBinsSnapshot = null,
                 AvailabilityOverrideAcknowledged = false,
                 SelectedQcSourceType = RunProjectionQcSourceTypes.FieldSample,
+                ExpectedPackoutPercent = expectedPackoutPercent,
                 SourceLabelSnapshot = $"Planning-only block — {sample.CanonicalOrchardBlock!.CanonicalOrchard.OrchardName} / {sample.CanonicalOrchardBlock.CanonicalBlockName}",
                 OrchardSnapshot = sample.CanonicalOrchardBlock.CanonicalOrchard.OrchardName,
                 GrowerSnapshot = sample.FieldSampleGrowerName,
@@ -563,12 +717,13 @@ public sealed class RunProjectionService(
                 BlockSnapshot = sample.CanonicalOrchardBlock.CanonicalBlockName,
                 VarietySnapshot = sample.FieldSampleFruitProfile!.Name,
                 Commodity = RunProjectionCalculationService.NormalizeCommodity(sample.FieldSampleFruitProfile.FruitType),
+                CalculationVersion = RunProjectionCalculationService.CurrentCalculationVersion,
                 CreatedAt = now,
                 UpdatedAt = now
             };
             var qc = await ResolveQcSampleAsync(projection.CropYear, source, selectedQcSource, cancellationToken, sample);
             if (qc.Error is not null) return (null, qc.Error);
-            ApplyQcAndCalculation(projection, source, qc.Sample, qc.SourceType);
+            ApplyQcAndCalculation(projection, source, qc.Sample, qc.SourceType, minimumDistributionFruit);
             return (source, null);
         }
 
@@ -593,6 +748,7 @@ public sealed class RunProjectionService(
             AvailableBinsSnapshot = inventory.CurrentBins,
             AvailabilityOverrideAcknowledged = availabilityOverride,
             SelectedQcSourceType = RunProjectionQcSourceTypes.Automatic,
+            ExpectedPackoutPercent = expectedPackoutPercent,
             SourceLabelSnapshot = $"{inventory.Facility} / {inventory.Room} — {inventory.Grower}"
                 + (string.IsNullOrWhiteSpace(inventory.GrowerNumber) ? "" : $" — grower # {inventory.GrowerNumber}")
                 + (string.IsNullOrWhiteSpace(inventory.ReceiptReference) ? "" : $" — receipt {inventory.ReceiptReference}")
@@ -604,6 +760,7 @@ public sealed class RunProjectionService(
             GrowerNumberSnapshot = inventory.GrowerNumber,
             VarietySnapshot = inventory.Variety,
             Commodity = RunProjectionCalculationService.NormalizeCommodity(inventory.FruitType),
+            CalculationVersion = RunProjectionCalculationService.CurrentCalculationVersion,
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -630,7 +787,7 @@ public sealed class RunProjectionService(
 
         var inventoryQc = await ResolveQcSampleAsync(projection.CropYear, inventorySource, selectedQcSource, cancellationToken);
         if (inventoryQc.Error is not null) return (null, inventoryQc.Error);
-        ApplyQcAndCalculation(projection, inventorySource, inventoryQc.Sample, inventoryQc.SourceType);
+        ApplyQcAndCalculation(projection, inventorySource, inventoryQc.Sample, inventoryQc.SourceType, minimumDistributionFruit);
         return (inventorySource, null);
     }
 
@@ -685,6 +842,8 @@ public sealed class RunProjectionService(
         {
             var receiptQc = await UsableQcSamples(cropYear)
                 .Where(x => x.ReceiptId == receiptId)
+                .Where(x => x.FruitReadings.Any(row => row.SizeCategory != null)
+                    && x.FruitReadings.Any(row => row.GradeId != null))
                 .OrderByDescending(x => x.SampleTakenAt)
                 .ThenByDescending(x => x.Id)
                 .FirstOrDefaultAsync(cancellationToken);
@@ -710,26 +869,40 @@ public sealed class RunProjectionService(
         return await dbContext.QcSamples
             .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
             .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType)
+            .Include(x => x.SampleType)
             .Include(x => x.FieldSampleFruitProfile)
             .Include(x => x.Receipt).ThenInclude(x => x!.FruitProfile)
             .SingleOrDefaultAsync(x => x.Id == sampleId
                 && !x.IsDeleted
-                && ((x.ReceiptId != null && x.Receipt!.CropYear == cropYear)
+                && ((x.ReceiptId != null
+                        && x.Receipt!.CropYear == cropYear
+                        && (x.Status == "Complete"
+                            || x.Status == "Ready to Send"
+                            || x.Status == "Sent"
+                            || x.Status == "Needs Resend")
+                        && x.SampleType.IsActive
+                        && x.SampleType.Name != FieldSampleTypeName)
                     || (x.ReceiptId == null
+                        && x.SampleType.Name == FieldSampleTypeName
                         && x.SampleTakenAt >= fieldWindow.Start
-                        && x.SampleTakenAt < fieldWindow.End))
-                && x.FruitReadings.Any(row => row.SizeCategory != null), cancellationToken);
+                        && x.SampleTakenAt < fieldWindow.End
+                        && x.CanonicalOrchardBlockId != null
+                        && x.FieldSampleFruitProfileId != null
+                        && x.FieldSampleBlockResolution != "Suggested"))
+                && x.FruitReadings.Any(row => row.SizeCategory != null || row.GradeId != null), cancellationToken);
     }
 
     private void ApplyQcAndCalculation(
         RunProjection projection,
         RunProjectionSource source,
         QcSample? sample,
-        string selectedSourceType)
+        string selectedSourceType,
+        int minimumDistributionFruit)
     {
         source.SelectedQcSourceType = selectedSourceType;
         source.SelectedQcSampleId = sample?.Id;
         source.SizeResults.Clear();
+        source.GradeResults.Clear();
         var readings = sample?.FruitReadings.Where(HasEnteredFruitData).ToList() ?? [];
         var calculation = RunProjectionCalculationService.Calculate(
             source.Commodity,
@@ -737,14 +910,30 @@ public sealed class RunProjectionService(
             projection.ApplePoundsPerBin,
             projection.PearPoundsPerBin,
             projection.StandardBoxWeightPounds,
-            readings.Where(x => x.SizeCategory != null).Select(x => new RunProjectionSizeObservation(x.SizeCategory!.Value)));
+            source.ExpectedPackoutPercent,
+            readings.Where(x => x.SizeCategory != null).Select(x => new RunProjectionSizeObservation(x.SizeCategory!.Value)),
+            readings.Where(x => x.Grade != null).Select(x => new RunProjectionGradeObservation(x.Grade!.Code)),
+            readings.Count(x => x.SizeCategory != null && x.Grade != null),
+            minimumDistributionFruit);
 
         source.PoundsPerBinUsed = calculation.PoundsPerBin;
         source.ProjectedPounds = calculation.ProjectedPounds;
         source.ProjectedBoxes = calculation.ProjectedBoxes;
         source.RoundedProjectedBoxes = calculation.RoundedProjectedBoxes;
+        source.ExpectedCullPercent = calculation.ExpectedCullPercent;
+        source.PackedProjectedPounds = calculation.PackedProjectedPounds;
+        source.PackedProjectedBoxes = calculation.PackedProjectedBoxes;
+        source.RoundedPackedProjectedBoxes = calculation.RoundedPackedProjectedBoxes;
+        source.CullProjectedPounds = calculation.CullProjectedPounds;
+        source.CullProjectedBoxes = calculation.CullProjectedBoxes;
+        source.RoundedCullProjectedBoxes = calculation.RoundedCullProjectedBoxes;
         source.QcSampleDateSnapshot = sample?.SampleTakenAt;
+        source.QcSampleTypeSnapshot = sample?.SampleType.Name;
+        source.QcSampleStatusSnapshot = sample?.Status;
         source.QcFruitCountSnapshot = readings.Count;
+        source.SizeBasisFruitCount = calculation.SizeBasisFruitCount;
+        source.GradeBasisFruitCount = calculation.GradeBasisFruitCount;
+        source.JointSizeGradeBasisFruitCount = calculation.JointSizeGradeBasisFruitCount;
         source.AverageWeightGramsSnapshot = Average(readings.Where(x => x.WeightGrams != null).Select(x => x.WeightGrams!.Value));
         source.AveragePressureLbsSnapshot = Average(PressureCalculationService.ValidSideReadings(readings.Select(x => (x.Pressure1Lbs, x.Pressure2Lbs))));
         source.GradeSummarySnapshot = Distribution(readings.Where(x => x.Grade != null).Select(x => x.Grade!.Code));
@@ -754,6 +943,7 @@ public sealed class RunProjectionService(
             : $"{inspected.Count(x => x.Defects.Count > 0)} of {inspected.Count} inspected fruit affected; "
               + Distribution(inspected.SelectMany(x => x.Defects).Select(x => x.DefectType.Name));
         source.ProjectionWarning = calculation.Warning;
+        source.CalculationVersion = RunProjectionCalculationService.CurrentCalculationVersion;
         foreach (var allocation in calculation.SizeAllocations)
         {
             source.SizeResults.Add(new RunProjectionSizeResult
@@ -763,7 +953,26 @@ public sealed class RunProjectionService(
                 SampleCount = allocation.SampleCount,
                 Percentage = allocation.Percentage,
                 UnroundedProjectedBoxes = allocation.UnroundedProjectedBoxes,
-                RoundedProjectedBoxes = allocation.RoundedProjectedBoxes
+                RoundedProjectedBoxes = allocation.RoundedProjectedBoxes,
+                PackedProjectedBoxes = allocation.PackedProjectedBoxes,
+                RoundedPackedProjectedBoxes = allocation.RoundedPackedProjectedBoxes,
+                CullProjectedBoxes = allocation.CullProjectedBoxes,
+                RoundedCullProjectedBoxes = allocation.RoundedCullProjectedBoxes
+            });
+        }
+        foreach (var allocation in calculation.GradeAllocations)
+        {
+            source.GradeResults.Add(new RunProjectionGradeResult
+            {
+                GradeCode = allocation.Key,
+                SampleCount = allocation.SampleCount,
+                Percentage = allocation.Percentage,
+                GrossProjectedBoxes = allocation.GrossBoxes,
+                RoundedGrossProjectedBoxes = allocation.RoundedGrossBoxes,
+                PackedProjectedBoxes = allocation.PackedBoxes,
+                RoundedPackedProjectedBoxes = allocation.RoundedPackedBoxes,
+                CullProjectedBoxes = allocation.CullBoxes,
+                RoundedCullProjectedBoxes = allocation.RoundedCullBoxes
             });
         }
     }
@@ -775,24 +984,21 @@ public sealed class RunProjectionService(
     {
         var choices = new List<RunProjectionQcChoiceViewModel>
         {
-            new(RunProjectionQcSourceTypes.Automatic, "Automatic — receipt QC first, then confirmed Field Sample", null, RunProjectionQcSourceTypes.Automatic, null, source.SelectedQcSourceType == RunProjectionQcSourceTypes.Automatic),
-            new(RunProjectionQcSourceTypes.None, "No usable QC data", null, RunProjectionQcSourceTypes.None, null, source.SelectedQcSourceType == RunProjectionQcSourceTypes.None)
+            new(RunProjectionQcSourceTypes.Automatic, "Automatic — latest completed receipt sample with size and grade, then confirmed Field Sample", null, RunProjectionQcSourceTypes.Automatic, null, null, null, 0, null, null, false, false, false, source.SelectedQcSourceType == RunProjectionQcSourceTypes.Automatic),
+            new(RunProjectionQcSourceTypes.None, "No usable QC data", null, RunProjectionQcSourceTypes.None, null, null, null, 0, null, null, false, false, false, source.SelectedQcSourceType == RunProjectionQcSourceTypes.None)
         };
         if (source.ReceiptId is long receiptId)
         {
             var receiptSamples = await UsableQcSamples(cropYear)
                 .Where(x => x.ReceiptId == receiptId)
                 .OrderByDescending(x => x.SampleTakenAt)
-                .Take(10)
-                .Select(x => new { x.Id, x.SampleTakenAt })
+                .ThenByDescending(x => x.Id)
+                .Include(x => x.SampleType)
+                .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
+                .Include(x => x.FruitReadings).ThenInclude(x => x.Defects)
+                .Take(25)
                 .ToListAsync(cancellationToken);
-            choices.AddRange(receiptSamples.Select(x => new RunProjectionQcChoiceViewModel(
-                $"ReceiptQc:{x.Id}",
-                $"Receipt QC — {businessTime.FormatPacific(x.SampleTakenAt, "MMM d, yyyy", false)}",
-                x.Id,
-                RunProjectionQcSourceTypes.ReceiptQc,
-                x.SampleTakenAt,
-                source.SelectedQcSampleId == x.Id)));
+            choices.AddRange(receiptSamples.Select(x => QcChoice(x, RunProjectionQcSourceTypes.ReceiptQc, source.SelectedQcSampleId == x.Id)));
         }
 
         if (source.CanonicalOrchardBlockId is int blockId)
@@ -800,19 +1006,66 @@ public sealed class RunProjectionService(
             var fieldSamples = await UsableFieldSamples(cropYear)
                 .Where(x => x.CanonicalOrchardBlockId == blockId && x.FieldSampleFruitProfileId == source.FruitProfileId)
                 .OrderByDescending(x => x.SampleTakenAt)
-                .Take(10)
-                .Select(x => new { x.Id, x.SampleTakenAt })
+                .ThenByDescending(x => x.Id)
+                .Include(x => x.SampleType)
+                .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
+                .Include(x => x.FruitReadings).ThenInclude(x => x.Defects)
+                .Take(25)
                 .ToListAsync(cancellationToken);
-            choices.AddRange(fieldSamples.Select(x => new RunProjectionQcChoiceViewModel(
-                $"FieldSample:{x.Id}",
-                $"Field Sample — {businessTime.FormatPacific(x.SampleTakenAt, "MMM d, yyyy", false)}",
-                x.Id,
-                RunProjectionQcSourceTypes.FieldSample,
-                x.SampleTakenAt,
-                source.SelectedQcSampleId == x.Id)));
+            choices.AddRange(fieldSamples.Select(x => QcChoice(x, RunProjectionQcSourceTypes.FieldSample, source.SelectedQcSampleId == x.Id)));
         }
 
+        if (source.SelectedQcSampleId is long savedSampleId && choices.All(x => !x.IsSelected))
+        {
+            var savedSourceType = source.SelectedQcSourceType == RunProjectionQcSourceTypes.FieldSample
+                ? RunProjectionQcSourceTypes.FieldSample
+                : RunProjectionQcSourceTypes.ReceiptQc;
+            choices.Insert(1, new RunProjectionQcChoiceViewModel(
+                $"{savedSourceType}:{savedSampleId}",
+                $"Saved snapshot — {source.QcSampleTypeSnapshot ?? savedSourceType} #{savedSampleId} — current sample is unavailable or no longer eligible",
+                savedSampleId,
+                savedSourceType,
+                source.QcSampleDateSnapshot,
+                source.QcSampleTypeSnapshot,
+                source.QcSampleStatusSnapshot,
+                source.QcFruitCountSnapshot ?? 0,
+                source.AverageWeightGramsSnapshot,
+                source.AveragePressureLbsSnapshot,
+                source.SizeBasisFruitCount > 0,
+                source.GradeBasisFruitCount > 0,
+                !string.IsNullOrWhiteSpace(source.DefectSummarySnapshot),
+                true));
+        }
         return choices;
+    }
+
+    private RunProjectionQcChoiceViewModel QcChoice(QcSample sample, string sourceType, bool selected)
+    {
+        var rows = sample.FruitReadings.Where(HasEnteredFruitData).ToList();
+        var averageWeight = Average(rows.Where(x => x.WeightGrams != null).Select(x => x.WeightGrams!.Value));
+        var averagePressure = Average(PressureCalculationService.ValidSideReadings(rows.Select(x => (x.Pressure1Lbs, x.Pressure2Lbs))));
+        var hasSize = rows.Any(x => x.SizeCategory != null);
+        var hasGrade = rows.Any(x => x.GradeId != null);
+        var hasDefects = rows.Any(x => x.DefectsInspected);
+        var label = $"{sample.SampleType.Name} #{sample.Id} — {businessTime.FormatPacific(sample.SampleTakenAt, "MMM d, yyyy h:mm tt")} — {sample.Status} — {rows.Count} fruit"
+            + $" — avg wt {(averageWeight?.ToString("0.##") ?? "n/a")} g"
+            + $" — avg pressure {(averagePressure?.ToString("0.##") ?? "n/a")} lb"
+            + $" — size {(hasSize ? "yes" : "no")}, grade {(hasGrade ? "yes" : "no")}, defects {(hasDefects ? "yes" : "no")}";
+        return new RunProjectionQcChoiceViewModel(
+            $"{sourceType}:{sample.Id}",
+            label,
+            sample.Id,
+            sourceType,
+            sample.SampleTakenAt,
+            sample.SampleType.Name,
+            sample.Status,
+            rows.Count,
+            averageWeight,
+            averagePressure,
+            hasSize,
+            hasGrade,
+            hasDefects,
+            selected);
     }
 
     private IQueryable<QcSample> UsableQcSamples(int cropYear) =>
@@ -824,7 +1077,9 @@ public sealed class RunProjectionService(
                     || x.Status == "Ready to Send"
                     || x.Status == "Sent"
                     || x.Status == "Needs Resend")
-                && x.FruitReadings.Any(row => row.SizeCategory != null));
+                && x.SampleType.IsActive
+                && x.SampleType.Name != FieldSampleTypeName
+                && x.FruitReadings.Any(row => row.SizeCategory != null || row.GradeId != null));
 
     private IQueryable<QcSample> UsableFieldSamples(int cropYear)
     {
@@ -838,7 +1093,7 @@ public sealed class RunProjectionService(
                 && x.CanonicalOrchardBlockId != null
                 && x.FieldSampleFruitProfileId != null
                 && x.FieldSampleBlockResolution != "Suggested"
-                && x.FruitReadings.Any(row => row.SizeCategory != null));
+                && x.FruitReadings.Any(row => row.SizeCategory != null || row.GradeId != null));
     }
 
     private UtcDayRange FieldSampleCropWindow(int cropYear)
@@ -858,6 +1113,7 @@ public sealed class RunProjectionService(
         await dbContext.RunProjections
             .Include(x => x.CreatedByUser)
             .Include(x => x.Sources).ThenInclude(x => x.SizeResults)
+            .Include(x => x.Sources).ThenInclude(x => x.GradeResults)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
 
     private async Task<(RunProjection? Projection, string? Error, int? UserId)> LoadForEditAsync(
@@ -878,6 +1134,78 @@ public sealed class RunProjectionService(
         return (projection, null, await CurrentUserIdAsync(user, cancellationToken));
     }
 
+    private static bool ChoiceMatchesSnapshot(RunProjectionSource source, string choice)
+    {
+        if (choice.Equals(RunProjectionQcSourceTypes.None, StringComparison.OrdinalIgnoreCase))
+        {
+            return source.SelectedQcSampleId is null;
+        }
+        if (choice.Equals(RunProjectionQcSourceTypes.Automatic, StringComparison.OrdinalIgnoreCase))
+        {
+            return source.SelectedQcSourceType == RunProjectionQcSourceTypes.Automatic;
+        }
+        var separator = choice.IndexOf(':');
+        return separator > 0
+            && long.TryParse(choice[(separator + 1)..], out var sampleId)
+            && source.SelectedQcSampleId == sampleId;
+    }
+
+    private static void RecalculateFromSnapshot(RunProjection projection, RunProjectionSource source, int minimumDistributionFruit)
+    {
+        var sizeObservations = source.SizeResults
+            .SelectMany(x => Enumerable.Repeat(new RunProjectionSizeObservation(x.SizeCategory), x.SampleCount))
+            .ToList();
+        var gradeObservations = source.GradeResults
+            .SelectMany(x => Enumerable.Repeat(new RunProjectionGradeObservation(x.GradeCode), x.SampleCount))
+            .ToList();
+        var calculation = RunProjectionCalculationService.Calculate(
+            source.Commodity,
+            source.PlannedBins,
+            projection.ApplePoundsPerBin,
+            projection.PearPoundsPerBin,
+            projection.StandardBoxWeightPounds,
+            source.ExpectedPackoutPercent,
+            sizeObservations,
+            gradeObservations,
+            source.JointSizeGradeBasisFruitCount,
+            minimumDistributionFruit);
+        source.PoundsPerBinUsed = calculation.PoundsPerBin;
+        source.ProjectedPounds = calculation.ProjectedPounds;
+        source.ProjectedBoxes = calculation.ProjectedBoxes;
+        source.RoundedProjectedBoxes = calculation.RoundedProjectedBoxes;
+        source.ExpectedCullPercent = calculation.ExpectedCullPercent;
+        source.PackedProjectedPounds = calculation.PackedProjectedPounds;
+        source.PackedProjectedBoxes = calculation.PackedProjectedBoxes;
+        source.RoundedPackedProjectedBoxes = calculation.RoundedPackedProjectedBoxes;
+        source.CullProjectedPounds = calculation.CullProjectedPounds;
+        source.CullProjectedBoxes = calculation.CullProjectedBoxes;
+        source.RoundedCullProjectedBoxes = calculation.RoundedCullProjectedBoxes;
+        source.ProjectionWarning = calculation.Warning;
+        source.CalculationVersion = RunProjectionCalculationService.CurrentCalculationVersion;
+        foreach (var result in source.SizeResults)
+        {
+            var allocation = calculation.SizeAllocations.Single(x => x.SizeCategory == result.SizeCategory);
+            result.Percentage = allocation.Percentage;
+            result.UnroundedProjectedBoxes = allocation.UnroundedProjectedBoxes;
+            result.RoundedProjectedBoxes = allocation.RoundedProjectedBoxes;
+            result.PackedProjectedBoxes = allocation.PackedProjectedBoxes;
+            result.RoundedPackedProjectedBoxes = allocation.RoundedPackedProjectedBoxes;
+            result.CullProjectedBoxes = allocation.CullProjectedBoxes;
+            result.RoundedCullProjectedBoxes = allocation.RoundedCullProjectedBoxes;
+        }
+        foreach (var result in source.GradeResults)
+        {
+            var allocation = calculation.GradeAllocations.Single(x => x.Key.Equals(result.GradeCode, StringComparison.OrdinalIgnoreCase));
+            result.Percentage = allocation.Percentage;
+            result.GrossProjectedBoxes = allocation.GrossBoxes;
+            result.RoundedGrossProjectedBoxes = allocation.RoundedGrossBoxes;
+            result.PackedProjectedBoxes = allocation.PackedBoxes;
+            result.RoundedPackedProjectedBoxes = allocation.RoundedPackedBoxes;
+            result.CullProjectedBoxes = allocation.CullBoxes;
+            result.RoundedCullProjectedBoxes = allocation.RoundedCullBoxes;
+        }
+    }
+
     private void RecalculateTotals(RunProjection projection, long? excludingSourceId = null)
     {
         var sources = projection.Sources.Where(x => x.Id != excludingSourceId).ToList();
@@ -885,6 +1213,12 @@ public sealed class RunProjectionService(
         projection.TotalProjectedPounds = sources.Sum(x => x.ProjectedPounds);
         projection.TotalProjectedBoxes = sources.Sum(x => x.ProjectedBoxes);
         projection.TotalRoundedProjectedBoxes = sources.Sum(x => x.RoundedProjectedBoxes);
+        projection.TotalPackedProjectedPounds = sources.Sum(x => x.PackedProjectedPounds);
+        projection.TotalPackedProjectedBoxes = sources.Sum(x => x.PackedProjectedBoxes);
+        projection.TotalRoundedPackedProjectedBoxes = sources.Sum(x => x.RoundedPackedProjectedBoxes);
+        projection.TotalCullProjectedPounds = sources.Sum(x => x.CullProjectedPounds);
+        projection.TotalCullProjectedBoxes = sources.Sum(x => x.CullProjectedBoxes);
+        projection.TotalRoundedCullProjectedBoxes = sources.Sum(x => x.RoundedCullProjectedBoxes);
     }
 
     private void Touch(RunProjection projection, int? userId)
@@ -920,7 +1254,9 @@ public sealed class RunProjectionService(
             RunProjectionSettings.StandardBoxWeightKey,
             RunProjectionSettings.DraftExpirationDaysKey,
             RunProjectionSettings.VisibilityPastDaysKey,
-            RunProjectionSettings.VisibilityFutureDaysKey
+            RunProjectionSettings.VisibilityFutureDaysKey,
+            RunProjectionSettings.DefaultExpectedPackoutPercentKey,
+            RunProjectionSettings.MinimumDistributionFruitKey
         };
         var values = await dbContext.DashboardConfigurations.AsNoTracking()
             .Where(x => keys.Contains(x.Key))
@@ -931,11 +1267,16 @@ public sealed class RunProjectionService(
             ReadDecimal(values, RunProjectionSettings.StandardBoxWeightKey, RunProjectionCalculationService.DefaultStandardBoxWeightPounds),
             ReadInt(values, RunProjectionSettings.DraftExpirationDaysKey, RunProjectionSettings.DefaultDraftExpirationDays, 1, 365),
             ReadInt(values, RunProjectionSettings.VisibilityPastDaysKey, RunProjectionSettings.DefaultVisibilityPastDays, 1, 365),
-            ReadInt(values, RunProjectionSettings.VisibilityFutureDaysKey, RunProjectionSettings.DefaultVisibilityFutureDays, 1, 365));
+            ReadInt(values, RunProjectionSettings.VisibilityFutureDaysKey, RunProjectionSettings.DefaultVisibilityFutureDays, 1, 365),
+            ReadPercent(values, RunProjectionSettings.DefaultExpectedPackoutPercentKey, RunProjectionCalculationService.DefaultExpectedPackoutPercent),
+            ReadInt(values, RunProjectionSettings.MinimumDistributionFruitKey, RunProjectionSettings.DefaultMinimumDistributionFruit, 1, 50));
     }
 
     private static decimal ReadDecimal(IReadOnlyDictionary<string, string> values, string key, decimal fallback) =>
         values.TryGetValue(key, out var value) && decimal.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
+
+    private static decimal ReadPercent(IReadOnlyDictionary<string, string> values, string key, decimal fallback) =>
+        values.TryGetValue(key, out var value) && decimal.TryParse(value, out var parsed) && parsed is >= 0 and <= 100 ? parsed : fallback;
 
     private static int ReadInt(IReadOnlyDictionary<string, string> values, string key, int fallback, int min, int max) =>
         values.TryGetValue(key, out var value) && int.TryParse(value, out var parsed) && parsed >= min && parsed <= max ? parsed : fallback;
@@ -997,6 +1338,10 @@ public sealed class RunProjectionService(
         x.TotalPlannedBins,
         x.TotalProjectedPounds,
         x.TotalProjectedBoxes,
+        x.TotalPackedProjectedPounds,
+        x.TotalPackedProjectedBoxes,
+        x.TotalCullProjectedPounds,
+        x.TotalCullProjectedBoxes,
         x.ConcurrencyVersion
     };
 
@@ -1016,6 +1361,17 @@ public sealed class RunProjectionService(
         x.ProjectedPounds,
         x.ProjectedBoxes,
         x.RoundedProjectedBoxes,
+        x.ExpectedPackoutPercent,
+        x.ExpectedCullPercent,
+        x.PackedProjectedPounds,
+        x.PackedProjectedBoxes,
+        x.CullProjectedPounds,
+        x.CullProjectedBoxes,
+        x.QcSampleTypeSnapshot,
+        x.QcSampleDateSnapshot,
+        x.SizeBasisFruitCount,
+        x.GradeBasisFruitCount,
+        x.CalculationVersion,
         x.ActualBinsRunEntryId
     };
 
@@ -1044,6 +1400,14 @@ public sealed class RunProjectionService(
             ProjectedPounds = source.ProjectedPounds,
             ProjectedBoxes = source.ProjectedBoxes,
             RoundedProjectedBoxes = source.RoundedProjectedBoxes,
+            ExpectedPackoutPercent = source.ExpectedPackoutPercent,
+            ExpectedCullPercent = source.ExpectedCullPercent,
+            PackedProjectedPounds = source.PackedProjectedPounds,
+            PackedProjectedBoxes = source.PackedProjectedBoxes,
+            RoundedPackedProjectedBoxes = source.RoundedPackedProjectedBoxes,
+            CullProjectedPounds = source.CullProjectedPounds,
+            CullProjectedBoxes = source.CullProjectedBoxes,
+            RoundedCullProjectedBoxes = source.RoundedCullProjectedBoxes,
             SourceLabelSnapshot = source.SourceLabelSnapshot,
             FacilitySnapshot = source.FacilitySnapshot,
             RoomSnapshot = source.RoomSnapshot,
@@ -1054,12 +1418,18 @@ public sealed class RunProjectionService(
             BlockSnapshot = source.BlockSnapshot,
             VarietySnapshot = source.VarietySnapshot,
             QcSampleDateSnapshot = source.QcSampleDateSnapshot,
+            QcSampleTypeSnapshot = source.QcSampleTypeSnapshot,
+            QcSampleStatusSnapshot = source.QcSampleStatusSnapshot,
             QcFruitCountSnapshot = source.QcFruitCountSnapshot,
+            SizeBasisFruitCount = source.SizeBasisFruitCount,
+            GradeBasisFruitCount = source.GradeBasisFruitCount,
+            JointSizeGradeBasisFruitCount = source.JointSizeGradeBasisFruitCount,
             AverageWeightGramsSnapshot = source.AverageWeightGramsSnapshot,
             AveragePressureLbsSnapshot = source.AveragePressureLbsSnapshot,
             GradeSummarySnapshot = source.GradeSummarySnapshot,
             DefectSummarySnapshot = source.DefectSummarySnapshot,
             ProjectionWarning = source.ProjectionWarning,
+            CalculationVersion = source.CalculationVersion,
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -1072,7 +1442,26 @@ public sealed class RunProjectionService(
                 SampleCount = size.SampleCount,
                 Percentage = size.Percentage,
                 UnroundedProjectedBoxes = size.UnroundedProjectedBoxes,
-                RoundedProjectedBoxes = size.RoundedProjectedBoxes
+                RoundedProjectedBoxes = size.RoundedProjectedBoxes,
+                PackedProjectedBoxes = size.PackedProjectedBoxes,
+                RoundedPackedProjectedBoxes = size.RoundedPackedProjectedBoxes,
+                CullProjectedBoxes = size.CullProjectedBoxes,
+                RoundedCullProjectedBoxes = size.RoundedCullProjectedBoxes
+            });
+        }
+        foreach (var grade in source.GradeResults)
+        {
+            clone.GradeResults.Add(new RunProjectionGradeResult
+            {
+                GradeCode = grade.GradeCode,
+                SampleCount = grade.SampleCount,
+                Percentage = grade.Percentage,
+                GrossProjectedBoxes = grade.GrossProjectedBoxes,
+                RoundedGrossProjectedBoxes = grade.RoundedGrossProjectedBoxes,
+                PackedProjectedBoxes = grade.PackedProjectedBoxes,
+                RoundedPackedProjectedBoxes = grade.RoundedPackedProjectedBoxes,
+                CullProjectedBoxes = grade.CullProjectedBoxes,
+                RoundedCullProjectedBoxes = grade.RoundedCullProjectedBoxes
             });
         }
         return clone;
@@ -1107,9 +1496,7 @@ public sealed class RunProjectionService(
     private static string QcBasis(RunProjectionSource source) =>
         source.SelectedQcSampleId is null
             ? "No usable QC data"
-            : source.SelectedQcSourceType == RunProjectionQcSourceTypes.ReceiptQc
-                ? $"Receipt QC #{source.SelectedQcSampleId}"
-                : $"Field Sample #{source.SelectedQcSampleId}";
+            : $"{source.QcSampleTypeSnapshot ?? (source.SelectedQcSourceType == RunProjectionQcSourceTypes.FieldSample ? "Field Sample" : "Receipt QC")} #{source.SelectedQcSampleId}";
 
     private const string ConflictMessage = "This projection changed after the page loaded. Reload it before saving so another user's work is not overwritten.";
 
@@ -1119,5 +1506,7 @@ public sealed class RunProjectionService(
         decimal StandardBoxWeightPounds,
         int DraftExpirationDays,
         int VisibilityPastDays,
-        int VisibilityFutureDays);
+        int VisibilityFutureDays,
+        decimal DefaultExpectedPackoutPercent,
+        int MinimumDistributionFruit);
 }

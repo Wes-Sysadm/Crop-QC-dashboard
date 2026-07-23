@@ -48,6 +48,8 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
         (RunProjectionSettings.DraftExpirationDaysKey, "14", "Days after the planned date before an unconverted draft projection is marked expired.", "Integer"),
         (RunProjectionSettings.VisibilityPastDaysKey, "30", "Recent Pacific business days shown in the run-planner calendar.", "Integer"),
         (RunProjectionSettings.VisibilityFutureDaysKey, "14", "Future Pacific business days shown in the run-planner calendar.", "Integer"),
+        (RunProjectionSettings.DefaultExpectedPackoutPercentKey, "85", "Default Expected Packout % copied to newly added projection sources. Existing projections are unchanged.", "Decimal"),
+        (RunProjectionSettings.MinimumDistributionFruitKey, "10", "Minimum meaningful fruit count before a projection distribution is no longer flagged as sparse.", "Integer"),
         ("PhotoRetentionCropYearsAfterCurrent", "3", "Photo retention crop years after current. Planning value only; no automatic photo deletion currently runs.", "Integer"),
         ("AllowOverrideSendWithMissingData", "true", "Allow override send with missing data", "Boolean"),
         ("DeviceCapture__Enabled", "false", "Enable optional browser/local testing-device capture controls. Manual workflow remains available.", "Boolean"),
@@ -380,6 +382,16 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
                 && (!int.TryParse(submittedValue, out var days) || days < 1 || days > 365))
             {
                 return "Run projection visibility and expiration values must be between 1 and 365 days.";
+            }
+            if (config.Key == RunProjectionSettings.DefaultExpectedPackoutPercentKey
+                && (!decimal.TryParse(submittedValue, out var packout) || packout is < 0 or > 100))
+            {
+                return "Default Expected Packout % must be between 0 and 100.";
+            }
+            if (config.Key == RunProjectionSettings.MinimumDistributionFruitKey
+                && (!int.TryParse(submittedValue, out var minimumFruit) || minimumFruit is < 1 or > 50))
+            {
+                return "Minimum distribution fruit must be between 1 and 50.";
             }
             if (config.Key is QcEmailRecipientSettings.Key or EbsDailyBinsEmailSettings.RecipientsKey)
             {
