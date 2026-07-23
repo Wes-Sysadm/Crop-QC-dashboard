@@ -13,10 +13,42 @@ public interface ICropYearService
 
 public sealed class CropYearService(CropQcDbContext dbContext, IConfiguration configuration) : ICropYearService
 {
+    public const string ActiveCropYearKey = "DefaultCropYear";
+    private int? activeCropYear;
+
     public int GetCurrentCropYear(DateTimeOffset now)
     {
+        if (activeCropYear is not null)
+        {
+            return activeCropYear.Value;
+        }
+
+        try
+        {
+            var configured = dbContext.DashboardConfigurations.AsNoTracking()
+                .Where(x => x.Key == ActiveCropYearKey)
+                .Select(x => x.Value)
+                .FirstOrDefault();
+            if (TryCropYear(configured, now, out var databaseYear))
+            {
+                activeCropYear = databaseYear;
+                return databaseYear;
+            }
+        }
+        catch
+        {
+            // Startup and empty-shell paths still need a safe application setting fallback.
+        }
+
+        if (TryCropYear(configuration["CropYear:ActiveYear"], now, out var applicationYear))
+        {
+            activeCropYear = applicationYear;
+            return applicationYear;
+        }
+
         var start = GetDefaultStart(now.Year);
-        return DateOnly.FromDateTime(now.DateTime) >= start ? now.Year : now.Year - 1;
+        activeCropYear = DateOnly.FromDateTime(now.DateTime) >= start ? now.Year : now.Year - 1;
+        return activeCropYear.Value;
     }
 
     public IReadOnlyList<int> GetCandidateCropYears(DateTimeOffset date)
@@ -75,4 +107,9 @@ public sealed class CropYearService(CropQcDbContext dbContext, IConfiguration co
 
     private int GetInt(string key, int fallback) =>
         int.TryParse(configuration[key], out var value) ? value : fallback;
+
+    private static bool TryCropYear(string? value, DateTimeOffset now, out int cropYear) =>
+        int.TryParse(value, out cropYear)
+        && cropYear >= 2000
+        && cropYear <= now.Year + 5;
 }

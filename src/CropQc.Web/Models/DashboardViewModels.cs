@@ -9,6 +9,7 @@ public sealed record StatusCountCard(string Label, int Count, string Href, strin
 public sealed class HomeDashboardViewModel
 {
     public string? DataWarning { get; set; }
+    public int ActiveCropYear { get; set; }
     public IReadOnlyList<StatusCountCard> Cards { get; set; } = [];
     public IReadOnlyList<SampleListItemViewModel> TodaySamples { get; set; } = [];
     public IReadOnlyList<RoomSummaryItemViewModel> RoomSummaries { get; set; } = [];
@@ -947,6 +948,7 @@ public sealed class CurrentGrowerLotsFilterForm
 
 public sealed class CurrentGrowerLotViewModel
 {
+    public int? CropYear { get; set; }
     public string Grower { get; set; } = "";
     public string Lot { get; set; } = "";
     public string Variety { get; set; } = "";
@@ -1075,15 +1077,40 @@ public sealed class SampleDetailViewModel
     public IReadOnlyList<Grade> Grades { get; set; } = [];
     public IReadOnlyList<StarchScaleValue> StarchScaleValues { get; set; } = [];
     public IReadOnlyList<DefectType> DefectTypes { get; set; } = [];
+    public IReadOnlyList<FieldSampleSizeThreshold> SizeThresholds { get; set; } = [];
     public IReadOnlyList<int> AllowedSampleSizes { get; set; } = [];
     public int TargetSampleSize { get; set; } = 10;
     public int EnteredFruitCount { get; set; }
+    public long AutosaveVersion { get; set; }
     public IReadOnlyList<QcPhotoRequirementViewModel> AvailablePhotoTypes { get; set; } = [];
     public string? RecipientEmail { get; set; }
     public SaveFruitReadingsForm FruitReadingForm { get; set; } = new();
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
     public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
 }
+
+public sealed class ReceiptReportPreviewViewModel
+{
+    public long SampleId { get; set; }
+    public long ReceiptId { get; set; }
+    public string DisplayReceiptId { get; set; } = "";
+    public string Recipients { get; set; } = "";
+    public string Subject { get; set; } = "";
+    public string HtmlBody { get; set; } = "";
+    public bool CanSend { get; set; }
+    public bool IsResend { get; set; }
+    public IReadOnlyList<string> MissingItems { get; set; } = [];
+    public IReadOnlyList<ReceiptReportSendHistoryItem> SendHistory { get; set; } = [];
+}
+
+public sealed record ReceiptReportSendHistoryItem(
+    string Status,
+    DateTimeOffset? SentAt,
+    string Sender,
+    string Recipients,
+    string Subject,
+    bool IsResend,
+    bool IsOverride);
 
 public sealed record ReadinessChecklistItem(string Category, string Label, string Status, string CssClass);
 public sealed record QcPhotoRequirementViewModel(string PhotoType, string FriendlyName, bool IsRequired);
@@ -1160,17 +1187,23 @@ public sealed record SampleRefreshRowViewModel(
     decimal? WeightGrams,
     int? GradeId,
     string? Grade,
+    int? StarchScaleValueId,
     int? SizeCategory,
     string SizeStatus,
     string EntryStatus,
-    IReadOnlyList<string> Defects);
+    IReadOnlyList<int> DefectTypeIds,
+    IReadOnlyList<string> Defects,
+    bool DefectsInspected,
+    string? OtherDefectNotes,
+    long FieldVersion);
 
 public sealed record SampleRefreshViewModel(
     long SampleId,
     int TargetSampleSize,
     int EnteredFruitCount,
     DateTimeOffset? UpdatedAt,
-    IReadOnlyList<SampleRefreshRowViewModel> Rows);
+    IReadOnlyList<SampleRefreshRowViewModel> Rows,
+    FieldSampleQcStationStatusViewModel QcStation);
 
 public sealed class FruitReadingEditRow
 {

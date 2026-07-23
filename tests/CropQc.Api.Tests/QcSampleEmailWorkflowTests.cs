@@ -176,6 +176,85 @@ public sealed class QcSampleEmailWorkflowTests
         Assert.Contains("fruit-row-change", audit.AfterValuesJson);
     }
 
+    [Fact]
+    public async Task ReceiptAutosave_ChangesOnlySubmittedFieldAndReturnsCalculatedSize()
+    {
+        await using var db = CreateDbContext();
+        var sample = await SeedSampleAsync(db, "Lot Sample", emailStatus: "Not Sent", hasStarch: false);
+        var service = CreateService(db, role: "QC User");
+
+        var result = await service.AutosaveFruitReadingsAsync(sample.Id, new FieldSampleAutosaveRequest
+        {
+            ChangeId = "receipt-weight-1",
+            Source = "Scale",
+            TargetSampleSize = 10,
+            RowChanges =
+            [
+                new FieldSampleAutosaveRowChange
+                {
+                    RowNumber = 1,
+                    Changes = [new FieldSampleAutosaveFieldChange { Field = "WeightGrams", OriginalValue = "180", Value = "215" }]
+                }
+            ]
+        }, CancellationToken.None);
+
+        Assert.True(result.Saved);
+        var saved = Assert.Single(result.Rows, row => row.RowNumber == 1);
+        Assert.Equal(215m, saved.WeightGrams);
+        Assert.Equal(88, saved.SizeCategory);
+        var row = await db.QcFruitReadings.AsNoTracking().SingleAsync(x => x.QcSampleId == sample.Id && x.RowNumber == 1);
+        Assert.Equal(12m, row.Pressure1Lbs);
+        Assert.Equal(13m, row.Pressure2Lbs);
+    }
+
+    [Fact]
+    public async Task ReceiptAutosave_DetectsNewerQcStationPressureWithoutOverwritingIt()
+    {
+        await using var db = CreateDbContext();
+        var sample = await SeedSampleAsync(db, "Lot Sample", emailStatus: "Not Sent", hasStarch: false);
+        var stationRow = await db.QcFruitReadings.SingleAsync(x => x.QcSampleId == sample.Id && x.RowNumber == 1);
+        stationRow.Pressure1Lbs = 14m;
+        stationRow.Pressure1Source = "QC Station";
+        stationRow.FieldVersion++;
+        await db.SaveChangesAsync();
+        var service = CreateService(db, role: "QC User");
+
+        var result = await service.AutosaveFruitReadingsAsync(sample.Id, new FieldSampleAutosaveRequest
+        {
+            ChangeId = "receipt-pressure-conflict",
+            TargetSampleSize = 10,
+            RowChanges =
+            [
+                new FieldSampleAutosaveRowChange
+                {
+                    RowNumber = 1,
+                    Changes = [new FieldSampleAutosaveFieldChange { Field = "Pressure1Lbs", OriginalValue = "12", Value = "15" }]
+                }
+            ]
+        }, CancellationToken.None);
+
+        var conflict = Assert.Single(result.Conflicts);
+        Assert.Equal("Pressure1Lbs", conflict.Field);
+        Assert.Contains("QC Station", conflict.Message);
+        Assert.Equal(14m, (await db.QcFruitReadings.AsNoTracking().SingleAsync(x => x.Id == stationRow.Id)).Pressure1Lbs);
+    }
+
+    [Fact]
+    public async Task ReceiptReportPreview_DoesNotSendOrChangeStatus()
+    {
+        await using var db = CreateDbContext();
+        var sample = await SeedSampleAsync(db, "Lot Sample", emailStatus: "Not Sent", hasStarch: false);
+        var service = CreateService(db, role: "QC User");
+
+        var preview = await service.GetQcReportPreviewAsync(sample.Id, CancellationToken.None);
+
+        Assert.Equal(sample.Id, preview.SampleId);
+        Assert.Equal("qc-recipient@fruitandland.com", preview.Recipients);
+        Assert.Equal("<p>Html</p>", preview.HtmlBody);
+        Assert.Empty(await db.QcSummaryEmailLogs.ToListAsync());
+        Assert.Equal("Not Sent", await db.QcSamples.Where(x => x.Id == sample.Id).Select(x => x.EmailStatus).SingleAsync());
+    }
+
     [Theory]
     [InlineData("Truck Sample", false, false, true)]
     [InlineData("Lot Sample", false, true, false)]
@@ -271,9 +350,10 @@ public sealed class QcSampleEmailWorkflowTests
             Pressure1Lbs = 12m,
             Pressure2Lbs = 13m,
             WeightGrams = 180m,
+            SizeCategory = 113,
             GradeId = 1,
             StarchScaleValueId = starch?.Id,
-            SizeStatus = "NotCalculated",
+            SizeStatus = "Sized",
             IsCompleted = true,
             CreatedAt = DateTimeOffset.UtcNow
         });

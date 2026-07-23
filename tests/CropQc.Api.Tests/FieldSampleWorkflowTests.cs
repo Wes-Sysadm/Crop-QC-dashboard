@@ -220,11 +220,11 @@ public sealed class FieldSampleWorkflowTests
         Assert.Equal(100m, detail.CurrentSummary.MinimumWeightGrams);
         Assert.Equal(2, detail.CurrentSummary.StarchRepresentedFruitCount);
         Assert.Equal(3.5m, detail.CurrentSummary.AverageStarch);
-        Assert.Equal(2, detail.CurrentSummary.PressureReadingCount);
-        Assert.Equal(12.5m, detail.CurrentSummary.AveragePressureLbs);
+        Assert.Equal(3, detail.CurrentSummary.PressureReadingCount);
+        Assert.Equal(12m, detail.CurrentSummary.AveragePressureLbs);
         Assert.Equal(14m, detail.CurrentSummary.PeakPressureLbs);
-        Assert.Equal(11m, detail.CurrentSummary.MinimumPressureLbs);
-        Assert.Equal(2.12m, detail.CurrentSummary.PressureStandardDeviationLbs);
+        Assert.Equal(10m, detail.CurrentSummary.MinimumPressureLbs);
+        Assert.Equal(2m, detail.CurrentSummary.PressureStandardDeviationLbs);
     }
 
     [Fact]

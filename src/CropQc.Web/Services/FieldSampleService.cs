@@ -103,7 +103,8 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         var canEdit = await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken);
         var list = samples.Select(sample =>
         {
-            var pressures = sample.Rows.Select(x => AverageFlexible(x.Pressure1Lbs, x.Pressure2Lbs)).Where(x => x is not null).Select(x => x!.Value).ToList();
+            var pressures = PressureCalculationService.ValidSideReadings(
+                sample.Rows.Select(x => (x.Pressure1Lbs, x.Pressure2Lbs)));
             var weights = sample.Rows.Where(x => x.WeightGrams is not null).Select(x => x.WeightGrams!.Value).ToList();
             var starch = sample.Rows.Where(x => x.Starch is not null).Select(x => x.Starch!.Value).ToList();
             var entered = sample.Rows.Count(x =>
@@ -1192,9 +1193,8 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         var entered = rows.Where(HasEnteredData).ToList();
         var weights = entered.Where(x => x.WeightGrams is not null).Select(x => x.WeightGrams!.Value).ToList();
         var starch = entered.Where(x => decimal.TryParse(x.Starch, out _)).Select(x => decimal.Parse(x.Starch!)).ToList();
-        var pressures = entered.Select(x => x.PressureAverageLbs).Where(x => x is not null).Select(x => x!.Value).ToList();
-        var pressure1 = entered.Where(x => x.Pressure1Lbs is not null).Select(x => x.Pressure1Lbs!.Value).ToList();
-        var pressure2 = entered.Where(x => x.Pressure2Lbs is not null).Select(x => x.Pressure2Lbs!.Value).ToList();
+        var pressures = PressureCalculationService.ValidSideReadings(
+            entered.Select(x => (x.Pressure1Lbs, x.Pressure2Lbs)));
         var inspected = rows.Where(x => x.DefectsInspected).ToList();
         var affected = inspected.Where(x => x.Defects.Count > 0).ToList();
         var defectDistribution = inspected.Count == 0
@@ -1217,13 +1217,11 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
             StarchRepresentedFruitCount = starch.Count,
             MissingStarchCount = entered.Count(x => x.StarchScaleValueId is null),
             AveragePressureLbs = pressures.Count == 0 ? null : decimal.Round(pressures.Average(), 2),
-            AveragePressure1Lbs = pressure1.Count == 0 ? null : decimal.Round(pressure1.Average(), 2),
-            AveragePressure2Lbs = pressure2.Count == 0 ? null : decimal.Round(pressure2.Average(), 2),
             PeakPressureLbs = pressures.Count == 0 ? null : pressures.Max(),
             MinimumPressureLbs = pressures.Count == 0 ? null : pressures.Min(),
             PressureStandardDeviationLbs = SampleStandardDeviation(pressures),
             PressureReadingCount = pressures.Count,
-            MissingPressureCount = entered.Count(x => x.PressureAverageLbs is null),
+            MissingPressureCount = entered.Count(x => x.Pressure1Lbs is null && x.Pressure2Lbs is null),
             GradeDistribution = BuildDistribution(entered.Select(x => x.Grade)),
             StarchDistribution = BuildDistribution(entered.Select(x => x.Starch)),
             DefectInspectedFruitCount = inspected.Count,
