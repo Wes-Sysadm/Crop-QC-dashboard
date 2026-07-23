@@ -1094,7 +1094,10 @@ public sealed record DeviceCapturePanelViewModel(
     bool ShowTruckPhotos = false,
     bool ShowApplePhotos = false,
     bool ShowScale = false,
-    string? RequiresSavedTargetMessage = null);
+    string? RequiresSavedTargetMessage = null,
+    string FruitCameraLabel = "Apple camera",
+    string WholeSampleLabel = "Whole Apple Sample",
+    string CutFruitLabel = "Cut Apple");
 
 public sealed class FruitReadingRowViewModel
 {
@@ -1114,6 +1117,8 @@ public sealed class FruitReadingRowViewModel
     public IReadOnlyList<int> DefectTypeIds { get; set; } = [];
     public IReadOnlyList<string> Defects { get; set; } = [];
     public string? OtherDefectNotes { get; set; }
+    public bool DefectsInspected { get; set; }
+    public long FieldVersion { get; set; }
 }
 
 public sealed class SaveFruitReadingsForm
@@ -1158,6 +1163,7 @@ public sealed class FruitReadingEditRow
     public int? StarchScaleValueId { get; set; }
     public List<int> DefectTypeIds { get; set; } = [];
     public string? OtherDefectNotes { get; set; }
+    public bool DefectsInspected { get; set; }
 }
 
 public sealed class SaveStarchTestForm
@@ -1319,6 +1325,8 @@ public sealed class PhotoPlaceholderFormViewModel
     public string ReceiptId { get; set; } = "";
     public bool AllowMultiple { get; set; }
     public string FileInputName { get; set; } = "PhotoFile";
+    public string WholeSampleLabel { get; set; } = "Whole Apple Sample";
+    public string CutFruitLabel { get; set; } = "Cut Apple";
 }
 
 public sealed record PhotoMetadataViewModel(long Id, long? QcSampleId, long? DeleteFromSampleId, string PhotoType, string PhotoSource, string FileName, string ContentType, long? FileSizeBytes, string? WebUrl, DateTimeOffset CapturedAt, bool CanDelete, string? DeleteAction = null, bool DisplayAsThumbnail = false);

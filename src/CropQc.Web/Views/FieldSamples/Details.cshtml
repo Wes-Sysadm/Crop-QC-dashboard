@@ -12,6 +12,15 @@
 }
 
 <h1>Field Sample Detail</h1>
+@if (Model.CanEdit && Model.SampleId > 0)
+{
+    <div class="field-autosave-status" data-field-autosave-status aria-live="polite">
+        <strong data-autosave-label>Saved</strong>
+        <span class="muted" data-autosave-time>@(Model.UpdatedAt is null ? "" : $"Last saved {Model.UpdatedAt.Value.LocalDateTime:h:mm:ss tt}")</span>
+        <button type="button" class="secondary-button" data-save-now>Save Now</button>
+    </div>
+    <div class="notice warning" data-autosave-errors hidden></div>
+}
 @if (TempData["Success"] is string success)
 {
     <p class="notice success">@success</p>
@@ -38,7 +47,7 @@
                 <div class="button-row">
                     <a class="button secondary-button" href="/FieldSamples/@Model.SampleId/Edit">Edit Field Sample</a>
                     <a class="button secondary-button" href="#sample-photos">Sample Photos</a>
-                    <a class="button secondary-button" href="/FieldSamples/@Model.SampleId/report">Preview Report</a>
+                    <a class="button secondary-button" href="/FieldSamples/@Model.SampleId/report" data-requires-autosave>Preview Report</a>
                 </div>
             }
         </div>
@@ -54,16 +63,16 @@
 
     @if (Model.IsEditingMetadata && Model.CanEdit)
     {
-        <form method="post" action="/FieldSamples/@Model.SampleId/metadata" class="panel stack-form">
+        <form method="post" action="/FieldSamples/@Model.SampleId/metadata" class="panel stack-form" data-field-metadata-form>
             <h2>Edit Field Sample Details</h2>
             <input type="hidden" name="SampleId" value="@Model.SampleId" />
             <div class="grid-two">
-                <label>Orchard <input name="OrchardName" value="@Model.MetadataForm.OrchardName" maxlength="200" required /></label>
-                <label>Grower number <input name="GrowerNumber" value="@Model.MetadataForm.GrowerNumber" maxlength="50" /></label>
-                <label>Block name entered <input name="BlockName" value="@Model.MetadataForm.BlockName" maxlength="150" required /></label>
+                <label>Orchard <input name="OrchardName" data-autosave-field="OrchardName" value="@Model.MetadataForm.OrchardName" maxlength="200" required /></label>
+                <label>Grower number <input name="GrowerNumber" data-autosave-field="GrowerNumber" value="@Model.MetadataForm.GrowerNumber" maxlength="50" /></label>
+                <label>Block name entered <input name="BlockName" data-autosave-field="BlockName" value="@Model.MetadataForm.BlockName" maxlength="150" required /></label>
                 <label>
                     Existing block
-                    <select name="CanonicalOrchardBlockId">
+                    <select name="CanonicalOrchardBlockId" data-autosave-field="CanonicalOrchardBlockId">
                         <option value="">Resolve automatically or create a new block</option>
                         @foreach (var block in Model.Blocks)
                         {
@@ -73,22 +82,22 @@
                 </label>
                 <label>
                     Variety
-                    <select name="FruitProfileId" required>
+                    <select name="FruitProfileId" data-autosave-field="FruitProfileId" data-fruit-profile required>
                         @foreach (var fruit in Model.FruitProfiles)
                         {
-                            <option value="@fruit.Id" selected="@(Model.MetadataForm.FruitProfileId == fruit.Id ? "selected" : null)">@fruit.Name</option>
+                            <option value="@fruit.Id" data-fruit-type="@fruit.FruitType" selected="@(Model.MetadataForm.FruitProfileId == fruit.Id ? "selected" : null)">@fruit.Name</option>
                         }
                     </select>
                 </label>
-                <label>Sample date/time <input name="SampleTakenAt" type="datetime-local" value="@Model.MetadataForm.SampleTakenAt.LocalDateTime.ToString("yyyy-MM-ddTHH:mm")" required /></label>
+                <label>Sample date/time <input name="SampleTakenAt" data-autosave-field="SampleTakenAt" type="datetime-local" value="@Model.MetadataForm.SampleTakenAt.LocalDateTime.ToString("yyyy-MM-ddTHH:mm")" required /></label>
             </div>
-            <label>Notes <textarea name="Notes" maxlength="1000">@Model.MetadataForm.Notes</textarea></label>
+            <label>Notes <textarea name="Notes" data-autosave-field="Notes" maxlength="1000">@Model.MetadataForm.Notes</textarea></label>
             <label class="checkbox-line">
-                <input name="ConfirmCreateNewBlock" type="checkbox" value="true" checked="@Model.MetadataForm.ConfirmCreateNewBlock" />
+                <input name="ConfirmCreateNewBlock" data-autosave-field="ConfirmCreateNewBlock" type="checkbox" value="true" checked="@Model.MetadataForm.ConfirmCreateNewBlock" />
                 Create new block if no exact block or alias matches
             </label>
             <div class="button-row">
-                <button type="submit">Save Field Sample Details</button>
+                <button type="submit">Save Now</button>
                 <a href="/FieldSamples/@Model.SampleId">Cancel</a>
             </div>
         </form>
@@ -109,11 +118,11 @@
                 <div class="button-row">
                     @if (Model.CanMarkComplete)
                     {
-                        <form method="post" action="/FieldSamples/@Model.SampleId/complete">
+                        <form method="post" action="/FieldSamples/@Model.SampleId/complete" data-requires-autosave>
                             <button type="submit">Mark Complete</button>
                         </form>
                     }
-                    <a class="button secondary-button" href="/FieldSamples/@Model.SampleId/report">Preview Report</a>
+                    <a class="button secondary-button" href="/FieldSamples/@Model.SampleId/report" data-requires-autosave>Preview Report</a>
                 </div>
             }
         </div>
@@ -141,6 +150,7 @@
             <div><span class="metric-label">Average pressure</span><strong>@Format(Model.CurrentSummary.AveragePressureLbs) lb</strong><span class="muted">Peak @Format(Model.CurrentSummary.PeakPressureLbs) lb | Min @Format(Model.CurrentSummary.MinimumPressureLbs) lb</span></div>
             <div><span class="metric-label">Pressure variation</span><strong>@(Model.CurrentSummary.PressureStandardDeviationLbs?.ToString("0.##") ?? "Insufficient readings")</strong><span class="muted">@Model.CurrentSummary.PressureReadingCount represented fruit</span></div>
             <div><span class="metric-label">Fruit represented</span><strong>@Model.CurrentSummary.EnteredFruitCount / @Model.TargetSampleSize</strong><span class="muted">Blank values remain missing, not zero</span></div>
+            <div><span class="metric-label">Defects</span><strong>@(Model.CurrentSummary.DefectAffectedPercentage?.ToString("0.#") ?? "Not inspected")@(Model.CurrentSummary.DefectAffectedPercentage is null ? "" : "% affected")</strong><span class="muted">@Model.CurrentSummary.DefectAffectedFruitCount affected / @Model.CurrentSummary.DefectInspectedFruitCount inspected</span></div>
         </div>
         <p class="notice @(pressureChange is null ? "warning" : pressureChange < 0 ? "warning" : "success")">
             @if (pressureChange is null)
@@ -160,6 +170,44 @@
                 <span>No meaningful pressure change since @Model.CurrentSummary.PriorPressureSampleDate?.LocalDateTime.ToString("MMM d").</span>
             }
         </p>
+    </section>
+
+    <section class="panel">
+        <h2>Defect Summary and 30-Day Trend</h2>
+        @if (Model.CurrentSummary.DefectInspectedFruitCount == 0)
+        {
+            <p class="muted">Defect entry has not been performed for this sample. This is distinct from inspecting fruit and finding no defects.</p>
+        }
+        else if (Model.CurrentSummary.DefectDistribution.Count == 0)
+        {
+            <p>No defects found in @Model.CurrentSummary.DefectInspectedFruitCount inspected fruit.</p>
+        }
+        else
+        {
+            <ul class="compact-list">
+                @foreach (var defect in Model.CurrentSummary.DefectDistribution)
+                {
+                    <li><strong>@defect.Defect:</strong> @defect.FruitCount fruit (@defect.PercentageOfInspectedFruit.ToString("0.#")% of inspected fruit)</li>
+                }
+            </ul>
+        }
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Date</th><th>Inspected</th><th>Affected</th><th>Percent affected</th><th>Most common defects</th></tr></thead>
+                <tbody>
+                    @foreach (var point in orderedTrend.Where(x => x.Summary.DefectInspectedFruitCount > 0))
+                    {
+                        <tr class="@(point.SampleId == Model.SampleId ? "selected-row" : null)">
+                            <td>@point.SampleTakenAt.LocalDateTime.ToString("MMM d")</td>
+                            <td>@point.Summary.DefectInspectedFruitCount</td>
+                            <td>@point.Summary.DefectAffectedFruitCount</td>
+                            <td>@point.Summary.DefectAffectedPercentage?.ToString("0.#")%</td>
+                            <td>@string.Join(", ", point.Summary.DefectDistribution.OrderByDescending(x => x.FruitCount).Take(3).Select(x => $"{x.Defect} {x.FruitCount}"))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     </section>
 
     <section class="panel">
@@ -339,13 +387,18 @@
             SamplePhotoAction: $"/FieldSamples/{Model.SampleId}/photos",
             ShowApplePhotos: true,
             ShowScale: true,
-            RequiresSavedTargetMessage: "Field Sample rows are saved on this page. Scale capture fills the selected weight input; save the Field Sample to persist it."))
+            RequiresSavedTargetMessage: "Scale capture fills the selected weight input, calculates size, and autosaves the row immediately.",
+            FruitCameraLabel: Model.Terminology.CameraLabel,
+            WholeSampleLabel: Model.Terminology.WholeSampleLabel,
+            CutFruitLabel: Model.Terminology.CutFruitLabel))
 
-        <form method="post" action="/FieldSamples/@Model.SampleId/rows" class="panel" id="field-sample-rows-form">
+        <form method="post" action="/FieldSamples/@Model.SampleId/rows" class="panel" id="field-sample-rows-form" data-field-rows-form
+              data-autosave-url="/FieldSamples/@Model.SampleId/autosave" data-sample-id="@Model.SampleId" data-autosave-version="@Model.AutosaveVersion">
+            @Html.AntiForgeryToken()
             <input type="hidden" name="SampleId" value="@Model.SampleId" />
             <input type="hidden" name="TargetSampleSize" value="@Model.TargetSampleSize" data-field-target-size />
             <h2>Fruit Rows</h2>
-            <p class="muted">Field Samples save partially. Weight, starch, and pressure are optional per row until the sample is complete. Scale capture writes to the selected row's weight field; FTA capture uses QC Station and the same pressure fields.</p>
+            <p class="muted">Changes autosave after a short pause. Weight is the only sizing input; size is calculated from grams and cannot be edited. Mark each fruit as defect-inspected even when no defect is found.</p>
             <div class="table-wrap">
                 <table class="qc-grid">
                     <thead>
@@ -357,37 +410,26 @@
                             <th>Weight g</th>
                             <th>Size</th>
                             <th>Starch</th>
+                            <th>Grade</th>
+                            <th>Defects</th>
                         </tr>
                     </thead>
                     <tbody>
                         @for (var i = 0; i < Model.FruitRows.Count; i++)
                         {
                             var row = Model.FruitRows[i];
-                            <tr class="fruit-row" data-row-index="@i" data-row-number="@row.RowNumber">
+                            <tr class="fruit-row" data-row-index="@i" data-row-number="@row.RowNumber" data-field-version="@row.FieldVersion">
                                 <td>@row.RowNumber<input type="hidden" name="Rows[@i].RowNumber" value="@row.RowNumber" /></td>
-                                <td><input class="number-input" name="Rows[@i].Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /><input type="hidden" name="Rows[@i].OriginalPressure1Lbs" value="@row.Pressure1Lbs" /></td>
-                                <td><input class="number-input" name="Rows[@i].Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /><input type="hidden" name="Rows[@i].OriginalPressure2Lbs" value="@row.Pressure2Lbs" /></td>
+                                <td><input class="number-input" name="Rows[@i].Pressure1Lbs" data-autosave-row-field="Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /><input type="hidden" name="Rows[@i].OriginalPressure1Lbs" value="@row.Pressure1Lbs" /></td>
+                                <td><input class="number-input" name="Rows[@i].Pressure2Lbs" data-autosave-row-field="Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /><input type="hidden" name="Rows[@i].OriginalPressure2Lbs" value="@row.Pressure2Lbs" /></td>
                                 <td data-pressure-average>@row.PressureAverageLbs</td>
                                 <td>
-                                    <input class="number-input" name="Rows[@i].WeightGrams" data-field-weight type="number" step="0.0001" min="0" value="@row.WeightGrams" />
+                                    <input class="number-input" name="Rows[@i].WeightGrams" data-field-weight data-autosave-row-field="WeightGrams" type="number" step="0.0001" min="0" value="@row.WeightGrams" />
                                     <input type="hidden" name="Rows[@i].OriginalWeightGrams" value="@row.WeightGrams" />
                                 </td>
+                                <td><output data-size-category aria-label="Calculated size for fruit @row.RowNumber">@(row.SizeCategory?.ToString() ?? "Not calculated")</output></td>
                                 <td>
-                                    <select name="Rows[@i].SizeCategory" data-size-category aria-label="Fruit @row.RowNumber size">
-                                        <option value="">--</option>
-                                        @if (row.SizeCategory is not null && !Model.SizeThresholds.Any(x => x.SizeCategory == row.SizeCategory))
-                                        {
-                                            <option value="@row.SizeCategory" selected>@row.SizeCategory</option>
-                                        }
-                                        @foreach (var threshold in Model.SizeThresholds.Select(x => x.SizeCategory).Distinct())
-                                        {
-                                            <option value="@threshold" selected="@(row.SizeCategory == threshold ? "selected" : null)">@threshold</option>
-                                        }
-                                    </select>
-                                    <input type="hidden" name="Rows[@i].OriginalSizeCategory" value="@row.SizeCategory" />
-                                </td>
-                                <td>
-                                    <select name="Rows[@i].StarchScaleValueId">
+                                    <select name="Rows[@i].StarchScaleValueId" data-autosave-row-field="StarchScaleValueId">
                                         <option value="">--</option>
                                         @foreach (var starch in Model.StarchScaleValues)
                                         {
@@ -395,13 +437,47 @@
                                         }
                                     </select>
                                 </td>
+                                <td>
+                                    <select name="Rows[@i].GradeId" data-autosave-row-field="GradeId">
+                                        <option value="">--</option>
+                                        @foreach (var grade in Model.Grades)
+                                        {
+                                            <option value="@grade.Id" selected="@(row.GradeId == grade.Id ? "selected" : null)">@grade.Code</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td class="field-defect-cell">
+                                    <details>
+                                        <summary><span data-defect-indicator>@(row.DefectsInspected ? row.Defects.Count == 0 ? "Inspected — none" : $"{row.Defects.Count} defect(s)" : "Not inspected")</span></summary>
+                                        <label class="checkbox-line"><input type="checkbox" name="Rows[@i].DefectsInspected" value="true" data-autosave-row-field="DefectsInspected" checked="@(row.DefectsInspected ? "checked" : null)" /> Inspected for defects</label>
+                                        <div class="selected-defects" data-selected-defects>
+                                            @foreach (var defectName in row.Defects)
+                                            {
+                                                <span class="chip">@defectName</span>
+                                            }
+                                        </div>
+                                        <div data-defect-hidden-inputs>
+                                            @foreach (var defectId in row.DefectTypeIds)
+                                            {
+                                                <input type="hidden" name="Rows[@i].DefectTypeIds" value="@defectId" />
+                                            }
+                                        </div>
+                                        <div class="defect-palette">
+                                            @foreach (var defect in Model.DefectTypes)
+                                            {
+                                                <button type="button" class="chip chip-action" data-field-defect-id="@defect.Id" data-defect-name="@defect.Name">@defect.Name</button>
+                                            }
+                                        </div>
+                                        <label>Other notes <input name="Rows[@i].OtherDefectNotes" data-autosave-row-field="OtherDefectNotes" value="@row.OtherDefectNotes" maxlength="500" disabled="@(!row.Defects.Contains("Other") ? "disabled" : null)" /></label>
+                                    </details>
+                                </td>
                             </tr>
                         }
                     </tbody>
                 </table>
             </div>
             <div class="button-row">
-                <button type="submit">Save Field Sample</button>
+                <button type="submit">Save Now</button>
                 <button type="button" class="secondary-button" data-add-field-row>Add fruit row</button>
             </div>
         </form>
@@ -413,7 +489,7 @@
             <p class="muted">View-only users cannot edit Field Sample rows.</p>
             <div class="table-wrap">
                 <table class="qc-grid">
-                    <thead><tr><th>Row</th><th>P1 lbs</th><th>P2 lbs</th><th>Avg lbs</th><th>Weight g</th><th>Size</th><th>Starch</th></tr></thead>
+                    <thead><tr><th>Row</th><th>P1 lbs</th><th>P2 lbs</th><th>Avg lbs</th><th>Weight g</th><th>Size</th><th>Starch</th><th>Grade</th><th>Defects</th></tr></thead>
                     <tbody>
                         @foreach (var row in Model.FruitRows)
                         {
@@ -425,6 +501,8 @@
                                 <td>@Format(row.WeightGrams)</td>
                                 <td>@(row.SizeCategory?.ToString() ?? "Missing")</td>
                                 <td>@(row.Starch ?? "Missing")</td>
+                                <td>@(row.Grade ?? "Missing")</td>
+                                <td>@(row.DefectsInspected ? row.Defects.Count == 0 ? "Inspected — none" : string.Join(", ", row.Defects) : "Not inspected")</td>
                             </tr>
                         }
                     </tbody>
@@ -439,7 +517,12 @@
         <div class="grid-two">
             <div>
                 <h3>Saved Photos</h3>
-                @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
+                @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups, new Microsoft.AspNetCore.Mvc.ViewFeatures.ViewDataDictionary(ViewData)
+                {
+                    ["WholeSampleLabel"] = Model.Terminology.WholeSampleLabel,
+                    ["CutFruitLabel"] = Model.Terminology.CutFruitLabel,
+                    ["Commodity"] = Model.Terminology.Commodity
+                })
             </div>
             @if (Model.CanEdit)
             {
@@ -453,7 +536,9 @@
                     Warehouse = "FIELD",
                     ReceiptId = $"FieldSample-{Model.SampleId}",
                     AllowMultiple = true,
-                    FileInputName = "photoFiles"
+                    FileInputName = "photoFiles",
+                    WholeSampleLabel = Model.Terminology.WholeSampleLabel,
+                    CutFruitLabel = Model.Terminology.CutFruitLabel
                 })
             }
         </div>
@@ -484,143 +569,14 @@
     }
 }
 
+<script src="/js/field-sample-autosave.js"></script>
 <script>
-    (() => {
-        document.querySelector("[data-copy-sample-id]")?.addEventListener("click", async event => {
-            const sampleId = event.currentTarget.dataset.copySampleId;
-            try {
-                await navigator.clipboard.writeText(sampleId);
-                event.currentTarget.textContent = "Copied Sample ID";
-                setTimeout(() => event.currentTarget.textContent = "Copy Sample ID", 2000);
-            } catch {
-                window.prompt("Copy Field Sample ID", sampleId);
-            }
-        });
-
-        const form = document.querySelector("#field-sample-rows-form");
-        const addButton = document.querySelector("[data-add-field-row]");
-        let dirty = false;
-        const updateWarning = document.querySelector("[data-field-server-update]");
-
-        function markDirty() {
-            dirty = true;
-        }
-
-        form?.addEventListener("input", markDirty);
-        form?.addEventListener("change", markDirty);
-
-        function updateStationStatus(station) {
-            const state = document.querySelector("[data-qc-station-state]");
-            const label = document.querySelector("[data-qc-station-label]");
-            const message = document.querySelector("[data-qc-station-message]");
-            if (state) state.dataset.qcStationState = station?.state || "Error";
-            if (label) label.textContent = station?.state || "Error";
-            if (message) message.textContent = station?.message || "QC Station status could not be checked. Use Retry after confirming network access.";
-        }
-
-        function updateRows(rows) {
-            for (const row of rows || []) {
-                const tr = document.querySelector(`.fruit-row[data-row-number='${row.rowNumber}']`);
-                if (!tr) continue;
-                for (const slot of [1, 2]) {
-                    const value = row[`pressure${slot}Lbs`] ?? "";
-                    const input = tr.querySelector(`[name$='.Pressure${slot}Lbs']`);
-                    const original = tr.querySelector(`[name$='.OriginalPressure${slot}Lbs']`);
-                    if (input) input.value = value;
-                    if (original) original.value = value;
-                }
-                tr.querySelector("[data-pressure-average]")?.replaceChildren(document.createTextNode(row.pressureAverageLbs ?? ""));
-                const sizeControl = tr.querySelector("[data-size-category]");
-                if (sizeControl) sizeControl.value = row.sizeCategory ?? "";
-            }
-        }
-
-        async function refreshFieldSample(manual = false) {
-            if (dirty) {
-                if (updateWarning) updateWarning.hidden = false;
-                return;
-            }
-            try {
-                const response = await fetch(`/FieldSamples/@Model.SampleId/refresh`, { credentials: "same-origin", cache: "no-store" });
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const data = await response.json();
-                updateRows(data.rows);
-                updateStationStatus(data.qcStation);
-                if (updateWarning) updateWarning.hidden = true;
-            } catch (error) {
-                updateStationStatus({ state: "Error", message: `QC Station status check failed (${error.message}). Check dashboard connectivity, then retry.` });
-            }
-        }
-
-        document.querySelector("[data-refresh-field-sample]")?.addEventListener("click", () => refreshFieldSample(true));
-        window.setInterval(() => refreshFieldSample(false), 3000);
-
-        if (!form || !addButton) return;
-
-        const targetSizeInput = form.querySelector("[data-field-target-size]");
-        const tbody = form.querySelector("tbody");
-        const maxRows = 50;
-        const sizeThresholds = @Html.Raw(sizeThresholdJson);
-        const starchOptions = Array.from(form.querySelectorAll("select[name$='.StarchScaleValueId'] option"))
-            .map(option => `<option value="${option.value}">${option.textContent}</option>`)
-            .join("");
-
-        function sizeOptionsHtml(selected = "") {
-            const values = [...new Set(sizeThresholds.map(item => item.sizeCategory))];
-            return `<option value="">--</option>${values.map(value => `<option value="${value}"${String(value) === String(selected) ? " selected" : ""}>${value}</option>`).join("")}`;
-        }
-
-        function recalculateSize(weightInput) {
-            const row = weightInput.closest("tr.fruit-row");
-            const sizeSelect = row?.querySelector("[data-size-category]");
-            if (!sizeSelect) return;
-            const raw = weightInput.value.trim();
-            if (!raw) {
-                sizeSelect.value = "";
-                return;
-            }
-            const weight = Number(raw);
-            if (!Number.isFinite(weight)) return;
-            const match = sizeThresholds
-                .filter(item => weight >= Number(item.minimumWeightGrams))
-                .sort((left, right) => Number(right.minimumWeightGrams) - Number(left.minimumWeightGrams))[0];
-            sizeSelect.value = match ? String(match.sizeCategory) : "";
-        }
-
-        form.addEventListener("input", event => {
-            if (event.target.matches("[data-field-weight]")) recalculateSize(event.target);
-        });
-
-        addButton.addEventListener("click", () => {
-            markDirty();
-            const rows = Array.from(tbody.querySelectorAll("tr.fruit-row"));
-            if (rows.length >= maxRows) {
-                addButton.disabled = true;
-                return;
-            }
-
-            const index = rows.length;
-            const rowNumber = index + 1;
-            const tr = document.createElement("tr");
-            tr.className = "fruit-row device-selected-row";
-            tr.dataset.rowIndex = String(index);
-            tr.dataset.rowNumber = String(rowNumber);
-            tr.innerHTML = `
-                <td>${rowNumber}<input type="hidden" name="Rows[${index}].RowNumber" value="${rowNumber}" /></td>
-                <td><input class="number-input" name="Rows[${index}].Pressure1Lbs" type="number" step="0.01" min="0" /><input type="hidden" name="Rows[${index}].OriginalPressure1Lbs" /></td>
-                <td><input class="number-input" name="Rows[${index}].Pressure2Lbs" type="number" step="0.01" min="0" /><input type="hidden" name="Rows[${index}].OriginalPressure2Lbs" /></td>
-                <td data-pressure-average></td>
-                <td><input class="number-input" name="Rows[${index}].WeightGrams" data-field-weight type="number" step="0.0001" min="0" /><input type="hidden" name="Rows[${index}].OriginalWeightGrams" /></td>
-                <td><select name="Rows[${index}].SizeCategory" data-size-category aria-label="Fruit ${rowNumber} size">${sizeOptionsHtml()}</select><input type="hidden" name="Rows[${index}].OriginalSizeCategory" /></td>
-                <td><select name="Rows[${index}].StarchScaleValueId">${starchOptions}</select></td>`;
-            tbody.querySelectorAll("tr.fruit-row").forEach(row => row.classList.remove("device-selected-row"));
-            tbody.appendChild(tr);
-            targetSizeInput.value = String(rowNumber);
-            if (rowNumber >= maxRows) {
-                addButton.disabled = true;
-            }
-        });
-    })();
+    window.initializeFieldSampleAutosave?.({
+        sampleId: @Model.SampleId,
+        refreshUrl: "/FieldSamples/@Model.SampleId/refresh",
+        debounceMilliseconds: 1000,
+        sizeThresholds: @Html.Raw(sizeThresholdJson)
+    });
 </script>
 
 @functions {

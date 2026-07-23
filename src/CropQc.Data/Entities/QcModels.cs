@@ -163,6 +163,7 @@ public sealed class QcSample
     public string? FieldSampleGrowerNumber { get; set; }
     public string? FieldSampleOriginalBlockName { get; set; }
     public string? FieldSampleBlockResolution { get; set; }
+    public long FieldSampleAutosaveVersion { get; set; }
     public DateTimeOffset SampleTakenAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
@@ -200,6 +201,8 @@ public sealed class QcFruitReading
     public StarchScaleValue? StarchScaleValue { get; set; }
     public int? SizeCategory { get; set; }
     public required string SizeStatus { get; set; }
+    public bool DefectsInspected { get; set; }
+    public long FieldVersion { get; set; }
     public bool IsCompleted { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }

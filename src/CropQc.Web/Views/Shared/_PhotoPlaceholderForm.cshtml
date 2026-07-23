@@ -15,7 +15,7 @@
         <select name="PhotoType" class="photo-type">
             @foreach (var photoType in Model.PhotoTypes)
             {
-                <option value="@photoType" selected="@(photoType == defaultPhotoType ? "selected" : null)">@FriendlyPhotoType(photoType)</option>
+                <option value="@photoType" selected="@(photoType == defaultPhotoType ? "selected" : null)">@FriendlyPhotoType(photoType, Model.WholeSampleLabel, Model.CutFruitLabel)</option>
             }
         </select>
     </label>
@@ -99,6 +99,7 @@
         let selectedUploadFiles = [];
         let cameraStream = null;
         let previewUrl = null;
+        let autosaveFlushed = false;
         const maxPhotoSize = 15 * 1024 * 1024;
         const allowedTypes = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 
@@ -270,7 +271,7 @@
             const file = new File([blob], `camera-${Date.now()}.jpg`, { type: "image/jpeg" });
             if (setUploadFiles([file])) cameraMessage.textContent = "Photo captured. Review the preview, then save.";
         });
-        form.addEventListener("submit", event => {
+        form.addEventListener("submit", async event => {
             const hasPostedFile = fileInput.files && fileInput.files.length > 0;
             if (!hasPostedFile) {
                 event.preventDefault();
@@ -278,6 +279,19 @@
                 validationMessage.hidden = false;
                 uploadZone.focus();
                 uploadZone.classList.add("drag-over");
+                return;
+            }
+
+            if (!autosaveFlushed && window.fieldSampleAutosave?.hasPending()) {
+                event.preventDefault();
+                validationMessage.textContent = "Saving Field Sample changes before the photo upload…";
+                validationMessage.hidden = false;
+                if (!await window.fieldSampleAutosave.flush()) {
+                    validationMessage.textContent = "Field Sample changes could not be saved. The photo remains selected; retry after the save issue is resolved.";
+                    return;
+                }
+                autosaveFlushed = true;
+                form.requestSubmit();
                 return;
             }
 
@@ -294,14 +308,14 @@
 </script>
 
 @functions {
-    private static string FriendlyPhotoType(string photoType) => NormalizePhotoType(photoType) switch
+    private static string FriendlyPhotoType(string photoType, string wholeSampleLabel, string cutFruitLabel) => NormalizePhotoType(photoType) switch
     {
         "BinTruck" => "Truck photo",
         "TopOfTruck" => "Top of truck",
         "Hectre" => "Hectre",
-        "SampleBeforeCutting" => "Whole sample",
-        "CutFruit" => "Cut apples",
-        "FruitAfterStarch" => "Starch apples",
+        "SampleBeforeCutting" => wholeSampleLabel,
+        "CutFruit" => cutFruitLabel,
+        "FruitAfterStarch" => $"Starch {cutFruitLabel.Replace("Cut ", "", StringComparison.OrdinalIgnoreCase)}",
         "Other" => "Other",
         _ => photoType
     };

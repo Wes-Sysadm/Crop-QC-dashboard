@@ -204,6 +204,7 @@ public sealed class FieldSampleReportService(
             .Include(x => x.QcStation).ThenInclude(x => x!.Warehouse)
             .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
             .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType)
             .Include(x => x.Photos)
             .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted && x.SampleType.Name == FieldSampleTypeName, cancellationToken);
         if (sample is null)
@@ -266,13 +267,14 @@ public sealed class FieldSampleReportService(
             ?? "Unknown Orchard";
         var block = sample.CanonicalOrchardBlock?.CanonicalBlockName ?? sample.FieldSampleOriginalBlockName ?? "Unknown Block";
         var variety = sample.FieldSampleFruitProfile?.Name ?? "Unknown Variety";
+        var terminology = FieldSampleCommodityTerminologyService.ForFruitType(sample.FieldSampleFruitProfile?.FruitType);
         var subject = $"Field Sample QC – {orchard} – {block} – {variety} – {sample.SampleTakenAt.LocalDateTime:MMMM d, yyyy}";
-        var html = BuildHtml(sample, detail, photos, imageIds, orchard, block, variety, sender, preview);
-        var text = BuildText(sample, detail, photos, orchard, block, variety, sender, preview);
+        var html = BuildHtml(sample, detail, photos, imageIds, orchard, block, variety, terminology, sender, preview);
+        var text = BuildText(sample, detail, photos, orchard, block, variety, terminology, sender, preview);
         return new QcEmailContent(subject, html, text, inlineImages);
     }
 
-    private static string BuildHtml(QcSample sample, FieldSampleDetailViewModel detail, IReadOnlyList<QcPhoto> photos, IReadOnlyDictionary<long, string> imageIds, string orchard, string block, string variety, User? sender, bool preview)
+    private static string BuildHtml(QcSample sample, FieldSampleDetailViewModel detail, IReadOnlyList<QcPhoto> photos, IReadOnlyDictionary<long, string> imageIds, string orchard, string block, string variety, FieldSampleCommodityTerminology terminology, User? sender, bool preview)
     {
         var rows = sample.FruitReadings.Where(HasEnteredData).OrderBy(x => x.RowNumber).ToList();
         var html = new StringBuilder();
@@ -305,13 +307,15 @@ public sealed class FieldSampleReportService(
         AddInfo(html, "Average starch", Format(detail.CurrentSummary.AverageStarch));
         AddInfo(html, "Starch distribution", Distribution(detail.CurrentSummary.StarchDistribution));
         AddInfo(html, "Grade distribution", Distribution(detail.CurrentSummary.GradeDistribution));
+        AddInfo(html, "Defect inspection", DefectSummary(detail.CurrentSummary));
+        AddInfo(html, "Defect distribution", DefectDistribution(detail.CurrentSummary));
         html.AppendLine("</table>");
 
-        html.AppendLine("<h2>Fruit Detail</h2><table cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;width:100%;\"><thead><tr><th>Fruit</th><th>Weight g</th><th>Size</th><th>P1 lb</th><th>P2 lb</th><th>Avg lb</th><th>Starch</th><th>Grade</th></tr></thead><tbody>");
+        html.AppendLine("<h2>Fruit Detail</h2><table cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;width:100%;\"><thead><tr><th>Fruit</th><th>Weight g</th><th>Size</th><th>P1 lb</th><th>P2 lb</th><th>Avg lb</th><th>Starch</th><th>Grade</th><th>Defects</th></tr></thead><tbody>");
         foreach (var row in rows)
         {
             html.Append("<tr>");
-            foreach (var value in new[] { row.RowNumber.ToString(), Format(row.WeightGrams), row.SizeCategory?.ToString() ?? "", Format(row.Pressure1Lbs), Format(row.Pressure2Lbs), Format(Average(row.Pressure1Lbs, row.Pressure2Lbs)), row.StarchScaleValue?.Value.ToString("0.0") ?? "", row.Grade?.Code ?? "" })
+            foreach (var value in new[] { row.RowNumber.ToString(), Format(row.WeightGrams), row.SizeCategory?.ToString() ?? "", Format(row.Pressure1Lbs), Format(row.Pressure2Lbs), Format(Average(row.Pressure1Lbs, row.Pressure2Lbs)), row.StarchScaleValue?.Value.ToString("0.0") ?? "", row.Grade?.Code ?? "", FruitDefects(row) })
             {
                 html.Append($"<td style=\"border:1px solid #cbd5e1;white-space:nowrap;\">{Html(value)}</td>");
             }
@@ -327,11 +331,11 @@ public sealed class FieldSampleReportService(
             photoNumber++;
             if (imageIds.TryGetValue(photo.Id, out var cid))
             {
-                html.AppendLine($"<figure style=\"display:inline-block;margin:8px;vertical-align:top;\"><img src=\"cid:{Html(cid)}\" alt=\"Field Sample photo {photoNumber}\" style=\"max-width:320px;max-height:240px;width:auto;height:auto;\"/><figcaption>Photo {photoNumber}: {Html(FriendlyPhotoType(photo.PhotoType))}</figcaption></figure>");
+                html.AppendLine($"<figure style=\"display:inline-block;margin:8px;vertical-align:top;\"><img src=\"cid:{Html(cid)}\" alt=\"Field Sample photo {photoNumber}\" style=\"max-width:320px;max-height:240px;width:auto;height:auto;\"/><figcaption>Photo {photoNumber}: {Html(FriendlyPhotoType(photo.PhotoType, terminology))}</figcaption></figure>");
             }
             else
             {
-                html.AppendLine($"<p>Photo {photoNumber}: {Html(FriendlyPhotoType(photo.PhotoType))} (image unavailable)</p>");
+                html.AppendLine($"<p>Photo {photoNumber}: {Html(FriendlyPhotoType(photo.PhotoType, terminology))} (image unavailable)</p>");
             }
         }
 
@@ -341,7 +345,7 @@ public sealed class FieldSampleReportService(
         return html.ToString();
     }
 
-    private static string BuildText(QcSample sample, FieldSampleDetailViewModel detail, IReadOnlyList<QcPhoto> photos, string orchard, string block, string variety, User? sender, bool preview)
+    private static string BuildText(QcSample sample, FieldSampleDetailViewModel detail, IReadOnlyList<QcPhoto> photos, string orchard, string block, string variety, FieldSampleCommodityTerminology terminology, User? sender, bool preview)
     {
         var text = new StringBuilder();
         text.AppendLine("Field Sample QC Report");
@@ -359,19 +363,21 @@ public sealed class FieldSampleReportService(
         text.AppendLine($"Average Pressure 2: {Format(detail.CurrentSummary.AveragePressure2Lbs, " lb")}");
         text.AppendLine($"Combined average pressure: {Format(detail.CurrentSummary.AveragePressureLbs, " lb")}");
         text.AppendLine($"Average starch: {Format(detail.CurrentSummary.AverageStarch)}");
+        text.AppendLine($"Defect inspection: {DefectSummary(detail.CurrentSummary)}");
+        text.AppendLine($"Defect distribution: {DefectDistribution(detail.CurrentSummary)}");
         text.AppendLine($"Photos: {photos.Count}");
         text.AppendLine();
         text.AppendLine("Fruit Detail");
         foreach (var row in sample.FruitReadings.Where(HasEnteredData).OrderBy(x => x.RowNumber))
         {
-            text.AppendLine($"Fruit {row.RowNumber}: Weight {Format(row.WeightGrams)} g; Size {row.SizeCategory}; P1 {Format(row.Pressure1Lbs)} lb; P2 {Format(row.Pressure2Lbs)} lb; Avg {Format(Average(row.Pressure1Lbs, row.Pressure2Lbs))} lb; Starch {row.StarchScaleValue?.Value:0.0}; Grade {row.Grade?.Code}");
+            text.AppendLine($"Fruit {row.RowNumber}: Weight {Format(row.WeightGrams)} g; Size {row.SizeCategory}; P1 {Format(row.Pressure1Lbs)} lb; P2 {Format(row.Pressure2Lbs)} lb; Avg {Format(Average(row.Pressure1Lbs, row.Pressure2Lbs))} lb; Starch {row.StarchScaleValue?.Value:0.0}; Grade {row.Grade?.Code}; Defects {FruitDefects(row)}");
         }
         text.AppendLine();
         text.AppendLine("Same-block 30-day trend");
         if (detail.Trend.Count <= 1) text.AppendLine("This is the first available sample for the confirmed block in the last 30 days.");
         foreach (var point in detail.Trend.OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleId))
         {
-            text.AppendLine($"{point.SampleTakenAt.LocalDateTime:g}{(point.SampleId == sample.Id ? " (current)" : "")}: Weight {Format(point.Summary.AverageWeightGrams)} g; Size {AverageSize(point.SizeDistribution)}; P1 {Format(point.Summary.AveragePressure1Lbs)} lb; P2 {Format(point.Summary.AveragePressure2Lbs)} lb; Combined {Format(point.Summary.AveragePressureLbs)} lb; Starch {Format(point.Summary.AverageStarch)}; Grades {Distribution(point.Summary.GradeDistribution)}");
+            text.AppendLine($"{point.SampleTakenAt.LocalDateTime:g}{(point.SampleId == sample.Id ? " (current)" : "")}: Weight {Format(point.Summary.AverageWeightGrams)} g; Size {AverageSize(point.SizeDistribution)}; P1 {Format(point.Summary.AveragePressure1Lbs)} lb; P2 {Format(point.Summary.AveragePressure2Lbs)} lb; Combined {Format(point.Summary.AveragePressureLbs)} lb; Starch {Format(point.Summary.AverageStarch)}; Grades {Distribution(point.Summary.GradeDistribution)}; Defects {DefectSummary(point.Summary)}; {DefectDistribution(point.Summary)}");
         }
         return text.ToString();
     }
@@ -380,7 +386,7 @@ public sealed class FieldSampleReportService(
     {
         html.AppendLine("<h2>Same-Block Trends — Last 30 Days</h2>");
         if (detail.Trend.Count <= 1) html.AppendLine("<p>This is the first available sample for the confirmed block in the last 30 days.</p>");
-        html.AppendLine("<table cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;width:100%;\"><thead><tr><th>Date</th><th>Fruit</th><th>Avg weight</th><th>Size</th><th>Avg P1</th><th>Avg P2</th><th>Combined</th><th>Avg starch</th><th>Grades</th></tr></thead><tbody>");
+        html.AppendLine("<table cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;width:100%;\"><thead><tr><th>Date</th><th>Fruit</th><th>Avg weight</th><th>Size</th><th>Avg P1</th><th>Avg P2</th><th>Combined</th><th>Avg starch</th><th>Grades</th><th>Defects</th></tr></thead><tbody>");
         foreach (var point in detail.Trend.OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleId))
         {
             var values = new[]
@@ -393,7 +399,8 @@ public sealed class FieldSampleReportService(
                 Format(point.Summary.AveragePressure2Lbs, " lb"),
                 Format(point.Summary.AveragePressureLbs, " lb"),
                 Format(point.Summary.AverageStarch),
-                Distribution(point.Summary.GradeDistribution)
+                Distribution(point.Summary.GradeDistribution),
+                $"{DefectSummary(point.Summary)}; {DefectDistribution(point.Summary)}"
             };
             html.Append("<tr>");
             foreach (var value in values) html.Append($"<td style=\"border:1px solid #cbd5e1;\">{Html(value)}</td>");
@@ -475,12 +482,25 @@ public sealed class FieldSampleReportService(
         if (points.Count == 0) return "";
         return (points.Sum(x => x.Size * x.Percentage) / points.Sum(x => x.Percentage)).ToString("0.#");
     }
-    private static bool HasEnteredData(QcFruitReading row) => row.Pressure1Lbs is not null || row.Pressure2Lbs is not null || row.WeightGrams is not null || row.StarchScaleValueId is not null || row.SizeCategory is not null || row.GradeId is not null || row.Defects.Count > 0;
-    private static string FriendlyPhotoType(string value) => QcPhotoRequirementPolicy.NormalizePhotoType(value) switch
+    private static bool HasEnteredData(QcFruitReading row) => row.Pressure1Lbs is not null || row.Pressure2Lbs is not null || row.WeightGrams is not null || row.StarchScaleValueId is not null || row.SizeCategory is not null || row.GradeId is not null || row.DefectsInspected || row.Defects.Count > 0;
+    private static string FruitDefects(QcFruitReading row) => !row.DefectsInspected
+        ? "Not inspected"
+        : row.Defects.Count == 0
+            ? "Inspected — none"
+            : string.Join(", ", row.Defects.OrderBy(x => x.DefectType.Name).Select(x => string.IsNullOrWhiteSpace(x.Notes) ? x.DefectType.Name : $"{x.DefectType.Name}: {x.Notes}"));
+    private static string DefectSummary(FieldSampleMetricSummary summary) => summary.DefectAffectedPercentage is null
+        ? "Not inspected"
+        : $"{summary.DefectAffectedFruitCount} of {summary.DefectInspectedFruitCount} inspected fruit affected ({summary.DefectAffectedPercentage:0.#}%)";
+    private static string DefectDistribution(FieldSampleMetricSummary summary) => summary.DefectInspectedFruitCount == 0
+        ? "Not inspected"
+        : summary.DefectDistribution.Count == 0
+            ? "No defects found"
+            : string.Join(", ", summary.DefectDistribution.Select(x => $"{x.Defect} {x.FruitCount} ({x.PercentageOfInspectedFruit:0.#}%)"));
+    private static string FriendlyPhotoType(string value, FieldSampleCommodityTerminology terminology) => QcPhotoRequirementPolicy.NormalizePhotoType(value) switch
     {
-        "SampleBeforeCutting" => "Whole sample",
-        "CutFruit" => "Cut fruit",
-        "FruitAfterStarch" => "Starch fruit",
+        "SampleBeforeCutting" => terminology.WholeSampleLabel,
+        "CutFruit" => terminology.CutFruitLabel,
+        "FruitAfterStarch" => $"Starch {terminology.Commodity}",
         _ => value
     };
 

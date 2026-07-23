@@ -1,3 +1,4 @@
+using CropQc.Data;
 using CropQc.Data.Entities;
 
 namespace CropQc.Web.Models;
@@ -71,6 +72,8 @@ public sealed class FieldSampleDetailViewModel
     public string CanonicalBlockName { get; set; } = "";
     public string OriginalBlockName { get; set; } = "";
     public string Variety { get; set; } = "";
+    public string FruitType { get; set; } = "";
+    public FieldSampleCommodityTerminology Terminology { get; set; } = FieldSampleCommodityTerminologyService.ForFruitType(null);
     public DateTimeOffset SampleTakenAt { get; set; }
     public string? Notes { get; set; }
     public string LifecycleStatus { get; set; } = "In Progress";
@@ -83,6 +86,8 @@ public sealed class FieldSampleDetailViewModel
     public bool CanMarkComplete { get; set; }
     public bool CanSend { get; set; }
     public int TargetSampleSize { get; set; } = 10;
+    public long AutosaveVersion { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
     public bool CanEdit { get; set; }
     public bool IsEditingMetadata { get; set; }
     public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
@@ -96,6 +101,8 @@ public sealed class FieldSampleDetailViewModel
     public IReadOnlyList<FieldSampleTrendPoint> Trend { get; set; } = [];
     public IReadOnlyList<FruitReadingRowViewModel> FruitRows { get; set; } = [];
     public IReadOnlyList<StarchScaleValue> StarchScaleValues { get; set; } = [];
+    public IReadOnlyList<Grade> Grades { get; set; } = [];
+    public IReadOnlyList<DefectType> DefectTypes { get; set; } = [];
     public IReadOnlyList<FieldSampleSizeThreshold> SizeThresholds { get; set; } = [];
     public IReadOnlyList<FieldSampleSendHistoryItem> SendHistory { get; set; } = [];
     public SaveFruitReadingsForm FruitReadingForm { get; set; } = new();
@@ -139,6 +146,7 @@ public sealed record FieldSampleRefreshViewModel(
     long SampleId,
     int TargetSampleSize,
     DateTimeOffset? UpdatedAt,
+    long AutosaveVersion,
     FieldSampleQcStationStatusViewModel QcStation,
     IReadOnlyList<FieldSampleRefreshRowViewModel> Rows);
 
@@ -149,7 +157,12 @@ public sealed record FieldSampleRefreshRowViewModel(
     decimal? PressureAverageLbs,
     decimal? WeightGrams,
     int? SizeCategory,
-    int? StarchScaleValueId);
+    int? StarchScaleValueId,
+    int? GradeId,
+    bool DefectsInspected,
+    IReadOnlyList<int> DefectTypeIds,
+    string? OtherDefectNotes,
+    long FieldVersion);
 
 public sealed class FieldSampleMetricSummary
 {
@@ -175,10 +188,15 @@ public sealed class FieldSampleMetricSummary
     public DateTimeOffset? PriorPressureSampleDate { get; set; }
     public IReadOnlyList<FieldSampleDistributionPoint> GradeDistribution { get; set; } = [];
     public IReadOnlyList<FieldSampleDistributionPoint> StarchDistribution { get; set; } = [];
+    public IReadOnlyList<FieldSampleDefectSummaryPoint> DefectDistribution { get; set; } = [];
+    public int DefectInspectedFruitCount { get; set; }
+    public int DefectAffectedFruitCount { get; set; }
+    public decimal? DefectAffectedPercentage { get; set; }
 }
 
 public sealed record FieldSampleSizePoint(int Size, decimal Percentage);
 public sealed record FieldSampleDistributionPoint(string Label, decimal Percentage);
+public sealed record FieldSampleDefectSummaryPoint(string Defect, int FruitCount, decimal PercentageOfInspectedFruit);
 
 public sealed class FieldSampleTrendPoint
 {
@@ -191,3 +209,48 @@ public sealed class FieldSampleTrendPoint
 }
 
 public sealed record FieldSampleBlockSuggestion(int? BlockId, string CanonicalBlockName, string OrchardName, decimal Confidence, string Reason);
+
+public sealed class FieldSampleAutosaveRequest
+{
+    public string ChangeId { get; set; } = "";
+    public string Source { get; set; } = "Browser";
+    public int? TargetSampleSize { get; set; }
+    public List<FieldSampleAutosaveFieldChange> MetadataChanges { get; set; } = [];
+    public List<FieldSampleAutosaveRowChange> RowChanges { get; set; } = [];
+}
+
+public sealed class FieldSampleAutosaveRowChange
+{
+    public int RowNumber { get; set; }
+    public long FieldVersion { get; set; }
+    public List<FieldSampleAutosaveFieldChange> Changes { get; set; } = [];
+}
+
+public sealed class FieldSampleAutosaveFieldChange
+{
+    public string Field { get; set; } = "";
+    public string? Value { get; set; }
+    public string? OriginalValue { get; set; }
+}
+
+public sealed record FieldSampleAutosaveConflict(
+    string Scope,
+    int? RowNumber,
+    string Field,
+    string? ClientValue,
+    string? ServerValue,
+    string Message);
+
+public sealed record FieldSampleAutosaveValidationError(string Scope, int? RowNumber, string Field, string Message);
+
+public sealed class FieldSampleAutosaveResult
+{
+    public bool Saved { get; set; }
+    public DateTimeOffset? SavedAt { get; set; }
+    public long AutosaveVersion { get; set; }
+    public IReadOnlyDictionary<string, string?> MetadataValues { get; set; } = new Dictionary<string, string?>();
+    public IReadOnlyList<FieldSampleRefreshRowViewModel> Rows { get; set; } = [];
+    public IReadOnlyList<FieldSampleAutosaveConflict> Conflicts { get; set; } = [];
+    public IReadOnlyList<FieldSampleAutosaveValidationError> ValidationErrors { get; set; } = [];
+    public string? Error { get; set; }
+}
