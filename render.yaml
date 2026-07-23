@@ -58,7 +58,7 @@ services:
       - key: GoogleDrive__BaseFolderName
         value: Photos
       - key: Email__Provider
-        value: None
+        value: GmailUser
       - key: QcStation__ApiBaseUrl
         value: https://crop-qc-dashboard.onrender.com
       - key: Backups__Enabled
@@ -73,16 +73,18 @@ services:
         value: 52
       - key: Backups__BusinessTimeZone
         value: America/Los_Angeles
-      - key: Backups__ScheduleUtcHour
-        value: 10
-      - key: Backups__ScheduleUtcMinute
-        value: 30
+      - key: Backups__NightlyPacificHour
+        value: 1
+      - key: Backups__NotificationRecipient
+        value: wes@fruitandland.com
+      - key: Backups__NotificationSender
+        value: wes@fruitandland.com
   - type: cron
     name: crop-qc-production-nightly-backup
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerCommand: dotnet CropQc.Web.dll --run-backup=scheduled
-    schedule: "30 10 * * *"
+    schedule: "0 8,9 * * *"
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
@@ -124,10 +126,12 @@ services:
         value: 52
       - key: Backups__BusinessTimeZone
         value: America/Los_Angeles
-      - key: Backups__ScheduleUtcHour
-        value: 10
-      - key: Backups__ScheduleUtcMinute
-        value: 30
+      - key: Backups__NightlyPacificHour
+        value: 1
+      - key: Backups__NotificationRecipient
+        value: wes@fruitandland.com
+      - key: Backups__NotificationSender
+        value: wes@fruitandland.com
   - type: web
     name: crop-qc-dashboard-staging
     runtime: docker

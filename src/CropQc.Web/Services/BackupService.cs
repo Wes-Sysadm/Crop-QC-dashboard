@@ -7,6 +7,7 @@ using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Storage;
+using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -19,6 +20,7 @@ public interface IBackupService
     Task<string?> SaveSettingsAsync(BackupSettingsForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<BackupRunResult> RunBackupNowAsync(string requestedByEmail, CancellationToken cancellationToken);
     Task<BackupRunResult> RunBackupAsync(string backupType, string requestedBy, CancellationToken cancellationToken);
+    Task<BackupRunResult> RunScheduledCandidateAsync(CancellationToken cancellationToken);
     Task<BackupRunResult> TestGoogleDriveAccessAsync(string requestedByEmail, CancellationToken cancellationToken);
 }
 
@@ -28,6 +30,8 @@ public sealed class BackupService(
     BackupOptions options,
     GoogleDriveStorageOptions googleDriveOptions,
     AppEnvironmentOptions appEnvironment,
+    IBusinessTimeService businessTime,
+    IBackupNotificationService notificationService,
     ILogger<BackupService> logger) : IBackupService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -38,6 +42,13 @@ public sealed class BackupService(
         var effective = await GetEffectiveOptionsAsync(cancellationToken);
         var runs = await dbContext.BackupRunRecords.AsNoTracking().OrderByDescending(x => x.StartedAt).Take(25).ToListAsync(cancellationToken);
         var items = runs.Select(ToListItem).ToList();
+        var notifications = await dbContext.BackupNotificationRecords.AsNoTracking()
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(25)
+            .Select(x => new BackupNotificationListItem(x.Id, x.BackupRunId, x.NotificationType, x.Recipient, x.Status, x.AttemptCount, x.CreatedAt, x.LastAttemptedAt, x.SentAt, x.ErrorSummary))
+            .ToListAsync(cancellationToken);
+        var lastSuccessfulNightly = runs.FirstOrDefault(x => x.ScheduledPacificDate != null && x.Status == BackupRunStatuses.Succeeded);
+        var lastFailedNightly = runs.FirstOrDefault(x => x.ScheduledPacificDate != null && x.Status == BackupRunStatuses.Failed);
         return new BackupStatusViewModel
         {
             Enabled = effective.Enabled,
@@ -50,12 +61,15 @@ public sealed class BackupService(
             PhotoManifestEnabled = effective.PhotoManifestEnabled,
             DailyRetentionDays = effective.DailyRetentionDays,
             WeeklyRetentionWeeks = effective.WeeklyRetentionWeeks,
-            ScheduleUtcHour = effective.ScheduleUtcHour,
-            ScheduleUtcMinute = effective.ScheduleUtcMinute,
+            NightlyPacificHour = effective.NightlyPacificHour,
             BusinessTimeZone = effective.BusinessTimeZone,
+            NextScheduledBackupUtc = businessTime.NextNightlyBackupUtc(),
             LastAttempt = items.FirstOrDefault(),
             LastSuccessful = items.FirstOrDefault(x => x.Status == BackupRunStatuses.Succeeded),
+            LastSuccessfulNightly = lastSuccessfulNightly is null ? null : ToListItem(lastSuccessfulNightly),
+            LastFailedNightly = lastFailedNightly is null ? null : ToListItem(lastFailedNightly),
             RecentRuns = items,
+            RecentNotifications = notifications,
             LastDatabaseBackupAt = await GetConfigDateAsync(BackupStatusKeys.LastDatabaseBackupAt, cancellationToken),
             LastDatabaseBackupFileName = await GetConfigValueAsync(BackupStatusKeys.LastDatabaseBackupFileName, cancellationToken),
             LastError = await GetConfigValueAsync(BackupStatusKeys.LastError, cancellationToken),
@@ -97,13 +111,57 @@ public sealed class BackupService(
     public Task<BackupRunResult> RunBackupNowAsync(string requestedByEmail, CancellationToken cancellationToken) =>
         RunBackupAsync(BackupRunTypes.Manual, requestedByEmail, cancellationToken);
 
+    public async Task<BackupRunResult> RunScheduledCandidateAsync(CancellationToken cancellationToken)
+    {
+        var now = businessTime.UtcNow;
+        if (!businessTime.IsNightlyCandidate(now))
+        {
+            return BackupRunResult.Skipped($"Scheduled candidate skipped because {businessTime.FormatPacific(now, "yyyy-MM-dd h:mm tt")} is outside the 1:00 AM Pacific window.");
+        }
+
+        var pacificDate = businessTime.PacificDate(now).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        if (await dbContext.BackupNightlyRunGuards.AsNoTracking().AnyAsync(x => x.PacificDate == pacificDate, cancellationToken))
+        {
+            return BackupRunResult.Skipped($"Nightly backup for Pacific date {pacificDate} already ran or is in progress.");
+        }
+
+        var guard = new BackupNightlyRunGuard
+        {
+            PacificDate = pacificDate,
+            CreatedAt = now,
+            Result = "Running"
+        };
+        dbContext.BackupNightlyRunGuards.Add(guard);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            dbContext.Entry(guard).State = EntityState.Detached;
+            if (!await dbContext.BackupNightlyRunGuards.AsNoTracking().AnyAsync(x => x.PacificDate == pacificDate, cancellationToken))
+            {
+                throw;
+            }
+
+            return BackupRunResult.Skipped($"Nightly backup for Pacific date {pacificDate} was claimed by another candidate.");
+        }
+
+        var result = await RunBackupAsync(BackupRunTypes.Daily, $"scheduled:{pacificDate}", cancellationToken);
+        guard.BackupRunId = result.RunId;
+        guard.CompletedAt = businessTime.UtcNow;
+        guard.Result = result.Success ? "Succeeded" : "Failed";
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return result;
+    }
+
     public async Task<BackupRunResult> RunBackupAsync(string backupType, string requestedBy, CancellationToken cancellationToken)
     {
         var effective = await GetEffectiveOptionsAsync(cancellationToken);
         if (!effective.Enabled) return BackupRunResult.Failed("Backups are disabled.");
         if (!effective.IsGoogleDrive || !effective.GoogleDriveFolderConfigured) return BackupRunResult.Failed("Google Drive backup folder is not configured.");
 
-        var now = DateTimeOffset.UtcNow;
+        var now = businessTime.UtcNow;
         backupType = NormalizeBackupType(backupType, now, effective.BusinessTimeZone);
         var leaseId = Guid.NewGuid();
         if (!await TryAcquireLeaseAsync(leaseId, now, cancellationToken))
@@ -112,6 +170,10 @@ public sealed class BackupService(
         }
 
         BackupRunRecord? run = null;
+        BackupRunResult result;
+        string? notificationType = null;
+        var failureStage = "Initialization";
+        var incompleteObjectCreated = false;
         try
         {
             run = new BackupRunRecord
@@ -123,18 +185,25 @@ public sealed class BackupService(
                 DeployedCommit = configuration["RENDER_GIT_COMMIT"] ?? configuration["SourceVersion"],
                 RequestedBy = string.IsNullOrWhiteSpace(requestedBy) ? null : requestedBy,
                 RetentionCategory = backupType,
-                StartedAt = now
+                StartedAt = now,
+                ScheduledPacificDate = requestedBy.StartsWith("scheduled:", StringComparison.OrdinalIgnoreCase)
+                    ? requestedBy["scheduled:".Length..]
+                    : null
             };
             dbContext.BackupRunRecords.Add(run);
             await dbContext.SaveChangesAsync(cancellationToken);
             await AddAuditAsync("BackupStarted", run.Id.ToString(CultureInfo.InvariantCulture), new { run.BackupType, run.RequestedBy }, cancellationToken);
 
+            failureStage = "Package creation";
             var storage = CreateBackupStorage(effective);
             var package = await BuildPackageAsync(run, effective, cancellationToken);
             await using var packageStream = package.Content;
             var targetPath = $"Crop QC Backups/Production/{BackupFolder(run.BackupType)}";
             package.Content.Position = 0;
+            failureStage = "Google Drive package upload";
             var uploaded = await storage.SaveAsync(new FileStorageSaveRequest(package.Content, targetPath, package.FileName, "application/zip", package.Size), cancellationToken);
+            incompleteObjectCreated = true;
+            failureStage = "Uploaded package read-back verification";
             await VerifyUploadedPackageAsync(storage, uploaded, package, cancellationToken);
 
             var sidecar = JsonSerializer.SerializeToUtf8Bytes(new
@@ -143,20 +212,19 @@ public sealed class BackupService(
                 package = package.FileName,
                 packageSizeBytes = package.Size,
                 packageSha256 = package.Sha256,
-                verifiedAt = DateTimeOffset.UtcNow,
+                verifiedAt = businessTime.UtcNow,
                 uploaded.StorageProvider,
                 uploaded.StorageKey,
                 uploaded.TargetPath
             }, JsonOptions);
             var manifestFileName = Path.ChangeExtension(package.FileName, ".manifest.json");
             await using var sidecarStream = new MemoryStream(sidecar);
+            failureStage = "Manifest upload";
             var manifestRef = await storage.SaveAsync(new FileStorageSaveRequest(sidecarStream, "Crop QC Backups/Production/Manifests", manifestFileName, "application/json", sidecar.Length), cancellationToken);
+            failureStage = "Manifest read-back verification";
             await VerifyUploadedBytesAsync(storage, manifestRef, sidecar, cancellationToken);
 
-            var completed = DateTimeOffset.UtcNow;
-            run.Status = BackupRunStatuses.Succeeded;
-            run.CompletedAt = completed;
-            run.DurationMilliseconds = (long)(completed - run.StartedAt).TotalMilliseconds;
+            var verified = businessTime.UtcNow;
             run.PackageFileName = package.FileName;
             run.PackageStorageKey = uploaded.StorageKey;
             run.PackageWebUrl = uploaded.WebUrl;
@@ -164,14 +232,17 @@ public sealed class BackupService(
             run.ManifestStorageKey = manifestRef.StorageKey;
             run.FileSizeBytes = package.Size;
             run.Sha256 = package.Sha256;
-            run.VerifiedAt = completed;
-            await SetConfigValueAsync(BackupStatusKeys.LastDatabaseBackupAt, completed.ToString("O"), cancellationToken);
+            run.VerifiedAt = verified;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            failureStage = "Retention processing";
+            await ApplyRetentionAsync(storage, effective, verified, run.Id, cancellationToken);
+            run.RetentionProcessedAt = businessTime.UtcNow;
+            await SetConfigValueAsync(BackupStatusKeys.LastDatabaseBackupAt, verified.ToString("O"), cancellationToken);
             await SetConfigValueAsync(BackupStatusKeys.LastDatabaseBackupFileName, package.FileName, cancellationToken);
             await SetConfigValueAsync(BackupStatusKeys.LastError, "", cancellationToken);
-            await dbContext.SaveChangesAsync(cancellationToken);
-            await AddAuditAsync("BackupCompleted", run.Id.ToString(CultureInfo.InvariantCulture), new { package.FileName, package.Size, package.Sha256, verified = true }, cancellationToken);
-            await ApplyRetentionAsync(storage, effective, completed, run.Id, cancellationToken);
-            return BackupRunResult.Succeeded($"Verified {run.BackupType} backup completed: {package.FileName} ({package.Size} bytes, SHA-256 {package.Sha256}).", [uploaded]);
+            run.Status = BackupRunStatuses.Succeeded;
+            notificationType = BackupNotificationTypes.Success;
+            result = BackupRunResult.Succeeded($"Verified {run.BackupType} backup completed: {package.FileName} ({package.Size} bytes, SHA-256 {package.Sha256}).", [uploaded], run.Id);
         }
         catch (Exception ex)
         {
@@ -182,24 +253,84 @@ public sealed class BackupService(
                 if (run is not null && run.Id > 0)
                 {
                     run.Status = BackupRunStatuses.Failed;
-                    run.CompletedAt = DateTimeOffset.UtcNow;
-                    run.DurationMilliseconds = (long)(run.CompletedAt.Value - run.StartedAt).TotalMilliseconds;
+                    run.FailureStage = failureStage;
+                    run.IncompleteObjectCreated = incompleteObjectCreated;
                     run.ErrorSummary = safeError;
                     await SetConfigValueAsync(BackupStatusKeys.LastError, safeError, cancellationToken);
                     await dbContext.SaveChangesAsync(cancellationToken);
                     await AddAuditAsync("BackupFailed", run.Id.ToString(CultureInfo.InvariantCulture), new { error = safeError }, cancellationToken);
+                    notificationType = BackupNotificationTypes.Failure;
                 }
             }
             catch (Exception historyException)
             {
                 logger.LogError(historyException, "Backup failure history could not be persisted for run {BackupRunId}.", run?.Id);
             }
-            return BackupRunResult.Failed(safeError);
+            result = BackupRunResult.Failed(safeError, run?.Id);
         }
         finally
         {
-            await ReleaseLeaseAsync(leaseId, CancellationToken.None);
+            try
+            {
+                await ReleaseLeaseAsync(leaseId, CancellationToken.None);
+                if (run is not null && run.Id > 0)
+                {
+                    run.LeaseReleasedAt = businessTime.UtcNow;
+                    run.CompletedAt = run.LeaseReleasedAt;
+                    run.DurationMilliseconds = (long)(run.CompletedAt.Value - run.StartedAt).TotalMilliseconds;
+                    await dbContext.SaveChangesAsync(CancellationToken.None);
+                }
+            }
+            catch (Exception leaseException)
+            {
+                logger.LogError(leaseException, "Backup run {BackupRunId} could not release its operation lease.", run?.Id);
+                if (run is not null && run.Id > 0)
+                {
+                    run.Status = BackupRunStatuses.Failed;
+                    run.FailureStage = "Lease release";
+                    run.ErrorSummary = "Backup verification finished, but the operation lease could not be released. Production-changing operations remain blocked.";
+                    run.CompletedAt = businessTime.UtcNow;
+                    run.DurationMilliseconds = (long)(run.CompletedAt.Value - run.StartedAt).TotalMilliseconds;
+                    notificationType = BackupNotificationTypes.Failure;
+                    result = BackupRunResult.Failed(run.ErrorSummary, run.Id);
+                    try
+                    {
+                        await dbContext.SaveChangesAsync(CancellationToken.None);
+                    }
+                    catch (Exception historyException)
+                    {
+                        logger.LogError(historyException, "Lease-release failure history could not be persisted for backup run {BackupRunId}.", run.Id);
+                    }
+                }
+            }
         }
+
+        if (run is not null && notificationType is not null)
+        {
+            try
+            {
+                if (notificationType == BackupNotificationTypes.Success)
+                {
+                    await AddAuditAsync("BackupCompleted", run.Id.ToString(CultureInfo.InvariantCulture), new { run.PackageFileName, run.FileSizeBytes, run.Sha256, verified = true, retentionProcessed = run.RetentionProcessedAt is not null, leaseReleased = run.LeaseReleasedAt is not null }, CancellationToken.None);
+                }
+
+                await notificationService.QueueAsync(run.Id, notificationType, CancellationToken.None);
+            }
+            catch (Exception notificationException)
+            {
+                logger.LogError(notificationException, "Backup notification could not be queued for run {BackupRunId}; the completed backup result is unchanged.", run.Id);
+                try
+                {
+                    await AddAuditAsync("BackupNotificationQueueFailed", run.Id.ToString(CultureInfo.InvariantCulture), new { notificationType, error = SafeError(notificationException) }, CancellationToken.None);
+                }
+                catch (Exception auditException)
+                {
+                    logger.LogError(auditException, "Backup notification queue failure audit could not be recorded for run {BackupRunId}.", run.Id);
+                }
+            }
+        }
+
+        return result;
     }
 
     public async Task<BackupRunResult> TestGoogleDriveAccessAsync(string requestedByEmail, CancellationToken cancellationToken)
@@ -208,10 +339,10 @@ public sealed class BackupService(
         if (!effective.Enabled || !effective.GoogleDriveFolderConfigured) return BackupRunResult.Failed("Backups and a Google Drive backup folder must be configured first.");
         try
         {
-            var bytes = Encoding.UTF8.GetBytes($"Crop QC backup access verification {DateTimeOffset.UtcNow:O}");
+            var bytes = Encoding.UTF8.GetBytes($"Crop QC backup access verification {businessTime.UtcNow:O}");
             await using var stream = new MemoryStream(bytes);
             var storage = CreateBackupStorage(effective);
-            var reference = await storage.SaveAsync(new FileStorageSaveRequest(stream, "Crop QC Backups/Failed/Access Tests", BackupFileNames.AccessTest(DateTimeOffset.UtcNow), "text/plain", bytes.Length), cancellationToken);
+            var reference = await storage.SaveAsync(new FileStorageSaveRequest(stream, "Crop QC Backups/Failed/Access Tests", BackupFileNames.AccessTest(businessTime.UtcNow), "text/plain", bytes.Length), cancellationToken);
             await VerifyUploadedBytesAsync(storage, reference, bytes, cancellationToken);
             await AddAuditAsync("BackupAccessVerified", reference.FileName, new { requestedByEmail, reference.FileSizeBytes }, cancellationToken);
             return BackupRunResult.Succeeded("Google Drive backup write/read/checksum verification succeeded.", [reference]);
@@ -240,7 +371,7 @@ public sealed class BackupService(
             backupRunId = run.Id,
             backupType = run.BackupType,
             startedAt = run.StartedAt,
-            completedPackagingAt = DateTimeOffset.UtcNow,
+            completedPackagingAt = businessTime.UtcNow,
             status = "PackagedPendingUploadVerification",
             environment = run.EnvironmentName,
             databaseProvider = run.DatabaseProvider,
@@ -363,7 +494,7 @@ public sealed class BackupService(
 
     private object BuildSafeConfigurationSnapshot(BackupOptions effective) => new
     {
-        createdAt = DateTimeOffset.UtcNow,
+        createdAt = businessTime.UtcNow,
         environment = new { appEnvironment.Kind, appEnvironment.DisplayName },
         application = new { deployedCommit = configuration["RENDER_GIT_COMMIT"] ?? configuration["SourceVersion"], framework = Environment.Version.ToString() },
         database = new { provider = dbContext.Database.ProviderName ?? configuration["DATABASE_PROVIDER"], connectionConfigured = !string.IsNullOrWhiteSpace(dbContext.Database.GetConnectionString()) },
@@ -375,12 +506,12 @@ public sealed class BackupService(
             googleDriveBaseFolderName = configuration["GoogleDrive:BaseFolderName"]
         },
         email = new { provider = configuration["Email:Provider"], qcDefaultRecipientsConfigured = !string.IsNullOrWhiteSpace(configuration["Email:QcDefaultRecipients"]) },
-        backups = new { effective.Provider, effective.DailyRetentionDays, effective.WeeklyRetentionWeeks, effective.BusinessTimeZone, effective.ScheduleUtcHour, effective.ScheduleUtcMinute }
+        backups = new { effective.Provider, effective.DailyRetentionDays, effective.WeeklyRetentionWeeks, effective.BusinessTimeZone, effective.NightlyPacificHour }
     };
 
     private async Task<object> BuildSchemaManifestAsync(CancellationToken cancellationToken) => new
     {
-        createdAt = DateTimeOffset.UtcNow,
+        createdAt = businessTime.UtcNow,
         provider = dbContext.Database.ProviderName,
         canConnect = await dbContext.Database.CanConnectAsync(cancellationToken),
         appliedMigrations = await dbContext.Database.GetAppliedMigrationsAsync(cancellationToken),
@@ -526,7 +657,7 @@ public sealed class BackupService(
         {
             if (!string.IsNullOrWhiteSpace(run.PackageStorageKey)) await storage.DeleteOrVoidAsync(run.PackageStorageKey, cancellationToken);
             if (!string.IsNullOrWhiteSpace(run.ManifestStorageKey)) await storage.DeleteOrVoidAsync(run.ManifestStorageKey, cancellationToken);
-            run.PrunedAt = DateTimeOffset.UtcNow;
+            run.PrunedAt = businessTime.UtcNow;
             await AddAuditAsync("BackupPruned", run.Id.ToString(CultureInfo.InvariantCulture), new { run.PackageFileName, run.RetentionCategory }, cancellationToken);
         }
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -565,7 +696,7 @@ public sealed class BackupService(
 
     private async Task<BackupOptions> GetEffectiveOptionsAsync(CancellationToken cancellationToken)
     {
-        var keys = new[] { "Backups:Enabled", "Backups:Provider", "Backups:GoogleDriveFolderId", "Backups:DailyRetentionDays", "Backups:WeeklyRetentionWeeks", "Backups:ScheduleUtcHour", "Backups:ScheduleUtcMinute", "Backups:BusinessTimeZone", "Backups:DatabaseBackupEnabled", "Backups:ConfigBackupEnabled", "Backups:PhotoManifestEnabled" };
+        var keys = new[] { "Backups:Enabled", "Backups:Provider", "Backups:GoogleDriveFolderId", "Backups:DailyRetentionDays", "Backups:WeeklyRetentionWeeks", "Backups:BusinessTimeZone", "Backups:NightlyPacificHour", "Backups:NotificationRecipient", "Backups:NotificationSender", "Backups:DatabaseBackupEnabled", "Backups:ConfigBackupEnabled", "Backups:PhotoManifestEnabled" };
         var overrides = await dbContext.DashboardConfigurations.AsNoTracking().Where(x => keys.Contains(x.Key) && x.Value != "").ToDictionaryAsync(x => x.Key, x => x.Value, cancellationToken);
         return options.WithOverrides(overrides);
     }
@@ -579,14 +710,14 @@ public sealed class BackupService(
     private async Task SetConfigValueAsync(string key, string value, CancellationToken cancellationToken)
     {
         var item = await dbContext.DashboardConfigurations.SingleOrDefaultAsync(x => x.Key == key, cancellationToken);
-        if (item is null) dbContext.DashboardConfigurations.Add(new DashboardConfiguration { Key = key, Value = value, Description = "Backup setting or verified status.", ValueType = "String", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow });
-        else { item.Value = value; item.UpdatedAt = DateTimeOffset.UtcNow; }
+        if (item is null) dbContext.DashboardConfigurations.Add(new DashboardConfiguration { Key = key, Value = value, Description = "Backup setting or verified status.", ValueType = "String", CreatedAt = businessTime.UtcNow, UpdatedAt = businessTime.UtcNow });
+        else { item.Value = value; item.UpdatedAt = businessTime.UtcNow; }
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     private async Task AddAuditAsync(string action, string key, object after, CancellationToken cancellationToken)
     {
-        var audit = new AuditLog { Action = action, EntityName = "Backup", EntityKey = key, AfterValuesJson = JsonSerializer.Serialize(after, JsonOptions), SourceApplication = "CropQc.Web", CreatedAt = DateTimeOffset.UtcNow };
+        var audit = new AuditLog { Action = action, EntityName = "Backup", EntityKey = key, AfterValuesJson = JsonSerializer.Serialize(after, JsonOptions), SourceApplication = "CropQc.Web", CreatedAt = businessTime.UtcNow };
         dbContext.AuditLogs.Add(audit);
         try
         {
@@ -661,8 +792,9 @@ public static class BackupStatusKeys
     public const string LastError = "BackupLastError";
 }
 
-public sealed record BackupRunResult(bool Success, string Message, IReadOnlyList<FileStorageReference> UploadedFiles)
+public sealed record BackupRunResult(bool Success, string Message, IReadOnlyList<FileStorageReference> UploadedFiles, long? RunId, bool WasSkipped)
 {
-    public static BackupRunResult Succeeded(string message, IReadOnlyList<FileStorageReference> uploadedFiles) => new(true, message, uploadedFiles);
-    public static BackupRunResult Failed(string message) => new(false, message, []);
+    public static BackupRunResult Succeeded(string message, IReadOnlyList<FileStorageReference> uploadedFiles, long? runId = null) => new(true, message, uploadedFiles, runId, false);
+    public static BackupRunResult Failed(string message, long? runId = null) => new(false, message, [], runId, false);
+    public static BackupRunResult Skipped(string message) => new(true, message, [], null, true);
 }

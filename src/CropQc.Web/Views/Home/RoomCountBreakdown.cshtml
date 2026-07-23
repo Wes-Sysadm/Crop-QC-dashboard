@@ -24,7 +24,7 @@
             <dt>Current bins</dt><dd>@(Model.Summary.CurrentBinsCount?.ToString() ?? "0")</dd>
             <dt>Breakdown included bins</dt><dd>@Model.IncludedBins</dd>
             <dt>Variety/status</dt><dd>@Model.Summary.VarietyStatusSummary</dd>
-            <dt>Last activity</dt><dd>@(Model.Summary.LastActivityAt?.LocalDateTime.ToString("g") ?? "No activity")</dd>
+            <dt>Last activity</dt><dd>@BusinessTime.FormatPacific(Model.Summary.LastActivityAt, empty: "No activity")</dd>
         </dl>
         <a class="button secondary-button" href="/Rooms/@Model.Summary.RoomId">Back to Room</a>
     </section>
@@ -68,7 +68,7 @@
                 <td>@row.Variety</td>
                 <td>@row.Bins</td>
                 <td>@row.Status</td>
-                <td>@row.Date.LocalDateTime.ToString("g")</td>
+                <td>@BusinessTime.FormatPacific(row.Date)</td>
                 <td><span class="status @(row.IsIncluded ? "ready" : "missing")">@(row.IsIncluded ? "Included" : "Excluded")</span></td>
                 <td>@row.DecisionReason</td>
             </tr>

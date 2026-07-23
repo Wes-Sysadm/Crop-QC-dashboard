@@ -1,5 +1,6 @@
 using CropQc.Data.Entities;
 using CropQc.Shared.Storage;
+using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
@@ -28,6 +29,7 @@ public sealed class QcSummaryEmailComposer(
     private const int MaxSourceImageBytes = 25_000_000;
     private const int InlineImageMaxWidth = 1200;
     private const int InlineImageMaxHeight = 900;
+    private static readonly IBusinessTimeService ReportTime = new PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock());
 
     public static string BuildBrowserPreviewHtml(QcEmailContent content)
     {
@@ -223,7 +225,7 @@ public sealed class QcSummaryEmailComposer(
             sample.Receipt.Room.Code,
             sample.SampleType.Name,
             "On",
-            sample.SampleTakenAt.LocalDateTime.ToString("MM/dd/yyyy")
+            ReportTime.FormatPacific(sample.SampleTakenAt, "MM/dd/yyyy", includeZone: false)
         };
 
         return string.Join(' ', parts.Where(x => !string.IsNullOrWhiteSpace(x))).Replace(" - ", " - ");
@@ -256,7 +258,7 @@ public sealed class QcSummaryEmailComposer(
         AddInfoRow(html, "Room", sample.Receipt.Room.Code);
         AddInfoRow(html, "Receipt ID", sample.GetDisplayReceiptId());
         AddInfoRow(html, "Receipt type", sample.Receipt.ReceiptType);
-        AddInfoRow(html, "Received", sample.Receipt.ReceivedAt.LocalDateTime.ToString("g"));
+        AddInfoRow(html, "Received", ReportTime.FormatPacific(sample.Receipt.ReceivedAt));
         AddInfoRow(html, "Grower", sample.Receipt.GrowerName);
         AddInfoRow(html, "Grower number", sample.Receipt.GrowerNumber ?? "");
         AddInfoRow(html, "Orchard", sample.Receipt.CanonicalOrchardBlock?.CanonicalOrchard?.OrchardName ?? sample.Receipt.CanonicalOrchardBlock?.OrchardName ?? "Not confirmed");
@@ -264,7 +266,7 @@ public sealed class QcSummaryEmailComposer(
         AddInfoRow(html, "Lot", sample.Receipt.LotCode);
         AddInfoRow(html, "Bins received", sample.Receipt.BinCount.ToString());
         AddInfoRow(html, "Variety", sample.Receipt.FruitProfile.VarietyCode);
-        AddInfoRow(html, "Sample date/time", sample.SampleTakenAt.LocalDateTime.ToString("g"));
+        AddInfoRow(html, "Sample date/time", ReportTime.FormatPacific(sample.SampleTakenAt));
         AddInfoRow(html, "Inspector", inspector);
         AddInfoRow(html, "Target sample size", sample.ActualSampleSize?.ToString() ?? "");
         html.AppendLine("</table>");
@@ -367,12 +369,12 @@ public sealed class QcSummaryEmailComposer(
         text.AppendLine($"Sample type: {sample.SampleType.Name}");
         text.AppendLine($"Warehouse/Room: {sample.Receipt.Warehouse.Code} / {sample.Receipt.Room.Code}");
         text.AppendLine($"Receipt ID: {sample.GetDisplayReceiptId()}");
-        text.AppendLine($"Receipt type / received: {sample.Receipt.ReceiptType} / {sample.Receipt.ReceivedAt.LocalDateTime:g}");
+        text.AppendLine($"Receipt type / received: {sample.Receipt.ReceiptType} / {ReportTime.FormatPacific(sample.Receipt.ReceivedAt)}");
         text.AppendLine($"Grower/Lot/Variety: {sample.Receipt.GrowerName} / {sample.Receipt.LotCode} / {sample.Receipt.FruitProfile.VarietyCode}");
         text.AppendLine($"Grower number: {sample.Receipt.GrowerNumber}");
         text.AppendLine($"Orchard/Block: {sample.Receipt.CanonicalOrchardBlock?.CanonicalOrchard?.OrchardName ?? sample.Receipt.CanonicalOrchardBlock?.OrchardName ?? "Not confirmed"} / {sample.Receipt.CanonicalOrchardBlock?.CanonicalBlockName ?? "Not confirmed"}");
         text.AppendLine($"Bins received: {sample.Receipt.BinCount}");
-        text.AppendLine($"Sample date/time: {sample.SampleTakenAt.LocalDateTime:g}");
+        text.AppendLine($"Sample date/time: {ReportTime.FormatPacific(sample.SampleTakenAt)}");
         text.AppendLine($"Inspector: {inspector}");
         text.AppendLine($"Target sample size: {sample.ActualSampleSize?.ToString() ?? ""}");
         if (isOverride) text.AppendLine($"Override reason: {overrideReason}");

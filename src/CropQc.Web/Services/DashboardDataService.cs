@@ -2,6 +2,7 @@ using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared;
 using CropQc.Shared.Storage;
+using CropQc.Shared.Time;
 using CropQc.Web.Auth;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
@@ -86,17 +87,19 @@ public sealed class DashboardDataService(
     ILogger<DashboardDataService> logger,
     IUserAccessService? userAccessService = null,
     IVarietyColorService? varietyColorService = null,
-    ICanonicalGrowerService? canonicalGrowerService = null) : IDashboardDataService
+    ICanonicalGrowerService? canonicalGrowerService = null,
+    IBusinessTimeService? businessTime = null) : IDashboardDataService
 {
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
     private static readonly string[] ReceiptTypeOptions = ["Truck receipt", "Door sample", "Lot sample"];
+    private IBusinessTimeService BusinessTime { get; } = businessTime ?? new PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock());
 
     public async Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
     {
         var normalizedRoomFilter = NormalizeRoomSummaryFilter(roomSummaryFilter);
         try
         {
-            var todayRange = UtcDayRange.ForUtcDay(DateTimeOffset.UtcNow);
+            var todayRange = BusinessTime.UtcRangeForPacificDate(BusinessTime.PacificDate(BusinessTime.UtcNow));
             var todaySamples = await BuildTodayDashboardSamplesAsync(todayRange, cancellationToken);
             var dashboardLots = (await BuildDashboardCurrentInventorySnapshotsAsync(null, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
             var roomSummaries = await BuildDashboardRoomSummariesAsync(dashboardLots, normalizedRoomFilter, cancellationToken);
@@ -112,7 +115,7 @@ public sealed class DashboardDataService(
                 currentGrowerLots);
             return new HomeDashboardViewModel
             {
-                ActiveCropYear = cropYearService.GetCurrentCropYear(DateTimeOffset.Now),
+                ActiveCropYear = cropYearService.GetCurrentCropYear(BusinessTime.NowPacific),
                 Cards = cards,
                 TodaySamples = todaySamples,
                 RoomSummaryFilter = normalizedRoomFilter,
@@ -134,7 +137,7 @@ public sealed class DashboardDataService(
         {
             return new HomeDashboardViewModel
             {
-                ActiveCropYear = cropYearService.GetCurrentCropYear(DateTimeOffset.Now),
+                ActiveCropYear = cropYearService.GetCurrentCropYear(BusinessTime.NowPacific),
                 DataWarning = DatabaseWarning(ex, "Home dashboard"),
                 Cards = BuildHomeCards(0, 0, 0, 0, 0, 0, 0),
                 RoomSummaryFilter = normalizedRoomFilter,
@@ -179,7 +182,7 @@ public sealed class DashboardDataService(
     {
         try
         {
-            filter.CropYear ??= cropYearService.GetCurrentCropYear(DateTimeOffset.Now);
+            filter.CropYear ??= cropYearService.GetCurrentCropYear(BusinessTime.NowPacific);
             var currentLots = (await BuildRoomLotSummariesAsync(null, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
             var receiptIds = currentLots.Where(x => x.ReceiptId is not null).Select(x => x.ReceiptId!.Value).Distinct().ToList();
             var receipts = await dbContext.Receipts.AsNoTracking()
@@ -258,7 +261,7 @@ public sealed class DashboardDataService(
     {
         try
         {
-            filter.CropYear ??= cropYearService.GetCurrentCropYear(DateTimeOffset.Now);
+            filter.CropYear ??= cropYearService.GetCurrentCropYear(BusinessTime.NowPacific);
             var query = QuerySamples().Where(x => x.Receipt.CropYear == filter.CropYear);
             if (filter.WarehouseId is not null) query = query.Where(x => x.Receipt.WarehouseId == filter.WarehouseId);
             if (!string.IsNullOrWhiteSpace(filter.Variety)) query = query.Where(x => x.Receipt.FruitProfile.VarietyCode.Contains(filter.Variety));
@@ -406,7 +409,7 @@ public sealed class DashboardDataService(
                 InventoryAdjustments = inventoryAdjustments,
                 LinkedReceipts = linkedReceipts,
                 BaselineProjection = BuildRoomProjection(activeLots, sampleDistributions, isSelection: false),
-                ProjectionLots = BuildRoomProjectionLots(activeLots, sampleDistributions),
+                ProjectionLots = BuildRoomProjectionLots(activeLots, sampleDistributions, BusinessTime.NowPacific),
                 SampleTimeline = await BuildRoomSampleTimelineAsync(roomId, cancellationToken),
                 DepletionReceiptOptions = activeLots
                     .Where(x => x.ReceiptId is not null)
@@ -416,9 +419,9 @@ public sealed class DashboardDataService(
                     .Select(x => new RoomInventoryLotOptionViewModel(RoomLotKey(x), $"{x.DisplayReceiptId} - {x.GrowerName} {x.LotCode} {x.VarietyCode} ({x.CurrentBins} bins current)", x.CurrentBins))
                     .ToList(),
                 TransferDestinationOptions = transferDestinations,
-                DepletionForm = new RoomDepletionForm { RoomId = roomId, DepletedAt = DateTimeOffset.Now },
-                TrueUpForm = new RoomInventoryTrueUpForm { RoomId = roomId, AdjustmentAt = DateTimeOffset.Now },
-                TransferForm = new RoomTransferForm { FromRoomId = roomId, TransferAt = DateTimeOffset.Now },
+                DepletionForm = new RoomDepletionForm { RoomId = roomId, DepletedAt = BusinessTime.NowPacific },
+                TrueUpForm = new RoomInventoryTrueUpForm { RoomId = roomId, AdjustmentAt = BusinessTime.NowPacific },
+                TransferForm = new RoomTransferForm { FromRoomId = roomId, TransferAt = BusinessTime.NowPacific },
                 CanManageDepletions = canManage
             };
         }
@@ -790,7 +793,7 @@ public sealed class DashboardDataService(
     {
         try
         {
-            search.CropYear ??= cropYearService.GetCurrentCropYear(DateTimeOffset.Now);
+            search.CropYear ??= cropYearService.GetCurrentCropYear(BusinessTime.NowPacific);
             if (search.WarehouseId is not null && search.RoomId is not null)
             {
                 var roomMatchesWarehouse = await dbContext.Rooms.AsNoTracking()
@@ -810,7 +813,7 @@ public sealed class DashboardDataService(
             if (!search.AllCropYears && search.CropYear is not null) query = query.Where(x => x.CropYear == search.CropYear);
             if (string.Equals(search.DateFilter, "today", StringComparison.OrdinalIgnoreCase))
             {
-                var todayRange = UtcDayRange.ForUtcDay(DateTimeOffset.UtcNow);
+                var todayRange = BusinessTime.UtcRangeForPacificDate(BusinessTime.PacificDate(BusinessTime.UtcNow));
                 query = query.Where(x => x.ReceivedAt >= todayRange.Start && x.ReceivedAt < todayRange.End);
             }
 
@@ -858,7 +861,7 @@ public sealed class DashboardDataService(
                 FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
                 GrowerLots = await dbContext.GrowerLots.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Grower).ThenBy(x => x.LotNumber).ToListAsync(cancellationToken),
                 AvailableCropYears = await cropYearService.GetAvailableCropYearsAsync(cancellationToken),
-                CurrentCropYear = cropYearService.GetCurrentCropYear(DateTimeOffset.Now),
+                CurrentCropYear = cropYearService.GetCurrentCropYear(BusinessTime.NowPacific),
                 CropYearHelpText = "Crop years use the starting-year convention by default: CropYear 2026 starts 2026-08-01 and ends 2027-07-31. Confirm crop year when season dates overlap.",
                 DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken)
             };
@@ -2360,7 +2363,7 @@ public sealed class DashboardDataService(
     {
         try
         {
-            var todayRange = UtcDayRange.ForUtcDay(DateTimeOffset.UtcNow);
+            var todayRange = BusinessTime.UtcRangeForPacificDate(BusinessTime.PacificDate(BusinessTime.UtcNow));
             var query = QuerySamples().Where(x => x.SampleTakenAt >= todayRange.Start && x.SampleTakenAt < todayRange.End);
             if (warehouseId is not null)
             {
@@ -2617,7 +2620,7 @@ public sealed class DashboardDataService(
         var latestSamplesByLot = await BuildDashboardLatestSampleByLotAsync(occupiedLots, cancellationToken);
         var roomQcSummaries = await BuildDashboardRoomQcSummariesAsync(occupiedLots, cancellationToken);
         var colorMap = await ResolveDashboardVarietyColorsAsync(occupiedLots, cancellationToken);
-        var today = DateTimeOffset.Now;
+        var today = BusinessTime.NowPacific;
 
         return rooms.Select(room =>
             {
@@ -3632,9 +3635,9 @@ public sealed class DashboardDataService(
 
     private static IReadOnlyList<RoomProjectionLotViewModel> BuildRoomProjectionLots(
         IReadOnlyList<RoomLotSummaryViewModel> lots,
-        IReadOnlyDictionary<string, RoomLotProjectionDistribution> sampleDistributions)
+        IReadOnlyDictionary<string, RoomLotProjectionDistribution> sampleDistributions,
+        DateTimeOffset now)
     {
-        var now = DateTimeOffset.Now;
         return lots
             .OrderBy(x => x.GrowerName)
             .ThenBy(x => x.LotCode)

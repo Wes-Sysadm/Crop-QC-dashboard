@@ -260,7 +260,7 @@ public sealed class RoomDepletionForm
     public int RoomId { get; set; }
     public long ReceiptId { get; set; }
     public int BinCount { get; set; }
-    public DateTimeOffset DepletedAt { get; set; } = DateTimeOffset.Now;
+    public DateTimeOffset DepletedAt { get; set; } = DateTimeOffset.UtcNow;
     public string? Destination { get; set; }
     public string? Notes { get; set; }
     public bool ConfirmOverDepletion { get; set; }
@@ -271,7 +271,7 @@ public sealed class RoomInventoryTrueUpForm
     public int RoomId { get; set; }
     public long ReceiptId { get; set; }
     public int NewBinCount { get; set; }
-    public DateTimeOffset AdjustmentAt { get; set; } = DateTimeOffset.Now;
+    public DateTimeOffset AdjustmentAt { get; set; } = DateTimeOffset.UtcNow;
     public string Reason { get; set; } = "";
     public string? Notes { get; set; }
 }
@@ -282,7 +282,7 @@ public sealed class RoomTransferForm
     public int ToRoomId { get; set; }
     public string SourceLotKey { get; set; } = "";
     public int BinCount { get; set; }
-    public DateTimeOffset TransferAt { get; set; } = DateTimeOffset.Now;
+    public DateTimeOffset TransferAt { get; set; } = DateTimeOffset.UtcNow;
     public string Reason { get; set; } = "";
     public string? Notes { get; set; }
     public bool ConfirmOverTransfer { get; set; }
@@ -423,7 +423,7 @@ public sealed class BinsRunForm
     public string InventoryKey { get; set; } = "";
     public int BinsRun { get; set; }
     public int ExpectedAvailableBins { get; set; }
-    public DateTimeOffset RunAt { get; set; } = DateTimeOffset.Now;
+    public DateTimeOffset RunAt { get; set; } = DateTimeOffset.UtcNow;
     public string? Notes { get; set; }
 }
 
@@ -640,8 +640,7 @@ public sealed class BackupStatusViewModel
     public bool PhotoManifestEnabled { get; set; }
     public int DailyRetentionDays { get; set; }
     public int WeeklyRetentionWeeks { get; set; }
-    public int ScheduleUtcHour { get; set; }
-    public int ScheduleUtcMinute { get; set; }
+    public int NightlyPacificHour { get; set; } = 1;
     public string BusinessTimeZone { get; set; } = "America/Los_Angeles";
     public DateTimeOffset? NextScheduledBackupUtc { get; set; }
     public DateTimeOffset? LastDatabaseBackupAt { get; set; }
@@ -654,7 +653,10 @@ public sealed class BackupStatusViewModel
     public IReadOnlyList<string> Warnings { get; set; } = [];
     public BackupRunListItem? LastAttempt { get; set; }
     public BackupRunListItem? LastSuccessful { get; set; }
+    public BackupRunListItem? LastSuccessfulNightly { get; set; }
+    public BackupRunListItem? LastFailedNightly { get; set; }
     public IReadOnlyList<BackupRunListItem> RecentRuns { get; set; } = [];
+    public IReadOnlyList<BackupNotificationListItem> RecentNotifications { get; set; } = [];
     public BackupSettingsForm SettingsForm { get; set; } = new();
 }
 
@@ -665,7 +667,6 @@ public sealed class BackupSettingsForm
     public string? GoogleDriveFolder { get; set; }
     public int DailyRetentionDays { get; set; } = 30;
     public int WeeklyRetentionWeeks { get; set; } = 52;
-    public int ScheduleUtcHour { get; set; } = 10;
     public bool DatabaseBackupEnabled { get; set; } = true;
     public bool ConfigBackupEnabled { get; set; } = true;
     public bool PhotoManifestEnabled { get; set; } = true;
@@ -687,6 +688,18 @@ public sealed record BackupRunListItem(
     DateTimeOffset? VerifiedAt,
     string? ErrorSummary,
     string? PackageWebUrl);
+
+public sealed record BackupNotificationListItem(
+    long Id,
+    long BackupRunId,
+    string NotificationType,
+    string Recipient,
+    string Status,
+    int AttemptCount,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? LastAttemptedAt,
+    DateTimeOffset? SentAt,
+    string? ErrorSummary);
 
 public sealed class QcStationsPageViewModel
 {
@@ -879,8 +892,8 @@ public sealed record ReceiptListItemViewModel(
 
 public class CreateReceiptForm
 {
-    public int CropYear { get; set; } = DateTimeOffset.Now.Year;
-    public DateTimeOffset ReceivedAt { get; set; } = DateTimeOffset.Now;
+    public int CropYear { get; set; } = DateTimeOffset.UtcNow.Year;
+    public DateTimeOffset ReceivedAt { get; set; } = DateTimeOffset.UtcNow;
     public bool ConfirmCropYear { get; set; }
     public string CompuTechReceiptId { get; set; } = "";
     public string ReceiptType { get; set; } = "Truck receipt";
@@ -914,6 +927,43 @@ public sealed class DeleteReceiptForm
 {
     public long Id { get; set; }
     public string Reason { get; set; } = "";
+    public string ConfirmationValue { get; set; } = "";
+    public bool ConfirmDeletion { get; set; }
+    public string OperationToken { get; set; } = "";
+}
+
+public sealed class ReceiptDeletionConfirmationViewModel
+{
+    public long Id { get; set; }
+    public string ReceiptNumber { get; set; } = "";
+    public int CropYear { get; set; }
+    public DateTimeOffset ReceivedAt { get; set; }
+    public string Grower { get; set; } = "";
+    public string GrowerNumber { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public string Lot { get; set; } = "";
+    public string Warehouse { get; set; } = "";
+    public string Room { get; set; } = "";
+    public int GrossBins { get; set; }
+    public ReceiptDependencyCountsViewModel Dependencies { get; set; } = new();
+    public bool HasBlockingOperationalHistory { get; set; }
+    public IReadOnlyList<string> BlockingReasons { get; set; } = [];
+    public DeleteReceiptForm Form { get; set; } = new();
+}
+
+public sealed class ReceiptDependencyCountsViewModel
+{
+    public int QcSamples { get; set; }
+    public int FruitReadings { get; set; }
+    public int Defects { get; set; }
+    public int Photos { get; set; }
+    public int EmailLogs { get; set; }
+    public int InventoryAdjustments { get; set; }
+    public int Transfers { get; set; }
+    public int DepletionsAndTrueUps { get; set; }
+    public int BinsRun { get; set; }
+    public int AuditRecords { get; set; }
+    public int OfflineSyncItems { get; set; }
 }
 
 public sealed class StorageFacilitySummaryViewModel

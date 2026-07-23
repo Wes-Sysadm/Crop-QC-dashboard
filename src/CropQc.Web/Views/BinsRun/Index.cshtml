@@ -148,7 +148,7 @@ else
                     </div>
                     @foreach (var lot in Model.AvailableInventory)
                     {
-                        var sourceLabel = lot.ReceiptDate is null ? "Current baseline" : lot.ReceiptDate.Value.ToLocalTime().ToString("g");
+                        var sourceLabel = lot.ReceiptDate is null ? "Current baseline" : BusinessTime.FormatPacific(lot.ReceiptDate.Value);
                         <div class="lot-option"
                              data-lot-row
                              data-key="@lot.InventoryKey"
@@ -281,7 +281,7 @@ else
                 @foreach (var item in Model.History)
                 {
                     <tr class="@(item.IsReversed ? "muted-row" : "")">
-                        <td>@item.RunAt.ToLocalTime().ToString("g")</td>
+                        <td>@BusinessTime.FormatPacific(item.RunAt)</td>
                         <td>@item.Room</td>
                         <td>@item.Inventory</td>
                         <td>@item.PreviousAvailableBins</td>

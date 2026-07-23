@@ -85,7 +85,7 @@
             <div><strong>@Format(grower.AveragePressure)</strong><span>Avg pressure</span></div>
             <div><strong>@Format(grower.LatestPressure)</strong><span>Latest pressure</span></div>
             <div><strong>@Format(grower.StarchAverage)</strong><span>Starch avg</span></div>
-            <div><strong>@(grower.FirstSampleDate?.LocalDateTime.ToString("d") ?? "-")</strong><span>First sample</span></div>
+            <div><strong>@BusinessTime.FormatPacific(grower.FirstSampleDate, "d", includeZone: false, empty: "-")</strong><span>First sample</span></div>
         </div>
         <div class="crop-year-grower-meta">
             <p><strong>Varieties:</strong> @(grower.Varieties.Count == 0 ? "-" : string.Join(", ", grower.Varieties))</p>
@@ -121,7 +121,7 @@
                     @foreach (var row in grower.Rows)
                     {
                         <tr>
-                            <td>@row.SampleDate.LocalDateTime.ToString("g")</td>
+                            <td>@BusinessTime.FormatPacific(row.SampleDate)</td>
                             <td>@row.Grower</td>
                             <td>@row.Lot</td>
                             <td>@row.Variety</td>

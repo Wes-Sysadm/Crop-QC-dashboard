@@ -553,7 +553,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("UpdateReceiptForm", model);
         Assert.Contains("DeleteReceiptForm", model);
         Assert.Contains("/Receipts/@Model.Receipt.Id/Edit", detail);
-        Assert.Contains("Delete Receipt", edit);
+        Assert.Contains("Delete Receipt", detail);
+        Assert.DoesNotContain("Delete Receipt", edit);
         Assert.Contains("name=\"BinCount\"", edit);
     }
 

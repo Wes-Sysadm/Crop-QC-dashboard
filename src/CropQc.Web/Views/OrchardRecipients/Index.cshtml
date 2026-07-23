@@ -65,7 +65,7 @@
                         </form>
                     </td>
                     <td>@(row.IsActive ? "Yes" : "No")</td>
-                    <td>@row.LastModifiedAt?.ToLocalTime().ToString("g")</td>
+                    <td>@BusinessTime.FormatPacific(row.LastModifiedAt, empty: "—")</td>
                     <td>@row.LastModifiedBy</td>
                     <td class="button-row">
                         <button type="submit" form="recipient-@row.RecipientId">Save</button>

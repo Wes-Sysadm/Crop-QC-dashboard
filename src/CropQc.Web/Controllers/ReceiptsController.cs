@@ -3,12 +3,14 @@ using CropQc.Web.Services;
 using CropQc.Shared.Storage;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace CropQc.Web.Controllers;
 
 [Route("[controller]")]
 public sealed class ReceiptsController(
     IDashboardDataService dataService,
+    IReceiptPurgeService receiptPurgeService,
     IReceivingExportService exportService,
     FileStorageOptions fileStorageOptions,
     ILogger<ReceiptsController> logger) : Controller
@@ -63,13 +65,27 @@ public sealed class ReceiptsController(
     }
 
     [Authorize(Policy = AccessPolicyNames.ReceiptDeleteAdmin)]
+    [HttpGet("{id:long}/Delete")]
+    public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken)
+    {
+        var model = await receiptPurgeService.GetDeletionConfirmationAsync(id, cancellationToken);
+        return model is null ? NotFound() : View(model);
+    }
+
+    [Authorize(Policy = AccessPolicyNames.ReceiptDeleteAdmin)]
     [HttpPost("{id:long}/Delete")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete(long id, DeleteReceiptForm form, CancellationToken cancellationToken)
     {
         form.Id = id;
-        var error = await dataService.SoftDeleteReceiptAsync(form, cancellationToken);
+        var error = await receiptPurgeService.DeleteEligibleReceiptAsync(
+            form,
+            User.FindFirstValue(ClaimTypes.Email) ?? "unknown",
+            cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Receipt deleted.";
-        return RedirectToAction(nameof(Index));
+        return error is null
+            ? RedirectToAction(nameof(Index))
+            : RedirectToAction(nameof(Delete), new { id });
     }
 
     [HttpPost("{id:long}/samples")]

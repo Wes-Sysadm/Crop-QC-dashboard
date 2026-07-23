@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -29,10 +30,9 @@ public sealed class EbsDailyBinsEmailService(
     CropQcDbContext dbContext,
     IDashboardDataService dashboardDataService,
     IQcEmailSender emailSender,
+    IBusinessTimeService businessTime,
     ILogger<EbsDailyBinsEmailService> logger) : IEbsDailyBinsEmailService
 {
-    private const string PacificTimeZoneId = "America/Los_Angeles";
-
     public async Task<EbsDailyBinsEmailSendResult> SendAsync(string? requestedByEmail, bool isTest, CancellationToken cancellationToken)
     {
         var recipientsValue = await GetConfigValueAsync(EbsDailyBinsEmailSettings.RecipientsKey, cancellationToken);
@@ -99,7 +99,7 @@ public sealed class EbsDailyBinsEmailService(
             return false;
         }
 
-        var now = LocalNow();
+        var now = businessTime.NowPacific;
         var sendHour = IntConfig(await GetConfigValueAsync(EbsDailyBinsEmailSettings.SendHourLocalKey, cancellationToken), 17);
         if (now.Hour < sendHour)
         {
@@ -150,13 +150,13 @@ public sealed class EbsDailyBinsEmailService(
                 Value = value,
                 Description = "Last successful EBS daily bin email send date.",
                 ValueType = "Date",
-                CreatedAt = DateTimeOffset.UtcNow
+                CreatedAt = businessTime.UtcNow
             });
         }
         else
         {
             config.Value = value;
-            config.UpdatedAt = DateTimeOffset.UtcNow;
+            config.UpdatedAt = businessTime.UtcNow;
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -216,24 +216,8 @@ public sealed class EbsDailyBinsEmailService(
     private static int IntConfig(string? value, int fallback) =>
         int.TryParse(value, out var parsed) ? Math.Clamp(parsed, 0, 23) : fallback;
 
-    private static DateOnly LocalToday() =>
-        DateOnly.FromDateTime(LocalNow().DateTime);
-
-    private static DateTimeOffset LocalNow()
-    {
-        try
-        {
-            return TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(PacificTimeZoneId));
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            return DateTimeOffset.Now;
-        }
-        catch (InvalidTimeZoneException)
-        {
-            return DateTimeOffset.Now;
-        }
-    }
+    private DateOnly LocalToday() =>
+        DateOnly.FromDateTime(businessTime.NowPacific.DateTime);
 }
 
 public sealed class EbsDailyBinsEmailHostedService(IServiceScopeFactory scopeFactory, ILogger<EbsDailyBinsEmailHostedService> logger) : BackgroundService

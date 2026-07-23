@@ -77,7 +77,7 @@
                             <td>@total.RoomCode</td>
                             <td>@total.Variety</td>
                             <td>@total.Status</td>
-                            <td>@total.EffectiveDate.LocalDateTime.ToString("d")</td>
+                            <td>@BusinessTime.FormatPacific(total.EffectiveDate, "d", includeZone: false)</td>
                             <td class="numeric-cell">@total.LotCount</td>
                             <td class="numeric-cell">@total.BinCount</td>
                         </tr>
@@ -136,7 +136,7 @@
                             <td>@(string.IsNullOrWhiteSpace(row.PoolStart) ? "-" : row.PoolStart)</td>
                             <td>@row.Variety</td>
                             <td>@(string.IsNullOrWhiteSpace(row.InventoryStatus) ? "-" : row.InventoryStatus)</td>
-                            <td>@row.EffectiveDate.LocalDateTime.ToString("g")</td>
+                            <td>@BusinessTime.FormatPacific(row.EffectiveDate)</td>
                             <td class="numeric-cell">@(row.OldBinCount?.ToString() ?? "-")</td>
                             <td class="numeric-cell">@(row.NewBinCount?.ToString() ?? "-")</td>
                             <td class="wide-cell">@row.Message</td>
@@ -239,7 +239,7 @@
                     <dt>Variety</dt><dd>@lot.Variety</dd>
                     <dt>Status</dt><dd>@(string.IsNullOrWhiteSpace(lot.InventoryStatus) ? "-" : lot.InventoryStatus)</dd>
                     <dt>Source</dt><dd>@lot.Source</dd>
-                    <dt>Last adjustment</dt><dd>@lot.LastAdjustmentAt.LocalDateTime</dd>
+                    <dt>Last adjustment</dt><dd>@BusinessTime.FormatPacific(lot.LastAdjustmentAt)</dd>
                 </dl>
                 <div class="action-bar">
                     <a class="button secondary-button" href="/Dashboard/Rooms/@lot.RoomId">View Room</a>
@@ -287,7 +287,7 @@
                         <td>@(string.IsNullOrWhiteSpace(row.Variety) ? "-" : row.Variety)</td>
                         <td>@(string.IsNullOrWhiteSpace(row.Status) ? "-" : row.Status)</td>
                         <td class="numeric-cell">@row.Bins</td>
-                        <td>@(row.Date?.LocalDateTime.ToString("g") ?? "-")</td>
+                        <td>@BusinessTime.FormatPacific(row.Date, empty: "-")</td>
                         <td class="wide-cell">@row.DecisionReason</td>
                     </tr>
                 }

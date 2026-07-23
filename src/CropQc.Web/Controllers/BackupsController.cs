@@ -8,7 +8,9 @@ namespace CropQc.Web.Controllers;
 
 [Route("Admin/Backups")]
 [Authorize(Policy = AccessPolicyNames.BackupsAdmin)]
-public sealed class BackupsController(IBackupService backupService) : Controller
+public sealed class BackupsController(
+    IBackupService backupService,
+    IBackupNotificationService notificationService) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken cancellationToken) =>
@@ -35,6 +37,14 @@ public sealed class BackupsController(IBackupService backupService) : Controller
     {
         var result = await backupService.TestGoogleDriveAccessAsync(User.FindFirstValue(ClaimTypes.Email) ?? "", cancellationToken);
         TempData[result.Success ? "Success" : "Error"] = result.Message;
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost("Notifications/{id:long}/Retry")]
+    public async Task<IActionResult> RetryNotification(long id, CancellationToken cancellationToken)
+    {
+        var error = await notificationService.RetryAsync(id, User.FindFirstValue(ClaimTypes.Email) ?? "", cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Backup notification queued for retry.";
         return RedirectToAction(nameof(Index));
     }
 }

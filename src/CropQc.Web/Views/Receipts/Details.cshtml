@@ -4,6 +4,7 @@
     ViewData["Title"] = "Receipt Detail";
     ViewData["AutoRefresh"] = "true";
     var canEditReceipt = await UserAccess.HasAccessAsync(User, ApplicationAreas.ReceiptEdit, PageAccessLevel.Edit, Context.RequestAborted);
+    var canDeleteReceipt = await UserAccess.HasAccessAsync(User, ApplicationAreas.ReceiptDelete, PageAccessLevel.Admin, Context.RequestAborted);
     var canCreateSample = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.Edit, Context.RequestAborted);
 }
 
@@ -29,12 +30,16 @@
 {
     <section class="panel">
         <h2>@Model.Receipt.CompuTechReceiptId</h2>
-        <p>@Model.Receipt.CropYear | @Model.Receipt.ReceivedAt.LocalDateTime | @Model.Receipt.ReceiptType | @Model.Receipt.Warehouse / @Model.Receipt.Room | Lot # @(string.IsNullOrWhiteSpace(Model.Receipt.GrowerNumber) ? "-" : Model.Receipt.GrowerNumber) | @Model.Receipt.GrowerName | @Model.Receipt.VarietyCode | @Model.Receipt.BinCount bins</p>
+        <p>@Model.Receipt.CropYear | @BusinessTime.FormatPacific(Model.Receipt.ReceivedAt) | @Model.Receipt.ReceiptType | @Model.Receipt.Warehouse / @Model.Receipt.Room | Lot # @(string.IsNullOrWhiteSpace(Model.Receipt.GrowerNumber) ? "-" : Model.Receipt.GrowerNumber) | @Model.Receipt.GrowerName | @Model.Receipt.VarietyCode | @Model.Receipt.BinCount bins</p>
         <div class="action-bar">
             <a class="button secondary-button" href="/Dashboard/Rooms/@Model.Receipt.RoomId">View Room Summary</a>
             @if (canEditReceipt)
             {
                 <a class="button secondary-button" href="/Receipts/@Model.Receipt.Id/Edit">Edit Receipt</a>
+            }
+            @if (canDeleteReceipt)
+            {
+                <a class="button danger-button" href="/Receipts/@Model.Receipt.Id/Delete">Delete Receipt</a>
             }
         </div>
         @if (Model.Samples.Any())
@@ -100,7 +105,7 @@
                             <span class="status @StatusClass(sample.EmailStatus)">@sample.EmailStatus</span>
                             @if (sample.EmailSentAt is not null)
                             {
-                                <div class="muted">Sent @sample.EmailSentAt.Value.LocalDateTime.ToString("g") by @(sample.EmailSentBy ?? "unknown")</div>
+                                <div class="muted">Sent @BusinessTime.FormatPacific(sample.EmailSentAt.Value) by @(sample.EmailSentBy ?? "unknown")</div>
                             }
                         </td>
                         <td><span class="status @(sample.IsReady ? "ready" : "missing")">@(sample.IsReady ? "Ready" : "Missing")</span></td>
@@ -120,7 +125,7 @@
                                 </ul>
                             }
                         </td>
-                        <td>@sample.SampleTakenAt.LocalDateTime</td>
+                        <td>@BusinessTime.FormatPacific(sample.SampleTakenAt)</td>
                         <td>
                             <a class="inline-action" href="/Samples/@sample.Id">View Sample</a>
                             <a class="inline-action" href="cropqcstation://sample/@sample.Id">Open in QC Station</a>

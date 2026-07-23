@@ -45,8 +45,12 @@
             <dd>@(Model.PhotoManifestEnabled ? "Enabled" : "Disabled")</dd>
             <dt>Retention</dt>
             <dd>@Model.DailyRetentionDays daily days; @Model.WeeklyRetentionWeeks weekly recovery points</dd>
-            <dt>Schedule setting</dt>
-            <dd>@($"{Model.ScheduleUtcHour:00}:{Model.ScheduleUtcMinute:00} UTC") nightly through Render Cron (@Model.BusinessTimeZone business timezone).</dd>
+            <dt>Nightly schedule</dt>
+            <dd><strong>1:00 AM Pacific</strong> through two DST-safe Render candidates (08:00 and 09:00 UTC) with a Pacific-date uniqueness guard.</dd>
+            <dt>Next nightly backup</dt>
+            <dd>@BusinessTime.FormatPacific(Model.NextScheduledBackupUtc, "dddd, MMMM d, yyyy 'at' h:mm tt")</dd>
+            <dt>Scheduler active</dt>
+            <dd>@(Model.Enabled ? "Yes" : "No")</dd>
         </dl>
         <div class="action-bar">
             <form method="post" action="/Admin/Backups/RunNow">
@@ -62,9 +66,13 @@
         <h2>Last Results</h2>
         <dl class="summary-list">
             <dt>Last attempted</dt>
-            <dd>@(Model.LastAttempt is null ? "No attempt recorded" : $"{Model.LastAttempt.StartedAt:u} — {Model.LastAttempt.BackupType} — {Model.LastAttempt.Status}")</dd>
+            <dd>@(Model.LastAttempt is null ? "No attempt recorded" : $"{BusinessTime.FormatPacific(Model.LastAttempt.StartedAt, "yyyy-MM-dd h:mm:ss tt")} — {Model.LastAttempt.BackupType} — {Model.LastAttempt.Status}")</dd>
             <dt>Last successful</dt>
-            <dd>@(Model.LastSuccessful?.VerifiedAt?.ToString("u") ?? "No verified backup yet")<br /><span class="muted text-wrap-anywhere">@Model.LastSuccessful?.PackageFileName</span></dd>
+            <dd>@BusinessTime.FormatPacific(Model.LastSuccessful?.VerifiedAt, "yyyy-MM-dd h:mm:ss tt", empty: "No verified backup yet")<br /><span class="muted text-wrap-anywhere">@Model.LastSuccessful?.PackageFileName</span></dd>
+            <dt>Last successful nightly</dt>
+            <dd>@BusinessTime.FormatPacific(Model.LastSuccessfulNightly?.VerifiedAt, "yyyy-MM-dd h:mm:ss tt", empty: "No successful nightly run recorded")</dd>
+            <dt>Last failed nightly</dt>
+            <dd>@BusinessTime.FormatPacific(Model.LastFailedNightly?.CompletedAt, "yyyy-MM-dd h:mm:ss tt", empty: "No failed nightly run recorded")</dd>
             <dt>Size / SHA-256</dt>
             <dd>@(Model.LastSuccessful?.FileSizeBytes?.ToString("N0") ?? "—") bytes<br /><span class="muted text-wrap-anywhere">@(Model.LastSuccessful?.Sha256 ?? "—")</span></dd>
             <dt>Last error</dt>
@@ -115,7 +123,7 @@
                 @foreach (var run in Model.RecentRuns)
                 {
                     <tr>
-                        <td>@run.StartedAt.ToString("u")</td>
+                        <td>@BusinessTime.FormatPacific(run.StartedAt, "yyyy-MM-dd h:mm:ss tt")</td>
                         <td>@run.BackupType<br /><span class="muted">@run.RetentionCategory</span></td>
                         <td>@run.Status</td>
                         <td>@(run.DurationMilliseconds is null ? "—" : $"{TimeSpan.FromMilliseconds(run.DurationMilliseconds.Value):g}")</td>
@@ -131,8 +139,48 @@
                             }
                             <br />@(run.FileSizeBytes?.ToString("N0") ?? "—") bytes
                         </td>
-                        <td>@(run.VerifiedAt?.ToString("u") ?? "Not verified")<br /><span class="muted text-wrap-anywhere">@run.Sha256</span></td>
+                        <td>@BusinessTime.FormatPacific(run.VerifiedAt, "yyyy-MM-dd h:mm:ss tt", empty: "Not verified")<br /><span class="muted text-wrap-anywhere">@run.Sha256</span></td>
                         <td class="text-wrap-normal">@run.ErrorSummary</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<section class="panel">
+    <h2>Backup Notification History</h2>
+    <p class="muted">Success and failure notifications go to <strong>wes@fruitandland.com</strong>. A notification failure does not invalidate a verified backup.</p>
+    @if (Model.RecentNotifications.Count == 0)
+    {
+        <p class="muted">No backup notifications have been queued.</p>
+    }
+    else
+    {
+        <div class="table-scroll">
+            <table>
+                <thead><tr><th>Created</th><th>Run</th><th>Type</th><th>Recipient</th><th>Status</th><th>Attempts</th><th>Sent</th><th>Result</th></tr></thead>
+                <tbody>
+                @foreach (var notification in Model.RecentNotifications)
+                {
+                    <tr>
+                        <td>@BusinessTime.FormatPacific(notification.CreatedAt, "yyyy-MM-dd h:mm:ss tt")</td>
+                        <td>#@notification.BackupRunId</td>
+                        <td>@notification.NotificationType</td>
+                        <td>@notification.Recipient</td>
+                        <td>@notification.Status</td>
+                        <td>@notification.AttemptCount</td>
+                        <td>@BusinessTime.FormatPacific(notification.SentAt, "yyyy-MM-dd h:mm:ss tt", empty: "—")</td>
+                        <td>
+                            <span class="text-wrap-normal">@notification.ErrorSummary</span>
+                            @if (notification.Status == CropQc.Data.Entities.BackupNotificationStatuses.Failed)
+                            {
+                                <form method="post" action="/Admin/Backups/Notifications/@notification.Id/Retry">
+                                    <button class="secondary-button" type="submit">Retry</button>
+                                </form>
+                            }
+                        </td>
                     </tr>
                 }
                 </tbody>

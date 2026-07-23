@@ -39,7 +39,7 @@
                         <td>@photo.PhotoSource</td>
                         <td>@photo.ContentType</td>
                         <td>@photo.FileSizeBytes</td>
-                        <td>@photo.CapturedAt.LocalDateTime</td>
+                        <td>@BusinessTime.FormatPacific(photo.CapturedAt)</td>
                         <td>
                             @if (photo.CanDelete && (!string.IsNullOrWhiteSpace(photo.DeleteAction) || photo.DeleteFromSampleId is long))
                             {

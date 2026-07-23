@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -23,6 +24,7 @@ public interface IAdminManagementService
 
 public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyColorService varietyColorService, ICanonicalGrowerService? canonicalGrowerService = null) : IAdminManagementService
 {
+    private static readonly IBusinessTimeService BusinessTime = new PacificBusinessTimeService(new SystemClock());
     private static readonly string[] DefaultCommodityOptions = ["Apple", "Pear"];
 
     private static readonly IReadOnlyList<(string Key, string Value, string Description, string ValueType)> ConfigurationDefaults =
@@ -527,8 +529,8 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
                     block.CanonicalBlockName,
                     string.Join(", ", block.Aliases.Where(x => x.IsActive).Select(x => x.AliasName).OrderBy(x => x)),
                     count?.Count.ToString() ?? "0",
-                    count?.First.LocalDateTime.ToString("d") ?? "",
-                    count?.Latest.LocalDateTime.ToString("d") ?? "",
+                    count is null ? "" : BusinessTime.FormatPacific(count.First, "d", includeZone: false),
+                    count is null ? "" : BusinessTime.FormatPacific(count.Latest, "d", includeZone: false),
                     YesNo(block.IsActive)
                 ],
                 block.IsActive,

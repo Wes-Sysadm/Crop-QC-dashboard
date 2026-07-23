@@ -7,9 +7,10 @@ public sealed class BackupOptions
     public string? GoogleDriveFolderId { get; init; }
     public int DailyRetentionDays { get; init; } = 30;
     public int WeeklyRetentionWeeks { get; init; } = 52;
-    public int ScheduleUtcHour { get; init; } = 10;
-    public int ScheduleUtcMinute { get; init; } = 30;
     public string BusinessTimeZone { get; init; } = "America/Los_Angeles";
+    public int NightlyPacificHour { get; init; } = 1;
+    public string NotificationRecipient { get; init; } = "wes@fruitandland.com";
+    public string NotificationSender { get; init; } = "wes@fruitandland.com";
     public bool DatabaseBackupEnabled { get; init; } = true;
     public bool PhotoManifestEnabled { get; init; } = true;
     public bool ConfigBackupEnabled { get; init; } = true;
@@ -25,9 +26,10 @@ public sealed class BackupOptions
             GoogleDriveFolderId = configuration["Backups:GoogleDriveFolderId"],
             DailyRetentionDays = configuration.GetValue("Backups:DailyRetentionDays", configuration.GetValue("Backups:RetentionDays", 30)),
             WeeklyRetentionWeeks = configuration.GetValue("Backups:WeeklyRetentionWeeks", 52),
-            ScheduleUtcHour = configuration.GetValue("Backups:ScheduleUtcHour", 10),
-            ScheduleUtcMinute = configuration.GetValue("Backups:ScheduleUtcMinute", 30),
             BusinessTimeZone = configuration["Backups:BusinessTimeZone"] ?? "America/Los_Angeles",
+            NightlyPacificHour = configuration.GetValue("Backups:NightlyPacificHour", 1),
+            NotificationRecipient = configuration["Backups:NotificationRecipient"] ?? "wes@fruitandland.com",
+            NotificationSender = configuration["Backups:NotificationSender"] ?? "wes@fruitandland.com",
             DatabaseBackupEnabled = true,
             PhotoManifestEnabled = true,
             ConfigBackupEnabled = true
@@ -41,9 +43,10 @@ public sealed class BackupOptions
             GoogleDriveFolderId = NormalizeGoogleDriveFolderId(overrides.GetValueOrDefault("Backups:GoogleDriveFolderId") ?? GoogleDriveFolderId),
             DailyRetentionDays = Int(overrides, "Backups:DailyRetentionDays", DailyRetentionDays),
             WeeklyRetentionWeeks = Int(overrides, "Backups:WeeklyRetentionWeeks", WeeklyRetentionWeeks),
-            ScheduleUtcHour = Int(overrides, "Backups:ScheduleUtcHour", ScheduleUtcHour),
-            ScheduleUtcMinute = Int(overrides, "Backups:ScheduleUtcMinute", ScheduleUtcMinute),
             BusinessTimeZone = overrides.GetValueOrDefault("Backups:BusinessTimeZone") ?? BusinessTimeZone,
+            NightlyPacificHour = Int(overrides, "Backups:NightlyPacificHour", NightlyPacificHour),
+            NotificationRecipient = overrides.GetValueOrDefault("Backups:NotificationRecipient") ?? NotificationRecipient,
+            NotificationSender = overrides.GetValueOrDefault("Backups:NotificationSender") ?? NotificationSender,
             DatabaseBackupEnabled = true,
             PhotoManifestEnabled = true,
             ConfigBackupEnabled = true

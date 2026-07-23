@@ -228,12 +228,12 @@ public sealed class PerformanceDiagnosticsTests
     }
 
     [Fact]
-    public void DateFilters_UseUtcDayRangesInsteadOfDateMemberEquality()
+    public void DateFilters_UsePacificBusinessDayRangesInsteadOfDateMemberEquality()
     {
         var dashboard = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
         var station = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "QcStationController.cs"));
 
-        Assert.Contains("UtcDayRange.ForUtcDay(DateTimeOffset.UtcNow)", dashboard);
+        Assert.Contains("BusinessTime.UtcRangeForPacificDate(BusinessTime.PacificDate(BusinessTime.UtcNow))", dashboard);
         Assert.Contains("x.SampleTakenAt >= todayRange.Start && x.SampleTakenAt < todayRange.End", dashboard);
         Assert.Contains("x.ReceivedAt >= todayRange.Start && x.ReceivedAt < todayRange.End", dashboard);
         Assert.Contains("UtcDayRange.ForUtcDay(DateTimeOffset.UtcNow)", station);

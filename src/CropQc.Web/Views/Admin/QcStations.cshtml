@@ -83,8 +83,8 @@
             <dl class="station-meta">
                 <dt>Warehouse</dt><dd>@station.WarehouseCode</dd>
                 <dt>Key</dt><dd>@(station.ApiKeyLastFour is null ? "Not generated" : $"...{station.ApiKeyLastFour}")</dd>
-                <dt>Last Seen</dt><dd>@(station.LastSeenAt?.LocalDateTime.ToString() ?? "Never") <span class="muted">@station.LastSeenIp</span></dd>
-                <dt>Last Sync</dt><dd>@(station.LastSyncAt?.LocalDateTime.ToString() ?? "Never")</dd>
+                <dt>Last Seen</dt><dd>@BusinessTime.FormatPacific(station.LastSeenAt, empty: "Never") <span class="muted">@station.LastSeenIp</span></dd>
+                <dt>Last Sync</dt><dd>@BusinessTime.FormatPacific(station.LastSyncAt, empty: "Never")</dd>
             </dl>
             <div class="station-config-note">
                 @if (station.ApiKeyLastFour is null)
