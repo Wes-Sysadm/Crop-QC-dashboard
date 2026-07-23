@@ -34,6 +34,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<RoomDepletion> RoomDepletions => Set<RoomDepletion>();
     public DbSet<RoomInventoryAdjustment> RoomInventoryAdjustments => Set<RoomInventoryAdjustment>();
     public DbSet<BinsRunEntry> BinsRunEntries => Set<BinsRunEntry>();
+    public DbSet<RunProjection> RunProjections => Set<RunProjection>();
+    public DbSet<RunProjectionSource> RunProjectionSources => Set<RunProjectionSource>();
+    public DbSet<RunProjectionSizeResult> RunProjectionSizeResults => Set<RunProjectionSizeResult>();
     public DbSet<QcSample> QcSamples => Set<QcSample>();
     public DbSet<QcFruitReading> QcFruitReadings => Set<QcFruitReading>();
     public DbSet<QcFruitDefect> QcFruitDefects => Set<QcFruitDefect>();
@@ -56,6 +59,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         ConfigureAuth(modelBuilder);
         ConfigureMasterData(modelBuilder, IsPostgreSqlProvider());
         ConfigureQc(modelBuilder, IsPostgreSqlProvider());
+        ConfigureRunProjections(modelBuilder);
         ConfigureAudit(modelBuilder);
         ConfigureDashboardConfiguration(modelBuilder);
         ConfigureBackups(modelBuilder);
@@ -66,6 +70,75 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
 
     private bool IsPostgreSqlProvider() =>
         Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static void ConfigureRunProjections(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<RunProjection>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.ApplePoundsPerBin).HasPrecision(10, 2);
+            entity.Property(x => x.PearPoundsPerBin).HasPrecision(10, 2);
+            entity.Property(x => x.StandardBoxWeightPounds).HasPrecision(10, 2);
+            entity.Property(x => x.TotalProjectedPounds).HasPrecision(18, 2);
+            entity.Property(x => x.TotalProjectedBoxes).HasPrecision(18, 4);
+            entity.Property(x => x.ConcurrencyVersion).IsConcurrencyToken();
+            entity.Property(x => x.CancelReason).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.PlannedRunDate, x.Status });
+            entity.HasIndex(x => new { x.CropYear, x.PlannedRunDate });
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.CancelledByUser).WithMany().HasForeignKey(x => x.CancelledByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<RunProjectionSource>(entity =>
+        {
+            entity.Property(x => x.SourceType).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.InventoryKey).HasMaxLength(250);
+            entity.Property(x => x.SelectedQcSourceType).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.Property(x => x.Commodity).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.PoundsPerBinUsed).HasPrecision(10, 2);
+            entity.Property(x => x.ProjectedPounds).HasPrecision(18, 2);
+            entity.Property(x => x.ProjectedBoxes).HasPrecision(18, 4);
+            entity.Property(x => x.SourceLabelSnapshot).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.FacilitySnapshot).HasMaxLength(50);
+            entity.Property(x => x.RoomSnapshot).HasMaxLength(100);
+            entity.Property(x => x.LotSnapshot).HasMaxLength(100);
+            entity.Property(x => x.OrchardSnapshot).HasMaxLength(200);
+            entity.Property(x => x.GrowerSnapshot).HasMaxLength(200);
+            entity.Property(x => x.GrowerNumberSnapshot).HasMaxLength(50);
+            entity.Property(x => x.BlockSnapshot).HasMaxLength(150);
+            entity.Property(x => x.VarietySnapshot).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.AverageWeightGramsSnapshot).HasPrecision(10, 2);
+            entity.Property(x => x.AveragePressureLbsSnapshot).HasPrecision(10, 2);
+            entity.Property(x => x.GradeSummarySnapshot).HasMaxLength(1000);
+            entity.Property(x => x.DefectSummarySnapshot).HasMaxLength(1000);
+            entity.Property(x => x.ProjectionWarning).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.RunProjectionId, x.SortOrder });
+            entity.HasIndex(x => x.InventoryKey);
+            entity.HasIndex(x => new { x.CanonicalOrchardBlockId, x.FruitProfileId });
+            entity.HasOne(x => x.RunProjection).WithMany(x => x.Sources).HasForeignKey(x => x.RunProjectionId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Receipt).WithMany().HasForeignKey(x => x.ReceiptId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.SourceInventoryAdjustment).WithMany().HasForeignKey(x => x.SourceInventoryAdjustmentId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.CanonicalOrchardBlock).WithMany().HasForeignKey(x => x.CanonicalOrchardBlockId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.FruitProfile).WithMany().HasForeignKey(x => x.FruitProfileId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.FieldSample).WithMany().HasForeignKey(x => x.FieldSampleId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.SelectedQcSample).WithMany().HasForeignKey(x => x.SelectedQcSampleId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.ActualBinsRunEntry).WithMany().HasForeignKey(x => x.ActualBinsRunEntryId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<RunProjectionSizeResult>(entity =>
+        {
+            entity.Property(x => x.Commodity).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.Percentage).HasPrecision(9, 6);
+            entity.Property(x => x.UnroundedProjectedBoxes).HasPrecision(18, 6);
+            entity.HasIndex(x => new { x.RunProjectionSourceId, x.Commodity, x.SizeCategory }).IsUnique();
+            entity.HasOne(x => x.RunProjectionSource).WithMany(x => x.SizeResults).HasForeignKey(x => x.RunProjectionSourceId).OnDelete(DeleteBehavior.Cascade);
+        });
+    }
 
     private static void ConfigureBackups(ModelBuilder modelBuilder)
     {

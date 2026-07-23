@@ -42,6 +42,12 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
         (EbsDailyBinsEmailSettings.SendHourLocalKey, "17", "Local Pacific hour when automatic EBS bin availability email may send, 0-23.", "Integer"),
         (EbsDailyBinsEmailSettings.SenderEmailKey, "wes@fruitandland.com", "Active Gmail-connected user used by the scheduled EBS bin availability email.", "Email"),
         (EbsDailyBinsEmailSettings.LastSentDateKey, "", "Last successful automatic EBS bin availability email date. Managed by the system.", "Date"),
+        (RunProjectionSettings.ApplePoundsPerBinKey, "880", "Gross pounds per apple bin used by newly created run projections.", "Decimal"),
+        (RunProjectionSettings.PearPoundsPerBinKey, "920", "Gross pounds per pear bin used by newly created run projections.", "Decimal"),
+        (RunProjectionSettings.StandardBoxWeightKey, "40", "Standard box-equivalent weight in pounds used by newly created run projections.", "Decimal"),
+        (RunProjectionSettings.DraftExpirationDaysKey, "14", "Days after the planned date before an unconverted draft projection is marked expired.", "Integer"),
+        (RunProjectionSettings.VisibilityPastDaysKey, "30", "Recent Pacific business days shown in the run-planner calendar.", "Integer"),
+        (RunProjectionSettings.VisibilityFutureDaysKey, "14", "Future Pacific business days shown in the run-planner calendar.", "Integer"),
         ("PhotoRetentionCropYearsAfterCurrent", "3", "Photo retention crop years after current. Planning value only; no automatic photo deletion currently runs.", "Integer"),
         ("AllowOverrideSendWithMissingData", "true", "Allow override send with missing data", "Boolean"),
         ("DeviceCapture__Enabled", "false", "Enable optional browser/local testing-device capture controls. Manual workflow remains available.", "Boolean"),
@@ -360,6 +366,20 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
                 && (!int.TryParse(submittedValue, out var cropYear) || cropYear < 2000 || cropYear > DateTimeOffset.UtcNow.Year + 5))
             {
                 return $"Active crop year must be between 2000 and {DateTimeOffset.UtcNow.Year + 5}.";
+            }
+            if (config.Key is RunProjectionSettings.ApplePoundsPerBinKey
+                or RunProjectionSettings.PearPoundsPerBinKey
+                or RunProjectionSettings.StandardBoxWeightKey
+                && (!decimal.TryParse(submittedValue, out var pounds) || pounds <= 0 || pounds > 10000))
+            {
+                return "Run projection weight assumptions must be positive numbers no greater than 10,000 pounds.";
+            }
+            if (config.Key is RunProjectionSettings.DraftExpirationDaysKey
+                or RunProjectionSettings.VisibilityPastDaysKey
+                or RunProjectionSettings.VisibilityFutureDaysKey
+                && (!int.TryParse(submittedValue, out var days) || days < 1 || days > 365))
+            {
+                return "Run projection visibility and expiration values must be between 1 and 365 days.";
             }
             if (config.Key is QcEmailRecipientSettings.Key or EbsDailyBinsEmailSettings.RecipientsKey)
             {

@@ -1,557 +1,617 @@
 @model BinsRunPageViewModel
 @{
-    ViewData["Title"] = "Bins Run";
-    var projection = Model.RoomSummary?.Projection;
-    var maxSizePercent = projection?.SizeDistribution.Count > 0 ? projection.SizeDistribution.Max(x => x.Percentage) : 0m;
-    var maxGradeBins = projection?.GradeSummary.Count > 0 ? projection.GradeSummary.Max(x => x.EstimatedBins) : 0m;
+    ViewData["Title"] = "Bins Run & Transfers";
+    var activeSection = string.IsNullOrWhiteSpace(Model.Filter.Section) ? "Planner" : Model.Filter.Section;
+    var selected = Model.Planner.SelectedProjection;
+    var conversionSource = selected?.Sources.FirstOrDefault(x => x.Id == Model.Filter.ProjectionSourceId);
+    var conversionInventory = Model.AvailableInventory.FirstOrDefault(x => x.InventoryKey == conversionSource?.InventoryKey);
 }
 
-<h1>Bins Run</h1>
+<h1>Bins Run &amp; Transfers</h1>
+<p class="muted">Plan future runs, record actual runs, move bins, correct counts, and review audited activity.</p>
 
 @if (TempData["Error"] is string error)
 {
-    <div class="alert error">@error</div>
+    <p class="notice error">@error</p>
 }
 @if (TempData["Success"] is string success)
 {
-    <div class="alert success">@success</div>
+    <p class="notice success">@success</p>
 }
 
-<section class="panel-section">
-    <h2>Select Room</h2>
-    <form class="toolbar bins-run-filter" method="get" action="/BinsRun">
-        <label>Facility
-            <select name="WarehouseId" onchange="this.form.submit()">
-                <option value="">Select facility</option>
-                @foreach (var warehouse in Model.Warehouses)
-                {
-                    <option value="@warehouse.Id" selected="@(Model.Filter.WarehouseId == warehouse.Id)">@warehouse.Code</option>
-                }
-            </select>
-        </label>
-        <label>Room
-            <select name="RoomId" onchange="this.form.submit()">
-                <option value="">Select room</option>
-                @foreach (var room in Model.Rooms)
-                {
-                    <option value="@room.Id" selected="@(Model.Filter.RoomId == room.Id)">@room.Warehouse.Code / @(room.CropQcRoomName ?? room.DisplayName ?? room.Code)</option>
-                }
-            </select>
-        </label>
-        <button type="submit">View Room</button>
-    </form>
-</section>
+<nav class="operation-tabs" aria-label="Bins Run and Transfers sections">
+    <a class="@(activeSection.Equals("Planner", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Planner&amp;RoomId=@Model.Filter.RoomId">Run Planner</a>
+    <a class="@(activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Actual&amp;RoomId=@Model.Filter.RoomId">Record Actual Run</a>
+    <a class="@(activeSection.Equals("Transfer", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Transfer&amp;RoomId=@Model.Filter.RoomId">Transfer</a>
+    <a class="@(activeSection.Equals("TrueUp", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=TrueUp&amp;RoomId=@Model.Filter.RoomId">True Up</a>
+    <a class="@(activeSection.Equals("Activity", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Activity&amp;RoomId=@Model.Filter.RoomId">Recent Activity</a>
+</nav>
 
-@if (Model.RoomSummary is null)
+@if (activeSection.Equals("Planner", StringComparison.OrdinalIgnoreCase))
 {
-    <section class="panel-section">
-        <p class="muted">Select a facility and room to review current inventory before recording bins run.</p>
+    <section class="panel run-planner-calendar">
+        <div class="room-card-header">
+            <div>
+                <h2>Planned Run Date</h2>
+                <p class="muted">Pacific business dates. Dots show days with saved projections.</p>
+            </div>
+            <div class="action-bar">
+                <form method="get" class="inline-form">
+                    <input type="hidden" name="Section" value="Planner" />
+                    <input type="hidden" name="RoomId" value="@Model.Filter.RoomId" />
+                    <label>Open date <input type="date" name="PlannedDate" value="@Model.Planner.SelectedDate.ToString("yyyy-MM-dd")" /></label>
+                    <button type="submit" class="secondary-button">Go</button>
+                </form>
+                <a class="button secondary-button" href="/BinsRun?Section=Planner&amp;PlannedDate=@DateOnly.FromDateTime(BusinessTime.NowPacific.DateTime).ToString("yyyy-MM-dd")">Today</a>
+            </div>
+        </div>
+        <div class="run-calendar-days">
+            @foreach (var day in Model.Planner.CalendarDays)
+            {
+                <a class="run-calendar-day @(day.IsSelected ? "selected" : "") @(day.IsToday ? "today" : "")"
+                   href="/BinsRun?Section=Planner&amp;PlannedDate=@day.Date.ToString("yyyy-MM-dd")&amp;RoomId=@Model.Filter.RoomId">
+                    <small>@day.Date.ToString("ddd")</small>
+                    <strong>@day.Date.Day</strong>
+                    <span>@day.Date.ToString("MMM")</span>
+                    @if (day.ProjectionCount > 0)
+                    {
+                        <i title="@day.ProjectionCount saved projection(s)">@day.ProjectionCount</i>
+                    }
+                </a>
+            }
+        </div>
     </section>
+
+    <section class="grid-two run-planner-layout">
+        <div class="panel">
+            <div class="room-card-header">
+                <div>
+                    <h2>@Model.Planner.SelectedDate.ToString("dddd, MMMM d")</h2>
+                    <p class="muted">Saved projections for this date.</p>
+                </div>
+            </div>
+            @if (Model.Planner.Projections.Count == 0)
+            {
+                <p class="empty-state">No projections are saved for this date.</p>
+            }
+            else
+            {
+                <div class="projection-list">
+                @foreach (var item in Model.Planner.Projections)
+                {
+                    <a class="projection-list-item @(selected?.Id == item.Id ? "selected" : "")"
+                       href="/BinsRun?Section=Planner&amp;PlannedDate=@item.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@item.Id&amp;RoomId=@Model.Filter.RoomId">
+                        <span><strong>@item.Name</strong><small>@item.Status · @item.SourceCount source(s)</small></span>
+                        <span><strong>@item.TotalPlannedBins bins</strong><small>@item.TotalRoundedProjectedBoxes boxes · @BusinessTime.FormatPacific(item.UpdatedAt)</small></span>
+                    </a>
+                }
+                </div>
+            }
+            @if (Model.Planner.CanEdit)
+            {
+                <form class="form-grid compact-form" method="post" action="/BinsRun/Projections">
+                    <h3 class="wide">Create Projection</h3>
+                    <label class="field">Run date
+                        <input type="date" name="PlannedRunDate" value="@Model.Planner.SelectedDate.ToString("yyyy-MM-dd")" required />
+                    </label>
+                    <label class="field">Name / shift
+                        <input name="Name" value="@Model.Planner.CreateForm.Name" maxlength="100" required />
+                    </label>
+                    <button type="submit">Create Draft</button>
+                </form>
+            }
+        </div>
+
+        <div class="panel">
+            @if (selected is null)
+            {
+                <h2>Projection Detail</h2>
+                <p class="empty-state">Select or create a projection to begin planning.</p>
+            }
+            else
+            {
+                <div class="room-card-header">
+                    <div>
+                        <h2>@selected.Name</h2>
+                        <p>@selected.PlannedRunDate.ToString("dddd, MMMM d, yyyy") · @selected.Creator · updated @BusinessTime.FormatPacific(selected.UpdatedAt)</p>
+                    </div>
+                    <span class="status @ProjectionStatusClass(selected.Status)">@selected.Status</span>
+                </div>
+                <div class="room-summary-metrics">
+                    <div class="metric-card"><span class="metric-label">Planned Bins</span><strong data-total-planned-bins>@selected.TotalPlannedBins</strong></div>
+                    <div class="metric-card"><span class="metric-label">Gross Pounds</span><strong>@selected.TotalProjectedPounds.ToString("0")</strong></div>
+                    <div class="metric-card"><span class="metric-label">Box Equivalents</span><strong>@selected.TotalProjectedBoxes.ToString("0.##")</strong><span>@selected.TotalRoundedProjectedBoxes rounded</span></div>
+                    <div class="metric-card"><span class="metric-label">Sources</span><strong>@selected.SourceCount</strong><span>@selected.ConvertedSourceCount linked to actual</span></div>
+                </div>
+                <p class="notice">
+                    Projection is a planning estimate based on selected sample size distribution, configured pounds per bin, and 40-pound box equivalents. Actual packout will vary.
+                </p>
+                <p class="muted">Assumptions saved with this projection: apples @selected.ApplePoundsPerBin.ToString("0.##") lb/bin; pears @selected.PearPoundsPerBin.ToString("0.##") lb/bin; @selected.StandardBoxWeightPounds.ToString("0.##") lb/box.</p>
+
+                @if (selected.CanEditRecord)
+                {
+                    <form class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Header">
+                        <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
+                        <label class="field">Run date
+                            <input type="date" name="PlannedRunDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" required />
+                        </label>
+                        <label class="field">Name / shift
+                            <input name="Name" value="@selected.Name" maxlength="100" required />
+                        </label>
+                        <button type="submit">Save Draft</button>
+                    </form>
+
+                    <form class="form-grid compact-form run-source-search" method="post" action="/BinsRun/Projections/@selected.Id/Sources">
+                        <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
+                        <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
+                        <h3 class="wide">Add Inventory Lot or Confirmed Field Sample Block</h3>
+                        <label class="field wide">Search by room, lot, grower, orchard, block, variety, or receipt
+                            <input type="search" data-run-source-search value="@Model.Filter.SourceKey" autocomplete="off" />
+                        </label>
+                        <label class="field wide">Source
+                            <select name="SourceKey" data-run-source-results required>
+                                <option value="">Search for a source</option>
+                            </select>
+                        </label>
+                        <label class="field">Planned bins
+                            <input type="number" min="1" name="PlannedBins" value="1" required />
+                        </label>
+                        <label class="field">QC data
+                            <select name="SelectedQcSource">
+                                <option value="Automatic">Automatic — receipt QC first</option>
+                                <option value="FieldSample">Latest confirmed Field Sample</option>
+                                <option value="None">No usable QC data</option>
+                            </select>
+                        </label>
+                        <label class="checkbox-field wide">
+                            <input type="checkbox" name="AvailabilityOverrideAcknowledged" value="true" />
+                            I acknowledge this planning quantity may exceed currently available bins
+                        </label>
+                        <button type="submit">Add Source</button>
+                    </form>
+                }
+            }
+        </div>
+    </section>
+
+    @if (selected is not null)
+    {
+        <section class="panel">
+            <h2>Projection Sources</h2>
+            @if (selected.Sources.Count == 0)
+            {
+                <p class="empty-state">Add one or more inventory lots or confirmed Field Sample blocks.</p>
+            }
+            else
+            {
+                <div class="projection-source-grid">
+                @foreach (var source in selected.Sources.OrderBy(x => x.SortOrder))
+                {
+                    <article class="station-card">
+                        <div class="station-card-header">
+                            <div>
+                                <h3>@source.SourceLabel</h3>
+                                <p class="station-code">@source.SourceType · @source.Variety · @source.Commodity</p>
+                            </div>
+                            <span class="status @(source.ActualBinsRunEntryId is null ? "pending" : "ready")">@(source.ActualBinsRunEntryId is null ? "Planned" : "Actual linked")</span>
+                        </div>
+                        <dl class="station-meta">
+                            <dt>Location</dt><dd>@(source.Room ?? "Planning-only block")</dd>
+                            <dt>Lot / block</dt><dd>@(source.Lot ?? source.Block ?? "-")</dd>
+                            <dt>Orchard / grower</dt><dd>@(source.Orchard ?? source.Grower ?? "-")</dd>
+                            <dt>Grower number</dt><dd>@(source.GrowerNumber ?? "-")</dd>
+                            <dt>Available snapshot</dt><dd>@(source.AvailableBinsSnapshot?.ToString() ?? "Not inventory-backed")</dd>
+                            <dt>Planned bins</dt><dd>@source.PlannedBins</dd>
+                            <dt>QC basis</dt><dd>@source.QcBasis</dd>
+                            <dt>Sample date</dt>
+                            <dd>
+                                @BusinessTime.FormatPacific(source.QcSampleDate, empty: "No usable sample")
+                                @if (source.QcSampleId is long sampleId)
+                                {
+                                    var sampleUrl = source.SelectedQcSourceType == "FieldSample"
+                                        ? $"/FieldSamples/{sampleId}"
+                                        : $"/Samples/{sampleId}";
+                                    <a href="@sampleUrl">Open sample</a>
+                                }
+                            </dd>
+                            <dt>Fruit rows</dt><dd>@(source.QcFruitCount?.ToString() ?? "-")</dd>
+                            <dt>Average weight</dt><dd>@Format(source.AverageWeightGrams, " g")</dd>
+                            <dt>Average pressure</dt><dd>@Format(source.AveragePressureLbs, " lb")</dd>
+                            <dt>Grades</dt><dd>@(source.GradeSummary ?? "No data")</dd>
+                            <dt>Defects</dt><dd>@(source.DefectSummary ?? "No data")</dd>
+                            <dt>Gross pounds</dt><dd>@source.ProjectedPounds.ToString("0.##")</dd>
+                            <dt>Box equivalents</dt><dd>@source.ProjectedBoxes.ToString("0.##") (@source.RoundedProjectedBoxes rounded)</dd>
+                        </dl>
+                        @if (!string.IsNullOrWhiteSpace(source.Warning))
+                        {
+                            <p class="notice warning">@source.Warning</p>
+                        }
+                        @if (source.SizeResults.Count > 0)
+                        {
+                            <div class="table-wrap">
+                                <table>
+                                    <thead><tr><th>Size</th><th>Fruit</th><th>Distribution</th><th>Boxes</th><th>Rounded</th></tr></thead>
+                                    <tbody>
+                                    @foreach (var size in source.SizeResults)
+                                    {
+                                        <tr><td>@size.Size</td><td>@size.SampleCount</td><td>@size.Percentage.ToString("0.#")%</td><td>@size.UnroundedBoxes.ToString("0.##")</td><td>@size.RoundedBoxes</td></tr>
+                                    }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        @if (selected.CanEditRecord && source.ActualBinsRunEntryId is null)
+                        {
+                            <form class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id">
+                                <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
+                                <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
+                                <label class="field">Planned bins
+                                    <input type="number" min="1" name="PlannedBins" value="@source.PlannedBins" data-planned-bins required />
+                                </label>
+                                <label class="field">QC data source
+                                    <select name="SelectedQcSource">
+                                    @foreach (var choice in source.QcChoices)
+                                    {
+                                        <option value="@choice.Value" selected="@choice.IsSelected">@choice.Label</option>
+                                    }
+                                    </select>
+                                </label>
+                                <label class="field">Priority
+                                    <input type="number" min="0" name="SortOrder" value="@source.SortOrder" />
+                                </label>
+                                <label class="field wide">Notes
+                                    <input name="Notes" value="@source.Notes" maxlength="1000" />
+                                </label>
+                                <label class="checkbox-field wide">
+                                    <input type="checkbox" name="AvailabilityOverrideAcknowledged" value="true" checked="@source.AvailabilityOverrideAcknowledged" />
+                                    Acknowledge planning quantity above available snapshot
+                                </label>
+                                <button type="submit">Save Source</button>
+                            </form>
+                            <div class="action-bar">
+                                <form method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id/Remove">
+                                    <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
+                                    <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
+                                    <button type="submit" class="secondary-button">Remove Source</button>
+                                </form>
+                                @if (source.SourceType == "Inventory" && source.InventoryKey is not null)
+                                {
+                                    <a class="button" href="/BinsRun?Section=Actual&amp;WarehouseId=@source.WarehouseId&amp;RoomId=@source.RoomId&amp;SourceKey=@Uri.EscapeDataString(source.InventoryKey)&amp;ProjectionId=@selected.Id&amp;ProjectionSourceId=@source.Id">Review Actual Run</a>
+                                }
+                                else
+                                {
+                                    <span class="muted">Map this planning-only block to real inventory before recording an actual run.</span>
+                                }
+                            </div>
+                        }
+                    </article>
+                }
+                </div>
+            }
+        </section>
+
+        <section class="panel">
+            <h2>Combined Gross Size Projection</h2>
+            @if (selected.CombinedSizes.Count == 0)
+            {
+                <p class="empty-state">No calculated size distribution is available.</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Commodity</th><th>Size</th><th>Unrounded boxes</th><th>Planning boxes</th></tr></thead>
+                        <tbody>
+                        @foreach (var size in selected.CombinedSizes)
+                        {
+                            <tr><td>@size.Commodity</td><td>@size.Size</td><td>@size.UnroundedBoxes.ToString("0.##")</td><td>@size.RoundedBoxes</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            <div class="action-bar">
+                @if (selected.CanEditRecord)
+                {
+                    <form method="post" action="/BinsRun/Projections/@selected.Id/Ready">
+                        <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
+                        <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
+                        <button type="submit">Mark Ready</button>
+                    </form>
+                }
+                <form class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Duplicate">
+                    <label>Duplicate to <input type="date" name="PlannedRunDate" value="@selected.PlannedRunDate.AddDays(1).ToString("yyyy-MM-dd")" required /></label>
+                    <button type="submit" class="secondary-button">Duplicate</button>
+                </form>
+                @if (Model.Planner.CanAdmin && selected.Status is "Draft" or "Ready")
+                {
+                    <form class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Cancel">
+                        <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
+                        <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
+                        <label>Reason <input name="Reason" maxlength="500" required /></label>
+                        <button type="submit" class="secondary-button">Cancel</button>
+                    </form>
+                }
+                <button type="button" class="secondary-button" onclick="window.print()">Print</button>
+                <a class="button secondary-button" href="/BinsRun/Projections/@selected.Id/Export?plannedDate=@selected.PlannedRunDate.ToString("yyyy-MM-dd")">Export CSV</a>
+            </div>
+        </section>
+    }
 }
 else
 {
-    <section class="panel-section bins-run-room-summary">
-        <div>
-            <h2>@Model.RoomSummary.RoomName</h2>
-            <p class="muted">@Model.RoomSummary.Facility / @Model.RoomSummary.Location</p>
-        </div>
-        <div class="room-summary-metrics">
-            <div class="metric-card">
-                <span class="metric-label">Available Bins</span>
-                <strong data-room-total>@Model.RoomSummary.TotalAvailableBins</strong>
-            </div>
-            <div class="metric-card">
-                <span class="metric-label">Active Lots</span>
-                <strong>@Model.RoomSummary.ActiveLotCount</strong>
-            </div>
-            <div class="metric-card">
-                <span class="metric-label">Sizing Data</span>
-                <strong>@Model.RoomSummary.SizeDataLotCount</strong>
-                <span>lots</span>
-            </div>
-            <div class="metric-card">
-                <span class="metric-label">Grade Data</span>
-                <strong>@Model.RoomSummary.GradeDataLotCount</strong>
-                <span>lots</span>
-            </div>
-        </div>
+    <section class="panel">
+        <h2>Select Room</h2>
+        <form class="toolbar bins-run-filter" method="get" action="/BinsRun">
+            <input type="hidden" name="Section" value="@activeSection" />
+            <label>Facility
+                <select name="WarehouseId" onchange="this.form.submit()">
+                    <option value="">All facilities</option>
+                    @foreach (var warehouse in Model.Warehouses)
+                    {
+                        <option value="@warehouse.Id" selected="@(Model.Filter.WarehouseId == warehouse.Id)">@warehouse.Code</option>
+                    }
+                </select>
+            </label>
+            <label>Room
+                <select name="RoomId" onchange="this.form.submit()">
+                    <option value="">Select room</option>
+                    @foreach (var room in Model.Rooms)
+                    {
+                        <option value="@room.Id" selected="@(Model.Filter.RoomId == room.Id)">@room.Warehouse.Code / @(room.CropQcRoomName ?? room.DisplayName ?? room.Code)</option>
+                    }
+                </select>
+            </label>
+            <button type="submit">Open</button>
+        </form>
     </section>
 
-    <section class="grid-two">
-        <div class="panel-section">
-            <h2 data-projection-size-title>Size Distribution</h2>
-            <p class="muted" data-projection-size-context>@ProjectionContext(projection, dataKind: "Sizing")</p>
-            <p class="muted">Vertical axis: Percent of sampled fruit.</p>
-            <p class="empty-state @(projection?.SizeDistribution.Count == 0 ? "" : "hidden")" data-size-empty>No sizing data is available for the current inventory in this room.</p>
-            <div class="size-chart @(projection?.SizeDistribution.Count == 0 ? "hidden" : "")" aria-label="Size distribution chart" data-size-chart>
-                @if (projection is not null)
+    @if (activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase))
+    {
+        <section class="panel">
+            <h2>Record Actual Bins Run</h2>
+            @if (Model.Filter.ProjectionId is not null)
+            {
+                <p class="notice">This form was opened from projection #@Model.Filter.ProjectionId. Review and confirm the actual quantity; the plan has not changed inventory.</p>
+                @if (conversionSource?.AvailableBinsSnapshot is int plannedAvailable
+                    && conversionInventory is not null
+                    && conversionInventory.CurrentBins != plannedAvailable)
                 {
-                    @foreach (var point in projection.SizeDistribution)
-                    {
-                        var height = point.Percentage <= 0 || maxSizePercent <= 0 ? 0 : Math.Max(4, (int)Math.Round(point.Percentage / maxSizePercent * 100m));
-                        <div class="size-chart-column">
-                            <span class="size-bar-value">@(point.Percentage > 0 ? $"{point.Percentage:0.#}%" : "")</span>
-                            <span class="size-bar" style="height: @height%"></span>
-                            <span class="size-label">@point.Size</span>
-                        </div>
-                    }
+                    <p class="notice warning">Inventory changed since planning: @plannedAvailable bins were available when projected; @conversionInventory.CurrentBins are available now. Enter and confirm the actual bins run.</p>
                 }
-            </div>
-        </div>
-        <div class="panel-section">
-            <h2 data-projection-grade-title>Expected Grade</h2>
-            <p class="muted" data-projection-grade-context>@ProjectionContext(projection, dataKind: "Grade")</p>
-            <p class="empty-state @(projection?.GradeSummary.Count == 0 ? "" : "hidden")" data-grade-empty>No grade information is available for the current inventory in this room.</p>
-            <div class="grade-summary @(projection?.GradeSummary.Count == 0 ? "hidden" : "")" data-grade-summary>
-                @if (projection is not null)
-                {
-                    @foreach (var grade in projection.GradeSummary)
-                    {
-                        var width = maxGradeBins <= 0 ? 0 : Math.Max(4, (int)Math.Round(grade.EstimatedBins / maxGradeBins * 100m));
-                        <div class="grade-summary-row">
-                            <span class="grade-label">@grade.Grade</span>
-                            <span class="grade-bar-track"><span class="grade-bar" style="width: @width%"></span></span>
-                            <span class="grade-value">@grade.EstimatedBins.ToString("0.#")</span>
-                        </div>
-                    }
-                }
-            </div>
-        </div>
-    </section>
-
-    <section class="panel-section">
-        <h2>Lot Inventory</h2>
-        @if (Model.AvailableInventory.Count == 0)
-        {
-            <p class="muted">No available lots remain in this room.</p>
-        }
-        else
-        {
-            <details class="lot-submenu" open>
-                <summary>@Model.AvailableInventory.Count active lots currently available</summary>
-                <div class="lot-selection-toolbar">
-                    <span data-projection-status>No lots selected. Showing whole-room projection.</span>
-                    <span class="button-row">
-                        <button type="button" class="secondary-button" data-select-all-lots>Select all available lots</button>
-                        <button type="button" class="secondary-button" data-clear-lot-selection>Clear selection</button>
-                    </span>
-                </div>
-                <div class="lot-list">
-                    <div class="lot-list-header" aria-hidden="true">
-                        <span>Grower / Lot</span>
-                        <span>Variety</span>
-                        <span>Expected grade</span>
-                        <span>Source</span>
-                        <span>Available</span>
-                        <span>Projection</span>
-                        <span>Run lot</span>
-                    </div>
-                    @foreach (var lot in Model.AvailableInventory)
-                    {
-                        var sourceLabel = lot.ReceiptDate is null ? "Current baseline" : BusinessTime.FormatPacific(lot.ReceiptDate.Value);
-                        <div class="lot-option"
-                             data-lot-row
-                             data-key="@lot.InventoryKey"
-                             data-available="@lot.CurrentBins"
-                             data-warehouse="@lot.WarehouseId"
-                             data-room="@lot.RoomId"
-                             data-label="@lot.Grower / @lot.Variety / @lot.Lot"
-                             data-grade="@lot.GradeSummary"
-                             data-source="@sourceLabel">
-                            <span class="lot-cell lot-primary">
-                                <strong>@lot.Grower</strong>
-                                <span>Lot @lot.Lot</span>
-                            </span>
-                            <span class="lot-cell" data-label="Variety">@lot.Variety</span>
-                            <span class="lot-cell" data-label="Expected grade">@lot.GradeSummary</span>
-                            <span class="lot-cell" data-label="Source">@sourceLabel</span>
-                            <strong class="lot-cell lot-bins" data-label="Available">@lot.CurrentBins bins</strong>
-                            <label class="lot-project-cell" data-label="Projection">
-                                <input type="checkbox" data-project-lot value="@lot.InventoryKey" />
-                                <span>Selected for projection</span>
-                            </label>
-                            <label class="lot-run-cell" data-label="Run lot">
-                                <input type="radio" name="RunInventoryKey" data-run-lot value="@lot.InventoryKey" />
-                                <span>Run this lot</span>
-                            </label>
-                        </div>
-                    }
-                </div>
-            </details>
-        }
-    </section>
-
-    <section class="panel-section projection-selection-summary" data-selection-summary>
-        <h2>Selection Summary</h2>
-        <div class="room-summary-metrics">
-            <div class="metric-card">
-                <span class="metric-label">Selected Lots</span>
-                <strong data-selected-lot-count>0</strong>
-            </div>
-            <div class="metric-card">
-                <span class="metric-label">Selected Bins</span>
-                <strong data-selected-bin-total>0</strong>
-            </div>
-            <div class="metric-card">
-                <span class="metric-label">Sizing Coverage</span>
-                <strong><span data-size-represented>@(projection?.SizeRepresentedBins ?? 0)</span> / <span data-size-total>@(projection?.AvailableBins ?? 0)</span></strong>
-                <span data-size-missing>@(projection?.SizeMissingBins ?? 0) missing</span>
-            </div>
-            <div class="metric-card">
-                <span class="metric-label">Grade Coverage</span>
-                <strong><span data-grade-represented>@(projection?.GradeRepresentedBins ?? 0)</span> / <span data-grade-total>@(projection?.AvailableBins ?? 0)</span></strong>
-                <span data-grade-missing>@(projection?.GradeMissingBins ?? 0) missing</span>
-            </div>
-        </div>
-    </section>
-
-    <section class="panel-section">
-        <h2>Record Bins Run</h2>
-        @if (!Model.CanRecord)
-        {
-            <p class="muted">View-only access. Entries cannot be created, edited, or reversed.</p>
-        }
-        else if (Model.AvailableInventory.Count == 0)
-        {
-            <p class="muted">Select a room with available inventory before recording bins run.</p>
-        }
-        else
-        {
-            <form class="bins-run-form" method="post" action="/BinsRun/Create">
-                <input type="hidden" name="WarehouseId" value="@(Model.Filter.WarehouseId)" data-bins-run-warehouse />
-                <input type="hidden" name="RoomId" value="@(Model.Filter.RoomId)" data-bins-run-room />
-                <input type="hidden" name="InventoryKey" value="" data-bins-run-inventory />
-                <input type="hidden" name="ExpectedAvailableBins" value="0" data-bins-run-expected />
-                <div class="selected-lot-summary">
-                    <div>
-                        <span class="metric-label">Lot being run</span>
-                        <strong data-selected-lot>Choose the lot being depleted</strong>
-                        <span class="selected-lot-meta">
-                            <span data-selected-grade>Select exactly which inventory record this Bins Run will reduce.</span>
-                            <span data-selected-source>Projection selection alone does not change inventory.</span>
-                        </span>
-                    </div>
-                    <div class="selected-lot-bins">
-                        <span class="metric-label">Available bins</span>
-                        <strong data-bins-run-current>0</strong>
-                    </div>
-                </div>
-                <div class="bins-run-form-row">
-                    <label>Bins run
-                        <input type="number" min="1" name="BinsRun" required />
+            }
+            @if (!Model.CanRecord)
+            {
+                <p class="notice warning">Bins Run Edit access is required.</p>
+            }
+            else if (Model.Filter.RoomId is null || Model.AvailableInventory.Count == 0)
+            {
+                <p class="empty-state">Select a room with available inventory.</p>
+            }
+            else
+            {
+                <form class="form-grid" method="post" action="/BinsRun/Create">
+                    <input type="hidden" name="WarehouseId" value="@Model.Form.WarehouseId" />
+                    <input type="hidden" name="RoomId" value="@Model.Form.RoomId" />
+                    <input type="hidden" name="RunProjectionId" value="@Model.Form.RunProjectionId" />
+                    <input type="hidden" name="RunProjectionSourceId" value="@Model.Form.RunProjectionSourceId" />
+                    <label class="field wide">Inventory source
+                        <select name="InventoryKey" data-inventory-select required>
+                        @foreach (var option in Model.AvailableInventory)
+                        {
+                            <option value="@option.InventoryKey" data-bins="@option.CurrentBins" selected="@(option.InventoryKey == Model.Form.InventoryKey)">@option.Label · @option.Room</option>
+                        }
+                        </select>
                     </label>
-                    <label>Run date/time
-                        <input type="datetime-local" name="RunAt" value="@Model.Form.RunAt.ToString("yyyy-MM-ddTHH:mm")" required />
+                    <label class="field">Current available bins
+                        <input name="ExpectedAvailableBins" value="@Model.Form.ExpectedAvailableBins" data-expected-bins readonly />
                     </label>
+                    <label class="field">Actual bins run
+                        <input type="number" min="1" name="BinsRun" value="@(Model.Filter.ProjectionSourceId is null ? "" : selected?.Sources.FirstOrDefault(x => x.Id == Model.Filter.ProjectionSourceId)?.PlannedBins)" required />
+                    </label>
+                    <label class="field">Run date/time
+                        <input type="datetime-local" name="RunAt" value="@BusinessTime.FormatPacificInput(BusinessTime.UtcNow)" required />
+                    </label>
+                    <label class="field wide">Notes
+                        <textarea name="Notes" maxlength="1000"></textarea>
+                    </label>
+                    <button type="submit">Record Actual Bins Run</button>
+                </form>
+            }
+        </section>
+    }
+    else if (activeSection.Equals("Transfer", StringComparison.OrdinalIgnoreCase))
+    {
+        <section class="panel">
+            <h2>Transfer Bins</h2>
+            <p class="muted">Uses the existing audited source-neutral Transfer Out / Transfer In workflow and current quantity safeguards.</p>
+            @if (!Model.CanTransfer)
+            {
+                <p class="notice warning">Room Transactions Edit access is required.</p>
+            }
+            else if (Model.Filter.RoomId is null)
+            {
+                <p class="empty-state">Select the source room.</p>
+            }
+            else
+            {
+                <form class="form-grid" method="post" action="/BinsRun/Transfer">
+                    <input type="hidden" name="FromRoomId" value="@Model.Filter.RoomId" />
+                    <label class="field wide">Source lot
+                        <select name="SourceLotKey" required>
+                            <option value="">Select current lot</option>
+                            @foreach (var option in Model.TransferLotOptions)
+                            {
+                                <option value="@option.LotKey" selected="@(option.LotKey == Model.Filter.SourceKey)">@option.Label</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="field">Destination room
+                        <select name="ToRoomId" required>
+                            <option value="">Select destination</option>
+                            @foreach (var option in Model.TransferDestinationOptions)
+                            {
+                                <option value="@option.RoomId">@option.Label</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="field">Bins to transfer <input type="number" min="1" name="BinCount" required /></label>
+                    <label class="field">Pacific date/time <input type="datetime-local" name="TransferAt" value="@BusinessTime.FormatPacificInput(BusinessTime.UtcNow)" required /></label>
+                    <label class="field wide">Reason <input name="Reason" maxlength="500" required /></label>
+                    <label class="field wide">Notes <textarea name="Notes" maxlength="1000"></textarea></label>
+                    <label class="checkbox-field wide"><input type="checkbox" name="ConfirmOverTransfer" value="true" /> Allow explicit over-transfer correction override</label>
+                    <button type="submit">Record Transfer</button>
+                </form>
+            }
+        </section>
+    }
+    else if (activeSection.Equals("TrueUp", StringComparison.OrdinalIgnoreCase))
+    {
+        <section class="panel">
+            <h2>True Up Inventory</h2>
+            <p class="muted">Uses the existing audited current-count correction workflow. No receipt, sample, photo, or history is deleted.</p>
+            @if (!Model.CanTrueUp)
+            {
+                <p class="notice warning">Room Transactions Admin access is required.</p>
+            }
+            else if (Model.Filter.RoomId is null)
+            {
+                <p class="empty-state">Select a room.</p>
+            }
+            else
+            {
+                <form class="form-grid" method="post" action="/BinsRun/TrueUp">
+                    <input type="hidden" name="RoomId" value="@Model.Filter.RoomId" />
+                    <label class="field wide">Current receipt-backed lot
+                        <select name="ReceiptId" required>
+                            <option value="">Select current lot</option>
+                            @foreach (var option in Model.TrueUpReceiptOptions)
+                            {
+                                <option value="@option.ReceiptId">@option.Label</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="field">Verified current bin count <input type="number" min="0" name="NewBinCount" required /></label>
+                    <label class="field">Pacific as-of time <input type="datetime-local" name="AdjustmentAt" value="@BusinessTime.FormatPacificInput(BusinessTime.UtcNow)" required /></label>
+                    <label class="field wide">Reason <input name="Reason" maxlength="500" required /></label>
+                    <label class="field wide">Notes <textarea name="Notes" maxlength="1000"></textarea></label>
+                    <button type="submit">Record True-Up</button>
+                </form>
+            }
+        </section>
+    }
+
+    @if (activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase) || activeSection.Equals("Activity", StringComparison.OrdinalIgnoreCase))
+    {
+        <section class="panel">
+            <h2>Recent Bins Run History</h2>
+            @if (Model.History.Count == 0)
+            {
+                <p class="empty-state">No Bins Run transactions match the selected room.</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>When</th><th>Room</th><th>Inventory</th><th>Old</th><th>Run</th><th>New</th><th>User</th><th>Status</th></tr></thead>
+                        <tbody>
+                        @foreach (var item in Model.History)
+                        {
+                            <tr>
+                                <td>@BusinessTime.FormatPacific(item.RunAt)</td><td>@item.Room</td><td>@item.Inventory</td>
+                                <td>@item.PreviousAvailableBins</td><td>@item.BinsRun</td><td>@item.NewAvailableBins</td>
+                                <td>@item.CreatedBy</td><td>@(item.IsReversed ? "Reversed" : "Active")</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
                 </div>
-                <label>Notes
-                    <input name="Notes" maxlength="1000" />
-                </label>
-                <div class="button-row">
-                    <button type="submit">Save Bins Run</button>
+            }
+        </section>
+    }
+
+    @if (activeSection.Equals("Activity", StringComparison.OrdinalIgnoreCase))
+    {
+        <section class="panel">
+            <h2>Recent Transfer / True-Up Activity</h2>
+            @if (Model.InventoryActivity.Count == 0)
+            {
+                <p class="empty-state">Select a room to review inventory adjustments.</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>When</th><th>Lot</th><th>Type</th><th>Old</th><th>Delta</th><th>New</th><th>Source</th><th>Reason</th><th>User</th></tr></thead>
+                        <tbody>
+                        @foreach (var item in Model.InventoryActivity)
+                        {
+                            <tr><td>@BusinessTime.FormatPacific(item.AdjustmentAt)</td><td>@item.Lot</td><td>@item.AdjustmentType</td><td>@(item.OldBinCount?.ToString() ?? "-")</td><td>@item.ChangeAmount</td><td>@item.NewBinCount</td><td>@(item.Source ?? "-")</td><td>@(item.Reason ?? item.Notes ?? "-")</td><td>@item.CreatedBy</td></tr>
+                        }
+                        </tbody>
+                    </table>
                 </div>
-            </form>
-        }
-    </section>
+            }
+        </section>
+    }
 }
-
-<section class="panel-section">
-    <h2>Recent Bins Run History</h2>
-    @if (Model.History.Count == 0)
-    {
-        <p class="muted">No Bins Run transactions match the current room.</p>
-    }
-    else
-    {
-        <table class="data-table responsive-admin-table">
-            <thead>
-                <tr>
-                    <th>Run At</th>
-                    <th>Room</th>
-                    <th>Inventory</th>
-                    <th>Previous</th>
-                    <th>Run</th>
-                    <th>Remaining</th>
-                    <th>User</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var item in Model.History)
-                {
-                    <tr class="@(item.IsReversed ? "muted-row" : "")">
-                        <td>@BusinessTime.FormatPacific(item.RunAt)</td>
-                        <td>@item.Room</td>
-                        <td>@item.Inventory</td>
-                        <td>@item.PreviousAvailableBins</td>
-                        <td>@item.BinsRun</td>
-                        <td>@item.NewAvailableBins</td>
-                        <td>@item.CreatedBy</td>
-                        <td>@(item.IsReversed ? $"Reversed: {item.ReverseReason}" : "Active")</td>
-                        <td>
-                            @if (Model.CanRecord && !item.IsReversed)
-                            {
-                                <form class="inline-form" method="post" action="/BinsRun/@item.Id/Edit">
-                                    <input type="hidden" name="WarehouseId" value="@item.WarehouseId" />
-                                    <input type="hidden" name="RoomId" value="@item.RoomId" />
-                                    <input type="hidden" name="InventoryKey" value="@item.InventoryKey" />
-                                    <input type="hidden" name="ExpectedAvailableBins" value="@item.NewAvailableBins" />
-                                    <input type="hidden" name="RunAt" value="@item.RunAt.ToString("O")" />
-                                    <input type="number" min="1" name="BinsRun" value="@item.BinsRun" aria-label="Bins run" />
-                                    <button type="submit" class="secondary-button">Edit</button>
-                                </form>
-                            }
-                            @if (Model.CanAdmin && !item.IsReversed)
-                            {
-                                <form class="inline-form" method="post" action="/BinsRun/@item.Id/Reverse">
-                                    <input name="Reason" maxlength="1000" required placeholder="Reason" />
-                                    <button type="submit" class="secondary-button">Reverse</button>
-                                </form>
-                            }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    }
-</section>
 
 <script>
     (() => {
-        const lotRows = Array.from(document.querySelectorAll("[data-lot-row]"));
-        const projectCheckboxes = Array.from(document.querySelectorAll("[data-project-lot]"));
-        const runRadios = Array.from(document.querySelectorAll("[data-run-lot]"));
-        const selectAll = document.querySelector("[data-select-all-lots]");
-        const clearSelection = document.querySelector("[data-clear-lot-selection]");
-        const projectionStatus = document.querySelector("[data-projection-status]");
-        const inventory = document.querySelector("[data-bins-run-inventory]");
-        const expected = document.querySelector("[data-bins-run-expected]");
-        const warehouse = document.querySelector("[data-bins-run-warehouse]");
-        const room = document.querySelector("[data-bins-run-room]");
-        const current = document.querySelector("[data-bins-run-current]");
-        const selectedLot = document.querySelector("[data-selected-lot]");
-        const selectedGrade = document.querySelector("[data-selected-grade]");
-        const selectedSource = document.querySelector("[data-selected-source]");
-        let projectionRequestId = 0;
-        let projectionAbortController = null;
-
-        function selectedKeys() {
-            return projectCheckboxes.filter(x => x.checked).map(x => x.value);
-        }
-
-        function rowForKey(key) {
-            return lotRows.find(x => x.dataset.key === key);
-        }
-
-        function setRunLot(row) {
-            if (!row) {
-                if (inventory) inventory.value = "";
-                if (expected) expected.value = "0";
-                if (current) current.textContent = "0";
-                if (selectedLot) selectedLot.textContent = "Choose the lot being depleted";
-                if (selectedGrade) selectedGrade.textContent = "Select exactly which inventory record this Bins Run will reduce.";
-                if (selectedSource) selectedSource.textContent = "Projection selection alone does not change inventory.";
-                runRadios.forEach(x => x.checked = false);
-                lotRows.forEach(x => x.classList.remove("run-selected"));
-                return;
+        const sourceSearch = document.querySelector("[data-run-source-search]");
+        const sourceResults = document.querySelector("[data-run-source-results]");
+        let searchTimer;
+        async function loadSources() {
+            if (!sourceSearch || !sourceResults) return;
+            const params = new URLSearchParams({ query: sourceSearch.value || "" });
+            @if (Model.Filter.RoomId is not null)
+            {
+                <text>params.set("roomId", "@Model.Filter.RoomId");</text>
             }
-
-            if (inventory) inventory.value = row.dataset.key || "";
-            if (expected) expected.value = row.dataset.available || "0";
-            if (warehouse) warehouse.value = row.dataset.warehouse || "";
-            if (room) room.value = row.dataset.room || "";
-            if (current) current.textContent = row.dataset.available || "0";
-            if (selectedLot) selectedLot.textContent = row.dataset.label || "Selected lot";
-            if (selectedGrade) selectedGrade.textContent = row.dataset.grade || "Grade not available";
-            if (selectedSource) selectedSource.textContent = row.dataset.source || "";
-            runRadios.forEach(x => x.checked = x.value === row.dataset.key);
-            lotRows.forEach(x => x.classList.toggle("run-selected", x === row));
+            const response = await fetch(`/BinsRun/Sources?${params}`);
+            if (!response.ok) return;
+            const rows = await response.json();
+            sourceResults.innerHTML = '<option value="">Select a source</option>';
+            for (const row of rows) {
+                const option = document.createElement("option");
+                option.value = row.sourceKey;
+                option.textContent = row.label;
+                sourceResults.appendChild(option);
+            }
+            const requested = "@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(Model.Filter.SourceKey ?? ""))";
+            if (requested) sourceResults.value = requested;
         }
-
-        function syncLotSelection() {
-            const keys = selectedKeys();
-            const keySet = new Set(keys);
-            lotRows.forEach(row => row.classList.toggle("selected", keySet.has(row.dataset.key)));
-            runRadios.forEach(radio => {
-                radio.disabled = keys.length > 0 && !keySet.has(radio.value);
+        if (sourceSearch) {
+            sourceSearch.addEventListener("input", () => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(loadSources, 300);
             });
-
-            if (projectionStatus) {
-                projectionStatus.textContent = keys.length === 0
-                    ? "No lots selected. Showing whole-room projection."
-                    : `${keys.length} lot${keys.length === 1 ? "" : "s"} selected for projected line mix.`;
-            }
-
-            const currentRunKey = inventory?.value || "";
-            if (keys.length === 1) {
-                setRunLot(rowForKey(keys[0]));
-            } else if (keys.length > 1 && !keySet.has(currentRunKey)) {
-                setRunLot(null);
-            } else if (keys.length === 0 && currentRunKey) {
-                const row = rowForKey(currentRunKey);
-                setRunLot(row || null);
-            }
+            loadSources();
         }
 
-        function renderSizeChart(points) {
-            const chart = document.querySelector("[data-size-chart]");
-            const empty = document.querySelector("[data-size-empty]");
-            if (!chart || !empty) return;
-            chart.innerHTML = "";
-            if (!points || points.length === 0) {
-                chart.classList.add("hidden");
-                empty.classList.remove("hidden");
-                return;
-            }
-
-            const max = Math.max(...points.map(x => Number(x.percentage || x.Percentage || 0)));
-            for (const point of points) {
-                const percentage = Number(point.percentage || point.Percentage || 0);
-                const height = percentage <= 0 || max <= 0 ? 0 : Math.max(4, Math.round(percentage / max * 100));
-                const size = point.size || point.Size;
-                const column = document.createElement("div");
-                column.className = "size-chart-column";
-                column.innerHTML = `<span class="size-bar-value">${percentage > 0 ? `${percentage.toFixed(percentage % 1 === 0 ? 0 : 1)}%` : ""}</span><span class="size-bar" style="height: ${height}%"></span><span class="size-label">${size}</span>`;
-                chart.appendChild(column);
-            }
-
-            empty.classList.add("hidden");
-            chart.classList.remove("hidden");
-        }
-
-        function renderGradeSummary(points) {
-            const summary = document.querySelector("[data-grade-summary]");
-            const empty = document.querySelector("[data-grade-empty]");
-            if (!summary || !empty) return;
-            summary.innerHTML = "";
-            if (!points || points.length === 0) {
-                summary.classList.add("hidden");
-                empty.classList.remove("hidden");
-                return;
-            }
-
-            const max = Math.max(...points.map(x => Number(x.estimatedBins || x.EstimatedBins || 0)));
-            for (const point of points) {
-                const estimated = Number(point.estimatedBins || point.EstimatedBins || 0);
-                const width = estimated <= 0 || max <= 0 ? 0 : Math.max(4, Math.round(estimated / max * 100));
-                const grade = point.grade || point.Grade;
-                const row = document.createElement("div");
-                row.className = "grade-summary-row";
-                row.innerHTML = `<span class="grade-label">${grade}</span><span class="grade-bar-track"><span class="grade-bar" style="width: ${width}%"></span></span><span class="grade-value">${estimated.toFixed(estimated % 1 === 0 ? 0 : 1)}</span>`;
-                summary.appendChild(row);
-            }
-
-            empty.classList.add("hidden");
-            summary.classList.remove("hidden");
-        }
-
-        function projectionContext(data, kind) {
-            const represented = kind === "size" ? data.sizeRepresentedBins : data.gradeRepresentedBins;
-            const missing = kind === "size" ? data.sizeMissingBins : data.gradeMissingBins;
-            const prefix = data.isSelection ? `${data.label}: ${data.availableBins} selected bins.` : `Room summary: ${data.availableBins} bins currently available.`;
-            if (missing > 0) {
-                const coverage = kind === "size" && data.sizeCoveragePercent != null ? ` (${Number(data.sizeCoveragePercent).toFixed(1)}%)` : "";
-                return `${prefix} ${kind === "size" ? "Sizing projection covers" : "Grade data represents"} ${represented} of ${data.availableBins} bins${coverage}; ${missing} bins have no ${kind === "size" ? "sizing" : "grade"} data. ${kind === "size" ? "Percentages use entered fruit rows as the denominator; rows without size remain unclassified." : ""}`;
-            }
-
-            return kind === "size"
-                ? `${prefix} Percent of sampled fruit, weighted by current available-bin balance. Percentages use entered fruit rows as the denominator.`
-                : `${prefix} Estimated bins, weighted by current available-bin balance.`;
-        }
-
-        function renderProjection(data) {
-            const sizeTitle = document.querySelector("[data-projection-size-title]");
-            const gradeTitle = document.querySelector("[data-projection-grade-title]");
-            const sizeContext = document.querySelector("[data-projection-size-context]");
-            const gradeContext = document.querySelector("[data-projection-grade-context]");
-            if (sizeTitle) sizeTitle.textContent = data.isSelection ? `Size Distribution - ${data.label}` : "Size Distribution - Room Summary";
-            if (gradeTitle) gradeTitle.textContent = data.isSelection ? `Expected Grade - ${data.label}` : "Expected Grade - Room Summary";
-            if (sizeContext) sizeContext.textContent = projectionContext(data, "size");
-            if (gradeContext) gradeContext.textContent = projectionContext(data, "grade");
-            const selectedLotCount = document.querySelector("[data-selected-lot-count]");
-            const selectedBinTotal = document.querySelector("[data-selected-bin-total]");
-            const sizeRepresented = document.querySelector("[data-size-represented]");
-            const sizeTotal = document.querySelector("[data-size-total]");
-            const sizeMissing = document.querySelector("[data-size-missing]");
-            const gradeRepresented = document.querySelector("[data-grade-represented]");
-            const gradeTotal = document.querySelector("[data-grade-total]");
-            const gradeMissing = document.querySelector("[data-grade-missing]");
-            if (selectedLotCount) selectedLotCount.textContent = data.isSelection ? data.lotCount : 0;
-            if (selectedBinTotal) selectedBinTotal.textContent = data.isSelection ? data.availableBins : 0;
-            if (sizeRepresented) sizeRepresented.textContent = data.sizeRepresentedBins;
-            if (sizeTotal) sizeTotal.textContent = data.availableBins;
-            if (sizeMissing) sizeMissing.textContent = `${data.sizeMissingBins} missing`;
-            if (gradeRepresented) gradeRepresented.textContent = data.gradeRepresentedBins;
-            if (gradeTotal) gradeTotal.textContent = data.availableBins;
-            if (gradeMissing) gradeMissing.textContent = `${data.gradeMissingBins} missing`;
-            renderSizeChart(data.sizeDistribution);
-            renderGradeSummary(data.gradeSummary);
-        }
-
-        async function refreshProjection() {
-            const requestId = ++projectionRequestId;
-            if (projectionAbortController) projectionAbortController.abort();
-            projectionAbortController = new AbortController();
-            try {
-                const response = await fetch("/BinsRun/Projection", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        warehouseId: warehouse?.value ? Number(warehouse.value) : null,
-                        roomId: room?.value ? Number(room.value) : null,
-                        inventoryKeys: selectedKeys()
-                    }),
-                    signal: projectionAbortController.signal
-                });
-                if (!response.ok) return;
-                const data = await response.json();
-                if (requestId === projectionRequestId) renderProjection(data);
-            } catch (error) {
-                if (error.name !== "AbortError") console.warn("Bins Run projection refresh failed.", error);
-            }
-        }
-
-        projectCheckboxes.forEach(checkbox => checkbox.addEventListener("change", () => {
-            syncLotSelection();
-            refreshProjection();
-        }));
-        runRadios.forEach(radio => radio.addEventListener("change", () => setRunLot(rowForKey(radio.value))));
-        selectAll?.addEventListener("click", () => {
-            projectCheckboxes.forEach(x => x.checked = true);
-            syncLotSelection();
-            refreshProjection();
+        const inventory = document.querySelector("[data-inventory-select]");
+        const expected = document.querySelector("[data-expected-bins]");
+        inventory?.addEventListener("change", () => {
+            expected.value = inventory.selectedOptions[0]?.dataset.bins || "0";
         });
-        clearSelection?.addEventListener("click", () => {
-            projectCheckboxes.forEach(x => x.checked = false);
-            syncLotSelection();
-            refreshProjection();
-        });
-        syncLotSelection();
+
+        const planned = Array.from(document.querySelectorAll("[data-planned-bins]"));
+        const total = document.querySelector("[data-total-planned-bins]");
+        for (const input of planned) {
+            input.addEventListener("input", () => {
+                if (total) total.textContent = planned.reduce((sum, item) => sum + (Number(item.value) || 0), 0);
+            });
+        }
     })();
 </script>
 
 @functions {
-    private static string ProjectionContext(BinsRunProjectionViewModel? projection, string dataKind)
+    private static string ProjectionStatusClass(string status) => status switch
     {
-        if (projection is null)
-        {
-            return dataKind == "Sizing"
-                ? "Percent of sampled fruit, weighted by each current lot's available-bin balance."
-                : "Estimated bins, weighted by each current lot's available-bin balance.";
-        }
+        "Ready" or "Converted to Actual Run" => "ready",
+        "Cancelled" or "Expired" or "Superseded" => "missing",
+        _ => "pending"
+    };
 
-        var represented = dataKind == "Sizing" ? projection.SizeRepresentedBins : projection.GradeRepresentedBins;
-        var missing = dataKind == "Sizing" ? projection.SizeMissingBins : projection.GradeMissingBins;
-        var prefix = projection.IsSelection
-            ? $"{projection.Label}: {projection.AvailableBins} selected bins."
-            : $"Room summary: {projection.AvailableBins} bins currently available.";
-        return missing > 0
-            ? dataKind == "Sizing"
-                ? $"{prefix} Sizing projection covers {represented} of {projection.AvailableBins} bins ({projection.SizeCoveragePercent:0.#}%). Percentages use entered fruit rows as the denominator; rows without size remain unclassified."
-                : $"{prefix} {dataKind} data represents {represented} of {projection.AvailableBins} bins; {missing} bins have no {dataKind.ToLowerInvariant()} data."
-            : dataKind == "Sizing"
-                ? $"{prefix} Percent of sampled fruit, weighted by current available-bin balance. Percentages use entered fruit rows as the denominator."
-                : $"{prefix} Estimated bins, weighted by current available-bin balance.";
-    }
+    private static string Format(decimal? value, string suffix) => value is null ? "No data" : $"{value:0.##}{suffix}";
 }

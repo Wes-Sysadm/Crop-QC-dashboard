@@ -3,13 +3,14 @@
 <article class="station-card">
     <div class="station-card-header">
         <div>
-            <h3>@Model.GrowerName @(string.IsNullOrWhiteSpace(Model.GrowerNumber) ? "" : $"Lot # {Model.GrowerNumber}")</h3>
+            <h3>@Model.GrowerName @(string.IsNullOrWhiteSpace(Model.GrowerNumber) ? "" : $"Grower # {Model.GrowerNumber}")</h3>
             <p class="station-code">@Model.DisplayReceiptId | @Model.Warehouse / @Model.RoomCode | Pool Start @(string.IsNullOrWhiteSpace(Model.PoolStart) ? "-" : Model.PoolStart) | @Model.VarietyCode@(string.IsNullOrWhiteSpace(Model.InventoryStatus) ? "" : $" / {Model.InventoryStatus}")</p>
         </div>
         <span class="status @(Model.CurrentBins > 0 ? "ready" : "pending")">@Model.DepletionStatus</span>
     </div>
     <dl class="station-meta">
         <dt>Bins</dt><dd>@Model.CurrentBins current / @Model.OriginalBins original</dd>
+        <dt>Orchard / block</dt><dd>@(string.IsNullOrWhiteSpace(Model.OrchardName) ? "Not confirmed" : $"{Model.OrchardName} / {Model.BlockName}")</dd>
         <dt>Depleted</dt><dd>@Model.DepletedBins</dd>
         <dt>Avg pressure</dt><dd>@Format(Model.AveragePressureLbs)</dd>
         <dt>Pressure std dev</dt><dd>@Format(Model.PressureStdDevLbs)</dd>
@@ -35,6 +36,7 @@
         <p class="notice warning"><strong>Weakest lot signal:</strong> @Model.WeakestReason</p>
     }
     <div class="action-bar">
+        <a class="button" href="/BinsRun?RoomId=@Model.RoomId&amp;Section=Planner&amp;SourceKey=@Uri.EscapeDataString(Model.InventoryKey)">Plan Run / Manage Inventory</a>
         @if (Model.ReceiptId is not null)
         {
             <a class="button secondary-button" href="/Receipts/@Model.ReceiptId">View Receipt</a>

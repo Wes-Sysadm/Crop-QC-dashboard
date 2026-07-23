@@ -219,6 +219,7 @@ builder.Services.AddScoped<IAuthorizationHandler, PageAccessAuthorizationHandler
 builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportService>();
 builder.Services.AddScoped<IBinsRunService, BinsRunService>();
+builder.Services.AddScoped<IRunProjectionService, RunProjectionService>();
 builder.Services.AddScoped<IEbsDailyBinsEmailService, EbsDailyBinsEmailService>();
 builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 builder.Services.AddScoped<IQcStationAdminService, QcStationAdminService>();

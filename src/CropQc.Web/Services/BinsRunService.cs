@@ -13,6 +13,8 @@ public interface IBinsRunService
 {
     Task<BinsRunPageViewModel> GetPageAsync(BinsRunFilterForm filter, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<BinsRunProjectionViewModel> GetProjectionAsync(BinsRunProjectionRequest request, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<IReadOnlyList<RunProjectionInventorySource>> SearchPlanningInventoryAsync(string? query, int? roomId, int take, CancellationToken cancellationToken);
+    Task<RunProjectionInventorySource?> GetPlanningInventoryAsync(string inventoryKey, CancellationToken cancellationToken);
     Task<string?> CreateAsync(BinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> UpdateAsync(long id, BinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> ReverseAsync(ReverseBinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
@@ -28,10 +30,14 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
     {
         var canRecord = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Edit, cancellationToken);
         var canAdmin = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Admin, cancellationToken);
+        var canTransfer = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
+        var canTrueUp = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken);
         var snapshots = await GetCurrentInventorySnapshotsAsync(filter.WarehouseId, filter.RoomId, cancellationToken);
         var currentSnapshots = snapshots.Where(x => x.CurrentBins > 0).ToList();
         var sampleData = await GetLatestSampleDataByLotAsync(currentSnapshots, cancellationToken);
         var options = BuildAvailableInventoryOptions(currentSnapshots, sampleData);
+        var selectedOption = options.FirstOrDefault(x => string.Equals(x.InventoryKey, filter.SourceKey, StringComparison.OrdinalIgnoreCase))
+            ?? options.FirstOrDefault();
         var roomSummary = filter.RoomId is null ? null : await BuildRoomSummaryAsync(filter.RoomId.Value, currentSnapshots, sampleData, cancellationToken);
 
         var historyQuery = dbContext.BinsRunEntries.AsNoTracking()
@@ -66,9 +72,11 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
             {
                 WarehouseId = filter.WarehouseId,
                 RoomId = filter.RoomId,
-                InventoryKey = options.FirstOrDefault()?.InventoryKey ?? "",
-                ExpectedAvailableBins = options.FirstOrDefault()?.CurrentBins ?? 0,
-                RunAt = DateTimeOffset.Now
+                InventoryKey = selectedOption?.InventoryKey ?? "",
+                ExpectedAvailableBins = selectedOption?.CurrentBins ?? 0,
+                RunAt = DateTimeOffset.Now,
+                RunProjectionId = filter.ProjectionId,
+                RunProjectionSourceId = filter.ProjectionSourceId
             },
             Warehouses = await dbContext.Warehouses.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Code).ToListAsync(cancellationToken),
             Rooms = rooms,
@@ -100,7 +108,9 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                 .ToListAsync(cancellationToken),
             CanRecord = canRecord,
             CanAdmin = canAdmin,
-            SelectedAvailableBins = options.FirstOrDefault()?.CurrentBins
+            CanTransfer = canTransfer,
+            CanTrueUp = canTrueUp,
+            SelectedAvailableBins = selectedOption?.CurrentBins
         };
     }
 
@@ -139,6 +149,37 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         }
 
         return BuildProjection(lots, sampleData, isSelection);
+    }
+
+    public async Task<IReadOnlyList<RunProjectionInventorySource>> SearchPlanningInventoryAsync(
+        string? query,
+        int? roomId,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var normalized = query?.Trim() ?? "";
+        var snapshots = (await GetCurrentInventorySnapshotsAsync(null, roomId, cancellationToken))
+            .Where(x => x.CurrentBins > 0)
+            .Where(x => normalized.Length == 0
+                || x.Facility.Contains(normalized, StringComparison.OrdinalIgnoreCase)
+                || x.Room.Contains(normalized, StringComparison.OrdinalIgnoreCase)
+                || x.Grower.Contains(normalized, StringComparison.OrdinalIgnoreCase)
+                || x.Lot.Contains(normalized, StringComparison.OrdinalIgnoreCase)
+                || x.Variety.Contains(normalized, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.Facility)
+            .ThenBy(x => x.Room)
+            .ThenBy(x => x.Grower)
+            .ThenBy(x => x.Lot)
+            .Take(Math.Clamp(take, 1, 100))
+            .Select(ToPlanningInventory)
+            .ToList();
+        return snapshots;
+    }
+
+    public async Task<RunProjectionInventorySource?> GetPlanningInventoryAsync(string inventoryKey, CancellationToken cancellationToken)
+    {
+        var snapshot = await GetCurrentInventoryByKeyAsync(inventoryKey, cancellationToken);
+        return snapshot is null || snapshot.CurrentBins <= 0 ? null : ToPlanningInventory(snapshot);
     }
 
     public async Task<string?> CreateAsync(BinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken)
@@ -234,11 +275,46 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
 
         await using var transaction = await BeginTransactionIfSupportedAsync(cancellationToken);
         BinsRunEntry? existing = null;
+        RunProjection? linkedProjection = null;
+        RunProjectionSource? linkedProjectionSource = null;
         if (entryId is long id)
         {
             existing = await dbContext.BinsRunEntries.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
             if (existing is null) return "Bins Run entry was not found.";
             if (existing.IsReversed) return "Reversed Bins Run entries cannot be edited.";
+        }
+        else if (form.RunProjectionId is not null || form.RunProjectionSourceId is not null)
+        {
+            if (form.RunProjectionId is null || form.RunProjectionSourceId is null)
+            {
+                return "Both the projection and projection source are required when recording from a plan.";
+            }
+
+            linkedProjection = await dbContext.RunProjections
+                .Include(x => x.Sources)
+                .SingleOrDefaultAsync(x => x.Id == form.RunProjectionId.Value, cancellationToken);
+            linkedProjectionSource = linkedProjection?.Sources.SingleOrDefault(x => x.Id == form.RunProjectionSourceId.Value);
+            if (linkedProjection is null || linkedProjectionSource is null)
+            {
+                return "The selected projection source was not found.";
+            }
+            if (!RunProjectionStatuses.Editable.Contains(linkedProjection.Status, StringComparer.OrdinalIgnoreCase))
+            {
+                return $"A {linkedProjection.Status} projection cannot be converted to an actual run.";
+            }
+            if (linkedProjectionSource.SourceType != RunProjectionSourceTypes.Inventory
+                || string.IsNullOrWhiteSpace(linkedProjectionSource.InventoryKey))
+            {
+                return "A planning-only Field Sample source must be mapped to real inventory before an actual run can be recorded.";
+            }
+            if (linkedProjectionSource.ActualBinsRunEntryId is not null)
+            {
+                return "This projection source is already linked to an actual Bins Run.";
+            }
+            if (!string.Equals(linkedProjectionSource.InventoryKey, form.InventoryKey, StringComparison.OrdinalIgnoreCase))
+            {
+                return "The actual-run inventory must match the selected projection source.";
+            }
         }
 
         var snapshot = await GetCurrentInventoryByKeyAsync(form.InventoryKey, cancellationToken);
@@ -325,6 +401,31 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (linkedProjection is not null && linkedProjectionSource is not null)
+        {
+            var previousStatus = linkedProjection.Status;
+            var previousActualBinsRunEntryId = linkedProjectionSource.ActualBinsRunEntryId;
+            linkedProjectionSource.ActualBinsRunEntryId = entry.Id;
+            linkedProjectionSource.UpdatedAt = DateTimeOffset.UtcNow;
+            if (linkedProjection.Sources.All(x => x.SourceType == RunProjectionSourceTypes.Inventory && x.ActualBinsRunEntryId is not null))
+            {
+                linkedProjection.Status = RunProjectionStatuses.Converted;
+            }
+            linkedProjection.UpdatedAt = DateTimeOffset.UtcNow;
+            linkedProjection.ConcurrencyVersion++;
+            linkedProjection.UpdatedByUserId = userId;
+            dbContext.AuditLogs.Add(new AuditLog
+            {
+                Action = "ConvertSourceToActualRun",
+                EntityName = nameof(RunProjection),
+                EntityKey = linkedProjection.Id.ToString(),
+                UserId = userId,
+                BeforeValuesJson = JsonSerializer.Serialize(new { Status = previousStatus, ActualBinsRunEntryId = previousActualBinsRunEntryId }),
+                AfterValuesJson = JsonSerializer.Serialize(new { linkedProjection.Status, ActualBinsRunEntryId = entry.Id }),
+                SourceApplication = SourceApplication,
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+        }
         await AddAuditAsync(auditAction, entry, userId, before, EntrySnapshot(entry), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         if (transaction is not null)
@@ -349,6 +450,8 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                 sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var distribution);
                 return new BinsRunInventoryOptionViewModel(
                 x.InventoryKey,
+                x.ReceiptId,
+                x.InventoryAdjustmentId,
                 x.WarehouseId,
                 x.RoomId,
                 $"{x.Grower} - {x.Variety} - {x.Lot} - {x.CurrentBins} bins available",
@@ -358,7 +461,10 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                 $"{x.Facility} / {x.Room}",
                     x.CurrentBins,
                     distribution is null || distribution.GradePercentages.Count == 0 ? "No grade data" : FormatGradeSummary(distribution.GradePercentages),
-                    x.ReceiptDate);
+                    x.ReceiptDate,
+                    x.FruitProfileId,
+                    x.FruitType,
+                    x.CanonicalOrchardBlockId);
             })
             .ToList();
 
@@ -608,6 +714,7 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
             return new InventorySnapshot(
                 $"R:{receipt.Id}",
                 receipt.Id,
+                receipt.CompuTechReceiptId,
                 latest?.Id,
                 receipt.WarehouseId,
                 receipt.RoomId,
@@ -616,17 +723,21 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                 receipt.GrowerLotId,
                 receipt.FruitProfileId,
                 receipt.GrowerName,
+                receipt.GrowerNumber,
                 !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode,
                 receipt.PoolStart,
-                receipt.FruitProfile.VarietyCode,
-                "",
-                currentBins,
+                 receipt.FruitProfile.VarietyCode,
+                 receipt.FruitProfile.FruitType,
+                 receipt.CanonicalOrchardBlockId,
+                 "",
+                 currentBins,
                 receipt.ReceivedAt);
         });
 
         var adjustmentQuery = dbContext.RoomInventoryAdjustments.AsNoTracking()
             .Include(x => x.Warehouse)
             .Include(x => x.Room)
+            .Include(x => x.FruitProfile)
             .Where(x => x.ReceiptId == null || x.AdjustmentType == "TransferIn");
         if (warehouseId is not null) adjustmentQuery = adjustmentQuery.Where(x => x.WarehouseId == warehouseId);
         if (roomId is not null) adjustmentQuery = adjustmentQuery.Where(x => x.RoomId == roomId);
@@ -634,6 +745,7 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         var adjustmentSnapshots = ApplyLatestCurrentBalanceRows(await adjustmentQuery.ToListAsync(cancellationToken))
             .Select(x => new InventorySnapshot(
                 $"A:{x.Id}:{CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? "")}",
+                null,
                 null,
                 x.Id,
                 x.WarehouseId,
@@ -643,10 +755,13 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                 x.GrowerLotId,
                 x.FruitProfileId,
                 x.GrowerName,
+                null,
                 x.LotNumber,
                 x.PoolStart,
-                x.VarietyCode ?? "",
-                x.InventoryStatus ?? "",
+                 x.VarietyCode ?? "",
+                 x.FruitProfile?.FruitType ?? "",
+                 null,
+                 x.InventoryStatus ?? "",
                 Math.Max(0, x.NewBinCount),
                 null));
 
@@ -751,9 +866,30 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
     private static string ReceiptLotNumber(Receipt receipt) =>
         !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode;
 
+    private static RunProjectionInventorySource ToPlanningInventory(InventorySnapshot x) =>
+        new(
+            x.InventoryKey,
+            x.ReceiptId,
+            x.ReceiptReference,
+            x.InventoryAdjustmentId,
+            x.WarehouseId,
+            x.RoomId,
+            x.Facility,
+            x.Room,
+            x.FruitProfileId,
+            x.FruitType,
+            x.CanonicalOrchardBlockId,
+            x.Grower,
+            x.GrowerNumber,
+            x.Lot,
+            x.Variety,
+            x.CurrentBins,
+            x.ReceiptDate);
+
     private sealed record InventorySnapshot(
         string InventoryKey,
         long? ReceiptId,
+        string? ReceiptReference,
         long? InventoryAdjustmentId,
         int WarehouseId,
         int RoomId,
@@ -762,9 +898,12 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         int? GrowerLotId,
         int? FruitProfileId,
         string Grower,
+        string? GrowerNumber,
         string Lot,
         string? PoolStart,
         string Variety,
+        string FruitType,
+        int? CanonicalOrchardBlockId,
         string InventoryStatus,
         int CurrentBins,
         DateTimeOffset? ReceiptDate);
