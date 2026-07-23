@@ -11,6 +11,7 @@ namespace CropQc.Web.Controllers;
 [Route("[controller]")]
 public sealed class FieldSamplesController(
     IFieldSampleService fieldSampleService,
+    IFieldSampleDeletionService fieldSampleDeletionService,
     IFieldSampleReportService fieldSampleReportService,
     IDashboardDataService dashboardDataService,
     CropQcDbContext dbContext,
@@ -50,6 +51,31 @@ public sealed class FieldSamplesController(
     [Authorize(Policy = AccessPolicyNames.FieldSamplesView)]
     public async Task<IActionResult> Details(long id, CancellationToken cancellationToken) =>
         View(await fieldSampleService.GetDetailAsync(id, User, cancellationToken));
+
+    [HttpGet("{id:long}/Delete")]
+    [Authorize(Policy = AccessPolicyNames.FieldSamplesAdmin)]
+    public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken)
+    {
+        var model = await fieldSampleDeletionService.GetConfirmationAsync(id, cancellationToken);
+        return model is null ? NotFound() : View(model);
+    }
+
+    [HttpPost("{id:long}/Delete")]
+    [Authorize(Policy = AccessPolicyNames.FieldSamplesAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Delete(long id, DeleteFieldSampleForm form, CancellationToken cancellationToken)
+    {
+        form.Id = id;
+        var error = await fieldSampleDeletionService.DeleteAsync(form, User, cancellationToken);
+        if (error is not null)
+        {
+            TempData["Error"] = error;
+            return RedirectToAction(nameof(Delete), new { id });
+        }
+
+        TempData["Success"] = $"Field Sample {id} was soft-deleted. Its operational and audit history was retained.";
+        return RedirectToAction(nameof(Index), new { DeletionStatus = "Deleted" });
+    }
 
     [HttpGet("{id:long}/refresh")]
     [Authorize(Policy = AccessPolicyNames.FieldSamplesView)]

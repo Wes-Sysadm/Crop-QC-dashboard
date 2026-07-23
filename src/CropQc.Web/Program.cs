@@ -227,6 +227,8 @@ builder.Services.AddScoped<IDataCleanupService, DataCleanupService>();
 builder.Services.AddScoped<IVarietyColorService, VarietyColorService>();
 builder.Services.AddScoped<ICanonicalGrowerService, CanonicalGrowerService>();
 builder.Services.AddScoped<IFieldSampleService, FieldSampleService>();
+builder.Services.AddScoped<IFieldSampleTrendService, FieldSampleTrendService>();
+builder.Services.AddScoped<IFieldSampleDeletionService, FieldSampleDeletionService>();
 builder.Services.AddScoped<IFieldSampleReportService, FieldSampleReportService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddScoped<IBackupNotificationService, BackupNotificationService>();

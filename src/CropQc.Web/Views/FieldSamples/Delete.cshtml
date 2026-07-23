@@ -1,0 +1,88 @@
+@model FieldSampleDeletionConfirmationViewModel
+@{
+    ViewData["Title"] = $"Delete Field Sample {Model.Id}";
+}
+
+<h1>Delete Field Sample @Model.Id</h1>
+
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
+
+<section class="panel danger-zone">
+    <p class="notice warning"><strong>Administrator-only action.</strong> This hides the sample from active workflows. Fruit rows, defects, send history, station references, audits, photo metadata, and stored photo files are retained.</p>
+    <dl class="summary-list">
+        <dt>Sample ID</dt><dd>@Model.Id</dd>
+        <dt>Sample date</dt><dd>@BusinessTime.FormatPacific(Model.SampleTakenAt)</dd>
+        <dt>Orchard</dt><dd>@Model.OrchardName</dd>
+        <dt>Grower</dt><dd>@(string.IsNullOrWhiteSpace(Model.GrowerName) ? "—" : Model.GrowerName)</dd>
+        <dt>Grower number</dt><dd>@(string.IsNullOrWhiteSpace(Model.GrowerNumber) ? "—" : Model.GrowerNumber)</dd>
+        <dt>Canonical block</dt><dd>@Model.BlockName</dd>
+        <dt>Variety</dt><dd>@Model.Variety</dd>
+        <dt>Lifecycle / email</dt><dd>@Model.LifecycleStatus / @Model.EmailStatus</dd>
+        <dt>Previously sent</dt><dd>@(Model.HasBeenSent ? "Yes" : "No")</dd>
+        <dt>Changed since last send</dt><dd>@(Model.ChangedSinceLastSend ? "Yes" : "No")</dd>
+    </dl>
+</section>
+
+<section class="panel">
+    <h2>Preserved dependencies</h2>
+    <div class="stat-grid">
+        <div class="stat-card"><strong>@Model.Dependencies.FruitRows</strong><span>Fruit rows</span></div>
+        <div class="stat-card"><strong>@Model.Dependencies.Defects</strong><span>Defects</span></div>
+        <div class="stat-card"><strong>@Model.Dependencies.Photos</strong><span>Photo records and files</span></div>
+        <div class="stat-card"><strong>@Model.Dependencies.EmailLogs</strong><span>Email / send records</span></div>
+        <div class="stat-card"><strong>@Model.Dependencies.AuditRecords</strong><span>Existing audit records</span></div>
+        <div class="stat-card"><strong>@Model.Dependencies.OfflineSyncItems</strong><span>QC sync records</span></div>
+        <div class="stat-card"><strong>@(Model.Dependencies.HasQcStationReference ? "Yes" : "No")</strong><span>QC Station reference</span></div>
+    </div>
+</section>
+
+<section class="panel">
+    <h2>Verified backup gate</h2>
+    @if (Model.BackupWarning is not null)
+    {
+        <p class="notice error">@Model.BackupWarning</p>
+        <p><a class="button secondary-button" href="/FieldSamples/@Model.Id">Cancel</a></p>
+    }
+    else
+    {
+        <p class="notice success">Backup run <strong>#@Model.VerifiedBackupRunId</strong> was fully verified at @BusinessTime.FormatPacific(Model.VerifiedBackupAt). Package: <code>@Model.VerifiedBackupFileName</code>.</p>
+        <form method="post" action="/FieldSamples/@Model.Id/Delete" data-prevent-double-submit="true">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="Id" value="@Model.Id" />
+            <input type="hidden" name="OperationToken" value="@Model.Form.OperationToken" />
+            <input type="hidden" name="VerifiedBackupRunId" value="@Model.Form.VerifiedBackupRunId" />
+            <div class="field">
+                <label for="confirmationValue">Type Field Sample ID <strong>@Model.Id</strong></label>
+                <input id="confirmationValue" name="ConfirmationValue" inputmode="numeric" autocomplete="off" required />
+            </div>
+            <div class="field">
+                <label for="deletionReason">Detailed deletion reason</label>
+                <textarea id="deletionReason" name="Reason" maxlength="1000" minlength="10" required></textarea>
+            </div>
+            <label class="checkbox-field">
+                <input type="checkbox" name="ConfirmDeletion" value="true" required />
+                I verified this exact sample and understand that it will be removed from active workflows.
+            </label>
+            <input type="hidden" name="ConfirmDeletion" value="false" />
+            <div class="button-row">
+                <button type="submit" class="danger-button">Delete Field Sample</button>
+                <a class="button secondary-button" href="/FieldSamples/@Model.Id">Cancel</a>
+            </div>
+        </form>
+    }
+</section>
+
+<script>
+    document.querySelector("form[data-prevent-double-submit]")?.addEventListener("submit", event => {
+        const button = event.currentTarget.querySelector("button[type='submit']");
+        if (!button || button.disabled) {
+            event.preventDefault();
+            return;
+        }
+        button.disabled = true;
+        button.textContent = "Deleting…";
+    });
+</script>

@@ -721,10 +721,11 @@ public sealed class FieldSampleWorkflowTests
         Assert.Contains("Create 10-fruit Field Sample", create);
         Assert.Contains("Suggested block:", create);
         Assert.DoesNotContain("confidence", create, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Weight Trend", detail);
-        Assert.Contains("Starch Trend", detail);
-        Assert.Contains("Pressure Trend", detail);
-        Assert.Contains("Size Trend", detail);
+        Assert.DoesNotContain("Weight Trend", detail);
+        Assert.DoesNotContain("Starch Trend", detail);
+        Assert.DoesNotContain("Pressure Trend", detail);
+        Assert.DoesNotContain("Size Trend", detail);
+        Assert.Contains("_BlockTrendCard", index);
         Assert.Contains("Save Now", detail);
         Assert.Contains("Open in QC Station", detail);
         Assert.Contains("Html.PartialAsync(\"_DeviceCapturePanel\"", detail);

@@ -697,6 +697,54 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     opacity: 0.68;
 }
 
+.danger-button {
+    border-color: #9f1d20;
+    background: #9f1d20;
+    color: #fff;
+}
+
+.deleted-row {
+    background: #fff5f5;
+    color: #6b3a3a;
+}
+
+.field-sample-trend-cards {
+    display: grid;
+    gap: 12px;
+}
+
+.field-sample-trend-card {
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #fff;
+}
+
+.field-sample-trend-card > summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 14px 16px;
+    cursor: pointer;
+}
+
+.field-sample-trend-card > summary > span:first-child {
+    display: grid;
+    gap: 3px;
+}
+
+.trend-card-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px 14px;
+    font-size: 0.9rem;
+}
+
+.trend-card-body {
+    padding: 0 16px 16px;
+    border-top: 1px solid #e2e8f0;
+}
+
 @media (max-width: 1100px) {
     .bins-run-room-summary { grid-template-columns: 1fr; }
     .room-summary-metrics { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
@@ -738,6 +786,12 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 }
 
 @media (max-width: 760px) {
+    .field-sample-trend-card > summary {
+        display: grid;
+    }
+    .trend-card-metrics {
+        justify-content: flex-start;
+    }
     .size-chart { gap: 3px; }
     .size-label { font-size: 0.65rem; }
     .size-bar-value { display: none; }

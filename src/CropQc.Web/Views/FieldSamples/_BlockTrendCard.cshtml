@@ -1,0 +1,91 @@
+@model FieldSampleBlockTrendViewModel
+@{
+    var latest = Model.Latest;
+    var earliest = Model.Points.OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleId).FirstOrDefault();
+    decimal? Change(decimal? current, decimal? prior) =>
+        current is null || prior is null ? null : decimal.Round(current.Value - prior.Value, 2);
+    var weightChange = Change(latest?.Summary.AverageWeightGrams, earliest?.Summary.AverageWeightGrams);
+    var pressureChange = Change(latest?.Summary.AveragePressureLbs, earliest?.Summary.AveragePressureLbs);
+    var starchChange = Change(latest?.Summary.AverageStarch, earliest?.Summary.AverageStarch);
+}
+
+<details class="field-sample-trend-card">
+    <summary>
+        <span>
+            <strong>@Model.OrchardName — @Model.BlockName</strong>
+            <span class="muted">@string.Join(", ", Model.Varieties)</span>
+        </span>
+        <span class="trend-card-metrics">
+            <span>@Model.Points.Count sample@(Model.Points.Count == 1 ? "" : "s")</span>
+            <span>@BusinessTime.FormatPacific(latest?.SampleTakenAt, "MMM d")</span>
+            <span>@latest?.CompletionStatus</span>
+            <span>@latest?.Summary.EnteredFruitCount / @latest?.TargetSampleSize fruit</span>
+            <span>Weight @(latest?.Summary.AverageWeightGrams?.ToString("0.##") ?? "—") g</span>
+            <span>Pressure @(latest?.Summary.AveragePressureLbs?.ToString("0.##") ?? "—") lb</span>
+            <span>Starch @(latest?.Summary.AverageStarch?.ToString("0.##") ?? "—")</span>
+        </span>
+    </summary>
+    <div class="trend-card-body">
+        <p class="muted">
+            @BusinessTime.FormatPacific(Model.WindowStart, "MMM d") through @BusinessTime.FormatPacific(Model.WindowEnd, "MMM d, yyyy")
+            @if (!string.IsNullOrWhiteSpace(Model.GrowerNumber))
+            {
+                <span> · Grower #@Model.GrowerNumber</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.GrowerName)
+                && !string.Equals(Model.GrowerName, Model.OrchardName, StringComparison.OrdinalIgnoreCase))
+            {
+                <span> · Grower @Model.GrowerName</span>
+            }
+            <span> · Samples @BusinessTime.FormatPacific(earliest?.SampleTakenAt, "MMM d") through @BusinessTime.FormatPacific(latest?.SampleTakenAt, "MMM d")</span>
+        </p>
+        @if (Model.IsFirstSample)
+        {
+            <p class="notice">First available sample for this confirmed block in the selected 30-day window.</p>
+        }
+        else
+        {
+            <div class="summary-grid">
+                <div><span class="metric-label">Weight change</span><strong>@FormatChange(weightChange, "g")</strong></div>
+                <div><span class="metric-label">Pressure change</span><strong>@FormatChange(pressureChange, "lb")</strong></div>
+                <div><span class="metric-label">Starch change</span><strong>@FormatChange(starchChange, "")</strong></div>
+                <div><span class="metric-label">Latest defects</span><strong>@(latest?.Summary.DefectAffectedPercentage?.ToString("0.#") ?? "Not inspected")@(latest?.Summary.DefectAffectedPercentage is null ? "" : "% affected")</strong></div>
+            </div>
+        }
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Date</th><th>Variety</th><th>Fruit</th><th>Avg weight</th><th>Sizes</th><th>Avg pressure</th><th>Avg starch</th><th>Grades</th><th>Defects</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var point in Model.Points.OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleId))
+                    {
+                        <tr>
+                            <td>@BusinessTime.FormatPacific(point.SampleTakenAt, "MMM d, h:mm tt")</td>
+                            <td>@point.Variety</td>
+                            <td>@point.Summary.EnteredFruitCount / @point.TargetSampleSize</td>
+                            <td>@(point.Summary.AverageWeightGrams?.ToString("0.##") ?? "—") g</td>
+                            <td>@(point.SizeDistribution.Count == 0 ? "—" : string.Join(", ", point.SizeDistribution.Select(x => $"{x.Size}: {x.Percentage:0.#}%")))</td>
+                            <td>@(point.Summary.AveragePressureLbs?.ToString("0.##") ?? "—") lb</td>
+                            <td>@(point.Summary.AverageStarch?.ToString("0.##") ?? "—")</td>
+                            <td>@(point.Summary.GradeDistribution.Count == 0 ? "—" : string.Join(", ", point.Summary.GradeDistribution.Select(x => $"{x.Label} {x.Percentage:0.#}%")))</td>
+                            <td>
+                                @(point.Summary.DefectAffectedPercentage?.ToString("0.#") ?? "Not inspected")@(point.Summary.DefectAffectedPercentage is null ? "" : "% affected")
+                                @if (point.Summary.DefectDistribution.Count > 0)
+                                {
+                                    <span class="muted">@string.Join(", ", point.Summary.DefectDistribution.OrderByDescending(x => x.FruitCount).Take(3).Select(x => $"{x.Defect} {x.FruitCount}"))</span>
+                                }
+                            </td>
+                            <td><a href="/FieldSamples/@point.SampleId">Open</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</details>
+
+@functions {
+    private static string FormatChange(decimal? value, string unit) =>
+        value is null ? "Not available" : $"{(value > 0 ? "+" : "")}{value:0.##}{(string.IsNullOrWhiteSpace(unit) ? "" : " " + unit)}";
+}

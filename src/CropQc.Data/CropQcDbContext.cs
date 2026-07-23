@@ -49,6 +49,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<BackupNotificationRecord> BackupNotificationRecords => Set<BackupNotificationRecord>();
     public DbSet<ReceiptDeletionAudit> ReceiptDeletionAudits => Set<ReceiptDeletionAudit>();
     public DbSet<ReceiptPurgeOperation> ReceiptPurgeOperations => Set<ReceiptPurgeOperation>();
+    public DbSet<FieldSampleDeletionAudit> FieldSampleDeletionAudits => Set<FieldSampleDeletionAudit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -59,6 +60,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         ConfigureDashboardConfiguration(modelBuilder);
         ConfigureBackups(modelBuilder);
         ConfigureReceiptDeletion(modelBuilder);
+        ConfigureFieldSampleDeletion(modelBuilder);
         SeedData(modelBuilder);
     }
 
@@ -141,6 +143,24 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.ErrorSummary).HasMaxLength(2000);
             entity.HasIndex(x => new { x.TargetCropYear, x.StartedAt });
             entity.HasIndex(x => x.BackupRunId);
+        });
+    }
+
+    private static void ConfigureFieldSampleDeletion(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<FieldSampleDeletionAudit>(entity =>
+        {
+            entity.Property(x => x.DeletedByEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.DeletedAtPacific).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.Result).HasMaxLength(50).IsRequired();
+            entity.HasIndex(x => x.OperationId).IsUnique();
+            entity.HasIndex(x => new { x.DeletedFieldSampleId, x.DeletedAt });
+            entity.HasIndex(x => x.BackupRunId);
+            entity.HasOne<BackupRunRecord>()
+                .WithMany()
+                .HasForeignKey(x => x.BackupRunId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 
