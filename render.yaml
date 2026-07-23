@@ -61,6 +61,73 @@ services:
         value: None
       - key: QcStation__ApiBaseUrl
         value: https://crop-qc-dashboard.onrender.com
+      - key: Backups__Enabled
+        value: true
+      - key: Backups__Provider
+        value: GoogleDrive
+      - key: Backups__GoogleDriveFolderId
+        sync: false
+      - key: Backups__DailyRetentionDays
+        value: 30
+      - key: Backups__WeeklyRetentionWeeks
+        value: 52
+      - key: Backups__BusinessTimeZone
+        value: America/Los_Angeles
+      - key: Backups__ScheduleUtcHour
+        value: 10
+      - key: Backups__ScheduleUtcMinute
+        value: 30
+  - type: cron
+    name: crop-qc-production-nightly-backup
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: dotnet CropQc.Web.dll --run-backup=scheduled
+    schedule: "30 10 * * *"
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: AppEnvironment__Kind
+        value: Production
+      - key: AppEnvironment__DisplayName
+        value: Crop QC Production Backup
+      - key: DATABASE_PROVIDER
+        value: PostgreSql
+      - key: ConnectionStrings__CropQc
+        fromDatabase:
+          name: crop-qc-dashboard-db
+          property: connectionString
+      - key: Database__EnsureCreatedOnStartup
+        value: false
+      - key: Database__SeedMasterDataOnStartup
+        value: false
+      - key: FileStorage__Provider
+        value: GoogleDrive
+      - key: GoogleDrive__UseSharedDrive
+        value: true
+      - key: GoogleDrive__SharedDriveId
+        sync: false
+      - key: GoogleDrive__RootFolderId
+        sync: false
+      - key: GoogleDrive__ServiceAccountJson
+        sync: false
+      - key: GoogleDrive__ApplicationName
+        value: Crop QC Dashboard Backup
+      - key: Backups__Enabled
+        value: true
+      - key: Backups__Provider
+        value: GoogleDrive
+      - key: Backups__GoogleDriveFolderId
+        sync: false
+      - key: Backups__DailyRetentionDays
+        value: 30
+      - key: Backups__WeeklyRetentionWeeks
+        value: 52
+      - key: Backups__BusinessTimeZone
+        value: America/Los_Angeles
+      - key: Backups__ScheduleUtcHour
+        value: 10
+      - key: Backups__ScheduleUtcMinute
+        value: 30
   - type: web
     name: crop-qc-dashboard-staging
     runtime: docker

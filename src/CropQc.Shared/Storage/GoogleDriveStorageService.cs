@@ -14,10 +14,20 @@ public interface IGoogleDriveClient
     Task<GoogleDriveFolder> CreateFolderAsync(string parentFolderId, string name, CancellationToken cancellationToken);
     Task<GoogleDriveFile> UploadFileAsync(string folderId, string fileName, string contentType, Stream content, CancellationToken cancellationToken);
     Task<Stream?> DownloadFileAsync(string fileId, CancellationToken cancellationToken);
+    Task<GoogleDriveFile?> GetFileAsync(string fileId, CancellationToken cancellationToken);
+    Task DeleteFileAsync(string fileId, CancellationToken cancellationToken);
 }
 
 public sealed record GoogleDriveFolder(string Id, string Name, string? DriveId, string? WebViewLink);
-public sealed record GoogleDriveFile(string Id, string Name, string? DriveId, string? WebViewLink, long? Size);
+public sealed record GoogleDriveFile(
+    string Id,
+    string Name,
+    string? DriveId,
+    string? WebViewLink,
+    long? Size,
+    string? Md5Checksum = null,
+    DateTimeOffset? CreatedAt = null,
+    DateTimeOffset? ModifiedAt = null);
 
 public sealed class GoogleDriveStorageService(
     GoogleDriveStorageOptions options,
@@ -73,14 +83,31 @@ public sealed class GoogleDriveStorageService(
             WebUrl: uploaded.WebViewLink);
     }
 
-    public Task<FileStorageReference?> GetMetadataAsync(string storageKey, CancellationToken cancellationToken = default) =>
-        Task.FromResult<FileStorageReference?>(null);
+    public async Task<FileStorageReference?> GetMetadataAsync(string storageKey, CancellationToken cancellationToken = default)
+    {
+        var file = await client.Value.GetFileAsync(storageKey, cancellationToken);
+        return file is null
+            ? null
+            : new FileStorageReference(
+                FileStorageProviders.GoogleDrive,
+                file.Id,
+                "",
+                file.Name,
+                "application/octet-stream",
+                file.Size ?? 0,
+                file.DriveId,
+                file.Id,
+                WebUrl: file.WebViewLink,
+                Checksum: file.Md5Checksum,
+                CreatedAt: file.CreatedAt,
+                ModifiedAt: file.ModifiedAt);
+    }
 
     public Task<Stream?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default) =>
         client.Value.DownloadFileAsync(storageKey, cancellationToken);
 
     public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default) =>
-        Task.CompletedTask;
+        client.Value.DeleteFileAsync(storageKey, cancellationToken);
 
     public async Task<string> EnsureFolderPathAsync(string targetPath, CancellationToken cancellationToken = default)
     {
@@ -256,6 +283,34 @@ public sealed class GoogleDriveApiClient(DriveService service, GoogleDriveStorag
             await stream.DisposeAsync();
             throw;
         }
+    }
+
+    public async Task<GoogleDriveFile?> GetFileAsync(string fileId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(fileId)) return null;
+        var request = service.Files.Get(fileId);
+        request.SupportsAllDrives = true;
+        request.Fields = "id,name,driveId,webViewLink,size,md5Checksum,createdTime,modifiedTime,trashed";
+        try
+        {
+            var file = await request.ExecuteAsync(cancellationToken);
+            if (file.Trashed == true) return null;
+            return new GoogleDriveFile(file.Id, file.Name, file.DriveId, file.WebViewLink, file.Size, file.Md5Checksum, file.CreatedTimeDateTimeOffset, file.ModifiedTimeDateTimeOffset);
+        }
+        catch (Google.GoogleApiException ex) when (ex.HttpStatusCode is System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    public async Task DeleteFileAsync(string fileId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(fileId)) return;
+        var metadata = new File { Trashed = true };
+        var request = service.Files.Update(metadata, fileId);
+        request.SupportsAllDrives = true;
+        request.Fields = "id,trashed";
+        await ExecuteDriveRequestAsync(() => request.ExecuteAsync(cancellationToken), "move expired backup to trash");
     }
 
     private void ApplySharedDriveSearchOptions(FilesResource.ListRequest request)

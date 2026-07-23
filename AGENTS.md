@@ -53,6 +53,26 @@ Do not claim a browser, database, hardware, installer, or deployment test was co
 
 ## Production safety and protected behavior
 
+### Mandatory verified production backup gate
+
+Before beginning a task, determine whether it can affect production. A production-affecting action includes an application deployment, database migration or correction, import, reconciliation, configuration change, bulk email operation, destructive maintenance, or any action that could alter production records or availability. Ordinary local editing, builds, tests, and read-only investigation do not require a new backup.
+
+For every production-affecting release or operational task, before the first production mutation or deployment:
+
+1. Identify and record the deployed application commit, application environment, and database provider.
+2. Run the standard full pre-deployment backup command: `dotnet CropQc.Web.dll --run-backup=predeployment` in the configured production runtime.
+3. Confirm the command exits successfully and that the backup package actually exists in the restricted Google Drive backup destination.
+4. Verify the uploaded package is readable and matches its recorded size and SHA-256 checksum.
+5. Record the filename, Google Drive location, UTC timestamp, size, SHA-256, deployed commit, and backup-run ID.
+6. Stop before changing production if dump creation, manifest creation, upload, read-back, checksum, or archive validation fails.
+7. Never overwrite or prune the only current verified backup. Retention may run only after a newer backup has passed every verification step.
+
+"Backup completed" means the backup exists at the durable destination and passed read-back, size, checksum, archive, manifest, and database-dump validation. Merely issuing a command, starting an export, or receiving an upload response is not completion.
+
+Never place credentials, connection strings, OAuth tokens, service-account JSON, private keys, station keys, or other secrets in source control, logs, reports, manifests, or PR descriptions. Backup diagnostics must remain safe for administrators. Final production reports must include the backup artifact and rollback details.
+
+During an emergency application rollback, preserve additive database schema unless destructive reversal is separately reviewed and explicitly authorized. Prefer reverting/redeploying the application while leaving compatible additive columns and tables in place.
+
 Do not change the following unless the user explicitly requests it or the requested fix strictly requires a narrowly scoped change:
 
 - low-level FTA communication protocols

@@ -1,48 +1,73 @@
-# Backup And Restore
+# Production Backup And Restore
 
-Production data must be backed up before production deploys and before any migration that could affect live data. The primary backup target is the configured Google Drive backup folder.
+Crop QC production changes are blocked until a full backup has been created, uploaded, downloaded again, and verified. A successful command without a verified durable artifact is not a completed backup.
 
-## Backup Contents
+## Architecture
 
-The backup workflow creates:
+The configured Google Shared Drive backup root contains:
 
-- `cropqc-prod-db-YYYYMMDD-HHMMSS.sql.gz`: PostgreSQL logical database dump when `pg_dump` is available in the runtime.
-- `cropqc-prod-config-YYYYMMDD-HHMMSS.json`: non-secret configuration snapshot with environment name, provider choices, folder IDs, and feature flags. It must not include OAuth tokens, service account JSON, client secrets, API keys, or station keys.
-- `cropqc-prod-photo-manifest-YYYYMMDD-HHMMSS.json`: manifest of photo/file metadata already stored in Google Drive, including receipt/sample references, photo type, Drive file ID, file name, uploaded date, and web URL when available.
+```text
+Crop QC Backups/
+  Production/
+    Daily/
+    Weekly/
+    Manual/
+    PreDeployment/
+    Manifests/
+  Failed/
+```
 
-Photo binaries are not duplicated by default because the production photo store is already Google Drive. The manifest is the index used to verify and locate files during a restore.
+Every run creates one ZIP package containing:
 
-## Restore To A New Database
+- a consistent `pg_dump` plain-SQL dump compressed with gzip;
+- applied and pending EF migration state, provider, connection result, and key row counts;
+- a redacted configuration manifest with secret values omitted;
+- the production photo/file relationship inventory and Google Drive accessibility result;
+- an internal manifest with the size and SHA-256 of every component.
 
-1. Open the Google Drive backup folder configured by `Backups__GoogleDriveFolderId`.
-2. Download the newest `cropqc-prod-db-*.sql.gz`.
-3. Create a new empty PostgreSQL database for restore testing or recovery.
-4. Decompress the backup:
-   ```bash
-   gunzip -c cropqc-prod-db-YYYYMMDD-HHMMSS.sql.gz > cropqc-prod-db.sql
-   ```
-5. Restore into the new database:
-   ```bash
-   psql "$RESTORE_DATABASE_URL" < cropqc-prod-db.sql
-   ```
-6. Point a staging Render service at the restored database. Never point staging at the production database.
-7. Configure staging Google Drive folders and test-only email recipients.
-8. Verify `/health`, `/health/db`, login, Dashboard, Receipts, Daily QC, sample detail, QC email preview, and photo links.
+The uploaded package is downloaded from Google Drive and its byte count, SHA-256, ZIP structure, component checksums, manifest, and database-dump header are revalidated. A small sidecar manifest records the verified package checksum. Only then is the run marked `Succeeded`.
 
-## Photo Manifest Use
+## Standard Commands
 
-Use the latest `cropqc-prod-photo-manifest-*.json` to confirm that each photo record has a Drive file ID and expected receipt/sample reference. If a restored database points to the same production Google Drive files, do not move or delete files during restore testing.
+Run from the published production image with its normal production environment variables:
 
-## Safety Rules
+```bash
+dotnet CropQc.Web.dll --run-backup=predeployment
+dotnet CropQc.Web.dll --run-backup=manual
+dotnet CropQc.Web.dll --run-backup=scheduled
+```
 
-- Never restore staging over production.
-- Never restore a test database into production without explicit approval.
-- Run a fresh production backup before production migrations.
-- Verify the restored app in staging before using restored data for recovery.
-- Keep Google Drive backup folder access restricted to approved admins.
+Each command returns nonzero when database connectivity, `pg_dump`, packaging, manifest generation, Google Drive upload, read-back, size, checksum, or structural verification fails. Deployment or mutation must stop on a nonzero result.
 
-## If pg_dump Is Unavailable
+Render runs `--run-backup=scheduled` at `30 10 * * *` UTC. This is 02:30 PST and 03:30 PDT in `America/Los_Angeles`, deliberately within the low-activity overnight window. Sunday runs are retained as the ISO-week recovery point instead of creating a duplicate package.
 
-The Admin Backups page will show: `pg_dump is not available in this runtime. Configure external Render/Postgres backup or run the backup job from a worker with PostgreSQL tools.`
+## Retention
 
-In that case, use Render/Postgres native backups or run the backup job from a worker image that includes PostgreSQL client tools. The app can still produce the non-secret config snapshot and photo manifest.
+- Keep every verified daily, manual, and pre-deployment package for at least 30 calendar days.
+- Keep one verified package for each of the most recent 52 ISO weeks.
+- Use timestamps and ISO year/week keys, including across year boundaries.
+- Prune only after a newer backup has been uploaded and verified.
+- Never prune the last verified package.
+- Pruning moves expired Google Drive artifacts to trash; it does not permanently delete them immediately.
+
+## Disposable Restore Verification
+
+Never restore over production. Download a selected verified ZIP and use `scripts/verify-backup-restore.ps1` with a newly created disposable PostgreSQL database. The script validates the package, restores the SQL dump, inspects migration history and representative row counts, and can check a separately started disposable application through its health endpoints.
+
+```powershell
+./scripts/verify-backup-restore.ps1 `
+  -BackupPackage C:\Temp\cropqc-production-weekly-YYYYMMDD-HHMMSS.zip `
+  -DisposableDatabaseUrl $env:CROPQC_DISPOSABLE_DATABASE_URL `
+  -AppBaseUrl http://localhost:5080
+```
+
+The disposable database must not be production, and the script refuses a URL when `ALLOW_PRODUCTION_RESTORE` is set or the database name cannot be identified. Run a full disposable restore at least monthly and record its result in the operational log.
+
+## Recovery
+
+1. Select a verified package from Admin → Backups and download it from the restricted Drive folder.
+2. Verify the package SHA-256 against the administration history/sidecar.
+3. Restore to a new empty PostgreSQL database first.
+4. Confirm `__EFMigrationsHistory`, key counts, receipt queries, Field Sample queries, dashboard startup, `/health`, and `/health/db`.
+5. Point a staging application at the restored database and use nonproduction email/storage configuration.
+6. Production cutover or data replacement requires a separate reviewed recovery plan and explicit authorization.

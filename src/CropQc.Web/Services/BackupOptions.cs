@@ -5,8 +5,11 @@ public sealed class BackupOptions
     public bool Enabled { get; init; }
     public string Provider { get; init; } = BackupProviders.GoogleDrive;
     public string? GoogleDriveFolderId { get; init; }
-    public int RetentionDays { get; init; } = 90;
+    public int DailyRetentionDays { get; init; } = 30;
+    public int WeeklyRetentionWeeks { get; init; } = 52;
     public int ScheduleUtcHour { get; init; } = 10;
+    public int ScheduleUtcMinute { get; init; } = 30;
+    public string BusinessTimeZone { get; init; } = "America/Los_Angeles";
     public bool DatabaseBackupEnabled { get; init; } = true;
     public bool PhotoManifestEnabled { get; init; } = true;
     public bool ConfigBackupEnabled { get; init; } = true;
@@ -20,11 +23,14 @@ public sealed class BackupOptions
             Enabled = configuration.GetValue("Backups:Enabled", false),
             Provider = configuration["Backups:Provider"] ?? BackupProviders.GoogleDrive,
             GoogleDriveFolderId = configuration["Backups:GoogleDriveFolderId"],
-            RetentionDays = configuration.GetValue("Backups:RetentionDays", 90),
+            DailyRetentionDays = configuration.GetValue("Backups:DailyRetentionDays", configuration.GetValue("Backups:RetentionDays", 30)),
+            WeeklyRetentionWeeks = configuration.GetValue("Backups:WeeklyRetentionWeeks", 52),
             ScheduleUtcHour = configuration.GetValue("Backups:ScheduleUtcHour", 10),
-            DatabaseBackupEnabled = configuration.GetValue("Backups:DatabaseBackupEnabled", true),
-            PhotoManifestEnabled = configuration.GetValue("Backups:PhotoManifestEnabled", true),
-            ConfigBackupEnabled = configuration.GetValue("Backups:ConfigBackupEnabled", true)
+            ScheduleUtcMinute = configuration.GetValue("Backups:ScheduleUtcMinute", 30),
+            BusinessTimeZone = configuration["Backups:BusinessTimeZone"] ?? "America/Los_Angeles",
+            DatabaseBackupEnabled = true,
+            PhotoManifestEnabled = true,
+            ConfigBackupEnabled = true
         };
 
     public BackupOptions WithOverrides(IReadOnlyDictionary<string, string> overrides) =>
@@ -33,11 +39,14 @@ public sealed class BackupOptions
             Enabled = Bool(overrides, "Backups:Enabled", Enabled),
             Provider = overrides.GetValueOrDefault("Backups:Provider") ?? Provider,
             GoogleDriveFolderId = NormalizeGoogleDriveFolderId(overrides.GetValueOrDefault("Backups:GoogleDriveFolderId") ?? GoogleDriveFolderId),
-            RetentionDays = Int(overrides, "Backups:RetentionDays", RetentionDays),
+            DailyRetentionDays = Int(overrides, "Backups:DailyRetentionDays", DailyRetentionDays),
+            WeeklyRetentionWeeks = Int(overrides, "Backups:WeeklyRetentionWeeks", WeeklyRetentionWeeks),
             ScheduleUtcHour = Int(overrides, "Backups:ScheduleUtcHour", ScheduleUtcHour),
-            DatabaseBackupEnabled = Bool(overrides, "Backups:DatabaseBackupEnabled", DatabaseBackupEnabled),
-            PhotoManifestEnabled = Bool(overrides, "Backups:PhotoManifestEnabled", PhotoManifestEnabled),
-            ConfigBackupEnabled = Bool(overrides, "Backups:ConfigBackupEnabled", ConfigBackupEnabled)
+            ScheduleUtcMinute = Int(overrides, "Backups:ScheduleUtcMinute", ScheduleUtcMinute),
+            BusinessTimeZone = overrides.GetValueOrDefault("Backups:BusinessTimeZone") ?? BusinessTimeZone,
+            DatabaseBackupEnabled = true,
+            PhotoManifestEnabled = true,
+            ConfigBackupEnabled = true
         };
 
     public static string? NormalizeGoogleDriveFolderId(string? value)

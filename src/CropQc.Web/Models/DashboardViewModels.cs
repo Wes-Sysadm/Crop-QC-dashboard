@@ -637,8 +637,11 @@ public sealed class BackupStatusViewModel
     public bool DatabaseBackupEnabled { get; set; }
     public bool ConfigBackupEnabled { get; set; }
     public bool PhotoManifestEnabled { get; set; }
-    public int RetentionDays { get; set; }
+    public int DailyRetentionDays { get; set; }
+    public int WeeklyRetentionWeeks { get; set; }
     public int ScheduleUtcHour { get; set; }
+    public int ScheduleUtcMinute { get; set; }
+    public string BusinessTimeZone { get; set; } = "America/Los_Angeles";
     public DateTimeOffset? NextScheduledBackupUtc { get; set; }
     public DateTimeOffset? LastDatabaseBackupAt { get; set; }
     public DateTimeOffset? LastConfigBackupAt { get; set; }
@@ -648,6 +651,9 @@ public sealed class BackupStatusViewModel
     public string? LastPhotoManifestBackupFileName { get; set; }
     public string? LastError { get; set; }
     public IReadOnlyList<string> Warnings { get; set; } = [];
+    public BackupRunListItem? LastAttempt { get; set; }
+    public BackupRunListItem? LastSuccessful { get; set; }
+    public IReadOnlyList<BackupRunListItem> RecentRuns { get; set; } = [];
     public BackupSettingsForm SettingsForm { get; set; } = new();
 }
 
@@ -656,12 +662,30 @@ public sealed class BackupSettingsForm
     public bool Enabled { get; set; }
     public string Provider { get; set; } = "GoogleDrive";
     public string? GoogleDriveFolder { get; set; }
-    public int RetentionDays { get; set; } = 90;
+    public int DailyRetentionDays { get; set; } = 30;
+    public int WeeklyRetentionWeeks { get; set; } = 52;
     public int ScheduleUtcHour { get; set; } = 10;
     public bool DatabaseBackupEnabled { get; set; } = true;
     public bool ConfigBackupEnabled { get; set; } = true;
     public bool PhotoManifestEnabled { get; set; } = true;
 }
+
+public sealed record BackupRunListItem(
+    long Id,
+    string BackupType,
+    string Status,
+    DateTimeOffset StartedAt,
+    DateTimeOffset? CompletedAt,
+    long? DurationMilliseconds,
+    string DatabaseProvider,
+    string? DeployedCommit,
+    string RetentionCategory,
+    string? PackageFileName,
+    long? FileSizeBytes,
+    string? Sha256,
+    DateTimeOffset? VerifiedAt,
+    string? ErrorSummary,
+    string? PackageWebUrl);
 
 public sealed class QcStationsPageViewModel
 {

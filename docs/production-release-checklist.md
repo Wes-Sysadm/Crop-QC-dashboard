@@ -6,8 +6,9 @@ Use this checklist before every production deploy. Production data is real compa
 - Build passes.
 - Tests pass.
 - No destructive migration is included, or the destructive migration has an explicit reviewed migration and backup plan.
-- Production backup completed before deploy.
-- Admin Backups shows recent database/config/photo-manifest success or an explicit documented backup alternative.
+- `dotnet CropQc.Web.dll --run-backup=predeployment` completed with exit code 0 immediately before the first production-changing action.
+- Admin Backups shows a verified package with filename, durable Google Drive location, timestamp, size, SHA-256, deployed commit, and backup-run ID.
+- The package was read back and passed size, checksum, archive, component-manifest, and database-dump validation; issuing an export/upload command alone does not satisfy this check.
 - Render production service deploys from `main`.
 - Production service uses the production Postgres database.
 - Production service uses production Google Drive photo and backup folders.

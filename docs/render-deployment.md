@@ -224,7 +224,7 @@ Database records are retained indefinitely by default. The app does not automati
 
 Photos and attachments must be retained for at least 3 crop years after the current crop year. The Admin Configuration value `PhotoRetentionCropYearsAfterCurrent` defaults to `3`, but it is a planning value only. No automatic photo deletion currently runs, and an Admin-reviewed archive/delete workflow is future work.
 
-Render Postgres backups are operational backups, not a substitute for the Crop QC retention policy. Production should also configure Admin -> Backups with `Backups__Provider=GoogleDrive` and `Backups__GoogleDriveFolderId` so the app can upload non-secret config snapshots and photo manifests, and database dumps when `pg_dump` is available.
+Render native exports are a secondary recovery layer, not a substitute for the verified Crop QC package. Production must configure `Backups__Provider=GoogleDrive` and `Backups__GoogleDriveFolderId`. The runtime image includes PostgreSQL client tools; a database dump failure fails the whole backup.
 
 The Admin Backups page shows backup status, production safety warnings, backup-location settings, and manual actions:
 
@@ -234,13 +234,16 @@ The Admin Backups page shows backup status, production safety warnings, backup-l
 - `Run Backup Now`
 - `Test Google Drive Backup Access`
 
-Backup file names:
+Verified package names:
 
-- `cropqc-prod-db-YYYYMMDD-HHMMSS.sql.gz`
-- `cropqc-prod-config-YYYYMMDD-HHMMSS.json`
-- `cropqc-prod-photo-manifest-YYYYMMDD-HHMMSS.json`
+- `cropqc-production-daily-YYYYMMDD-HHMMSS.zip`
+- `cropqc-production-weekly-YYYYMMDD-HHMMSS.zip`
+- `cropqc-production-predeployment-YYYYMMDD-HHMMSS.zip`
+- matching `.manifest.json` sidecars containing the verified package SHA-256
 
-If `pg_dump` is not available in the Render runtime, the page warns that a PostgreSQL-tools worker or external Render/Postgres backup must be configured. Config and photo-manifest backups can still run.
+Render Cron runs the production image with `dotnet CropQc.Web.dll --run-backup=scheduled` at `30 10 * * *` UTC (02:30 PST / 03:30 PDT). The cron service must receive the same production database, Google Shared Drive, service-account, and dedicated backup-root settings as the web service. Never copy credentials into source control.
+
+Before a production deployment or mutation, run `dotnet CropQc.Web.dll --run-backup=predeployment`. A nonzero result blocks the release. Admin -> Backups records run type, status, duration, provider, commit, size, checksum, verification, retention category, and safe failures.
 
 See `docs/backup-restore.md` for restore steps and staging restore verification.
 

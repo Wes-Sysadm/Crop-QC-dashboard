@@ -17,7 +17,10 @@ public sealed record FileStorageReference(
     string? DriveId = null,
     string? FileId = null,
     string? FolderId = null,
-    string? WebUrl = null);
+    string? WebUrl = null,
+    string? Checksum = null,
+    DateTimeOffset? CreatedAt = null,
+    DateTimeOffset? ModifiedAt = null);
 
 public sealed record FileStorageTargetContext(
     int CropYear,

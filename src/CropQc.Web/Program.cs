@@ -247,6 +247,28 @@ if (app.Configuration.GetValue<bool>("Database:EnsureCreatedOnStartup"))
 
 await DatabaseStartupDiagnostics.InspectAsync(app.Services, app.Configuration, app.Environment);
 
+var backupCommand = args.FirstOrDefault(x => x.StartsWith("--run-backup=", StringComparison.OrdinalIgnoreCase));
+if (backupCommand is not null)
+{
+    var requestedType = backupCommand[(backupCommand.IndexOf('=') + 1)..];
+    var backupType = requestedType.ToLowerInvariant() switch
+    {
+        "scheduled" or "daily" => CropQc.Data.Entities.BackupRunTypes.Daily,
+        "weekly" => CropQc.Data.Entities.BackupRunTypes.Weekly,
+        "predeployment" or "pre-deployment" => CropQc.Data.Entities.BackupRunTypes.PreDeployment,
+        "manual" => CropQc.Data.Entities.BackupRunTypes.Manual,
+        _ => throw new InvalidOperationException("Unknown backup command type.")
+    };
+    using var backupScope = app.Services.CreateScope();
+    var backupService = backupScope.ServiceProvider.GetRequiredService<IBackupService>();
+    var backupResult = await backupService.RunBackupAsync(backupType, $"command:{requestedType}", CancellationToken.None);
+    var backupLogger = backupScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("BackupCommand");
+    if (backupResult.Success) backupLogger.LogInformation("{BackupMessage}", backupResult.Message);
+    else backupLogger.LogError("{BackupMessage}", backupResult.Message);
+    Environment.ExitCode = backupResult.Success ? 0 : 1;
+    return;
+}
+
 if (app.Configuration.GetValue<bool>("Database:SeedMasterDataOnStartup"))
 {
     using var scope = app.Services.CreateScope();
