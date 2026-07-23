@@ -232,7 +232,7 @@ public sealed class ProductionReadinessTests
         Assert.Contains("SHA-256", agents);
         Assert.Contains("Stop", agents);
         Assert.Contains("aspnet:9.0-noble", dockerfile);
-        Assert.Contains("postgresql-client", dockerfile);
+        Assert.Contains("postgresql-client-18", dockerfile);
         Assert.Contains("info.Environment[\"PGPASSWORD\"]", backupService);
         Assert.DoesNotContain("--dbname={connectionString}", backupService);
     }
