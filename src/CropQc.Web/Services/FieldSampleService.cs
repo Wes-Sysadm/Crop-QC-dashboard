@@ -800,6 +800,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
                 x.Id,
                 x.SampleTakenAt,
                 x.FieldSampleFruitProfile == null ? "" : x.FieldSampleFruitProfile.Name,
+                x.ActualSampleSize,
                 x.FruitReadings.Select(row => new TrendFruitRow(
                     row.RowNumber,
                     row.Pressure1Lbs,
@@ -817,11 +818,16 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         var trend = samples.Select(sample =>
         {
             var rows = sample.Rows.Select(ToFruitReadingRow).ToList();
+            var highestPersistedRow = sample.Rows.Count == 0 ? 0 : sample.Rows.Max(row => row.RowNumber);
             return new FieldSampleTrendPoint
             {
                 SampleId = sample.SampleId,
                 SampleTakenAt = sample.SampleTakenAt,
                 Variety = sample.Variety,
+                TargetSampleSize = Math.Clamp(
+                    Math.Max(FieldSampleSize, Math.Max(sample.ActualSampleSize ?? FieldSampleSize, highestPersistedRow)),
+                    FieldSampleSize,
+                    MaxFieldSampleSize),
                 Summary = BuildSummary(rows),
                 SizeDistribution = BuildSizeDistribution(rows)
             };
@@ -1128,6 +1134,6 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         });
     }
 
-    private sealed record TrendSampleRow(long SampleId, DateTimeOffset SampleTakenAt, string Variety, IReadOnlyList<TrendFruitRow> Rows);
+    private sealed record TrendSampleRow(long SampleId, DateTimeOffset SampleTakenAt, string Variety, int? ActualSampleSize, IReadOnlyList<TrendFruitRow> Rows);
     private sealed record TrendFruitRow(int RowNumber, decimal? Pressure1Lbs, decimal? Pressure2Lbs, decimal? WeightGrams, decimal? Starch, int? StarchScaleValueId, int? SizeCategory, string? Grade);
 }

@@ -185,6 +185,7 @@ public sealed class FieldSampleTrendPoint
     public long SampleId { get; set; }
     public DateTimeOffset SampleTakenAt { get; set; }
     public string Variety { get; set; } = "";
+    public int TargetSampleSize { get; set; }
     public FieldSampleMetricSummary Summary { get; set; } = new();
     public IReadOnlyList<FieldSampleSizePoint> SizeDistribution { get; set; } = [];
 }

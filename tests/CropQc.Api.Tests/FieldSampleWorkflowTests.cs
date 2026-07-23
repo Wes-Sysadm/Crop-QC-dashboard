@@ -167,11 +167,26 @@ public sealed class FieldSampleWorkflowTests
         await SavePressureAsync(service, olderId, 20m, 20m);
         await SavePressureAsync(service, otherBlockId, 10m, 10m);
 
+        var current = await db.QcSamples.SingleAsync(x => x.Id == currentId);
+        current.ActualSampleSize = 14;
+        var prior = await db.QcSamples.SingleAsync(x => x.Id == priorId);
+        prior.ActualSampleSize = 10;
+        db.QcFruitReadings.AddRange(Enumerable.Range(2, 14).Select(rowNumber => new QcFruitReading
+        {
+            QcSampleId = priorId,
+            RowNumber = rowNumber,
+            SizeStatus = "NotCalculated",
+            CreatedAt = currentDate.AddDays(-7)
+        }));
+        await db.SaveChangesAsync();
+
         var detail = await service.GetDetailAsync(currentId, Owner(), CancellationToken.None);
 
         Assert.Equal([priorId, currentId], detail.Trend.Select(x => x.SampleId).ToArray());
         Assert.Equal(-1m, detail.CurrentSummary.AveragePressureChangeFromPriorLbs);
         Assert.Equal(priorId, detail.Trend.First().SampleId);
+        Assert.Equal(15, detail.Trend.First().TargetSampleSize);
+        Assert.Equal(14, detail.Trend.Last().TargetSampleSize);
         Assert.DoesNotContain(detail.Trend, x => x.SampleId == olderId);
         Assert.DoesNotContain(detail.Trend, x => x.SampleId == otherBlockId);
     }

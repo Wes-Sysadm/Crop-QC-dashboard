@@ -211,7 +211,7 @@
                                 <td>@point.Variety</td>
                                 <td>@Format(point.Summary.AverageWeightGrams) g</td>
                                 <td>@Format(point.Summary.PeakWeightGrams) g</td>
-                                <td>@point.Summary.WeightRepresentedFruitCount / @Model.TargetSampleSize</td>
+                                <td>@point.Summary.WeightRepresentedFruitCount / @point.TargetSampleSize</td>
                             </tr>
                         }
                     </tbody>
@@ -238,7 +238,7 @@
                             <tr class="@(point.SampleId == Model.SampleId ? "selected-row" : null)">
                                 <td>@point.SampleTakenAt.LocalDateTime.ToString("MMM d, h:mm tt")</td>
                                 <td>@Format(point.Summary.AverageStarch)</td>
-                                <td>@point.Summary.StarchRepresentedFruitCount / @Model.TargetSampleSize</td>
+                                <td>@point.Summary.StarchRepresentedFruitCount / @point.TargetSampleSize</td>
                             </tr>
                         }
                     </tbody>
@@ -267,7 +267,7 @@
                                 <td>@Format(point.Summary.AveragePressureLbs) lb</td>
                                 <td>@Format(point.Summary.PeakPressureLbs) lb</td>
                                 <td>@(point.Summary.PressureStandardDeviationLbs?.ToString("0.##") ?? "Insufficient")</td>
-                                <td>@point.Summary.PressureReadingCount / @Model.TargetSampleSize</td>
+                                <td>@point.Summary.PressureReadingCount / @point.TargetSampleSize</td>
                             </tr>
                         }
                     </tbody>
