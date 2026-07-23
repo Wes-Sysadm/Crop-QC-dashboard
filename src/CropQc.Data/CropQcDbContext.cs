@@ -492,6 +492,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.FieldSampleGrowerNumber).HasMaxLength(50);
             entity.Property(x => x.FieldSampleOriginalBlockName).HasMaxLength(150);
             entity.Property(x => x.FieldSampleBlockResolution).HasMaxLength(50);
+            entity.Property(x => x.FieldSampleAutosaveVersion).HasDefaultValue(0L);
             var receiptSequenceIndex = entity.HasIndex(x => new { x.ReceiptId, x.SampleSequenceNumber }).IsUnique();
             receiptSequenceIndex.HasFilter(isPostgreSqlProvider ? "\"ReceiptId\" IS NOT NULL" : "[ReceiptId] IS NOT NULL");
             entity.HasIndex(x => new { x.ReceiptId, x.IsDeleted });
@@ -531,6 +532,8 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.Pressure2Source).HasMaxLength(50);
             entity.Property(x => x.WeightGrams).HasPrecision(8, 4);
             entity.Property(x => x.SizeStatus).HasMaxLength(25).HasDefaultValue("NotCalculated").IsRequired();
+            entity.Property(x => x.DefectsInspected).HasDefaultValue(false);
+            entity.Property(x => x.FieldVersion).HasDefaultValue(0L);
             entity.HasIndex(x => new { x.QcSampleId, x.RowNumber }).IsUnique();
             entity.HasOne(x => x.Grade)
                 .WithMany()

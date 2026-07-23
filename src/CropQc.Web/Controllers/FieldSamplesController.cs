@@ -59,6 +59,23 @@ public sealed class FieldSamplesController(
         return model is null ? NotFound() : Json(model);
     }
 
+    [HttpPost("{id:long}/autosave")]
+    [Authorize(Policy = AccessPolicyNames.FieldSamplesEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Autosave(long id, [FromBody] FieldSampleAutosaveRequest request, CancellationToken cancellationToken)
+    {
+        var result = await fieldSampleService.AutosaveAsync(id, request, User, cancellationToken);
+        if (result.Conflicts.Count > 0)
+        {
+            return Conflict(result);
+        }
+        if (result.ValidationErrors.Count > 0 || result.Error is not null)
+        {
+            return BadRequest(result);
+        }
+        return Json(result);
+    }
+
     [HttpGet("{id:long}/Edit")]
     [Authorize(Policy = AccessPolicyNames.FieldSamplesEdit)]
     public async Task<IActionResult> Edit(long id, CancellationToken cancellationToken)
@@ -212,8 +229,11 @@ public sealed class FieldSamplesController(
                 : submitted.Pressure2Lbs is null ? submitted.Pressure1Lbs
                 : decimal.Round((submitted.Pressure1Lbs.Value + submitted.Pressure2Lbs.Value) / 2m, 2);
             row.WeightGrams = submitted.WeightGrams;
-            row.SizeCategory = submitted.SizeCategory;
             row.StarchScaleValueId = submitted.StarchScaleValueId;
+            row.GradeId = submitted.GradeId;
+            row.DefectTypeIds = submitted.DefectTypeIds;
+            row.OtherDefectNotes = submitted.OtherDefectNotes;
+            row.DefectsInspected = submitted.DefectsInspected;
         }
         model.TargetSampleSize = Math.Clamp(Math.Max(form.TargetSampleSize, byRow.Keys.DefaultIfEmpty(10).Max()), 10, 50);
         model.FruitRows = Enumerable.Range(1, model.TargetSampleSize)

@@ -326,7 +326,7 @@ public sealed class FieldSampleWorkflowTests
     }
 
     [Fact]
-    public async Task SaveRowsAsync_RecalculatesSizeForWeightAndPreservesManualOverride()
+    public async Task SaveRowsAsync_RecalculatesSizeAndIgnoresClientOverride()
     {
         await using var db = CreateDbContext();
         await SeedFieldSampleMasterDataAsync(db);
@@ -359,8 +359,242 @@ public sealed class FieldSampleWorkflowTests
         }, Owner(), CancellationToken.None);
         Assert.Null(overrideError);
         var overridden = await db.QcFruitReadings.SingleAsync(x => x.QcSampleId == sampleId && x.RowNumber == 1);
-        Assert.Equal(80, overridden.SizeCategory);
-        Assert.Equal(SizeCalculationService.Manual, overridden.SizeStatus);
+        Assert.Equal(72, overridden.SizeCategory);
+        Assert.Equal(SizeCalculationService.Sized, overridden.SizeStatus);
+
+        Assert.Null(await service.SaveRowsAsync(sampleId, new SaveFruitReadingsForm
+        {
+            SampleId = sampleId,
+            TargetSampleSize = 10,
+            Rows = [new FruitReadingEditRow { RowNumber = 1, WeightGrams = null, OriginalWeightGrams = 266m, SizeCategory = 80 }]
+        }, Owner(), CancellationToken.None));
+        var cleared = await db.QcFruitReadings.SingleAsync(x => x.QcSampleId == sampleId && x.RowNumber == 1);
+        Assert.Null(cleared.WeightGrams);
+        Assert.Null(cleared.SizeCategory);
+        Assert.Equal(SizeCalculationService.NotCalculated, cleared.SizeStatus);
+    }
+
+    [Fact]
+    public async Task Autosave_SavesOnlyChangedFieldsAndPreservesNewerStationPressure()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "Autosave Block", DateTimeOffset.UtcNow);
+        var reading = await db.QcFruitReadings.SingleAsync(x => x.QcSampleId == sampleId && x.RowNumber == 1);
+        reading.Pressure1Lbs = 13.25m;
+        reading.Pressure1Source = "FTA";
+        reading.FieldVersion++;
+        await db.SaveChangesAsync();
+
+        var result = await service.AutosaveAsync(sampleId, new FieldSampleAutosaveRequest
+        {
+            ChangeId = "weight-only",
+            Source = "Browser",
+            RowChanges =
+            [
+                new FieldSampleAutosaveRowChange
+                {
+                    RowNumber = 1,
+                    Changes = [new FieldSampleAutosaveFieldChange { Field = "WeightGrams", OriginalValue = null, Value = "266" }]
+                }
+            ]
+        }, Owner(), CancellationToken.None);
+
+        Assert.True(result.Saved);
+        reading = await db.QcFruitReadings.SingleAsync(x => x.QcSampleId == sampleId && x.RowNumber == 1);
+        Assert.Equal(13.25m, reading.Pressure1Lbs);
+        Assert.Equal("FTA", reading.Pressure1Source);
+        Assert.Equal(266m, reading.WeightGrams);
+        Assert.Equal(72, reading.SizeCategory);
+    }
+
+    [Fact]
+    public async Task Autosave_SameFieldStationChangeProducesResolvableConflict()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "Conflict Block", DateTimeOffset.UtcNow);
+        var reading = await db.QcFruitReadings.SingleAsync(x => x.QcSampleId == sampleId && x.RowNumber == 1);
+        reading.Pressure1Lbs = 14m;
+        reading.Pressure1Source = "FTA";
+        await db.SaveChangesAsync();
+
+        var conflict = await service.AutosaveAsync(sampleId, new FieldSampleAutosaveRequest
+        {
+            ChangeId = "pressure-conflict",
+            RowChanges =
+            [
+                new FieldSampleAutosaveRowChange
+                {
+                    RowNumber = 1,
+                    Changes = [new FieldSampleAutosaveFieldChange { Field = "Pressure1Lbs", OriginalValue = "12", Value = "13" }]
+                }
+            ]
+        }, Owner(), CancellationToken.None);
+
+        Assert.False(conflict.Saved);
+        var item = Assert.Single(conflict.Conflicts);
+        Assert.Equal("14", item.ServerValue);
+        Assert.Contains("QC Station", item.Message);
+        Assert.Equal(14m, (await db.QcFruitReadings.SingleAsync(x => x.QcSampleId == sampleId && x.RowNumber == 1)).Pressure1Lbs);
+        Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "autosave-conflict");
+    }
+
+    [Fact]
+    public async Task Autosave_RetryAfterCommittedResponseIsIdempotentAndReturnsNormalizedMetadata()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "Retry Block", DateTimeOffset.UtcNow);
+        var request = new FieldSampleAutosaveRequest
+        {
+            ChangeId = "lost-response-retry",
+            MetadataChanges = [new FieldSampleAutosaveFieldChange { Field = "Notes", OriginalValue = null, Value = "  queued note  " }],
+            RowChanges =
+            [
+                new FieldSampleAutosaveRowChange
+                {
+                    RowNumber = 1,
+                    Changes = [new FieldSampleAutosaveFieldChange { Field = "WeightGrams", OriginalValue = null, Value = "266" }]
+                }
+            ]
+        };
+
+        var first = await service.AutosaveAsync(sampleId, request, Owner(), CancellationToken.None);
+        var versionAfterFirst = (await db.QcSamples.SingleAsync(x => x.Id == sampleId)).FieldSampleAutosaveVersion;
+        var second = await service.AutosaveAsync(sampleId, request, Owner(), CancellationToken.None);
+        var versionAfterRetry = (await db.QcSamples.SingleAsync(x => x.Id == sampleId)).FieldSampleAutosaveVersion;
+
+        Assert.True(first.Saved);
+        Assert.True(second.Saved);
+        Assert.Empty(second.Conflicts);
+        Assert.Equal(versionAfterFirst, versionAfterRetry);
+        Assert.Equal("queued note", second.MetadataValues["Notes"]);
+        Assert.Equal(72, second.Rows.Single(x => x.RowNumber == 1).SizeCategory);
+    }
+
+    [Fact]
+    public async Task Autosave_ExplicitWeightClearClearsCalculatedSize()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "Clear Block", DateTimeOffset.UtcNow);
+        Assert.True((await service.AutosaveAsync(sampleId, new FieldSampleAutosaveRequest
+        {
+            ChangeId = "set-weight",
+            RowChanges = [new FieldSampleAutosaveRowChange { RowNumber = 1, Changes = [new FieldSampleAutosaveFieldChange { Field = "WeightGrams", Value = "266" }] }]
+        }, Owner(), CancellationToken.None)).Saved);
+
+        var cleared = await service.AutosaveAsync(sampleId, new FieldSampleAutosaveRequest
+        {
+            ChangeId = "clear-weight",
+            RowChanges = [new FieldSampleAutosaveRowChange { RowNumber = 1, Changes = [new FieldSampleAutosaveFieldChange { Field = "WeightGrams", OriginalValue = "266", Value = null }] }]
+        }, Owner(), CancellationToken.None);
+
+        Assert.True(cleared.Saved);
+        var row = cleared.Rows.Single(x => x.RowNumber == 1);
+        Assert.Null(row.WeightGrams);
+        Assert.Null(row.SizeCategory);
+    }
+
+    [Fact]
+    public async Task Autosave_MissingSizeThresholdPreservesWeightWithoutCalculatedSize()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        foreach (var threshold in await db.FruitSizeConversionThresholds.Where(x => x.FruitType == "Apple").ToListAsync()) threshold.IsActive = false;
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "No Threshold Block", DateTimeOffset.UtcNow);
+
+        var result = await service.AutosaveAsync(sampleId, new FieldSampleAutosaveRequest
+        {
+            ChangeId = "weight-without-threshold",
+            RowChanges = [new FieldSampleAutosaveRowChange { RowNumber = 1, Changes = [new FieldSampleAutosaveFieldChange { Field = "WeightGrams", Value = "266" }] }]
+        }, Owner(), CancellationToken.None);
+
+        Assert.True(result.Saved);
+        var row = await db.QcFruitReadings.SingleAsync(x => x.QcSampleId == sampleId && x.RowNumber == 1);
+        Assert.Equal(266m, row.WeightGrams);
+        Assert.Null(row.SizeCategory);
+        Assert.Equal(SizeCalculationService.Undersized, row.SizeStatus);
+    }
+
+    [Fact]
+    public async Task Autosave_RejectsNewlySelectedInactiveDefect()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        (await db.DefectTypes.SingleAsync(x => x.Id == 2)).IsActive = false;
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "Inactive Defect Block", DateTimeOffset.UtcNow);
+
+        var result = await service.AutosaveAsync(sampleId, new FieldSampleAutosaveRequest
+        {
+            ChangeId = "inactive-defect",
+            RowChanges = [new FieldSampleAutosaveRowChange { RowNumber = 1, Changes = [new FieldSampleAutosaveFieldChange { Field = "DefectTypeIds", Value = "2" }] }]
+        }, Owner(), CancellationToken.None);
+
+        Assert.False(result.Saved);
+        Assert.Contains(result.ValidationErrors, x => x.Field == "DefectTypeIds" && x.Message.Contains("inactive", StringComparison.OrdinalIgnoreCase));
+        Assert.Empty(await db.QcFruitDefects.Where(x => x.QcFruitReading.QcSampleId == sampleId).ToListAsync());
+    }
+
+    [Fact]
+    public async Task FieldSampleDefects_DistinguishNotInspectedNoneAndMultipleDefects()
+    {
+        await using var db = CreateDbContext();
+        await SeedFieldSampleMasterDataAsync(db);
+        var service = CreateService(db);
+        var sampleId = await CreateSampleAsync(service, "Defect Block", DateTimeOffset.UtcNow);
+
+        var result = await service.AutosaveAsync(sampleId, new FieldSampleAutosaveRequest
+        {
+            ChangeId = "defects",
+            RowChanges =
+            [
+                new FieldSampleAutosaveRowChange
+                {
+                    RowNumber = 1,
+                    Changes =
+                    [
+                        new FieldSampleAutosaveFieldChange { Field = "DefectsInspected", OriginalValue = "false", Value = "true" },
+                        new FieldSampleAutosaveFieldChange { Field = "DefectTypeIds", OriginalValue = null, Value = "1,2" }
+                    ]
+                },
+                new FieldSampleAutosaveRowChange
+                {
+                    RowNumber = 2,
+                    Changes = [new FieldSampleAutosaveFieldChange { Field = "DefectsInspected", OriginalValue = "false", Value = "true" }]
+                }
+            ]
+        }, Owner(), CancellationToken.None);
+
+        Assert.True(result.Saved);
+        var detail = await service.GetDetailAsync(sampleId, Owner(), CancellationToken.None);
+        Assert.Equal(2, detail.CurrentSummary.DefectInspectedFruitCount);
+        Assert.Equal(1, detail.CurrentSummary.DefectAffectedFruitCount);
+        Assert.Equal(50m, detail.CurrentSummary.DefectAffectedPercentage);
+        Assert.Equal(["Bruise", "Other"], detail.CurrentSummary.DefectDistribution.Select(x => x.Defect).ToArray());
+        Assert.False(detail.FruitRows.Single(x => x.RowNumber == 3).DefectsInspected);
+        Assert.True(detail.FruitRows.Single(x => x.RowNumber == 2).DefectsInspected);
+        Assert.Empty(detail.FruitRows.Single(x => x.RowNumber == 2).Defects);
+    }
+
+    [Theory]
+    [InlineData("Apple", "Whole Apple Sample", "Cut Apple")]
+    [InlineData("Pear", "Whole Pear Sample", "Cut Pear")]
+    [InlineData("", "Whole Fruit Sample", "Cut Fruit")]
+    public void CommodityTerminology_IsCentralized(string fruitType, string whole, string cut)
+    {
+        var result = FieldSampleCommodityTerminologyService.ForFruitType(fruitType);
+        Assert.Equal(whole, result.WholeSampleLabel);
+        Assert.Equal(cut, result.CutFruitLabel);
     }
 
     [Fact]
@@ -491,7 +725,7 @@ public sealed class FieldSampleWorkflowTests
         Assert.Contains("Starch Trend", detail);
         Assert.Contains("Pressure Trend", detail);
         Assert.Contains("Size Trend", detail);
-        Assert.Contains("Save Field Sample", detail);
+        Assert.Contains("Save Now", detail);
         Assert.Contains("Open in QC Station", detail);
         Assert.Contains("Html.PartialAsync(\"_DeviceCapturePanel\"", detail);
         Assert.Contains("ShowScale: true", detail);
@@ -501,6 +735,15 @@ public sealed class FieldSampleWorkflowTests
         Assert.Contains("sizeThresholdJson", detail);
         Assert.Contains("class=\"fruit-row\"", detail);
         Assert.Contains("data-add-field-row", detail);
+        Assert.Contains("field-sample-autosave.js", detail);
+        Assert.Contains("data-size-category", detail);
+        Assert.DoesNotContain("name=\"Rows[@i].SizeCategory\"", detail);
+        var autosave = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "js", "field-sample-autosave.js"));
+        Assert.Contains("localStorage.setItem", autosave);
+        Assert.Contains("debounceMilliseconds: 1000", detail);
+        Assert.Contains("Conflict detected", autosave);
+        Assert.Contains("sameSubmittedChange", autosave);
+        Assert.Contains("current.originalValue = normalize(serverValue)", autosave);
         Assert.DoesNotContain("ReceiptId", index + create);
         Assert.DoesNotContain("Truck", index + create + detail, StringComparison.OrdinalIgnoreCase);
     }
@@ -725,6 +968,19 @@ public sealed class FieldSampleWorkflowTests
             FruitType = "Apple",
             ProductionType = "Conventional"
         });
+        db.FruitProfiles.Add(new FruitProfile
+        {
+            Id = 2,
+            Name = "Bartlett Pear",
+            VarietyCode = "BART",
+            FruitType = "Pear",
+            ProductionType = "Conventional"
+        });
+        db.Grades.Add(new Grade { Id = 1, Code = "US1", Name = "US No. 1", IsActive = true });
+        db.DefectTypes.AddRange(
+            new DefectType { Id = 1, Name = "Bruise", IsActive = true },
+            new DefectType { Id = 2, Name = "Other", IsActive = true },
+            new DefectType { Id = 3, Name = "Inactive Defect", IsActive = false });
         db.StarchScales.Add(new StarchScale { Id = 1, Name = "Apple Starch", FruitType = "Apple" });
         db.StarchScaleValues.AddRange(
             new StarchScaleValue { Id = 1, StarchScaleId = 1, Value = 3m, SortOrder = 1 },
@@ -732,6 +988,7 @@ public sealed class FieldSampleWorkflowTests
         db.FruitSizeConversionThresholds.AddRange(
             new FruitSizeConversionThreshold { Id = 1, FruitType = "Apple", SizeCategory = 72, MinimumWeightGrams = 264m },
             new FruitSizeConversionThreshold { Id = 2, FruitType = "Apple", SizeCategory = 80, MinimumWeightGrams = 238m });
+        db.FruitSizeConversionThresholds.Add(new FruitSizeConversionThreshold { Id = 3, FruitType = "Pear", SizeCategory = 90, MinimumWeightGrams = 200m });
         await db.SaveChangesAsync();
     }
 

@@ -125,6 +125,10 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
         }
 
         sample.UpdatedAt = DateTimeOffset.UtcNow;
+        if (sample.ReceiptId is null)
+        {
+            sample.FieldSampleAutosaveVersion++;
+        }
         sample.QcStationId = station.Id;
         station.LastSyncAt = DateTimeOffset.UtcNow;
         station.UpdatedAt = DateTimeOffset.UtcNow;
@@ -158,6 +162,7 @@ public sealed class QcStationApiService(CropQcDbContext dbContext, IAuditService
             && reading.WeightGrams is not null
             && reading.GradeId is not null;
         reading.UpdatedAt = DateTimeOffset.UtcNow;
+        reading.FieldVersion++;
     }
 
     private static QcStationSampleDetailDto ToDetailDto(QcSample sample)

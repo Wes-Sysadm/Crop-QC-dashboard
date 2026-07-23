@@ -15,7 +15,9 @@
          data-global-enabled="@Model.Settings.Enabled.ToString().ToLowerInvariant()"
          data-brio-enabled="@Model.Settings.BrioEnabled.ToString().ToLowerInvariant()"
          data-obsbot-enabled="@Model.Settings.ObsbotEnabled.ToString().ToLowerInvariant()"
-         data-scale-enabled="@Model.Settings.ScaleEnabled.ToString().ToLowerInvariant()">
+         data-scale-enabled="@Model.Settings.ScaleEnabled.ToString().ToLowerInvariant()"
+         data-whole-sample-label="@Model.WholeSampleLabel"
+         data-cut-fruit-label="@Model.CutFruitLabel">
     <h2>Capture from Devices</h2>
     <p class="notice warning" data-device-disabled>Device capture is disabled.</p>
     <div class="button-row">
@@ -47,7 +49,7 @@
             <button type="button" class="secondary-button" data-device-save>Save device choices</button>
         </div>
         <div class="form-grid">
-            <label class="field">Apple camera
+            <label class="field"><span data-fruit-camera-label>@Model.FruitCameraLabel</span>
                 <select data-camera-select="apple"></select>
             </label>
             <label class="field">Truck camera
@@ -71,8 +73,8 @@
         }
         @if (Model.ShowApplePhotos)
         {
-            <button type="button" data-capture-photo="SampleBeforeCutting" data-camera-role="apple" disabled="@(!hasPhotoAction)">Capture Whole Apple Photo</button>
-            <button type="button" class="secondary-button" data-capture-photo="CutFruit" data-camera-role="apple" disabled="@(!hasPhotoAction)">Capture Cut Apple Photo</button>
+            <button type="button" data-capture-photo="SampleBeforeCutting" data-camera-role="apple" data-whole-sample-action disabled="@(!hasPhotoAction)">Capture @Model.WholeSampleLabel Photo</button>
+            <button type="button" class="secondary-button" data-capture-photo="CutFruit" data-camera-role="apple" data-cut-fruit-action disabled="@(!hasPhotoAction)">Capture @Model.CutFruitLabel Photo</button>
             <button type="button" class="secondary-button" data-capture-photo="FruitAfterStarch" data-camera-role="apple" disabled="@(!hasPhotoAction)">Capture Starch Photo</button>
         }
         @if (Model.ShowScale)
@@ -170,8 +172,8 @@
             return {
                 BinTruck: "Truck photo",
                 TopOfTruck: "Top of truck",
-                SampleBeforeCutting: "Whole apple photo",
-                CutFruit: "Cut apple photo",
+                SampleBeforeCutting: `${panel.dataset.wholeSampleLabel || "Whole fruit sample"} photo`,
+                CutFruit: `${panel.dataset.cutFruitLabel || "Cut fruit"} photo`,
                 FruitAfterStarch: "Starch photo"
             }[photoType] || photoType;
         }
@@ -329,6 +331,11 @@
                 return;
             }
 
+            if (window.fieldSampleAutosave?.hasPending() && !await window.fieldSampleAutosave.flush()) {
+                show("Save the pending Field Sample changes before capturing a photo. The entered values remain on this page.", true);
+                return;
+            }
+
             const started = activeRole === role && stream ? true : await startCamera(role);
             if (!started) return;
             await new Promise(resolve => setTimeout(resolve, 150));
@@ -440,6 +447,7 @@
                 return;
             }
 
+            input.dataset.changeSource = "Scale";
             input.value = String(lastWeight);
             input.dispatchEvent(new Event("input", { bubbles: true }));
             status("last-weight", `${lastWeight} g captured`);

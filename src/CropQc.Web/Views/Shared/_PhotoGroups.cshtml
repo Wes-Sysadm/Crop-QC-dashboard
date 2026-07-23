@@ -1,4 +1,9 @@
 @model IReadOnlyList<PhotoGroupViewModel>
+@{
+    var wholeSampleLabel = ViewData["WholeSampleLabel"] as string;
+    var cutFruitLabel = ViewData["CutFruitLabel"] as string;
+    var commodity = ViewData["Commodity"] as string;
+}
 
 @if (Model.Count == 0)
 {
@@ -7,7 +12,7 @@
 @foreach (var group in Model)
 {
     <div class="panel">
-        <h2>@FriendlyPhotoType(group.PhotoType)</h2>
+        <h2>@FriendlyPhotoType(group.PhotoType, wholeSampleLabel, cutFruitLabel, commodity)</h2>
         <div class="table-wrap">
             <table>
                 <thead><tr><th>File</th><th>Source</th><th>Type</th><th>Size</th><th>Captured</th><th>Actions</th></tr></thead>
@@ -39,7 +44,7 @@
                             @if (photo.CanDelete && (!string.IsNullOrWhiteSpace(photo.DeleteAction) || photo.DeleteFromSampleId is long))
                             {
                                 var deleteAction = photo.DeleteAction ?? $"/Samples/{photo.DeleteFromSampleId}/photos/{photo.Id}/remove";
-                                <form class="inline-form" method="post" action="@deleteAction" onsubmit="return confirm('Remove this photo from the sample?');">
+                                <form class="inline-form" method="post" action="@deleteAction" data-requires-autosave onsubmit="return confirm('Remove this photo from the sample?');">
                                     <button type="submit" class="link-button danger-link">Remove Photo</button>
                                 </form>
                             }
@@ -57,14 +62,14 @@
 }
 
 @functions {
-    private static string FriendlyPhotoType(string photoType) => NormalizePhotoType(photoType) switch
+    private static string FriendlyPhotoType(string photoType, string? wholeSampleLabel, string? cutFruitLabel, string? commodity) => NormalizePhotoType(photoType) switch
     {
         "BinTruck" => "Truck photo",
         "TopOfTruck" => "Top of truck",
         "Hectre" => "Hectre",
-        "SampleBeforeCutting" => "Whole sample",
-        "CutFruit" => "Cut apples",
-        "FruitAfterStarch" => "Starch apples",
+        "SampleBeforeCutting" => wholeSampleLabel ?? "Whole sample",
+        "CutFruit" => cutFruitLabel ?? "Cut apples",
+        "FruitAfterStarch" => $"Starch {commodity ?? "apples"}",
         "Other" => "Other",
         _ => photoType
     };

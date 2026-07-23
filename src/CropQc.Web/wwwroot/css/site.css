@@ -74,6 +74,12 @@ button, .button { display: inline-flex; align-items: center; justify-content: ce
 .secondary-button { min-height: 30px; background: white; color: #235a97; }
 button:disabled { background: #d2d8de; border-color: #c0c8d0; color: #66717c; cursor: not-allowed; }
 .button-row, .action-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.field-autosave-status { position: sticky; top: 8px; z-index: 20; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: fit-content; margin: 0 0 12px auto; padding: 8px 10px; border: 1px solid #b9c5d0; border-radius: 8px; background: rgba(255, 255, 255, .96); box-shadow: 0 2px 8px rgba(31, 41, 51, .1); }
+.field-defect-cell { min-width: 220px; max-width: 300px; }
+.field-defect-cell details { white-space: normal; }
+.field-defect-cell summary { cursor: pointer; font-weight: 700; }
+.defect-palette, .selected-defects { display: flex; gap: 5px; flex-wrap: wrap; margin: 8px 0; }
+.autosave-conflict { padding-top: 8px; }
 .action-bar form { margin: 0; }
 .table-wrap { max-width: 100%; overflow-x: auto; background: white; border: 1px solid #d9e1e8; border-radius: 6px; }
 table { width: 100%; border-collapse: collapse; }

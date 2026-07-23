@@ -49,7 +49,7 @@ public sealed class DeviceCaptureIntegrationTests
         Assert.Contains("Reset Device Settings", panel);
         Assert.Contains("cropqc.deviceCapture.enabled", panel);
         Assert.Contains("Capture Truck Photo", panel);
-        Assert.Contains("Capture Whole Apple Photo", panel);
+        Assert.Contains("@Model.WholeSampleLabel", panel);
         Assert.Contains("Read Weight from Scale", panel);
         Assert.Contains("Capture Next Fruit Weight", panel);
     }
@@ -96,7 +96,7 @@ public sealed class DeviceCaptureIntegrationTests
         Assert.Contains("data-capture-photo=\"CutFruit\"", panel);
         Assert.Contains("data-capture-photo=\"FruitAfterStarch\"", panel);
         Assert.Contains("Truck photo", panel);
-        Assert.Contains("Whole apple photo", panel);
+        Assert.Contains("panel.dataset.wholeSampleLabel", panel);
         Assert.Contains("Starch photo", panel);
     }
 
@@ -106,6 +106,7 @@ public sealed class DeviceCaptureIntegrationTests
         var panel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_DeviceCapturePanel.cshtml"));
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
         var fieldSamples = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "FieldSamples", "Details.cshtml"));
+        var fieldAutosave = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "js", "field-sample-autosave.js"));
 
         Assert.Contains("\"serial\" in navigator", panel);
         Assert.Contains("\"usb\" in navigator", panel);
@@ -118,7 +119,8 @@ public sealed class DeviceCaptureIntegrationTests
         Assert.Contains("In-progress rows are saved", FindRepositoryFileText("src", "CropQc.Web", "Views", "Samples", "Details.cshtml"));
         Assert.Contains("ShowScale: true", fieldSamples);
         Assert.Contains("data-add-field-row", fieldSamples);
-        Assert.Contains("Rows[${index}].WeightGrams", fieldSamples);
+        Assert.Contains("Rows[${index}]", fieldAutosave);
+        Assert.Contains("data-field-weight", fieldSamples);
     }
 
     [Fact]
