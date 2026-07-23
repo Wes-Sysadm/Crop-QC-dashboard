@@ -183,5 +183,10 @@ public sealed class BackendProviderConfigurationTests
 
         public Task<Stream?> DownloadFileAsync(string fileId, CancellationToken cancellationToken) =>
             Task.FromResult<Stream?>(new MemoryStream([1, 2, 3]));
+
+        public Task<GoogleDriveFile?> GetFileAsync(string fileId, CancellationToken cancellationToken) =>
+            Task.FromResult<GoogleDriveFile?>(new GoogleDriveFile(fileId, fileId, null, $"https://drive.example/{fileId}", 3));
+
+        public Task DeleteFileAsync(string fileId, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

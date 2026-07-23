@@ -43,6 +43,8 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<OfflineSyncItem> OfflineSyncItems => Set<OfflineSyncItem>();
     public DbSet<DashboardConfiguration> DashboardConfigurations => Set<DashboardConfiguration>();
+    public DbSet<BackupRunRecord> BackupRunRecords => Set<BackupRunRecord>();
+    public DbSet<BackupOperationLease> BackupOperationLeases => Set<BackupOperationLease>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -51,11 +53,41 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         ConfigureQc(modelBuilder, IsPostgreSqlProvider());
         ConfigureAudit(modelBuilder);
         ConfigureDashboardConfiguration(modelBuilder);
+        ConfigureBackups(modelBuilder);
         SeedData(modelBuilder);
     }
 
     private bool IsPostgreSqlProvider() =>
         Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static void ConfigureBackups(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<BackupRunRecord>(entity =>
+        {
+            entity.Property(x => x.BackupType).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.EnvironmentName).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.DatabaseProvider).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.DeployedCommit).HasMaxLength(64);
+            entity.Property(x => x.RequestedBy).HasMaxLength(320);
+            entity.Property(x => x.RetentionCategory).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.PackageFileName).HasMaxLength(260);
+            entity.Property(x => x.PackageStorageKey).HasMaxLength(500);
+            entity.Property(x => x.PackageWebUrl).HasMaxLength(2000);
+            entity.Property(x => x.ManifestFileName).HasMaxLength(260);
+            entity.Property(x => x.ManifestStorageKey).HasMaxLength(500);
+            entity.Property(x => x.Sha256).HasMaxLength(64);
+            entity.Property(x => x.ErrorSummary).HasMaxLength(2000);
+            entity.HasIndex(x => new { x.Status, x.StartedAt });
+            entity.HasIndex(x => new { x.RetentionCategory, x.StartedAt });
+        });
+
+        modelBuilder.Entity<BackupOperationLease>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasData(new BackupOperationLease { Id = 1 });
+        });
+    }
 
     private static void ConfigureAuth(ModelBuilder modelBuilder)
     {
