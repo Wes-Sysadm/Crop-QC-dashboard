@@ -185,6 +185,7 @@ public sealed class RoomsPageViewModel
 
 public sealed class RoomLotSummaryViewModel
 {
+    public string InventoryKey { get; set; } = "";
     public long? ReceiptId { get; set; }
     public long? InventoryAdjustmentId { get; set; }
     public int RoomId { get; set; }
@@ -194,6 +195,8 @@ public sealed class RoomLotSummaryViewModel
     public string RoomCode { get; set; } = "";
     public string DisplayReceiptId { get; set; } = "";
     public string GrowerNumber { get; set; } = "";
+    public string OrchardName { get; set; } = "";
+    public string BlockName { get; set; } = "";
     public string PoolStart { get; set; } = "";
     public string GrowerName { get; set; } = "";
     public string LotCode { get; set; } = "";
@@ -405,15 +408,29 @@ public sealed class BinsRunPageViewModel
     public IReadOnlyList<BinsRunHistoryItemViewModel> History { get; set; } = [];
     public bool CanRecord { get; set; }
     public bool CanAdmin { get; set; }
+    public bool CanTransfer { get; set; }
+    public bool CanTrueUp { get; set; }
     public int? SelectedAvailableBins { get; set; }
+    public RunProjectionPlannerViewModel Planner { get; set; } = new();
+    public RoomTransferForm TransferForm { get; set; } = new();
+    public RoomInventoryTrueUpForm TrueUpForm { get; set; } = new();
+    public IReadOnlyList<RoomInventoryLotOptionViewModel> TransferLotOptions { get; set; } = [];
+    public IReadOnlyList<RoomReceiptOptionViewModel> TrueUpReceiptOptions { get; set; } = [];
+    public IReadOnlyList<RoomTransferDestinationViewModel> TransferDestinationOptions { get; set; } = [];
+    public IReadOnlyList<RoomInventoryAdjustmentListItemViewModel> InventoryActivity { get; set; } = [];
 }
 
 public sealed class BinsRunFilterForm
 {
+    public string Section { get; set; } = "Planner";
     public int? WarehouseId { get; set; }
     public int? RoomId { get; set; }
     public DateTime? FromDate { get; set; }
     public DateTime? ToDate { get; set; }
+    public DateOnly? PlannedDate { get; set; }
+    public long? ProjectionId { get; set; }
+    public long? ProjectionSourceId { get; set; }
+    public string? SourceKey { get; set; }
 }
 
 public sealed class BinsRunForm
@@ -425,6 +442,8 @@ public sealed class BinsRunForm
     public int ExpectedAvailableBins { get; set; }
     public DateTimeOffset RunAt { get; set; } = DateTimeOffset.UtcNow;
     public string? Notes { get; set; }
+    public long? RunProjectionId { get; set; }
+    public long? RunProjectionSourceId { get; set; }
 }
 
 public sealed class BinsRunProjectionRequest
@@ -436,6 +455,8 @@ public sealed class BinsRunProjectionRequest
 
 public sealed record BinsRunInventoryOptionViewModel(
     string InventoryKey,
+    long? ReceiptId,
+    long? InventoryAdjustmentId,
     int WarehouseId,
     int RoomId,
     string Label,
@@ -445,7 +466,10 @@ public sealed record BinsRunInventoryOptionViewModel(
     string Room,
     int CurrentBins,
     string GradeSummary,
-    DateTimeOffset? ReceiptDate);
+    DateTimeOffset? ReceiptDate,
+    int? FruitProfileId,
+    string FruitType,
+    int? CanonicalOrchardBlockId);
 
 public sealed class BinsRunRoomSummaryViewModel
 {

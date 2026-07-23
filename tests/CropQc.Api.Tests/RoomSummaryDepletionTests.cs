@@ -88,8 +88,9 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("room.QcRepresentedBins", dashboard);
         Assert.Contains("room.MajorWeakLotIndicator", dashboard);
         Assert.DoesNotContain("Fruit rows", dashboard);
-        Assert.Contains("Baseline Size Distribution", room);
-        Assert.Contains("Packout Projections", room);
+        Assert.DoesNotContain("Baseline Size Distribution", room);
+        Assert.DoesNotContain("Packout Projections", room);
+        Assert.Contains("Open in Bins Run &amp; Transfers", room);
         Assert.Contains("Change Over Time", room);
     }
 
@@ -288,7 +289,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Depletion", service);
         Assert.Contains("Void/Reversal", service);
         Assert.Contains("Room Transaction History", room);
-        Assert.Contains("True Up Current Lot Bins", room);
+        Assert.DoesNotContain("True Up Current Lot Bins", room);
+        Assert.Contains("Open in Bins Run &amp; Transfers", room);
         Assert.Contains("Weakest lot", home);
         Assert.Contains("Weakest lot signal", partial);
         Assert.Contains("FindWeakestLot", service);
@@ -302,6 +304,7 @@ public sealed class RoomSummaryDepletionTests
         var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
         var rooms = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Rooms.cshtml"));
         var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
+        var binsRun = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
 
         Assert.Contains("<a href=\"/Rooms\">Rooms</a>", layout);
         Assert.Contains("[HttpGet(\"/Rooms\")]", controller);
@@ -324,6 +327,7 @@ public sealed class RoomSummaryDepletionTests
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
         var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
         var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
+        var binsRun = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
 
         Assert.Contains("[HttpPost(\"/Dashboard/Rooms/{roomId:int}/Transfer\")]", controller);
         Assert.Contains("AccessPolicyNames.RoomTransactionsEdit", controller);
@@ -333,9 +337,9 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("AddAuditAsync(\"Transfer\", nameof(RoomInventoryAdjustment)", service);
         Assert.Contains("RoomTransferForm", model);
         Assert.Contains("TransferLotOptions", model);
-        Assert.Contains("Record Transfer", room);
-        Assert.Contains("Bins in", room);
-        Assert.Contains("Bins out", room);
+        Assert.DoesNotContain("Record Transfer", room);
+        Assert.Contains("Record Transfer", binsRun);
+        Assert.Contains("Transfer Bins", binsRun);
     }
 
     [Fact]
@@ -652,6 +656,7 @@ public sealed class RoomSummaryDepletionTests
     {
         var home = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Index.cshtml"));
         var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
+        var binsRun = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
         var partial = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_RoomLotCard.cshtml"));
         var css = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css"));
 
@@ -675,6 +680,7 @@ public sealed class RoomSummaryDepletionTests
         var projectionMath = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "ProjectionDistributionMath.cs"));
         var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
         var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
+        var binsRun = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
         var css = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css"));
 
         Assert.Contains("[HttpPost(\"/Dashboard/Rooms/{roomId:int}/Projection\")]", controller);
@@ -692,7 +698,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("ProjectionDistributionMath.CombineWeightedSizePercentages", binsRunService);
         Assert.Contains("currentBins(lot) * percentage", projectionMath);
         Assert.Contains("lot.CurrentBins * grade.Value", service);
-        Assert.Contains("Percentages use entered fruit rows as the denominator", room);
+        Assert.Contains("Gross Size Projection", binsRun);
         Assert.Contains("SizeRepresentedBins", service);
         Assert.Contains("SizeMissingBins", service);
         Assert.Contains("GradeRepresentedBins", service);
@@ -700,26 +706,21 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Missing sizing", service);
         Assert.Contains("Missing grade", service);
         Assert.Contains("Sample is", service);
-        Assert.Contains("Room Insights", room);
-        Assert.Contains("Baseline Size Distribution", room);
-        Assert.Contains("Baseline Expected Grade", room);
-        Assert.Contains("Packout Projections", room);
-        Assert.Contains("Projection A", room);
-        Assert.Contains("Projection B", room);
-        Assert.Contains("Select flagged lots", room);
-        Assert.Contains("Exclude flagged lots", room);
+        Assert.DoesNotContain("Room Insights", room);
+        Assert.DoesNotContain("Baseline Size Distribution", room);
+        Assert.DoesNotContain("Packout Projections", room);
+        Assert.Contains("Run Planner", binsRun);
+        Assert.Contains("Combined Gross Size Projection", binsRun);
         Assert.Contains("Change Over Time", room);
-        Assert.Contains("Projections are read-only and do not change inventory.", room);
+        Assert.Contains("plan has not changed inventory", binsRun);
         Assert.Contains("Current Lots", room);
         Assert.Contains("Linked Receipts", room);
         Assert.Contains("Room Transaction History", room);
         Assert.Contains("Depletion History", room);
         Assert.Contains("Depleted / Historical Lots", room);
-        Assert.Contains("AbortController", room);
-        Assert.Contains("data-room-project-lot", room);
-        Assert.Contains("room-projection-grid", css);
-        Assert.Contains("room-projection-lot", css);
-        Assert.Contains("projection-comparison", css);
+        Assert.DoesNotContain("data-room-project-lot", room);
+        Assert.Contains("run-calendar-days", css);
+        Assert.Contains("projection-source-grid", css);
     }
 
     private static void AssertActionPolicy<TController>(string actionName, string policy)

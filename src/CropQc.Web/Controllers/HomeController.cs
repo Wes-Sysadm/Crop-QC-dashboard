@@ -89,7 +89,7 @@ public sealed class HomeController(IDashboardDataService dataService) : Controll
         form.RoomId = roomId;
         var error = await dataService.CreateRoomInventoryTrueUpAsync(form, cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Room inventory true-up recorded.";
-        return RedirectToAction(nameof(Room), new { roomId });
+        return Redirect($"/BinsRun?RoomId={roomId}&Section=TrueUp");
     }
 
     [HttpPost("/Dashboard/Rooms/{roomId:int}/Transfer")]
@@ -99,7 +99,7 @@ public sealed class HomeController(IDashboardDataService dataService) : Controll
         form.FromRoomId = roomId;
         var error = await dataService.CreateRoomTransferAsync(form, cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Room transfer recorded.";
-        return RedirectToAction(nameof(Room), new { roomId });
+        return Redirect($"/BinsRun?RoomId={roomId}&Section=Transfer&SourceKey={Uri.EscapeDataString(form.SourceLotKey ?? "")}");
     }
 
     [HttpGet("/AccessDenied")]

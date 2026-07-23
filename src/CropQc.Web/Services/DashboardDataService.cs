@@ -502,6 +502,8 @@ public sealed class DashboardDataService(
             .Include(x => x.Warehouse)
             .Include(x => x.Room)
             .Include(x => x.FruitProfile)
+            .Include(x => x.CanonicalOrchardBlock)
+                .ThenInclude(x => x!.CanonicalOrchard)
             .SingleOrDefaultAsync(x => x.Id == form.ReceiptId && !x.IsDeleted, cancellationToken);
         if (receipt is null || receipt.RoomId != form.RoomId)
         {
@@ -3402,6 +3404,7 @@ public sealed class DashboardDataService(
             var starch = StarchValues(lotSamples).ToList();
             return new RoomLotSummaryViewModel
             {
+                InventoryKey = $"R:{receipt.Id}",
                 ReceiptId = receipt.Id,
                 RoomId = receipt.RoomId,
                 Warehouse = receipt.Warehouse.Code,
@@ -3410,6 +3413,8 @@ public sealed class DashboardDataService(
                 RoomCode = receipt.Room.CropQcRoomName ?? receipt.Room.DisplayName ?? receipt.Room.Code,
                 DisplayReceiptId = receipt.CompuTechReceiptId,
                 GrowerNumber = receipt.GrowerNumber ?? "",
+                OrchardName = receipt.CanonicalOrchardBlock?.CanonicalOrchard.OrchardName ?? "",
+                BlockName = receipt.CanonicalOrchardBlock?.CanonicalBlockName ?? "",
                 PoolStart = receipt.PoolStart ?? "",
                 GrowerName = receipt.GrowerName,
                 LotCode = receipt.LotCode,
@@ -3502,6 +3507,7 @@ public sealed class DashboardDataService(
             .Where(x => x.NewBinCount > 0)
             .Select(x => new RoomLotSummaryViewModel
             {
+                InventoryKey = $"A:{x.Id}:{RoomInventoryImportService.CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? "")}",
                 ReceiptId = null,
                 InventoryAdjustmentId = x.Id,
                 RoomId = x.RoomId,
