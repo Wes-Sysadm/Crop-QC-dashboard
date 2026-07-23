@@ -353,8 +353,9 @@ public sealed class FieldSampleReportService(
         }
         text.AppendLine();
         text.AppendLine("Same-block 30-day trend");
-        if (detail.Trend.Count <= 1) text.AppendLine("This is the first available sample for the confirmed block in the last 30 days.");
-        foreach (var point in detail.Trend.OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleId))
+        var trend = detail.BlockTrend?.Points ?? detail.Trend;
+        if (trend.Count <= 1) text.AppendLine("This is the first available sample for the confirmed block in the last 30 days.");
+        foreach (var point in trend.OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleId))
         {
             text.AppendLine($"{ReportTime.FormatPacific(point.SampleTakenAt)}{(point.SampleId == sample.Id ? " (current)" : "")}: Weight {Format(point.Summary.AverageWeightGrams)} g; Size {AverageSize(point.SizeDistribution)}; Average Pressure {Format(point.Summary.AveragePressureLbs)} lb; Starch {Format(point.Summary.AverageStarch)}; Grades {Distribution(point.Summary.GradeDistribution)}; Defects {DefectSummary(point.Summary)}; {DefectDistribution(point.Summary)}");
         }
@@ -388,10 +389,11 @@ public sealed class FieldSampleReportService(
 
     private static void AppendTrend(StringBuilder html, FieldSampleDetailViewModel detail)
     {
+        var trend = detail.BlockTrend?.Points ?? detail.Trend;
         html.AppendLine("<h2>Same-Block Trends — Last 30 Days</h2>");
-        if (detail.Trend.Count <= 1) html.AppendLine("<p>This is the first available sample for the confirmed block in the last 30 days.</p>");
+        if (trend.Count <= 1) html.AppendLine("<p>This is the first available sample for the confirmed block in the last 30 days.</p>");
         html.AppendLine("<table cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;width:100%;\"><thead><tr><th>Date</th><th>Fruit</th><th>Avg weight</th><th>Size</th><th>Average Pressure</th><th>Avg starch</th><th>Grades</th><th>Defects</th></tr></thead><tbody>");
-        foreach (var point in detail.Trend.OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleId))
+        foreach (var point in trend.OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleId))
         {
             var values = new[]
             {

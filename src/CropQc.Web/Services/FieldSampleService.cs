@@ -28,12 +28,14 @@ public sealed class FieldSampleService(
     CropQcDbContext dbContext,
     IUserAccessService userAccessService,
     IConfiguration configuration,
-    IBusinessTimeService? businessTime = null) : IFieldSampleService
+    IBusinessTimeService? businessTime = null,
+    IFieldSampleTrendService? trendService = null) : IFieldSampleService
 {
     private const string FieldSampleTypeName = "Field Sample";
     private const int FieldSampleSize = 10;
     private const int MaxFieldSampleSize = 50;
     private IBusinessTimeService BusinessTime { get; } = businessTime ?? new PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock());
+    private IFieldSampleTrendService TrendService { get; } = trendService ?? new FieldSampleTrendService(dbContext);
 
     public async Task<FieldSampleIndexViewModel> GetIndexAsync(FieldSampleSearchForm search, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
@@ -42,8 +44,22 @@ public sealed class FieldSampleService(
             return new FieldSampleIndexViewModel { DataWarning = "Field Samples access is required." };
         }
 
+        var canAdminister = await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Admin, cancellationToken);
+        var deletionStatus = canAdminister ? search.DeletionStatus?.Trim() : "Active";
+        if (deletionStatus is not ("Deleted" or "All"))
+        {
+            deletionStatus = "Active";
+        }
+        search.DeletionStatus = deletionStatus;
+
         var query = dbContext.QcSamples.AsNoTracking()
-            .Where(x => !x.IsDeleted && x.SampleType.Name == FieldSampleTypeName);
+            .Where(x => x.SampleType.Name == FieldSampleTypeName);
+        query = deletionStatus switch
+        {
+            "Deleted" => query.Where(x => x.IsDeleted),
+            "All" => query,
+            _ => query.Where(x => !x.IsDeleted)
+        };
         if (!string.IsNullOrWhiteSpace(search.Search))
         {
             var term = search.Search.Trim();
@@ -75,6 +91,12 @@ public sealed class FieldSampleService(
             query = query.Where(x => x.SampleTakenAt < end);
         }
 
+        if (search.CropYear is not null)
+        {
+            var yearStart = new DateTimeOffset(search.CropYear.Value, 1, 1, 0, 0, 0, TimeSpan.Zero);
+            query = query.Where(x => x.SampleTakenAt >= yearStart && x.SampleTakenAt < yearStart.AddYears(1));
+        }
+
         var samples = await query
             .OrderByDescending(x => x.SampleTakenAt)
             .ThenBy(x => x.CanonicalOrchardBlock == null ? x.FieldSampleOriginalBlockName : x.CanonicalOrchardBlock.CanonicalBlockName)
@@ -92,6 +114,8 @@ public sealed class FieldSampleService(
                 MaximumRowNumber = x.FruitReadings.Select(row => (int?)row.RowNumber).Max(),
                 x.Status,
                 x.EmailStatus,
+                x.IsDeleted,
+                x.DeletedAt,
                 Rows = x.FruitReadings.Select(row => new
                 {
                     row.Pressure1Lbs,
@@ -135,7 +159,10 @@ public sealed class FieldSampleService(
                 AverageStarch = starch.Count == 0 ? null : decimal.Round(starch.Average(), 2),
                 AveragePressureLbs = pressures.Count == 0 ? null : decimal.Round(pressures.Average(), 2),
                 CompletionStatus = NormalizeLifecycleStatus(sample.Status, sample.EmailStatus),
-                CanEdit = canEdit
+                CanEdit = canEdit && !sample.IsDeleted,
+                CanDelete = canAdminister && !sample.IsDeleted,
+                IsDeleted = sample.IsDeleted,
+                DeletedAt = sample.DeletedAt
             };
         }).ToList();
 
@@ -144,12 +171,23 @@ public sealed class FieldSampleService(
             list = list.Where(x => string.Equals(x.CompletionStatus, search.CompletionStatus, StringComparison.OrdinalIgnoreCase)).ToList();
         }
 
+        var activeSampleIds = list.Where(x => !x.IsDeleted).Select(x => x.Id).ToList();
+        var availableYears = await dbContext.QcSamples.AsNoTracking()
+            .Where(x => x.SampleType.Name == FieldSampleTypeName && (!x.IsDeleted || canAdminister))
+            .Select(x => x.SampleTakenAt.Year)
+            .Distinct()
+            .OrderByDescending(x => x)
+            .ToListAsync(cancellationToken);
+
         return new FieldSampleIndexViewModel
         {
             Search = search,
             CanCreate = canEdit,
+            CanAdminister = canAdminister,
             FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync(cancellationToken),
-            Samples = list
+            Samples = list,
+            CropYears = availableYears,
+            BlockTrends = await TrendService.GetCardsAsync(activeSampleIds, cancellationToken)
         };
     }
 
@@ -286,12 +324,15 @@ public sealed class FieldSampleService(
             return new FieldSampleDetailViewModel { DataWarning = "Field Samples access is required." };
         }
 
+        var canAdminister = await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Admin, cancellationToken);
         var sample = await dbContext.QcSamples.AsNoTracking()
             .Include(x => x.SampleType)
             .Include(x => x.FieldSampleFruitProfile)
             .Include(x => x.CanonicalOrchardBlock)
             .Include(x => x.QcStation)
-            .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted && x.SampleType.Name == FieldSampleTypeName, cancellationToken);
+            .SingleOrDefaultAsync(x => x.Id == sampleId
+                && (!x.IsDeleted || canAdminister)
+                && x.SampleType.Name == FieldSampleTypeName, cancellationToken);
         if (sample is null)
         {
             return new FieldSampleDetailViewModel { DataWarning = "Field Sample not found." };
@@ -303,22 +344,30 @@ public sealed class FieldSampleService(
             .Where(x => x.QcSampleId == sample.Id && !x.IsDeleted)
             .OrderByDescending(x => x.CapturedAt)
             .ToListAsync(cancellationToken);
-        var trendRows = await LoadTrendRowsAsync(sample, cancellationToken);
-        var trend = BuildTrend(trendRows);
-        var currentTrend = trend.SingleOrDefault(x => x.SampleId == sample.Id);
-        var prior = trend.Where(x => x.SampleTakenAt < sample.SampleTakenAt && x.Summary.AveragePressureLbs is not null)
+        var blockTrend = sample.IsDeleted ? null : await TrendService.GetForSampleAsync(sample.Id, cancellationToken);
+        var currentTrend = blockTrend?.Points.SingleOrDefault(x => x.SampleId == sample.Id);
+        var currentSummary = currentTrend?.Summary ?? BuildSummary(rows);
+        var priorTrend = blockTrend?.Points
+            .Where(x => x.SampleTakenAt < sample.SampleTakenAt && x.Summary.AveragePressureLbs is not null)
             .OrderByDescending(x => x.SampleTakenAt)
             .ThenByDescending(x => x.SampleId)
             .FirstOrDefault();
-        var currentSummary = currentTrend?.Summary ?? BuildSummary(rows);
-        if (prior?.Summary.AveragePressureLbs is not null && currentSummary.AveragePressureLbs is not null)
+        if (priorTrend?.Summary.AveragePressureLbs is not null && currentSummary.AveragePressureLbs is not null)
         {
-            currentSummary.PriorPressureSampleDate = prior.SampleTakenAt;
-            currentSummary.AveragePressureChangeFromPriorLbs = decimal.Round(currentSummary.AveragePressureLbs.Value - prior.Summary.AveragePressureLbs.Value, 2);
-            currentSummary.AveragePressureChangeFromPriorPercent = prior.Summary.AveragePressureLbs.Value == 0
+            currentSummary.PriorPressureSampleDate = priorTrend.SampleTakenAt;
+            currentSummary.AveragePressureChangeFromPriorLbs = decimal.Round(
+                currentSummary.AveragePressureLbs.Value - priorTrend.Summary.AveragePressureLbs.Value,
+                2);
+            currentSummary.AveragePressureChangeFromPriorPercent = priorTrend.Summary.AveragePressureLbs.Value == 0
                 ? null
-                : decimal.Round(currentSummary.AveragePressureChangeFromPriorLbs.Value / prior.Summary.AveragePressureLbs.Value * 100m, 2);
+                : decimal.Round(currentSummary.AveragePressureChangeFromPriorLbs.Value / priorTrend.Summary.AveragePressureLbs.Value * 100m, 2);
         }
+        var deletionAudit = sample.IsDeleted
+            ? await dbContext.FieldSampleDeletionAudits.AsNoTracking()
+                .Where(x => x.DeletedFieldSampleId == sample.Id)
+                .OrderByDescending(x => x.DeletedAt)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
 
         var sendHistory = await dbContext.QcSummaryEmailLogs.AsNoTracking()
             .Where(x => x.QcSampleId == sample.Id)
@@ -335,7 +384,8 @@ public sealed class FieldSampleService(
             .ToListAsync(cancellationToken);
         var lastSent = sendHistory.FirstOrDefault(x => string.Equals(x.Status, "Sent", StringComparison.OrdinalIgnoreCase));
         var missingItems = BuildCompletionMissingItems(sample, rows);
-        var canEdit = await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken);
+        var canEdit = !sample.IsDeleted
+            && await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken);
         var changedSinceLastSend = string.Equals(sample.EmailStatus, "Needs Resend", StringComparison.OrdinalIgnoreCase)
             || string.Equals(sample.Status, "Changed Since Last Send", StringComparison.OrdinalIgnoreCase);
         var lifecycleStatus = NormalizeLifecycleStatus(sample.Status, sample.EmailStatus);
@@ -389,13 +439,20 @@ public sealed class FieldSampleService(
             Blocks = await GetActiveOrchardBlocksAsync(cancellationToken),
             CurrentSummary = currentSummary,
             SizeDistribution = currentTrend?.SizeDistribution ?? BuildSizeDistribution(rows),
-            Trend = trend,
+            Trend = blockTrend?.Points ?? [],
+            BlockTrend = blockTrend,
             FruitRows = rows,
             StarchScaleValues = await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken),
             Grades = await dbContext.Grades.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Code).ToListAsync(cancellationToken),
             DefectTypes = await dbContext.DefectTypes.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync(cancellationToken),
             SizeThresholds = thresholds,
             SendHistory = sendHistory,
+            IsDeleted = sample.IsDeleted,
+            DeletedAt = sample.DeletedAt,
+            DeletedByEmail = deletionAudit?.DeletedByEmail,
+            DeleteReason = sample.DeleteReason,
+            DeletionOperationId = deletionAudit?.OperationId,
+            DeletionBackupRunId = deletionAudit?.BackupRunId,
             FruitReadingForm = new SaveFruitReadingsForm
             {
                 SampleId = sample.Id,

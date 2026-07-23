@@ -10,6 +10,9 @@ public sealed class FieldSampleIndexViewModel
     public IReadOnlyList<FieldSampleListItemViewModel> Samples { get; set; } = [];
     public IReadOnlyList<FruitProfile> FruitProfiles { get; set; } = [];
     public bool CanCreate { get; set; }
+    public bool CanAdminister { get; set; }
+    public IReadOnlyList<int> CropYears { get; set; } = [];
+    public IReadOnlyList<FieldSampleBlockTrendViewModel> BlockTrends { get; set; } = [];
 }
 
 public sealed class FieldSampleSearchForm
@@ -19,6 +22,8 @@ public sealed class FieldSampleSearchForm
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
     public string? CompletionStatus { get; set; }
+    public int? CropYear { get; set; }
+    public string DeletionStatus { get; set; } = "Active";
 }
 
 public sealed class FieldSampleListItemViewModel
@@ -37,6 +42,9 @@ public sealed class FieldSampleListItemViewModel
     public decimal? AveragePressureLbs { get; set; }
     public string CompletionStatus { get; set; } = "";
     public bool CanEdit { get; set; }
+    public bool CanDelete { get; set; }
+    public bool IsDeleted { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
 }
 
 public sealed class FieldSampleCreatePageViewModel
@@ -99,6 +107,7 @@ public sealed class FieldSampleDetailViewModel
     public FieldSampleMetricSummary CurrentSummary { get; set; } = new();
     public IReadOnlyList<FieldSampleSizePoint> SizeDistribution { get; set; } = [];
     public IReadOnlyList<FieldSampleTrendPoint> Trend { get; set; } = [];
+    public FieldSampleBlockTrendViewModel? BlockTrend { get; set; }
     public IReadOnlyList<FruitReadingRowViewModel> FruitRows { get; set; } = [];
     public IReadOnlyList<StarchScaleValue> StarchScaleValues { get; set; } = [];
     public IReadOnlyList<Grade> Grades { get; set; } = [];
@@ -106,6 +115,12 @@ public sealed class FieldSampleDetailViewModel
     public IReadOnlyList<FieldSampleSizeThreshold> SizeThresholds { get; set; } = [];
     public IReadOnlyList<FieldSampleSendHistoryItem> SendHistory { get; set; } = [];
     public SaveFruitReadingsForm FruitReadingForm { get; set; } = new();
+    public bool IsDeleted { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
+    public string? DeletedByEmail { get; set; }
+    public string? DeleteReason { get; set; }
+    public Guid? DeletionOperationId { get; set; }
+    public long? DeletionBackupRunId { get; set; }
 }
 
 public sealed record FieldSampleSizeThreshold(int SizeCategory, decimal MinimumWeightGrams);
@@ -201,9 +216,67 @@ public sealed class FieldSampleTrendPoint
     public long SampleId { get; set; }
     public DateTimeOffset SampleTakenAt { get; set; }
     public string Variety { get; set; } = "";
+    public string CompletionStatus { get; set; } = "";
     public int TargetSampleSize { get; set; }
     public FieldSampleMetricSummary Summary { get; set; } = new();
     public IReadOnlyList<FieldSampleSizePoint> SizeDistribution { get; set; } = [];
+}
+
+public sealed class FieldSampleBlockTrendViewModel
+{
+    public int CanonicalBlockId { get; set; }
+    public string OrchardName { get; set; } = "";
+    public string GrowerName { get; set; } = "";
+    public string GrowerNumber { get; set; } = "";
+    public string BlockName { get; set; } = "";
+    public IReadOnlyList<string> Varieties { get; set; } = [];
+    public DateTimeOffset WindowStart { get; set; }
+    public DateTimeOffset WindowEnd { get; set; }
+    public IReadOnlyList<FieldSampleTrendPoint> Points { get; set; } = [];
+    public FieldSampleTrendPoint? Latest => Points.OrderByDescending(x => x.SampleTakenAt).ThenByDescending(x => x.SampleId).FirstOrDefault();
+    public bool IsFirstSample => Points.Count <= 1;
+}
+
+public sealed class DeleteFieldSampleForm
+{
+    public long Id { get; set; }
+    public string Reason { get; set; } = "";
+    public string ConfirmationValue { get; set; } = "";
+    public bool ConfirmDeletion { get; set; }
+    public string OperationToken { get; set; } = "";
+    public long VerifiedBackupRunId { get; set; }
+}
+
+public sealed class FieldSampleDeletionConfirmationViewModel
+{
+    public long Id { get; set; }
+    public string OrchardName { get; set; } = "";
+    public string GrowerName { get; set; } = "";
+    public string GrowerNumber { get; set; } = "";
+    public string BlockName { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public DateTimeOffset SampleTakenAt { get; set; }
+    public string LifecycleStatus { get; set; } = "";
+    public string EmailStatus { get; set; } = "";
+    public bool HasBeenSent { get; set; }
+    public bool ChangedSinceLastSend { get; set; }
+    public FieldSampleDeletionDependencyCounts Dependencies { get; set; } = new();
+    public long? VerifiedBackupRunId { get; set; }
+    public string? VerifiedBackupFileName { get; set; }
+    public DateTimeOffset? VerifiedBackupAt { get; set; }
+    public string? BackupWarning { get; set; }
+    public DeleteFieldSampleForm Form { get; set; } = new();
+}
+
+public sealed class FieldSampleDeletionDependencyCounts
+{
+    public int FruitRows { get; set; }
+    public int Defects { get; set; }
+    public int Photos { get; set; }
+    public int EmailLogs { get; set; }
+    public int AuditRecords { get; set; }
+    public int OfflineSyncItems { get; set; }
+    public bool HasQcStationReference { get; set; }
 }
 
 public sealed record FieldSampleBlockSuggestion(int? BlockId, string CanonicalBlockName, string OrchardName, decimal Confidence, string Reason);
