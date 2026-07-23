@@ -9,13 +9,16 @@ namespace CropQc.Api.Tests;
 public sealed class AdminCleanupCropYearTests
 {
     [Fact]
-    public void CropYear_DefaultConventionUsesStartingYearAugustToJuly()
+    public void CropYear_DefaultUsesCentralizedActiveYear2026()
     {
-        var service = new CropYearService(null!, new ConfigurationBuilder().Build());
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["CropYear:ActiveYear"] = "2026"
+        }).Build();
 
-        Assert.Equal(2026, service.GetCurrentCropYear(DateTimeOffset.Parse("2026-08-01T00:00:00-07:00")));
-        Assert.Equal(2026, service.GetCurrentCropYear(DateTimeOffset.Parse("2027-07-31T23:00:00-07:00")));
-        Assert.Equal(2025, service.GetCurrentCropYear(DateTimeOffset.Parse("2026-06-05T12:00:00-07:00")));
+        Assert.Equal(2026, new CropYearService(null!, configuration).GetCurrentCropYear(DateTimeOffset.Parse("2026-08-01T00:00:00-07:00")));
+        Assert.Equal(2026, new CropYearService(null!, configuration).GetCurrentCropYear(DateTimeOffset.Parse("2027-07-31T23:00:00-07:00")));
+        Assert.Equal(2026, new CropYearService(null!, configuration).GetCurrentCropYear(DateTimeOffset.Parse("2026-06-05T12:00:00-07:00")));
     }
 
     [Fact]

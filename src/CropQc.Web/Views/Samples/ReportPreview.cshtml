@@ -1,0 +1,74 @@
+@model ReceiptReportPreviewViewModel
+@{
+    ViewData["Title"] = $"QC Report Preview - {Model.DisplayReceiptId}";
+}
+
+<div class="page-header">
+    <div>
+        <p class="eyebrow">Persisted report data</p>
+        <h1>QC Report Preview</h1>
+        <p>@Model.DisplayReceiptId</p>
+    </div>
+    <a class="button secondary-button" href="/Samples/@Model.SampleId">Back to sample</a>
+</div>
+
+<section class="panel">
+    <h2>Delivery</h2>
+    <dl class="detail-grid">
+        <div><dt>To</dt><dd>@(string.IsNullOrWhiteSpace(Model.Recipients) ? "Not configured" : Model.Recipients)</dd></div>
+        <div><dt>Subject</dt><dd>@Model.Subject</dd></div>
+        <div><dt>Send type</dt><dd>@(Model.IsResend ? "Resend" : "Initial send")</dd></div>
+    </dl>
+    @if (Model.MissingItems.Count > 0)
+    {
+        <p class="notice warning">The report cannot be sent until these persisted-data requirements are resolved:</p>
+        <ul class="list">
+            @foreach (var item in Model.MissingItems) { <li>@item</li> }
+        </ul>
+    }
+    @if (Model.CanSend)
+    {
+        <form method="post" action="/Samples/@Model.SampleId/Send" class="inline-form">
+            @Html.AntiForgeryToken()
+            <button type="submit">@(Model.IsResend ? "Confirm Resend" : "Confirm and Send")</button>
+        </form>
+    }
+    else
+    {
+        <button type="button" disabled>Send unavailable</button>
+    }
+</section>
+
+<section class="panel">
+    <h2>Report</h2>
+    <div class="report-preview">@Html.Raw(Model.HtmlBody)</div>
+</section>
+
+<section class="panel">
+    <h2>Send History</h2>
+    @if (Model.SendHistory.Count == 0)
+    {
+        <p class="muted">This sample has not been sent.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Status</th><th>Sent</th><th>From</th><th>To</th><th>Subject</th><th>Type</th></tr></thead>
+                <tbody>
+                @foreach (var item in Model.SendHistory)
+                {
+                    <tr>
+                        <td>@item.Status</td>
+                        <td>@(item.SentAt?.LocalDateTime.ToString("g") ?? "Not sent")</td>
+                        <td>@item.Sender</td>
+                        <td>@item.Recipients</td>
+                        <td>@item.Subject</td>
+                        <td>@(item.IsOverride ? "Override" : item.IsResend ? "Resend" : "Initial")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>

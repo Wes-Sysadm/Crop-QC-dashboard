@@ -51,6 +51,25 @@ public sealed class SamplesController(
         return RedirectToAction(nameof(Details), new { id });
     }
 
+    [HttpPost("{id:long}/autosave")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Autosave(long id, [FromBody] FieldSampleAutosaveRequest request, CancellationToken cancellationToken)
+    {
+        var result = await dataService.AutosaveFruitReadingsAsync(id, request, cancellationToken);
+        if (result.Conflicts.Count > 0) return Conflict(result);
+        if (result.ValidationErrors.Count > 0 || result.Error is not null) return BadRequest(result);
+        return Json(result);
+    }
+
+    [HttpGet("{id:long}/Report")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcView)]
+    public async Task<IActionResult> Report(long id, CancellationToken cancellationToken)
+    {
+        var model = await dataService.GetQcReportPreviewAsync(id, cancellationToken);
+        return model.SampleId == 0 ? NotFound() : View("ReportPreview", model);
+    }
+
     [HttpPost("{id:long}/sample-type")]
     [Authorize(Policy = AccessPolicyNames.DailyQcEdit)]
     public async Task<IActionResult> UpdateSampleType(long id, UpdateSampleTypeForm form, CancellationToken cancellationToken)

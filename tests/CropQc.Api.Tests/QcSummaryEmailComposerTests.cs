@@ -326,11 +326,11 @@ public sealed class QcSummaryEmailComposerTests
         var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = false }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
         Assert.Contains("Entered fruit count</th><td style=\"border:1px solid #cbd5e1;\">5</td>", content.HtmlBody);
-        Assert.Contains("Average pressure lbs</th><td style=\"border:1px solid #cbd5e1;\">12.5</td>", content.HtmlBody);
-        Assert.Contains("Pressure std dev lbs</th><td style=\"border:1px solid #cbd5e1;\">2.12</td>", content.HtmlBody);
+        Assert.Contains("Average Pressure</th><td style=\"border:1px solid #cbd5e1;\">12</td>", content.HtmlBody);
+        Assert.Contains("Pressure std dev lbs</th><td style=\"border:1px solid #cbd5e1;\">2</td>", content.HtmlBody);
         Assert.Contains("Average weight grams</th><td style=\"border:1px solid #cbd5e1;\">162.5</td>", content.HtmlBody);
         Assert.Contains("Grade summary</th><td style=\"border:1px solid #cbd5e1;\">Fancy: 1</td>", content.HtmlBody);
-        Assert.Contains("Defect summary</th><td style=\"border:1px solid #cbd5e1;\">Bruise: 1, Sunburn: 1</td>", content.HtmlBody);
+        Assert.Contains("Defect summary</th><td style=\"border:1px solid #cbd5e1;\">2 of 2 inspected fruit affected; Bruise: 1, Sunburn: 1</td>", content.HtmlBody);
         Assert.Contains("Size/status summary</th><td style=\"border:1px solid #cbd5e1;\">1 size 100, 1 size 120</td>", content.HtmlBody);
         Assert.Contains("Row 1:", content.TextBody);
         Assert.Contains("Row 5:", content.TextBody);

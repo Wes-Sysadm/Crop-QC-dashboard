@@ -9,6 +9,13 @@
     var refreshIntervalMs = (int.TryParse(Configuration["PageRefresh:IntervalSeconds"], out var parsedRefreshInterval) ? Math.Clamp(parsedRefreshInterval, 15, 300) : 20) * 1000;
     var canEditDailyQc = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.Edit, Context.RequestAborted);
     var canAdminDailyQc = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.Admin, Context.RequestAborted);
+    var enteredRows = Model.FruitRows.Where(row => row.Pressure1Lbs is not null || row.Pressure2Lbs is not null || row.WeightGrams is not null || row.StarchScaleValueId is not null || row.GradeId is not null || row.DefectsInspected || row.Defects.Count > 0).ToList();
+    var pressureReadings = enteredRows.SelectMany(row => new decimal?[] { row.Pressure1Lbs, row.Pressure2Lbs }).Where(value => value is not null).Select(value => value!.Value).ToList();
+    var weights = enteredRows.Where(row => row.WeightGrams is not null).Select(row => row.WeightGrams!.Value).ToList();
+    var sizeSummary = string.Join(", ", enteredRows.Where(row => row.SizeCategory is not null).GroupBy(row => row.SizeCategory!.Value).OrderBy(group => group.Key).Select(group => $"{group.Key}: {group.Count()}"));
+    var gradeSummary = string.Join(", ", enteredRows.Where(row => !string.IsNullOrWhiteSpace(row.Grade)).GroupBy(row => row.Grade!).OrderBy(group => group.Key).Select(group => $"{group.Key}: {group.Count()}"));
+    var defectSummary = string.Join(", ", enteredRows.SelectMany(row => row.Defects).GroupBy(name => name).OrderBy(group => group.Key).Select(group => $"{group.Key}: {group.Count()}"));
+    var sizeThresholdJson = JsonSerializer.Serialize(Model.SizeThresholds.Select(x => new { sizeCategory = x.SizeCategory, minimumWeightGrams = x.MinimumWeightGrams }));
 }
 
 <h1>QC Sample Detail</h1>
@@ -59,6 +66,7 @@
         }
         <p>
             <a class="button" href="/Samples/@Model.Sample.Id/Starch">Starch Input</a>
+            <a class="button secondary-button" href="/Samples/@Model.Sample.Id/Report" data-requires-autosave>Preview Report</a>
             <a href="/Receipts/@Model.Sample.ReceiptId">Back to receipt</a>
             @if (canAdminDailyQc)
             {
@@ -91,7 +99,7 @@
 }
 
 <section class="panel">
-    <h2>Summary Readiness</h2>
+    <h2>Readiness</h2>
     <p><span class="status @(Model.Readiness.IsReady ? "ready" : "missing")">@(Model.Readiness.IsReady ? "Ready to Send" : "Missing Required Data")</span></p>
     <p>Completed fruit: @Model.Readiness.CompletedFruitCount | Starch missing: @Model.Readiness.StarchMissingCount</p>
     <p>Sample type: @Model.Sample?.SampleType</p>
@@ -109,11 +117,11 @@
     {
         @if (canEditDailyQc)
         {
-            <form method="post" action="/Samples/@Model.Sample?.Id/Send" class="inline-form">
+            <div class="inline-form">
                 <p class="muted">Sending from: @User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value</p>
                 <p class="muted">To: @(Model.RecipientEmail ?? "configured QC recipients")</p>
-                <button type="submit">Send QC Summary</button>
-            </form>
+                <a class="button" href="/Samples/@Model.Sample?.Id/Report" data-requires-autosave>Preview QC Summary</a>
+            </div>
         }
         else
         {
@@ -135,24 +143,31 @@
 
 @if (Model.Sample is not null)
 {
-    <form method="post" action="/Samples/@Model.Sample.Id/rows" id="qc-rows-form" data-sample-id="@Model.Sample.Id" data-refresh-url="/Samples/@Model.Sample.Id/refresh">
+    <form method="post" action="/Samples/@Model.Sample.Id/rows" id="qc-rows-form" data-field-rows-form
+          data-autosave-url="/Samples/@Model.Sample.Id/autosave" data-sample-id="@Model.Sample.Id"
+          data-autosave-version="@Model.AutosaveVersion" data-refresh-url="/Samples/@Model.Sample.Id/refresh">
+        @Html.AntiForgeryToken()
         <input type="hidden" name="SampleId" value="@Model.Sample.Id" />
+        <div class="autosave-status" aria-live="polite">
+            <strong data-autosave-label>Saved</strong>
+            <span class="muted" data-autosave-time>Server-authoritative receipt QC autosave is active.</span>
+        </div>
+        <p class="notice error" data-autosave-errors hidden></p>
         <div class="toolbar">
             <label class="field">
                 Sample size
-                <select name="TargetSampleSize" id="target-sample-size">
+                <select name="TargetSampleSize" id="target-sample-size" data-field-target-size>
                     @foreach (var size in Model.AllowedSampleSizes)
                     {
                         <option value="@size" selected="@(size == Model.TargetSampleSize ? "selected" : null)">@size</option>
                     }
                 </select>
             </label>
-            <button type="button" class="secondary-button" id="refresh-sample-data">Refresh</button>
-            <span class="muted" id="sample-refresh-status" aria-live="polite">Last updated: @DateTime.Now.ToString("h:mm:ss tt")</span>
+            <button type="button" class="secondary-button" data-refresh-field-sample id="refresh-sample-data">Refresh</button>
         </div>
         <p class="notice warning" id="sample-size-warning" hidden>Reducing target sample size does not delete existing saved rows. Existing entered rows remain visible unless manually cleared.</p>
-        <p class="notice warning" id="server-update-warning" hidden>New pressure data is available from QC Station. Save or discard your changes to refresh.</p>
-        <h2>QC Grid</h2>
+        <p class="notice warning" id="server-update-warning" data-field-server-update hidden>New pressure data is available from QC Station. Save or discard your changes to refresh. Pending browser changes remain preserved until you decide.</p>
+        <h2>Fruit Rows</h2>
         <div class="table-wrap qc-grid-wrap">
             <table class="qc-grid">
                 <thead>
@@ -162,11 +177,10 @@
                         <th class="numeric-cell">P2 lbs</th>
                         <th class="numeric-cell">Avg lbs</th>
                         <th class="numeric-cell">Weight g</th>
+                        <th class="compact-cell">Size</th>
+                        <th class="compact-cell">Starch</th>
                         <th class="compact-cell">Grade</th>
                         <th class="wide-cell">Defects</th>
-                        <th class="wide-cell">Other notes</th>
-                        <th class="compact-cell">Size</th>
-                        <th class="nowrap-cell">Size Status</th>
                         <th class="nowrap-cell">Status</th>
                     </tr>
                 </thead>
@@ -174,17 +188,27 @@
                 @for (var i = 0; i < Model.FruitRows.Count; i++)
                 {
                     var row = Model.FruitRows[i];
-                    <tr class="fruit-row" data-row-index="@i" data-row-number="@row.RowNumber">
+                    <tr class="fruit-row" data-row-index="@i" data-row-number="@row.RowNumber" data-field-version="@row.FieldVersion">
                         <td class="compact-cell">
                             @row.RowNumber
                             <input type="hidden" name="Rows[@i].RowNumber" value="@row.RowNumber" />
                         </td>
-                        <td class="numeric-cell"><input class="number-input" name="Rows[@i].Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /></td>
-                        <td class="numeric-cell"><input class="number-input" name="Rows[@i].Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /></td>
-                        <td class="numeric-cell pressure-average">@row.PressureAverageLbs</td>
-                        <td class="numeric-cell"><input class="number-input" name="Rows[@i].WeightGrams" type="number" step="0.0001" min="0" value="@row.WeightGrams" /></td>
+                        <td class="numeric-cell"><input class="number-input" name="Rows[@i].Pressure1Lbs" data-autosave-row-field="Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /></td>
+                        <td class="numeric-cell"><input class="number-input" name="Rows[@i].Pressure2Lbs" data-autosave-row-field="Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /></td>
+                        <td class="numeric-cell pressure-average" data-pressure-average>@row.PressureAverageLbs</td>
+                        <td class="numeric-cell"><input class="number-input" name="Rows[@i].WeightGrams" data-field-weight data-autosave-row-field="WeightGrams" type="number" step="0.0001" min="0" value="@row.WeightGrams" /></td>
+                        <td class="compact-cell"><output class="size-category" data-size-category aria-label="Calculated size for fruit @row.RowNumber">@(row.SizeCategory?.ToString() ?? "Not calculated")</output></td>
                         <td class="compact-cell">
-                            <select name="Rows[@i].GradeId">
+                            <select name="Rows[@i].StarchScaleValueId" data-autosave-row-field="StarchScaleValueId">
+                                <option value="">--</option>
+                                @foreach (var starch in Model.StarchScaleValues)
+                                {
+                                    <option value="@starch.Id" selected="@(row.StarchScaleValueId == starch.Id ? "selected" : null)">@starch.Value.ToString("0.0")</option>
+                                }
+                            </select>
+                        </td>
+                        <td class="compact-cell">
+                            <select name="Rows[@i].GradeId" data-autosave-row-field="GradeId">
                                 <option value="">--</option>
                                 @foreach (var grade in Model.Grades)
                                 {
@@ -192,33 +216,30 @@
                                 }
                             </select>
                         </td>
-                        <td class="wide-cell">
-                            <div class="selected-defects" data-row-index="@i"></div>
-                            <div class="defect-hidden-inputs" data-row-index="@i">
-                                @foreach (var defectId in row.DefectTypeIds)
-                                {
-                                    <input type="hidden" name="Rows[@i].DefectTypeIds" value="@defectId" />
-                                }
-                            </div>
-                            <div class="defect-palette" aria-label="Available defects for row @row.RowNumber">
-                                @foreach (var defect in Model.DefectTypes)
-                                {
-                                    <button type="button" class="chip chip-action" data-defect-id="@defect.Id" data-defect-name="@defect.Name" title="Double-click to add @defect.Name">@defect.Name</button>
-                                }
-                            </div>
+                        <td class="wide-cell field-defect-cell">
+                            <details>
+                                <summary><span data-defect-indicator>@(row.DefectsInspected ? row.Defects.Count == 0 ? "Inspected — none" : $"{row.Defects.Count} defect(s)" : "Not inspected")</span></summary>
+                                <label class="checkbox-line"><input type="checkbox" name="Rows[@i].DefectsInspected" value="true" data-autosave-row-field="DefectsInspected" checked="@(row.DefectsInspected ? "checked" : null)" /> Inspected for defects</label>
+                                <div class="selected-defects" data-selected-defects>
+                                    @foreach (var defectName in row.Defects) { <span class="chip">@defectName</span> }
+                                </div>
+                                <div data-defect-hidden-inputs>
+                                    @foreach (var defectId in row.DefectTypeIds) { <input type="hidden" name="Rows[@i].DefectTypeIds" value="@defectId" /> }
+                                </div>
+                                <div class="defect-palette" aria-label="Available defects for row @row.RowNumber">
+                                    @foreach (var defect in Model.DefectTypes) { <button type="button" class="chip chip-action" data-field-defect-id="@defect.Id" data-defect-name="@defect.Name">@defect.Name</button> }
+                                </div>
+                                <label>Other notes <input name="Rows[@i].OtherDefectNotes" data-autosave-row-field="OtherDefectNotes" value="@row.OtherDefectNotes" maxlength="500" disabled="@(!row.Defects.Contains("Other") ? "disabled" : null)" /></label>
+                            </details>
                         </td>
-                        <td class="wide-cell"><input class="other-notes" name="Rows[@i].OtherDefectNotes" value="@row.OtherDefectNotes" disabled="@(!row.Defects.Contains("Other") ? "disabled" : null)" /></td>
-                        <td class="compact-cell size-category">@row.SizeCategory</td>
-                        <td class="nowrap-cell size-status">@row.SizeStatus</td>
                         <td class="nowrap-cell"><span class="status row-entry-status @StatusClass(row.EntryStatus)">@row.EntryStatus</span></td>
                     </tr>
                 }
                 </tbody>
             </table>
         </div>
-        <p class="muted">Rows save as Empty, In Progress, or Complete. In-progress rows are saved and can be finished later. Complete rows require Pressure 1, Pressure 2, weight, and grade. Use the separate Starch Input page after fruit is cut. Changing sample size controls expected rows but never deletes existing row data.</p>
-        <p class="muted">FTA readings may be captured from QC Station and saved here. Saving this grid remains available for manual pressure entry and weight/grade/defect edits.</p>
-        <button type="submit">Save QC Rows</button>
+        <p class="muted">Changes autosave after a short pause. In-progress rows are saved and remain valid. Size is calculated from weight. QC Station pressure updates are merged field by field and cannot silently overwrite unsaved browser changes.</p>
+        <button type="submit" data-save-now>Save Now</button>
     </form>
 
     <section>
@@ -256,6 +277,18 @@
             </div>
         </div>
     </section>
+
+    <section class="panel" id="final-receipt-sample-summary">
+        <h2>Final Sample Summary</h2>
+        <div class="summary-grid">
+            <div><span class="metric-label">Fruit represented</span><strong>@enteredRows.Count / @Model.TargetSampleSize</strong><span class="muted">Blank values remain missing, not zero</span></div>
+            <div><span class="metric-label">Average Pressure</span><strong>@(pressureReadings.Count == 0 ? "Not available" : $"{pressureReadings.Average():0.##} lb")</strong><span class="muted">@pressureReadings.Count valid side readings</span></div>
+            <div><span class="metric-label">Average weight</span><strong>@(weights.Count == 0 ? "Not available" : $"{weights.Average():0.##} g")</strong><span class="muted">Calculated size remains read-only</span></div>
+            <div><span class="metric-label">Sizes</span><strong>@(string.IsNullOrWhiteSpace(sizeSummary) ? "None" : sizeSummary)</strong></div>
+            <div><span class="metric-label">Grades</span><strong>@(string.IsNullOrWhiteSpace(gradeSummary) ? "None" : gradeSummary)</strong></div>
+            <div><span class="metric-label">Defects</span><strong>@(string.IsNullOrWhiteSpace(defectSummary) ? enteredRows.Any(row => row.DefectsInspected) ? "Inspected - none found" : "Not inspected" : defectSummary)</strong></div>
+        </div>
+    </section>
 }
 
 <dialog id="unsaved-dialog">
@@ -272,6 +305,7 @@
 
 <script>
     (() => {
+        if (document.querySelector("[data-autosave-url]")) return;
         const defects = @Html.Raw(defectOptionsJson);
         const refreshEnabled = @JsonSerializer.Serialize(pageRefreshEnabled);
         const refreshIntervalMs = @refreshIntervalMs;
@@ -513,6 +547,17 @@
             window.setInterval(() => refreshSampleData(false), refreshIntervalMs);
         }
     })();
+</script>
+
+<script src="/js/field-sample-autosave.js"></script>
+<script>
+    window.initializeFruitRowAutosave?.({
+        sampleId: @(Model.Sample?.Id ?? 0),
+        refreshUrl: "/Samples/@(Model.Sample?.Id ?? 0)/refresh",
+        debounceMilliseconds: 1000,
+        storageScope: "receiptSample",
+        sizeThresholds: @Html.Raw(sizeThresholdJson)
+    });
 </script>
 
 @functions {

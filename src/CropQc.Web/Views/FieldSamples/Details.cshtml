@@ -143,36 +143,6 @@
     </section>
 
     <section class="panel">
-        <h2>Current Sample Overview</h2>
-        <div class="summary-grid">
-            <div><span class="metric-label">Average weight</span><strong>@Format(Model.CurrentSummary.AverageWeightGrams) g</strong><span class="muted">Peak @Format(Model.CurrentSummary.PeakWeightGrams) g | Min @Format(Model.CurrentSummary.MinimumWeightGrams) g | @Model.CurrentSummary.WeightRepresentedFruitCount represented</span></div>
-            <div><span class="metric-label">Average starch</span><strong>@Format(Model.CurrentSummary.AverageStarch)</strong><span class="muted">@Model.CurrentSummary.StarchRepresentedFruitCount represented | @Model.CurrentSummary.MissingStarchCount missing</span></div>
-            <div><span class="metric-label">Average pressure</span><strong>@Format(Model.CurrentSummary.AveragePressureLbs) lb</strong><span class="muted">Peak @Format(Model.CurrentSummary.PeakPressureLbs) lb | Min @Format(Model.CurrentSummary.MinimumPressureLbs) lb</span></div>
-            <div><span class="metric-label">Pressure variation</span><strong>@(Model.CurrentSummary.PressureStandardDeviationLbs?.ToString("0.##") ?? "Insufficient readings")</strong><span class="muted">@Model.CurrentSummary.PressureReadingCount represented fruit</span></div>
-            <div><span class="metric-label">Fruit represented</span><strong>@Model.CurrentSummary.EnteredFruitCount / @Model.TargetSampleSize</strong><span class="muted">Blank values remain missing, not zero</span></div>
-            <div><span class="metric-label">Defects</span><strong>@(Model.CurrentSummary.DefectAffectedPercentage?.ToString("0.#") ?? "Not inspected")@(Model.CurrentSummary.DefectAffectedPercentage is null ? "" : "% affected")</strong><span class="muted">@Model.CurrentSummary.DefectAffectedFruitCount affected / @Model.CurrentSummary.DefectInspectedFruitCount inspected</span></div>
-        </div>
-        <p class="notice @(pressureChange is null ? "warning" : pressureChange < 0 ? "warning" : "success")">
-            @if (pressureChange is null)
-            {
-                <span>No earlier pressure sample in the last 30 days.</span>
-            }
-            else if (pressureChange < 0)
-            {
-                <span>Down @Math.Abs(pressureChange.Value).ToString("0.##") lb since @Model.CurrentSummary.PriorPressureSampleDate?.LocalDateTime.ToString("MMM d").</span>
-            }
-            else if (pressureChange > 0)
-            {
-                <span>Up @pressureChange.Value.ToString("0.##") lb since @Model.CurrentSummary.PriorPressureSampleDate?.LocalDateTime.ToString("MMM d").</span>
-            }
-            else
-            {
-                <span>No meaningful pressure change since @Model.CurrentSummary.PriorPressureSampleDate?.LocalDateTime.ToString("MMM d").</span>
-            }
-        </p>
-    </section>
-
-    <section class="panel">
         <h2>Defect Summary and 30-Day Trend</h2>
         @if (Model.CurrentSummary.DefectInspectedFruitCount == 0)
         {
@@ -306,7 +276,7 @@
         {
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Date</th><th>Avg pressure</th><th>Peak pressure</th><th>Pressure SD</th><th>Represented fruit</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Average Pressure</th><th>Peak pressure</th><th>Pressure SD</th><th>Valid side readings</th></tr></thead>
                     <tbody>
                         @foreach (var point in orderedTrend)
                         {
@@ -315,7 +285,7 @@
                                 <td>@Format(point.Summary.AveragePressureLbs) lb</td>
                                 <td>@Format(point.Summary.PeakPressureLbs) lb</td>
                                 <td>@(point.Summary.PressureStandardDeviationLbs?.ToString("0.##") ?? "Insufficient")</td>
-                                <td>@point.Summary.PressureReadingCount / @point.TargetSampleSize</td>
+                                <td>@point.Summary.PressureReadingCount</td>
                             </tr>
                         }
                     </tbody>
@@ -542,6 +512,36 @@
                 })
             }
         </div>
+    </section>
+
+    <section class="panel" id="final-sample-summary">
+        <h2>Final Sample Summary</h2>
+        <div class="summary-grid">
+            <div><span class="metric-label">Average weight</span><strong>@Format(Model.CurrentSummary.AverageWeightGrams) g</strong><span class="muted">Peak @Format(Model.CurrentSummary.PeakWeightGrams) g | Min @Format(Model.CurrentSummary.MinimumWeightGrams) g | @Model.CurrentSummary.WeightRepresentedFruitCount represented</span></div>
+            <div><span class="metric-label">Average starch</span><strong>@Format(Model.CurrentSummary.AverageStarch)</strong><span class="muted">@Model.CurrentSummary.StarchRepresentedFruitCount represented | @Model.CurrentSummary.MissingStarchCount missing</span></div>
+            <div><span class="metric-label">Average Pressure</span><strong>@Format(Model.CurrentSummary.AveragePressureLbs) lb</strong><span class="muted">Peak @Format(Model.CurrentSummary.PeakPressureLbs) lb | Min @Format(Model.CurrentSummary.MinimumPressureLbs) lb</span></div>
+            <div><span class="metric-label">Pressure variation</span><strong>@(Model.CurrentSummary.PressureStandardDeviationLbs?.ToString("0.##") ?? "Insufficient readings")</strong><span class="muted">@Model.CurrentSummary.PressureReadingCount valid side readings</span></div>
+            <div><span class="metric-label">Fruit represented</span><strong>@Model.CurrentSummary.EnteredFruitCount / @Model.TargetSampleSize</strong><span class="muted">Blank values remain missing, not zero</span></div>
+            <div><span class="metric-label">Defects</span><strong>@(Model.CurrentSummary.DefectAffectedPercentage?.ToString("0.#") ?? "Not inspected")@(Model.CurrentSummary.DefectAffectedPercentage is null ? "" : "% affected")</strong><span class="muted">@Model.CurrentSummary.DefectAffectedFruitCount affected / @Model.CurrentSummary.DefectInspectedFruitCount inspected</span></div>
+        </div>
+        <p class="notice @(pressureChange is null ? "warning" : pressureChange < 0 ? "warning" : "success")">
+            @if (pressureChange is null)
+            {
+                <span>No earlier pressure sample in the last 30 days.</span>
+            }
+            else if (pressureChange < 0)
+            {
+                <span>Down @Math.Abs(pressureChange.Value).ToString("0.##") lb since @Model.CurrentSummary.PriorPressureSampleDate?.LocalDateTime.ToString("MMM d").</span>
+            }
+            else if (pressureChange > 0)
+            {
+                <span>Up @pressureChange.Value.ToString("0.##") lb since @Model.CurrentSummary.PriorPressureSampleDate?.LocalDateTime.ToString("MMM d").</span>
+            }
+            else
+            {
+                <span>No meaningful pressure change since @Model.CurrentSummary.PriorPressureSampleDate?.LocalDateTime.ToString("MMM d").</span>
+            }
+        </p>
     </section>
 
     @if (Model.SendHistory.Count > 0)

@@ -5,6 +5,7 @@ using CropQc.Shared.Storage;
 using CropQc.Web.Auth;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 
@@ -30,6 +31,8 @@ public interface IDashboardDataService
     Task<(long? ReceiptId, string? Error)> SoftDeleteSampleAsync(long id, string? reason, CancellationToken cancellationToken);
     Task<string?> UpdateSampleTypeAsync(UpdateSampleTypeForm form, CancellationToken cancellationToken);
     Task<string?> SaveFruitReadingsAsync(SaveFruitReadingsForm form, CancellationToken cancellationToken);
+    Task<FieldSampleAutosaveResult> AutosaveFruitReadingsAsync(long sampleId, FieldSampleAutosaveRequest request, CancellationToken cancellationToken);
+    Task<ReceiptReportPreviewViewModel> GetQcReportPreviewAsync(long sampleId, CancellationToken cancellationToken);
     Task<StarchTestViewModel> GetStarchTestAsync(long id, CancellationToken cancellationToken);
     Task<string?> SaveStarchTestAsync(SaveStarchTestForm form, CancellationToken cancellationToken);
     Task<OverrideSendViewModel> GetOverrideSendAsync(long id, CancellationToken cancellationToken);
@@ -109,6 +112,7 @@ public sealed class DashboardDataService(
                 currentGrowerLots);
             return new HomeDashboardViewModel
             {
+                ActiveCropYear = cropYearService.GetCurrentCropYear(DateTimeOffset.Now),
                 Cards = cards,
                 TodaySamples = todaySamples,
                 RoomSummaryFilter = normalizedRoomFilter,
@@ -130,6 +134,7 @@ public sealed class DashboardDataService(
         {
             return new HomeDashboardViewModel
             {
+                ActiveCropYear = cropYearService.GetCurrentCropYear(DateTimeOffset.Now),
                 DataWarning = DatabaseWarning(ex, "Home dashboard"),
                 Cards = BuildHomeCards(0, 0, 0, 0, 0, 0, 0),
                 RoomSummaryFilter = normalizedRoomFilter,
@@ -186,6 +191,7 @@ public sealed class DashboardDataService(
                 receipts.TryGetValue(lot.ReceiptId ?? 0, out var receipt);
                 return new CurrentGrowerLotViewModel
                 {
+                    CropYear = receipt?.CropYear,
                     Grower = lot.GrowerName ?? "",
                     Lot = lot.GrowerNumber ?? lot.LotCode ?? "",
                     Variety = lot.VarietyCode ?? "",
@@ -202,7 +208,7 @@ public sealed class DashboardDataService(
 
             if (filter.CropYear is not null)
             {
-                rows = rows.Where(x => x.FirstReceivedAt is null || cropYearService.GetCurrentCropYear(x.FirstReceivedAt.Value) == filter.CropYear).ToList();
+                rows = rows.Where(x => x.CropYear is null || x.CropYear == filter.CropYear).ToList();
             }
 
             if (filter.WarehouseId is not null)
@@ -1268,11 +1274,18 @@ public sealed class DashboardDataService(
                 AllowedSampleSizes = allowedSampleSizes,
                 TargetSampleSize = targetSampleSize,
                 EnteredFruitCount = rowModels.Count(HasEnteredData),
+                AutosaveVersion = sample.FieldSampleAutosaveVersion,
                 AvailablePhotoTypes = availablePhotoTypes
                     .Select(x => new QcPhotoRequirementViewModel(x.PhotoType, x.FriendlyName, x.IsRequired))
                     .ToList(),
                 Grades = grades,
+                StarchScaleValues = await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken),
                 DefectTypes = defectTypes,
+                SizeThresholds = await dbContext.FruitSizeConversionThresholds.AsNoTracking()
+                    .Where(x => x.IsActive && x.FruitType == sample.Receipt.FruitProfile.FruitType)
+                    .OrderByDescending(x => x.MinimumWeightGrams)
+                    .Select(x => new FieldSampleSizeThreshold(x.SizeCategory, x.MinimumWeightGrams))
+                    .ToListAsync(cancellationToken),
                 DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
                 FruitReadingForm = new SaveFruitReadingsForm
                 {
@@ -1284,9 +1297,11 @@ public sealed class DashboardDataService(
                         Pressure1Lbs = row.Pressure1Lbs,
                         Pressure2Lbs = row.Pressure2Lbs,
                         WeightGrams = row.WeightGrams,
+                        StarchScaleValueId = row.StarchScaleValueId,
                         GradeId = row.GradeId,
                         DefectTypeIds = row.DefectTypeIds.ToList(),
-                        OtherDefectNotes = row.OtherDefectNotes
+                        OtherDefectNotes = row.OtherDefectNotes,
+                        DefectsInspected = row.DefectsInspected
                     }).ToList()
                 },
                 AddPhotoForm = new AddPhotoMetadataForm
@@ -1306,7 +1321,7 @@ public sealed class DashboardDataService(
 
     public async Task<SampleRefreshViewModel?> GetSampleRefreshAsync(long id, CancellationToken cancellationToken)
     {
-        var sample = await dbContext.QcSamples.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
+        var sample = await dbContext.QcSamples.AsNoTracking().Include(x => x.QcStation).SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
         if (sample is null)
         {
             return null;
@@ -1328,10 +1343,16 @@ public sealed class DashboardDataService(
                 row.WeightGrams,
                 row.GradeId,
                 row.Grade,
+                row.StarchScaleValueId,
                 row.SizeCategory,
                 row.SizeStatus,
                 row.EntryStatus,
-                row.Defects)).ToList());
+                row.DefectTypeIds,
+                row.Defects,
+                row.DefectsInspected,
+                row.OtherDefectNotes,
+                row.FieldVersion)).ToList(),
+            BuildQcStationStatus(sample.QcStation));
     }
 
     public async Task<DeleteSampleConfirmationViewModel> GetDeleteSampleConfirmationAsync(long id, CancellationToken cancellationToken)
@@ -1490,6 +1511,7 @@ public sealed class DashboardDataService(
         }
 
         var validGradeIds = await dbContext.Grades.AsNoTracking().Select(x => x.Id).ToListAsync(cancellationToken);
+        var validStarchIds = await dbContext.StarchScaleValues.AsNoTracking().Select(x => x.Id).ToHashSetAsync(cancellationToken);
         var defectTypes = await dbContext.DefectTypes.AsNoTracking().ToListAsync(cancellationToken);
         var validDefectIds = defectTypes.Select(x => x.Id).ToHashSet();
         var otherDefectId = defectTypes.FirstOrDefault(x => x.Name == "Other")?.Id;
@@ -1509,6 +1531,11 @@ public sealed class DashboardDataService(
             if (submittedRow.GradeId is not null && !validGradeIds.Contains(submittedRow.GradeId.Value))
             {
                 return $"Row {submittedRow.RowNumber} has an invalid grade.";
+            }
+
+            if (submittedRow.StarchScaleValueId is not null && !validStarchIds.Contains(submittedRow.StarchScaleValueId.Value))
+            {
+                return $"Row {submittedRow.RowNumber} has an invalid starch value.";
             }
 
             if (selectedDefectIds.Any(x => !validDefectIds.Contains(x)))
@@ -1538,6 +1565,7 @@ public sealed class DashboardDataService(
             reading.Pressure2Lbs = submittedRow.Pressure2Lbs;
             reading.Pressure2Source = submittedRow.Pressure2Lbs is null ? null : "Manual";
             reading.WeightGrams = submittedRow.WeightGrams;
+            reading.StarchScaleValueId = submittedRow.StarchScaleValueId;
             reading.GradeId = submittedRow.GradeId;
             reading.SizeCategory = size.SizeCategory;
             reading.SizeStatus = size.SizeStatus;
@@ -1545,6 +1573,7 @@ public sealed class DashboardDataService(
             reading.UpdatedAt = DateTimeOffset.UtcNow;
 
             dbContext.QcFruitDefects.RemoveRange(reading.Defects);
+            reading.DefectsInspected = submittedRow.DefectsInspected || selectedDefectIds.Count > 0;
             foreach (var defectTypeId in selectedDefectIds)
             {
                 reading.Defects.Add(new QcFruitDefect
@@ -1569,6 +1598,188 @@ public sealed class DashboardDataService(
         await RefreshSampleStatusesAsync(sample, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
+    }
+
+    public async Task<FieldSampleAutosaveResult> AutosaveFruitReadingsAsync(
+        long sampleId,
+        FieldSampleAutosaveRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.ChangeId) || request.ChangeId.Length > 100)
+        {
+            return new FieldSampleAutosaveResult { Error = "A valid autosave change identifier is required." };
+        }
+
+        if (request.MetadataChanges.Count > 0)
+        {
+            return new FieldSampleAutosaveResult
+            {
+                ValidationErrors = [new("sample", null, "Metadata", "Receipt details must be edited through the receipt workflow.")]
+            };
+        }
+
+        var sample = await dbContext.QcSamples
+            .Include(x => x.SampleType)
+            .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
+            .SingleOrDefaultAsync(x => x.Id == sampleId && x.ReceiptId != null && !x.IsDeleted, cancellationToken);
+        if (sample is null)
+        {
+            return new FieldSampleAutosaveResult { Error = "Receipt-backed QC sample not found." };
+        }
+
+        var allowedSampleSizes = await GetAllowedSampleSizesAsync(cancellationToken);
+        var requestedTarget = request.TargetSampleSize ?? sample.ActualSampleSize ?? allowedSampleSizes.First();
+        if (!allowedSampleSizes.Contains(requestedTarget))
+        {
+            return new FieldSampleAutosaveResult
+            {
+                ValidationErrors = [new("sample", null, "TargetSampleSize", $"Choose an allowed sample size: {string.Join(", ", allowedSampleSizes)}.")]
+            };
+        }
+
+        var rows = await dbContext.QcFruitReadings
+            .Include(x => x.Defects).ThenInclude(x => x.DefectType)
+            .Where(x => x.QcSampleId == sample.Id)
+            .ToListAsync(cancellationToken);
+        var maximumRow = Math.Max(requestedTarget, rows.Select(x => x.RowNumber).DefaultIfEmpty(0).Max());
+        var conflicts = new List<FieldSampleAutosaveConflict>();
+        var validation = new List<FieldSampleAutosaveValidationError>();
+
+        foreach (var rowChange in request.RowChanges)
+        {
+            if (rowChange.RowNumber < 1 || rowChange.RowNumber > maximumRow)
+            {
+                validation.Add(new("row", rowChange.RowNumber, "RowNumber", $"Fruit row must be between 1 and {maximumRow}."));
+                continue;
+            }
+
+            var row = rows.SingleOrDefault(x => x.RowNumber == rowChange.RowNumber);
+            foreach (var change in rowChange.Changes.OrderBy(x => x.Field == "DefectTypeIds" ? 0 : 1))
+            {
+                if (!IsReceiptAutosaveField(change.Field))
+                {
+                    validation.Add(new("row", rowChange.RowNumber, change.Field, "This fruit-row field cannot be autosaved."));
+                    continue;
+                }
+
+                var current = ReceiptAutosaveValue(row, change.Field);
+                if (!ReceiptAutosaveValuesEqual(current, change.OriginalValue)
+                    && !ReceiptAutosaveValuesEqual(current, change.Value))
+                {
+                    conflicts.Add(new(
+                        "row",
+                        rowChange.RowNumber,
+                        change.Field,
+                        change.Value,
+                        current,
+                        change.Field is "Pressure1Lbs" or "Pressure2Lbs"
+                            ? "QC Station or another user saved a newer pressure value. Choose which value to keep."
+                            : "This field changed after the page loaded. Choose which value to keep."));
+                }
+            }
+        }
+
+        if (conflicts.Count > 0 || validation.Count > 0)
+        {
+            if (conflicts.Count > 0)
+            {
+                await AddAuditAsync(
+                    "autosave-conflict",
+                    nameof(QcSample),
+                    sample.Id.ToString(),
+                    GetCurrentUserEmail() ?? "unknown",
+                    null,
+                    JsonSerializer.Serialize(new { request.ChangeId, Conflicts = conflicts.Select(x => new { x.RowNumber, x.Field, x.Message }) }),
+                    cancellationToken);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+            return await ReceiptAutosaveResultAsync(sample, conflicts, validation, cancellationToken);
+        }
+
+        var activeGradeIds = await dbContext.Grades.AsNoTracking().Where(x => x.IsActive).Select(x => x.Id).ToHashSetAsync(cancellationToken);
+        var activeStarchIds = await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.IsActive).Select(x => x.Id).ToHashSetAsync(cancellationToken);
+        var activeDefects = await dbContext.DefectTypes.AsNoTracking().Where(x => x.IsActive).ToListAsync(cancellationToken);
+        var activeDefectIds = activeDefects.Select(x => x.Id).ToHashSet();
+        var otherDefectId = activeDefects.FirstOrDefault(x => x.Name == "Other")?.Id;
+        var thresholds = await dbContext.FruitSizeConversionThresholds.AsNoTracking()
+            .Where(x => x.IsActive && x.FruitType == sample.Receipt.FruitProfile.FruitType)
+            .ToListAsync(cancellationToken);
+        var beforeSnapshot = BuildFruitReadingSnapshot(sample, rows);
+        var changedFields = new List<object>();
+
+        foreach (var rowChange in request.RowChanges)
+        {
+            var reading = rows.SingleOrDefault(x => x.RowNumber == rowChange.RowNumber);
+            if (reading is null)
+            {
+                reading = new QcFruitReading
+                {
+                    QcSampleId = sample.Id,
+                    RowNumber = rowChange.RowNumber,
+                    SizeStatus = SizeCalculationService.NotCalculated,
+                    CreatedAt = DateTimeOffset.UtcNow
+                };
+                rows.Add(reading);
+                dbContext.QcFruitReadings.Add(reading);
+            }
+
+            var rowChanged = false;
+            var oldSizeCategory = reading.SizeCategory;
+            var oldSizeStatus = reading.SizeStatus;
+            foreach (var change in rowChange.Changes.OrderBy(x => x.Field == "DefectTypeIds" ? 0 : 1))
+            {
+                var oldValue = ReceiptAutosaveValue(reading, change.Field);
+                if (ReceiptAutosaveValuesEqual(oldValue, change.Value)) continue;
+                if (ApplyReceiptAutosaveChange(reading, change, request.Source, activeGradeIds, activeStarchIds, activeDefectIds, otherDefectId, validation))
+                {
+                    rowChanged = true;
+                    changedFields.Add(new { Row = rowChange.RowNumber, change.Field, OldValue = oldValue, NewValue = change.Value });
+                }
+            }
+
+            if (rowChanged)
+            {
+                var size = SizeCalculationService.Calculate(reading.WeightGrams, thresholds);
+                reading.SizeCategory = size.SizeCategory;
+                reading.SizeStatus = size.SizeStatus;
+                if (oldSizeCategory != reading.SizeCategory || !string.Equals(oldSizeStatus, reading.SizeStatus, StringComparison.Ordinal))
+                {
+                    changedFields.Add(new { Row = rowChange.RowNumber, Field = "CalculatedSize", OldValue = oldSizeCategory?.ToString(CultureInfo.InvariantCulture) ?? oldSizeStatus, NewValue = reading.SizeCategory?.ToString(CultureInfo.InvariantCulture) ?? reading.SizeStatus });
+                }
+                reading.IsCompleted = HasCompletionFields(reading.Pressure1Lbs, reading.Pressure2Lbs, reading.WeightGrams, reading.GradeId);
+                reading.UpdatedAt = DateTimeOffset.UtcNow;
+                reading.FieldVersion++;
+            }
+        }
+
+        if (validation.Count > 0)
+        {
+            dbContext.ChangeTracker.Clear();
+            sample = await dbContext.QcSamples.AsNoTracking().SingleAsync(x => x.Id == sampleId, cancellationToken);
+            return await ReceiptAutosaveResultAsync(sample, [], validation, cancellationToken);
+        }
+
+        var targetChanged = sample.ActualSampleSize != requestedTarget;
+        sample.ActualSampleSize = requestedTarget;
+        if (changedFields.Count > 0 || targetChanged)
+        {
+            sample.FieldSampleAutosaveVersion++;
+            sample.UpdatedAt = DateTimeOffset.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await MarkSampleNeedsResendIfSentAsync(sample, "autosave", GetCurrentUserEmail() ?? "unknown", beforeSnapshot, cancellationToken);
+            await RefreshSampleStatusesAsync(sample, cancellationToken);
+            await AddAuditAsync(
+                "autosave",
+                nameof(QcSample),
+                sample.Id.ToString(),
+                GetCurrentUserEmail() ?? "unknown",
+                beforeSnapshot,
+                JsonSerializer.Serialize(new { request.ChangeId, Source = NormalizeAutosaveSource(request.Source), TargetSampleSize = requestedTarget, Changes = changedFields }),
+                cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        return await ReceiptAutosaveResultAsync(sample, [], [], cancellationToken);
     }
 
     public async Task<StarchTestViewModel> GetStarchTestAsync(long id, CancellationToken cancellationToken)
@@ -4046,10 +4257,8 @@ public sealed class DashboardDataService(
     }
 
     private static IEnumerable<decimal> PressureValues(IEnumerable<QcSample> samples) =>
-        samples.SelectMany(x => x.FruitReadings)
-            .Select(x => AverageFlexible(x.Pressure1Lbs, x.Pressure2Lbs))
-            .Where(x => x is not null)
-            .Select(x => x!.Value);
+        PressureCalculationService.ValidSideReadings(
+            samples.SelectMany(x => x.FruitReadings).Select(x => (x.Pressure1Lbs, x.Pressure2Lbs)));
 
     private static IEnumerable<decimal> StarchValues(IEnumerable<QcSample> samples) =>
         samples.SelectMany(x => x.FruitReadings)
@@ -4186,6 +4395,7 @@ public sealed class DashboardDataService(
             .Include(x => x.Receipt).ThenInclude(x => x.Warehouse)
             .Include(x => x.Receipt).ThenInclude(x => x.Room)
             .Include(x => x.Receipt).ThenInclude(x => x.FruitProfile)
+            .Include(x => x.Receipt).ThenInclude(x => x.CanonicalOrchardBlock).ThenInclude(x => x!.CanonicalOrchard)
             .Include(x => x.Receipt).ThenInclude(x => x.Photos)
             .Include(x => x.TakenByUser)
             .Include(x => x.QcStation)
@@ -4312,11 +4522,8 @@ public sealed class DashboardDataService(
             AddThresholdReason(reasons, defectPercent, "DashboardReview:HighDefectPercent", value => defectPercent > value, value => $"Defects are present on {defectPercent:0.##}% of completed fruit, above configured threshold {value:0.##}%.");
         }
 
-        var pressureValues = sample.FruitReadings
-            .Select(x => Average(x.Pressure1Lbs, x.Pressure2Lbs))
-            .Where(x => x is not null)
-            .Select(x => x!.Value)
-            .ToList();
+        var pressureValues = PressureCalculationService.ValidSideReadings(
+            sample.FruitReadings.Select(x => (x.Pressure1Lbs, x.Pressure2Lbs)));
         if (pressureValues.Count > 1)
         {
             var variance = decimal.Round(pressureValues.Max() - pressureValues.Min(), 2);
@@ -4373,7 +4580,9 @@ public sealed class DashboardDataService(
                         EntryStatus = GetFruitRowEntryStatus(row).ToDisplayName(),
                         DefectTypeIds = row.Defects.Select(x => x.DefectTypeId).ToList(),
                         Defects = row.Defects.Select(x => x.DefectType.Name).OrderBy(x => x).ToList(),
-                        OtherDefectNotes = row.Defects.FirstOrDefault(x => x.DefectType.Name == "Other")?.Notes
+                        OtherDefectNotes = row.Defects.FirstOrDefault(x => x.DefectType.Name == "Other")?.Notes,
+                        DefectsInspected = row.DefectsInspected,
+                        FieldVersion = row.FieldVersion
                     };
             })
             .ToList();
@@ -4412,6 +4621,7 @@ public sealed class DashboardDataService(
         row.GradeId is not null ||
         row.StarchScaleValueId is not null ||
         row.SizeCategory is not null ||
+        row.DefectsInspected ||
         row.DefectTypeIds.Count > 0 ||
         !string.IsNullOrWhiteSpace(row.OtherDefectNotes);
 
@@ -4422,6 +4632,7 @@ public sealed class DashboardDataService(
             || row.WeightGrams is not null
             || row.GradeId is not null
             || row.StarchScaleValueId is not null
+            || row.DefectsInspected
             || (selectedDefectIds ?? row.DefectTypeIds).Count > 0
             || !string.IsNullOrWhiteSpace(row.OtherDefectNotes);
         if (!hasAnyValue)
@@ -4441,6 +4652,7 @@ public sealed class DashboardDataService(
             || row.WeightGrams is not null
             || row.GradeId is not null
             || row.StarchScaleValueId is not null
+            || row.DefectsInspected
             || row.Defects.Count > 0;
         if (!hasAnyValue)
         {
@@ -4457,6 +4669,216 @@ public sealed class DashboardDataService(
         && pressure2Lbs is not null
         && weightGrams is not null
         && gradeId is not null;
+
+    private async Task<FieldSampleAutosaveResult> ReceiptAutosaveResultAsync(
+        QcSample sample,
+        IReadOnlyList<FieldSampleAutosaveConflict> conflicts,
+        IReadOnlyList<FieldSampleAutosaveValidationError> validation,
+        CancellationToken cancellationToken)
+    {
+        var target = sample.ActualSampleSize ?? 10;
+        var rows = await GetFruitReadingRowsAsync(sample.Id, target, cancellationToken);
+        return new FieldSampleAutosaveResult
+        {
+            Saved = conflicts.Count == 0 && validation.Count == 0,
+            SavedAt = conflicts.Count == 0 && validation.Count == 0 ? sample.UpdatedAt ?? DateTimeOffset.UtcNow : null,
+            AutosaveVersion = sample.FieldSampleAutosaveVersion,
+            Rows = rows.Select(row => new FieldSampleRefreshRowViewModel(
+                row.RowNumber,
+                row.Pressure1Lbs,
+                row.Pressure2Lbs,
+                row.PressureAverageLbs,
+                row.WeightGrams,
+                row.SizeCategory,
+                row.StarchScaleValueId,
+                row.GradeId,
+                row.DefectsInspected,
+                row.DefectTypeIds,
+                row.OtherDefectNotes,
+                row.FieldVersion)).ToList(),
+            Conflicts = conflicts,
+            ValidationErrors = validation
+        };
+    }
+
+    public async Task<ReceiptReportPreviewViewModel> GetQcReportPreviewAsync(long sampleId, CancellationToken cancellationToken)
+    {
+        var sample = await QuerySamples().SingleOrDefaultAsync(x => x.Id == sampleId, cancellationToken);
+        if (sample is null)
+        {
+            return new ReceiptReportPreviewViewModel();
+        }
+
+        var readiness = await GetReadinessAsync(sample.Id, sample.ReceiptId!.Value, cancellationToken);
+        var sender = await GetCurrentUserAsync(cancellationToken);
+        var recipients = await qcEmailRecipientResolver.ResolveForSampleAsync(sample.Id, null, cancellationToken);
+        var content = await emailComposer.ComposeAsync(sample, readiness, sender, false, null, cancellationToken);
+        var history = await dbContext.QcSummaryEmailLogs.AsNoTracking()
+            .Where(x => x.QcSampleId == sample.Id)
+            .OrderByDescending(x => x.CreatedAt)
+            .ThenByDescending(x => x.Id)
+            .Select(x => new ReceiptReportSendHistoryItem(
+                x.Status,
+                x.SentAt,
+                x.FromAddress,
+                x.ToAddress,
+                x.Subject,
+                x.IsResend,
+                x.IsOverride))
+            .ToListAsync(cancellationToken);
+        var isResend = sample.EmailStatus.Contains("resend", StringComparison.OrdinalIgnoreCase)
+            || sample.EmailStatus.Contains("Changed after sent", StringComparison.OrdinalIgnoreCase);
+
+        return new ReceiptReportPreviewViewModel
+        {
+            SampleId = sample.Id,
+            ReceiptId = sample.ReceiptId.Value,
+            DisplayReceiptId = sample.GetDisplayReceiptId(),
+            Recipients = recipients.Header,
+            Subject = content.Subject,
+            HtmlBody = QcSummaryEmailComposer.BuildBrowserPreviewHtml(content),
+            CanSend = readiness.IsReady && recipients.IsConfigured
+                && (!sample.EmailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase) || isResend),
+            IsResend = isResend,
+            MissingItems = readiness.MissingItems,
+            SendHistory = history
+        };
+    }
+
+    private static bool IsReceiptAutosaveField(string field) => field is
+        "Pressure1Lbs" or "Pressure2Lbs" or "WeightGrams" or "StarchScaleValueId" or "GradeId"
+        or "DefectsInspected" or "DefectTypeIds" or "OtherDefectNotes";
+
+    private static string? ReceiptAutosaveValue(QcFruitReading? row, string field) => field switch
+    {
+        "Pressure1Lbs" => AutosaveText(row?.Pressure1Lbs),
+        "Pressure2Lbs" => AutosaveText(row?.Pressure2Lbs),
+        "WeightGrams" => AutosaveText(row?.WeightGrams),
+        "StarchScaleValueId" => AutosaveText(row?.StarchScaleValueId),
+        "GradeId" => AutosaveText(row?.GradeId),
+        "DefectsInspected" => (row?.DefectsInspected ?? false).ToString().ToLowerInvariant(),
+        "DefectTypeIds" => row is null ? "" : string.Join(",", row.Defects.Select(x => x.DefectTypeId).OrderBy(x => x)),
+        "OtherDefectNotes" => row?.Defects.FirstOrDefault(x => x.DefectType?.Name == "Other")?.Notes,
+        _ => null
+    };
+
+    private bool ApplyReceiptAutosaveChange(
+        QcFruitReading reading,
+        FieldSampleAutosaveFieldChange change,
+        string source,
+        IReadOnlySet<int> activeGradeIds,
+        IReadOnlySet<int> activeStarchIds,
+        IReadOnlySet<int> activeDefectIds,
+        int? otherDefectId,
+        ICollection<FieldSampleAutosaveValidationError> validation)
+    {
+        switch (change.Field)
+        {
+            case "Pressure1Lbs":
+                if (!TryAutosaveDecimal(change.Value, out var pressure1) || pressure1 < 0) return Invalid("Enter a valid nonnegative pressure.");
+                reading.Pressure1Lbs = pressure1;
+                reading.Pressure1Source = pressure1 is null ? null : NormalizeAutosaveSource(source);
+                return true;
+            case "Pressure2Lbs":
+                if (!TryAutosaveDecimal(change.Value, out var pressure2) || pressure2 < 0) return Invalid("Enter a valid nonnegative pressure.");
+                reading.Pressure2Lbs = pressure2;
+                reading.Pressure2Source = pressure2 is null ? null : NormalizeAutosaveSource(source);
+                return true;
+            case "WeightGrams":
+                if (!TryAutosaveDecimal(change.Value, out var weight) || weight < 0) return Invalid("Enter a valid nonnegative weight in grams.");
+                reading.WeightGrams = weight;
+                return true;
+            case "GradeId":
+                if (!TryAutosaveInt(change.Value, out var gradeId) || gradeId is not null && !activeGradeIds.Contains(gradeId.Value)) return Invalid("Select an active grade.");
+                reading.GradeId = gradeId;
+                return true;
+            case "StarchScaleValueId":
+                if (!TryAutosaveInt(change.Value, out var starchId) || starchId is not null && !activeStarchIds.Contains(starchId.Value)) return Invalid("Select an active starch value.");
+                reading.StarchScaleValueId = starchId;
+                return true;
+            case "DefectsInspected":
+                if (!bool.TryParse(change.Value, out var inspected)) return Invalid("Defect inspection status is invalid.");
+                if (!inspected && reading.Defects.Count > 0) return Invalid("Remove selected defects before marking the fruit not inspected.");
+                reading.DefectsInspected = inspected;
+                return true;
+            case "DefectTypeIds":
+                var ids = ParseAutosaveIds(change.Value);
+                if (ids is null || ids.Any(id => !activeDefectIds.Contains(id))) return Invalid("Select only active defect types.");
+                var existingNotes = reading.Defects.ToDictionary(x => x.DefectTypeId, x => x.Notes);
+                dbContext.QcFruitDefects.RemoveRange(reading.Defects);
+                reading.Defects.Clear();
+                foreach (var id in ids)
+                {
+                    reading.Defects.Add(new QcFruitDefect { DefectTypeId = id, Notes = existingNotes.GetValueOrDefault(id) });
+                }
+                if (ids.Count > 0) reading.DefectsInspected = true;
+                return true;
+            case "OtherDefectNotes":
+                if (change.Value?.Length > 500) return Invalid("Other defect notes must be 500 characters or fewer.");
+                var other = otherDefectId is null ? null : reading.Defects.FirstOrDefault(x => x.DefectTypeId == otherDefectId.Value);
+                if (other is null && !string.IsNullOrWhiteSpace(change.Value)) return Invalid("Select Other before entering other defect notes.");
+                if (other is not null) other.Notes = string.IsNullOrWhiteSpace(change.Value) ? null : change.Value.Trim();
+                return true;
+            default:
+                return Invalid("This fruit-row field cannot be autosaved.");
+        }
+
+        bool Invalid(string message)
+        {
+            validation.Add(new("row", reading.RowNumber, change.Field, message));
+            return false;
+        }
+    }
+
+    private static List<int>? ParseAutosaveIds(string? value)
+    {
+        var ids = new List<int>();
+        foreach (var part in (value ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!int.TryParse(part, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) || id <= 0) return null;
+            ids.Add(id);
+        }
+        return ids.Distinct().OrderBy(x => x).ToList();
+    }
+
+    private static bool TryAutosaveDecimal(string? value, out decimal? parsed)
+    {
+        if (string.IsNullOrWhiteSpace(value)) { parsed = null; return true; }
+        if (decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var number)) { parsed = number; return true; }
+        parsed = null;
+        return false;
+    }
+
+    private static bool TryAutosaveInt(string? value, out int? parsed)
+    {
+        if (string.IsNullOrWhiteSpace(value)) { parsed = null; return true; }
+        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number)) { parsed = number; return true; }
+        parsed = null;
+        return false;
+    }
+
+    private static bool ReceiptAutosaveValuesEqual(string? first, string? second)
+    {
+        var left = string.IsNullOrWhiteSpace(first) ? null : first.Trim();
+        var right = string.IsNullOrWhiteSpace(second) ? null : second.Trim();
+        if (decimal.TryParse(left, NumberStyles.Number, CultureInfo.InvariantCulture, out var leftDecimal)
+            && decimal.TryParse(right, NumberStyles.Number, CultureInfo.InvariantCulture, out var rightDecimal))
+        {
+            return leftDecimal == rightDecimal;
+        }
+        return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? AutosaveText<T>(T? value) where T : struct, IFormattable =>
+        value?.ToString(null, CultureInfo.InvariantCulture);
+
+    private static string NormalizeAutosaveSource(string? source) => source switch
+    {
+        "Scale" => "Scale",
+        "Manual Save Now" => "Manual Save Now",
+        "Conflict Resolution" => "Conflict Resolution",
+        _ => "Browser"
+    };
 
     private async Task<ReadinessViewModel> GetReadinessAsync(long sampleId, long receiptId, CancellationToken cancellationToken)
     {
@@ -4581,8 +5003,10 @@ public sealed class DashboardDataService(
                     x.Pressure1Lbs,
                     x.Pressure2Lbs,
                     x.WeightGrams,
+                    x.SizeCategory,
                     x.GradeId,
                     x.StarchScaleValueId,
+                    x.DefectsInspected,
                     Defects = x.Defects
                         .OrderBy(y => y.DefectTypeId)
                         .Select(y => new { y.DefectTypeId, y.Notes })
@@ -4704,14 +5128,8 @@ public sealed class DashboardDataService(
 
     private static decimal? AveragePressure(IEnumerable<QcFruitReading> rows)
     {
-        var values = rows
-            .Where(x => x.IsCompleted)
-            .Select(x => Average(x.Pressure1Lbs, x.Pressure2Lbs))
-            .Where(x => x is not null)
-            .Select(x => x!.Value)
-            .ToList();
-
-        return values.Count == 0 ? null : decimal.Round(values.Average(), 2);
+        return PressureCalculationService.CalculateOverallAverage(
+            rows.Where(x => x.IsCompleted).Select(x => (x.Pressure1Lbs, x.Pressure2Lbs)));
     }
 
     private sealed record ReceiptSampleSummary(long ReceiptId, int SampleCount, DateTimeOffset LastUpdatedAt, bool HasReady, bool HasReview, bool HasSent);

@@ -5,6 +5,7 @@
 }
 
 <h1>Dashboard</h1>
+<p class="notice"><strong>Active crop year: @Model.ActiveCropYear</strong> <a href="/Receipts?CropYear=@Model.ActiveCropYear">View @Model.ActiveCropYear receipts</a></p>
 @await Html.PartialAsync("_PageRefreshControls")
 @if (Model.DataWarning is not null)
 {

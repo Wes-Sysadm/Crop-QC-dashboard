@@ -176,8 +176,6 @@ public sealed class FieldSampleMetricSummary
     public int StarchRepresentedFruitCount { get; set; }
     public int MissingStarchCount { get; set; }
     public decimal? AveragePressureLbs { get; set; }
-    public decimal? AveragePressure1Lbs { get; set; }
-    public decimal? AveragePressure2Lbs { get; set; }
     public decimal? PeakPressureLbs { get; set; }
     public decimal? MinimumPressureLbs { get; set; }
     public decimal? PressureStandardDeviationLbs { get; set; }

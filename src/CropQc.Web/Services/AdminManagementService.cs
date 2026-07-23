@@ -27,7 +27,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
 
     private static readonly IReadOnlyList<(string Key, string Value, string Description, string ValueType)> ConfigurationDefaults =
     [
-        ("DefaultCropYear", DateTimeOffset.UtcNow.Year.ToString(), "Default crop year", "Integer"),
+        (CropYearService.ActiveCropYearKey, "2026", "Active operational crop year used by dashboard and new-entry defaults. Historical records are not changed.", "Integer"),
         ("MaximumSampleRows", "25", "Maximum sample rows", "Integer"),
         ("AllowedSampleSizes", "10,25,50", "Allowed QC sample target sizes. Use comma-separated values.", "IntegerList"),
         ("UnsyncedWarningHours", "2", "Unsynced warning hours", "Integer"),
@@ -354,6 +354,11 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
         foreach (var config in configs)
         {
             var submittedValue = form.Values[config.Id]?.Trim() ?? "";
+            if (config.Key == CropYearService.ActiveCropYearKey
+                && (!int.TryParse(submittedValue, out var cropYear) || cropYear < 2000 || cropYear > DateTimeOffset.UtcNow.Year + 5))
+            {
+                return $"Active crop year must be between 2000 and {DateTimeOffset.UtcNow.Year + 5}.";
+            }
             if (config.Key is QcEmailRecipientSettings.Key or EbsDailyBinsEmailSettings.RecipientsKey)
             {
                 var parsed = QcEmailRecipientParser.Parse(submittedValue);

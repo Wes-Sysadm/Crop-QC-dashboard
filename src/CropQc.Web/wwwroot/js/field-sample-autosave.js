@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    window.initializeFieldSampleAutosave = function initializeFieldSampleAutosave(options) {
+    window.initializeFruitRowAutosave = window.initializeFieldSampleAutosave = function initializeFruitRowAutosave(options) {
         const rowsForm = document.querySelector("[data-field-rows-form]");
         if (!rowsForm || rowsForm.dataset.autosaveInitialized === "true") return;
         rowsForm.dataset.autosaveInitialized = "true";
@@ -13,7 +13,7 @@
         const updateWarning = document.querySelector("[data-field-server-update]");
         const targetSizeInput = rowsForm.querySelector("[data-field-target-size]");
         const token = rowsForm.querySelector("input[name='__RequestVerificationToken']")?.value || "";
-        const storageKey = `cropqc.fieldSample.autosave.${options.sampleId}`;
+        const storageKey = `cropqc.${options.storageScope || "fieldSample"}.autosave.${options.sampleId}`;
         const debounceMs = options.debounceMilliseconds || 1000;
         const thresholds = Array.isArray(options.sizeThresholds) ? options.sizeThresholds : [];
         let pending = { metadata: {}, rows: {}, targetSampleSize: null, source: "Browser" };
@@ -514,6 +514,13 @@
             }
         });
         document.querySelector("[data-add-field-row]")?.addEventListener("click", () => cloneRow(true));
+        targetSizeInput?.addEventListener("change", () => {
+            const target = Number(targetSizeInput.value);
+            while (rowsForm.querySelectorAll("tr.fruit-row").length < target) cloneRow(false);
+            targetSizeInput.value = String(target);
+            pending.targetSampleSize = target;
+            queueSave(true);
+        });
         document.querySelectorAll("[data-save-now]").forEach(button => button.addEventListener("click", () => flush("Manual Save Now")));
 
         for (const form of [rowsForm, metadataForm].filter(Boolean)) {
@@ -570,7 +577,7 @@
             rows.forEach(saved => {
                 const row = document.querySelector(`.fruit-row[data-row-number='${saved.rowNumber}']`);
                 if (!row) return;
-                for (const field of ["Pressure1Lbs", "Pressure2Lbs", "WeightGrams", "StarchScaleValueId", "GradeId", "DefectsInspected"]) {
+                for (const field of ["Pressure1Lbs", "Pressure2Lbs", "WeightGrams", "StarchScaleValueId", "GradeId", "DefectsInspected", "OtherDefectNotes"]) {
                     if (pending.rows[saved.rowNumber]?.changes?.[field]) continue;
                     const control = fieldControl("row", saved.rowNumber, field);
                     const key = field.charAt(0).toLowerCase() + field.slice(1);

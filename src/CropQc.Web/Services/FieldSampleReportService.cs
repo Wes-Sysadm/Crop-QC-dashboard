@@ -296,21 +296,6 @@ public sealed class FieldSampleReportService(
         AddInfo(html, preview ? "Preview time" : "Report sent time", DateTimeOffset.Now.ToString("g"));
         html.AppendLine("</table>");
 
-        html.AppendLine("<h2>Current Sample Summary</h2><table cellpadding=\"4\" cellspacing=\"0\" style=\"border-collapse:collapse;\">");
-        AddInfo(html, "Meaningful fruit rows", detail.CurrentSummary.EnteredFruitCount.ToString());
-        AddInfo(html, "Average weight", Format(detail.CurrentSummary.AverageWeightGrams, " g"));
-        AddInfo(html, "Average / representative size", AverageSize(detail.SizeDistribution));
-        AddInfo(html, "Size distribution", Distribution(detail.SizeDistribution.Select(x => new FieldSampleDistributionPoint(x.Size.ToString(), x.Percentage))));
-        AddInfo(html, "Average Pressure 1", Format(detail.CurrentSummary.AveragePressure1Lbs, " lb"));
-        AddInfo(html, "Average Pressure 2", Format(detail.CurrentSummary.AveragePressure2Lbs, " lb"));
-        AddInfo(html, "Combined average pressure", Format(detail.CurrentSummary.AveragePressureLbs, " lb"));
-        AddInfo(html, "Average starch", Format(detail.CurrentSummary.AverageStarch));
-        AddInfo(html, "Starch distribution", Distribution(detail.CurrentSummary.StarchDistribution));
-        AddInfo(html, "Grade distribution", Distribution(detail.CurrentSummary.GradeDistribution));
-        AddInfo(html, "Defect inspection", DefectSummary(detail.CurrentSummary));
-        AddInfo(html, "Defect distribution", DefectDistribution(detail.CurrentSummary));
-        html.AppendLine("</table>");
-
         html.AppendLine("<h2>Fruit Detail</h2><table cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;width:100%;\"><thead><tr><th>Fruit</th><th>Weight g</th><th>Size</th><th>P1 lb</th><th>P2 lb</th><th>Avg lb</th><th>Starch</th><th>Grade</th><th>Defects</th></tr></thead><tbody>");
         foreach (var row in rows)
         {
@@ -341,6 +326,7 @@ public sealed class FieldSampleReportService(
 
         AppendTrend(html, detail);
         if (!string.IsNullOrWhiteSpace(sample.Notes)) html.AppendLine($"<p><strong>Notes:</strong> {Html(sample.Notes)}</p>");
+        AppendCurrentSummary(html, detail);
         html.AppendLine("</body></html>");
         return html.ToString();
     }
@@ -357,15 +343,6 @@ public sealed class FieldSampleReportService(
         text.AppendLine($"Sample date/time: {sample.SampleTakenAt.LocalDateTime:g}");
         text.AppendLine($"Status: {detail.LifecycleStatus}");
         text.AppendLine($"{(preview ? "Previewed" : "Sent")} by: {sender?.DisplayName ?? sender?.Email}");
-        text.AppendLine($"Meaningful fruit rows: {detail.CurrentSummary.EnteredFruitCount}");
-        text.AppendLine($"Average weight: {Format(detail.CurrentSummary.AverageWeightGrams, " g")}");
-        text.AppendLine($"Average Pressure 1: {Format(detail.CurrentSummary.AveragePressure1Lbs, " lb")}");
-        text.AppendLine($"Average Pressure 2: {Format(detail.CurrentSummary.AveragePressure2Lbs, " lb")}");
-        text.AppendLine($"Combined average pressure: {Format(detail.CurrentSummary.AveragePressureLbs, " lb")}");
-        text.AppendLine($"Average starch: {Format(detail.CurrentSummary.AverageStarch)}");
-        text.AppendLine($"Defect inspection: {DefectSummary(detail.CurrentSummary)}");
-        text.AppendLine($"Defect distribution: {DefectDistribution(detail.CurrentSummary)}");
-        text.AppendLine($"Photos: {photos.Count}");
         text.AppendLine();
         text.AppendLine("Fruit Detail");
         foreach (var row in sample.FruitReadings.Where(HasEnteredData).OrderBy(x => x.RowNumber))
@@ -377,16 +354,41 @@ public sealed class FieldSampleReportService(
         if (detail.Trend.Count <= 1) text.AppendLine("This is the first available sample for the confirmed block in the last 30 days.");
         foreach (var point in detail.Trend.OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleId))
         {
-            text.AppendLine($"{point.SampleTakenAt.LocalDateTime:g}{(point.SampleId == sample.Id ? " (current)" : "")}: Weight {Format(point.Summary.AverageWeightGrams)} g; Size {AverageSize(point.SizeDistribution)}; P1 {Format(point.Summary.AveragePressure1Lbs)} lb; P2 {Format(point.Summary.AveragePressure2Lbs)} lb; Combined {Format(point.Summary.AveragePressureLbs)} lb; Starch {Format(point.Summary.AverageStarch)}; Grades {Distribution(point.Summary.GradeDistribution)}; Defects {DefectSummary(point.Summary)}; {DefectDistribution(point.Summary)}");
+            text.AppendLine($"{point.SampleTakenAt.LocalDateTime:g}{(point.SampleId == sample.Id ? " (current)" : "")}: Weight {Format(point.Summary.AverageWeightGrams)} g; Size {AverageSize(point.SizeDistribution)}; Average Pressure {Format(point.Summary.AveragePressureLbs)} lb; Starch {Format(point.Summary.AverageStarch)}; Grades {Distribution(point.Summary.GradeDistribution)}; Defects {DefectSummary(point.Summary)}; {DefectDistribution(point.Summary)}");
         }
+        text.AppendLine();
+        text.AppendLine("Final Sample Summary");
+        text.AppendLine($"Meaningful fruit rows: {detail.CurrentSummary.EnteredFruitCount}");
+        text.AppendLine($"Average weight: {Format(detail.CurrentSummary.AverageWeightGrams, " g")}");
+        text.AppendLine($"Average Pressure: {Format(detail.CurrentSummary.AveragePressureLbs, " lb")}");
+        text.AppendLine($"Average starch: {Format(detail.CurrentSummary.AverageStarch)}");
+        text.AppendLine($"Defect inspection: {DefectSummary(detail.CurrentSummary)}");
+        text.AppendLine($"Defect distribution: {DefectDistribution(detail.CurrentSummary)}");
+        text.AppendLine($"Photos: {photos.Count}");
         return text.ToString();
+    }
+
+    private static void AppendCurrentSummary(StringBuilder html, FieldSampleDetailViewModel detail)
+    {
+        html.AppendLine("<h2>Final Sample Summary</h2><table cellpadding=\"4\" cellspacing=\"0\" style=\"border-collapse:collapse;\">");
+        AddInfo(html, "Meaningful fruit rows", detail.CurrentSummary.EnteredFruitCount.ToString());
+        AddInfo(html, "Average weight", Format(detail.CurrentSummary.AverageWeightGrams, " g"));
+        AddInfo(html, "Average / representative size", AverageSize(detail.SizeDistribution));
+        AddInfo(html, "Size distribution", Distribution(detail.SizeDistribution.Select(x => new FieldSampleDistributionPoint(x.Size.ToString(), x.Percentage))));
+        AddInfo(html, "Average Pressure", Format(detail.CurrentSummary.AveragePressureLbs, " lb"));
+        AddInfo(html, "Average starch", Format(detail.CurrentSummary.AverageStarch));
+        AddInfo(html, "Starch distribution", Distribution(detail.CurrentSummary.StarchDistribution));
+        AddInfo(html, "Grade distribution", Distribution(detail.CurrentSummary.GradeDistribution));
+        AddInfo(html, "Defect inspection", DefectSummary(detail.CurrentSummary));
+        AddInfo(html, "Defect distribution", DefectDistribution(detail.CurrentSummary));
+        html.AppendLine("</table>");
     }
 
     private static void AppendTrend(StringBuilder html, FieldSampleDetailViewModel detail)
     {
         html.AppendLine("<h2>Same-Block Trends — Last 30 Days</h2>");
         if (detail.Trend.Count <= 1) html.AppendLine("<p>This is the first available sample for the confirmed block in the last 30 days.</p>");
-        html.AppendLine("<table cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;width:100%;\"><thead><tr><th>Date</th><th>Fruit</th><th>Avg weight</th><th>Size</th><th>Avg P1</th><th>Avg P2</th><th>Combined</th><th>Avg starch</th><th>Grades</th><th>Defects</th></tr></thead><tbody>");
+        html.AppendLine("<table cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;width:100%;\"><thead><tr><th>Date</th><th>Fruit</th><th>Avg weight</th><th>Size</th><th>Average Pressure</th><th>Avg starch</th><th>Grades</th><th>Defects</th></tr></thead><tbody>");
         foreach (var point in detail.Trend.OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleId))
         {
             var values = new[]
@@ -395,8 +397,6 @@ public sealed class FieldSampleReportService(
                 point.Summary.EnteredFruitCount.ToString(),
                 Format(point.Summary.AverageWeightGrams, " g"),
                 AverageSize(point.SizeDistribution),
-                Format(point.Summary.AveragePressure1Lbs, " lb"),
-                Format(point.Summary.AveragePressure2Lbs, " lb"),
                 Format(point.Summary.AveragePressureLbs, " lb"),
                 Format(point.Summary.AverageStarch),
                 Distribution(point.Summary.GradeDistribution),
