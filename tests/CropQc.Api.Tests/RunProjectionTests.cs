@@ -94,6 +94,117 @@ public sealed class RunProjectionTests
     }
 
     [Theory]
+    [InlineData(100, 22, 0)]
+    [InlineData(90, 20, 2)]
+    [InlineData(85, 19, 3)]
+    [InlineData(0, 0, 22)]
+    public void ExpectedPackout_DerivesComplementaryCullAndReconciles(
+        decimal packout,
+        int expectedPacked,
+        int expectedCull)
+    {
+        var result = CalculateWithPackout(packout, [80, 90, 100], ["US #1", "Fancy", "C Grade"]);
+
+        Assert.Equal(packout, result.ExpectedPackoutPercent);
+        Assert.Equal(100m - packout, result.ExpectedCullPercent);
+        Assert.Equal(expectedPacked, result.RoundedPackedProjectedBoxes);
+        Assert.Equal(expectedCull, result.RoundedCullProjectedBoxes);
+        Assert.Equal(result.RoundedProjectedBoxes, result.RoundedPackedProjectedBoxes + result.RoundedCullProjectedBoxes);
+        Assert.Equal(result.RoundedPackedProjectedBoxes, result.SizeAllocations.Sum(x => x.RoundedPackedProjectedBoxes));
+        Assert.Equal(result.RoundedCullProjectedBoxes, result.SizeAllocations.Sum(x => x.RoundedCullProjectedBoxes));
+        Assert.Equal(result.RoundedPackedProjectedBoxes, result.GradeAllocations.Sum(x => x.RoundedPackedBoxes));
+        Assert.Equal(result.RoundedCullProjectedBoxes, result.GradeAllocations.Sum(x => x.RoundedCullBoxes));
+    }
+
+    [Fact]
+    public void EightyFivePercentPackout_RemovesFifteenPercentNotEightyFive()
+    {
+        var result = CalculateWithPackout(85m, [80, 90], ["US #1", "Fancy"]);
+
+        Assert.Equal(18.7m, result.PackedProjectedBoxes);
+        Assert.Equal(3.3m, result.CullProjectedBoxes);
+        Assert.Equal(85m, result.PackedProjectedBoxes / result.ProjectedBoxes * 100m);
+    }
+
+    [Fact]
+    public void DecimalPackout_IsAppliedProportionallyToEverySizeAndGrade()
+    {
+        var result = CalculateWithPackout(
+            82.5m,
+            [80, 80, 90, 100],
+            ["US #1", "US #1", "Fancy", "C Grade"]);
+
+        Assert.All(result.SizeAllocations, x => Assert.Equal(x.UnroundedProjectedBoxes * 0.825m, x.PackedProjectedBoxes));
+        Assert.All(result.GradeAllocations, x => Assert.Equal(x.GrossBoxes * 0.825m, x.PackedBoxes));
+        Assert.Equal(
+            result.GradeAllocations.Select(x => x.Percentage),
+            result.GradeAllocations.Select(x => decimal.Round(x.PackedBoxes / result.PackedProjectedBoxes * 100m, 4)));
+    }
+
+    [Theory]
+    [InlineData(-0.01)]
+    [InlineData(100.01)]
+    public void OutOfRangePackout_IsRejected(decimal value) =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => CalculateWithPackout(value, [80], ["US #1"]));
+
+    [Fact]
+    public void BlankPackout_PreservesGrossAndLeavesPackedOutputUncalculated()
+    {
+        var result = RunProjectionCalculationService.Calculate(
+            "Apple", 1, 880m, 920m, 40m, null,
+            [new(80), new(90)],
+            [new("US #1")]);
+
+        Assert.Equal(22m, result.ProjectedBoxes);
+        Assert.Null(result.ExpectedPackoutPercent);
+        Assert.Equal(0m, result.PackedProjectedBoxes);
+        Assert.Contains("required", result.Warning);
+    }
+
+    [Fact]
+    public void MissingGradeData_DoesNotInventGradeDistribution()
+    {
+        var result = CalculateWithPackout(85m, [80, 90], []);
+
+        Assert.Empty(result.GradeAllocations);
+        Assert.Contains("Grade breakdown is unavailable", result.Warning);
+    }
+
+    [Fact]
+    public void DistributionDenominators_AreIndependent()
+    {
+        var result = RunProjectionCalculationService.Calculate(
+            "Apple", 1, 880m, 920m, 40m, 90m,
+            [new(80), new(90), new(100)],
+            [new("US #1"), new("Fancy")],
+            1);
+
+        Assert.Equal(3, result.SizeBasisFruitCount);
+        Assert.Equal(2, result.GradeBasisFruitCount);
+        Assert.Equal(1, result.JointSizeGradeBasisFruitCount);
+    }
+
+    [Fact]
+    public void CombinedPackout_IsNotPresentedAsCompleteWhenAnySourceIsMissingItsAssumption()
+    {
+        var model = new RunProjectionDetailViewModel
+        {
+            TotalProjectedPounds = 1600m,
+            TotalPackedProjectedPounds = 680m,
+            Sources =
+            [
+                new() { ExpectedPackoutPercent = 85m },
+                new() { ExpectedPackoutPercent = null }
+            ]
+        };
+
+        Assert.Null(model.EffectivePackoutPercent);
+        model.Sources = [new() { ExpectedPackoutPercent = 85m }];
+        model.TotalProjectedPounds = 800m;
+        Assert.Equal(85m, model.EffectivePackoutPercent);
+    }
+
+    [Theory]
     [InlineData(" apple ", "Apple")]
     [InlineData("PEAR", "Pear")]
     [InlineData("", "Unknown")]
@@ -224,6 +335,53 @@ public sealed class RunProjectionTests
     }
 
     [Fact]
+    public async Task ApplyToAllPackout_UpdatesExistingSourcesAndKeepsLinesIndependentlyEditable()
+    {
+        await using var db = CreateDbContext();
+        var service = CreateProjectionService(db, new PlanningBinsRunService(
+        [
+            Inventory("R:1", 1, 5, "Apple"),
+            Inventory("R:2", 2, 5, "Pear")
+        ]));
+        var created = await service.CreateAsync(
+            new RunProjectionCreateForm { PlannedRunDate = new(2026, 7, 24), Name = "Packout" },
+            Owner(),
+            CancellationToken.None);
+        foreach (var item in new[] { ("R:1", 1L), ("R:2", 2L) })
+        {
+            Assert.Null(await service.AddSourceAsync(new RunProjectionAddSourceForm
+            {
+                ProjectionId = created.Id!.Value,
+                SourceKey = item.Item1,
+                PlannedBins = 1,
+                SelectedQcSource = RunProjectionQcSourceTypes.None,
+                ConcurrencyVersion = item.Item2
+            }, Owner(), CancellationToken.None));
+        }
+
+        Assert.Null(await service.ApplyPackoutToAllAsync(new RunProjectionApplyPackoutForm
+        {
+            ProjectionId = created.Id!.Value,
+            ExpectedPackoutPercent = 75m,
+            ConcurrencyVersion = 3
+        }, Owner(), CancellationToken.None));
+        Assert.All((await db.RunProjectionSources.ToListAsync()), x => Assert.Equal(75m, x.ExpectedPackoutPercent));
+
+        var first = await db.RunProjectionSources.OrderBy(x => x.Id).FirstAsync();
+        Assert.Null(await service.UpdateSourceAsync(new RunProjectionUpdateSourceForm
+        {
+            ProjectionId = created.Id.Value,
+            SourceId = first.Id,
+            PlannedBins = 1,
+            SelectedQcSource = RunProjectionQcSourceTypes.None,
+            ExpectedPackoutPercent = 90m,
+            SortOrder = first.SortOrder,
+            ConcurrencyVersion = 4
+        }, Owner(), CancellationToken.None));
+        Assert.Equal([90m, 75m], await db.RunProjectionSources.OrderBy(x => x.Id).Select(x => x.ExpectedPackoutPercent!.Value).ToListAsync());
+    }
+
+    [Fact]
     public async Task FinalizedProjection_CannotBeCancelledOrEdited()
     {
         await using var db = CreateDbContext();
@@ -266,6 +424,10 @@ public sealed class RunProjectionTests
         Assert.Contains("x.CanonicalOrchardBlockId == blockId && x.FieldSampleFruitProfileId == source.FruitProfileId", service);
         Assert.Contains("FieldSampleCropWindow(cropYear)", service);
         Assert.Contains("if (useAutomaticPriority && source.ReceiptId is long receiptId)", service);
+        Assert.Contains("x.SampleType.IsActive", service);
+        Assert.Contains("x.SampleType.Name != FieldSampleTypeName", service);
+        Assert.Contains("x.FruitReadings.Any(row => row.SizeCategory != null)", service);
+        Assert.Contains("x.FruitReadings.Any(row => row.GradeId != null)", service);
     }
 
     [Fact]
@@ -277,6 +439,15 @@ public sealed class RunProjectionTests
         Assert.Contains("Open date", view);
         Assert.Contains("Converted to Actual Run", view);
         Assert.Contains("safe[0] is '=' or '+' or '-' or '@'", controller);
+        Assert.Contains("Expected Packout %", view);
+        Assert.Contains("Expected Cull/Loss %", view);
+        Assert.Contains("Apply to All", view);
+        Assert.Contains("Refresh From Current QC Data", view);
+        Assert.Contains("data-projection-source-form", view);
+        Assert.Contains("X-Projection-Autosave", view);
+        Assert.Contains("Conflict — reload before saving", view);
+        Assert.Contains("X-Projection-Autosave", controller);
+        Assert.Contains("return BadRequest(new { error });", controller);
     }
 
     private static RunProjectionLineCalculation Calculate(string commodity, int bins, params int[] sizes) =>
@@ -287,6 +458,20 @@ public sealed class RunProjectionTests
             RunProjectionCalculationService.DefaultPearPoundsPerBin,
             RunProjectionCalculationService.DefaultStandardBoxWeightPounds,
             sizes.Select(x => new RunProjectionSizeObservation(x)));
+
+    private static RunProjectionLineCalculation CalculateWithPackout(
+        decimal? packout,
+        IReadOnlyList<int> sizes,
+        IReadOnlyList<string> grades) =>
+        RunProjectionCalculationService.Calculate(
+            "Apple",
+            1,
+            880m,
+            920m,
+            40m,
+            packout,
+            sizes.Select(x => new RunProjectionSizeObservation(x)),
+            grades.Select(x => new RunProjectionGradeObservation(x)));
 
     private static readonly DateTimeOffset TestNow = DateTimeOffset.Parse("2026-07-23T18:00:00Z");
 

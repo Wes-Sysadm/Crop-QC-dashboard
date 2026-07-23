@@ -41,10 +41,21 @@ public sealed class RunProjectionDetailViewModel : RunProjectionListItemViewMode
     public decimal PearPoundsPerBin { get; set; }
     public decimal StandardBoxWeightPounds { get; set; }
     public decimal TotalProjectedPounds { get; set; }
+    public decimal TotalPackedProjectedPounds { get; set; }
+    public decimal TotalPackedProjectedBoxes { get; set; }
+    public int TotalRoundedPackedProjectedBoxes { get; set; }
+    public decimal TotalCullProjectedPounds { get; set; }
+    public decimal TotalCullProjectedBoxes { get; set; }
+    public int TotalRoundedCullProjectedBoxes { get; set; }
+    public decimal? EffectivePackoutPercent =>
+        TotalProjectedPounds <= 0 || Sources.Any(x => x.ExpectedPackoutPercent is null)
+            ? null
+            : TotalPackedProjectedPounds / TotalProjectedPounds * 100m;
     public long ConcurrencyVersion { get; set; }
     public string? CancelReason { get; set; }
     public IReadOnlyList<RunProjectionSourceViewModel> Sources { get; set; } = [];
     public IReadOnlyList<RunProjectionCombinedSizeViewModel> CombinedSizes { get; set; } = [];
+    public IReadOnlyList<RunProjectionCombinedGradeViewModel> CombinedGrades { get; set; } = [];
     public bool HasUnknownCommodity => Sources.Any(x => x.Commodity == "Unknown");
     public bool HasUnmappedFieldSampleSources => Sources.Any(x => x.SourceType == "FieldSample" && x.ActualBinsRunEntryId is null);
     public bool CanEditRecord { get; set; }
@@ -75,9 +86,14 @@ public sealed class RunProjectionSourceViewModel
     public string SelectedQcSourceType { get; set; } = "";
     public long? SelectedQcSampleId { get; set; }
     public string QcBasis { get; set; } = "";
+    public string? QcSampleType { get; set; }
+    public string? QcSampleStatus { get; set; }
     public DateTimeOffset? QcSampleDate { get; set; }
     public long? QcSampleId { get; set; }
     public int? QcFruitCount { get; set; }
+    public int SizeBasisFruitCount { get; set; }
+    public int GradeBasisFruitCount { get; set; }
+    public int JointSizeGradeBasisFruitCount { get; set; }
     public decimal? AverageWeightGrams { get; set; }
     public decimal? AveragePressureLbs { get; set; }
     public string? GradeSummary { get; set; }
@@ -86,9 +102,19 @@ public sealed class RunProjectionSourceViewModel
     public decimal ProjectedPounds { get; set; }
     public decimal ProjectedBoxes { get; set; }
     public int RoundedProjectedBoxes { get; set; }
+    public decimal? ExpectedPackoutPercent { get; set; }
+    public decimal? ExpectedCullPercent { get; set; }
+    public decimal PackedProjectedPounds { get; set; }
+    public decimal PackedProjectedBoxes { get; set; }
+    public int RoundedPackedProjectedBoxes { get; set; }
+    public decimal CullProjectedPounds { get; set; }
+    public decimal CullProjectedBoxes { get; set; }
+    public int RoundedCullProjectedBoxes { get; set; }
+    public string CalculationVersion { get; set; } = "";
     public string? Warning { get; set; }
     public long? ActualBinsRunEntryId { get; set; }
     public IReadOnlyList<RunProjectionSizeResultViewModel> SizeResults { get; set; } = [];
+    public IReadOnlyList<RunProjectionGradeResultViewModel> GradeResults { get; set; } = [];
     public IReadOnlyList<RunProjectionQcChoiceViewModel> QcChoices { get; set; } = [];
 }
 
@@ -98,13 +124,41 @@ public sealed record RunProjectionSizeResultViewModel(
     int SampleCount,
     decimal Percentage,
     decimal UnroundedBoxes,
-    int RoundedBoxes);
+    int RoundedBoxes,
+    decimal PackedBoxes,
+    int RoundedPackedBoxes,
+    decimal CullBoxes,
+    int RoundedCullBoxes);
+
+public sealed record RunProjectionGradeResultViewModel(
+    string Grade,
+    int SampleCount,
+    decimal Percentage,
+    decimal GrossBoxes,
+    int RoundedGrossBoxes,
+    decimal PackedBoxes,
+    int RoundedPackedBoxes,
+    decimal CullBoxes,
+    int RoundedCullBoxes);
 
 public sealed record RunProjectionCombinedSizeViewModel(
     string Commodity,
     int Size,
     decimal UnroundedBoxes,
-    int RoundedBoxes);
+    int RoundedBoxes,
+    decimal PackedBoxes,
+    int RoundedPackedBoxes,
+    decimal CullBoxes,
+    int RoundedCullBoxes);
+
+public sealed record RunProjectionCombinedGradeViewModel(
+    string Grade,
+    decimal GrossBoxes,
+    int RoundedGrossBoxes,
+    decimal PackedBoxes,
+    int RoundedPackedBoxes,
+    decimal CullBoxes,
+    int RoundedCullBoxes);
 
 public sealed record RunProjectionQcChoiceViewModel(
     string Value,
@@ -112,6 +166,14 @@ public sealed record RunProjectionQcChoiceViewModel(
     long? SampleId,
     string SourceType,
     DateTimeOffset? SampleDate,
+    string? SampleType,
+    string? Status,
+    int FruitCount,
+    decimal? AverageWeight,
+    decimal? AveragePressure,
+    bool HasSize,
+    bool HasGrade,
+    bool HasDefects,
     bool IsSelected);
 
 public sealed record RunProjectionSourceCandidateViewModel(
@@ -171,6 +233,7 @@ public sealed class RunProjectionAddSourceForm
     public string SourceKey { get; set; } = "";
     public int PlannedBins { get; set; } = 1;
     public string SelectedQcSource { get; set; } = "Automatic";
+    public decimal? ExpectedPackoutPercent { get; set; }
     public bool AvailabilityOverrideAcknowledged { get; set; }
     public long ConcurrencyVersion { get; set; }
 }
@@ -181,9 +244,17 @@ public sealed class RunProjectionUpdateSourceForm
     public long SourceId { get; set; }
     public int PlannedBins { get; set; }
     public string SelectedQcSource { get; set; } = "Automatic";
+    public decimal? ExpectedPackoutPercent { get; set; }
     public bool AvailabilityOverrideAcknowledged { get; set; }
     public int SortOrder { get; set; }
     public string? Notes { get; set; }
+    public long ConcurrencyVersion { get; set; }
+}
+
+public sealed class RunProjectionApplyPackoutForm
+{
+    public long ProjectionId { get; set; }
+    public decimal ExpectedPackoutPercent { get; set; }
     public long ConcurrencyVersion { get; set; }
 }
 

@@ -117,14 +117,18 @@
                     </div>
                     <span class="status @ProjectionStatusClass(selected.Status)">@selected.Status</span>
                 </div>
-                <div class="room-summary-metrics">
+                <div class="room-summary-metrics" data-projection-summary>
                     <div class="metric-card"><span class="metric-label">Planned Bins</span><strong data-total-planned-bins>@selected.TotalPlannedBins</strong></div>
                     <div class="metric-card"><span class="metric-label">Gross Pounds</span><strong>@selected.TotalProjectedPounds.ToString("0")</strong></div>
-                    <div class="metric-card"><span class="metric-label">Box Equivalents</span><strong>@selected.TotalProjectedBoxes.ToString("0.##")</strong><span>@selected.TotalRoundedProjectedBoxes rounded</span></div>
-                    <div class="metric-card"><span class="metric-label">Sources</span><strong>@selected.SourceCount</strong><span>@selected.ConvertedSourceCount linked to actual</span></div>
+                    <div class="metric-card"><span class="metric-label">Gross Boxes</span><strong>@selected.TotalProjectedBoxes.ToString("0.##")</strong><span>@selected.TotalRoundedProjectedBoxes rounded</span></div>
+                    <div class="metric-card"><span class="metric-label">Projected Packed Pounds</span><strong>@selected.TotalPackedProjectedPounds.ToString("0.##")</strong></div>
+                    <div class="metric-card"><span class="metric-label">Projected Packed Boxes</span><strong>@selected.TotalPackedProjectedBoxes.ToString("0.##")</strong><span>@selected.TotalRoundedPackedProjectedBoxes rounded</span></div>
+                    <div class="metric-card"><span class="metric-label">Projected Cull/Loss Pounds</span><strong>@selected.TotalCullProjectedPounds.ToString("0.##")</strong></div>
+                    <div class="metric-card"><span class="metric-label">Projected Cull Equivalents</span><strong>@selected.TotalCullProjectedBoxes.ToString("0.##")</strong><span>@selected.TotalRoundedCullProjectedBoxes rounded</span></div>
+                    <div class="metric-card"><span class="metric-label">Effective Combined Packout</span><strong>@(selected.EffectivePackoutPercent is decimal effectivePackout ? $"{effectivePackout:0.##}%" : "Not calculated")</strong></div>
                 </div>
                 <p class="notice">
-                    Projection is a planning estimate based on selected sample size distribution, configured pounds per bin, and 40-pound box equivalents. Actual packout will vary.
+                    This planning estimate uses a human Expected Packout assumption. Defect and grade observations are shown for context and are not deducted again automatically.
                 </p>
                 <p class="muted">Assumptions saved with this projection: apples @selected.ApplePoundsPerBin.ToString("0.##") lb/bin; pears @selected.PearPoundsPerBin.ToString("0.##") lb/bin; @selected.StandardBoxWeightPounds.ToString("0.##") lb/box.</p>
 
@@ -163,11 +167,25 @@
                                 <option value="None">No usable QC data</option>
                             </select>
                         </label>
+                        <label class="field">Expected Packout %
+                            <input type="number" min="0" max="100" step="0.01" name="ExpectedPackoutPercent" placeholder="Configured default" />
+                        </label>
                         <label class="checkbox-field wide">
                             <input type="checkbox" name="AvailabilityOverrideAcknowledged" value="true" />
                             I acknowledge this planning quantity may exceed currently available bins
                         </label>
                         <button type="submit">Add Source</button>
+                    </form>
+                }
+                @if (selected.Sources.Count > 0)
+                {
+                    <form class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Packout/ApplyAll">
+                        <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
+                        <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
+                        <label>Apply Expected Packout % to all current sources
+                            <input type="number" min="0" max="100" step="0.01" name="ExpectedPackoutPercent" required />
+                        </label>
+                        <button type="submit" class="secondary-button">Apply to All</button>
                     </form>
                 }
             }
@@ -187,7 +205,7 @@
                 <div class="projection-source-grid">
                 @foreach (var source in selected.Sources.OrderBy(x => x.SortOrder))
                 {
-                    <article class="station-card">
+                    <article class="station-card" data-projection-source-card="@source.Id">
                         <div class="station-card-header">
                             <div>
                                 <h3>@source.SourceLabel</h3>
@@ -203,6 +221,7 @@
                             <dt>Available snapshot</dt><dd>@(source.AvailableBinsSnapshot?.ToString() ?? "Not inventory-backed")</dd>
                             <dt>Planned bins</dt><dd>@source.PlannedBins</dd>
                             <dt>QC basis</dt><dd>@source.QcBasis</dd>
+                            <dt>Sample status</dt><dd>@(source.QcSampleStatus ?? "-")</dd>
                             <dt>Sample date</dt>
                             <dd>
                                 @BusinessTime.FormatPacific(source.QcSampleDate, empty: "No usable sample")
@@ -215,12 +234,17 @@
                                 }
                             </dd>
                             <dt>Fruit rows</dt><dd>@(source.QcFruitCount?.ToString() ?? "-")</dd>
+                            <dt>Distribution basis</dt><dd>Size: @source.SizeBasisFruitCount fruit · Grade: @source.GradeBasisFruitCount fruit · Joint: @source.JointSizeGradeBasisFruitCount fruit</dd>
                             <dt>Average weight</dt><dd>@Format(source.AverageWeightGrams, " g")</dd>
                             <dt>Average pressure</dt><dd>@Format(source.AveragePressureLbs, " lb")</dd>
                             <dt>Grades</dt><dd>@(source.GradeSummary ?? "No data")</dd>
                             <dt>Defects</dt><dd>@(source.DefectSummary ?? "No data")</dd>
-                            <dt>Gross pounds</dt><dd>@source.ProjectedPounds.ToString("0.##")</dd>
-                            <dt>Box equivalents</dt><dd>@source.ProjectedBoxes.ToString("0.##") (@source.RoundedProjectedBoxes rounded)</dd>
+                            <dt>Expected Packout %</dt><dd>@(source.ExpectedPackoutPercent is null ? "Not specified" : $"{source.ExpectedPackoutPercent:0.##}%")</dd>
+                            <dt>Expected Cull/Loss %</dt><dd>@(source.ExpectedCullPercent is null ? "Not calculated" : $"{source.ExpectedCullPercent:0.##}%")</dd>
+                            <dt>Gross pounds / boxes</dt><dd>@source.ProjectedPounds.ToString("0.##") lb / @source.ProjectedBoxes.ToString("0.##") (@source.RoundedProjectedBoxes rounded)</dd>
+                            <dt>Projected packed pounds / boxes</dt><dd>@source.PackedProjectedPounds.ToString("0.##") lb / @source.PackedProjectedBoxes.ToString("0.##") (@source.RoundedPackedProjectedBoxes rounded)</dd>
+                            <dt>Projected cull pounds / equivalents</dt><dd>@source.CullProjectedPounds.ToString("0.##") lb / @source.CullProjectedBoxes.ToString("0.##") (@source.RoundedCullProjectedBoxes rounded)</dd>
+                            <dt>Calculation version</dt><dd>@source.CalculationVersion</dd>
                         </dl>
                         @if (!string.IsNullOrWhiteSpace(source.Warning))
                         {
@@ -230,11 +254,25 @@
                         {
                             <div class="table-wrap">
                                 <table>
-                                    <thead><tr><th>Size</th><th>Fruit</th><th>Distribution</th><th>Boxes</th><th>Rounded</th></tr></thead>
+                                    <thead><tr><th>Size</th><th>Fruit</th><th>Distribution</th><th>Gross</th><th>Packed</th><th>Cull</th></tr></thead>
                                     <tbody>
                                     @foreach (var size in source.SizeResults)
                                     {
-                                        <tr><td>@size.Size</td><td>@size.SampleCount</td><td>@size.Percentage.ToString("0.#")%</td><td>@size.UnroundedBoxes.ToString("0.##")</td><td>@size.RoundedBoxes</td></tr>
+                                        <tr><td>@size.Size</td><td>@size.SampleCount</td><td>@size.Percentage.ToString("0.#")%</td><td>@size.UnroundedBoxes.ToString("0.##") (@size.RoundedBoxes)</td><td>@size.PackedBoxes.ToString("0.##") (@size.RoundedPackedBoxes)</td><td>@size.CullBoxes.ToString("0.##") (@size.RoundedCullBoxes)</td></tr>
+                                    }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        @if (source.GradeResults.Count > 0)
+                        {
+                            <div class="table-wrap">
+                                <table>
+                                    <thead><tr><th>Grade</th><th>Fruit</th><th>Distribution</th><th>Gross</th><th>Packed</th><th>Cull</th></tr></thead>
+                                    <tbody>
+                                    @foreach (var grade in source.GradeResults)
+                                    {
+                                        <tr><td>@grade.Grade</td><td>@grade.SampleCount</td><td>@grade.Percentage.ToString("0.#")%</td><td>@grade.GrossBoxes.ToString("0.##") (@grade.RoundedGrossBoxes)</td><td>@grade.PackedBoxes.ToString("0.##") (@grade.RoundedPackedBoxes)</td><td>@grade.CullBoxes.ToString("0.##") (@grade.RoundedCullBoxes)</td></tr>
                                     }
                                     </tbody>
                                 </table>
@@ -242,11 +280,15 @@
                         }
                         @if (selected.CanEditRecord && source.ActualBinsRunEntryId is null)
                         {
-                            <form class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id">
+                            <form class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id" data-projection-source-form>
                                 <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                                 <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                                 <label class="field">Planned bins
                                     <input type="number" min="1" name="PlannedBins" value="@source.PlannedBins" data-planned-bins required />
+                                </label>
+                                <label class="field">Expected Packout %
+                                    <input type="number" min="0" max="100" step="0.01" name="ExpectedPackoutPercent" value="@source.ExpectedPackoutPercent" data-packout-input />
+                                    <small>Expected Cull/Loss: <span data-cull-output>@(source.ExpectedCullPercent?.ToString("0.##") ?? "-")%</span></small>
                                 </label>
                                 <label class="field">QC data source
                                     <select name="SelectedQcSource">
@@ -267,12 +309,18 @@
                                     Acknowledge planning quantity above available snapshot
                                 </label>
                                 <button type="submit">Save Source</button>
+                                <span class="muted" data-autosave-status>Saved</span>
                             </form>
                             <div class="action-bar">
                                 <form method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id/Remove">
                                     <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                                     <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                                     <button type="submit" class="secondary-button">Remove Source</button>
+                                </form>
+                                <form method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id/Refresh">
+                                    <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
+                                    <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
+                                    <button type="submit" class="secondary-button">Refresh From Current QC Data</button>
                                 </form>
                                 @if (source.SourceType == "Inventory" && source.InventoryKey is not null)
                                 {
@@ -290,8 +338,8 @@
             }
         </section>
 
-        <section class="panel">
-            <h2>Combined Gross Size Projection</h2>
+        <section class="panel" data-combined-results>
+            <h2>Combined Gross Size Projection (Before Packout)</h2>
             @if (selected.CombinedSizes.Count == 0)
             {
                 <p class="empty-state">No calculated size distribution is available.</p>
@@ -300,11 +348,30 @@
             {
                 <div class="table-wrap">
                     <table>
-                        <thead><tr><th>Commodity</th><th>Size</th><th>Unrounded boxes</th><th>Planning boxes</th></tr></thead>
+                        <thead><tr><th>Commodity</th><th>Size</th><th>Gross</th><th>Packed</th><th>Cull</th></tr></thead>
                         <tbody>
                         @foreach (var size in selected.CombinedSizes)
                         {
-                            <tr><td>@size.Commodity</td><td>@size.Size</td><td>@size.UnroundedBoxes.ToString("0.##")</td><td>@size.RoundedBoxes</td></tr>
+                            <tr><td>@size.Commodity</td><td>@size.Size</td><td>@size.UnroundedBoxes.ToString("0.##") (@size.RoundedBoxes)</td><td>@size.PackedBoxes.ToString("0.##") (@size.RoundedPackedBoxes)</td><td>@size.CullBoxes.ToString("0.##") (@size.RoundedCullBoxes)</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            <h2>Combined Grade Projection</h2>
+            @if (selected.CombinedGrades.Count == 0)
+            {
+                <p class="empty-state">Grade breakdown unavailable. No grade distribution is invented.</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Grade</th><th>Gross</th><th>Packed</th><th>Cull</th></tr></thead>
+                        <tbody>
+                        @foreach (var grade in selected.CombinedGrades)
+                        {
+                            <tr><td>@grade.Grade</td><td>@grade.GrossBoxes.ToString("0.##") (@grade.RoundedGrossBoxes)</td><td>@grade.PackedBoxes.ToString("0.##") (@grade.RoundedPackedBoxes)</td><td>@grade.CullBoxes.ToString("0.##") (@grade.RoundedCullBoxes)</td></tr>
                         }
                         </tbody>
                     </table>
@@ -602,6 +669,99 @@ else
                 if (total) total.textContent = planned.reduce((sum, item) => sum + (Number(item.value) || 0), 0);
             });
         }
+
+        function bindProjectionAutosave(form) {
+            if (!form || form.dataset.autosaveBound) return;
+            form.dataset.autosaveBound = "true";
+            const status = form.querySelector("[data-autosave-status]");
+            const packout = form.querySelector("[data-packout-input]");
+            const cull = form.querySelector("[data-cull-output]");
+            let timer;
+            let saving = false;
+            let queued = false;
+
+            const updateCull = () => {
+                const value = Number(packout?.value);
+                if (cull) cull.textContent = Number.isFinite(value) && value >= 0 && value <= 100
+                    ? `${(100 - value).toFixed(2).replace(/\.?0+$/, "")}%`
+                    : "-";
+            };
+            const save = async () => {
+                if (saving) {
+                    queued = true;
+                    return;
+                }
+                saving = true;
+                if (status) status.textContent = "Saving";
+                try {
+                    const response = await fetch(form.action, {
+                        method: "POST",
+                        body: new FormData(form),
+                        credentials: "same-origin",
+                        headers: { "X-Projection-Autosave": "1" }
+                    });
+                    const html = await response.text();
+                    if (!response.ok) {
+                        let message = `Save failed (HTTP ${response.status}).`;
+                        try {
+                            message = JSON.parse(html).error || message;
+                        } catch {
+                            // Keep the safe status-only fallback when the response is not JSON.
+                        }
+                        throw new Error(message);
+                    }
+                    const documentCopy = new DOMParser().parseFromString(html, "text/html");
+                    const card = form.closest("[data-projection-source-card]");
+                    const cardId = card?.getAttribute("data-projection-source-card");
+                    const replacement = cardId ? documentCopy.querySelector(`[data-projection-source-card="${cardId}"]`) : null;
+                    if (!replacement || documentCopy.querySelector(".validation-summary-errors")) {
+                        throw new Error("The server did not confirm the projection source update.");
+                    }
+                    card.replaceWith(replacement);
+                    const currentSummary = document.querySelector("[data-projection-summary]");
+                    const newSummary = documentCopy.querySelector("[data-projection-summary]");
+                    if (currentSummary && newSummary) currentSummary.replaceWith(newSummary);
+                    const currentCombined = document.querySelector("[data-combined-results]");
+                    const newCombined = documentCopy.querySelector("[data-combined-results]");
+                    if (currentCombined && newCombined) currentCombined.replaceWith(newCombined);
+                    document.querySelectorAll("input[name='ConcurrencyVersion']").forEach((input) => {
+                        const next = documentCopy.querySelector("input[name='ConcurrencyVersion']")?.value;
+                        if (next) input.value = next;
+                    });
+                    bindProjectionAutosave(replacement.querySelector("[data-projection-source-form]"));
+                    replacement.querySelector("[data-autosave-status]").textContent = "Saved";
+                } catch (error) {
+                    console.error("Run projection autosave failed.", error);
+                    if (status) {
+                        status.textContent = error.message?.includes("changed after the page loaded")
+                            ? "Conflict — reload before saving"
+                            : "Unsaved — retry";
+                        status.title = error.message || "The projection source was not saved.";
+                    }
+                } finally {
+                    saving = false;
+                    if (queued) {
+                        queued = false;
+                        save();
+                    }
+                }
+            };
+            const schedule = (immediate) => {
+                updateCull();
+                if (status) status.textContent = "Unsaved";
+                clearTimeout(timer);
+                timer = setTimeout(save, immediate ? 0 : 1000);
+            };
+            form.addEventListener("input", () => schedule(false));
+            form.addEventListener("change", () => schedule(true));
+            form.addEventListener("submit", (event) => {
+                event.preventDefault();
+                clearTimeout(timer);
+                save();
+            });
+            updateCull();
+        }
+        document.querySelectorAll("[data-projection-source-form]").forEach(bindProjectionAutosave);
     })();
 </script>
 
