@@ -48,6 +48,19 @@
             if (statusTime && detail !== undefined) statusTime.textContent = detail || "";
         }
 
+        function formatPacificTimestamp(value) {
+            if (!value) return "server time unavailable";
+            const timestamp = new Date(value);
+            if (Number.isNaN(timestamp.getTime())) return "server time unavailable";
+            return new Intl.DateTimeFormat("en-US", {
+                timeZone: "America/Los_Angeles",
+                hour: "numeric",
+                minute: "2-digit",
+                second: "2-digit",
+                timeZoneName: "short"
+            }).format(timestamp);
+        }
+
         function hasPending() {
             return Object.keys(pending.metadata).length > 0
                 || Object.values(pending.rows).some(row => Object.keys(row.changes || {}).length > 0)
@@ -390,8 +403,7 @@
                 cleanupPending();
                 errorPanel && (errorPanel.hidden = true);
                 persistPending();
-                const savedAt = result.savedAt ? new Date(result.savedAt) : new Date();
-                setStatus(hasPending() ? "Unsaved changes" : "Saved", `Last saved ${savedAt.toLocaleTimeString()}`);
+                setStatus(hasPending() ? "Unsaved changes" : "Saved", `Last saved ${formatPacificTimestamp(result.savedAt)}`);
                 if (hasPending()) queueSave(false);
                 return !hasPending();
             } catch {

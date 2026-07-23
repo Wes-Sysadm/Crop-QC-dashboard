@@ -99,7 +99,7 @@
                     <div class="muted">@user.RoleSummary</div>
                 </td>
                 <td>@(user.IsActive ? "Yes" : "No")</td>
-                <td>@user.LastLoginAt?.LocalDateTime</td>
+                <td>@BusinessTime.FormatPacific(user.LastLoginAt, empty: "Never")</td>
                 <td>
                     <form class="button-row" method="post" action="/Admin/Users/Update">
                         <input type="hidden" name="UserId" value="@user.Id" />

@@ -42,7 +42,7 @@
         <p>@Model.Sample.Warehouse | @Model.Sample.SampleType | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Target sample size: @Model.TargetSampleSize | Entered fruit count: @Model.EnteredFruitCount</p>
         @if (Model.Sample.EmailSentAt is not null)
         {
-            <p class="notice success">QC Summary sent @Model.Sample.EmailSentAt.Value.LocalDateTime.ToString("g") by @(Model.Sample.EmailSentBy ?? "unknown").</p>
+            <p class="notice success">QC Summary sent @BusinessTime.FormatPacific(Model.Sample.EmailSentAt.Value) by @(Model.Sample.EmailSentBy ?? "unknown").</p>
         }
         @if (Model.Sample.EmailStatus.Contains("resend", StringComparison.OrdinalIgnoreCase))
         {
@@ -539,7 +539,16 @@
             const data = await response.json();
             updateRows(data.rows);
             if (serverUpdateWarning) serverUpdateWarning.hidden = true;
-            showStatus(`Updated from QC Station. Last updated: ${new Date().toLocaleTimeString()}`);
+            const updatedAt = data.updatedAt
+                ? new Intl.DateTimeFormat("en-US", {
+                    timeZone: "America/Los_Angeles",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    second: "2-digit",
+                    timeZoneName: "short"
+                }).format(new Date(data.updatedAt))
+                : "server time unavailable";
+            showStatus(`Updated from QC Station. Last updated: ${updatedAt}`);
         }
 
         document.querySelector("#refresh-sample-data")?.addEventListener("click", () => refreshSampleData(true));

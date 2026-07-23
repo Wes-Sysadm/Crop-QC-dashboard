@@ -6,6 +6,6 @@
 }
 <div class="page-refresh-bar" data-page-refresh data-auto-refresh="@((autoRefresh && enabled).ToString().ToLowerInvariant())" data-refresh-interval-seconds="@intervalSeconds">
     <button type="button" class="secondary-button" data-refresh-button>Refresh</button>
-    <span class="muted" data-refresh-status>Last updated: @DateTime.Now.ToString("h:mm:ss tt")</span>
+    <span class="muted" data-refresh-status>Last updated: @BusinessTime.FormatPacific(BusinessTime.UtcNow, "h:mm:ss tt")</span>
     <span class="notice warning page-refresh-dirty" data-refresh-dirty-warning hidden>New data may be available. Save or discard your changes to refresh.</span>
 </div>

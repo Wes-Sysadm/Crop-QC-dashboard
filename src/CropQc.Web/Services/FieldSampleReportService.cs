@@ -5,6 +5,7 @@ using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Storage;
+using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 using SixLabors.ImageSharp;
@@ -32,6 +33,7 @@ public sealed class FieldSampleReportService(
     private const int MaxInlineImageBytes = 1_500_000;
     private const int MaxTotalInlineImageBytes = 12_000_000;
     private const int MaxSourceImageBytes = 25_000_000;
+    private static readonly IBusinessTimeService ReportTime = new PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock());
 
     public async Task<(FieldSampleReportPreviewViewModel? Preview, string? Error)> PreviewAsync(long sampleId, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
@@ -268,7 +270,7 @@ public sealed class FieldSampleReportService(
         var block = sample.CanonicalOrchardBlock?.CanonicalBlockName ?? sample.FieldSampleOriginalBlockName ?? "Unknown Block";
         var variety = sample.FieldSampleFruitProfile?.Name ?? "Unknown Variety";
         var terminology = FieldSampleCommodityTerminologyService.ForFruitType(sample.FieldSampleFruitProfile?.FruitType);
-        var subject = $"Field Sample QC – {orchard} – {block} – {variety} – {sample.SampleTakenAt.LocalDateTime:MMMM d, yyyy}";
+        var subject = $"Field Sample QC – {orchard} – {block} – {variety} – {ReportTime.FormatPacific(sample.SampleTakenAt, "MMMM d, yyyy", includeZone: false)}";
         var html = BuildHtml(sample, detail, photos, imageIds, orchard, block, variety, terminology, sender, preview);
         var text = BuildText(sample, detail, photos, orchard, block, variety, terminology, sender, preview);
         return new QcEmailContent(subject, html, text, inlineImages);
@@ -288,12 +290,12 @@ public sealed class FieldSampleReportService(
         AddInfo(html, "Canonical block", block);
         if (!string.Equals(block, sample.FieldSampleOriginalBlockName, StringComparison.OrdinalIgnoreCase)) AddInfo(html, "Original block entry", sample.FieldSampleOriginalBlockName ?? "");
         AddInfo(html, "Variety", variety);
-        AddInfo(html, "Sample date/time", sample.SampleTakenAt.LocalDateTime.ToString("g"));
+        AddInfo(html, "Sample date/time", ReportTime.FormatPacific(sample.SampleTakenAt));
         AddInfo(html, "Sampling location", sample.QcStation?.Warehouse?.Code ?? "Field");
         AddInfo(html, "Collector/creator", sample.TakenByUser?.DisplayName ?? sample.TakenByUser?.Email ?? "");
         AddInfo(html, "Completion status", detail.LifecycleStatus);
         AddInfo(html, preview ? "Report previewed by" : "Report sent by", sender?.DisplayName ?? sender?.Email ?? "");
-        AddInfo(html, preview ? "Preview time" : "Report sent time", DateTimeOffset.Now.ToString("g"));
+        AddInfo(html, preview ? "Preview time" : "Report sent time", ReportTime.FormatPacific(ReportTime.UtcNow));
         html.AppendLine("</table>");
 
         html.AppendLine("<h2>Fruit Detail</h2><table cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;width:100%;\"><thead><tr><th>Fruit</th><th>Weight g</th><th>Size</th><th>P1 lb</th><th>P2 lb</th><th>Avg lb</th><th>Starch</th><th>Grade</th><th>Defects</th></tr></thead><tbody>");
@@ -340,7 +342,7 @@ public sealed class FieldSampleReportService(
         text.AppendLine($"Grower number: {sample.FieldSampleGrowerNumber}");
         text.AppendLine($"Canonical block: {block}");
         text.AppendLine($"Variety: {variety}");
-        text.AppendLine($"Sample date/time: {sample.SampleTakenAt.LocalDateTime:g}");
+        text.AppendLine($"Sample date/time: {ReportTime.FormatPacific(sample.SampleTakenAt)}");
         text.AppendLine($"Status: {detail.LifecycleStatus}");
         text.AppendLine($"{(preview ? "Previewed" : "Sent")} by: {sender?.DisplayName ?? sender?.Email}");
         text.AppendLine();
@@ -354,7 +356,7 @@ public sealed class FieldSampleReportService(
         if (detail.Trend.Count <= 1) text.AppendLine("This is the first available sample for the confirmed block in the last 30 days.");
         foreach (var point in detail.Trend.OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleId))
         {
-            text.AppendLine($"{point.SampleTakenAt.LocalDateTime:g}{(point.SampleId == sample.Id ? " (current)" : "")}: Weight {Format(point.Summary.AverageWeightGrams)} g; Size {AverageSize(point.SizeDistribution)}; Average Pressure {Format(point.Summary.AveragePressureLbs)} lb; Starch {Format(point.Summary.AverageStarch)}; Grades {Distribution(point.Summary.GradeDistribution)}; Defects {DefectSummary(point.Summary)}; {DefectDistribution(point.Summary)}");
+            text.AppendLine($"{ReportTime.FormatPacific(point.SampleTakenAt)}{(point.SampleId == sample.Id ? " (current)" : "")}: Weight {Format(point.Summary.AverageWeightGrams)} g; Size {AverageSize(point.SizeDistribution)}; Average Pressure {Format(point.Summary.AveragePressureLbs)} lb; Starch {Format(point.Summary.AverageStarch)}; Grades {Distribution(point.Summary.GradeDistribution)}; Defects {DefectSummary(point.Summary)}; {DefectDistribution(point.Summary)}");
         }
         text.AppendLine();
         text.AppendLine("Final Sample Summary");
@@ -393,7 +395,7 @@ public sealed class FieldSampleReportService(
         {
             var values = new[]
             {
-                point.SampleTakenAt.LocalDateTime.ToString("g") + (point.SampleId == detail.SampleId ? " (current)" : ""),
+                ReportTime.FormatPacific(point.SampleTakenAt) + (point.SampleId == detail.SampleId ? " (current)" : ""),
                 point.Summary.EnteredFruitCount.ToString(),
                 Format(point.Summary.AverageWeightGrams, " g"),
                 AverageSize(point.SizeDistribution),

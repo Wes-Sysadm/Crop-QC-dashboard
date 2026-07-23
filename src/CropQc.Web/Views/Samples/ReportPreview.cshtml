@@ -60,7 +60,7 @@
                 {
                     <tr>
                         <td>@item.Status</td>
-                        <td>@(item.SentAt?.LocalDateTime.ToString("g") ?? "Not sent")</td>
+                        <td>@BusinessTime.FormatPacific(item.SentAt, empty: "Not sent")</td>
                         <td>@item.Sender</td>
                         <td>@item.Recipients</td>
                         <td>@item.Subject</td>

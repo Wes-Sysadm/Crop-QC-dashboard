@@ -53,13 +53,13 @@
                 @Model.Summary.OrganicBins organic / @Model.Summary.ConventionalBins conventional / @Model.Summary.UnknownOrganicStatusBins unknown
                 <span class="muted">(@Model.Summary.OrganicPercent.ToString("0.#")% organic; stripes @(Model.Summary.IsMajorityOrganic ? "active" : "inactive"))</span>
             </dd>
-            <dt>Last activity</dt><dd>@(Model.Summary.LastActivityAt?.LocalDateTime.ToString("g") ?? "No activity")</dd>
+            <dt>Last activity</dt><dd>@BusinessTime.FormatPacific(Model.Summary.LastActivityAt, empty: "No activity")</dd>
             <dt>Average pressure</dt><dd>@Format(Model.Summary.AveragePressureLbs)</dd>
             <dt>Pressure std dev</dt><dd>@Format(Model.Summary.PressureStdDevLbs)</dd>
             <dt>Month-over-month pressure</dt><dd>@FormatChange(Model.Summary.MonthOverMonthPressureChangeLbs)</dd>
             <dt>Harvest starch</dt><dd>@Format(Model.Summary.AverageStarch)</dd>
             <dt>Defects</dt><dd>@Model.Summary.DefectSummary</dd>
-            <dt>Last sample</dt><dd>@(Model.Summary.LastSampleDate?.LocalDateTime.ToString("g") ?? "No data")</dd>
+            <dt>Last sample</dt><dd>@BusinessTime.FormatPacific(Model.Summary.LastSampleDate, empty: "No data")</dd>
         </dl>
         <div class="action-bar">
             <a class="button secondary-button" href="/Rooms/@Model.Summary.RoomId/CountBreakdown">View Count Breakdown</a>
@@ -106,8 +106,8 @@
             <div class="metric-card"><span class="metric-label">Active Lots</span><strong>@Model.Summary.CurrentLotsCount</strong></div>
             <div class="metric-card"><span class="metric-label">Sizing Coverage</span><strong>@baseline.SizeRepresentedBins / @baseline.AvailableBins</strong><span>@baseline.SizeMissingBins missing</span></div>
             <div class="metric-card"><span class="metric-label">Grade Coverage</span><strong>@baseline.GradeRepresentedBins / @baseline.AvailableBins</strong><span>@baseline.GradeMissingBins missing</span></div>
-            <div class="metric-card"><span class="metric-label">Oldest Sample</span><strong>@(Model.ProjectionLots.Select(x => x.LastSampleDate).Where(x => x is not null).OrderBy(x => x).FirstOrDefault()?.LocalDateTime.ToString("g") ?? "No data")</strong></div>
-            <div class="metric-card"><span class="metric-label">Newest Sample</span><strong>@(Model.ProjectionLots.Select(x => x.LastSampleDate).Where(x => x is not null).OrderByDescending(x => x).FirstOrDefault()?.LocalDateTime.ToString("g") ?? "No data")</strong></div>
+            <div class="metric-card"><span class="metric-label">Oldest Sample</span><strong>@BusinessTime.FormatPacific(Model.ProjectionLots.Select(x => x.LastSampleDate).Where(x => x is not null).OrderBy(x => x).FirstOrDefault(), empty: "No data")</strong></div>
+            <div class="metric-card"><span class="metric-label">Newest Sample</span><strong>@BusinessTime.FormatPacific(Model.ProjectionLots.Select(x => x.LastSampleDate).Where(x => x is not null).OrderByDescending(x => x).FirstOrDefault(), empty: "No data")</strong></div>
         </div>
     </section>
 
@@ -277,7 +277,7 @@
                 <input type="number" min="1" name="BinCount" required />
             </label>
             <label class="field">Date/time
-                <input type="datetime-local" name="TransferAt" value="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")" required />
+                <input type="datetime-local" name="TransferAt" value="@BusinessTime.FormatPacificInput(BusinessTime.UtcNow)" required />
             </label>
             <label class="field wide">Reason
                 <input name="Reason" maxlength="500" required placeholder="Room transfer, storage move, or correction" />
@@ -310,7 +310,7 @@
                 <input type="number" min="0" name="NewBinCount" required />
             </label>
             <label class="field">As-of date/time
-                <input type="datetime-local" name="AdjustmentAt" value="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")" required />
+                <input type="datetime-local" name="AdjustmentAt" value="@BusinessTime.FormatPacificInput(BusinessTime.UtcNow)" required />
             </label>
             <label class="field wide">Reason
                 <input name="Reason" maxlength="500" required placeholder="Inventory count true-up, correction, or room count verification" />
@@ -339,7 +339,7 @@
                 <input type="number" min="1" name="BinCount" required />
             </label>
             <label class="field">Date/time
-                <input type="datetime-local" name="DepletedAt" value="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")" required />
+                <input type="datetime-local" name="DepletedAt" value="@BusinessTime.FormatPacificInput(BusinessTime.UtcNow)" required />
             </label>
             <label class="field">Destination / line
                 <input name="Destination" maxlength="100" />
@@ -371,7 +371,7 @@
                 @foreach (var item in Model.SampleTimeline)
                 {
                     <tr>
-                        <td>@item.SampleDate.LocalDateTime.ToString("g")</td>
+                        <td>@BusinessTime.FormatPacific(item.SampleDate)</td>
                         <td>@item.Lot</td>
                         <td>@item.Variety</td>
                         <td>@item.SampleType</td>
@@ -408,7 +408,7 @@
                         <td>@receipt.GrowerName @receipt.LotCode</td>
                         <td>@receipt.VarietyCode</td>
                         <td>@receipt.BinCount</td>
-                        <td>@receipt.ReceivedAt.LocalDateTime.ToString("g")</td>
+                        <td>@BusinessTime.FormatPacific(receipt.ReceivedAt)</td>
                     </tr>
                 }
                 </tbody>
@@ -442,7 +442,7 @@
                     <dt>Bins out</dt><dd>@(adjustment.ChangeAmount < 0 ? Math.Abs(adjustment.ChangeAmount).ToString() : "-")</dd>
                     <dt>Old count</dt><dd>@(adjustment.OldBinCount?.ToString() ?? "-")</dd>
                     <dt>New count</dt><dd>@adjustment.NewBinCount</dd>
-                    <dt>When</dt><dd>@adjustment.AdjustmentAt.LocalDateTime</dd>
+                    <dt>When</dt><dd>@BusinessTime.FormatPacific(adjustment.AdjustmentAt)</dd>
                     <dt>User</dt><dd>@(string.IsNullOrWhiteSpace(adjustment.CreatedBy) ? "-" : adjustment.CreatedBy)</dd>
                     <dt>Source</dt><dd>@(adjustment.Source ?? "-")</dd>
                     <dt>Reason</dt><dd>@(adjustment.Reason ?? "-")</dd>
@@ -479,7 +479,7 @@
                 </div>
                 <dl class="station-meta">
                     <dt>Bins</dt><dd>@depletion.BinCount</dd>
-                    <dt>Depleted</dt><dd>@depletion.DepletedAt.LocalDateTime</dd>
+                    <dt>Depleted</dt><dd>@BusinessTime.FormatPacific(depletion.DepletedAt)</dd>
                     <dt>Destination</dt><dd>@(depletion.Destination ?? "-")</dd>
                     <dt>User</dt><dd>@(string.IsNullOrWhiteSpace(depletion.CreatedBy) ? "-" : depletion.CreatedBy)</dd>
                     <dt>Notes</dt><dd>@(depletion.Notes ?? "-")</dd>

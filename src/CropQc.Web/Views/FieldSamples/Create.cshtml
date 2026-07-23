@@ -48,7 +48,7 @@
             </label>
             <label>
                 Sample date/time
-                <input name="SampleTakenAt" type="datetime-local" value="@Model.Form.SampleTakenAt.LocalDateTime.ToString("yyyy-MM-ddTHH:mm")" required />
+                <input name="SampleTakenAt" type="datetime-local" value="@BusinessTime.FormatPacificInput(Model.Form.SampleTakenAt)" required />
             </label>
         </div>
         <label>

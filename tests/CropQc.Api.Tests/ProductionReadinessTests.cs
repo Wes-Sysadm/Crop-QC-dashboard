@@ -22,8 +22,8 @@ public sealed class ProductionReadinessTests
                 ["Backups:GoogleDriveFolderId"] = "backup-folder",
                 ["Backups:DailyRetentionDays"] = "30",
                 ["Backups:WeeklyRetentionWeeks"] = "52",
-                ["Backups:ScheduleUtcHour"] = "11",
-                ["Backups:ScheduleUtcMinute"] = "15",
+                ["Backups:NightlyPacificHour"] = "1",
+                ["Backups:NotificationRecipient"] = "wes@fruitandland.com",
                 ["Backups:DatabaseBackupEnabled"] = "true",
                 ["Backups:PhotoManifestEnabled"] = "true",
                 ["Backups:ConfigBackupEnabled"] = "true"
@@ -37,8 +37,8 @@ public sealed class ProductionReadinessTests
         Assert.Equal("backup-folder", options.GoogleDriveFolderId);
         Assert.Equal(30, options.DailyRetentionDays);
         Assert.Equal(52, options.WeeklyRetentionWeeks);
-        Assert.Equal(11, options.ScheduleUtcHour);
-        Assert.Equal(15, options.ScheduleUtcMinute);
+        Assert.Equal(1, options.NightlyPacificHour);
+        Assert.Equal("wes@fruitandland.com", options.NotificationRecipient);
         Assert.True(options.DatabaseBackupEnabled);
         Assert.True(options.PhotoManifestEnabled);
         Assert.True(options.ConfigBackupEnabled);
@@ -226,8 +226,9 @@ public sealed class ProductionReadinessTests
         var dockerfile = File.ReadAllText(FindRepositoryFile("Dockerfile"));
         var backupService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "BackupService.cs"));
         Assert.Contains("crop-qc-production-nightly-backup", render);
-        Assert.Contains("30 10 * * *", render);
+        Assert.Contains("0 8,9 * * *", render);
         Assert.Contains("--run-backup=scheduled", render);
+        Assert.Contains("RunScheduledCandidateAsync", backupService);
         Assert.Contains("--run-backup=predeployment", agents);
         Assert.Contains("SHA-256", agents);
         Assert.Contains("Stop", agents);

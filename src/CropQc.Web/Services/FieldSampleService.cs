@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -23,11 +24,16 @@ public interface IFieldSampleService
     Task<string?> MarkCompleteAsync(long sampleId, ClaimsPrincipal user, CancellationToken cancellationToken);
 }
 
-public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessService userAccessService, IConfiguration configuration) : IFieldSampleService
+public sealed class FieldSampleService(
+    CropQcDbContext dbContext,
+    IUserAccessService userAccessService,
+    IConfiguration configuration,
+    IBusinessTimeService? businessTime = null) : IFieldSampleService
 {
     private const string FieldSampleTypeName = "Field Sample";
     private const int FieldSampleSize = 10;
     private const int MaxFieldSampleSize = 50;
+    private IBusinessTimeService BusinessTime { get; } = businessTime ?? new PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock());
 
     public async Task<FieldSampleIndexViewModel> GetIndexAsync(FieldSampleSearchForm search, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
@@ -1353,7 +1359,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         return new FieldSampleAutosaveResult
         {
             Saved = conflicts.Count == 0 && validation.Count == 0,
-            SavedAt = conflicts.Count == 0 && validation.Count == 0 ? sample.UpdatedAt ?? DateTimeOffset.UtcNow : null,
+            SavedAt = conflicts.Count == 0 && validation.Count == 0 ? sample.UpdatedAt ?? BusinessTime.UtcNow : null,
             AutosaveVersion = refresh?.AutosaveVersion ?? sample.FieldSampleAutosaveVersion,
             MetadataValues = new Dictionary<string, string?>
             {
@@ -1363,7 +1369,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
                 ["CanonicalOrchardBlockId"] = AutosaveText(sample.CanonicalOrchardBlockId),
                 ["ConfirmCreateNewBlock"] = "false",
                 ["FruitProfileId"] = AutosaveText(sample.FieldSampleFruitProfileId),
-                ["SampleTakenAt"] = sample.SampleTakenAt.LocalDateTime.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture),
+                ["SampleTakenAt"] = BusinessTime.FormatPacificInput(sample.SampleTakenAt),
                 ["Notes"] = sample.Notes
             },
             Rows = refresh?.Rows ?? [],
@@ -1375,7 +1381,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
     private static bool KnownMetadataField(string field) => field is
         "OrchardName" or "GrowerNumber" or "BlockName" or "CanonicalOrchardBlockId" or "ConfirmCreateNewBlock" or "FruitProfileId" or "SampleTakenAt" or "Notes";
 
-    private static string? MetadataFieldValue(QcSample sample, string field) => field switch
+    private string? MetadataFieldValue(QcSample sample, string field) => field switch
     {
         "OrchardName" => sample.FieldSampleGrowerName ?? sample.CanonicalOrchardBlock?.OrchardName,
         "GrowerNumber" => sample.FieldSampleGrowerNumber,
@@ -1383,7 +1389,7 @@ public sealed class FieldSampleService(CropQcDbContext dbContext, IUserAccessSer
         "CanonicalOrchardBlockId" => AutosaveText(sample.CanonicalOrchardBlockId),
         "ConfirmCreateNewBlock" => "false",
         "FruitProfileId" => AutosaveText(sample.FieldSampleFruitProfileId),
-        "SampleTakenAt" => sample.SampleTakenAt.LocalDateTime.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture),
+        "SampleTakenAt" => BusinessTime.FormatPacificInput(sample.SampleTakenAt),
         "Notes" => sample.Notes,
         _ => null
     };

@@ -77,8 +77,8 @@
                 <td>@lot.Warehouse</td>
                 <td>@lot.Room</td>
                 <td class="numeric-cell">@lot.CurrentBins</td>
-                <td>@(lot.FirstReceivedAt?.LocalDateTime.ToString("g") ?? "Current inventory baseline")</td>
-                <td>@(lot.LastQcSampleAt?.LocalDateTime.ToString("g") ?? "-")</td>
+                <td>@BusinessTime.FormatPacific(lot.FirstReceivedAt, empty: "Current inventory baseline")</td>
+                <td>@BusinessTime.FormatPacific(lot.LastQcSampleAt, empty: "-")</td>
                 <td>@(string.IsNullOrWhiteSpace(lot.LatestQcSource) ? "-" : lot.LatestQcSource)</td>
                 <td>@Format(lot.LatestAveragePressure)</td>
                 <td>@Format(lot.LatestStarch)</td>

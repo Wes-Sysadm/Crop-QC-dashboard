@@ -106,7 +106,7 @@
                     <span class="status @StatusClass(sample.EmailStatus)">@sample.EmailStatus</span>
                     @if (sample.EmailSentAt is not null)
                     {
-                        <div class="muted">Sent @sample.EmailSentAt.Value.LocalDateTime.ToString("g") by @(sample.EmailSentBy ?? "unknown")</div>
+                        <div class="muted">Sent @BusinessTime.FormatPacific(sample.EmailSentAt.Value) by @(sample.EmailSentBy ?? "unknown")</div>
                     }
                 </td>
                 <td>

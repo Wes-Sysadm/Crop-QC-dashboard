@@ -85,7 +85,7 @@
                 @foreach (var sample in Model.Samples)
                 {
                     <tr>
-                        <td>@sample.SampleTakenAt.LocalDateTime.ToString("g")</td>
+                        <td>@BusinessTime.FormatPacific(sample.SampleTakenAt)</td>
                         <td>@sample.OrchardName</td>
                         <td>@(string.IsNullOrWhiteSpace(sample.GrowerNumber) ? "—" : sample.GrowerNumber)</td>
                         <td>

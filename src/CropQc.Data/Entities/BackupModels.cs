@@ -22,6 +22,11 @@ public sealed class BackupRunRecord
     public string? Sha256 { get; set; }
     public DateTimeOffset? VerifiedAt { get; set; }
     public string? ErrorSummary { get; set; }
+    public string? FailureStage { get; set; }
+    public bool IncompleteObjectCreated { get; set; }
+    public string? ScheduledPacificDate { get; set; }
+    public DateTimeOffset? RetentionProcessedAt { get; set; }
+    public DateTimeOffset? LeaseReleasedAt { get; set; }
     public DateTimeOffset? PrunedAt { get; set; }
 }
 
@@ -30,6 +35,32 @@ public sealed class BackupOperationLease
     public int Id { get; set; }
     public Guid? LeaseId { get; set; }
     public DateTimeOffset? ExpiresAt { get; set; }
+}
+
+public sealed class BackupNightlyRunGuard
+{
+    public required string PacificDate { get; set; }
+    public long? BackupRunId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public string? Result { get; set; }
+}
+
+public sealed class BackupNotificationRecord
+{
+    public long Id { get; set; }
+    public long BackupRunId { get; set; }
+    public BackupRunRecord BackupRun { get; set; } = null!;
+    public required string NotificationType { get; set; }
+    public required string Recipient { get; set; }
+    public required string Status { get; set; }
+    public int AttemptCount { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? LastAttemptedAt { get; set; }
+    public DateTimeOffset? NextAttemptAt { get; set; }
+    public DateTimeOffset? SentAt { get; set; }
+    public string? MessageId { get; set; }
+    public string? ErrorSummary { get; set; }
 }
 
 public static class BackupRunStatuses
@@ -45,4 +76,18 @@ public static class BackupRunTypes
     public const string Daily = "Daily";
     public const string Weekly = "Weekly";
     public const string PreDeployment = "PreDeployment";
+}
+
+public static class BackupNotificationTypes
+{
+    public const string Success = "Success";
+    public const string Failure = "Failure";
+}
+
+public static class BackupNotificationStatuses
+{
+    public const string Pending = "Pending";
+    public const string Sending = "Sending";
+    public const string Sent = "Sent";
+    public const string Failed = "Failed";
 }

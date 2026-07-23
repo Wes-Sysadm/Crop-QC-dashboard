@@ -120,7 +120,7 @@ else
                                 <div>
                                     <dt>Latest pressure</dt>
                                     <dd>@FormatLbs(room.LatestPressureLbs)</dd>
-                                    <small>@(room.LatestPressureDate?.LocalDateTime.ToString("g") ?? Coverage(room.LatestPressureRepresentedBins, room.CurrentBinsCount ?? 0))</small>
+                                    <small>@BusinessTime.FormatPacific(room.LatestPressureDate, empty: Coverage(room.LatestPressureRepresentedBins, room.CurrentBinsCount ?? 0))</small>
                                 </div>
                                 <div>
                                     <dt>30-day pressure change</dt>
@@ -132,7 +132,7 @@ else
                                     <dd>@(room.PressureStdDevLbs is null ? "Insufficient readings" : $"{room.PressureStdDevLbs:0.##} lb")</dd>
                                     <small>@room.PressureReadingCount pressure readings / @Coverage(room.PressureStandardDeviationRepresentedBins, room.CurrentBinsCount ?? 0)</small>
                                 </div>
-                                <div><dt>Last sample</dt><dd>@(room.LastSampleDate?.LocalDateTime.ToString("g") ?? "No data")</dd></div>
+                                <div><dt>Last sample</dt><dd>@BusinessTime.FormatPacific(room.LastSampleDate, empty: "No data")</dd></div>
                             </dl>
                             <div class="variety-legend" aria-label="Current varieties by bins">
                                 @foreach (var segment in room.VarietyColorSegments.Take(4))
@@ -210,11 +210,11 @@ else
                     <span class="status @StatusClass(sample.EmailStatus)">@sample.EmailStatus</span>
                     @if (sample.EmailSentAt is not null)
                     {
-                        <div class="muted">Sent @sample.EmailSentAt.Value.LocalDateTime.ToString("g") by @(sample.EmailSentBy ?? "unknown")</div>
+                        <div class="muted">Sent @BusinessTime.FormatPacific(sample.EmailSentAt.Value) by @(sample.EmailSentBy ?? "unknown")</div>
                     }
                 </td>
                 <td><span class="status @(sample.IsReady ? "ready" : "missing")">@(sample.IsReady ? "Ready" : "Missing")</span></td>
-                <td>@sample.SampleTakenAt.LocalDateTime</td>
+                <td>@BusinessTime.FormatPacific(sample.SampleTakenAt)</td>
             </tr>
         }
         </tbody>

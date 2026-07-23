@@ -1,6 +1,8 @@
 using CropQc.Data;
 using CropQc.Shared.Storage;
+using CropQc.Shared.Time;
 using CropQc.Web.Auth;
+using CropQc.Web.ModelBinding;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -15,7 +17,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews(options =>
+{
+    options.ModelBinderProviders.Insert(0, new PacificDateTimeOffsetModelBinderProvider());
+});
 ConfigureDataProtection(builder.Services, builder.Configuration);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
@@ -32,6 +37,8 @@ builder.Services.AddSingleton(appEnvironmentOptions);
 builder.Services.AddSingleton(EmailOptionsFactory.Create(builder.Configuration, builder.Environment.IsProduction()));
 builder.Services.AddSingleton(BackupOptions.FromConfiguration(builder.Configuration));
 builder.Services.AddSingleton(PerformanceDiagnosticsOptions.FromConfiguration(builder.Configuration, builder.Environment));
+builder.Services.AddSingleton<IClock, CropQc.Shared.Time.SystemClock>();
+builder.Services.AddSingleton<IBusinessTimeService, PacificBusinessTimeService>();
 var authenticationBuilder = builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -222,7 +229,10 @@ builder.Services.AddScoped<ICanonicalGrowerService, CanonicalGrowerService>();
 builder.Services.AddScoped<IFieldSampleService, FieldSampleService>();
 builder.Services.AddScoped<IFieldSampleReportService, FieldSampleReportService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
+builder.Services.AddScoped<IBackupNotificationService, BackupNotificationService>();
+builder.Services.AddScoped<IReceiptPurgeService, ReceiptPurgeService>();
 builder.Services.AddHostedService<EbsDailyBinsEmailHostedService>();
+builder.Services.AddHostedService<BackupNotificationHostedService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
 builder.Services.AddSingleton(CreateGoogleDriveStorageOptions(builder.Configuration));
 builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorageService(
@@ -251,7 +261,8 @@ var backupCommand = args.FirstOrDefault(x => x.StartsWith("--run-backup=", Strin
 if (backupCommand is not null)
 {
     var requestedType = backupCommand[(backupCommand.IndexOf('=') + 1)..];
-    var backupType = requestedType.ToLowerInvariant() switch
+    var normalizedBackupType = requestedType.ToLowerInvariant();
+    var backupType = normalizedBackupType switch
     {
         "scheduled" or "daily" => CropQc.Data.Entities.BackupRunTypes.Daily,
         "weekly" => CropQc.Data.Entities.BackupRunTypes.Weekly,
@@ -261,11 +272,46 @@ if (backupCommand is not null)
     };
     using var backupScope = app.Services.CreateScope();
     var backupService = backupScope.ServiceProvider.GetRequiredService<IBackupService>();
-    var backupResult = await backupService.RunBackupAsync(backupType, $"command:{requestedType}", CancellationToken.None);
+    var backupResult = normalizedBackupType == "scheduled"
+        ? await backupService.RunScheduledCandidateAsync(CancellationToken.None)
+        : await backupService.RunBackupAsync(backupType, $"command:{requestedType}", CancellationToken.None);
     var backupLogger = backupScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("BackupCommand");
     if (backupResult.Success) backupLogger.LogInformation("{BackupMessage}", backupResult.Message);
     else backupLogger.LogError("{BackupMessage}", backupResult.Message);
     Environment.ExitCode = backupResult.Success ? 0 : 1;
+    return;
+}
+
+var receiptPurgeCommand = args.FirstOrDefault(x => x.StartsWith("--purge-receipts=", StringComparison.OrdinalIgnoreCase));
+if (receiptPurgeCommand is not null)
+{
+    if (!int.TryParse(receiptPurgeCommand[(receiptPurgeCommand.IndexOf('=') + 1)..], out var targetCropYear))
+    {
+        throw new InvalidOperationException("The receipt purge command requires an explicit numeric target crop year.");
+    }
+
+    static string? CommandValue(string[] commandArgs, string key) =>
+        commandArgs.FirstOrDefault(x => x.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase)) is { } item
+            ? item[(item.IndexOf('=') + 1)..]
+            : null;
+
+    var apply = args.Contains("--apply", StringComparer.OrdinalIgnoreCase);
+    var confirmProduction = args.Contains("--confirm-production", StringComparer.OrdinalIgnoreCase);
+    var backupRunId = long.TryParse(CommandValue(args, "--backup-run-id"), out var parsedBackupRunId)
+        ? parsedBackupRunId
+        : (long?)null;
+    var requestedBy = CommandValue(args, "--requested-by") ?? "command";
+    var reason = CommandValue(args, "--reason") ?? "";
+    using var purgeScope = app.Services.CreateScope();
+    var purgeService = purgeScope.ServiceProvider.GetRequiredService<IReceiptPurgeService>();
+    var purgeResult = await purgeService.PurgeAsync(
+        new ReceiptPurgeRequest(targetCropYear, apply, confirmProduction, backupRunId, requestedBy, reason),
+        CancellationToken.None);
+    var purgeLogger = purgeScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("ReceiptPurgeCommand");
+    var safeReport = System.Text.Json.JsonSerializer.Serialize(purgeResult, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
+    if (purgeResult.Success) purgeLogger.LogInformation("{ReceiptPurgeReport}", safeReport);
+    else purgeLogger.LogError("{ReceiptPurgeReport}", safeReport);
+    Environment.ExitCode = purgeResult.Success ? 0 : 1;
     return;
 }
 

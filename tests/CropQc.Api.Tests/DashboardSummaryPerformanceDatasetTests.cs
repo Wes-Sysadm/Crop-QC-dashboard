@@ -1,6 +1,7 @@
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Storage;
+using CropQc.Shared.Time;
 using CropQc.Web.Auth;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
@@ -63,9 +64,11 @@ public sealed class DashboardSummaryPerformanceDatasetTests
 
     private static async Task SeedRepresentativeDashboardDatasetAsync(CropQcDbContext db)
     {
-        // Keep all generated "today" samples inside one UTC day even when this test
-        // runs shortly after midnight and subtracts up to eleven hours below.
-        var now = new DateTimeOffset(DateTime.UtcNow.Date.AddHours(12), TimeSpan.Zero);
+        // Keep all generated "today" samples inside one Pacific business day even
+        // when the test host is running in another timezone.
+        var businessTime = new PacificBusinessTimeService(new SystemClock());
+        var pacificDate = businessTime.PacificDate(businessTime.UtcNow);
+        var now = businessTime.PacificLocalToUtc(pacificDate.ToDateTime(new TimeOnly(12, 0)));
         var warehouses = Enumerable.Range(1, 3)
             .Select(i => new Warehouse { Id = i, Code = i == 1 ? "EBS" : i == 2 ? "WP" : "MCD", Name = i == 1 ? "Earl Brown Storage" : i == 2 ? "WP Packing" : "McDougall" })
             .ToList();

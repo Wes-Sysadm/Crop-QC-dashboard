@@ -45,6 +45,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<DashboardConfiguration> DashboardConfigurations => Set<DashboardConfiguration>();
     public DbSet<BackupRunRecord> BackupRunRecords => Set<BackupRunRecord>();
     public DbSet<BackupOperationLease> BackupOperationLeases => Set<BackupOperationLease>();
+    public DbSet<BackupNightlyRunGuard> BackupNightlyRunGuards => Set<BackupNightlyRunGuard>();
+    public DbSet<BackupNotificationRecord> BackupNotificationRecords => Set<BackupNotificationRecord>();
+    public DbSet<ReceiptDeletionAudit> ReceiptDeletionAudits => Set<ReceiptDeletionAudit>();
+    public DbSet<ReceiptPurgeOperation> ReceiptPurgeOperations => Set<ReceiptPurgeOperation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -54,6 +58,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         ConfigureAudit(modelBuilder);
         ConfigureDashboardConfiguration(modelBuilder);
         ConfigureBackups(modelBuilder);
+        ConfigureReceiptDeletion(modelBuilder);
         SeedData(modelBuilder);
     }
 
@@ -78,14 +83,64 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.ManifestStorageKey).HasMaxLength(500);
             entity.Property(x => x.Sha256).HasMaxLength(64);
             entity.Property(x => x.ErrorSummary).HasMaxLength(2000);
+            entity.Property(x => x.FailureStage).HasMaxLength(100);
+            entity.Property(x => x.ScheduledPacificDate).HasMaxLength(10);
             entity.HasIndex(x => new { x.Status, x.StartedAt });
             entity.HasIndex(x => new { x.RetentionCategory, x.StartedAt });
+            entity.HasIndex(x => x.ScheduledPacificDate);
         });
 
         modelBuilder.Entity<BackupOperationLease>(entity =>
         {
             entity.HasKey(x => x.Id);
             entity.HasData(new BackupOperationLease { Id = 1 });
+        });
+
+        modelBuilder.Entity<BackupNightlyRunGuard>(entity =>
+        {
+            entity.HasKey(x => x.PacificDate);
+            entity.Property(x => x.PacificDate).HasMaxLength(10);
+            entity.Property(x => x.Result).HasMaxLength(100);
+            entity.HasIndex(x => x.BackupRunId);
+        });
+
+        modelBuilder.Entity<BackupNotificationRecord>(entity =>
+        {
+            entity.Property(x => x.NotificationType).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Recipient).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.MessageId).HasMaxLength(500);
+            entity.Property(x => x.ErrorSummary).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.BackupRunId, x.NotificationType }).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            entity.HasOne(x => x.BackupRun)
+                .WithMany()
+                .HasForeignKey(x => x.BackupRunId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureReceiptDeletion(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReceiptDeletionAudit>(entity =>
+        {
+            entity.Property(x => x.ReceiptNumber).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.DeletedByEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.Result).HasMaxLength(50).IsRequired();
+            entity.HasIndex(x => x.OperationId);
+            entity.HasIndex(x => new { x.CropYear, x.DeletedAt });
+            entity.HasIndex(x => x.DeletedReceiptId);
+        });
+
+        modelBuilder.Entity<ReceiptPurgeOperation>(entity =>
+        {
+            entity.Property(x => x.RequestedByEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.ErrorSummary).HasMaxLength(2000);
+            entity.HasIndex(x => new { x.TargetCropYear, x.StartedAt });
+            entity.HasIndex(x => x.BackupRunId);
         });
     }
 

@@ -37,7 +37,7 @@
             <div><strong>Variety:</strong> @Model.Receipt.VarietyCode</div>
             <div><strong>Warehouse:</strong> @Model.Receipt.Warehouse</div>
             <div><strong>Room:</strong> @Model.Receipt.Room</div>
-            <div><strong>Sample time:</strong> @Model.Sample.SampleTakenAt.LocalDateTime</div>
+            <div><strong>Sample time:</strong> @BusinessTime.FormatPacific(Model.Sample.SampleTakenAt)</div>
             <div><strong>Starch:</strong> @StarchSummary(Model.Readiness)</div>
         </div>
         <p>
