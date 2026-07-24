@@ -244,6 +244,12 @@ public sealed class RunProjectionTests
         Assert.Contains("must be mapped to real inventory", binsRun);
         Assert.Contains("projection cannot be converted to an actual run", binsRun);
         Assert.Contains("ConvertSourceToActualRun", binsRun);
+        Assert.Contains("A Preharvest projection cannot create an actual Bins Run", binsRun);
+        Assert.Contains("ProjectionMode", view);
+        Assert.Contains("Preharvest", view);
+        Assert.Contains("Inventory", view);
+        Assert.Contains("FieldSamples", view);
+        Assert.Contains("Create Inventory Projection", view);
     }
 
     [Fact]
@@ -275,7 +281,12 @@ public sealed class RunProjectionTests
         ]);
         var service = CreateProjectionService(db, bins);
         var created = await service.CreateAsync(
-            new RunProjectionCreateForm { PlannedRunDate = new(2026, 7, 24), Name = "Day shift" },
+            new RunProjectionCreateForm
+            {
+                PlannedRunDate = new(2026, 7, 24),
+                Name = "Day shift",
+                ProjectionMode = RunProjectionModes.Inventory
+            },
             Owner(),
             CancellationToken.None);
 
@@ -310,7 +321,12 @@ public sealed class RunProjectionTests
         await using var db = CreateDbContext();
         var service = CreateProjectionService(db, new PlanningBinsRunService([Inventory("R:1", 1, 5, "Apple")]));
         var created = await service.CreateAsync(
-            new RunProjectionCreateForm { PlannedRunDate = new(2026, 7, 24), Name = "Availability check" },
+            new RunProjectionCreateForm
+            {
+                PlannedRunDate = new(2026, 7, 24),
+                Name = "Availability check",
+                ProjectionMode = RunProjectionModes.Inventory
+            },
             Owner(),
             CancellationToken.None);
         var form = new RunProjectionAddSourceForm
@@ -344,7 +360,12 @@ public sealed class RunProjectionTests
             Inventory("R:2", 2, 5, "Pear")
         ]));
         var created = await service.CreateAsync(
-            new RunProjectionCreateForm { PlannedRunDate = new(2026, 7, 24), Name = "Packout" },
+            new RunProjectionCreateForm
+            {
+                PlannedRunDate = new(2026, 7, 24),
+                Name = "Packout",
+                ProjectionMode = RunProjectionModes.Inventory
+            },
             Owner(),
             CancellationToken.None);
         foreach (var item in new[] { ("R:1", 1L), ("R:2", 2L) })
@@ -379,6 +400,263 @@ public sealed class RunProjectionTests
             ConcurrencyVersion = 4
         }, Owner(), CancellationToken.None));
         Assert.Equal([90m, 75m], await db.RunProjectionSources.OrderBy(x => x.Id).Select(x => x.ExpectedPackoutPercent!.Value).ToListAsync());
+    }
+
+    [Fact]
+    public async Task PreharvestProjection_UsesExplicitConfirmedBlockAndSpecificFieldSampleWithoutInventory()
+    {
+        await using var db = CreateDbContext();
+        var seeded = await SeedPreharvestFieldSamplesAsync(db);
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+        var created = await service.CreateAsync(
+            new RunProjectionCreateForm
+            {
+                PlannedRunDate = new(2026, 7, 24),
+                Name = "Preharvest Bartlett",
+                ProjectionMode = RunProjectionModes.Preharvest
+            },
+            Owner(),
+            CancellationToken.None);
+
+        Assert.Null(created.Error);
+        var candidates = await service.SearchSourcesAsync(
+            "WP ORCHARD",
+            null,
+            RunProjectionModes.Preharvest,
+            Owner(),
+            CancellationToken.None);
+        var candidate = Assert.Single(candidates, x => x.CanonicalOrchardBlockId == seeded.NorthBlockId);
+        Assert.Equal($"B:{seeded.NorthBlockId}:{seeded.ProfileId}", candidate.SourceKey);
+        Assert.Equal(seeded.NewestNorthSampleId, candidate.DefaultFieldSampleId);
+        Assert.Null(candidate.AvailableBins);
+
+        var choices = await service.GetFieldSampleChoicesAsync(
+            created.Id!.Value,
+            seeded.NorthBlockId,
+            seeded.ProfileId,
+            Owner(),
+            CancellationToken.None);
+        Assert.Equal([seeded.NewestNorthSampleId, seeded.OlderNorthSampleId], choices.Select(x => x.SampleId!.Value));
+        Assert.DoesNotContain(choices, x => x.SampleId == seeded.DeletedNorthSampleId);
+        Assert.DoesNotContain(choices, x => x.SampleId == seeded.SuggestedNorthSampleId);
+
+        Assert.Null(await service.AddSourceAsync(new RunProjectionAddSourceForm
+        {
+            ProjectionId = created.Id.Value,
+            SourceKey = candidate.SourceKey,
+            PlannedBins = 12,
+            SelectedQcSource = $"FieldSample:{seeded.OlderNorthSampleId}",
+            ConcurrencyVersion = 1
+        }, Owner(), CancellationToken.None));
+
+        var projection = await db.RunProjections.Include(x => x.Sources).SingleAsync();
+        var source = Assert.Single(projection.Sources);
+        Assert.Equal(RunProjectionModes.Preharvest, projection.ProjectionMode);
+        Assert.Equal(RunProjectionSourceTypes.FieldSample, source.SourceType);
+        Assert.Equal(seeded.OlderNorthSampleId, source.FieldSampleId);
+        Assert.Equal(seeded.OlderNorthSampleId, source.SelectedQcSampleId);
+        Assert.Equal(12, source.PlannedBins);
+        Assert.True(source.ExpectedPackoutUsedDefault);
+        Assert.Null(source.InventoryKey);
+        Assert.Null(source.ReceiptId);
+        Assert.Null(source.WarehouseId);
+        Assert.Null(source.RoomId);
+        Assert.Empty(await db.BinsRunEntries.ToListAsync());
+        Assert.Empty(await db.RoomInventoryAdjustments.ToListAsync());
+
+        Assert.Null(await service.UpdateSourceAsync(new RunProjectionUpdateSourceForm
+        {
+            ProjectionId = projection.Id,
+            SourceId = source.Id,
+            PlannedBins = source.PlannedBins,
+            SelectedQcSource = $"FieldSample:{seeded.NewestNorthSampleId}",
+            ExpectedPackoutPercent = source.ExpectedPackoutPercent,
+            SortOrder = source.SortOrder,
+            ConcurrencyVersion = 2
+        }, Owner(), CancellationToken.None));
+        Assert.Equal(seeded.NewestNorthSampleId, (await db.RunProjectionSources.SingleAsync()).FieldSampleId);
+    }
+
+    [Fact]
+    public async Task PreharvestProjection_CombinesBlocksAndUsesWeightBasedEffectivePackout()
+    {
+        await using var db = CreateDbContext();
+        var seeded = await SeedPreharvestFieldSamplesAsync(db);
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+        var created = await service.CreateAsync(
+            new RunProjectionCreateForm
+            {
+                PlannedRunDate = new(2026, 7, 24),
+                Name = "Two blocks",
+                ProjectionMode = RunProjectionModes.Preharvest
+            },
+            Owner(),
+            CancellationToken.None);
+
+        Assert.Null(await service.AddSourceAsync(new RunProjectionAddSourceForm
+        {
+            ProjectionId = created.Id!.Value,
+            SourceKey = $"B:{seeded.NorthBlockId}:{seeded.ProfileId}",
+            PlannedBins = 1,
+            SelectedQcSource = $"FieldSample:{seeded.NewestNorthSampleId}",
+            ExpectedPackoutPercent = 80,
+            ConcurrencyVersion = 1
+        }, Owner(), CancellationToken.None));
+        Assert.Null(await service.AddSourceAsync(new RunProjectionAddSourceForm
+        {
+            ProjectionId = created.Id.Value,
+            SourceKey = $"B:{seeded.SouthBlockId}:{seeded.ProfileId}",
+            PlannedBins = 3,
+            SelectedQcSource = $"FieldSample:{seeded.SouthSampleId}",
+            ExpectedPackoutPercent = 60,
+            ConcurrencyVersion = 2
+        }, Owner(), CancellationToken.None));
+
+        var planner = await service.GetPlannerAsync(
+            new(2026, 7, 24),
+            created.Id,
+            Owner(),
+            CancellationToken.None);
+        var detail = Assert.IsType<RunProjectionDetailViewModel>(planner.SelectedProjection);
+        Assert.Equal(4, detail.TotalPlannedBins);
+        Assert.Equal(2, detail.Sources.Count);
+        Assert.Equal(65m, detail.EffectivePackoutPercent);
+        Assert.Equal(detail.Sources.Sum(x => x.PackedProjectedBoxes), detail.TotalPackedProjectedBoxes);
+        Assert.Equal(detail.Sources.Sum(x => x.CullProjectedBoxes), detail.TotalCullProjectedBoxes);
+    }
+
+    [Fact]
+    public async Task PreharvestProjection_CannotUseInventoryOrBecomeActualWithoutExplicitMapping()
+    {
+        await using var db = CreateDbContext();
+        var seeded = await SeedPreharvestFieldSamplesAsync(db);
+        var inventory = Inventory("R:1", 1, 25, "Pear") with
+        {
+            CanonicalOrchardBlockId = seeded.NorthBlockId,
+            FruitProfileId = seeded.ProfileId
+        };
+        var service = CreateProjectionService(db, new PlanningBinsRunService([inventory]));
+        var created = await service.CreateAsync(
+            new RunProjectionCreateForm
+            {
+                PlannedRunDate = new(2026, 7, 24),
+                Name = "Preharvest to inventory",
+                ProjectionMode = RunProjectionModes.Preharvest
+            },
+            Owner(),
+            CancellationToken.None);
+
+        Assert.Contains("Field Sample", await service.AddSourceAsync(new RunProjectionAddSourceForm
+        {
+            ProjectionId = created.Id!.Value,
+            SourceKey = inventory.InventoryKey,
+            PlannedBins = 2,
+            SelectedQcSource = RunProjectionQcSourceTypes.None,
+            ConcurrencyVersion = 1
+        }, Owner(), CancellationToken.None), StringComparison.OrdinalIgnoreCase);
+        Assert.Null(await service.AddSourceAsync(new RunProjectionAddSourceForm
+        {
+            ProjectionId = created.Id.Value,
+            SourceKey = $"B:{seeded.NorthBlockId}:{seeded.ProfileId}",
+            PlannedBins = 2,
+            SelectedQcSource = $"FieldSample:{seeded.NewestNorthSampleId}",
+            ConcurrencyVersion = 1
+        }, Owner(), CancellationToken.None));
+
+        var source = await db.RunProjectionSources.SingleAsync();
+        var transition = await service.CreateInventoryFromPreharvestAsync(new RunProjectionCreateInventoryForm
+        {
+            Id = created.Id.Value,
+            Name = "Mapped inventory plan",
+            PlannedRunDate = new(2026, 7, 25),
+            ConcurrencyVersion = 2,
+            Mappings =
+            [
+                new RunProjectionInventoryMappingForm
+                {
+                    PreharvestSourceId = source.Id,
+                    InventoryKey = inventory.InventoryKey
+                }
+            ]
+        }, Owner(), CancellationToken.None);
+
+        Assert.Null(transition.Error);
+        var projections = await db.RunProjections.Include(x => x.Sources).OrderBy(x => x.Id).ToListAsync();
+        Assert.Equal([RunProjectionModes.Preharvest, RunProjectionModes.Inventory], projections.Select(x => x.ProjectionMode));
+        Assert.Equal(RunProjectionStatuses.Superseded, projections[0].Status);
+        Assert.Equal(RunProjectionStatuses.Draft, projections[1].Status);
+        Assert.Equal(projections[0].Id, projections[1].SourceProjectionId);
+        Assert.Equal(source.Id, Assert.Single(projections[1].Sources).SourceProjectionSourceId);
+        Assert.Empty(await db.BinsRunEntries.ToListAsync());
+        Assert.Empty(await db.RoomInventoryAdjustments.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PreharvestReady_RejectsMissingBinsFieldSampleAndPackout()
+    {
+        await using var db = CreateDbContext();
+        var seeded = await SeedPreharvestFieldSamplesAsync(db);
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+        var created = await service.CreateAsync(
+            new RunProjectionCreateForm
+            {
+                PlannedRunDate = new(2026, 7, 24),
+                Name = "Readiness",
+                ProjectionMode = RunProjectionModes.Preharvest
+            },
+            Owner(),
+            CancellationToken.None);
+        Assert.Null(await service.AddSourceAsync(new RunProjectionAddSourceForm
+        {
+            ProjectionId = created.Id!.Value,
+            SourceKey = $"B:{seeded.NorthBlockId}:{seeded.ProfileId}",
+            PlannedBins = 3,
+            SelectedQcSource = $"FieldSample:{seeded.NewestNorthSampleId}",
+            ExpectedPackoutPercent = 85,
+            ConcurrencyVersion = 1
+        }, Owner(), CancellationToken.None));
+        var source = await db.RunProjectionSources.SingleAsync();
+
+        source.PlannedBins = 0;
+        await db.SaveChangesAsync();
+        Assert.Contains("bin quantity", await service.MarkReadyAsync(
+            new RunProjectionStatusForm { Id = created.Id.Value, ConcurrencyVersion = 2 },
+            Owner(),
+            CancellationToken.None), StringComparison.OrdinalIgnoreCase);
+
+        source.PlannedBins = 3;
+        source.SelectedQcSampleId = null;
+        await db.SaveChangesAsync();
+        Assert.Contains("Field Sample", await service.MarkReadyAsync(
+            new RunProjectionStatusForm { Id = created.Id.Value, ConcurrencyVersion = 2 },
+            Owner(),
+            CancellationToken.None), StringComparison.OrdinalIgnoreCase);
+
+        source.SelectedQcSampleId = seeded.NewestNorthSampleId;
+        source.ExpectedPackoutPercent = null;
+        await db.SaveChangesAsync();
+        Assert.Contains("packout", await service.MarkReadyAsync(
+            new RunProjectionStatusForm { Id = created.Id.Value, ConcurrencyVersion = 2 },
+            Owner(),
+            CancellationToken.None), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void PreharvestMigration_IsAdditiveProviderCompatibleAndDefaultsExistingPlansToInventory()
+    {
+        var migration = Directory.GetFiles(
+            RepositoryDirectory("src", "CropQc.Data", "Migrations"),
+            "*AddPreharvestRunProjectionMode.cs").Single();
+        var text = File.ReadAllText(migration);
+        var up = text[..text.IndexOf("protected override void Down", StringComparison.Ordinal)];
+
+        Assert.Contains("defaultValue: \"Inventory\"", up);
+        Assert.Contains("MigrationProviderTypes.StoreType(migrationBuilder, \"bit\", \"boolean\")", up);
+        Assert.Contains("MigrationProviderTypes.StoreType(migrationBuilder, \"nvarchar(25)\", \"character varying(25)\")", up);
+        Assert.DoesNotContain("DropColumn(", up);
+        Assert.DoesNotContain("DropTable(", up);
+        Assert.DoesNotContain("DeleteData(", up);
+        Assert.DoesNotContain("UpdateData(", up);
     }
 
     [Fact]
@@ -514,6 +792,112 @@ public sealed class RunProjectionTests
             "Bartlett",
             bins,
             TestNow);
+
+    private static async Task<PreharvestSeed> SeedPreharvestFieldSamplesAsync(CropQcDbContext db)
+    {
+        var sampleType = new SampleType { Name = "Field Sample" };
+        var profile = new FruitProfile
+        {
+            Name = "Bartlett",
+            VarietyCode = "BART",
+            FruitType = "Pear",
+            ProductionType = "Conventional"
+        };
+        var orchard = new CanonicalOrchard
+        {
+            OrchardName = "WP ORCHARD",
+            NormalizedOrchardKey = "WP ORCHARD",
+            CreatedAt = TestNow,
+            UpdatedAt = TestNow
+        };
+        var north = new CanonicalOrchardBlock
+        {
+            CanonicalOrchard = orchard,
+            OrchardName = orchard.OrchardName,
+            CanonicalBlockName = "North",
+            NormalizedOrchardKey = orchard.NormalizedOrchardKey,
+            NormalizedBlockKey = "NORTH",
+            CreatedAt = TestNow,
+            UpdatedAt = TestNow
+        };
+        var south = new CanonicalOrchardBlock
+        {
+            CanonicalOrchard = orchard,
+            OrchardName = orchard.OrchardName,
+            CanonicalBlockName = "South",
+            NormalizedOrchardKey = orchard.NormalizedOrchardKey,
+            NormalizedBlockKey = "SOUTH",
+            CreatedAt = TestNow,
+            UpdatedAt = TestNow
+        };
+        db.AddRange(sampleType, profile, orchard, north, south);
+        await db.SaveChangesAsync();
+
+        QcSample FieldSample(CanonicalOrchardBlock block, DateTimeOffset takenAt, int size) =>
+            new()
+            {
+                SampleType = sampleType,
+                Status = "Complete",
+                StarchStatus = "Not Started",
+                PhotoStatus = "Not Started",
+                EmailStatus = "Not Sent",
+                FieldSampleFruitProfile = profile,
+                CanonicalOrchardBlock = block,
+                FieldSampleGrowerName = orchard.OrchardName,
+                FieldSampleGrowerNumber = "1080",
+                FieldSampleOriginalBlockName = block.CanonicalBlockName,
+                FieldSampleBlockResolution = "Confirmed",
+                SampleTakenAt = takenAt,
+                CreatedAt = takenAt,
+                FruitReadings =
+                {
+                    new QcFruitReading
+                    {
+                        RowNumber = 1,
+                        SizeCategory = size,
+                        SizeStatus = "Calculated",
+                        CreatedAt = takenAt
+                    },
+                    new QcFruitReading
+                    {
+                        RowNumber = 2,
+                        SizeCategory = size + 10,
+                        SizeStatus = "Calculated",
+                        CreatedAt = takenAt
+                    }
+                }
+            };
+
+        var olderNorth = FieldSample(north, TestNow.AddDays(-7), 80);
+        var newestNorth = FieldSample(north, TestNow.AddDays(-2), 90);
+        var southSample = FieldSample(south, TestNow.AddDays(-3), 100);
+        var deletedNorth = FieldSample(north, TestNow.AddDays(-1), 110);
+        deletedNorth.IsDeleted = true;
+        deletedNorth.DeletedAt = TestNow;
+        var suggestedNorth = FieldSample(north, TestNow, 120);
+        suggestedNorth.FieldSampleBlockResolution = "Suggested";
+        db.QcSamples.AddRange(olderNorth, newestNorth, southSample, deletedNorth, suggestedNorth);
+        await db.SaveChangesAsync();
+        return new PreharvestSeed(
+            profile.Id,
+            north.Id,
+            south.Id,
+            olderNorth.Id,
+            newestNorth.Id,
+            southSample.Id,
+            deletedNorth.Id,
+            suggestedNorth.Id);
+    }
+
+    private sealed record PreharvestSeed(
+        int ProfileId,
+        int NorthBlockId,
+        int SouthBlockId,
+        long OlderNorthSampleId,
+        long NewestNorthSampleId,
+        long SouthSampleId,
+        long DeletedNorthSampleId,
+        long SuggestedNorthSampleId);
 
     private sealed class FixedClock(DateTimeOffset now) : IClock
     {

@@ -891,6 +891,44 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 
 .compact-form { border-top: 1px solid #e0e5e2; margin-top: 16px; padding-top: 16px; }
 
+.planning-mode-selector {
+    border: 0;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    margin: 0;
+    padding: 0;
+}
+.planning-mode-selector legend {
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+.choice-card {
+    align-items: flex-start;
+    border: 1px solid #cbd8d0;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    gap: 10px;
+    padding: 12px;
+}
+.choice-card:has(input:checked) {
+    background: #eaf5ee;
+    border-color: #1f5d43;
+    box-shadow: inset 0 0 0 1px #1f5d43;
+}
+.choice-card span { display: grid; gap: 3px; }
+.choice-card small { color: #596860; }
+.subpanel {
+    background: #f7faf8;
+    border: 1px solid #d7dfda;
+    border-radius: 10px;
+    margin-top: 20px;
+    padding: 16px;
+}
+.station-card details { margin-top: 12px; }
+.station-card details summary { cursor: pointer; font-weight: 700; }
+
 @media (max-width: 760px) {
     .run-planner-layout { grid-template-columns: 1fr; }
     .projection-list-item { align-items: flex-start; flex-direction: column; }

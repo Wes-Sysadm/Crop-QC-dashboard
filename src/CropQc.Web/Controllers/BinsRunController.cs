@@ -34,8 +34,13 @@ public sealed class BinsRunController(
 
     [HttpGet("Sources")]
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
-    public async Task<IActionResult> Sources(string? query, int? roomId, CancellationToken cancellationToken) =>
-        Ok(await runProjectionService.SearchSourcesAsync(query, roomId, User, cancellationToken));
+    public async Task<IActionResult> Sources(string? query, int? roomId, string? mode, CancellationToken cancellationToken) =>
+        Ok(await runProjectionService.SearchSourcesAsync(query, roomId, mode, User, cancellationToken));
+
+    [HttpGet("Projections/{id:long}/FieldSamples")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunView)]
+    public async Task<IActionResult> FieldSamples(long id, int canonicalBlockId, int fruitProfileId, CancellationToken cancellationToken) =>
+        Ok(await runProjectionService.GetFieldSampleChoicesAsync(id, canonicalBlockId, fruitProfileId, User, cancellationToken));
 
     [HttpPost("Projections")]
     [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
@@ -138,6 +143,16 @@ public sealed class BinsRunController(
         var result = await runProjectionService.DuplicateAsync(form, User, cancellationToken);
         TempData[result.Error is null ? "Success" : "Error"] = result.Error ?? "Projection duplicated.";
         return PlannerRedirect(form.PlannedRunDate, result.Id);
+    }
+
+    [HttpPost("Projections/{id:long}/CreateInventory")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    public async Task<IActionResult> CreateInventoryProjection(long id, RunProjectionCreateInventoryForm form, CancellationToken cancellationToken)
+    {
+        form.Id = id;
+        var result = await runProjectionService.CreateInventoryFromPreharvestAsync(form, User, cancellationToken);
+        TempData[result.Error is null ? "Success" : "Error"] = result.Error ?? "Inventory projection created from the Preharvest plan.";
+        return PlannerRedirect(form.PlannedRunDate, result.Id ?? id);
     }
 
     [HttpGet("Projections/{id:long}/Export")]
