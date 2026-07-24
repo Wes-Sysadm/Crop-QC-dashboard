@@ -87,6 +87,10 @@ public sealed class RunProjectionDetailViewModel : RunProjectionListItemViewMode
     public decimal ApplePoundsPerBin { get; set; }
     public decimal PearPoundsPerBin { get; set; }
     public decimal StandardBoxWeightPounds { get; set; }
+    public decimal PeelerCullShare { get; set; } = 0.35m;
+    public decimal JuiceCullShare { get; set; } = 0.40m;
+    public decimal WasteCullShare { get; set; } = 0.25m;
+    public string CullCalculationVersion { get; set; } = "1.0";
     public int TotalRoundedPackedProjectedBoxes { get; set; }
     public decimal TotalCullProjectedPounds { get; set; }
     public int TotalRoundedCullProjectedBoxes { get; set; }

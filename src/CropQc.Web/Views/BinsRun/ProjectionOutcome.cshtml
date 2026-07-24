@@ -4,7 +4,15 @@
     var projection = Model.Projection;
     var maxPack = Math.Max(1, Model.Packs.Select(x => x.CompletePacks).DefaultIfEmpty(0).Max());
     var maxGrade = Math.Max(1, Model.Grades.Select(x => x.CompleteBoxes).DefaultIfEmpty(0).Max());
-    var maxCull = Math.Max(1m, new[] { Model.CullTotals.PeelerPounds, Model.CullTotals.JuicePounds, Model.CullTotals.WastePounds }.Max());
+    var appleCull = Model.CullByCommodity.FirstOrDefault(x => x.Commodity.Equals("Apple", StringComparison.OrdinalIgnoreCase));
+    var pearCull = Model.CullByCommodity.FirstOrDefault(x => x.Commodity.Equals("Pear", StringComparison.OrdinalIgnoreCase));
+    var outputRows = new[]
+    {
+        new { Name = "Peeler", AppleBins = appleCull?.PeelerBinEquivalents ?? 0m, PearBins = pearCull?.PeelerBinEquivalents ?? 0m, Pounds = Model.CullTotals.PeelerPounds, Share = projection.PeelerCullShare },
+        new { Name = "Juice", AppleBins = appleCull?.JuiceBinEquivalents ?? 0m, PearBins = pearCull?.JuiceBinEquivalents ?? 0m, Pounds = Model.CullTotals.JuicePounds, Share = projection.JuiceCullShare },
+        new { Name = "Waste", AppleBins = appleCull?.WasteBinEquivalents ?? 0m, PearBins = pearCull?.WasteBinEquivalents ?? 0m, Pounds = Model.CullTotals.WastePounds, Share = projection.WasteCullShare }
+    };
+    var maxCullBins = Math.Max(1m, outputRows.SelectMany(x => new[] { x.AppleBins, x.PearBins }).Max());
 }
 
 <article class="projection-outcome">
@@ -17,7 +25,7 @@
         </div>
         <div class="action-bar no-print">
             <a class="button secondary-button"
-               href="/BinsRun?Section=Planner&amp;PlannedDate=@projection.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@projection.Id">Edit Projection</a>
+               href="/BinsRun?Section=Planner&amp;PlannedDate=@projection.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@projection.Id&amp;Facility=@projection.FacilityCode">Edit Projection</a>
             <a class="button secondary-button" href="/BinsRun/Projections/@projection.Id/Export?plannedDate=@projection.PlannedRunDate.ToString("yyyy-MM-dd")">Export CSV</a>
             <button type="button" onclick="window.print()">Print Projection</button>
         </div>
@@ -225,17 +233,47 @@
     </section>
 
     <section class="outcome-section avoid-break" id="cull-graph">
-        <h2>Projected Cull Output</h2>
-        <p class="muted">The saved total cull pounds are split into 35% Peeler, 40% Juice, and 25% Waste.</p>
-        <div class="outcome-bar-chart" role="img" aria-label="Projected cull output in pounds">
-            @foreach (var cull in new[] { ("Peeler", Model.CullTotals.PeelerPounds), ("Juice", Model.CullTotals.JuicePounds), ("Waste", Model.CullTotals.WastePounds) })
+        <h2>Projected Cull Outputs</h2>
+        <p class="muted">Bulk output bins are the primary operational result. Apples use @projection.ApplePoundsPerBin.ToString("0.##") lb/bin; pears use @projection.PearPoundsPerBin.ToString("0.##") lb/bin. Pounds remain the reconciliation authority.</p>
+        <div class="table-wrap projected-output-summary">
+            <table>
+                <thead><tr><th>Output</th><th>Apple bins</th><th>Pear bins</th><th>Total pounds</th><th>Cull share</th></tr></thead>
+                <tbody>
+                @foreach (var output in outputRows)
+                {
+                    <tr>
+                        <th scope="row">@output.Name</th>
+                        <td><strong>@output.AppleBins.ToString("0.00")</strong></td>
+                        <td><strong>@output.PearBins.ToString("0.00")</strong></td>
+                        <td>@output.Pounds.ToString("0.##") lb</td>
+                        <td>@output.Share.ToString("P0")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <h3>Projected Output Bins</h3>
+        <div class="outcome-bar-chart" role="img" aria-label="Projected peeler, juice, and waste output bins by commodity">
+            @foreach (var output in outputRows)
             {
-                var width = cull.Item2 / maxCull * 100m;
-                <div class="outcome-bar-row">
-                    <span class="outcome-bar-label">@cull.Item1</span>
-                    <span class="outcome-bar-track"><span class="outcome-bar-fill cull" style="width:@width.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
-                    <strong>@cull.Item2.ToString("0.##") lb</strong>
-                </div>
+                @if (appleCull is not null)
+                {
+                    var appleWidth = output.AppleBins / maxCullBins * 100m;
+                    <div class="outcome-bar-row">
+                        <span class="outcome-bar-label">@output.Name · Apple</span>
+                        <span class="outcome-bar-track"><span class="outcome-bar-fill cull" style="width:@appleWidth.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
+                        <strong>@output.AppleBins.ToString("0.00") bins</strong>
+                    </div>
+                }
+                @if (pearCull is not null)
+                {
+                    var pearWidth = output.PearBins / maxCullBins * 100m;
+                    <div class="outcome-bar-row">
+                        <span class="outcome-bar-label">@output.Name · Pear</span>
+                        <span class="outcome-bar-track"><span class="outcome-bar-fill cull pear" style="width:@pearWidth.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
+                        <strong>@output.PearBins.ToString("0.00") bins</strong>
+                    </div>
+                }
             }
         </div>
     </section>
@@ -244,7 +282,7 @@
         <h2>Peeler, Juice, and Waste</h2>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Commodity</th><th>lb/bin</th><th>Total cull lb</th><th>Cull bins</th><th>Peeler 35%</th><th>Peeler bins</th><th>Juice 40%</th><th>Juice bins</th><th>Waste 25%</th><th>Waste bins</th></tr></thead>
+                <thead><tr><th>Commodity</th><th>lb/bin</th><th>Total cull lb</th><th>Cull bins</th><th>Peeler lb</th><th>Peeler bins</th><th>Juice lb</th><th>Juice bins</th><th>Waste lb</th><th>Waste bins</th></tr></thead>
                 <tbody>
                 @foreach (var row in Model.CullByCommodity)
                 {
@@ -273,19 +311,20 @@
             <summary>Contribution by lot or block</summary>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Source</th><th>Commodity</th><th>Bins</th><th>Packout</th><th>Complete packed boxes</th><th>Packed residual lb</th><th>Peeler lb</th><th>Juice lb</th><th>Waste lb</th></tr></thead>
+                    <thead><tr><th>Source</th><th>Commodity</th><th>Planned bins</th><th>Packout</th><th>lb/bin</th><th>Total cull lb</th><th>Peeler bins</th><th>Juice bins</th><th>Waste bins</th><th>Supporting pounds (P / J / W)</th></tr></thead>
                     <tbody>
                     @foreach (var row in Model.SourceContributions)
                     {
                         <tr>
                             <th scope="row">@row.Source</th><td>@row.Commodity</td><td>@row.Bins</td>
                             <td>@(row.ExpectedPackoutPercent is decimal pct ? $"{pct:0.##}%" : "Missing")</td>
-                            <td>@row.CompletePackedBoxes</td><td>@row.PackedResidualPounds.ToString("0.##")</td>
-                            <td>@row.PeelerPounds.ToString("0.##")</td><td>@row.JuicePounds.ToString("0.##")</td><td>@row.WastePounds.ToString("0.##")</td>
+                            <td>@row.PoundsPerBin.ToString("0.##")</td><td>@row.TotalCullPounds.ToString("0.##")</td>
+                            <td><strong>@row.PeelerBins.ToString("0.00")</strong></td><td><strong>@row.JuiceBins.ToString("0.00")</strong></td><td><strong>@row.WasteBins.ToString("0.00")</strong></td>
+                            <td>@row.PeelerPounds.ToString("0.##") / @row.JuicePounds.ToString("0.##") / @row.WastePounds.ToString("0.##") lb</td>
                         </tr>
                     }
                     </tbody>
-                    <tfoot><tr><th colspan="4">Combined</th><td>@Model.SourceContributions.Sum(x => x.CompletePackedBoxes)</td><td>@Model.SourceContributions.Sum(x => x.PackedResidualPounds).ToString("0.##")</td><td>@Model.SourceContributions.Sum(x => x.PeelerPounds).ToString("0.##")</td><td>@Model.SourceContributions.Sum(x => x.JuicePounds).ToString("0.##")</td><td>@Model.SourceContributions.Sum(x => x.WastePounds).ToString("0.##")</td></tr></tfoot>
+                    <tfoot><tr><th colspan="5">Combined pounds (bin totals remain separated by commodity)</th><td>@Model.SourceContributions.Sum(x => x.TotalCullPounds).ToString("0.##")</td><td colspan="3">See Projected Cull Outputs</td><td>@Model.SourceContributions.Sum(x => x.PeelerPounds).ToString("0.##") / @Model.SourceContributions.Sum(x => x.JuicePounds).ToString("0.##") / @Model.SourceContributions.Sum(x => x.WastePounds).ToString("0.##") lb</td></tr></tfoot>
                 </table>
             </div>
         </details>
@@ -337,7 +376,7 @@
         <ul>
             <li>Gross pounds = planned or estimated bins × the saved commodity pounds-per-bin assumption.</li>
             <li>Packed pounds = gross pounds × the human Expected Packout percentage; cull pounds are the remaining Expected Cull/Loss.</li>
-            <li>Peeler, Juice, and Waste are 35%, 40%, and 25% of cull pounds only.</li>
+            <li>Peeler, Juice, and Waste use the saved shares @projection.PeelerCullShare.ToString("P0"), @projection.JuiceCullShare.ToString("P0"), and @projection.WasteCullShare.ToString("P0") of cull pounds (calculation version @projection.CullCalculationVersion).</li>
             <li>Every displayed pack and grade count is floored. No category is rounded upward.</li>
             <li>The size-by-grade matrix uses only paired observations; independent size and grade distributions are never cross-multiplied.</li>
             <li>Pack plan: @(projection.PackPlanName ?? "No saved plan") · calculation version @(projection.PackCalculationVersion ?? "Not recorded") · calculated @BusinessTime.FormatPacific(projection.PackCalculatedAt, empty: "not recorded").</li>
@@ -352,6 +391,12 @@
                 cull @Model.CullPounds.ToString("0.##") lb.
             </p>
             <p><strong>Difference: @Model.ReconciliationDifference.ToString("0.####") lb.</strong></p>
+            <p>
+                Cull @Model.CullTotals.TotalCullPounds.ToString("0.##") lb =
+                Peeler @Model.CullTotals.PeelerPounds.ToString("0.##") lb +
+                Juice @Model.CullTotals.JuicePounds.ToString("0.##") lb +
+                Waste @Model.CullTotals.WastePounds.ToString("0.##") lb.
+            </p>
         </div>
         @if (Model.Warnings.Count == 0)
         {

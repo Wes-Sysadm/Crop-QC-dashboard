@@ -146,7 +146,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("AccessPolicyNames.VarietyColorsAdmin", controller);
         Assert.Contains("VarietyColorsView", access);
         Assert.Contains("VarietyColorsAdmin", access);
-        Assert.Contains("Variety Colors", layout);
+        Assert.DoesNotContain(">Variety Colors</a>", layout);
         Assert.Contains("HexColorPattern", service);
         Assert.Contains("AuditLogs.Add", service);
         Assert.Contains("reset-to-default", service);
@@ -158,7 +158,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("HasOne(x => x.FruitProfile)", db);
         Assert.Contains("GetResolvedColorsForMasterDataAsync", service);
         Assert.Contains("Redirect(\"/MasterData/fruit-profiles\")", controller);
-        Assert.Contains("href=\"/MasterData/fruit-profiles\"", layout);
+        Assert.Contains("Fruit Profiles", masterDataIndex);
+        Assert.Contains("Variety Codes", masterDataIndex);
         Assert.Contains("type=\"color\"", masterDataFields);
         Assert.Contains("pattern=\"#[0-9A-Fa-f]{6}\"", masterDataFields);
         Assert.Contains("Reset color to fallback", masterDataFields);
@@ -306,7 +307,7 @@ public sealed class RoomSummaryDepletionTests
         var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
         var binsRun = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
 
-        Assert.Contains("<a href=\"/Rooms\">Rooms</a>", layout);
+        Assert.Contains("<a href=\"/Rooms@facilityQuery\">Rooms</a>", layout);
         Assert.Contains("[HttpGet(\"/Rooms\")]", controller);
         Assert.Contains("[HttpGet(\"/Rooms/{roomId:int}\")]", controller);
         Assert.Contains("RoomsPageViewModel", model);

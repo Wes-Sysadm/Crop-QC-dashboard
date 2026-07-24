@@ -68,6 +68,52 @@ public sealed class ProjectionOutcomeTests
     }
 
     [Fact]
+    public void AppleCullOutputBins_UseSavedEightHundredEightyPoundsPerBin()
+    {
+        var outcome = ProjectionOutcomeCalculator.Build(Projection(), DateTimeOffset.UtcNow);
+        var apple = Assert.Single(outcome.CullByCommodity);
+
+        Assert.Equal(154m / 880m, apple.PeelerBinEquivalents);
+        Assert.Equal(176m / 880m, apple.JuiceBinEquivalents);
+        Assert.Equal(110m / 880m, apple.WasteBinEquivalents);
+        Assert.Equal(154m / 880m, outcome.SourceContributions.Sum(x => x.PeelerBins));
+    }
+
+    [Fact]
+    public void PearCullOutputBins_UseSavedNineHundredTwentyPoundsPerBin()
+    {
+        var projection = Projection();
+        projection.Sources = [Source(1, "Pear block", "Pear", 920m, 920m, 690m, 230m)];
+        projection.TotalProjectedPounds = 920m;
+        projection.TotalPackedProjectedPounds = 690m;
+        projection.TotalCullProjectedPounds = 230m;
+        projection.PackResults = [];
+        projection.PackAssignedPounds = 0m;
+        projection.PackUnallocatedPounds = 690m;
+
+        var pear = Assert.Single(ProjectionOutcomeCalculator.Build(projection, DateTimeOffset.UtcNow).CullByCommodity);
+
+        Assert.Equal(230m * 0.35m / 920m, pear.PeelerBinEquivalents);
+        Assert.Equal(230m * 0.40m / 920m, pear.JuiceBinEquivalents);
+        Assert.Equal(230m * 0.25m / 920m, pear.WasteBinEquivalents);
+    }
+
+    [Fact]
+    public void CullOutput_UsesSavedSharesInsteadOfCurrentConstants()
+    {
+        var projection = Projection();
+        projection.PeelerCullShare = 0.50m;
+        projection.JuiceCullShare = 0.30m;
+        projection.WasteCullShare = 0.20m;
+
+        var outcome = ProjectionOutcomeCalculator.Build(projection, DateTimeOffset.UtcNow);
+
+        Assert.Equal(220m, outcome.CullTotals.PeelerPounds);
+        Assert.Equal(132m, outcome.CullTotals.JuicePounds);
+        Assert.Equal(88m, outcome.CullTotals.WastePounds);
+    }
+
+    [Fact]
     public void MixedCommodities_KeepSeparatePoundsPerBin()
     {
         var projection = Projection();
@@ -186,6 +232,8 @@ public sealed class ProjectionOutcomeTests
         Assert.Contains("$\"/BinsRun/Projections/{item.Id}/Outcome\"", view);
         Assert.Contains("item.IsDeleted", view);
         Assert.Contains("View Outcome", view);
+        Assert.Contains("projection-print-action", view);
+        Assert.Contains("Outcome#print-report", view);
     }
 
     [Fact]
@@ -198,7 +246,7 @@ public sealed class ProjectionOutcomeTests
             "Projected Packed Boxes by Size / Commercial Pack",
             "Projected Packed Boxes by Grade",
             "Size-by-Grade Production Matrix",
-            "Projected Cull Output",
+            "Projected Cull Outputs",
             "Peeler, Juice, and Waste",
             "Source-Level Contribution",
             "Growth Trend and Field Sample Basis",
@@ -242,6 +290,10 @@ public sealed class ProjectionOutcomeTests
         Assert.Contains("thead", css);
         Assert.Contains(".outcome-bar-fill.grade", css);
         Assert.Contains("background: #444 !important", css);
+        Assert.Contains("Projected Output Bins", view);
+        Assert.Contains("Apple bins", view);
+        Assert.Contains("Pear bins", view);
+        Assert.Contains("TotalCullPounds", view);
     }
 
     [Fact]
@@ -275,6 +327,23 @@ public sealed class ProjectionOutcomeTests
 
         Assert.Contains("AddColumn<string>", text);
         Assert.Contains("FieldSampleTrendSnapshotJson", text);
+        Assert.Contains("MigrationProviderTypes.StoreType", text);
+        Assert.DoesNotContain("DropTable", text);
+        Assert.DoesNotContain("DeleteData", text);
+        Assert.DoesNotContain("UpdateData", text);
+    }
+
+    [Fact]
+    public void CullSnapshotMigration_IsAdditiveAndProviderCompatible()
+    {
+        var migration = Directory.GetFiles(RepositoryRoot(), "*AddRunProjectionCullSnapshot.cs", SearchOption.AllDirectories)
+            .Single(x => !x.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase));
+        var text = File.ReadAllText(migration);
+
+        Assert.Contains("PeelerCullShare", text);
+        Assert.Contains("JuiceCullShare", text);
+        Assert.Contains("WasteCullShare", text);
+        Assert.Contains("CullCalculationVersion", text);
         Assert.Contains("MigrationProviderTypes.StoreType", text);
         Assert.DoesNotContain("DropTable", text);
         Assert.DoesNotContain("DeleteData", text);

@@ -100,6 +100,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.ApplePoundsPerBin).HasPrecision(10, 2);
             entity.Property(x => x.PearPoundsPerBin).HasPrecision(10, 2);
             entity.Property(x => x.StandardBoxWeightPounds).HasPrecision(10, 2);
+            entity.Property(x => x.PeelerCullShare).HasPrecision(5, 4).HasDefaultValue(0.35m);
+            entity.Property(x => x.JuiceCullShare).HasPrecision(5, 4).HasDefaultValue(0.40m);
+            entity.Property(x => x.WasteCullShare).HasPrecision(5, 4).HasDefaultValue(0.25m);
+            entity.Property(x => x.CullCalculationVersion).HasMaxLength(25).HasDefaultValue("1.0").IsRequired();
             entity.Property(x => x.TotalProjectedPounds).HasPrecision(18, 2);
             entity.Property(x => x.TotalProjectedBoxes).HasPrecision(18, 4);
             entity.Property(x => x.TotalPackedProjectedPounds).HasPrecision(18, 2);

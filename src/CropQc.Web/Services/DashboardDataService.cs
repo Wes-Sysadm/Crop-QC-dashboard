@@ -43,6 +43,7 @@ public interface IDashboardDataService
     Task<string?> AddSamplePhotoMetadataAsync(long sampleId, AddPhotoMetadataForm form, CancellationToken cancellationToken);
     Task<string?> RemoveSamplePhotoAsync(long sampleId, long photoId, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken);
+    Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, string? facility, CancellationToken cancellationToken);
     Task<RoomDetailViewModel> GetRoomDetailAsync(int roomId, CancellationToken cancellationToken);
     Task<BinsRunProjectionViewModel> GetRoomProjectionAsync(int roomId, RoomProjectionRequest request, CancellationToken cancellationToken);
     Task<RoomCountBreakdownViewModel> GetRoomCountBreakdownAsync(int roomId, CancellationToken cancellationToken);
@@ -88,11 +89,13 @@ public sealed class DashboardDataService(
     IUserAccessService? userAccessService = null,
     IVarietyColorService? varietyColorService = null,
     ICanonicalGrowerService? canonicalGrowerService = null,
-    IBusinessTimeService? businessTime = null) : IDashboardDataService
+    IBusinessTimeService? businessTime = null,
+    IFacilityContextService? facilityContextService = null) : IDashboardDataService
 {
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
     private static readonly string[] ReceiptTypeOptions = ["Truck receipt", "Door sample", "Lot sample"];
     private IBusinessTimeService BusinessTime { get; } = businessTime ?? new PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock());
+    private IFacilityContextService FacilityContext { get; } = facilityContextService ?? new FacilityContextService(dbContext);
 
     public async Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
     {
@@ -100,8 +103,12 @@ public sealed class DashboardDataService(
         try
         {
             var todayRange = BusinessTime.UtcRangeForPacificDate(BusinessTime.PacificDate(BusinessTime.UtcNow));
-            var todaySamples = await BuildTodayDashboardSamplesAsync(todayRange, cancellationToken);
-            var dashboardLots = (await BuildDashboardCurrentInventorySnapshotsAsync(null, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
+            var todaySamples = (await BuildTodayDashboardSamplesAsync(todayRange, cancellationToken))
+                .Where(x => FacilityContext.Matches(x.Warehouse, x.Warehouse, normalizedRoomFilter.Facility))
+                .ToList();
+            var dashboardLots = (await BuildDashboardCurrentInventorySnapshotsAsync(null, cancellationToken))
+                .Where(x => x.CurrentBins > 0 && FacilityContext.Matches(x.Facility, x.Facility, normalizedRoomFilter.Facility))
+                .ToList();
             var roomSummaries = await BuildDashboardRoomSummariesAsync(dashboardLots, normalizedRoomFilter, cancellationToken);
             var totalCurrentBins = dashboardLots.Sum(x => x.CurrentBins);
             var currentGrowerLots = dashboardLots.Select(x => CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
@@ -112,7 +119,8 @@ public sealed class DashboardDataService(
                 todaySamples.Count(x => x.EmailStatus == "Sent"),
                 todaySamples.Count(x => x.ReviewReasons.Count > 0),
                 totalCurrentBins,
-                currentGrowerLots);
+                currentGrowerLots,
+                normalizedRoomFilter.Facility);
             return new HomeDashboardViewModel
             {
                 ActiveCropYear = cropYearService.GetCurrentCropYear(BusinessTime.NowPacific),
@@ -139,7 +147,7 @@ public sealed class DashboardDataService(
             {
                 ActiveCropYear = cropYearService.GetCurrentCropYear(BusinessTime.NowPacific),
                 DataWarning = DatabaseWarning(ex, "Home dashboard"),
-                Cards = BuildHomeCards(0, 0, 0, 0, 0, 0, 0),
+                Cards = BuildHomeCards(0, 0, 0, 0, 0, 0, 0, normalizedRoomFilter.Facility),
                 RoomSummaryFilter = normalizedRoomFilter,
                 RoomSummaries = []
             };
@@ -164,17 +172,18 @@ public sealed class DashboardDataService(
         }
     }
 
-    private IReadOnlyList<StatusCountCard> BuildHomeCards(int todaySamples, int ready, int missing, int sent, int review, int currentBins, int currentGrowerLots)
+    private IReadOnlyList<StatusCountCard> BuildHomeCards(int todaySamples, int ready, int missing, int sent, int review, int currentBins, int currentGrowerLots, string facility)
     {
+        var encodedFacility = Uri.EscapeDataString(FacilityContext.Normalize(facility));
         return
         [
-            new("Total Bins In Storage", currentBins, "/GrowerLots/Current", "ready", "Deduplicated current bins across receipts and current inventory baselines."),
-            new("Grower Lots In Storage", currentGrowerLots, "/GrowerLots/Current", "info", "Grower lots with fruit currently left in storage."),
-            new("Today's Receiving Samples", todaySamples, "/Receipts?DateFilter=today&SampleType=Receiving", "info", "Receipts with receiving QC activity today."),
-            new("Samples Ready to Email", ready, "/DailyQc?status=ReadyToSend", "ready", "Samples with required data and photos ready for QC summary email."),
-            new("QC Emails Sent", sent, "/DailyQc?status=Sent", "sent", "Samples with a QC Summary email sent today."),
-            new("Samples Missing Data", missing, "/DailyQc?status=MissingData", "missing", "Samples missing required fields/photos."),
-            new("Samples Needing Review", review, "/DailyQc?status=NeedsReview", "review", "Samples with pressure, starch, defect, or variance review flags.")
+            new("Total Bins In Storage", currentBins, $"/GrowerLots/Current?Facility={encodedFacility}", "ready", "Deduplicated current bins across receipts and current inventory baselines."),
+            new("Grower Lots In Storage", currentGrowerLots, $"/GrowerLots/Current?Facility={encodedFacility}", "info", "Grower lots with fruit currently left in storage."),
+            new("Today's Receiving Samples", todaySamples, $"/Receipts?Facility={encodedFacility}&DateFilter=today&SampleType=Receiving", "info", "Receipts with receiving QC activity today."),
+            new("Samples Ready to Email", ready, $"/DailyQc?Facility={encodedFacility}&status=ReadyToSend", "ready", "Samples with required data and photos ready for QC summary email."),
+            new("QC Emails Sent", sent, $"/DailyQc?Facility={encodedFacility}&status=Sent", "sent", "Samples with a QC Summary email sent today."),
+            new("Samples Missing Data", missing, $"/DailyQc?Facility={encodedFacility}&status=MissingData", "missing", "Samples missing required fields/photos."),
+            new("Samples Needing Review", review, $"/DailyQc?Facility={encodedFacility}&status=NeedsReview", "review", "Samples with pressure, starch, defect, or variance review flags.")
         ];
     }
 
@@ -182,6 +191,7 @@ public sealed class DashboardDataService(
     {
         try
         {
+            filter.Facility = FacilityContext.Normalize(filter.Facility);
             filter.CropYear ??= cropYearService.GetCurrentCropYear(BusinessTime.NowPacific);
             var currentLots = (await BuildRoomLotSummariesAsync(null, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
             var receiptIds = currentLots.Where(x => x.ReceiptId is not null).Select(x => x.ReceiptId!.Value).Distinct().ToList();
@@ -208,6 +218,8 @@ public sealed class DashboardDataService(
                     LatestStarch = lot.AverageStarch
                 };
             }).ToList();
+
+            rows = rows.Where(x => FacilityContext.Matches(x.Warehouse, x.Warehouse, filter.Facility)).ToList();
 
             if (filter.CropYear is not null)
             {
@@ -239,8 +251,10 @@ public sealed class DashboardDataService(
                 Filter = filter,
                 Lots = rows.OrderBy(x => x.Grower).ThenBy(x => x.Lot).ThenBy(x => x.Room).ToList(),
                 CropYears = await cropYearService.GetAvailableCropYearsAsync(cancellationToken),
-                Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Code).ToListAsync(cancellationToken),
-                Rooms = await dbContext.Rooms.AsNoTracking().OrderBy(x => x.WarehouseId).ThenBy(x => x.SortOrder).ThenBy(x => x.Code).ToListAsync(cancellationToken),
+                Warehouses = (await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Code).ToListAsync(cancellationToken))
+                    .Where(x => FacilityContext.Matches(x.Code, x.Name, filter.Facility)).ToList(),
+                Rooms = (await dbContext.Rooms.AsNoTracking().Include(x => x.Warehouse).OrderBy(x => x.WarehouseId).ThenBy(x => x.SortOrder).ThenBy(x => x.Code).ToListAsync(cancellationToken))
+                    .Where(x => FacilityContext.Matches(x.Warehouse.Code, x.Warehouse.Name, filter.Facility)).ToList(),
                 Growers = rows.Select(x => x.Grower).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
                 Varieties = rows.Select(x => x.Variety).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList()
             };
@@ -795,7 +809,14 @@ public sealed class DashboardDataService(
     {
         try
         {
+            search.Facility = FacilityContext.Normalize(search.Facility);
+            var facilityWarehouseIds = await FacilityContext.GetWarehouseIdsAsync(search.Facility, cancellationToken);
             search.CropYear ??= cropYearService.GetCurrentCropYear(BusinessTime.NowPacific);
+            if (search.WarehouseId is int requestedWarehouseId && !facilityWarehouseIds.Contains(requestedWarehouseId))
+            {
+                search.WarehouseId = null;
+                search.RoomId = null;
+            }
             if (search.WarehouseId is not null && search.RoomId is not null)
             {
                 var roomMatchesWarehouse = await dbContext.Rooms.AsNoTracking()
@@ -812,6 +833,7 @@ public sealed class DashboardDataService(
                 .Include(x => x.FruitProfile)
                 .Where(x => !x.IsDeleted)
                 .AsQueryable();
+            if (search.Facility != "All") query = query.Where(x => facilityWarehouseIds.Contains(x.WarehouseId));
             if (!search.AllCropYears && search.CropYear is not null) query = query.Where(x => x.CropYear == search.CropYear);
             if (string.Equals(search.DateFilter, "today", StringComparison.OrdinalIgnoreCase))
             {
@@ -858,8 +880,8 @@ public sealed class DashboardDataService(
                 Search = search,
                 Receipts = receipts.Select(receipt => ReceiptListItem(receipt, sampleSummaries.GetValueOrDefault(receipt.Id))).ToList(),
                 ReceiptTypeCounts = BuildReceiptTypeCounts(search, receiptTypeCountRows),
-                Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
-                Rooms = await dbContext.Rooms.AsNoTracking().OrderBy(x => x.WarehouseId).ThenBy(x => x.SubLocation).ThenBy(x => x.SortOrder).ThenBy(x => x.CropQcRoomName ?? x.Code).ToListAsync(cancellationToken),
+                Warehouses = await dbContext.Warehouses.AsNoTracking().Where(x => facilityWarehouseIds.Contains(x.Id)).OrderBy(x => x.Name).ToListAsync(cancellationToken),
+                Rooms = await dbContext.Rooms.AsNoTracking().Where(x => facilityWarehouseIds.Contains(x.WarehouseId)).OrderBy(x => x.WarehouseId).ThenBy(x => x.SubLocation).ThenBy(x => x.SortOrder).ThenBy(x => x.CropQcRoomName ?? x.Code).ToListAsync(cancellationToken),
                 FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
                 GrowerLots = await dbContext.GrowerLots.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Grower).ThenBy(x => x.LotNumber).ToListAsync(cancellationToken),
                 AvailableCropYears = await cropYearService.GetAvailableCropYearsAsync(cancellationToken),
@@ -2361,12 +2383,25 @@ public sealed class DashboardDataService(
         return null;
     }
 
-    public async Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken)
+    public Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken) =>
+        GetDailyQcDashboardAsync(warehouseId, status, "All", cancellationToken);
+
+    public async Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, string? facility, CancellationToken cancellationToken)
     {
+        facility = FacilityContext.Normalize(facility);
         try
         {
+            var facilityWarehouseIds = await FacilityContext.GetWarehouseIdsAsync(facility, cancellationToken);
+            if (warehouseId is int requestedWarehouseId && !facilityWarehouseIds.Contains(requestedWarehouseId))
+            {
+                warehouseId = null;
+            }
             var todayRange = BusinessTime.UtcRangeForPacificDate(BusinessTime.PacificDate(BusinessTime.UtcNow));
             var query = QuerySamples().Where(x => x.SampleTakenAt >= todayRange.Start && x.SampleTakenAt < todayRange.End);
+            if (facility != "All")
+            {
+                query = query.Where(x => facilityWarehouseIds.Contains(x.Receipt.WarehouseId));
+            }
             if (warehouseId is not null)
             {
                 query = query.Where(x => x.Receipt.WarehouseId == warehouseId);
@@ -2378,15 +2413,16 @@ public sealed class DashboardDataService(
             return new DailyQcDashboardViewModel
             {
                 WarehouseId = warehouseId,
+                Facility = facility,
                 Status = status,
                 StatusDescription = BuildDailyQcStatusDescription(status),
-                Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
+                Warehouses = await dbContext.Warehouses.AsNoTracking().Where(x => facilityWarehouseIds.Contains(x.Id)).OrderBy(x => x.Name).ToListAsync(cancellationToken),
                 Samples = enriched
             };
         }
         catch (Exception ex)
         {
-            return new DailyQcDashboardViewModel { WarehouseId = warehouseId, Status = status, DataWarning = DatabaseWarning(ex, "Daily QC dashboard") };
+            return new DailyQcDashboardViewModel { WarehouseId = warehouseId, Facility = facility, Status = status, DataWarning = DatabaseWarning(ex, "Daily QC dashboard") };
         }
     }
 
@@ -4157,13 +4193,9 @@ public sealed class DashboardDataService(
 
     private sealed record WeakestLotResult(long? ReceiptId, long? InventoryAdjustmentId, string Label, decimal Score, string Reason);
 
-    private static RoomSummaryFilterForm NormalizeRoomSummaryFilter(RoomSummaryFilterForm? filter)
+    private RoomSummaryFilterForm NormalizeRoomSummaryFilter(RoomSummaryFilterForm? filter)
     {
-        var facility = string.IsNullOrWhiteSpace(filter?.Facility) ? "All" : filter.Facility.Trim().ToUpperInvariant();
-        if (facility is not ("All" or "MCD" or "WP" or "EBS" or "DH"))
-        {
-            facility = "All";
-        }
+        var facility = FacilityContext.Normalize(filter?.Facility);
 
         var ebsLocation = string.IsNullOrWhiteSpace(filter?.EbsLocation) ? "All EBS" : filter.EbsLocation.Trim();
         if (!new[] { "All EBS", "Evans", "Lamb", "BM" }.Contains(ebsLocation, StringComparer.OrdinalIgnoreCase))
@@ -4193,25 +4225,18 @@ public sealed class DashboardDataService(
             _ => summaries.Where(x => x.CurrentLotsCount > 0 || (x.CurrentBinsCount ?? 0) > 0).ToList()
         };
 
-    private static bool RoomMatchesFacilityFilter(Room room, string facility) =>
-        facility.Equals("All", StringComparison.OrdinalIgnoreCase) || FacilityCode(room.Warehouse.Code, room.Warehouse.Name).Equals(facility, StringComparison.OrdinalIgnoreCase);
+    private bool RoomMatchesFacilityFilter(Room room, string facility) =>
+        FacilityContext.Matches(room.Warehouse.Code, room.Warehouse.Name, facility);
 
-    private static bool RoomMatchesEbsLocationFilter(Room room, string ebsLocation) =>
-        !FacilityCode(room.Warehouse.Code, room.Warehouse.Name).Equals("EBS", StringComparison.OrdinalIgnoreCase)
+    private bool RoomMatchesEbsLocationFilter(Room room, string ebsLocation) =>
+        !FacilityContext.GetFacilityCode(room.Warehouse.Code, room.Warehouse.Name).Equals("EBS", StringComparison.OrdinalIgnoreCase)
         || ebsLocation.Equals("All EBS", StringComparison.OrdinalIgnoreCase)
         || RoomLocationGroup(room).Equals(ebsLocation, StringComparison.OrdinalIgnoreCase);
 
-    private static string FacilityCode(string warehouseCode, string warehouseName)
-    {
-        var combined = $"{warehouseCode} {warehouseName}".Trim();
-        if (combined.Contains("McDougall", StringComparison.OrdinalIgnoreCase) || combined.Contains("MCD", StringComparison.OrdinalIgnoreCase)) return "MCD";
-        if (combined.Contains("WP", StringComparison.OrdinalIgnoreCase)) return "WP";
-        if (combined.Contains("EBS", StringComparison.OrdinalIgnoreCase) || combined.Contains("Earl Brown", StringComparison.OrdinalIgnoreCase)) return "EBS";
-        if (combined.Contains("DH", StringComparison.OrdinalIgnoreCase)) return "DH";
-        return string.IsNullOrWhiteSpace(warehouseCode) ? "Other" : warehouseCode.ToUpperInvariant();
-    }
+    private string FacilityCode(string warehouseCode, string warehouseName) =>
+        FacilityContext.GetFacilityCode(warehouseCode, warehouseName);
 
-    private static string RoomLocationGroup(Room room)
+    private string RoomLocationGroup(Room room)
     {
         if (!string.IsNullOrWhiteSpace(room.SubLocation))
         {
@@ -5088,6 +5113,7 @@ public sealed class DashboardDataService(
                 query.Add($"{Uri.EscapeDataString(name)}={Uri.EscapeDataString(text)}");
             }
 
+            Add(nameof(ReceiptSearchForm.Facility), form.Facility);
             Add(nameof(ReceiptSearchForm.CropYear), form.CropYear);
             if (form.AllCropYears)
             {

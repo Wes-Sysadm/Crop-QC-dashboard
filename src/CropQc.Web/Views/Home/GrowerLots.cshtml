@@ -1,10 +1,23 @@
 @model CurrentGrowerLotsPageViewModel
+@inject IUserAccessService UserAccess
 @{
     ViewData["Title"] = "Grower Lots In Storage";
     ViewData["AutoRefresh"] = "true";
+    var canManageRecipients = await UserAccess.HasAccessAsync(User, ApplicationAreas.Configuration, PageAccessLevel.Admin, Context.RequestAborted);
 }
 
 <h1>Grower Lots In Storage</h1>
+<nav class="operation-tabs" aria-label="Grower Lots administration">
+    <a class="active" href="/GrowerLots/Current?Facility=@Model.Filter.Facility">Grower Lots</a>
+    <a href="/MasterData/canonical-growers">Growers</a>
+    <a href="/MasterData/orchard-blocks">Orchards / Blocks</a>
+    @if (canManageRecipients)
+    {
+        <a href="/Admin/OrchardRecipients">QC Recipients</a>
+        <a href="/Admin/OrchardRecipientImports">Manager Import</a>
+        <a href="/Admin/OrchardRecipientImports#recent-review-batches">Unmatched Identities</a>
+    }
+</nav>
 @await Html.PartialAsync("_PageRefreshControls")
 @if (Model.DataWarning is not null)
 {
@@ -12,6 +25,15 @@
 }
 
 <form class="toolbar" method="get">
+    <div class="field">
+        <label>Facility</label>
+        <select name="Facility">
+            @foreach (var facility in new[] { "WP", "EBS", "All" })
+            {
+                <option value="@facility" selected="@(Model.Filter.Facility == facility ? "selected" : null)">@facility</option>
+            }
+        </select>
+    </div>
     <div class="field">
         <label>Crop Year</label>
         <select name="CropYear">

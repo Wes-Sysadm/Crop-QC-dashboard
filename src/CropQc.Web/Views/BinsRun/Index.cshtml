@@ -158,6 +158,7 @@
                 <div class="projection-list">
                 @foreach (var item in Model.Planner.Projections)
                 {
+                    <div class="projection-list-row">
                     <a class="projection-list-item @(selected?.Id == item.Id ? "selected" : "")"
                        href="@(item.IsDeleted
                            ? $"/BinsRun?Section=Planner&PlannedDate={item.PlannedRunDate:yyyy-MM-dd}&ProjectionId={item.Id}&RoomId={Model.Filter.RoomId}&Facility={plannerFacility}&ProjectionVisibility={plannerVisibility}&ProjectionSort={plannerSort}"
@@ -166,6 +167,11 @@
                         <span><strong><span class="facility-badge">@item.FacilityCode</span> @item.Name</strong><small>@item.Status · @item.SourceCount source(s) @(item.IsDeleted ? "· Deleted" : "")</small></span>
                         <span><strong>@item.TotalPlannedBins bins</strong><small>@item.TotalPackedProjectedBoxes.ToString("0.##") packed boxes · @(item.EffectivePackoutPercent is decimal pct ? $"{pct:0.##}% packout" : "packout n/a") · @BusinessTime.FormatPacific(item.UpdatedAt)</small><small class="projection-card-action">@(item.IsDeleted ? "Inspect deleted record" : "View Outcome")</small></span>
                     </a>
+                    @if (!item.IsDeleted)
+                    {
+                        <a class="button secondary-button projection-print-action" href="/BinsRun/Projections/@item.Id/Outcome#print-report">Print Projection</a>
+                    }
+                    </div>
                 }
                 </div>
             }

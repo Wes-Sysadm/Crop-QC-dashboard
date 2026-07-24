@@ -132,10 +132,10 @@ public sealed class AdminCleanupCropYearTests
         var homeView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Index.cshtml"));
         var dailyQcView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "DailyQc", "Index.cshtml"));
 
-        Assert.Contains("/Receipts?DateFilter=today&SampleType=Receiving", service);
-        Assert.Contains("/DailyQc?status=ReadyToSend", service);
-        Assert.Contains("/DailyQc?status=MissingData", service);
-        Assert.Contains("/DailyQc?status=NeedsReview", service);
+        Assert.Contains("/Receipts?Facility={encodedFacility}&DateFilter=today&SampleType=Receiving", service);
+        Assert.Contains("/DailyQc?Facility={encodedFacility}&status=ReadyToSend", service);
+        Assert.Contains("/DailyQc?Facility={encodedFacility}&status=MissingData", service);
+        Assert.Contains("/DailyQc?Facility={encodedFacility}&status=NeedsReview", service);
         Assert.Contains("Samples Ready to Email", service);
         Assert.DoesNotContain("Samples ready to send", service);
         Assert.Contains("card.HelperText", homeView);

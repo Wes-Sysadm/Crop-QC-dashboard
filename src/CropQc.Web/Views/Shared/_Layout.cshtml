@@ -2,6 +2,7 @@
 @using System.Security.Claims
 @inject CropQc.Web.Services.IAdminAuthorizationService AdminAuthorization
 @inject CropQc.Web.Services.IUserAccessService UserAccess
+@inject CropQc.Web.Services.IFacilityContextService FacilityContext
 @inject CropQc.Web.Services.AppEnvironmentOptions AppEnvironment
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 <html lang="en">
@@ -12,6 +13,10 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
+    @{
+        var activeFacility = FacilityContext.Normalize(Context.Request.Query["Facility"].FirstOrDefault());
+        var facilityQuery = $"?Facility={Uri.EscapeDataString(activeFacility)}";
+    }
     @if (AppEnvironment.IsStaging)
     {
         <div class="environment-banner" role="status" aria-label="Staging environment">
@@ -20,7 +25,7 @@
         </div>
     }
     <header class="topbar">
-        <a class="brand" href="/">Crop QC Dashboard</a>
+        <a class="brand" href="/@facilityQuery">Crop QC Dashboard</a>
         <nav>
             @if (User.Identity?.IsAuthenticated == true)
             {
@@ -40,17 +45,16 @@
                 var canAccessBinsRun = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.BinsRun, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessDownloads = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Downloads, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessConfiguration = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Configuration, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
-                var canAccessVarietyColors = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.VarietyColors, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessBackups = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Backups, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
                 var canAccessDataCleanup = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.DataCleanup, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
-                var showAdminMenu = canAccessUsers || canAccessQcStations || canAccessMasterData || canAccessCurrentLots || canAccessDownloads || canAccessConfiguration || canAccessVarietyColors || canAccessBackups || canAccessDataCleanup;
+                var showAdminMenu = canAccessUsers || canAccessQcStations || canAccessMasterData || canAccessCurrentLots || canAccessDownloads || canAccessConfiguration || canAccessBackups || canAccessDataCleanup;
                 @if (canAccessDashboard)
                 {
-                    <a href="/">Dashboard</a>
+                    <a href="/@facilityQuery">Dashboard</a>
                 }
                 @if (canAccessDailyQc)
                 {
-                    <a href="/DailyQc">Daily QC</a>
+                    <a href="/DailyQc@facilityQuery">Daily QC</a>
                 }
                 @if (canAccessFieldSamples)
                 {
@@ -58,19 +62,19 @@
                 }
                 @if (canAccessReceipts)
                 {
-                    <a href="/Receipts">Receipts</a>
+                    <a href="/Receipts@facilityQuery">Receipts</a>
                 }
                 @if (canAccessRooms)
                 {
-                    <a href="/Rooms">Rooms</a>
+                    <a href="/Rooms@facilityQuery">Rooms</a>
                 }
                 @if (canAccessBinsRun)
                 {
-                    <a href="/BinsRun">Bins Run &amp; Transfers</a>
+                    <a href="/BinsRun@facilityQuery">Bins Run &amp; Transfers</a>
                 }
                 @if (canAccessGrowerLots)
                 {
-                    <a href="/GrowerLots/Current">Grower Lots</a>
+                    <a href="/GrowerLots/Current@facilityQuery">Grower Lots</a>
                 }
                 @if (canAccessCropYearReview)
                 {
@@ -104,13 +108,7 @@
                             @if (canAccessConfiguration)
                             {
                                 <a href="/Admin/Configuration">Configuration</a>
-                                <a href="/Admin/OrchardRecipients">Orchard QC Recipients</a>
-                                <a href="/Admin/OrchardRecipientImports">Orchard Manager Import</a>
                                 <a href="/Admin/CommercialPacks">Commercial Packs</a>
-                            }
-                            @if (canAccessVarietyColors)
-                            {
-                                <a href="/MasterData/fruit-profiles">Variety Colors</a>
                             }
                             @if (canAccessBackups)
                             {
@@ -139,6 +137,18 @@
             }
         </nav>
     </header>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <nav class="facility-context-bar no-print" aria-label="Active facility context">
+            <strong>Facility:</strong>
+            @foreach (var facility in new[] { "WP", "EBS", "All" })
+            {
+                var route = Context.Request.Path.Value ?? "/";
+                <a class="@(activeFacility == facility ? "active" : "")"
+                   href="@route?Facility=@Uri.EscapeDataString(facility)">@facility</a>
+            }
+        </nav>
+    }
     <main class="page">
         @RenderBody()
     </main>

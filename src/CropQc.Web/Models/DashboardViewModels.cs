@@ -883,6 +883,7 @@ public sealed class ReceiptListViewModel
 
 public sealed class ReceiptSearchForm
 {
+    public string Facility { get; set; } = "All";
     public int? CropYear { get; set; }
     public bool AllCropYears { get; set; }
     public string? DateFilter { get; set; }
@@ -1015,6 +1016,7 @@ public sealed class CurrentGrowerLotsPageViewModel
 
 public sealed class CurrentGrowerLotsFilterForm
 {
+    public string Facility { get; set; } = "All";
     public int? CropYear { get; set; }
     public int? WarehouseId { get; set; }
     public int? RoomId { get; set; }
@@ -1483,6 +1485,7 @@ public sealed class ReadinessViewModel
 public sealed class DailyQcDashboardViewModel
 {
     public string? DataWarning { get; set; }
+    public string Facility { get; set; } = "All";
     public int? WarehouseId { get; set; }
     public string? Status { get; set; }
     public string? StatusDescription { get; set; }
