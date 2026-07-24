@@ -4,6 +4,7 @@ using CropQc.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CropQc.Data.Migrations
 {
     [DbContext(typeof(CropQcDbContext))]
-    partial class CropQcDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260724074306_AddOrchardManagerContactImports")]
+    partial class AddOrchardManagerContactImports
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -692,206 +695,6 @@ namespace CropQc.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("CanonicalOrchardBlocks");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.CommercialPackDefinition", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<bool>("AllowsMixedSizes")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("Commodity")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
-
-                    b.Property<int?>("EffectiveCropYearEnd")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("EffectiveCropYearStart")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("MixRule")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("PackType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<decimal>("PackageWeightPounds")
-                        .HasPrecision(10, 4)
-                        .HasColumnType("decimal(10,4)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Code")
-                        .IsUnique();
-
-                    b.HasIndex("UpdatedByUserId");
-
-                    b.HasIndex("Commodity", "IsActive");
-
-                    b.ToTable("CommercialPackDefinitions");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.CommercialPackEligibleSize", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CommercialPackDefinitionId")
-                        .HasColumnType("int");
-
-                    b.Property<decimal?>("MaximumPercent")
-                        .HasPrecision(7, 4)
-                        .HasColumnType("decimal(7,4)");
-
-                    b.Property<decimal?>("MinimumPercent")
-                        .HasPrecision(7, 4)
-                        .HasColumnType("decimal(7,4)");
-
-                    b.Property<int>("Priority")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SizeCategory")
-                        .HasColumnType("int");
-
-                    b.Property<decimal?>("TargetPercent")
-                        .HasPrecision(7, 4)
-                        .HasColumnType("decimal(7,4)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CommercialPackDefinitionId", "SizeCategory")
-                        .IsUnique();
-
-                    b.ToTable("CommercialPackEligibleSizes");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.CommercialPackFruitProfileRestriction", b =>
-                {
-                    b.Property<int>("CommercialPackDefinitionId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("FruitProfileId")
-                        .HasColumnType("int");
-
-                    b.HasKey("CommercialPackDefinitionId", "FruitProfileId");
-
-                    b.HasIndex("FruitProfileId");
-
-                    b.ToTable("CommercialPackFruitProfileRestrictions");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.CommercialPackPlan", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("Commodity")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
-
-                    b.Property<int?>("EffectiveCropYearEnd")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("EffectiveCropYearStart")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("PlanType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Code")
-                        .IsUnique();
-
-                    b.HasIndex("UpdatedByUserId");
-
-                    b.HasIndex("Commodity", "IsActive");
-
-                    b.ToTable("CommercialPackPlans");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.CommercialPackPlanItem", b =>
-                {
-                    b.Property<int>("CommercialPackPlanId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("CommercialPackDefinitionId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Priority")
-                        .HasColumnType("int");
-
-                    b.HasKey("CommercialPackPlanId", "CommercialPackDefinitionId");
-
-                    b.HasIndex("CommercialPackDefinitionId");
-
-                    b.HasIndex("CommercialPackPlanId", "Priority");
-
-                    b.ToTable("CommercialPackPlanItems");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.DashboardConfiguration", b =>
@@ -3442,9 +3245,6 @@ namespace CropQc.Data.Migrations
                     b.Property<int?>("CancelledByUserId")
                         .HasColumnType("int");
 
-                    b.Property<int?>("CommercialPackPlanId")
-                        .HasColumnType("int");
-
                     b.Property<long>("ConcurrencyVersion")
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
@@ -3492,31 +3292,6 @@ namespace CropQc.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("PackAllocationSnapshotJson")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTimeOffset?>("PackCalculatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("PackCalculationVersion")
-                        .HasMaxLength(25)
-                        .HasColumnType("nvarchar(25)");
-
-                    b.Property<string>("PackConfigurationSnapshotJson")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("PackPlanCodeSnapshot")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("PackPlanNameSnapshot")
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
-
-                    b.Property<string>("PackPlanTypeSnapshot")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
 
                     b.Property<decimal>("PearPoundsPerBin")
                         .HasPrecision(10, 2)
@@ -3589,8 +3364,6 @@ namespace CropQc.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CancelledByUserId");
-
-                    b.HasIndex("CommercialPackPlanId");
 
                     b.HasIndex("CreatedByUserId");
 
@@ -3795,9 +3568,6 @@ namespace CropQc.Data.Migrations
                     b.Property<long?>("FieldSampleId")
                         .HasColumnType("bigint");
 
-                    b.Property<string>("FieldSampleTrendSnapshotJson")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<int>("FruitProfileId")
                         .HasColumnType("int");
 
@@ -3822,9 +3592,6 @@ namespace CropQc.Data.Migrations
 
                     b.Property<int>("JointSizeGradeBasisFruitCount")
                         .HasColumnType("int");
-
-                    b.Property<string>("JointSizeGradeSnapshotJson")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("LotSnapshot")
                         .HasMaxLength(100)
@@ -4623,75 +4390,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("CanonicalOrchard");
                 });
 
-            modelBuilder.Entity("CropQc.Data.Entities.CommercialPackDefinition", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.User", "UpdatedByUser")
-                        .WithMany()
-                        .HasForeignKey("UpdatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("UpdatedByUser");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.CommercialPackEligibleSize", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.CommercialPackDefinition", "CommercialPackDefinition")
-                        .WithMany("EligibleSizes")
-                        .HasForeignKey("CommercialPackDefinitionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CommercialPackDefinition");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.CommercialPackFruitProfileRestriction", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.CommercialPackDefinition", "CommercialPackDefinition")
-                        .WithMany("FruitProfileRestrictions")
-                        .HasForeignKey("CommercialPackDefinitionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.FruitProfile", "FruitProfile")
-                        .WithMany()
-                        .HasForeignKey("FruitProfileId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("CommercialPackDefinition");
-
-                    b.Navigation("FruitProfile");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.CommercialPackPlan", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.User", "UpdatedByUser")
-                        .WithMany()
-                        .HasForeignKey("UpdatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("UpdatedByUser");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.CommercialPackPlanItem", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.CommercialPackDefinition", "CommercialPackDefinition")
-                        .WithMany("PlanItems")
-                        .HasForeignKey("CommercialPackDefinitionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.CommercialPackPlan", "CommercialPackPlan")
-                        .WithMany("Items")
-                        .HasForeignKey("CommercialPackPlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CommercialPackDefinition");
-
-                    b.Navigation("CommercialPackPlan");
-                });
-
             modelBuilder.Entity("CropQc.Data.Entities.FieldSampleDeletionAudit", b =>
                 {
                     b.HasOne("CropQc.Data.Entities.BackupRunRecord", null)
@@ -5216,11 +4914,6 @@ namespace CropQc.Data.Migrations
                         .HasForeignKey("CancelledByUserId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("CropQc.Data.Entities.CommercialPackPlan", "CommercialPackPlan")
-                        .WithMany()
-                        .HasForeignKey("CommercialPackPlanId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("CropQc.Data.Entities.User", "CreatedByUser")
                         .WithMany()
                         .HasForeignKey("CreatedByUserId")
@@ -5247,8 +4940,6 @@ namespace CropQc.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("CancelledByUser");
-
-                    b.Navigation("CommercialPackPlan");
 
                     b.Navigation("CreatedByUser");
 
@@ -5473,20 +5164,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("Aliases");
 
                     b.Navigation("FieldSamples");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.CommercialPackDefinition", b =>
-                {
-                    b.Navigation("EligibleSizes");
-
-                    b.Navigation("FruitProfileRestrictions");
-
-                    b.Navigation("PlanItems");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.CommercialPackPlan", b =>
-                {
-                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.FruitProfile", b =>

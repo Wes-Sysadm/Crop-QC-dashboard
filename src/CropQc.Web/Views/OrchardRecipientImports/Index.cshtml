@@ -1,0 +1,116 @@
+@model CropQc.Web.Models.OrchardContactImportIndexViewModel
+@{
+    ViewData["Title"] = "Orchard Manager Workbook Import";
+}
+
+<section class="page-header">
+    <div>
+        <h1>Orchard Manager Workbook Import</h1>
+        <p class="muted">Dry run <strong>Master Contact List.xlsx</strong> using only the <strong>Summary</strong> worksheet. Dry run creates no database records and never creates a canonical orchard.</p>
+    </div>
+</section>
+
+<section class="panel">
+    <h2>Dry run</h2>
+    <form method="post" enctype="multipart/form-data" class="stack-form">
+        <label>Workbook
+            <input type="file" name="Workbook" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
+        </label>
+        <div class="button-row">
+            <button type="submit" formaction="/Admin/OrchardRecipientImports/Preview">Preview dry run</button>
+            <button type="submit" formaction="/Admin/OrchardRecipientImports/ExportDryRun" class="secondary-button">Export dry-run CSV</button>
+        </div>
+    </form>
+</section>
+
+@if (Model.Preview is { } preview)
+{
+    <section class="panel">
+        <h2>Dry-run summary</h2>
+        <p><strong>@preview.OriginalFileName</strong> · worksheet @preview.WorksheetName · SHA-256 <code>@preview.WorkbookSha256</code></p>
+        <div class="stat-grid">
+            <div class="stat-card"><strong>@preview.OrchardManagerSourceRows</strong><span>Orchard Manager rows</span></div>
+            <div class="stat-card"><strong>@preview.ParsedOrchardTokens</strong><span>Parsed orchard tokens</span></div>
+            <div class="stat-card"><strong>@preview.ExactMatches</strong><span>Exact matches</span></div>
+            <div class="stat-card"><strong>@preview.AliasMatches</strong><span>Alias matches</span></div>
+            <div class="stat-card"><strong>@preview.ProposedAliases</strong><span>Proposed aliases</span></div>
+            <div class="stat-card"><strong>@preview.Ambiguous</strong><span>Ambiguous</span></div>
+            <div class="stat-card"><strong>@preview.Unmatched</strong><span>Unmatched</span></div>
+            <div class="stat-card"><strong>@(preview.MissingEmails + preview.InvalidEmails)</strong><span>Missing/invalid emails</span></div>
+        </div>
+        <p class="notice">Candidate and proposed-alias matches require administrator approval. Regional Manager, Mechanic, blank, legend, and footer rows were ignored.</p>
+    </section>
+
+    @foreach (var group in preview.Rows.GroupBy(x => x.ReviewStatus).OrderBy(x => x.Key))
+    {
+        <section class="panel table-scroll">
+            <h2>@group.Key (@group.Count())</h2>
+            <table>
+                <thead>
+                    <tr><th>Row</th><th>Original orchard cell</th><th>Parsed token</th><th>Manager</th><th>Email</th><th>Matched orchard</th><th>Existing recipients</th><th>Proposed action / warning</th></tr>
+                </thead>
+                <tbody>
+                @foreach (var row in group)
+                {
+                    <tr>
+                        <td>@row.WorkbookRowNumber</td>
+                        <td>@row.OriginalOrchardCell</td>
+                        <td><strong>@row.ParsedOrchardToken</strong></td>
+                        <td>@row.ManagerName<br /><span class="muted">@row.Phone</span><br /><span class="muted">@row.PhysicalAddress</span></td>
+                        <td>@(row.Email ?? "Missing")</td>
+                        <td>
+                            @(row.SuggestedCanonicalOrchard ?? "Unresolved")
+                            @if (row.MatchScore is not null) { <span class="muted">(@row.MatchScore.Value.ToString("0.0000"))</span> }
+                            @if (row.Candidates.Count > 0)
+                            {
+                                <details><summary>Review candidates</summary>
+                                    <ul>
+                                    @foreach (var candidate in row.Candidates)
+                                    {
+                                        <li>@candidate.OrchardName — @candidate.SimilarityScore.ToString("0.0000") — @candidate.Reason</li>
+                                    }
+                                    </ul>
+                                </details>
+                            }
+                        </td>
+                        <td>@(row.ExistingRecipients.Count == 0 ? "None" : string.Join(", ", row.ExistingRecipients))</td>
+                        <td>@row.ProposedAction@if (!string.IsNullOrWhiteSpace(row.Warning)) { <br /><span class="status warning">@row.Warning</span> }</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </section>
+    }
+
+    <section class="panel">
+        <h2>Stage this workbook for review</h2>
+        <p>Staging stores review metadata only. It does not create aliases, contacts, orchard assignments, or recipients.</p>
+        <form method="post" enctype="multipart/form-data" action="/Admin/OrchardRecipientImports/Stage" class="stack-form">
+            <label>Re-select the exact workbook
+                <input type="file" name="Workbook" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
+            </label>
+            <button type="submit">Stage for review</button>
+        </form>
+    </section>
+}
+
+<section class="panel table-scroll">
+    <h2>Recent review batches</h2>
+    <table>
+        <thead><tr><th>Uploaded</th><th>Workbook</th><th>Status</th><th>Rows / tokens</th><th>Decisions</th><th>Uploaded by</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var batch in Model.RecentBatches)
+        {
+            <tr>
+                <td>@BusinessTime.FormatPacific(batch.UploadedAt)</td>
+                <td>@batch.OriginalFileName<br /><code>@batch.WorkbookSha256[..Math.Min(12, batch.WorkbookSha256.Length)]…</code></td>
+                <td>@batch.Status</td>
+                <td>@batch.OrchardManagerSourceRows / @batch.ParsedTokens</td>
+                <td>Pending @batch.PendingRows · Approved @batch.ApprovedRows · Rejected @batch.RejectedRows · Deferred @batch.DeferredRows</td>
+                <td>@batch.UploadedBy</td>
+                <td><a class="button-link" href="/Admin/OrchardRecipientImports/@batch.Id">Review</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</section>

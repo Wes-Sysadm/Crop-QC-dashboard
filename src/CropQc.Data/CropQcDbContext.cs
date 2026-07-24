@@ -20,7 +20,12 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<CanonicalGrowerNumber> CanonicalGrowerNumbers => Set<CanonicalGrowerNumber>();
     public DbSet<CanonicalOrchard> CanonicalOrchards => Set<CanonicalOrchard>();
     public DbSet<CanonicalOrchardBlock> CanonicalOrchardBlocks => Set<CanonicalOrchardBlock>();
+    public DbSet<CanonicalOrchardAlias> CanonicalOrchardAliases => Set<CanonicalOrchardAlias>();
     public DbSet<OrchardReportRecipient> OrchardReportRecipients => Set<OrchardReportRecipient>();
+    public DbSet<OrchardManagerContact> OrchardManagerContacts => Set<OrchardManagerContact>();
+    public DbSet<OrchardManagerAssignment> OrchardManagerAssignments => Set<OrchardManagerAssignment>();
+    public DbSet<OrchardContactImportBatch> OrchardContactImportBatches => Set<OrchardContactImportBatch>();
+    public DbSet<OrchardContactImportRow> OrchardContactImportRows => Set<OrchardContactImportRow>();
     public DbSet<OrchardBlockAlias> OrchardBlockAliases => Set<OrchardBlockAlias>();
     public DbSet<FruitProfile> FruitProfiles => Set<FruitProfile>();
     public DbSet<VarietyColorConfiguration> VarietyColorConfigurations => Set<VarietyColorConfiguration>();
@@ -526,6 +531,22 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasIndex(x => x.NormalizedOrchardKey).IsUnique();
         });
 
+        modelBuilder.Entity<CanonicalOrchardAlias>(entity =>
+        {
+            entity.Property(x => x.AliasText).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.NormalizedAlias).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Source).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.ReviewNote).HasMaxLength(1000);
+            entity.HasIndex(x => x.NormalizedAlias);
+            entity.HasIndex(x => new { x.CanonicalOrchardId, x.NormalizedAlias }).IsUnique();
+            entity.HasOne(x => x.CanonicalOrchard)
+                .WithMany(x => x.Aliases)
+                .HasForeignKey(x => x.CanonicalOrchardId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
         modelBuilder.Entity<OrchardReportRecipient>(entity =>
         {
             entity.Property(x => x.EmailAddress).HasMaxLength(320).IsRequired();
@@ -540,6 +561,97 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.DeletedByUser).WithMany().HasForeignKey(x => x.DeletedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<OrchardManagerContact>(entity =>
+        {
+            entity.Property(x => x.DisplayName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.NormalizedDisplayName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.EmailAddress).HasMaxLength(320);
+            entity.Property(x => x.NormalizedEmailAddress).HasMaxLength(320);
+            entity.Property(x => x.Phone).HasMaxLength(50);
+            entity.Property(x => x.NormalizedPhone).HasMaxLength(25);
+            entity.Property(x => x.CommunicationNote).HasMaxLength(1000);
+            entity.Property(x => x.SourceWorkbook).HasMaxLength(260).IsRequired();
+            entity.Property(x => x.SourceWorksheet).HasMaxLength(100).IsRequired();
+            entity.HasIndex(x => x.NormalizedEmailAddress);
+            entity.HasIndex(x => new { x.NormalizedDisplayName, x.NormalizedPhone });
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<OrchardManagerAssignment>(entity =>
+        {
+            entity.HasIndex(x => new { x.CanonicalOrchardId, x.OrchardManagerContactId }).IsUnique();
+            entity.HasOne(x => x.CanonicalOrchard)
+                .WithMany(x => x.ManagerAssignments)
+                .HasForeignKey(x => x.CanonicalOrchardId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.OrchardManagerContact)
+                .WithMany(x => x.OrchardAssignments)
+                .HasForeignKey(x => x.OrchardManagerContactId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.OrchardReportRecipient)
+                .WithMany()
+                .HasForeignKey(x => x.OrchardReportRecipientId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.SourceImportRow)
+                .WithMany()
+                .HasForeignKey(x => x.SourceImportRowId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<OrchardContactImportBatch>(entity =>
+        {
+            entity.Property(x => x.OriginalFileName).HasMaxLength(260).IsRequired();
+            entity.Property(x => x.WorkbookSha256).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.WorksheetName).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.ImportReason).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.WorkbookSha256, x.WorksheetName });
+            entity.HasOne(x => x.UploadedByUser).WithMany().HasForeignKey(x => x.UploadedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.AppliedByUser).WithMany().HasForeignKey(x => x.AppliedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.VerifiedBackupRun).WithMany().HasForeignKey(x => x.VerifiedBackupRunId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<OrchardContactImportRow>(entity =>
+        {
+            entity.Property(x => x.OriginalOrchardCell).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.ParsedOrchardToken).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.ManagerDisplayName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.NormalizedManagerName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.EmailAddress).HasMaxLength(320);
+            entity.Property(x => x.NormalizedEmailAddress).HasMaxLength(320);
+            entity.Property(x => x.Phone).HasMaxLength(50);
+            entity.Property(x => x.NormalizedPhone).HasMaxLength(25);
+            entity.Property(x => x.PhysicalAddress).HasMaxLength(1000);
+            entity.Property(x => x.CommunicationNote).HasMaxLength(1000);
+            entity.Property(x => x.SourceStatusNote).HasMaxLength(2000);
+            entity.Property(x => x.MatchMethod).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.MatchScore).HasPrecision(6, 4);
+            entity.Property(x => x.Warning).HasMaxLength(2000);
+            entity.Property(x => x.ReviewDecision).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.ReviewNote).HasMaxLength(2000);
+            entity.Property(x => x.AppliedAction).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.OrchardContactImportBatchId, x.WorkbookRowNumber });
+            entity.HasIndex(x => new { x.OrchardContactImportBatchId, x.ReviewDecision });
+            entity.HasOne(x => x.OrchardContactImportBatch)
+                .WithMany(x => x.Rows)
+                .HasForeignKey(x => x.OrchardContactImportBatchId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.SuggestedCanonicalOrchard)
+                .WithMany()
+                .HasForeignKey(x => x.SuggestedCanonicalOrchardId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ApprovedCanonicalOrchard)
+                .WithMany()
+                .HasForeignKey(x => x.ApprovedCanonicalOrchardId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ReviewedByUser).WithMany().HasForeignKey(x => x.ReviewedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.OrchardManagerContact).WithMany().HasForeignKey(x => x.OrchardManagerContactId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.OrchardReportRecipient).WithMany().HasForeignKey(x => x.OrchardReportRecipientId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<OrchardBlockAlias>(entity =>
