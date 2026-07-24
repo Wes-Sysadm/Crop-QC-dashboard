@@ -698,7 +698,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("ProjectionDistributionMath.CombineWeightedSizePercentages", binsRunService);
         Assert.Contains("currentBins(lot) * percentage", projectionMath);
         Assert.Contains("lot.CurrentBins * grade.Value", service);
-        Assert.Contains("Gross Size Projection", binsRun);
+        Assert.Contains("Projected Fruit Sizing by Calculated Fruit Size", binsRun);
         Assert.Contains("SizeRepresentedBins", service);
         Assert.Contains("SizeMissingBins", service);
         Assert.Contains("GradeRepresentedBins", service);
@@ -710,7 +710,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.DoesNotContain("Baseline Size Distribution", room);
         Assert.DoesNotContain("Packout Projections", room);
         Assert.Contains("Run Planner", binsRun);
-        Assert.Contains("Combined Gross Size Projection", binsRun);
+        Assert.Contains("Projected Packed Boxes by Pack", binsRun);
         Assert.Contains("Change Over Time", room);
         Assert.Contains("plan has not changed inventory", binsRun);
         Assert.Contains("Current Lots", room);

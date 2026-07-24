@@ -492,16 +492,28 @@
         </section>
 
         <section class="panel" data-combined-results>
-            <h2>Combined Gross Size Projection (Before Packout)</h2>
+            <h2>Projected Fruit Sizing by Calculated Fruit Size</h2>
+            <p class="muted">What size fruit is expected on the planned date? These are biological sizing estimates, not commercial pack names.</p>
             @if (selected.CombinedSizes.Count == 0)
             {
                 <p class="empty-state">No calculated size distribution is available.</p>
             }
             else
             {
+                var largestPackedSize = Math.Max(1m, selected.CombinedSizes.Max(x => x.PackedBoxes));
+                <div class="projection-bar-chart" role="img" aria-label="Projected packed box equivalents by calculated fruit size">
+                    @foreach (var size in selected.CombinedSizes)
+                    {
+                        <div class="projection-bar-row">
+                            <span>@size.Commodity @size.Size</span>
+                            <progress value="@size.PackedBoxes" max="@largestPackedSize">@size.PackedBoxes.ToString("0.##")</progress>
+                            <strong>@size.PackedBoxes.ToString("0.##")</strong>
+                        </div>
+                    }
+                </div>
                 <div class="table-wrap">
                     <table>
-                        <thead><tr><th>Commodity</th><th>Size</th><th>Gross</th><th>Packed</th><th>Cull</th></tr></thead>
+                        <thead><tr><th>Commodity</th><th>Calculated fruit size</th><th>Gross 40-lb equivalents</th><th>Packed 40-lb equivalents</th><th>Cull equivalents</th></tr></thead>
                         <tbody>
                         @foreach (var size in selected.CombinedSizes)
                         {
@@ -511,6 +523,177 @@
                     </table>
                 </div>
             }
+
+            <section class="subpanel" aria-labelledby="commercial-pack-heading">
+                <h2 id="commercial-pack-heading">Projected Packed Boxes by Pack</h2>
+                <p class="muted">What commercial packs are expected under the selected plan? Pack allocation uses the sizing projection above without changing growth, bins, or Expected Packout.</p>
+
+                @if (selected.CanEditRecord)
+                {
+                    @if (selected.PackPlanOptions.Count == 0)
+                    {
+                        <p class="notice">No active commercial pack plan is configured for crop year @selected.CropYear. A configuration administrator must create a plan before this projection can be marked Ready.</p>
+                    }
+                    else
+                    {
+                        <form class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/PackPlan/Preview">
+                            <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
+                            <input type="hidden" name="PlannedRunDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
+                            <label>Pack-plan scenario
+                                <select name="CommercialPackPlanId" required>
+                                    <option value="">Select a configured scenario</option>
+                                    @foreach (var plan in selected.PackPlanOptions)
+                                    {
+                                        <option value="@plan.Id" selected="@(plan.Id == selected.CommercialPackPlanId)">@plan.DisplayName (@plan.PlanType · @plan.Commodity)</option>
+                                    }
+                                </select>
+                            </label>
+                            <button type="submit">@(selected.CommercialPackPlanId is null ? "Preview Pack Scenario" : "Recalculate Using Current Pack Configuration")</button>
+                        </form>
+                    }
+                }
+
+                @if (selected.CommercialPackPlanId is null)
+                {
+                    <p class="empty-state">No commercial pack scenario has been applied. Fruit remains visible in the sizing projection and is not silently assigned to a pack.</p>
+                }
+                else
+                {
+                    <p>
+                        <strong>Active scenario: @selected.PackPlanName</strong>
+                        <span class="status pending">@selected.PackPlanType</span>
+                        @if (selected.PackCalculatedAt is not null)
+                        {
+                            <span class="muted">Saved @BusinessTime.FormatPacific(selected.PackCalculatedAt.Value) · calculation @selected.PackCalculationVersion</span>
+                        }
+                    </p>
+
+                    @if (selected.PackWarnings.Count > 0)
+                    {
+                        <div class="notice warning">
+                            <strong>Pack projection needs configuration review</strong>
+                            <ul>
+                                @foreach (var warning in selected.PackWarnings)
+                                {
+                                    <li>@warning</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+
+                    @if (selected.PackResults.Count == 0)
+                    {
+                        <p class="empty-state">This scenario produced no completed commercial-pack allocation.</p>
+                    }
+                    else
+                    {
+                        var largestPackCount = Math.Max(1m, selected.PackResults.Max(x => x.UnroundedPacks));
+                        <div class="projection-bar-chart" role="img" aria-label="Projected commercial packs by configured pack">
+                            @foreach (var pack in selected.PackResults)
+                            {
+                                <div class="projection-bar-row">
+                                    <span>@pack.PackName @(pack.IsMixedSize ? "(mixed)" : "")</span>
+                                    <progress value="@pack.UnroundedPacks" max="@largestPackCount">@pack.UnroundedPacks.ToString("0.##")</progress>
+                                    <strong>@pack.UnroundedPacks.ToString("0.##")</strong>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="table-wrap">
+                            <table>
+                                <thead><tr><th>Pack</th><th>Type</th><th>Eligible calculated sizes</th><th>Rule</th><th>Gross lb</th><th>Assigned packed lb</th><th>Cull/loss lb</th><th>Pack weight</th><th>Projected packs</th><th>Rounded packs</th><th>Residual lb</th><th>% of projected packout</th></tr></thead>
+                                <tbody>
+                                @foreach (var pack in selected.PackResults)
+                                {
+                                    var eligibleLeftover = selected.UnallocatedFruit
+                                        .Where(x => x.Commodity.Equals(pack.Commodity, StringComparison.OrdinalIgnoreCase)
+                                            && pack.EligibleSizes.Contains(x.SizeCategory))
+                                        .Sum(x => x.Pounds);
+                                    <tr>
+                                        <td>
+                                            <details>
+                                                <summary><strong>@pack.PackCode · @pack.PackName</strong></summary>
+                                                <p>@(pack.IsMixedSize ? "Mixed-size" : "Single-size") pack using @pack.MixRule.</p>
+                                                <p>Contributions:
+                                                    @(pack.Contributions.Count == 0
+                                                        ? "None"
+                                                        : string.Join("; ", pack.Contributions
+                                                            .GroupBy(x => new { x.SourceId, x.SourceLabel, x.SizeCategory })
+                                                            .Select(x => $"{x.Key.SourceLabel}, size {x.Key.SizeCategory}: {x.Sum(y => y.AssignedPounds):0.##} packed lb")))
+                                                </p>
+                                                <p>Leftover eligible packed fruit: @eligibleLeftover.ToString("0.##") lb.</p>
+                                                @if (pack.GradeAllocations.Count > 0)
+                                                {
+                                                    <p>Observed grade allocation: @string.Join("; ", pack.GradeAllocations.Select(x => $"{x.GradeCode}: {x.AssignedPounds:0.##} lb"))</p>
+                                                }
+                                                @if (pack.GradeWarning is not null)
+                                                {
+                                                    <p class="notice warning">@pack.GradeWarning</p>
+                                                }
+                                            </details>
+                                        </td>
+                                        <td>@pack.PackType</td>
+                                        <td>@string.Join(" + ", pack.EligibleSizes)</td>
+                                        <td>@pack.MixRule</td>
+                                        <td>@pack.GrossAssignedPounds.ToString("0.##")</td>
+                                        <td>@pack.AssignedPounds.ToString("0.##")</td>
+                                        <td>@pack.CullPounds.ToString("0.##")</td>
+                                        <td>@pack.PackageWeightPounds.ToString("0.####") lb</td>
+                                        <td>@pack.UnroundedPacks.ToString("0.##")</td>
+                                        <td>@pack.RoundedPacks</td>
+                                        <td>@pack.RoundingResidualPounds.ToString("0.##")</td>
+                                        <td>@pack.PercentageOfProjectedPackout.ToString("0.##")%</td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
+                    <div class="metric-grid">
+                        <div class="metric-card"><span class="metric-label">Standard packs</span><strong>@selected.PackResults.Where(x => x.PackType == "Standard").Sum(x => x.UnroundedPacks).ToString("0.##")</strong></div>
+                        <div class="metric-card"><span class="metric-label">Euro packs</span><strong>@selected.PackResults.Where(x => x.PackType == "Euro").Sum(x => x.UnroundedPacks).ToString("0.##")</strong></div>
+                        <div class="metric-card"><span class="metric-label">Other packs</span><strong>@selected.PackResults.Where(x => x.PackType == "Other").Sum(x => x.UnroundedPacks).ToString("0.##")</strong></div>
+                        <div class="metric-card"><span class="metric-label">Assigned packed fruit</span><strong>@selected.PackAssignedPounds.ToString("0.##") lb</strong></div>
+                        <div class="metric-card"><span class="metric-label">Unallocated packed fruit</span><strong>@selected.PackUnallocatedPounds.ToString("0.##") lb</strong></div>
+                    </div>
+
+                    <h3>Unallocated Projected Fruit</h3>
+                    @if (selected.UnallocatedFruit.Count == 0)
+                    {
+                        <p>No projected packed fruit remains unallocated.</p>
+                    }
+                    else
+                    {
+                        <div class="table-wrap">
+                            <table>
+                                <thead><tr><th>Source</th><th>Commodity</th><th>Calculated size</th><th>Pounds</th><th>40-lb equivalents</th><th>Reason</th></tr></thead>
+                                <tbody>
+                                @foreach (var row in selected.UnallocatedFruit)
+                                {
+                                    <tr><td>@row.SourceLabel</td><td>@row.Commodity</td><td>@row.SizeCategory</td><td>@row.Pounds.ToString("0.##")</td><td>@row.StandardBoxEquivalents.ToString("0.##")</td><td>@row.Reason</td></tr>
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
+                    var reconciliationDifference = selected.TotalProjectedPounds
+                        - selected.PackAssignedPounds
+                        - selected.PackUnallocatedPounds
+                        - selected.TotalCullProjectedPounds;
+                    <h3>Projection Reconciliation</h3>
+                    <p>
+                        Gross @selected.TotalProjectedPounds.ToString("0.##") lb =
+                        assigned packed @selected.PackAssignedPounds.ToString("0.##") lb +
+                        unallocated packed @selected.PackUnallocatedPounds.ToString("0.##") lb +
+                        cull/loss @selected.TotalCullProjectedPounds.ToString("0.##") lb.
+                        Difference: @reconciliationDifference.ToString("0.####") lb.
+                        Rounded-pack residual: @selected.PackRoundingResidualPounds.ToString("0.##") lb.
+                    </p>
+                }
+            </section>
+
             <h2>Combined Grade Projection</h2>
             @if (selected.CombinedGrades.Count == 0)
             {

@@ -1,0 +1,83 @@
+@model RunProjectionPackPlanPreviewViewModel
+@{
+    ViewData["Title"] = "Commercial Pack Plan Preview";
+}
+
+<h1>Commercial Pack Plan Preview</h1>
+<p><strong>@Model.ProjectionName</strong> · @Model.PlannedRunDate</p>
+<p>This comparison uses the saved growth projection unchanged. Applying it replaces only the projection’s commercial-pack configuration and allocation snapshot.</p>
+
+@if (Model.ProposedWarnings.Count > 0)
+{
+    <div class="notice warning">
+        <strong>Configuration warning</strong>
+        <ul>@foreach (var warning in Model.ProposedWarnings) { <li>@warning</li> }</ul>
+    </div>
+}
+
+<div class="projection-scenario-grid">
+    <section class="panel">
+        <h2>Current saved scenario</h2>
+        @if (Model.CurrentPacks.Count == 0)
+        {
+            <p class="empty-state">No commercial pack scenario is currently saved.</p>
+        }
+        else
+        {
+            <table><thead><tr><th>Pack</th><th>Sizes</th><th>Pounds</th><th>Projected packs</th></tr></thead><tbody>
+            @foreach (var pack in Model.CurrentPacks)
+            {
+                <tr><td>@pack.PackName</td><td>@string.Join(" + ", pack.EligibleSizes)</td><td>@pack.AssignedPounds.ToString("0.##")</td><td>@pack.UnroundedPacks.ToString("0.##") (@pack.RoundedPacks rounded)</td></tr>
+            }
+            </tbody></table>
+        }
+        <p><strong>@Model.CurrentAssignedPounds.ToString("0.##") lb assigned</strong></p>
+    </section>
+
+    <section class="panel">
+        <h2>Proposed: @Model.ProposedPlanName</h2>
+        <p>@Model.ProposedPlanType scenario</p>
+        @if (Model.ProposedPacks.Count == 0)
+        {
+            <p class="empty-state">No completed pack allocation is available.</p>
+        }
+        else
+        {
+            <table><thead><tr><th>Pack</th><th>Sizes</th><th>Pounds</th><th>Projected packs</th></tr></thead><tbody>
+            @foreach (var pack in Model.ProposedPacks)
+            {
+                <tr><td>@pack.PackName</td><td>@string.Join(" + ", pack.EligibleSizes)</td><td>@pack.AssignedPounds.ToString("0.##")</td><td>@pack.UnroundedPacks.ToString("0.##") (@pack.RoundedPacks rounded)</td></tr>
+            }
+            </tbody></table>
+        }
+        <p><strong>@Model.ProposedAssignedPounds.ToString("0.##") lb assigned</strong></p>
+    </section>
+</div>
+
+<section class="panel">
+    <h2>Proposed Unallocated Projected Fruit</h2>
+    @if (Model.ProposedUnallocated.Count == 0)
+    {
+        <p>No projected packed fruit remains unallocated.</p>
+    }
+    else
+    {
+        <table><thead><tr><th>Source</th><th>Commodity</th><th>Size</th><th>Pounds</th><th>40-pound equivalents</th><th>Reason</th></tr></thead><tbody>
+        @foreach (var row in Model.ProposedUnallocated)
+        {
+            <tr><td>@row.SourceLabel</td><td>@row.Commodity</td><td>@row.SizeCategory</td><td>@row.Pounds.ToString("0.##")</td><td>@row.StandardBoxEquivalents.ToString("0.##")</td><td>@row.Reason</td></tr>
+        }
+        </tbody></table>
+    }
+</section>
+
+<div class="action-bar">
+    <a class="button secondary-button" href="/BinsRun?Section=Planner&amp;PlannedDate=@Model.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@Model.ProjectionId">Back Without Changes</a>
+    <form method="post" action="/BinsRun/Projections/@Model.ProjectionId/PackPlan/Apply">
+        <input type="hidden" name="CommercialPackPlanId" value="@Model.CommercialPackPlanId" />
+        <input type="hidden" name="ConcurrencyVersion" value="@Model.ConcurrencyVersion" />
+        <input type="hidden" name="ConfigurationHash" value="@Model.ConfigurationHash" />
+        <input type="hidden" name="PlannedRunDate" value="@Model.PlannedRunDate.ToString("yyyy-MM-dd")" />
+        <button type="submit" disabled="@(Model.ProposedWarnings.Count > 0)">Apply This Pack Scenario</button>
+    </form>
+</div>

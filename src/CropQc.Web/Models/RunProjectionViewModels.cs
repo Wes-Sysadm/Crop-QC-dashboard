@@ -99,10 +99,98 @@ public sealed class RunProjectionDetailViewModel : RunProjectionListItemViewMode
     public IReadOnlyList<RunProjectionSourceViewModel> Sources { get; set; } = [];
     public IReadOnlyList<RunProjectionCombinedSizeViewModel> CombinedSizes { get; set; } = [];
     public IReadOnlyList<RunProjectionCombinedGradeViewModel> CombinedGrades { get; set; } = [];
+    public int? CommercialPackPlanId { get; set; }
+    public string? PackPlanCode { get; set; }
+    public string? PackPlanName { get; set; }
+    public string? PackPlanType { get; set; }
+    public string? PackCalculationVersion { get; set; }
+    public DateTimeOffset? PackCalculatedAt { get; set; }
+    public IReadOnlyList<RunProjectionPackPlanOptionViewModel> PackPlanOptions { get; set; } = [];
+    public IReadOnlyList<RunProjectionPackResultViewModel> PackResults { get; set; } = [];
+    public IReadOnlyList<RunProjectionUnallocatedFruitViewModel> UnallocatedFruit { get; set; } = [];
+    public IReadOnlyList<string> PackWarnings { get; set; } = [];
+    public decimal PackAssignedPounds { get; set; }
+    public decimal PackUnallocatedPounds { get; set; }
+    public decimal PackRoundingResidualPounds { get; set; }
     public bool HasUnknownCommodity => Sources.Any(x => x.Commodity == "Unknown");
     public bool HasUnmappedFieldSampleSources => Sources.Any(x => x.SourceType == "FieldSample" && x.ActualBinsRunEntryId is null);
     public bool CanEditRecord { get; set; }
     public bool CanDeleteRecord { get; set; }
+}
+
+public sealed record RunProjectionPackPlanOptionViewModel(
+    int Id,
+    string Code,
+    string DisplayName,
+    string Commodity,
+    string PlanType);
+
+public sealed record RunProjectionPackContributionViewModel(
+    long SourceId,
+    string SourceLabel,
+    int SizeCategory,
+    decimal AssignedPounds,
+    decimal GrossPounds,
+    decimal CullPounds);
+
+public sealed record RunProjectionPackGradeViewModel(string GradeCode, decimal AssignedPounds);
+
+public sealed record RunProjectionPackResultViewModel(
+    int DefinitionId,
+    string PackCode,
+    string PackName,
+    string Commodity,
+    string PackType,
+    decimal PackageWeightPounds,
+    bool IsMixedSize,
+    string MixRule,
+    IReadOnlyList<int> EligibleSizes,
+    decimal GrossAssignedPounds,
+    decimal AssignedPounds,
+    decimal CullPounds,
+    decimal UnroundedPacks,
+    int RoundedPacks,
+    decimal RoundingResidualPounds,
+    decimal PercentageOfProjectedPackout,
+    IReadOnlyList<RunProjectionPackContributionViewModel> Contributions,
+    IReadOnlyList<RunProjectionPackGradeViewModel> GradeAllocations,
+    string? GradeWarning);
+
+public sealed record RunProjectionUnallocatedFruitViewModel(
+    long SourceId,
+    string SourceLabel,
+    string Commodity,
+    int SizeCategory,
+    decimal Pounds,
+    decimal StandardBoxEquivalents,
+    string Reason);
+
+public sealed class RunProjectionPackPlanForm
+{
+    public long ProjectionId { get; set; }
+    public int CommercialPackPlanId { get; set; }
+    public long ConcurrencyVersion { get; set; }
+    public DateOnly PlannedRunDate { get; set; }
+    public string? ConfigurationHash { get; set; }
+}
+
+public sealed class RunProjectionPackPlanPreviewViewModel
+{
+    public long ProjectionId { get; set; }
+    public string ProjectionName { get; set; } = "";
+    public DateOnly PlannedRunDate { get; set; }
+    public long ConcurrencyVersion { get; set; }
+    public int CommercialPackPlanId { get; set; }
+    public string ProposedPlanName { get; set; } = "";
+    public string ProposedPlanType { get; set; } = "";
+    public string ConfigurationHash { get; set; } = "";
+    public IReadOnlyList<RunProjectionPackResultViewModel> CurrentPacks { get; set; } = [];
+    public IReadOnlyList<RunProjectionPackResultViewModel> ProposedPacks { get; set; } = [];
+    public IReadOnlyList<RunProjectionUnallocatedFruitViewModel> CurrentUnallocated { get; set; } = [];
+    public IReadOnlyList<RunProjectionUnallocatedFruitViewModel> ProposedUnallocated { get; set; } = [];
+    public IReadOnlyList<string> ProposedWarnings { get; set; } = [];
+    public decimal CurrentAssignedPounds { get; set; }
+    public decimal ProposedAssignedPounds { get; set; }
 }
 
 public sealed class RunProjectionSourceViewModel
