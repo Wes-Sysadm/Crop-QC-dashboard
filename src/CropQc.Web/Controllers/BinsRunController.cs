@@ -10,21 +10,49 @@ namespace CropQc.Web.Controllers;
 public sealed class BinsRunController(
     IBinsRunService binsRunService,
     IRunProjectionService runProjectionService,
-    IDashboardDataService dashboardDataService) : Controller
+    IDashboardDataService dashboardDataService,
+    ILogger<BinsRunController> logger) : Controller
 {
     [HttpGet("")]
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
     public async Task<IActionResult> Index([FromQuery] BinsRunFilterForm filter, CancellationToken cancellationToken)
     {
         var model = await binsRunService.GetPageAsync(filter, User, cancellationToken);
-        model.Planner = await runProjectionService.GetPlannerAsync(
-            filter.PlannedDate,
-            filter.ProjectionId,
-            filter.Facility,
-            filter.ProjectionVisibility,
-            filter.ProjectionSort,
-            User,
-            cancellationToken);
+        try
+        {
+            model.Planner = await runProjectionService.GetPlannerAsync(
+                filter.PlannedDate,
+                filter.ProjectionId,
+                filter.Facility,
+                filter.ProjectionVisibility,
+                filter.ProjectionSort,
+                User,
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            var diagnostic = DatabaseFailureDiagnostics.Classify(exception);
+            var correlationId = string.IsNullOrWhiteSpace(HttpContext.TraceIdentifier)
+                ? Guid.NewGuid().ToString("N")[..12]
+                : HttpContext.TraceIdentifier;
+            logger.LogError(
+                exception,
+                "Bins Run planner load failed. Route={Route} ProjectionId={ProjectionId} CorrelationId={CorrelationId} Category={Category} ProviderCode={ProviderCode}",
+                "/BinsRun",
+                filter.ProjectionId,
+                correlationId,
+                diagnostic.Category,
+                diagnostic.ProviderCode);
+            model.Planner = new RunProjectionPlannerViewModel
+            {
+                SelectedDate = filter.PlannedDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
+                SelectedFacility = string.IsNullOrWhiteSpace(filter.Facility) ? "All" : filter.Facility,
+                SelectedDeletionStatus = string.IsNullOrWhiteSpace(filter.ProjectionVisibility) ? "Active" : filter.ProjectionVisibility,
+                SelectedSort = string.IsNullOrWhiteSpace(filter.ProjectionSort) ? "Facility" : filter.ProjectionSort,
+                PlannerWarning = $"{diagnostic.SafeMessage} The Bins Run inventory and transfer tools remain available. Reference {correlationId}.",
+                DiagnosticReference = correlationId
+            };
+        }
         if (filter.RoomId is int roomId)
         {
             var room = await dashboardDataService.GetRoomDetailAsync(roomId, cancellationToken);

@@ -32,6 +32,11 @@
 
 @if (activeSection.Equals("Planner", StringComparison.OrdinalIgnoreCase))
 {
+    @if (!string.IsNullOrWhiteSpace(Model.Planner.PlannerWarning))
+    {
+        <p class="notice warning">@Model.Planner.PlannerWarning</p>
+    }
+
     <section class="panel">
         <div class="room-card-header">
             <div>

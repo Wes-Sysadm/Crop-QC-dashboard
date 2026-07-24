@@ -13,7 +13,71 @@ public static class OrchardContactMatcher
 {
     public static OrchardContactDryRunRowViewModel Match(
         ParsedOrchardManagerToken token,
-        IReadOnlyList<CanonicalOrchardMatchSource> orchards)
+        OrchardIdentityResolutionSet resolutionSet)
+    {
+        var canonicalMatch = Match(token, resolutionSet.Orchards, stopBeforeDeterministicAndFuzzy: true);
+        if (canonicalMatch is not null) return canonicalMatch;
+
+        var tokenKey = OrchardContactNormalization.NormalizeOrchardIdentity(token.ParsedOrchardToken);
+        var exactEvidence = resolutionSet.Evidence
+            .Where(x => x.NormalizedIdentity == tokenKey
+                && x.EvidenceType != OrchardIdentityEvidenceTypes.GrowerNumber)
+            .OrderBy(x => OrchardIdentityResolverService.EvidencePriority(x.EvidenceType))
+            .ToArray();
+        if (exactEvidence.Length > 0)
+        {
+            var resolvedOrchardIds = exactEvidence.Select(x => x.CanonicalOrchardId).OfType<int>().Distinct().ToArray();
+            if (resolvedOrchardIds.Length == 1)
+            {
+                var orchard = resolutionSet.Orchards.Single(x => x.Id == resolvedOrchardIds[0]);
+                var strongest = exactEvidence.First(x => x.CanonicalOrchardId == orchard.Id);
+                var method = strongest.EvidenceType switch
+                {
+                    OrchardIdentityEvidenceTypes.Grower or OrchardIdentityEvidenceTypes.GrowerAlias => OrchardContactMatchMethods.Grower,
+                    OrchardIdentityEvidenceTypes.GrowerLot => OrchardContactMatchMethods.GrowerLot,
+                    OrchardIdentityEvidenceTypes.CanonicalBlock or OrchardIdentityEvidenceTypes.CanonicalBlockAlias => OrchardContactMatchMethods.CanonicalBlock,
+                    _ => OrchardContactMatchMethods.PersistedIdentity
+                };
+                return Result(
+                    token,
+                    method,
+                    orchard,
+                    EvidenceCandidates(exactEvidence),
+                    $"Resolved through exact {strongest.EvidenceType.ToLowerInvariant()} evidence tied to the confirmed canonical orchard.",
+                    1m);
+            }
+
+            if (resolvedOrchardIds.Length > 1)
+            {
+                return Result(
+                    token,
+                    OrchardContactMatchMethods.Ambiguous,
+                    null,
+                    EvidenceCandidates(exactEvidence),
+                    "Existing identity records point to more than one canonical orchard. An administrator must choose.");
+            }
+
+            return Result(
+                token,
+                OrchardContactMatchMethods.CanonicalSetupRequired,
+                null,
+                EvidenceCandidates(exactEvidence),
+                "The grower or Grower Lot exists, but it has no confirmed canonical orchard target. Select an existing orchard or complete canonical setup before approval.",
+                1m);
+        }
+
+        return Match(token, resolutionSet.Orchards)!;
+    }
+
+    public static OrchardContactDryRunRowViewModel Match(
+        ParsedOrchardManagerToken token,
+        IReadOnlyList<CanonicalOrchardMatchSource> orchards) =>
+        Match(token, orchards, stopBeforeDeterministicAndFuzzy: false)!;
+
+    private static OrchardContactDryRunRowViewModel? Match(
+        ParsedOrchardManagerToken token,
+        IReadOnlyList<CanonicalOrchardMatchSource> orchards,
+        bool stopBeforeDeterministicAndFuzzy)
     {
         var tokenKey = OrchardContactNormalization.NormalizeOrchardIdentity(token.ParsedOrchardToken);
         if (OrchardIdentityClassifier.IsStandaloneFourDigitGrowerNumber(token.ParsedOrchardToken))
@@ -59,6 +123,8 @@ public static class OrchardContactMatcher
                 Candidates(alias, token, "The normalized alias is assigned to more than one orchard."),
                 "The alias is ambiguous. An administrator must choose.");
         }
+
+        if (stopBeforeDeterministicAndFuzzy) return null;
 
         var tokenWithoutOrchard = OrchardContactNormalization.WithoutOrchardWord(tokenKey);
         var deterministic = orchards.Where(x =>
@@ -134,6 +200,50 @@ public static class OrchardContactMatcher
                 ? "No existing canonical orchard matched. No orchard or recipient will be created."
                 : "Candidate suggestions are review-only. No orchard or recipient will be created without approval.");
     }
+
+    private static IReadOnlyList<OrchardMatchCandidateViewModel> EvidenceCandidates(
+        IReadOnlyList<OrchardIdentityEvidence> evidence) =>
+        evidence
+            .GroupBy(x => new
+            {
+                x.EvidenceType,
+                x.Identity,
+                x.CanonicalOrchardId,
+                x.CanonicalOrchardName,
+                x.CanonicalGrowerId,
+                x.GrowerName,
+                x.GrowerNumber,
+                x.BlockName,
+                x.LotNumber
+            })
+            .Select(x => new OrchardMatchCandidateViewModel(
+                x.Key.CanonicalOrchardId,
+                x.Key.CanonicalOrchardName ?? x.Key.Identity,
+                1m,
+                null,
+                null,
+                x.Key.CanonicalOrchardId is null
+                    ? "Existing identity found; canonical orchard setup or selection is required."
+                    : $"Exact {x.Key.EvidenceType.ToLowerInvariant()} evidence tied to a confirmed canonical orchard.",
+                x.Key.EvidenceType,
+                x.Key.CanonicalGrowerId,
+                x.Select(y => y.GrowerLotId).OfType<int>().Distinct().OrderBy(y => y).ToArray(),
+                x.Key.GrowerName,
+                x.Key.GrowerNumber,
+                x.Select(y => y.CanonicalBlockId).OfType<int>().Distinct().OrderBy(y => y).ToArray(),
+                x.Key.BlockName,
+                x.Key.LotNumber,
+                x.Select(y => y.Facility).Where(y => !string.IsNullOrWhiteSpace(y)).Cast<string>()
+                    .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(y => y).ToArray(),
+                x.Select(y => y.CropYear).OfType<int>().Distinct().OrderByDescending(y => y).ToArray(),
+                x.Select(y => y.SourceRecord).Where(y => !string.IsNullOrWhiteSpace(y)).Cast<string>()
+                    .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(y => y).ToArray(),
+                x.Max(y => y.LastObservedAt),
+                x.Key.CanonicalOrchardId is null))
+            .OrderBy(x => OrchardIdentityResolverService.EvidencePriority(x.ResultType))
+            .ThenBy(x => x.OrchardName)
+            .Take(10)
+            .ToArray();
 
     private static OrchardContactDryRunRowViewModel Result(
         ParsedOrchardManagerToken token,

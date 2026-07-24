@@ -20,6 +20,8 @@ public sealed class RunProjectionPlannerViewModel
     public int VisibilityPastDays { get; set; }
     public int VisibilityFutureDays { get; set; }
     public decimal DefaultExpectedPackoutPercent { get; set; }
+    public string? PlannerWarning { get; set; }
+    public string? DiagnosticReference { get; set; }
 }
 
 public sealed class RunProjectionCalendarDayViewModel

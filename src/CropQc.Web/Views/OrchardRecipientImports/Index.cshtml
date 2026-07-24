@@ -33,6 +33,11 @@
             <div class="stat-card"><strong>@preview.ParsedOrchardTokens</strong><span>Parsed orchard tokens</span></div>
             <div class="stat-card"><strong>@preview.ExactMatches</strong><span>Exact matches</span></div>
             <div class="stat-card"><strong>@preview.AliasMatches</strong><span>Alias matches</span></div>
+            <div class="stat-card"><strong>@preview.GrowerMatches</strong><span>Grower matches</span></div>
+            <div class="stat-card"><strong>@preview.GrowerLotMatches</strong><span>Grower Lot matches</span></div>
+            <div class="stat-card"><strong>@preview.CanonicalBlockMatches</strong><span>Canonical-block matches</span></div>
+            <div class="stat-card"><strong>@preview.PersistedIdentityMatches</strong><span>Confirmed-record matches</span></div>
+            <div class="stat-card"><strong>@preview.CanonicalSetupRequired</strong><span>Canonical setup required</span></div>
             <div class="stat-card"><strong>@preview.ProposedAliases</strong><span>Proposed aliases</span></div>
             <div class="stat-card"><strong>@preview.Ambiguous</strong><span>Ambiguous</span></div>
             <div class="stat-card"><strong>@preview.Unmatched</strong><span>Unmatched</span></div>
@@ -67,7 +72,17 @@
                                     <ul>
                                     @foreach (var candidate in row.Candidates)
                                     {
-                                        <li>@candidate.OrchardName — @candidate.SimilarityScore.ToString("0.0000") — @candidate.Reason</li>
+                                        <li>
+                                            <strong>@candidate.ResultType:</strong> @candidate.OrchardName — @candidate.SimilarityScore.ToString("0.0000") — @candidate.Reason
+                                            @if (!string.IsNullOrWhiteSpace(candidate.GrowerName)) { <span> Grower: @candidate.GrowerName.</span> }
+                                            @if (!string.IsNullOrWhiteSpace(candidate.GrowerNumber)) { <span> Grower number: @candidate.GrowerNumber.</span> }
+                                            @if (candidate.GrowerLotIds?.Count > 0) { <span> Grower Lot IDs: @string.Join(", ", candidate.GrowerLotIds).</span> }
+                                            @if (!string.IsNullOrWhiteSpace(candidate.LotNumber)) { <span> Lot: @candidate.LotNumber.</span> }
+                                            @if (!string.IsNullOrWhiteSpace(candidate.BlockName)) { <span> Block: @candidate.BlockName.</span> }
+                                            @if (candidate.Facilities?.Count > 0) { <span> Facilities: @string.Join(", ", candidate.Facilities).</span> }
+                                            @if (candidate.CropYears?.Count > 0) { <span> Crop years: @string.Join(", ", candidate.CropYears).</span> }
+                                            @if (candidate.SourceRecords?.Count > 0) { <span> Evidence: @string.Join(", ", candidate.SourceRecords).</span> }
+                                        </li>
                                     }
                                     </ul>
                                 </details>

@@ -24,12 +24,15 @@ public interface IOrchardContactImportService
 public sealed class OrchardContactImportService(
     CropQcDbContext dbContext,
     IOrchardContactWorkbookParser workbookParser,
-    IOrchardRecipientAdminService recipientAdminService) : IOrchardContactImportService
+    IOrchardRecipientAdminService recipientAdminService,
+    IOrchardIdentityResolverService? identityResolverService = null) : IOrchardContactImportService
 {
     private const string WorksheetName = OrchardContactWorkbookParser.AuthoritativeWorksheet;
     private const string ProductionConfirmation = "APPLY ORCHARD RECIPIENTS";
     private static readonly TimeSpan MaximumBackupAge = TimeSpan.FromHours(24);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private IOrchardIdentityResolverService IdentityResolver { get; } =
+        identityResolverService ?? new OrchardIdentityResolverService(dbContext);
 
     public async Task<OrchardContactImportIndexViewModel> GetIndexAsync(
         OrchardContactDryRunViewModel? preview,
@@ -66,8 +69,8 @@ public sealed class OrchardContactImportService(
         CancellationToken cancellationToken)
     {
         var parsed = await ParseUploadAsync(workbook, cancellationToken);
-        var orchards = await LoadMatchSourcesAsync(cancellationToken);
-        var rows = parsed.Tokens.Select(x => OrchardContactMatcher.Match(x, orchards)).ToArray();
+        var resolutionSet = await IdentityResolver.LoadAsync(cancellationToken);
+        var rows = parsed.Tokens.Select(x => OrchardContactMatcher.Match(x, resolutionSet)).ToArray();
         return new OrchardContactDryRunViewModel
         {
             OriginalFileName = parsed.OriginalFileName,
@@ -125,8 +128,8 @@ public sealed class OrchardContactImportService(
             return (existingApplied, "This exact workbook has already been applied. Review the existing immutable batch instead of staging it again.");
         }
 
-        var sources = await LoadMatchSourcesAsync(cancellationToken);
-        var matches = parsed.Tokens.Select(x => OrchardContactMatcher.Match(x, sources)).ToArray();
+        var resolutionSet = await IdentityResolver.LoadAsync(cancellationToken);
+        var matches = parsed.Tokens.Select(x => OrchardContactMatcher.Match(x, resolutionSet)).ToArray();
         var now = DateTimeOffset.UtcNow;
         var user = await FindUserAsync(changedByEmail, cancellationToken);
         var batch = new OrchardContactImportBatch
@@ -222,7 +225,7 @@ public sealed class OrchardContactImportService(
             .Include(x => x.Rows).ThenInclude(x => x.ApprovedCanonicalOrchard)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (batch is null) return null;
-        var sources = await LoadMatchSourcesAsync(cancellationToken);
+        var sources = (await IdentityResolver.LoadAsync(cancellationToken)).Orchards;
         var sourceById = sources.ToDictionary(x => x.Id);
         var options = sources.Select(x => new OrchardRecipientOrchardOption(x.Id, x.OrchardName, "", "")).ToArray();
         return new OrchardContactImportBatchViewModel
@@ -720,24 +723,6 @@ public sealed class OrchardContactImportService(
         if (workbook is null || workbook.Length == 0) throw new InvalidDataException("Select Master Contact List.xlsx.");
         await using var stream = workbook.OpenReadStream();
         return await workbookParser.ParseAsync(stream, workbook.FileName, cancellationToken);
-    }
-
-    private async Task<IReadOnlyList<CanonicalOrchardMatchSource>> LoadMatchSourcesAsync(CancellationToken cancellationToken)
-    {
-        var orchards = await dbContext.CanonicalOrchards.AsNoTracking()
-            .Where(x => x.IsActive)
-            .Include(x => x.Aliases.Where(a => a.IsActive))
-            .Include(x => x.ReportRecipients)
-            .OrderBy(x => x.OrchardName)
-            .ToListAsync(cancellationToken);
-        return orchards
-            .Where(x => !OrchardIdentityClassifier.IsStandaloneFourDigitGrowerNumber(x.OrchardName))
-            .Select(x => new CanonicalOrchardMatchSource(
-                x.Id,
-                x.OrchardName,
-                x.Aliases.Select(a => (a.AliasText, a.NormalizedAlias)).ToArray(),
-                x.ReportRecipients.Select(r => (r.Id, r.EmailAddress, r.NormalizedEmailAddress, r.IsActive, r.IsDeleted)).ToArray()))
-            .ToArray();
     }
 
     private Task<User?> FindUserAsync(string email, CancellationToken cancellationToken) =>

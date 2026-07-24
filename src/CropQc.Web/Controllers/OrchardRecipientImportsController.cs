@@ -13,8 +13,17 @@ public sealed class OrchardRecipientImportsController(
     ILogger<OrchardRecipientImportsController> logger) : Controller
 {
     [HttpGet("")]
-    public async Task<IActionResult> Index(CancellationToken cancellationToken) =>
-        View(await importService.GetIndexAsync(null, cancellationToken));
+    public async Task<IActionResult> Index(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return View(await importService.GetIndexAsync(null, cancellationToken));
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return ImportFailure(exception, "/Admin/OrchardRecipientImports", null);
+        }
+    }
 
     [HttpPost("Preview")]
     [ValidateAntiForgeryToken]
@@ -30,6 +39,10 @@ public sealed class OrchardRecipientImportsController(
             logger.LogWarning(exception, "Orchard manager workbook dry run failed validation.");
             TempData["Error"] = exception.Message;
             return RedirectToAction(nameof(Index));
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return ImportFailure(exception, "/Admin/OrchardRecipientImports/Preview", null);
         }
     }
 
@@ -47,6 +60,10 @@ public sealed class OrchardRecipientImportsController(
             logger.LogWarning(exception, "Orchard manager workbook dry-run export failed validation.");
             TempData["Error"] = exception.Message;
             return RedirectToAction(nameof(Index));
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return ImportFailure(exception, "/Admin/OrchardRecipientImports/ExportDryRun", null);
         }
     }
 
@@ -70,13 +87,24 @@ public sealed class OrchardRecipientImportsController(
             TempData["Error"] = exception.Message;
             return RedirectToAction(nameof(Index));
         }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return ImportFailure(exception, "/Admin/OrchardRecipientImports/Stage", null);
+        }
     }
 
     [HttpGet("{id:long}")]
     public async Task<IActionResult> Details(long id, CancellationToken cancellationToken)
     {
-        var model = await importService.GetBatchAsync(id, cancellationToken);
-        return model is null ? NotFound() : View(model);
+        try
+        {
+            var model = await importService.GetBatchAsync(id, cancellationToken);
+            return model is null ? NotFound() : View(model);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return ImportFailure(exception, $"/Admin/OrchardRecipientImports/{id}", id);
+        }
     }
 
     [HttpPost("{id:long}/Review")]
@@ -101,5 +129,25 @@ public sealed class OrchardRecipientImportsController(
                 : $"Import applied transactionally. Contacts {result.ContactsCreated}, assignments {result.AssignmentsCreated}, recipients {result.RecipientsCreated}, aliases {result.AliasesCreated}, duplicates skipped {result.DuplicatesSkipped}, conflicts retained {result.ConflictsRetained}."
             : result.Error;
         return RedirectToAction(nameof(Details), new { id });
+    }
+
+    private IActionResult ImportFailure(Exception exception, string route, long? batchId)
+    {
+        var diagnostic = DatabaseFailureDiagnostics.Classify(exception);
+        var correlationId = string.IsNullOrWhiteSpace(HttpContext.TraceIdentifier)
+            ? Guid.NewGuid().ToString("N")[..12]
+            : HttpContext.TraceIdentifier;
+        logger.LogError(
+            exception,
+            "Orchard manager import failed. Route={Route} BatchId={BatchId} CorrelationId={CorrelationId} Category={Category} ProviderCode={ProviderCode}",
+            route,
+            batchId,
+            correlationId,
+            diagnostic.Category,
+            diagnostic.ProviderCode);
+        TempData["Error"] = $"{diagnostic.SafeMessage} No orchard assignments or recipients were changed. Reference {correlationId}.";
+        return route == "/Admin/OrchardRecipientImports"
+            ? View("Index", new OrchardContactImportIndexViewModel())
+            : RedirectToAction(nameof(Index));
     }
 }
