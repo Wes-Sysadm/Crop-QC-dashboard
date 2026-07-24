@@ -34,7 +34,8 @@ public sealed class BinsRunWorkflowTests
         Assert.Contains("Record Actual Run", view);
         Assert.Contains("Transfer Bins", view);
         Assert.Contains("True Up Inventory", view);
-        Assert.Contains("Combined Gross Size Projection", view);
+        Assert.Contains("Projected Fruit Sizing by Calculated Fruit Size", view);
+        Assert.Contains("Projected Packed Boxes by Pack", view);
         Assert.Contains("32, 36, 40, 48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216", projectionMath);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Index), AccessPolicyNames.BinsRunView);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Projection), AccessPolicyNames.BinsRunView);

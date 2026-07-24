@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
@@ -20,6 +22,8 @@ public interface IRunProjectionService
     Task<string?> AddSourceAsync(RunProjectionAddSourceForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> UpdateSourceAsync(RunProjectionUpdateSourceForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> ApplyPackoutToAllAsync(RunProjectionApplyPackoutForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<(RunProjectionPackPlanPreviewViewModel? Preview, string? Error)> PreviewPackPlanAsync(RunProjectionPackPlanForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<string?> ApplyPackPlanAsync(RunProjectionPackPlanForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> RefreshSourceAsync(long projectionId, long sourceId, long concurrencyVersion, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> RemoveSourceAsync(long projectionId, long sourceId, long concurrencyVersion, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> MarkReadyAsync(RunProjectionStatusForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
@@ -573,6 +577,7 @@ public sealed class RunProjectionService(
         source.Entity.SortOrder = projection.Sources.Count == 0 ? 1 : projection.Sources.Max(x => x.SortOrder) + 1;
         projection.Sources.Add(source.Entity);
         RecalculateTotals(projection);
+        RecalculatePackAllocationFromSavedSnapshot(projection);
         Touch(projection, userId);
         await AddAuditAsync("AddSource", projection, userId, null, SourceSnapshot(source.Entity), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -626,6 +631,7 @@ public sealed class RunProjectionService(
         }
         source.UpdatedAt = businessTime.UtcNow;
         RecalculateTotals(projection);
+        RecalculatePackAllocationFromSavedSnapshot(projection);
         Touch(projection, userId);
         await AddAuditAsync("UpdateSource", projection, userId, before, SourceSnapshot(source), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -651,6 +657,7 @@ public sealed class RunProjectionService(
             source.UpdatedAt = businessTime.UtcNow;
         }
         RecalculateTotals(projection);
+        RecalculatePackAllocationFromSavedSnapshot(projection);
         Touch(projection, userId);
         await AddAuditAsync(
             "ApplyPackoutToAll",
@@ -658,6 +665,99 @@ public sealed class RunProjectionService(
             userId,
             before,
             new { form.ExpectedPackoutPercent, Sources = projection.Sources.Select(x => new { x.Id, x.ExpectedPackoutPercent }) },
+            cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
+    public async Task<(RunProjectionPackPlanPreviewViewModel? Preview, string? Error)> PreviewPackPlanAsync(
+        RunProjectionPackPlanForm form,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        var (projection, error, _) = await LoadForEditAsync(form.ProjectionId, form.ConcurrencyVersion, user, cancellationToken);
+        if (error is not null || projection is null) return (null, error);
+        if (projection.Sources.Count == 0) return (null, "Add projection sources before selecting a commercial pack plan.");
+        var plan = await BuildPackPlanSnapshotAsync(form.CommercialPackPlanId, projection.CropYear, cancellationToken);
+        if (plan is null) return (null, "The selected active commercial pack plan is unavailable for this crop year.");
+        if (!PlanMatchesProjection(plan, projection))
+        {
+            return (null, "The selected commercial pack plan does not cover every commodity in this projection.");
+        }
+        var configurationJson = JsonSerializer.Serialize(plan);
+        var proposed = CalculatePackAllocation(projection, plan);
+        var current = DeserializePackAllocation(projection.PackAllocationSnapshotJson);
+        return (new RunProjectionPackPlanPreviewViewModel
+        {
+            ProjectionId = projection.Id,
+            ProjectionName = projection.Name,
+            PlannedRunDate = projection.PlannedRunDate,
+            ConcurrencyVersion = projection.ConcurrencyVersion,
+            CommercialPackPlanId = plan.PlanId,
+            ProposedPlanName = plan.DisplayName,
+            ProposedPlanType = plan.PlanType,
+            ConfigurationHash = ConfigurationHash(configurationJson),
+            CurrentPacks = MapPacks(current?.Packs ?? []),
+            ProposedPacks = MapPacks(proposed.Packs),
+            CurrentUnallocated = MapUnallocated(current?.Unallocated ?? []),
+            ProposedUnallocated = MapUnallocated(proposed.Unallocated),
+            ProposedWarnings = proposed.Warnings,
+            CurrentAssignedPounds = current?.TotalAssignedPounds ?? 0m,
+            ProposedAssignedPounds = proposed.TotalAssignedPounds
+        }, null);
+    }
+
+    public async Task<string?> ApplyPackPlanAsync(
+        RunProjectionPackPlanForm form,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        var (projection, error, userId) = await LoadForEditAsync(form.ProjectionId, form.ConcurrencyVersion, user, cancellationToken);
+        if (error is not null || projection is null) return error;
+        if (projection.Sources.Count == 0) return "Add projection sources before selecting a commercial pack plan.";
+        var plan = await BuildPackPlanSnapshotAsync(form.CommercialPackPlanId, projection.CropYear, cancellationToken);
+        if (plan is null) return "The selected active commercial pack plan is unavailable for this crop year.";
+        if (!PlanMatchesProjection(plan, projection))
+        {
+            return "The selected commercial pack plan does not cover every commodity in this projection.";
+        }
+        var configurationJson = JsonSerializer.Serialize(plan);
+        if (string.IsNullOrWhiteSpace(form.ConfigurationHash)
+            || !CryptographicOperations.FixedTimeEquals(
+                Encoding.UTF8.GetBytes(form.ConfigurationHash),
+                Encoding.UTF8.GetBytes(ConfigurationHash(configurationJson))))
+        {
+            return "Commercial pack configuration changed after preview. Preview the plan again before applying it.";
+        }
+        var before = new
+        {
+            projection.CommercialPackPlanId,
+            projection.PackPlanCodeSnapshot,
+            projection.PackPlanNameSnapshot,
+            projection.PackCalculationVersion,
+            projection.PackAllocationSnapshotJson
+        };
+        projection.CommercialPackPlanId = plan.PlanId;
+        projection.PackPlanCodeSnapshot = plan.Code;
+        projection.PackPlanNameSnapshot = plan.DisplayName;
+        projection.PackPlanTypeSnapshot = plan.PlanType;
+        projection.PackConfigurationSnapshotJson = configurationJson;
+        RecalculatePackAllocationFromSavedSnapshot(projection);
+        Touch(projection, userId);
+        await AddAuditAsync(
+            "ApplyCommercialPackPlan",
+            projection,
+            userId,
+            before,
+            new
+            {
+                projection.CommercialPackPlanId,
+                projection.PackPlanCodeSnapshot,
+                projection.PackPlanNameSnapshot,
+                projection.PackPlanTypeSnapshot,
+                projection.PackCalculationVersion,
+                projection.PackCalculatedAt
+            },
             cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
@@ -685,6 +785,7 @@ public sealed class RunProjectionService(
         ApplyQcAndCalculation(projection, source, qc.Sample, qc.SourceType, settings.MinimumDistributionFruit);
         source.UpdatedAt = businessTime.UtcNow;
         RecalculateTotals(projection);
+        RecalculatePackAllocationFromSavedSnapshot(projection);
         Touch(projection, userId);
         await AddAuditAsync("RefreshQcSnapshot", projection, userId, before, SourceSnapshot(source), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -706,6 +807,7 @@ public sealed class RunProjectionService(
         var before = SourceSnapshot(source);
         dbContext.RunProjectionSources.Remove(source);
         RecalculateTotals(projection, sourceId);
+        RecalculatePackAllocationFromSavedSnapshot(projection, sourceId);
         Touch(projection, userId);
         await AddAuditAsync("RemoveSource", projection, userId, before, null, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -748,6 +850,16 @@ public sealed class RunProjectionService(
                 cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
             return "Expected Packout % is required for every source before marking the projection Ready.";
+        }
+        if (projection.CommercialPackPlanId is null || string.IsNullOrWhiteSpace(projection.PackConfigurationSnapshotJson))
+        {
+            return "Select, preview, and apply a commercial pack plan before marking the projection Ready.";
+        }
+        var packAllocation = DeserializePackAllocation(projection.PackAllocationSnapshotJson);
+        if (packAllocation is null) return "Recalculate the commercial pack plan before marking the projection Ready.";
+        if (packAllocation.Warnings.Count > 0)
+        {
+            return $"Resolve commercial pack configuration warnings before marking Ready: {string.Join(" ", packAllocation.Warnings)}";
         }
         var before = projection.Status;
         projection.Status = RunProjectionStatuses.Ready;
@@ -814,6 +926,11 @@ public sealed class RunProjectionService(
             SourceProjectionId = sourceProjection.Id,
             FacilityWarehouseId = targetFacility.Id,
             FacilityCodeSnapshot = targetFacility.Code,
+            CommercialPackPlanId = sourceProjection.CommercialPackPlanId,
+            PackPlanCodeSnapshot = sourceProjection.PackPlanCodeSnapshot,
+            PackPlanNameSnapshot = sourceProjection.PackPlanNameSnapshot,
+            PackPlanTypeSnapshot = sourceProjection.PackPlanTypeSnapshot,
+            PackConfigurationSnapshotJson = sourceProjection.PackConfigurationSnapshotJson,
             ApplePoundsPerBin = sourceProjection.ApplePoundsPerBin,
             PearPoundsPerBin = sourceProjection.PearPoundsPerBin,
             StandardBoxWeightPounds = sourceProjection.StandardBoxWeightPounds,
@@ -847,6 +964,8 @@ public sealed class RunProjectionService(
         RecalculateTotals(clone);
 
         dbContext.RunProjections.Add(clone);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        RecalculatePackAllocationFromSavedSnapshot(clone);
         await dbContext.SaveChangesAsync(cancellationToken);
         await AddAuditAsync(
             "Duplicate",
@@ -913,6 +1032,11 @@ public sealed class RunProjectionService(
             SourceProjectionId = sourceProjection.Id,
             FacilityWarehouseId = sourceProjection.FacilityWarehouseId,
             FacilityCodeSnapshot = sourceProjection.FacilityCodeSnapshot,
+            CommercialPackPlanId = sourceProjection.CommercialPackPlanId,
+            PackPlanCodeSnapshot = sourceProjection.PackPlanCodeSnapshot,
+            PackPlanNameSnapshot = sourceProjection.PackPlanNameSnapshot,
+            PackPlanTypeSnapshot = sourceProjection.PackPlanTypeSnapshot,
+            PackConfigurationSnapshotJson = sourceProjection.PackConfigurationSnapshotJson,
             ApplePoundsPerBin = sourceProjection.ApplePoundsPerBin,
             PearPoundsPerBin = sourceProjection.PearPoundsPerBin,
             StandardBoxWeightPounds = sourceProjection.StandardBoxWeightPounds,
@@ -973,6 +1097,8 @@ public sealed class RunProjectionService(
         sourceProjection.Status = RunProjectionStatuses.Superseded;
         Touch(sourceProjection, userId);
         dbContext.RunProjections.Add(inventoryProjection);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        RecalculatePackAllocationFromSavedSnapshot(inventoryProjection);
         await dbContext.SaveChangesAsync(cancellationToken);
         await AddAuditAsync(
             "CreateInventoryProjection",
@@ -1257,6 +1383,27 @@ public sealed class RunProjectionService(
             });
         }
 
+        var sourceCommodities = sourceModels.Select(x => x.Commodity).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var packPlanRows = await dbContext.CommercialPackPlans.AsNoTracking()
+            .Where(x => x.IsActive
+                && (x.EffectiveCropYearStart == null || x.EffectiveCropYearStart <= projection.CropYear)
+                && (x.EffectiveCropYearEnd == null || x.EffectiveCropYearEnd >= projection.CropYear))
+            .OrderBy(x => x.Commodity)
+            .ThenBy(x => x.DisplayName)
+            .ToListAsync(cancellationToken);
+        var packPlanOptions = packPlanRows
+            .Where(x => sourceCommodities.Count == 0
+                || x.Commodity.Equals("All", StringComparison.OrdinalIgnoreCase)
+                || sourceCommodities.Contains(x.Commodity, StringComparer.OrdinalIgnoreCase))
+            .Select(x => new RunProjectionPackPlanOptionViewModel(
+                x.Id,
+                x.Code,
+                x.DisplayName,
+                x.Commodity,
+                x.PlanType))
+            .ToList();
+        var packAllocation = DeserializePackAllocation(projection.PackAllocationSnapshotJson);
+
         return new RunProjectionDetailViewModel
         {
             Id = projection.Id,
@@ -1321,6 +1468,19 @@ public sealed class RunProjectionService(
                     x.Sum(y => y.CullBoxes),
                     x.Sum(y => y.RoundedCullBoxes)))
                 .ToList(),
+            CommercialPackPlanId = projection.CommercialPackPlanId,
+            PackPlanCode = projection.PackPlanCodeSnapshot,
+            PackPlanName = projection.PackPlanNameSnapshot,
+            PackPlanType = projection.PackPlanTypeSnapshot,
+            PackCalculationVersion = projection.PackCalculationVersion,
+            PackCalculatedAt = projection.PackCalculatedAt,
+            PackPlanOptions = packPlanOptions,
+            PackResults = MapPacks(packAllocation?.Packs ?? []),
+            UnallocatedFruit = MapUnallocated(packAllocation?.Unallocated ?? []),
+            PackWarnings = packAllocation?.Warnings ?? [],
+            PackAssignedPounds = packAllocation?.TotalAssignedPounds ?? 0m,
+            PackUnallocatedPounds = packAllocation?.TotalUnallocatedPounds ?? 0m,
+            PackRoundingResidualPounds = packAllocation?.RoundingResidualPounds ?? 0m,
             CanEditRecord = canEdit && !projection.IsDeleted && RunProjectionStatuses.Editable.Contains(projection.Status),
             CanDeleteRecord = !projection.IsDeleted
                 && projection.Status != RunProjectionStatuses.Converted
@@ -1637,6 +1797,13 @@ public sealed class RunProjectionService(
         source.SizeBasisFruitCount = calculation.SizeBasisFruitCount;
         source.GradeBasisFruitCount = calculation.GradeBasisFruitCount;
         source.JointSizeGradeBasisFruitCount = calculation.JointSizeGradeBasisFruitCount;
+        source.JointSizeGradeSnapshotJson = JsonSerializer.Serialize(readings
+            .Where(x => x.SizeCategory != null && x.Grade != null)
+            .GroupBy(x => new { Size = x.SizeCategory!.Value, Grade = x.Grade!.Code })
+            .OrderBy(x => x.Key.Size)
+            .ThenBy(x => x.Key.Grade)
+            .Select(x => new CommercialPackJointSizeGradeSnapshot(x.Key.Size, x.Key.Grade, x.Count()))
+            .ToList());
         source.AverageWeightGramsSnapshot = Average(readings.Where(x => x.WeightGrams != null).Select(x => x.WeightGrams!.Value));
         source.AveragePressureLbsSnapshot = Average(PressureCalculationService.ValidSideReadings(readings.Select(x => (x.Pressure1Lbs, x.Pressure2Lbs))));
         source.GradeSummarySnapshot = Distribution(readings.Where(x => x.Grade != null).Select(x => x.Grade!.Code));
@@ -1928,6 +2095,190 @@ public sealed class RunProjectionService(
         projection.TotalRoundedCullProjectedBoxes = sources.Sum(x => x.RoundedCullProjectedBoxes);
     }
 
+    private async Task<CommercialPackPlanSnapshot?> BuildPackPlanSnapshotAsync(
+        int planId,
+        int cropYear,
+        CancellationToken cancellationToken)
+    {
+        var plan = await dbContext.CommercialPackPlans.AsNoTracking()
+            .Include(x => x.Items).ThenInclude(x => x.CommercialPackDefinition).ThenInclude(x => x.EligibleSizes)
+            .Include(x => x.Items).ThenInclude(x => x.CommercialPackDefinition).ThenInclude(x => x.FruitProfileRestrictions)
+            .SingleOrDefaultAsync(x => x.Id == planId
+                && x.IsActive
+                && (x.EffectiveCropYearStart == null || x.EffectiveCropYearStart <= cropYear)
+                && (x.EffectiveCropYearEnd == null || x.EffectiveCropYearEnd >= cropYear),
+                cancellationToken);
+        if (plan is null) return null;
+        var packs = plan.Items
+            .Where(x => x.CommercialPackDefinition.IsActive
+                && (x.CommercialPackDefinition.EffectiveCropYearStart == null || x.CommercialPackDefinition.EffectiveCropYearStart <= cropYear)
+                && (x.CommercialPackDefinition.EffectiveCropYearEnd == null || x.CommercialPackDefinition.EffectiveCropYearEnd >= cropYear))
+            .OrderBy(x => x.Priority)
+            .ThenBy(x => x.CommercialPackDefinition.Code)
+            .Select(x => new CommercialPackDefinitionSnapshot(
+                x.CommercialPackDefinitionId,
+                x.CommercialPackDefinition.Code,
+                x.CommercialPackDefinition.DisplayName,
+                x.CommercialPackDefinition.Commodity,
+                x.CommercialPackDefinition.PackType,
+                x.CommercialPackDefinition.PackageWeightPounds,
+                x.CommercialPackDefinition.AllowsMixedSizes,
+                x.CommercialPackDefinition.MixRule,
+                x.Priority,
+                x.CommercialPackDefinition.FruitProfileRestrictions.Select(y => y.FruitProfileId).OrderBy(y => y).ToList(),
+                x.CommercialPackDefinition.EligibleSizes
+                    .OrderBy(y => y.Priority)
+                    .ThenBy(y => y.SizeCategory)
+                    .Select(y => new CommercialPackEligibleSizeSnapshot(
+                        y.SizeCategory,
+                        y.Priority,
+                        y.TargetPercent,
+                        y.MinimumPercent,
+                        y.MaximumPercent))
+                    .ToList()))
+            .ToList();
+        return new CommercialPackPlanSnapshot(
+            plan.Id,
+            plan.Code,
+            plan.DisplayName,
+            plan.Commodity,
+            plan.PlanType,
+            cropYear,
+            packs);
+    }
+
+    private CommercialPackAllocationResult CalculatePackAllocation(
+        RunProjection projection,
+        CommercialPackPlanSnapshot plan,
+        long? excludingSourceId = null)
+    {
+        var pools = projection.Sources
+            .Where(source => source.Id != excludingSourceId)
+            .SelectMany(source =>
+            {
+                var joint = DeserializeJointSnapshot(source.JointSizeGradeSnapshotJson);
+                return source.SizeResults.Select(size => new CommercialPackSizePool(
+                    source.Id,
+                    source.SourceLabelSnapshot,
+                    source.FruitProfileId,
+                    source.Commodity,
+                    size.SizeCategory,
+                    size.UnroundedProjectedBoxes * projection.StandardBoxWeightPounds,
+                    size.PackedProjectedBoxes * projection.StandardBoxWeightPounds,
+                    size.CullProjectedBoxes * projection.StandardBoxWeightPounds,
+                    joint.Where(x => x.SizeCategory == size.SizeCategory)
+                        .Select(x => new CommercialPackJointGradeCount(x.GradeCode, x.Count))
+                        .ToList()));
+            })
+            .ToList();
+        return CommercialPackAllocationService.Allocate(
+            plan,
+            pools,
+            projection.StandardBoxWeightPounds,
+            RunProjectionSettings.DefaultMinimumDistributionFruit);
+    }
+
+    private static bool PlanMatchesProjection(CommercialPackPlanSnapshot plan, RunProjection projection) =>
+        plan.Commodity.Equals("All", StringComparison.OrdinalIgnoreCase)
+        || projection.Sources.All(x => x.Commodity.Equals(plan.Commodity, StringComparison.OrdinalIgnoreCase));
+
+    private void RecalculatePackAllocationFromSavedSnapshot(RunProjection projection, long? excludingSourceId = null)
+    {
+        if (string.IsNullOrWhiteSpace(projection.PackConfigurationSnapshotJson)) return;
+        try
+        {
+            var plan = JsonSerializer.Deserialize<CommercialPackPlanSnapshot>(projection.PackConfigurationSnapshotJson);
+            if (plan is null) return;
+            var result = CalculatePackAllocation(projection, plan, excludingSourceId);
+            projection.PackAllocationSnapshotJson = JsonSerializer.Serialize(result);
+            projection.PackCalculationVersion = result.CalculationVersion;
+            projection.PackCalculatedAt = businessTime.UtcNow;
+        }
+        catch (JsonException)
+        {
+            projection.PackAllocationSnapshotJson = JsonSerializer.Serialize(new CommercialPackAllocationResult(
+                CommercialPackAllocationResult.CurrentVersion,
+                0m,
+                0m,
+                0m,
+                0m,
+                0m,
+                [],
+                [],
+                ["The saved commercial pack configuration snapshot could not be read. Preview a current pack plan before recalculating."]));
+            projection.PackCalculationVersion = CommercialPackAllocationResult.CurrentVersion;
+            projection.PackCalculatedAt = businessTime.UtcNow;
+        }
+    }
+
+    private static IReadOnlyList<CommercialPackJointSizeGradeSnapshot> DeserializeJointSnapshot(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<CommercialPackJointSizeGradeSnapshot>>(json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static CommercialPackAllocationResult? DeserializePackAllocation(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<CommercialPackAllocationResult>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string ConfigurationHash(string json) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
+
+    private static IReadOnlyList<RunProjectionPackResultViewModel> MapPacks(IEnumerable<CommercialPackOutput> packs) =>
+        packs.Select(x => new RunProjectionPackResultViewModel(
+            x.DefinitionId,
+            x.PackCode,
+            x.PackName,
+            x.Commodity,
+            x.PackType,
+            x.PackageWeightPounds,
+            x.IsMixedSize,
+            x.MixRule,
+            x.EligibleSizes,
+            x.GrossAssignedPounds,
+            x.AssignedPounds,
+            x.CullPounds,
+            x.UnroundedPacks,
+            x.RoundedPacks,
+            x.RoundingResidualPounds,
+            x.PercentageOfProjectedPackout,
+            x.Contributions.Select(y => new RunProjectionPackContributionViewModel(
+                y.SourceId,
+                y.SourceLabel,
+                y.SizeCategory,
+                y.AssignedPounds,
+                y.GrossPounds,
+                y.CullPounds)).ToList(),
+            x.GradeAllocations.Select(y => new RunProjectionPackGradeViewModel(y.GradeCode, y.AssignedPounds)).ToList(),
+            x.GradeWarning)).ToList();
+
+    private static IReadOnlyList<RunProjectionUnallocatedFruitViewModel> MapUnallocated(
+        IEnumerable<CommercialPackUnallocatedFruit> rows) =>
+        rows.Select(x => new RunProjectionUnallocatedFruitViewModel(
+            x.SourceId,
+            x.SourceLabel,
+            x.Commodity,
+            x.SizeCategory,
+            x.Pounds,
+            x.StandardBoxEquivalents,
+            x.Reason)).ToList();
+
     private void Touch(RunProjection projection, int? userId)
     {
         projection.ConcurrencyVersion++;
@@ -2097,6 +2448,12 @@ public sealed class RunProjectionService(
         x.ProjectionMode,
         x.FacilityWarehouseId,
         x.FacilityCodeSnapshot,
+        x.CommercialPackPlanId,
+        x.PackPlanCodeSnapshot,
+        x.PackPlanNameSnapshot,
+        x.PackPlanTypeSnapshot,
+        x.PackCalculationVersion,
+        x.PackCalculatedAt,
         x.CropYear,
         x.SourceProjectionId,
         x.ApplePoundsPerBin,
@@ -2146,6 +2503,7 @@ public sealed class RunProjectionService(
         x.QcSampleDateSnapshot,
         x.SizeBasisFruitCount,
         x.GradeBasisFruitCount,
+        x.JointSizeGradeBasisFruitCount,
         x.CalculationVersion,
         x.ActualBinsRunEntryId
     };
@@ -2205,6 +2563,7 @@ public sealed class RunProjectionService(
             AveragePressureLbsSnapshot = source.AveragePressureLbsSnapshot,
             GradeSummarySnapshot = source.GradeSummarySnapshot,
             DefectSummarySnapshot = source.DefectSummarySnapshot,
+            JointSizeGradeSnapshotJson = source.JointSizeGradeSnapshotJson,
             ProjectionWarning = source.ProjectionWarning,
             CalculationVersion = source.CalculationVersion,
             CreatedAt = now,
