@@ -104,6 +104,32 @@ public sealed class BinsRunController(
         return PlannerRedirect(plannedDate, id);
     }
 
+    [HttpPost("Projections/{id:long}/PackPlan/Preview")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PreviewPackPlan(long id, RunProjectionPackPlanForm form, CancellationToken cancellationToken)
+    {
+        form.ProjectionId = id;
+        var result = await runProjectionService.PreviewPackPlanAsync(form, User, cancellationToken);
+        if (result.Error is not null || result.Preview is null)
+        {
+            TempData["Error"] = result.Error ?? "The commercial pack plan could not be previewed.";
+            return PlannerRedirect(form.PlannedRunDate, id);
+        }
+        return View("PackPlanPreview", result.Preview);
+    }
+
+    [HttpPost("Projections/{id:long}/PackPlan/Apply")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ApplyPackPlan(long id, RunProjectionPackPlanForm form, CancellationToken cancellationToken)
+    {
+        form.ProjectionId = id;
+        var error = await runProjectionService.ApplyPackPlanAsync(form, User, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Commercial pack plan snapshot applied.";
+        return PlannerRedirect(form.PlannedRunDate, id);
+    }
+
     [HttpPost("Projections/{id:long}/Sources/{sourceId:long}/Refresh")]
     [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
     public async Task<IActionResult> RefreshProjectionSource(long id, long sourceId, long concurrencyVersion, DateOnly plannedDate, CancellationToken cancellationToken)
@@ -192,6 +218,14 @@ public sealed class BinsRunController(
         });
     }
 
+    [HttpGet("Projections/{id:long}/Outcome")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunView)]
+    public async Task<IActionResult> ProjectionOutcome(long id, CancellationToken cancellationToken)
+    {
+        var model = await runProjectionService.GetOutcomeAsync(id, User, cancellationToken);
+        return model is null ? NotFound() : View("ProjectionOutcome", model);
+    }
+
     [HttpGet("Projections/{id:long}/Export")]
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
     public async Task<IActionResult> ExportProjection(
@@ -202,15 +236,9 @@ public sealed class BinsRunController(
         string? projectionSort,
         CancellationToken cancellationToken)
     {
-        var detail = (await runProjectionService.GetPlannerAsync(
-            plannedDate,
-            id,
-            facility,
-            projectionVisibility,
-            projectionSort,
-            User,
-            cancellationToken)).SelectedProjection;
-        if (detail is null || detail.Id != id) return NotFound();
+        var outcome = await runProjectionService.GetOutcomeAsync(id, User, cancellationToken);
+        if (outcome is null) return NotFound();
+        var detail = outcome.Projection;
         var csv = new StringBuilder("Facility,Projection status,Record visibility,Source,Room,Lot or Block,Variety,Commodity,QC Basis,Available Bins,Planned Bins,Expected Packout %,Expected Cull %,Gross Pounds,Gross Boxes,Packed Pounds,Packed Boxes,Cull Pounds,Cull Equivalents\r\n");
         foreach (var source in detail.Sources)
         {
@@ -226,6 +254,71 @@ public sealed class BinsRunController(
                 source.CullProjectedBoxes.ToString("0.##")
             }));
         }
+        csv.AppendLine();
+        csv.AppendLine("Projected fruit sizing");
+        csv.AppendLine("Commodity,Calculated fruit size,Gross 40-lb equivalents,Packed 40-lb equivalents,Cull equivalents");
+        foreach (var size in detail.CombinedSizes)
+        {
+            csv.AppendLine(string.Join(',', new[]
+            {
+                Csv(size.Commodity), size.Size.ToString(), size.UnroundedBoxes.ToString("0.##"),
+                size.PackedBoxes.ToString("0.##"), size.CullBoxes.ToString("0.##")
+            }));
+        }
+        csv.AppendLine();
+        csv.AppendLine($"Commercial pack scenario,{Csv(detail.PackPlanName)},{Csv(detail.PackPlanType)}");
+        csv.AppendLine("Pack code,Pack name,Pack type,Commodity,Eligible sizes,Mix rule,Gross assigned pounds,Assigned packed pounds,Cull/loss pounds,Package weight pounds,Unrounded projected packs,Rounded projected packs,Rounding residual pounds,Percent of projected packout");
+        foreach (var pack in outcome.Packs)
+        {
+            csv.AppendLine(string.Join(',', new[]
+            {
+                Csv(pack.PackCode), Csv(pack.PackName), Csv(pack.PackType), Csv(pack.Commodity),
+                Csv(string.Join(" + ", pack.EligibleSizes)), Csv(pack.MixRule), pack.GrossAssignedPounds.ToString("0.##"),
+                pack.AssignedPounds.ToString("0.##"), pack.CullPounds.ToString("0.##"),
+                pack.PackageWeightPounds.ToString("0.####"), pack.UnroundedPacks.ToString("0.##"),
+                pack.CompletePacks.ToString(), pack.ResidualPounds.ToString("0.##"),
+                detail.TotalPackedProjectedPounds <= 0m
+                    ? "0"
+                    : (pack.AssignedPounds / detail.TotalPackedProjectedPounds * 100m).ToString("0.##")
+            }));
+        }
+        csv.AppendLine();
+        csv.AppendLine($"Size-by-grade basis,{outcome.JointBasisFruitCount} fruit with both size and grade");
+        csv.AppendLine(string.Join(',', new[] { "Commercial pack" }.Concat(outcome.GradeNames.Select(Csv)).Concat(["Total complete boxes"])));
+        foreach (var row in outcome.Matrix)
+        {
+            csv.AppendLine(string.Join(',', new[] { Csv(row.PackName) }
+                .Concat(outcome.GradeNames.Select(grade => row.CompleteBoxesByGrade.GetValueOrDefault(grade).ToString()))
+                .Concat([row.TotalCompleteBoxes.ToString()])));
+        }
+        csv.AppendLine();
+        csv.AppendLine("Unallocated projected fruit");
+        csv.AppendLine("Source,Commodity,Calculated fruit size,Pounds,40-lb equivalents,Reason");
+        foreach (var row in detail.UnallocatedFruit)
+        {
+            csv.AppendLine(string.Join(',', new[]
+            {
+                Csv(row.SourceLabel), Csv(row.Commodity), row.SizeCategory.ToString(), row.Pounds.ToString("0.##"),
+                row.StandardBoxEquivalents.ToString("0.##"), Csv(row.Reason)
+            }));
+        }
+        csv.AppendLine();
+        csv.AppendLine("Cull output,Percent,Pounds");
+        csv.AppendLine($"Peeler,35,{outcome.CullTotals.PeelerPounds:0.##}");
+        csv.AppendLine($"Juice,40,{outcome.CullTotals.JuicePounds:0.##}");
+        csv.AppendLine($"Waste,25,{outcome.CullTotals.WastePounds:0.##}");
+        csv.AppendLine();
+        csv.AppendLine("Reconciliation,Gross pounds,Complete-pack pounds,Residual packed pounds,Unallocated packed pounds,Cull/loss pounds,Difference pounds");
+        csv.AppendLine(string.Join(',', new[]
+        {
+            "",
+            detail.TotalProjectedPounds.ToString("0.##"),
+            outcome.CompletePackPounds.ToString("0.##"),
+            outcome.ResidualPackedPounds.ToString("0.##"),
+            outcome.UnallocatedPackedPounds.ToString("0.##"),
+            outcome.CullPounds.ToString("0.##"),
+            outcome.ReconciliationDifference.ToString("0.####")
+        }));
         return File(Encoding.UTF8.GetBytes(csv.ToString()), "text/csv", $"run-projection-{id}-{plannedDate:yyyy-MM-dd}.csv");
     }
 

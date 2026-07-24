@@ -1,0 +1,169 @@
+@model CommercialPackAdminPageViewModel
+@using CropQc.Data.Entities
+@inject CropQc.Shared.Time.IBusinessTimeService BusinessTime
+@{
+    ViewData["Title"] = "Commercial Pack Configuration";
+    var sizeRows = Model.PackForm.EligibleSizes.Count == 0
+        ? Enumerable.Range(0, 4).Select(_ => new CommercialPackEligibleSizeForm()).ToList()
+        : Model.PackForm.EligibleSizes;
+}
+
+<h1>Commercial Pack Configuration</h1>
+<p>Configure authoritative pack plans, package weights, eligible calculated fruit sizes, and explicit Euro/mixed allocation rules. Saved Run Projections retain a historical snapshot when this configuration changes.</p>
+
+@if (TempData["Error"] is not null) { <p class="notice warning">@TempData["Error"]</p> }
+@if (TempData["Success"] is not null) { <p class="notice success">@TempData["Success"]</p> }
+
+<section class="panel">
+    <h2>@(Model.PlanForm.Id is null ? "Add Pack Plan" : "Edit Pack Plan")</h2>
+    <form class="form-grid" method="post" action="/Admin/CommercialPacks/Plans/Save">
+        <input type="hidden" name="Id" value="@Model.PlanForm.Id" />
+        <label class="field">Code <input name="Code" value="@Model.PlanForm.Code" maxlength="50" required /></label>
+        <label class="field">Display name <input name="DisplayName" value="@Model.PlanForm.DisplayName" maxlength="150" required /></label>
+        <label class="field">Commodity <input name="Commodity" value="@Model.PlanForm.Commodity" maxlength="50" required /></label>
+        <label class="field">Plan type
+            <select name="PlanType" required>
+                <option value="">Select</option>
+                @foreach (var type in CommercialPackPlanTypes.All.OrderBy(x => x))
+                {
+                    <option value="@type" selected="@(type == Model.PlanForm.PlanType)">@type</option>
+                }
+            </select>
+        </label>
+        <label class="field">First crop year <input type="number" name="EffectiveCropYearStart" value="@Model.PlanForm.EffectiveCropYearStart" min="2000" max="2200" /></label>
+        <label class="field">Last crop year <input type="number" name="EffectiveCropYearEnd" value="@Model.PlanForm.EffectiveCropYearEnd" min="2000" max="2200" /></label>
+        <label class="checkbox-field wide"><input type="checkbox" name="IsActive" value="true" checked="@Model.PlanForm.IsActive" /> Active</label>
+        <input type="hidden" name="IsActive" value="false" />
+        <button type="submit">Save Pack Plan</button>
+        @if (Model.PlanForm.Id is not null) { <a class="button secondary-button" href="/Admin/CommercialPacks">Cancel Edit</a> }
+    </form>
+</section>
+
+<section class="panel">
+    <h2>Pack Plans</h2>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Code</th><th>Name</th><th>Commodity</th><th>Type</th><th>Effective years</th><th>Status</th><th>Modified</th><th>Actions</th></tr></thead>
+        <tbody>
+        @foreach (var plan in Model.Plans)
+        {
+            <tr>
+                <td>@plan.Code</td><td>@plan.DisplayName</td><td>@plan.Commodity</td><td>@plan.PlanType</td>
+                <td>@(plan.EffectiveCropYearStart?.ToString() ?? "Any")–@(plan.EffectiveCropYearEnd?.ToString() ?? "Any")</td>
+                <td>@(plan.IsActive ? "Active" : "Inactive")</td>
+                <td>@BusinessTime.FormatPacific(plan.UpdatedAt) @(string.IsNullOrWhiteSpace(plan.UpdatedBy) ? "" : $"by {plan.UpdatedBy}")</td>
+                <td class="button-row">
+                    <a class="button secondary-button" href="/Admin/CommercialPacks?editPlanId=@plan.Id">Edit</a>
+                    @if (plan.IsActive) { <form method="post" action="/Admin/CommercialPacks/Plans/@plan.Id/Deactivate"><button class="secondary-button" type="submit">Deactivate</button></form> }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table></div>
+</section>
+
+<section class="panel">
+    <h2>@(Model.PackForm.Id is null ? "Add Commercial Pack" : "Edit Commercial Pack")</h2>
+    <form class="form-grid" method="post" action="/Admin/CommercialPacks/Packs/Save">
+        <input type="hidden" name="Id" value="@Model.PackForm.Id" />
+        <label class="field">Pack code <input name="Code" value="@Model.PackForm.Code" maxlength="50" required /></label>
+        <label class="field">Pack name <input name="DisplayName" value="@Model.PackForm.DisplayName" maxlength="150" required /></label>
+        <label class="field">Commodity <input name="Commodity" value="@Model.PackForm.Commodity" maxlength="50" required /></label>
+        <label class="field">Pack type
+            <select name="PackType" required>
+                <option value="">Select</option>
+                @foreach (var type in CommercialPackTypes.All.OrderBy(x => x))
+                {
+                    <option value="@type" selected="@(type == Model.PackForm.PackType)">@type</option>
+                }
+            </select>
+        </label>
+        <label class="field">Package weight (lb) <input type="number" step="0.0001" min="0.0001" name="PackageWeightPounds" value="@Model.PackForm.PackageWeightPounds" required /></label>
+        <label class="checkbox-field"><input type="checkbox" name="AllowsMixedSizes" value="true" checked="@Model.PackForm.AllowsMixedSizes" /> Sizes may be mixed</label>
+        <input type="hidden" name="AllowsMixedSizes" value="false" />
+        <label class="field">Allocation rule
+            <select name="MixRule" required>
+                <option value="">Select an explicit rule</option>
+                @foreach (var rule in CommercialPackMixRules.All.OrderBy(x => x))
+                {
+                    <option value="@rule" selected="@(rule == Model.PackForm.MixRule)">@rule</option>
+                }
+            </select>
+        </label>
+        <label class="field">First crop year <input type="number" name="EffectiveCropYearStart" value="@Model.PackForm.EffectiveCropYearStart" min="2000" max="2200" /></label>
+        <label class="field">Last crop year <input type="number" name="EffectiveCropYearEnd" value="@Model.PackForm.EffectiveCropYearEnd" min="2000" max="2200" /></label>
+        <fieldset class="wide">
+            <legend>Eligible calculated fruit sizes</legend>
+            <p class="muted">For FixedPercentage, every target must be positive and total 100%. Minimum and maximum limits remain part of the authoritative rule.</p>
+            <div class="table-wrap"><table>
+                <thead><tr><th>Size</th><th>Priority</th><th>Target %</th><th>Minimum %</th><th>Maximum %</th></tr></thead>
+                <tbody>
+                @for (var index = 0; index < sizeRows.Count; index++)
+                {
+                    <tr>
+                        <td><input type="number" name="EligibleSizes[@index].SizeCategory" value="@sizeRows[index].SizeCategory" min="1" /></td>
+                        <td><input type="number" name="EligibleSizes[@index].Priority" value="@sizeRows[index].Priority" min="0" /></td>
+                        <td><input type="number" name="EligibleSizes[@index].TargetPercent" value="@sizeRows[index].TargetPercent" min="0" max="100" step="0.0001" /></td>
+                        <td><input type="number" name="EligibleSizes[@index].MinimumPercent" value="@sizeRows[index].MinimumPercent" min="0" max="100" step="0.0001" /></td>
+                        <td><input type="number" name="EligibleSizes[@index].MaximumPercent" value="@sizeRows[index].MaximumPercent" min="0" max="100" step="0.0001" /></td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        </fieldset>
+        <label class="field wide">Variety/profile restrictions
+            <select name="FruitProfileIds" multiple size="8">
+                @foreach (var profile in Model.FruitProfiles)
+                {
+                    <option value="@profile.Id" selected="@Model.PackForm.FruitProfileIds.Contains(profile.Id)">@profile.Commodity — @profile.Label</option>
+                }
+            </select>
+            <span class="muted">Leave empty to allow all varieties of the selected commodity.</span>
+        </label>
+        <label class="checkbox-field wide"><input type="checkbox" name="IsActive" value="true" checked="@Model.PackForm.IsActive" /> Active</label>
+        <input type="hidden" name="IsActive" value="false" />
+        <button type="submit">Save Commercial Pack</button>
+        @if (Model.PackForm.Id is not null) { <a class="button secondary-button" href="/Admin/CommercialPacks">Cancel Edit</a> }
+    </form>
+</section>
+
+<section class="panel">
+    <h2>Commercial Packs</h2>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Code</th><th>Name</th><th>Commodity</th><th>Pack type</th><th>Weight</th><th>Size rule</th><th>Eligible sizes</th><th>Varieties</th><th>Status</th><th>Modified</th><th>Actions</th></tr></thead>
+        <tbody>
+        @foreach (var pack in Model.Packs)
+        {
+            <tr>
+                <td>@pack.Code</td><td>@pack.DisplayName</td><td>@pack.Commodity</td><td>@pack.PackType</td><td>@pack.PackageWeightPounds.ToString("0.####") lb</td>
+                <td>@(pack.AllowsMixedSizes ? "Mixed" : "Single") · @pack.MixRule</td><td>@pack.EligibleSizes</td><td>@pack.FruitProfiles</td>
+                <td>@(pack.IsActive ? "Active" : "Inactive")</td>
+                <td>@BusinessTime.FormatPacific(pack.UpdatedAt) @(string.IsNullOrWhiteSpace(pack.UpdatedBy) ? "" : $"by {pack.UpdatedBy}")</td>
+                <td class="button-row">
+                    <a class="button secondary-button" href="/Admin/CommercialPacks?editPackId=@pack.Id">Edit</a>
+                    @if (pack.IsActive) { <form method="post" action="/Admin/CommercialPacks/Packs/@pack.Id/Deactivate"><button class="secondary-button" type="submit">Deactivate</button></form> }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table></div>
+</section>
+
+<section class="panel">
+    <h2>Assign Packs to a Plan</h2>
+    <p class="muted">Priority is authoritative. Lower numbers allocate first, preventing projected fruit from being counted in more than one pack.</p>
+    <form class="form-grid compact-form" method="post" action="/Admin/CommercialPacks/PlanItems/Save">
+        <label class="field">Plan <select name="CommercialPackPlanId" required><option value="">Select</option>@foreach (var plan in Model.Plans.Where(x => x.IsActive)) { <option value="@plan.Id">@plan.Commodity — @plan.DisplayName</option> }</select></label>
+        <label class="field">Pack <select name="CommercialPackDefinitionId" required><option value="">Select</option>@foreach (var pack in Model.Packs.Where(x => x.IsActive)) { <option value="@pack.Id">@pack.Commodity — @pack.DisplayName</option> }</select></label>
+        <label class="field">Priority <input type="number" min="0" name="Priority" value="0" required /></label>
+        <button type="submit">Assign Pack</button>
+    </form>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Plan</th><th>Pack</th><th>Priority</th><th>Action</th></tr></thead>
+        <tbody>
+        @foreach (var item in Model.PlanItems)
+        {
+            <tr><td>@item.Plan</td><td>@item.Pack</td><td>@item.Priority</td><td><form method="post" action="/Admin/CommercialPacks/PlanItems/Remove"><input type="hidden" name="planId" value="@item.PlanId" /><input type="hidden" name="packId" value="@item.PackId" /><button class="secondary-button" type="submit">Remove</button></form></td></tr>
+        }
+        </tbody>
+    </table></div>
+</section>

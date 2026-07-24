@@ -4,6 +4,7 @@ using CropQc.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CropQc.Data.Migrations
 {
     [DbContext(typeof(CropQcDbContext))]
-    partial class CropQcDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260724053022_AddCommercialPackProjectionConfiguration")]
+    partial class AddCommercialPackProjectionConfiguration
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -574,65 +577,6 @@ namespace CropQc.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("CanonicalOrchards");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.CanonicalOrchardAlias", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("AliasText")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<int>("CanonicalOrchardId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("CreatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("NormalizedAlias")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("ReviewNote")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("NormalizedAlias");
-
-                    b.HasIndex("UpdatedByUserId");
-
-                    b.HasIndex("CanonicalOrchardId", "NormalizedAlias")
-                        .IsUnique();
-
-                    b.ToTable("CanonicalOrchardAliases");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.CanonicalOrchardBlock", b =>
@@ -1871,353 +1815,6 @@ namespace CropQc.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("OrchardBlockAliases");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.OrchardContactImportBatch", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTimeOffset?>("AppliedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("AppliedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ApplySummaryJson")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ImportReason")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<int>("OrchardManagerSourceRowCount")
-                        .HasColumnType("int");
-
-                    b.Property<string>("OriginalFileName")
-                        .IsRequired()
-                        .HasMaxLength(260)
-                        .HasColumnType("nvarchar(260)");
-
-                    b.Property<int>("ParsedOrchardTokenCount")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<DateTimeOffset>("UploadedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("UploadedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<long?>("VerifiedBackupRunId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("WorkbookSha256")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("WorksheetName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AppliedByUserId");
-
-                    b.HasIndex("UploadedByUserId");
-
-                    b.HasIndex("VerifiedBackupRunId");
-
-                    b.HasIndex("WorkbookSha256", "WorksheetName");
-
-                    b.ToTable("OrchardContactImportBatches");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.OrchardContactImportRow", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("AppliedAction")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<DateTimeOffset?>("AppliedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("ApprovedCanonicalOrchardId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("CandidateMatchesJson")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CommunicationNote")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<bool>("CreateAlias")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CreateRecipient")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("EmailAddress")
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.Property<bool>("EmailIsValid")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("ManagerDisplayName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("MatchMethod")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<decimal?>("MatchScore")
-                        .HasPrecision(6, 4)
-                        .HasColumnType("decimal(6,4)");
-
-                    b.Property<string>("NormalizedEmailAddress")
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.Property<string>("NormalizedManagerName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("NormalizedPhone")
-                        .HasMaxLength(25)
-                        .HasColumnType("nvarchar(25)");
-
-                    b.Property<long>("OrchardContactImportBatchId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("OrchardManagerContactId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int?>("OrchardReportRecipientId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("OriginalOrchardCell")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<string>("ParsedOrchardToken")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("Phone")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("PhysicalAddress")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<bool>("ReactivateDeletedRecipient")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("ReviewDecision")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<string>("ReviewNote")
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<DateTimeOffset?>("ReviewedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("ReviewedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SourceStatusNote")
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<int?>("SuggestedCanonicalOrchardId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Warning")
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<int>("WorkbookRowNumber")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ApprovedCanonicalOrchardId");
-
-                    b.HasIndex("OrchardManagerContactId");
-
-                    b.HasIndex("OrchardReportRecipientId");
-
-                    b.HasIndex("ReviewedByUserId");
-
-                    b.HasIndex("SuggestedCanonicalOrchardId");
-
-                    b.HasIndex("OrchardContactImportBatchId", "ReviewDecision");
-
-                    b.HasIndex("OrchardContactImportBatchId", "WorkbookRowNumber");
-
-                    b.ToTable("OrchardContactImportRows");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.OrchardManagerAssignment", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<int>("CanonicalOrchardId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("CreatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<long>("OrchardManagerContactId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int?>("OrchardReportRecipientId")
-                        .HasColumnType("int");
-
-                    b.Property<long?>("SourceImportRowId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("OrchardManagerContactId");
-
-                    b.HasIndex("OrchardReportRecipientId");
-
-                    b.HasIndex("SourceImportRowId");
-
-                    b.HasIndex("UpdatedByUserId");
-
-                    b.HasIndex("CanonicalOrchardId", "OrchardManagerContactId")
-                        .IsUnique();
-
-                    b.ToTable("OrchardManagerAssignments");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.OrchardManagerContact", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("CommunicationNote")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("CreatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("EmailAddress")
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.Property<DateTimeOffset>("ImportedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("NormalizedDisplayName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("NormalizedEmailAddress")
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.Property<string>("NormalizedPhone")
-                        .HasMaxLength(25)
-                        .HasColumnType("nvarchar(25)");
-
-                    b.Property<string>("Phone")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<int>("SourceRowNumber")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SourceWorkbook")
-                        .IsRequired()
-                        .HasMaxLength(260)
-                        .HasColumnType("nvarchar(260)");
-
-                    b.Property<string>("SourceWorksheet")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("NormalizedEmailAddress");
-
-                    b.HasIndex("UpdatedByUserId");
-
-                    b.HasIndex("NormalizedDisplayName", "NormalizedPhone");
-
-                    b.ToTable("OrchardManagerContacts");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.OrchardReportRecipient", b =>
@@ -3795,9 +3392,6 @@ namespace CropQc.Data.Migrations
                     b.Property<long?>("FieldSampleId")
                         .HasColumnType("bigint");
 
-                    b.Property<string>("FieldSampleTrendSnapshotJson")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<int>("FruitProfileId")
                         .HasColumnType("int");
 
@@ -4580,31 +4174,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("CanonicalGrower");
                 });
 
-            modelBuilder.Entity("CropQc.Data.Entities.CanonicalOrchardAlias", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.CanonicalOrchard", "CanonicalOrchard")
-                        .WithMany("Aliases")
-                        .HasForeignKey("CanonicalOrchardId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.User", "UpdatedByUser")
-                        .WithMany()
-                        .HasForeignKey("UpdatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("CanonicalOrchard");
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("UpdatedByUser");
-                });
-
             modelBuilder.Entity("CropQc.Data.Entities.CanonicalOrchardBlock", b =>
                 {
                     b.HasOne("CropQc.Data.Entities.CanonicalGrower", "CanonicalGrower")
@@ -4719,140 +4288,6 @@ namespace CropQc.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("CanonicalOrchardBlock");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.OrchardContactImportBatch", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.User", "AppliedByUser")
-                        .WithMany()
-                        .HasForeignKey("AppliedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.User", "UploadedByUser")
-                        .WithMany()
-                        .HasForeignKey("UploadedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.BackupRunRecord", "VerifiedBackupRun")
-                        .WithMany()
-                        .HasForeignKey("VerifiedBackupRunId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("AppliedByUser");
-
-                    b.Navigation("UploadedByUser");
-
-                    b.Navigation("VerifiedBackupRun");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.OrchardContactImportRow", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.CanonicalOrchard", "ApprovedCanonicalOrchard")
-                        .WithMany()
-                        .HasForeignKey("ApprovedCanonicalOrchardId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("CropQc.Data.Entities.OrchardContactImportBatch", "OrchardContactImportBatch")
-                        .WithMany("Rows")
-                        .HasForeignKey("OrchardContactImportBatchId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.OrchardManagerContact", "OrchardManagerContact")
-                        .WithMany()
-                        .HasForeignKey("OrchardManagerContactId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.OrchardReportRecipient", "OrchardReportRecipient")
-                        .WithMany()
-                        .HasForeignKey("OrchardReportRecipientId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.User", "ReviewedByUser")
-                        .WithMany()
-                        .HasForeignKey("ReviewedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.CanonicalOrchard", "SuggestedCanonicalOrchard")
-                        .WithMany()
-                        .HasForeignKey("SuggestedCanonicalOrchardId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("ApprovedCanonicalOrchard");
-
-                    b.Navigation("OrchardContactImportBatch");
-
-                    b.Navigation("OrchardManagerContact");
-
-                    b.Navigation("OrchardReportRecipient");
-
-                    b.Navigation("ReviewedByUser");
-
-                    b.Navigation("SuggestedCanonicalOrchard");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.OrchardManagerAssignment", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.CanonicalOrchard", "CanonicalOrchard")
-                        .WithMany("ManagerAssignments")
-                        .HasForeignKey("CanonicalOrchardId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.OrchardManagerContact", "OrchardManagerContact")
-                        .WithMany("OrchardAssignments")
-                        .HasForeignKey("OrchardManagerContactId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.OrchardReportRecipient", "OrchardReportRecipient")
-                        .WithMany()
-                        .HasForeignKey("OrchardReportRecipientId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.OrchardContactImportRow", "SourceImportRow")
-                        .WithMany()
-                        .HasForeignKey("SourceImportRowId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.User", "UpdatedByUser")
-                        .WithMany()
-                        .HasForeignKey("UpdatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("CanonicalOrchard");
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("OrchardManagerContact");
-
-                    b.Navigation("OrchardReportRecipient");
-
-                    b.Navigation("SourceImportRow");
-
-                    b.Navigation("UpdatedByUser");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.OrchardManagerContact", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.User", "UpdatedByUser")
-                        .WithMany()
-                        .HasForeignKey("UpdatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("UpdatedByUser");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.OrchardReportRecipient", b =>
@@ -5459,11 +4894,7 @@ namespace CropQc.Data.Migrations
 
             modelBuilder.Entity("CropQc.Data.Entities.CanonicalOrchard", b =>
                 {
-                    b.Navigation("Aliases");
-
                     b.Navigation("Blocks");
-
-                    b.Navigation("ManagerAssignments");
 
                     b.Navigation("ReportRecipients");
                 });
@@ -5492,16 +4923,6 @@ namespace CropQc.Data.Migrations
             modelBuilder.Entity("CropQc.Data.Entities.FruitProfile", b =>
                 {
                     b.Navigation("Receipts");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.OrchardContactImportBatch", b =>
-                {
-                    b.Navigation("Rows");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.OrchardManagerContact", b =>
-                {
-                    b.Navigation("OrchardAssignments");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.QcFruitReading", b =>

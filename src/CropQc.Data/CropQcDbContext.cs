@@ -43,6 +43,11 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<RunProjectionSource> RunProjectionSources => Set<RunProjectionSource>();
     public DbSet<RunProjectionSizeResult> RunProjectionSizeResults => Set<RunProjectionSizeResult>();
     public DbSet<RunProjectionGradeResult> RunProjectionGradeResults => Set<RunProjectionGradeResult>();
+    public DbSet<CommercialPackPlan> CommercialPackPlans => Set<CommercialPackPlan>();
+    public DbSet<CommercialPackDefinition> CommercialPackDefinitions => Set<CommercialPackDefinition>();
+    public DbSet<CommercialPackEligibleSize> CommercialPackEligibleSizes => Set<CommercialPackEligibleSize>();
+    public DbSet<CommercialPackFruitProfileRestriction> CommercialPackFruitProfileRestrictions => Set<CommercialPackFruitProfileRestriction>();
+    public DbSet<CommercialPackPlanItem> CommercialPackPlanItems => Set<CommercialPackPlanItem>();
     public DbSet<QcSample> QcSamples => Set<QcSample>();
     public DbSet<QcFruitReading> QcFruitReadings => Set<QcFruitReading>();
     public DbSet<QcFruitDefect> QcFruitDefects => Set<QcFruitDefect>();
@@ -65,6 +70,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         ConfigureAuth(modelBuilder);
         ConfigureMasterData(modelBuilder, IsPostgreSqlProvider());
         ConfigureQc(modelBuilder, IsPostgreSqlProvider());
+        ConfigureCommercialPacks(modelBuilder);
         ConfigureRunProjections(modelBuilder);
         ConfigureAudit(modelBuilder);
         ConfigureDashboardConfiguration(modelBuilder);
@@ -85,6 +91,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
             entity.Property(x => x.ProjectionMode).HasMaxLength(25).HasDefaultValue(RunProjectionModes.Inventory).IsRequired();
             entity.Property(x => x.FacilityCodeSnapshot).HasMaxLength(25);
+            entity.Property(x => x.PackPlanCodeSnapshot).HasMaxLength(50);
+            entity.Property(x => x.PackPlanNameSnapshot).HasMaxLength(150);
+            entity.Property(x => x.PackPlanTypeSnapshot).HasMaxLength(50);
+            entity.Property(x => x.PackCalculationVersion).HasMaxLength(25);
             entity.Property(x => x.DeletionReason).HasMaxLength(1000);
             entity.Property(x => x.DeletedFromStatus).HasMaxLength(50);
             entity.Property(x => x.ApplePoundsPerBin).HasPrecision(10, 2);
@@ -104,6 +114,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasIndex(x => new { x.CropYear, x.FacilityWarehouseId, x.IsDeleted });
             entity.HasIndex(x => x.DeletionOperationId);
             entity.HasIndex(x => x.SourceProjectionId);
+            entity.HasIndex(x => x.CommercialPackPlanId);
             entity.HasOne(x => x.FacilityWarehouse)
                 .WithMany()
                 .HasForeignKey(x => x.FacilityWarehouseId)
@@ -112,6 +123,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .WithMany(x => x.DerivedProjections)
                 .HasForeignKey(x => x.SourceProjectionId)
                 .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CommercialPackPlan)
+                .WithMany()
+                .HasForeignKey(x => x.CommercialPackPlanId)
+                .OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.CancelledByUser).WithMany().HasForeignKey(x => x.CancelledByUserId).OnDelete(DeleteBehavior.SetNull);
@@ -191,6 +206,72 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.CullProjectedBoxes).HasPrecision(18, 6);
             entity.HasIndex(x => new { x.RunProjectionSourceId, x.GradeCode }).IsUnique();
             entity.HasOne(x => x.RunProjectionSource).WithMany(x => x.GradeResults).HasForeignKey(x => x.RunProjectionSourceId).OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigureCommercialPacks(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CommercialPackPlan>(entity =>
+        {
+            entity.Property(x => x.Code).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.DisplayName).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.Commodity).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.PlanType).HasMaxLength(50).IsRequired();
+            entity.HasIndex(x => x.Code).IsUnique();
+            entity.HasIndex(x => new { x.Commodity, x.IsActive });
+            entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<CommercialPackDefinition>(entity =>
+        {
+            entity.Property(x => x.Code).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.DisplayName).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.Commodity).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.PackType).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.PackageWeightPounds).HasPrecision(10, 4);
+            entity.Property(x => x.MixRule).HasMaxLength(50).IsRequired();
+            entity.HasIndex(x => x.Code).IsUnique();
+            entity.HasIndex(x => new { x.Commodity, x.IsActive });
+            entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<CommercialPackEligibleSize>(entity =>
+        {
+            entity.Property(x => x.TargetPercent).HasPrecision(7, 4);
+            entity.Property(x => x.MinimumPercent).HasPrecision(7, 4);
+            entity.Property(x => x.MaximumPercent).HasPrecision(7, 4);
+            entity.HasIndex(x => new { x.CommercialPackDefinitionId, x.SizeCategory }).IsUnique();
+            entity.HasOne(x => x.CommercialPackDefinition)
+                .WithMany(x => x.EligibleSizes)
+                .HasForeignKey(x => x.CommercialPackDefinitionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CommercialPackFruitProfileRestriction>(entity =>
+        {
+            entity.HasKey(x => new { x.CommercialPackDefinitionId, x.FruitProfileId });
+            entity.HasOne(x => x.CommercialPackDefinition)
+                .WithMany(x => x.FruitProfileRestrictions)
+                .HasForeignKey(x => x.CommercialPackDefinitionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.FruitProfile)
+                .WithMany()
+                .HasForeignKey(x => x.FruitProfileId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CommercialPackPlanItem>(entity =>
+        {
+            entity.HasKey(x => new { x.CommercialPackPlanId, x.CommercialPackDefinitionId });
+            entity.HasIndex(x => new { x.CommercialPackPlanId, x.Priority });
+            entity.HasOne(x => x.CommercialPackPlan)
+                .WithMany(x => x.Items)
+                .HasForeignKey(x => x.CommercialPackPlanId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.CommercialPackDefinition)
+                .WithMany(x => x.PlanItems)
+                .HasForeignKey(x => x.CommercialPackDefinitionId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

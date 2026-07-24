@@ -46,6 +46,15 @@ public sealed class RunProjection
     public int? FacilityWarehouseId { get; set; }
     public Warehouse? FacilityWarehouse { get; set; }
     public string? FacilityCodeSnapshot { get; set; }
+    public int? CommercialPackPlanId { get; set; }
+    public CommercialPackPlan? CommercialPackPlan { get; set; }
+    public string? PackPlanCodeSnapshot { get; set; }
+    public string? PackPlanNameSnapshot { get; set; }
+    public string? PackPlanTypeSnapshot { get; set; }
+    public string? PackConfigurationSnapshotJson { get; set; }
+    public string? PackAllocationSnapshotJson { get; set; }
+    public string? PackCalculationVersion { get; set; }
+    public DateTimeOffset? PackCalculatedAt { get; set; }
     public int CropYear { get; set; }
     public long? SourceProjectionId { get; set; }
     public RunProjection? SourceProjection { get; set; }
@@ -151,6 +160,8 @@ public sealed class RunProjectionSource
     public decimal? AveragePressureLbsSnapshot { get; set; }
     public string? GradeSummarySnapshot { get; set; }
     public string? DefectSummarySnapshot { get; set; }
+    public string? JointSizeGradeSnapshotJson { get; set; }
+    public string? FieldSampleTrendSnapshotJson { get; set; }
     public string? ProjectionWarning { get; set; }
     public string CalculationVersion { get; set; } = "1.0";
     public long? ActualBinsRunEntryId { get; set; }
