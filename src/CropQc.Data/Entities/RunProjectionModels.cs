@@ -161,6 +161,7 @@ public sealed class RunProjectionSource
     public string? GradeSummarySnapshot { get; set; }
     public string? DefectSummarySnapshot { get; set; }
     public string? JointSizeGradeSnapshotJson { get; set; }
+    public string? FieldSampleTrendSnapshotJson { get; set; }
     public string? ProjectionWarning { get; set; }
     public string CalculationVersion { get; set; } = "1.0";
     public long? ActualBinsRunEntryId { get; set; }

@@ -153,6 +153,7 @@ public sealed record RunProjectionPackResultViewModel(
     decimal RoundingResidualPounds,
     decimal PercentageOfProjectedPackout,
     IReadOnlyList<RunProjectionPackContributionViewModel> Contributions,
+    int JointBasisFruitCount,
     IReadOnlyList<RunProjectionPackGradeViewModel> GradeAllocations,
     string? GradeWarning);
 
@@ -232,6 +233,7 @@ public sealed class RunProjectionSourceViewModel
     public decimal? AveragePressureLbs { get; set; }
     public string? GradeSummary { get; set; }
     public string? DefectSummary { get; set; }
+    public string? FieldSampleTrendSnapshotJson { get; set; }
     public decimal PoundsPerBin { get; set; }
     public decimal ProjectedPounds { get; set; }
     public decimal ProjectedBoxes { get; set; }

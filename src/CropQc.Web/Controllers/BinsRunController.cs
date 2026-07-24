@@ -218,6 +218,14 @@ public sealed class BinsRunController(
         });
     }
 
+    [HttpGet("Projections/{id:long}/Outcome")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunView)]
+    public async Task<IActionResult> ProjectionOutcome(long id, CancellationToken cancellationToken)
+    {
+        var model = await runProjectionService.GetOutcomeAsync(id, User, cancellationToken);
+        return model is null ? NotFound() : View("ProjectionOutcome", model);
+    }
+
     [HttpGet("Projections/{id:long}/Export")]
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
     public async Task<IActionResult> ExportProjection(
@@ -228,15 +236,9 @@ public sealed class BinsRunController(
         string? projectionSort,
         CancellationToken cancellationToken)
     {
-        var detail = (await runProjectionService.GetPlannerAsync(
-            plannedDate,
-            id,
-            facility,
-            projectionVisibility,
-            projectionSort,
-            User,
-            cancellationToken)).SelectedProjection;
-        if (detail is null || detail.Id != id) return NotFound();
+        var outcome = await runProjectionService.GetOutcomeAsync(id, User, cancellationToken);
+        if (outcome is null) return NotFound();
+        var detail = outcome.Projection;
         var csv = new StringBuilder("Facility,Projection status,Record visibility,Source,Room,Lot or Block,Variety,Commodity,QC Basis,Available Bins,Planned Bins,Expected Packout %,Expected Cull %,Gross Pounds,Gross Boxes,Packed Pounds,Packed Boxes,Cull Pounds,Cull Equivalents\r\n");
         foreach (var source in detail.Sources)
         {
@@ -266,7 +268,7 @@ public sealed class BinsRunController(
         csv.AppendLine();
         csv.AppendLine($"Commercial pack scenario,{Csv(detail.PackPlanName)},{Csv(detail.PackPlanType)}");
         csv.AppendLine("Pack code,Pack name,Pack type,Commodity,Eligible sizes,Mix rule,Gross assigned pounds,Assigned packed pounds,Cull/loss pounds,Package weight pounds,Unrounded projected packs,Rounded projected packs,Rounding residual pounds,Percent of projected packout");
-        foreach (var pack in detail.PackResults)
+        foreach (var pack in outcome.Packs)
         {
             csv.AppendLine(string.Join(',', new[]
             {
@@ -274,9 +276,20 @@ public sealed class BinsRunController(
                 Csv(string.Join(" + ", pack.EligibleSizes)), Csv(pack.MixRule), pack.GrossAssignedPounds.ToString("0.##"),
                 pack.AssignedPounds.ToString("0.##"), pack.CullPounds.ToString("0.##"),
                 pack.PackageWeightPounds.ToString("0.####"), pack.UnroundedPacks.ToString("0.##"),
-                pack.RoundedPacks.ToString(), pack.RoundingResidualPounds.ToString("0.##"),
-                pack.PercentageOfProjectedPackout.ToString("0.##")
+                pack.CompletePacks.ToString(), pack.ResidualPounds.ToString("0.##"),
+                detail.TotalPackedProjectedPounds <= 0m
+                    ? "0"
+                    : (pack.AssignedPounds / detail.TotalPackedProjectedPounds * 100m).ToString("0.##")
             }));
+        }
+        csv.AppendLine();
+        csv.AppendLine($"Size-by-grade basis,{outcome.JointBasisFruitCount} fruit with both size and grade");
+        csv.AppendLine(string.Join(',', new[] { "Commercial pack" }.Concat(outcome.GradeNames.Select(Csv)).Concat(["Total complete boxes"])));
+        foreach (var row in outcome.Matrix)
+        {
+            csv.AppendLine(string.Join(',', new[] { Csv(row.PackName) }
+                .Concat(outcome.GradeNames.Select(grade => row.CompleteBoxesByGrade.GetValueOrDefault(grade).ToString()))
+                .Concat([row.TotalCompleteBoxes.ToString()])));
         }
         csv.AppendLine();
         csv.AppendLine("Unallocated projected fruit");
@@ -290,16 +303,21 @@ public sealed class BinsRunController(
             }));
         }
         csv.AppendLine();
-        csv.AppendLine("Reconciliation,Gross pounds,Assigned packed pounds,Unallocated packed pounds,Cull/loss pounds,Difference pounds,Rounded-pack residual pounds");
+        csv.AppendLine("Cull output,Percent,Pounds");
+        csv.AppendLine($"Peeler,35,{outcome.CullTotals.PeelerPounds:0.##}");
+        csv.AppendLine($"Juice,40,{outcome.CullTotals.JuicePounds:0.##}");
+        csv.AppendLine($"Waste,25,{outcome.CullTotals.WastePounds:0.##}");
+        csv.AppendLine();
+        csv.AppendLine("Reconciliation,Gross pounds,Complete-pack pounds,Residual packed pounds,Unallocated packed pounds,Cull/loss pounds,Difference pounds");
         csv.AppendLine(string.Join(',', new[]
         {
             "",
             detail.TotalProjectedPounds.ToString("0.##"),
-            detail.PackAssignedPounds.ToString("0.##"),
-            detail.PackUnallocatedPounds.ToString("0.##"),
-            detail.TotalCullProjectedPounds.ToString("0.##"),
-            (detail.TotalProjectedPounds - detail.PackAssignedPounds - detail.PackUnallocatedPounds - detail.TotalCullProjectedPounds).ToString("0.####"),
-            detail.PackRoundingResidualPounds.ToString("0.##")
+            outcome.CompletePackPounds.ToString("0.##"),
+            outcome.ResidualPackedPounds.ToString("0.##"),
+            outcome.UnallocatedPackedPounds.ToString("0.##"),
+            outcome.CullPounds.ToString("0.##"),
+            outcome.ReconciliationDifference.ToString("0.####")
         }));
         return File(Encoding.UTF8.GetBytes(csv.ToString()), "text/csv", $"run-projection-{id}-{plannedDate:yyyy-MM-dd}.csv");
     }
