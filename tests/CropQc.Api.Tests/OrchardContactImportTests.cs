@@ -62,6 +62,23 @@ public sealed class OrchardContactImportTests
     }
 
     [Fact]
+    public void ReviewStagingFormIncludesRequiredAntiForgeryToken()
+    {
+        var view = File.ReadAllText(FindRepositoryFile(
+            "src",
+            "CropQc.Web",
+            "Views",
+            "OrchardRecipientImports",
+            "Index.cshtml"));
+
+        var formStart = view.IndexOf("action=\"/Admin/OrchardRecipientImports/Stage\"", StringComparison.Ordinal);
+        Assert.True(formStart >= 0);
+        var formEnd = view.IndexOf("</form>", formStart, StringComparison.Ordinal);
+        Assert.True(formEnd > formStart);
+        Assert.Contains("@Html.AntiForgeryToken()", view[formStart..formEnd]);
+    }
+
+    [Fact]
     public void CommaSeparatedOrchardsAreSplit() =>
         Assert.Equal(["Academy", "Reyna"], OrchardContactWorkbookParser.SplitOrchards("Academy, Reyna"));
 
@@ -607,4 +624,17 @@ public sealed class OrchardContactImportTests
         string communication = "",
         string note = "") =>
         [type, orchard, address, name, phone, email, communication, note];
+
+    private static string FindRepositoryFile(params string[] pathParts)
+    {
+        var current = AppContext.BaseDirectory;
+        while (!string.IsNullOrWhiteSpace(current))
+        {
+            var candidate = Path.Combine(new[] { current }.Concat(pathParts).ToArray());
+            if (File.Exists(candidate)) return candidate;
+            current = Directory.GetParent(current)?.FullName ?? "";
+        }
+
+        throw new FileNotFoundException(string.Join(Path.DirectorySeparatorChar, pathParts));
+    }
 }

@@ -101,6 +101,7 @@
         <h2>Stage this workbook for review</h2>
         <p>Staging stores review metadata only. It does not create aliases, contacts, orchard assignments, or recipients.</p>
         <form method="post" enctype="multipart/form-data" action="/Admin/OrchardRecipientImports/Stage" class="stack-form">
+            @Html.AntiForgeryToken()
             <label>Re-select the exact workbook
                 <input type="file" name="Workbook" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
             </label>
