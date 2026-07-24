@@ -28,7 +28,8 @@ public sealed class BinsRunWorkflowTests
         Assert.Contains("AccessPolicyNames.BinsRunEdit", program);
         Assert.Contains("AccessPolicyNames.BinsRunAdmin", program);
         Assert.Contains("canAccessBinsRun", layout);
-        Assert.Contains("<a href=\"/BinsRun@facilityQuery\">Bins Run &amp; Transfers</a>", layout);
+        Assert.Contains("<a asp-controller=\"BinsRun\" asp-action=\"Index\" asp-route-facility=\"@facilityRouteValue\">Bins Run &amp; Transfers</a>", layout);
+        Assert.DoesNotContain("/BinsRun@facilityQuery", layout);
         Assert.Contains("Select Room", view);
         Assert.Contains("Run Planner", view);
         Assert.Contains("Record Actual Run", view);
