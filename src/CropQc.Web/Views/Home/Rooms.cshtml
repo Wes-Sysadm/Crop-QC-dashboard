@@ -19,14 +19,17 @@
             }
         </select>
     </label>
-    <label class="field">EBS location
-        <select name="EbsLocation">
-            @foreach (var location in Model.EbsLocationOptions)
-            {
-                <option value="@location" selected="@IsSelected(Model.Filter.EbsLocation, location)">@location</option>
-            }
-        </select>
-    </label>
+    @if (Model.Filter.Facility is "All" or "EBS")
+    {
+        <label class="field">EBS location
+            <select name="EbsLocation">
+                @foreach (var location in Model.EbsLocationOptions)
+                {
+                    <option value="@location" selected="@IsSelected(Model.Filter.EbsLocation, location)">@location</option>
+                }
+            </select>
+        </label>
+    }
     <label class="field">Rooms
         <select name="RoomStatus">
             <option value="All" selected="@IsSelected(Model.Filter.RoomStatus, "All")">All rooms</option>
@@ -68,8 +71,8 @@
                 <td>@room.VarietyStatusSummary</td>
                 <td>@BusinessTime.FormatPacific(room.LastActivityAt, empty: "-")</td>
                 <td>
-                    <a class="inline-action" href="/Rooms/@room.RoomId">View Room</a>
-                    <a class="inline-action" href="/Rooms/@room.RoomId/CountBreakdown">Breakdown</a>
+                    <a class="inline-action" href="/Rooms/@room.RoomId?Facility=@room.Facility">View Room</a>
+                    <a class="inline-action" href="/Rooms/@room.RoomId/CountBreakdown?Facility=@room.Facility">Breakdown</a>
                 </td>
             </tr>
         }

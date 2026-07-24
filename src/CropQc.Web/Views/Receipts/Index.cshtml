@@ -28,11 +28,20 @@
     <input type="hidden" name="DateFilter" value="@Model.Search.DateFilter" />
     <input type="hidden" name="SampleType" value="@Model.Search.SampleType" />
     <input type="hidden" name="ReceiptType" value="@Model.Search.ReceiptType" />
+    <div class="field">
+        <label>Facility</label>
+        <select name="Facility">
+            @foreach (var facility in new[] { "WP", "EBS", "All" })
+            {
+                <option value="@facility" selected="@(Model.Search.Facility == facility ? "selected" : null)">@facility</option>
+            }
+        </select>
+    </div>
     @if (string.Equals(Model.Search.DateFilter, "today", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(Model.Search.SampleType))
     {
         <div class="notice">
             Showing @Model.Search.SampleType receipts for @Model.Search.DateFilter.
-            <a class="inline-action" href="/Receipts">Clear dashboard filter</a>
+            <a class="inline-action" href="/Receipts?Facility=@Model.Search.Facility">Clear dashboard filter</a>
         </div>
     }
     <div class="field">

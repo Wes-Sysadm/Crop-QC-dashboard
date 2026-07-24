@@ -223,6 +223,7 @@ builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportService>();
 builder.Services.AddScoped<IBinsRunService, BinsRunService>();
 builder.Services.AddScoped<IRunProjectionService, RunProjectionService>();
+builder.Services.AddScoped<IFacilityContextService, FacilityContextService>();
 builder.Services.AddScoped<ICommercialPackAdminService, CommercialPackAdminService>();
 builder.Services.AddScoped<IEbsDailyBinsEmailService, EbsDailyBinsEmailService>();
 builder.Services.AddScoped<IUserAdminService, UserAdminService>();

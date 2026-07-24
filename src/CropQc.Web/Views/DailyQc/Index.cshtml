@@ -19,6 +19,15 @@
 
 <form class="toolbar" method="get">
     <div class="field">
+        <label>Facility</label>
+        <select name="facility">
+            @foreach (var facility in new[] { "WP", "EBS", "All" })
+            {
+                <option value="@facility" selected="@(Model.Facility == facility)">@facility</option>
+            }
+        </select>
+    </div>
+    <div class="field">
         <label>Warehouse</label>
         <select name="warehouseId">
             <option value="">All</option>

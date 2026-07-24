@@ -23,6 +23,9 @@ a:hover { text-decoration: underline; }
 .logout-form { margin: 0; }
 .link-button { height: auto; min-height: 0; padding: 0; border: 0; background: transparent; color: white; font-weight: 700; }
 .link-button:hover { text-decoration: underline; }
+.facility-context-bar { align-items: center; background: #e8f0f6; border-bottom: 1px solid #bfd0df; display: flex; gap: 8px; padding: 7px 24px; }
+.facility-context-bar a { border-radius: 999px; color: #16324f; font-weight: 700; padding: 4px 10px; }
+.facility-context-bar a.active { background: #16324f; color: #fff; }
 .page { width: 100%; padding: 24px; max-width: min(98vw, 2240px); margin: 0 auto; overflow-wrap: normal; word-break: normal; }
 h1 { margin: 0 0 18px; font-size: 28px; }
 h2 { margin: 28px 0 12px; font-size: 20px; }
@@ -871,6 +874,8 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 .run-calendar-day.selected { background: #e7f2ec; box-shadow: inset 0 0 0 1px #1f5d43; }
 
 .projection-list { display: grid; gap: 8px; margin-bottom: 20px; }
+.projection-list-row { align-items: stretch; display: grid; gap: 6px; grid-template-columns: minmax(0, 1fr) auto; }
+.projection-print-action { align-items: center; display: inline-flex; justify-content: center; white-space: nowrap; }
 .projection-list-item {
     align-items: center;
     border: 1px solid #d7dfda;
@@ -1108,6 +1113,8 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 .outcome-bar-fill.cull {
     background: #7a5434;
 }
+.outcome-bar-fill.cull.pear { background: #815ca8; }
+.projected-output-summary strong { font-size: 1.12rem; }
 
 .outcome-details {
     margin-top: 18px;
@@ -1175,6 +1182,7 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 @media (max-width: 760px) {
     .run-planner-layout { grid-template-columns: 1fr; }
     .projection-list-item { align-items: flex-start; flex-direction: column; }
+    .projection-list-row { grid-template-columns: 1fr; }
     .projection-list-item span:last-child { text-align: left; }
     .operation-tabs { margin-inline: -4px; }
     .outcome-heading {

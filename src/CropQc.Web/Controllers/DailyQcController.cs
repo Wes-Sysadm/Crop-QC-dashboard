@@ -8,6 +8,6 @@ public sealed class DailyQcController(IDashboardDataService dataService) : Contr
 {
     [HttpGet]
     [Authorize(Policy = AccessPolicyNames.DailyQcView)]
-    public async Task<IActionResult> Index([FromQuery] int? warehouseId, [FromQuery] string? status, CancellationToken cancellationToken) =>
-        View(await dataService.GetDailyQcDashboardAsync(warehouseId, status, cancellationToken));
+    public async Task<IActionResult> Index([FromQuery] int? warehouseId, [FromQuery] string? status, [FromQuery] string? facility, CancellationToken cancellationToken) =>
+        View(await dataService.GetDailyQcDashboardAsync(warehouseId, status, facility, cancellationToken));
 }

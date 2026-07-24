@@ -1,12 +1,14 @@
 @model MasterDataPageViewModel
 @inject CropQc.Web.Services.IAdminAuthorizationService AdminAuthorization
+@inject CropQc.Web.Services.IUserAccessService UserAccess
 @{
     ViewData["Title"] = Model.Title;
     var links = new[]
     {
         ("Warehouses", "/MasterData/warehouses"),
         ("Rooms", "/MasterData/rooms"),
-        ("Fruit profiles / variety codes", "/MasterData/fruit-profiles"),
+        ("Fruit Profiles", "/MasterData/fruit-profiles"),
+        ("Variety Codes", "/MasterData/fruit-profiles#variety-codes"),
         ("Grades", "/MasterData/grades"),
         ("Defects", "/MasterData/defects"),
         ("Sample types", "/MasterData/sample-types"),
@@ -20,6 +22,7 @@
         ? Model.Items.Select(x => x.Cells[0]).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList()
         : new List<string>();
     var importPreview = Model.ImportPreview;
+    var canManageRecipients = await UserAccess.HasAccessAsync(User, ApplicationAreas.Configuration, PageAccessLevel.Admin, Context.RequestAborted);
 }
 
 <h1>@Model.Title</h1>
@@ -41,6 +44,21 @@
     }
 }
 </nav>
+
+@if (Model.Type is "canonical-growers" or "grower-lots" or "orchard-blocks")
+{
+    <nav class="operation-tabs" aria-label="Grower Lots administration">
+        <a href="/GrowerLots/Current">Grower Lots</a>
+        <a class="@(Model.Type == "canonical-growers" ? "active" : "")" href="/MasterData/canonical-growers">Growers</a>
+        <a class="@(Model.Type == "orchard-blocks" ? "active" : "")" href="/MasterData/orchard-blocks">Orchards / Blocks</a>
+        @if (canManageRecipients)
+        {
+            <a href="/Admin/OrchardRecipients">QC Recipients</a>
+            <a href="/Admin/OrchardRecipientImports">Manager Import</a>
+            <a href="/Admin/OrchardRecipientImports#recent-review-batches">Unmatched Identities</a>
+        }
+    </nav>
+}
 
 @if (Model.Type == "rooms")
 {

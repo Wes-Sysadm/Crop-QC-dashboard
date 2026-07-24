@@ -111,9 +111,14 @@ public sealed record ProjectionOutcomeSourceContributionRow(
     decimal PackedBoxEquivalents,
     int CompletePackedBoxes,
     decimal PackedResidualPounds,
+    decimal PoundsPerBin,
+    decimal TotalCullPounds,
     decimal PeelerPounds,
+    decimal PeelerBins,
     decimal JuicePounds,
-    decimal WastePounds);
+    decimal JuiceBins,
+    decimal WastePounds,
+    decimal WasteBins);
 
 public sealed record ProjectionOutcomeTrendSourceRow(
     long SourceId,
@@ -126,6 +131,7 @@ public static class ProjectionOutcomeCalculator
     public const decimal PeelerRate = 0.35m;
     public const decimal JuiceRate = 0.40m;
     public const decimal WasteRate = 0.25m;
+    public const string CullCalculationVersion = "1.0";
 
     public static ProjectionOutcomeViewModel Build(RunProjectionDetailViewModel projection, DateTimeOffset generatedAt)
     {
@@ -224,9 +230,9 @@ public static class ProjectionOutcomeCalculator
                         ? projection.PearPoundsPerBin
                         : projection.ApplePoundsPerBin;
                 }
-                var peeler = cull * PeelerRate;
-                var juice = cull * JuiceRate;
-                var waste = cull * WasteRate;
+                var peeler = cull * projection.PeelerCullShare;
+                var juice = cull * projection.JuiceCullShare;
+                var waste = cull * projection.WasteCullShare;
                 return new ProjectionOutcomeCullCommodityRow(
                     group.Key,
                     poundsPerBin,
@@ -253,6 +259,14 @@ public static class ProjectionOutcomeCalculator
             {
                 var complete = Floor(source.PackedProjectedBoxes);
                 var residual = Math.Max(0m, source.PackedProjectedPounds - complete * projection.StandardBoxWeightPounds);
+                var poundsPerBin = source.PoundsPerBin > 0m
+                    ? source.PoundsPerBin
+                    : source.Commodity.Equals("Pear", StringComparison.OrdinalIgnoreCase)
+                        ? projection.PearPoundsPerBin
+                        : projection.ApplePoundsPerBin;
+                var peelerPounds = source.CullProjectedPounds * projection.PeelerCullShare;
+                var juicePounds = source.CullProjectedPounds * projection.JuiceCullShare;
+                var wastePounds = source.CullProjectedPounds * projection.WasteCullShare;
                 return new ProjectionOutcomeSourceContributionRow(
                     source.Id,
                     source.Block ?? source.Lot ?? source.SourceLabel,
@@ -264,9 +278,14 @@ public static class ProjectionOutcomeCalculator
                     source.PackedProjectedBoxes,
                     complete,
                     residual,
-                    source.CullProjectedPounds * PeelerRate,
-                    source.CullProjectedPounds * JuiceRate,
-                    source.CullProjectedPounds * WasteRate);
+                    poundsPerBin,
+                    source.CullProjectedPounds,
+                    peelerPounds,
+                    Divide(peelerPounds, poundsPerBin),
+                    juicePounds,
+                    Divide(juicePounds, poundsPerBin),
+                    wastePounds,
+                    Divide(wastePounds, poundsPerBin));
             })
             .ToList();
 
