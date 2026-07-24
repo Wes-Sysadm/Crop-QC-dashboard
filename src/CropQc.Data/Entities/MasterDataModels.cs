@@ -108,7 +108,9 @@ public sealed class CanonicalOrchard
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public ICollection<CanonicalOrchardBlock> Blocks { get; } = new List<CanonicalOrchardBlock>();
+    public ICollection<CanonicalOrchardAlias> Aliases { get; } = new List<CanonicalOrchardAlias>();
     public ICollection<OrchardReportRecipient> ReportRecipients { get; } = new List<OrchardReportRecipient>();
+    public ICollection<OrchardManagerAssignment> ManagerAssignments { get; } = new List<OrchardManagerAssignment>();
 }
 
 public sealed class OrchardReportRecipient

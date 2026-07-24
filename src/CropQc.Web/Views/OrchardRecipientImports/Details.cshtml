@@ -1,0 +1,138 @@
+@model CropQc.Web.Models.OrchardContactImportBatchViewModel
+@{
+    ViewData["Title"] = "Review Orchard Manager Import";
+    string StatusFor(CropQc.Web.Models.OrchardContactImportReviewRowViewModel row)
+    {
+        if (string.IsNullOrWhiteSpace(row.Email)) return "Missing Email";
+        if (!row.EmailIsValid) return "Invalid Email";
+        if (row.ExistingRecipients.Any(x => string.Equals(x, row.Email, StringComparison.OrdinalIgnoreCase))) return "Duplicate Assignment";
+        if (row.ExistingRecipients.Count > 0) return "Conflict With Existing Assignment";
+        return row.MatchMethod;
+    }
+}
+
+<section class="page-header">
+    <div>
+        <h1>Review Orchard Manager Import</h1>
+        <p><strong>@Model.OriginalFileName</strong> · worksheet @Model.WorksheetName · status @Model.Status</p>
+        <p>SHA-256 <code>@Model.WorkbookSha256</code></p>
+    </div>
+    <a class="button-link secondary-button" href="/Admin/OrchardRecipientImports">Back to imports</a>
+</section>
+
+<section class="panel">
+    <div class="stat-grid">
+        <div class="stat-card"><strong>@Model.OrchardManagerSourceRows</strong><span>Source rows</span></div>
+        <div class="stat-card"><strong>@Model.ParsedTokens</strong><span>Orchard tokens</span></div>
+        <div class="stat-card"><strong>@Model.Rows.Count(x => x.ReviewDecision == "Pending")</strong><span>Pending</span></div>
+        <div class="stat-card"><strong>@Model.Rows.Count(x => x.ReviewDecision == "Approved")</strong><span>Approved</span></div>
+        <div class="stat-card"><strong>@Model.Rows.Count(x => x.ReviewDecision == "Rejected")</strong><span>Rejected</span></div>
+        <div class="stat-card"><strong>@Model.Rows.Count(x => x.ReviewDecision == "Deferred")</strong><span>Deferred</span></div>
+    </div>
+</section>
+
+@foreach (var group in Model.Rows.GroupBy(StatusFor).OrderBy(x => x.Key))
+{
+    <section class="panel table-scroll">
+        <h2>@group.Key (@group.Count())</h2>
+        <table>
+            <thead>
+                <tr><th>Source</th><th>Manager</th><th>Match evidence</th><th>Existing recipients</th><th>Administrator decision</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var row in group)
+            {
+                <tr>
+                    <td>Row @row.WorkbookRowNumber<br /><span class="muted">@row.OriginalOrchardCell</span><br /><strong>@row.ParsedOrchardToken</strong></td>
+                    <td>@row.ManagerName<br />@(row.Email ?? "Missing email")<br /><span class="muted">@row.Phone</span><br /><span class="muted">@row.PhysicalAddress</span></td>
+                    <td>
+                        @row.MatchMethod
+                        @if (row.MatchScore is not null) { <span>— @row.MatchScore.Value.ToString("0.0000")</span> }
+                        @if (!string.IsNullOrWhiteSpace(row.SuggestedCanonicalOrchard)) { <br /><strong>@row.SuggestedCanonicalOrchard</strong> }
+                        @if (row.Candidates.Count > 0)
+                        {
+                            <details><summary>Candidate details</summary><ul>
+                            @foreach (var candidate in row.Candidates)
+                            {
+                                <li>@candidate.OrchardName (@candidate.SimilarityScore.ToString("0.0000")) — @candidate.Reason
+                                    @if (!string.IsNullOrWhiteSpace(candidate.AddressEvidence)) { <span> Address: @candidate.AddressEvidence.</span> }
+                                </li>
+                            }
+                            </ul></details>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(row.Warning)) { <p class="status warning">@row.Warning</p> }
+                    </td>
+                    <td>@(row.ExistingRecipients.Count == 0 ? "None" : string.Join(", ", row.ExistingRecipients))</td>
+                    <td>
+                    @if (Model.Status == "Reviewing")
+                    {
+                        <form method="post" action="/Admin/OrchardRecipientImports/@Model.Id/Review" class="stack-form compact-form">
+                            <input type="hidden" name="RowId" value="@row.Id" />
+                            <label>Decision
+                                <select name="Decision" required>
+                                    @foreach (var decision in new[] { "Pending", "Approved", "Rejected", "Deferred" })
+                                    {
+                                        <option value="@decision" selected="@(row.ReviewDecision == decision)">@decision</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>Canonical orchard
+                                <select name="CanonicalOrchardId">
+                                    <option value="">Select existing orchard</option>
+                                    @foreach (var orchard in Model.Orchards)
+                                    {
+                                        var selected = row.ApprovedCanonicalOrchardId == orchard.Id
+                                            || (row.ApprovedCanonicalOrchardId is null && row.SuggestedCanonicalOrchardId == orchard.Id);
+                                        <option value="@orchard.Id" selected="@selected">@orchard.OrchardName</option>
+                                    }
+                                </select>
+                            </label>
+                            <label><input type="checkbox" name="CreateAlias" value="true" checked="@row.CreateAlias" /> Create reviewed alias</label>
+                            <label><input type="checkbox" name="CreateRecipient" value="true" checked="@row.CreateRecipient" disabled="@(!row.EmailIsValid)" /> Create active QC recipient</label>
+                            @if (!row.EmailIsValid) { <input type="hidden" name="CreateRecipient" value="false" /> }
+                            <label><input type="checkbox" name="ReactivateDeletedRecipient" value="true" checked="@row.ReactivateDeletedRecipient" /> Explicitly reactivate matching soft-deleted recipient</label>
+                            <label>Review note
+                                <textarea name="ReviewNote" rows="2">@row.ReviewNote</textarea>
+                            </label>
+                            <button type="submit">Save decision</button>
+                        </form>
+                    }
+                    else
+                    {
+                        <strong>@row.ReviewDecision</strong><br />
+                        <span>@row.AppliedAction</span>
+                    }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </section>
+}
+
+@if (Model.Status == "Reviewing")
+{
+    <section class="panel">
+        <h2>Production apply gate</h2>
+        @if (Model.HasPendingDecisions)
+        {
+            <p class="status warning">Apply is blocked until every token is Approved, Rejected, or explicitly Deferred.</p>
+        }
+        <p>Apply verifies the exact workbook checksum and a successful durable backup from the last 24 hours. Approved rows are applied in one transaction. Rejected and deferred rows remain untouched.</p>
+        <form method="post" enctype="multipart/form-data" action="/Admin/OrchardRecipientImports/@Model.Id/Apply" class="stack-form">
+            <label>Exact reviewed workbook
+                <input type="file" name="Workbook" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
+            </label>
+            <label>Verified backup run ID
+                <input type="number" name="VerifiedBackupRunId" min="1" required />
+            </label>
+            <label>Import reason
+                <textarea name="ImportReason" maxlength="1000" required></textarea>
+            </label>
+            <label>Type <code>APPLY ORCHARD RECIPIENTS</code>
+                <input type="text" name="ProductionConfirmation" autocomplete="off" required />
+            </label>
+            <button type="submit" class="danger-button" disabled="@Model.HasPendingDecisions">Apply approved mappings</button>
+        </form>
+    </section>
+}
