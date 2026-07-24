@@ -410,6 +410,49 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task DeletedProjection_CannotCreateActualRunOrMutateInventory()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var user = Principal("manager@fruitandland.com");
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, user, CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var projection = ProjectionForActual(option, 1000);
+        projection.IsDeleted = true;
+        db.RunProjections.Add(projection);
+        await db.SaveChangesAsync();
+        var baselineAdjustments = await db.RoomInventoryAdjustments.CountAsync();
+
+        var error = await service.CreateAsync(ActualRunForm(option, projection), user, CancellationToken.None);
+
+        Assert.Contains("deleted projection", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(baselineAdjustments, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Empty(await db.BinsRunEntries.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ProjectionFacilityMustMatchActualRunInventory()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var user = Principal("manager@fruitandland.com");
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, user, CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var projection = ProjectionForActual(option, 4);
+        db.RunProjections.Add(projection);
+        await db.SaveChangesAsync();
+        var baselineAdjustments = await db.RoomInventoryAdjustments.CountAsync();
+
+        var error = await service.CreateAsync(ActualRunForm(option, projection), user, CancellationToken.None);
+
+        Assert.Contains("assigned WP or EBS facility", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(baselineAdjustments, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Empty(await db.BinsRunEntries.ToListAsync());
+    }
+
+    [Fact]
     public async Task EditingAndReversing_AdjustsAndRestoresInventory()
     {
         using var db = CreateDbContext();
@@ -550,6 +593,58 @@ public sealed class BinsRunWorkflowTests
         CreatedAt = DateTimeOffset.UtcNow,
         UpdatedAt = DateTimeOffset.UtcNow
     };
+
+    private static RunProjection ProjectionForActual(BinsRunInventoryOptionViewModel option, int facilityWarehouseId)
+    {
+        var projection = new RunProjection
+        {
+            PlannedRunDate = new(2026, 7, 24),
+            Name = "Actual conversion",
+            Status = RunProjectionStatuses.Ready,
+            ProjectionMode = RunProjectionModes.Inventory,
+            FacilityWarehouseId = facilityWarehouseId,
+            FacilityCodeSnapshot = facilityWarehouseId == 1000 ? "EBS" : "WP",
+            CropYear = 2026,
+            ApplePoundsPerBin = 880,
+            PearPoundsPerBin = 920,
+            StandardBoxWeightPounds = 40,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        projection.Sources.Add(new RunProjectionSource
+        {
+            SourceType = RunProjectionSourceTypes.Inventory,
+            InventoryKey = option.InventoryKey,
+            WarehouseId = option.WarehouseId,
+            RoomId = option.RoomId,
+            FruitProfileId = option.FruitProfileId ?? 0,
+            PlannedBins = 5,
+            SelectedQcSourceType = RunProjectionQcSourceTypes.None,
+            Commodity = "Apple",
+            SourceLabelSnapshot = option.Label,
+            FacilitySnapshot = "EBS",
+            RoomSnapshot = option.Room,
+            LotSnapshot = option.Lot,
+            VarietySnapshot = option.Variety,
+            CalculationVersion = RunProjectionCalculationService.CurrentCalculationVersion,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        return projection;
+    }
+
+    private static BinsRunForm ActualRunForm(BinsRunInventoryOptionViewModel option, RunProjection projection) =>
+        new()
+        {
+            WarehouseId = option.WarehouseId,
+            RoomId = option.RoomId,
+            InventoryKey = option.InventoryKey,
+            BinsRun = 5,
+            ExpectedAvailableBins = option.CurrentBins,
+            RunProjectionId = projection.Id,
+            RunProjectionSourceId = projection.Sources.Single().Id,
+            RunAt = DateTimeOffset.UtcNow
+        };
 
     private static User User(int id, string email, PageAccessLevel binsRunLevel) => new()
     {

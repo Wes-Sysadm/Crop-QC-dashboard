@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using CropQc.Data;
@@ -11,8 +12,8 @@ namespace CropQc.Web.Services;
 
 public interface IRunProjectionService
 {
-    Task<RunProjectionPlannerViewModel> GetPlannerAsync(DateOnly? date, long? projectionId, ClaimsPrincipal user, CancellationToken cancellationToken);
-    Task<IReadOnlyList<RunProjectionSourceCandidateViewModel>> SearchSourcesAsync(string? query, int? roomId, string? projectionMode, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<RunProjectionPlannerViewModel> GetPlannerAsync(DateOnly? date, long? projectionId, string? facility, string? deletionStatus, string? sort, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<IReadOnlyList<RunProjectionSourceCandidateViewModel>> SearchSourcesAsync(string? query, int? facilityWarehouseId, int? roomId, string? projectionMode, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<IReadOnlyList<RunProjectionQcChoiceViewModel>> GetFieldSampleChoicesAsync(long projectionId, int canonicalBlockId, int fruitProfileId, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<(long? Id, string? Error)> CreateAsync(RunProjectionCreateForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> UpdateHeaderAsync(RunProjectionHeaderForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
@@ -25,6 +26,8 @@ public interface IRunProjectionService
     Task<string?> CancelAsync(RunProjectionStatusForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<(long? Id, string? Error)> DuplicateAsync(RunProjectionDuplicateForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<(long? Id, string? Error)> CreateInventoryFromPreharvestAsync(RunProjectionCreateInventoryForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<RunProjectionDeletionConfirmationViewModel?> GetDeletionConfirmationAsync(long id, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<string?> DeleteAsync(DeleteRunProjectionForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
 }
 
 public static class RunProjectionSettings
@@ -53,30 +56,65 @@ public sealed class RunProjectionService(
 {
     private const string FieldSampleTypeName = "Field Sample";
     private const string SourceApplication = "CropQc.Web";
+    private static readonly string[] OperationalFacilityCodes = ["WP", "EBS"];
 
     public async Task<RunProjectionPlannerViewModel> GetPlannerAsync(
         DateOnly? date,
         long? projectionId,
+        string? facility,
+        string? deletionStatus,
+        string? sort,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
         await RequireAsync(user, PageAccessLevel.View, cancellationToken);
         var settings = await LoadSettingsAsync(cancellationToken);
         await ExpireDraftsAsync(settings.DraftExpirationDays, cancellationToken);
+        var canEdit = await CanAsync(user, PageAccessLevel.Edit, cancellationToken);
+        var canAdmin = await CanAsync(user, PageAccessLevel.Admin, cancellationToken);
+        var selectedFacility = NormalizeFacilityFilter(facility, canAdmin);
+        var selectedDeletionStatus = NormalizeDeletionStatus(deletionStatus, canAdmin);
+        var selectedSort = NormalizeSort(sort);
+        var facilities = await OperationalFacilities()
+            .OrderByDescending(x => x.Code == "WP")
+            .ThenBy(x => x.Code)
+            .Select(x => new RunProjectionFacilityOptionViewModel(x.Id, x.Code, x.Name))
+            .ToListAsync(cancellationToken);
         var today = businessTime.PacificDate(businessTime.UtcNow);
         var selectedDate = date ?? today;
         var start = today.AddDays(-settings.VisibilityPastDays);
         var end = today.AddDays(settings.VisibilityFutureDays);
 
-        var calendarCounts = await dbContext.RunProjections.AsNoTracking()
+        var filtered = ApplyPlannerFilters(dbContext.RunProjections.AsNoTracking(), selectedFacility, selectedDeletionStatus);
+        var calendarRows = await filtered
             .Where(x => x.PlannedRunDate >= start && x.PlannedRunDate <= end)
-            .GroupBy(x => x.PlannedRunDate)
-            .Select(x => new { Date = x.Key, Count = x.Count() })
-            .ToDictionaryAsync(x => x.Date, x => x.Count, cancellationToken);
+            .GroupBy(x => new
+            {
+                x.PlannedRunDate,
+                Facility = x.FacilityWarehouse == null
+                    ? (x.FacilityCodeSnapshot ?? "Unassigned")
+                    : x.FacilityWarehouse.Code
+            })
+            .Select(x => new
+            {
+                Date = x.Key.PlannedRunDate,
+                x.Key.Facility,
+                Count = x.Count(),
+                PlannedBins = x.Sum(y => y.TotalPlannedBins)
+            })
+            .ToListAsync(cancellationToken);
 
-        var records = await dbContext.RunProjections.AsNoTracking()
-            .Where(x => x.PlannedRunDate == selectedDate)
-            .OrderBy(x => x.Name)
+        var recordsQuery = filtered.Where(x => x.PlannedRunDate == selectedDate);
+        IOrderedQueryable<RunProjection> orderedRecords = selectedSort switch
+        {
+            "RunDate" => recordsQuery.OrderBy(x => x.PlannedRunDate).ThenBy(x => x.Name),
+            "Status" => recordsQuery.OrderBy(x => x.Status).ThenBy(x => x.Name),
+            "Updated" => recordsQuery.OrderByDescending(x => x.UpdatedAt).ThenBy(x => x.Name),
+            "PlannedBins" => recordsQuery.OrderByDescending(x => x.TotalPlannedBins).ThenBy(x => x.Name),
+            _ => recordsQuery.OrderBy(x => x.FacilityWarehouse == null ? x.FacilityCodeSnapshot : x.FacilityWarehouse.Code)
+                .ThenBy(x => x.Name)
+        };
+        var records = await orderedRecords
             .ThenBy(x => x.Id)
             .Select(x => new RunProjectionListItemViewModel
             {
@@ -85,39 +123,155 @@ public sealed class RunProjectionService(
                 Name = x.Name,
                 Status = x.Status,
                 ProjectionMode = x.ProjectionMode,
+                FacilityWarehouseId = x.FacilityWarehouseId,
+                FacilityCode = x.FacilityWarehouse == null
+                    ? (x.FacilityCodeSnapshot ?? "Unassigned")
+                    : x.FacilityWarehouse.Code,
                 TotalPlannedBins = x.TotalPlannedBins,
+                TotalProjectedPounds = x.TotalProjectedPounds,
                 TotalProjectedBoxes = x.TotalProjectedBoxes,
                 TotalRoundedProjectedBoxes = x.TotalRoundedProjectedBoxes,
+                TotalPackedProjectedPounds = x.TotalPackedProjectedPounds,
+                TotalPackedProjectedBoxes = x.TotalPackedProjectedBoxes,
+                TotalCullProjectedBoxes = x.TotalCullProjectedBoxes,
                 Creator = x.CreatedByUser == null ? "" : x.CreatedByUser.DisplayName,
                 UpdatedAt = x.UpdatedAt,
                 SourceCount = x.Sources.Count,
-                ConvertedSourceCount = x.Sources.Count(source => source.ActualBinsRunEntryId != null)
+                ConvertedSourceCount = x.Sources.Count(source => source.ActualBinsRunEntryId != null),
+                IsDeleted = x.IsDeleted,
+                DeletedAt = x.DeletedAt,
+                DeletionReason = x.DeletionReason
             })
             .ToListAsync(cancellationToken);
 
-        var selectedId = projectionId ?? records.FirstOrDefault()?.Id;
-        var canEdit = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Edit, cancellationToken);
-        var canAdmin = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Admin, cancellationToken);
+        var selectedId = projectionId is long requestedId && records.Any(x => x.Id == requestedId)
+            ? requestedId
+            : records.FirstOrDefault()?.Id;
+        var recentActivity = await ApplyPlannerFilters(
+                dbContext.RunProjections.AsNoTracking(),
+                selectedFacility,
+                selectedDeletionStatus)
+            .OrderByDescending(x => x.UpdatedAt)
+            .ThenByDescending(x => x.Id)
+            .Take(12)
+            .Select(x => new RunProjectionListItemViewModel
+            {
+                Id = x.Id,
+                PlannedRunDate = x.PlannedRunDate,
+                Name = x.Name,
+                Status = x.Status,
+                ProjectionMode = x.ProjectionMode,
+                FacilityWarehouseId = x.FacilityWarehouseId,
+                FacilityCode = x.FacilityWarehouse == null
+                    ? (x.FacilityCodeSnapshot ?? "Unassigned")
+                    : x.FacilityWarehouse.Code,
+                TotalPlannedBins = x.TotalPlannedBins,
+                TotalProjectedPounds = x.TotalProjectedPounds,
+                TotalProjectedBoxes = x.TotalProjectedBoxes,
+                TotalRoundedProjectedBoxes = x.TotalRoundedProjectedBoxes,
+                TotalPackedProjectedPounds = x.TotalPackedProjectedPounds,
+                TotalPackedProjectedBoxes = x.TotalPackedProjectedBoxes,
+                TotalCullProjectedBoxes = x.TotalCullProjectedBoxes,
+                Creator = x.CreatedByUser == null ? "" : x.CreatedByUser.DisplayName,
+                UpdatedAt = x.UpdatedAt,
+                SourceCount = x.Sources.Count,
+                ConvertedSourceCount = x.Sources.Count(source => source.ActualBinsRunEntryId != null),
+                IsDeleted = x.IsDeleted,
+                DeletedAt = x.DeletedAt,
+                DeletionReason = x.DeletionReason
+            })
+            .ToListAsync(cancellationToken);
+        var totals = await filtered
+            .Where(x => x.PlannedRunDate == selectedDate)
+            .GroupBy(x => x.FacilityWarehouse == null
+                ? (x.FacilityCodeSnapshot ?? "Unassigned")
+                : x.FacilityWarehouse.Code)
+            .Select(x => new RunProjectionFacilityTotalsViewModel
+            {
+                FacilityCode = x.Key,
+                ProjectionCount = x.Count(),
+                PlannedBins = x.Sum(y => y.TotalPlannedBins),
+                GrossPounds = x.Sum(y => y.TotalProjectedPounds),
+                PackedPounds = x.Sum(y => y.TotalPackedProjectedPounds),
+                PackedBoxes = x.Sum(y => y.TotalPackedProjectedBoxes),
+                CullBoxes = x.Sum(y => y.TotalCullProjectedBoxes)
+            })
+            .OrderByDescending(x => x.FacilityCode == "WP")
+            .ThenBy(x => x.FacilityCode)
+            .ToListAsync(cancellationToken);
+        var unassignedCount = canAdmin
+            ? await dbContext.RunProjections.AsNoTracking().CountAsync(x => !x.IsDeleted && x.FacilityWarehouseId == null, cancellationToken)
+            : 0;
+        var preferredFacilityId = facilities
+            .FirstOrDefault(x => x.Code.Equals(selectedFacility, StringComparison.OrdinalIgnoreCase))
+            ?.WarehouseId;
+        var selectedProjection = selectedId is null
+            ? null
+            : await GetDetailAsync(selectedId.Value, canEdit, canAdmin, cancellationToken);
+        if (selectedProjection?.IsDeleted == true
+            && projectionId == selectedProjection.Id
+            && canAdmin)
+        {
+            var userId = await CurrentUserIdAsync(user, cancellationToken);
+            dbContext.AuditLogs.Add(new AuditLog
+            {
+                Action = "InspectDeleted",
+                EntityName = nameof(RunProjection),
+                EntityKey = selectedProjection.Id.ToString(CultureInfo.InvariantCulture),
+                UserId = userId,
+                AfterValuesJson = JsonSerializer.Serialize(new
+                {
+                    selectedProjection.Id,
+                    selectedProjection.FacilityCode,
+                    selectedProjection.DeletedAt,
+                    Result = "Viewed"
+                }),
+                SourceApplication = SourceApplication,
+                CreatedAt = businessTime.UtcNow
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
         return new RunProjectionPlannerViewModel
         {
             SelectedDate = selectedDate,
             CalendarDays = Enumerable.Range(0, settings.VisibilityPastDays + settings.VisibilityFutureDays + 1)
                 .Select(offset => start.AddDays(offset))
-                .Select(day => new RunProjectionCalendarDayViewModel(
-                    day,
-                    calendarCounts.GetValueOrDefault(day),
-                    day == selectedDate,
-                    day == today))
+                .Select(day =>
+                {
+                    var rows = calendarRows.Where(x => x.Date == day).ToList();
+                    return new RunProjectionCalendarDayViewModel
+                    {
+                        Date = day,
+                        ProjectionCount = rows.Sum(x => x.Count),
+                        WpProjectionCount = rows.Where(x => x.Facility == "WP").Sum(x => x.Count),
+                        WpPlannedBins = rows.Where(x => x.Facility == "WP").Sum(x => x.PlannedBins),
+                        EbsProjectionCount = rows.Where(x => x.Facility == "EBS").Sum(x => x.Count),
+                        EbsPlannedBins = rows.Where(x => x.Facility == "EBS").Sum(x => x.PlannedBins),
+                        UnassignedProjectionCount = rows.Where(x => x.Facility == "Unassigned").Sum(x => x.Count),
+                        UnassignedPlannedBins = rows.Where(x => x.Facility == "Unassigned").Sum(x => x.PlannedBins),
+                        IsSelected = day == selectedDate,
+                        IsToday = day == today
+                    };
+                })
                 .ToList(),
             Projections = records,
-            SelectedProjection = selectedId is null ? null : await GetDetailAsync(selectedId.Value, canEdit, cancellationToken),
+            RecentActivity = recentActivity,
+            FacilityOptions = facilities,
+            FacilityTotals = totals,
+            SelectedProjection = selectedProjection,
             CreateForm = new RunProjectionCreateForm
             {
                 PlannedRunDate = selectedDate,
-                Name = $"Run {records.Count + 1}"
+                Name = $"Run {records.Count + 1}",
+                FacilityWarehouseId = preferredFacilityId
             },
+            SelectedFacility = selectedFacility,
+            SelectedDeletionStatus = selectedDeletionStatus,
+            SelectedSort = selectedSort,
+            UnassignedProjectionCount = unassignedCount,
             CanEdit = canEdit,
             CanAdmin = canAdmin,
+            CanViewDeleted = canAdmin,
             VisibilityPastDays = settings.VisibilityPastDays,
             VisibilityFutureDays = settings.VisibilityFutureDays,
             DefaultExpectedPackoutPercent = settings.DefaultExpectedPackoutPercent
@@ -126,6 +280,7 @@ public sealed class RunProjectionService(
 
     public async Task<IReadOnlyList<RunProjectionSourceCandidateViewModel>> SearchSourcesAsync(
         string? query,
+        int? facilityWarehouseId,
         int? roomId,
         string? projectionMode,
         ClaimsPrincipal user,
@@ -138,8 +293,13 @@ public sealed class RunProjectionService(
         var normalized = query?.Trim() ?? "";
         var normalizedUpper = normalized.ToUpperInvariant();
         var activeCropYear = cropYearService.GetCurrentCropYear(businessTime.NowPacific);
+        var validFacilityId = facilityWarehouseId is int requestedFacilityId
+            && await OperationalFacilities().AnyAsync(x => x.Id == requestedFacilityId, cancellationToken)
+                ? requestedFacilityId
+                : (int?)null;
         IReadOnlyList<RunProjectionInventorySource> inventory = mode == RunProjectionModes.Inventory
-            ? await binsRunService.SearchPlanningInventoryAsync(normalized, roomId, 50, cancellationToken)
+            && validFacilityId is not null
+            ? await binsRunService.SearchPlanningInventoryAsync(normalized, validFacilityId, roomId, 50, cancellationToken)
             : [];
         var receiptIds = inventory.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value).Distinct().ToList();
         var blockProfileKeys = inventory
@@ -298,6 +458,13 @@ public sealed class RunProjectionService(
         var projectionMode = requestedMode.Equals(RunProjectionModes.Preharvest, StringComparison.OrdinalIgnoreCase)
             ? RunProjectionModes.Preharvest
             : RunProjectionModes.Inventory;
+        var facility = form.FacilityWarehouseId is int facilityId
+            ? await OperationalFacilities().SingleOrDefaultAsync(x => x.Id == facilityId, cancellationToken)
+            : null;
+        if (facility is null)
+        {
+            return (null, "Select WP or EBS for this projection.");
+        }
 
         var settings = await LoadSettingsAsync(cancellationToken);
         var now = businessTime.UtcNow;
@@ -308,6 +475,8 @@ public sealed class RunProjectionService(
             Name = name,
             Status = RunProjectionStatuses.Draft,
             ProjectionMode = projectionMode,
+            FacilityWarehouseId = facility.Id,
+            FacilityCodeSnapshot = facility.Code,
             CropYear = cropYearService.GetCurrentCropYear(businessTime.NowPacific),
             ApplePoundsPerBin = settings.ApplePoundsPerBin,
             PearPoundsPerBin = settings.PearPoundsPerBin,
@@ -331,9 +500,30 @@ public sealed class RunProjectionService(
         if (error is not null || projection is null) return error;
         var name = form.Name?.Trim() ?? "";
         if (name.Length == 0 || name.Length > 100) return "Projection name is required and must be 100 characters or fewer.";
+        var facility = form.FacilityWarehouseId is int facilityId
+            ? await OperationalFacilities().SingleOrDefaultAsync(x => x.Id == facilityId, cancellationToken)
+            : null;
+        if (facility is null) return "Select WP or EBS for this projection.";
+        if (projection.FacilityWarehouseId != facility.Id)
+        {
+            if (projection.Status != RunProjectionStatuses.Draft)
+            {
+                return $"Facility cannot be changed on a {projection.Status} projection. Duplicate it to the other facility instead.";
+            }
+            var incompatibleInventorySources = projection.Sources
+                .Where(x => x.SourceType == RunProjectionSourceTypes.Inventory && x.WarehouseId != facility.Id)
+                .Select(x => x.Id)
+                .ToList();
+            if (incompatibleInventorySources.Count > 0)
+            {
+                return $"Remove or remap inventory source(s) {string.Join(", ", incompatibleInventorySources)} before changing the facility.";
+            }
+        }
         var before = ProjectionSnapshot(projection);
         projection.Name = name;
         projection.PlannedRunDate = form.PlannedRunDate;
+        projection.FacilityWarehouseId = facility.Id;
+        projection.FacilityCodeSnapshot = facility.Code;
         Touch(projection, userId);
         await AddAuditAsync("UpdateHeader", projection, userId, before, ProjectionSnapshot(projection), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -450,6 +640,7 @@ public sealed class RunProjectionService(
         if (form.ExpectedPackoutPercent is < 0 or > 100) return "Expected Packout % must be between 0 and 100.";
         var (projection, error, userId) = await LoadForEditAsync(form.ProjectionId, form.ConcurrencyVersion, user, cancellationToken);
         if (error is not null || projection is null) return error;
+        if (projection.FacilityWarehouseId is null) return "Assign WP or EBS before adding projection sources.";
         var before = projection.Sources.Select(x => new { x.Id, x.ExpectedPackoutPercent }).ToList();
         var settings = await LoadSettingsAsync(cancellationToken);
         foreach (var source in projection.Sources.Where(x => x.ActualBinsRunEntryId is null))
@@ -525,6 +716,7 @@ public sealed class RunProjectionService(
     {
         var (projection, error, userId) = await LoadForEditAsync(form.Id, form.ConcurrencyVersion, user, cancellationToken);
         if (error is not null || projection is null) return error;
+        if (projection.FacilityWarehouseId is null) return "Select WP or EBS before marking the projection Ready.";
         if (projection.Sources.Count == 0) return "Add at least one source before marking the projection Ready.";
         if (projection.Sources.Any(x => x.PlannedBins <= 0)) return "Every source needs an estimated or planned bin quantity greater than zero.";
         if (projection.ProjectionMode == RunProjectionModes.Preharvest
@@ -538,9 +730,10 @@ public sealed class RunProjectionService(
         }
         if (projection.ProjectionMode == RunProjectionModes.Inventory
             && projection.Sources.Any(x => x.SourceType != RunProjectionSourceTypes.Inventory
-                || string.IsNullOrWhiteSpace(x.InventoryKey)))
+                || string.IsNullOrWhiteSpace(x.InventoryKey)
+                || x.WarehouseId != projection.FacilityWarehouseId))
         {
-            return "Every Inventory projection source must be mapped to a real receipt or inventory lot.";
+            return "Every Inventory projection source must be mapped to a real receipt or inventory lot at the projection's assigned facility.";
         }
         if (projection.Sources.Any(x => x.Commodity == "Unknown")) return "Resolve every source commodity before marking the projection Ready.";
         if (projection.Sources.Any(x => x.SizeResults.Count == 0)) return "Every source needs usable calculated size data before the projection can be Ready.";
@@ -570,6 +763,7 @@ public sealed class RunProjectionService(
         if (string.IsNullOrWhiteSpace(form.Reason)) return "Cancellation reason is required.";
         var projection = await LoadProjectionAsync(form.Id, cancellationToken);
         if (projection is null) return "Projection was not found.";
+        if (projection.IsDeleted) return "Deleted projections are read-only.";
         if (projection.ConcurrencyVersion != form.ConcurrencyVersion) return ConflictMessage;
         if (!RunProjectionStatuses.Editable.Contains(projection.Status, StringComparer.OrdinalIgnoreCase))
         {
@@ -599,6 +793,11 @@ public sealed class RunProjectionService(
 
         var sourceProjection = await LoadProjectionAsync(form.Id, cancellationToken);
         if (sourceProjection is null) return (null, "Projection was not found.");
+        if (sourceProjection.IsDeleted) return (null, "Deleted projections cannot be duplicated.");
+        var targetFacility = form.FacilityWarehouseId is int targetFacilityId
+            ? await OperationalFacilities().SingleOrDefaultAsync(x => x.Id == targetFacilityId, cancellationToken)
+            : null;
+        if (targetFacility is null) return (null, "Select WP or EBS for the duplicate.");
         var cloneName = string.IsNullOrWhiteSpace(form.Name)
             ? $"{sourceProjection.Name[..Math.Min(sourceProjection.Name.Length, 95)]} copy"
             : form.Name.Trim();
@@ -612,7 +811,9 @@ public sealed class RunProjectionService(
             Status = RunProjectionStatuses.Draft,
             ProjectionMode = sourceProjection.ProjectionMode,
             CropYear = sourceProjection.CropYear,
-            SourceProjectionId = sourceProjection.SourceProjectionId,
+            SourceProjectionId = sourceProjection.Id,
+            FacilityWarehouseId = targetFacility.Id,
+            FacilityCodeSnapshot = targetFacility.Code,
             ApplePoundsPerBin = sourceProjection.ApplePoundsPerBin,
             PearPoundsPerBin = sourceProjection.PearPoundsPerBin,
             StandardBoxWeightPounds = sourceProjection.StandardBoxWeightPounds,
@@ -632,14 +833,28 @@ public sealed class RunProjectionService(
             CreatedByUserId = userId,
             UpdatedByUserId = userId
         };
+        var crossFacility = sourceProjection.FacilityWarehouseId != targetFacility.Id;
+        var omittedSourceIds = new List<long>();
         foreach (var source in sourceProjection.Sources.OrderBy(x => x.SortOrder))
         {
+            if (crossFacility && source.SourceType == RunProjectionSourceTypes.Inventory)
+            {
+                omittedSourceIds.Add(source.Id);
+                continue;
+            }
             clone.Sources.Add(CloneSource(source, now));
         }
+        RecalculateTotals(clone);
 
         dbContext.RunProjections.Add(clone);
         await dbContext.SaveChangesAsync(cancellationToken);
-        await AddAuditAsync("Duplicate", clone, userId, new { SourceProjectionId = sourceProjection.Id }, ProjectionSnapshot(clone), cancellationToken);
+        await AddAuditAsync(
+            "Duplicate",
+            clone,
+            userId,
+            new { SourceProjectionId = sourceProjection.Id, SourceFacility = sourceProjection.FacilityCodeSnapshot },
+            new { Projection = ProjectionSnapshot(clone), CrossFacility = crossFacility, OmittedInventorySourceIds = omittedSourceIds },
+            cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return (clone.Id, null);
     }
@@ -656,6 +871,12 @@ public sealed class RunProjectionService(
 
         var sourceProjection = await LoadProjectionAsync(form.Id, cancellationToken);
         if (sourceProjection is null) return (null, "Preharvest projection was not found.");
+        if (sourceProjection.IsDeleted) return (null, "Deleted projections cannot create inventory projections.");
+        if (sourceProjection.FacilityWarehouseId is null) return (null, "Assign WP or EBS before mapping inventory.");
+        if (form.FacilityWarehouseId != sourceProjection.FacilityWarehouseId)
+        {
+            return (null, "The mapped Inventory projection must use the same planned facility as the Preharvest projection.");
+        }
         if (sourceProjection.ProjectionMode != RunProjectionModes.Preharvest)
         {
             return (null, "Only a Preharvest projection can create a mapped Inventory projection.");
@@ -690,6 +911,8 @@ public sealed class RunProjectionService(
             ProjectionMode = RunProjectionModes.Inventory,
             CropYear = sourceProjection.CropYear,
             SourceProjectionId = sourceProjection.Id,
+            FacilityWarehouseId = sourceProjection.FacilityWarehouseId,
+            FacilityCodeSnapshot = sourceProjection.FacilityCodeSnapshot,
             ApplePoundsPerBin = sourceProjection.ApplePoundsPerBin,
             PearPoundsPerBin = sourceProjection.PearPoundsPerBin,
             StandardBoxWeightPounds = sourceProjection.StandardBoxWeightPounds,
@@ -715,6 +938,10 @@ public sealed class RunProjectionService(
             if (inventory is null)
             {
                 return (null, $"The mapped inventory for {preharvestSource.SourceLabelSnapshot} is no longer available.");
+            }
+            if (inventory.WarehouseId != sourceProjection.FacilityWarehouseId)
+            {
+                return (null, $"The mapped inventory for {preharvestSource.SourceLabelSnapshot} must belong to {sourceProjection.FacilityCodeSnapshot}.");
             }
             if (inventory.CanonicalOrchardBlockId != preharvestSource.CanonicalOrchardBlockId
                 || inventory.FruitProfileId != preharvestSource.FruitProfileId)
@@ -770,7 +997,163 @@ public sealed class RunProjectionService(
         return (inventoryProjection.Id, null);
     }
 
-    private async Task<RunProjectionDetailViewModel?> GetDetailAsync(long id, bool canEdit, CancellationToken cancellationToken)
+    public async Task<RunProjectionDeletionConfirmationViewModel?> GetDeletionConfirmationAsync(
+        long id,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        await RequireAsync(user, PageAccessLevel.Edit, cancellationToken);
+        var canAdmin = await CanAsync(user, PageAccessLevel.Admin, cancellationToken);
+        var projection = await dbContext.RunProjections.AsNoTracking()
+            .Include(x => x.FacilityWarehouse)
+            .Include(x => x.CreatedByUser)
+            .Include(x => x.Sources)
+            .SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
+        if (projection is null) return null;
+
+        var linkedActualIds = projection.Sources
+            .Where(x => x.ActualBinsRunEntryId is not null)
+            .Select(x => x.ActualBinsRunEntryId!.Value)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToList();
+        string? blockingReason = null;
+        if (projection.Status == RunProjectionStatuses.Converted || linkedActualIds.Count > 0)
+        {
+            blockingReason = "This projection is linked to an actual Bins Run and cannot be deleted. Actual operational history must be preserved.";
+        }
+        else if (!RunProjectionStatuses.Editable.Contains(projection.Status) && !canAdmin)
+        {
+            blockingReason = $"Bins Run Admin access is required to delete a {projection.Status} projection.";
+        }
+
+        return new RunProjectionDeletionConfirmationViewModel
+        {
+            Id = projection.Id,
+            Name = projection.Name,
+            FacilityCode = projection.FacilityWarehouse?.Code ?? projection.FacilityCodeSnapshot ?? "Unassigned",
+            PlannedRunDate = projection.PlannedRunDate,
+            Status = projection.Status,
+            ProjectionMode = projection.ProjectionMode,
+            SourceCount = projection.Sources.Count,
+            TotalPlannedBins = projection.TotalPlannedBins,
+            TotalProjectedBoxes = projection.TotalProjectedBoxes,
+            LinkedActualRunIds = linkedActualIds,
+            Creator = projection.CreatedByUser?.DisplayName ?? "",
+            UpdatedAt = projection.UpdatedAt,
+            BlockingReason = blockingReason,
+            Form = new DeleteRunProjectionForm
+            {
+                Id = projection.Id,
+                ConcurrencyVersion = projection.ConcurrencyVersion,
+                OperationToken = Guid.NewGuid().ToString("D", CultureInfo.InvariantCulture)
+            }
+        };
+    }
+
+    public async Task<string?> DeleteAsync(
+        DeleteRunProjectionForm form,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        if (!await CanAsync(user, PageAccessLevel.Edit, cancellationToken))
+        {
+            return "Bins Run Edit access is required to delete projections.";
+        }
+        if (!Guid.TryParse(form.OperationToken, out var operationId))
+        {
+            return "The deletion confirmation expired. Reopen the projection deletion page.";
+        }
+        if (string.IsNullOrWhiteSpace(form.Reason) || form.Reason.Trim().Length < 10)
+        {
+            return "A detailed deletion reason of at least 10 characters is required.";
+        }
+        if (!form.ConfirmDeletion)
+        {
+            return "Select the second confirmation before deleting the projection.";
+        }
+
+        var projection = await LoadProjectionAsync(form.Id, cancellationToken);
+        if (projection is null) return "Projection was not found.";
+        if (projection.IsDeleted)
+        {
+            return projection.DeletionOperationId == operationId
+                ? null
+                : "Projection was already deleted.";
+        }
+        var confirmation = form.ConfirmationValue.Trim();
+        if (confirmation != projection.Id.ToString(CultureInfo.InvariantCulture)
+            && !confirmation.Equals(projection.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"Type the exact projection ID {projection.Id} or name \"{projection.Name}\" to confirm deletion.";
+        }
+        if (projection.ConcurrencyVersion != form.ConcurrencyVersion) return ConflictMessage;
+
+        var linkedActualIds = projection.Sources
+            .Where(x => x.ActualBinsRunEntryId is not null)
+            .Select(x => x.ActualBinsRunEntryId!.Value)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToList();
+        var userId = await CurrentUserIdAsync(user, cancellationToken);
+        if (projection.Status == RunProjectionStatuses.Converted || linkedActualIds.Count > 0)
+        {
+            await AddAuditAsync(
+                "DeleteBlockedActualRun",
+                projection,
+                userId,
+                ProjectionSnapshot(projection),
+                new { Result = "Blocked", LinkedActualRunIds = linkedActualIds, OperationId = operationId },
+                cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return "This projection is linked to an actual Bins Run and cannot be deleted.";
+        }
+        var canAdmin = await CanAsync(user, PageAccessLevel.Admin, cancellationToken);
+        if (!RunProjectionStatuses.Editable.Contains(projection.Status) && !canAdmin)
+        {
+            return $"Bins Run Admin access is required to delete a {projection.Status} projection.";
+        }
+
+        var now = businessTime.UtcNow;
+        var before = ProjectionSnapshot(projection);
+        projection.IsDeleted = true;
+        projection.DeletedAt = now;
+        projection.DeletedByUserId = userId;
+        projection.DeletionReason = form.Reason.Trim();
+        projection.DeletionOperationId = operationId;
+        projection.DeletedFromStatus = projection.Status;
+        Touch(projection, userId);
+        await AddAuditAsync(
+            "Delete",
+            projection,
+            userId,
+            before,
+            new
+            {
+                Projection = ProjectionSnapshot(projection),
+                projection.DeletedAt,
+                DeletedAtPacific = businessTime.FormatPacific(now, "O"),
+                projection.DeletionReason,
+                projection.DeletionOperationId,
+                Facility = projection.FacilityWarehouse?.Code ?? projection.FacilityCodeSnapshot ?? "Unassigned",
+                SourceCount = projection.Sources.Count,
+                projection.TotalPlannedBins,
+                LinkedActualRunIds = linkedActualIds,
+                Result = "SoftDeleted"
+            },
+            cancellationToken);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ConflictMessage;
+        }
+        return null;
+    }
+
+    private async Task<RunProjectionDetailViewModel?> GetDetailAsync(long id, bool canEdit, bool canAdmin, CancellationToken cancellationToken)
     {
         var projection = await LoadProjectionAsync(id, cancellationToken);
         if (projection is null) return null;
@@ -784,6 +1167,7 @@ public sealed class RunProjectionService(
             {
                 var inventoryMatches = await binsRunService.SearchPlanningInventoryAsync(
                     source.BlockSnapshot ?? source.OrchardSnapshot,
+                    projection.FacilityWarehouseId,
                     null,
                     100,
                     cancellationToken);
@@ -880,6 +1264,8 @@ public sealed class RunProjectionService(
             Name = projection.Name,
             Status = projection.Status,
             ProjectionMode = projection.ProjectionMode,
+            FacilityWarehouseId = projection.FacilityWarehouseId,
+            FacilityCode = projection.FacilityWarehouse?.Code ?? projection.FacilityCodeSnapshot ?? "Unassigned",
             CropYear = projection.CropYear,
             SourceProjectionId = projection.SourceProjectionId,
             ApplePoundsPerBin = projection.ApplePoundsPerBin,
@@ -901,6 +1287,11 @@ public sealed class RunProjectionService(
             SourceCount = projection.Sources.Count,
             ConvertedSourceCount = projection.Sources.Count(x => x.ActualBinsRunEntryId != null),
             CancelReason = projection.CancelReason,
+            IsDeleted = projection.IsDeleted,
+            DeletedAt = projection.DeletedAt,
+            DeletionReason = projection.DeletionReason,
+            DeletedFromStatus = projection.DeletedFromStatus,
+            DeletionOperationId = projection.DeletionOperationId,
             Sources = sourceModels,
             CombinedSizes = sourceModels
                 .SelectMany(x => x.SizeResults)
@@ -930,7 +1321,12 @@ public sealed class RunProjectionService(
                     x.Sum(y => y.CullBoxes),
                     x.Sum(y => y.RoundedCullBoxes)))
                 .ToList(),
-            CanEditRecord = canEdit && RunProjectionStatuses.Editable.Contains(projection.Status)
+            CanEditRecord = canEdit && !projection.IsDeleted && RunProjectionStatuses.Editable.Contains(projection.Status),
+            CanDeleteRecord = !projection.IsDeleted
+                && projection.Status != RunProjectionStatuses.Converted
+                && projection.Sources.All(x => x.ActualBinsRunEntryId is null)
+                && (canEdit && RunProjectionStatuses.Editable.Contains(projection.Status)
+                    || canAdmin && projection.Status is RunProjectionStatuses.Cancelled or RunProjectionStatuses.Expired or RunProjectionStatuses.Superseded)
         };
     }
 
@@ -1023,6 +1419,14 @@ public sealed class RunProjectionService(
 
         var inventory = await binsRunService.GetPlanningInventoryAsync(sourceKey, cancellationToken);
         if (inventory is null) return (null, "The selected inventory source is no longer available.");
+        if (projection.FacilityWarehouseId is null)
+        {
+            return (null, "Assign WP or EBS before adding inventory.");
+        }
+        if (inventory.WarehouseId != projection.FacilityWarehouseId)
+        {
+            return (null, $"The selected inventory belongs to {inventory.Facility}, not the projection's {projection.FacilityCodeSnapshot ?? "selected"} facility.");
+        }
         if (plannedBins > inventory.CurrentBins && !availabilityOverride)
         {
             return (null, $"Planned bins exceed the current available quantity of {inventory.CurrentBins}. Confirm the planning override to continue.");
@@ -1411,7 +1815,9 @@ public sealed class RunProjectionService(
 
     private async Task<RunProjection?> LoadProjectionAsync(long id, CancellationToken cancellationToken) =>
         await dbContext.RunProjections
+            .Include(x => x.FacilityWarehouse)
             .Include(x => x.CreatedByUser)
+            .Include(x => x.DeletedByUser)
             .Include(x => x.Sources).ThenInclude(x => x.SizeResults)
             .Include(x => x.Sources).ThenInclude(x => x.GradeResults)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
@@ -1429,6 +1835,7 @@ public sealed class RunProjectionService(
 
         var projection = await LoadProjectionAsync(id, cancellationToken);
         if (projection is null) return (null, "Projection was not found.", null);
+        if (projection.IsDeleted) return (null, "Deleted projections are read-only.", null);
         if (!RunProjectionStatuses.Editable.Contains(projection.Status)) return (null, $"A {projection.Status} projection cannot be edited.", null);
         if (projection.ConcurrencyVersion != concurrencyVersion) return (null, ConflictMessage, null);
         return (projection, null, await CurrentUserIdAsync(user, cancellationToken));
@@ -1532,7 +1939,7 @@ public sealed class RunProjectionService(
     {
         var cutoff = businessTime.PacificDate(businessTime.UtcNow).AddDays(-expirationDays);
         var drafts = await dbContext.RunProjections
-            .Where(x => x.Status == RunProjectionStatuses.Draft && x.PlannedRunDate < cutoff)
+            .Where(x => !x.IsDeleted && x.Status == RunProjectionStatuses.Draft && x.PlannedRunDate < cutoff)
             .ToListAsync(cancellationToken);
         if (drafts.Count == 0) return;
         foreach (var projection in drafts)
@@ -1580,6 +1987,62 @@ public sealed class RunProjectionService(
 
     private static int ReadInt(IReadOnlyDictionary<string, string> values, string key, int fallback, int min, int max) =>
         values.TryGetValue(key, out var value) && int.TryParse(value, out var parsed) && parsed >= min && parsed <= max ? parsed : fallback;
+
+    private IQueryable<Warehouse> OperationalFacilities() =>
+        dbContext.Warehouses.Where(x => x.IsActive && OperationalFacilityCodes.Contains(x.Code));
+
+    private static string NormalizeFacilityFilter(string? facility, bool canAdmin)
+    {
+        var normalized = facility?.Trim() ?? "All";
+        if (OperationalFacilityCodes.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+        {
+            return OperationalFacilityCodes.Single(x => x.Equals(normalized, StringComparison.OrdinalIgnoreCase));
+        }
+        if (canAdmin && normalized.Equals("Unassigned", StringComparison.OrdinalIgnoreCase)) return "Unassigned";
+        return "All";
+    }
+
+    private static string NormalizeDeletionStatus(string? status, bool canAdmin)
+    {
+        if (!canAdmin) return "Active";
+        return status?.Trim().ToUpperInvariant() switch
+        {
+            "DELETED" => "Deleted",
+            "ALL" => "All",
+            _ => "Active"
+        };
+    }
+
+    private static string NormalizeSort(string? sort) =>
+        sort?.Trim().ToUpperInvariant() switch
+        {
+            "RUNDATE" => "RunDate",
+            "STATUS" => "Status",
+            "UPDATED" => "Updated",
+            "PLANNEDBINS" => "PlannedBins",
+            _ => "Facility"
+        };
+
+    private static IQueryable<RunProjection> ApplyPlannerFilters(
+        IQueryable<RunProjection> query,
+        string facility,
+        string deletionStatus)
+    {
+        query = deletionStatus switch
+        {
+            "Deleted" => query.Where(x => x.IsDeleted),
+            "All" => query,
+            _ => query.Where(x => !x.IsDeleted)
+        };
+        return facility switch
+        {
+            "WP" => query.Where(x => x.FacilityWarehouse != null && x.FacilityWarehouse.Code == "WP"),
+            "EBS" => query.Where(x => x.FacilityWarehouse != null && x.FacilityWarehouse.Code == "EBS"),
+            "Unassigned" => query.Where(x => x.FacilityWarehouseId == null),
+            _ => query.Where(x => x.FacilityWarehouse != null
+                && (x.FacilityWarehouse.Code == "WP" || x.FacilityWarehouse.Code == "EBS"))
+        };
+    }
 
     private async Task RequireAsync(ClaimsPrincipal user, PageAccessLevel level, CancellationToken cancellationToken)
     {
@@ -1632,6 +2095,8 @@ public sealed class RunProjectionService(
         x.Name,
         x.Status,
         x.ProjectionMode,
+        x.FacilityWarehouseId,
+        x.FacilityCodeSnapshot,
         x.CropYear,
         x.SourceProjectionId,
         x.ApplePoundsPerBin,
@@ -1644,7 +2109,13 @@ public sealed class RunProjectionService(
         x.TotalPackedProjectedBoxes,
         x.TotalCullProjectedPounds,
         x.TotalCullProjectedBoxes,
-        x.ConcurrencyVersion
+        x.ConcurrencyVersion,
+        x.IsDeleted,
+        x.DeletedAt,
+        x.DeletedByUserId,
+        x.DeletionReason,
+        x.DeletionOperationId,
+        x.DeletedFromStatus
     };
 
     private static object SourceSnapshot(RunProjectionSource x) => new

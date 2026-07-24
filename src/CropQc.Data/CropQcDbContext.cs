@@ -79,6 +79,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
             entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
             entity.Property(x => x.ProjectionMode).HasMaxLength(25).HasDefaultValue(RunProjectionModes.Inventory).IsRequired();
+            entity.Property(x => x.FacilityCodeSnapshot).HasMaxLength(25);
+            entity.Property(x => x.DeletionReason).HasMaxLength(1000);
+            entity.Property(x => x.DeletedFromStatus).HasMaxLength(50);
             entity.Property(x => x.ApplePoundsPerBin).HasPrecision(10, 2);
             entity.Property(x => x.PearPoundsPerBin).HasPrecision(10, 2);
             entity.Property(x => x.StandardBoxWeightPounds).HasPrecision(10, 2);
@@ -92,7 +95,14 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.CancelReason).HasMaxLength(1000);
             entity.HasIndex(x => new { x.PlannedRunDate, x.Status });
             entity.HasIndex(x => new { x.CropYear, x.PlannedRunDate });
+            entity.HasIndex(x => new { x.FacilityWarehouseId, x.PlannedRunDate, x.IsDeleted, x.Status });
+            entity.HasIndex(x => new { x.CropYear, x.FacilityWarehouseId, x.IsDeleted });
+            entity.HasIndex(x => x.DeletionOperationId);
             entity.HasIndex(x => x.SourceProjectionId);
+            entity.HasOne(x => x.FacilityWarehouse)
+                .WithMany()
+                .HasForeignKey(x => x.FacilityWarehouseId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.SourceProjection)
                 .WithMany(x => x.DerivedProjections)
                 .HasForeignKey(x => x.SourceProjectionId)
@@ -100,6 +110,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.CancelledByUser).WithMany().HasForeignKey(x => x.CancelledByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.DeletedByUser).WithMany().HasForeignKey(x => x.DeletedByUserId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<RunProjectionSource>(entity =>

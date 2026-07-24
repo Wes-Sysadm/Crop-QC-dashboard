@@ -43,6 +43,9 @@ public sealed class RunProjection
     public required string Name { get; set; }
     public required string Status { get; set; }
     public string ProjectionMode { get; set; } = RunProjectionModes.Inventory;
+    public int? FacilityWarehouseId { get; set; }
+    public Warehouse? FacilityWarehouse { get; set; }
+    public string? FacilityCodeSnapshot { get; set; }
     public int CropYear { get; set; }
     public long? SourceProjectionId { get; set; }
     public RunProjection? SourceProjection { get; set; }
@@ -72,6 +75,13 @@ public sealed class RunProjection
     public int? CancelledByUserId { get; set; }
     public User? CancelledByUser { get; set; }
     public string? CancelReason { get; set; }
+    public bool IsDeleted { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
+    public int? DeletedByUserId { get; set; }
+    public User? DeletedByUser { get; set; }
+    public string? DeletionReason { get; set; }
+    public Guid? DeletionOperationId { get; set; }
+    public string? DeletedFromStatus { get; set; }
     public ICollection<RunProjectionSource> Sources { get; } = new List<RunProjectionSource>();
 }
 

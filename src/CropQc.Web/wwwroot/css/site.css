@@ -899,6 +899,27 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     margin: 0;
     padding: 0;
 }
+
+.facility-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: .15rem .5rem;
+    background: #173c55;
+    color: #fff;
+    font-size: .78rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+}
+
+.facility-selector {
+    margin-top: .75rem;
+}
+
+.run-calendar-day > small:last-child {
+    white-space: nowrap;
+    font-size: .65rem;
+}
 .planning-mode-selector legend {
     font-weight: 700;
     margin-bottom: 8px;

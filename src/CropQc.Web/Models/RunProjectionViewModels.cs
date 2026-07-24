@@ -5,20 +5,51 @@ public sealed class RunProjectionPlannerViewModel
     public DateOnly SelectedDate { get; set; }
     public IReadOnlyList<RunProjectionCalendarDayViewModel> CalendarDays { get; set; } = [];
     public IReadOnlyList<RunProjectionListItemViewModel> Projections { get; set; } = [];
+    public IReadOnlyList<RunProjectionListItemViewModel> RecentActivity { get; set; } = [];
+    public IReadOnlyList<RunProjectionFacilityOptionViewModel> FacilityOptions { get; set; } = [];
+    public IReadOnlyList<RunProjectionFacilityTotalsViewModel> FacilityTotals { get; set; } = [];
     public RunProjectionDetailViewModel? SelectedProjection { get; set; }
     public RunProjectionCreateForm CreateForm { get; set; } = new();
+    public string SelectedFacility { get; set; } = "All";
+    public string SelectedDeletionStatus { get; set; } = "Active";
+    public string SelectedSort { get; set; } = "Facility";
+    public int UnassignedProjectionCount { get; set; }
     public bool CanEdit { get; set; }
     public bool CanAdmin { get; set; }
+    public bool CanViewDeleted { get; set; }
     public int VisibilityPastDays { get; set; }
     public int VisibilityFutureDays { get; set; }
     public decimal DefaultExpectedPackoutPercent { get; set; }
 }
 
-public sealed record RunProjectionCalendarDayViewModel(
-    DateOnly Date,
-    int ProjectionCount,
-    bool IsSelected,
-    bool IsToday);
+public sealed class RunProjectionCalendarDayViewModel
+{
+    public DateOnly Date { get; set; }
+    public int ProjectionCount { get; set; }
+    public int WpProjectionCount { get; set; }
+    public int WpPlannedBins { get; set; }
+    public int EbsProjectionCount { get; set; }
+    public int EbsPlannedBins { get; set; }
+    public int UnassignedProjectionCount { get; set; }
+    public int UnassignedPlannedBins { get; set; }
+    public int TotalPlannedBins => WpPlannedBins + EbsPlannedBins + UnassignedPlannedBins;
+    public bool IsSelected { get; set; }
+    public bool IsToday { get; set; }
+}
+
+public sealed record RunProjectionFacilityOptionViewModel(int WarehouseId, string Code, string Name);
+
+public sealed class RunProjectionFacilityTotalsViewModel
+{
+    public string FacilityCode { get; set; } = "";
+    public int ProjectionCount { get; set; }
+    public int PlannedBins { get; set; }
+    public decimal GrossPounds { get; set; }
+    public decimal PackedPounds { get; set; }
+    public decimal PackedBoxes { get; set; }
+    public decimal CullBoxes { get; set; }
+    public decimal? EffectivePackoutPercent => GrossPounds <= 0 ? null : PackedPounds / GrossPounds * 100m;
+}
 
 public class RunProjectionListItemViewModel
 {
@@ -27,13 +58,24 @@ public class RunProjectionListItemViewModel
     public string Name { get; set; } = "";
     public string Status { get; set; } = "";
     public string ProjectionMode { get; set; } = "";
+    public int? FacilityWarehouseId { get; set; }
+    public string FacilityCode { get; set; } = "Unassigned";
     public int TotalPlannedBins { get; set; }
+    public decimal TotalProjectedPounds { get; set; }
     public decimal TotalProjectedBoxes { get; set; }
     public int TotalRoundedProjectedBoxes { get; set; }
+    public decimal TotalPackedProjectedPounds { get; set; }
+    public decimal TotalPackedProjectedBoxes { get; set; }
+    public decimal TotalCullProjectedBoxes { get; set; }
+    public decimal? EffectivePackoutPercent =>
+        TotalProjectedPounds <= 0 ? null : TotalPackedProjectedPounds / TotalProjectedPounds * 100m;
     public string Creator { get; set; } = "";
     public DateTimeOffset UpdatedAt { get; set; }
     public int SourceCount { get; set; }
     public int ConvertedSourceCount { get; set; }
+    public bool IsDeleted { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
+    public string? DeletionReason { get; set; }
 }
 
 public sealed class RunProjectionDetailViewModel : RunProjectionListItemViewModel
@@ -43,25 +85,24 @@ public sealed class RunProjectionDetailViewModel : RunProjectionListItemViewMode
     public decimal ApplePoundsPerBin { get; set; }
     public decimal PearPoundsPerBin { get; set; }
     public decimal StandardBoxWeightPounds { get; set; }
-    public decimal TotalProjectedPounds { get; set; }
-    public decimal TotalPackedProjectedPounds { get; set; }
-    public decimal TotalPackedProjectedBoxes { get; set; }
     public int TotalRoundedPackedProjectedBoxes { get; set; }
     public decimal TotalCullProjectedPounds { get; set; }
-    public decimal TotalCullProjectedBoxes { get; set; }
     public int TotalRoundedCullProjectedBoxes { get; set; }
-    public decimal? EffectivePackoutPercent =>
+    public new decimal? EffectivePackoutPercent =>
         TotalProjectedPounds <= 0 || Sources.Any(x => x.ExpectedPackoutPercent is null)
             ? null
             : TotalPackedProjectedPounds / TotalProjectedPounds * 100m;
     public long ConcurrencyVersion { get; set; }
     public string? CancelReason { get; set; }
+    public string? DeletedFromStatus { get; set; }
+    public Guid? DeletionOperationId { get; set; }
     public IReadOnlyList<RunProjectionSourceViewModel> Sources { get; set; } = [];
     public IReadOnlyList<RunProjectionCombinedSizeViewModel> CombinedSizes { get; set; } = [];
     public IReadOnlyList<RunProjectionCombinedGradeViewModel> CombinedGrades { get; set; } = [];
     public bool HasUnknownCommodity => Sources.Any(x => x.Commodity == "Unknown");
     public bool HasUnmappedFieldSampleSources => Sources.Any(x => x.SourceType == "FieldSample" && x.ActualBinsRunEntryId is null);
     public bool CanEditRecord { get; set; }
+    public bool CanDeleteRecord { get; set; }
 }
 
 public sealed class RunProjectionSourceViewModel
@@ -233,6 +274,7 @@ public sealed class RunProjectionCreateForm
     public DateOnly PlannedRunDate { get; set; }
     public string Name { get; set; } = "";
     public string ProjectionMode { get; set; } = "";
+    public int? FacilityWarehouseId { get; set; }
 }
 
 public sealed class RunProjectionHeaderForm
@@ -240,6 +282,7 @@ public sealed class RunProjectionHeaderForm
     public long Id { get; set; }
     public DateOnly PlannedRunDate { get; set; }
     public string Name { get; set; } = "";
+    public int? FacilityWarehouseId { get; set; }
     public long ConcurrencyVersion { get; set; }
 }
 
@@ -287,6 +330,7 @@ public sealed class RunProjectionDuplicateForm
     public long Id { get; set; }
     public DateOnly PlannedRunDate { get; set; }
     public string? Name { get; set; }
+    public int? FacilityWarehouseId { get; set; }
 }
 
 public sealed class RunProjectionCreateInventoryForm
@@ -294,6 +338,7 @@ public sealed class RunProjectionCreateInventoryForm
     public long Id { get; set; }
     public DateOnly PlannedRunDate { get; set; }
     public string Name { get; set; } = "";
+    public int? FacilityWarehouseId { get; set; }
     public long ConcurrencyVersion { get; set; }
     public List<RunProjectionInventoryMappingForm> Mappings { get; set; } = [];
 }
@@ -303,4 +348,32 @@ public sealed class RunProjectionInventoryMappingForm
     public long PreharvestSourceId { get; set; }
     public string InventoryKey { get; set; } = "";
     public bool AvailabilityOverrideAcknowledged { get; set; }
+}
+
+public sealed class DeleteRunProjectionForm
+{
+    public long Id { get; set; }
+    public long ConcurrencyVersion { get; set; }
+    public string Reason { get; set; } = "";
+    public string ConfirmationValue { get; set; } = "";
+    public bool ConfirmDeletion { get; set; }
+    public string OperationToken { get; set; } = "";
+}
+
+public sealed class RunProjectionDeletionConfirmationViewModel
+{
+    public long Id { get; set; }
+    public string Name { get; set; } = "";
+    public string FacilityCode { get; set; } = "Unassigned";
+    public DateOnly PlannedRunDate { get; set; }
+    public string Status { get; set; } = "";
+    public string ProjectionMode { get; set; } = "";
+    public int SourceCount { get; set; }
+    public int TotalPlannedBins { get; set; }
+    public decimal TotalProjectedBoxes { get; set; }
+    public IReadOnlyList<long> LinkedActualRunIds { get; set; } = [];
+    public string Creator { get; set; } = "";
+    public DateTimeOffset UpdatedAt { get; set; }
+    public string? BlockingReason { get; set; }
+    public DeleteRunProjectionForm Form { get; set; } = new();
 }
