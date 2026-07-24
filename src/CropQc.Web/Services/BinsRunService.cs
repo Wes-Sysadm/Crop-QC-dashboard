@@ -302,6 +302,10 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
             {
                 return $"A {linkedProjection.Status} projection cannot be converted to an actual run.";
             }
+            if (linkedProjection.ProjectionMode != RunProjectionModes.Inventory)
+            {
+                return "A Preharvest projection cannot create an actual Bins Run. Create and map an Inventory projection first.";
+            }
             if (linkedProjectionSource.SourceType != RunProjectionSourceTypes.Inventory
                 || string.IsNullOrWhiteSpace(linkedProjectionSource.InventoryKey))
             {

@@ -78,6 +78,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         {
             entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
             entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.ProjectionMode).HasMaxLength(25).HasDefaultValue(RunProjectionModes.Inventory).IsRequired();
             entity.Property(x => x.ApplePoundsPerBin).HasPrecision(10, 2);
             entity.Property(x => x.PearPoundsPerBin).HasPrecision(10, 2);
             entity.Property(x => x.StandardBoxWeightPounds).HasPrecision(10, 2);
@@ -91,6 +92,11 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.CancelReason).HasMaxLength(1000);
             entity.HasIndex(x => new { x.PlannedRunDate, x.Status });
             entity.HasIndex(x => new { x.CropYear, x.PlannedRunDate });
+            entity.HasIndex(x => x.SourceProjectionId);
+            entity.HasOne(x => x.SourceProjection)
+                .WithMany(x => x.DerivedProjections)
+                .HasForeignKey(x => x.SourceProjectionId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.CancelledByUser).WithMany().HasForeignKey(x => x.CancelledByUserId).OnDelete(DeleteBehavior.SetNull);
@@ -132,6 +138,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasIndex(x => new { x.RunProjectionId, x.SortOrder });
             entity.HasIndex(x => x.InventoryKey);
             entity.HasIndex(x => new { x.CanonicalOrchardBlockId, x.FruitProfileId });
+            entity.HasIndex(x => x.SourceProjectionSourceId);
             entity.HasOne(x => x.RunProjection).WithMany(x => x.Sources).HasForeignKey(x => x.RunProjectionId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(x => x.Receipt).WithMany().HasForeignKey(x => x.ReceiptId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.SourceInventoryAdjustment).WithMany().HasForeignKey(x => x.SourceInventoryAdjustmentId).OnDelete(DeleteBehavior.SetNull);
@@ -142,6 +149,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.FieldSample).WithMany().HasForeignKey(x => x.FieldSampleId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.SelectedQcSample).WithMany().HasForeignKey(x => x.SelectedQcSampleId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.ActualBinsRunEntry).WithMany().HasForeignKey(x => x.ActualBinsRunEntryId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.SourceProjectionSource)
+                .WithMany(x => x.DerivedSources)
+                .HasForeignKey(x => x.SourceProjectionSourceId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<RunProjectionSizeResult>(entity =>

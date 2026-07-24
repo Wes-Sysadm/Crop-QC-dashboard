@@ -13,6 +13,15 @@ public static class RunProjectionStatuses
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Draft, Ready };
 }
 
+public static class RunProjectionModes
+{
+    public const string Inventory = "Inventory";
+    public const string Preharvest = "Preharvest";
+
+    public static readonly IReadOnlySet<string> All =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Inventory, Preharvest };
+}
+
 public static class RunProjectionSourceTypes
 {
     public const string Inventory = "Inventory";
@@ -33,7 +42,11 @@ public sealed class RunProjection
     public DateOnly PlannedRunDate { get; set; }
     public required string Name { get; set; }
     public required string Status { get; set; }
+    public string ProjectionMode { get; set; } = RunProjectionModes.Inventory;
     public int CropYear { get; set; }
+    public long? SourceProjectionId { get; set; }
+    public RunProjection? SourceProjection { get; set; }
+    public ICollection<RunProjection> DerivedProjections { get; } = new List<RunProjection>();
     public decimal ApplePoundsPerBin { get; set; }
     public decimal PearPoundsPerBin { get; set; }
     public decimal StandardBoxWeightPounds { get; set; }
@@ -83,6 +96,9 @@ public sealed class RunProjectionSource
     public FruitProfile FruitProfile { get; set; } = null!;
     public long? FieldSampleId { get; set; }
     public QcSample? FieldSample { get; set; }
+    public long? SourceProjectionSourceId { get; set; }
+    public RunProjectionSource? SourceProjectionSource { get; set; }
+    public ICollection<RunProjectionSource> DerivedSources { get; } = new List<RunProjectionSource>();
     public required string SelectedQcSourceType { get; set; }
     public long? SelectedQcSampleId { get; set; }
     public QcSample? SelectedQcSample { get; set; }
@@ -98,6 +114,7 @@ public sealed class RunProjectionSource
     public int RoundedProjectedBoxes { get; set; }
     public decimal? ExpectedPackoutPercent { get; set; }
     public decimal? ExpectedCullPercent { get; set; }
+    public bool ExpectedPackoutUsedDefault { get; set; }
     public decimal PackedProjectedPounds { get; set; }
     public decimal PackedProjectedBoxes { get; set; }
     public int RoundedPackedProjectedBoxes { get; set; }

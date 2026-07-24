@@ -11,6 +11,7 @@ public sealed class RunProjectionPlannerViewModel
     public bool CanAdmin { get; set; }
     public int VisibilityPastDays { get; set; }
     public int VisibilityFutureDays { get; set; }
+    public decimal DefaultExpectedPackoutPercent { get; set; }
 }
 
 public sealed record RunProjectionCalendarDayViewModel(
@@ -25,6 +26,7 @@ public class RunProjectionListItemViewModel
     public DateOnly PlannedRunDate { get; set; }
     public string Name { get; set; } = "";
     public string Status { get; set; } = "";
+    public string ProjectionMode { get; set; } = "";
     public int TotalPlannedBins { get; set; }
     public decimal TotalProjectedBoxes { get; set; }
     public int TotalRoundedProjectedBoxes { get; set; }
@@ -37,6 +39,7 @@ public class RunProjectionListItemViewModel
 public sealed class RunProjectionDetailViewModel : RunProjectionListItemViewModel
 {
     public int CropYear { get; set; }
+    public long? SourceProjectionId { get; set; }
     public decimal ApplePoundsPerBin { get; set; }
     public decimal PearPoundsPerBin { get; set; }
     public decimal StandardBoxWeightPounds { get; set; }
@@ -66,6 +69,8 @@ public sealed class RunProjectionSourceViewModel
     public long Id { get; set; }
     public string SourceType { get; set; } = "";
     public string? InventoryKey { get; set; }
+    public int? CanonicalOrchardBlockId { get; set; }
+    public int FruitProfileId { get; set; }
     public int? WarehouseId { get; set; }
     public int? RoomId { get; set; }
     public string SourceLabel { get; set; } = "";
@@ -104,6 +109,7 @@ public sealed class RunProjectionSourceViewModel
     public int RoundedProjectedBoxes { get; set; }
     public decimal? ExpectedPackoutPercent { get; set; }
     public decimal? ExpectedCullPercent { get; set; }
+    public bool ExpectedPackoutUsedDefault { get; set; }
     public decimal PackedProjectedPounds { get; set; }
     public decimal PackedProjectedBoxes { get; set; }
     public int RoundedPackedProjectedBoxes { get; set; }
@@ -116,6 +122,7 @@ public sealed class RunProjectionSourceViewModel
     public IReadOnlyList<RunProjectionSizeResultViewModel> SizeResults { get; set; } = [];
     public IReadOnlyList<RunProjectionGradeResultViewModel> GradeResults { get; set; } = [];
     public IReadOnlyList<RunProjectionQcChoiceViewModel> QcChoices { get; set; } = [];
+    public IReadOnlyList<RunProjectionInventoryMappingChoiceViewModel> InventoryMappingChoices { get; set; } = [];
 }
 
 public sealed record RunProjectionSizeResultViewModel(
@@ -192,7 +199,15 @@ public sealed record RunProjectionSourceCandidateViewModel(
     int? AvailableBins,
     bool ReceiptQcAvailable,
     bool FieldSampleAvailable,
-    DateTimeOffset? LatestSampleDate);
+    DateTimeOffset? LatestSampleDate,
+    int? CanonicalOrchardBlockId,
+    int? FruitProfileId,
+    long? DefaultFieldSampleId);
+
+public sealed record RunProjectionInventoryMappingChoiceViewModel(
+    string InventoryKey,
+    string Label,
+    int AvailableBins);
 
 public sealed record RunProjectionInventorySource(
     string InventoryKey,
@@ -217,6 +232,7 @@ public sealed class RunProjectionCreateForm
 {
     public DateOnly PlannedRunDate { get; set; }
     public string Name { get; set; } = "";
+    public string ProjectionMode { get; set; } = "";
 }
 
 public sealed class RunProjectionHeaderForm
@@ -234,6 +250,7 @@ public sealed class RunProjectionAddSourceForm
     public int PlannedBins { get; set; } = 1;
     public string SelectedQcSource { get; set; } = "Automatic";
     public decimal? ExpectedPackoutPercent { get; set; }
+    public bool ExpectedPackoutUsedDefault { get; set; }
     public bool AvailabilityOverrideAcknowledged { get; set; }
     public long ConcurrencyVersion { get; set; }
 }
@@ -270,4 +287,20 @@ public sealed class RunProjectionDuplicateForm
     public long Id { get; set; }
     public DateOnly PlannedRunDate { get; set; }
     public string? Name { get; set; }
+}
+
+public sealed class RunProjectionCreateInventoryForm
+{
+    public long Id { get; set; }
+    public DateOnly PlannedRunDate { get; set; }
+    public string Name { get; set; } = "";
+    public long ConcurrencyVersion { get; set; }
+    public List<RunProjectionInventoryMappingForm> Mappings { get; set; } = [];
+}
+
+public sealed class RunProjectionInventoryMappingForm
+{
+    public long PreharvestSourceId { get; set; }
+    public string InventoryKey { get; set; } = "";
+    public bool AvailabilityOverrideAcknowledged { get; set; }
 }
