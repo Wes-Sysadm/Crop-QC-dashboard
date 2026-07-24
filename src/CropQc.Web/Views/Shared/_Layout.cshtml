@@ -1,5 +1,6 @@
 <!doctype html>
 @using System.Security.Claims
+@using Microsoft.AspNetCore.WebUtilities
 @inject CropQc.Web.Services.IAdminAuthorizationService AdminAuthorization
 @inject CropQc.Web.Services.IUserAccessService UserAccess
 @inject CropQc.Web.Services.IFacilityContextService FacilityContext
@@ -14,8 +15,18 @@
 </head>
 <body>
     @{
-        var activeFacility = FacilityContext.Normalize(Context.Request.Query["Facility"].FirstOrDefault());
-        var facilityQuery = $"?Facility={Uri.EscapeDataString(activeFacility)}";
+        var requestedFacility = Context.Request.Query["facility"].FirstOrDefault();
+        var activeFacility = FacilityContext.Normalize(requestedFacility);
+        var facilityRouteValue = string.IsNullOrWhiteSpace(requestedFacility) ? null : activeFacility;
+
+        string FacilityContextUrl(string facility)
+        {
+            var query = Context.Request.Query
+                .Where(x => !x.Key.Equals("facility", StringComparison.OrdinalIgnoreCase))
+                .SelectMany(x => x.Value.Select(value => new KeyValuePair<string, string?>(x.Key, value)))
+                .Append(new KeyValuePair<string, string?>("facility", facility));
+            return QueryHelpers.AddQueryString(Context.Request.Path.Value ?? "/", query);
+        }
     }
     @if (AppEnvironment.IsStaging)
     {
@@ -25,7 +36,7 @@
         </div>
     }
     <header class="topbar">
-        <a class="brand" href="/@facilityQuery">Crop QC Dashboard</a>
+        <a class="brand" asp-controller="Home" asp-action="Index" asp-route-facility="@facilityRouteValue">Crop QC Dashboard</a>
         <nav>
             @if (User.Identity?.IsAuthenticated == true)
             {
@@ -50,11 +61,11 @@
                 var showAdminMenu = canAccessUsers || canAccessQcStations || canAccessMasterData || canAccessCurrentLots || canAccessDownloads || canAccessConfiguration || canAccessBackups || canAccessDataCleanup;
                 @if (canAccessDashboard)
                 {
-                    <a href="/@facilityQuery">Dashboard</a>
+                    <a asp-controller="Home" asp-action="Index" asp-route-facility="@facilityRouteValue">Dashboard</a>
                 }
                 @if (canAccessDailyQc)
                 {
-                    <a href="/DailyQc@facilityQuery">Daily QC</a>
+                    <a asp-controller="DailyQc" asp-action="Index" asp-route-facility="@facilityRouteValue">Daily QC</a>
                 }
                 @if (canAccessFieldSamples)
                 {
@@ -62,19 +73,19 @@
                 }
                 @if (canAccessReceipts)
                 {
-                    <a href="/Receipts@facilityQuery">Receipts</a>
+                    <a asp-controller="Receipts" asp-action="Index" asp-route-facility="@facilityRouteValue">Receipts</a>
                 }
                 @if (canAccessRooms)
                 {
-                    <a href="/Rooms@facilityQuery">Rooms</a>
+                    <a asp-controller="Home" asp-action="Rooms" asp-route-facility="@facilityRouteValue">Rooms</a>
                 }
                 @if (canAccessBinsRun)
                 {
-                    <a href="/BinsRun@facilityQuery">Bins Run &amp; Transfers</a>
+                    <a asp-controller="BinsRun" asp-action="Index" asp-route-facility="@facilityRouteValue">Bins Run &amp; Transfers</a>
                 }
                 @if (canAccessGrowerLots)
                 {
-                    <a href="/GrowerLots/Current@facilityQuery">Grower Lots</a>
+                    <a asp-controller="Home" asp-action="CurrentGrowerLots" asp-route-facility="@facilityRouteValue">Grower Lots</a>
                 }
                 @if (canAccessCropYearReview)
                 {
@@ -143,9 +154,8 @@
             <strong>Facility:</strong>
             @foreach (var facility in new[] { "WP", "EBS", "All" })
             {
-                var route = Context.Request.Path.Value ?? "/";
                 <a class="@(activeFacility == facility ? "active" : "")"
-                   href="@route?Facility=@Uri.EscapeDataString(facility)">@facility</a>
+                   href="@FacilityContextUrl(facility)">@facility</a>
             }
         </nav>
     }

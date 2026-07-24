@@ -12,9 +12,10 @@ public sealed class RoleNavigationAuthorizationTests
     {
         var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
 
-        Assert.Contains("href=\"/@facilityQuery\"", layout);
-        Assert.Contains("href=\"/DailyQc@facilityQuery\"", layout);
-        Assert.Contains("href=\"/Receipts@facilityQuery\"", layout);
+        Assert.Contains("asp-controller=\"Home\" asp-action=\"Index\"", layout);
+        Assert.Contains("asp-controller=\"DailyQc\" asp-action=\"Index\"", layout);
+        Assert.Contains("asp-controller=\"Receipts\" asp-action=\"Index\"", layout);
+        Assert.DoesNotContain("facilityQuery", layout);
         Assert.Contains("IUserAccessService UserAccess", layout);
         Assert.Contains("UserAccess.HasAccessAsync", layout);
         Assert.Contains("class=\"nav-dropdown\"", layout);

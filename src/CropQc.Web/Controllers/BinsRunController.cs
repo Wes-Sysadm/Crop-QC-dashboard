@@ -67,6 +67,11 @@ public sealed class BinsRunController(
         return View(model);
     }
 
+    [HttpGet("/BinsRun@facilityQuery")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunView)]
+    public IActionResult RedirectMalformedFacilityLink() =>
+        RedirectToAction(nameof(Index));
+
     [HttpGet("Sources")]
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
     public async Task<IActionResult> Sources(string? query, int? facilityWarehouseId, int? roomId, string? mode, CancellationToken cancellationToken) =>
