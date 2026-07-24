@@ -154,10 +154,12 @@
                 @foreach (var item in Model.Planner.Projections)
                 {
                     <a class="projection-list-item @(selected?.Id == item.Id ? "selected" : "")"
-                       href="/BinsRun?Section=Planner&amp;PlannedDate=@item.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@item.Id&amp;RoomId=@Model.Filter.RoomId&amp;Facility=@plannerFacility&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">
+                       href="@(item.IsDeleted
+                           ? $"/BinsRun?Section=Planner&PlannedDate={item.PlannedRunDate:yyyy-MM-dd}&ProjectionId={item.Id}&RoomId={Model.Filter.RoomId}&Facility={plannerFacility}&ProjectionVisibility={plannerVisibility}&ProjectionSort={plannerSort}"
+                           : $"/BinsRun/Projections/{item.Id}/Outcome")">
                         <span class="status pending">@item.ProjectionMode</span>
                         <span><strong><span class="facility-badge">@item.FacilityCode</span> @item.Name</strong><small>@item.Status · @item.SourceCount source(s) @(item.IsDeleted ? "· Deleted" : "")</small></span>
-                        <span><strong>@item.TotalPlannedBins bins</strong><small>@item.TotalPackedProjectedBoxes.ToString("0.##") packed boxes · @(item.EffectivePackoutPercent is decimal pct ? $"{pct:0.##}% packout" : "packout n/a") · @BusinessTime.FormatPacific(item.UpdatedAt)</small></span>
+                        <span><strong>@item.TotalPlannedBins bins</strong><small>@item.TotalPackedProjectedBoxes.ToString("0.##") packed boxes · @(item.EffectivePackoutPercent is decimal pct ? $"{pct:0.##}% packout" : "packout n/a") · @BusinessTime.FormatPacific(item.UpdatedAt)</small><small class="projection-card-action">@(item.IsDeleted ? "Inspect deleted record" : "View Outcome")</small></span>
                     </a>
                 }
                 </div>
@@ -779,6 +781,7 @@
                 </section>
             }
             <div class="action-bar">
+                <a class="button" href="/BinsRun/Projections/@selected.Id/Outcome">View Outcome</a>
                 @if (selected.CanEditRecord)
                 {
                     <form method="post" action="/BinsRun/Projections/@selected.Id/Ready">
@@ -808,7 +811,7 @@
                         <button type="submit" class="secondary-button">Cancel</button>
                     </form>
                 }
-                <button type="button" class="secondary-button" onclick="window.print()">Print</button>
+                <a class="button secondary-button" href="/BinsRun/Projections/@selected.Id/Outcome#print-report">Print Projection</a>
                 <a class="button secondary-button" href="/BinsRun/Projections/@selected.Id/Export?plannedDate=@selected.PlannedRunDate.ToString("yyyy-MM-dd")&amp;facility=@plannerFacility&amp;projectionVisibility=@plannerVisibility&amp;projectionSort=@plannerSort">Export CSV</a>
                 @if (selected.CanDeleteRecord)
                 {

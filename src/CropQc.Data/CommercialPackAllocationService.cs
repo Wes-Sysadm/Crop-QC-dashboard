@@ -73,6 +73,7 @@ public sealed record CommercialPackOutput(
     decimal RoundingResidualPounds,
     decimal PercentageOfProjectedPackout,
     IReadOnlyList<CommercialPackContribution> Contributions,
+    int JointBasisFruitCount,
     IReadOnlyList<CommercialPackGradeAllocation> GradeAllocations,
     string? GradeWarning);
 
@@ -96,7 +97,7 @@ public sealed record CommercialPackAllocationResult(
     IReadOnlyList<CommercialPackUnallocatedFruit> Unallocated,
     IReadOnlyList<string> Warnings)
 {
-    public const string CurrentVersion = "1.0";
+    public const string CurrentVersion = "2.0";
     public bool IsComplete => Warnings.Count == 0;
 }
 
@@ -168,11 +169,12 @@ public static class CommercialPackAllocationService
                 pack,
                 assigned,
                 contributions,
+                jointBasis,
                 gradeAllocations,
                 gradeWarning));
         }
 
-        AllocateRoundedPackCounts(output);
+        AllocateCompletePackCounts(output);
         var totalAssigned = output.Sum(x => x.AssignedPounds);
         var unallocated = pools
             .Where(x => x.RemainingPounds > 0)
@@ -398,23 +400,9 @@ public static class CommercialPackAllocationService
             .ToList();
     }
 
-    private static void AllocateRoundedPackCounts(IReadOnlyList<OutputWork> output)
+    private static void AllocateCompletePackCounts(IReadOnlyList<OutputWork> output)
     {
         foreach (var item in output) item.RoundedPacks = (int)decimal.Floor(item.UnroundedPacks);
-        var assignedWeight = output.Sum(x => x.AssignedPounds);
-        while (true)
-        {
-            var currentWeight = output.Sum(x => x.RoundedPacks * x.Pack.PackageWeightPounds);
-            var candidate = output
-                .Where(x => Math.Abs(assignedWeight - (currentWeight + x.Pack.PackageWeightPounds))
-                    < Math.Abs(assignedWeight - currentWeight))
-                .OrderByDescending(x => x.UnroundedPacks - decimal.Floor(x.UnroundedPacks))
-                .ThenBy(x => x.Pack.Priority)
-                .ThenBy(x => x.Pack.Code, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault();
-            if (candidate is null) break;
-            candidate.RoundedPacks++;
-        }
     }
 
     private sealed class PoolWork(CommercialPackSizePool pool, int order)
@@ -428,6 +416,7 @@ public static class CommercialPackAllocationService
         CommercialPackDefinitionSnapshot pack,
         decimal assignedPounds,
         IReadOnlyList<CommercialPackContribution> contributions,
+        int jointBasis,
         IReadOnlyList<CommercialPackGradeAllocation> gradeAllocations,
         string? gradeWarning)
     {
@@ -454,6 +443,7 @@ public static class CommercialPackAllocationService
             AssignedPounds - RoundedPacks * Pack.PackageWeightPounds,
             totalPackedAvailable <= 0 ? 0 : AssignedPounds / totalPackedAvailable * 100m,
             contributions,
+            jointBasis,
             gradeAllocations,
             gradeWarning);
     }
