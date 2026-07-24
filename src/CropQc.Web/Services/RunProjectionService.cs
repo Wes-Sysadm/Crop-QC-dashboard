@@ -58,7 +58,8 @@ public sealed class RunProjectionService(
     IUserAccessService userAccessService,
     ICropYearService cropYearService,
     IBusinessTimeService businessTime,
-    IFieldSampleTrendService? fieldSampleTrendService = null) : IRunProjectionService
+    IFieldSampleTrendService? fieldSampleTrendService = null,
+    ILogger<RunProjectionService>? logger = null) : IRunProjectionService
 {
     private const string FieldSampleTypeName = "Field Sample";
     private const string SourceApplication = "CropQc.Web";
@@ -213,9 +214,28 @@ public sealed class RunProjectionService(
         var preferredFacilityId = facilities
             .FirstOrDefault(x => x.Code.Equals(selectedFacility, StringComparison.OrdinalIgnoreCase))
             ?.WarehouseId;
-        var selectedProjection = selectedId is null
-            ? null
-            : await GetDetailAsync(selectedId.Value, canEdit, canAdmin, cancellationToken);
+        RunProjectionDetailViewModel? selectedProjection = null;
+        string? plannerWarning = null;
+        string? diagnosticReference = null;
+        if (selectedId is not null)
+        {
+            try
+            {
+                selectedProjection = await GetDetailAsync(selectedId.Value, canEdit, canAdmin, cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                diagnosticReference = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture)[..12];
+                plannerWarning = $"Projection {selectedId.Value} could not be displayed. Other projections remain available. Reference {diagnosticReference}.";
+                logger?.LogError(
+                    exception,
+                    "Run planner selected projection failed. Route={Route} ProjectionId={ProjectionId} CorrelationId={CorrelationId} Category={Category}",
+                    "/BinsRun",
+                    selectedId.Value,
+                    diagnosticReference,
+                    DatabaseFailureDiagnostics.Classify(exception).Category);
+            }
+        }
         if (selectedProjection?.IsDeleted == true
             && projectionId == selectedProjection.Id
             && canAdmin)
@@ -282,7 +302,9 @@ public sealed class RunProjectionService(
             CanViewDeleted = canAdmin,
             VisibilityPastDays = settings.VisibilityPastDays,
             VisibilityFutureDays = settings.VisibilityFutureDays,
-            DefaultExpectedPackoutPercent = settings.DefaultExpectedPackoutPercent
+            DefaultExpectedPackoutPercent = settings.DefaultExpectedPackoutPercent,
+            PlannerWarning = plannerWarning,
+            DiagnosticReference = diagnosticReference
         };
     }
 

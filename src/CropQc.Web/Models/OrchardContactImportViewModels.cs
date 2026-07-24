@@ -23,12 +23,25 @@ public sealed record ParsedOrchardContactWorkbook(
     IReadOnlyList<ParsedOrchardManagerToken> Tokens);
 
 public sealed record OrchardMatchCandidateViewModel(
-    int CanonicalOrchardId,
+    int? CanonicalOrchardId,
     string OrchardName,
     decimal SimilarityScore,
     string? MatchingAlias,
     string? AddressEvidence,
-    string Reason);
+    string Reason,
+    string ResultType = "Canonical Orchard",
+    int? CanonicalGrowerId = null,
+    IReadOnlyList<int>? GrowerLotIds = null,
+    string? GrowerName = null,
+    string? GrowerNumber = null,
+    IReadOnlyList<int>? CanonicalBlockIds = null,
+    string? BlockName = null,
+    string? LotNumber = null,
+    IReadOnlyList<string>? Facilities = null,
+    IReadOnlyList<int>? CropYears = null,
+    IReadOnlyList<string>? SourceRecords = null,
+    DateTimeOffset? LastObservedAt = null,
+    bool CanonicalSetupRequired = false);
 
 public sealed record OrchardContactDryRunRowViewModel(
     int WorkbookRowNumber,
@@ -68,6 +81,11 @@ public sealed class OrchardContactDryRunViewModel
     public IReadOnlyList<OrchardContactDryRunRowViewModel> Rows { get; init; } = [];
     public int ExactMatches => Rows.Count(x => x.MatchMethod == "Exact Match");
     public int AliasMatches => Rows.Count(x => x.MatchMethod == "Alias Match");
+    public int GrowerMatches => Rows.Count(x => x.MatchMethod == "Grower Match");
+    public int GrowerLotMatches => Rows.Count(x => x.MatchMethod == "Grower Lot Match");
+    public int CanonicalBlockMatches => Rows.Count(x => x.MatchMethod == "Canonical Block Match");
+    public int PersistedIdentityMatches => Rows.Count(x => x.MatchMethod == "Confirmed Record Match");
+    public int CanonicalSetupRequired => Rows.Count(x => x.MatchMethod == "Canonical Setup Required");
     public int ProposedAliases => Rows.Count(x => x.MatchMethod == "Proposed Alias");
     public int Ambiguous => Rows.Count(x => x.MatchMethod == "Ambiguous");
     public int Unmatched => Rows.Count(x => x.MatchMethod is "Unmatched" or "Invalid Orchard Identity");

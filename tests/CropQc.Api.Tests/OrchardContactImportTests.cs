@@ -41,6 +41,27 @@ public sealed class OrchardContactImportTests
     }
 
     [Fact]
+    public async Task SuppliedWorkbookMatchesReviewedSummaryCountsWhenProvided()
+    {
+        var path = Environment.GetEnvironmentVariable("CROPQC_CONTACT_WORKBOOK");
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        await using var stream = File.OpenRead(path);
+        var parsed = await new OrchardContactWorkbookParser().ParseAsync(stream, Path.GetFileName(path), default);
+
+        Assert.Equal("Summary", parsed.WorksheetName);
+        Assert.Equal(33, parsed.OrchardManagerSourceRowCount);
+        Assert.Equal(54, parsed.Tokens.Count);
+        Assert.All(parsed.Tokens, token =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(token.ManagerDisplayName));
+            Assert.False(string.IsNullOrWhiteSpace(token.EmailAddress));
+            Assert.False(string.IsNullOrWhiteSpace(token.Phone));
+            Assert.False(string.IsNullOrWhiteSpace(token.CommunicationNote) && string.IsNullOrWhiteSpace(token.SourceStatusNote));
+        });
+    }
+
+    [Fact]
     public void CommaSeparatedOrchardsAreSplit() =>
         Assert.Equal(["Academy", "Reyna"], OrchardContactWorkbookParser.SplitOrchards("Academy, Reyna"));
 
@@ -251,6 +272,19 @@ public sealed class OrchardContactImportTests
         Assert.Empty(await db.OrchardContactImportBatches.ToListAsync());
         Assert.Empty(await db.AuditLogs.ToListAsync());
         Assert.True(before >= 0);
+    }
+
+    [Fact]
+    public async Task DryRunWithAllRowsUnmatchedStillReturnsReviewQueue()
+    {
+        await using var db = CreateDb();
+        var preview = await CreateService(db).PreviewAsync(
+            WorkbookFile([Manager("Academy"), Manager("Reyna")]),
+            default);
+
+        Assert.Equal(2, preview.Rows.Count);
+        Assert.All(preview.Rows, x => Assert.Equal(OrchardContactMatchMethods.Unmatched, x.MatchMethod));
+        Assert.Empty(await db.OrchardContactImportBatches.ToListAsync());
     }
 
     [Fact]

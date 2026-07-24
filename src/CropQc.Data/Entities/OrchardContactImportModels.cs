@@ -24,6 +24,11 @@ public static class OrchardContactMatchMethods
 {
     public const string Exact = "Exact Match";
     public const string Alias = "Alias Match";
+    public const string Grower = "Grower Match";
+    public const string GrowerLot = "Grower Lot Match";
+    public const string CanonicalBlock = "Canonical Block Match";
+    public const string PersistedIdentity = "Confirmed Record Match";
+    public const string CanonicalSetupRequired = "Canonical Setup Required";
     public const string ProposedAlias = "Proposed Alias";
     public const string Ambiguous = "Ambiguous";
     public const string Unmatched = "Unmatched";

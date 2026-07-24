@@ -79,6 +79,33 @@
     <p class="notice success">@TempData["Success"]</p>
 }
 
+@if (Model.Type is "canonical-growers" or "grower-lots" or "orchard-blocks")
+{
+    <section class="panel" aria-labelledby="orchardIdentitySearchHeading">
+        <h2 id="orchardIdentitySearchHeading">Search growers, lots, or orchards</h2>
+        <p class="muted">One search covers canonical growers, Grower Lots, canonical orchards and blocks, aliases, confirmed receipt identities, and confirmed Field Sample identities. Discovery does not merge records or create an orchard.</p>
+        <label class="field wide">Grower / Grower Lot / Orchard
+            <input id="orchardIdentitySearch" type="search" autocomplete="off" placeholder="Enter at least 2 characters" />
+        </label>
+        <p id="orchardIdentitySearchStatus" class="muted" aria-live="polite"></p>
+        <div id="orchardIdentitySearchResults" class="table-wrap contained-table" hidden>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Result type</th>
+                        <th>Identity</th>
+                        <th>Grower / number</th>
+                        <th>Orchard / block / lot</th>
+                        <th>Facility / crop year</th>
+                        <th>Resolution</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </section>
+}
+
 @if (Model.CanEdit && Model.Type != "index")
 {
     <section class="panel">
@@ -271,6 +298,77 @@
         </tbody>
     </table>
 </div>
+
+@if (Model.Type is "canonical-growers" or "grower-lots" or "orchard-blocks")
+{
+    <script>
+    (() => {
+        const input = document.getElementById("orchardIdentitySearch");
+        const status = document.getElementById("orchardIdentitySearchStatus");
+        const results = document.getElementById("orchardIdentitySearchResults");
+        const body = results.querySelector("tbody");
+        let timer;
+        let request;
+
+        const appendCell = (row, value) => {
+            const cell = document.createElement("td");
+            cell.textContent = value == null || value === "" ? "—" : String(value);
+            row.appendChild(cell);
+        };
+        const render = (rows) => {
+            body.replaceChildren();
+            for (const item of rows) {
+                const row = document.createElement("tr");
+                appendCell(row, item.resultType);
+                appendCell(row, item.displayName);
+                appendCell(row, [item.growerName, item.growerNumber].filter(Boolean).join(" / "));
+                appendCell(row, [item.canonicalOrchardName, item.blockName, item.lotNumber].filter(Boolean).join(" / "));
+                appendCell(row, [
+                    (item.facilities || []).join(", "),
+                    (item.cropYears || []).join(", ")
+                ].filter(Boolean).join(" / "));
+                appendCell(row, item.canonicalSetupRequired
+                    ? "Canonical orchard setup or selection required"
+                    : `Confirmed orchard: ${item.canonicalOrchardName}`);
+                body.appendChild(row);
+            }
+            results.hidden = rows.length === 0;
+            status.textContent = rows.length === 0
+                ? "No existing identity evidence matched."
+                : `${rows.length} result${rows.length === 1 ? "" : "s"}.`;
+        };
+        const search = async () => {
+            const query = input.value.trim();
+            if (query.length < 2) {
+                request?.abort();
+                body.replaceChildren();
+                results.hidden = true;
+                status.textContent = query.length === 0 ? "" : "Enter at least 2 characters.";
+                return;
+            }
+            request?.abort();
+            request = new AbortController();
+            status.textContent = "Searching…";
+            try {
+                const response = await fetch(`/MasterData/OrchardIdentity/Search?query=${encodeURIComponent(query)}`, {
+                    signal: request.signal,
+                    headers: { "Accept": "application/json" }
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                render(await response.json());
+            } catch (error) {
+                if (error.name === "AbortError") return;
+                results.hidden = true;
+                status.textContent = "Identity search is temporarily unavailable. Retry or use the existing tables below.";
+            }
+        };
+        input.addEventListener("input", () => {
+            clearTimeout(timer);
+            timer = setTimeout(search, 350);
+        });
+    })();
+    </script>
+}
 
 @if (Model.Type == "rooms")
 {
