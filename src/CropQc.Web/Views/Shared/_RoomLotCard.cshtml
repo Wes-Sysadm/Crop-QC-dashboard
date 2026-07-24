@@ -36,7 +36,7 @@
         <p class="notice warning"><strong>Weakest lot signal:</strong> @Model.WeakestReason</p>
     }
     <div class="action-bar">
-        <a class="button" href="/BinsRun?RoomId=@Model.RoomId&amp;Section=Planner&amp;SourceKey=@Uri.EscapeDataString(Model.InventoryKey)">Plan Run / Manage Inventory</a>
+        <a class="button" href="/BinsRun?RoomId=@Model.RoomId&amp;Section=Planner&amp;Facility=@Model.Warehouse&amp;SourceKey=@Uri.EscapeDataString(Model.InventoryKey)">Plan Run / Manage Inventory</a>
         @if (Model.ReceiptId is not null)
         {
             <a class="button secondary-button" href="/Receipts/@Model.ReceiptId">View Receipt</a>

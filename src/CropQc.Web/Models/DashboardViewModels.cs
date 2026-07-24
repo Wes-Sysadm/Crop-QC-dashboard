@@ -431,6 +431,9 @@ public sealed class BinsRunFilterForm
     public long? ProjectionId { get; set; }
     public long? ProjectionSourceId { get; set; }
     public string? SourceKey { get; set; }
+    public string Facility { get; set; } = "All";
+    public string ProjectionVisibility { get; set; } = "Active";
+    public string ProjectionSort { get; set; } = "Facility";
 }
 
 public sealed class BinsRunForm

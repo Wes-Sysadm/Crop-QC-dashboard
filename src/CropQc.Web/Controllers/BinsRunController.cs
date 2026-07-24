@@ -17,7 +17,14 @@ public sealed class BinsRunController(
     public async Task<IActionResult> Index([FromQuery] BinsRunFilterForm filter, CancellationToken cancellationToken)
     {
         var model = await binsRunService.GetPageAsync(filter, User, cancellationToken);
-        model.Planner = await runProjectionService.GetPlannerAsync(filter.PlannedDate, filter.ProjectionId, User, cancellationToken);
+        model.Planner = await runProjectionService.GetPlannerAsync(
+            filter.PlannedDate,
+            filter.ProjectionId,
+            filter.Facility,
+            filter.ProjectionVisibility,
+            filter.ProjectionSort,
+            User,
+            cancellationToken);
         if (filter.RoomId is int roomId)
         {
             var room = await dashboardDataService.GetRoomDetailAsync(roomId, cancellationToken);
@@ -34,8 +41,8 @@ public sealed class BinsRunController(
 
     [HttpGet("Sources")]
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
-    public async Task<IActionResult> Sources(string? query, int? roomId, string? mode, CancellationToken cancellationToken) =>
-        Ok(await runProjectionService.SearchSourcesAsync(query, roomId, mode, User, cancellationToken));
+    public async Task<IActionResult> Sources(string? query, int? facilityWarehouseId, int? roomId, string? mode, CancellationToken cancellationToken) =>
+        Ok(await runProjectionService.SearchSourcesAsync(query, facilityWarehouseId, roomId, mode, User, cancellationToken));
 
     [HttpGet("Projections/{id:long}/FieldSamples")]
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
@@ -155,17 +162,61 @@ public sealed class BinsRunController(
         return PlannerRedirect(form.PlannedRunDate, result.Id ?? id);
     }
 
+    [HttpGet("Projections/{id:long}/Delete")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    public async Task<IActionResult> DeleteProjection(long id, CancellationToken cancellationToken)
+    {
+        var model = await runProjectionService.GetDeletionConfirmationAsync(id, User, cancellationToken);
+        return model is null ? NotFound() : View("DeleteProjection", model);
+    }
+
+    [HttpPost("Projections/{id:long}/Delete")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteProjection(long id, DeleteRunProjectionForm form, CancellationToken cancellationToken)
+    {
+        form.Id = id;
+        var error = await runProjectionService.DeleteAsync(form, User, cancellationToken);
+        if (error is not null)
+        {
+            TempData["Error"] = error;
+            return RedirectToAction(nameof(DeleteProjection), new { id });
+        }
+
+        TempData["Success"] = $"Run projection {id} was removed from active planning. Its sources, calculations, and audit history were retained.";
+        return RedirectToAction(nameof(Index), new
+        {
+            Section = "Planner",
+            Facility = "All",
+            ProjectionVisibility = "Deleted"
+        });
+    }
+
     [HttpGet("Projections/{id:long}/Export")]
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
-    public async Task<IActionResult> ExportProjection(long id, DateOnly plannedDate, CancellationToken cancellationToken)
+    public async Task<IActionResult> ExportProjection(
+        long id,
+        DateOnly plannedDate,
+        string? facility,
+        string? projectionVisibility,
+        string? projectionSort,
+        CancellationToken cancellationToken)
     {
-        var detail = (await runProjectionService.GetPlannerAsync(plannedDate, id, User, cancellationToken)).SelectedProjection;
+        var detail = (await runProjectionService.GetPlannerAsync(
+            plannedDate,
+            id,
+            facility,
+            projectionVisibility,
+            projectionSort,
+            User,
+            cancellationToken)).SelectedProjection;
         if (detail is null || detail.Id != id) return NotFound();
-        var csv = new StringBuilder("Source,Room,Lot or Block,Variety,Commodity,QC Basis,Available Bins,Planned Bins,Expected Packout %,Expected Cull %,Gross Pounds,Gross Boxes,Packed Pounds,Packed Boxes,Cull Pounds,Cull Equivalents\r\n");
+        var csv = new StringBuilder("Facility,Projection status,Record visibility,Source,Room,Lot or Block,Variety,Commodity,QC Basis,Available Bins,Planned Bins,Expected Packout %,Expected Cull %,Gross Pounds,Gross Boxes,Packed Pounds,Packed Boxes,Cull Pounds,Cull Equivalents\r\n");
         foreach (var source in detail.Sources)
         {
             csv.AppendLine(string.Join(',', new[]
             {
+                Csv(detail.FacilityCode), Csv(detail.Status), Csv(detail.IsDeleted ? "Deleted" : "Active"),
                 Csv(source.SourceLabel), Csv(source.Room), Csv(source.Lot ?? source.Block), Csv(source.Variety),
                 Csv(source.Commodity), Csv(source.QcBasis), source.AvailableBinsSnapshot?.ToString() ?? "",
                 source.PlannedBins.ToString(), source.ExpectedPackoutPercent?.ToString("0.##") ?? "",
@@ -244,8 +295,24 @@ public sealed class BinsRunController(
         return RedirectToAction(nameof(Index), new { RoomId = form.RoomId, Section = "TrueUp" });
     }
 
-    private RedirectToActionResult PlannerRedirect(DateOnly date, long? id) =>
-        RedirectToAction(nameof(Index), new { Section = "Planner", PlannedDate = date.ToString("yyyy-MM-dd"), ProjectionId = id });
+    private RedirectToActionResult PlannerRedirect(DateOnly date, long? id)
+    {
+        string? Value(string key)
+        {
+            if (Request.HasFormContentType && Request.Form.TryGetValue(key, out var formValue)) return formValue.ToString();
+            return Request.Query.TryGetValue(key, out var queryValue) ? queryValue.ToString() : null;
+        }
+
+        return RedirectToAction(nameof(Index), new
+        {
+            Section = "Planner",
+            PlannedDate = date.ToString("yyyy-MM-dd"),
+            ProjectionId = id,
+            Facility = Value("Facility"),
+            ProjectionVisibility = Value("ProjectionVisibility"),
+            ProjectionSort = Value("ProjectionSort")
+        });
+    }
 
     private static string Csv(string? value)
     {

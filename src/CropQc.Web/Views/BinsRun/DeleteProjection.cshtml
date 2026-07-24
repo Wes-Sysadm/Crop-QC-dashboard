@@ -1,0 +1,60 @@
+@model RunProjectionDeletionConfirmationViewModel
+@{
+    ViewData["Title"] = $"Delete Run Projection {Model.Id}";
+}
+
+<h1>Delete Run Projection</h1>
+<p class="notice warning"><strong>This removes the projection from active planning; it does not erase it.</strong> Sources, calculations, links, and audit history remain stored.</p>
+
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
+
+<section class="panel">
+    <div class="room-card-header">
+        <div>
+            <h2><span class="facility-badge">@Model.FacilityCode</span> @Model.Name</h2>
+            <p>Projection #@Model.Id · @Model.ProjectionMode · @Model.Status</p>
+        </div>
+        <a class="button secondary-button" href="/BinsRun?Section=Planner&amp;PlannedDate=@Model.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@Model.Id&amp;Facility=@Model.FacilityCode">Back to projection</a>
+    </div>
+    <dl class="summary-list">
+        <dt>Planned run date</dt><dd>@Model.PlannedRunDate.ToString("dddd, MMMM d, yyyy")</dd>
+        <dt>Facility</dt><dd>@Model.FacilityCode</dd>
+        <dt>Sources</dt><dd>@Model.SourceCount</dd>
+        <dt>Planned bins</dt><dd>@Model.TotalPlannedBins</dd>
+        <dt>Projected boxes</dt><dd>@Model.TotalProjectedBoxes.ToString("0.##")</dd>
+        <dt>Created by</dt><dd>@Model.Creator</dd>
+        <dt>Last updated</dt><dd>@BusinessTime.FormatPacific(Model.UpdatedAt)</dd>
+    </dl>
+
+    @if (!string.IsNullOrWhiteSpace(Model.BlockingReason))
+    {
+        <p class="notice error"><strong>Deletion blocked.</strong> @Model.BlockingReason</p>
+        @if (Model.LinkedActualRunIds.Count > 0)
+        {
+            <p>Linked actual Bins Run IDs: @string.Join(", ", Model.LinkedActualRunIds)</p>
+        }
+    }
+    else
+    {
+        <form class="form-grid" method="post" action="/BinsRun/Projections/@Model.Id/Delete">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ConcurrencyVersion" value="@Model.Form.ConcurrencyVersion" />
+            <input type="hidden" name="OperationToken" value="@Model.Form.OperationToken" />
+            <label class="field wide">Deletion reason
+                <textarea name="Reason" minlength="10" maxlength="1000" required></textarea>
+                <small>Explain why this planning record is incorrect or no longer needed (at least 10 characters).</small>
+            </label>
+            <label class="field wide">Type projection ID <strong>@Model.Id</strong> or exact name <strong>@Model.Name</strong>
+                <input name="ConfirmationValue" autocomplete="off" required />
+            </label>
+            <label class="checkbox-field wide">
+                <input type="checkbox" name="ConfirmDeletion" value="true" required />
+                I understand this removes the projection from active planning and retains its audit history.
+            </label>
+            <button class="danger-button" type="submit">Delete Projection</button>
+        </form>
+    }
+</section>

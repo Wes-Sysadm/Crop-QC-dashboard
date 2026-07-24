@@ -5,6 +5,9 @@
     var selected = Model.Planner.SelectedProjection;
     var conversionSource = selected?.Sources.FirstOrDefault(x => x.Id == Model.Filter.ProjectionSourceId);
     var conversionInventory = Model.AvailableInventory.FirstOrDefault(x => x.InventoryKey == conversionSource?.InventoryKey);
+    var plannerFacility = Model.Planner.SelectedFacility;
+    var plannerVisibility = Model.Planner.SelectedDeletionStatus;
+    var plannerSort = Model.Planner.SelectedSort;
 }
 
 <h1>Bins Run &amp; Transfers</h1>
@@ -29,6 +32,52 @@
 
 @if (activeSection.Equals("Planner", StringComparison.OrdinalIgnoreCase))
 {
+    <section class="panel">
+        <div class="room-card-header">
+            <div>
+                <h2>Planning Facility</h2>
+                <p class="muted">WP and EBS plans stay separate. A Preharvest source identifies where fruit comes from; the facility identifies where it is planned to be packed.</p>
+            </div>
+            <form method="get" class="inline-form">
+                <input type="hidden" name="Section" value="Planner" />
+                <input type="hidden" name="PlannedDate" value="@Model.Planner.SelectedDate.ToString("yyyy-MM-dd")" />
+                <input type="hidden" name="Facility" value="@plannerFacility" />
+                <label>Show
+                    <select name="ProjectionVisibility" onchange="this.form.submit()" disabled="@(!Model.Planner.CanViewDeleted)">
+                        <option value="Active" selected="@(plannerVisibility == "Active")">Active</option>
+                        <option value="Deleted" selected="@(plannerVisibility == "Deleted")">Deleted</option>
+                        <option value="All" selected="@(plannerVisibility == "All")">Active + deleted</option>
+                    </select>
+                </label>
+                @if (!Model.Planner.CanViewDeleted)
+                {
+                    <input type="hidden" name="ProjectionVisibility" value="Active" />
+                }
+                <label>Sort
+                    <select name="ProjectionSort" onchange="this.form.submit()">
+                        <option value="Facility" selected="@(plannerSort == "Facility")">Facility</option>
+                        <option value="RunDate" selected="@(plannerSort == "RunDate")">Run date</option>
+                        <option value="Status" selected="@(plannerSort == "Status")">Status</option>
+                        <option value="Updated" selected="@(plannerSort == "Updated")">Recently updated</option>
+                        <option value="PlannedBins" selected="@(plannerSort == "PlannedBins")">Planned bins</option>
+                    </select>
+                </label>
+            </form>
+        </div>
+        <nav class="operation-tabs facility-selector" aria-label="Planning facility">
+            @foreach (var facilityCode in new[] { "WP", "EBS", "All" })
+            {
+                <a class="@(plannerFacility == facilityCode ? "active" : "")"
+                   href="/BinsRun?Section=Planner&amp;PlannedDate=@Model.Planner.SelectedDate.ToString("yyyy-MM-dd")&amp;Facility=@facilityCode&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">@facilityCode</a>
+            }
+            @if (Model.Planner.CanAdmin && Model.Planner.UnassignedProjectionCount > 0)
+            {
+                <a class="@(plannerFacility == "Unassigned" ? "active" : "")"
+                   href="/BinsRun?Section=Planner&amp;PlannedDate=@Model.Planner.SelectedDate.ToString("yyyy-MM-dd")&amp;Facility=Unassigned&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">Unassigned (@Model.Planner.UnassignedProjectionCount)</a>
+            }
+        </nav>
+    </section>
+
     <section class="panel run-planner-calendar">
         <div class="room-card-header">
             <div>
@@ -39,28 +88,53 @@
                 <form method="get" class="inline-form">
                     <input type="hidden" name="Section" value="Planner" />
                     <input type="hidden" name="RoomId" value="@Model.Filter.RoomId" />
+                    <input type="hidden" name="Facility" value="@plannerFacility" />
+                    <input type="hidden" name="ProjectionVisibility" value="@plannerVisibility" />
+                    <input type="hidden" name="ProjectionSort" value="@plannerSort" />
                     <label>Open date <input type="date" name="PlannedDate" value="@Model.Planner.SelectedDate.ToString("yyyy-MM-dd")" /></label>
                     <button type="submit" class="secondary-button">Go</button>
                 </form>
-                <a class="button secondary-button" href="/BinsRun?Section=Planner&amp;PlannedDate=@DateOnly.FromDateTime(BusinessTime.NowPacific.DateTime).ToString("yyyy-MM-dd")">Today</a>
+                <a class="button secondary-button" href="/BinsRun?Section=Planner&amp;PlannedDate=@DateOnly.FromDateTime(BusinessTime.NowPacific.DateTime).ToString("yyyy-MM-dd")&amp;Facility=@plannerFacility&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">Today</a>
             </div>
         </div>
         <div class="run-calendar-days">
             @foreach (var day in Model.Planner.CalendarDays)
             {
                 <a class="run-calendar-day @(day.IsSelected ? "selected" : "") @(day.IsToday ? "today" : "")"
-                   href="/BinsRun?Section=Planner&amp;PlannedDate=@day.Date.ToString("yyyy-MM-dd")&amp;RoomId=@Model.Filter.RoomId">
+                   href="/BinsRun?Section=Planner&amp;PlannedDate=@day.Date.ToString("yyyy-MM-dd")&amp;RoomId=@Model.Filter.RoomId&amp;Facility=@plannerFacility&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">
                     <small>@day.Date.ToString("ddd")</small>
                     <strong>@day.Date.Day</strong>
                     <span>@day.Date.ToString("MMM")</span>
                     @if (day.ProjectionCount > 0)
                     {
-                        <i title="@day.ProjectionCount saved projection(s)">@day.ProjectionCount</i>
+                        <i title="@day.ProjectionCount saved projection(s)">@day.ProjectionCount / @day.TotalPlannedBins bins</i>
+                        @if (plannerFacility == "All")
+                        {
+                            <small>WP @day.WpProjectionCount/@day.WpPlannedBins · EBS @day.EbsProjectionCount/@day.EbsPlannedBins</small>
+                        }
                     }
                 </a>
             }
         </div>
     </section>
+
+    @if (Model.Planner.FacilityTotals.Count > 0)
+    {
+        <section class="panel">
+            <h2>@Model.Planner.SelectedDate.ToString("MMM d") Facility Totals</h2>
+            <div class="room-summary-metrics">
+                @foreach (var total in Model.Planner.FacilityTotals)
+                {
+                    <div class="metric-card">
+                        <span class="metric-label">@total.FacilityCode · @total.ProjectionCount run(s)</span>
+                        <strong>@total.PlannedBins bins</strong>
+                        <span>@total.PackedBoxes.ToString("0.##") packed boxes · @total.CullBoxes.ToString("0.##") cull</span>
+                        <span>@(total.EffectivePackoutPercent is decimal pct ? $"{pct:0.##}% effective packout" : "Packout not calculated")</span>
+                    </div>
+                }
+            </div>
+        </section>
+    }
 
     <section class="grid-two run-planner-layout">
         <div class="panel">
@@ -80,10 +154,10 @@
                 @foreach (var item in Model.Planner.Projections)
                 {
                     <a class="projection-list-item @(selected?.Id == item.Id ? "selected" : "")"
-                       href="/BinsRun?Section=Planner&amp;PlannedDate=@item.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@item.Id&amp;RoomId=@Model.Filter.RoomId">
+                       href="/BinsRun?Section=Planner&amp;PlannedDate=@item.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@item.Id&amp;RoomId=@Model.Filter.RoomId&amp;Facility=@plannerFacility&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">
                         <span class="status pending">@item.ProjectionMode</span>
-                        <span><strong>@item.Name</strong><small>@item.Status · @item.SourceCount source(s)</small></span>
-                        <span><strong>@item.TotalPlannedBins bins</strong><small>@item.TotalRoundedProjectedBoxes boxes · @BusinessTime.FormatPacific(item.UpdatedAt)</small></span>
+                        <span><strong><span class="facility-badge">@item.FacilityCode</span> @item.Name</strong><small>@item.Status · @item.SourceCount source(s) @(item.IsDeleted ? "· Deleted" : "")</small></span>
+                        <span><strong>@item.TotalPlannedBins bins</strong><small>@item.TotalPackedProjectedBoxes.ToString("0.##") packed boxes · @(item.EffectivePackoutPercent is decimal pct ? $"{pct:0.##}% packout" : "packout n/a") · @BusinessTime.FormatPacific(item.UpdatedAt)</small></span>
                     </a>
                 }
                 </div>
@@ -92,6 +166,18 @@
             {
                 <form class="form-grid compact-form" method="post" action="/BinsRun/Projections">
                     <h3 class="wide">Create Projection</h3>
+                    <input type="hidden" name="Facility" value="@plannerFacility" />
+                    <input type="hidden" name="ProjectionVisibility" value="@plannerVisibility" />
+                    <input type="hidden" name="ProjectionSort" value="@plannerSort" />
+                    <label class="field wide">Which facility is this run for?
+                        <select name="FacilityWarehouseId" required>
+                            <option value="">Select WP or EBS</option>
+                            @foreach (var facilityOption in Model.Planner.FacilityOptions)
+                            {
+                                <option value="@facilityOption.WarehouseId" selected="@(facilityOption.WarehouseId == Model.Planner.CreateForm.FacilityWarehouseId)">@facilityOption.Code — @facilityOption.Name</option>
+                            }
+                        </select>
+                    </label>
                     <fieldset class="wide planning-mode-selector">
                         <legend>Planning mode</legend>
                         <label class="choice-card">
@@ -124,12 +210,16 @@
             {
                 <div class="room-card-header">
                     <div>
-                        <h2>@selected.Name</h2>
+                        <h2><span class="facility-badge">@selected.FacilityCode</span> @selected.Name</h2>
                         <p><strong>@selected.ProjectionMode projection</strong> · crop year @selected.CropYear</p>
                         <p>@selected.PlannedRunDate.ToString("dddd, MMMM d, yyyy") · @selected.Creator · updated @BusinessTime.FormatPacific(selected.UpdatedAt)</p>
                     </div>
                     <span class="status @ProjectionStatusClass(selected.Status)">@selected.Status</span>
                 </div>
+                @if (selected.IsDeleted)
+                {
+                    <p class="notice warning"><strong>Deleted planning record.</strong> Removed @BusinessTime.FormatPacific(selected.DeletedAt). Reason: @selected.DeletionReason. The projection is read-only and retained for audit/history.</p>
+                }
                 <div class="room-summary-metrics" data-projection-summary>
                     <div class="metric-card"><span class="metric-label">@(selected.ProjectionMode == "Preharvest" ? "Total Estimated Bins" : "Planned Bins")</span><strong data-total-planned-bins>@selected.TotalPlannedBins</strong></div>
                     <div class="metric-card"><span class="metric-label">Gross Pounds</span><strong>@selected.TotalProjectedPounds.ToString("0")</strong></div>
@@ -157,6 +247,17 @@
                 {
                     <form class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Header">
                         <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
+                        <input type="hidden" name="Facility" value="@plannerFacility" />
+                        <input type="hidden" name="ProjectionVisibility" value="@plannerVisibility" />
+                        <input type="hidden" name="ProjectionSort" value="@plannerSort" />
+                        <label class="field">Facility
+                            <select name="FacilityWarehouseId" required>
+                                @foreach (var facilityOption in Model.Planner.FacilityOptions)
+                                {
+                                    <option value="@facilityOption.WarehouseId" selected="@(facilityOption.WarehouseId == selected.FacilityWarehouseId)">@facilityOption.Code</option>
+                                }
+                            </select>
+                        </label>
                         <label class="field">Run date
                             <input type="date" name="PlannedRunDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" required />
                         </label>
@@ -167,7 +268,8 @@
                     </form>
 
                     <form class="form-grid compact-form run-source-search" method="post" action="/BinsRun/Projections/@selected.Id/Sources"
-                          data-projection-mode="@selected.ProjectionMode" data-projection-id="@selected.Id">
+                          data-projection-mode="@selected.ProjectionMode" data-projection-id="@selected.Id"
+                          data-facility-warehouse-id="@selected.FacilityWarehouseId">
                         <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                         <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                         <h3 class="wide">@(selected.ProjectionMode == "Preharvest" ? "Add Field Sample Block" : "Add Inventory Lot")</h3>
@@ -456,6 +558,7 @@
                     {
                         <form class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/CreateInventory">
                             <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
+                            <input type="hidden" name="FacilityWarehouseId" value="@selected.FacilityWarehouseId" />
                             <label class="field">Run date
                                 <input type="date" name="PlannedRunDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" required />
                             </label>
@@ -503,6 +606,14 @@
                 }
                 <form class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Duplicate">
                     <label>Duplicate to <input type="date" name="PlannedRunDate" value="@selected.PlannedRunDate.AddDays(1).ToString("yyyy-MM-dd")" required /></label>
+                    <label>Facility
+                        <select name="FacilityWarehouseId" required>
+                            @foreach (var facilityOption in Model.Planner.FacilityOptions)
+                            {
+                                <option value="@facilityOption.WarehouseId" selected="@(facilityOption.WarehouseId == selected.FacilityWarehouseId)">@facilityOption.Code</option>
+                            }
+                        </select>
+                    </label>
                     <button type="submit" class="secondary-button">Duplicate</button>
                 </form>
                 @if (Model.Planner.CanAdmin && selected.Status is "Draft" or "Ready")
@@ -515,7 +626,41 @@
                     </form>
                 }
                 <button type="button" class="secondary-button" onclick="window.print()">Print</button>
-                <a class="button secondary-button" href="/BinsRun/Projections/@selected.Id/Export?plannedDate=@selected.PlannedRunDate.ToString("yyyy-MM-dd")">Export CSV</a>
+                <a class="button secondary-button" href="/BinsRun/Projections/@selected.Id/Export?plannedDate=@selected.PlannedRunDate.ToString("yyyy-MM-dd")&amp;facility=@plannerFacility&amp;projectionVisibility=@plannerVisibility&amp;projectionSort=@plannerSort">Export CSV</a>
+                @if (selected.CanDeleteRecord)
+                {
+                    <a class="button danger-button" href="/BinsRun/Projections/@selected.Id/Delete">Delete Projection</a>
+                }
+                else if (!selected.IsDeleted && (selected.Status == "Converted to Actual Run" || selected.ConvertedSourceCount > 0))
+                {
+                    <span class="muted">Deletion unavailable: an actual Bins Run is linked.</span>
+                }
+            </div>
+        </section>
+    }
+
+    @if (Model.Planner.RecentActivity.Count > 0)
+    {
+        <section class="panel">
+            <h2>Recent Projection Activity</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Facility</th><th>Projection</th><th>Mode</th><th>Status</th><th>Run date</th><th>Bins</th><th>Updated</th></tr></thead>
+                    <tbody>
+                    @foreach (var item in Model.Planner.RecentActivity)
+                    {
+                        <tr>
+                            <td><span class="facility-badge">@item.FacilityCode</span></td>
+                            <td><a href="/BinsRun?Section=Planner&amp;PlannedDate=@item.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@item.Id&amp;Facility=@plannerFacility&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">@item.Name</a></td>
+                            <td>@item.ProjectionMode</td>
+                            <td>@item.Status @(item.IsDeleted ? "· Deleted" : "")</td>
+                            <td>@item.PlannedRunDate</td>
+                            <td>@item.TotalPlannedBins</td>
+                            <td>@BusinessTime.FormatPacific(item.UpdatedAt)</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
             </div>
         </section>
     }
@@ -740,11 +885,27 @@ else
 
 <script>
     (() => {
+        const plannerState = {
+            Facility: "@plannerFacility",
+            ProjectionVisibility: "@plannerVisibility",
+            ProjectionSort: "@plannerSort"
+        };
+        document.querySelectorAll('form[method="post"][action^="/BinsRun/Projections"]').forEach((form) => {
+            for (const [name, value] of Object.entries(plannerState)) {
+                if (form.querySelector(`input[name="${name}"]`)) continue;
+                const input = document.createElement("input");
+                input.type = "hidden";
+                input.name = name;
+                input.value = value;
+                form.appendChild(input);
+            }
+        });
         const sourceSearch = document.querySelector("[data-run-source-search]");
         const sourceResults = document.querySelector("[data-run-source-results]");
         const sourceForm = document.querySelector(".run-source-search");
         const projectionMode = sourceForm?.dataset.projectionMode || "Inventory";
         const projectionId = sourceForm?.dataset.projectionId;
+        const facilityWarehouseId = sourceForm?.dataset.facilityWarehouseId;
         const fieldSampleResults = document.querySelector("[data-field-sample-results]");
         const fieldSamplePreview = document.querySelector("[data-field-sample-preview]");
         let searchTimer;
@@ -784,6 +945,7 @@ else
         async function loadSources() {
             if (!sourceSearch || !sourceResults) return;
             const params = new URLSearchParams({ query: sourceSearch.value || "", mode: projectionMode });
+            if (facilityWarehouseId) params.set("facilityWarehouseId", facilityWarehouseId);
             @if (Model.Filter.RoomId is not null)
             {
                 <text>params.set("roomId", "@Model.Filter.RoomId");</text>

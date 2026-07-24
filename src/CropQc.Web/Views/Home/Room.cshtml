@@ -52,7 +52,7 @@
             }
         </div>
         <div class="action-bar">
-            <a class="button" href="/BinsRun?RoomId=@Model.Summary.RoomId&amp;Section=Planner">Open in Bins Run &amp; Transfers</a>
+            <a class="button" href="/BinsRun?RoomId=@Model.Summary.RoomId&amp;Section=Planner&amp;Facility=@Model.Summary.Warehouse">Open in Bins Run &amp; Transfers</a>
             <a class="button secondary-button" href="/Rooms/@Model.Summary.RoomId/CountBreakdown">View Count Breakdown</a>
         </div>
         @if (Model.Summary.ReviewFlags.Count > 0)

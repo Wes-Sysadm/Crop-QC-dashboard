@@ -13,7 +13,7 @@ public interface IBinsRunService
 {
     Task<BinsRunPageViewModel> GetPageAsync(BinsRunFilterForm filter, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<BinsRunProjectionViewModel> GetProjectionAsync(BinsRunProjectionRequest request, ClaimsPrincipal user, CancellationToken cancellationToken);
-    Task<IReadOnlyList<RunProjectionInventorySource>> SearchPlanningInventoryAsync(string? query, int? roomId, int take, CancellationToken cancellationToken);
+    Task<IReadOnlyList<RunProjectionInventorySource>> SearchPlanningInventoryAsync(string? query, int? warehouseId, int? roomId, int take, CancellationToken cancellationToken);
     Task<RunProjectionInventorySource?> GetPlanningInventoryAsync(string inventoryKey, CancellationToken cancellationToken);
     Task<string?> CreateAsync(BinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> UpdateAsync(long id, BinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
@@ -153,12 +153,13 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
 
     public async Task<IReadOnlyList<RunProjectionInventorySource>> SearchPlanningInventoryAsync(
         string? query,
+        int? warehouseId,
         int? roomId,
         int take,
         CancellationToken cancellationToken)
     {
         var normalized = query?.Trim() ?? "";
-        var snapshots = (await GetCurrentInventorySnapshotsAsync(null, roomId, cancellationToken))
+        var snapshots = (await GetCurrentInventorySnapshotsAsync(warehouseId, roomId, cancellationToken))
             .Where(x => x.CurrentBins > 0)
             .Where(x => normalized.Length == 0
                 || x.Facility.Contains(normalized, StringComparison.OrdinalIgnoreCase)
@@ -298,6 +299,10 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
             {
                 return "The selected projection source was not found.";
             }
+            if (linkedProjection.IsDeleted)
+            {
+                return "A deleted projection cannot be converted to an actual run.";
+            }
             if (!RunProjectionStatuses.Editable.Contains(linkedProjection.Status, StringComparer.OrdinalIgnoreCase))
             {
                 return $"A {linkedProjection.Status} projection cannot be converted to an actual run.";
@@ -335,6 +340,12 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         if (form.WarehouseId is not null && snapshot.WarehouseId != form.WarehouseId)
         {
             return "Selected inventory does not belong to the selected facility.";
+        }
+        if (linkedProjection is not null
+            && (linkedProjection.FacilityWarehouseId is null
+                || linkedProjection.FacilityWarehouseId != snapshot.WarehouseId))
+        {
+            return "The actual-run inventory must belong to the projection's assigned WP or EBS facility.";
         }
 
         var effectiveAvailable = snapshot.CurrentBins + (existing is null ? 0 : existing.BinsRun);

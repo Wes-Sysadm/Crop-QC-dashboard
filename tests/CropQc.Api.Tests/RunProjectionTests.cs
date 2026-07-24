@@ -285,7 +285,8 @@ public sealed class RunProjectionTests
             {
                 PlannedRunDate = new(2026, 7, 24),
                 Name = "Day shift",
-                ProjectionMode = RunProjectionModes.Inventory
+                ProjectionMode = RunProjectionModes.Inventory,
+                FacilityWarehouseId = 1
             },
             Owner(),
             CancellationToken.None);
@@ -325,7 +326,8 @@ public sealed class RunProjectionTests
             {
                 PlannedRunDate = new(2026, 7, 24),
                 Name = "Availability check",
-                ProjectionMode = RunProjectionModes.Inventory
+                ProjectionMode = RunProjectionModes.Inventory,
+                FacilityWarehouseId = 1
             },
             Owner(),
             CancellationToken.None);
@@ -346,6 +348,7 @@ public sealed class RunProjectionTests
             Id = created.Id.Value,
             Name = "Stale update",
             PlannedRunDate = new(2026, 7, 25),
+            FacilityWarehouseId = 1,
             ConcurrencyVersion = 1
         }, Owner(), CancellationToken.None), StringComparison.OrdinalIgnoreCase);
     }
@@ -364,7 +367,8 @@ public sealed class RunProjectionTests
             {
                 PlannedRunDate = new(2026, 7, 24),
                 Name = "Packout",
-                ProjectionMode = RunProjectionModes.Inventory
+                ProjectionMode = RunProjectionModes.Inventory,
+                FacilityWarehouseId = 1
             },
             Owner(),
             CancellationToken.None);
@@ -413,7 +417,8 @@ public sealed class RunProjectionTests
             {
                 PlannedRunDate = new(2026, 7, 24),
                 Name = "Preharvest Bartlett",
-                ProjectionMode = RunProjectionModes.Preharvest
+                ProjectionMode = RunProjectionModes.Preharvest,
+                FacilityWarehouseId = 1
             },
             Owner(),
             CancellationToken.None);
@@ -421,6 +426,7 @@ public sealed class RunProjectionTests
         Assert.Null(created.Error);
         var candidates = await service.SearchSourcesAsync(
             "WP ORCHARD",
+            null,
             null,
             RunProjectionModes.Preharvest,
             Owner(),
@@ -488,7 +494,8 @@ public sealed class RunProjectionTests
             {
                 PlannedRunDate = new(2026, 7, 24),
                 Name = "Two blocks",
-                ProjectionMode = RunProjectionModes.Preharvest
+                ProjectionMode = RunProjectionModes.Preharvest,
+                FacilityWarehouseId = 1
             },
             Owner(),
             CancellationToken.None);
@@ -515,6 +522,9 @@ public sealed class RunProjectionTests
         var planner = await service.GetPlannerAsync(
             new(2026, 7, 24),
             created.Id,
+            "All",
+            "Active",
+            "Facility",
             Owner(),
             CancellationToken.None);
         var detail = Assert.IsType<RunProjectionDetailViewModel>(planner.SelectedProjection);
@@ -541,7 +551,8 @@ public sealed class RunProjectionTests
             {
                 PlannedRunDate = new(2026, 7, 24),
                 Name = "Preharvest to inventory",
-                ProjectionMode = RunProjectionModes.Preharvest
+                ProjectionMode = RunProjectionModes.Preharvest,
+                FacilityWarehouseId = 1
             },
             Owner(),
             CancellationToken.None);
@@ -569,6 +580,7 @@ public sealed class RunProjectionTests
             Id = created.Id.Value,
             Name = "Mapped inventory plan",
             PlannedRunDate = new(2026, 7, 25),
+            FacilityWarehouseId = 1,
             ConcurrencyVersion = 2,
             Mappings =
             [
@@ -602,7 +614,8 @@ public sealed class RunProjectionTests
             {
                 PlannedRunDate = new(2026, 7, 24),
                 Name = "Readiness",
-                ProjectionMode = RunProjectionModes.Preharvest
+                ProjectionMode = RunProjectionModes.Preharvest,
+                FacilityWarehouseId = 1
             },
             Owner(),
             CancellationToken.None);
@@ -728,6 +741,377 @@ public sealed class RunProjectionTests
         Assert.Contains("return BadRequest(new { error });", controller);
     }
 
+    [Fact]
+    public async Task ProjectionCreation_RequiresWpOrEbsFacility()
+    {
+        await using var db = CreateDbContext();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+        var result = await service.CreateAsync(new RunProjectionCreateForm
+        {
+            Name = "No facility",
+            PlannedRunDate = new(2026, 7, 24),
+            ProjectionMode = RunProjectionModes.Preharvest
+        }, Owner(), CancellationToken.None);
+
+        Assert.Null(result.Id);
+        Assert.Contains("WP or EBS", result.Error);
+        Assert.Empty(await db.RunProjections.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(1, "WP")]
+    [InlineData(4, "EBS")]
+    public async Task ProjectionCreation_PersistsOperationalFacility(int facilityId, string expectedCode)
+    {
+        await using var db = CreateDbContext();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+        var result = await service.CreateAsync(new RunProjectionCreateForm
+        {
+            Name = $"{expectedCode} run",
+            PlannedRunDate = new(2026, 7, 24),
+            ProjectionMode = RunProjectionModes.Preharvest,
+            FacilityWarehouseId = facilityId
+        }, Owner(), CancellationToken.None);
+
+        Assert.Null(result.Error);
+        var projection = await db.RunProjections.SingleAsync();
+        Assert.Equal(facilityId, projection.FacilityWarehouseId);
+        Assert.Equal(expectedCode, projection.FacilityCodeSnapshot);
+    }
+
+    [Fact]
+    public async Task InventorySource_CannotCrossProjectionFacility()
+    {
+        await using var db = CreateDbContext();
+        var ebsInventory = Inventory("EBS:1", 1, 10, "Apple") with { WarehouseId = 4, Facility = "EBS" };
+        var service = CreateProjectionService(db, new PlanningBinsRunService([ebsInventory]));
+        var created = await service.CreateAsync(new RunProjectionCreateForm
+        {
+            Name = "WP run",
+            PlannedRunDate = new(2026, 7, 24),
+            ProjectionMode = RunProjectionModes.Inventory,
+            FacilityWarehouseId = 1
+        }, Owner(), CancellationToken.None);
+
+        var error = await service.AddSourceAsync(new RunProjectionAddSourceForm
+        {
+            ProjectionId = created.Id!.Value,
+            SourceKey = ebsInventory.InventoryKey,
+            PlannedBins = 1,
+            SelectedQcSource = RunProjectionQcSourceTypes.None,
+            ConcurrencyVersion = 1
+        }, Owner(), CancellationToken.None);
+
+        Assert.Contains("not the projection", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await db.RunProjectionSources.ToListAsync());
+    }
+
+    [Fact]
+    public async Task InventorySearch_IsServerFilteredByFacility()
+    {
+        await using var db = CreateDbContext();
+        var wp = Inventory("WP:1", 1, 10, "Apple");
+        var ebs = Inventory("EBS:1", 2, 10, "Pear") with { WarehouseId = 4, Facility = "EBS" };
+        var service = CreateProjectionService(db, new PlanningBinsRunService([wp, ebs]));
+
+        var rows = await service.SearchSourcesAsync("", 4, null, RunProjectionModes.Inventory, Owner(), CancellationToken.None);
+
+        var row = Assert.Single(rows);
+        Assert.Equal("EBS", row.Facility);
+        Assert.Equal("EBS:1", row.SourceKey);
+    }
+
+    [Fact]
+    public async Task PlannerFilters_SeparateWpAndEbsAndComputeCalendarCounts()
+    {
+        await using var db = CreateDbContext();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+        foreach (var facilityId in new[] { 1, 4 })
+        {
+            await service.CreateAsync(new RunProjectionCreateForm
+            {
+                Name = facilityId == 1 ? "WP run" : "EBS run",
+                PlannedRunDate = new(2026, 7, 24),
+                ProjectionMode = RunProjectionModes.Preharvest,
+                FacilityWarehouseId = facilityId
+            }, Owner(), CancellationToken.None);
+        }
+
+        var wp = await service.GetPlannerAsync(new(2026, 7, 24), null, "WP", "Active", "Facility", Owner(), CancellationToken.None);
+        var all = await service.GetPlannerAsync(new(2026, 7, 24), null, "All", "Active", "Facility", Owner(), CancellationToken.None);
+
+        Assert.Single(wp.Projections);
+        Assert.Equal("WP", wp.Projections[0].FacilityCode);
+        Assert.Equal(2, all.Projections.Count);
+        Assert.Equal(["WP", "EBS"], all.FacilityTotals.Select(x => x.FacilityCode));
+        var day = all.CalendarDays.Single(x => x.Date == new DateOnly(2026, 7, 24));
+        Assert.Equal(1, day.WpProjectionCount);
+        Assert.Equal(1, day.EbsProjectionCount);
+    }
+
+    [Fact]
+    public async Task ReadyProjection_RejectsLegacyUnassignedRecord()
+    {
+        await using var db = CreateDbContext();
+        var projection = LegacyProjection("Legacy", RunProjectionStatuses.Draft);
+        db.RunProjections.Add(projection);
+        await db.SaveChangesAsync();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+
+        var error = await service.MarkReadyAsync(
+            new RunProjectionStatusForm { Id = projection.Id, ConcurrencyVersion = projection.ConcurrencyVersion },
+            Owner(),
+            CancellationToken.None);
+
+        Assert.Contains("WP or EBS", error);
+    }
+
+    [Fact]
+    public async Task SoftDelete_HidesActiveAndRetainsProjectionSourcesAndAudit()
+    {
+        await using var db = CreateDbContext();
+        var projection = LegacyProjection("Remove me", RunProjectionStatuses.Draft, 1, "WP");
+        projection.Sources.Add(TestProjectionSource());
+        db.RunProjections.Add(projection);
+        await db.SaveChangesAsync();
+        var sourceId = projection.Sources.Single().Id;
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+        var token = Guid.NewGuid();
+
+        Assert.Null(await service.DeleteAsync(DeleteForm(projection, token), Owner(), CancellationToken.None));
+        var saved = await db.RunProjections.SingleAsync(x => x.Id == projection.Id);
+        Assert.True(saved.IsDeleted);
+        Assert.Equal("Draft", saved.DeletedFromStatus);
+        Assert.Equal(token, saved.DeletionOperationId);
+        Assert.True(await db.RunProjectionSources.AnyAsync(x => x.Id == sourceId));
+        Assert.True(await db.AuditLogs.AnyAsync(x => x.EntityName == nameof(RunProjection) && x.Action == "Delete"));
+        var active = await service.GetPlannerAsync(projection.PlannedRunDate, null, "WP", "Active", "Facility", Owner(), CancellationToken.None);
+        Assert.Empty(active.Projections);
+        var deleted = await service.GetPlannerAsync(projection.PlannedRunDate, projection.Id, "WP", "Deleted", "Facility", Owner(), CancellationToken.None);
+        Assert.Single(deleted.Projections);
+        Assert.True(deleted.SelectedProjection!.IsDeleted);
+        Assert.False(deleted.SelectedProjection.CanEditRecord);
+        Assert.True(await db.AuditLogs.AnyAsync(x => x.EntityName == nameof(RunProjection)
+            && x.EntityKey == projection.Id.ToString()
+            && x.Action == "InspectDeleted"));
+    }
+
+    [Fact]
+    public async Task DeletedProjection_CannotBeCancelledByModifiedRequest()
+    {
+        await using var db = CreateDbContext();
+        var projection = LegacyProjection("Deleted draft", RunProjectionStatuses.Draft, 1, "WP");
+        projection.IsDeleted = true;
+        projection.DeletionOperationId = Guid.NewGuid();
+        db.RunProjections.Add(projection);
+        await db.SaveChangesAsync();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+
+        var error = await service.CancelAsync(
+            new RunProjectionStatusForm
+            {
+                Id = projection.Id,
+                ConcurrencyVersion = projection.ConcurrencyVersion,
+                Reason = "Modified request"
+            },
+            Owner(),
+            CancellationToken.None);
+
+        Assert.Contains("read-only", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(RunProjectionStatuses.Draft, (await db.RunProjections.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task SoftDelete_RetryWithSameOperationTokenIsIdempotent()
+    {
+        await using var db = CreateDbContext();
+        var projection = LegacyProjection("Idempotent", RunProjectionStatuses.Draft, 1, "WP");
+        db.RunProjections.Add(projection);
+        await db.SaveChangesAsync();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+        var form = DeleteForm(projection, Guid.NewGuid());
+
+        Assert.Null(await service.DeleteAsync(form, Owner(), CancellationToken.None));
+        Assert.Null(await service.DeleteAsync(form, Owner(), CancellationToken.None));
+        Assert.Single(await db.AuditLogs.Where(x => x.Action == "Delete").ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("", "detailed reason")]
+    [InlineData("wrong", "short")]
+    public async Task SoftDelete_RequiresExactConfirmationAndDetailedReason(string confirmation, string reason)
+    {
+        await using var db = CreateDbContext();
+        var projection = LegacyProjection("Confirm this", RunProjectionStatuses.Draft, 1, "WP");
+        db.RunProjections.Add(projection);
+        await db.SaveChangesAsync();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+        var form = DeleteForm(projection, Guid.NewGuid());
+        form.ConfirmationValue = confirmation;
+        form.Reason = reason;
+
+        Assert.NotNull(await service.DeleteAsync(form, Owner(), CancellationToken.None));
+        Assert.False((await db.RunProjections.SingleAsync()).IsDeleted);
+    }
+
+    [Fact]
+    public async Task SoftDelete_BlocksProjectionLinkedToActualRunAndAuditsAttempt()
+    {
+        await using var db = CreateDbContext();
+        var projection = LegacyProjection("Linked", RunProjectionStatuses.Ready, 1, "WP");
+        var source = TestProjectionSource();
+        source.ActualBinsRunEntryId = 99;
+        projection.Sources.Add(source);
+        db.RunProjections.Add(projection);
+        await db.SaveChangesAsync();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+
+        var error = await service.DeleteAsync(DeleteForm(projection, Guid.NewGuid()), Owner(), CancellationToken.None);
+
+        Assert.Contains("actual Bins Run", error);
+        Assert.False((await db.RunProjections.SingleAsync()).IsDeleted);
+        Assert.True(await db.AuditLogs.AnyAsync(x => x.Action == "DeleteBlockedActualRun"));
+    }
+
+    [Fact]
+    public async Task DuplicateAcrossFacilities_OmitsInventoryAndReferencesOriginalProjection()
+    {
+        await using var db = CreateDbContext();
+        var source = LegacyProjection("WP inventory", RunProjectionStatuses.Draft, 1, "WP");
+        source.Sources.Add(TestProjectionSource());
+        db.RunProjections.Add(source);
+        await db.SaveChangesAsync();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+
+        var result = await service.DuplicateAsync(new RunProjectionDuplicateForm
+        {
+            Id = source.Id,
+            PlannedRunDate = source.PlannedRunDate.AddDays(1),
+            FacilityWarehouseId = 4
+        }, Owner(), CancellationToken.None);
+
+        Assert.Null(result.Error);
+        var clone = await db.RunProjections.Include(x => x.Sources).SingleAsync(x => x.Id == result.Id);
+        Assert.Equal(4, clone.FacilityWarehouseId);
+        Assert.Equal(source.Id, clone.SourceProjectionId);
+        Assert.Empty(clone.Sources);
+        Assert.Equal(0, clone.TotalPlannedBins);
+        Assert.Contains("OmittedInventorySourceIds", (await db.AuditLogs.SingleAsync(x => x.Action == "Duplicate")).AfterValuesJson);
+    }
+
+    [Fact]
+    public async Task DuplicateWithinFacility_RetainsSourcesButNeverActualRunLink()
+    {
+        await using var db = CreateDbContext();
+        var source = LegacyProjection("Same facility", RunProjectionStatuses.Draft, 1, "WP");
+        var sourceLine = TestProjectionSource();
+        sourceLine.ActualBinsRunEntryId = 42;
+        source.Sources.Add(sourceLine);
+        db.RunProjections.Add(source);
+        await db.SaveChangesAsync();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+
+        var result = await service.DuplicateAsync(new RunProjectionDuplicateForm
+        {
+            Id = source.Id,
+            PlannedRunDate = source.PlannedRunDate.AddDays(1),
+            FacilityWarehouseId = 1
+        }, Owner(), CancellationToken.None);
+
+        var clone = await db.RunProjections.Include(x => x.Sources).SingleAsync(x => x.Id == result.Id);
+        Assert.Single(clone.Sources);
+        Assert.Null(clone.Sources.Single().ActualBinsRunEntryId);
+    }
+
+    [Fact]
+    public void PlannerUi_ExposesFacilityDeletionAndDurableNavigationControls()
+    {
+        var view = ReadRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml");
+        var room = ReadRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml");
+        var card = ReadRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_RoomLotCard.cshtml");
+        var delete = ReadRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "DeleteProjection.cshtml");
+
+        Assert.Contains("Planning Facility", view);
+        Assert.Contains("Which facility is this run for?", view);
+        Assert.Contains("ProjectionVisibility", view);
+        Assert.Contains("Facility Totals", view);
+        Assert.Contains("Delete Projection", view);
+        Assert.Contains("data-facility-warehouse-id", view);
+        Assert.Contains("Facility=@Model.Summary.Warehouse", room);
+        Assert.Contains("Facility=@Model.Warehouse", card);
+        Assert.Contains("OperationToken", delete);
+        Assert.Contains("ConfirmDeletion", delete);
+    }
+
+    [Fact]
+    public void FacilitySoftDeleteMigration_IsAdditiveProviderCompatibleAndConservative()
+    {
+        var migration = Directory.GetFiles(
+            RepositoryDirectory("src", "CropQc.Data", "Migrations"),
+            "*AddRunProjectionFacilityAndSoftDelete.cs").Single();
+        var text = File.ReadAllText(migration);
+        var up = text[..text.IndexOf("protected override void Down", StringComparison.Ordinal)];
+
+        Assert.Contains("MigrationProviderTypes.StoreType", up);
+        Assert.Contains("timestamp with time zone", up);
+        Assert.Contains("COUNT(DISTINCT", up, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"Code\" IN ('WP', 'EBS')", up);
+        Assert.DoesNotContain("DropColumn(", up);
+        Assert.DoesNotContain("DropTable(", up);
+        Assert.DoesNotContain("DeleteData(", up);
+        Assert.DoesNotContain("UpdateData(", up);
+    }
+
+    private static RunProjection LegacyProjection(
+        string name,
+        string status,
+        int? facilityId = null,
+        string? facilityCode = null) =>
+        new()
+        {
+            PlannedRunDate = new(2026, 7, 24),
+            Name = name,
+            Status = status,
+            ProjectionMode = RunProjectionModes.Inventory,
+            FacilityWarehouseId = facilityId,
+            FacilityCodeSnapshot = facilityCode,
+            CropYear = 2026,
+            ApplePoundsPerBin = 880,
+            PearPoundsPerBin = 920,
+            StandardBoxWeightPounds = 40,
+            CreatedAt = TestNow,
+            UpdatedAt = TestNow
+        };
+
+    private static RunProjectionSource TestProjectionSource() =>
+        new()
+        {
+            SourceType = RunProjectionSourceTypes.Inventory,
+            InventoryKey = "WP:1",
+            WarehouseId = 1,
+            FruitProfileId = 1,
+            PlannedBins = 5,
+            SelectedQcSourceType = RunProjectionQcSourceTypes.None,
+            Commodity = "Apple",
+            SourceLabelSnapshot = "WP inventory",
+            FacilitySnapshot = "WP",
+            VarietySnapshot = "Gala",
+            CalculationVersion = RunProjectionCalculationService.CurrentCalculationVersion,
+            CreatedAt = TestNow,
+            UpdatedAt = TestNow
+        };
+
+    private static DeleteRunProjectionForm DeleteForm(RunProjection projection, Guid operationId) =>
+        new()
+        {
+            Id = projection.Id,
+            ConcurrencyVersion = projection.ConcurrencyVersion,
+            Reason = "Duplicate planning record",
+            ConfirmationValue = projection.Id.ToString(),
+            ConfirmDeletion = true,
+            OperationToken = operationId.ToString("D")
+        };
+
     private static RunProjectionLineCalculation Calculate(string commodity, int bins, params int[] sizes) =>
         RunProjectionCalculationService.Calculate(
             commodity,
@@ -758,7 +1142,12 @@ public sealed class RunProjectionTests
         var options = new DbContextOptionsBuilder<CropQcDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        return new CropQcDbContext(options);
+        var db = new CropQcDbContext(options);
+        db.Warehouses.AddRange(
+            new Warehouse { Id = 1, Code = "WP", Name = "Windy Point" },
+            new Warehouse { Id = 4, Code = "EBS", Name = "Earl Brown" });
+        db.SaveChanges();
+        return db;
     }
 
     private static RunProjectionService CreateProjectionService(CropQcDbContext db, IBinsRunService bins) =>
@@ -908,10 +1297,12 @@ public sealed class RunProjectionTests
     {
         public Task<IReadOnlyList<RunProjectionInventorySource>> SearchPlanningInventoryAsync(
             string? query,
+            int? warehouseId,
             int? roomId,
             int take,
             CancellationToken cancellationToken) =>
-            Task.FromResult(sources);
+            Task.FromResult<IReadOnlyList<RunProjectionInventorySource>>(
+                sources.Where(x => warehouseId is null || x.WarehouseId == warehouseId).Take(take).ToList());
 
         public Task<RunProjectionInventorySource?> GetPlanningInventoryAsync(string inventoryKey, CancellationToken cancellationToken) =>
             Task.FromResult(sources.SingleOrDefault(x => x.InventoryKey == inventoryKey));
