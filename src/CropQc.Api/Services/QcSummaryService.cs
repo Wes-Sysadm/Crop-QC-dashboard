@@ -15,6 +15,7 @@ public sealed class QcSummaryService(CropQcDbContext dbContext) : IQcSummaryServ
     {
         var sample = await dbContext.QcSamples.AsNoTracking()
             .Include(x => x.Receipt)
+                .ThenInclude(x => x!.FruitProfile)
             .Include(x => x.SampleType)
             .Include(x => x.FruitReadings)
             .SingleOrDefaultAsync(x => x.Id == sampleId, cancellationToken);
@@ -51,6 +52,7 @@ public sealed class QcSummaryService(CropQcDbContext dbContext) : IQcSummaryServ
             samplePhotos.Contains("Hectre"),
             samplePhotos.Contains("SampleBeforeCutting"),
             samplePhotos.Contains("CutFruit"),
-            samplePhotos.Contains("FruitAfterStarch")));
+            samplePhotos.Contains("FruitAfterStarch"),
+            sample.Receipt?.FruitProfile.FruitType));
     }
 }

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Time;
@@ -37,7 +38,7 @@ public sealed class RunProjectionTests
     }
 
     [Fact]
-    public void LargestRemainder_RoundedSizesAddBackToRoundedTotal()
+    public void WholeBoxCategories_AreFlooredIndependentlyWithoutRoundingUp()
     {
         var result = RunProjectionCalculationService.Calculate(
             "Apple",
@@ -48,8 +49,8 @@ public sealed class RunProjectionTests
             [new(80), new(90), new(100)]);
 
         Assert.Equal(22, result.RoundedProjectedBoxes);
-        Assert.Equal(22, result.SizeAllocations.Sum(x => x.RoundedProjectedBoxes));
-        Assert.Equal(8, result.SizeAllocations.Single(x => x.SizeCategory == 80).RoundedProjectedBoxes);
+        Assert.Equal(21, result.SizeAllocations.Sum(x => x.RoundedProjectedBoxes));
+        Assert.Equal(7, result.SizeAllocations.Single(x => x.SizeCategory == 80).RoundedProjectedBoxes);
         Assert.Equal(7, result.SizeAllocations.Single(x => x.SizeCategory == 90).RoundedProjectedBoxes);
         Assert.Equal(7, result.SizeAllocations.Single(x => x.SizeCategory == 100).RoundedProjectedBoxes);
     }
@@ -95,10 +96,10 @@ public sealed class RunProjectionTests
 
     [Theory]
     [InlineData(100, 22, 0)]
-    [InlineData(90, 20, 2)]
-    [InlineData(85, 19, 3)]
+    [InlineData(90, 19, 2)]
+    [InlineData(85, 18, 3)]
     [InlineData(0, 0, 22)]
-    public void ExpectedPackout_DerivesComplementaryCullAndReconciles(
+    public void ExpectedPackout_DerivesComplementaryCullAndFloorsWholeBoxes(
         decimal packout,
         int expectedPacked,
         int expectedCull)
@@ -109,11 +110,10 @@ public sealed class RunProjectionTests
         Assert.Equal(100m - packout, result.ExpectedCullPercent);
         Assert.Equal(expectedPacked, result.RoundedPackedProjectedBoxes);
         Assert.Equal(expectedCull, result.RoundedCullProjectedBoxes);
-        Assert.Equal(result.RoundedProjectedBoxes, result.RoundedPackedProjectedBoxes + result.RoundedCullProjectedBoxes);
-        Assert.Equal(result.RoundedPackedProjectedBoxes, result.SizeAllocations.Sum(x => x.RoundedPackedProjectedBoxes));
-        Assert.Equal(result.RoundedCullProjectedBoxes, result.SizeAllocations.Sum(x => x.RoundedCullProjectedBoxes));
-        Assert.Equal(result.RoundedPackedProjectedBoxes, result.GradeAllocations.Sum(x => x.RoundedPackedBoxes));
-        Assert.Equal(result.RoundedCullProjectedBoxes, result.GradeAllocations.Sum(x => x.RoundedCullBoxes));
+        Assert.All(result.SizeAllocations, x => Assert.Equal(decimal.Floor(x.PackedProjectedBoxes), x.RoundedPackedProjectedBoxes));
+        Assert.All(result.SizeAllocations, x => Assert.Equal(decimal.Floor(x.CullProjectedBoxes), x.RoundedCullProjectedBoxes));
+        Assert.All(result.GradeAllocations, x => Assert.Equal(decimal.Floor(x.PackedBoxes), x.RoundedPackedBoxes));
+        Assert.All(result.GradeAllocations, x => Assert.Equal(decimal.Floor(x.CullBoxes), x.RoundedCullBoxes));
     }
 
     [Fact]
@@ -237,7 +237,9 @@ public sealed class RunProjectionTests
         Assert.Contains("Transfer Bins", view);
         Assert.Contains("True Up Inventory", view);
         Assert.Contains("Recent Activity", view);
-        Assert.Contains("receipt QC first", view);
+        Assert.Contains("receipt-backed samples for the grower lot", view);
+        Assert.Contains("Commercial Packs are not yet available", view);
+        Assert.Contains("whole 40-pound boxes", view);
         Assert.Contains("planning estimate", view);
         Assert.Contains("FieldSampleBlockResolution != \"Suggested\"", service);
         Assert.Contains("Available quantity changed before save", binsRun);
@@ -810,15 +812,149 @@ public sealed class RunProjectionTests
     public async Task InventorySearch_IsServerFilteredByFacility()
     {
         await using var db = CreateDbContext();
-        var wp = Inventory("WP:1", 1, 10, "Apple");
-        var ebs = Inventory("EBS:1", 2, 10, "Pear") with { WarehouseId = 4, Facility = "EBS" };
-        var service = CreateProjectionService(db, new PlanningBinsRunService([wp, ebs]));
+        var profile = new FruitProfile
+        {
+            Name = "Bartlett",
+            VarietyCode = "BART",
+            FruitType = "Pear",
+            ProductionType = "Conventional"
+        };
+        var room = new Room { WarehouseId = 4, Code = "EBS-1", Name = "EBS Room 1" };
+        db.AddRange(profile, room);
+        await db.SaveChangesAsync();
+        db.Receipts.Add(new Receipt
+        {
+            CropYear = 2026,
+            ReceivedAt = TestNow,
+            CompuTechReceiptId = "EBS-REC-1",
+            ReceiptType = "Truck receipt",
+            WarehouseId = 4,
+            RoomId = room.Id,
+            FruitProfileId = profile.Id,
+            GrowerName = "EBS GROWER",
+            LotCode = "1080-01",
+            BinCount = 10,
+            CreatedAt = TestNow,
+            UpdatedAt = TestNow
+        });
+        await db.SaveChangesAsync();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
 
         var rows = await service.SearchSourcesAsync("", 4, null, RunProjectionModes.Inventory, Owner(), CancellationToken.None);
 
         var row = Assert.Single(rows);
         Assert.Equal("EBS", row.Facility);
-        Assert.Equal("EBS:1", row.SourceKey);
+        Assert.StartsWith("G:2026:", row.SourceKey);
+        Assert.Contains("1080-01", row.Label);
+    }
+
+    [Fact]
+    public async Task GrowerLotProjection_CombinesReceiptsByBinWeightAndRefreshPreservesTotalProjectedBins()
+    {
+        await using var db = CreateDbContext();
+        var profile = new FruitProfile
+        {
+            Name = "Gala",
+            VarietyCode = "GALA",
+            FruitType = "Apple",
+            ProductionType = "Conventional"
+        };
+        var room = new Room { WarehouseId = 1, Code = "WP-1", Name = "WP Room 1" };
+        var sampleType = new SampleType { Name = "Receiving Sample" };
+        db.AddRange(profile, room, sampleType);
+        await db.SaveChangesAsync();
+
+        Receipt SeedReceipt(string reference, int bins, int size, DateTimeOffset receivedAt)
+        {
+            var receipt = new Receipt
+            {
+                CropYear = 2026,
+                ReceivedAt = receivedAt,
+                CompuTechReceiptId = reference,
+                ReceiptType = "Truck receipt",
+                WarehouseId = 1,
+                RoomId = room.Id,
+                FruitProfileId = profile.Id,
+                GrowerName = "WP ORCHARD",
+                GrowerNumber = "1080",
+                LotCode = "1080-LOT-7",
+                BinCount = bins,
+                CreatedAt = receivedAt,
+                UpdatedAt = receivedAt
+            };
+            receipt.Samples.Add(new QcSample
+            {
+                SampleType = sampleType,
+                Status = "Complete",
+                StarchStatus = "Complete",
+                PhotoStatus = "Complete",
+                EmailStatus = "Not Sent",
+                SampleTakenAt = receivedAt,
+                CreatedAt = receivedAt,
+                FruitReadings =
+                {
+                    new QcFruitReading
+                    {
+                        RowNumber = 1,
+                        SizeCategory = size,
+                        SizeStatus = "Calculated",
+                        WeightGrams = 180m,
+                        CreatedAt = receivedAt
+                    }
+                }
+            });
+            db.Receipts.Add(receipt);
+            return receipt;
+        }
+
+        SeedReceipt("REC-10", 10, 80, TestNow.AddHours(-2));
+        SeedReceipt("REC-30", 30, 100, TestNow.AddHours(-1));
+        await db.SaveChangesAsync();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+        var created = await service.CreateAsync(new RunProjectionCreateForm
+        {
+            Name = "Grower lot projection",
+            PlannedRunDate = new(2026, 7, 24),
+            ProjectionMode = RunProjectionModes.Inventory,
+            FacilityWarehouseId = 1
+        }, Owner(), CancellationToken.None);
+        var candidate = Assert.Single(await service.SearchSourcesAsync(
+            "1080-LOT-7", 1, null, RunProjectionModes.Inventory, Owner(), CancellationToken.None));
+        var addError = await service.AddSourceAsync(new RunProjectionAddSourceForm
+        {
+            ProjectionId = created.Id!.Value,
+            SourceKey = candidate.SourceKey,
+            PlannedBins = 60,
+            ExpectedPackoutPercent = 100m,
+            ConcurrencyVersion = 1
+        }, Owner(), CancellationToken.None);
+
+        Assert.Null(addError);
+        var source = await db.RunProjectionSources
+            .Include(x => x.SizeResults)
+            .SingleAsync();
+        Assert.Equal(RunProjectionSourceTypes.GrowerLot, source.SourceType);
+        Assert.Equal(40, source.ReceivedBinsSnapshot);
+        Assert.Equal(20, source.AdditionalExpectedBinsSnapshot);
+        Assert.Equal(25m, source.SizeResults.Single(x => x.SizeCategory == 80).Percentage);
+        Assert.Equal(75m, source.SizeResults.Single(x => x.SizeCategory == 100).Percentage);
+
+        SeedReceipt("REC-20", 20, 90, TestNow);
+        await db.SaveChangesAsync();
+        var projection = await db.RunProjections.SingleAsync();
+        var refused = await service.RefreshSourceAsync(
+            projection.Id, source.Id, projection.ConcurrencyVersion, false, Owner(), CancellationToken.None);
+        Assert.Contains("Confirm refresh", refused);
+        var refreshError = await service.RefreshSourceAsync(
+            projection.Id, source.Id, projection.ConcurrencyVersion, true, Owner(), CancellationToken.None);
+
+        Assert.Null(refreshError);
+        await db.Entry(source).ReloadAsync();
+        Assert.Equal(60, source.PlannedBins);
+        Assert.Equal(60, source.ReceivedBinsSnapshot);
+        Assert.Equal(0, source.AdditionalExpectedBinsSnapshot);
+        Assert.NotNull(source.RefreshHistoryJson);
+        Assert.Equal(3, JsonDocument.Parse(source.ContributingReceiptIdsJson!).RootElement.GetArrayLength());
     }
 
     [Fact]

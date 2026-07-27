@@ -5,27 +5,33 @@ using Microsoft.AspNetCore.Mvc;
 namespace CropQc.Web.Controllers;
 
 [Route("MasterData")]
-public sealed class MasterDataController(IAdminManagementService adminService, IAdminAuthorizationService authorizationService) : Controller
+public sealed class MasterDataController(
+    IAdminManagementService adminService,
+    IAdminAuthorizationService authorizationService,
+    IUserAccessService accessService) : Controller
 {
     [HttpGet("")]
     [HttpGet("{type}")]
-    [Authorize(Policy = AccessPolicyNames.MasterDataView)]
-    public async Task<IActionResult> Index(string? type, CancellationToken cancellationToken) =>
-        View(await adminService.GetMasterDataAsync(type ?? "index", authorizationService.IsManagerOrAdmin(User), cancellationToken));
+    public async Task<IActionResult> Index(string? type, CancellationToken cancellationToken)
+    {
+        type ??= "index";
+        if (!await CanTypeAsync(type, PageAccessLevel.View, cancellationToken)) return Forbid();
+        return View(await adminService.GetMasterDataAsync(type, authorizationService.IsManagerOrAdmin(User), cancellationToken));
+    }
 
     [HttpGet("{type}/Edit/{id:int}")]
-    [Authorize(Policy = AccessPolicyNames.MasterDataEdit)]
     public async Task<IActionResult> Edit(string type, int id, CancellationToken cancellationToken)
     {
+        if (!await CanTypeAsync(type, PageAccessLevel.Create, cancellationToken)) return Forbid();
         var form = await adminService.GetEditFormAsync(type, id, cancellationToken);
         if (form is null) return NotFound();
         return View(form);
     }
 
     [HttpPost("{type}/Save")]
-    [Authorize(Policy = AccessPolicyNames.MasterDataEdit)]
     public async Task<IActionResult> Save(string type, CropQc.Web.Models.MasterDataEditForm form, CancellationToken cancellationToken)
     {
+        if (!await CanTypeAsync(type, PageAccessLevel.Create, cancellationToken)) return Forbid();
         form.Type = type;
         var error = await adminService.SaveMasterDataAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         if (error is not null)
@@ -38,23 +44,24 @@ public sealed class MasterDataController(IAdminManagementService adminService, I
     }
 
     [HttpPost("{type}/Deactivate/{id:int}")]
-    [Authorize(Policy = AccessPolicyNames.MasterDataAdmin)]
     public async Task<IActionResult> Deactivate(string type, int id, CancellationToken cancellationToken)
     {
+        if (!await CanTypeAsync(type, PageAccessLevel.Admin, cancellationToken)) return Forbid();
         var error = await adminService.DeactivateAsync(type, id, authorizationService.GetEmail(User) ?? "", cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Record deactivated.";
         return RedirectToAction(nameof(Index), new { type });
     }
 
     [HttpGet("canonical-growers/Map")]
-    [Authorize(Policy = AccessPolicyNames.MasterDataEdit)]
     public async Task<IActionResult> MapGrower([FromQuery] CropQc.Web.Models.GrowerMappingForm form, CancellationToken cancellationToken) =>
-        View("MapGrower", await adminService.GetGrowerMappingAsync(form, cancellationToken));
+        await CanTypeAsync("canonical-growers", PageAccessLevel.Create, cancellationToken)
+            ? View("MapGrower", await adminService.GetGrowerMappingAsync(form, cancellationToken))
+            : Forbid();
 
     [HttpPost("canonical-growers/Map")]
-    [Authorize(Policy = AccessPolicyNames.MasterDataEdit)]
     public async Task<IActionResult> SaveGrowerMapping(CropQc.Web.Models.GrowerMappingForm form, CancellationToken cancellationToken)
     {
+        if (!await CanTypeAsync("canonical-growers", PageAccessLevel.Create, cancellationToken)) return Forbid();
         var error = await adminService.SaveGrowerMappingAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         if (error is not null)
         {
@@ -67,18 +74,18 @@ public sealed class MasterDataController(IAdminManagementService adminService, I
     }
 
     [HttpPost("grower-lots/ImportPreview")]
-    [Authorize(Policy = AccessPolicyNames.MasterDataEdit)]
     public async Task<IActionResult> PreviewGrowerLotImport(CropQc.Web.Models.GrowerLotImportForm form, CancellationToken cancellationToken)
     {
+        if (!await accessService.HasAccessAsync(User, ApplicationAreas.ImportTools, PageAccessLevel.Admin, cancellationToken)) return Forbid();
         var preview = await adminService.PreviewGrowerLotImportAsync(form, cancellationToken);
         var model = await adminService.GetMasterDataAsync("grower-lots", authorizationService.IsManagerOrAdmin(User), cancellationToken);
         return View("Index", model with { ImportPreview = preview });
     }
 
     [HttpPost("grower-lots/ImportApply")]
-    [Authorize(Policy = AccessPolicyNames.MasterDataEdit)]
     public async Task<IActionResult> ApplyGrowerLotImport(CropQc.Web.Models.GrowerLotImportForm form, CancellationToken cancellationToken)
     {
+        if (!await accessService.HasAccessAsync(User, ApplicationAreas.ImportTools, PageAccessLevel.Admin, cancellationToken)) return Forbid();
         form.ConfirmImport = true;
         var (preview, error) = await adminService.ApplyGrowerLotImportAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         if (error is not null)
@@ -91,6 +98,20 @@ public sealed class MasterDataController(IAdminManagementService adminService, I
         TempData["Success"] = $"Grower lots imported. Added {preview.AddCount}, updated {preview.UpdateCount}, unchanged {preview.UnchangedCount}.";
         return RedirectToAction(nameof(Index), new { type = "grower-lots" });
     }
+
+    private Task<bool> CanTypeAsync(string type, PageAccessLevel level, CancellationToken cancellationToken) =>
+        accessService.HasAccessAsync(User, AreaForType(type), level, cancellationToken);
+
+    private static string AreaForType(string type) => type.Trim().ToLowerInvariant() switch
+    {
+        "warehouses" or "facilities" => ApplicationAreas.Facilities,
+        "fruit-profiles" or "varieties" => ApplicationAreas.Varieties,
+        "grades" => ApplicationAreas.Grades,
+        "defect-types" or "defects" => ApplicationAreas.Defects,
+        "fruit-size-thresholds" or "size-configuration" => ApplicationAreas.SizeConfiguration,
+        "audit-logs" => ApplicationAreas.AuditHistory,
+        _ => ApplicationAreas.MasterData
+    };
 
     private static string SafeReturnUrl(string? returnUrl) =>
         !string.IsNullOrWhiteSpace(returnUrl) && returnUrl.StartsWith("/", StringComparison.Ordinal) && !returnUrl.StartsWith("//", StringComparison.Ordinal)

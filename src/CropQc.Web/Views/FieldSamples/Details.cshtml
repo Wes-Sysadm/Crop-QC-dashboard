@@ -2,6 +2,9 @@
 @{
     ViewData["Title"] = "Field Sample Detail";
     var sizeThresholdJson = System.Text.Json.JsonSerializer.Serialize(Model.SizeThresholds.Select(x => new { sizeCategory = x.SizeCategory, minimumWeightGrams = x.MinimumWeightGrams }));
+    var hasPearStarchPhoto = Model.FruitType.Equals("Pear", StringComparison.OrdinalIgnoreCase)
+        && Model.PhotoGroups.Any(x => x.PhotoType.Equals("FruitAfterStarch", StringComparison.OrdinalIgnoreCase) && x.Photos.Count > 0);
+    string StarchDisplay(string? value) => value ?? (hasPearStarchPhoto ? "Not entered — see photo" : "Missing");
 }
 
 <h1>Field Sample Detail</h1>
@@ -330,7 +333,7 @@
                                 <td>@Format(row.PressureAverageLbs)</td>
                                 <td>@Format(row.WeightGrams)</td>
                                 <td>@(row.SizeCategory?.ToString() ?? "Missing")</td>
-                                <td>@(row.Starch ?? "Missing")</td>
+                                <td>@StarchDisplay(row.Starch)</td>
                                 <td>@(row.Grade ?? "Missing")</td>
                                 <td>@(row.DefectsInspected ? row.Defects.Count == 0 ? "Inspected — none" : string.Join(", ", row.Defects) : "Not inspected")</td>
                             </tr>
@@ -344,6 +347,10 @@
     <section id="sample-photos" class="panel">
         <h2>Sample Photos</h2>
         <p>Add one or more JPG, PNG, or WEBP pictures. You can choose files or use the browser camera where supported.</p>
+        @if (Model.FruitType.Equals("Pear", StringComparison.OrdinalIgnoreCase))
+        {
+            <p><strong>Required:</strong> Starch pear photo. The starch reading itself is optional.</p>
+        }
         <div class="grid-two">
             <div>
                 <h3>Saved Photos</h3>
@@ -378,7 +385,7 @@
         <h2>Final Sample Summary</h2>
         <div class="summary-grid">
             <div><span class="metric-label">Average weight</span><strong>@Format(Model.CurrentSummary.AverageWeightGrams) g</strong><span class="muted">Peak @Format(Model.CurrentSummary.PeakWeightGrams) g | Min @Format(Model.CurrentSummary.MinimumWeightGrams) g | @Model.CurrentSummary.WeightRepresentedFruitCount represented</span></div>
-            <div><span class="metric-label">Average starch</span><strong>@Format(Model.CurrentSummary.AverageStarch)</strong><span class="muted">@Model.CurrentSummary.StarchRepresentedFruitCount represented | @Model.CurrentSummary.MissingStarchCount missing</span></div>
+            <div><span class="metric-label">Average starch</span><strong>@(Model.CurrentSummary.AverageStarch?.ToString("0.##") ?? (hasPearStarchPhoto ? "Not entered — see photo" : ""))</strong><span class="muted">@Model.CurrentSummary.StarchRepresentedFruitCount represented | @Model.CurrentSummary.MissingStarchCount missing</span></div>
             <div><span class="metric-label">Average Pressure</span><strong>@Format(Model.CurrentSummary.AveragePressureLbs) lb</strong><span class="muted">Peak @Format(Model.CurrentSummary.PeakPressureLbs) lb | Min @Format(Model.CurrentSummary.MinimumPressureLbs) lb</span></div>
             <div><span class="metric-label">Pressure variation</span><strong>@(Model.CurrentSummary.PressureStandardDeviationLbs?.ToString("0.##") ?? "Insufficient readings")</strong><span class="muted">@Model.CurrentSummary.PressureReadingCount valid side readings</span></div>
             <div><span class="metric-label">Fruit represented</span><strong>@Model.CurrentSummary.EnteredFruitCount / @Model.TargetSampleSize</strong><span class="muted">Blank values remain missing, not zero</span></div>

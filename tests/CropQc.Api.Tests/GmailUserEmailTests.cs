@@ -378,7 +378,7 @@ public sealed class GmailUserEmailTests
         Assert.Contains("Invalid QC email recipient", adminManagementService);
         Assert.Contains("No QC email recipients are configured. Admins can set them under Admin -> Configuration -> QC Email Recipients.", dashboardDataService);
         Assert.Contains("qcEmailRecipientResolver.ResolveForSampleAsync", dashboardDataService);
-        Assert.Contains("AccessPolicyNames.ConfigurationAdmin", configurationController);
+        Assert.Contains("AccessPolicyNames.EmailConfigurationAdmin", configurationController);
     }
 
     private static string DecodeBase64Url(string value)

@@ -133,7 +133,7 @@
                     <div class="metric-card">
                         <span class="metric-label">@total.FacilityCode · @total.ProjectionCount run(s)</span>
                         <strong>@total.PlannedBins bins</strong>
-                        <span>@total.PackedBoxes.ToString("0.##") packed boxes · @total.CullBoxes.ToString("0.##") cull</span>
+                        <span>@decimal.Floor(total.PackedBoxes) whole packed boxes · @decimal.Floor(total.CullBoxes) whole cull equivalents</span>
                         <span>@(total.EffectivePackoutPercent is decimal pct ? $"{pct:0.##}% effective packout" : "Packout not calculated")</span>
                     </div>
                 }
@@ -165,7 +165,7 @@
                            : $"/BinsRun/Projections/{item.Id}/Outcome")">
                         <span class="status pending">@item.ProjectionMode</span>
                         <span><strong><span class="facility-badge">@item.FacilityCode</span> @item.Name</strong><small>@item.Status · @item.SourceCount source(s) @(item.IsDeleted ? "· Deleted" : "")</small></span>
-                        <span><strong>@item.TotalPlannedBins bins</strong><small>@item.TotalPackedProjectedBoxes.ToString("0.##") packed boxes · @(item.EffectivePackoutPercent is decimal pct ? $"{pct:0.##}% packout" : "packout n/a") · @BusinessTime.FormatPacific(item.UpdatedAt)</small><small class="projection-card-action">@(item.IsDeleted ? "Inspect deleted record" : "View Outcome")</small></span>
+                        <span><strong>@item.TotalPlannedBins bins</strong><small>@decimal.Floor(item.TotalPackedProjectedBoxes) whole packed boxes · @(item.EffectivePackoutPercent is decimal pct ? $"{pct:0.##}% packout" : "packout n/a") · @BusinessTime.FormatPacific(item.UpdatedAt)</small><small class="projection-card-action">@(item.IsDeleted ? "Inspect deleted record" : "View Outcome")</small></span>
                     </a>
                     @if (!item.IsDeleted)
                     {
@@ -236,11 +236,11 @@
                 <div class="room-summary-metrics" data-projection-summary>
                     <div class="metric-card"><span class="metric-label">@(selected.ProjectionMode == "Preharvest" ? "Total Estimated Bins" : "Planned Bins")</span><strong data-total-planned-bins>@selected.TotalPlannedBins</strong></div>
                     <div class="metric-card"><span class="metric-label">Gross Pounds</span><strong>@selected.TotalProjectedPounds.ToString("0")</strong></div>
-                    <div class="metric-card"><span class="metric-label">Gross Boxes</span><strong>@selected.TotalProjectedBoxes.ToString("0.##")</strong><span>@selected.TotalRoundedProjectedBoxes rounded</span></div>
+                    <div class="metric-card"><span class="metric-label">Gross 40-lb Boxes</span><strong>@selected.TotalRoundedProjectedBoxes</strong><span>whole boxes</span></div>
                     <div class="metric-card"><span class="metric-label">Projected Packed Pounds</span><strong>@selected.TotalPackedProjectedPounds.ToString("0.##")</strong></div>
-                    <div class="metric-card"><span class="metric-label">Projected Packed Boxes</span><strong>@selected.TotalPackedProjectedBoxes.ToString("0.##")</strong><span>@selected.TotalRoundedPackedProjectedBoxes rounded</span></div>
+                    <div class="metric-card"><span class="metric-label">Projected Packed 40-lb Boxes</span><strong>@selected.TotalRoundedPackedProjectedBoxes</strong><span>whole boxes</span></div>
                     <div class="metric-card"><span class="metric-label">Projected Cull/Loss Pounds</span><strong>@selected.TotalCullProjectedPounds.ToString("0.##")</strong></div>
-                    <div class="metric-card"><span class="metric-label">Projected Cull Equivalents</span><strong>@selected.TotalCullProjectedBoxes.ToString("0.##")</strong><span>@selected.TotalRoundedCullProjectedBoxes rounded</span></div>
+                    <div class="metric-card"><span class="metric-label">Projected Cull 40-lb Equivalents</span><strong>@selected.TotalRoundedCullProjectedBoxes</strong><span>whole equivalents</span></div>
                     <div class="metric-card"><span class="metric-label">Effective Combined Packout</span><strong>@(selected.EffectivePackoutPercent is decimal effectivePackout ? $"{effectivePackout:0.##}%" : "Not calculated")</strong></div>
                 </div>
                 <p class="notice">
@@ -285,13 +285,13 @@
                           data-facility-warehouse-id="@selected.FacilityWarehouseId">
                         <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                         <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
-                        <h3 class="wide">@(selected.ProjectionMode == "Preharvest" ? "Add Field Sample Block" : "Add Inventory Lot")</h3>
+                        <h3 class="wide">@(selected.ProjectionMode == "Preharvest" ? "Add Field Sample Block" : "Add Grower Lot")</h3>
                         <label class="field wide">@(selected.ProjectionMode == "Preharvest"
                             ? "Search by orchard, grower, grower number, block, or variety"
                             : "Search by room, lot, grower, orchard, block, variety, or receipt")
                             <input type="search" data-run-source-search value="@Model.Filter.SourceKey" autocomplete="off" />
                         </label>
-                        <label class="field wide">@(selected.ProjectionMode == "Preharvest" ? "Confirmed block and variety" : "Inventory source")
+                        <label class="field wide">@(selected.ProjectionMode == "Preharvest" ? "Confirmed block and variety" : "Received grower lot")
                             <select name="SourceKey" data-run-source-results required>
                                 <option value="">Search for a source</option>
                             </select>
@@ -305,18 +305,13 @@
                                 <a data-field-sample-preview hidden target="_blank" rel="noopener">Preview selected Field Sample report</a>
                             </label>
                         }
-                        <label class="field">@(selected.ProjectionMode == "Preharvest" ? "Estimated Bins to Harvest/Pack" : "Planned bins")
+                        <label class="field">@(selected.ProjectionMode == "Preharvest" ? "Estimated Bins to Harvest/Pack" : "Total Projected Bins")
                             <input type="number" min="1" name="PlannedBins" value="1" required />
                         </label>
                         @if (selected.ProjectionMode == "Inventory")
                         {
-                        <label class="field">QC data
-                            <select name="SelectedQcSource">
-                                <option value="Automatic">Automatic — receipt QC first</option>
-                                <option value="FieldSample">Latest confirmed Field Sample</option>
-                                <option value="None">No usable QC data</option>
-                            </select>
-                        </label>
+                            <input type="hidden" name="SelectedQcSource" value="Automatic" />
+                            <p class="field muted">All completed eligible receipt-backed samples for the grower lot are combined and weighted by each receipt's bins received.</p>
                         }
                         <label class="field">Expected Packout %
                             <input type="number" min="0" max="100" step="0.01" name="ExpectedPackoutPercent"
@@ -324,14 +319,7 @@
                             <input type="hidden" name="ExpectedPackoutUsedDefault" value="true" data-packout-default-flag />
                             <small>Configured default shown; edit it for this block. Expected Cull/Loss: <span data-add-cull-output>@((100m - Model.Planner.DefaultExpectedPackoutPercent).ToString("0.##"))%</span></small>
                         </label>
-                        @if (selected.ProjectionMode == "Inventory")
-                        {
-                        <label class="checkbox-field wide">
-                            <input type="checkbox" name="AvailabilityOverrideAcknowledged" value="true" />
-                            I acknowledge this planning quantity may exceed currently available bins
-                        </label>
-                        }
-                        <button type="submit">@(selected.ProjectionMode == "Preharvest" ? "Add Field Sample Block" : "Add Inventory Source")</button>
+                        <button type="submit">@(selected.ProjectionMode == "Preharvest" ? "Add Field Sample Block" : "Add Grower Lot")</button>
                     </form>
                 }
                 @if (selected.Sources.Count > 0)
@@ -376,7 +364,17 @@
                             <dt>Orchard / grower</dt><dd>@(source.Orchard ?? source.Grower ?? "-")</dd>
                             <dt>Grower number</dt><dd>@(source.GrowerNumber ?? "-")</dd>
                             <dt>Available snapshot</dt><dd>@(source.AvailableBinsSnapshot?.ToString() ?? "Not inventory-backed")</dd>
-                            <dt>@(selected.ProjectionMode == "Preharvest" ? "Estimated bins" : "Planned bins")</dt><dd>@source.PlannedBins</dd>
+                            @if (source.SourceType == "GrowerLot")
+                            {
+                                <dt>Received Bins to Date</dt><dd>@source.ReceivedBinsToDate</dd>
+                                <dt>Additional Expected Bins</dt><dd>@source.AdditionalExpectedBins</dd>
+                                <dt>Total Projected Bins</dt><dd>@source.PlannedBins</dd>
+                                <dt>Last receipt refresh</dt><dd>@BusinessTime.FormatPacific(source.LastRefreshedAt, empty: "Saved at creation")</dd>
+                            }
+                            else
+                            {
+                                <dt>@(selected.ProjectionMode == "Preharvest" ? "Estimated bins" : "Planned bins")</dt><dd>@source.PlannedBins</dd>
+                            }
                             <dt>QC basis</dt><dd>@source.QcBasis</dd>
                             <dt>Sample status</dt><dd>@(source.QcSampleStatus ?? "-")</dd>
                             <dt>Sample date</dt>
@@ -398,11 +396,38 @@
                             <dt>Defects</dt><dd>@(source.DefectSummary ?? "No data")</dd>
                             <dt>Expected Packout %</dt><dd>@(source.ExpectedPackoutPercent is null ? "Not specified" : $"{source.ExpectedPackoutPercent:0.##}%") @(source.ExpectedPackoutUsedDefault ? "(configured default)" : "")</dd>
                             <dt>Expected Cull/Loss %</dt><dd>@(source.ExpectedCullPercent is null ? "Not calculated" : $"{source.ExpectedCullPercent:0.##}%")</dd>
-                            <dt>Gross pounds / boxes</dt><dd>@source.ProjectedPounds.ToString("0.##") lb / @source.ProjectedBoxes.ToString("0.##") (@source.RoundedProjectedBoxes rounded)</dd>
-                            <dt>Projected packed pounds / boxes</dt><dd>@source.PackedProjectedPounds.ToString("0.##") lb / @source.PackedProjectedBoxes.ToString("0.##") (@source.RoundedPackedProjectedBoxes rounded)</dd>
-                            <dt>Projected cull pounds / equivalents</dt><dd>@source.CullProjectedPounds.ToString("0.##") lb / @source.CullProjectedBoxes.ToString("0.##") (@source.RoundedCullProjectedBoxes rounded)</dd>
+                            <dt>Gross pounds / whole 40-lb boxes</dt><dd>@source.ProjectedPounds.ToString("0.##") lb / @source.RoundedProjectedBoxes</dd>
+                            <dt>Projected packed pounds / whole 40-lb boxes</dt><dd>@source.PackedProjectedPounds.ToString("0.##") lb / @source.RoundedPackedProjectedBoxes</dd>
+                            <dt>Projected cull pounds / whole 40-lb equivalents</dt><dd>@source.CullProjectedPounds.ToString("0.##") lb / @source.RoundedCullProjectedBoxes</dd>
                             <dt>Calculation version</dt><dd>@source.CalculationVersion</dd>
                         </dl>
+                        @if (source.SourceType == "GrowerLot")
+                        {
+                            <p class="notice">
+                                Additional expected bins use the current receipt-bin-weighted distribution for this grower lot.
+                                Received fruit is not biologically grown forward.
+                            </p>
+                            <details>
+                                <summary>Contributing receipts and samples</summary>
+                                <div class="table-wrap">
+                                    <table>
+                                        <thead><tr><th>Receipt</th><th>Received</th><th>Bins</th><th>Receipt weight</th><th>Eligible samples</th></tr></thead>
+                                        <tbody>
+                                        @foreach (var receipt in source.ReceiptContributions)
+                                        {
+                                            <tr>
+                                                <td>@receipt.ReceiptReference (#@receipt.ReceiptId)</td>
+                                                <td>@BusinessTime.FormatPacific(receipt.ReceivedAt, "MMM d, yyyy")</td>
+                                                <td>@receipt.BinsReceived</td>
+                                                <td>@receipt.WeightPercent.ToString("0.##")%</td>
+                                                <td>@(receipt.SampleIds.Count == 0 ? "None" : string.Join(", ", receipt.SampleIds.Select(x => $"#{x}")))</td>
+                                            </tr>
+                                        }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </details>
+                        }
                         @if (!string.IsNullOrWhiteSpace(source.Warning))
                         {
                             <p class="notice warning">@source.Warning</p>
@@ -417,7 +442,7 @@
                                     <tbody>
                                     @foreach (var size in source.SizeResults)
                                     {
-                                        <tr><td>@size.Size</td><td>@size.SampleCount</td><td>@size.Percentage.ToString("0.#")%</td><td>@size.UnroundedBoxes.ToString("0.##") (@size.RoundedBoxes)</td><td>@size.PackedBoxes.ToString("0.##") (@size.RoundedPackedBoxes)</td><td>@size.CullBoxes.ToString("0.##") (@size.RoundedCullBoxes)</td></tr>
+                                        <tr><td>@size.Size</td><td>@size.SampleCount</td><td>@size.Percentage.ToString("0.#")%</td><td>@size.RoundedBoxes</td><td>@size.RoundedPackedBoxes</td><td>@size.RoundedCullBoxes</td></tr>
                                     }
                                     </tbody>
                                 </table>
@@ -434,7 +459,7 @@
                                     <tbody>
                                     @foreach (var grade in source.GradeResults)
                                     {
-                                        <tr><td>@grade.Grade</td><td>@grade.SampleCount</td><td>@grade.Percentage.ToString("0.#")%</td><td>@grade.GrossBoxes.ToString("0.##") (@grade.RoundedGrossBoxes)</td><td>@grade.PackedBoxes.ToString("0.##") (@grade.RoundedPackedBoxes)</td><td>@grade.CullBoxes.ToString("0.##") (@grade.RoundedCullBoxes)</td></tr>
+                                        <tr><td>@grade.Grade</td><td>@grade.SampleCount</td><td>@grade.Percentage.ToString("0.#")%</td><td>@grade.RoundedGrossBoxes</td><td>@grade.RoundedPackedBoxes</td><td>@grade.RoundedCullBoxes</td></tr>
                                     }
                                     </tbody>
                                 </table>
@@ -446,8 +471,12 @@
                             <form class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id" data-projection-source-form>
                                 <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                                 <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
-                                <label class="field">@(selected.ProjectionMode == "Preharvest" ? "Estimated Bins to Harvest/Pack" : "Planned bins")
-                                    <input type="number" min="1" name="PlannedBins" value="@source.PlannedBins" data-planned-bins required />
+                                <label class="field">@(source.SourceType == "GrowerLot" ? "Total Projected Bins" : selected.ProjectionMode == "Preharvest" ? "Estimated Bins to Harvest/Pack" : "Planned bins")
+                                    <input type="number" min="@(source.SourceType == "GrowerLot" ? Math.Max(1, source.ReceivedBinsToDate ?? 1) : 1)" name="PlannedBins" value="@source.PlannedBins" data-planned-bins required />
+                                    @if (source.SourceType == "GrowerLot")
+                                    {
+                                        <small>Cannot be below @source.ReceivedBinsToDate received bins.</small>
+                                    }
                                 </label>
                                 <label class="field">Expected Packout %
                                     <input type="number" min="0" max="100" step="0.01" name="ExpectedPackoutPercent" value="@source.ExpectedPackoutPercent" data-packout-input />
@@ -467,7 +496,7 @@
                                 <label class="field wide">Notes
                                     <input name="Notes" value="@source.Notes" maxlength="1000" />
                                 </label>
-                                @if (selected.ProjectionMode == "Inventory")
+                                @if (selected.ProjectionMode == "Inventory" && source.SourceType != "GrowerLot")
                                 {
                                     <label class="checkbox-field wide">
                                         <input type="checkbox" name="AvailabilityOverrideAcknowledged" value="true" checked="@source.AvailabilityOverrideAcknowledged" />
@@ -486,7 +515,11 @@
                                 <form method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id/Refresh">
                                     <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                                     <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
-                                    <button type="submit" class="secondary-button">Refresh From Current QC Data</button>
+                                    <input type="hidden" name="confirmRefresh" value="true" />
+                                    <button type="submit" class="secondary-button"
+                                            onclick="return confirm('Replace this saved source snapshot with current receipts and eligible QC samples? Total Projected Bins will be preserved and the before/after change will be audited.');">
+                                        @(source.SourceType == "GrowerLot" ? "Refresh From Current Grower Lot Receipts" : "Refresh From Current QC Data")
+                                    </button>
                                 </form>
                                 @if (source.SourceType == "Inventory" && source.InventoryKey is not null)
                                 {
@@ -506,21 +539,25 @@
 
         <section class="panel" data-combined-results>
             <h2>Projected Fruit Sizing by Calculated Fruit Size</h2>
-            <p class="muted">What size fruit is expected on the planned date? These are biological sizing estimates, not commercial pack names.</p>
+            <p class="muted">
+                @(selected.ProjectionMode == "Preharvest"
+                    ? "What size fruit is expected on the planned date? These are biological sizing estimates, not commercial pack names."
+                    : "Received-fruit sizing uses the saved receipt-bin-weighted grower-lot distribution. It does not apply biological growth.")
+            </p>
             @if (selected.CombinedSizes.Count == 0)
             {
                 <p class="empty-state">No calculated size distribution is available.</p>
             }
             else
             {
-                var largestPackedSize = Math.Max(1m, selected.CombinedSizes.Max(x => x.PackedBoxes));
+                var largestPackedSize = Math.Max(1m, selected.CombinedSizes.Max(x => x.RoundedPackedBoxes));
                 <div class="projection-bar-chart" role="img" aria-label="Projected packed box equivalents by calculated fruit size">
                     @foreach (var size in selected.CombinedSizes)
                     {
                         <div class="projection-bar-row">
                             <span>@size.Commodity @size.Size</span>
-                            <progress value="@size.PackedBoxes" max="@largestPackedSize">@size.PackedBoxes.ToString("0.##")</progress>
-                            <strong>@size.PackedBoxes.ToString("0.##")</strong>
+                            <progress value="@size.RoundedPackedBoxes" max="@largestPackedSize">@size.RoundedPackedBoxes</progress>
+                            <strong>@size.RoundedPackedBoxes</strong>
                         </div>
                     }
                 </div>
@@ -530,14 +567,14 @@
                         <tbody>
                         @foreach (var size in selected.CombinedSizes)
                         {
-                            <tr><td>@size.Commodity</td><td>@size.Size</td><td>@size.UnroundedBoxes.ToString("0.##") (@size.RoundedBoxes)</td><td>@size.PackedBoxes.ToString("0.##") (@size.RoundedPackedBoxes)</td><td>@size.CullBoxes.ToString("0.##") (@size.RoundedCullBoxes)</td></tr>
+                            <tr><td>@size.Commodity</td><td>@size.Size</td><td>@size.RoundedBoxes</td><td>@size.RoundedPackedBoxes</td><td>@size.RoundedCullBoxes</td></tr>
                         }
                         </tbody>
                     </table>
                 </div>
             }
 
-            <section class="subpanel" aria-labelledby="commercial-pack-heading">
+            <section class="subpanel" aria-labelledby="commercial-pack-heading" hidden aria-hidden="true">
                 <h2 id="commercial-pack-heading">Projected Packed Boxes by Pack</h2>
                 <p class="muted">What commercial packs are expected under the selected plan? Pack allocation uses the sizing projection above without changing growth, bins, or Expected Packout.</p>
 
@@ -706,6 +743,7 @@
                     </p>
                 }
             </section>
+            <p class="notice"><strong>Commercial Packs are not yet available.</strong> Current production projections use whole 40-pound boxes and do not require commercial-pack configuration.</p>
 
             <h2>Combined Grade Projection</h2>
             @if (selected.CombinedGrades.Count == 0)
@@ -720,7 +758,7 @@
                         <tbody>
                         @foreach (var grade in selected.CombinedGrades)
                         {
-                            <tr><td>@grade.Grade</td><td>@grade.GrossBoxes.ToString("0.##") (@grade.RoundedGrossBoxes)</td><td>@grade.PackedBoxes.ToString("0.##") (@grade.RoundedPackedBoxes)</td><td>@grade.CullBoxes.ToString("0.##") (@grade.RoundedCullBoxes)</td></tr>
+                            <tr><td>@grade.Grade</td><td>@grade.RoundedGrossBoxes</td><td>@grade.RoundedPackedBoxes</td><td>@grade.RoundedCullBoxes</td></tr>
                         }
                         </tbody>
                     </table>
@@ -737,9 +775,9 @@
                             <td>@(source.Block ?? source.Lot ?? source.SourceLabel)</td>
                             <td>@source.PlannedBins</td>
                             <td>@(source.ExpectedPackoutPercent is null ? "Missing" : $"{source.ExpectedPackoutPercent:0.##}%")</td>
-                            <td>@source.ProjectedBoxes.ToString("0.##")</td>
-                            <td>@source.PackedProjectedBoxes.ToString("0.##")</td>
-                            <td>@source.CullProjectedBoxes.ToString("0.##")</td>
+                            <td>@source.RoundedProjectedBoxes</td>
+                            <td>@source.RoundedPackedProjectedBoxes</td>
+                            <td>@source.RoundedCullProjectedBoxes</td>
                         </tr>
                     }
                     </tbody>

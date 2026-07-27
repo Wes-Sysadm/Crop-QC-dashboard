@@ -1,7 +1,7 @@
 namespace CropQc.Data;
 
-public sealed record RunProjectionSizeObservation(int SizeCategory);
-public sealed record RunProjectionGradeObservation(string GradeCode);
+public sealed record RunProjectionSizeObservation(int SizeCategory, decimal Weight = 1m);
+public sealed record RunProjectionGradeObservation(string GradeCode, decimal Weight = 1m);
 
 public sealed record RunProjectionDistributionAllocation(
     string Key,
@@ -55,7 +55,7 @@ public static class RunProjectionCalculationService
     public const decimal DefaultPearPoundsPerBin = 920m;
     public const decimal DefaultStandardBoxWeightPounds = 40m;
     public const decimal DefaultExpectedPackoutPercent = 85m;
-    public const string CurrentCalculationVersion = "2.0";
+    public const string CurrentCalculationVersion = "3.0-whole-40lb";
 
     public static RunProjectionLineCalculation Calculate(
         string? fruitType,
@@ -83,10 +83,11 @@ public static class RunProjectionCalculationService
             throw new ArgumentOutOfRangeException(nameof(plannedBins), "Planned bins cannot be negative.");
         }
 
-        if (applePoundsPerBin <= 0 || pearPoundsPerBin <= 0 || standardBoxWeightPounds <= 0)
+        if (applePoundsPerBin <= 0 || pearPoundsPerBin <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(standardBoxWeightPounds), "Projection weight assumptions must be positive.");
         }
+        standardBoxWeightPounds = DefaultStandardBoxWeightPounds;
 
         if (expectedPackoutPercent is < 0 or > 100)
         {
@@ -101,15 +102,16 @@ public static class RunProjectionCalculationService
             _ => 0m
         };
         var sizeGroups = sizeObservations
+            .Where(x => x.Weight > 0m)
             .GroupBy(x => x.SizeCategory)
             .OrderBy(x => x.Key)
-            .Select(x => new DistributionInput(x.Key.ToString(), x.Count()))
+            .Select(x => new DistributionInput(x.Key.ToString(), x.Count(), x.Sum(y => y.Weight)))
             .ToList();
         var gradeGroups = gradeObservations
-            .Where(x => !string.IsNullOrWhiteSpace(x.GradeCode))
+            .Where(x => !string.IsNullOrWhiteSpace(x.GradeCode) && x.Weight > 0m)
             .GroupBy(x => x.GradeCode.Trim(), StringComparer.OrdinalIgnoreCase)
             .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(x => new DistributionInput(x.Key, x.Count()))
+            .Select(x => new DistributionInput(x.Key, x.Count(), x.Sum(y => y.Weight)))
             .ToList();
 
         if (poundsPerBin <= 0)
@@ -135,7 +137,7 @@ public static class RunProjectionCalculationService
         var roundedPacked = rate is null ? 0 : RoundPlanningBoxes(packedBoxes);
         var cullPounds = rate is null ? 0m : grossPounds - packedPounds;
         var cullBoxes = rate is null ? 0m : grossBoxes - packedBoxes;
-        var roundedCull = rate is null ? 0 : roundedGross - roundedPacked;
+        var roundedCull = rate is null ? 0 : RoundPlanningBoxes(cullBoxes);
 
         var sizeAllocations = Allocate(sizeGroups, grossBoxes, roundedGross, rate, roundedPacked, cullRate, roundedCull)
             .Select(x => new RunProjectionSizeAllocation(
@@ -183,7 +185,7 @@ public static class RunProjectionCalculationService
     }
 
     public static int RoundPlanningBoxes(decimal boxes) =>
-        (int)decimal.Round(boxes, 0, MidpointRounding.AwayFromZero);
+        boxes <= 0m ? 0 : (int)decimal.Floor(boxes);
 
     public static string NormalizeCommodity(string? fruitType) =>
         fruitType?.Trim().ToUpperInvariant() switch
@@ -203,10 +205,10 @@ public static class RunProjectionCalculationService
         int roundedCull)
     {
         if (groups.Count == 0) return [];
-        var total = groups.Sum(x => x.Count);
+        var total = groups.Sum(x => x.Weight);
         var work = groups.Select((x, order) =>
         {
-            var share = x.Count / (decimal)total;
+            var share = x.Weight / total;
             return new AllocationWork(
                 x.Key,
                 order,
@@ -216,9 +218,9 @@ public static class RunProjectionCalculationService
                 packedRate is null ? 0m : grossBoxes * share * packedRate.Value,
                 cullRate is null ? 0m : grossBoxes * share * cullRate.Value);
         }).ToList();
-        AllocateRounded(work, roundedGross, x => x.GrossExact, (x, value) => x.GrossRounded = value);
-        AllocateRounded(work, roundedPacked, x => x.PackedExact, (x, value) => x.PackedRounded = value);
-        AllocateRounded(work, roundedCull, x => x.CullExact, (x, value) => x.CullRounded = value);
+        AllocateWholeBoxes(work, x => x.GrossExact, (x, value) => x.GrossRounded = value);
+        AllocateWholeBoxes(work, x => x.PackedExact, (x, value) => x.PackedRounded = value);
+        AllocateWholeBoxes(work, x => x.CullExact, (x, value) => x.CullRounded = value);
         return work.Select(x => new RunProjectionDistributionAllocation(
             x.Key,
             x.Count,
@@ -231,20 +233,14 @@ public static class RunProjectionCalculationService
             x.CullRounded)).ToList();
     }
 
-    private static void AllocateRounded(
+    private static void AllocateWholeBoxes(
         IReadOnlyList<AllocationWork> work,
-        int target,
         Func<AllocationWork, decimal> exact,
         Action<AllocationWork, int> assign)
     {
-        var floors = work.ToDictionary(x => x, x => (int)decimal.Floor(exact(x)));
-        foreach (var item in work) assign(item, floors[item]);
-        foreach (var item in work
-                     .OrderByDescending(x => exact(x) - floors[x])
-                     .ThenBy(x => x.Order)
-                     .Take(Math.Max(0, target - floors.Values.Sum())))
+        foreach (var item in work)
         {
-            assign(item, floors[item] + 1);
+            assign(item, exact(item) <= 0m ? 0 : (int)decimal.Floor(exact(item)));
         }
     }
 
@@ -280,7 +276,7 @@ public static class RunProjectionCalculationService
             jointBasis,
             warning);
 
-    private sealed record DistributionInput(string Key, int Count);
+    private sealed record DistributionInput(string Key, int Count, decimal Weight);
 
     private sealed class AllocationWork(
         string key,

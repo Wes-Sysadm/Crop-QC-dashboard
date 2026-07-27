@@ -87,7 +87,8 @@ public sealed class ProductionReadinessTests
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "BackupsController.cs"));
         var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
 
-        Assert.Contains("AccessPolicyNames.BackupsAdmin", controller);
+        Assert.Contains("AccessPolicyNames.BackupHistoryView", controller);
+        Assert.Contains("AccessPolicyNames.BackupHistoryAdmin", controller);
         Assert.Contains("/Admin/Backups", layout);
         Assert.Contains("STAGING - Non-production data", layout);
     }

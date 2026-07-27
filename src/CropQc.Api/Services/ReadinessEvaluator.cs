@@ -13,7 +13,8 @@ public sealed record ReadinessEvaluationInput(
     bool HasHectrePhoto,
     bool HasSampleBeforeCuttingPhoto,
     bool HasCutFruitPhoto,
-    bool HasFruitAfterStarchPhoto);
+    bool HasFruitAfterStarchPhoto,
+    string? FruitType = null);
 
 public static class ReadinessEvaluator
 {
@@ -39,7 +40,7 @@ public static class ReadinessEvaluator
         }
 
         var starchMissingCount = completedRows.Count(x => !x.HasStarch);
-        if (IsStarchRequiredForEmail(input.SampleTypeName) && starchMissingCount > 0)
+        if (IsStarchRequiredForEmail(input.SampleTypeName, input.FruitType) && starchMissingCount > 0)
         {
             missingItems.Add("Starch is required for all completed fruit rows.");
         }
@@ -71,14 +72,14 @@ public static class ReadinessEvaluator
         var normalized = input.SampleTypeName ?? string.Empty;
         if (normalized.Contains("receiving", StringComparison.OrdinalIgnoreCase))
         {
+            var isPear = string.Equals(input.FruitType, "Pear", StringComparison.OrdinalIgnoreCase);
             return
             [
-                ("Truck photo", input.HasBinTruckPhoto),
                 ("Top of truck", input.HasTopOfTruckPhoto),
                 ("Hectre", input.HasHectrePhoto),
                 ("Whole sample", input.HasSampleBeforeCuttingPhoto),
-                ("Cut apples", input.HasCutFruitPhoto),
-                ("Starch apples", input.HasFruitAfterStarchPhoto)
+                (isPear ? "Cut pears" : "Cut apples", input.HasCutFruitPhoto),
+                (isPear ? "Starch pears" : "Starch apples", input.HasFruitAfterStarchPhoto)
             ];
         }
 
@@ -86,22 +87,32 @@ public static class ReadinessEvaluator
         {
             return
             [
-                ("Truck photo", input.HasBinTruckPhoto),
                 ("Top of truck", input.HasTopOfTruckPhoto),
                 ("Whole sample", input.HasSampleBeforeCuttingPhoto),
-                ("Cut apples", input.HasCutFruitPhoto)
+                ("Cut apples", input.HasCutFruitPhoto),
+                .. PearStarchPhoto(input)
             ];
         }
 
         return
         [
             ("Whole sample", input.HasSampleBeforeCuttingPhoto),
-            ("Cut apples", input.HasCutFruitPhoto)
+            ("Cut apples", input.HasCutFruitPhoto),
+            .. PearStarchPhoto(input)
         ];
     }
 
-    private static bool IsStarchRequiredForEmail(string? sampleTypeName)
+    private static IReadOnlyList<(string Name, bool IsPresent)> PearStarchPhoto(ReadinessEvaluationInput input) =>
+        string.Equals(input.FruitType, "Pear", StringComparison.OrdinalIgnoreCase)
+            ? [("Starch pears", input.HasFruitAfterStarchPhoto)]
+            : [];
+
+    private static bool IsStarchRequiredForEmail(string? sampleTypeName, string? fruitType)
     {
+        if (string.Equals(fruitType, "Pear", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
         var normalized = sampleTypeName ?? string.Empty;
         return normalized.Contains("receiving", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("truck", StringComparison.OrdinalIgnoreCase);

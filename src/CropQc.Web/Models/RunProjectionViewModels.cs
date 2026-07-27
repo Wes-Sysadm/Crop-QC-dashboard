@@ -205,6 +205,7 @@ public sealed class RunProjectionSourceViewModel
     public long Id { get; set; }
     public string SourceType { get; set; } = "";
     public string? InventoryKey { get; set; }
+    public string? GrowerLotKey { get; set; }
     public int? CanonicalOrchardBlockId { get; set; }
     public int FruitProfileId { get; set; }
     public int? WarehouseId { get; set; }
@@ -221,6 +222,11 @@ public sealed class RunProjectionSourceViewModel
     public string Commodity { get; set; } = "";
     public int PlannedBins { get; set; }
     public int? AvailableBinsSnapshot { get; set; }
+    public int? ReceivedBinsToDate { get; set; }
+    public int AdditionalExpectedBins { get; set; }
+    public IReadOnlyList<RunProjectionReceiptContributionViewModel> ReceiptContributions { get; set; } = [];
+    public IReadOnlyList<long> ContributingSampleIds { get; set; } = [];
+    public DateTimeOffset? LastRefreshedAt { get; set; }
     public bool AvailabilityOverrideAcknowledged { get; set; }
     public int SortOrder { get; set; }
     public string? Notes { get; set; }
@@ -235,6 +241,7 @@ public sealed class RunProjectionSourceViewModel
     public int SizeBasisFruitCount { get; set; }
     public int GradeBasisFruitCount { get; set; }
     public int JointSizeGradeBasisFruitCount { get; set; }
+    public string? JointSizeGradeSnapshotJson { get; set; }
     public decimal? AverageWeightGrams { get; set; }
     public decimal? AveragePressureLbs { get; set; }
     public string? GradeSummary { get; set; }
@@ -261,6 +268,14 @@ public sealed class RunProjectionSourceViewModel
     public IReadOnlyList<RunProjectionQcChoiceViewModel> QcChoices { get; set; } = [];
     public IReadOnlyList<RunProjectionInventoryMappingChoiceViewModel> InventoryMappingChoices { get; set; } = [];
 }
+
+public sealed record RunProjectionReceiptContributionViewModel(
+    long ReceiptId,
+    string ReceiptReference,
+    DateTimeOffset ReceivedAt,
+    int BinsReceived,
+    decimal WeightPercent,
+    IReadOnlyList<long> SampleIds);
 
 public sealed record RunProjectionSizeResultViewModel(
     string Commodity,

@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CropQc.Web.Controllers;
 
 [Route("Admin/OrchardRecipientImports")]
-[Authorize(Policy = AccessPolicyNames.ConfigurationAdmin)]
+[Authorize(Policy = AccessPolicyNames.ImportToolsAdmin)]
 public sealed class OrchardRecipientImportsController(
     IOrchardContactImportService importService,
     IAdminAuthorizationService authorizationService,

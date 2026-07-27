@@ -1162,6 +1162,7 @@ public sealed class SampleDetailViewModel
     public int EnteredFruitCount { get; set; }
     public long AutosaveVersion { get; set; }
     public IReadOnlyList<QcPhotoRequirementViewModel> AvailablePhotoTypes { get; set; } = [];
+    public string FruitType { get; set; } = "";
     public string? RecipientEmail { get; set; }
     public SaveFruitReadingsForm FruitReadingForm { get; set; } = new();
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
@@ -1197,6 +1198,7 @@ public sealed record QcPhotoRequirementViewModel(string PhotoType, string Friend
 public sealed class StarchTestViewModel
 {
     public string? DataWarning { get; set; }
+    public string FruitType { get; set; } = "";
     public SampleListItemViewModel? Sample { get; set; }
     public ReceiptListItemViewModel? Receipt { get; set; }
     public IReadOnlyList<FruitReadingRowViewModel> FruitRows { get; set; } = [];

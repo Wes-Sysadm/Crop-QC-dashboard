@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CropQc.Web.Controllers;
 
 [Route("Admin/CommercialPacks")]
-[Authorize(Policy = AccessPolicyNames.ConfigurationAdmin)]
+[Authorize(Policy = AccessPolicyNames.MasterDataAdmin)]
 public sealed class CommercialPacksController(ICommercialPackAdminService service) : Controller
 {
     [HttpGet("")]

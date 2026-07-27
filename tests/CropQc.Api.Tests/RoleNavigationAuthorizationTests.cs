@@ -68,22 +68,23 @@ public sealed class RoleNavigationAuthorizationTests
         AssertActionPolicy<AdminController>(nameof(AdminController.DownloadExistingQcStationConfig), AccessPolicyNames.QcStationsAdmin);
         AssertActionPolicy<AdminController>(nameof(AdminController.AddUser), AccessPolicyNames.UsersAdmin);
         AssertActionPolicy<AdminController>(nameof(AdminController.UpdateUser), AccessPolicyNames.UsersAdmin);
-        AssertActionPolicy<AdminController>(nameof(AdminController.UpdateUserMatrix), AccessPolicyNames.UsersAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.UpdateUserMatrix), AccessPolicyNames.PermissionMatrixAdmin);
     }
 
     [Fact]
     public void MasterData_UsesMatrixPolicies()
     {
-        AssertActionPolicy<MasterDataController>(nameof(MasterDataController.Index), AccessPolicyNames.MasterDataView);
-        AssertActionPolicy<MasterDataController>(nameof(MasterDataController.Edit), AccessPolicyNames.MasterDataEdit);
-        AssertActionPolicy<MasterDataController>(nameof(MasterDataController.Save), AccessPolicyNames.MasterDataEdit);
-        AssertActionPolicy<MasterDataController>(nameof(MasterDataController.Deactivate), AccessPolicyNames.MasterDataAdmin);
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "MasterDataController.cs"));
+        Assert.Contains("CanTypeAsync(type, PageAccessLevel.View", controller);
+        Assert.Contains("CanTypeAsync(type, PageAccessLevel.Create", controller);
+        Assert.Contains("CanTypeAsync(type, PageAccessLevel.Admin", controller);
+        Assert.Contains("ApplicationAreas.ImportTools, PageAccessLevel.Admin", controller);
     }
 
     [Fact]
     public void Configuration_RemainsAdminOnly()
     {
-        AssertControllerPolicy<ConfigurationController>(AccessPolicyNames.ConfigurationAdmin);
+        AssertControllerPolicy<ConfigurationController>(AccessPolicyNames.EmailConfigurationAdmin);
     }
 
     [Fact]

@@ -21,7 +21,7 @@ public sealed class ReceiptsController(
         View(await dataService.SearchReceiptsAsync(search, cancellationToken));
 
     [HttpGet("Export")]
-    [Authorize(Policy = AccessPolicyNames.ReceiptsView)]
+    [Authorize(Policy = AccessPolicyNames.ExportToolsAdmin)]
     public async Task<IActionResult> Export(CancellationToken cancellationToken)
     {
         var content = await exportService.ExportReceivingDataAsync(cancellationToken);

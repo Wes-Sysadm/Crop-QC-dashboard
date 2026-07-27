@@ -26,6 +26,7 @@ public static class RunProjectionSourceTypes
 {
     public const string Inventory = "Inventory";
     public const string FieldSample = "FieldSample";
+    public const string GrowerLot = "GrowerLot";
 }
 
 public static class RunProjectionQcSourceTypes
@@ -105,6 +106,7 @@ public sealed class RunProjectionSource
     public RunProjection RunProjection { get; set; } = null!;
     public required string SourceType { get; set; }
     public string? InventoryKey { get; set; }
+    public string? GrowerLotKeySnapshot { get; set; }
     public long? ReceiptId { get; set; }
     public Receipt? Receipt { get; set; }
     public long? SourceInventoryAdjustmentId { get; set; }
@@ -127,6 +129,13 @@ public sealed class RunProjectionSource
     public QcSample? SelectedQcSample { get; set; }
     public int PlannedBins { get; set; }
     public int? AvailableBinsSnapshot { get; set; }
+    public int? ReceivedBinsSnapshot { get; set; }
+    public int? AdditionalExpectedBinsSnapshot { get; set; }
+    public string? ContributingReceiptIdsJson { get; set; }
+    public string? ContributingSampleIdsJson { get; set; }
+    public string? ReceiptWeightingSnapshotJson { get; set; }
+    public string? RefreshHistoryJson { get; set; }
+    public DateTimeOffset? LastRefreshedAt { get; set; }
     public bool AvailabilityOverrideAcknowledged { get; set; }
     public int SortOrder { get; set; }
     public string? Notes { get; set; }

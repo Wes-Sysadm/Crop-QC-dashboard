@@ -149,10 +149,10 @@ public sealed class ProjectionOutcomeTests
         var outcome = ProjectionOutcomeCalculator.Build(Projection(), DateTimeOffset.UtcNow);
         var row = Assert.Single(outcome.Matrix);
 
-        Assert.Equal(20, row.CompleteBoxesByGrade["Extra Fancy"]);
-        Assert.Equal(9, row.CompleteBoxesByGrade["Fancy"]);
-        Assert.Equal(29, row.TotalCompleteBoxes);
-        Assert.Equal(30, row.PackCompleteCount);
+        Assert.Equal(22, row.CompleteBoxesByGrade["Extra Fancy"]);
+        Assert.Equal(11, row.CompleteBoxesByGrade["Fancy"]);
+        Assert.Equal(33, row.TotalCompleteBoxes);
+        Assert.Equal(33, row.PackCompleteCount);
         Assert.Equal(18, outcome.JointBasisFruitCount);
     }
 
@@ -163,6 +163,8 @@ public sealed class ProjectionOutcomeTests
         projection.PackResults = [PackResult([], jointBasis: 0)];
         projection.Sources[0].JointSizeGradeBasisFruitCount = 0;
         projection.Sources[1].JointSizeGradeBasisFruitCount = 0;
+        projection.Sources[0].JointSizeGradeSnapshotJson = null;
+        projection.Sources[1].JointSizeGradeSnapshotJson = null;
 
         var outcome = ProjectionOutcomeCalculator.Build(projection, DateTimeOffset.UtcNow);
 
@@ -243,7 +245,7 @@ public sealed class ProjectionOutcomeTests
         var ordered = new[]
         {
             "Lots and Blocks Included",
-            "Projected Packed Boxes by Size / Commercial Pack",
+            "Projected Boxes by Size",
             "Projected Packed Boxes by Grade",
             "Size-by-Grade Production Matrix",
             "Projected Cull Outputs",
@@ -302,7 +304,7 @@ public sealed class ProjectionOutcomeTests
         var controller = ReadRepositoryFile("src", "CropQc.Web", "Controllers", "BinsRunController.cs");
 
         var outcomeAction = controller.IndexOf("ProjectionOutcome(long id", StringComparison.Ordinal);
-        var policy = controller.LastIndexOf("[Authorize(Policy = AccessPolicyNames.BinsRunView)]", outcomeAction, StringComparison.Ordinal);
+        var policy = controller.LastIndexOf("[Authorize(Policy = AccessPolicyNames.ProjectionOutcomeView)]", outcomeAction, StringComparison.Ordinal);
         Assert.True(policy >= 0 && outcomeAction - policy < 250);
     }
 
@@ -312,7 +314,8 @@ public sealed class ProjectionOutcomeTests
         var controller = ReadRepositoryFile("src", "CropQc.Web", "Controllers", "BinsRunController.cs");
 
         Assert.Contains("GetOutcomeAsync(id", controller);
-        Assert.Contains("pack.CompletePacks", controller);
+        Assert.Contains("size.CompleteBoxes", controller);
+        Assert.Contains("grade.CompleteBoxes", controller);
         Assert.Contains("Size-by-grade basis", controller);
         Assert.Contains("outcome.ResidualPackedPounds", controller);
         Assert.Contains("Peeler,35", controller);
@@ -369,6 +372,10 @@ public sealed class ProjectionOutcomeTests
         };
         sources[0].JointSizeGradeBasisFruitCount = 9;
         sources[1].JointSizeGradeBasisFruitCount = 9;
+        sources[0].JointSizeGradeSnapshotJson = """[{"SizeCategory":80,"GradeCode":"Extra Fancy","Count":2},{"SizeCategory":80,"GradeCode":"Fancy","Count":1}]""";
+        sources[1].JointSizeGradeSnapshotJson = """[{"SizeCategory":80,"GradeCode":"Extra Fancy","Count":2},{"SizeCategory":80,"GradeCode":"Fancy","Count":1}]""";
+        sources[0].SizeResults = [Size("Apple", 80, 16.5m)];
+        sources[1].SizeResults = [Size("Apple", 80, 16.5m)];
         sources[0].GradeResults = [Grade("Extra Fancy", 10m), Grade("Fancy", 6.5m)];
         sources[1].GradeResults = [Grade("Extra Fancy", 10.5m), Grade("Fancy", 6m)];
         return new RunProjectionDetailViewModel
@@ -432,6 +439,9 @@ public sealed class ProjectionOutcomeTests
 
     private static RunProjectionGradeResultViewModel Grade(string grade, decimal packedBoxes) =>
         new(grade, 10, 50m, packedBoxes / 0.75m, 0, packedBoxes, 0, 0m, 0);
+
+    private static RunProjectionSizeResultViewModel Size(string commodity, int size, decimal packedBoxes) =>
+        new(commodity, size, 10, 100m, packedBoxes / 0.75m, 0, packedBoxes, 0, 0m, 0);
 
     private static RunProjectionPackResultViewModel PackResult(
         IReadOnlyList<RunProjectionPackGradeViewModel> grades,

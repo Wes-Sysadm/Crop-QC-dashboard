@@ -50,7 +50,7 @@ public sealed class ReceiptQcRedesignViewTests
         Assert.Contains("\"Average Pressure\", Format(detail.CurrentSummary.AveragePressureLbs", report);
         Assert.DoesNotContain("\"Average Pressure 1\"", report);
         Assert.DoesNotContain("\"Average Pressure 2\"", report);
-        Assert.True(report.IndexOf("AppendTrend(html, detail)", StringComparison.Ordinal) < report.IndexOf("AppendCurrentSummary(html, detail)", StringComparison.Ordinal));
+        Assert.True(report.IndexOf("AppendTrend(html, detail)", StringComparison.Ordinal) < report.IndexOf("AppendCurrentSummary(html, sample, detail, photos)", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -12,11 +12,12 @@ public enum PageAccessLevel
 {
     None = 0,
     View = 1,
-    Edit = 2,
+    Create = 2,
+    Edit = Create,
     Admin = 3
 }
 
-public sealed record ApplicationArea(string Key, string Name, string Group, string Route);
+public sealed record ApplicationArea(string Key, string Name, string Group, string Route, string? LegacyAreaKey = null);
 
 public static class ApplicationAreas
 {
@@ -40,29 +41,61 @@ public static class ApplicationAreas
     public const string VarietyColors = "variety-colors";
     public const string Backups = "backups";
     public const string DataCleanup = "data-cleanup";
+    public const string QcReports = "qc-reports";
+    public const string ProjectionPlanner = "projection-planner";
+    public const string ProjectionOutcome = "projection-outcome";
+    public const string Transfers = "transfers";
+    public const string TrueUp = "true-up";
+    public const string Inventory = "inventory";
+    public const string OrchardRecipients = "orchard-recipients";
+    public const string OrchardManagers = "orchard-managers";
+    public const string PermissionMatrix = "permission-matrix";
+    public const string Facilities = "facilities";
+    public const string Varieties = "varieties";
+    public const string Grades = "grades";
+    public const string Defects = "defects";
+    public const string SizeConfiguration = "size-configuration";
+    public const string EmailConfiguration = "email-configuration";
+    public const string BackupHistory = "backup-history";
+    public const string AuditHistory = "audit-history";
+    public const string ImportTools = "import-tools";
+    public const string ExportTools = "export-tools";
     public const string OwnerEmail = "wes@fruitandland.com";
 
     public static readonly IReadOnlyList<ApplicationArea> All =
     [
         new(Dashboard, "Dashboard", "Operations", "/"),
-        new(DailyQc, "Daily QC", "QC", "/DailyQc"),
+        new(DailyQc, "Receipt QC", "QC", "/DailyQc"),
         new(FieldSamples, "Field Samples", "QC", "/FieldSamples"),
+        new(QcReports, "QC Reports", "QC", "/DailyQc", DailyQc),
         new(Receipts, "Receipts", "Operations", "/Receipts"),
-        new(ReceiptEdit, "Receipt Edit", "Operations", "/Receipts"),
-        new(ReceiptDelete, "Receipt Delete", "Operations", "/Receipts"),
         new(CurrentLots, "Current Lots", "Inventory", "/Admin/RoomInventory"),
         new(BinsRun, "Bins Run", "Inventory", "/BinsRun"),
+        new(ProjectionPlanner, "Projection Planner", "Planning", "/BinsRun?Section=Planner", BinsRun),
+        new(ProjectionOutcome, "Projection Outcome", "Planning", "/BinsRun?Section=Planner", BinsRun),
         new(Rooms, "Rooms", "Inventory", "/Rooms"),
-        new(RoomTransactions, "Room Transactions", "Inventory", "/Rooms"),
+        new(Transfers, "Transfers", "Inventory", "/BinsRun?Section=Transfer", RoomTransactions),
+        new(TrueUp, "True Up", "Inventory", "/BinsRun?Section=TrueUp", RoomTransactions),
+        new(Inventory, "Inventory", "Inventory", "/Admin/RoomInventory", CurrentLots),
         new(GrowerLots, "Grower Lots", "Inventory", "/GrowerLots/Current"),
         new(CropYearReview, "Crop Year Review", "QC", "/CropYearReview"),
         new(MasterData, "Master Data", "Admin/System", "/MasterData"),
         new(Users, "Users", "Admin/System", "/Admin/Users"),
+        new(PermissionMatrix, "Permission Matrix", "Admin/System", "/Admin/Users", Users),
         new(QcStations, "QC Stations", "Admin/System", "/Admin/QcStations"),
         new(Downloads, "Downloads", "Admin/System", "/Admin/Downloads"),
-        new(Configuration, "Configuration", "Admin/System", "/Admin/Configuration"),
-        new(VarietyColors, "Variety Colors", "Admin/System", "/Admin/VarietyColors"),
-        new(Backups, "Backups", "Admin/System", "/Admin/Backups"),
+        new(OrchardRecipients, "Orchard Recipients", "Admin/System", "/OrchardRecipients", Configuration),
+        new(OrchardManagers, "Orchard Managers", "Admin/System", "/OrchardRecipients", Configuration),
+        new(Facilities, "Facilities", "Master Data", "/MasterData/warehouses", MasterData),
+        new(Varieties, "Varieties", "Master Data", "/MasterData/fruit-profiles", MasterData),
+        new(Grades, "Grades", "Master Data", "/MasterData/grades", MasterData),
+        new(Defects, "Defects", "Master Data", "/MasterData/defect-types", MasterData),
+        new(SizeConfiguration, "Size Configuration", "Master Data", "/MasterData/fruit-size-thresholds", MasterData),
+        new(EmailConfiguration, "Email Configuration", "Admin/System", "/Admin/Configuration", Configuration),
+        new(BackupHistory, "Backup History", "Admin/System", "/Admin/Backups", Backups),
+        new(AuditHistory, "Audit History", "Admin/System", "/MasterData/audit-logs", MasterData),
+        new(ImportTools, "Import Tools", "Admin/System", "/MasterData", MasterData),
+        new(ExportTools, "Export Tools", "Admin/System", "/MasterData", MasterData),
         new(DataCleanup, "Data Cleanup", "Admin/System", "/Admin/DataCleanup")
     ];
 }
@@ -102,6 +135,23 @@ public static class AccessPolicyNames
     public const string VarietyColorsAdmin = "VarietyColorsAdmin";
     public const string BackupsAdmin = "BackupsAdmin";
     public const string DataCleanupAdmin = "DataCleanupAdmin";
+    public const string ProjectionPlannerView = "ProjectionPlannerView";
+    public const string ProjectionPlannerCreate = "ProjectionPlannerCreate";
+    public const string ProjectionPlannerAdmin = "ProjectionPlannerAdmin";
+    public const string ProjectionOutcomeView = "ProjectionOutcomeView";
+    public const string ProjectionOutcomeAdmin = "ProjectionOutcomeAdmin";
+    public const string TransfersCreate = "TransfersCreate";
+    public const string TransfersAdmin = "TransfersAdmin";
+    public const string TrueUpAdmin = "TrueUpAdmin";
+    public const string PermissionMatrixAdmin = "PermissionMatrixAdmin";
+    public const string OrchardManagersView = "OrchardManagersView";
+    public const string OrchardManagersCreate = "OrchardManagersCreate";
+    public const string OrchardManagersAdmin = "OrchardManagersAdmin";
+    public const string BackupHistoryView = "BackupHistoryView";
+    public const string BackupHistoryAdmin = "BackupHistoryAdmin";
+    public const string ImportToolsAdmin = "ImportToolsAdmin";
+    public const string ExportToolsAdmin = "ExportToolsAdmin";
+    public const string EmailConfigurationAdmin = "EmailConfigurationAdmin";
 }
 
 public sealed class PageAccessRequirement(string areaKey, PageAccessLevel minimumLevel) : IAuthorizationRequirement
@@ -137,11 +187,16 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
             return PageAccessLevel.None;
         }
 
-        var level = await dbContext.UserPageAccesses.AsNoTracking()
-            .Where(x => x.User.Email == email && x.User.IsActive && x.AreaKey == areaKey)
-            .Select(x => x.AccessLevel)
-            .SingleOrDefaultAsync(cancellationToken);
-        return ParseLevel(level);
+        var levels = await dbContext.UserPageAccesses.AsNoTracking()
+            .Where(x => x.User.Email == email && x.User.IsActive
+                && (x.AreaKey == areaKey || x.AreaKey == ApplicationAreas.MasterData))
+            .ToDictionaryAsync(x => x.AreaKey, x => x.AccessLevel, cancellationToken);
+        if (levels.TryGetValue(ApplicationAreas.MasterData, out var masterData)
+            && ParseLevel(masterData) == PageAccessLevel.Admin)
+        {
+            return PageAccessLevel.Admin;
+        }
+        return levels.TryGetValue(areaKey, out var level) ? ParseLevel(level) : PageAccessLevel.None;
     }
 
     public async Task<IReadOnlyList<UserAccessMatrixRow>> GetMatrixAsync(CancellationToken cancellationToken)
@@ -161,7 +216,10 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
             user.UserRoles.OrderBy(x => x.RoleId).Select(x => x.Role.Name).FirstOrDefault() ?? "Viewer",
             ApplicationAreas.All.ToDictionary(
                 area => area.Key,
-                area => IsOwner(user.Email) ? PageAccessLevel.Admin : ParseLevel(user.PageAccesses.SingleOrDefault(x => x.AreaKey == area.Key)?.AccessLevel))))
+                area => IsOwner(user.Email)
+                    || ParseLevel(user.PageAccesses.SingleOrDefault(x => x.AreaKey == ApplicationAreas.MasterData)?.AccessLevel) == PageAccessLevel.Admin
+                        ? PageAccessLevel.Admin
+                        : ParseLevel(user.PageAccesses.SingleOrDefault(x => x.AreaKey == area.Key)?.AccessLevel))))
             .ToList();
     }
 
@@ -178,11 +236,14 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
             foreach (var area in ApplicationAreas.All)
             {
                 if (user.PageAccesses.Any(x => x.AreaKey == area.Key)) continue;
+                var inherited = area.LegacyAreaKey is null
+                    ? DefaultForRole(user.UserRoles.Select(x => x.Role.Name), area.Key)
+                    : ParseLevel(user.PageAccesses.SingleOrDefault(x => x.AreaKey == area.LegacyAreaKey)?.AccessLevel);
                 dbContext.UserPageAccesses.Add(new UserPageAccess
                 {
                     UserId = user.Id,
                     AreaKey = area.Key,
-                    AccessLevel = DefaultForRole(user.UserRoles.Select(x => x.Role.Name), area.Key).ToString(),
+                    AccessLevel = PersistedLevel(inherited),
                     UpdatedAt = DateTimeOffset.UtcNow
                 });
             }
@@ -212,7 +273,7 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
 
             var old = ParseLevel(existing.AccessLevel);
             if (old == requested) continue;
-            existing.AccessLevel = requested.ToString();
+            existing.AccessLevel = PersistedLevel(requested);
             existing.UpdatedAt = DateTimeOffset.UtcNow;
             existing.UpdatedByUserId = changedBy?.Id;
             dbContext.AuditLogs.Add(new AuditLog
@@ -246,14 +307,14 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
             return areaKey is ApplicationAreas.QcStations or ApplicationAreas.MasterData or ApplicationAreas.CurrentLots or ApplicationAreas.RoomTransactions
                 ? PageAccessLevel.Admin
                 : areaKey is ApplicationAreas.BinsRun
-                    ? PageAccessLevel.Edit
-                : PageAccessLevel.Edit;
+                    ? PageAccessLevel.Create
+                : PageAccessLevel.Create;
         }
 
         if (string.Equals(role, "QC User", StringComparison.OrdinalIgnoreCase))
         {
             return areaKey is ApplicationAreas.Dashboard or ApplicationAreas.Receipts or ApplicationAreas.DailyQc or ApplicationAreas.FieldSamples or ApplicationAreas.ReceiptEdit
-                ? PageAccessLevel.Edit
+                ? PageAccessLevel.Create
                 : areaKey is ApplicationAreas.Rooms or ApplicationAreas.GrowerLots ? PageAccessLevel.View : PageAccessLevel.None;
         }
 
@@ -300,8 +361,13 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
         }
     }
 
-    private static PageAccessLevel ParseLevel(string? value) =>
-        Enum.TryParse<PageAccessLevel>(value, true, out var parsed) ? parsed : PageAccessLevel.None;
+    public static PageAccessLevel ParseLevel(string? value) =>
+        string.Equals(value, "Edit", StringComparison.OrdinalIgnoreCase)
+            ? PageAccessLevel.Create
+            : Enum.TryParse<PageAccessLevel>(value, true, out var parsed) ? parsed : PageAccessLevel.None;
+
+    private static string PersistedLevel(PageAccessLevel level) =>
+        level == PageAccessLevel.Create ? nameof(PageAccessLevel.Create) : level.ToString();
 
     private static string? NormalizeEmail(string? email) => string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
     public static bool IsOwner(string? email) => string.Equals(NormalizeEmail(email), ApplicationAreas.OwnerEmail, StringComparison.OrdinalIgnoreCase);

@@ -383,7 +383,7 @@ public sealed class FieldSampleService(
                 x.Status == "Failed" ? x.ReportSnapshotReference : null))
             .ToListAsync(cancellationToken);
         var lastSent = sendHistory.FirstOrDefault(x => string.Equals(x.Status, "Sent", StringComparison.OrdinalIgnoreCase));
-        var missingItems = BuildCompletionMissingItems(sample, rows);
+        var missingItems = BuildCompletionMissingItems(sample, rows, photos.Select(x => x.PhotoType));
         var canEdit = !sample.IsDeleted
             && await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken);
         var changedSinceLastSend = string.Equals(sample.EmailStatus, "Needs Resend", StringComparison.OrdinalIgnoreCase)
@@ -1009,7 +1009,9 @@ public sealed class FieldSampleService(
         var sample = await dbContext.QcSamples
             .Include(x => x.SampleType)
             .Include(x => x.CanonicalOrchardBlock)
+            .Include(x => x.FieldSampleFruitProfile)
             .Include(x => x.FruitReadings)
+            .Include(x => x.Photos)
             .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted, cancellationToken);
         if (sample is null || sample.SampleType.Name != FieldSampleTypeName)
         {
@@ -1017,7 +1019,7 @@ public sealed class FieldSampleService(
         }
 
         var rows = sample.FruitReadings.OrderBy(x => x.RowNumber).Select(ToFruitReadingRow).ToList();
-        var missing = BuildCompletionMissingItems(sample, rows);
+        var missing = BuildCompletionMissingItems(sample, rows, sample.Photos.Where(x => !x.IsDeleted).Select(x => x.PhotoType));
         if (missing.Count > 0)
         {
             return $"Field Sample cannot be completed: {string.Join("; ", missing)}";
@@ -1649,7 +1651,10 @@ public sealed class FieldSampleService(
         await AuditAsync("changed-after-send", nameof(QcSample), sample.Id.ToString(), user, before, new { sample.Status, sample.EmailStatus, Reason = reason }, cancellationToken);
     }
 
-    private static IReadOnlyList<string> BuildCompletionMissingItems(QcSample sample, IReadOnlyList<FruitReadingRowViewModel> rows)
+    private static IReadOnlyList<string> BuildCompletionMissingItems(
+        QcSample sample,
+        IReadOnlyList<FruitReadingRowViewModel> rows,
+        IEnumerable<string> photoTypes)
     {
         var missing = new List<string>();
         if (sample.CanonicalOrchardBlockId is null || sample.CanonicalOrchardBlock is null)
@@ -1667,6 +1672,12 @@ public sealed class FieldSampleService(
         if (!rows.Any(HasEnteredData))
         {
             missing.Add("Save at least one fruit measurement.");
+        }
+        if (string.Equals(sample.FieldSampleFruitProfile?.FruitType, "Pear", StringComparison.OrdinalIgnoreCase)
+            && !photoTypes.Select(QcPhotoRequirementPolicy.NormalizePhotoType)
+                .Contains("FruitAfterStarch", StringComparer.OrdinalIgnoreCase))
+        {
+            missing.Add("Add the required starch pear photo.");
         }
         return missing;
     }
