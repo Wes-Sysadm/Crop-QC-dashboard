@@ -8,6 +8,7 @@
     var plannerFacility = Model.Planner.SelectedFacility;
     var plannerVisibility = Model.Planner.SelectedDeletionStatus;
     var plannerSort = Model.Planner.SelectedSort;
+    var plannerTodayUrl = $"/BinsRun?Section=Planner&PlannedDate={Model.Planner.PacificToday:yyyy-MM-dd}&RoomId={Model.Filter.RoomId}&Facility={plannerFacility}&ProjectionVisibility={plannerVisibility}&ProjectionSort={plannerSort}";
 }
 
 <h1>Bins Run &amp; Transfers</h1>
@@ -43,7 +44,7 @@
                 <h2>Planning Facility</h2>
                 <p class="muted">WP and EBS plans stay separate. A Preharvest source identifies where fruit comes from; the facility identifies where it is planned to be packed.</p>
             </div>
-            <form method="get" class="inline-form">
+            <form method="get" class="inline-form" data-run-planner-preserve-date>
                 <input type="hidden" name="Section" value="Planner" />
                 <input type="hidden" name="PlannedDate" value="@Model.Planner.SelectedDate.ToString("yyyy-MM-dd")" />
                 <input type="hidden" name="Facility" value="@plannerFacility" />
@@ -73,24 +74,35 @@
             @foreach (var facilityCode in new[] { "WP", "EBS", "All" })
             {
                 <a class="@(plannerFacility == facilityCode ? "active" : "")"
+                   data-run-planner-preserve-date
                    href="/BinsRun?Section=Planner&amp;PlannedDate=@Model.Planner.SelectedDate.ToString("yyyy-MM-dd")&amp;Facility=@facilityCode&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">@facilityCode</a>
             }
             @if (Model.Planner.CanAdmin && Model.Planner.UnassignedProjectionCount > 0)
             {
                 <a class="@(plannerFacility == "Unassigned" ? "active" : "")"
+                   data-run-planner-preserve-date
                    href="/BinsRun?Section=Planner&amp;PlannedDate=@Model.Planner.SelectedDate.ToString("yyyy-MM-dd")&amp;Facility=Unassigned&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">Unassigned (@Model.Planner.UnassignedProjectionCount)</a>
             }
         </nav>
     </section>
 
-    <section class="panel run-planner-calendar">
+    <section class="panel run-planner-calendar"
+             data-run-planner-root
+             data-pacific-today="@Model.Planner.PacificToday.ToString("yyyy-MM-dd")"
+             data-selected-date="@Model.Planner.SelectedDate.ToString("yyyy-MM-dd")"
+             data-direct-projection-open="@Model.Planner.IsDirectProjectionOpen.ToString().ToLowerInvariant()"
+             data-today-url="@plannerTodayUrl">
         <div class="room-card-header">
             <div>
                 <h2>Planned Run Date</h2>
-                <p class="muted">Pacific business dates. Dots show days with saved projections.</p>
+                <p class="muted">Pacific business dates. Opening the planner starts at today and looks forward; saved historical projections remain available.</p>
+                <p class="run-calendar-today-summary">
+                    <strong>Today</strong>
+                    <time datetime="@Model.Planner.PacificToday.ToString("yyyy-MM-dd")">@Model.Planner.PacificToday.ToString("dddd, MMMM d, yyyy") Pacific</time>
+                </p>
             </div>
             <div class="action-bar">
-                <form method="get" class="inline-form">
+                <form method="get" class="inline-form" data-run-planner-preserve-date>
                     <input type="hidden" name="Section" value="Planner" />
                     <input type="hidden" name="RoomId" value="@Model.Filter.RoomId" />
                     <input type="hidden" name="Facility" value="@plannerFacility" />
@@ -99,14 +111,27 @@
                     <label>Open date <input type="date" name="PlannedDate" value="@Model.Planner.SelectedDate.ToString("yyyy-MM-dd")" /></label>
                     <button type="submit" class="secondary-button">Go</button>
                 </form>
-                <a class="button secondary-button" href="/BinsRun?Section=Planner&amp;PlannedDate=@DateOnly.FromDateTime(BusinessTime.NowPacific.DateTime).ToString("yyyy-MM-dd")&amp;Facility=@plannerFacility&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">Today</a>
+                <a class="button secondary-button"
+                   data-run-planner-today-action
+                   href="@plannerTodayUrl">Today</a>
             </div>
         </div>
-        <div class="run-calendar-days">
+        <div class="run-calendar-days"
+             data-run-calendar-days
+             tabindex="0"
+             aria-label="Run Planner dates from @Model.Planner.CalendarStartDate.ToString("MMMM d, yyyy") through @Model.Planner.CalendarEndDate.ToString("MMMM d, yyyy") Pacific">
             @foreach (var day in Model.Planner.CalendarDays)
             {
                 <a class="run-calendar-day @(day.IsSelected ? "selected" : "") @(day.IsToday ? "today" : "")"
+                   data-run-calendar-date="@day.Date.ToString("yyyy-MM-dd")"
+                   data-run-planner-preserve-date
+                   aria-current="@(day.IsSelected ? "date" : null)"
+                   aria-label="@($"{day.Date:dddd, MMMM d, yyyy}{(day.IsToday ? ", Today" : "")}{(day.ProjectionCount > 0 ? $", {day.ProjectionCount} saved projection(s)" : "")}")"
                    href="/BinsRun?Section=Planner&amp;PlannedDate=@day.Date.ToString("yyyy-MM-dd")&amp;RoomId=@Model.Filter.RoomId&amp;Facility=@plannerFacility&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">
+                    @if (day.IsToday)
+                    {
+                        <b class="run-calendar-today-label">Today</b>
+                    }
                     <small>@day.Date.ToString("ddd")</small>
                     <strong>@day.Date.Day</strong>
                     <span>@day.Date.ToString("MMM")</span>
@@ -121,6 +146,45 @@
                 </a>
             }
         </div>
+        <div class="run-calendar-shortcuts">
+            @if (Model.Planner.HistoricalProjectionDates.Count > 0)
+            {
+                <form method="get" class="inline-form" data-run-planner-preserve-date>
+                    <input type="hidden" name="Section" value="Planner" />
+                    <input type="hidden" name="RoomId" value="@Model.Filter.RoomId" />
+                    <input type="hidden" name="Facility" value="@plannerFacility" />
+                    <input type="hidden" name="ProjectionVisibility" value="@plannerVisibility" />
+                    <input type="hidden" name="ProjectionSort" value="@plannerSort" />
+                    <label>Earlier saved projection date
+                        <select name="PlannedDate" required>
+                            <option value="">Choose a date</option>
+                            @foreach (var item in Model.Planner.HistoricalProjectionDates)
+                            {
+                                <option value="@item.Date.ToString("yyyy-MM-dd")">@item.Date.ToString("MMM d, yyyy") — @item.ProjectionCount projection(s), @item.TotalPlannedBins bins</option>
+                            }
+                        </select>
+                    </label>
+                    <button type="submit" class="secondary-button">Open earlier date</button>
+                </form>
+            }
+            @if (Model.Planner.LaterProjectionDates.Count > 0)
+            {
+                <nav class="projection-date-shortcut-list" aria-label="Later scheduled projection dates">
+                    <strong>Later scheduled:</strong>
+                    @foreach (var item in Model.Planner.LaterProjectionDates)
+                    {
+                        <a data-run-planner-preserve-date
+                           href="/BinsRun?Section=Planner&amp;PlannedDate=@item.Date.ToString("yyyy-MM-dd")&amp;RoomId=@Model.Filter.RoomId&amp;Facility=@plannerFacility&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">
+                            @item.Date.ToString("MMM d") (@item.ProjectionCount)
+                        </a>
+                    }
+                </nav>
+            }
+        </div>
+        @if (!Model.Planner.HasUpcomingProjections)
+        {
+            <p class="empty-state">No projections are scheduled from today forward.</p>
+        }
     </section>
 
     @if (Model.Planner.FacilityTotals.Count > 0)
@@ -1120,6 +1184,92 @@ else
 
 <script>
     (() => {
+        const plannerRoot = document.querySelector("[data-run-planner-root]");
+        const calendar = plannerRoot?.querySelector("[data-run-calendar-days]");
+        const selectedDate = plannerRoot?.dataset.selectedDate;
+        const pacificToday = plannerRoot?.dataset.pacificToday;
+        const directProjectionOpen = plannerRoot?.dataset.directProjectionOpen === "true";
+        const todayUrl = plannerRoot?.dataset.todayUrl;
+        const preserveKey = "run-planner-preserve-date-once";
+        let plannerFormDirty = false;
+
+        const consumePreservedDate = () => {
+            try {
+                const raw = sessionStorage.getItem(preserveKey);
+                sessionStorage.removeItem(preserveKey);
+                if (!raw) return false;
+                const marker = JSON.parse(raw);
+                return marker.date === selectedDate
+                    && Number.isFinite(marker.savedAt)
+                    && Date.now() - marker.savedAt < 15000;
+            } catch {
+                try { sessionStorage.removeItem(preserveKey); } catch { }
+                return false;
+            }
+        };
+        const preserveDateOnce = (date = selectedDate) => {
+            if (!date) return;
+            try {
+                sessionStorage.setItem(preserveKey, JSON.stringify({ date, savedAt: Date.now() }));
+            } catch {
+                // Date preservation is a navigation convenience; the server remains authoritative.
+            }
+        };
+        const preserveCurrentDate = consumePreservedDate();
+
+        if (plannerRoot && selectedDate && pacificToday && todayUrl
+            && selectedDate !== pacificToday
+            && !directProjectionOpen
+            && !preserveCurrentDate) {
+            window.location.replace(todayUrl);
+            return;
+        }
+
+        const initialAnchorDate = preserveCurrentDate || directProjectionOpen ? selectedDate : pacificToday;
+        const initialAnchor = initialAnchorDate
+            ? calendar?.querySelector(`[data-run-calendar-date="${initialAnchorDate}"]`)
+            : null;
+        if (initialAnchor) {
+            requestAnimationFrame(() => {
+                initialAnchor.scrollIntoView({ block: "nearest", inline: "start" });
+                calendar.dataset.initialAnchor = initialAnchorDate;
+            });
+        }
+
+        document.querySelectorAll("[data-run-planner-preserve-date]").forEach((control) => {
+            if (control.tagName === "FORM") {
+                control.addEventListener("submit", () => {
+                    const requestedDate = control.querySelector('[name="PlannedDate"]')?.value || selectedDate;
+                    preserveDateOnce(requestedDate);
+                });
+                return;
+            }
+            control.addEventListener("click", (event) => {
+                if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+                const destination = new URL(control.href, window.location.origin);
+                preserveDateOnce(destination.searchParams.get("PlannedDate") || selectedDate);
+            });
+        });
+
+        document.querySelectorAll('form[method="post"] input, form[method="post"] select, form[method="post"] textarea')
+            .forEach((control) => {
+                control.addEventListener("input", () => { plannerFormDirty = true; });
+                control.addEventListener("change", () => { plannerFormDirty = true; });
+            });
+        document.querySelectorAll('form[method="post"][action^="/BinsRun/Projections"]:not([data-projection-source-form])')
+            .forEach((form) => form.addEventListener("submit", () => preserveDateOnce(selectedDate)));
+
+        document.querySelector("[data-run-planner-today-action]")?.addEventListener("click", (event) => {
+            const hasPendingAutosave = Array.from(document.querySelectorAll("[data-autosave-status]"))
+                .some((status) => /saving|unsaved/i.test(status.textContent || ""));
+            if ((plannerFormDirty || hasPendingAutosave)
+                && !window.confirm("Unsaved planner changes may be lost. Return to Today anyway?")) {
+                event.preventDefault();
+                return;
+            }
+            sessionStorage.removeItem(preserveKey);
+        });
+
         const plannerState = {
             Facility: "@plannerFacility",
             ProjectionVisibility: "@plannerVisibility",

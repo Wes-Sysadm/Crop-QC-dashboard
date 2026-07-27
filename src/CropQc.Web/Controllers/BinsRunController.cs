@@ -1,5 +1,6 @@
 using System.Text;
 using CropQc.Data.Entities;
+using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -12,6 +13,7 @@ public sealed class BinsRunController(
     IBinsRunService binsRunService,
     IRunProjectionService runProjectionService,
     IDashboardDataService dashboardDataService,
+    IBusinessTimeService businessTime,
     ILogger<BinsRunController> logger) : Controller
 {
     [HttpGet("")]
@@ -46,7 +48,8 @@ public sealed class BinsRunController(
                 diagnostic.ProviderCode);
             model.Planner = new RunProjectionPlannerViewModel
             {
-                SelectedDate = filter.PlannedDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
+                SelectedDate = filter.PlannedDate ?? businessTime.PacificDate(businessTime.UtcNow),
+                PacificToday = businessTime.PacificDate(businessTime.UtcNow),
                 SelectedFacility = string.IsNullOrWhiteSpace(filter.Facility) ? "All" : filter.Facility,
                 SelectedDeletionStatus = string.IsNullOrWhiteSpace(filter.ProjectionVisibility) ? "Active" : filter.ProjectionVisibility,
                 SelectedSort = string.IsNullOrWhiteSpace(filter.ProjectionSort) ? "Facility" : filter.ProjectionSort,

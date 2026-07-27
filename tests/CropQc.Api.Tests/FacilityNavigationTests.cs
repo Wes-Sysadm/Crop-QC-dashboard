@@ -90,6 +90,7 @@ public sealed class FacilityNavigationTests
             null!,
             null!,
             null!,
+            null!,
             NullLogger<BinsRunController>.Instance);
 
         var redirect = Assert.IsType<RedirectToActionResult>(controller.RedirectMalformedFacilityLink());
