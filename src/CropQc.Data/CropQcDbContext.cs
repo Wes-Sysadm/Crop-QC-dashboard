@@ -141,6 +141,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         {
             entity.Property(x => x.SourceType).HasMaxLength(25).IsRequired();
             entity.Property(x => x.InventoryKey).HasMaxLength(250);
+            entity.Property(x => x.GrowerLotKeySnapshot).HasMaxLength(300);
             entity.Property(x => x.SelectedQcSourceType).HasMaxLength(25).IsRequired();
             entity.Property(x => x.Notes).HasMaxLength(1000);
             entity.Property(x => x.Commodity).HasMaxLength(25).IsRequired();
@@ -172,6 +173,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.CalculationVersion).HasMaxLength(25).IsRequired();
             entity.HasIndex(x => new { x.RunProjectionId, x.SortOrder });
             entity.HasIndex(x => x.InventoryKey);
+            entity.HasIndex(x => x.GrowerLotKeySnapshot);
             entity.HasIndex(x => new { x.CanonicalOrchardBlockId, x.FruitProfileId });
             entity.HasIndex(x => x.SourceProjectionSourceId);
             entity.HasOne(x => x.RunProjection).WithMany(x => x.Sources).HasForeignKey(x => x.RunProjectionId).OnDelete(DeleteBehavior.Cascade);

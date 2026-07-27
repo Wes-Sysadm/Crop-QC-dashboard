@@ -161,8 +161,8 @@ builder.Services.AddAuthorization(options =>
     AddAccessPolicy(options, AccessPolicyNames.FieldSamplesAdmin, ApplicationAreas.FieldSamples, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.ReceiptsView, ApplicationAreas.Receipts, PageAccessLevel.View);
     AddAccessPolicy(options, AccessPolicyNames.ReceiptsEdit, ApplicationAreas.Receipts, PageAccessLevel.Edit);
-    AddAccessPolicy(options, AccessPolicyNames.ReceiptEditEdit, ApplicationAreas.ReceiptEdit, PageAccessLevel.Edit);
-    AddAccessPolicy(options, AccessPolicyNames.ReceiptDeleteAdmin, ApplicationAreas.ReceiptDelete, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.ReceiptEditEdit, ApplicationAreas.Receipts, PageAccessLevel.Create);
+    AddAccessPolicy(options, AccessPolicyNames.ReceiptDeleteAdmin, ApplicationAreas.Receipts, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.CurrentLotsView, ApplicationAreas.CurrentLots, PageAccessLevel.View);
     AddAccessPolicy(options, AccessPolicyNames.CurrentLotsAdmin, ApplicationAreas.CurrentLots, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.BinsRunView, ApplicationAreas.BinsRun, PageAccessLevel.View);
@@ -185,6 +185,23 @@ builder.Services.AddAuthorization(options =>
     AddAccessPolicy(options, AccessPolicyNames.VarietyColorsAdmin, ApplicationAreas.VarietyColors, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.BackupsAdmin, ApplicationAreas.Backups, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.DataCleanupAdmin, ApplicationAreas.DataCleanup, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.ProjectionPlannerView, ApplicationAreas.ProjectionPlanner, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.ProjectionPlannerCreate, ApplicationAreas.ProjectionPlanner, PageAccessLevel.Create);
+    AddAccessPolicy(options, AccessPolicyNames.ProjectionPlannerAdmin, ApplicationAreas.ProjectionPlanner, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.ProjectionOutcomeView, ApplicationAreas.ProjectionOutcome, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.ProjectionOutcomeAdmin, ApplicationAreas.ProjectionOutcome, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.TransfersCreate, ApplicationAreas.Transfers, PageAccessLevel.Create);
+    AddAccessPolicy(options, AccessPolicyNames.TransfersAdmin, ApplicationAreas.Transfers, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.TrueUpAdmin, ApplicationAreas.TrueUp, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.PermissionMatrixAdmin, ApplicationAreas.PermissionMatrix, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.OrchardManagersView, ApplicationAreas.OrchardManagers, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.OrchardManagersCreate, ApplicationAreas.OrchardManagers, PageAccessLevel.Create);
+    AddAccessPolicy(options, AccessPolicyNames.OrchardManagersAdmin, ApplicationAreas.OrchardManagers, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.BackupHistoryView, ApplicationAreas.BackupHistory, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.BackupHistoryAdmin, ApplicationAreas.BackupHistory, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.ImportToolsAdmin, ApplicationAreas.ImportTools, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.ExportToolsAdmin, ApplicationAreas.ExportTools, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.EmailConfigurationAdmin, ApplicationAreas.EmailConfiguration, PageAccessLevel.Admin);
 });
 builder.Services.AddScoped<PerformanceQueryCounter>();
 builder.Services.AddScoped<IPerformanceQueryCounter>(services => services.GetRequiredService<PerformanceQueryCounter>());
@@ -415,7 +432,7 @@ app.MapGet("/health/storage", (FileStorageOptions fileStorageOptions, GoogleDriv
             || !string.IsNullOrWhiteSpace(googleDriveOptions.ServiceAccountJsonPath),
         googleDriveApplicationNameConfigured = !string.IsNullOrWhiteSpace(googleDriveOptions.ApplicationName)
     });
-}).RequireAuthorization(AccessPolicyNames.ConfigurationAdmin);
+}).RequireAuthorization(AccessPolicyNames.EmailConfigurationAdmin);
 app.MapGet("/health/environment", (AppEnvironmentOptions appEnvironment, BackupOptions backupOptions) =>
 {
     return Results.Ok(new
@@ -426,7 +443,7 @@ app.MapGet("/health/environment", (AppEnvironmentOptions appEnvironment, BackupO
         backupOptions.Provider,
         backupFolderConfigured = backupOptions.GoogleDriveFolderConfigured
     });
-}).RequireAuthorization(AccessPolicyNames.BackupsAdmin);
+}).RequireAuthorization(AccessPolicyNames.BackupHistoryView);
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");

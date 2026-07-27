@@ -34,7 +34,7 @@
 
 <section class="panel">
     <h2>Access Matrix</h2>
-    <p class="muted">Page access is the primary permission source. Roles are retained as migration metadata. Wes (wes@fruitandland.com) always has emergency Owner/Admin access even if these rows are cleared.</p>
+    <p class="muted">Each functional area uses View, Create, or Admin. Create includes normal editing; only Admin permits delete, protected import/export, or configuration. No access removes the area. Master Data Admin is effective Site Admin for every current and future Admin area. Roles are retained as migration metadata. Wes (wes@fruitandland.com) always has emergency Owner/Admin access.</p>
     <div class="access-matrix">
         @foreach (var user in Model.AccessMatrix)
         {
@@ -59,7 +59,7 @@
                                 <label class="field">
                                     <span>@area.Name</span>
                                     <select name="Access[@area.Key]" disabled="@(user.Email.Equals("wes@fruitandland.com", StringComparison.OrdinalIgnoreCase) ? "disabled" : null)">
-                                        @foreach (var option in Enum.GetValues<PageAccessLevel>())
+                                        @foreach (var option in new[] { PageAccessLevel.None, PageAccessLevel.View, PageAccessLevel.Create, PageAccessLevel.Admin })
                                         {
                                             <option value="@option" selected="@(option == current ? "selected" : null)">@option</option>
                                         }

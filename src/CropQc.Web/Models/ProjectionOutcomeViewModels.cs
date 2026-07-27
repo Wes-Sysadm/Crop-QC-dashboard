@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CropQc.Data;
 
 namespace CropQc.Web.Models;
 
@@ -22,6 +23,7 @@ public sealed class ProjectionOutcomeViewModel
     public RunProjectionDetailViewModel Projection { get; set; } = new();
     public DateTimeOffset GeneratedAt { get; set; }
     public IReadOnlyList<ProjectionOutcomePackRow> Packs { get; set; } = [];
+    public IReadOnlyList<ProjectionOutcomeSizeRow> Sizes { get; set; } = [];
     public IReadOnlyList<ProjectionOutcomeGradeRow> Grades { get; set; } = [];
     public IReadOnlyList<string> GradeNames { get; set; } = [];
     public IReadOnlyList<ProjectionOutcomeMatrixRow> Matrix { get; set; } = [];
@@ -68,7 +70,16 @@ public sealed record ProjectionOutcomeGradeRow(
     string Grade,
     decimal UnroundedBoxes,
     int CompleteBoxes,
-    decimal ResidualPounds);
+    decimal ResidualPounds,
+    decimal PackedPounds = 0m,
+    decimal PercentageOfPackedFruit = 0m);
+
+public sealed record ProjectionOutcomeSizeRow(
+    int Size,
+    decimal PackedPounds,
+    int CompleteBoxes,
+    decimal ResidualPounds,
+    decimal PercentageOfPackedFruit);
 
 public sealed record ProjectionOutcomeMatrixRow(
     string PackCode,
@@ -135,6 +146,29 @@ public static class ProjectionOutcomeCalculator
 
     public static ProjectionOutcomeViewModel Build(RunProjectionDetailViewModel projection, DateTimeOffset generatedAt)
     {
+        const decimal boxWeight = RunProjectionCalculationService.DefaultStandardBoxWeightPounds;
+        var packedDenominator = projection.TotalPackedProjectedPounds;
+        var sizes = projection.Sources
+            .SelectMany(source => source.SizeResults.Select(size => new
+            {
+                size.Size,
+                PackedPounds = size.PackedBoxes * boxWeight
+            }))
+            .GroupBy(x => x.Size)
+            .OrderBy(x => x.Key)
+            .Select(group =>
+            {
+                var pounds = group.Sum(x => x.PackedPounds);
+                var complete = Floor(pounds / boxWeight);
+                return new ProjectionOutcomeSizeRow(
+                    group.Key,
+                    pounds,
+                    complete,
+                    Math.Max(0m, pounds - complete * boxWeight),
+                    Percent(pounds, packedDenominator));
+            })
+            .ToList();
+
         var packs = projection.PackResults
             .Select(pack =>
             {
@@ -177,43 +211,61 @@ public static class ProjectionOutcomeCalculator
             .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
-                var unrounded = group.Sum(x => x.PackedBoxes);
-                var complete = Floor(unrounded);
+                var pounds = group.Sum(x => x.PackedBoxes) * boxWeight;
+                var unrounded = pounds / boxWeight;
+                var complete = Floor(pounds / boxWeight);
                 return new ProjectionOutcomeGradeRow(
                     group.Key,
                     unrounded,
                     complete,
-                    Math.Max(0m, unrounded - complete) * projection.StandardBoxWeightPounds);
+                    Math.Max(0m, pounds - complete * boxWeight),
+                    pounds,
+                    Percent(pounds, packedDenominator));
             })
             .ToList();
 
-        var gradeNames = packs
-            .SelectMany(x => x.GradeAllocations)
-            .Select(x => x.GradeCode)
+        var jointRows = projection.Sources
+            .SelectMany(source =>
+            {
+                var observations = DeserializeJoint(source.JointSizeGradeSnapshotJson);
+                var total = observations.Sum(x => x.EffectiveWeight);
+                return total == 0
+                    ? []
+                    : observations.Select(x => new JointPounds(
+                        x.SizeCategory,
+                        x.GradeCode,
+                        source.PackedProjectedPounds * x.EffectiveWeight / total)).ToList();
+            })
+            .ToList();
+        var gradeNames = jointRows
+            .Select(x => x.Grade)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToList();
-        var matrix = packs.Select(pack =>
+        var matrix = jointRows
+            .GroupBy(x => x.Size)
+            .OrderBy(x => x.Key)
+            .Select(sizeGroup =>
         {
             var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var residuals = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
             foreach (var grade in gradeNames)
             {
-                var pounds = pack.GradeAllocations
-                    .Where(x => x.GradeCode.Equals(grade, StringComparison.OrdinalIgnoreCase))
-                    .Sum(x => x.AssignedPounds);
-                var complete = pack.PackageWeightPounds <= 0 ? 0 : Floor(pounds / pack.PackageWeightPounds);
+                var pounds = sizeGroup
+                    .Where(x => x.Grade.Equals(grade, StringComparison.OrdinalIgnoreCase))
+                    .Sum(x => x.Pounds);
+                var complete = Floor(pounds / boxWeight);
                 counts[grade] = complete;
-                residuals[grade] = Math.Max(0m, pounds - complete * pack.PackageWeightPounds);
+                residuals[grade] = Math.Max(0m, pounds - complete * boxWeight);
             }
             return new ProjectionOutcomeMatrixRow(
-                pack.PackCode,
-                pack.PackName,
-                pack.CompletePacks,
-                pack.JointBasisFruitCount,
+                $"SIZE-{sizeGroup.Key}",
+                $"Size {sizeGroup.Key}",
+                Floor(sizeGroup.Sum(x => x.Pounds) / boxWeight),
+                projection.Sources.Sum(x => x.JointSizeGradeBasisFruitCount),
                 counts,
                 residuals,
-                pack.GradeWarning);
+                null);
         }).ToList();
 
         var cullByCommodity = projection.Sources
@@ -311,10 +363,7 @@ public static class ProjectionOutcomeCalculator
         {
             warnings.Add("One or more sources has no saved Expected Packout percentage.");
         }
-        if (packs.Count == 0)
-        {
-            warnings.Add("No saved commercial pack allocation is available for this projection.");
-        }
+        if (sizes.Count == 0) warnings.Add("Size projection is unavailable because the saved source data has no calculated size measurements.");
         if (grades.Count == 0)
         {
             warnings.Add("Grade projection is unavailable because the saved source data has no grade measurements.");
@@ -328,12 +377,11 @@ public static class ProjectionOutcomeCalculator
             warnings.Add($"Low confidence: only {jointBasis} fruit had both size and grade recorded.");
         }
 
-        var completePackPounds = packs.Sum(x => x.CompletePackPounds);
-        var residualPackedPounds = packs.Sum(x => x.ResidualPounds);
+        var completePackPounds = sizes.Sum(x => x.CompleteBoxes * boxWeight);
+        var residualPackedPounds = sizes.Sum(x => x.ResidualPounds);
         var reconciliationDifference = projection.TotalProjectedPounds
             - completePackPounds
             - residualPackedPounds
-            - projection.PackUnallocatedPounds
             - projection.TotalCullProjectedPounds;
 
         return new ProjectionOutcomeViewModel
@@ -341,6 +389,7 @@ public static class ProjectionOutcomeCalculator
             Projection = projection,
             GeneratedAt = generatedAt,
             Packs = packs,
+            Sizes = sizes,
             Grades = grades,
             GradeNames = gradeNames,
             Matrix = matrix,
@@ -351,10 +400,10 @@ public static class ProjectionOutcomeCalculator
             Warnings = warnings.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             Confidence = Confidence(projection, jointBasis, warnings),
             JointBasisFruitCount = jointBasis,
-            CompletePackCount = packs.Sum(x => x.CompletePacks),
+            CompletePackCount = sizes.Sum(x => x.CompleteBoxes),
             CompletePackPounds = completePackPounds,
             ResidualPackedPounds = residualPackedPounds,
-            UnallocatedPackedPounds = projection.PackUnallocatedPounds,
+            UnallocatedPackedPounds = 0m,
             CullPounds = projection.TotalCullProjectedPounds,
             ReconciliationDifference = reconciliationDifference
         };
@@ -363,6 +412,27 @@ public static class ProjectionOutcomeCalculator
     public static int Floor(decimal value) => value <= 0m ? 0 : (int)decimal.Floor(value);
 
     private static decimal Divide(decimal value, decimal divisor) => divisor <= 0m ? 0m : value / divisor;
+    private static decimal Percent(decimal value, decimal denominator) =>
+        denominator <= 0m ? 0m : decimal.Round(value / denominator * 100m, 2);
+
+    private static IReadOnlyList<OutcomeJointSnapshot> DeserializeJoint(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<OutcomeJointSnapshot>>(json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private sealed record JointPounds(int Size, string Grade, decimal Pounds);
+    private sealed record OutcomeJointSnapshot(int SizeCategory, string GradeCode, int Count, decimal WeightedCount = 0m)
+    {
+        public decimal EffectiveWeight => WeightedCount > 0m ? WeightedCount : Count;
+    }
 
     private static string Confidence(
         RunProjectionDetailViewModel projection,

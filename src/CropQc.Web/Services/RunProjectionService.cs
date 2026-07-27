@@ -25,7 +25,7 @@ public interface IRunProjectionService
     Task<string?> ApplyPackoutToAllAsync(RunProjectionApplyPackoutForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<(RunProjectionPackPlanPreviewViewModel? Preview, string? Error)> PreviewPackPlanAsync(RunProjectionPackPlanForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> ApplyPackPlanAsync(RunProjectionPackPlanForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
-    Task<string?> RefreshSourceAsync(long projectionId, long sourceId, long concurrencyVersion, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<string?> RefreshSourceAsync(long projectionId, long sourceId, long concurrencyVersion, bool confirmRefresh, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> RemoveSourceAsync(long projectionId, long sourceId, long concurrencyVersion, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> MarkReadyAsync(RunProjectionStatusForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> CancelAsync(RunProjectionStatusForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
@@ -313,8 +313,11 @@ public sealed class RunProjectionService(
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
-        await RequireAsync(user, PageAccessLevel.View, cancellationToken);
-        var canAdmin = await CanAsync(user, PageAccessLevel.Admin, cancellationToken);
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.ProjectionOutcome, PageAccessLevel.View, cancellationToken))
+        {
+            throw new UnauthorizedAccessException("Projection Outcome View access is required.");
+        }
+        var canAdmin = await userAccessService.HasAccessAsync(user, ApplicationAreas.ProjectionOutcome, PageAccessLevel.Admin, cancellationToken);
         var detail = await GetDetailAsync(id, false, canAdmin, cancellationToken);
         return detail is null || detail.IsDeleted
             ? null
@@ -340,62 +343,54 @@ public sealed class RunProjectionService(
             && await OperationalFacilities().AnyAsync(x => x.Id == requestedFacilityId, cancellationToken)
                 ? requestedFacilityId
                 : (int?)null;
-        IReadOnlyList<RunProjectionInventorySource> inventory = mode == RunProjectionModes.Inventory
-            && validFacilityId is not null
-            ? await binsRunService.SearchPlanningInventoryAsync(normalized, validFacilityId, roomId, 50, cancellationToken)
-            : [];
-        var receiptIds = inventory.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value).Distinct().ToList();
-        var blockProfileKeys = inventory
-            .Where(x => x.CanonicalOrchardBlockId != null && x.FruitProfileId != null)
-            .Select(x => new { BlockId = x.CanonicalOrchardBlockId!.Value, ProfileId = x.FruitProfileId!.Value })
-            .Distinct()
-            .ToList();
-        var blockIds = blockProfileKeys.Select(x => x.BlockId).Distinct().ToList();
-        var profileIds = blockProfileKeys.Select(x => x.ProfileId).Distinct().ToList();
-
-        var receiptQcIds = receiptIds.Count == 0
-            ? []
-            : await UsableQcSamples(activeCropYear)
-                .Where(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
-                .Select(x => x.ReceiptId!.Value)
-                .Distinct()
+        var candidates = new List<RunProjectionSourceCandidateViewModel>();
+        if (mode == RunProjectionModes.Inventory && validFacilityId is not null)
+        {
+            var receiptRows = await dbContext.Receipts.AsNoTracking()
+                .Where(x => !x.IsDeleted
+                    && x.ReceiptType == "Truck receipt"
+                    && x.BinCount > 0
+                    && x.CropYear == activeCropYear
+                    && x.WarehouseId == validFacilityId)
+                .Include(x => x.Warehouse)
+                .Include(x => x.FruitProfile)
+                .Include(x => x.Samples)
                 .ToListAsync(cancellationToken);
-        var fieldMatches = blockIds.Count == 0 || profileIds.Count == 0
-            ? []
-            : await UsableFieldSamples(activeCropYear)
-                .Where(x => blockIds.Contains(x.CanonicalOrchardBlockId!.Value)
-                    && profileIds.Contains(x.FieldSampleFruitProfileId!.Value))
-                .Select(x => new { BlockId = x.CanonicalOrchardBlockId!.Value, ProfileId = x.FieldSampleFruitProfileId!.Value })
-                .Distinct()
-                .ToListAsync(cancellationToken);
-        var fieldMatchKeys = fieldMatches.Select(x => $"{x.BlockId}:{x.ProfileId}").ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var candidates = inventory.Select(x => new RunProjectionSourceCandidateViewModel(
-                x.InventoryKey,
-                RunProjectionSourceTypes.Inventory,
-                $"{x.Facility} / {x.Room} — {x.Grower}"
-                    + (string.IsNullOrWhiteSpace(x.GrowerNumber) ? "" : $" — grower # {x.GrowerNumber}")
-                    + (string.IsNullOrWhiteSpace(x.ReceiptReference) ? "" : $" — receipt {x.ReceiptReference}")
-                    + $" — lot {x.Lot} — {x.Variety} — {x.CurrentBins} bins",
-                x.Facility,
-                x.Room,
-                x.Lot,
-                x.GrowerNumber,
-                x.Grower,
-                null,
-                null,
-                x.Variety,
-                RunProjectionCalculationService.NormalizeCommodity(x.FruitType),
-                x.CurrentBins,
-                x.ReceiptId is not null && receiptQcIds.Contains(x.ReceiptId.Value),
-                x.CanonicalOrchardBlockId is not null
-                    && x.FruitProfileId is not null
-                    && fieldMatchKeys.Contains($"{x.CanonicalOrchardBlockId}:{x.FruitProfileId}"),
-                x.ReceiptDate,
-                x.CanonicalOrchardBlockId,
-                x.FruitProfileId,
-                null))
-            .ToList();
+            candidates.AddRange(receiptRows
+                .Where(x => normalized.Length == 0
+                    || x.LotCode.Contains(normalized, StringComparison.OrdinalIgnoreCase)
+                    || x.GrowerName.Contains(normalized, StringComparison.OrdinalIgnoreCase)
+                    || x.FruitProfile.VarietyCode.Contains(normalized, StringComparison.OrdinalIgnoreCase))
+                .GroupBy(x => new { x.CropYear, Lot = x.LotCode.Trim().ToUpperInvariant(), x.FruitProfileId })
+                .OrderBy(x => x.Key.Lot)
+                .Take(50)
+                .Select(group =>
+                {
+                    var first = group.OrderBy(x => x.ReceivedAt).ThenBy(x => x.Id).First();
+                    var receivedBins = group.Sum(x => x.BinCount);
+                    var receiptCount = group.Count();
+                    return new RunProjectionSourceCandidateViewModel(
+                        GrowerLotSourceKey(group.Key.CropYear, first.LotCode, first.FruitProfileId),
+                        RunProjectionSourceTypes.GrowerLot,
+                        $"{first.Warehouse.Code} — grower lot {first.LotCode} — {first.GrowerName} — {first.FruitProfile.VarietyCode} — {receivedBins} bins received across {receiptCount} receipt{(receiptCount == 1 ? "" : "s")}",
+                        first.Warehouse.Code,
+                        null,
+                        first.LotCode,
+                        null,
+                        first.GrowerName,
+                        first.GrowerNumber,
+                        null,
+                        first.FruitProfile.Name,
+                        RunProjectionCalculationService.NormalizeCommodity(first.FruitProfile.FruitType),
+                        receivedBins,
+                        group.SelectMany(x => x.Samples).Any(x => !x.IsDeleted),
+                        false,
+                        group.SelectMany(x => x.Samples).OrderByDescending(x => x.SampleTakenAt).Select(x => (DateTimeOffset?)x.SampleTakenAt).FirstOrDefault(),
+                        group.Select(x => x.CanonicalOrchardBlockId).Distinct().Count() == 1 ? first.CanonicalOrchardBlockId : null,
+                        first.FruitProfileId,
+                        null);
+                }));
+        }
 
         var fieldQuery = UsableFieldSamples(activeCropYear)
             .Include(x => x.CanonicalOrchardBlock).ThenInclude(x => x!.CanonicalOrchard)
@@ -523,7 +518,7 @@ public sealed class RunProjectionService(
             CropYear = cropYearService.GetCurrentCropYear(businessTime.NowPacific),
             ApplePoundsPerBin = settings.ApplePoundsPerBin,
             PearPoundsPerBin = settings.PearPoundsPerBin,
-            StandardBoxWeightPounds = settings.StandardBoxWeightPounds,
+            StandardBoxWeightPounds = RunProjectionCalculationService.DefaultStandardBoxWeightPounds,
             PeelerCullShare = ProjectionOutcomeCalculator.PeelerRate,
             JuiceCullShare = ProjectionOutcomeCalculator.JuiceRate,
             WasteCullShare = ProjectionOutcomeCalculator.WasteRate,
@@ -604,9 +599,9 @@ public sealed class RunProjectionService(
             return "Preharvest projections accept confirmed Field Sample blocks only.";
         }
         if (projection.ProjectionMode == RunProjectionModes.Inventory
-            && source.Entity.SourceType != RunProjectionSourceTypes.Inventory)
+            && source.Entity.SourceType is not (RunProjectionSourceTypes.Inventory or RunProjectionSourceTypes.GrowerLot))
         {
-            return "Inventory projections require a real receipt or inventory lot.";
+            return "Inventory projections require received bins for a real grower lot.";
         }
         source.Entity.ExpectedPackoutUsedDefault =
             form.ExpectedPackoutPercent is null || form.ExpectedPackoutUsedDefault;
@@ -635,6 +630,12 @@ public sealed class RunProjectionService(
         if (source is null) return "Projection source was not found.";
         if (source.ActualBinsRunEntryId is not null) return "A source linked to an actual run cannot be changed.";
         if (form.PlannedBins <= 0) return "Planned bins must be greater than zero.";
+        if (source.SourceType == RunProjectionSourceTypes.GrowerLot
+            && source.ReceivedBinsSnapshot is int receivedBins
+            && form.PlannedBins < receivedBins)
+        {
+            return $"Total Projected Bins cannot be below the {receivedBins} bins already received.";
+        }
         if (form.ExpectedPackoutPercent is < 0 or > 100) return "Expected Packout % must be between 0 and 100.";
         var settings = await LoadSettingsAsync(cancellationToken);
 
@@ -644,10 +645,17 @@ public sealed class RunProjectionService(
             source.ExpectedPackoutUsedDefault = false;
         }
         source.PlannedBins = form.PlannedBins;
+        if (source.SourceType == RunProjectionSourceTypes.GrowerLot)
+        {
+            source.AdditionalExpectedBinsSnapshot = Math.Max(0, source.PlannedBins - (source.ReceivedBinsSnapshot ?? 0));
+        }
         source.AvailabilityOverrideAcknowledged = form.AvailabilityOverrideAcknowledged;
         source.SortOrder = Math.Max(0, form.SortOrder);
         source.Notes = string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim();
-        if (source.AvailableBinsSnapshot is int available && source.PlannedBins > available && !source.AvailabilityOverrideAcknowledged)
+        if (source.SourceType != RunProjectionSourceTypes.GrowerLot
+            && source.AvailableBinsSnapshot is int available
+            && source.PlannedBins > available
+            && !source.AvailabilityOverrideAcknowledged)
         {
             return $"Planned bins exceed the saved available quantity of {available}. Confirm the planning override to continue.";
         }
@@ -810,6 +818,7 @@ public sealed class RunProjectionService(
         long projectionId,
         long sourceId,
         long concurrencyVersion,
+        bool confirmRefresh,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
@@ -817,6 +826,66 @@ public sealed class RunProjectionService(
         if (error is not null || projection is null) return error;
         var source = projection.Sources.SingleOrDefault(x => x.Id == sourceId);
         if (source is null) return "Projection source was not found.";
+        if (!confirmRefresh) return "Confirm refresh before replacing the saved source snapshot.";
+        if (source.SourceType == RunProjectionSourceTypes.GrowerLot)
+        {
+            if (projection.FacilityWarehouseId is null
+                || string.IsNullOrWhiteSpace(source.InventoryKey)
+                || !TryParseGrowerLotSourceKey(source.InventoryKey, out var cropYear, out var fruitProfileId, out var lotNumber))
+            {
+                return "The saved grower-lot identity is incomplete and cannot be refreshed safely.";
+            }
+
+            var receipts = await LoadGrowerLotReceiptsAsync(
+                cropYear,
+                lotNumber,
+                fruitProfileId,
+                projection.FacilityWarehouseId.Value,
+                cancellationToken);
+            if (receipts.Count == 0)
+            {
+                return "No currently received bins remain available for this grower lot. The saved snapshot was not changed.";
+            }
+
+            var beforeGrowerLot = SourceSnapshot(source);
+            var priorReceivedBins = source.ReceivedBinsSnapshot ?? 0;
+            var priorReceiptCount = DeserializeIds(source.ContributingReceiptIdsJson).Count;
+            var priorSampleCount = DeserializeIds(source.ContributingSampleIdsJson).Count;
+            var growerLotSettings = await LoadSettingsAsync(cancellationToken);
+            await ApplyGrowerLotCalculationAsync(projection, source, receipts, growerLotSettings.MinimumDistributionFruit, cancellationToken);
+            var now = businessTime.UtcNow;
+            var refreshHistory = DeserializeRefreshHistory(source.RefreshHistoryJson).ToList();
+            refreshHistory.Add(new GrowerLotRefreshSnapshot(
+                now,
+                priorReceivedBins,
+                source.ReceivedBinsSnapshot ?? 0,
+                priorReceiptCount,
+                DeserializeIds(source.ContributingReceiptIdsJson).Count,
+                priorSampleCount,
+                DeserializeIds(source.ContributingSampleIdsJson).Count,
+                source.PlannedBins));
+            source.RefreshHistoryJson = JsonSerializer.Serialize(refreshHistory);
+            source.UpdatedAt = now;
+            RecalculateTotals(projection);
+            RecalculatePackAllocationFromSavedSnapshot(projection);
+            Touch(projection, userId);
+            await AddAuditAsync(
+                "RefreshGrowerLotSnapshot",
+                projection,
+                userId,
+                beforeGrowerLot,
+                new
+                {
+                    Snapshot = SourceSnapshot(source),
+                    BeforeReceivedBins = priorReceivedBins,
+                    AfterReceivedBins = source.ReceivedBinsSnapshot,
+                    TotalProjectedBins = source.PlannedBins,
+                    source.AdditionalExpectedBinsSnapshot
+                },
+                cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return null;
+        }
         if (source.SelectedQcSampleId is null) return "Select a QC sample before refreshing.";
         var before = SourceSnapshot(source);
         var settings = await LoadSettingsAsync(cancellationToken);
@@ -874,11 +943,14 @@ public sealed class RunProjectionService(
             return "Every Preharvest source needs a confirmed block, variety, and usable Field Sample.";
         }
         if (projection.ProjectionMode == RunProjectionModes.Inventory
-            && projection.Sources.Any(x => x.SourceType != RunProjectionSourceTypes.Inventory
+            && projection.Sources.Any(x =>
+                (x.SourceType != RunProjectionSourceTypes.GrowerLot
+                    && x.SourceType != RunProjectionSourceTypes.Inventory)
                 || string.IsNullOrWhiteSpace(x.InventoryKey)
-                || x.WarehouseId != projection.FacilityWarehouseId))
+                || x.WarehouseId != projection.FacilityWarehouseId
+                || (x.SourceType == RunProjectionSourceTypes.GrowerLot && (x.ReceivedBinsSnapshot ?? 0) <= 0)))
         {
-            return "Every Inventory projection source must be mapped to a real receipt or inventory lot at the projection's assigned facility.";
+            return "Every received-fruit projection source must have received bins for a real grower lot at the projection's assigned facility.";
         }
         if (projection.Sources.Any(x => x.Commodity == "Unknown")) return "Resolve every source commodity before marking the projection Ready.";
         if (projection.Sources.Any(x => x.SizeResults.Count == 0)) return "Every source needs usable calculated size data before the projection can be Ready.";
@@ -894,16 +966,6 @@ public sealed class RunProjectionService(
             await dbContext.SaveChangesAsync(cancellationToken);
             return "Expected Packout % is required for every source before marking the projection Ready.";
         }
-        if (projection.CommercialPackPlanId is null || string.IsNullOrWhiteSpace(projection.PackConfigurationSnapshotJson))
-        {
-            return "Select, preview, and apply a commercial pack plan before marking the projection Ready.";
-        }
-        var packAllocation = DeserializePackAllocation(projection.PackAllocationSnapshotJson);
-        if (packAllocation is null) return "Recalculate the commercial pack plan before marking the projection Ready.";
-        if (packAllocation.Warnings.Count > 0)
-        {
-            return $"Resolve commercial pack configuration warnings before marking Ready: {string.Join(" ", packAllocation.Warnings)}";
-        }
         var before = projection.Status;
         projection.Status = RunProjectionStatuses.Ready;
         Touch(projection, userId);
@@ -914,7 +976,7 @@ public sealed class RunProjectionService(
 
     public async Task<string?> CancelAsync(RunProjectionStatusForm form, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
-        if (!await CanAsync(user, PageAccessLevel.Edit, cancellationToken)) return "Bins Run Edit access is required to cancel projections.";
+        if (!await CanAsync(user, PageAccessLevel.Admin, cancellationToken)) return "Projection Planner Admin access is required to cancel projections.";
         if (string.IsNullOrWhiteSpace(form.Reason)) return "Cancellation reason is required.";
         var projection = await LoadProjectionAsync(form.Id, cancellationToken);
         if (projection is null) return "Projection was not found.";
@@ -1179,8 +1241,7 @@ public sealed class RunProjectionService(
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
-        await RequireAsync(user, PageAccessLevel.Edit, cancellationToken);
-        var canAdmin = await CanAsync(user, PageAccessLevel.Admin, cancellationToken);
+        await RequireAsync(user, PageAccessLevel.Admin, cancellationToken);
         var projection = await dbContext.RunProjections.AsNoTracking()
             .Include(x => x.FacilityWarehouse)
             .Include(x => x.CreatedByUser)
@@ -1198,10 +1259,6 @@ public sealed class RunProjectionService(
         if (projection.Status == RunProjectionStatuses.Converted || linkedActualIds.Count > 0)
         {
             blockingReason = "This projection is linked to an actual Bins Run and cannot be deleted. Actual operational history must be preserved.";
-        }
-        else if (!RunProjectionStatuses.Editable.Contains(projection.Status) && !canAdmin)
-        {
-            blockingReason = $"Bins Run Admin access is required to delete a {projection.Status} projection.";
         }
 
         return new RunProjectionDeletionConfirmationViewModel
@@ -1233,9 +1290,9 @@ public sealed class RunProjectionService(
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
-        if (!await CanAsync(user, PageAccessLevel.Edit, cancellationToken))
+        if (!await CanAsync(user, PageAccessLevel.Admin, cancellationToken))
         {
-            return "Bins Run Edit access is required to delete projections.";
+            return "Projection Planner Admin access is required to delete projections.";
         }
         if (!Guid.TryParse(form.OperationToken, out var operationId))
         {
@@ -1285,12 +1342,6 @@ public sealed class RunProjectionService(
             await dbContext.SaveChangesAsync(cancellationToken);
             return "This projection is linked to an actual Bins Run and cannot be deleted.";
         }
-        var canAdmin = await CanAsync(user, PageAccessLevel.Admin, cancellationToken);
-        if (!RunProjectionStatuses.Editable.Contains(projection.Status) && !canAdmin)
-        {
-            return $"Bins Run Admin access is required to delete a {projection.Status} projection.";
-        }
-
         var now = businessTime.UtcNow;
         var before = ProjectionSnapshot(projection);
         projection.IsDeleted = true;
@@ -1365,6 +1416,7 @@ public sealed class RunProjectionService(
                 Id = source.Id,
                 SourceType = source.SourceType,
                 InventoryKey = source.InventoryKey,
+                GrowerLotKey = source.GrowerLotKeySnapshot,
                 CanonicalOrchardBlockId = source.CanonicalOrchardBlockId,
                 FruitProfileId = source.FruitProfileId,
                 WarehouseId = source.WarehouseId,
@@ -1381,6 +1433,11 @@ public sealed class RunProjectionService(
                 Commodity = source.Commodity,
                 PlannedBins = source.PlannedBins,
                 AvailableBinsSnapshot = source.AvailableBinsSnapshot,
+                ReceivedBinsToDate = source.ReceivedBinsSnapshot,
+                AdditionalExpectedBins = source.AdditionalExpectedBinsSnapshot ?? 0,
+                ReceiptContributions = DeserializeReceiptContributions(source.ReceiptWeightingSnapshotJson),
+                ContributingSampleIds = DeserializeIds(source.ContributingSampleIdsJson),
+                LastRefreshedAt = source.LastRefreshedAt,
                 AvailabilityOverrideAcknowledged = source.AvailabilityOverrideAcknowledged,
                 SortOrder = source.SortOrder,
                 Notes = source.Notes,
@@ -1395,6 +1452,7 @@ public sealed class RunProjectionService(
                 SizeBasisFruitCount = source.SizeBasisFruitCount,
                 GradeBasisFruitCount = source.GradeBasisFruitCount,
                 JointSizeGradeBasisFruitCount = source.JointSizeGradeBasisFruitCount,
+                JointSizeGradeSnapshotJson = source.JointSizeGradeSnapshotJson,
                 AverageWeightGrams = source.AverageWeightGramsSnapshot,
                 AveragePressureLbs = source.AveragePressureLbsSnapshot,
                 GradeSummary = source.GradeSummarySnapshot,
@@ -1634,6 +1692,64 @@ public sealed class RunProjectionService(
             return (null, "The selected confirmed same-block, same-variety Field Sample is no longer available.");
         }
 
+        if (TryParseGrowerLotSourceKey(sourceKey, out var sourceCropYear, out var sourceProfileId, out var sourceLot))
+        {
+            if (sourceCropYear != projection.CropYear)
+            {
+                return (null, "The selected grower lot belongs to a different crop year.");
+            }
+            if (projection.FacilityWarehouseId is null)
+            {
+                return (null, "Assign WP or EBS before adding a received grower lot.");
+            }
+            var receipts = await LoadGrowerLotReceiptsAsync(
+                sourceCropYear,
+                sourceLot,
+                sourceProfileId,
+                projection.FacilityWarehouseId.Value,
+                cancellationToken);
+            if (receipts.Count == 0)
+            {
+                return (null, "A projection requires received bins for the grower lot or an eligible Field Sample.");
+            }
+            var receivedBins = receipts.Sum(x => x.BinCount);
+            if (plannedBins < receivedBins)
+            {
+                return (null, $"Total Projected Bins cannot be below the {receivedBins} bins already received.");
+            }
+            var first = receipts.OrderBy(x => x.ReceivedAt).ThenBy(x => x.Id).First();
+            var source = new RunProjectionSource
+            {
+                SourceType = RunProjectionSourceTypes.GrowerLot,
+                InventoryKey = sourceKey,
+                GrowerLotKeySnapshot = GrowerLotIdentity(sourceCropYear, sourceLot, first.FruitProfile.VarietyCode),
+                WarehouseId = projection.FacilityWarehouseId,
+                FruitProfileId = first.FruitProfileId,
+                CanonicalOrchardBlockId = receipts.Select(x => x.CanonicalOrchardBlockId).Distinct().Count() == 1
+                    ? first.CanonicalOrchardBlockId
+                    : null,
+                PlannedBins = plannedBins,
+                AvailableBinsSnapshot = receivedBins,
+                ReceivedBinsSnapshot = receivedBins,
+                AdditionalExpectedBinsSnapshot = Math.Max(0, plannedBins - receivedBins),
+                AvailabilityOverrideAcknowledged = true,
+                SelectedQcSourceType = RunProjectionQcSourceTypes.Automatic,
+                ExpectedPackoutPercent = expectedPackoutPercent,
+                SourceLabelSnapshot = $"Grower lot {first.LotCode} — {first.GrowerName} — {first.FruitProfile.VarietyCode}",
+                FacilitySnapshot = first.Warehouse.Code,
+                LotSnapshot = first.LotCode,
+                GrowerSnapshot = first.GrowerName,
+                GrowerNumberSnapshot = first.GrowerNumber,
+                VarietySnapshot = first.FruitProfile.Name,
+                Commodity = RunProjectionCalculationService.NormalizeCommodity(first.FruitProfile.FruitType),
+                CalculationVersion = RunProjectionCalculationService.CurrentCalculationVersion,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            await ApplyGrowerLotCalculationAsync(projection, source, receipts, minimumDistributionFruit, cancellationToken);
+            return (source, null);
+        }
+
         var inventory = await binsRunService.GetPlanningInventoryAsync(sourceKey, cancellationToken);
         if (inventory is null) return (null, "The selected inventory source is no longer available.");
         if (projection.FacilityWarehouseId is null)
@@ -1704,6 +1820,187 @@ public sealed class RunProjectionService(
         if (inventoryQc.Error is not null) return (null, inventoryQc.Error);
         await ApplyQcAndCalculationAsync(projection, inventorySource, inventoryQc.Sample, inventoryQc.SourceType, minimumDistributionFruit, cancellationToken);
         return (inventorySource, null);
+    }
+
+    private async Task<List<Receipt>> LoadGrowerLotReceiptsAsync(
+        int cropYear,
+        string lotNumber,
+        int fruitProfileId,
+        int warehouseId,
+        CancellationToken cancellationToken) =>
+        await dbContext.Receipts
+            .Include(x => x.Warehouse)
+            .Include(x => x.FruitProfile)
+            .Include(x => x.CanonicalOrchardBlock).ThenInclude(x => x!.CanonicalOrchard)
+            .Where(x => !x.IsDeleted
+                && x.ReceiptType == "Truck receipt"
+                && x.BinCount > 0
+                && x.CropYear == cropYear
+                && x.WarehouseId == warehouseId
+                && x.FruitProfileId == fruitProfileId
+                && x.LotCode == lotNumber)
+            .OrderBy(x => x.ReceivedAt)
+            .ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+    private async Task ApplyGrowerLotCalculationAsync(
+        RunProjection projection,
+        RunProjectionSource source,
+        IReadOnlyList<Receipt> receipts,
+        int minimumDistributionFruit,
+        CancellationToken cancellationToken)
+    {
+        var receiptIds = receipts.Select(x => x.Id).ToList();
+        var samples = await UsableQcSamples(projection.CropYear)
+            .Where(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
+            .Include(x => x.SampleType)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType)
+            .OrderBy(x => x.ReceiptId)
+            .ThenBy(x => x.SampleTakenAt)
+            .ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var totalBins = receipts.Sum(x => x.BinCount);
+        var sizeObservations = new List<RunProjectionSizeObservation>();
+        var gradeObservations = new List<RunProjectionGradeObservation>();
+        var jointObservations = new List<WeightedJointObservation>();
+        var weightedWeights = new List<(decimal Value, decimal Weight)>();
+        var weightedPressures = new List<(decimal Value, decimal Weight)>();
+        var contributions = new List<GrowerLotReceiptSnapshot>();
+
+        foreach (var receipt in receipts)
+        {
+            var receiptSamples = samples.Where(x => x.ReceiptId == receipt.Id).ToList();
+            var rows = receiptSamples.SelectMany(x => x.FruitReadings).Where(HasEnteredFruitData).ToList();
+            var receiptWeight = totalBins <= 0 ? 0m : receipt.BinCount / (decimal)totalBins;
+            var rowWeight = rows.Count == 0 ? 0m : receiptWeight / rows.Count;
+            foreach (var row in rows)
+            {
+                if (row.SizeCategory is int size) sizeObservations.Add(new(size, rowWeight));
+                if (row.Grade is not null) gradeObservations.Add(new(row.Grade.Code, rowWeight));
+                if (row.SizeCategory is int jointSize && row.Grade is not null)
+                {
+                    jointObservations.Add(new(jointSize, row.Grade.Code, rowWeight));
+                }
+                if (row.WeightGrams is decimal weight) weightedWeights.Add((weight, rowWeight));
+                var pressures = PressureCalculationService.ValidSideReadings([(row.Pressure1Lbs, row.Pressure2Lbs)]).ToList();
+                if (pressures.Count > 0)
+                {
+                    weightedPressures.Add((pressures.Average(), rowWeight));
+                }
+            }
+            contributions.Add(new(
+                receipt.Id,
+                receipt.CompuTechReceiptId,
+                receipt.ReceivedAt,
+                receipt.BinCount,
+                decimal.Round(receiptWeight * 100m, 4),
+                receiptSamples.Select(x => x.Id).ToList()));
+        }
+
+        var calculation = RunProjectionCalculationService.Calculate(
+            source.Commodity,
+            source.PlannedBins,
+            projection.ApplePoundsPerBin,
+            projection.PearPoundsPerBin,
+            RunProjectionCalculationService.DefaultStandardBoxWeightPounds,
+            source.ExpectedPackoutPercent,
+            sizeObservations,
+            gradeObservations,
+            jointObservations.Count,
+            minimumDistributionFruit);
+        source.SizeResults.Clear();
+        source.GradeResults.Clear();
+        ApplyCalculation(source, calculation);
+        source.SelectedQcSourceType = RunProjectionQcSourceTypes.Automatic;
+        source.SelectedQcSampleId = null;
+        source.QcSampleDateSnapshot = samples.Count == 0 ? null : samples.Max(x => x.SampleTakenAt);
+        source.QcSampleTypeSnapshot = "Combined received QC";
+        source.QcSampleStatusSnapshot = "Saved grower-lot snapshot";
+        source.QcFruitCountSnapshot = samples.SelectMany(x => x.FruitReadings).Count(HasEnteredFruitData);
+        source.SizeBasisFruitCount = sizeObservations.Count;
+        source.GradeBasisFruitCount = gradeObservations.Count;
+        source.JointSizeGradeBasisFruitCount = jointObservations.Count;
+        source.AverageWeightGramsSnapshot = WeightedAverage(weightedWeights);
+        source.AveragePressureLbsSnapshot = WeightedAverage(weightedPressures);
+        source.GradeSummarySnapshot = string.Join(", ", calculation.GradeAllocations.Select(x => $"{x.Key} {x.Percentage:0.##}%"));
+        source.DefectSummarySnapshot = Distribution(samples.SelectMany(x => x.FruitReadings)
+            .Where(x => x.DefectsInspected)
+            .SelectMany(x => x.Defects)
+            .Select(x => x.DefectType.Name));
+        source.JointSizeGradeSnapshotJson = JsonSerializer.Serialize(jointObservations
+            .GroupBy(x => new { x.Size, x.Grade })
+            .OrderBy(x => x.Key.Size)
+            .ThenBy(x => x.Key.Grade)
+            .Select(x => new WeightedJointSnapshot(x.Key.Size, x.Key.Grade, x.Count(), x.Sum(y => y.Weight)))
+            .ToList());
+        source.ContributingReceiptIdsJson = JsonSerializer.Serialize(receiptIds);
+        source.ContributingSampleIdsJson = JsonSerializer.Serialize(samples.Select(x => x.Id).ToList());
+        source.ReceiptWeightingSnapshotJson = JsonSerializer.Serialize(contributions);
+        source.ReceivedBinsSnapshot = totalBins;
+        source.AvailableBinsSnapshot = totalBins;
+        source.AdditionalExpectedBinsSnapshot = Math.Max(0, source.PlannedBins - totalBins);
+        source.LastRefreshedAt = businessTime.UtcNow;
+        var missingSampleBins = contributions.Where(x => x.SampleIds.Count == 0).Sum(x => x.BinsReceived);
+        source.ProjectionWarning = string.Join(" ", new[]
+        {
+            calculation.Warning,
+            missingSampleBins > 0 ? $"{missingSampleBins} received bins have no eligible completed QC sample; the distribution uses represented receipts only." : null,
+            "Additional expected bins use the current receipt-bin-weighted grower-lot distribution. No post-harvest biological growth is applied."
+        }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        source.CalculationVersion = RunProjectionCalculationService.CurrentCalculationVersion;
+    }
+
+    private static void ApplyCalculation(RunProjectionSource source, RunProjectionLineCalculation calculation)
+    {
+        source.PoundsPerBinUsed = calculation.PoundsPerBin;
+        source.ProjectedPounds = calculation.ProjectedPounds;
+        source.ProjectedBoxes = calculation.ProjectedBoxes;
+        source.RoundedProjectedBoxes = calculation.RoundedProjectedBoxes;
+        source.ExpectedCullPercent = calculation.ExpectedCullPercent;
+        source.PackedProjectedPounds = calculation.PackedProjectedPounds;
+        source.PackedProjectedBoxes = calculation.PackedProjectedBoxes;
+        source.RoundedPackedProjectedBoxes = calculation.RoundedPackedProjectedBoxes;
+        source.CullProjectedPounds = calculation.CullProjectedPounds;
+        source.CullProjectedBoxes = calculation.CullProjectedBoxes;
+        source.RoundedCullProjectedBoxes = calculation.RoundedCullProjectedBoxes;
+        foreach (var allocation in calculation.SizeAllocations)
+        {
+            source.SizeResults.Add(new RunProjectionSizeResult
+            {
+                Commodity = allocation.Commodity,
+                SizeCategory = allocation.SizeCategory,
+                SampleCount = allocation.SampleCount,
+                Percentage = allocation.Percentage,
+                UnroundedProjectedBoxes = allocation.UnroundedProjectedBoxes,
+                RoundedProjectedBoxes = allocation.RoundedProjectedBoxes,
+                PackedProjectedBoxes = allocation.PackedProjectedBoxes,
+                RoundedPackedProjectedBoxes = allocation.RoundedPackedProjectedBoxes,
+                CullProjectedBoxes = allocation.CullProjectedBoxes,
+                RoundedCullProjectedBoxes = allocation.RoundedCullProjectedBoxes
+            });
+        }
+        foreach (var allocation in calculation.GradeAllocations)
+        {
+            source.GradeResults.Add(new RunProjectionGradeResult
+            {
+                GradeCode = allocation.Key,
+                SampleCount = allocation.SampleCount,
+                Percentage = allocation.Percentage,
+                GrossProjectedBoxes = allocation.GrossBoxes,
+                RoundedGrossProjectedBoxes = allocation.RoundedGrossBoxes,
+                PackedProjectedBoxes = allocation.PackedBoxes,
+                RoundedPackedProjectedBoxes = allocation.RoundedPackedBoxes,
+                CullProjectedBoxes = allocation.CullBoxes,
+                RoundedCullProjectedBoxes = allocation.RoundedCullBoxes
+            });
+        }
+    }
+
+    private static decimal? WeightedAverage(IReadOnlyCollection<(decimal Value, decimal Weight)> values)
+    {
+        var denominator = values.Sum(x => x.Weight);
+        return denominator <= 0m ? null : decimal.Round(values.Sum(x => x.Value * x.Weight) / denominator, 2);
     }
 
     private async Task<(QcSample? Sample, string SourceType, string? Error)> ResolveQcSampleAsync(
@@ -1931,6 +2228,28 @@ public sealed class RunProjectionService(
         int cropYear,
         CancellationToken cancellationToken)
     {
+        if (source.SourceType == RunProjectionSourceTypes.GrowerLot)
+        {
+            return
+            [
+                new(
+                    RunProjectionQcSourceTypes.Automatic,
+                    $"Combined received QC snapshot — {DeserializeIds(source.ContributingSampleIdsJson).Count} eligible samples across {DeserializeIds(source.ContributingReceiptIdsJson).Count} receipts",
+                    null,
+                    RunProjectionQcSourceTypes.Automatic,
+                    source.QcSampleDateSnapshot,
+                    source.QcSampleTypeSnapshot,
+                    source.QcSampleStatusSnapshot,
+                    source.QcFruitCountSnapshot ?? 0,
+                    source.AverageWeightGramsSnapshot,
+                    source.AveragePressureLbsSnapshot,
+                    source.SizeBasisFruitCount > 0,
+                    source.GradeBasisFruitCount > 0,
+                    source.JointSizeGradeBasisFruitCount > 0,
+                    true)
+            ];
+        }
+
         var choices = new List<RunProjectionQcChoiceViewModel>();
         if (source.SourceType != RunProjectionSourceTypes.FieldSample)
         {
@@ -2106,10 +2425,14 @@ public sealed class RunProjectionService(
     private static void RecalculateFromSnapshot(RunProjection projection, RunProjectionSource source, int minimumDistributionFruit)
     {
         var sizeObservations = source.SizeResults
-            .SelectMany(x => Enumerable.Repeat(new RunProjectionSizeObservation(x.SizeCategory), x.SampleCount))
+            .SelectMany(x => Enumerable.Repeat(
+                new RunProjectionSizeObservation(x.SizeCategory, x.SampleCount <= 0 ? x.Percentage : x.Percentage / x.SampleCount),
+                Math.Max(1, x.SampleCount)))
             .ToList();
         var gradeObservations = source.GradeResults
-            .SelectMany(x => Enumerable.Repeat(new RunProjectionGradeObservation(x.GradeCode), x.SampleCount))
+            .SelectMany(x => Enumerable.Repeat(
+                new RunProjectionGradeObservation(x.GradeCode, x.SampleCount <= 0 ? x.Percentage : x.Percentage / x.SampleCount),
+                Math.Max(1, x.SampleCount)))
             .ToList();
         var calculation = RunProjectionCalculationService.Calculate(
             source.Commodity,
@@ -2479,12 +2802,12 @@ public sealed class RunProjectionService(
     {
         if (!await CanAsync(user, level, cancellationToken))
         {
-            throw new UnauthorizedAccessException($"Bins Run {level} access is required.");
+            throw new UnauthorizedAccessException($"Projection Planner {level} access is required.");
         }
     }
 
     private Task<bool> CanAsync(ClaimsPrincipal user, PageAccessLevel level, CancellationToken cancellationToken) =>
-        userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, level, cancellationToken);
+        userAccessService.HasAccessAsync(user, ApplicationAreas.ProjectionPlanner, level, cancellationToken);
 
     private async Task<int?> CurrentUserIdAsync(ClaimsPrincipal user, CancellationToken cancellationToken)
     {
@@ -2564,6 +2887,7 @@ public sealed class RunProjectionService(
         x.Id,
         x.SourceType,
         x.InventoryKey,
+        x.GrowerLotKeySnapshot,
         x.ReceiptId,
         x.CanonicalOrchardBlockId,
         x.FieldSampleId,
@@ -2572,6 +2896,10 @@ public sealed class RunProjectionService(
         x.SelectedQcSampleId,
         x.PlannedBins,
         x.AvailableBinsSnapshot,
+        x.ReceivedBinsSnapshot,
+        x.AdditionalExpectedBinsSnapshot,
+        ContributingReceiptCount = DeserializeIds(x.ContributingReceiptIdsJson).Count,
+        ContributingSampleCount = DeserializeIds(x.ContributingSampleIdsJson).Count,
         x.AvailabilityOverrideAcknowledged,
         x.ProjectedPounds,
         x.ProjectedBoxes,
@@ -2599,6 +2927,7 @@ public sealed class RunProjectionService(
         {
             SourceType = source.SourceType,
             InventoryKey = source.InventoryKey,
+            GrowerLotKeySnapshot = source.GrowerLotKeySnapshot,
             ReceiptId = source.ReceiptId,
             SourceInventoryAdjustmentId = source.SourceInventoryAdjustmentId,
             WarehouseId = source.WarehouseId,
@@ -2611,6 +2940,13 @@ public sealed class RunProjectionService(
             SelectedQcSampleId = source.SelectedQcSampleId,
             PlannedBins = source.PlannedBins,
             AvailableBinsSnapshot = source.AvailableBinsSnapshot,
+            ReceivedBinsSnapshot = source.ReceivedBinsSnapshot,
+            AdditionalExpectedBinsSnapshot = source.AdditionalExpectedBinsSnapshot,
+            ContributingReceiptIdsJson = source.ContributingReceiptIdsJson,
+            ContributingSampleIdsJson = source.ContributingSampleIdsJson,
+            ReceiptWeightingSnapshotJson = source.ReceiptWeightingSnapshotJson,
+            RefreshHistoryJson = source.RefreshHistoryJson,
+            LastRefreshedAt = source.LastRefreshedAt,
             AvailabilityOverrideAcknowledged = source.AvailabilityOverrideAcknowledged,
             SortOrder = source.SortOrder,
             Notes = source.Notes,
@@ -2716,11 +3052,105 @@ public sealed class RunProjectionService(
     }
 
     private static string QcBasis(RunProjectionSource source) =>
-        source.SelectedQcSampleId is null
+        source.SourceType == RunProjectionSourceTypes.GrowerLot
+            ? $"Combined received QC — {DeserializeIds(source.ContributingSampleIdsJson).Count} samples across {DeserializeIds(source.ContributingReceiptIdsJson).Count} receipts"
+            : source.SelectedQcSampleId is null
             ? "No usable QC data"
             : $"{source.QcSampleTypeSnapshot ?? (source.SelectedQcSourceType == RunProjectionQcSourceTypes.FieldSample ? "Field Sample" : "Receipt QC")} #{source.SelectedQcSampleId}";
 
+    private static string GrowerLotSourceKey(int cropYear, string lotNumber, int fruitProfileId)
+    {
+        var token = Convert.ToBase64String(Encoding.UTF8.GetBytes(lotNumber.Trim()))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+        return $"G:{cropYear}:{fruitProfileId}:{token}";
+    }
+
+    private static string GrowerLotIdentity(int cropYear, string lotNumber, string variety) =>
+        $"{cropYear}|{lotNumber.Trim().ToUpperInvariant()}|{variety.Trim().ToUpperInvariant()}";
+
+    private static bool TryParseGrowerLotSourceKey(string sourceKey, out int cropYear, out int fruitProfileId, out string lotNumber)
+    {
+        cropYear = 0;
+        fruitProfileId = 0;
+        lotNumber = "";
+        var parts = sourceKey.Split(':', 4);
+        if (parts.Length != 4
+            || !parts[0].Equals("G", StringComparison.OrdinalIgnoreCase)
+            || !int.TryParse(parts[1], out cropYear)
+            || !int.TryParse(parts[2], out fruitProfileId))
+        {
+            return false;
+        }
+        try
+        {
+            var token = parts[3].Replace('-', '+').Replace('_', '/');
+            token = token.PadRight(token.Length + ((4 - token.Length % 4) % 4), '=');
+            lotNumber = Encoding.UTF8.GetString(Convert.FromBase64String(token)).Trim();
+            return lotNumber.Length > 0;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private static IReadOnlyList<long> DeserializeIds(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try { return JsonSerializer.Deserialize<List<long>>(json) ?? []; }
+        catch (JsonException) { return []; }
+    }
+
+    private static IReadOnlyList<RunProjectionReceiptContributionViewModel> DeserializeReceiptContributions(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return (JsonSerializer.Deserialize<List<GrowerLotReceiptSnapshot>>(json) ?? [])
+                .Select(x => new RunProjectionReceiptContributionViewModel(
+                    x.ReceiptId,
+                    x.ReceiptReference,
+                    x.ReceivedAt,
+                    x.BinsReceived,
+                    x.WeightPercent,
+                    x.SampleIds))
+                .ToList();
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static IReadOnlyList<GrowerLotRefreshSnapshot> DeserializeRefreshHistory(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try { return JsonSerializer.Deserialize<List<GrowerLotRefreshSnapshot>>(json) ?? []; }
+        catch (JsonException) { return []; }
+    }
+
     private const string ConflictMessage = "This projection changed after the page loaded. Reload it before saving so another user's work is not overwritten.";
+
+    private sealed record WeightedJointObservation(int Size, string Grade, decimal Weight);
+    private sealed record WeightedJointSnapshot(int SizeCategory, string GradeCode, int Count, decimal WeightedCount);
+    private sealed record GrowerLotReceiptSnapshot(
+        long ReceiptId,
+        string ReceiptReference,
+        DateTimeOffset ReceivedAt,
+        int BinsReceived,
+        decimal WeightPercent,
+        IReadOnlyList<long> SampleIds);
+    private sealed record GrowerLotRefreshSnapshot(
+        DateTimeOffset RefreshedAt,
+        int BeforeReceivedBins,
+        int AfterReceivedBins,
+        int BeforeReceiptCount,
+        int AfterReceiptCount,
+        int BeforeSampleCount,
+        int AfterSampleCount,
+        int TotalProjectedBins);
 
     private sealed record ProjectionSettingsSnapshot(
         decimal ApplePoundsPerBin,

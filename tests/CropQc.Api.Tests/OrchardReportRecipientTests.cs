@@ -192,10 +192,10 @@ public sealed class OrchardReportRecipientTests
     }
 
     [Fact]
-    public void AdministrationPageRequiresConfigurationAdminAuthorization()
+    public void AdministrationPageUsesDedicatedOrchardManagerAuthorization()
     {
         var authorization = Assert.Single(typeof(OrchardRecipientsController).GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>());
-        Assert.Equal(AccessPolicyNames.ConfigurationAdmin, authorization.Policy);
+        Assert.Equal(AccessPolicyNames.OrchardManagersView, authorization.Policy);
     }
 
     [Fact]

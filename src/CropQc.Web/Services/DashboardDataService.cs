@@ -1278,7 +1278,7 @@ public sealed class DashboardDataService(
             var targetSampleSize = ResolveTargetSampleSize(sample.ActualSampleSize, allowedSampleSizes);
             var rowModels = await GetFruitReadingRowsAsync(id, targetSampleSize, cancellationToken);
 
-            var availablePhotoTypes = photoRequirementPolicy.GetAvailablePhotoTypes(sample.SampleType.Name);
+            var availablePhotoTypes = photoRequirementPolicy.GetAvailablePhotoTypes(sample.SampleType.Name, sample.Receipt.FruitProfile.FruitType);
             var samplePhotoTypes = availablePhotoTypes.Where(x => !x.ReceiptLevel).Select(x => x.PhotoType).Append("Other").Distinct().ToList();
             var receiptPhotoTypes = availablePhotoTypes.Where(x => x.ReceiptLevel).Select(x => x.PhotoType).Distinct().ToList();
             var photos = await dbContext.QcPhotos.AsNoTracking()
@@ -1305,6 +1305,7 @@ public sealed class DashboardDataService(
                 AvailablePhotoTypes = availablePhotoTypes
                     .Select(x => new QcPhotoRequirementViewModel(x.PhotoType, x.FriendlyName, x.IsRequired))
                     .ToList(),
+                FruitType = sample.Receipt.FruitProfile.FruitType,
                 Grades = grades,
                 StarchScaleValues = await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken),
                 DefectTypes = defectTypes,
@@ -1455,6 +1456,8 @@ public sealed class DashboardDataService(
 
         var sample = await dbContext.QcSamples
             .Include(x => x.SampleType)
+            .Include(x => x.Receipt).ThenInclude(x => x!.FruitProfile)
+            .Include(x => x.FieldSampleFruitProfile)
             .SingleOrDefaultAsync(x => x.Id == form.SampleId && !x.IsDeleted, cancellationToken);
         if (sample is null)
         {
@@ -1826,6 +1829,7 @@ public sealed class DashboardDataService(
             var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.QcSampleId == id && !x.IsDeleted && (x.PhotoType == "FruitAfterStarch" || x.PhotoType == "Other")).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
             return new StarchTestViewModel
             {
+                FruitType = sample.Receipt.FruitProfile.FruitType,
                 Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
                 Receipt = ReceiptListItem(sample.Receipt),
                 FruitRows = rowModels,
@@ -2289,7 +2293,9 @@ public sealed class DashboardDataService(
         }
 
         form.PhotoType = QcPhotoRequirementPolicy.NormalizePhotoType(form.PhotoType);
-        var available = photoRequirementPolicy.GetAvailablePhotoTypes(sample.SampleType.Name);
+        var available = photoRequirementPolicy.GetAvailablePhotoTypes(
+            sample.SampleType.Name,
+            sample.Receipt?.FruitProfile.FruitType ?? sample.FieldSampleFruitProfile?.FruitType);
         var selected = available.SingleOrDefault(x => string.Equals(x.PhotoType, form.PhotoType, StringComparison.OrdinalIgnoreCase));
         if (selected is null && !string.Equals(form.PhotoType, "Other", StringComparison.OrdinalIgnoreCase))
         {
@@ -3141,6 +3147,7 @@ public sealed class DashboardDataService(
                 x.SampleSequenceNumber,
                 x.Receipt.Warehouse.Code,
                 x.SampleType.Name,
+                x.Receipt.FruitProfile.FruitType,
                 x.Status,
                 x.StarchStatus,
                 x.PhotoStatus,
@@ -3223,7 +3230,7 @@ public sealed class DashboardDataService(
                 samplePhotosBySample.TryGetValue(sample.Id, out var samplePhotoTypes);
                 samplePhotoTypes ??= [];
                 sentBySample.TryGetValue(sample.Id, out var sentInfo);
-                var readiness = BuildCompactReadiness(sample.SampleType, rows, receiptPhotoTypes, samplePhotoTypes);
+                var readiness = BuildCompactReadiness(sample.SampleType, sample.FruitType, rows, receiptPhotoTypes, samplePhotoTypes);
                 var averagePressure = AverageOrNull(rows
                     .Select(x => AverageFlexible(x.Pressure1Lbs, x.Pressure2Lbs))
                     .Where(x => x is not null)
@@ -3262,6 +3269,7 @@ public sealed class DashboardDataService(
 
     private ReadinessViewModel BuildCompactReadiness(
         string sampleTypeName,
+        string? fruitType,
         IReadOnlyList<DashboardSampleFruitRow> rows,
         IReadOnlyList<string> receiptPhotos,
         IReadOnlyList<string> samplePhotos)
@@ -3273,13 +3281,13 @@ public sealed class DashboardDataService(
         var weightMissing = completedRows.Count(x => x.WeightGrams is null);
         var gradeMissing = completedRows.Count(x => x.GradeId is null);
         var starchMissing = completedRows.Count(x => x.StarchScaleValueId is null);
-        var starchRequired = IsStarchRequiredForEmail(sampleTypeName);
+        var starchRequired = IsStarchRequiredForEmail(sampleTypeName, fruitType);
 
         if (completedRows.Count == 0) missing.Add("At least one completed fruit row is required.");
         if (invalidRows > 0) missing.Add("All completed fruit rows require Pressure 1, Pressure 2, weight, and grade.");
         if (starchRequired && starchMissing > 0) missing.Add("Starch is required for all completed fruit rows.");
-        var requiredPhotoChecklist = photoRequirementPolicy.BuildChecklist(sampleTypeName, receiptPhotos, samplePhotos);
-        missing.AddRange(photoRequirementPolicy.MissingRequiredPhotos(sampleTypeName, receiptPhotos, samplePhotos));
+        var requiredPhotoChecklist = photoRequirementPolicy.BuildChecklist(sampleTypeName, receiptPhotos, samplePhotos, fruitType);
+        missing.AddRange(photoRequirementPolicy.MissingRequiredPhotos(sampleTypeName, receiptPhotos, samplePhotos, fruitType));
 
         var checklist = new List<ReadinessChecklistItem>
         {
@@ -4916,10 +4924,12 @@ public sealed class DashboardDataService(
 
     private async Task<ReadinessViewModel> GetReadinessAsync(long sampleId, long receiptId, CancellationToken cancellationToken)
     {
-        var sampleTypeName = await dbContext.QcSamples.AsNoTracking()
+        var sampleInfo = await dbContext.QcSamples.AsNoTracking()
             .Where(x => x.Id == sampleId)
-            .Select(x => x.SampleType.Name)
+            .Select(x => new { SampleTypeName = x.SampleType.Name, FruitType = x.Receipt!.FruitProfile.FruitType })
             .SingleOrDefaultAsync(cancellationToken);
+        var sampleTypeName = sampleInfo?.SampleTypeName;
+        var fruitType = sampleInfo?.FruitType;
         var completedRows = await dbContext.QcFruitReadings.AsNoTracking().Where(x => x.QcSampleId == sampleId && x.IsCompleted).ToListAsync(cancellationToken);
         var receiptPhotos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.ReceiptId == receiptId && !x.IsDeleted).Select(x => x.PhotoType).ToListAsync(cancellationToken);
         var samplePhotos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.QcSampleId == sampleId && !x.IsDeleted).Select(x => x.PhotoType).ToListAsync(cancellationToken);
@@ -4929,7 +4939,7 @@ public sealed class DashboardDataService(
         var weightMissing = completedRows.Count(x => x.WeightGrams is null);
         var gradeMissing = completedRows.Count(x => x.GradeId is null);
         var starchMissing = completedRows.Count(x => x.StarchScaleValueId is null);
-        var starchRequired = IsStarchRequiredForEmail(sampleTypeName);
+        var starchRequired = IsStarchRequiredForEmail(sampleTypeName, fruitType);
 
         if (completedRows.Count == 0) missing.Add("At least one completed fruit row is required.");
         if (invalidRows > 0) missing.Add("All completed fruit rows require Pressure 1, Pressure 2, weight, and grade.");
@@ -4938,8 +4948,8 @@ public sealed class DashboardDataService(
         var hasSampleBeforeCutting = samplePhotos.Contains("SampleBeforeCutting");
         var hasCutFruit = samplePhotos.Contains("CutFruit");
         var hasFruitAfterStarch = samplePhotos.Contains("FruitAfterStarch");
-        var requiredPhotoChecklist = photoRequirementPolicy.BuildChecklist(sampleTypeName, receiptPhotos, samplePhotos);
-        missing.AddRange(photoRequirementPolicy.MissingRequiredPhotos(sampleTypeName, receiptPhotos, samplePhotos));
+        var requiredPhotoChecklist = photoRequirementPolicy.BuildChecklist(sampleTypeName, receiptPhotos, samplePhotos, fruitType);
+        missing.AddRange(photoRequirementPolicy.MissingRequiredPhotos(sampleTypeName, receiptPhotos, samplePhotos, fruitType));
 
         var checklist = new List<ReadinessChecklistItem>
         {
@@ -4968,8 +4978,12 @@ public sealed class DashboardDataService(
         };
     }
 
-    private static bool IsStarchRequiredForEmail(string? sampleTypeName)
+    private static bool IsStarchRequiredForEmail(string? sampleTypeName, string? fruitType)
     {
+        if (string.Equals(fruitType, "Pear", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
         var normalized = sampleTypeName ?? string.Empty;
         return normalized.Contains("receiving", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("truck", StringComparison.OrdinalIgnoreCase);
@@ -5530,6 +5544,7 @@ public sealed class DashboardDataService(
         int SampleSequenceNumber,
         string Warehouse,
         string SampleType,
+        string FruitType,
         string Status,
         string StarchStatus,
         string PhotoStatus,

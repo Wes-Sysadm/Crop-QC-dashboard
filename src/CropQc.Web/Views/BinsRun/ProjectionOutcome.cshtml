@@ -2,7 +2,7 @@
 @{
     ViewData["Title"] = $"Projection Outcome — {Model.Projection.Name}";
     var projection = Model.Projection;
-    var maxPack = Math.Max(1, Model.Packs.Select(x => x.CompletePacks).DefaultIfEmpty(0).Max());
+    var maxPack = Math.Max(1, Model.Sizes.Select(x => x.CompleteBoxes).DefaultIfEmpty(0).Max());
     var maxGrade = Math.Max(1, Model.Grades.Select(x => x.CompleteBoxes).DefaultIfEmpty(0).Max());
     var appleCull = Model.CullByCommodity.FirstOrDefault(x => x.Commodity.Equals("Apple", StringComparison.OrdinalIgnoreCase));
     var pearCull = Model.CullByCommodity.FirstOrDefault(x => x.Commodity.Equals("Pear", StringComparison.OrdinalIgnoreCase));
@@ -40,9 +40,9 @@
             <div><dt>Status</dt><dd>@projection.Status</dd></div>
             <div><dt>Prepared by</dt><dd>@(string.IsNullOrWhiteSpace(projection.Creator) ? "Not recorded" : projection.Creator)</dd></div>
             <div><dt>Last updated</dt><dd>@BusinessTime.FormatPacific(projection.UpdatedAt)</dd></div>
-            <div><dt>@(projection.ProjectionMode == "Preharvest" ? "Estimated bins" : "Planned bins")</dt><dd>@projection.TotalPlannedBins</dd></div>
+            <div><dt>@(projection.ProjectionMode == "Preharvest" ? "Estimated bins" : "Total Projected Bins")</dt><dd>@projection.TotalPlannedBins</dd></div>
             <div><dt>Effective packout</dt><dd>@(projection.EffectivePackoutPercent is decimal packout ? $"{packout:0.##}%" : "Not calculated")</dd></div>
-            <div><dt>Complete commercial packs</dt><dd>@Model.CompletePackCount</dd></div>
+            <div><dt>Whole 40-lb boxes</dt><dd>@Model.CompletePackCount</dd></div>
             <div><dt>Projected cull</dt><dd>@Model.CullPounds.ToString("0.##") lb</dd></div>
             <div><dt>Confidence</dt><dd><span class="status @(Model.Confidence is "High" or "Moderate" ? "ready" : "pending")">@Model.Confidence</span></dd></div>
         </dl>
@@ -83,7 +83,38 @@
                             <div><dt>Complete 40-lb equivalents</dt><dd>@ProjectionOutcomeCalculator.Floor(source.PackedProjectedBoxes)</dd></div>
                             <div><dt>Joint size/grade fruit</dt><dd>@source.JointSizeGradeBasisFruitCount</dd></div>
                             <div><dt>Source confidence</dt><dd>@(source.JointSizeGradeBasisFruitCount >= 10 ? "Supported" : "Sparse")</dd></div>
+                            @if (source.SourceType == "GrowerLot")
+                            {
+                                <div><dt>Received Bins to Date</dt><dd>@source.ReceivedBinsToDate</dd></div>
+                                <div><dt>Additional Expected Bins</dt><dd>@source.AdditionalExpectedBins</dd></div>
+                                <div><dt>Total Projected Bins</dt><dd>@source.PlannedBins</dd></div>
+                                <div><dt>Last receipt refresh</dt><dd>@BusinessTime.FormatPacific(source.LastRefreshedAt, empty: "Saved at creation")</dd></div>
+                            }
                         </dl>
+                        @if (source.ReceiptContributions.Count > 0)
+                        {
+                            <div class="table-wrap">
+                                <table>
+                                    <thead><tr><th>Contributing receipt</th><th>Date</th><th>Bins</th><th>Weight</th><th>Samples used</th></tr></thead>
+                                    <tbody>
+                                    @foreach (var receipt in source.ReceiptContributions)
+                                    {
+                                        <tr>
+                                            <td>@receipt.ReceiptReference (#@receipt.ReceiptId)</td>
+                                            <td>@BusinessTime.FormatPacific(receipt.ReceivedAt, "MMM d, yyyy")</td>
+                                            <td>@receipt.BinsReceived</td>
+                                            <td>@receipt.WeightPercent.ToString("0.##")%</td>
+                                            <td>@(receipt.SampleIds.Count == 0 ? "None" : string.Join(", ", receipt.SampleIds.Select(x => $"#{x}")))</td>
+                                        </tr>
+                                    }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="muted">
+                                Receipt weighting = bins on receipt ÷ total bins received for the grower lot.
+                                Additional expected bins use this saved distribution; no post-harvest growth is applied.
+                            </p>
+                        }
                         @if (!string.IsNullOrWhiteSpace(source.Warning))
                         {
                             <p class="notice warning"><strong>Source warning:</strong> @source.Warning</p>
@@ -95,77 +126,32 @@
     </section>
 
     <section class="outcome-section avoid-break" id="pack-graph">
-        <h2>Projected Packed Boxes by Size / Commercial Pack</h2>
-        <p class="muted">Complete packs only. Every category is floored; residual pounds never become another box.</p>
-        @if (Model.Packs.Count == 0)
+        <h2>Projected Boxes by Size</h2>
+        <p class="muted">Whole 40-pound boxes only. Percentages use total packed fruit after cull; residual pounds never become another box.</p>
+        @if (Model.Sizes.Count == 0)
         {
-            <p class="notice warning">No saved commercial pack scenario is available.</p>
+            <p class="notice warning">No saved calculated-size distribution is available.</p>
         }
         else
         {
-            <div class="outcome-bar-chart" role="img" aria-label="Projected complete packed boxes by configured commercial pack">
-                @foreach (var pack in Model.Packs)
+            <div class="outcome-bar-chart" role="img" aria-label="Projected whole 40-pound boxes by calculated size">
+                @foreach (var size in Model.Sizes)
                 {
-                    var width = pack.CompletePacks / (decimal)maxPack * 100m;
-                    <div class="outcome-bar-row" title="@pack.ContributionTooltip">
-                        <span class="outcome-bar-label">@pack.PackName @(pack.IsMixedSize ? $"({string.Join("/", pack.EligibleSizes)} mixed)" : "")</span>
+                    var width = size.CompleteBoxes / (decimal)maxPack * 100m;
+                    <div class="outcome-bar-row">
+                        <span class="outcome-bar-label">Size @size.Size</span>
                         <span class="outcome-bar-track"><span class="outcome-bar-fill" style="width:@width.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
-                        <strong>@pack.CompletePacks</strong>
-                        <small>@pack.AssignedPounds.ToString("0.##") lb assigned · @pack.ResidualPounds.ToString("0.##") lb residual (@pack.PartialPackFraction.ToString("0.##") partial pack)</small>
+                        <strong>@size.CompleteBoxes boxes</strong>
+                        <small>@size.PercentageOfPackedFruit.ToString("0.##")% of packed fruit · @size.PackedPounds.ToString("0.##") lb · @size.ResidualPounds.ToString("0.##") lb residual</small>
                     </div>
                 }
             </div>
-            <details class="outcome-details">
-                <summary>Expand pack and source-lot allocation detail</summary>
-                @foreach (var pack in Model.Packs)
-                {
-                    <div class="subpanel avoid-break">
-                        <h3>@pack.PackName</h3>
-                        <p>@pack.PackType · @pack.PackageWeightPounds.ToString("0.##") lb/package · sizes @string.Join(" + ", pack.EligibleSizes) · @pack.MixRule</p>
-                        <div class="table-wrap">
-                            <table>
-                                <thead><tr><th>Source</th><th>Size</th><th>Assigned lb</th><th>Observed grade contribution</th></tr></thead>
-                                <tbody>
-                                @foreach (var contribution in pack.Contributions)
-                                {
-                                    <tr>
-                                        <td>@contribution.SourceLabel</td>
-                                        <td>@contribution.SizeCategory</td>
-                                        <td>@contribution.AssignedPounds.ToString("0.##")</td>
-                                        <td>@(pack.GradeAllocations.Count == 0 ? "Unavailable" : string.Join(", ", pack.GradeAllocations.Select(x => $"{x.GradeCode} {x.AssignedPounds:0.##} lb")))</td>
-                                    </tr>
-                                }
-                                </tbody>
-                            </table>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(pack.GradeWarning))
-                        {
-                            <p class="notice warning">@pack.GradeWarning</p>
-                        }
-                    </div>
-                }
-            </details>
-            @if (projection.UnallocatedFruit.Count > 0)
-            {
-                <h3>Unallocated packed fruit</h3>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th>Source</th><th>Commodity</th><th>Size</th><th>Pounds</th><th>Reason</th></tr></thead>
-                        <tbody>
-                        @foreach (var row in projection.UnallocatedFruit)
-                        {
-                            <tr><td>@row.SourceLabel</td><td>@row.Commodity</td><td>@row.SizeCategory</td><td>@row.Pounds.ToString("0.##")</td><td>@row.Reason</td></tr>
-                        }
-                        </tbody>
-                    </table>
-                </div>
-            }
         }
     </section>
 
     <section class="outcome-section avoid-break" id="grade-graph">
         <h2>Projected Packed Boxes by Grade</h2>
-        <p class="muted">Saved observed grade proportions after the human Expected Packout percentage. No defect deduction or invented grade is applied.</p>
+        <p class="muted">Whole 40-pound boxes using saved observed grade proportions after cull. Percentages use total packed fruit after cull.</p>
         @if (Model.Grades.Count == 0)
         {
             <p class="notice warning">Insufficient saved grade data. A grade distribution has not been fabricated.</p>
@@ -179,8 +165,8 @@
                     <div class="outcome-bar-row">
                         <span class="outcome-bar-label">@grade.Grade</span>
                         <span class="outcome-bar-track"><span class="outcome-bar-fill grade" style="width:@width.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
-                        <strong>@grade.CompleteBoxes</strong>
-                        <small>@grade.UnroundedBoxes.ToString("0.##") unrounded · @grade.ResidualPounds.ToString("0.##") lb residual</small>
+                        <strong>@grade.CompleteBoxes boxes</strong>
+                        <small>@grade.PercentageOfPackedFruit.ToString("0.##")% of packed fruit · @grade.PackedPounds.ToString("0.##") lb · @grade.ResidualPounds.ToString("0.##") lb residual</small>
                     </div>
                 }
             </div>
@@ -200,13 +186,13 @@
                 <table class="outcome-matrix">
                     <thead>
                         <tr>
-                            <th>Commercial Pack</th>
+                            <th>Calculated size</th>
                             @foreach (var grade in Model.GradeNames)
                             {
                                 <th>@grade</th>
                             }
                             <th>Joint-data total</th>
-                            <th>All complete packs</th>
+                            <th>All whole boxes</th>
                         </tr>
                     </thead>
                     <tbody>

@@ -13,8 +13,8 @@ public sealed class QcSummaryEmailComposerTests
     [InlineData("Lot Sample", "WholeSample,CutApples")]
     [InlineData("Room Sample", "WholeSample,CutApples")]
     [InlineData("Line Sample", "WholeSample,CutApples")]
-    [InlineData("Receiving Sample", "TruckPhoto,TopOfTruck,Hectre,WholeSample,CutApples,StarchApples")]
-    [InlineData("Transfer Sample", "TruckPhoto,TopOfTruck,WholeSample,CutApples")]
+    [InlineData("Receiving Sample", "TopOfTruck,Hectre,WholeSample,CutApples,StarchApples")]
+    [InlineData("Transfer Sample", "TopOfTruck,WholeSample,CutApples")]
     public void PhotoRequirementPolicy_MapsRequiredPhotosBySampleType(string sampleType, string expectedKeys)
     {
         var policy = new QcPhotoRequirementPolicy();
@@ -25,10 +25,10 @@ public sealed class QcSummaryEmailComposerTests
     }
 
     [Theory]
-    [InlineData("Door Sample", "WholeSample,CutApples,StarchApples")]
-    [InlineData("Lot Sample", "WholeSample,CutApples,StarchApples")]
-    [InlineData("Room Sample", "WholeSample,CutApples,StarchApples")]
-    [InlineData("Line Sample", "Hectre,WholeSample,CutApples,StarchApples")]
+    [InlineData("Door Sample", "TruckPhoto,WholeSample,CutApples,StarchApples")]
+    [InlineData("Lot Sample", "TruckPhoto,WholeSample,CutApples,StarchApples")]
+    [InlineData("Room Sample", "TruckPhoto,WholeSample,CutApples,StarchApples")]
+    [InlineData("Line Sample", "TruckPhoto,Hectre,WholeSample,CutApples,StarchApples")]
     public void PhotoRequirementPolicy_MapsAvailablePhotosBySampleType(string sampleType, string expectedKeys)
     {
         var policy = new QcPhotoRequirementPolicy();
@@ -54,18 +54,35 @@ public sealed class QcSummaryEmailComposerTests
     [Theory]
     [InlineData("Door Sample")]
     [InlineData("Lot Sample")]
-    public void PhotoRequirementPolicy_DoorAndLotSamplesDoNotShowTruckOrHectreSlots(string sampleType)
+    public void PhotoRequirementPolicy_DoorAndLotSamplesShowOptionalTruckButNotHectre(string sampleType)
     {
         var policy = new QcPhotoRequirementPolicy();
 
         var available = policy.GetAvailablePhotoTypes(sampleType).Select(x => x.Key).ToList();
         var missing = policy.MissingRequiredPhotos(sampleType, receiptPhotoTypes: [], samplePhotoTypes: ["SampleBeforeCutting", "CutFruit"]);
 
-        Assert.DoesNotContain("TruckPhoto", available);
+        Assert.Contains("TruckPhoto", available);
         Assert.DoesNotContain("TopOfTruck", available);
         Assert.DoesNotContain("Hectre", available);
         Assert.Contains("StarchApples", available);
         Assert.Empty(missing);
+    }
+
+    [Theory]
+    [InlineData("Receiving Sample")]
+    [InlineData("Door Sample")]
+    [InlineData("Lot Sample")]
+    [InlineData("Field Sample")]
+    public void PearSamples_RequireStarchPhotoButNotTruckPhoto(string sampleType)
+    {
+        var policy = new QcPhotoRequirementPolicy();
+
+        var requirements = policy.GetRequirements(sampleType, "Pear");
+        var available = policy.GetAvailablePhotoTypes(sampleType, "Pear");
+
+        Assert.Contains(requirements, x => x.PhotoType == "FruitAfterStarch" && x.IsRequired);
+        Assert.DoesNotContain(requirements, x => x.PhotoType == "BinTruck");
+        Assert.Contains(available, x => x.PhotoType == "BinTruck" && !x.IsRequired);
     }
 
     [Fact]

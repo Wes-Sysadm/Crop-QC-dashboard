@@ -16,6 +16,8 @@
     var gradeSummary = string.Join(", ", enteredRows.Where(row => !string.IsNullOrWhiteSpace(row.Grade)).GroupBy(row => row.Grade!).OrderBy(group => group.Key).Select(group => $"{group.Key}: {group.Count()}"));
     var defectSummary = string.Join(", ", enteredRows.SelectMany(row => row.Defects).GroupBy(name => name).OrderBy(group => group.Key).Select(group => $"{group.Key}: {group.Count()}"));
     var sizeThresholdJson = JsonSerializer.Serialize(Model.SizeThresholds.Select(x => new { sizeCategory = x.SizeCategory, minimumWeightGrams = x.MinimumWeightGrams }));
+    var hasPearStarchPhoto = Model.FruitType.Equals("Pear", StringComparison.OrdinalIgnoreCase)
+        && Model.PhotoGroups.Any(x => x.PhotoType.Equals("FruitAfterStarch", StringComparison.OrdinalIgnoreCase) && x.Photos.Count > 0);
 }
 
 <h1>QC Sample Detail</h1>
@@ -48,7 +50,9 @@
         {
             <p class="notice warning">This sample changed after the last QC Summary email. Review the changes and resend if needed.</p>
         }
-        <p>@StarchSummary(Model.Readiness)</p>
+        <p>@(hasPearStarchPhoto && Model.Readiness.StarchMissingCount > 0
+            ? "Starch status: Not entered — see photo."
+            : StarchSummary(Model.Readiness))</p>
         @if (CanChangeSampleType(Model.Sample.EmailStatus, canEditDailyQc, canAdminDailyQc))
         {
             <form method="post" action="/Samples/@Model.Sample.Id/sample-type" class="inline-form">
@@ -244,7 +248,7 @@
 
     <section>
         <h2>Photos / Requirements</h2>
-        <p class="muted">Required photos vary by sample type. Receiving samples require truck photo, top of truck, Hectre, whole sample, cut apples, and starch apples. Door and lot samples require the photos configured for their sample type. Removed photos no longer count toward requirements or QC Summary emails.</p>
+        <p class="muted">Required photos vary by sample type and commodity. Truck photos are optional for every sample. Pear samples require a starch photo, but the starch reading itself may be left blank. Removed photos no longer count toward requirements or QC Summary emails.</p>
         <div class="grid-two">
             <div class="panel">
                 <h3>Current Photos</h3>

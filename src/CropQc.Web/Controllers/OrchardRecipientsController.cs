@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CropQc.Web.Controllers;
 
 [Route("Admin/OrchardRecipients")]
-[Authorize(Policy = AccessPolicyNames.ConfigurationAdmin)]
+[Authorize(Policy = AccessPolicyNames.OrchardManagersView)]
 public sealed class OrchardRecipientsController(
     IOrchardRecipientAdminService orchardRecipientAdminService,
     IAdminAuthorizationService authorizationService) : Controller
@@ -16,6 +16,7 @@ public sealed class OrchardRecipientsController(
         View(await orchardRecipientAdminService.GetMatrixAsync(search, cancellationToken));
 
     [HttpPost("Save")]
+    [Authorize(Policy = AccessPolicyNames.OrchardManagersCreate)]
     public async Task<IActionResult> Save(OrchardRecipientEditForm form, CancellationToken cancellationToken)
     {
         var result = await orchardRecipientAdminService.UpsertAsync(
@@ -27,6 +28,7 @@ public sealed class OrchardRecipientsController(
     }
 
     [HttpPost("{id:int}/Enabled")]
+    [Authorize(Policy = AccessPolicyNames.OrchardManagersAdmin)]
     public async Task<IActionResult> SetEnabled(int id, bool enabled, CancellationToken cancellationToken)
     {
         var error = await orchardRecipientAdminService.SetEnabledAsync(id, enabled, authorizationService.GetEmail(User) ?? "", cancellationToken);
@@ -35,6 +37,7 @@ public sealed class OrchardRecipientsController(
     }
 
     [HttpPost("{id:int}/Delete")]
+    [Authorize(Policy = AccessPolicyNames.OrchardManagersAdmin)]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
     {
         var error = await orchardRecipientAdminService.DeleteAsync(id, authorizationService.GetEmail(User) ?? "", cancellationToken);

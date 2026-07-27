@@ -1,4 +1,5 @@
 using System.Text;
+using CropQc.Data.Entities;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -73,17 +74,17 @@ public sealed class BinsRunController(
         RedirectToAction(nameof(Index));
 
     [HttpGet("Sources")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunView)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerView)]
     public async Task<IActionResult> Sources(string? query, int? facilityWarehouseId, int? roomId, string? mode, CancellationToken cancellationToken) =>
         Ok(await runProjectionService.SearchSourcesAsync(query, facilityWarehouseId, roomId, mode, User, cancellationToken));
 
     [HttpGet("Projections/{id:long}/FieldSamples")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunView)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerView)]
     public async Task<IActionResult> FieldSamples(long id, int canonicalBlockId, int fruitProfileId, CancellationToken cancellationToken) =>
         Ok(await runProjectionService.GetFieldSampleChoicesAsync(id, canonicalBlockId, fruitProfileId, User, cancellationToken));
 
     [HttpPost("Projections")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerCreate)]
     public async Task<IActionResult> CreateProjection(RunProjectionCreateForm form, CancellationToken cancellationToken)
     {
         var result = await runProjectionService.CreateAsync(form, User, cancellationToken);
@@ -92,7 +93,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Projections/{id:long}/Header")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerCreate)]
     public async Task<IActionResult> UpdateProjectionHeader(long id, RunProjectionHeaderForm form, CancellationToken cancellationToken)
     {
         form.Id = id;
@@ -102,7 +103,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Projections/{id:long}/Sources")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerCreate)]
     public async Task<IActionResult> AddProjectionSource(long id, RunProjectionAddSourceForm form, DateOnly plannedDate, CancellationToken cancellationToken)
     {
         form.ProjectionId = id;
@@ -112,7 +113,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Projections/{id:long}/Sources/{sourceId:long}")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerCreate)]
     public async Task<IActionResult> UpdateProjectionSource(long id, long sourceId, RunProjectionUpdateSourceForm form, DateOnly plannedDate, CancellationToken cancellationToken)
     {
         form.ProjectionId = id;
@@ -128,7 +129,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Projections/{id:long}/Packout/ApplyAll")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerCreate)]
     public async Task<IActionResult> ApplyProjectionPackoutToAll(long id, RunProjectionApplyPackoutForm form, DateOnly plannedDate, CancellationToken cancellationToken)
     {
         form.ProjectionId = id;
@@ -138,7 +139,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Projections/{id:long}/PackPlan/Preview")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.MasterDataAdmin)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> PreviewPackPlan(long id, RunProjectionPackPlanForm form, CancellationToken cancellationToken)
     {
@@ -153,7 +154,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Projections/{id:long}/PackPlan/Apply")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.MasterDataAdmin)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ApplyPackPlan(long id, RunProjectionPackPlanForm form, CancellationToken cancellationToken)
     {
@@ -164,16 +165,16 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Projections/{id:long}/Sources/{sourceId:long}/Refresh")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
-    public async Task<IActionResult> RefreshProjectionSource(long id, long sourceId, long concurrencyVersion, DateOnly plannedDate, CancellationToken cancellationToken)
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerCreate)]
+    public async Task<IActionResult> RefreshProjectionSource(long id, long sourceId, long concurrencyVersion, bool confirmRefresh, DateOnly plannedDate, CancellationToken cancellationToken)
     {
-        var error = await runProjectionService.RefreshSourceAsync(id, sourceId, concurrencyVersion, User, cancellationToken);
+        var error = await runProjectionService.RefreshSourceAsync(id, sourceId, concurrencyVersion, confirmRefresh, User, cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Projection calculation snapshot refreshed from current QC data.";
         return PlannerRedirect(plannedDate, id);
     }
 
     [HttpPost("Projections/{id:long}/Sources/{sourceId:long}/Remove")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerCreate)]
     public async Task<IActionResult> RemoveProjectionSource(long id, long sourceId, long concurrencyVersion, DateOnly plannedDate, CancellationToken cancellationToken)
     {
         var error = await runProjectionService.RemoveSourceAsync(id, sourceId, concurrencyVersion, User, cancellationToken);
@@ -182,7 +183,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Projections/{id:long}/Ready")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerCreate)]
     public async Task<IActionResult> MarkProjectionReady(long id, RunProjectionStatusForm form, DateOnly plannedDate, CancellationToken cancellationToken)
     {
         form.Id = id;
@@ -192,7 +193,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Projections/{id:long}/Cancel")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunAdmin)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerAdmin)]
     public async Task<IActionResult> CancelProjection(long id, RunProjectionStatusForm form, DateOnly plannedDate, CancellationToken cancellationToken)
     {
         form.Id = id;
@@ -202,7 +203,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Projections/{id:long}/Duplicate")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerCreate)]
     public async Task<IActionResult> DuplicateProjection(long id, RunProjectionDuplicateForm form, CancellationToken cancellationToken)
     {
         form.Id = id;
@@ -212,7 +213,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Projections/{id:long}/CreateInventory")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerCreate)]
     public async Task<IActionResult> CreateInventoryProjection(long id, RunProjectionCreateInventoryForm form, CancellationToken cancellationToken)
     {
         form.Id = id;
@@ -222,7 +223,7 @@ public sealed class BinsRunController(
     }
 
     [HttpGet("Projections/{id:long}/Delete")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerAdmin)]
     public async Task<IActionResult> DeleteProjection(long id, CancellationToken cancellationToken)
     {
         var model = await runProjectionService.GetDeletionConfirmationAsync(id, User, cancellationToken);
@@ -230,7 +231,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Projections/{id:long}/Delete")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerAdmin)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteProjection(long id, DeleteRunProjectionForm form, CancellationToken cancellationToken)
     {
@@ -252,7 +253,7 @@ public sealed class BinsRunController(
     }
 
     [HttpGet("Projections/{id:long}/Outcome")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunView)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionOutcomeView)]
     public async Task<IActionResult> ProjectionOutcome(long id, CancellationToken cancellationToken)
     {
         var model = await runProjectionService.GetOutcomeAsync(id, User, cancellationToken);
@@ -260,7 +261,7 @@ public sealed class BinsRunController(
     }
 
     [HttpGet("Projections/{id:long}/Export")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunView)]
+    [Authorize(Policy = AccessPolicyNames.ProjectionOutcomeAdmin)]
     public async Task<IActionResult> ExportProjection(
         long id,
         DateOnly plannedDate,
@@ -272,68 +273,75 @@ public sealed class BinsRunController(
         var outcome = await runProjectionService.GetOutcomeAsync(id, User, cancellationToken);
         if (outcome is null) return NotFound();
         var detail = outcome.Projection;
-        var csv = new StringBuilder("Facility,Projection status,Record visibility,Source,Room,Lot or Block,Variety,Commodity,QC Basis,Available Bins,Planned Bins,Expected Packout %,Expected Cull %,Gross Pounds,Gross Boxes,Packed Pounds,Packed Boxes,Cull Pounds,Cull Equivalents\r\n");
+        var csv = new StringBuilder();
+        csv.AppendLine("Projection outcome");
+        csv.AppendLine($"Facility,{Csv(detail.FacilityCode)}");
+        csv.AppendLine($"Planned run date,{detail.PlannedRunDate:yyyy-MM-dd}");
+        csv.AppendLine($"Crop year,{detail.CropYear}");
+        csv.AppendLine($"Projection name,{Csv(detail.Name)}");
+        csv.AppendLine($"Status,{Csv(detail.Status)}");
+        csv.AppendLine("Box basis,40 pounds per box; whole boxes are floored");
+        csv.AppendLine();
+        csv.AppendLine("Source,Grower lot number,Grower,Variety,Commodity,QC basis,Received Bins to Date,Additional Expected Bins,Total Projected Bins,Expected Packout %,Expected Cull %,Gross Pounds,Packed Pounds,Cull Pounds");
         foreach (var source in detail.Sources)
         {
             csv.AppendLine(string.Join(',', new[]
             {
-                Csv(detail.FacilityCode), Csv(detail.Status), Csv(detail.IsDeleted ? "Deleted" : "Active"),
-                Csv(source.SourceLabel), Csv(source.Room), Csv(source.Lot ?? source.Block), Csv(source.Variety),
-                Csv(source.Commodity), Csv(source.QcBasis), source.AvailableBinsSnapshot?.ToString() ?? "",
+                Csv(source.SourceLabel), Csv(source.Lot ?? source.Block), Csv(source.Grower), Csv(source.Variety),
+                Csv(source.Commodity), Csv(source.QcBasis), source.ReceivedBinsToDate?.ToString() ?? "",
+                source.SourceType == RunProjectionSourceTypes.GrowerLot ? source.AdditionalExpectedBins.ToString() : "",
                 source.PlannedBins.ToString(), source.ExpectedPackoutPercent?.ToString("0.##") ?? "",
                 source.ExpectedCullPercent?.ToString("0.##") ?? "", source.ProjectedPounds.ToString("0.##"),
-                source.ProjectedBoxes.ToString("0.##"), source.PackedProjectedPounds.ToString("0.##"),
-                source.PackedProjectedBoxes.ToString("0.##"), source.CullProjectedPounds.ToString("0.##"),
-                source.CullProjectedBoxes.ToString("0.##")
+                source.PackedProjectedPounds.ToString("0.##"), source.CullProjectedPounds.ToString("0.##")
             }));
         }
         csv.AppendLine();
-        csv.AppendLine("Projected fruit sizing");
-        csv.AppendLine("Commodity,Calculated fruit size,Gross 40-lb equivalents,Packed 40-lb equivalents,Cull equivalents");
-        foreach (var size in detail.CombinedSizes)
+        csv.AppendLine("Contributing receipts");
+        csv.AppendLine("Source,Receipt,Receipt date,Bins,Receipt weight %,Eligible sample IDs");
+        foreach (var source in detail.Sources)
+        {
+            foreach (var receipt in source.ReceiptContributions)
+            {
+                csv.AppendLine(string.Join(',', new[]
+                {
+                    Csv(source.SourceLabel), Csv(receipt.ReceiptReference), receipt.ReceivedAt.ToString("yyyy-MM-dd"),
+                    receipt.BinsReceived.ToString(), receipt.WeightPercent.ToString("0.####"),
+                    Csv(string.Join(" ", receipt.SampleIds.Select(x => $"#{x}")))
+                }));
+            }
+        }
+        csv.AppendLine();
+        csv.AppendLine("Projected Boxes by Size");
+        csv.AppendLine("Calculated size,Whole 40-lb boxes,Percentage of packed fruit,Packed pounds,Residual pounds");
+        foreach (var size in outcome.Sizes)
         {
             csv.AppendLine(string.Join(',', new[]
             {
-                Csv(size.Commodity), size.Size.ToString(), size.UnroundedBoxes.ToString("0.##"),
-                size.PackedBoxes.ToString("0.##"), size.CullBoxes.ToString("0.##")
+                size.Size.ToString(), size.CompleteBoxes.ToString(),
+                size.PercentageOfPackedFruit.ToString("0.##"), size.PackedPounds.ToString("0.##"),
+                size.ResidualPounds.ToString("0.##")
             }));
         }
         csv.AppendLine();
-        csv.AppendLine($"Commercial pack scenario,{Csv(detail.PackPlanName)},{Csv(detail.PackPlanType)}");
-        csv.AppendLine("Pack code,Pack name,Pack type,Commodity,Eligible sizes,Mix rule,Gross assigned pounds,Assigned packed pounds,Cull/loss pounds,Package weight pounds,Unrounded projected packs,Rounded projected packs,Rounding residual pounds,Percent of projected packout");
-        foreach (var pack in outcome.Packs)
+        csv.AppendLine("Projected Boxes by Grade");
+        csv.AppendLine("Grade,Whole 40-lb boxes,Percentage of packed fruit,Packed pounds,Residual pounds");
+        foreach (var grade in outcome.Grades)
         {
             csv.AppendLine(string.Join(',', new[]
             {
-                Csv(pack.PackCode), Csv(pack.PackName), Csv(pack.PackType), Csv(pack.Commodity),
-                Csv(string.Join(" + ", pack.EligibleSizes)), Csv(pack.MixRule), pack.GrossAssignedPounds.ToString("0.##"),
-                pack.AssignedPounds.ToString("0.##"), pack.CullPounds.ToString("0.##"),
-                pack.PackageWeightPounds.ToString("0.####"), pack.UnroundedPacks.ToString("0.##"),
-                pack.CompletePacks.ToString(), pack.ResidualPounds.ToString("0.##"),
-                detail.TotalPackedProjectedPounds <= 0m
-                    ? "0"
-                    : (pack.AssignedPounds / detail.TotalPackedProjectedPounds * 100m).ToString("0.##")
+                Csv(grade.Grade), grade.CompleteBoxes.ToString(),
+                grade.PercentageOfPackedFruit.ToString("0.##"), grade.PackedPounds.ToString("0.##"),
+                grade.ResidualPounds.ToString("0.##")
             }));
         }
         csv.AppendLine();
         csv.AppendLine($"Size-by-grade basis,{outcome.JointBasisFruitCount} fruit with both size and grade");
-        csv.AppendLine(string.Join(',', new[] { "Commercial pack" }.Concat(outcome.GradeNames.Select(Csv)).Concat(["Total complete boxes"])));
+        csv.AppendLine(string.Join(',', new[] { "Calculated size" }.Concat(outcome.GradeNames.Select(Csv)).Concat(["Total whole boxes"])));
         foreach (var row in outcome.Matrix)
         {
             csv.AppendLine(string.Join(',', new[] { Csv(row.PackName) }
                 .Concat(outcome.GradeNames.Select(grade => row.CompleteBoxesByGrade.GetValueOrDefault(grade).ToString()))
                 .Concat([row.TotalCompleteBoxes.ToString()])));
-        }
-        csv.AppendLine();
-        csv.AppendLine("Unallocated projected fruit");
-        csv.AppendLine("Source,Commodity,Calculated fruit size,Pounds,40-lb equivalents,Reason");
-        foreach (var row in detail.UnallocatedFruit)
-        {
-            csv.AppendLine(string.Join(',', new[]
-            {
-                Csv(row.SourceLabel), Csv(row.Commodity), row.SizeCategory.ToString(), row.Pounds.ToString("0.##"),
-                row.StandardBoxEquivalents.ToString("0.##"), Csv(row.Reason)
-            }));
         }
         csv.AppendLine();
         csv.AppendLine("Cull output,Percent,Pounds");
@@ -404,7 +412,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Transfer")]
-    [Authorize(Policy = AccessPolicyNames.RoomTransactionsEdit)]
+    [Authorize(Policy = AccessPolicyNames.TransfersCreate)]
     public async Task<IActionResult> Transfer(RoomTransferForm form, CancellationToken cancellationToken)
     {
         var error = await dashboardDataService.CreateRoomTransferAsync(form, cancellationToken);
@@ -413,7 +421,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("TrueUp")]
-    [Authorize(Policy = AccessPolicyNames.RoomTransactionsAdmin)]
+    [Authorize(Policy = AccessPolicyNames.TrueUpAdmin)]
     public async Task<IActionResult> TrueUp(RoomInventoryTrueUpForm form, CancellationToken cancellationToken)
     {
         var error = await dashboardDataService.CreateRoomInventoryTrueUpAsync(form, cancellationToken);

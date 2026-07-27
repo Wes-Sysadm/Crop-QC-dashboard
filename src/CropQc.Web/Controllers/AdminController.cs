@@ -214,7 +214,7 @@ public sealed class AdminController(
     }
 
     [HttpPost("Users/Matrix")]
-    [Authorize(Policy = AccessPolicyNames.UsersAdmin)]
+    [Authorize(Policy = AccessPolicyNames.PermissionMatrixAdmin)]
     public async Task<IActionResult> UpdateUserMatrix(UserAccessMatrixForm form, CancellationToken cancellationToken)
     {
         var error = await userAdminService.UpdateUserMatrixAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);

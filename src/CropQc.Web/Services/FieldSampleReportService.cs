@@ -302,7 +302,7 @@ public sealed class FieldSampleReportService(
         foreach (var row in rows)
         {
             html.Append("<tr>");
-            foreach (var value in new[] { row.RowNumber.ToString(), Format(row.WeightGrams), row.SizeCategory?.ToString() ?? "", Format(row.Pressure1Lbs), Format(row.Pressure2Lbs), Format(Average(row.Pressure1Lbs, row.Pressure2Lbs)), row.StarchScaleValue?.Value.ToString("0.0") ?? "", row.Grade?.Code ?? "", FruitDefects(row) })
+            foreach (var value in new[] { row.RowNumber.ToString(), Format(row.WeightGrams), row.SizeCategory?.ToString() ?? "", Format(row.Pressure1Lbs), Format(row.Pressure2Lbs), Format(Average(row.Pressure1Lbs, row.Pressure2Lbs)), StarchText(sample, row, photos), row.Grade?.Code ?? "", FruitDefects(row) })
             {
                 html.Append($"<td style=\"border:1px solid #cbd5e1;white-space:nowrap;\">{Html(value)}</td>");
             }
@@ -328,7 +328,7 @@ public sealed class FieldSampleReportService(
 
         AppendTrend(html, detail);
         if (!string.IsNullOrWhiteSpace(sample.Notes)) html.AppendLine($"<p><strong>Notes:</strong> {Html(sample.Notes)}</p>");
-        AppendCurrentSummary(html, detail);
+        AppendCurrentSummary(html, sample, detail, photos);
         html.AppendLine("</body></html>");
         return html.ToString();
     }
@@ -349,7 +349,7 @@ public sealed class FieldSampleReportService(
         text.AppendLine("Fruit Detail");
         foreach (var row in sample.FruitReadings.Where(HasEnteredData).OrderBy(x => x.RowNumber))
         {
-            text.AppendLine($"Fruit {row.RowNumber}: Weight {Format(row.WeightGrams)} g; Size {row.SizeCategory}; P1 {Format(row.Pressure1Lbs)} lb; P2 {Format(row.Pressure2Lbs)} lb; Avg {Format(Average(row.Pressure1Lbs, row.Pressure2Lbs))} lb; Starch {row.StarchScaleValue?.Value:0.0}; Grade {row.Grade?.Code}; Defects {FruitDefects(row)}");
+            text.AppendLine($"Fruit {row.RowNumber}: Weight {Format(row.WeightGrams)} g; Size {row.SizeCategory}; P1 {Format(row.Pressure1Lbs)} lb; P2 {Format(row.Pressure2Lbs)} lb; Avg {Format(Average(row.Pressure1Lbs, row.Pressure2Lbs))} lb; Starch {StarchText(sample, row, photos)}; Grade {row.Grade?.Code}; Defects {FruitDefects(row)}");
         }
         text.AppendLine();
         text.AppendLine("Same-block 30-day trend");
@@ -364,14 +364,14 @@ public sealed class FieldSampleReportService(
         text.AppendLine($"Meaningful fruit rows: {detail.CurrentSummary.EnteredFruitCount}");
         text.AppendLine($"Average weight: {Format(detail.CurrentSummary.AverageWeightGrams, " g")}");
         text.AppendLine($"Average Pressure: {Format(detail.CurrentSummary.AveragePressureLbs, " lb")}");
-        text.AppendLine($"Average starch: {Format(detail.CurrentSummary.AverageStarch)}");
+        text.AppendLine($"Average starch: {StarchSummaryText(sample, detail.CurrentSummary.AverageStarch, photos)}");
         text.AppendLine($"Defect inspection: {DefectSummary(detail.CurrentSummary)}");
         text.AppendLine($"Defect distribution: {DefectDistribution(detail.CurrentSummary)}");
         text.AppendLine($"Photos: {photos.Count}");
         return text.ToString();
     }
 
-    private static void AppendCurrentSummary(StringBuilder html, FieldSampleDetailViewModel detail)
+    private static void AppendCurrentSummary(StringBuilder html, QcSample sample, FieldSampleDetailViewModel detail, IReadOnlyList<QcPhoto> photos)
     {
         html.AppendLine("<h2>Final Sample Summary</h2><table cellpadding=\"4\" cellspacing=\"0\" style=\"border-collapse:collapse;\">");
         AddInfo(html, "Meaningful fruit rows", detail.CurrentSummary.EnteredFruitCount.ToString());
@@ -379,7 +379,7 @@ public sealed class FieldSampleReportService(
         AddInfo(html, "Average / representative size", AverageSize(detail.SizeDistribution));
         AddInfo(html, "Size distribution", Distribution(detail.SizeDistribution.Select(x => new FieldSampleDistributionPoint(x.Size.ToString(), x.Percentage))));
         AddInfo(html, "Average Pressure", Format(detail.CurrentSummary.AveragePressureLbs, " lb"));
-        AddInfo(html, "Average starch", Format(detail.CurrentSummary.AverageStarch));
+        AddInfo(html, "Average starch", StarchSummaryText(sample, detail.CurrentSummary.AverageStarch, photos));
         AddInfo(html, "Starch distribution", Distribution(detail.CurrentSummary.StarchDistribution));
         AddInfo(html, "Grade distribution", Distribution(detail.CurrentSummary.GradeDistribution));
         AddInfo(html, "Defect inspection", DefectSummary(detail.CurrentSummary));
@@ -487,6 +487,20 @@ public sealed class FieldSampleReportService(
         return (points.Sum(x => x.Size * x.Percentage) / points.Sum(x => x.Percentage)).ToString("0.#");
     }
     private static bool HasEnteredData(QcFruitReading row) => row.Pressure1Lbs is not null || row.Pressure2Lbs is not null || row.WeightGrams is not null || row.StarchScaleValueId is not null || row.SizeCategory is not null || row.GradeId is not null || row.DefectsInspected || row.Defects.Count > 0;
+
+    private static string StarchText(QcSample sample, QcFruitReading row, IReadOnlyCollection<QcPhoto> photos) =>
+        row.StarchScaleValue?.Value.ToString("0.0")
+        ?? (IsPearWithStarchPhoto(sample, photos) ? "Not entered — see photo" : "");
+
+    private static string StarchSummaryText(QcSample sample, decimal? value, IReadOnlyCollection<QcPhoto> photos) =>
+        value?.ToString("0.##")
+        ?? (IsPearWithStarchPhoto(sample, photos) ? "Not entered — see photo" : "");
+
+    private static bool IsPearWithStarchPhoto(QcSample sample, IReadOnlyCollection<QcPhoto> photos) =>
+        string.Equals(sample.FieldSampleFruitProfile?.FruitType, "Pear", StringComparison.OrdinalIgnoreCase)
+        && photos.Any(x => !x.IsDeleted
+            && QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType)
+                .Equals("FruitAfterStarch", StringComparison.OrdinalIgnoreCase));
     private static string FruitDefects(QcFruitReading row) => !row.DefectsInspected
         ? "Not inspected"
         : row.Defects.Count == 0

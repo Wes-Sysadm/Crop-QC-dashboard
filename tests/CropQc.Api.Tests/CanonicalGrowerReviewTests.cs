@@ -125,7 +125,7 @@ public sealed class CanonicalGrowerReviewTests
         Assert.Contains("PageAccessLevel.Edit", view);
         Assert.Contains("sourceGrowerName = grower.SourceGrowerName", view);
         Assert.Contains("Grower mapping needed", view);
-        Assert.Contains("[Authorize(Policy = AccessPolicyNames.MasterDataEdit)]", controller);
+        Assert.Contains("CanTypeAsync(\"canonical-growers\", PageAccessLevel.Create", controller);
         Assert.Contains("SaveGrowerMappingAsync", controller);
         Assert.Contains("Mapping choice", mapView);
         Assert.Contains("Create new canonical grower", mapView);

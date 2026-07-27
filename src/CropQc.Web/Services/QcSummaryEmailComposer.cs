@@ -46,7 +46,7 @@ public sealed class QcSummaryEmailComposer(
     public async Task<QcEmailContent> ComposeAsync(QcSample sample, ReadinessViewModel readiness, User? sendingUser, bool isOverride, string? overrideReason, CancellationToken cancellationToken)
     {
         var enteredRows = sample.FruitReadings.Where(HasEnteredData).OrderBy(x => x.RowNumber).ToList();
-        var requirements = photoRequirementPolicy.GetAvailablePhotoTypes(sample.SampleType.Name);
+        var requirements = photoRequirementPolicy.GetAvailablePhotoTypes(sample.SampleType.Name, sample.Receipt.FruitProfile.FruitType);
         var photos = SelectEmailPhotos(sample, requirements);
         var inlineImages = new List<QcEmailInlineImage>();
         var imageReferences = new Dictionary<long, string>();
@@ -291,7 +291,7 @@ public sealed class QcSummaryEmailComposer(
                 Cell(Format(row.WeightGrams), NumberCellStyle) +
                 Cell(SizeText(row), NumberCellStyle) +
                 Cell(row.Grade?.Code ?? "", NumberCellStyle) +
-                Cell(row.StarchScaleValue?.Value.ToString("0.0") ?? "", NumberCellStyle) +
+                Cell(StarchText(sample, row), NumberCellStyle) +
                 Cell(defects, WrapCellStyle) +
                 Cell(notes, WrapCellStyle) +
                 "</tr>");
@@ -306,7 +306,7 @@ public sealed class QcSummaryEmailComposer(
         AddInfoRow(html, "Entered fruit count", summary.SampleSize.ToString());
         AddInfoRow(html, "Average Pressure", Format(summary.AveragePressure));
         AddInfoRow(html, "Pressure std dev lbs", Format(summary.PressureStandardDeviation));
-        AddInfoRow(html, "Average starch", Format(summary.AverageStarch));
+        AddInfoRow(html, "Average starch", StarchSummaryText(sample, summary.AverageStarch));
         AddInfoRow(html, "Average weight grams", Format(summary.AverageWeight));
         AddInfoRow(html, "Grade summary", summary.GradeSummary);
         AddInfoRow(html, "Defect summary", summary.DefectSummary);
@@ -385,7 +385,7 @@ public sealed class QcSummaryEmailComposer(
         {
             var defects = DefectDisplay(row);
             var notes = DefectNotes(row);
-            text.AppendLine($"Row {row.RowNumber}: P1 {Format(row.Pressure1Lbs)} lbs, P2 {Format(row.Pressure2Lbs)} lbs, Avg {Format(Average(row.Pressure1Lbs, row.Pressure2Lbs))} lbs, Weight {Format(row.WeightGrams)} g, Size {SizeText(row)}, Grade {row.Grade?.Code}, Starch {row.StarchScaleValue?.Value:0.0}, Defects {defects}, Notes {notes}");
+            text.AppendLine($"Row {row.RowNumber}: P1 {Format(row.Pressure1Lbs)} lbs, P2 {Format(row.Pressure2Lbs)} lbs, Avg {Format(Average(row.Pressure1Lbs, row.Pressure2Lbs))} lbs, Weight {Format(row.WeightGrams)} g, Size {SizeText(row)}, Grade {row.Grade?.Code}, Starch {StarchText(sample, row)}, Defects {defects}, Notes {notes}");
         }
         text.AppendLine();
         text.AppendLine("Photo sections:");
@@ -408,7 +408,7 @@ public sealed class QcSummaryEmailComposer(
         text.AppendLine($"Entered fruit count: {summary.SampleSize}");
         text.AppendLine($"Average Pressure: {Format(summary.AveragePressure)} lbs");
         text.AppendLine($"Pressure std dev lbs: {Format(summary.PressureStandardDeviation)}");
-        text.AppendLine($"Average starch: {Format(summary.AverageStarch)}");
+        text.AppendLine($"Average starch: {StarchSummaryText(sample, summary.AverageStarch)}");
         text.AppendLine($"Average weight grams: {Format(summary.AverageWeight)}");
         text.AppendLine($"Grade summary: {summary.GradeSummary}");
         text.AppendLine($"Defect summary: {summary.DefectSummary}");
@@ -518,6 +518,20 @@ public sealed class QcSummaryEmailComposer(
     private static string Cell(string value, string? style = null) => $"<td style=\"{style ?? "border:1px solid #cbd5e1;"}\">{Html(value)}</td>";
     private static string Html(string? value) => WebUtility.HtmlEncode(value ?? "");
     private static string Format(decimal? value) => value?.ToString("0.##") ?? "";
+    private static string StarchText(QcSample sample, QcFruitReading row) =>
+        row.StarchScaleValue?.Value.ToString("0.0")
+        ?? (IsPearWithStarchPhoto(sample) ? "Not entered — see photo" : "");
+
+    private static string StarchSummaryText(QcSample sample, decimal? value) =>
+        value?.ToString("0.##")
+        ?? (IsPearWithStarchPhoto(sample) ? "Not entered — see photo" : "");
+
+    private static bool IsPearWithStarchPhoto(QcSample sample) =>
+        string.Equals(sample.Receipt.FruitProfile.FruitType, "Pear", StringComparison.OrdinalIgnoreCase)
+        && sample.Photos.Any(x => !x.IsDeleted
+            && QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType)
+                .Equals("FruitAfterStarch", StringComparison.OrdinalIgnoreCase));
+
     private static decimal? Average(decimal? first, decimal? second) => (first, second) switch
     {
         (decimal a, decimal b) => decimal.Round((a + b) / 2m, 2),
