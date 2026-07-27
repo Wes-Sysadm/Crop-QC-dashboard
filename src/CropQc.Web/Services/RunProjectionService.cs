@@ -48,7 +48,7 @@ public static class RunProjectionSettings
 
     public const int DefaultDraftExpirationDays = 14;
     public const int DefaultVisibilityPastDays = 30;
-    public const int DefaultVisibilityFutureDays = 14;
+    public const int DefaultVisibilityFutureDays = 21;
     public const int DefaultMinimumDistributionFruit = 10;
 }
 
@@ -91,10 +91,26 @@ public sealed class RunProjectionService(
             .ToListAsync(cancellationToken);
         var today = businessTime.PacificDate(businessTime.UtcNow);
         var selectedDate = date ?? today;
-        var start = today.AddDays(-settings.VisibilityPastDays);
-        var end = today.AddDays(settings.VisibilityFutureDays);
+        var defaultStart = today.AddDays(-settings.VisibilityPastDays);
+        var defaultEnd = today.AddDays(settings.VisibilityFutureDays);
+        var start = selectedDate < defaultStart || selectedDate > defaultEnd
+            ? selectedDate.AddDays(-7)
+            : defaultStart;
+        var end = selectedDate < defaultStart || selectedDate > defaultEnd
+            ? selectedDate.AddDays(settings.VisibilityFutureDays)
+            : defaultEnd;
 
         var filtered = ApplyPlannerFilters(dbContext.RunProjections.AsNoTracking(), selectedFacility, selectedDeletionStatus);
+        var projectionDateRows = await filtered
+            .GroupBy(x => x.PlannedRunDate)
+            .Select(x => new
+            {
+                Date = x.Key,
+                Count = x.Count(),
+                PlannedBins = x.Sum(y => y.TotalPlannedBins)
+            })
+            .OrderBy(x => x.Date)
+            .ToListAsync(cancellationToken);
         var calendarRows = await filtered
             .Where(x => x.PlannedRunDate >= start && x.PlannedRunDate <= end)
             .GroupBy(x => new
@@ -262,7 +278,10 @@ public sealed class RunProjectionService(
         return new RunProjectionPlannerViewModel
         {
             SelectedDate = selectedDate,
-            CalendarDays = Enumerable.Range(0, settings.VisibilityPastDays + settings.VisibilityFutureDays + 1)
+            PacificToday = today,
+            CalendarStartDate = start,
+            CalendarEndDate = end,
+            CalendarDays = Enumerable.Range(0, end.DayNumber - start.DayNumber + 1)
                 .Select(offset => start.AddDays(offset))
                 .Select(day =>
                 {
@@ -282,6 +301,16 @@ public sealed class RunProjectionService(
                     };
                 })
                 .ToList(),
+            HistoricalProjectionDates = projectionDateRows
+                .Where(x => x.Date < start)
+                .OrderByDescending(x => x.Date)
+                .Select(x => new RunProjectionDateShortcutViewModel(x.Date, x.Count, x.PlannedBins))
+                .ToList(),
+            LaterProjectionDates = projectionDateRows
+                .Where(x => x.Date > end)
+                .OrderBy(x => x.Date)
+                .Select(x => new RunProjectionDateShortcutViewModel(x.Date, x.Count, x.PlannedBins))
+                .ToList(),
             Projections = records,
             RecentActivity = recentActivity,
             FacilityOptions = facilities,
@@ -300,6 +329,8 @@ public sealed class RunProjectionService(
             CanEdit = canEdit,
             CanAdmin = canAdmin,
             CanViewDeleted = canAdmin,
+            HasUpcomingProjections = projectionDateRows.Any(x => x.Date >= today),
+            IsDirectProjectionOpen = projectionId is not null,
             VisibilityPastDays = settings.VisibilityPastDays,
             VisibilityFutureDays = settings.VisibilityFutureDays,
             DefaultExpectedPackoutPercent = settings.DefaultExpectedPackoutPercent,

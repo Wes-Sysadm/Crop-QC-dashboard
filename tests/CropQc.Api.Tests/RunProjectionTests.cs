@@ -974,15 +974,123 @@ public sealed class RunProjectionTests
         }
 
         var wp = await service.GetPlannerAsync(new(2026, 7, 24), null, "WP", "Active", "Facility", Owner(), CancellationToken.None);
+        var ebs = await service.GetPlannerAsync(new(2026, 7, 24), null, "EBS", "Active", "Facility", Owner(), CancellationToken.None);
         var all = await service.GetPlannerAsync(new(2026, 7, 24), null, "All", "Active", "Facility", Owner(), CancellationToken.None);
 
         Assert.Single(wp.Projections);
         Assert.Equal("WP", wp.Projections[0].FacilityCode);
+        Assert.Single(ebs.Projections);
+        Assert.Equal("EBS", ebs.Projections[0].FacilityCode);
         Assert.Equal(2, all.Projections.Count);
         Assert.Equal(["WP", "EBS"], all.FacilityTotals.Select(x => x.FacilityCode));
         var day = all.CalendarDays.Single(x => x.Date == new DateOnly(2026, 7, 24));
         Assert.Equal(1, day.WpProjectionCount);
         Assert.Equal(1, day.EbsProjectionCount);
+    }
+
+    [Fact]
+    public async Task FreshPlannerLoad_UsesPacificTodayWhileKeepingHistoricalAndLaterDatesAccessible()
+    {
+        await using var db = CreateDbContext();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+        await CreateProjectionAsync(service, new DateOnly(2026, 6, 12), "Historical June run");
+        await CreateProjectionAsync(service, new DateOnly(2026, 7, 29), "Upcoming run");
+        await CreateProjectionAsync(service, new DateOnly(2026, 9, 2), "Later scheduled run");
+
+        var planner = await service.GetPlannerAsync(
+            null, null, "All", "Active", "Facility", Owner(), CancellationToken.None);
+
+        Assert.Equal(new DateOnly(2026, 7, 23), planner.PacificToday);
+        Assert.Equal(planner.PacificToday, planner.SelectedDate);
+        Assert.True(planner.CalendarDays.Single(x => x.Date == planner.PacificToday).IsToday);
+        Assert.Contains(planner.CalendarDays, x => x.Date > planner.PacificToday);
+        Assert.Contains(planner.HistoricalProjectionDates, x => x.Date == new DateOnly(2026, 6, 12));
+        Assert.Contains(planner.LaterProjectionDates, x => x.Date == new DateOnly(2026, 9, 2));
+        Assert.True(planner.HasUpcomingProjections);
+    }
+
+    [Fact]
+    public async Task PlannerWithOnlyHistoricalProjections_StillOpensOnTodayAndShowsFutureEmptyState()
+    {
+        await using var db = CreateDbContext();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+        await CreateProjectionAsync(service, new DateOnly(2026, 6, 12), "Historical June run");
+
+        var planner = await service.GetPlannerAsync(
+            null, null, "WP", "Active", "Facility", Owner(), CancellationToken.None);
+
+        Assert.Equal(planner.PacificToday, planner.SelectedDate);
+        Assert.False(planner.HasUpcomingProjections);
+        Assert.Contains(planner.HistoricalProjectionDates, x => x.Date == new DateOnly(2026, 6, 12));
+    }
+
+    [Fact]
+    public async Task ExplicitHistoricalProjection_RemainsSelectableWithoutChangingPacificToday()
+    {
+        await using var db = CreateDbContext();
+        var service = CreateProjectionService(db, new PlanningBinsRunService([]));
+        var projectionId = await CreateProjectionAsync(service, new DateOnly(2026, 6, 12), "Historical June run");
+
+        var planner = await service.GetPlannerAsync(
+            new DateOnly(2026, 6, 12),
+            projectionId,
+            "WP",
+            "Active",
+            "Facility",
+            Owner(),
+            CancellationToken.None);
+
+        Assert.Equal(new DateOnly(2026, 6, 12), planner.SelectedDate);
+        Assert.Equal(new DateOnly(2026, 7, 23), planner.PacificToday);
+        Assert.True(planner.IsDirectProjectionOpen);
+        Assert.Contains(planner.CalendarDays, x => x.Date == planner.SelectedDate && x.IsSelected);
+        Assert.Equal("WP", planner.SelectedFacility);
+    }
+
+    [Theory]
+    [InlineData("2026-07-24T06:30:00Z", 2026, 7, 23)]
+    [InlineData("2026-03-08T09:30:00Z", 2026, 3, 8)]
+    [InlineData("2026-11-01T08:30:00Z", 2026, 11, 1)]
+    public async Task PlannerToday_UsesAuthoritativePacificDateAcrossUtcAndDstBoundaries(
+        string utc,
+        int year,
+        int month,
+        int day)
+    {
+        await using var db = CreateDbContext();
+        var service = CreateProjectionService(
+            db,
+            new PlanningBinsRunService([]),
+            DateTimeOffset.Parse(utc));
+
+        var planner = await service.GetPlannerAsync(
+            null, null, "All", "Active", "Facility", Owner(), CancellationToken.None);
+
+        Assert.Equal(new DateOnly(year, month, day), planner.PacificToday);
+        Assert.Equal(planner.PacificToday, planner.SelectedDate);
+    }
+
+    [Fact]
+    public void PlannerView_AnchorsFreshLoadsOnServerPacificTodayWithoutUsingBrowserLocalTime()
+    {
+        var view = ReadRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml");
+        var css = ReadRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css");
+        var controller = ReadRepositoryFile("src", "CropQc.Web", "Controllers", "BinsRunController.cs");
+
+        Assert.Contains("data-pacific-today", view);
+        Assert.Contains("data-run-calendar-date", view);
+        Assert.Contains("scrollIntoView({ block: \"nearest\", inline: \"start\" })", view);
+        Assert.Contains("run-planner-preserve-date-once", view);
+        Assert.Contains("window.location.replace(todayUrl)", view);
+        Assert.Contains("data-run-planner-today-action", view);
+        Assert.Contains("No projections are scheduled from today forward.", view);
+        Assert.Contains("Earlier saved projection date", view);
+        Assert.Contains("Later scheduled:", view);
+        Assert.DoesNotContain("localStorage", view);
+        Assert.DoesNotContain("new Date().", view);
+        Assert.Contains("businessTime.PacificDate(businessTime.UtcNow)", controller);
+        Assert.Contains("run-calendar-today-label", css);
+        Assert.Contains("content: \"●\"", css);
     }
 
     [Fact]
@@ -1286,14 +1394,36 @@ public sealed class RunProjectionTests
         return db;
     }
 
-    private static RunProjectionService CreateProjectionService(CropQcDbContext db, IBinsRunService bins) =>
+    private static RunProjectionService CreateProjectionService(
+        CropQcDbContext db,
+        IBinsRunService bins,
+        DateTimeOffset? now = null) =>
         new(
             db,
             bins,
             new UserAccessService(db, new ConfigurationBuilder().Build()),
             new CropYearService(db, new ConfigurationBuilder().AddInMemoryCollection(
                 new Dictionary<string, string?> { ["CropYear:ActiveYear"] = "2026" }).Build()),
-            new PacificBusinessTimeService(new FixedClock(TestNow)));
+            new PacificBusinessTimeService(new FixedClock(now ?? TestNow)));
+
+    private static async Task<long> CreateProjectionAsync(
+        RunProjectionService service,
+        DateOnly plannedDate,
+        string name)
+    {
+        var result = await service.CreateAsync(
+            new RunProjectionCreateForm
+            {
+                PlannedRunDate = plannedDate,
+                Name = name,
+                ProjectionMode = RunProjectionModes.Preharvest,
+                FacilityWarehouseId = 1
+            },
+            Owner(),
+            CancellationToken.None);
+        Assert.Null(result.Error);
+        return Assert.IsType<long>(result.Id);
+    }
 
     private static ClaimsPrincipal Owner() =>
         new(new ClaimsIdentity([new Claim(ClaimTypes.Email, ApplicationAreas.OwnerEmail)], "Test"));

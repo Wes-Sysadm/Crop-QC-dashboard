@@ -3,7 +3,12 @@ namespace CropQc.Web.Models;
 public sealed class RunProjectionPlannerViewModel
 {
     public DateOnly SelectedDate { get; set; }
+    public DateOnly PacificToday { get; set; }
+    public DateOnly CalendarStartDate { get; set; }
+    public DateOnly CalendarEndDate { get; set; }
     public IReadOnlyList<RunProjectionCalendarDayViewModel> CalendarDays { get; set; } = [];
+    public IReadOnlyList<RunProjectionDateShortcutViewModel> HistoricalProjectionDates { get; set; } = [];
+    public IReadOnlyList<RunProjectionDateShortcutViewModel> LaterProjectionDates { get; set; } = [];
     public IReadOnlyList<RunProjectionListItemViewModel> Projections { get; set; } = [];
     public IReadOnlyList<RunProjectionListItemViewModel> RecentActivity { get; set; } = [];
     public IReadOnlyList<RunProjectionFacilityOptionViewModel> FacilityOptions { get; set; } = [];
@@ -17,12 +22,19 @@ public sealed class RunProjectionPlannerViewModel
     public bool CanEdit { get; set; }
     public bool CanAdmin { get; set; }
     public bool CanViewDeleted { get; set; }
+    public bool HasUpcomingProjections { get; set; }
+    public bool IsDirectProjectionOpen { get; set; }
     public int VisibilityPastDays { get; set; }
     public int VisibilityFutureDays { get; set; }
     public decimal DefaultExpectedPackoutPercent { get; set; }
     public string? PlannerWarning { get; set; }
     public string? DiagnosticReference { get; set; }
 }
+
+public sealed record RunProjectionDateShortcutViewModel(
+    DateOnly Date,
+    int ProjectionCount,
+    int TotalPlannedBins);
 
 public sealed class RunProjectionCalendarDayViewModel
 {
