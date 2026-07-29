@@ -267,7 +267,6 @@ public sealed class BinsRunController(
     [HttpPost("Projections/{id:long}/Packout")]
     [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
     [ValidateAntiForgeryToken]
-    [RequestFormLimits(MultipartBodyLengthLimit = 210_000_000)]
     public async Task<IActionResult> UploadPackout(long id, PackoutUploadForm form, CancellationToken cancellationToken)
     {
         form.RunProjectionId = id;

@@ -17,6 +17,21 @@ public sealed partial class OrchardContactWorkbookParser : IOrchardContactWorkbo
     public const string AuthoritativeWorksheet = "Summary";
     private static readonly string[] RequiredHeaders =
         ["Type", "Orchard", "Physical Address", "Name", "Phone", "Email", "Communication Notes"];
+    private readonly PackoutProcessingOptions options;
+    private readonly ILogger<OrchardContactWorkbookParser>? logger;
+
+    public OrchardContactWorkbookParser()
+        : this(new PackoutProcessingOptions(), null)
+    {
+    }
+
+    public OrchardContactWorkbookParser(
+        PackoutProcessingOptions options,
+        ILogger<OrchardContactWorkbookParser>? logger)
+    {
+        this.options = options;
+        this.logger = logger;
+    }
 
     public async Task<ParsedOrchardContactWorkbook> ParseAsync(Stream source, string fileName, CancellationToken cancellationToken)
     {
@@ -25,84 +40,145 @@ public sealed partial class OrchardContactWorkbookParser : IOrchardContactWorkbo
             throw new InvalidDataException("Upload an XLSX workbook. Legacy XLS files are not accepted by this reviewed import.");
         }
 
-        await using var copy = new MemoryStream();
-        await source.CopyToAsync(copy, cancellationToken);
-        if (copy.Length == 0) throw new InvalidDataException("The uploaded workbook is empty.");
-        if (copy.Length > 25 * 1024 * 1024) throw new InvalidDataException("The workbook exceeds the 25 MB import limit.");
-
-        var bytes = copy.ToArray();
-        var checksum = Convert.ToHexString(SHA256.HashData(bytes));
-        using var workbook = SpreadsheetDocument.Open(new MemoryStream(bytes, writable: false), false);
-        var workbookPart = workbook.WorkbookPart ?? throw new InvalidDataException("The workbook package is missing its workbook definition.");
-        var sheet = workbookPart.Workbook.Sheets?.Elements<Sheet>()
-            .SingleOrDefault(x => string.Equals(x.Name?.Value, AuthoritativeWorksheet, StringComparison.Ordinal));
-        if (sheet?.Id?.Value is null)
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var startingWorkingSet = Environment.WorkingSet;
+        var tempPath = Path.Combine(Path.GetTempPath(), $"cropqc-orchard-import-{Guid.NewGuid():N}.xlsx");
+        long uploadedBytes = 0;
+        string checksum;
+        try
         {
-            throw new InvalidDataException($"Worksheet '{AuthoritativeWorksheet}' was not found.");
-        }
-
-        var worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id.Value);
-        var rows = worksheetPart.Worksheet.GetFirstChild<SheetData>()?.Elements<Row>().ToList() ?? [];
-        if (rows.Count == 0) throw new InvalidDataException($"Worksheet '{AuthoritativeWorksheet}' is empty.");
-
-        var sharedStrings = workbookPart.SharedStringTablePart?.SharedStringTable;
-        var header = ReadRow(rows[0], sharedStrings);
-        for (var column = 0; column < RequiredHeaders.Length; column++)
-        {
-            if (!string.Equals(Clean(header.GetValueOrDefault(column)), RequiredHeaders[column], StringComparison.OrdinalIgnoreCase))
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            await using (var staged = new FileStream(
+                tempPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                64 * 1024,
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
-                throw new InvalidDataException(
-                    $"Worksheet '{AuthoritativeWorksheet}' column {ColumnName(column + 1)} must be '{RequiredHeaders[column]}'.");
+                var buffer = new byte[64 * 1024];
+                while (true)
+                {
+                    var read = await source.ReadAsync(buffer, cancellationToken);
+                    if (read == 0) break;
+                    uploadedBytes += read;
+                    if (uploadedBytes > options.MaximumFileBytes)
+                    {
+                        throw new InvalidDataException($"The workbook exceeds the {options.MaximumFileBytes / 1024 / 1024} MB import limit.");
+                    }
+                    hash.AppendData(buffer, 0, read);
+                    await staged.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                }
+            }
+            if (uploadedBytes == 0) throw new InvalidDataException("The uploaded workbook is empty.");
+            checksum = Convert.ToHexString(hash.GetHashAndReset());
+
+            using var workbook = SpreadsheetDocument.Open(tempPath, false);
+            var workbookPart = workbook.WorkbookPart ?? throw new InvalidDataException("The workbook package is missing its workbook definition.");
+            var sheet = workbookPart.Workbook.Sheets?.Elements<Sheet>()
+                .SingleOrDefault(x => string.Equals(x.Name?.Value, AuthoritativeWorksheet, StringComparison.Ordinal));
+            if (sheet?.Id?.Value is null)
+            {
+                throw new InvalidDataException($"Worksheet '{AuthoritativeWorksheet}' was not found.");
+            }
+
+            var worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id.Value);
+            var sharedStrings = workbookPart.SharedStringTablePart?.SharedStringTable;
+            using var rowReader = DocumentFormat.OpenXml.OpenXmlReader.Create(worksheetPart);
+            var tokens = new List<ParsedOrchardManagerToken>();
+            var sourceRowCount = 0;
+            var workbookRowCount = 0;
+            var headerRead = false;
+            while (rowReader.Read())
+            {
+                if (rowReader.ElementType != typeof(Row) || !rowReader.IsStartElement) continue;
+                if (rowReader.LoadCurrentElement() is not Row row) continue;
+                workbookRowCount++;
+                if (workbookRowCount > options.MaximumSpreadsheetRows)
+                {
+                    throw new InvalidDataException($"The workbook exceeds the {options.MaximumSpreadsheetRows:N0}-row import limit.");
+                }
+                var cells = ReadRow(row, sharedStrings);
+                if (!headerRead)
+                {
+                    for (var column = 0; column < RequiredHeaders.Length; column++)
+                    {
+                        if (!string.Equals(Clean(cells.GetValueOrDefault(column)), RequiredHeaders[column], StringComparison.OrdinalIgnoreCase))
+                        {
+                            throw new InvalidDataException(
+                                $"Worksheet '{AuthoritativeWorksheet}' column {ColumnName(column + 1)} must be '{RequiredHeaders[column]}'.");
+                        }
+                    }
+                    headerRead = true;
+                    continue;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                var type = Clean(cells.GetValueOrDefault(0));
+                if (!string.Equals(type, "Orchard Manager", StringComparison.OrdinalIgnoreCase)) continue;
+
+                sourceRowCount++;
+                var orchardCell = Clean(cells.GetValueOrDefault(1));
+                var managerName = Clean(cells.GetValueOrDefault(3));
+                var emailSource = Clean(cells.GetValueOrDefault(5));
+                var email = NormalizeEmail(emailSource);
+                var parsedEmail = QcEmailRecipientParser.Parse(email ?? "");
+                var emailIsValid = email is not null
+                    && parsedEmail.Recipients.Count == 1
+                    && parsedEmail.InvalidRecipients.Count == 0;
+                var normalizedEmail = emailIsValid ? parsedEmail.Recipients[0].ToUpperInvariant() : null;
+                var phoneSource = Clean(cells.GetValueOrDefault(4));
+                var (phone, normalizedPhone) = OrchardContactNormalization.NormalizePhone(phoneSource);
+                var rowNumber = checked((int)(row.RowIndex?.Value ?? 0));
+                foreach (var token in SplitOrchards(orchardCell))
+                {
+                    tokens.Add(new ParsedOrchardManagerToken(
+                        rowNumber,
+                        orchardCell,
+                        token,
+                        managerName,
+                        OrchardContactNormalization.NormalizePersonName(managerName),
+                        email,
+                        normalizedEmail,
+                        emailIsValid,
+                        phone,
+                        normalizedPhone,
+                        NullIfEmpty(Clean(cells.GetValueOrDefault(2))),
+                        NullIfEmpty(Clean(cells.GetValueOrDefault(6))),
+                        NullIfEmpty(Clean(cells.GetValueOrDefault(7)))));
+                }
+            }
+            if (!headerRead) throw new InvalidDataException($"Worksheet '{AuthoritativeWorksheet}' is empty.");
+            stopwatch.Stop();
+            logger?.LogInformation(
+                "Orchard contact workbook parsing completed. Uploaded bytes {UploadedBytes}; spreadsheet row count {SpreadsheetRowCount}; parsed row count {ParsedRowCount}; elapsed ms {ElapsedMilliseconds}; working set delta bytes {WorkingSetDeltaBytes}.",
+                uploadedBytes,
+                workbookRowCount,
+                sourceRowCount,
+                stopwatch.ElapsedMilliseconds,
+                Environment.WorkingSet - startingWorkingSet);
+            return new ParsedOrchardContactWorkbook(
+                Path.GetFileName(fileName),
+                checksum,
+                AuthoritativeWorksheet,
+                sourceRowCount,
+                tokens);
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(tempPath)) File.Delete(tempPath);
+            }
+            catch (IOException exception)
+            {
+                logger?.LogWarning(exception, "Temporary orchard-contact workbook could not be removed immediately.");
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                logger?.LogWarning(exception, "Temporary orchard-contact workbook could not be removed immediately.");
             }
         }
-
-        var tokens = new List<ParsedOrchardManagerToken>();
-        var sourceRowCount = 0;
-        foreach (var row in rows.Skip(1))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var cells = ReadRow(row, sharedStrings);
-            var type = Clean(cells.GetValueOrDefault(0));
-            if (!string.Equals(type, "Orchard Manager", StringComparison.OrdinalIgnoreCase)) continue;
-
-            sourceRowCount++;
-            var orchardCell = Clean(cells.GetValueOrDefault(1));
-            var managerName = Clean(cells.GetValueOrDefault(3));
-            var emailSource = Clean(cells.GetValueOrDefault(5));
-            var email = NormalizeEmail(emailSource);
-            var parsedEmail = QcEmailRecipientParser.Parse(email ?? "");
-            var emailIsValid = email is not null
-                && parsedEmail.Recipients.Count == 1
-                && parsedEmail.InvalidRecipients.Count == 0;
-            var normalizedEmail = emailIsValid ? parsedEmail.Recipients[0].ToUpperInvariant() : null;
-            var phoneSource = Clean(cells.GetValueOrDefault(4));
-            var (phone, normalizedPhone) = OrchardContactNormalization.NormalizePhone(phoneSource);
-            var rowNumber = checked((int)(row.RowIndex?.Value ?? 0));
-            foreach (var token in SplitOrchards(orchardCell))
-            {
-                tokens.Add(new ParsedOrchardManagerToken(
-                    rowNumber,
-                    orchardCell,
-                    token,
-                    managerName,
-                    OrchardContactNormalization.NormalizePersonName(managerName),
-                    email,
-                    normalizedEmail,
-                    emailIsValid,
-                    phone,
-                    normalizedPhone,
-                    NullIfEmpty(Clean(cells.GetValueOrDefault(2))),
-                    NullIfEmpty(Clean(cells.GetValueOrDefault(6))),
-                    NullIfEmpty(Clean(cells.GetValueOrDefault(7)))));
-            }
-        }
-
-        return new ParsedOrchardContactWorkbook(
-            Path.GetFileName(fileName),
-            checksum,
-            AuthoritativeWorksheet,
-            sourceRowCount,
-            tokens);
     }
 
     public static IReadOnlyList<string> SplitOrchards(string? value) =>

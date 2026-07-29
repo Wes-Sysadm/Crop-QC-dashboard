@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
@@ -9,7 +10,11 @@ using ExcelDataReader;
 
 namespace CropQc.Web.Services;
 
-public sealed record PackoutUploadFile(string FileName, string ContentType, byte[] Bytes);
+public sealed record PackoutUploadFile(
+    string FileName,
+    string ContentType,
+    string TemporaryPath,
+    long Length);
 
 public sealed record ParsedPackoutLine(
     int SourceLineNumber,
@@ -35,96 +40,143 @@ public interface IPackoutReportParser
     Task<PackoutParseResult> ParseAsync(PackoutUploadFile file, CancellationToken cancellationToken);
 }
 
-public sealed partial class PackoutReportParser(
-    ILogger<PackoutReportParser> logger) : IPackoutReportParser
+public sealed partial class PackoutReportParser : IPackoutReportParser
 {
-    public const int MaximumFileBytes = 20 * 1024 * 1024;
-    public const string ParserVersion = "1.0";
+    public const string ParserVersion = "1.1";
     private static readonly string[] AllowedExtensions = [".pdf", ".xlsx", ".xls", ".csv", ".txt", ".jpg", ".jpeg", ".png", ".tif", ".tiff"];
+    private readonly PackoutProcessingOptions options;
+    private readonly ILogger<PackoutReportParser> logger;
+
+    public PackoutReportParser(
+        PackoutProcessingOptions options,
+        ILogger<PackoutReportParser> logger)
+    {
+        this.options = options;
+        this.logger = logger;
+    }
+
+    public PackoutReportParser(ILogger<PackoutReportParser> logger)
+        : this(new PackoutProcessingOptions(), logger)
+    {
+    }
 
     public async Task<PackoutParseResult> ParseAsync(PackoutUploadFile file, CancellationToken cancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
+        var startingWorkingSet = Environment.WorkingSet;
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("Upload a PDF, XLS, XLSX, CSV, TXT, JPG, PNG, or TIFF packout report.");
         }
-        if (file.Bytes.Length == 0 || file.Bytes.Length > MaximumFileBytes)
+        if (file.Length == 0 || file.Length > options.MaximumFileBytes)
         {
-            throw new InvalidOperationException($"Each packout report must be between 1 byte and {MaximumFileBytes / 1024 / 1024} MB.");
+            throw new InvalidOperationException($"Each packout report must be between 1 byte and {options.MaximumFileBytes / 1024 / 1024} MB.");
         }
 
-        string text;
-        string parser;
+        var actualLength = new FileInfo(file.TemporaryPath).Length;
+        if (actualLength != file.Length || actualLength > options.MaximumFileBytes)
+        {
+            throw new InvalidOperationException("The uploaded report size changed while it was being staged. Upload it again.");
+        }
+
+        IReadOnlyList<ParsedPackoutLine> lines;
+        string parserName;
+        int? pageCount = null;
         if (extension == ".xlsx")
         {
-            text = ReadXlsx(file.Bytes);
-            parser = "OpenXML";
+            lines = ReadXlsx(file.TemporaryPath);
+            parserName = "OpenXML";
         }
         else if (extension == ".xls")
         {
-            text = ReadXls(file.Bytes);
-            parser = "ExcelDataReader";
+            lines = ReadXls(file.TemporaryPath);
+            parserName = "ExcelDataReader";
         }
         else if (extension is ".csv" or ".txt")
         {
-            text = DecodeText(file.Bytes);
-            parser = "DelimitedText";
+            lines = await ReadDelimitedAsync(file.TemporaryPath, cancellationToken);
+            parserName = "DelimitedText";
         }
         else
         {
-            text = await ExtractWithPortableOcrAsync(file, extension, cancellationToken);
-            parser = extension == ".pdf" ? "Poppler+Tesseract" : "Tesseract";
+            if (extension == ".pdf")
+            {
+                pageCount = await GetPdfPageCountAsync(file.TemporaryPath, cancellationToken);
+                var pageLimitError = PackoutUploadLimits.ValidatePdfPageCount(pageCount.Value, options);
+                if (pageLimitError is not null)
+                {
+                    throw new InvalidOperationException(pageLimitError);
+                }
+            }
+            else
+            {
+                var dimensions = await ReadImageDimensionsAsync(file.TemporaryPath, extension, cancellationToken);
+                if (dimensions is null || dimensions.Value.Width <= 0 || dimensions.Value.Height <= 0)
+                {
+                    throw new InvalidOperationException("The report image dimensions could not be validated.");
+                }
+                if ((long)dimensions.Value.Width * dimensions.Value.Height > options.MaximumImagePixels)
+                {
+                    throw new InvalidOperationException($"Report images may contain at most {options.MaximumImagePixels:N0} pixels.");
+                }
+            }
+
+            var text = await ExtractWithPortableOcrAsync(file.TemporaryPath, extension, pageCount, cancellationToken);
+            lines = ParseText(text, options.MaximumParsedRows);
+            parserName = extension == ".pdf" ? "Poppler+Tesseract" : "Tesseract";
         }
 
-        var lines = ParseText(text);
         var confidence = lines.Count == 0 ? 0m : decimal.Round(lines.Average(x => x.Confidence), 5);
         var diagnostic = lines.Count == 0
             ? "No packout detail rows could be identified. The original was not retained; correct the source file and upload it again."
             : lines.Any(x => x.RequiresReview)
                 ? $"{lines.Count(x => x.RequiresReview)} parsed row(s) require review before finalization."
                 : null;
+        await using var hashStream = new FileStream(
+            file.TemporaryPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            64 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        var hash = await SHA256.HashDataAsync(hashStream, cancellationToken);
+        stopwatch.Stop();
+        logger.LogInformation(
+            "Packout report parsing completed. Extension {Extension}; uploaded bytes {UploadedBytes}; page count {PageCount}; parsed row count {ParsedRowCount}; elapsed ms {ElapsedMilliseconds}; working set delta bytes {WorkingSetDeltaBytes}.",
+            extension,
+            actualLength,
+            pageCount,
+            lines.Count,
+            stopwatch.ElapsedMilliseconds,
+            Environment.WorkingSet - startingWorkingSet);
         return new(
             Path.GetFileName(file.FileName),
             file.ContentType,
-            file.Bytes.LongLength,
-            Convert.ToHexString(SHA256.HashData(file.Bytes)).ToLowerInvariant(),
-            parser,
+            actualLength,
+            Convert.ToHexString(hash).ToLowerInvariant(),
+            parserName,
             ParserVersion,
             confidence,
             lines,
             diagnostic);
     }
 
-    public static IReadOnlyList<ParsedPackoutLine> ParseText(string text)
+    public static IReadOnlyList<ParsedPackoutLine> ParseText(string text, int maximumRows = 25_000)
     {
         if (string.IsNullOrWhiteSpace(text)) return [];
+        using var reader = new StringReader(text);
         var results = new List<ParsedPackoutLine>();
-        var sourceLines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
-        for (var index = 0; index < sourceLines.Length; index++)
+        var lineNumber = 0;
+        string? sourceLine;
+        while ((sourceLine = reader.ReadLine()) is not null)
         {
-            var raw = CollapseWhitespace(sourceLines[index]);
-            if (raw.Length == 0 || IsHeaderOrTotal(raw)) continue;
-            var structured = StructuredRowRegex().Match(raw);
-            string? packCode = null;
-            decimal? quantity = null;
-            var confidence = 0.45m;
-            if (structured.Success)
+            lineNumber++;
+            ParseSourceLine(sourceLine, lineNumber, results);
+            if (results.Count > maximumRows)
             {
-                packCode = structured.Groups["code"].Value;
-                quantity = ParseDecimal(structured.Groups["quantity"].Value);
-                confidence = 0.92m;
+                throw new InvalidOperationException($"A report may contain at most {maximumRows:N0} parsed rows.");
             }
-            else
-            {
-                var tokens = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                packCode = tokens.FirstOrDefault(IsLikelyPackCode);
-                quantity = tokens.Reverse().Select(ParseDecimal).FirstOrDefault(x => x is not null and not 0m);
-                if (packCode is not null && quantity is not null) confidence = 0.72m;
-            }
-            if (packCode is null && quantity is null) continue;
-            var requiresReview = packCode is null || quantity is null || quantity < 0m || confidence < 0.85m;
-            results.Add(new(index + 1, raw, packCode, quantity, confidence, requiresReview));
         }
         return results;
     }
@@ -143,17 +195,90 @@ public sealed partial class PackoutReportParser(
     public static string NormalizePackCode(string? value) =>
         Regex.Replace(value?.Trim().ToUpperInvariant() ?? "", @"[^A-Z0-9]+", "");
 
-    private async Task<string> ExtractWithPortableOcrAsync(
-        PackoutUploadFile file,
-        string extension,
+    private async Task<IReadOnlyList<ParsedPackoutLine>> ReadDelimitedAsync(
+        string path,
         CancellationToken cancellationToken)
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"cropqc-packout-{Guid.NewGuid():N}");
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            64 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        var results = new List<ParsedPackoutLine>();
+        var sourceLineNumber = 0;
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            sourceLineNumber++;
+            if (sourceLineNumber > options.MaximumSpreadsheetRows)
+            {
+                throw new InvalidOperationException($"Delimited reports may contain at most {options.MaximumSpreadsheetRows:N0} rows.");
+            }
+            ParseSourceLine(line, sourceLineNumber, results);
+            EnsureParsedRowLimit(results.Count);
+        }
+        return results;
+    }
+
+    private IReadOnlyList<ParsedPackoutLine> ReadXlsx(string path)
+    {
+        using var document = SpreadsheetDocument.Open(path, false);
+        var workbook = document.WorkbookPart ?? throw new InvalidOperationException("The XLSX workbook is missing its workbook part.");
+        var shared = workbook.SharedStringTablePart?.SharedStringTable?.Elements<SharedStringItem>().Select(x => x.InnerText).ToList() ?? [];
+        var results = new List<ParsedPackoutLine>();
+        var sourceLineNumber = 0;
+        foreach (var worksheetPart in workbook.WorksheetParts)
+        {
+            using var reader = DocumentFormat.OpenXml.OpenXmlReader.Create(worksheetPart);
+            while (reader.Read())
+            {
+                if (reader.ElementType != typeof(Row) || !reader.IsStartElement) continue;
+                if (reader.LoadCurrentElement() is not Row row) continue;
+                sourceLineNumber++;
+                EnsureSpreadsheetRowLimit(sourceLineNumber);
+                ParseSourceLine(string.Join('\t', row.Elements<Cell>().Select(cell => CellText(cell, shared))), sourceLineNumber, results);
+                EnsureParsedRowLimit(results.Count);
+            }
+        }
+        return results;
+    }
+
+    private IReadOnlyList<ParsedPackoutLine> ReadXls(string path)
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.SequentialScan);
+        using var reader = ExcelReaderFactory.CreateReader(stream);
+        var results = new List<ParsedPackoutLine>();
+        var sourceLineNumber = 0;
+        do
+        {
+            while (reader.Read())
+            {
+                sourceLineNumber++;
+                EnsureSpreadsheetRowLimit(sourceLineNumber);
+                var values = Enumerable.Range(0, reader.FieldCount)
+                    .Select(reader.GetValue)
+                    .Select(x => Convert.ToString(x, CultureInfo.InvariantCulture) ?? "");
+                ParseSourceLine(string.Join('\t', values), sourceLineNumber, results);
+                EnsureParsedRowLimit(results.Count);
+            }
+        }
+        while (reader.NextResult());
+        return results;
+    }
+
+    private async Task<string> ExtractWithPortableOcrAsync(
+        string input,
+        string extension,
+        int? pageCount,
+        CancellationToken cancellationToken)
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"cropqc-packout-ocr-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRoot);
         try
         {
-            var input = Path.Combine(tempRoot, $"input{extension}");
-            await File.WriteAllBytesAsync(input, file.Bytes, cancellationToken);
             if (extension == ".pdf")
             {
                 var directTextPath = Path.Combine(tempRoot, "direct.txt");
@@ -164,19 +289,38 @@ public sealed partial class PackoutReportParser(
                     if (directText.Count(char.IsLetterOrDigit) >= 40) return directText;
                 }
 
-                var imagePrefix = Path.Combine(tempRoot, "page");
-                var raster = await RunProcessAsync("pdftoppm", ["-png", "-r", "300", input, imagePrefix], cancellationToken);
-                if (raster.ExitCode != 0)
+                var output = new StringBuilder();
+                for (var pageNumber = 1; pageNumber <= pageCount.GetValueOrDefault(1); pageNumber++)
                 {
-                    throw new InvalidOperationException("The PDF could not be rasterized for OCR.");
+                    var imagePrefix = Path.Combine(tempRoot, "page");
+                    var image = $"{imagePrefix}.png";
+                    try
+                    {
+                        var raster = await RunProcessAsync(
+                            "pdftoppm",
+                            ["-f", pageNumber.ToString(CultureInfo.InvariantCulture), "-l", pageNumber.ToString(CultureInfo.InvariantCulture), "-singlefile", "-png", "-r", "200", input, imagePrefix],
+                            cancellationToken);
+                        if (raster.ExitCode != 0 || !File.Exists(image))
+                        {
+                            throw new InvalidOperationException($"PDF page {pageNumber} could not be rasterized for OCR.");
+                        }
+                        var dimensions = await ReadImageDimensionsAsync(image, ".png", cancellationToken);
+                        if (dimensions is null || dimensions.Value.Width <= 0 || dimensions.Value.Height <= 0)
+                        {
+                            throw new InvalidOperationException($"Rasterized PDF page {pageNumber} dimensions could not be validated.");
+                        }
+                        if ((long)dimensions.Value.Width * dimensions.Value.Height > options.MaximumImagePixels)
+                        {
+                            throw new InvalidOperationException($"Rasterized PDF pages may contain at most {options.MaximumImagePixels:N0} pixels.");
+                        }
+                        output.AppendLine((await RunProcessAsync("tesseract", [image, "stdout", "--psm", "6"], cancellationToken)).StandardOutput);
+                    }
+                    finally
+                    {
+                        TryDeleteFile(image);
+                    }
                 }
-                var pages = Directory.GetFiles(tempRoot, "page-*.png").OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
-                var pageText = new List<string>();
-                foreach (var page in pages)
-                {
-                    pageText.Add((await RunProcessAsync("tesseract", [page, "stdout", "--psm", "6"], cancellationToken)).StandardOutput);
-                }
-                return string.Join(Environment.NewLine, pageText);
+                return output.ToString();
             }
 
             return (await RunProcessAsync("tesseract", [input, "stdout", "--psm", "6"], cancellationToken)).StandardOutput;
@@ -194,6 +338,96 @@ public sealed partial class PackoutReportParser(
         }
     }
 
+    private async Task<int> GetPdfPageCountAsync(string path, CancellationToken cancellationToken)
+    {
+        var result = await RunProcessAsync("pdfinfo", [path], cancellationToken);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException("The PDF page count could not be validated.");
+        }
+        var match = Regex.Match(result.StandardOutput, @"(?im)^Pages:\s*(?<count>\d+)\s*$");
+        if (!match.Success || !int.TryParse(match.Groups["count"].Value, out var pageCount) || pageCount < 1)
+        {
+            throw new InvalidOperationException("The PDF does not contain a valid page count.");
+        }
+        return pageCount;
+    }
+
+    private static async Task<(int Width, int Height)?> ReadImageDimensionsAsync(
+        string path,
+        string extension,
+        CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        if (extension == ".png")
+        {
+            var header = new byte[24];
+            if (await stream.ReadAtLeastAsync(header, header.Length, throwOnEndOfStream: false, cancellationToken) < header.Length) return null;
+            return (BinaryPrimitives.ReadInt32BigEndian(header.AsSpan(16, 4)), BinaryPrimitives.ReadInt32BigEndian(header.AsSpan(20, 4)));
+        }
+        if (extension is ".jpg" or ".jpeg")
+        {
+            return await ReadJpegDimensionsAsync(stream, cancellationToken);
+        }
+        if (extension is ".tif" or ".tiff")
+        {
+            return await ReadTiffDimensionsAsync(stream, cancellationToken);
+        }
+        return null;
+    }
+
+    private static async Task<(int Width, int Height)?> ReadJpegDimensionsAsync(Stream stream, CancellationToken cancellationToken)
+    {
+        var two = new byte[2];
+        if (await stream.ReadAtLeastAsync(two, 2, false, cancellationToken) < 2 || two[0] != 0xff || two[1] != 0xd8) return null;
+        while (await stream.ReadAtLeastAsync(two, 2, false, cancellationToken) == 2)
+        {
+            if (two[0] != 0xff) return null;
+            var marker = two[1];
+            if (marker is 0xd8 or 0xd9) continue;
+            if (await stream.ReadAtLeastAsync(two, 2, false, cancellationToken) < 2) return null;
+            var length = BinaryPrimitives.ReadUInt16BigEndian(two);
+            if (length < 2) return null;
+            if (marker is >= 0xc0 and <= 0xc3 or >= 0xc5 and <= 0xc7 or >= 0xc9 and <= 0xcb or >= 0xcd and <= 0xcf)
+            {
+                var size = new byte[5];
+                if (await stream.ReadAtLeastAsync(size, size.Length, false, cancellationToken) < size.Length) return null;
+                return (BinaryPrimitives.ReadUInt16BigEndian(size.AsSpan(3, 2)), BinaryPrimitives.ReadUInt16BigEndian(size.AsSpan(1, 2)));
+            }
+            stream.Seek(length - 2, SeekOrigin.Current);
+        }
+        return null;
+    }
+
+    private static async Task<(int Width, int Height)?> ReadTiffDimensionsAsync(Stream stream, CancellationToken cancellationToken)
+    {
+        var header = new byte[8];
+        if (await stream.ReadAtLeastAsync(header, 8, false, cancellationToken) < 8) return null;
+        var littleEndian = header[0] == (byte)'I' && header[1] == (byte)'I';
+        if (!littleEndian && !(header[0] == (byte)'M' && header[1] == (byte)'M')) return null;
+        ushort U16(ReadOnlySpan<byte> value) => littleEndian ? BinaryPrimitives.ReadUInt16LittleEndian(value) : BinaryPrimitives.ReadUInt16BigEndian(value);
+        uint U32(ReadOnlySpan<byte> value) => littleEndian ? BinaryPrimitives.ReadUInt32LittleEndian(value) : BinaryPrimitives.ReadUInt32BigEndian(value);
+        stream.Seek(U32(header.AsSpan(4, 4)), SeekOrigin.Begin);
+        var countBytes = new byte[2];
+        if (await stream.ReadAtLeastAsync(countBytes, 2, false, cancellationToken) < 2) return null;
+        var entryCount = U16(countBytes);
+        int? width = null;
+        int? height = null;
+        var entry = new byte[12];
+        for (var index = 0; index < entryCount; index++)
+        {
+            if (await stream.ReadAtLeastAsync(entry, 12, false, cancellationToken) < 12) return null;
+            var tag = U16(entry.AsSpan(0, 2));
+            if (tag is not (256 or 257)) continue;
+            var type = U16(entry.AsSpan(2, 2));
+            var value = type == 3 ? U16(entry.AsSpan(8, 2)) : checked((int)U32(entry.AsSpan(8, 4)));
+            if (tag == 256) width = value;
+            else height = value;
+            if (width is not null && height is not null) return (width.Value, height.Value);
+        }
+        return null;
+    }
+
     private static async Task<ProcessResult> RunProcessAsync(
         string fileName,
         IReadOnlyList<string> arguments,
@@ -209,47 +443,66 @@ public sealed partial class PackoutReportParser(
         };
         foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"{fileName} could not be started.");
-        var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
-        return new(process.ExitCode, await stdout, await stderr);
+        try
+        {
+            var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
+            return new(process.ExitCode, await stdout, await stderr);
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                if (!process.HasExited) process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+            throw;
+        }
     }
 
-    private static string ReadXlsx(byte[] bytes)
+    private static void ParseSourceLine(string sourceLine, int sourceLineNumber, List<ParsedPackoutLine> results)
     {
-        using var stream = new MemoryStream(bytes);
-        using var document = SpreadsheetDocument.Open(stream, false);
-        var workbook = document.WorkbookPart ?? throw new InvalidOperationException("The XLSX workbook is missing its workbook part.");
-        var shared = workbook.SharedStringTablePart?.SharedStringTable?.Elements<SharedStringItem>().Select(x => x.InnerText).ToList() ?? [];
-        var rows = new List<string>();
-        foreach (var worksheetPart in workbook.WorksheetParts)
+        var raw = CollapseWhitespace(sourceLine);
+        if (raw.Length == 0 || IsHeaderOrTotal(raw)) return;
+        var structured = StructuredRowRegex().Match(raw);
+        string? packCode = null;
+        decimal? quantity = null;
+        var confidence = 0.45m;
+        if (structured.Success)
         {
-            foreach (var row in worksheetPart.Worksheet.Descendants<Row>())
-            {
-                rows.Add(string.Join('\t', row.Elements<Cell>().Select(cell => CellText(cell, shared))));
-            }
+            packCode = structured.Groups["code"].Value;
+            quantity = ParseDecimal(structured.Groups["quantity"].Value);
+            confidence = 0.92m;
         }
-        return string.Join(Environment.NewLine, rows);
+        else
+        {
+            var tokens = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            packCode = tokens.FirstOrDefault(IsLikelyPackCode);
+            quantity = tokens.Reverse().Select(ParseDecimal).FirstOrDefault(x => x is not null and not 0m);
+            if (packCode is not null && quantity is not null) confidence = 0.72m;
+        }
+        if (packCode is null && quantity is null) return;
+        var requiresReview = packCode is null || quantity is null || quantity < 0m || confidence < 0.85m;
+        results.Add(new(sourceLineNumber, raw, packCode, quantity, confidence, requiresReview));
     }
 
-    private static string ReadXls(byte[] bytes)
+    private void EnsureSpreadsheetRowLimit(int count)
     {
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        using var stream = new MemoryStream(bytes);
-        using var reader = ExcelReaderFactory.CreateReader(stream);
-        var lines = new List<string>();
-        do
+        if (count > options.MaximumSpreadsheetRows)
         {
-            while (reader.Read())
-            {
-                var values = Enumerable.Range(0, reader.FieldCount)
-                    .Select(reader.GetValue)
-                    .Select(x => Convert.ToString(x, CultureInfo.InvariantCulture) ?? "");
-                lines.Add(string.Join('\t', values));
-            }
+            throw new InvalidOperationException($"Spreadsheet reports may contain at most {options.MaximumSpreadsheetRows:N0} rows.");
         }
-        while (reader.NextResult());
-        return string.Join(Environment.NewLine, lines);
+    }
+
+    private void EnsureParsedRowLimit(int count)
+    {
+        if (count > options.MaximumParsedRows)
+        {
+            throw new InvalidOperationException($"A report may contain at most {options.MaximumParsedRows:N0} parsed rows.");
+        }
     }
 
     private static string CellText(Cell cell, IReadOnlyList<string> shared)
@@ -265,10 +518,18 @@ public sealed partial class PackoutReportParser(
         return value;
     }
 
-    private static string DecodeText(byte[] bytes)
+    private static void TryDeleteFile(string path)
     {
-        using var reader = new StreamReader(new MemoryStream(bytes), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-        return reader.ReadToEnd();
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private static bool IsHeaderOrTotal(string line) =>

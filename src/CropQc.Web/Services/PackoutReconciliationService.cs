@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using CropQc.Data;
@@ -32,11 +33,13 @@ public sealed class PackoutReconciliationService(
     IQcEmailSender emailSender,
     IUserAccessService accessService,
     IBusinessTimeService businessTime,
-    IConfiguration configuration) : IPackoutReconciliationService
+    IConfiguration configuration,
+    PackoutProcessingOptions processingOptions,
+    IPackoutOperationCoordinator operationCoordinator,
+    ILogger<PackoutReconciliationService> logger) : IPackoutReconciliationService
 {
     private const string SourceApplication = "CropQc.Web";
     private const string FeedbackRecipient = "wes@fruitandland.com";
-    private const int MaximumFilesPerUpload = 10;
 
     public async Task<(long? Id, string? Error)> UploadAsync(
         PackoutUploadForm form,
@@ -47,12 +50,18 @@ public sealed class PackoutReconciliationService(
         {
             return (null, "Bins Run Create access is required to upload actual packout results.");
         }
+        using var uploadOperation = operationCoordinator.TryEnter(form.RunProjectionId, "upload");
+        if (uploadOperation is null)
+        {
+            return (null, "A packout upload for this projection is already being processed. Wait for it to finish before trying again.");
+        }
         if (form.DumpedBins <= 0m) return (null, "Dumped bins must be greater than zero.");
         if (form.PackingDate == default) return (null, "Packing date is required.");
         if (form.RunNumber <= 0) return (null, "Run number must be greater than zero.");
-        if (form.Files.Count is < 1 or > MaximumFilesPerUpload)
+        var uploadLimitError = PackoutUploadLimits.Validate(form.Files.Select(x => x.Length).ToArray(), processingOptions);
+        if (uploadLimitError is not null)
         {
-            return (null, $"Upload between 1 and {MaximumFilesPerUpload} related report files.");
+            return (null, uploadLimitError);
         }
 
         var projection = await ProjectionQuery()
@@ -94,20 +103,55 @@ public sealed class PackoutReconciliationService(
             if (!linkedIds.Contains(binsRun.Id)) return (null, "The selected Bins Run is not linked to this projection.");
         }
 
-        var parsed = new List<PackoutParseResult>();
-        foreach (var upload in form.Files)
+        var parseStopwatch = Stopwatch.StartNew();
+        var parseWorkingSet = Environment.WorkingSet;
+        var uploadBytes = form.Files.Sum(x => x.Length);
+        var parsed = new List<PackoutParseResult>(form.Files.Count);
+        var uploadTempRoot = Path.Combine(Path.GetTempPath(), $"cropqc-packout-upload-{Guid.NewGuid():N}");
+        string? currentUploadFileName = null;
+        Directory.CreateDirectory(uploadTempRoot);
+        try
         {
-            await using var stream = new MemoryStream();
-            await upload.CopyToAsync(stream, cancellationToken);
-            try
+            for (var index = 0; index < form.Files.Count; index++)
             {
+                var upload = form.Files[index];
+                currentUploadFileName = Path.GetFileName(upload.FileName);
+                var stagedPath = Path.Combine(uploadTempRoot, $"upload-{index:D2}{Path.GetExtension(upload.FileName)}");
+                var stagedLength = await StageUploadAsync(upload, stagedPath, cancellationToken);
                 parsed.Add(await parser.ParseAsync(
-                    new PackoutUploadFile(upload.FileName, upload.ContentType ?? "application/octet-stream", stream.ToArray()),
+                    new PackoutUploadFile(
+                        upload.FileName,
+                        upload.ContentType ?? "application/octet-stream",
+                        stagedPath,
+                        stagedLength),
                     cancellationToken));
             }
-            catch (InvalidOperationException exception)
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException)
+        {
+            return (null, $"{currentUploadFileName ?? "Report"}: {exception.Message}");
+        }
+        finally
+        {
+            parseStopwatch.Stop();
+            logger.LogInformation(
+                "Packout report upload parsing finished. File count {FileCount}; uploaded bytes {UploadedBytes}; parsed row count {ParsedRowCount}; elapsed ms {ElapsedMilliseconds}; working set delta bytes {WorkingSetDeltaBytes}.",
+                form.Files.Count,
+                uploadBytes,
+                parsed.Sum(x => x.Lines.Count),
+                parseStopwatch.ElapsedMilliseconds,
+                Environment.WorkingSet - parseWorkingSet);
+            try
             {
-                return (null, $"{Path.GetFileName(upload.FileName)}: {exception.Message}");
+                Directory.Delete(uploadTempRoot, recursive: true);
+            }
+            catch (IOException exception)
+            {
+                logger.LogWarning(exception, "Temporary packout upload files could not be removed immediately.");
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                logger.LogWarning(exception, "Temporary packout upload files could not be removed immediately.");
             }
         }
         if (parsed.Sum(x => x.Lines.Count) == 0)
@@ -375,6 +419,18 @@ public sealed class PackoutReconciliationService(
         {
             return (null, null, "Projection Outcome Admin access is required to finalize actual-run feedback.");
         }
+        using var finalizeOperation = operationCoordinator.TryEnter(form.PackoutRunId, "finalize");
+        if (finalizeOperation is null)
+        {
+            return (null, null, "Finalization for this actual run is already in progress. Wait for it to finish before trying again.");
+        }
+        using var finalizeWorkbookOperation = operationCoordinator.TryEnter(form.PackoutRunId, "workbook");
+        if (finalizeWorkbookOperation is null)
+        {
+            return (null, null, "A workbook export for this actual run is already in progress. Wait for it to finish before finalizing.");
+        }
+        var finalizeStopwatch = Stopwatch.StartNew();
+        var finalizeWorkingSet = Environment.WorkingSet;
         var run = await RunQuery().SingleOrDefaultAsync(x => x.Id == form.PackoutRunId, cancellationToken);
         if (run is null) return (null, null, "Packout reconciliation was not found.");
         var guard = EditableGuard(run, form.ConcurrencyVersion);
@@ -461,6 +517,16 @@ public sealed class PackoutReconciliationService(
         Touch(run, userId);
         AddAudit("FinalizePackout", run, userId, null, new { run.FinalReportFileName, run.FinalReportSha256, Recipient = FeedbackRecipient, run.FinalEmailMessageId });
         await dbContext.SaveChangesAsync(cancellationToken);
+        finalizeStopwatch.Stop();
+        logger.LogInformation(
+            "Packout finalization completed. Packout run {PackoutRunId}; QC sample count {QcSampleCount}; receipt count {ReceiptCount}; component count {ComponentCount}; Excel row count {ExcelRowCount}; elapsed ms {ElapsedMilliseconds}; working set delta bytes {WorkingSetDeltaBytes}.",
+            run.Id,
+            run.RunProjection.Sources.Sum(x => CountJsonIds(x.ContributingSampleIdsJson)),
+            run.RunProjection.Sources.Sum(x => CountJsonIds(x.ContributingReceiptIdsJson)),
+            linkedBinsRuns.Count,
+            run.Lines.Count,
+            finalizeStopwatch.ElapsedMilliseconds,
+            Environment.WorkingSet - finalizeWorkingSet);
         return (workbook, fileName, null);
     }
 
@@ -548,6 +614,11 @@ public sealed class PackoutReconciliationService(
         if (!await accessService.HasAccessAsync(principal, ApplicationAreas.ProjectionOutcome, PageAccessLevel.Admin, cancellationToken))
         {
             throw new UnauthorizedAccessException("Projection Outcome Admin access is required for protected exports.");
+        }
+        using var downloadOperation = operationCoordinator.TryEnter(id, "workbook");
+        if (downloadOperation is null)
+        {
+            throw new InvalidOperationException("A workbook export for this actual run is already in progress.");
         }
         var run = await RunQuery(asTracking: false).SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (run is null) return (null, null);
@@ -664,6 +735,8 @@ public sealed class PackoutReconciliationService(
 
     private async Task RecalculateAsync(PackoutRun run, CancellationToken cancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
+        var startingWorkingSet = Environment.WorkingSet;
         var projectedSize = WeightedProjectedSize(run.RunProjection);
         var projectedGrade = WeightedProjectedGrade(run.RunProjection);
         decimal? expectedPackout = run.RunProjection.TotalProjectedPounds <= 0m
@@ -727,11 +800,21 @@ public sealed class PackoutReconciliationService(
             calculation.WasteAccuracy,
             calculation.OverallAccuracy
         });
+        stopwatch.Stop();
+        logger.LogInformation(
+            "Actual-run analysis completed. Packout run {PackoutRunId}; parsed row count {ParsedRowCount}; analyzed row count {AnalyzedRowCount}; projection source count {ProjectionSourceCount}; elapsed ms {ElapsedMilliseconds}; working set delta bytes {WorkingSetDeltaBytes}.",
+            run.Id,
+            run.Lines.Count,
+            lines.Count,
+            run.RunProjection.Sources.Count,
+            stopwatch.ElapsedMilliseconds,
+            Environment.WorkingSet - startingWorkingSet);
         await Task.CompletedTask;
     }
 
     private IQueryable<RunProjection> ProjectionQuery() =>
         dbContext.RunProjections
+            .AsSplitQuery()
             .Include(x => x.FacilityWarehouse)
             .Include(x => x.Sources).ThenInclude(x => x.FruitProfile)
             .Include(x => x.Sources).ThenInclude(x => x.SizeResults)
@@ -740,6 +823,7 @@ public sealed class PackoutReconciliationService(
     private IQueryable<PackoutRun> RunQuery(bool asTracking = true)
     {
         IQueryable<PackoutRun> query = dbContext.PackoutRuns
+            .AsSplitQuery()
             .Include(x => x.RunProjection).ThenInclude(x => x.Sources).ThenInclude(x => x.SizeResults)
             .Include(x => x.RunProjection).ThenInclude(x => x.Sources).ThenInclude(x => x.GradeResults)
             .Include(x => x.BinsRunEntry)
@@ -747,6 +831,36 @@ public sealed class PackoutReconciliationService(
             .Include(x => x.Lines).ThenInclude(x => x.PackoutReportSource)
             .Include(x => x.Lines).ThenInclude(x => x.Grade);
         return asTracking ? query : query.AsNoTracking();
+    }
+
+    private async Task<long> StageUploadAsync(
+        Microsoft.AspNetCore.Http.IFormFile upload,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        await using var input = upload.OpenReadStream();
+        await using var output = new FileStream(
+            path,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            64 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        var buffer = new byte[64 * 1024];
+        long total = 0;
+        while (true)
+        {
+            var read = await input.ReadAsync(buffer, cancellationToken);
+            if (read == 0) break;
+            total += read;
+            if (total > processingOptions.MaximumFileBytes)
+            {
+                throw new InvalidOperationException($"Each packout report must be no larger than {processingOptions.MaximumFileBytes / 1024 / 1024} MB.");
+            }
+            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
+        await output.FlushAsync(cancellationToken);
+        return total;
     }
 
     private static Dictionary<string, decimal> WeightedProjectedSize(RunProjection projection)
@@ -798,6 +912,22 @@ public sealed class PackoutReconciliationService(
         if (run.ConcurrencyVersion != concurrencyVersion) return "This packout reconciliation changed after the page loaded. Reload before saving.";
         if (run.Status == PackoutRunStatuses.Finalized) return "Finalized packout feedback is immutable. An administrator must reopen it first.";
         return null;
+    }
+
+    private static int CountJsonIds(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return 0;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.Array
+                ? document.RootElement.GetArrayLength()
+                : 0;
+        }
+        catch (JsonException)
+        {
+            return 0;
+        }
     }
 
     private void Touch(PackoutRun run, int? userId)

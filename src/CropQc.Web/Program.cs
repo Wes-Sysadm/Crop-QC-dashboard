@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
@@ -17,6 +18,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
+var packoutProcessingOptions = PackoutProcessingOptions.FromConfiguration(builder.Configuration);
+builder.Services.AddSingleton(packoutProcessingOptions);
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = packoutProcessingOptions.MaximumTotalUploadBytes;
+});
 builder.Services.AddControllersWithViews(options =>
 {
     options.ModelBinderProviders.Insert(0, new PacificDateTimeOffsetModelBinderProvider());
@@ -244,6 +251,7 @@ builder.Services.AddScoped<IRunProjectionService, RunProjectionService>();
 builder.Services.AddScoped<IPackoutReportParser, PackoutReportParser>();
 builder.Services.AddScoped<IPackoutFeedbackWorkbookService, PackoutFeedbackWorkbookService>();
 builder.Services.AddScoped<IPackoutReconciliationService, PackoutReconciliationService>();
+builder.Services.AddSingleton<IPackoutOperationCoordinator, PackoutOperationCoordinator>();
 builder.Services.AddScoped<IPackoutHistoricalSuggestionService, PackoutHistoricalSuggestionService>();
 builder.Services.AddScoped<IFacilityContextService, FacilityContextService>();
 builder.Services.AddScoped<ICommercialPackAdminService, CommercialPackAdminService>();
