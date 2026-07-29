@@ -285,6 +285,20 @@ if (app.Configuration.GetValue<bool>("Database:EnsureCreatedOnStartup"))
     await dbContext.Database.EnsureCreatedAsync();
 }
 
+var schemaVerificationCommand = args.FirstOrDefault(
+    x => x.StartsWith("--verify-schema=", StringComparison.OrdinalIgnoreCase));
+if (schemaVerificationCommand is not null)
+{
+    var expectedMigration = schemaVerificationCommand[(schemaVerificationCommand.IndexOf('=') + 1)..];
+    var schemaIsReady = await DatabaseStartupDiagnostics.VerifyRequiredSchemaAsync(
+        app.Services,
+        app.Configuration,
+        app.Environment,
+        expectedMigration);
+    Environment.ExitCode = schemaIsReady ? 0 : 1;
+    return;
+}
+
 await DatabaseStartupDiagnostics.InspectAsync(app.Services, app.Configuration, app.Environment);
 
 var backupCommand = args.FirstOrDefault(x => x.StartsWith("--run-backup=", StringComparison.OrdinalIgnoreCase));
