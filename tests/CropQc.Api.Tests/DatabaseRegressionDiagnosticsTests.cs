@@ -101,6 +101,97 @@ public sealed class DatabaseRegressionDiagnosticsTests
     }
 
     [Fact]
+    public void PackoutProductionPreflight_IsReadOnlyAndReportsCompatibilityState()
+    {
+        var script = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "preflight-packout-projection-reconciliation.sql"));
+
+        Assert.Contains("begin transaction read only;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("20260729165910_AddPackoutProjectionReconciliation", script);
+        Assert.Contains("__EFMigrationsHistory", script);
+        Assert.Contains("PARTIALLY APPLIED", script);
+        Assert.Contains("samples_with_defects", script);
+        Assert.Contains("Orphaned PackoutRuns", script);
+        Assert.DoesNotContain("alter table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("create table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("delete from", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("truncate ", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void PackoutProductionApply_IsTransactionalIdempotentAndDoesNotForgeHistory()
+    {
+        var script = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "apply-packout-projection-reconciliation-schema.sql"));
+
+        Assert.Contains(@"\set ON_ERROR_STOP on", script);
+        Assert.Contains("begin;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("commit;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pg_advisory_xact_lock", script);
+        Assert.Contains("add column if not exists", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("create table if not exists", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("create unique index if not exists", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("No defects found", script);
+        Assert.Contains("Defects found", script);
+        Assert.Contains("\"PackoutAnalysisConfigurations\"", script);
+        Assert.DoesNotContain("delete from", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("drop table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("truncate ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("insert into \"__EFMigrationsHistory\"", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("update \"__EFMigrationsHistory\"", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void PackoutProductionVerification_IsReadOnlyAndChecksApplicationQueries()
+    {
+        var script = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "verify-packout-projection-reconciliation.sql"));
+
+        Assert.Contains("begin transaction read only;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("DefectInspectionStatus", script);
+        Assert.Contains("PackoutAnalysisConfigurations", script);
+        Assert.Contains("where false;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Orphaned packout reconciliation relationships", script);
+        Assert.DoesNotContain("alter table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("create table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\ninsert into ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\nupdate ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\ndelete from ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("truncate ", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RenderUsesFailClosedPackoutSchemaGateBeforeBothWebDeployments()
+    {
+        var blueprint = File.ReadAllText(FindRepositoryFile("render.yaml"));
+        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260729165910_AddPackoutProjectionReconciliation";
+
+        Assert.Equal(2, blueprint.Split(command, StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("dotnet ef database update", blueprint, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void StartupDiagnosticsLogSafePackoutSchemaDetailsAndOperatorAction()
+    {
+        var diagnostics = File.ReadAllText(FindRepositoryFile(
+            "src", "CropQc.Web", "Services", "DatabaseStartupDiagnostics.cs"));
+        var program = File.ReadAllText(FindRepositoryFile(
+            "src", "CropQc.Web", "Program.cs"));
+
+        Assert.Contains("ExpectedPackoutMigration", diagnostics);
+        Assert.Contains("Reference {ReferenceId}", diagnostics);
+        Assert.Contains("application version {ApplicationVersion}", diagnostics);
+        Assert.Contains("expected migration {ExpectedMigration}", diagnostics);
+        Assert.Contains("partially updated {PartiallyUpdated}", diagnostics);
+        Assert.Contains("missing objects {MissingObjects}", diagnostics);
+        Assert.Contains("operator action {OperatorAction}", diagnostics);
+        Assert.Contains("No schema changes were attempted", diagnostics);
+        Assert.Contains("--verify-schema=", program);
+        Assert.Contains("VerifyRequiredSchemaAsync", program);
+        Assert.DoesNotContain("Database.Migrate", program, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void DashboardFallback_LogsClassifiedFailuresAndNoLongerCallsEveryFailureUnavailable()
     {
         var service = File.ReadAllText(FindRepositoryFile(

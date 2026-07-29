@@ -1,4 +1,5 @@
 using System.Data;
+using System.Reflection;
 using CropQc.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -6,13 +7,28 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    private static readonly SchemaExpectation[] OrchardRecipientExpectations =
+    public const string ExpectedPackoutMigration = "20260729165910_AddPackoutProjectionReconciliation";
+
+    private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
-        new("Migration history", "__EFMigrationsHistory", null),
-        new("Canonical orchard table", "CanonicalOrchards", null),
-        new("Orchard recipient table", "OrchardReportRecipients", null),
-        new("Receipt canonical block column", "Receipts", "CanonicalOrchardBlockId"),
-        new("Canonical block orchard column", "CanonicalOrchardBlocks", "CanonicalOrchardId")
+        new("CanonicalOrchards", "CanonicalOrchards", null),
+        new("OrchardReportRecipients", "OrchardReportRecipients", null),
+        new("Receipts.CanonicalOrchardBlockId", "Receipts", "CanonicalOrchardBlockId"),
+        new("CanonicalOrchardBlocks.CanonicalOrchardId", "CanonicalOrchardBlocks", "CanonicalOrchardId"),
+        new("PackCodeDefinitions", "PackCodeDefinitions", null),
+        new("PackoutAnalysisConfigurations", "PackoutAnalysisConfigurations", null),
+        new("PackoutRuns", "PackoutRuns", null),
+        new("PackoutEmailAttempts", "PackoutEmailAttempts", null),
+        new("PackoutReportSources", "PackoutReportSources", null),
+        new("PackoutReportLines", "PackoutReportLines", null),
+        new("RunProjectionSources.TotalDefectPercentageSnapshot", "RunProjectionSources", "TotalDefectPercentageSnapshot"),
+        new("RunProjections.IsLocked", "RunProjections", "IsLocked"),
+        new("RunProjections.LockedAt", "RunProjections", "LockedAt"),
+        new("RunProjections.LockedByUserId", "RunProjections", "LockedByUserId"),
+        new("QcSamples.DefectInspectionStatus", "QcSamples", "DefectInspectionStatus"),
+        new("BinsRunEntries.IsReconciled", "BinsRunEntries", "IsReconciled"),
+        new("BinsRunEntries.ReconciledAt", "BinsRunEntries", "ReconciledAt"),
+        new("BinsRunEntries.ReconciledByUserId", "BinsRunEntries", "ReconciledByUserId")
     ];
 
     public static async Task InspectAsync(
@@ -26,13 +42,15 @@ public static class DatabaseStartupDiagnostics
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseStartupDiagnostics");
         var provider = db.Database.ProviderName ?? "Unknown";
         var deployedCommit = configuration["RENDER_GIT_COMMIT"] ?? configuration["SourceVersion"] ?? "Unknown";
+        var applicationVersion = GetApplicationVersion();
         var compiledMigrations = db.Database.GetMigrations().ToArray();
         var latestCompiledMigration = compiledMigrations.LastOrDefault() ?? "None";
 
         logger.LogInformation(
-            "Database startup check. Environment {Environment}; provider {Provider}; deployed commit {DeployedCommit}; latest compiled migration {LatestCompiledMigration}.",
+            "Database startup check. Environment {Environment}; provider {Provider}; application version {ApplicationVersion}; deployed commit {DeployedCommit}; latest compiled migration {LatestCompiledMigration}.",
             environment.EnvironmentName,
             provider,
+            applicationVersion,
             deployedCommit,
             latestCompiledMigration);
 
@@ -95,15 +113,26 @@ public static class DatabaseStartupDiagnostics
             var missing = await FindMissingSchemaObjectsAsync(db, provider, cancellationToken);
             if (missing.Count == 0)
             {
-                logger.LogInformation("Orchard recipient schema check succeeded.");
+                logger.LogInformation(
+                    "Application schema check succeeded. Expected migration {ExpectedMigration}; checked object count {CheckedObjectCount}.",
+                    ExpectedPackoutMigration,
+                    RequiredSchemaExpectations.Length);
             }
             else
             {
+                var referenceId = Guid.NewGuid().ToString("N")[..8];
+                var partiallyUpdated = missing.Count < RequiredSchemaExpectations.Length;
                 logger.LogError(
-                    "Database schema mismatch detected. Category {Category}; provider {Provider}; missing objects: {MissingObjects}. Production data was not modified.",
+                    "Database schema mismatch detected. Reference {ReferenceId}; category {Category}; provider {Provider}; application version {ApplicationVersion}; deployed commit {DeployedCommit}; expected migration {ExpectedMigration}; partially updated {PartiallyUpdated}; missing objects {MissingObjects}; operator action {OperatorAction}. Production data was not modified.",
+                    referenceId,
                     DatabaseFailureCategory.SchemaMismatch,
                     provider,
-                    string.Join(", ", missing));
+                    applicationVersion,
+                    deployedCommit,
+                    ExpectedPackoutMigration,
+                    partiallyUpdated,
+                    string.Join(", ", missing),
+                    "Keep the prior compatible deployment active, run the reviewed PostgreSQL preflight, obtain backup and production authorization, apply the approved compatibility script, then verify before redeploying.");
             }
         }
         catch (Exception ex)
@@ -115,6 +144,96 @@ public static class DatabaseStartupDiagnostics
                 diagnostic.Category,
                 provider,
                 diagnostic.ProviderCode ?? "None");
+        }
+    }
+
+    public static async Task<bool> VerifyRequiredSchemaAsync(
+        IServiceProvider services,
+        IConfiguration configuration,
+        IHostEnvironment environment,
+        string expectedMigration,
+        CancellationToken cancellationToken = default)
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseSchemaDeploymentGate");
+        var provider = db.Database.ProviderName ?? "Unknown";
+        var deployedCommit = configuration["RENDER_GIT_COMMIT"] ?? configuration["SourceVersion"] ?? "Unknown";
+        var applicationVersion = GetApplicationVersion();
+        var referenceId = Guid.NewGuid().ToString("N")[..8];
+
+        if (!string.Equals(expectedMigration, ExpectedPackoutMigration, StringComparison.Ordinal))
+        {
+            logger.LogError(
+                "Database deployment gate rejected an unknown expected migration. Reference {ReferenceId}; requested migration {RequestedMigration}; supported migration {ExpectedMigration}.",
+                referenceId,
+                expectedMigration,
+                ExpectedPackoutMigration);
+            return false;
+        }
+
+        try
+        {
+            if (!await db.Database.CanConnectAsync(cancellationToken))
+            {
+                logger.LogError(
+                    "Database deployment gate failed. Reference {ReferenceId}; category {Category}; provider {Provider}; environment {Environment}; application version {ApplicationVersion}; deployed commit {DeployedCommit}; expected migration {ExpectedMigration}; operator action {OperatorAction}.",
+                    referenceId,
+                    DatabaseFailureCategory.ConnectionUnavailable,
+                    provider,
+                    environment.EnvironmentName,
+                    applicationVersion,
+                    deployedCommit,
+                    expectedMigration,
+                    "Restore database connectivity before retrying the deployment. No schema changes were attempted.");
+                return false;
+            }
+
+            var missing = await FindMissingSchemaObjectsAsync(db, provider, cancellationToken);
+            if (missing.Count == 0)
+            {
+                logger.LogInformation(
+                    "Database deployment gate passed. Reference {ReferenceId}; provider {Provider}; environment {Environment}; application version {ApplicationVersion}; deployed commit {DeployedCommit}; expected migration {ExpectedMigration}; checked object count {CheckedObjectCount}.",
+                    referenceId,
+                    provider,
+                    environment.EnvironmentName,
+                    applicationVersion,
+                    deployedCommit,
+                    expectedMigration,
+                    RequiredSchemaExpectations.Length);
+                return true;
+            }
+
+            logger.LogError(
+                "Database deployment gate blocked activation. Reference {ReferenceId}; category {Category}; provider {Provider}; environment {Environment}; application version {ApplicationVersion}; deployed commit {DeployedCommit}; expected migration {ExpectedMigration}; partially updated {PartiallyUpdated}; missing objects {MissingObjects}; operator action {OperatorAction}. No schema changes were attempted.",
+                referenceId,
+                DatabaseFailureCategory.SchemaMismatch,
+                provider,
+                environment.EnvironmentName,
+                applicationVersion,
+                deployedCommit,
+                expectedMigration,
+                missing.Count < RequiredSchemaExpectations.Length,
+                string.Join(", ", missing),
+                "Keep the prior compatible deployment active. Run the reviewed preflight and apply scripts only after a verified backup and explicit production authorization, then run verification and retry the deployment.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            var diagnostic = DatabaseFailureDiagnostics.Classify(ex);
+            logger.LogError(
+                ex,
+                "Database deployment gate failed. Reference {ReferenceId}; category {Category}; provider {Provider}; provider code {ProviderCode}; environment {Environment}; application version {ApplicationVersion}; deployed commit {DeployedCommit}; expected migration {ExpectedMigration}; operator action {OperatorAction}.",
+                referenceId,
+                diagnostic.Category,
+                provider,
+                diagnostic.ProviderCode ?? "None",
+                environment.EnvironmentName,
+                applicationVersion,
+                deployedCommit,
+                expectedMigration,
+                "Review the safe server log and correct connectivity or schema state before retrying. No schema changes were attempted.");
+            return false;
         }
     }
 
@@ -133,7 +252,7 @@ public static class DatabaseStartupDiagnostics
         try
         {
             var missing = new List<string>();
-            foreach (var expectation in OrchardRecipientExpectations)
+            foreach (var expectation in RequiredSchemaExpectations)
             {
                 await using var command = connection.CreateCommand();
                 command.CommandText = SchemaExistsSql(provider, expectation.ColumnName is not null);
@@ -168,6 +287,13 @@ public static class DatabaseStartupDiagnostics
             }
         }
     }
+
+    private static string GetApplicationVersion() =>
+        typeof(DatabaseStartupDiagnostics).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion
+        ?? typeof(DatabaseStartupDiagnostics).Assembly.GetName().Version?.ToString()
+        ?? "Unknown";
 
     private static string SchemaExistsSql(string provider, bool column)
     {
