@@ -54,13 +54,13 @@ public sealed class ProjectionOutcomeTests
     }
 
     [Fact]
-    public void CullOutput_UsesThirtyFiveFortyTwentyFiveOfCullOnly()
+    public void CullOutput_UsesThirtyFiveThirtyFiveThirtyOfCullOnly()
     {
         var outcome = ProjectionOutcomeCalculator.Build(Projection(), DateTimeOffset.UtcNow);
 
         Assert.Equal(154m, outcome.CullTotals.PeelerPounds);
-        Assert.Equal(176m, outcome.CullTotals.JuicePounds);
-        Assert.Equal(110m, outcome.CullTotals.WastePounds);
+        Assert.Equal(154m, outcome.CullTotals.JuicePounds);
+        Assert.Equal(132m, outcome.CullTotals.WastePounds);
         Assert.Equal(outcome.CullTotals.TotalCullPounds,
             outcome.CullTotals.PeelerPounds + outcome.CullTotals.JuicePounds + outcome.CullTotals.WastePounds);
         Assert.NotEqual(outcome.Projection.TotalProjectedPounds * ProjectionOutcomeCalculator.PeelerRate,
@@ -74,8 +74,8 @@ public sealed class ProjectionOutcomeTests
         var apple = Assert.Single(outcome.CullByCommodity);
 
         Assert.Equal(154m / 880m, apple.PeelerBinEquivalents);
-        Assert.Equal(176m / 880m, apple.JuiceBinEquivalents);
-        Assert.Equal(110m / 880m, apple.WasteBinEquivalents);
+        Assert.Equal(154m / 880m, apple.JuiceBinEquivalents);
+        Assert.Equal(132m / 880m, apple.WasteBinEquivalents);
         Assert.Equal(154m / 880m, outcome.SourceContributions.Sum(x => x.PeelerBins));
     }
 
@@ -94,8 +94,8 @@ public sealed class ProjectionOutcomeTests
         var pear = Assert.Single(ProjectionOutcomeCalculator.Build(projection, DateTimeOffset.UtcNow).CullByCommodity);
 
         Assert.Equal(230m * 0.35m / 920m, pear.PeelerBinEquivalents);
-        Assert.Equal(230m * 0.40m / 920m, pear.JuiceBinEquivalents);
-        Assert.Equal(230m * 0.25m / 920m, pear.WasteBinEquivalents);
+        Assert.Equal(230m * 0.35m / 920m, pear.JuiceBinEquivalents);
+        Assert.Equal(230m * 0.30m / 920m, pear.WasteBinEquivalents);
     }
 
     [Fact]
