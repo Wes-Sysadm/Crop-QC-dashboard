@@ -175,14 +175,196 @@ public sealed class PackoutReconciliationTests
     {
         var parser = new PackoutReportParser(NullLogger<PackoutReportParser>.Instance);
         var bytes = System.Text.Encoding.UTF8.GetBytes("REG BART US1 80 WP 12\nREG BART NOGR 900L 2");
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllBytesAsync(path, bytes);
+            var result = await parser.ParseAsync(new("run.csv", "text/csv", path, bytes.Length), CancellationToken.None);
 
-        var result = await parser.ParseAsync(new("run.csv", "text/csv", bytes), CancellationToken.None);
+            Assert.Equal("run.csv", result.FileName);
+            Assert.Equal(bytes.Length, result.FileSizeBytes);
+            Assert.Equal(64, result.Sha256.Length);
+            Assert.Equal(2, result.Lines.Count);
+            Assert.DoesNotContain(result.GetType().GetProperties(), x => x.PropertyType == typeof(byte[]));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 
-        Assert.Equal("run.csv", result.FileName);
-        Assert.Equal(bytes.Length, result.FileSizeBytes);
-        Assert.Equal(64, result.Sha256.Length);
-        Assert.Equal(2, result.Lines.Count);
-        Assert.DoesNotContain(result.GetType().GetProperties(), x => x.PropertyType == typeof(byte[]));
+    [Fact]
+    public void UploadLimits_RejectExcessiveFileCountAndTotalBytes()
+    {
+        var options = new PackoutProcessingOptions
+        {
+            MaximumFilesPerUpload = 2,
+            MaximumFileBytes = 100,
+            MaximumTotalUploadBytes = 150
+        };
+
+        Assert.Contains("between 1 and 2", PackoutUploadLimits.Validate([1, 1, 1], options));
+        Assert.Contains("combined upload", PackoutUploadLimits.Validate([80, 80], options));
+        Assert.Null(PackoutUploadLimits.Validate([70, 80], options));
+    }
+
+    [Fact]
+    public void UploadLimits_RejectExcessivePdfPageCount()
+    {
+        var options = new PackoutProcessingOptions { MaximumPdfPages = 3 };
+
+        Assert.Contains("at most 3 pages", PackoutUploadLimits.ValidatePdfPageCount(4, options));
+        Assert.Null(PackoutUploadLimits.ValidatePdfPageCount(3, options));
+    }
+
+    [Fact]
+    public async Task Parser_RejectsOversizedFileBeforeReadingIt()
+    {
+        var options = new PackoutProcessingOptions
+        {
+            MaximumFileBytes = 100,
+            MaximumTotalUploadBytes = 150
+        };
+        var parser = new PackoutReportParser(options, NullLogger<PackoutReportParser>.Instance);
+        var path = Path.GetTempFileName();
+        try
+        {
+            await using (var stream = new FileStream(path, FileMode.Create, FileAccess.Write))
+            {
+                stream.SetLength(101);
+            }
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => parser.ParseAsync(new("oversized.csv", "text/csv", path, 101), CancellationToken.None));
+            Assert.Contains("between 1 byte", exception.Message);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task Parser_RejectsSpreadsheetRowsBeyondConfiguredLimit()
+    {
+        var options = new PackoutProcessingOptions
+        {
+            MaximumFileBytes = 1024,
+            MaximumTotalUploadBytes = 2048,
+            MaximumSpreadsheetRows = 2
+        };
+        var parser = new PackoutReportParser(options, NullLogger<PackoutReportParser>.Instance);
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(path, "PACK 80 1\nPACK 90 1\nPACK 100 1");
+            var length = new FileInfo(path).Length;
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => parser.ParseAsync(new("rows.csv", "text/csv", path, length), CancellationToken.None));
+            Assert.Contains("at most 2 rows", exception.Message);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task Parser_RejectsImageDimensionsBeyondConfiguredLimitBeforeOcr()
+    {
+        var options = new PackoutProcessingOptions
+        {
+            MaximumFileBytes = 1024,
+            MaximumTotalUploadBytes = 2048,
+            MaximumImagePixels = 1_000_000
+        };
+        var parser = new PackoutReportParser(options, NullLogger<PackoutReportParser>.Instance);
+        var pngHeader = new byte[24];
+        new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }.CopyTo(pngHeader, 0);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(pngHeader.AsSpan(16, 4), 2000);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(pngHeader.AsSpan(20, 4), 2000);
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllBytesAsync(path, pngHeader);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => parser.ParseAsync(new("large.png", "image/png", path, pngHeader.Length), CancellationToken.None));
+            Assert.Contains("at most 1,000,000 pixels", exception.Message);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void OperationCoordinator_PreventsDuplicateRunOperationAndReleasesLease()
+    {
+        var coordinator = new PackoutOperationCoordinator();
+        using (coordinator.TryEnter(42, "finalize"))
+        {
+            Assert.Null(coordinator.TryEnter(42, "finalize"));
+            using var workbookLease = coordinator.TryEnter(42, "workbook");
+            Assert.NotNull(workbookLease);
+        }
+
+        using var releasedLease = coordinator.TryEnter(42, "finalize");
+        Assert.NotNull(releasedLease);
+    }
+
+    [Fact]
+    public void WorkbookGeneration_WritesBoundedCompressedOutput()
+    {
+        var run = Run(42, "1084", "Bartlett", 2026, 100m, 80m, 10m, 6m, 4m);
+        var source = new PackoutReportSource
+        {
+            OriginalFileName = "run.csv",
+            ContentType = "text/csv",
+            FileSizeBytes = 100,
+            Sha256 = new string('a', 64),
+            ParserName = "DelimitedText",
+            ParsedAt = DateTimeOffset.UtcNow
+        };
+        run.Sources.Add(source);
+        for (var index = 1; index <= 1000; index++)
+        {
+            run.Lines.Add(new PackoutReportLine
+            {
+                PackoutReportSource = source,
+                SourceLineNumber = index,
+                RawText = $"PACK 80 {index}",
+                Quantity = index,
+                NetWeightPounds = 40m,
+                ExtendedWeightPounds = index * 40m,
+                ProductCategory = PackoutProductCategories.Packed,
+                Confidence = 1m,
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+        }
+        var service = new PackoutFeedbackWorkbookService(
+            new PackoutProcessingOptions { MaximumWorkbookRows = 2000 },
+            NullLogger<PackoutFeedbackWorkbookService>.Instance);
+
+        var workbook = service.Build(run);
+
+        Assert.Equal((byte)'P', workbook[0]);
+        Assert.Equal((byte)'K', workbook[1]);
+        Assert.True(workbook.Length < 1_000_000);
+    }
+
+    [Fact]
+    public void WorkbookGeneration_RejectsExcessiveRows()
+    {
+        var service = new PackoutFeedbackWorkbookService(
+            new PackoutProcessingOptions { MaximumWorkbookRows = 10 },
+            NullLogger<PackoutFeedbackWorkbookService>.Instance);
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => service.Build(Run(43, "1084", "Bartlett", 2026, 100m, 80m, 10m, 6m, 4m)));
+
+        Assert.Contains("at most 10 rows", exception.Message);
     }
 
     [Fact]
