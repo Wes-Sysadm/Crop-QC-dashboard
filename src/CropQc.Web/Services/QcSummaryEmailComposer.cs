@@ -442,12 +442,12 @@ public sealed class QcSummaryEmailComposer(
 
     private static string SummarizeDefects(IReadOnlyList<QcFruitReading> rows)
     {
-        var inspected = rows.Where(x => x.DefectsInspected || x.Defects.Count > 0).ToList();
-        if (inspected.Count == 0) return "Not inspected";
+        var inspected = rows.Where(HasEnteredData).ToList();
+        if (inspected.Count == 0) return "No defects found";
         var affected = inspected.Count(x => x.Defects.Count > 0);
         var distribution = Summarize(inspected.SelectMany(x => x.Defects).Select(x => x.DefectType.Name));
         return affected == 0
-            ? $"Inspected - none found ({inspected.Count} fruit)"
+            ? $"No defects found ({inspected.Count} fruit inspected)"
             : $"{affected} of {inspected.Count} inspected fruit affected; {distribution}";
     }
 
@@ -502,7 +502,7 @@ public sealed class QcSummaryEmailComposer(
     {
         var names = DefectNames(row).ToList();
         if (names.Count > 0) return string.Join(", ", names);
-        return row.DefectsInspected ? "Inspected - none found" : "Not inspected";
+        return "No defects found";
     }
 
     private static string DefectNotes(QcFruitReading row) =>

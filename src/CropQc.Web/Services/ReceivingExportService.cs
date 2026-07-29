@@ -60,7 +60,7 @@ public sealed class ReceivingExportService(CropQcDbContext dbContext) : IReceivi
     [
         "Receipt ID", "Display Sample ID", "Crop Year", "Received Date/Time", "Warehouse", "Room", "Grower", "Lot",
         "Variety Code", "Variety Description", "Commodity", "Bin Count", "Sample Type", "Sample Status",
-        "Starch Status", "Photo Status", "Email Status", "Sample Taken At", "Actual Sample Size",
+        "Starch Status", "Photo Status", "Email Status", "Defect Inspection Status", "Sample Taken At", "Actual Sample Size",
         "Row Number", "Pressure 1", "Pressure 2", "Average Pressure", "Weight Grams", "Calculated Size",
         "Size Status", "Grade", "Starch", "Defects", "Other Defect Notes", "Ready/Missing Status"
     ];
@@ -100,6 +100,7 @@ public sealed class ReceivingExportService(CropQcDbContext dbContext) : IReceivi
             sample?.StarchStatus,
             sample?.PhotoStatus,
             sample?.EmailStatus,
+            sample?.DefectInspectionStatus,
             sample?.SampleTakenAt.ToString("u", CultureInfo.InvariantCulture),
             sample?.ActualSampleSize?.ToString(CultureInfo.InvariantCulture),
             reading?.RowNumber.ToString(CultureInfo.InvariantCulture),

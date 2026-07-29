@@ -27,7 +27,7 @@ RUN apt-get update \
     && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main" \
         > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client-18 \
+    && apt-get install -y --no-install-recommends postgresql-client-18 poppler-utils tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/publish .
 

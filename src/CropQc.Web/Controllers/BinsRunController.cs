@@ -12,6 +12,7 @@ namespace CropQc.Web.Controllers;
 public sealed class BinsRunController(
     IBinsRunService binsRunService,
     IRunProjectionService runProjectionService,
+    IPackoutReconciliationService packoutReconciliationService,
     IDashboardDataService dashboardDataService,
     IBusinessTimeService businessTime,
     ILogger<BinsRunController> logger) : Controller
@@ -263,6 +264,127 @@ public sealed class BinsRunController(
         return model is null ? NotFound() : View("ProjectionOutcome", model);
     }
 
+    [HttpPost("Projections/{id:long}/Packout")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [ValidateAntiForgeryToken]
+    [RequestFormLimits(MultipartBodyLengthLimit = 210_000_000)]
+    public async Task<IActionResult> UploadPackout(long id, PackoutUploadForm form, CancellationToken cancellationToken)
+    {
+        form.RunProjectionId = id;
+        var result = await packoutReconciliationService.UploadAsync(form, User, cancellationToken);
+        if (result.Error is not null)
+        {
+            TempData["Error"] = result.Error;
+            return result.Id is long existingId
+                ? RedirectToAction(nameof(PackoutReview), new { id = existingId })
+                : RedirectToAction(nameof(ProjectionOutcome), new { id });
+        }
+        if (result.Id is null)
+        {
+            TempData["Error"] = "Packout report upload failed.";
+            return RedirectToAction(nameof(ProjectionOutcome), new { id });
+        }
+        TempData["Success"] = "Packout report parsed. Review all flagged rows before finalizing.";
+        return RedirectToAction(nameof(PackoutReview), new { id = result.Id.Value });
+    }
+
+    [HttpGet("Packout/{id:long}")]
+    [Authorize(Policy = AccessPolicyNames.ProjectionOutcomeView)]
+    public async Task<IActionResult> PackoutReview(long id, CancellationToken cancellationToken)
+    {
+        var model = await packoutReconciliationService.GetAsync(id, User, cancellationToken);
+        return model is null ? NotFound() : View("PackoutReview", model);
+    }
+
+    [HttpPost("Packout/{id:long}/Line")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdatePackoutLine(long id, PackoutLineReviewForm form, CancellationToken cancellationToken)
+    {
+        form.PackoutRunId = id;
+        var error = await packoutReconciliationService.UpdateLineAsync(form, User, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Packout line corrected and recalculated.";
+        return RedirectToAction(nameof(PackoutReview), new { id });
+    }
+
+    [HttpPost("Packout/{id:long}/SecondaryOutputs")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdatePackoutSecondaryOutputs(long id, PackoutSecondaryOutputForm form, CancellationToken cancellationToken)
+    {
+        form.PackoutRunId = id;
+        var error = await packoutReconciliationService.UpdateSecondaryOutputsAsync(form, User, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Secondary outputs saved and reconciliation recalculated.";
+        return RedirectToAction(nameof(PackoutReview), new { id });
+    }
+
+    [HttpPost("Packout/{id:long}/Finalize")]
+    [Authorize(Policy = AccessPolicyNames.ProjectionOutcomeAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> FinalizePackout(long id, PackoutFinalizeForm form, CancellationToken cancellationToken)
+    {
+        form.PackoutRunId = id;
+        var result = await packoutReconciliationService.FinalizeAsync(form, User, cancellationToken);
+        TempData[result.Error is null ? "Success" : "Error"] = result.Error ?? "Packout feedback finalized and emailed to wes@fruitandland.com.";
+        return RedirectToAction(nameof(PackoutReview), new { id });
+    }
+
+    [HttpPost("Packout/{id:long}/Reopen")]
+    [Authorize(Policy = AccessPolicyNames.ProjectionOutcomeCreate)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReopenPackout(long id, PackoutReopenForm form, CancellationToken cancellationToken)
+    {
+        form.PackoutRunId = id;
+        var error = await packoutReconciliationService.ReopenAsync(form, User, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Packout feedback reopened. The projection is editable again.";
+        return RedirectToAction(nameof(PackoutReview), new { id });
+    }
+
+    [HttpPost("Packout/{id:long}/Delete")]
+    [Authorize(Policy = AccessPolicyNames.ProjectionOutcomeCreate)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeletePendingPackout(long id, long concurrencyVersion, CancellationToken cancellationToken)
+    {
+        var result = await packoutReconciliationService.DeletePendingAsync(id, concurrencyVersion, User, cancellationToken);
+        TempData[result.Error is null ? "Success" : "Error"] = result.Error ?? "Pending actual-run upload removed. Its source hashes and deletion audit were preserved.";
+        return result.ProjectionId == 0
+            ? RedirectToAction(nameof(Index), new { Section = "Planner" })
+            : RedirectToAction(nameof(ProjectionOutcome), new { id = result.ProjectionId });
+    }
+
+    [HttpGet("Packout/{id:long}/Download")]
+    [Authorize(Policy = AccessPolicyNames.ProjectionOutcomeAdmin)]
+    public async Task<IActionResult> DownloadPackout(long id, CancellationToken cancellationToken)
+    {
+        var result = await packoutReconciliationService.DownloadAsync(id, User, cancellationToken);
+        return result.Workbook is null
+            ? NotFound()
+            : File(result.Workbook, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", result.FileName);
+    }
+
+    [HttpPost("Packout/PackCodes")]
+    [Authorize(Policy = AccessPolicyNames.MasterDataAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SavePackCode(PackCodeDefinitionForm form, long returnRunId, CancellationToken cancellationToken)
+    {
+        var error = await packoutReconciliationService.SavePackCodeAsync(form, User, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Pack code saved.";
+        return RedirectToAction(nameof(PackoutReview), new { id = returnRunId });
+    }
+
+    [HttpPost("Packout/Configuration")]
+    [Authorize(Policy = AccessPolicyNames.MasterDataAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SavePackoutConfiguration(
+        PackoutAnalysisConfigurationForm form,
+        long returnRunId,
+        CancellationToken cancellationToken)
+    {
+        var error = await packoutReconciliationService.SaveConfigurationAsync(form, User, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Packout analysis configuration saved.";
+        return RedirectToAction(nameof(PackoutReview), new { id = returnRunId });
+    }
+
     [HttpGet("Projections/{id:long}/Export")]
     [Authorize(Policy = AccessPolicyNames.ProjectionOutcomeAdmin)]
     public async Task<IActionResult> ExportProjection(
@@ -349,8 +471,8 @@ public sealed class BinsRunController(
         csv.AppendLine();
         csv.AppendLine("Cull output,Percent,Pounds");
         csv.AppendLine($"Peeler,35,{outcome.CullTotals.PeelerPounds:0.##}");
-        csv.AppendLine($"Juice,40,{outcome.CullTotals.JuicePounds:0.##}");
-        csv.AppendLine($"Waste,25,{outcome.CullTotals.WastePounds:0.##}");
+        csv.AppendLine($"Juice,35,{outcome.CullTotals.JuicePounds:0.##}");
+        csv.AppendLine($"Waste,30,{outcome.CullTotals.WastePounds:0.##}");
         csv.AppendLine();
         csv.AppendLine("Reconciliation,Gross pounds,Complete-pack pounds,Residual packed pounds,Unallocated packed pounds,Cull/loss pounds,Difference pounds");
         csv.AppendLine(string.Join(',', new[]

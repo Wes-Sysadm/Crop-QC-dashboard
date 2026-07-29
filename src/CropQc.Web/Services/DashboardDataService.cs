@@ -1306,6 +1306,7 @@ public sealed class DashboardDataService(
                     .Select(x => new QcPhotoRequirementViewModel(x.PhotoType, x.FriendlyName, x.IsRequired))
                     .ToList(),
                 FruitType = sample.Receipt.FruitProfile.FruitType,
+                DefectInspectionStatus = sample.DefectInspectionStatus,
                 Grades = grades,
                 StarchScaleValues = await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken),
                 DefectTypes = defectTypes,

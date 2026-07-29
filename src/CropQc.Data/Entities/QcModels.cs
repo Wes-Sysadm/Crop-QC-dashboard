@@ -130,6 +130,10 @@ public sealed class BinsRunEntry
     public User? CreatedByUser { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
+    public bool IsReconciled { get; set; }
+    public DateTimeOffset? ReconciledAt { get; set; }
+    public int? ReconciledByUserId { get; set; }
+    public User? ReconciledByUser { get; set; }
     public bool IsReversed { get; set; }
     public DateTimeOffset? ReversedAt { get; set; }
     public int? ReversedByUserId { get; set; }
@@ -149,6 +153,7 @@ public sealed class QcSample
     public required string StarchStatus { get; set; }
     public required string PhotoStatus { get; set; }
     public required string EmailStatus { get; set; }
+    public string DefectInspectionStatus { get; set; } = DefectInspectionStatuses.NoDefectsFound;
     public int? TakenByUserId { get; set; }
     public User? TakenByUser { get; set; }
     public int? QcStationId { get; set; }
@@ -182,6 +187,15 @@ public sealed class QcSample
             : SampleSequenceNumber <= 1
                 ? Receipt.CompuTechReceiptId
                 : $"{Receipt.CompuTechReceiptId}({SampleSequenceNumber})";
+}
+
+public static class DefectInspectionStatuses
+{
+    public const string NoDefectsFound = "No defects found";
+    public const string DefectsFound = "Defects found";
+
+    public static string FromDefectCount(int count) =>
+        count > 0 ? DefectsFound : NoDefectsFound;
 }
 
 public sealed class QcFruitReading

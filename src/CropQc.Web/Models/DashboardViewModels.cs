@@ -1163,6 +1163,7 @@ public sealed class SampleDetailViewModel
     public long AutosaveVersion { get; set; }
     public IReadOnlyList<QcPhotoRequirementViewModel> AvailablePhotoTypes { get; set; } = [];
     public string FruitType { get; set; } = "";
+    public string DefectInspectionStatus { get; set; } = "No defects found";
     public string? RecipientEmail { get; set; }
     public SaveFruitReadingsForm FruitReadingForm { get; set; } = new();
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();

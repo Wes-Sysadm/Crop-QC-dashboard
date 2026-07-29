@@ -86,6 +86,7 @@ public sealed class FieldSampleDetailViewModel
     public string? Notes { get; set; }
     public string LifecycleStatus { get; set; } = "In Progress";
     public string EmailStatus { get; set; } = "Not Sent";
+    public string DefectInspectionStatus { get; set; } = "No defects found";
     public bool ChangedSinceLastSend { get; set; }
     public DateTimeOffset? LastSentAt { get; set; }
     public string? LastSentBy { get; set; }

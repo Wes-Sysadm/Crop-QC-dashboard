@@ -410,6 +410,7 @@ public sealed class FieldSampleService(
             Notes = sample.Notes,
             LifecycleStatus = lifecycleStatus,
             EmailStatus = NormalizeEmailStatus(sample.EmailStatus),
+            DefectInspectionStatus = sample.DefectInspectionStatus,
             ChangedSinceLastSend = changedSinceLastSend,
             LastSentAt = lastSent?.SentAt,
             LastSentBy = lastSent?.SentBy,
@@ -1260,7 +1261,7 @@ public sealed class FieldSampleService(
         var starch = entered.Where(x => decimal.TryParse(x.Starch, out _)).Select(x => decimal.Parse(x.Starch!)).ToList();
         var pressures = PressureCalculationService.ValidSideReadings(
             entered.Select(x => (x.Pressure1Lbs, x.Pressure2Lbs)));
-        var inspected = rows.Where(x => x.DefectsInspected).ToList();
+        var inspected = entered;
         var affected = inspected.Where(x => x.Defects.Count > 0).ToList();
         var defectDistribution = inspected.Count == 0
             ? []

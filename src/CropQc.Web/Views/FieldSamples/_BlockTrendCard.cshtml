@@ -49,7 +49,7 @@
                 <div><span class="metric-label">Weight change</span><strong>@FormatChange(weightChange, "g")</strong></div>
                 <div><span class="metric-label">Pressure change</span><strong>@FormatChange(pressureChange, "lb")</strong></div>
                 <div><span class="metric-label">Starch change</span><strong>@FormatChange(starchChange, "")</strong></div>
-                <div><span class="metric-label">Latest defects</span><strong>@(latest?.Summary.DefectAffectedPercentage?.ToString("0.#") ?? "Not inspected")@(latest?.Summary.DefectAffectedPercentage is null ? "" : "% affected")</strong></div>
+                <div><span class="metric-label">Latest defects</span><strong>@(latest?.Summary.DefectAffectedPercentage?.ToString("0.#") ?? "No defects found")@(latest?.Summary.DefectAffectedPercentage is null ? "" : "% affected")</strong></div>
             </div>
         }
         <div class="table-wrap">
@@ -70,7 +70,7 @@
                             <td>@(point.Summary.AverageStarch?.ToString("0.##") ?? "—")</td>
                             <td>@(point.Summary.GradeDistribution.Count == 0 ? "—" : string.Join(", ", point.Summary.GradeDistribution.Select(x => $"{x.Label} {x.Percentage:0.#}%")))</td>
                             <td>
-                                @(point.Summary.DefectAffectedPercentage?.ToString("0.#") ?? "Not inspected")@(point.Summary.DefectAffectedPercentage is null ? "" : "% affected")
+                                @(point.Summary.DefectAffectedPercentage?.ToString("0.#") ?? "No defects found")@(point.Summary.DefectAffectedPercentage is null ? "" : "% affected")
                                 @if (point.Summary.DefectDistribution.Count > 0)
                                 {
                                     <span class="muted">@string.Join(", ", point.Summary.DefectDistribution.OrderByDescending(x => x.FruitCount).Take(3).Select(x => $"{x.Defect} {x.FruitCount}"))</span>
