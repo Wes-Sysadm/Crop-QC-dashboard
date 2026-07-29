@@ -20,6 +20,7 @@ public sealed class RequestPerformanceDiagnosticsMiddleware(
 
         queryCounter.Reset();
         externalCallCounter.Reset();
+        var allocatedBytesAtStart = GC.GetTotalAllocatedBytes(precise: false);
         var stopwatch = Stopwatch.StartNew();
         var originalBody = context.Response.Body;
         CountingResponseBodyStream? countingBody = null;
@@ -40,6 +41,7 @@ public sealed class RequestPerformanceDiagnosticsMiddleware(
             var elapsedMilliseconds = stopwatch.Elapsed.TotalMilliseconds;
             var queryCount = queryCounter.Count;
             var databaseElapsedMilliseconds = queryCounter.ElapsedMilliseconds;
+            var allocatedBytesDelta = Math.Max(0, GC.GetTotalAllocatedBytes(precise: false) - allocatedBytesAtStart);
             var externalProviderCounts = externalCallCounter.ProviderCounts;
             var responseBytes = countingBody?.BytesWritten;
             var userIdentifier = options.IncludeUserIdentifier
@@ -61,7 +63,9 @@ public sealed class RequestPerformanceDiagnosticsMiddleware(
                 elapsedMilliseconds,
                 queryCount,
                 databaseElapsedMilliseconds,
+                queryCounter.SlowestCommandMilliseconds,
                 queryCounter.FailedCount,
+                allocatedBytesDelta,
                 responseBytes,
                 externalCallCounter.TotalCount,
                 externalProviderCounts,
@@ -73,13 +77,15 @@ public sealed class RequestPerformanceDiagnosticsMiddleware(
             if (warningThresholdExceeded)
             {
                 logger.LogWarning(
-                    "Request {RequestMethod} {RequestPath} completed with {StatusCode} in {ElapsedMilliseconds} ms using {EfQueryCount} EF commands in {EfElapsedMilliseconds} ms and {ResponseBytes} response bytes. External calls: {ExternalCallCount}. TraceIdentifier: {TraceIdentifier}. UserIdentifier: {UserIdentifier}.",
+                    "Request {RequestMethod} {RequestPath} completed with {StatusCode} in {ElapsedMilliseconds} ms using {EfQueryCount} EF commands in {EfElapsedMilliseconds} ms; slowest EF command {SlowestEfCommandMilliseconds} ms; process allocation delta {ProcessAllocatedBytesDelta} bytes; {ResponseBytes} response bytes. External calls: {ExternalCallCount}. TraceIdentifier: {TraceIdentifier}. UserIdentifier: {UserIdentifier}.",
                     metric.Method,
                     metric.Path,
                     metric.StatusCode,
                     metric.ElapsedMilliseconds,
                     metric.EfCommandCount,
                     metric.EfCommandElapsedMilliseconds,
+                    metric.SlowestEfCommandMilliseconds,
+                    metric.ProcessAllocatedBytesDelta,
                     metric.ResponseBytes,
                     metric.ExternalCallCount,
                     metric.TraceIdentifier,
@@ -88,13 +94,15 @@ public sealed class RequestPerformanceDiagnosticsMiddleware(
             else
             {
                 logger.LogInformation(
-                    "Request {RequestMethod} {RequestPath} completed with {StatusCode} in {ElapsedMilliseconds} ms using {EfQueryCount} EF commands in {EfElapsedMilliseconds} ms and {ResponseBytes} response bytes. External calls: {ExternalCallCount}. TraceIdentifier: {TraceIdentifier}. UserIdentifier: {UserIdentifier}.",
+                    "Request {RequestMethod} {RequestPath} completed with {StatusCode} in {ElapsedMilliseconds} ms using {EfQueryCount} EF commands in {EfElapsedMilliseconds} ms; slowest EF command {SlowestEfCommandMilliseconds} ms; process allocation delta {ProcessAllocatedBytesDelta} bytes; {ResponseBytes} response bytes. External calls: {ExternalCallCount}. TraceIdentifier: {TraceIdentifier}. UserIdentifier: {UserIdentifier}.",
                     metric.Method,
                     metric.Path,
                     metric.StatusCode,
                     metric.ElapsedMilliseconds,
                     metric.EfCommandCount,
                     metric.EfCommandElapsedMilliseconds,
+                    metric.SlowestEfCommandMilliseconds,
+                    metric.ProcessAllocatedBytesDelta,
                     metric.ResponseBytes,
                     metric.ExternalCallCount,
                     metric.TraceIdentifier,

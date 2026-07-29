@@ -87,7 +87,6 @@ public sealed class DashboardDataService(
     IConfiguration configuration,
     ILogger<DashboardDataService> logger,
     IUserAccessService? userAccessService = null,
-    IVarietyColorService? varietyColorService = null,
     ICanonicalGrowerService? canonicalGrowerService = null,
     IBusinessTimeService? businessTime = null,
     IFacilityContextService? facilityContextService = null) : IDashboardDataService
@@ -2823,9 +2822,8 @@ public sealed class DashboardDataService(
             adjustmentQuery = adjustmentQuery.Where(x => x.RoomId == roomId);
         }
 
-        var correctionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
         var adjustmentSnapshots = ApplyLatestCurrentBalanceRows((await adjustmentQuery.ToListAsync(cancellationToken))
-                .Where(x => !IsSupersededByRoomCurrentBalanceCorrection(x, correctionCutoffs)))
+                .Where(x => !IsSupersededByRoomCurrentBalanceCorrection(x, roomCorrectionCutoffs)))
             .Select(x =>
             {
                 var variety = x.FruitProfile is null
@@ -3118,14 +3116,25 @@ public sealed class DashboardDataService(
             return new Dictionary<string, VarietyColorResolved>(StringComparer.OrdinalIgnoreCase);
         }
 
-        if (varietyColorService is not null)
-        {
-            return await varietyColorService.GetResolvedColorsAsync(keys, cancellationToken);
-        }
-
+        var configured = await dbContext.VarietyColorConfigurations.AsNoTracking()
+            .Where(x => keys.Contains(x.VarietyKey))
+            .Select(x => new { x.VarietyKey, x.VarietyName, x.HexColor })
+            .ToListAsync(cancellationToken);
+        var configuredByKey = configured.ToDictionary(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase);
         return keys.ToDictionary(
-            x => x,
-            x => new VarietyColorResolved(x, x, VarietyColorService.FallbackColor(x), false),
+            key => key,
+            key =>
+            {
+                configuredByKey.TryGetValue(key, out var color);
+                var name = color?.VarietyName
+                    ?? lots.FirstOrDefault(x => string.Equals(x.VarietyKey, key, StringComparison.OrdinalIgnoreCase))?.VarietyName
+                    ?? key;
+                return new VarietyColorResolved(
+                    key,
+                    name,
+                    color?.HexColor ?? VarietyColorService.FallbackColor(key),
+                    color is not null);
+            },
             StringComparer.OrdinalIgnoreCase);
     }
 
@@ -3183,20 +3192,19 @@ public sealed class DashboardDataService(
             .GroupBy(x => x.SampleId)
             .ToDictionary(x => x.Key, x => x.ToList());
 
-        var receiptPhotos = await dbContext.QcPhotos.AsNoTracking()
-            .Where(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value) && !x.IsDeleted)
-            .Select(x => new { ReceiptId = x.ReceiptId!.Value, x.PhotoType })
+        var photos = await dbContext.QcPhotos.AsNoTracking()
+            .Where(x => !x.IsDeleted
+                && (x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value)
+                    || x.QcSampleId != null && sampleIds.Contains(x.QcSampleId.Value)))
+            .Select(x => new { x.ReceiptId, x.QcSampleId, x.PhotoType })
             .ToListAsync(cancellationToken);
-        var receiptPhotosByReceipt = receiptPhotos
-            .GroupBy(x => x.ReceiptId)
+        var receiptPhotosByReceipt = photos
+            .Where(x => x.ReceiptId is not null)
+            .GroupBy(x => x.ReceiptId!.Value)
             .ToDictionary(x => x.Key, x => x.Select(y => y.PhotoType).ToList());
-
-        var samplePhotos = await dbContext.QcPhotos.AsNoTracking()
-            .Where(x => x.QcSampleId != null && sampleIds.Contains(x.QcSampleId.Value) && !x.IsDeleted)
-            .Select(x => new { SampleId = x.QcSampleId!.Value, x.PhotoType })
-            .ToListAsync(cancellationToken);
-        var samplePhotosBySample = samplePhotos
-            .GroupBy(x => x.SampleId)
+        var samplePhotosBySample = photos
+            .Where(x => x.QcSampleId is not null)
+            .GroupBy(x => x.QcSampleId!.Value)
             .ToDictionary(x => x.Key, x => x.Select(y => y.PhotoType).ToList());
 
         var sentLogs = await dbContext.QcSummaryEmailLogs.AsNoTracking()
@@ -3421,12 +3429,18 @@ public sealed class DashboardDataService(
         var latestAdjustmentByReceipt = receiptAdjustments
             .GroupBy(x => x.ReceiptId!.Value)
             .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First());
-        var samples = await QuerySamples()
-            .Where(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
+        var samples = await dbContext.QcSamples.AsNoTracking()
+            .Where(x => !x.IsDeleted && x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
+            .Include(x => x.SampleType)
+            .Include(x => x.Receipt!).ThenInclude(x => x.FruitProfile)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
+            .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType)
+            .AsSplitQuery()
             .ToListAsync(cancellationToken);
         var samplesByReceipt = samples.GroupBy(x => x.ReceiptId!.Value).ToDictionary(x => x.Key, x => x.ToList());
         var conditionSamplesByLot = samples
-            .GroupBy(x => QcConditionLotKey(x.Receipt), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(x => QcConditionLotKey(x.Receipt!), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.SampleTakenAt).ThenByDescending(y => y.Id).ToList(), StringComparer.OrdinalIgnoreCase);
 
         var roomCorrectionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);

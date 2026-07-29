@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Claims;
 using System.Text.Json;
 using CropQc.Data;
@@ -172,6 +173,9 @@ public interface IUserAccessService
 
 public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration configuration) : IUserAccessService
 {
+    private readonly ConcurrentDictionary<string, Lazy<Task<IReadOnlyDictionary<string, string>>>> accessLevelsByEmail =
+        new(StringComparer.OrdinalIgnoreCase);
+
     public async Task<bool> HasAccessAsync(ClaimsPrincipal principal, string areaKey, PageAccessLevel minimumLevel, CancellationToken cancellationToken)
     {
         var email = principal.FindFirstValue(ClaimTypes.Email);
@@ -188,10 +192,11 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
             return PageAccessLevel.None;
         }
 
-        var levels = await dbContext.UserPageAccesses.AsNoTracking()
-            .Where(x => x.User.Email == email && x.User.IsActive
-                && (x.AreaKey == areaKey || x.AreaKey == ApplicationAreas.MasterData))
-            .ToDictionaryAsync(x => x.AreaKey, x => x.AccessLevel, cancellationToken);
+        var levels = await accessLevelsByEmail.GetOrAdd(
+            email,
+            normalizedEmail => new Lazy<Task<IReadOnlyDictionary<string, string>>>(
+                () => LoadAccessLevelsAsync(normalizedEmail, cancellationToken),
+                LazyThreadSafetyMode.ExecutionAndPublication)).Value;
         if (levels.TryGetValue(ApplicationAreas.MasterData, out var masterData)
             && ParseLevel(masterData) == PageAccessLevel.Admin)
         {
@@ -291,7 +296,19 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        accessLevelsByEmail.TryRemove(user.Email, out _);
         return null;
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> LoadAccessLevelsAsync(
+        string email,
+        CancellationToken cancellationToken)
+    {
+        var rows = await dbContext.UserPageAccesses.AsNoTracking()
+            .Where(x => x.User.Email == email && x.User.IsActive)
+            .Select(x => new { x.AreaKey, x.AccessLevel })
+            .ToListAsync(cancellationToken);
+        return rows.ToDictionary(x => x.AreaKey, x => x.AccessLevel, StringComparer.OrdinalIgnoreCase);
     }
 
     public static PageAccessLevel DefaultForRole(IEnumerable<string> roles, string areaKey)
