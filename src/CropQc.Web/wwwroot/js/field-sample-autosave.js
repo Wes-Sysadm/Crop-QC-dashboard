@@ -120,7 +120,6 @@
         function updateDefectUi(row) {
             const ids = selectedDefectIds(row);
             const names = selectedDefectNames(row);
-            const inspected = row.querySelector("[data-autosave-row-field='DefectsInspected']")?.checked === true;
             const selected = row.querySelector("[data-selected-defects]");
             if (selected) {
                 selected.innerHTML = "";
@@ -132,8 +131,8 @@
                 });
             }
             const indicator = row.querySelector("[data-defect-indicator]");
-            if (indicator) indicator.textContent = !inspected ? "Not inspected" : ids.length === 0 ? "Inspected — none" : `${ids.length} defect(s)`;
             const otherId = Array.from(row.querySelectorAll("[data-field-defect-id]")).find(button => button.dataset.defectName === "Other")?.dataset.fieldDefectId;
+            if (indicator) indicator.textContent = ids.length === 0 ? "No defects found" : `${ids.length} defect(s) found`;
             const notes = row.querySelector("[data-autosave-row-field='OtherDefectNotes']");
             if (notes) notes.disabled = !otherId || !ids.includes(Number(otherId));
         }

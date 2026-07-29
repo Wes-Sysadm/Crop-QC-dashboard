@@ -19,7 +19,13 @@ public sealed record QcEmailMessage(
     string Subject,
     string TextBody,
     string HtmlBody,
-    IReadOnlyList<QcEmailInlineImage> InlineImages);
+    IReadOnlyList<QcEmailInlineImage> InlineImages,
+    IReadOnlyList<QcEmailAttachment>? Attachments = null);
+
+public sealed record QcEmailAttachment(
+    string FileName,
+    string ContentType,
+    byte[] Bytes);
 
 public sealed record QcEmailSendResult(bool Success, string? MessageId, string? Error, bool ReconnectRequired = false)
 {
@@ -168,6 +174,16 @@ public sealed class GmailUserEmailSender(
             builder.AppendLine($"Content-Disposition: inline; filename=\"{image.FileName}\"");
             builder.AppendLine();
             builder.AppendLine(Convert.ToBase64String(image.Bytes, Base64FormattingOptions.InsertLineBreaks));
+        }
+
+        foreach (var attachment in message.Attachments ?? [])
+        {
+            builder.AppendLine($"--{relatedBoundary}");
+            builder.AppendLine($"Content-Type: {attachment.ContentType}; name=\"{attachment.FileName}\"");
+            builder.AppendLine("Content-Transfer-Encoding: base64");
+            builder.AppendLine($"Content-Disposition: attachment; filename=\"{attachment.FileName}\"");
+            builder.AppendLine();
+            builder.AppendLine(Convert.ToBase64String(attachment.Bytes, Base64FormattingOptions.InsertLineBreaks));
         }
 
         builder.AppendLine($"--{relatedBoundary}--");

@@ -21,6 +21,7 @@ public sealed record RunProjectionTrendPointSnapshot(
 public sealed class ProjectionOutcomeViewModel
 {
     public RunProjectionDetailViewModel Projection { get; set; } = new();
+    public IReadOnlyList<ProjectionPackoutRunViewModel> ActualPackoutRuns { get; set; } = [];
     public DateTimeOffset GeneratedAt { get; set; }
     public IReadOnlyList<ProjectionOutcomePackRow> Packs { get; set; } = [];
     public IReadOnlyList<ProjectionOutcomeSizeRow> Sizes { get; set; } = [];
@@ -42,6 +43,15 @@ public sealed class ProjectionOutcomeViewModel
     public decimal ReconciliationDifference { get; set; }
     public bool HasMixedCommodities => CullByCommodity.Count > 1;
 }
+
+public sealed record ProjectionPackoutRunViewModel(
+    long Id,
+    DateOnly PackingDate,
+    int RunNumber,
+    string Status,
+    decimal DumpedBins,
+    decimal? OverallAccuracyScore,
+    DateTimeOffset UpdatedAt);
 
 public sealed record ProjectionOutcomePackRow(
     string PackCode,
@@ -140,9 +150,9 @@ public sealed record ProjectionOutcomeTrendSourceRow(
 public static class ProjectionOutcomeCalculator
 {
     public const decimal PeelerRate = 0.35m;
-    public const decimal JuiceRate = 0.40m;
-    public const decimal WasteRate = 0.25m;
-    public const string CullCalculationVersion = "1.0";
+    public const decimal JuiceRate = 0.35m;
+    public const decimal WasteRate = 0.30m;
+    public const string CullCalculationVersion = "2.0";
 
     public static ProjectionOutcomeViewModel Build(RunProjectionDetailViewModel projection, DateTimeOffset generatedAt)
     {

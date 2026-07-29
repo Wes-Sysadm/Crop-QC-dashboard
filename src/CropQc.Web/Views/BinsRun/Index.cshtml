@@ -379,9 +379,9 @@
                         }
                         <label class="field">Expected Packout %
                             <input type="number" min="0" max="100" step="0.01" name="ExpectedPackoutPercent"
-                                   value="@Model.Planner.DefaultExpectedPackoutPercent" data-add-packout-input required />
-                            <input type="hidden" name="ExpectedPackoutUsedDefault" value="true" data-packout-default-flag />
-                            <small>Configured default shown; edit it for this block. Expected Cull/Loss: <span data-add-cull-output>@((100m - Model.Planner.DefaultExpectedPackoutPercent).ToString("0.##"))%</span></small>
+                                   data-add-packout-input required />
+                            <input type="hidden" name="ExpectedPackoutUsedDefault" value="false" data-packout-default-flag />
+                            <small>Review and confirm this value before adding the source. Expected Cull/Loss: <span data-add-cull-output>—</span></small>
                         </label>
                         <button type="submit">@(selected.ProjectionMode == "Preharvest" ? "Add Field Sample Block" : "Add Grower Lot")</button>
                     </form>
@@ -458,7 +458,7 @@
                             <dt>Average pressure</dt><dd>@Format(source.AveragePressureLbs, " lb")</dd>
                             <dt>Grades</dt><dd>@(source.GradeSummary ?? "No data")</dd>
                             <dt>Defects</dt><dd>@(source.DefectSummary ?? "No data")</dd>
-                            <dt>Expected Packout %</dt><dd>@(source.ExpectedPackoutPercent is null ? "Not specified" : $"{source.ExpectedPackoutPercent:0.##}%") @(source.ExpectedPackoutUsedDefault ? "(configured default)" : "")</dd>
+                            <dt>Expected Packout %</dt><dd>@(source.ExpectedPackoutPercent is null ? "Not specified" : $"{source.ExpectedPackoutPercent:0.##}%") @(source.ExpectedPackoutUsedDefault ? "(suggested — user confirmation required)" : "")</dd>
                             <dt>Expected Cull/Loss %</dt><dd>@(source.ExpectedCullPercent is null ? "Not calculated" : $"{source.ExpectedCullPercent:0.##}%")</dd>
                             <dt>Gross pounds / whole 40-lb boxes</dt><dd>@source.ProjectedPounds.ToString("0.##") lb / @source.RoundedProjectedBoxes</dd>
                             <dt>Projected packed pounds / whole 40-lb boxes</dt><dd>@source.PackedProjectedPounds.ToString("0.##") lb / @source.RoundedPackedProjectedBoxes</dd>

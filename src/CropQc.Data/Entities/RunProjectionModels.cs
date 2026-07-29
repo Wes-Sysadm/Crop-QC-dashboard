@@ -64,9 +64,9 @@ public sealed class RunProjection
     public decimal PearPoundsPerBin { get; set; }
     public decimal StandardBoxWeightPounds { get; set; }
     public decimal PeelerCullShare { get; set; } = 0.35m;
-    public decimal JuiceCullShare { get; set; } = 0.40m;
-    public decimal WasteCullShare { get; set; } = 0.25m;
-    public string CullCalculationVersion { get; set; } = "1.0";
+    public decimal JuiceCullShare { get; set; } = 0.35m;
+    public decimal WasteCullShare { get; set; } = 0.30m;
+    public string CullCalculationVersion { get; set; } = "2.0";
     public int TotalPlannedBins { get; set; }
     public decimal TotalProjectedPounds { get; set; }
     public decimal TotalProjectedBoxes { get; set; }
@@ -90,6 +90,10 @@ public sealed class RunProjection
     public User? CancelledByUser { get; set; }
     public string? CancelReason { get; set; }
     public bool IsDeleted { get; set; }
+    public bool IsLocked { get; set; }
+    public DateTimeOffset? LockedAt { get; set; }
+    public int? LockedByUserId { get; set; }
+    public User? LockedByUser { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
     public int? DeletedByUserId { get; set; }
     public User? DeletedByUser { get; set; }
@@ -97,6 +101,7 @@ public sealed class RunProjection
     public Guid? DeletionOperationId { get; set; }
     public string? DeletedFromStatus { get; set; }
     public ICollection<RunProjectionSource> Sources { get; } = new List<RunProjectionSource>();
+    public ICollection<PackoutRun> PackoutRuns { get; } = new List<PackoutRun>();
 }
 
 public sealed class RunProjectionSource
@@ -173,6 +178,7 @@ public sealed class RunProjectionSource
     public decimal? AveragePressureLbsSnapshot { get; set; }
     public string? GradeSummarySnapshot { get; set; }
     public string? DefectSummarySnapshot { get; set; }
+    public decimal? TotalDefectPercentageSnapshot { get; set; }
     public string? JointSizeGradeSnapshotJson { get; set; }
     public string? FieldSampleTrendSnapshotJson { get; set; }
     public string? ProjectionWarning { get; set; }

@@ -1,0 +1,223 @@
+@model PackoutRunViewModel
+@using CropQc.Data.Entities
+@{
+    ViewData["Title"] = $"Packout Review #{Model.Id}";
+}
+
+<div class="room-card-header">
+    <div>
+        <h1>Actual Packout Review</h1>
+        <p class="muted">@Model.Facility · crop @Model.CropYear · lot @Model.LotNumber · @Model.Variety · @(Model.IsOrganic ? "Organic" : "Conventional")</p>
+    </div>
+    <div class="action-bar">
+        <a class="button secondary-button" href="/BinsRun/Projections/@Model.RunProjectionId/Outcome">Projection outcome</a>
+        @if (Model.CanAdmin)
+        {
+            <a class="button secondary-button" href="/BinsRun/Packout/@Model.Id/Download">Download feedback workbook</a>
+        }
+    </div>
+</div>
+
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
+@if (TempData["Success"] is string success)
+{
+    <p class="notice success">@success</p>
+}
+
+<section class="panel">
+    <h2>Status: @Model.Status</h2>
+    <div class="room-summary-metrics">
+        <div class="metric-card"><span class="metric-label">Packing run</span><strong>@Model.PackingDate.ToString("MMM d, yyyy")</strong><span>@Model.Facility · Run @Model.RunNumber</span></div>
+        <div class="metric-card"><span class="metric-label">Dumped</span><strong>@Model.DumpedBins.ToString("0.##") bins</strong><span>@Model.DumpedPounds.ToString("0.##") lb</span></div>
+        <div class="metric-card"><span class="metric-label">Packed product</span><strong>@Model.PackedProductPounds.ToString("0.##") lb</strong><span>@(Model.ActualPackoutPercent?.ToString("0.##") ?? "—")% packout</span></div>
+        <div class="metric-card"><span class="metric-label">Secondary output</span><strong>@((Model.JuicePounds + Model.PeelerSlicerPounds + Model.WastePounds).ToString("0.##")) lb</strong><span>Juice @Model.JuicePounds.ToString("0.##") · Peeler/Slicer @Model.PeelerSlicerPounds.ToString("0.##") · Waste @Model.WastePounds.ToString("0.##")</span></div>
+        <div class="metric-card"><span class="metric-label">Projection accuracy</span><strong>@(Model.OverallAccuracyScore?.ToString("0.##") ?? "—")%</strong><span>Weighted size, grade, packout, and secondary outputs</span></div>
+    </div>
+    @if (Model.HasReconciliationWarning)
+    {
+        <p class="notice warning">Weight reconciliation differs from dumped pounds by @Model.ReconciliationDifferencePounds.ToString("0.##") lb (more than 10%). This warning does not reduce the accuracy score or block finalization.</p>
+    }
+</section>
+
+<section class="panel">
+    <h2>Parsed source files</h2>
+    <p class="muted">Original uploads are deleted after parsing. Filename, SHA-256, parser result, corrections, and audit history are retained.</p>
+    <table class="data-table">
+        <thead><tr><th>Filename</th><th>Parser</th><th>Confidence</th><th>Diagnostic</th><th>Parsed</th></tr></thead>
+        <tbody>
+        @foreach (var source in Model.Sources)
+        {
+            <tr><td>@source.FileName</td><td>@source.Parser</td><td>@(source.Confidence is decimal confidence ? $"{confidence:P1}" : "—")</td><td>@(source.Diagnostic ?? "Parsed")</td><td>@source.ParsedAt.ToString("u")</td></tr>
+        }
+        </tbody>
+    </table>
+</section>
+
+<section class="panel">
+    <h2>Parsed lines</h2>
+    <p class="muted">Rows marked Review must be confirmed. Juice codes ending in L use the numeric code as pounds and are always classified as Juice.</p>
+    <div class="table-scroll">
+        <table class="data-table">
+            <thead><tr><th>Line</th><th>Raw text</th><th>Pack code</th><th>Qty</th><th>Net lb</th><th>Extended lb</th><th>Size</th><th>Grade</th><th>Category</th><th>Confidence</th><th>Status</th></tr></thead>
+            <tbody>
+            @foreach (var line in Model.Lines)
+            {
+                <tr class="@(line.RequiresReview ? "warning-row" : "")">
+                    <td>@line.SourceLineNumber</td>
+                    <td>@line.RawText</td>
+                    <td>@line.PackCode</td>
+                    <td>@line.Quantity?.ToString("0.####")</td>
+                    <td>@line.NetWeightPounds?.ToString("0.####")</td>
+                    <td>@line.ExtendedWeightPounds?.ToString("0.####")</td>
+                    <td>@line.SizeCategory</td>
+                    <td>@line.Grade</td>
+                    <td>@line.ProductCategory</td>
+                    <td>@line.Confidence.ToString("P1")</td>
+                    <td>@(line.RequiresReview ? "Review" : line.WasCorrected ? "Corrected" : "Accepted")</td>
+                </tr>
+                @if (Model.CanEdit)
+                {
+                    <tr>
+                        <td colspan="11">
+                            <form method="post" action="/BinsRun/Packout/@Model.Id/Line" class="form-grid compact-form">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="LineId" value="@line.Id" />
+                                <input type="hidden" name="ConcurrencyVersion" value="@Model.ConcurrencyVersion" />
+                                <label>Pack code<input name="PackCode" value="@line.PackCode" /></label>
+                                <label>Quantity<input type="number" step="0.0001" name="Quantity" value="@line.Quantity" required /></label>
+                                <label>Net lb<input type="number" step="0.0001" min="0.0001" name="NetWeightPounds" value="@line.NetWeightPounds" required /></label>
+                                <label>Size<input type="number" name="SizeCategory" value="@line.SizeCategory" /></label>
+                                <label>Grade
+                                    <select name="GradeId">
+                                        <option value="">Unmapped</option>
+                                        @foreach (var grade in Model.Grades)
+                                        {
+                                            <option value="@grade.Id" selected="@(grade.Id == line.GradeId)">@grade.Code — @grade.Name</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label>Category
+                                    <select name="ProductCategory" required>
+                                        @foreach (var category in PackoutProductCategories.All)
+                                        {
+                                            <option value="@category" selected="@(category == line.ProductCategory)">@category</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label class="wide">Correction/confirmation reason<input name="CorrectionReason" required value="@(line.RequiresReview ? "Reviewed parsed line" : "Corrected parsed line")" /></label>
+                                <label><input type="checkbox" name="NegativeQuantityConfirmed" value="true" checked="@line.NegativeQuantityConfirmed" /> Confirm negative adjustment</label>
+                                <button type="submit">Save reviewed line</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@if (Model.CanEdit)
+{
+    <section class="panel">
+        <h2>Secondary output confirmation</h2>
+        <p class="muted">Enter regular commodity bins. Each bin uses the snapshotted @Model.PoundsPerBin.ToString("0.##") lb/bin weight. Pack-code lines such as 600L, 650L, or 900L retain their code-specific pounds separately.</p>
+        <form method="post" action="/BinsRun/Packout/@Model.Id/SecondaryOutputs" class="form-grid">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ConcurrencyVersion" value="@Model.ConcurrencyVersion" />
+            <label>Regular Juice bins<input type="number" min="0" step="0.01" name="JuiceBins" value="@Model.SupplementalJuiceBins" required /></label>
+            <label>Regular Peeler/Slicer bins<input type="number" min="0" step="0.01" name="PeelerSlicerBins" value="@Model.SupplementalPeelerSlicerBins" required /></label>
+            <label>Regular Waste bins<input type="number" min="0" step="0.01" name="WasteBins" value="@Model.SupplementalWasteBins" required /></label>
+            <label class="wide">Review notes<textarea name="ReviewNotes"></textarea></label>
+            <button type="submit">Save and recalculate</button>
+        </form>
+    </section>
+
+    @if (Model.CanAdmin)
+    {
+        <section class="panel">
+            <h2>Finalize feedback</h2>
+            <p>Finalization requires every line reviewed, a linked active Bins Run, successful workbook generation, and successful Gmail delivery to <strong>wes@fruitandland.com</strong>.</p>
+            <form method="post" action="/BinsRun/Packout/@Model.Id/Finalize">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ConcurrencyVersion" value="@Model.ConcurrencyVersion" />
+                <button type="submit">Finalize and email feedback</button>
+            </form>
+        </section>
+    }
+
+    <section class="panel">
+        <h2>Replace this pending upload</h2>
+        <p class="muted">Removing a pending upload deletes its parsed working rows so a corrected report can be uploaded for the same facility/date/run. Source hashes and the deletion audit remain. Finalized runs cannot be deleted.</p>
+        <form method="post" action="/BinsRun/Packout/@Model.Id/Delete" onsubmit="return confirm('Remove this pending actual-run upload and return to the projection?');">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="concurrencyVersion" value="@Model.ConcurrencyVersion" />
+            <button type="submit" class="danger-button">Remove pending upload</button>
+        </form>
+    </section>
+}
+
+@if (Model.Status == PackoutRunStatuses.Finalized && Model.CanReopen)
+{
+    <section class="panel">
+        <h2>Administrative correction</h2>
+        <form method="post" action="/BinsRun/Packout/@Model.Id/Reopen" class="form-grid compact-form">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ConcurrencyVersion" value="@Model.ConcurrencyVersion" />
+            <label class="wide">Reason<input name="Reason" required maxlength="1000" /></label>
+            <button type="submit" class="danger-button">Reopen finalized feedback</button>
+        </form>
+    </section>
+}
+
+@if (Model.CanAdmin)
+{
+    <section class="panel">
+        <h2>Packout analysis configuration</h2>
+        <p class="muted">Global commodity bin weights, official score weights, and historical current/prior weighting. Finalized analyses retain a snapshot of the values used.</p>
+        <form method="post" action="/BinsRun/Packout/Configuration" class="form-grid">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="returnRunId" value="@Model.Id" />
+            <label>Apple lb/bin<input type="number" step="0.01" min="0.01" name="AppleBinWeightPounds" value="@Model.Configuration.AppleBinWeightPounds" required /></label>
+            <label>Pear lb/bin<input type="number" step="0.01" min="0.01" name="PearBinWeightPounds" value="@Model.Configuration.PearBinWeightPounds" required /></label>
+            <label>Size score %<input type="number" step="0.01" min="0" name="SizeScoreWeight" value="@Model.Configuration.SizeScoreWeight" required /></label>
+            <label>Grade score %<input type="number" step="0.01" min="0" name="GradeScoreWeight" value="@Model.Configuration.GradeScoreWeight" required /></label>
+            <label>Packout score %<input type="number" step="0.01" min="0" name="PackoutScoreWeight" value="@Model.Configuration.PackoutScoreWeight" required /></label>
+            <label>Juice score %<input type="number" step="0.01" min="0" name="JuiceScoreWeight" value="@Model.Configuration.JuiceScoreWeight" required /></label>
+            <label>Peeler/Slicer score %<input type="number" step="0.01" min="0" name="PeelerSlicerScoreWeight" value="@Model.Configuration.PeelerSlicerScoreWeight" required /></label>
+            <label>Waste score %<input type="number" step="0.01" min="0" name="WasteScoreWeight" value="@Model.Configuration.WasteScoreWeight" required /></label>
+            <label>Current crop history %<input type="number" step="0.01" min="0" name="CurrentCropYearHistoryWeight" value="@Model.Configuration.CurrentCropYearHistoryWeight" required /></label>
+            <label>Prior crop history %<input type="number" step="0.01" min="0" name="PriorCropYearHistoryWeight" value="@Model.Configuration.PriorCropYearHistoryWeight" required /></label>
+            <button type="submit">Save global analysis configuration</button>
+        </form>
+    </section>
+
+    <section class="panel">
+        <h2>Pack code master data</h2>
+        <p class="muted">This reusable mapping drives future PDF, image, spreadsheet, and CSV imports.</p>
+        <form method="post" action="/BinsRun/Packout/PackCodes" class="form-grid">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="returnRunId" value="@Model.Id" />
+            <label>Code<input name="Code" required /></label>
+            <label>Display name<input name="DisplayName" required /></label>
+            <label>Category
+                <select name="ProductCategory" required>
+                    @foreach (var category in PackoutProductCategories.All)
+                    {
+                        <option value="@category">@category</option>
+                    }
+                </select>
+            </label>
+            <label>Net lb<input type="number" step="0.0001" min="0.0001" name="NetWeightPounds" required /></label>
+            <label>Size<input type="number" name="SizeCategory" /></label>
+            <label>Grade
+                <select name="GradeId"><option value="">Unmapped</option>@foreach (var grade in Model.Grades){<option value="@grade.Id">@grade.Code</option>}</select>
+            </label>
+            <label><input type="checkbox" name="IsActive" value="true" checked /> Active</label>
+            <button type="submit">Add pack code</button>
+        </form>
+    </section>
+}

@@ -94,15 +94,16 @@ public class RunProjectionListItemViewModel
 
 public sealed class RunProjectionDetailViewModel : RunProjectionListItemViewModel
 {
+    public bool IsLocked { get; set; }
     public int CropYear { get; set; }
     public long? SourceProjectionId { get; set; }
     public decimal ApplePoundsPerBin { get; set; }
     public decimal PearPoundsPerBin { get; set; }
     public decimal StandardBoxWeightPounds { get; set; }
     public decimal PeelerCullShare { get; set; } = 0.35m;
-    public decimal JuiceCullShare { get; set; } = 0.40m;
-    public decimal WasteCullShare { get; set; } = 0.25m;
-    public string CullCalculationVersion { get; set; } = "1.0";
+    public decimal JuiceCullShare { get; set; } = 0.35m;
+    public decimal WasteCullShare { get; set; } = 0.30m;
+    public string CullCalculationVersion { get; set; } = "2.0";
     public int TotalRoundedPackedProjectedBoxes { get; set; }
     public decimal TotalCullProjectedPounds { get; set; }
     public int TotalRoundedCullProjectedBoxes { get; set; }
@@ -258,6 +259,7 @@ public sealed class RunProjectionSourceViewModel
     public decimal? AveragePressureLbs { get; set; }
     public string? GradeSummary { get; set; }
     public string? DefectSummary { get; set; }
+    public decimal? TotalDefectPercentage { get; set; }
     public string? FieldSampleTrendSnapshotJson { get; set; }
     public decimal PoundsPerBin { get; set; }
     public decimal ProjectedPounds { get; set; }

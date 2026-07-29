@@ -139,6 +139,7 @@ public static class AccessPolicyNames
     public const string ProjectionPlannerCreate = "ProjectionPlannerCreate";
     public const string ProjectionPlannerAdmin = "ProjectionPlannerAdmin";
     public const string ProjectionOutcomeView = "ProjectionOutcomeView";
+    public const string ProjectionOutcomeCreate = "ProjectionOutcomeCreate";
     public const string ProjectionOutcomeAdmin = "ProjectionOutcomeAdmin";
     public const string TransfersCreate = "TransfersCreate";
     public const string TransfersAdmin = "TransfersAdmin";

@@ -348,17 +348,15 @@ public sealed class BinsRunWorkflowTests
         var user = Principal("manager@fruitandland.com");
         var option = (await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, user, CancellationToken.None))
             .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var projection = ProjectionForActual(option, 1000);
+        db.RunProjections.Add(projection);
+        await db.SaveChangesAsync();
+        var form = ActualRunForm(option, projection);
+        form.BinsRun = 30;
+        form.RunAt = DateTimeOffset.Parse("2026-07-10T08:00:00-07:00");
+        form.Notes = "Packing line run";
 
-        var error = await service.CreateAsync(new BinsRunForm
-        {
-            WarehouseId = option.WarehouseId,
-            RoomId = option.RoomId,
-            InventoryKey = option.InventoryKey,
-            BinsRun = 30,
-            ExpectedAvailableBins = option.CurrentBins,
-            RunAt = DateTimeOffset.Parse("2026-07-10T08:00:00-07:00"),
-            Notes = "Packing line run"
-        }, user, CancellationToken.None);
+        var error = await service.CreateAsync(form, user, CancellationToken.None);
 
         Assert.Null(error);
         var refreshed = await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, user, CancellationToken.None);
@@ -382,28 +380,18 @@ public sealed class BinsRunWorkflowTests
         var user = Principal("manager@fruitandland.com");
         var option = (await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, user, CancellationToken.None))
             .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var firstProjection = ProjectionForActual(option, 1000);
+        var staleProjection = ProjectionForActual(option, 1000);
+        db.RunProjections.AddRange(firstProjection, staleProjection);
+        await db.SaveChangesAsync();
+        var tooManyForm = ActualRunForm(option, firstProjection);
+        tooManyForm.BinsRun = 121;
+        var firstForm = ActualRunForm(option, firstProjection);
+        var staleForm = ActualRunForm(option, staleProjection);
 
-        var tooMany = await service.CreateAsync(new BinsRunForm
-        {
-            InventoryKey = option.InventoryKey,
-            BinsRun = 121,
-            ExpectedAvailableBins = 120,
-            RunAt = DateTimeOffset.UtcNow
-        }, user, CancellationToken.None);
-        var first = await service.CreateAsync(new BinsRunForm
-        {
-            InventoryKey = option.InventoryKey,
-            BinsRun = 5,
-            ExpectedAvailableBins = 120,
-            RunAt = DateTimeOffset.UtcNow
-        }, user, CancellationToken.None);
-        var stale = await service.CreateAsync(new BinsRunForm
-        {
-            InventoryKey = option.InventoryKey,
-            BinsRun = 5,
-            ExpectedAvailableBins = 120,
-            RunAt = DateTimeOffset.UtcNow
-        }, user, CancellationToken.None);
+        var tooMany = await service.CreateAsync(tooManyForm, user, CancellationToken.None);
+        var first = await service.CreateAsync(firstForm, user, CancellationToken.None);
+        var stale = await service.CreateAsync(staleForm, user, CancellationToken.None);
 
         Assert.Contains("only 120 bins", tooMany);
         Assert.Null(first);
@@ -464,13 +452,12 @@ public sealed class BinsRunWorkflowTests
         var admin = Principal("admin@fruitandland.com");
         var option = (await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, user, CancellationToken.None))
             .AvailableInventory.Single(x => x.Lot == "LOT-120");
-        await service.CreateAsync(new BinsRunForm
-        {
-            InventoryKey = option.InventoryKey,
-            BinsRun = 30,
-            ExpectedAvailableBins = 120,
-            RunAt = DateTimeOffset.UtcNow
-        }, user, CancellationToken.None);
+        var projection = ProjectionForActual(option, 1000);
+        db.RunProjections.Add(projection);
+        await db.SaveChangesAsync();
+        var createForm = ActualRunForm(option, projection);
+        createForm.BinsRun = 30;
+        await service.CreateAsync(createForm, user, CancellationToken.None);
         var entry = await db.BinsRunEntries.SingleAsync();
         var currentOption = (await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, user, CancellationToken.None))
             .AvailableInventory.Single(x => x.Lot == "LOT-120");

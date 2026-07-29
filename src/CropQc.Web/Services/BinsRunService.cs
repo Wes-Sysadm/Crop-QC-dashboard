@@ -233,6 +233,10 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         {
             return "Bins Run entry is already reversed.";
         }
+        if (entry.IsReconciled)
+        {
+            return "This Bins Run is locked by finalized packout reconciliation. Reopen the actual run before reversing it.";
+        }
 
         var snapshot = await GetCurrentInventoryByEntryAsync(entry, cancellationToken);
         if (snapshot is null)
@@ -273,6 +277,10 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         {
             return "Select available inventory.";
         }
+        if (entryId is null && (form.RunProjectionId is null || form.RunProjectionSourceId is null))
+        {
+            return "Create and select an Inventory projection before finalizing a Bins Run depletion.";
+        }
 
         await using var transaction = await BeginTransactionIfSupportedAsync(cancellationToken);
         BinsRunEntry? existing = null;
@@ -283,6 +291,7 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
             existing = await dbContext.BinsRunEntries.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
             if (existing is null) return "Bins Run entry was not found.";
             if (existing.IsReversed) return "Reversed Bins Run entries cannot be edited.";
+            if (existing.IsReconciled) return "This Bins Run is locked by finalized packout reconciliation. Reopen the actual run before editing it.";
         }
         else if (form.RunProjectionId is not null || form.RunProjectionSourceId is not null)
         {
@@ -302,6 +311,10 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
             if (linkedProjection.IsDeleted)
             {
                 return "A deleted projection cannot be converted to an actual run.";
+            }
+            if (linkedProjection.IsLocked)
+            {
+                return "This projection is locked by an actual packout reconciliation.";
             }
             if (!RunProjectionStatuses.Editable.Contains(linkedProjection.Status, StringComparer.OrdinalIgnoreCase))
             {
@@ -425,6 +438,9 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
             if (linkedProjection.Sources.All(x => x.SourceType == RunProjectionSourceTypes.Inventory && x.ActualBinsRunEntryId is not null))
             {
                 linkedProjection.Status = RunProjectionStatuses.Converted;
+                linkedProjection.IsLocked = true;
+                linkedProjection.LockedAt = DateTimeOffset.UtcNow;
+                linkedProjection.LockedByUserId = userId;
             }
             linkedProjection.UpdatedAt = DateTimeOffset.UtcNow;
             linkedProjection.ConcurrencyVersion++;
@@ -436,7 +452,13 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                 EntityKey = linkedProjection.Id.ToString(),
                 UserId = userId,
                 BeforeValuesJson = JsonSerializer.Serialize(new { Status = previousStatus, ActualBinsRunEntryId = previousActualBinsRunEntryId }),
-                AfterValuesJson = JsonSerializer.Serialize(new { linkedProjection.Status, ActualBinsRunEntryId = entry.Id }),
+                AfterValuesJson = JsonSerializer.Serialize(new
+                {
+                    linkedProjection.Status,
+                    ActualBinsRunEntryId = entry.Id,
+                    linkedProjection.IsLocked,
+                    linkedProjection.LockedAt
+                }),
                 SourceApplication = SourceApplication,
                 CreatedAt = DateTimeOffset.UtcNow
             });

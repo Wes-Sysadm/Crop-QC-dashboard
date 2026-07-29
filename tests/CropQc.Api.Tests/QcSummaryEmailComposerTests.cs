@@ -347,7 +347,7 @@ public sealed class QcSummaryEmailComposerTests
         Assert.Contains("Pressure std dev lbs</th><td style=\"border:1px solid #cbd5e1;\">2</td>", content.HtmlBody);
         Assert.Contains("Average weight grams</th><td style=\"border:1px solid #cbd5e1;\">162.5</td>", content.HtmlBody);
         Assert.Contains("Grade summary</th><td style=\"border:1px solid #cbd5e1;\">Fancy: 1</td>", content.HtmlBody);
-        Assert.Contains("Defect summary</th><td style=\"border:1px solid #cbd5e1;\">2 of 2 inspected fruit affected; Bruise: 1, Sunburn: 1</td>", content.HtmlBody);
+        Assert.Contains("Defect summary</th><td style=\"border:1px solid #cbd5e1;\">2 of 5 inspected fruit affected; Bruise: 1, Sunburn: 1</td>", content.HtmlBody);
         Assert.Contains("Size/status summary</th><td style=\"border:1px solid #cbd5e1;\">1 size 100, 1 size 120</td>", content.HtmlBody);
         Assert.Contains("Row 1:", content.TextBody);
         Assert.Contains("Row 5:", content.TextBody);

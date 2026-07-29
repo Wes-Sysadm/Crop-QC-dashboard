@@ -189,6 +189,7 @@ builder.Services.AddAuthorization(options =>
     AddAccessPolicy(options, AccessPolicyNames.ProjectionPlannerCreate, ApplicationAreas.ProjectionPlanner, PageAccessLevel.Create);
     AddAccessPolicy(options, AccessPolicyNames.ProjectionPlannerAdmin, ApplicationAreas.ProjectionPlanner, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.ProjectionOutcomeView, ApplicationAreas.ProjectionOutcome, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.ProjectionOutcomeCreate, ApplicationAreas.ProjectionOutcome, PageAccessLevel.Create);
     AddAccessPolicy(options, AccessPolicyNames.ProjectionOutcomeAdmin, ApplicationAreas.ProjectionOutcome, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.TransfersCreate, ApplicationAreas.Transfers, PageAccessLevel.Create);
     AddAccessPolicy(options, AccessPolicyNames.TransfersAdmin, ApplicationAreas.Transfers, PageAccessLevel.Admin);
@@ -240,6 +241,10 @@ builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportService>();
 builder.Services.AddScoped<IBinsRunService, BinsRunService>();
 builder.Services.AddScoped<IRunProjectionService, RunProjectionService>();
+builder.Services.AddScoped<IPackoutReportParser, PackoutReportParser>();
+builder.Services.AddScoped<IPackoutFeedbackWorkbookService, PackoutFeedbackWorkbookService>();
+builder.Services.AddScoped<IPackoutReconciliationService, PackoutReconciliationService>();
+builder.Services.AddScoped<IPackoutHistoricalSuggestionService, PackoutHistoricalSuggestionService>();
 builder.Services.AddScoped<IFacilityContextService, FacilityContextService>();
 builder.Services.AddScoped<ICommercialPackAdminService, CommercialPackAdminService>();
 builder.Services.AddScoped<IEbsDailyBinsEmailService, EbsDailyBinsEmailService>();

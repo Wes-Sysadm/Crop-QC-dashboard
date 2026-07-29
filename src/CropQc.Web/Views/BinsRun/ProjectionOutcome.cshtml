@@ -48,6 +48,56 @@
         </dl>
     </section>
 
+    @if (projection.ProjectionMode == CropQc.Data.Entities.RunProjectionModes.Inventory)
+    {
+        <section class="outcome-section no-print">
+            <h2>Actual Packout Reconciliation</h2>
+            <p class="muted">Upload related PDF, XLS, XLSX, CSV, image, or text reports. The application retains parsed values, corrections, confidence, hashes, and audit history—not the original files.</p>
+            @if (Model.ActualPackoutRuns.Count > 0)
+            {
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Packing date</th><th>Run</th><th>Status</th><th>Dumped bins</th><th>Accuracy</th><th></th></tr></thead>
+                        <tbody>
+                        @foreach (var actual in Model.ActualPackoutRuns)
+                        {
+                            <tr>
+                                <td>@actual.PackingDate.ToString("MMM d, yyyy")</td>
+                                <td>@actual.RunNumber</td>
+                                <td>@actual.Status</td>
+                                <td>@actual.DumpedBins.ToString("0.##")</td>
+                                <td>@(actual.OverallAccuracyScore is decimal score ? $"{score:0.##}%" : "Pending")</td>
+                                <td><a href="/BinsRun/Packout/@actual.Id">Open review</a></td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            <form method="post" enctype="multipart/form-data" action="/BinsRun/Projections/@projection.Id/Packout" class="form-grid">
+                @Html.AntiForgeryToken()
+                <label>Primary linked Bins Run (optional until all components finish)
+                    <select name="BinsRunEntryId">
+                        <option value="">Upload before Bins Run completion</option>
+                        @foreach (var actualId in projection.Sources.Where(x => x.ActualBinsRunEntryId is not null).Select(x => x.ActualBinsRunEntryId!.Value).Distinct())
+                        {
+                            <option value="@actualId">Bins Run #@actualId</option>
+                        }
+                    </select>
+                </label>
+                <label>Packing date<input type="date" name="PackingDate" value="@projection.PlannedRunDate.ToString("yyyy-MM-dd")" required /></label>
+                <label>Run number<input type="number" min="1" name="RunNumber" value="1" required /></label>
+                <label>Dumped bins<input type="number" min="0.0001" step="0.0001" name="DumpedBins" required /></label>
+                <label class="wide">Packout reports<input type="file" name="Files" multiple required accept=".pdf,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.tif,.tiff" /></label>
+                <button type="submit">Upload and review actual packout</button>
+            </form>
+            @if (!projection.Sources.Any(x => x.ActualBinsRunEntryId is not null))
+            {
+                <p class="notice warning">Record the actual Bins Run from this projection before uploading final packout feedback.</p>
+            }
+        </section>
+    }
+
     <section class="outcome-section" id="lots-and-blocks">
         <h2>Lots and Blocks Included</h2>
         <p class="muted">The saved source snapshots below are the basis of this outcome. No current Field Sample, receipt, inventory, or pack configuration is substituted when this report opens.</p>
@@ -344,7 +394,7 @@
                                     <tr>
                                         <td>#@point.SampleId</td><td>@BusinessTime.FormatPacific(point.SampleTakenAt, "MMM d, yyyy", false)</td><td>@point.Variety</td><td>@point.EnteredFruitCount</td>
                                         <td>@(point.AverageWeightGrams?.ToString("0.##") ?? "—") g</td><td>@(point.AveragePressureLbs?.ToString("0.##") ?? "—") lb</td>
-                                        <td>@(point.AverageStarch?.ToString("0.##") ?? "—")</td><td>@(point.DefectAffectedPercentage is decimal defect ? $"{defect:0.##}%" : "Not inspected")</td>
+                                        <td>@(point.AverageStarch?.ToString("0.##") ?? "—")</td><td>@(point.DefectAffectedPercentage is decimal defect ? $"{defect:0.##}%" : "No represented fruit")</td>
                                         <td>@(point.SizeDistribution.Count == 0 ? "Unavailable" : string.Join(", ", point.SizeDistribution.Select(x => $"{x.Size}: {x.Percentage:0.##}%")))</td>
                                     </tr>
                                 }

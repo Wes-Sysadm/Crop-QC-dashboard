@@ -501,16 +501,14 @@ public sealed class FieldSampleReportService(
         && photos.Any(x => !x.IsDeleted
             && QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType)
                 .Equals("FruitAfterStarch", StringComparison.OrdinalIgnoreCase));
-    private static string FruitDefects(QcFruitReading row) => !row.DefectsInspected
-        ? "Not inspected"
-        : row.Defects.Count == 0
-            ? "Inspected — none"
+    private static string FruitDefects(QcFruitReading row) => row.Defects.Count == 0
+            ? "No defects found"
             : string.Join(", ", row.Defects.OrderBy(x => x.DefectType.Name).Select(x => string.IsNullOrWhiteSpace(x.Notes) ? x.DefectType.Name : $"{x.DefectType.Name}: {x.Notes}"));
     private static string DefectSummary(FieldSampleMetricSummary summary) => summary.DefectAffectedPercentage is null
-        ? "Not inspected"
+        ? "No defects found"
         : $"{summary.DefectAffectedFruitCount} of {summary.DefectInspectedFruitCount} inspected fruit affected ({summary.DefectAffectedPercentage:0.#}%)";
     private static string DefectDistribution(FieldSampleMetricSummary summary) => summary.DefectInspectedFruitCount == 0
-        ? "Not inspected"
+        ? "No defects found"
         : summary.DefectDistribution.Count == 0
             ? "No defects found"
             : string.Join(", ", summary.DefectDistribution.Select(x => $"{x.Defect} {x.FruitCount} ({x.PercentageOfInspectedFruit:0.#}%)"));

@@ -68,7 +68,7 @@ public sealed class FieldSampleTrendService(CropQcDbContext dbContext) : IFieldS
         var weights = entered.Where(x => x.WeightGrams is not null).Select(x => x.WeightGrams!.Value).ToList();
         var starch = entered.Where(x => x.Starch is not null).Select(x => x.Starch!.Value).ToList();
         var pressures = PressureCalculationService.ValidSideReadings(entered.Select(x => (x.Pressure1Lbs, x.Pressure2Lbs)));
-        var inspected = rows.Where(x => x.DefectsInspected).ToList();
+        var inspected = entered;
         var affected = inspected.Where(x => x.Defects.Count > 0).ToList();
         var defectDistribution = inspected.Count == 0
             ? []

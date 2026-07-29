@@ -281,8 +281,8 @@
                                 </td>
                                 <td class="field-defect-cell">
                                     <details>
-                                        <summary><span data-defect-indicator>@(row.DefectsInspected ? row.Defects.Count == 0 ? "Inspected — none" : $"{row.Defects.Count} defect(s)" : "Not inspected")</span></summary>
-                                        <label class="checkbox-line"><input type="checkbox" name="Rows[@i].DefectsInspected" value="true" data-autosave-row-field="DefectsInspected" checked="@(row.DefectsInspected ? "checked" : null)" /> Inspected for defects</label>
+                                        <summary><span data-defect-indicator>@(row.Defects.Count == 0 ? "No defects found" : $"{row.Defects.Count} defect(s) found")</span></summary>
+                                        <p class="muted">Inspection status is automatic: selecting any defect changes the sample to Defects found.</p>
                                         <div class="selected-defects" data-selected-defects>
                                             @foreach (var defectName in row.Defects)
                                             {
@@ -335,7 +335,7 @@
                                 <td>@(row.SizeCategory?.ToString() ?? "Missing")</td>
                                 <td>@StarchDisplay(row.Starch)</td>
                                 <td>@(row.Grade ?? "Missing")</td>
-                                <td>@(row.DefectsInspected ? row.Defects.Count == 0 ? "Inspected — none" : string.Join(", ", row.Defects) : "Not inspected")</td>
+                                <td>@(row.Defects.Count == 0 ? "No defects found" : string.Join(", ", row.Defects))</td>
                             </tr>
                         }
                     </tbody>
@@ -389,7 +389,7 @@
             <div><span class="metric-label">Average Pressure</span><strong>@Format(Model.CurrentSummary.AveragePressureLbs) lb</strong><span class="muted">Peak @Format(Model.CurrentSummary.PeakPressureLbs) lb | Min @Format(Model.CurrentSummary.MinimumPressureLbs) lb</span></div>
             <div><span class="metric-label">Pressure variation</span><strong>@(Model.CurrentSummary.PressureStandardDeviationLbs?.ToString("0.##") ?? "Insufficient readings")</strong><span class="muted">@Model.CurrentSummary.PressureReadingCount valid side readings</span></div>
             <div><span class="metric-label">Fruit represented</span><strong>@Model.CurrentSummary.EnteredFruitCount / @Model.TargetSampleSize</strong><span class="muted">Blank values remain missing, not zero</span></div>
-            <div><span class="metric-label">Defects</span><strong>@(Model.CurrentSummary.DefectAffectedPercentage?.ToString("0.#") ?? "Not inspected")@(Model.CurrentSummary.DefectAffectedPercentage is null ? "" : "% affected")</strong><span class="muted">@Model.CurrentSummary.DefectAffectedFruitCount affected / @Model.CurrentSummary.DefectInspectedFruitCount inspected</span></div>
+            <div><span class="metric-label">Defect inspection</span><strong>@Model.DefectInspectionStatus</strong><span class="muted">@Model.CurrentSummary.DefectAffectedFruitCount affected / @Model.CurrentSummary.DefectInspectedFruitCount inspected · @(Model.CurrentSummary.DefectAffectedPercentage?.ToString("0.#") ?? "0")%</span></div>
         </div>
     </section>
 

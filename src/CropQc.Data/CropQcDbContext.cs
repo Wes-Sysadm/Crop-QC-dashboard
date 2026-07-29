@@ -5,6 +5,7 @@ namespace CropQc.Data;
 
 public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) : DbContext(options)
 {
+    private bool synchronizingDefectInspectionStatus;
     public DbSet<User> Users => Set<User>();
     public DbSet<UserGoogleCredential> UserGoogleCredentials => Set<UserGoogleCredential>();
     public DbSet<UserPageAccess> UserPageAccesses => Set<UserPageAccess>();
@@ -43,6 +44,12 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<RunProjectionSource> RunProjectionSources => Set<RunProjectionSource>();
     public DbSet<RunProjectionSizeResult> RunProjectionSizeResults => Set<RunProjectionSizeResult>();
     public DbSet<RunProjectionGradeResult> RunProjectionGradeResults => Set<RunProjectionGradeResult>();
+    public DbSet<PackoutAnalysisConfiguration> PackoutAnalysisConfigurations => Set<PackoutAnalysisConfiguration>();
+    public DbSet<PackCodeDefinition> PackCodeDefinitions => Set<PackCodeDefinition>();
+    public DbSet<PackoutRun> PackoutRuns => Set<PackoutRun>();
+    public DbSet<PackoutReportSource> PackoutReportSources => Set<PackoutReportSource>();
+    public DbSet<PackoutReportLine> PackoutReportLines => Set<PackoutReportLine>();
+    public DbSet<PackoutEmailAttempt> PackoutEmailAttempts => Set<PackoutEmailAttempt>();
     public DbSet<CommercialPackPlan> CommercialPackPlans => Set<CommercialPackPlan>();
     public DbSet<CommercialPackDefinition> CommercialPackDefinitions => Set<CommercialPackDefinition>();
     public DbSet<CommercialPackEligibleSize> CommercialPackEligibleSizes => Set<CommercialPackEligibleSize>();
@@ -65,6 +72,137 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<ReceiptPurgeOperation> ReceiptPurgeOperations => Set<ReceiptPurgeOperation>();
     public DbSet<FieldSampleDeletionAudit> FieldSampleDeletionAudits => Set<FieldSampleDeletionAudit>();
 
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        if (synchronizingDefectInspectionStatus)
+        {
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+
+        var affectedSamples = ResolveTrackedDefectAffectedSamples();
+        var affectedSampleIds = ResolveDefectAffectedSampleIds();
+        var result = base.SaveChanges(acceptAllChangesOnSuccess);
+        foreach (var sample in affectedSamples.Where(x => x.Id > 0)) affectedSampleIds.Add(sample.Id);
+        SynchronizeDefectInspectionStatuses(affectedSampleIds);
+        return result;
+    }
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        if (synchronizingDefectInspectionStatus)
+        {
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+
+        var affectedSamples = ResolveTrackedDefectAffectedSamples();
+        var affectedSampleIds = await ResolveDefectAffectedSampleIdsAsync(cancellationToken);
+        var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        foreach (var sample in affectedSamples.Where(x => x.Id > 0)) affectedSampleIds.Add(sample.Id);
+        await SynchronizeDefectInspectionStatusesAsync(affectedSampleIds, cancellationToken);
+        return result;
+    }
+
+    private List<QcSample> ResolveTrackedDefectAffectedSamples() =>
+        ChangeTracker.Entries<QcFruitDefect>()
+            .Where(x => x.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            .Select(x => x.Entity.QcFruitReading?.QcSample)
+            .Where(x => x is not null)
+            .Cast<QcSample>()
+            .Distinct()
+            .ToList();
+
+    private HashSet<long> ResolveDefectAffectedSampleIds()
+    {
+        var changed = ChangeTracker.Entries<QcFruitDefect>()
+            .Where(x => x.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            .Select(x => x.Entity)
+            .ToList();
+        var ids = changed
+            .Where(x => x.QcFruitReading?.QcSampleId > 0)
+            .Select(x => x.QcFruitReading.QcSampleId)
+            .ToHashSet();
+        var readingIds = changed.Select(x => x.QcFruitReadingId).Where(x => x > 0).Distinct().ToList();
+        foreach (var sampleId in QcFruitReadings.AsNoTracking()
+                     .Where(x => readingIds.Contains(x.Id))
+                     .Select(x => x.QcSampleId))
+        {
+            ids.Add(sampleId);
+        }
+        return ids;
+    }
+
+    private async Task<HashSet<long>> ResolveDefectAffectedSampleIdsAsync(CancellationToken cancellationToken)
+    {
+        var changed = ChangeTracker.Entries<QcFruitDefect>()
+            .Where(x => x.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            .Select(x => x.Entity)
+            .ToList();
+        var ids = changed
+            .Where(x => x.QcFruitReading?.QcSampleId > 0)
+            .Select(x => x.QcFruitReading.QcSampleId)
+            .ToHashSet();
+        var readingIds = changed.Select(x => x.QcFruitReadingId).Where(x => x > 0).Distinct().ToList();
+        if (readingIds.Count > 0)
+        {
+            foreach (var sampleId in await QcFruitReadings.AsNoTracking()
+                         .Where(x => readingIds.Contains(x.Id))
+                         .Select(x => x.QcSampleId)
+                         .ToListAsync(cancellationToken))
+            {
+                ids.Add(sampleId);
+            }
+        }
+        return ids;
+    }
+
+    private void SynchronizeDefectInspectionStatuses(IReadOnlySet<long> sampleIds)
+    {
+        if (sampleIds.Count == 0) return;
+        synchronizingDefectInspectionStatus = true;
+        try
+        {
+            var samples = QcSamples
+                .Include(x => x.FruitReadings)
+                .ThenInclude(x => x.Defects)
+                .Where(x => sampleIds.Contains(x.Id))
+                .ToList();
+            foreach (var sample in samples)
+            {
+                sample.DefectInspectionStatus = DefectInspectionStatuses.FromDefectCount(
+                    sample.FruitReadings.Sum(x => x.Defects.Count));
+            }
+            base.SaveChanges();
+        }
+        finally
+        {
+            synchronizingDefectInspectionStatus = false;
+        }
+    }
+
+    private async Task SynchronizeDefectInspectionStatusesAsync(IReadOnlySet<long> sampleIds, CancellationToken cancellationToken)
+    {
+        if (sampleIds.Count == 0) return;
+        synchronizingDefectInspectionStatus = true;
+        try
+        {
+            var samples = await QcSamples
+                .Include(x => x.FruitReadings)
+                .ThenInclude(x => x.Defects)
+                .Where(x => sampleIds.Contains(x.Id))
+                .ToListAsync(cancellationToken);
+            foreach (var sample in samples)
+            {
+                sample.DefectInspectionStatus = DefectInspectionStatuses.FromDefectCount(
+                    sample.FruitReadings.Sum(x => x.Defects.Count));
+            }
+            await base.SaveChangesAsync(cancellationToken);
+        }
+        finally
+        {
+            synchronizingDefectInspectionStatus = false;
+        }
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureAuth(modelBuilder);
@@ -72,6 +210,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         ConfigureQc(modelBuilder, IsPostgreSqlProvider());
         ConfigureCommercialPacks(modelBuilder);
         ConfigureRunProjections(modelBuilder);
+        ConfigurePackoutReconciliation(modelBuilder);
         ConfigureAudit(modelBuilder);
         ConfigureDashboardConfiguration(modelBuilder);
         ConfigureBackups(modelBuilder);
@@ -167,6 +306,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.AveragePressureLbsSnapshot).HasPrecision(10, 2);
             entity.Property(x => x.GradeSummarySnapshot).HasMaxLength(1000);
             entity.Property(x => x.DefectSummarySnapshot).HasMaxLength(1000);
+            entity.Property(x => x.TotalDefectPercentageSnapshot).HasPrecision(8, 4);
             entity.Property(x => x.ProjectionWarning).HasMaxLength(1000);
             entity.Property(x => x.QcSampleTypeSnapshot).HasMaxLength(100);
             entity.Property(x => x.QcSampleStatusSnapshot).HasMaxLength(50);
@@ -212,6 +352,136 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.CullProjectedBoxes).HasPrecision(18, 6);
             entity.HasIndex(x => new { x.RunProjectionSourceId, x.GradeCode }).IsUnique();
             entity.HasOne(x => x.RunProjectionSource).WithMany(x => x.GradeResults).HasForeignKey(x => x.RunProjectionSourceId).OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigurePackoutReconciliation(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PackoutAnalysisConfiguration>(entity =>
+        {
+            entity.Property(x => x.AppleBinWeightPounds).HasPrecision(10, 2).HasDefaultValue(880m);
+            entity.Property(x => x.PearBinWeightPounds).HasPrecision(10, 2).HasDefaultValue(920m);
+            entity.Property(x => x.SizeScoreWeight).HasPrecision(8, 4).HasDefaultValue(35m);
+            entity.Property(x => x.GradeScoreWeight).HasPrecision(8, 4).HasDefaultValue(35m);
+            entity.Property(x => x.PackoutScoreWeight).HasPrecision(8, 4).HasDefaultValue(21m);
+            entity.Property(x => x.JuiceScoreWeight).HasPrecision(8, 4).HasDefaultValue(3m);
+            entity.Property(x => x.PeelerSlicerScoreWeight).HasPrecision(8, 4).HasDefaultValue(3m);
+            entity.Property(x => x.WasteScoreWeight).HasPrecision(8, 4).HasDefaultValue(3m);
+            entity.Property(x => x.CurrentCropYearHistoryWeight).HasPrecision(8, 4).HasDefaultValue(80m);
+            entity.Property(x => x.PriorCropYearHistoryWeight).HasPrecision(8, 4).HasDefaultValue(20m);
+        });
+
+        modelBuilder.Entity<PackCodeDefinition>(entity =>
+        {
+            entity.Property(x => x.Code).HasMaxLength(75).IsRequired();
+            entity.Property(x => x.NormalizedCode).HasMaxLength(75).IsRequired();
+            entity.Property(x => x.DisplayName).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.ProductCategory).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.NetWeightPounds).HasPrecision(10, 4);
+            entity.HasIndex(x => x.NormalizedCode).IsUnique();
+            entity.HasIndex(x => new { x.IsActive, x.ProductCategory });
+        });
+
+        modelBuilder.Entity<PackoutRun>(entity =>
+        {
+            entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.FacilitySnapshot).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.LotNumberSnapshot).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.VarietySnapshot).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.DumpedBins).HasPrecision(18, 4);
+            entity.Property(x => x.PoundsPerBin).HasPrecision(10, 2);
+            entity.Property(x => x.DumpedPounds).HasPrecision(18, 4);
+            entity.Property(x => x.PackedProductPounds).HasPrecision(18, 4);
+            entity.Property(x => x.JuicePounds).HasPrecision(18, 4);
+            entity.Property(x => x.PeelerSlicerPounds).HasPrecision(18, 4);
+            entity.Property(x => x.WastePounds).HasPrecision(18, 4);
+            entity.Property(x => x.SupplementalJuicePounds).HasPrecision(18, 4);
+            entity.Property(x => x.SupplementalPeelerSlicerPounds).HasPrecision(18, 4);
+            entity.Property(x => x.SupplementalWastePounds).HasPrecision(18, 4);
+            entity.Property(x => x.ActualPackoutPercent).HasPrecision(8, 4);
+            entity.Property(x => x.ActualJuicePercent).HasPrecision(8, 4);
+            entity.Property(x => x.ActualPeelerSlicerPercent).HasPrecision(8, 4);
+            entity.Property(x => x.ActualWastePercent).HasPrecision(8, 4);
+            entity.Property(x => x.SizeAccuracyScore).HasPrecision(8, 4);
+            entity.Property(x => x.GradeAccuracyScore).HasPrecision(8, 4);
+            entity.Property(x => x.PackoutAccuracyScore).HasPrecision(8, 4);
+            entity.Property(x => x.JuiceAccuracyScore).HasPrecision(8, 4);
+            entity.Property(x => x.PeelerSlicerAccuracyScore).HasPrecision(8, 4);
+            entity.Property(x => x.WasteAccuracyScore).HasPrecision(8, 4);
+            entity.Property(x => x.OverallAccuracyScore).HasPrecision(8, 4);
+            entity.Property(x => x.ReconciliationDifferencePounds).HasPrecision(18, 4);
+            entity.Property(x => x.ReviewNotes).HasMaxLength(2000);
+            entity.Property(x => x.CalculationVersion).HasMaxLength(50);
+            entity.Property(x => x.FinalReportFileName).HasMaxLength(255);
+            entity.Property(x => x.FinalReportSha256).HasMaxLength(64);
+            entity.Property(x => x.FinalEmailMessageId).HasMaxLength(250);
+            entity.Property(x => x.ReopenReason).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.FacilitySnapshot, x.PackingDate, x.RunNumber }).IsUnique();
+            entity.HasIndex(x => new { x.RunProjectionId, x.Status });
+            entity.HasIndex(x => x.BinsRunEntryId).IsUnique();
+            entity.HasOne(x => x.RunProjection)
+                .WithMany(x => x.PackoutRuns)
+                .HasForeignKey(x => x.RunProjectionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.BinsRunEntry)
+                .WithOne()
+                .HasForeignKey<PackoutRun>(x => x.BinsRunEntryId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<PackoutReportSource>(entity =>
+        {
+            entity.Property(x => x.OriginalFileName).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.ContentType).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.Sha256).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.ParserName).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.ParserVersion).HasMaxLength(50);
+            entity.Property(x => x.Confidence).HasPrecision(6, 5);
+            entity.Property(x => x.SafeDiagnostic).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.PackoutRunId, x.Sha256 }).IsUnique();
+            entity.HasOne(x => x.PackoutRun)
+                .WithMany(x => x.Sources)
+                .HasForeignKey(x => x.PackoutRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PackoutReportLine>(entity =>
+        {
+            entity.Property(x => x.RawText).HasMaxLength(2000).IsRequired();
+            entity.Property(x => x.RawPackCode).HasMaxLength(100);
+            entity.Property(x => x.NormalizedPackCode).HasMaxLength(100);
+            entity.Property(x => x.Quantity).HasPrecision(18, 4);
+            entity.Property(x => x.NetWeightPounds).HasPrecision(10, 4);
+            entity.Property(x => x.ExtendedWeightPounds).HasPrecision(18, 4);
+            entity.Property(x => x.ProductCategory).HasMaxLength(50);
+            entity.Property(x => x.Confidence).HasPrecision(6, 5);
+            entity.Property(x => x.CorrectionReason).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.PackoutRunId, x.ProductCategory });
+            entity.HasIndex(x => x.NormalizedPackCode);
+            entity.HasOne(x => x.PackoutRun)
+                .WithMany(x => x.Lines)
+                .HasForeignKey(x => x.PackoutRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.PackoutReportSource)
+                .WithMany()
+                .HasForeignKey(x => x.PackoutReportSourceId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<PackoutEmailAttempt>(entity =>
+        {
+            entity.Property(x => x.Recipient).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.MessageId).HasMaxLength(250);
+            entity.Property(x => x.SafeError).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.PackoutRunId, x.AttemptedAt });
+            entity.HasOne(x => x.PackoutRun)
+                .WithMany(x => x.EmailAttempts)
+                .HasForeignKey(x => x.PackoutRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.SenderUser)
+                .WithMany()
+                .HasForeignKey(x => x.SenderUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 
@@ -906,6 +1176,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .WithMany()
                 .HasForeignKey(x => x.ReversedByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.ReconciledByUser)
+                .WithMany()
+                .HasForeignKey(x => x.ReconciledByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<QcSample>(entity =>
@@ -914,6 +1188,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.StarchStatus).HasMaxLength(50).IsRequired();
             entity.Property(x => x.PhotoStatus).HasMaxLength(50).IsRequired();
             entity.Property(x => x.EmailStatus).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.DefectInspectionStatus)
+                .HasMaxLength(50)
+                .HasDefaultValue(DefectInspectionStatuses.NoDefectsFound)
+                .IsRequired();
             entity.Property(x => x.Notes).HasMaxLength(1000);
             entity.Property(x => x.DeleteReason).HasMaxLength(1000);
             entity.Property(x => x.FieldSampleGrowerName).HasMaxLength(200);

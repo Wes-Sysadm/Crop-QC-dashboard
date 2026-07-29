@@ -41,7 +41,7 @@
 {
     <section class="panel">
         <h2>@Model.Sample.DisplayReceiptId</h2>
-        <p>@Model.Sample.Warehouse | @Model.Sample.SampleType | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Target sample size: @Model.TargetSampleSize | Entered fruit count: @Model.EnteredFruitCount</p>
+        <p>@Model.Sample.Warehouse | @Model.Sample.SampleType | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Defect inspection: @Model.DefectInspectionStatus | Target sample size: @Model.TargetSampleSize | Entered fruit count: @Model.EnteredFruitCount</p>
         @if (Model.Sample.EmailSentAt is not null)
         {
             <p class="notice success">QC Summary sent @BusinessTime.FormatPacific(Model.Sample.EmailSentAt.Value) by @(Model.Sample.EmailSentBy ?? "unknown").</p>
@@ -222,8 +222,8 @@
                         </td>
                         <td class="wide-cell field-defect-cell">
                             <details>
-                                <summary><span data-defect-indicator>@(row.DefectsInspected ? row.Defects.Count == 0 ? "Inspected — none" : $"{row.Defects.Count} defect(s)" : "Not inspected")</span></summary>
-                                <label class="checkbox-line"><input type="checkbox" name="Rows[@i].DefectsInspected" value="true" data-autosave-row-field="DefectsInspected" checked="@(row.DefectsInspected ? "checked" : null)" /> Inspected for defects</label>
+                                <summary><span data-defect-indicator>@(row.Defects.Count == 0 ? "No defects found" : $"{row.Defects.Count} defect(s) found")</span></summary>
+                                <p class="muted">Inspection status is automatic: selecting any defect changes the sample to Defects found.</p>
                                 <div class="selected-defects" data-selected-defects>
                                     @foreach (var defectName in row.Defects) { <span class="chip">@defectName</span> }
                                 </div>
@@ -290,7 +290,7 @@
             <div><span class="metric-label">Average weight</span><strong>@(weights.Count == 0 ? "Not available" : $"{weights.Average():0.##} g")</strong><span class="muted">Calculated size remains read-only</span></div>
             <div><span class="metric-label">Sizes</span><strong>@(string.IsNullOrWhiteSpace(sizeSummary) ? "None" : sizeSummary)</strong></div>
             <div><span class="metric-label">Grades</span><strong>@(string.IsNullOrWhiteSpace(gradeSummary) ? "None" : gradeSummary)</strong></div>
-            <div><span class="metric-label">Defects</span><strong>@(string.IsNullOrWhiteSpace(defectSummary) ? enteredRows.Any(row => row.DefectsInspected) ? "Inspected - none found" : "Not inspected" : defectSummary)</strong></div>
+            <div><span class="metric-label">Defects</span><strong>@(string.IsNullOrWhiteSpace(defectSummary) ? "No defects found" : defectSummary)</strong></div>
         </div>
     </section>
 }
