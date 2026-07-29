@@ -757,5 +757,3 @@ namespace CropQc.Data.Migrations
         }
     }
 }
-
-
