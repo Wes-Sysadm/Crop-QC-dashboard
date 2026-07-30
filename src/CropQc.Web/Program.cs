@@ -312,35 +312,15 @@ if (schemaVerificationCommand is not null)
         app.Configuration,
         app.Environment,
         expectedMigration);
-    Environment.ExitCode = schemaIsReady ? 0 : 1;
+    var deductionsAreReady = schemaIsReady
+        && await VerifyInventoryDeductionReadinessAsync(app.Services);
+    Environment.ExitCode = schemaIsReady && deductionsAreReady ? 0 : 1;
     return;
 }
 
 if (args.Contains("--verify-inventory-deductions", StringComparer.OrdinalIgnoreCase))
 {
-    using var invariantScope = app.Services.CreateScope();
-    var invariant = invariantScope.ServiceProvider.GetRequiredService<IInventoryDeductionInvariantService>();
-    var result = await invariant.VerifyReadinessAsync(CancellationToken.None);
-    var invariantLogger = invariantScope.ServiceProvider
-        .GetRequiredService<ILoggerFactory>()
-        .CreateLogger("InventoryDeductionReadiness");
-    invariantLogger.LogInformation(
-        "Inventory deduction readiness inspected {NegativeCount} negative adjustments: {HistoricalCount} historical, {NewFormatCount} new-format, {IssueCount} issue(s), {BlockingCount} blocking.",
-        result.NegativeAdjustmentCount,
-        result.HistoricalNegativeCount,
-        result.NewFormatNegativeCount,
-        result.Issues.Count,
-        result.Issues.Count(x => x.BlocksDeployment));
-    foreach (var issue in result.Issues)
-    {
-        invariantLogger.LogWarning(
-            "Inventory deduction readiness issue {Code} for adjustment {AdjustmentId}; invariant version {InvariantVersion}; blocking {BlocksDeployment}.",
-            issue.Code,
-            issue.AdjustmentId,
-            issue.InvariantVersion,
-            issue.BlocksDeployment);
-    }
-    Environment.ExitCode = result.IsReady ? 0 : 1;
+    Environment.ExitCode = await VerifyInventoryDeductionReadinessAsync(app.Services) ? 0 : 1;
     return;
 }
 
@@ -1276,6 +1256,34 @@ static async Task EnsureRequiredSampleTypesAsync(IServiceProvider services)
     {
         logger.LogWarning(ex, "Required sample type check skipped or failed.");
     }
+}
+
+static async Task<bool> VerifyInventoryDeductionReadinessAsync(IServiceProvider services)
+{
+    using var invariantScope = services.CreateScope();
+    var invariant = invariantScope.ServiceProvider.GetRequiredService<IInventoryDeductionInvariantService>();
+    var result = await invariant.VerifyReadinessAsync(CancellationToken.None);
+    var invariantLogger = invariantScope.ServiceProvider
+        .GetRequiredService<ILoggerFactory>()
+        .CreateLogger("InventoryDeductionReadiness");
+    invariantLogger.LogInformation(
+        "Inventory deduction readiness inspected {NegativeCount} negative adjustments: {HistoricalCount} historical, {NewFormatCount} new-format, {IssueCount} issue(s), {BlockingCount} blocking.",
+        result.NegativeAdjustmentCount,
+        result.HistoricalNegativeCount,
+        result.NewFormatNegativeCount,
+        result.Issues.Count,
+        result.Issues.Count(x => x.BlocksDeployment));
+    foreach (var issue in result.Issues)
+    {
+        invariantLogger.LogWarning(
+            "Inventory deduction readiness issue {Code} for adjustment {AdjustmentId}; invariant version {InvariantVersion}; blocking {BlocksDeployment}.",
+            issue.Code,
+            issue.AdjustmentId,
+            issue.InvariantVersion,
+            issue.BlocksDeployment);
+    }
+
+    return result.IsReady;
 }
 
 static void ConfigureDataProtection(IServiceCollection services, IConfiguration configuration)
