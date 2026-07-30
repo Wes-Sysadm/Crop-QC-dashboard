@@ -3,10 +3,13 @@ using System.Security.Claims;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Storage;
+using CropQc.Web.Auth;
 using CropQc.Web.Controllers;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -50,6 +53,7 @@ public sealed class BinsRunWorkflowTests
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.UpdateActualRun), AccessPolicyNames.BinsRunEdit);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.CancelActualRun), AccessPolicyNames.BinsRunAdmin);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.ApproveActualRunOverride), AccessPolicyNames.BinsRunAdmin);
+        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.ReverseTransfer), AccessPolicyNames.TransfersAdmin);
         AssertActionPolicy<RoomInventoryController>(
             nameof(RoomInventoryController.Reconciliation),
             AccessPolicyNames.CurrentLotsAdmin);
@@ -479,7 +483,12 @@ public sealed class BinsRunWorkflowTests
             RunAt = DateTimeOffset.UtcNow
         }, user, CancellationToken.None);
         var afterEdit = await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, user, CancellationToken.None);
-        var reverseError = await service.ReverseAsync(new ReverseBinsRunForm { Id = entry.Id, Reason = "Correction" }, admin, CancellationToken.None);
+        var replacement = await db.BinsRunEntries
+            .SingleAsync(x => x.Id != entry.Id
+                && x.TransactionType != ActualRunTransactionTypes.Reversal
+                && !x.IsReversed);
+        var reversalStartedAt = DateTimeOffset.UtcNow;
+        var reverseError = await service.ReverseAsync(new ReverseBinsRunForm { Id = replacement.Id, Reason = "Correction" }, admin, CancellationToken.None);
         var afterReverse = await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, user, CancellationToken.None);
 
         Assert.Null(editError);
@@ -490,7 +499,13 @@ public sealed class BinsRunWorkflowTests
         Assert.Equal(190, afterReverse.RoomSummary!.TotalAvailableBins);
         Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "Update" && x.EntityName == nameof(BinsRunEntry));
         Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "Reverse" && x.EntityName == nameof(BinsRunEntry));
-        Assert.True((await db.BinsRunEntries.SingleAsync()).IsReversed);
+        Assert.True((await db.BinsRunEntries.SingleAsync(x => x.Id == entry.Id)).IsReversed);
+        Assert.True((await db.BinsRunEntries.SingleAsync(x => x.Id == replacement.Id)).IsReversed);
+        Assert.Equal(2, await db.BinsRunEntries.CountAsync(x => x.TransactionType == ActualRunTransactionTypes.Reversal));
+        var directReversal = await db.BinsRunEntries
+            .Include(x => x.InventoryAdjustment)
+            .SingleAsync(x => x.ReversesBinsRunEntryId == replacement.Id);
+        Assert.True(directReversal.InventoryAdjustment.AdjustmentAt >= reversalStartedAt);
     }
 
     [Fact]
@@ -743,7 +758,55 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
-    public async Task ActualRun_PostgreSqlLedgerWorkflowUsesTwoBoundedInventoryQueries_WhenConfigured()
+    public async Task RoomTransfer_ReversalRestoresInventoryExactlyOnce()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var managerService = CreateDashboardService(db, Principal("manager@fruitandland.com"));
+        var sourceLot = (await managerService.GetRoomDetailAsync(1001, CancellationToken.None))
+            .TransferLotOptions.Single(x => x.Label.Contains("LOT-120", StringComparison.OrdinalIgnoreCase));
+        var transferForm = new RoomTransferForm
+        {
+            OperationKey = Guid.NewGuid().ToString("N"),
+            FromRoomId = 1001,
+            ToRoomId = 1002,
+            SourceLotKey = sourceLot.LotKey,
+            BinCount = 10,
+            TransferAt = DateTimeOffset.UtcNow,
+            Reason = "Unit-test transfer"
+        };
+
+        Assert.Null(await managerService.CreateRoomTransferAsync(transferForm, CancellationToken.None));
+        Assert.Null(await managerService.CreateRoomTransferAsync(transferForm, CancellationToken.None));
+        var original = await db.RoomTransfers.SingleAsync(x => x.ReversesRoomTransferId == null);
+        Assert.Equal(110, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Equal(35, await LedgerBalanceAsync(db, 1002, "LOT-120"));
+
+        var reverseForm = new ReverseRoomTransferForm
+        {
+            Id = original.Id,
+            OperationKey = Guid.NewGuid().ToString("N"),
+            Reason = "Unit-test reversal"
+        };
+        var adminService = CreateDashboardService(db, Principal("admin@fruitandland.com"));
+        Assert.Null(await adminService.ReverseRoomTransferAsync(reverseForm, CancellationToken.None));
+        var transferCountAfterReverse = await db.RoomTransfers.CountAsync();
+        Assert.Null(await adminService.ReverseRoomTransferAsync(reverseForm, CancellationToken.None));
+
+        Assert.Equal(transferCountAfterReverse, await db.RoomTransfers.CountAsync());
+        Assert.Equal(120, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Equal(25, await LedgerBalanceAsync(db, 1002, "LOT-120"));
+        Assert.True(original.IsReversed);
+        Assert.Single(await db.RoomTransfers.Where(x => x.ReversesRoomTransferId == original.Id).ToListAsync());
+        Assert.Equal(4, await db.RoomInventoryAdjustments.CountAsync(x => x.RoomTransferId != null));
+        var readiness = await new InventoryDeductionInvariantService(
+            db,
+            NullLogger<InventoryDeductionInvariantService>.Instance).VerifyReadinessAsync(CancellationToken.None);
+        Assert.True(readiness.IsReady, string.Join("; ", readiness.Issues.Select(x => x.Code)));
+    }
+
+    [Fact]
+    public async Task PostgreSql_BinsRunActualRunTransferReversalAndReadinessWorkflow_WhenConfigured()
     {
         var connectionString = Environment.GetEnvironmentVariable("CROPQC_TEST_POSTGRES");
         if (string.IsNullOrWhiteSpace(connectionString))
@@ -758,11 +821,10 @@ public sealed class BinsRunWorkflowTests
         optionsBuilder.AddInterceptors(interceptor);
         var options = optionsBuilder.Options;
         await using var db = new CropQcDbContext(options);
-        await db.Database.MigrateAsync();
-        if (!await db.Warehouses.AnyAsync(x => x.Code == "ART"))
-        {
-            await SeedActualRunLedgerOnlyAsync(db);
-        }
+        Assert.True(
+            await db.Database.EnsureCreatedAsync(),
+            "The configured disposable PostgreSQL workflow database must start empty.");
+        await SeedActualRunLedgerOnlyAsync(db);
         var service = CreateService(db);
         var manager = Principal("manager@fruitandland.com");
 
@@ -781,14 +843,106 @@ public sealed class BinsRunWorkflowTests
 
         Assert.Equal(2, interceptor.RoomLedgerQueryCount);
         Assert.True(page.AvailableInventory.Count <= 2000);
-        Assert.Null(await service.CreateActualRunAsync(
-            GroupForm((lot120Room1, 10), (lot120Room2, 5)),
-            manager,
-            CancellationToken.None));
+        var create = GroupForm((lot120Room1, 10), (lot120Room2, 5));
+        Assert.Null(await service.CreateActualRunAsync(create, manager, CancellationToken.None));
+        Assert.Null(await service.CreateActualRunAsync(create, manager, CancellationToken.None));
         Assert.Equal(110, await LedgerBalanceAsync(db, 1001, "LOT-120"));
         Assert.Equal(20, await LedgerBalanceAsync(db, 1002, "LOT-120"));
         Assert.Equal(2, await db.BinsRunEntries.CountAsync(x => x.ActualRunId != null && x.TransactionType == ActualRunTransactionTypes.Depletion));
         Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5), $"Room selection took {stopwatch.Elapsed.TotalMilliseconds:0} ms.");
+
+        var run = await db.ActualRuns.SingleAsync();
+        var editPage = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", RoomIds = [1001, 1002] },
+            manager,
+            CancellationToken.None);
+        var edit = GroupForm(
+            (editPage.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-120"), 8),
+            (editPage.AvailableInventory.Single(x => x.RoomId == 1002 && x.Lot == "LOT-120"), 7));
+        edit.Id = run.Id;
+        edit.ConcurrencyVersion = run.ConcurrencyVersion;
+        Assert.Null(await service.UpdateActualRunAsync(run.Id, edit, manager, CancellationToken.None));
+        await db.Entry(run).ReloadAsync();
+        var cancel = new CancelActualRunForm
+        {
+            Id = run.Id,
+            ConcurrencyVersion = run.ConcurrencyVersion,
+            OperationKey = Guid.NewGuid().ToString("N"),
+            Reason = "Disposable PostgreSQL workflow verification"
+        };
+        var admin = Principal("admin@fruitandland.com");
+        Assert.Null(await service.CancelActualRunAsync(cancel, admin, CancellationToken.None));
+        var afterCancelEntryCount = await db.BinsRunEntries.CountAsync();
+        Assert.Null(await service.CancelActualRunAsync(cancel, admin, CancellationToken.None));
+        Assert.Equal(afterCancelEntryCount, await db.BinsRunEntries.CountAsync());
+        Assert.Equal(120, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Equal(25, await LedgerBalanceAsync(db, 1002, "LOT-120"));
+
+        var legacyPage = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", RoomId = 1001 },
+            manager,
+            CancellationToken.None);
+        var legacyOption = legacyPage.AvailableInventory.Single(x => x.Lot == "LOT-30");
+        var legacyProjection = ProjectionForActual(legacyOption, 1000);
+        db.RunProjections.Add(legacyProjection);
+        await db.SaveChangesAsync();
+        var legacyForm = ActualRunForm(legacyOption, legacyProjection);
+        legacyForm.OperationKey = Guid.NewGuid().ToString("N");
+        legacyForm.BinsRun = 5;
+        Assert.Null(await service.CreateAsync(legacyForm, manager, CancellationToken.None));
+        var legacyEntry = await db.BinsRunEntries.SingleAsync(
+            x => x.ActualRunId == null && x.TransactionType == ActualRunTransactionTypes.Legacy && !x.IsReversed);
+        Assert.Equal(25, await LedgerBalanceAsync(db, 1001, "LOT-30"));
+        Assert.Null(await service.ReverseAsync(
+            new ReverseBinsRunForm { Id = legacyEntry.Id, Reason = "Disposable workflow reversal" },
+            admin,
+            CancellationToken.None));
+        Assert.Equal(30, await LedgerBalanceAsync(db, 1001, "LOT-30"));
+
+        var dashboard = CreateDashboardService(db, manager);
+        var sourceLot = (await dashboard.GetRoomDetailAsync(1001, CancellationToken.None))
+            .TransferLotOptions.Single(x => x.Label.Contains("LOT-120", StringComparison.OrdinalIgnoreCase));
+        var transferForm = new RoomTransferForm
+        {
+            OperationKey = Guid.NewGuid().ToString("N"),
+            FromRoomId = 1001,
+            ToRoomId = 1002,
+            SourceLotKey = sourceLot.LotKey,
+            BinCount = 10,
+            TransferAt = DateTimeOffset.UtcNow,
+            Reason = "Disposable PostgreSQL transfer verification"
+        };
+        Assert.Null(await dashboard.CreateRoomTransferAsync(transferForm, CancellationToken.None));
+        Assert.Null(await dashboard.CreateRoomTransferAsync(transferForm, CancellationToken.None));
+        var transfer = await db.RoomTransfers.SingleAsync(x => x.ReversesRoomTransferId == null);
+        Assert.Equal(2, await db.RoomInventoryAdjustments.CountAsync(x => x.RoomTransferId == transfer.Id));
+        Assert.Equal(110, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Equal(35, await LedgerBalanceAsync(db, 1002, "LOT-120"));
+
+        dashboard = CreateDashboardService(db, admin);
+        var reverseTransfer = new ReverseRoomTransferForm
+        {
+            Id = transfer.Id,
+            OperationKey = Guid.NewGuid().ToString("N"),
+            Reason = "Disposable PostgreSQL transfer reversal"
+        };
+        Assert.Null(await dashboard.ReverseRoomTransferAsync(reverseTransfer, CancellationToken.None));
+        var transferCountAfterReverse = await db.RoomTransfers.CountAsync();
+        Assert.Null(await dashboard.ReverseRoomTransferAsync(reverseTransfer, CancellationToken.None));
+        Assert.Equal(transferCountAfterReverse, await db.RoomTransfers.CountAsync());
+        Assert.Equal(120, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Equal(25, await LedgerBalanceAsync(db, 1002, "LOT-120"));
+
+        var invariant = new InventoryDeductionInvariantService(
+            db,
+            NullLogger<InventoryDeductionInvariantService>.Instance);
+        var readiness = await invariant.VerifyReadinessAsync(CancellationToken.None);
+        Assert.True(readiness.IsReady, string.Join("; ", readiness.Issues.Select(x => $"{x.Code}:{x.AdjustmentId}")));
+        var reconciliation = await new RoomInventoryReconciliationService(
+            db,
+            new RoomInventoryLedgerQueryService(db),
+            invariant).GetPageAsync(new RoomInventoryReconciliationFilter { WarehouseId = 1000 }, CancellationToken.None);
+        Assert.NotEmpty(reconciliation.NegativeAdjustments);
     }
 
     [Fact]
@@ -845,6 +999,43 @@ public sealed class BinsRunWorkflowTests
         Assert.Equal(beforeAdjustments, await db.RoomInventoryAdjustments.CountAsync());
         Assert.Equal(beforeEntries, await db.BinsRunEntries.CountAsync());
         Assert.Empty(await db.ActualRuns.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Reconciliation_BaselineForAnotherLotDoesNotSupersedeDeduction()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var binsRun = CreateService(db);
+        var user = Principal("manager@fruitandland.com");
+        var option = (await binsRun.GetPageAsync(
+            new BinsRunFilterForm { RoomId = 1001 },
+            user,
+            CancellationToken.None)).AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var projection = ProjectionForActual(option, 1000);
+        db.RunProjections.Add(projection);
+        await db.SaveChangesAsync();
+        Assert.Null(await binsRun.CreateAsync(ActualRunForm(option, projection), user, CancellationToken.None));
+
+        var warehouse = await db.Warehouses.SingleAsync(x => x.Id == 1000);
+        var room = await db.Rooms.SingleAsync(x => x.Id == 1001);
+        var fruit = await db.FruitProfiles.SingleAsync(x => x.Id == 1000);
+        var unrelatedBaseline = Adjustment(8999, warehouse, room, fruit, "OTHER-BASELINE", 10);
+        unrelatedBaseline.AdjustmentAt = DateTimeOffset.UtcNow.AddDays(1);
+        db.RoomInventoryAdjustments.Add(unrelatedBaseline);
+        await db.SaveChangesAsync();
+
+        var reconciliation = await new RoomInventoryReconciliationService(
+            db,
+            new RoomInventoryLedgerQueryService(db),
+            new InventoryDeductionInvariantService(
+                db,
+                NullLogger<InventoryDeductionInvariantService>.Instance))
+            .GetPageAsync(
+                new RoomInventoryReconciliationFilter { WarehouseId = 1000, RoomId = 1001 },
+                CancellationToken.None);
+
+        Assert.True(reconciliation.NegativeAdjustments.Single().CurrentlyAffectsInventory);
     }
 
     [Fact]
@@ -1260,7 +1451,9 @@ public sealed class BinsRunWorkflowTests
         CreatedAt = DateTimeOffset.UtcNow,
         PageAccesses =
         {
-            new UserPageAccess { AreaKey = ApplicationAreas.BinsRun, AccessLevel = binsRunLevel.ToString(), UpdatedAt = DateTimeOffset.UtcNow }
+            new UserPageAccess { AreaKey = ApplicationAreas.BinsRun, AccessLevel = binsRunLevel.ToString(), UpdatedAt = DateTimeOffset.UtcNow },
+            new UserPageAccess { AreaKey = ApplicationAreas.RoomTransactions, AccessLevel = binsRunLevel.ToString(), UpdatedAt = DateTimeOffset.UtcNow },
+            new UserPageAccess { AreaKey = ApplicationAreas.Transfers, AccessLevel = binsRunLevel.ToString(), UpdatedAt = DateTimeOffset.UtcNow }
         }
     };
 
@@ -1316,6 +1509,27 @@ public sealed class BinsRunWorkflowTests
 
     private static BinsRunService CreateService(CropQcDbContext db) =>
         new(db, new UserAccessService(db, new ConfigurationBuilder().Build()), NullLogger<BinsRunService>.Instance);
+
+    private static DashboardDataService CreateDashboardService(CropQcDbContext db, ClaimsPrincipal principal)
+    {
+        var configuration = new ConfigurationBuilder().Build();
+        return new DashboardDataService(
+            db,
+            null!,
+            new FileStorageOptions(),
+            new EmailOptions(),
+            null!,
+            new GoogleAuthenticationOptions(),
+            null!,
+            null!,
+            new QcPhotoRequirementPolicy(),
+            null!,
+            new CropYearService(db, configuration),
+            new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } },
+            configuration,
+            NullLogger<DashboardDataService>.Instance,
+            new UserAccessService(db, configuration));
+    }
 
     private static Task<int> LedgerBalanceAsync(CropQcDbContext db, int roomId, string lot) =>
         db.RoomInventoryAdjustments

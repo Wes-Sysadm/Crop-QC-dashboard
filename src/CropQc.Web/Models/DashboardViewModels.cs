@@ -283,6 +283,7 @@ public sealed class RoomInventoryTrueUpForm
 
 public sealed class RoomTransferForm
 {
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public int FromRoomId { get; set; }
     public int ToRoomId { get; set; }
     public string SourceLotKey { get; set; } = "";
@@ -291,6 +292,13 @@ public sealed class RoomTransferForm
     public string Reason { get; set; } = "";
     public string? Notes { get; set; }
     public bool ConfirmOverTransfer { get; set; }
+}
+
+public sealed class ReverseRoomTransferForm
+{
+    public long Id { get; set; }
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public string Reason { get; set; } = "";
 }
 
 public sealed class RoomInventoryImportPageViewModel
@@ -445,6 +453,7 @@ public sealed class BinsRunFilterForm
 
 public sealed class BinsRunForm
 {
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public int? WarehouseId { get; set; }
     public int? RoomId { get; set; }
     public string InventoryKey { get; set; } = "";

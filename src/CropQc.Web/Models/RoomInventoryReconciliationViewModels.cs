@@ -15,10 +15,36 @@ public sealed class RoomInventoryReconciliationPageViewModel
     public IReadOnlyList<RoomInventoryReconciliationOption> Warehouses { get; set; } = [];
     public IReadOnlyList<RoomInventoryReconciliationOption> Rooms { get; set; } = [];
     public IReadOnlyList<RoomInventoryReconciliationRowViewModel> Rows { get; set; } = [];
+    public IReadOnlyList<RoomInventoryNegativeAdjustmentViewModel> NegativeAdjustments { get; set; } = [];
     public IReadOnlyList<string> GlobalWarnings { get; set; } = [];
     public int LedgerBalance => Rows.Sum(x => x.LedgerBalance);
     public int InboundReceiptBins => Rows.Sum(x => x.InboundReceiptBins);
     public int UnledgeredInboundBins => Rows.Sum(x => x.UnledgeredInboundBins);
+}
+
+public sealed class RoomInventoryNegativeAdjustmentViewModel
+{
+    public long AdjustmentId { get; set; }
+    public string Facility { get; set; } = "";
+    public string Room { get; set; } = "";
+    public int? CropYear { get; set; }
+    public string Grower { get; set; } = "";
+    public string Lot { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public string ProductionType { get; set; } = "";
+    public int Quantity { get; set; }
+    public string AdjustmentType { get; set; } = "";
+    public string ParentType { get; set; } = "";
+    public long? BinsRunId { get; set; }
+    public long? TransferId { get; set; }
+    public long? ActualRunId { get; set; }
+    public string CreatedBy { get; set; } = "";
+    public DateTimeOffset AdjustmentAt { get; set; }
+    public bool ParentMatches { get; set; }
+    public bool CurrentlyAffectsInventory { get; set; }
+    public int InvariantVersion { get; set; }
+    public string RecordedSource { get; set; } = "";
+    public IReadOnlyList<string> Warnings { get; set; } = [];
 }
 
 public sealed record RoomInventoryReconciliationOption(int Id, string Label);

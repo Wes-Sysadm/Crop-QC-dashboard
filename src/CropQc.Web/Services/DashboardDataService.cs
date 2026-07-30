@@ -6,6 +6,9 @@ using CropQc.Shared.Time;
 using CropQc.Web.Auth;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Data;
 using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
@@ -51,6 +54,7 @@ public interface IDashboardDataService
     Task<string?> VoidRoomDepletionAsync(VoidRoomDepletionForm form, CancellationToken cancellationToken);
     Task<string?> CreateRoomInventoryTrueUpAsync(RoomInventoryTrueUpForm form, CancellationToken cancellationToken);
     Task<string?> CreateRoomTransferAsync(RoomTransferForm form, CancellationToken cancellationToken);
+    Task<string?> ReverseRoomTransferAsync(ReverseRoomTransferForm form, CancellationToken cancellationToken);
 }
 
 public enum FruitRowEntryStatus
@@ -90,7 +94,8 @@ public sealed class DashboardDataService(
     ICanonicalGrowerService? canonicalGrowerService = null,
     IBusinessTimeService? businessTime = null,
     IFacilityContextService? facilityContextService = null,
-    IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null) : IDashboardDataService
+    IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null,
+    IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null) : IDashboardDataService
 {
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
     private static readonly string[] ReceiptTypeOptions = ["Truck receipt", "Door sample", "Lot sample"];
@@ -98,6 +103,9 @@ public sealed class DashboardDataService(
     private IFacilityContextService FacilityContext { get; } = facilityContextService ?? new FacilityContextService(dbContext);
     private IRoomInventoryLedgerQueryService RoomInventoryLedger { get; } =
         roomInventoryLedgerQueryService ?? new RoomInventoryLedgerQueryService(dbContext);
+    private IInventoryDeductionInvariantService InventoryInvariant { get; } =
+        inventoryDeductionInvariantService
+        ?? new InventoryDeductionInvariantService(dbContext, NullLogger<InventoryDeductionInvariantService>.Instance);
 
     public async Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
     {
@@ -514,6 +522,7 @@ public sealed class DashboardDataService(
             return "Bin count must be positive.";
         }
 
+        await using var transaction = await BeginInventoryTransactionIfSupportedAsync(cancellationToken);
         var receipt = await dbContext.Receipts
             .Include(x => x.Warehouse)
             .Include(x => x.Room)
@@ -550,7 +559,7 @@ public sealed class DashboardDataService(
         };
         dbContext.RoomDepletions.Add(depletion);
         await dbContext.SaveChangesAsync(cancellationToken);
-        AddRoomInventoryAdjustment(
+        var adjustment = AddRoomInventoryAdjustment(
             receipt,
             currentUser,
             "Depletion",
@@ -561,9 +570,41 @@ public sealed class DashboardDataService(
             reason: "Bins sent to line",
             notes: depletion.Notes,
             roomDepletionId: depletion.Id);
+        adjustment.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
+        adjustment.InventoryOperationKey = $"room-depletion:{depletion.Id}:depletion";
+        await dbContext.SaveChangesAsync(cancellationToken);
+        dbContext.BinsRunEntries.Add(new BinsRunEntry
+        {
+            ReceiptId = receipt.Id,
+            SourceInventoryAdjustmentId = null,
+            InventoryAdjustmentId = adjustment.Id,
+            InventoryAdjustment = adjustment,
+            WarehouseId = receipt.WarehouseId,
+            RoomId = receipt.RoomId,
+            CropYear = receipt.CropYear,
+            GrowerLotId = receipt.GrowerLotId,
+            FruitProfileId = receipt.FruitProfileId,
+            GrowerName = receipt.GrowerName,
+            LotNumber = !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode,
+            PoolStart = receipt.PoolStart,
+            VarietyCode = receipt.FruitProfile.VarietyCode,
+            PreviousAvailableBins = currentBins,
+            BinsRun = form.BinCount,
+            NewAvailableBins = Math.Max(0, currentBins - form.BinCount),
+            Notes = depletion.Notes,
+            RunAt = form.DepletedAt,
+            CreatedByUserId = currentUser?.Id,
+            CreatedAt = DateTimeOffset.UtcNow,
+            TransactionType = ActualRunTransactionTypes.Legacy
+        });
         await AddAuditAsync("Create", nameof(RoomDepletion), depletion.Id.ToString(), currentUser?.Email ?? "unknown", null, $"Receipt {receipt.CompuTechReceiptId}; {form.BinCount} bins depleted from {receipt.Warehouse.Code}/{receipt.Room.Code}.", cancellationToken);
         await AddAuditAsync("BinCountChange", nameof(RoomInventoryAdjustment), receipt.Id.ToString(), currentUser?.Email ?? "unknown", null, $"Depletion changed bins from {currentBins} to {Math.Max(0, currentBins - form.BinCount)}.", cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
         return null;
     }
 
@@ -579,6 +620,7 @@ public sealed class DashboardDataService(
             return "Void reason is required.";
         }
 
+        await using var transaction = await BeginInventoryTransactionIfSupportedAsync(cancellationToken);
         var depletion = await dbContext.RoomDepletions
             .Include(x => x.Receipt)
                 .ThenInclude(x => x.Warehouse)
@@ -603,7 +645,20 @@ public sealed class DashboardDataService(
         depletion.VoidedAt = DateTimeOffset.UtcNow;
         depletion.VoidedByUserId = currentUser?.Id;
         depletion.VoidReason = form.Reason.Trim();
-        AddRoomInventoryAdjustment(
+        var originalAdjustment = await dbContext.RoomInventoryAdjustments
+            .SingleOrDefaultAsync(x => x.RoomDepletionId == depletion.Id && x.ChangeAmount < 0, cancellationToken);
+        var originalEntry = originalAdjustment is null
+            ? null
+            : await dbContext.BinsRunEntries.SingleOrDefaultAsync(x => x.InventoryAdjustmentId == originalAdjustment.Id, cancellationToken);
+        if (originalEntry is null)
+        {
+            return "This legacy depletion has no persisted Bins Run parent and cannot be reversed automatically.";
+        }
+        if (originalEntry.IsReversed)
+        {
+            return null;
+        }
+        var reversalAdjustment = AddRoomInventoryAdjustment(
             depletion.Receipt,
             currentUser,
             "Void/Reversal",
@@ -614,9 +669,47 @@ public sealed class DashboardDataService(
             reason: depletion.VoidReason,
             notes: $"Voided depletion {depletion.Id}.",
             roomDepletionId: depletion.Id);
+        reversalAdjustment.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
+        reversalAdjustment.InventoryOperationKey = $"room-depletion:{depletion.Id}:reversal";
+        await dbContext.SaveChangesAsync(cancellationToken);
+        dbContext.BinsRunEntries.Add(new BinsRunEntry
+        {
+            ReceiptId = originalEntry.ReceiptId,
+            SourceInventoryAdjustmentId = originalEntry.SourceInventoryAdjustmentId,
+            InventoryAdjustmentId = reversalAdjustment.Id,
+            InventoryAdjustment = reversalAdjustment,
+            WarehouseId = originalEntry.WarehouseId,
+            RoomId = originalEntry.RoomId,
+            CropYear = originalEntry.CropYear,
+            GrowerLotId = originalEntry.GrowerLotId,
+            FruitProfileId = originalEntry.FruitProfileId,
+            GrowerName = originalEntry.GrowerName,
+            LotNumber = originalEntry.LotNumber,
+            PoolStart = originalEntry.PoolStart,
+            VarietyCode = originalEntry.VarietyCode,
+            InventoryStatus = originalEntry.InventoryStatus,
+            PreviousAvailableBins = currentBeforeVoid,
+            BinsRun = originalEntry.BinsRun,
+            NewAvailableBins = currentBeforeVoid + originalEntry.BinsRun,
+            Notes = depletion.VoidReason,
+            RunAt = DateTimeOffset.UtcNow,
+            CreatedByUserId = currentUser?.Id,
+            CreatedAt = DateTimeOffset.UtcNow,
+            TransactionType = ActualRunTransactionTypes.Reversal,
+            ReversesBinsRunEntryId = originalEntry.Id
+        });
+        originalEntry.IsReversed = true;
+        originalEntry.ReversedAt = DateTimeOffset.UtcNow;
+        originalEntry.ReversedByUserId = currentUser?.Id;
+        originalEntry.ReverseReason = depletion.VoidReason;
         await AddAuditAsync("Void", nameof(RoomDepletion), depletion.Id.ToString(), currentUser?.Email ?? "unknown", null, $"Voided depletion. Reason: {depletion.VoidReason}", cancellationToken);
         await AddAuditAsync("BinCountChange", nameof(RoomInventoryAdjustment), depletion.ReceiptId.ToString(), currentUser?.Email ?? "unknown", null, $"Void/Reversal changed bins from {currentBeforeVoid} to {currentBeforeVoid + depletion.BinCountDepleted}.", cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
         return null;
     }
 
@@ -650,6 +743,16 @@ public sealed class DashboardDataService(
         var currentUser = await GetCurrentUserAsync(cancellationToken);
         var oldCount = await GetCurrentBinsForReceiptAsync(receipt.Id, cancellationToken);
         var delta = form.NewBinCount - oldCount;
+        if (delta < 0)
+        {
+            await AuditRejectedInventoryDeductionAsync(
+                "ManualTrueUp",
+                $"{form.RoomId}:{form.ReceiptId}",
+                currentUser,
+                $"Rejected requested reduction from {oldCount} to {form.NewBinCount}.",
+                cancellationToken);
+            return "Inventory leaving a room must be recorded through Bins Run or Transfer. The true-up was not saved.";
+        }
         AddRoomInventoryAdjustment(
             receipt,
             currentUser,
@@ -693,6 +796,15 @@ public sealed class DashboardDataService(
             return "Reason is required for room transfers.";
         }
 
+        var operationKey = string.IsNullOrWhiteSpace(form.OperationKey)
+            ? Guid.NewGuid().ToString("N")
+            : form.OperationKey.Trim();
+        if (await dbContext.RoomTransfers.AsNoTracking().AnyAsync(x => x.OperationKey == operationKey, cancellationToken))
+        {
+            return null;
+        }
+
+        await using var transaction = await BeginInventoryTransactionIfSupportedAsync(cancellationToken);
         var sourceLots = (await BuildRoomLotSummariesAsync(form.FromRoomId, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
         var sourceLot = sourceLots.SingleOrDefault(x => string.Equals(RoomLotKey(x), form.SourceLotKey, StringComparison.OrdinalIgnoreCase));
         if (sourceLot is null)
@@ -718,7 +830,14 @@ public sealed class DashboardDataService(
         var sourceReceipt = sourceLot.ReceiptId is null
             ? null
             : await dbContext.Receipts.Include(x => x.Warehouse).Include(x => x.Room).Include(x => x.FruitProfile).SingleOrDefaultAsync(x => x.Id == sourceLot.ReceiptId && !x.IsDeleted, cancellationToken);
-        var fruitProfile = await dbContext.FruitProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.VarietyCode == sourceLot.VarietyCode, cancellationToken);
+        var fruitProfile = await dbContext.FruitProfiles
+            .AsNoTracking()
+            .Where(x => sourceLot.FruitProfileId.HasValue
+                ? x.Id == sourceLot.FruitProfileId.Value
+                : x.VarietyCode == sourceLot.VarietyCode)
+            .OrderByDescending(x => x.IsActive)
+            .ThenBy(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
         var destinationCurrent = (await BuildRoomLotSummariesAsync(form.ToRoomId, cancellationToken))
             .Where(x => x.CurrentBins > 0)
             .Where(x => string.Equals(x.LotCode, sourceLot.LotCode, StringComparison.OrdinalIgnoreCase)
@@ -726,9 +845,35 @@ public sealed class DashboardDataService(
                 && string.Equals(x.GrowerName, sourceLot.GrowerName, StringComparison.OrdinalIgnoreCase))
             .Sum(x => x.CurrentBins);
 
+        var transfer = new RoomTransfer
+        {
+            OperationKey = operationKey,
+            SourceWarehouseId = fromRoom.WarehouseId,
+            SourceRoomId = fromRoom.Id,
+            DestinationWarehouseId = toRoom.WarehouseId,
+            DestinationRoomId = toRoom.Id,
+            CropYear = sourceLot.CropYear,
+            GrowerLotId = sourceReceipt?.GrowerLotId,
+            FruitProfileId = sourceLot.FruitProfileId ?? fruitProfile?.Id ?? sourceReceipt?.FruitProfileId,
+            GrowerName = sourceLot.GrowerName,
+            LotNumber = sourceLot.LotCode,
+            PoolStart = sourceLot.PoolStart,
+            VarietyCode = sourceLot.VarietyCode,
+            InventoryStatus = sourceLot.InventoryStatus,
+            BinCount = form.BinCount,
+            Reason = reason,
+            Notes = notes,
+            TransferredAt = form.TransferAt,
+            CreatedByUserId = currentUser?.Id,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        dbContext.RoomTransfers.Add(transfer);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        RoomInventoryAdjustment outgoing;
         if (sourceReceipt is not null)
         {
-            AddRoomInventoryAdjustment(
+            outgoing = AddRoomInventoryAdjustment(
                 sourceReceipt,
                 currentUser,
                 "TransferOut",
@@ -742,7 +887,7 @@ public sealed class DashboardDataService(
         }
         else
         {
-            AddRoomInventoryAdjustmentRaw(
+            outgoing = AddRoomInventoryAdjustmentRaw(
                 receiptId: null,
                 warehouseId: fromRoom.WarehouseId,
                 roomId: fromRoom.Id,
@@ -761,7 +906,7 @@ public sealed class DashboardDataService(
                 notes: $"Transfer to {toRoom.Warehouse.Code}/{toRoom.Code}. {notes}".Trim());
         }
 
-        AddRoomInventoryAdjustmentRaw(
+        var incoming = AddRoomInventoryAdjustmentRaw(
             receiptId: sourceLot.ReceiptId,
             warehouseId: toRoom.WarehouseId,
             roomId: toRoom.Id,
@@ -778,9 +923,187 @@ public sealed class DashboardDataService(
             currentUser: currentUser,
             reason: reason,
             notes: $"Transfer from {fromRoom.Warehouse.Code}/{fromRoom.Code}. {notes}".Trim());
+        outgoing.CropYear = transfer.CropYear;
+        outgoing.FruitProfileId = transfer.FruitProfileId;
+        outgoing.RoomTransferId = transfer.Id;
+        outgoing.RoomTransfer = transfer;
+        outgoing.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
+        outgoing.InventoryOperationKey = $"transfer:{operationKey}:out";
+        incoming.CropYear = transfer.CropYear;
+        incoming.FruitProfileId = transfer.FruitProfileId;
+        incoming.RoomTransferId = transfer.Id;
+        incoming.RoomTransfer = transfer;
+        incoming.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
+        incoming.InventoryOperationKey = $"transfer:{operationKey}:in";
 
-        await AddAuditAsync("Transfer", nameof(RoomInventoryAdjustment), $"{form.FromRoomId}->{form.ToRoomId}:{form.SourceLotKey}", currentUser?.Email ?? "unknown", null, $"Transferred {form.BinCount} bins of {sourceLot.GrowerName} {sourceLot.LotCode} {sourceLot.VarietyCode}. Reason: {reason}", cancellationToken);
+        await AddAuditAsync("Transfer", nameof(RoomTransfer), transfer.Id.ToString(), currentUser?.Email ?? "unknown", null, $"Transferred {form.BinCount} bins of {sourceLot.GrowerName} {sourceLot.LotCode} {sourceLot.VarietyCode}. Reason: {reason}", cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+        return null;
+    }
+
+    public async Task<string?> ReverseRoomTransferAsync(
+        ReverseRoomTransferForm form,
+        CancellationToken cancellationToken)
+    {
+        var canAdminTransfer = await HasAccessAsync(
+            ApplicationAreas.Transfers,
+            PageAccessLevel.Admin,
+            cancellationToken);
+        var canAdminRoomTransactions = await HasAccessAsync(
+            ApplicationAreas.RoomTransactions,
+            PageAccessLevel.Admin,
+            cancellationToken);
+        if (!canAdminTransfer && !canAdminRoomTransactions)
+        {
+            return "Transfer Admin access is required to reverse a room transfer.";
+        }
+        if (string.IsNullOrWhiteSpace(form.Reason))
+        {
+            return "Reason is required to reverse a room transfer.";
+        }
+
+        var operationKey = string.IsNullOrWhiteSpace(form.OperationKey)
+            ? Guid.NewGuid().ToString("N")
+            : form.OperationKey.Trim();
+        await using var transaction = await BeginInventoryTransactionIfSupportedAsync(cancellationToken);
+        var original = await dbContext.RoomTransfers
+            .Include(x => x.InventoryAdjustments)
+            .SingleOrDefaultAsync(x => x.Id == form.Id, cancellationToken);
+        if (original is null)
+        {
+            return "Room transfer was not found.";
+        }
+        if (original.IsReversed
+            || await dbContext.RoomTransfers.AsNoTracking()
+                .AnyAsync(x => x.ReversesRoomTransferId == original.Id, cancellationToken))
+        {
+            return null;
+        }
+        if (await dbContext.RoomTransfers.AsNoTracking()
+            .AnyAsync(x => x.OperationKey == operationKey, cancellationToken))
+        {
+            return null;
+        }
+
+        var snapshots = await RoomInventoryLedger.GetSnapshotsAsync(
+            original.DestinationWarehouseId,
+            [original.DestinationRoomId, original.SourceRoomId],
+            cancellationToken);
+        var destinationSnapshot = snapshots.SingleOrDefault(x =>
+            x.RoomId == original.DestinationRoomId
+            && x.CropYear == original.CropYear
+            && x.FruitProfileId == original.FruitProfileId
+            && string.Equals(x.Lot, original.LotNumber, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(x.InventoryStatus, original.InventoryStatus ?? "", StringComparison.OrdinalIgnoreCase));
+        if (destinationSnapshot is null || destinationSnapshot.CurrentBins < original.BinCount)
+        {
+            var available = destinationSnapshot?.CurrentBins ?? 0;
+            return $"Transfer cannot be reversed because only {available} of the required {original.BinCount} bins remain in the destination room.";
+        }
+        var sourceCurrent = snapshots
+            .Where(x => x.RoomId == original.SourceRoomId
+                && x.CropYear == original.CropYear
+                && x.FruitProfileId == original.FruitProfileId
+                && string.Equals(x.Lot, original.LotNumber, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(x.InventoryStatus, original.InventoryStatus ?? "", StringComparison.OrdinalIgnoreCase))
+            .Sum(x => x.CurrentBins);
+
+        var currentUser = await GetCurrentUserAsync(cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var reason = form.Reason.Trim();
+        var reversal = new RoomTransfer
+        {
+            OperationKey = operationKey,
+            SourceWarehouseId = original.DestinationWarehouseId,
+            SourceRoomId = original.DestinationRoomId,
+            DestinationWarehouseId = original.SourceWarehouseId,
+            DestinationRoomId = original.SourceRoomId,
+            CropYear = original.CropYear,
+            GrowerLotId = original.GrowerLotId,
+            FruitProfileId = original.FruitProfileId,
+            GrowerName = original.GrowerName,
+            LotNumber = original.LotNumber,
+            PoolStart = original.PoolStart,
+            VarietyCode = original.VarietyCode,
+            InventoryStatus = original.InventoryStatus,
+            BinCount = original.BinCount,
+            Reason = $"Reversal of transfer #{original.Id}: {reason}",
+            TransferredAt = now,
+            CreatedByUserId = currentUser?.Id,
+            CreatedAt = now,
+            ReversesRoomTransferId = original.Id,
+            ReversesRoomTransfer = original
+        };
+        dbContext.RoomTransfers.Add(reversal);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var outgoing = AddRoomInventoryAdjustmentRaw(
+            null,
+            reversal.SourceWarehouseId,
+            reversal.SourceRoomId,
+            reversal.GrowerLotId,
+            reversal.FruitProfileId,
+            reversal.GrowerName,
+            reversal.LotNumber,
+            reversal.VarietyCode ?? "",
+            destinationSnapshot.CurrentBins,
+            -reversal.BinCount,
+            destinationSnapshot.CurrentBins - reversal.BinCount,
+            "TransferOut",
+            now,
+            currentUser,
+            reversal.Reason,
+            $"Reversal of room transfer #{original.Id}");
+        var incoming = AddRoomInventoryAdjustmentRaw(
+            null,
+            reversal.DestinationWarehouseId,
+            reversal.DestinationRoomId,
+            reversal.GrowerLotId,
+            reversal.FruitProfileId,
+            reversal.GrowerName,
+            reversal.LotNumber,
+            reversal.VarietyCode ?? "",
+            sourceCurrent,
+            reversal.BinCount,
+            sourceCurrent + reversal.BinCount,
+            "TransferIn",
+            now,
+            currentUser,
+            reversal.Reason,
+            $"Reversal of room transfer #{original.Id}");
+        foreach (var (adjustment, suffix) in new[] { (outgoing, "out"), (incoming, "in") })
+        {
+            adjustment.CropYear = reversal.CropYear;
+            adjustment.InventoryStatus = reversal.InventoryStatus;
+            adjustment.RoomTransferId = reversal.Id;
+            adjustment.RoomTransfer = reversal;
+            adjustment.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
+            adjustment.InventoryOperationKey = $"transfer:{operationKey}:{suffix}";
+        }
+
+        original.IsReversed = true;
+        original.ReversedAt = now;
+        original.ReversedByUserId = currentUser?.Id;
+        original.ReverseReason = reason;
+        await AddAuditAsync(
+            "Reverse",
+            nameof(RoomTransfer),
+            original.Id.ToString(),
+            currentUser?.Email ?? "unknown",
+            null,
+            $"Reversed room transfer #{original.Id}. Reason: {reason}",
+            cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
         return null;
     }
 
@@ -1145,6 +1468,19 @@ public sealed class DashboardDataService(
         var currentBins = wasInventory ? await GetCurrentBinsForReceiptAsync(receipt.Id, cancellationToken) : 0;
         var growerName = growerLot?.Grower ?? form.GrowerName.Trim();
         var lotNumber = growerLot?.LotNumber ?? form.GrowerNumber.Trim();
+        if (wasInventory
+            && IsInventoryReceiptType(receiptType)
+            && form.BinCount < currentBins)
+        {
+            var rejectingUser = await GetCurrentUserAsync(cancellationToken);
+            await AuditRejectedInventoryDeductionAsync(
+                "ReceiptEdit",
+                receipt.Id.ToString(),
+                rejectingUser,
+                $"Rejected requested receipt reduction from {currentBins} to {form.BinCount}.",
+                cancellationToken);
+            return "Inventory leaving a room must be recorded through Bins Run or Transfer. The receipt reduction was not saved.";
+        }
 
         receipt.CropYear = form.CropYear;
         receipt.ReceivedAt = form.ReceivedAt;
@@ -4062,7 +4398,7 @@ public sealed class DashboardDataService(
         return Math.Max(0, receipt.BinCount - depleted);
     }
 
-    private void AddRoomInventoryAdjustment(
+    private RoomInventoryAdjustment AddRoomInventoryAdjustment(
         Receipt receipt,
         User? currentUser,
         string adjustmentType,
@@ -4074,7 +4410,7 @@ public sealed class DashboardDataService(
         string? notes,
         long? roomDepletionId)
     {
-        dbContext.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
+        var adjustment = new RoomInventoryAdjustment
         {
             CropYear = receipt.CropYear,
             ReceiptId = receipt.Id == 0 ? null : receipt.Id,
@@ -4098,10 +4434,12 @@ public sealed class DashboardDataService(
             AdjustmentAt = adjustmentAt,
             CreatedByUserId = currentUser?.Id,
             CreatedAt = DateTimeOffset.UtcNow
-        });
+        };
+        dbContext.RoomInventoryAdjustments.Add(adjustment);
+        return adjustment;
     }
 
-    private void AddRoomInventoryAdjustmentRaw(
+    private RoomInventoryAdjustment AddRoomInventoryAdjustmentRaw(
         long? receiptId,
         int warehouseId,
         int roomId,
@@ -4119,7 +4457,7 @@ public sealed class DashboardDataService(
         string? reason,
         string? notes)
     {
-        dbContext.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
+        var adjustment = new RoomInventoryAdjustment
         {
             CropYear = cropYearService.GetCurrentCropYear(adjustmentAt),
             ReceiptId = receiptId,
@@ -4143,7 +4481,37 @@ public sealed class DashboardDataService(
             AdjustmentAt = adjustmentAt,
             CreatedByUserId = currentUser?.Id,
             CreatedAt = DateTimeOffset.UtcNow
+        };
+        dbContext.RoomInventoryAdjustments.Add(adjustment);
+        return adjustment;
+    }
+
+    private async Task<IDbContextTransaction?> BeginInventoryTransactionIfSupportedAsync(CancellationToken cancellationToken)
+    {
+        var provider = dbContext.Database.ProviderName ?? "";
+        return provider.Contains("InMemory", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+    }
+
+    private async Task AuditRejectedInventoryDeductionAsync(
+        string action,
+        string entityKey,
+        User? user,
+        string detail,
+        CancellationToken cancellationToken)
+    {
+        dbContext.AuditLogs.Add(new AuditLog
+        {
+            Action = $"Rejected{action}",
+            EntityName = nameof(RoomInventoryAdjustment),
+            EntityKey = entityKey,
+            UserId = user?.Id,
+            AfterValuesJson = JsonSerializer.Serialize(new { Reason = detail }),
+            SourceApplication = "Web",
+            CreatedAt = DateTimeOffset.UtcNow
         });
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     private static WeakestLotResult? FindWeakestLot(IReadOnlyList<RoomLotSummaryViewModel> lots)

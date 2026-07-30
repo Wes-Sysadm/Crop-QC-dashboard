@@ -1,6 +1,7 @@
 using CropQc.Data;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CropQc.Web.Services;
 
@@ -13,9 +14,13 @@ public interface IRoomInventoryReconciliationService
 
 public sealed class RoomInventoryReconciliationService(
     CropQcDbContext dbContext,
-    IRoomInventoryLedgerQueryService ledgerQuery) : IRoomInventoryReconciliationService
+    IRoomInventoryLedgerQueryService ledgerQuery,
+    IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null) : IRoomInventoryReconciliationService
 {
     private const int MaximumReceiptRows = 5000;
+    private IInventoryDeductionInvariantService InventoryInvariant { get; } =
+        inventoryDeductionInvariantService
+        ?? new InventoryDeductionInvariantService(dbContext, NullLogger<InventoryDeductionInvariantService>.Instance);
 
     public async Task<RoomInventoryReconciliationPageViewModel> GetPageAsync(
         RoomInventoryReconciliationFilter filter,
@@ -134,7 +139,9 @@ public sealed class RoomInventoryReconciliationService(
             rows = rows.Where(x => x.Warnings.Count > 0).ToList();
         }
 
-        var globalWarnings = await GetGlobalWarningsAsync(filter, cancellationToken);
+        var readiness = await InventoryInvariant.VerifyReadinessAsync(cancellationToken);
+        var negativeAdjustments = await GetNegativeAdjustmentsAsync(filter, readiness, cancellationToken);
+        var globalWarnings = await GetGlobalWarningsAsync(filter, readiness, cancellationToken);
         return new RoomInventoryReconciliationPageViewModel
         {
             Filter = filter,
@@ -159,12 +166,14 @@ public sealed class RoomInventoryReconciliationService(
                 .ThenBy(x => x.ProductionType)
                 .ThenBy(x => x.CanonicalVariety)
                 .ToList(),
+            NegativeAdjustments = negativeAdjustments,
             GlobalWarnings = globalWarnings
         };
     }
 
     private async Task<IReadOnlyList<string>> GetGlobalWarningsAsync(
         RoomInventoryReconciliationFilter filter,
+        InventoryDeductionReadinessResult readiness,
         CancellationToken cancellationToken)
     {
         var adjustments = dbContext.RoomInventoryAdjustments.AsNoTracking()
@@ -197,7 +206,118 @@ public sealed class RoomInventoryReconciliationService(
         if (unparentedRunAdjustments > 0) warnings.Add($"{unparentedRunAdjustments} adjustment(s) claim an Actual Run source without an Actual Run parent.");
         if (mismatchedRunEntries > 0) warnings.Add($"{mismatchedRunEntries} Actual Run Bins Run entry/adjustment amount pair(s) do not match.");
         if (duplicateOperationKeys > 0) warnings.Add($"{duplicateOperationKeys} duplicate Actual Run operation key(s) require review.");
+        var blocking = readiness.Issues.Count(x => x.BlocksDeployment);
+        var historical = readiness.Issues.Count(
+            x => x.InvariantVersion < InventoryDeductionInvariantService.CurrentVersion);
+        if (blocking > 0) warnings.Add($"{blocking} deduction invariant failure(s) block deployment readiness.");
+        if (historical > 0) warnings.Add($"{historical} historical deduction failure(s) remain read-only and require operational review.");
         return warnings;
+    }
+
+    private async Task<IReadOnlyList<RoomInventoryNegativeAdjustmentViewModel>> GetNegativeAdjustmentsAsync(
+        RoomInventoryReconciliationFilter filter,
+        InventoryDeductionReadinessResult readiness,
+        CancellationToken cancellationToken)
+    {
+        var adjustments = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .Include(x => x.Room)
+            .Include(x => x.Receipt)
+                .ThenInclude(x => x!.FruitProfile)
+            .Include(x => x.FruitProfile)
+            .Include(x => x.CreatedByUser)
+            .Include(x => x.RoomTransfer)
+            .Where(x => x.ChangeAmount < 0)
+            .Where(x => filter.WarehouseId == null || x.WarehouseId == filter.WarehouseId)
+            .Where(x => filter.RoomId == null || x.RoomId == filter.RoomId)
+            .Where(x => string.IsNullOrWhiteSpace(filter.Lot) || x.LotNumber.Contains(filter.Lot))
+            .Where(x => string.IsNullOrWhiteSpace(filter.Variety)
+                || (x.VarietyCode != null && x.VarietyCode.Contains(filter.Variety))
+                || (x.FruitProfile != null && x.FruitProfile.VarietyCode.Contains(filter.Variety)))
+            .OrderByDescending(x => x.AdjustmentAt)
+            .ThenByDescending(x => x.Id)
+            .Take(MaximumReceiptRows)
+            .ToListAsync(cancellationToken);
+        var ids = adjustments.Select(x => x.Id).ToList();
+        var entries = ids.Count == 0
+            ? []
+            : await dbContext.BinsRunEntries.AsNoTracking()
+                .Where(x => ids.Contains(x.InventoryAdjustmentId))
+                .ToListAsync(cancellationToken);
+        var entryLookup = entries.GroupBy(x => x.InventoryAdjustmentId).ToDictionary(x => x.Key, x => x.ToList());
+        var issueLookup = readiness.Issues
+            .GroupBy(x => x.AdjustmentId)
+            .ToDictionary(x => x.Key, x => x.ToList());
+        var baselineRows = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType)
+            .Select(x => new
+            {
+                x.RoomId,
+                x.CropYear,
+                x.LotNumber,
+                x.FruitProfileId,
+                x.InventoryStatus,
+                x.AdjustmentAt
+            })
+            .ToListAsync(cancellationToken);
+        var baselineCutoffs = baselineRows
+            .GroupBy(x => BaselineKey(
+                x.RoomId,
+                x.CropYear,
+                x.LotNumber,
+                x.FruitProfileId,
+                x.InventoryStatus))
+            .ToDictionary(x => x.Key, x => x.Max(y => y.AdjustmentAt));
+
+        return adjustments.Select(x =>
+        {
+            var parents = entryLookup.GetValueOrDefault(x.Id) ?? [];
+            var warnings = (issueLookup.GetValueOrDefault(x.Id) ?? [])
+                .Select(y => $"{y.Code}: {y.Message}")
+                .ToList();
+            var parentType = parents.Count > 0 && x.RoomTransfer is not null
+                ? "Multiple"
+                : parents.Count > 0
+                    ? "Bins Run"
+                    : x.RoomTransfer is not null
+                        ? "Transfer"
+                        : x.RoomTransferId is not null
+                            ? "Missing Transfer"
+                            : "None";
+            var profile = x.FruitProfile ?? x.Receipt?.FruitProfile;
+            var baselineKey = BaselineKey(
+                x.RoomId,
+                x.CropYear ?? x.Receipt?.CropYear,
+                x.LotNumber,
+                x.FruitProfileId ?? x.Receipt?.FruitProfileId,
+                x.InventoryStatus ?? profile?.ProductionType);
+            var currentlyAffects = !baselineCutoffs.TryGetValue(baselineKey, out var cutoff)
+                || x.AdjustmentAt >= cutoff;
+            return new RoomInventoryNegativeAdjustmentViewModel
+            {
+                AdjustmentId = x.Id,
+                Facility = x.Warehouse.Code,
+                Room = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
+                CropYear = x.CropYear ?? x.Receipt?.CropYear,
+                Grower = x.GrowerName,
+                Lot = x.LotNumber,
+                Variety = profile?.VarietyCode ?? x.VarietyCode ?? "",
+                ProductionType = profile?.ProductionType ?? "",
+                Quantity = -x.ChangeAmount,
+                AdjustmentType = x.AdjustmentType,
+                ParentType = parentType,
+                BinsRunId = parents.Count == 1 ? parents[0].Id : null,
+                TransferId = x.RoomTransferId,
+                ActualRunId = x.ActualRunId,
+                CreatedBy = x.CreatedByUser?.DisplayName ?? "Unknown",
+                AdjustmentAt = x.AdjustmentAt,
+                ParentMatches = warnings.Count == 0 && parentType is "Bins Run" or "Transfer",
+                CurrentlyAffectsInventory = currentlyAffects,
+                InvariantVersion = x.InventoryInvariantVersion,
+                RecordedSource = x.Source ?? "",
+                Warnings = warnings
+            };
+        }).ToList();
     }
 
     private static IReadOnlyList<string> Warnings(RoomInventoryLedgerSnapshot snapshot, int unledgeredInboundBins)
@@ -224,6 +344,14 @@ public sealed class RoomInventoryReconciliationService(
 
     private static string Key(int roomId, int? cropYear, string lot, string variety, int? fruitProfileId) =>
         $"{roomId}|{cropYear?.ToString() ?? "-"}|{lot.Trim().ToUpperInvariant()}|{variety.Trim().ToUpperInvariant()}|{fruitProfileId?.ToString() ?? "-"}";
+
+    private static string BaselineKey(
+        int roomId,
+        int? cropYear,
+        string lot,
+        int? fruitProfileId,
+        string? inventoryStatus) =>
+        $"{roomId}|{cropYear?.ToString() ?? "-"}|{lot.Trim().ToUpperInvariant()}|{fruitProfileId?.ToString() ?? "-"}|{(inventoryStatus ?? "").Trim().ToUpperInvariant()}";
 
     private sealed record ReceiptLedgerEvidence(
         long Id,

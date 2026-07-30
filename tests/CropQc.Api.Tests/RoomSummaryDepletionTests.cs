@@ -336,7 +336,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("CreateRoomTransferAsync", service);
         Assert.Contains("\"TransferOut\"", service);
         Assert.Contains("\"TransferIn\"", service);
-        Assert.Contains("AddAuditAsync(\"Transfer\", nameof(RoomInventoryAdjustment)", service);
+        Assert.Contains("AddAuditAsync(\"Transfer\", nameof(RoomTransfer)", service);
+        Assert.Contains("RoomTransferId = transfer.Id", service);
         Assert.Contains("RoomTransferForm", model);
         Assert.Contains("TransferLotOptions", model);
         Assert.DoesNotContain("Record Transfer", room);

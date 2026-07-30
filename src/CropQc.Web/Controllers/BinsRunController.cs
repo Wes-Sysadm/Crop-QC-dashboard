@@ -646,6 +646,19 @@ public sealed class BinsRunController(
         return RedirectToAction(nameof(Index), new { RoomId = form.FromRoomId, Section = "Transfer", SourceKey = form.SourceLotKey });
     }
 
+    [HttpPost("Transfer/{id:long}/Reverse")]
+    [Authorize(Policy = AccessPolicyNames.TransfersAdmin)]
+    public async Task<IActionResult> ReverseTransfer(
+        long id,
+        ReverseRoomTransferForm form,
+        CancellationToken cancellationToken)
+    {
+        form.Id = id;
+        var error = await dashboardDataService.ReverseRoomTransferAsync(form, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Room transfer reversed.";
+        return RedirectToAction(nameof(Index), new { Section = "Activity" });
+    }
+
     [HttpPost("TrueUp")]
     [Authorize(Policy = AccessPolicyNames.TrueUpAdmin)]
     public async Task<IActionResult> TrueUp(RoomInventoryTrueUpForm form, CancellationToken cancellationToken)

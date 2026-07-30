@@ -7,6 +7,7 @@ using CropQc.Data.Entities;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CropQc.Web.Services;
 
@@ -29,13 +30,17 @@ public sealed class BinsRunService(
     CropQcDbContext dbContext,
     IUserAccessService userAccessService,
     ILogger<BinsRunService> logger,
-    IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null) : IBinsRunService
+    IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null,
+    IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null) : IBinsRunService
 {
     public const string AdjustmentType = "BinsRun";
     public const string ReversalAdjustmentType = "BinsRunReversal";
     public const string SourceApplication = "CropQc.Web";
     private IRoomInventoryLedgerQueryService RoomInventoryLedger { get; } =
         roomInventoryLedgerQueryService ?? new RoomInventoryLedgerQueryService(dbContext);
+    private IInventoryDeductionInvariantService InventoryInvariant { get; } =
+        inventoryDeductionInvariantService
+        ?? new InventoryDeductionInvariantService(dbContext, NullLogger<InventoryDeductionInvariantService>.Instance);
 
     public async Task<BinsRunPageViewModel> GetPageAsync(BinsRunFilterForm filter, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
@@ -313,9 +318,14 @@ public sealed class BinsRunService(
         var userId = await CurrentUserIdAsync(user, cancellationToken);
         var previous = snapshot.CurrentBins;
         var restored = previous + entry.BinsRun;
-        var adjustment = CreateAdjustment(snapshot, entry.BinsRun, previous, restored, ReversalAdjustmentType, userId, entry.RunAt, $"Reversal of Bins Run #{entry.Id}: {form.Reason.Trim()}");
+        var adjustment = CreateAdjustment(snapshot, entry.BinsRun, previous, restored, ReversalAdjustmentType, userId, DateTimeOffset.UtcNow, $"Reversal of Bins Run #{entry.Id}: {form.Reason.Trim()}");
+        adjustment.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
+        adjustment.InventoryOperationKey = $"binsrun:{entry.Id}:reversal";
         dbContext.RoomInventoryAdjustments.Add(adjustment);
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        var reversal = CopyAsReversal(entry, adjustment, previous, restored, userId, form.Reason.Trim());
+        dbContext.BinsRunEntries.Add(reversal);
 
         entry.IsReversed = true;
         entry.ReversedAt = DateTimeOffset.UtcNow;
@@ -324,6 +334,7 @@ public sealed class BinsRunService(
         entry.UpdatedAt = DateTimeOffset.UtcNow;
         await AddAuditAsync("Reverse", entry, userId, new { previousAvailableBins = previous }, new { restoredAvailableBins = restored, form.Reason }, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
         if (transaction is not null)
         {
             await transaction.CommitAsync(cancellationToken);
@@ -847,6 +858,8 @@ public sealed class BinsRunService(
                 userId,
                 form.RunAt,
                 form.Notes);
+            adjustment.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
+            adjustment.InventoryOperationKey = $"actualrun:{revision.OperationKey}:{item.Form.InventoryKey.Trim()}";
             adjustment.ActualRunId = run.Id;
             adjustment.ActualRunRevisionId = revision.Id;
             adjustment.Source = $"Actual Run #{run.Id}";
@@ -887,6 +900,7 @@ public sealed class BinsRunService(
                 OverrideApprovedByUserId = isOverride ? userId : null,
                 OverrideApprovedAt = isOverride ? now : null
             };
+            entry.InventoryAdjustment = adjustment;
             dbContext.BinsRunEntries.Add(entry);
             await dbContext.SaveChangesAsync(cancellationToken);
             var projectionSourceId = item.Form.RunProjectionSourceId
@@ -929,6 +943,7 @@ public sealed class BinsRunService(
             OverrideReason = approvalReason
         });
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
         if (transaction is not null)
         {
             await transaction.CommitAsync(cancellationToken);
@@ -963,6 +978,8 @@ public sealed class BinsRunService(
             var previous = snapshot.CurrentBins;
             var next = previous + entry.BinsRun;
             var adjustment = CreateAdjustment(snapshot, entry.BinsRun, previous, next, ReversalAdjustmentType, userId, DateTimeOffset.UtcNow, reason);
+            adjustment.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
+            adjustment.InventoryOperationKey = $"actualrun:{revision.OperationKey}:reversal:{entry.Id}";
             adjustment.ActualRunId = run.Id;
             adjustment.ActualRunRevisionId = revision.Id;
             adjustment.Source = $"Actual Run #{run.Id} reversal";
@@ -997,6 +1014,7 @@ public sealed class BinsRunService(
                 TransactionType = ActualRunTransactionTypes.Reversal,
                 ReversesBinsRunEntryId = entry.Id
             };
+            reversal.InventoryAdjustment = adjustment;
             dbContext.BinsRunEntries.Add(reversal);
             entry.IsReversed = true;
             entry.ReversedAt = DateTimeOffset.UtcNow;
@@ -1150,61 +1168,71 @@ public sealed class BinsRunService(
 
         var userId = await CurrentUserIdAsync(user, cancellationToken);
         var newAvailable = effectiveAvailable - form.BinsRun;
-        var changeAmount = newAvailable - snapshot.CurrentBins;
-        var adjustment = CreateAdjustment(snapshot, changeAmount, snapshot.CurrentBins, newAvailable, AdjustmentType, userId, form.RunAt, form.Notes);
+        var operationKey = string.IsNullOrWhiteSpace(form.OperationKey)
+            ? Guid.NewGuid().ToString("N")
+            : form.OperationKey.Trim();
+        object? before = existing is null ? null : EntrySnapshot(existing);
+        if (existing is not null)
+        {
+            var reversalAdjustment = CreateAdjustment(
+                snapshot,
+                existing.BinsRun,
+                snapshot.CurrentBins,
+                effectiveAvailable,
+                ReversalAdjustmentType,
+                userId,
+                DateTimeOffset.UtcNow,
+                $"Revision of Bins Run #{existing.Id}");
+            reversalAdjustment.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
+            reversalAdjustment.InventoryOperationKey = $"binsrun:{operationKey}:reversal:{existing.Id}";
+            dbContext.RoomInventoryAdjustments.Add(reversalAdjustment);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            dbContext.BinsRunEntries.Add(CopyAsReversal(
+                existing,
+                reversalAdjustment,
+                snapshot.CurrentBins,
+                effectiveAvailable,
+                userId,
+                "Bins Run revision"));
+            existing.IsReversed = true;
+            existing.ReversedAt = DateTimeOffset.UtcNow;
+            existing.ReversedByUserId = userId;
+            existing.ReverseReason = "Replaced by a corrected Bins Run revision.";
+            existing.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        var adjustment = CreateAdjustment(snapshot, -form.BinsRun, effectiveAvailable, newAvailable, AdjustmentType, userId, form.RunAt, form.Notes);
+        adjustment.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
+        adjustment.InventoryOperationKey = $"binsrun:{operationKey}:depletion";
         dbContext.RoomInventoryAdjustments.Add(adjustment);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        object? before = null;
-        var entry = existing;
-        if (entry is null)
+        var entry = new BinsRunEntry
         {
-            entry = new BinsRunEntry
-            {
-                ReceiptId = snapshot.ReceiptId,
-                SourceInventoryAdjustmentId = snapshot.InventoryAdjustmentId,
-                InventoryAdjustmentId = adjustment.Id,
-                WarehouseId = snapshot.WarehouseId,
-                RoomId = snapshot.RoomId,
-                CropYear = snapshot.CropYear,
-                GrowerLotId = snapshot.GrowerLotId,
-                FruitProfileId = snapshot.FruitProfileId,
-                GrowerName = snapshot.Grower,
-                LotNumber = snapshot.Lot,
-                PoolStart = snapshot.PoolStart,
-                VarietyCode = snapshot.Variety,
-                InventoryStatus = snapshot.InventoryStatus,
-                PreviousAvailableBins = snapshot.CurrentBins,
-                BinsRun = form.BinsRun,
-                NewAvailableBins = newAvailable,
-                Notes = string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim(),
-                RunAt = form.RunAt,
-                CreatedByUserId = userId,
-                CreatedAt = DateTimeOffset.UtcNow
-            };
-            dbContext.BinsRunEntries.Add(entry);
-        }
-        else
-        {
-            before = EntrySnapshot(entry);
-            entry.InventoryAdjustmentId = adjustment.Id;
-            entry.WarehouseId = snapshot.WarehouseId;
-            entry.RoomId = snapshot.RoomId;
-            entry.CropYear = snapshot.CropYear;
-            entry.GrowerLotId = snapshot.GrowerLotId;
-            entry.FruitProfileId = snapshot.FruitProfileId;
-            entry.GrowerName = snapshot.Grower;
-            entry.LotNumber = snapshot.Lot;
-            entry.PoolStart = snapshot.PoolStart;
-            entry.VarietyCode = snapshot.Variety;
-            entry.InventoryStatus = snapshot.InventoryStatus;
-            entry.PreviousAvailableBins = effectiveAvailable;
-            entry.BinsRun = form.BinsRun;
-            entry.NewAvailableBins = newAvailable;
-            entry.Notes = string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim();
-            entry.RunAt = form.RunAt;
-            entry.UpdatedAt = DateTimeOffset.UtcNow;
-        }
+            ReceiptId = snapshot.ReceiptId,
+            SourceInventoryAdjustmentId = snapshot.InventoryAdjustmentId,
+            InventoryAdjustmentId = adjustment.Id,
+            InventoryAdjustment = adjustment,
+            WarehouseId = snapshot.WarehouseId,
+            RoomId = snapshot.RoomId,
+            CropYear = snapshot.CropYear,
+            GrowerLotId = snapshot.GrowerLotId,
+            FruitProfileId = snapshot.FruitProfileId,
+            GrowerName = snapshot.Grower,
+            LotNumber = snapshot.Lot,
+            PoolStart = snapshot.PoolStart,
+            VarietyCode = snapshot.Variety,
+            InventoryStatus = snapshot.InventoryStatus,
+            PreviousAvailableBins = effectiveAvailable,
+            BinsRun = form.BinsRun,
+            NewAvailableBins = newAvailable,
+            Notes = string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim(),
+            RunAt = form.RunAt,
+            CreatedByUserId = userId,
+            CreatedAt = DateTimeOffset.UtcNow,
+            TransactionType = ActualRunTransactionTypes.Legacy
+        };
+        dbContext.BinsRunEntries.Add(entry);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         if (linkedProjection is not null && linkedProjectionSource is not null)
@@ -1243,6 +1271,7 @@ public sealed class BinsRunService(
         }
         await AddAuditAsync(auditAction, entry, userId, before, EntrySnapshot(entry), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
         if (transaction is not null)
         {
             await transaction.CommitAsync(cancellationToken);
@@ -1740,6 +1769,42 @@ public sealed class BinsRunService(
             AdjustmentAt = adjustmentAt,
             CreatedByUserId = userId,
             CreatedAt = DateTimeOffset.UtcNow
+        };
+
+    private static BinsRunEntry CopyAsReversal(
+        BinsRunEntry original,
+        RoomInventoryAdjustment adjustment,
+        int previous,
+        int next,
+        int? userId,
+        string reason) =>
+        new()
+        {
+            ReceiptId = original.ReceiptId,
+            SourceInventoryAdjustmentId = original.SourceInventoryAdjustmentId,
+            InventoryAdjustmentId = adjustment.Id,
+            InventoryAdjustment = adjustment,
+            WarehouseId = original.WarehouseId,
+            RoomId = original.RoomId,
+            CropYear = original.CropYear,
+            GrowerLotId = original.GrowerLotId,
+            FruitProfileId = original.FruitProfileId,
+            GrowerName = original.GrowerName,
+            LotNumber = original.LotNumber,
+            PoolStart = original.PoolStart,
+            VarietyCode = original.VarietyCode,
+            InventoryStatus = original.InventoryStatus,
+            PreviousAvailableBins = previous,
+            BinsRun = original.BinsRun,
+            NewAvailableBins = next,
+            Notes = reason,
+            RunAt = DateTimeOffset.UtcNow,
+            CreatedByUserId = userId,
+            CreatedAt = DateTimeOffset.UtcNow,
+            ActualRunId = original.ActualRunId,
+            ActualRunRevisionId = original.ActualRunRevisionId,
+            TransactionType = ActualRunTransactionTypes.Reversal,
+            ReversesBinsRunEntryId = original.Id
         };
 
     private async Task<IDbContextTransaction?> BeginTransactionIfSupportedAsync(CancellationToken cancellationToken)

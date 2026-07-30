@@ -39,6 +39,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<Receipt> Receipts => Set<Receipt>();
     public DbSet<RoomDepletion> RoomDepletions => Set<RoomDepletion>();
     public DbSet<RoomInventoryAdjustment> RoomInventoryAdjustments => Set<RoomInventoryAdjustment>();
+    public DbSet<RoomTransfer> RoomTransfers => Set<RoomTransfer>();
     public DbSet<BinsRunEntry> BinsRunEntries => Set<BinsRunEntry>();
     public DbSet<ActualRun> ActualRuns => Set<ActualRun>();
     public DbSet<ActualRunRevision> ActualRunRevisions => Set<ActualRunRevision>();
@@ -1101,11 +1102,20 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.InventoryStatus).HasMaxLength(100);
             entity.Property(x => x.Reason).HasMaxLength(500);
             entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.Property(x => x.InventoryOperationKey).HasMaxLength(200);
             entity.HasIndex(x => x.WarehouseId);
             entity.HasIndex(x => new { x.RoomId, x.AdjustmentAt });
             entity.HasIndex(x => new { x.ReceiptId, x.AdjustmentAt });
             entity.HasIndex(x => new { x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.VarietyCode, x.AdjustmentAt });
             entity.HasIndex(x => new { x.ActualRunId, x.ActualRunRevisionId });
+            var operationKeyIndex = entity.HasIndex(x => x.InventoryOperationKey).IsUnique();
+            operationKeyIndex.HasFilter(isPostgreSqlProvider
+                ? "\"InventoryOperationKey\" IS NOT NULL"
+                : "[InventoryOperationKey] IS NOT NULL");
+            var transferSideIndex = entity.HasIndex(x => new { x.RoomTransferId, x.AdjustmentType }).IsUnique();
+            transferSideIndex.HasFilter(isPostgreSqlProvider
+                ? "\"RoomTransferId\" IS NOT NULL"
+                : "[RoomTransferId] IS NOT NULL");
             entity.HasOne(x => x.Receipt)
                 .WithMany(x => x.RoomInventoryAdjustments)
                 .HasForeignKey(x => x.ReceiptId)
@@ -1134,6 +1144,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .WithMany()
                 .HasForeignKey(x => x.CreatedByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.RoomTransfer)
+                .WithMany(x => x.InventoryAdjustments)
+                .HasForeignKey(x => x.RoomTransferId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.ActualRun)
                 .WithMany()
                 .HasForeignKey(x => x.ActualRunId)
@@ -1158,6 +1172,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasIndex(x => new { x.RoomId, x.RunAt });
             entity.HasIndex(x => new { x.ReceiptId, x.IsReversed });
             entity.HasIndex(x => new { x.ActualRunId, x.ActualRunRevisionId, x.TransactionType });
+            entity.HasIndex(x => x.InventoryAdjustmentId)
+                .IsUnique()
+                .HasDatabaseName("UX_BinsRunEntries_InventoryAdjustmentId_Invariant");
             entity.HasIndex(x => x.ReversesBinsRunEntryId);
             entity.HasOne(x => x.Receipt)
                 .WithMany()
@@ -1215,6 +1232,35 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .WithMany()
                 .HasForeignKey(x => x.OverrideApprovedByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<RoomTransfer>(entity =>
+        {
+            entity.Property(x => x.OperationKey).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.GrowerName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.LotNumber).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.PoolStart).HasMaxLength(20);
+            entity.Property(x => x.VarietyCode).HasMaxLength(50);
+            entity.Property(x => x.InventoryStatus).HasMaxLength(100);
+            entity.Property(x => x.Reason).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.Property(x => x.ReverseReason).HasMaxLength(1000);
+            entity.HasIndex(x => x.OperationKey).IsUnique();
+            entity.HasIndex(x => x.ReversesRoomTransferId).IsUnique();
+            entity.HasIndex(x => new { x.SourceRoomId, x.TransferredAt });
+            entity.HasIndex(x => new { x.DestinationRoomId, x.TransferredAt });
+            entity.HasOne(x => x.SourceWarehouse).WithMany().HasForeignKey(x => x.SourceWarehouseId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.SourceRoom).WithMany().HasForeignKey(x => x.SourceRoomId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.DestinationWarehouse).WithMany().HasForeignKey(x => x.DestinationWarehouseId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.DestinationRoom).WithMany().HasForeignKey(x => x.DestinationRoomId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => x.GrowerLotId);
+            entity.HasOne(x => x.FruitProfile).WithMany().HasForeignKey(x => x.FruitProfileId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.ReversedByUser).WithMany().HasForeignKey(x => x.ReversedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.ReversesRoomTransfer)
+                .WithOne(x => x.ReversalTransfer)
+                .HasForeignKey<RoomTransfer>(x => x.ReversesRoomTransferId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ActualRun>(entity =>
