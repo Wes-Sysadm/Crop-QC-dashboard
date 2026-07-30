@@ -9,6 +9,7 @@
     var plannerVisibility = Model.Planner.SelectedDeletionStatus;
     var plannerSort = Model.Planner.SelectedSort;
     var plannerTodayUrl = $"/BinsRun?Section=Planner&PlannedDate={Model.Planner.PacificToday:yyyy-MM-dd}&RoomId={Model.Filter.RoomId}&Facility={plannerFacility}&ProjectionVisibility={plannerVisibility}&ProjectionSort={plannerSort}";
+    var editLines = Model.ActualRunForm.Lines.ToDictionary(x => x.InventoryKey, StringComparer.OrdinalIgnoreCase);
 }
 
 <h1>Bins Run &amp; Transfers</h1>
@@ -967,7 +968,7 @@
 else
 {
     <section class="panel">
-        <h2>Select Room</h2>
+        <h2>@(activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase) ? "Select Rooms" : "Select Room")</h2>
         <form class="toolbar bins-run-filter" method="get" action="/BinsRun">
             <input type="hidden" name="Section" value="@activeSection" />
             <label>Facility
@@ -979,23 +980,41 @@ else
                     }
                 </select>
             </label>
-            <label>Room
-                <select name="RoomId" onchange="this.form.submit()">
-                    <option value="">Select room</option>
+            @if (activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase))
+            {
+                <fieldset class="room-multi-select">
+                    <legend>Rooms included in this Actual Run</legend>
                     @foreach (var room in Model.Rooms)
                     {
-                        <option value="@room.Id" selected="@(Model.Filter.RoomId == room.Id)">@room.Warehouse.Code / @(room.CropQcRoomName ?? room.DisplayName ?? room.Code)</option>
+                        <label class="checkbox-field">
+                            <input type="checkbox" name="RoomIds" value="@room.Id" checked="@Model.Filter.RoomIds.Contains(room.Id)" />
+                            @room.Warehouse.Code / @(room.CropQcRoomName ?? room.DisplayName ?? room.Code)
+                        </label>
                     }
-                </select>
-            </label>
-            <button type="submit">Open</button>
+                </fieldset>
+                <button type="submit">Load Current Room Inventory</button>
+            }
+            else
+            {
+                <label>Room
+                    <select name="RoomId" onchange="this.form.submit()">
+                        <option value="">Select room</option>
+                        @foreach (var room in Model.Rooms)
+                        {
+                            <option value="@room.Id" selected="@(Model.Filter.RoomId == room.Id)">@room.Warehouse.Code / @(room.CropQcRoomName ?? room.DisplayName ?? room.Code)</option>
+                        }
+                    </select>
+                </label>
+                <button type="submit">Open</button>
+            }
         </form>
     </section>
 
     @if (activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase))
     {
         <section class="panel">
-            <h2>Record Actual Bins Run</h2>
+            <h2>@(Model.ActualRunForm.Id is null ? "Record Actual Run" : $"Correct Actual Run #{Model.ActualRunForm.Id}")</h2>
+            <p class="muted">Current room inventory ledger balances are the source of truth. Select exact room-lot rows and enter bins pulled from each room. Receipts are not used.</p>
             @if (Model.Filter.ProjectionId is not null)
             {
                 <p class="notice">This form was opened from projection #@Model.Filter.ProjectionId. Review and confirm the actual quantity; the plan has not changed inventory.</p>
@@ -1010,41 +1029,106 @@ else
             {
                 <p class="notice warning">Bins Run Edit access is required.</p>
             }
-            else if (Model.Filter.RoomId is null || Model.AvailableInventory.Count == 0)
+            else if (Model.Filter.RoomIds.Count == 0)
             {
-                <p class="empty-state">Select a room with available inventory.</p>
+                <p class="empty-state">Select one or more rooms to load their current lot balances.</p>
+            }
+            else if (Model.AvailableInventory.Count == 0)
+            {
+                <p class="empty-state">The selected rooms have no room-ledger inventory rows.</p>
             }
             else
             {
-                <form class="form-grid" method="post" action="/BinsRun/Create">
-                    <input type="hidden" name="WarehouseId" value="@Model.Form.WarehouseId" />
-                    <input type="hidden" name="RoomId" value="@Model.Form.RoomId" />
-                    <input type="hidden" name="RunProjectionId" value="@Model.Form.RunProjectionId" />
-                    <input type="hidden" name="RunProjectionSourceId" value="@Model.Form.RunProjectionSourceId" />
-                    <label class="field wide">Inventory source
-                        <select name="InventoryKey" data-inventory-select required>
-                        @foreach (var option in Model.AvailableInventory)
-                        {
-                            <option value="@option.InventoryKey" data-bins="@option.CurrentBins" selected="@(option.InventoryKey == Model.Form.InventoryKey)">@option.Label · @option.Room</option>
-                        }
-                        </select>
-                    </label>
-                    <label class="field">Current available bins
-                        <input name="ExpectedAvailableBins" value="@Model.Form.ExpectedAvailableBins" data-expected-bins readonly />
-                    </label>
-                    <label class="field">Actual bins run
-                        <input type="number" min="1" name="BinsRun" value="@(Model.Filter.ProjectionSourceId is null ? "" : selected?.Sources.FirstOrDefault(x => x.Id == Model.Filter.ProjectionSourceId)?.PlannedBins)" required />
-                    </label>
+                @if (Model.ActualRunForm.Id is not null)
+                {
+                    <p class="notice warning">Saving a correction restores every active depletion with permanent reversal transactions, then records the corrected rows atomically.</p>
+                }
+                <form class="form-grid" method="post" action="@(Model.ActualRunForm.Id is long runId ? $"/BinsRun/ActualRuns/{runId}" : "/BinsRun/ActualRuns")" data-actual-run-form>
+                    <input type="hidden" name="Id" value="@Model.ActualRunForm.Id" />
+                    <input type="hidden" name="ConcurrencyVersion" value="@Model.ActualRunForm.ConcurrencyVersion" />
+                    <input type="hidden" name="OperationKey" value="@Model.ActualRunForm.OperationKey" />
+                    <input type="hidden" name="RunProjectionId" value="@Model.ActualRunForm.RunProjectionId" />
+                    <div class="table-wrap wide">
+                        <table class="actual-run-ledger-table">
+                            <thead>
+                                <tr><th>Use</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Production</th><th>Crop year</th><th>Current</th><th>Bins pulled</th><th>Projected remaining</th><th>Shortage / override</th></tr>
+                            </thead>
+                            <tbody>
+                            @for (var i = 0; i < Model.AvailableInventory.Count; i++)
+                            {
+                                var option = Model.AvailableInventory[i];
+                                var isSelected = editLines.TryGetValue(option.InventoryKey, out var editLine);
+                                var effectiveAvailable = option.CurrentBins + (isSelected ? editLine!.BinsRun : 0);
+                                <tr data-actual-run-row data-current-bins="@effectiveAvailable">
+                                    <td>
+                                        <input type="checkbox" data-actual-line-toggle aria-label="Include @option.Room @option.Lot" checked="@isSelected" />
+                                        <input type="hidden" name="Lines.Index" value="@i" data-actual-line-field disabled="@(!isSelected)" />
+                                        <input type="hidden" name="Lines[@i].InventoryKey" value="@option.InventoryKey" data-actual-line-field disabled="@(!isSelected)" />
+                                        <input type="hidden" name="Lines[@i].ExpectedAvailableBins" value="@effectiveAvailable" data-actual-line-field disabled="@(!isSelected)" />
+                                        @if (Model.Filter.ProjectionSourceId is long projectionSourceId
+                                            && string.Equals(option.InventoryKey, conversionInventory?.InventoryKey, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <input type="hidden" name="Lines[@i].RunProjectionSourceId" value="@projectionSourceId" data-actual-line-field disabled="@(!isSelected)" />
+                                        }
+                                    </td>
+                                    <td>@option.Room</td>
+                                    <td><strong>@option.Lot</strong><br /><span class="muted">@option.Grower</span></td>
+                                    <td>@option.Variety</td>
+                                    <td>@(string.IsNullOrWhiteSpace(option.ProductionType) ? "Unknown" : option.ProductionType)</td>
+                                    <td>@(option.CropYear?.ToString() ?? "Unknown")</td>
+                                    <td>@effectiveAvailable</td>
+                                    <td><input class="compact-number" type="number" min="1" name="Lines[@i].BinsRun" value="@(isSelected ? editLine!.BinsRun : "")" data-actual-line-field data-bins-pulled disabled="@(!isSelected)" /></td>
+                                    <td data-projected-balance>@effectiveAvailable</td>
+                                    <td data-shortage-status>None</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
                     <label class="field">Run date/time
-                        <input type="datetime-local" name="RunAt" value="@BusinessTime.FormatPacificInput(BusinessTime.UtcNow)" required />
+                        <input type="datetime-local" name="RunAt" value="@BusinessTime.FormatPacificInput(Model.ActualRunForm.RunAt)" required />
                     </label>
                     <label class="field wide">Notes
-                        <textarea name="Notes" maxlength="1000"></textarea>
+                        <textarea name="Notes" maxlength="1000">@Model.ActualRunForm.Notes</textarea>
                     </label>
-                    <button type="submit">Record Actual Bins Run</button>
+                    <p class="muted wide">A shortage creates a pending request showing available, requested, and shortage bins. A different Bins Run administrator must enter an override reason before inventory can go negative.</p>
+                    <button type="submit">@(Model.ActualRunForm.Id is null ? "Save Actual Run and Deplete Rooms" : "Save Correction with Reversals")</button>
+                    @if (Model.ActualRunForm.Id is not null)
+                    {
+                        <a class="button-link" href="/BinsRun?Section=Actual">Cancel Edit</a>
+                    }
                 </form>
             }
         </section>
+
+        @if (Model.CanAdmin && Model.PendingOverrideRequests.Count > 0)
+        {
+            <section class="panel">
+                <h2>Pending Inventory Shortage Overrides</h2>
+                <p class="muted">The requester cannot approve their own shortage. Approval rechecks live ledger balances before applying the run.</p>
+                @foreach (var request in Model.PendingOverrideRequests)
+                {
+                    <article class="subpanel">
+                        <h3>Request #@request.Id · @request.OperationType · @request.RequestedBy · @BusinessTime.FormatPacific(request.RequestedAt)</h3>
+                        <div class="table-wrap">
+                            <table>
+                                <thead><tr><th>Room</th><th>Lot</th><th>Variety</th><th>Available</th><th>Requested</th><th>Shortage</th></tr></thead>
+                                <tbody>
+                                @foreach (var line in request.Lines)
+                                {
+                                    <tr><td>@line.Room</td><td>@line.Lot</td><td>@line.Variety</td><td>@line.AvailableBins</td><td>@line.RequestedBins</td><td>@line.ShortageBins</td></tr>
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                        <form class="inline-form" method="post" action="/BinsRun/ActualRunOverrides/@request.Id/Approve">
+                            <label>Required override reason <input name="Reason" maxlength="1000" required /></label>
+                            <button type="submit">Approve and Apply</button>
+                        </form>
+                    </article>
+                }
+            </section>
+        }
     }
     else if (activeSection.Equals("Transfer", StringComparison.OrdinalIgnoreCase))
     {
@@ -1127,10 +1211,69 @@ else
         </section>
     }
 
+    @if (activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase))
+    {
+        <section class="panel">
+            <h2>Actual Run Groups</h2>
+            @if (Model.ActualRuns.Count == 0)
+            {
+                <p class="empty-state">No room-based Actual Runs have been recorded. Older entries remain readable in legacy transaction history below.</p>
+            }
+            else
+            {
+                @foreach (var run in Model.ActualRuns)
+                {
+                    <details class="subpanel" open="@(Model.ActualRunForm.Id == run.Id)">
+                        <summary><strong>Actual Run #@run.Id</strong> · @run.Status · revision @run.RevisionNumber · @BusinessTime.FormatPacific(run.RunAt)</summary>
+                        <p class="muted">@run.Notes</p>
+                        <div class="table-wrap">
+                            <table>
+                                <thead><tr><th>Event</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Old</th><th>Bins</th><th>New</th><th>Override</th></tr></thead>
+                                <tbody>
+                                @foreach (var line in run.Lines)
+                                {
+                                    <tr>
+                                        <td>@line.TransactionType @(line.IsReversed && line.TransactionType == CropQc.Data.Entities.ActualRunTransactionTypes.Depletion ? "(reversed)" : "")</td>
+                                        <td>@line.Room</td><td>@line.Lot<br /><span class="muted">@line.Grower</span></td><td>@line.Variety</td>
+                                        <td>@line.PreviousAvailableBins</td><td>@line.BinsRun</td><td>@line.NewAvailableBins</td>
+                                        <td>@(line.IsOverdrawOverride ? $"Approved: {line.OverrideReason}" : "No")</td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                        @if (run.Status == CropQc.Data.Entities.ActualRunStatuses.Active)
+                        {
+                            <div class="inline-form">
+                                @if (Model.CanRecord)
+                                {
+                                    <a class="button-link" href="/BinsRun?Section=Actual&amp;EditActualRunId=@run.Id">Correct with Reversals</a>
+                                }
+                                @if (Model.CanAdmin)
+                                {
+                                    <form class="inline-form" method="post" action="/BinsRun/ActualRuns/@run.Id/Cancel">
+                                        <input type="hidden" name="ConcurrencyVersion" value="@run.ConcurrencyVersion" />
+                                        <input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" />
+                                        <label>Cancellation reason <input name="Reason" maxlength="1000" required /></label>
+                                        <button type="submit" class="danger">Cancel and Restore Rooms</button>
+                                    </form>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="notice">Canceled @BusinessTime.FormatPacific(run.CanceledAt) · @run.CancellationReason</p>
+                        }
+                    </details>
+                }
+            }
+        </section>
+    }
+
     @if (activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase) || activeSection.Equals("Activity", StringComparison.OrdinalIgnoreCase))
     {
         <section class="panel">
-            <h2>Recent Bins Run History</h2>
+            <h2>Legacy and Ledger Transaction History</h2>
             @if (Model.History.Count == 0)
             {
                 <p class="empty-state">No Bins Run transactions match the selected room.</p>
@@ -1378,6 +1521,49 @@ else
         const expected = document.querySelector("[data-expected-bins]");
         inventory?.addEventListener("change", () => {
             expected.value = inventory.selectedOptions[0]?.dataset.bins || "0";
+        });
+
+        const actualRunForm = document.querySelector("[data-actual-run-form]");
+        const updateActualRunRow = (row) => {
+            const toggle = row.querySelector("[data-actual-line-toggle]");
+            const selected = Boolean(toggle?.checked);
+            row.querySelectorAll("[data-actual-line-field]").forEach((field) => {
+                field.disabled = !selected;
+            });
+            const available = Number(row.dataset.currentBins || 0);
+            const binsInput = row.querySelector("[data-bins-pulled]");
+            const requested = selected ? Number(binsInput?.value || 0) : 0;
+            const remaining = available - (Number.isFinite(requested) ? requested : 0);
+            const balance = row.querySelector("[data-projected-balance]");
+            const shortage = row.querySelector("[data-shortage-status]");
+            if (balance) balance.textContent = String(remaining);
+            if (shortage) {
+                const shortageBins = Math.max(0, -remaining);
+                shortage.textContent = shortageBins > 0
+                    ? `${shortageBins} bins — admin approval required`
+                    : "None";
+                shortage.classList.toggle("text-danger", shortageBins > 0);
+            }
+            row.classList.toggle("selected", selected);
+        };
+        document.querySelectorAll("[data-actual-run-row]").forEach((row) => {
+            row.querySelector("[data-actual-line-toggle]")?.addEventListener("change", () => updateActualRunRow(row));
+            row.querySelector("[data-bins-pulled]")?.addEventListener("input", () => updateActualRunRow(row));
+            updateActualRunRow(row);
+        });
+        actualRunForm?.addEventListener("submit", (event) => {
+            const selectedRows = Array.from(actualRunForm.querySelectorAll("[data-actual-line-toggle]"))
+                .filter((toggle) => toggle.checked);
+            if (selectedRows.length === 0) {
+                event.preventDefault();
+                window.alert("Select at least one room-lot row.");
+                return;
+            }
+            const submit = actualRunForm.querySelector('button[type="submit"]');
+            if (submit) {
+                submit.disabled = true;
+                submit.textContent = "Saving atomically…";
+            }
         });
 
         const planned = Array.from(document.querySelectorAll("[data-planned-bins]"));

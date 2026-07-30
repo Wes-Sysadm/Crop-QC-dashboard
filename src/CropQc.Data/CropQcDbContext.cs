@@ -40,6 +40,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<RoomDepletion> RoomDepletions => Set<RoomDepletion>();
     public DbSet<RoomInventoryAdjustment> RoomInventoryAdjustments => Set<RoomInventoryAdjustment>();
     public DbSet<BinsRunEntry> BinsRunEntries => Set<BinsRunEntry>();
+    public DbSet<ActualRun> ActualRuns => Set<ActualRun>();
+    public DbSet<ActualRunRevision> ActualRunRevisions => Set<ActualRunRevision>();
+    public DbSet<ActualRunOverrideRequest> ActualRunOverrideRequests => Set<ActualRunOverrideRequest>();
+    public DbSet<ActualRunOverrideRequestLine> ActualRunOverrideRequestLines => Set<ActualRunOverrideRequestLine>();
     public DbSet<RunProjection> RunProjections => Set<RunProjection>();
     public DbSet<RunProjectionSource> RunProjectionSources => Set<RunProjectionSource>();
     public DbSet<RunProjectionSizeResult> RunProjectionSizeResults => Set<RunProjectionSizeResult>();
@@ -1097,8 +1101,11 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.InventoryStatus).HasMaxLength(100);
             entity.Property(x => x.Reason).HasMaxLength(500);
             entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.HasIndex(x => x.WarehouseId);
             entity.HasIndex(x => new { x.RoomId, x.AdjustmentAt });
             entity.HasIndex(x => new { x.ReceiptId, x.AdjustmentAt });
+            entity.HasIndex(x => new { x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.VarietyCode, x.AdjustmentAt });
+            entity.HasIndex(x => new { x.ActualRunId, x.ActualRunRevisionId });
             entity.HasOne(x => x.Receipt)
                 .WithMany(x => x.RoomInventoryAdjustments)
                 .HasForeignKey(x => x.ReceiptId)
@@ -1127,6 +1134,14 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .WithMany()
                 .HasForeignKey(x => x.CreatedByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.ActualRun)
+                .WithMany()
+                .HasForeignKey(x => x.ActualRunId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.ActualRunRevision)
+                .WithMany(x => x.InventoryAdjustments)
+                .HasForeignKey(x => x.ActualRunRevisionId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<BinsRunEntry>(entity =>
@@ -1138,8 +1153,12 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.InventoryStatus).HasMaxLength(100);
             entity.Property(x => x.Notes).HasMaxLength(1000);
             entity.Property(x => x.ReverseReason).HasMaxLength(1000);
+            entity.Property(x => x.TransactionType).HasMaxLength(25).HasDefaultValue(ActualRunTransactionTypes.Legacy).IsRequired();
+            entity.Property(x => x.OverrideReason).HasMaxLength(1000);
             entity.HasIndex(x => new { x.RoomId, x.RunAt });
             entity.HasIndex(x => new { x.ReceiptId, x.IsReversed });
+            entity.HasIndex(x => new { x.ActualRunId, x.ActualRunRevisionId, x.TransactionType });
+            entity.HasIndex(x => x.ReversesBinsRunEntryId);
             entity.HasOne(x => x.Receipt)
                 .WithMany()
                 .HasForeignKey(x => x.ReceiptId)
@@ -1180,6 +1199,76 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .WithMany()
                 .HasForeignKey(x => x.ReconciledByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.ActualRun)
+                .WithMany(x => x.Entries)
+                .HasForeignKey(x => x.ActualRunId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.ActualRunRevision)
+                .WithMany(x => x.Entries)
+                .HasForeignKey(x => x.ActualRunRevisionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.ReversesBinsRunEntry)
+                .WithMany()
+                .HasForeignKey(x => x.ReversesBinsRunEntryId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.OverrideApprovedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.OverrideApprovedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ActualRun>(entity =>
+        {
+            entity.Property(x => x.Status).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.Property(x => x.CancellationReason).HasMaxLength(1000);
+            entity.Property(x => x.ConcurrencyVersion).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.Status, x.RunAt });
+            entity.HasIndex(x => x.RunProjectionId);
+            entity.HasOne(x => x.RunProjection).WithMany().HasForeignKey(x => x.RunProjectionId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.CanceledByUser).WithMany().HasForeignKey(x => x.CanceledByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ActualRunRevision>(entity =>
+        {
+            entity.Property(x => x.OperationType).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.OperationKey).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(1000);
+            entity.HasIndex(x => x.OperationKey).IsUnique();
+            entity.HasIndex(x => new { x.ActualRunId, x.RevisionNumber }).IsUnique();
+            entity.HasIndex(x => new { x.ActualRunId, x.IsCurrent });
+            entity.HasOne(x => x.ActualRun).WithMany(x => x.Revisions).HasForeignKey(x => x.ActualRunId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ActualRunOverrideRequest>(entity =>
+        {
+            entity.Property(x => x.OperationType).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.OperationKey).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.Property(x => x.ApprovalReason).HasMaxLength(1000);
+            entity.HasIndex(x => x.OperationKey).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.RequestedAt });
+            entity.HasOne(x => x.ActualRun).WithMany().HasForeignKey(x => x.ActualRunId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.RunProjection).WithMany().HasForeignKey(x => x.RunProjectionId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.RequestedByUser).WithMany().HasForeignKey(x => x.RequestedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ApprovedByUser).WithMany().HasForeignKey(x => x.ApprovedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ActualRunOverrideRequestLine>(entity =>
+        {
+            entity.Property(x => x.GrowerName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.LotNumber).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.PoolStart).HasMaxLength(20);
+            entity.Property(x => x.VarietyCode).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.InventoryStatus).HasMaxLength(100);
+            entity.HasIndex(x => new { x.ActualRunOverrideRequestId, x.RoomId, x.LotNumber, x.VarietyCode });
+            entity.HasOne(x => x.ActualRunOverrideRequest).WithMany(x => x.Lines).HasForeignKey(x => x.ActualRunOverrideRequestId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<QcSample>(entity =>

@@ -7,8 +7,11 @@ using CropQc.Web.Controllers;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Data.Common;
 
 namespace CropQc.Api.Tests;
 
@@ -43,6 +46,10 @@ public sealed class BinsRunWorkflowTests
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Create), AccessPolicyNames.BinsRunEdit);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Edit), AccessPolicyNames.BinsRunEdit);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Reverse), AccessPolicyNames.BinsRunAdmin);
+        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.CreateActualRun), AccessPolicyNames.BinsRunEdit);
+        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.UpdateActualRun), AccessPolicyNames.BinsRunEdit);
+        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.CancelActualRun), AccessPolicyNames.BinsRunAdmin);
+        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.ApproveActualRunOverride), AccessPolicyNames.BinsRunAdmin);
     }
 
     [Fact]
@@ -483,6 +490,299 @@ public sealed class BinsRunWorkflowTests
         Assert.True((await db.BinsRunEntries.SingleAsync()).IsReversed);
     }
 
+    [Fact]
+    public void ActualRunMigration_IsAdditiveAndProviderCompatible()
+    {
+        var migration = File.ReadAllText(FindRepositoryFile(
+            "src",
+            "CropQc.Data",
+            "Migrations",
+            "20260729230451_AddActualRunRoomInventoryLedger.cs"));
+
+        Assert.Contains("MigrationProviderTypes.StoreType", migration);
+        Assert.Contains("NpgsqlValueGenerationStrategy.IdentityByDefaultColumn", migration);
+        Assert.DoesNotContain("migrationBuilder.DropTable", migration[..migration.IndexOf("protected override void Down", StringComparison.Ordinal)]);
+        Assert.DoesNotContain("migrationBuilder.DropColumn", migration[..migration.IndexOf("protected override void Down", StringComparison.Ordinal)]);
+    }
+
+    [Fact]
+    public async Task ActualRun_MultipleRoomsLotsAndSameLot_DepletesLedgerAtomicallyAndIsIdempotent()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var user = Principal("manager@fruitandland.com");
+        var page = await service.GetPageAsync(new BinsRunFilterForm
+        {
+            Section = "Actual",
+            RoomIds = [1001, 1002]
+        }, user, CancellationToken.None);
+        var roomOneLot120 = page.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-120");
+        var roomTwoLot120 = page.AvailableInventory.Single(x => x.RoomId == 1002 && x.Lot == "LOT-120");
+        var roomOneLot30 = page.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-30");
+        var receiptCount = await db.Receipts.CountAsync();
+        var form = GroupForm(
+            (roomOneLot120, 40),
+            (roomTwoLot120, 25),
+            (roomOneLot30, 10));
+
+        var error = await service.CreateActualRunAsync(form, user, CancellationToken.None);
+        var firstEntryCount = await db.BinsRunEntries.CountAsync();
+        var duplicateError = await service.CreateActualRunAsync(form, user, CancellationToken.None);
+
+        Assert.Null(error);
+        Assert.Null(duplicateError);
+        var run = await db.ActualRuns.SingleAsync();
+        Assert.Equal(ActualRunStatuses.Active, run.Status);
+        Assert.Equal(1, run.CurrentRevisionNumber);
+        Assert.Equal(3, firstEntryCount);
+        Assert.Equal(firstEntryCount, await db.BinsRunEntries.CountAsync());
+        var entries = await db.BinsRunEntries.OrderBy(x => x.RoomId).ThenBy(x => x.LotNumber).ToListAsync();
+        Assert.All(entries, x =>
+        {
+            Assert.Null(x.ReceiptId);
+            Assert.Equal(ActualRunTransactionTypes.Depletion, x.TransactionType);
+            Assert.Equal(run.Id, x.ActualRunId);
+        });
+        Assert.Equal(3, await db.RoomInventoryAdjustments.CountAsync(x => x.ActualRunId == run.Id));
+        var refreshed = await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001, 1002] }, user, CancellationToken.None);
+        Assert.Equal(80, refreshed.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-120").CurrentBins);
+        Assert.Equal(0, refreshed.AvailableInventory.Single(x => x.RoomId == 1002 && x.Lot == "LOT-120").CurrentBins);
+        Assert.Equal(20, refreshed.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-30").CurrentBins);
+        Assert.Equal(receiptCount, await db.Receipts.CountAsync());
+    }
+
+    [Fact]
+    public async Task ActualRun_EditUsesReversalsThenCancelRestoresEveryRoom()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var manager = Principal("manager@fruitandland.com");
+        var admin = Principal("admin@fruitandland.com");
+        var initialPage = await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001, 1002] }, manager, CancellationToken.None);
+        var roomOne = initialPage.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-120");
+        var roomTwo = initialPage.AvailableInventory.Single(x => x.RoomId == 1002 && x.Lot == "LOT-120");
+        await service.CreateActualRunAsync(GroupForm((roomOne, 40)), manager, CancellationToken.None);
+        var run = await db.ActualRuns.SingleAsync();
+        var originalEntry = await db.BinsRunEntries.SingleAsync();
+        var edit = GroupForm((roomOne, 30), (roomTwo, 10));
+        edit.Id = run.Id;
+        edit.ConcurrencyVersion = run.ConcurrencyVersion;
+
+        var editError = await service.UpdateActualRunAsync(run.Id, edit, manager, CancellationToken.None);
+
+        Assert.Null(editError);
+        await db.Entry(run).ReloadAsync();
+        Assert.Equal(2, run.CurrentRevisionNumber);
+        Assert.Equal(2, run.ConcurrencyVersion);
+        Assert.True((await db.BinsRunEntries.SingleAsync(x => x.Id == originalEntry.Id)).IsReversed);
+        var reversal = await db.BinsRunEntries.SingleAsync(x => x.ReversesBinsRunEntryId == originalEntry.Id);
+        Assert.Equal(ActualRunTransactionTypes.Reversal, reversal.TransactionType);
+        Assert.Equal(2, await db.BinsRunEntries.CountAsync(x => x.ActualRunId == run.Id && x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed));
+        var afterEdit = await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001, 1002] }, manager, CancellationToken.None);
+        Assert.Equal(90, afterEdit.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-120").CurrentBins);
+        Assert.Equal(15, afterEdit.AvailableInventory.Single(x => x.RoomId == 1002 && x.Lot == "LOT-120").CurrentBins);
+
+        var stale = GroupForm((roomOne, 20));
+        stale.Id = run.Id;
+        stale.ConcurrencyVersion = 1;
+        Assert.Contains("Conflict detected", await service.UpdateActualRunAsync(run.Id, stale, manager, CancellationToken.None));
+
+        var cancel = new CancelActualRunForm
+        {
+            Id = run.Id,
+            ConcurrencyVersion = run.ConcurrencyVersion,
+            OperationKey = Guid.NewGuid().ToString("N"),
+            Reason = "Run canceled before packout"
+        };
+        var cancelError = await service.CancelActualRunAsync(cancel, admin, CancellationToken.None);
+        var entriesAfterCancel = await db.BinsRunEntries.CountAsync();
+        var repeatedCancel = await service.CancelActualRunAsync(cancel, admin, CancellationToken.None);
+
+        Assert.Null(cancelError);
+        Assert.Null(repeatedCancel);
+        await db.Entry(run).ReloadAsync();
+        Assert.Equal(ActualRunStatuses.Canceled, run.Status);
+        Assert.Equal("Run canceled before packout", run.CancellationReason);
+        Assert.Equal(entriesAfterCancel, await db.BinsRunEntries.CountAsync());
+        var restored = await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001, 1002] }, manager, CancellationToken.None);
+        Assert.Equal(120, restored.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-120").CurrentBins);
+        Assert.Equal(25, restored.AvailableInventory.Single(x => x.RoomId == 1002 && x.Lot == "LOT-120").CurrentBins);
+        Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "Cancel" && x.EntityName == nameof(ActualRun));
+    }
+
+    [Fact]
+    public async Task ActualRun_OverdrawRequiresDifferentAdministratorAndPersistsOverrideAudit()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var manager = Principal("manager@fruitandland.com");
+        var admin = Principal("admin@fruitandland.com");
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, manager, CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-30");
+        var form = GroupForm((option, 35));
+        var baselineAdjustmentCount = await db.RoomInventoryAdjustments.CountAsync();
+
+        var requestMessage = await service.CreateActualRunAsync(form, manager, CancellationToken.None);
+        var request = await db.ActualRunOverrideRequests.Include(x => x.Lines).SingleAsync();
+
+        Assert.Contains("pending approval", requestMessage);
+        Assert.Empty(await db.ActualRuns.ToListAsync());
+        Assert.Equal(baselineAdjustmentCount, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(30, request.Lines.Single().AvailableBins);
+        Assert.Equal(35, request.Lines.Single().RequestedBins);
+        Assert.Equal(5, request.Lines.Single().ShortageBins);
+        Assert.Contains("Admin access", await service.ApproveActualRunOverrideAsync(new ApproveActualRunOverrideForm { RequestId = request.Id, Reason = "Not authorized" }, manager, CancellationToken.None));
+
+        var approvalError = await service.ApproveActualRunOverrideAsync(
+            new ApproveActualRunOverrideForm { RequestId = request.Id, Reason = "Approved for verified physical pull" },
+            admin,
+            CancellationToken.None);
+
+        Assert.Null(approvalError);
+        var entry = await db.BinsRunEntries.SingleAsync();
+        Assert.True(entry.IsOverdrawOverride);
+        Assert.Equal(30, entry.OverrideAvailableBins);
+        Assert.Equal(35, entry.OverrideRequestedBins);
+        Assert.Equal(5, entry.OverrideShortageBins);
+        Assert.Equal("Approved for verified physical pull", entry.OverrideReason);
+        Assert.Equal(1000, entry.OverrideApprovedByUserId);
+        Assert.Equal(-5, entry.NewAvailableBins);
+        Assert.Equal(ActualRunOverrideStatuses.Approved, (await db.ActualRunOverrideRequests.SingleAsync()).Status);
+        Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "OverdrawAttempt");
+    }
+
+    [Fact]
+    public async Task ActualRun_RequesterCannotApproveOwnOverdraw()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var admin = Principal("admin@fruitandland.com");
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, admin, CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-30");
+        await service.CreateActualRunAsync(GroupForm((option, 31)), admin, CancellationToken.None);
+        var request = await db.ActualRunOverrideRequests.SingleAsync();
+
+        var error = await service.ApproveActualRunOverrideAsync(
+            new ApproveActualRunOverrideForm { RequestId = request.Id, Reason = "Self approval" },
+            admin,
+            CancellationToken.None);
+
+        Assert.Contains("cannot approve their own", error);
+        Assert.Empty(await db.ActualRuns.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ActualRun_ReceiptOnlyLotIsNotInventoryAndInvalidRowDoesNotPartiallySave()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var warehouse = await db.Warehouses.SingleAsync(x => x.Id == 1000);
+        var room = await db.Rooms.SingleAsync(x => x.Id == 1001);
+        var fruit = await db.FruitProfiles.SingleAsync(x => x.Id == 1000);
+        db.Receipts.Add(new Receipt
+        {
+            Id = 7999,
+            CropYear = 2026,
+            ReceivedAt = DateTimeOffset.UtcNow,
+            CompuTechReceiptId = "RECEIPT-ONLY",
+            ReceiptType = "Truck receipt",
+            Warehouse = warehouse,
+            Room = room,
+            FruitProfile = fruit,
+            GrowerName = "Receipt Only Grower",
+            LotCode = "RECEIPT-ONLY",
+            BinCount = 999,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var user = Principal("manager@fruitandland.com");
+        var page = await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, user, CancellationToken.None);
+        Assert.DoesNotContain(page.AvailableInventory, x => x.Lot == "RECEIPT-ONLY");
+        var valid = page.AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var form = GroupForm((valid, 10));
+        form.Lines.Add(new ActualRunLineForm { InventoryKey = "R:7999", BinsRun = 5, ExpectedAvailableBins = 999 });
+        var adjustmentCount = await db.RoomInventoryAdjustments.CountAsync();
+
+        var error = await service.CreateActualRunAsync(form, user, CancellationToken.None);
+
+        Assert.Contains("not room-ledger inventory", error);
+        Assert.Empty(await db.ActualRuns.ToListAsync());
+        Assert.Empty(await db.BinsRunEntries.ToListAsync());
+        Assert.Equal(adjustmentCount, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(999, (await db.Receipts.SingleAsync(x => x.Id == 7999)).BinCount);
+    }
+
+    [Fact]
+    public async Task ActualRun_ViewOnlyUserCannotCreateAndLegacyHistoryRemainsReadable()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var viewer = Principal("viewer@fruitandland.com");
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, viewer, CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+
+        var error = await service.CreateActualRunAsync(GroupForm((option, 1)), viewer, CancellationToken.None);
+
+        Assert.Contains("Create access", error);
+        Assert.Empty(await db.ActualRuns.ToListAsync());
+        Assert.NotEmpty((await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, viewer, CancellationToken.None)).AvailableInventory);
+    }
+
+    [Fact]
+    public async Task ActualRun_PostgreSqlLedgerWorkflowUsesTwoBoundedInventoryQueries_WhenConfigured()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_TEST_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return;
+        }
+
+        var interceptor = new RoomLedgerCommandInterceptor();
+        var optionsBuilder = new DbContextOptionsBuilder<CropQcDbContext>();
+        CropQcDatabase.Configure(optionsBuilder, DatabaseProviders.PostgreSql, connectionString);
+        optionsBuilder.AddInterceptors(interceptor);
+        var options = optionsBuilder.Options;
+        await using var db = new CropQcDbContext(options);
+        await db.Database.MigrateAsync();
+        if (!await db.Warehouses.AnyAsync(x => x.Code == "ART"))
+        {
+            await SeedActualRunLedgerOnlyAsync(db);
+        }
+        var service = CreateService(db);
+        var manager = Principal("manager@fruitandland.com");
+
+        interceptor.Reset();
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var page = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", RoomIds = [1001, 1002] },
+            manager,
+            CancellationToken.None);
+        stopwatch.Stop();
+        Console.WriteLine(
+            $"Actual Run PostgreSQL room selection: {interceptor.RoomLedgerQueryCount} room-ledger queries, " +
+            $"{page.AvailableInventory.Count} rows, {stopwatch.Elapsed.TotalMilliseconds:0.0} ms.");
+        var lot120Room1 = page.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-120");
+        var lot120Room2 = page.AvailableInventory.Single(x => x.RoomId == 1002 && x.Lot == "LOT-120");
+
+        Assert.Equal(2, interceptor.RoomLedgerQueryCount);
+        Assert.True(page.AvailableInventory.Count <= 2000);
+        Assert.Null(await service.CreateActualRunAsync(
+            GroupForm((lot120Room1, 10), (lot120Room2, 5)),
+            manager,
+            CancellationToken.None));
+        Assert.Equal(110, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Equal(20, await LedgerBalanceAsync(db, 1002, "LOT-120"));
+        Assert.Equal(2, await db.BinsRunEntries.CountAsync(x => x.ActualRunId != null && x.TransactionType == ActualRunTransactionTypes.Depletion));
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5), $"Room selection took {stopwatch.Elapsed.TotalMilliseconds:0} ms.");
+    }
+
     private static CropQcDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<CropQcDbContext>()
@@ -515,8 +815,10 @@ public sealed class BinsRunWorkflowTests
         db.RoomInventoryAdjustments.AddRange(
             Adjustment(8001, warehouse, room, fruit, "LOT-120", 120),
             Adjustment(8004, warehouse, room, fruit, "LOT-30", 30),
+            Adjustment(8005, warehouse, room, fruit, "HISTORY", 40),
             Adjustment(8002, warehouse, room, fruit, "LOT-ZERO", 0),
-            Adjustment(8003, warehouse, otherRoom, fruit, "LOT-OTHER", 60));
+            Adjustment(8003, warehouse, otherRoom, fruit, "LOT-OTHER", 60),
+            Adjustment(8006, warehouse, otherRoom, fruit, "LOT-120", 25));
         db.Receipts.AddRange(new Receipt
         {
             Id = 7001,
@@ -559,6 +861,33 @@ public sealed class BinsRunWorkflowTests
             FruitReading(7202, 7102, 2, 100, grade2),
             FruitReading(7203, 7103, 1, 100, grade2),
             FruitReading(7204, 7103, 2, 100, grade2));
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SeedActualRunLedgerOnlyAsync(CropQcDbContext db)
+    {
+        var warehouse = new Warehouse { Id = 1000, Code = "ART", Name = "Actual Run Test", IsActive = true };
+        var room = new Room { Id = 1001, WarehouseId = warehouse.Id, Warehouse = warehouse, Code = "EVANCA12", Name = "Evans 12", CropQcRoomName = "Evans-12", IsActive = true };
+        var otherRoom = new Room { Id = 1002, WarehouseId = warehouse.Id, Warehouse = warehouse, Code = "LAMBCA17", Name = "Lamb 17", CropQcRoomName = "Lamb-17", IsActive = true };
+        var fruit = new FruitProfile { Id = 1000, Name = "Actual Run Test Apple", VarietyCode = "ACTUALRUNTEST", FruitType = "Apple", ProductionType = "Conventional", IsActive = true };
+        db.Warehouses.Add(warehouse);
+        db.Rooms.AddRange(room, otherRoom);
+        db.FruitProfiles.Add(fruit);
+        db.Users.AddRange(
+            User(1000, "admin@fruitandland.com", PageAccessLevel.Admin),
+            User(1001, "manager@fruitandland.com", PageAccessLevel.Edit));
+        var adjustments = new[]
+        {
+            Adjustment(8001, warehouse, room, fruit, "LOT-120", 120),
+            Adjustment(8004, warehouse, room, fruit, "LOT-30", 30),
+            Adjustment(8003, warehouse, otherRoom, fruit, "LOT-OTHER", 60),
+            Adjustment(8006, warehouse, otherRoom, fruit, "LOT-120", 25)
+        };
+        foreach (var adjustment in adjustments)
+        {
+            adjustment.AdjustmentAt = adjustment.AdjustmentAt.ToUniversalTime();
+        }
+        db.RoomInventoryAdjustments.AddRange(adjustments);
         await db.SaveChangesAsync();
     }
 
@@ -635,6 +964,19 @@ public sealed class BinsRunWorkflowTests
             RunAt = DateTimeOffset.UtcNow
         };
 
+    private static ActualRunForm GroupForm(params (BinsRunInventoryOptionViewModel Option, int Bins)[] rows) =>
+        new()
+        {
+            OperationKey = Guid.NewGuid().ToString("N"),
+            RunAt = DateTimeOffset.UtcNow,
+            Lines = rows.Select(x => new ActualRunLineForm
+            {
+                InventoryKey = x.Option.InventoryKey,
+                BinsRun = x.Bins,
+                ExpectedAvailableBins = x.Option.CurrentBins
+            }).ToList()
+        };
+
     private static User User(int id, string email, PageAccessLevel binsRunLevel) => new()
     {
         Id = id,
@@ -700,7 +1042,12 @@ public sealed class BinsRunWorkflowTests
     };
 
     private static BinsRunService CreateService(CropQcDbContext db) =>
-        new(db, new UserAccessService(db, new ConfigurationBuilder().Build()));
+        new(db, new UserAccessService(db, new ConfigurationBuilder().Build()), NullLogger<BinsRunService>.Instance);
+
+    private static Task<int> LedgerBalanceAsync(CropQcDbContext db, int roomId, string lot) =>
+        db.RoomInventoryAdjustments
+            .Where(x => x.RoomId == roomId && x.LotNumber == lot)
+            .SumAsync(x => x.ChangeAmount);
 
     private static ClaimsPrincipal Principal(string email) =>
         new(new ClaimsIdentity([new Claim(ClaimTypes.Email, email)], "TestAuth"));
@@ -728,5 +1075,26 @@ public sealed class BinsRunWorkflowTests
         }
 
         throw new FileNotFoundException($"Could not find repository file {Path.Combine(pathParts)}.");
+    }
+
+    private sealed class RoomLedgerCommandInterceptor : DbCommandInterceptor
+    {
+        public int RoomLedgerQueryCount { get; private set; }
+
+        public void Reset() => RoomLedgerQueryCount = 0;
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("RoomInventoryAdjustments", StringComparison.OrdinalIgnoreCase))
+            {
+                RoomLedgerQueryCount++;
+            }
+
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
     }
 }

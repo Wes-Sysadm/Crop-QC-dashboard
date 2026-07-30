@@ -1,4 +1,5 @@
 using System.Data;
+using System.Diagnostics;
 using System.Security.Claims;
 using System.Text.Json;
 using CropQc.Data;
@@ -18,13 +19,21 @@ public interface IBinsRunService
     Task<string?> CreateAsync(BinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> UpdateAsync(long id, BinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> ReverseAsync(ReverseBinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<string?> CreateActualRunAsync(ActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<string?> UpdateActualRunAsync(long id, ActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<string?> CancelActualRunAsync(CancelActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<string?> ApproveActualRunOverrideAsync(ApproveActualRunOverrideForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
 }
 
-public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService userAccessService) : IBinsRunService
+public sealed class BinsRunService(
+    CropQcDbContext dbContext,
+    IUserAccessService userAccessService,
+    ILogger<BinsRunService> logger) : IBinsRunService
 {
     public const string AdjustmentType = "BinsRun";
     public const string ReversalAdjustmentType = "BinsRunReversal";
     public const string SourceApplication = "CropQc.Web";
+    private const int MaximumRoomLotRows = 2000;
 
     public async Task<BinsRunPageViewModel> GetPageAsync(BinsRunFilterForm filter, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
@@ -32,13 +41,42 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         var canAdmin = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Admin, cancellationToken);
         var canTransfer = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
         var canTrueUp = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken);
-        var snapshots = await GetCurrentInventorySnapshotsAsync(filter.WarehouseId, filter.RoomId, cancellationToken);
-        var currentSnapshots = snapshots.Where(x => x.CurrentBins > 0).ToList();
-        var sampleData = await GetLatestSampleDataByLotAsync(currentSnapshots, cancellationToken);
+        if (filter.EditActualRunId is long requestedRunId && filter.RoomIds.Count == 0)
+        {
+            filter.RoomIds = await dbContext.BinsRunEntries.AsNoTracking()
+                .Where(x => x.ActualRunId == requestedRunId
+                    && x.TransactionType == ActualRunTransactionTypes.Depletion
+                    && !x.IsReversed)
+                .Select(x => x.RoomId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+        }
+        var selectedRoomIds = filter.RoomIds.Where(x => x > 0).Distinct().ToList();
+        if (filter.RoomId is int selectedRoomId && !selectedRoomIds.Contains(selectedRoomId))
+        {
+            selectedRoomIds.Add(selectedRoomId);
+        }
+        filter.RoomIds = selectedRoomIds;
+
+        var isActualSection = filter.Section.Equals("Actual", StringComparison.OrdinalIgnoreCase);
+        var snapshots = isActualSection && selectedRoomIds.Count == 0
+            ? []
+            : await GetCurrentInventorySnapshotsForRoomsAsync(
+                filter.WarehouseId,
+                selectedRoomIds.Count == 0 ? null : selectedRoomIds,
+                cancellationToken);
+        var currentSnapshots = isActualSection
+            ? snapshots.ToList()
+            : snapshots.Where(x => x.CurrentBins > 0).ToList();
+        IReadOnlyDictionary<string, LotSampleDistribution> sampleData = isActualSection
+            ? new Dictionary<string, LotSampleDistribution>(StringComparer.OrdinalIgnoreCase)
+            : await GetLatestSampleDataByLotAsync(currentSnapshots, cancellationToken);
         var options = BuildAvailableInventoryOptions(currentSnapshots, sampleData);
         var selectedOption = options.FirstOrDefault(x => string.Equals(x.InventoryKey, filter.SourceKey, StringComparison.OrdinalIgnoreCase))
             ?? options.FirstOrDefault();
-        var roomSummary = filter.RoomId is null ? null : await BuildRoomSummaryAsync(filter.RoomId.Value, currentSnapshots, sampleData, cancellationToken);
+        var roomSummary = isActualSection || filter.RoomId is null
+            ? null
+            : await BuildRoomSummaryAsync(filter.RoomId.Value, currentSnapshots, sampleData, cancellationToken);
 
         var historyQuery = dbContext.BinsRunEntries.AsNoTracking()
             .Include(x => x.Room)
@@ -64,6 +102,27 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
             .ThenBy(x => x.SortOrder)
             .ThenBy(x => x.CropQcRoomName ?? x.DisplayName ?? x.Code)
             .ToListAsync(cancellationToken);
+        var actualRuns = await GetActualRunHistoryAsync(filter, cancellationToken);
+        var editRun = filter.EditActualRunId is long editId
+            ? actualRuns.SingleOrDefault(x => x.Id == editId && x.Status == ActualRunStatuses.Active)
+            : null;
+        var actualRunForm = new ActualRunForm
+        {
+            Id = editRun?.Id,
+            ConcurrencyVersion = editRun?.ConcurrencyVersion ?? 0,
+            RunAt = editRun?.RunAt ?? DateTimeOffset.UtcNow,
+            RunProjectionId = editRun?.RunProjectionId ?? filter.ProjectionId,
+            Notes = editRun?.Notes,
+            Lines = editRun?.Lines
+                .Where(x => x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed)
+                .Select(x => new ActualRunLineForm
+                {
+                    InventoryKey = x.InventoryKey,
+                    BinsRun = x.BinsRun,
+                    ExpectedAvailableBins = options.FirstOrDefault(y => y.InventoryKey == x.InventoryKey)?.CurrentBins + x.BinsRun ?? x.BinsRun
+                })
+                .ToList() ?? []
+        };
 
         return new BinsRunPageViewModel
         {
@@ -78,6 +137,7 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                 RunProjectionId = filter.ProjectionId,
                 RunProjectionSourceId = filter.ProjectionSourceId
             },
+            ActualRunForm = actualRunForm,
             Warehouses = await dbContext.Warehouses.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Code).ToListAsync(cancellationToken),
             Rooms = rooms,
             RoomSummary = roomSummary,
@@ -106,6 +166,10 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                     Notes = x.Notes
                 })
                 .ToListAsync(cancellationToken),
+            ActualRuns = actualRuns,
+            PendingOverrideRequests = canAdmin
+                ? await GetPendingOverrideRequestsAsync(filter, cancellationToken)
+                : [],
             CanRecord = canRecord,
             CanAdmin = canAdmin,
             CanTransfer = canTransfer,
@@ -266,6 +330,716 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         return null;
     }
 
+    public async Task<string?> CreateActualRunAsync(ActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken)
+    {
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Edit, cancellationToken))
+        {
+            return "Bins Run Create access is required to record an Actual Run.";
+        }
+
+        form.Id = null;
+        form.ConcurrencyVersion = 0;
+        return await SaveActualRunAsync(form, user, null, null, cancellationToken);
+    }
+
+    public async Task<string?> UpdateActualRunAsync(long id, ActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken)
+    {
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Edit, cancellationToken))
+        {
+            return "Bins Run Create access is required to edit an Actual Run.";
+        }
+
+        form.Id = id;
+        return await SaveActualRunAsync(form, user, null, null, cancellationToken);
+    }
+
+    public async Task<string?> ApproveActualRunOverrideAsync(
+        ApproveActualRunOverrideForm form,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Admin, cancellationToken))
+        {
+            return "Bins Run Admin access is required to approve an inventory shortage.";
+        }
+
+        if (string.IsNullOrWhiteSpace(form.Reason))
+        {
+            return "An administrator override reason is required.";
+        }
+
+        var approverId = await CurrentUserIdAsync(user, cancellationToken);
+        if (approverId is null)
+        {
+            return "The approving user account could not be resolved.";
+        }
+
+        var request = await dbContext.ActualRunOverrideRequests
+            .Include(x => x.Lines)
+            .SingleOrDefaultAsync(x => x.Id == form.RequestId, cancellationToken);
+        if (request is null || request.Status != ActualRunOverrideStatuses.Pending)
+        {
+            return "The override request was not found or is no longer pending.";
+        }
+
+        if (request.RequestedByUserId == approverId.Value)
+        {
+            return "The user who requested an overdraw cannot approve their own override.";
+        }
+
+        var actualRunForm = new ActualRunForm
+        {
+            Id = request.ActualRunId,
+            ConcurrencyVersion = request.ExpectedConcurrencyVersion ?? 0,
+            OperationKey = request.OperationKey,
+            RunProjectionId = request.RunProjectionId,
+            RunAt = request.RunAt,
+            Notes = request.Notes,
+            Lines = request.Lines.Select(x => new ActualRunLineForm
+            {
+                InventoryKey = LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.VarietyCode),
+                BinsRun = x.RequestedBins,
+                ExpectedAvailableBins = x.AvailableBins,
+                RunProjectionSourceId = x.RunProjectionSourceId
+            }).ToList()
+        };
+
+        return await SaveActualRunAsync(actualRunForm, user, request, form.Reason.Trim(), cancellationToken);
+    }
+
+    public async Task<string?> CancelActualRunAsync(
+        CancelActualRunForm form,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Admin, cancellationToken))
+        {
+            return "Bins Run Admin access is required to cancel an Actual Run.";
+        }
+
+        if (string.IsNullOrWhiteSpace(form.Reason))
+        {
+            return "A cancellation reason is required.";
+        }
+
+        if (string.IsNullOrWhiteSpace(form.OperationKey))
+        {
+            return "The cancellation request identifier is required.";
+        }
+
+        await using var transaction = await BeginTransactionIfSupportedAsync(cancellationToken);
+        if (await dbContext.ActualRunRevisions.AsNoTracking().AnyAsync(x => x.OperationKey == form.OperationKey, cancellationToken))
+        {
+            return null;
+        }
+
+        var run = await dbContext.ActualRuns
+            .Include(x => x.Revisions)
+            .Include(x => x.Entries)
+            .SingleOrDefaultAsync(x => x.Id == form.Id, cancellationToken);
+        if (run is null)
+        {
+            return "Actual Run was not found.";
+        }
+
+        if (run.Status == ActualRunStatuses.Canceled)
+        {
+            return "Actual Run is already canceled.";
+        }
+
+        if (run.ConcurrencyVersion != form.ConcurrencyVersion)
+        {
+            var conflictUserId = await CurrentUserIdAsync(user, cancellationToken);
+            dbContext.AuditLogs.Add(new AuditLog
+            {
+                Action = "ConcurrencyConflict",
+                EntityName = nameof(ActualRun),
+                EntityKey = run.Id.ToString(),
+                UserId = conflictUserId,
+                BeforeValuesJson = JsonSerializer.Serialize(new { ExpectedVersion = form.ConcurrencyVersion }),
+                AfterValuesJson = JsonSerializer.Serialize(new { CurrentVersion = run.ConcurrencyVersion, Operation = "Cancel" }),
+                SourceApplication = SourceApplication,
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+            return "The Actual Run changed after this page loaded. Reload before canceling.";
+        }
+
+        if (run.Entries.Any(x => !x.IsReversed && x.IsReconciled))
+        {
+            return "This Actual Run is locked by finalized packout reconciliation. Reopen the reconciliation before canceling it.";
+        }
+
+        var userId = await CurrentUserIdAsync(user, cancellationToken);
+        if (userId is null)
+        {
+            return "The current user account could not be resolved.";
+        }
+
+        var revision = new ActualRunRevision
+        {
+            ActualRun = run,
+            RevisionNumber = run.CurrentRevisionNumber + 1,
+            OperationType = ActualRunRevisionTypes.Cancel,
+            OperationKey = form.OperationKey.Trim(),
+            IsCurrent = true,
+            Reason = form.Reason.Trim(),
+            CreatedByUserId = userId,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        foreach (var oldRevision in run.Revisions.Where(x => x.IsCurrent))
+        {
+            oldRevision.IsCurrent = false;
+        }
+        dbContext.ActualRunRevisions.Add(revision);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var activeEntries = run.Entries
+            .Where(x => x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed)
+            .OrderBy(x => x.Id)
+            .ToList();
+        await ReverseEntriesAsync(run, revision, activeEntries, userId.Value, form.Reason.Trim(), cancellationToken);
+
+        run.Status = ActualRunStatuses.Canceled;
+        run.CancellationReason = form.Reason.Trim();
+        run.CanceledByUserId = userId;
+        run.CanceledAt = DateTimeOffset.UtcNow;
+        run.UpdatedByUserId = userId;
+        run.UpdatedAt = DateTimeOffset.UtcNow;
+        run.CurrentRevisionNumber = revision.RevisionNumber;
+        run.ConcurrencyVersion++;
+        await AddActualRunAuditAsync("Cancel", run, revision, userId.Value, new
+        {
+            form.Reason,
+            ReversedEntryIds = activeEntries.Select(x => x.Id),
+            RestoredBins = activeEntries.Sum(x => x.BinsRun)
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        return null;
+    }
+
+    private async Task<string?> SaveActualRunAsync(
+        ActualRunForm form,
+        ClaimsPrincipal user,
+        ActualRunOverrideRequest? approvedOverride,
+        string? approvalReason,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(form.OperationKey))
+        {
+            return "The save request identifier is required.";
+        }
+
+        var normalizedLines = form.Lines
+            .Where(x => !string.IsNullOrWhiteSpace(x.InventoryKey) || x.BinsRun != 0)
+            .ToList();
+        if (normalizedLines.Count == 0)
+        {
+            return "Select at least one room-lot row.";
+        }
+
+        if (normalizedLines.Any(x => x.BinsRun <= 0))
+        {
+            return "Bins being pulled must be greater than zero for every selected room-lot row.";
+        }
+
+        if (normalizedLines.Select(x => x.InventoryKey.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalizedLines.Count)
+        {
+            return "Each room-lot combination may appear only once in an Actual Run.";
+        }
+
+        var userId = await CurrentUserIdAsync(user, cancellationToken);
+        if (userId is null)
+        {
+            return "The current user account could not be resolved.";
+        }
+
+        await using var transaction = await BeginTransactionIfSupportedAsync(cancellationToken);
+        var duplicateRevision = await dbContext.ActualRunRevisions.AsNoTracking()
+            .Where(x => x.OperationKey == form.OperationKey.Trim())
+            .Select(x => (long?)x.ActualRunId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (duplicateRevision is not null)
+        {
+            return null;
+        }
+
+        ActualRun? run = null;
+        List<BinsRunEntry> activeEntries = [];
+        if (form.Id is long id)
+        {
+            run = await dbContext.ActualRuns
+                .Include(x => x.Revisions)
+                .Include(x => x.Entries)
+                .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+            if (run is null)
+            {
+                return "Actual Run was not found.";
+            }
+
+            if (run.Status == ActualRunStatuses.Canceled)
+            {
+                return "A canceled Actual Run cannot be edited.";
+            }
+
+            if (run.ConcurrencyVersion != form.ConcurrencyVersion)
+            {
+                dbContext.AuditLogs.Add(new AuditLog
+                {
+                    Action = "ConcurrencyConflict",
+                    EntityName = nameof(ActualRun),
+                    EntityKey = run.Id.ToString(),
+                    UserId = userId,
+                    BeforeValuesJson = JsonSerializer.Serialize(new { ExpectedVersion = form.ConcurrencyVersion }),
+                    AfterValuesJson = JsonSerializer.Serialize(new { CurrentVersion = run.ConcurrencyVersion, Operation = "Edit" }),
+                    SourceApplication = SourceApplication,
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+                await dbContext.SaveChangesAsync(cancellationToken);
+                if (transaction is not null)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                }
+                return "Conflict detected: another user changed this Actual Run. Reload and review the current room balances.";
+            }
+
+            activeEntries = run.Entries
+                .Where(x => x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed)
+                .OrderBy(x => x.Id)
+                .ToList();
+            if (activeEntries.Any(x => x.IsReconciled))
+            {
+                return "This Actual Run is locked by finalized packout reconciliation. Reopen the reconciliation before editing it.";
+            }
+        }
+
+        var parsed = new List<(ActualRunLineForm Form, int WarehouseId, int RoomId, int? CropYear, string Lot, string Variety)>();
+        foreach (var line in normalizedLines)
+        {
+            if (!TryParseLedgerInventoryKey(line.InventoryKey, out var warehouseId, out var roomId, out var cropYear, out var lot, out var variety))
+            {
+                return "One or more selected inventory rows are not room-ledger inventory.";
+            }
+            parsed.Add((line, warehouseId, roomId, cropYear, lot, variety));
+        }
+
+        var warehouseIds = parsed.Select(x => x.WarehouseId).Distinct().ToList();
+        if (warehouseIds.Count != 1)
+        {
+            return "All room-lot rows in one Actual Run must belong to the same facility.";
+        }
+
+        var roomIds = parsed.Select(x => x.RoomId).Distinct().ToList();
+        var snapshots = await GetCurrentInventorySnapshotsForRoomsAsync(warehouseIds[0], roomIds, cancellationToken);
+        var byKey = snapshots.ToDictionary(x => x.InventoryKey, StringComparer.OrdinalIgnoreCase);
+        var resolved = new List<(ActualRunLineForm Form, InventorySnapshot Snapshot, int EffectiveAvailable)>();
+        foreach (var line in parsed)
+        {
+            if (!byKey.TryGetValue(line.Form.InventoryKey.Trim(), out var snapshot))
+            {
+                return $"Room inventory is no longer available for lot {line.Lot} / {line.Variety}.";
+            }
+
+            var restored = activeEntries
+                .Where(x => SameInventory(x, snapshot))
+                .Sum(x => x.BinsRun);
+            resolved.Add((line.Form, snapshot, snapshot.CurrentBins + restored));
+        }
+
+        if (resolved.Select(x => x.Snapshot.CropYear).Distinct().Count() != 1)
+        {
+            return "All room-lot rows in one Actual Run must have the same crop year.";
+        }
+
+        if (resolved.Select(x => x.Snapshot.Variety).Distinct(StringComparer.OrdinalIgnoreCase).Count() != 1)
+        {
+            return "All room-lot rows in one Actual Run must have the same variety.";
+        }
+
+        if (resolved.Select(x => x.Snapshot.IsOrganic).Distinct().Count() != 1)
+        {
+            return "All room-lot rows in one Actual Run must have the same Organic/Conventional status.";
+        }
+
+        var shortages = resolved
+            .Where(x => x.Form.BinsRun > x.EffectiveAvailable)
+            .Select(x => new
+            {
+                x.Form,
+                x.Snapshot,
+                Available = x.EffectiveAvailable,
+                Shortage = x.Form.BinsRun - x.EffectiveAvailable
+            })
+            .ToList();
+        if (shortages.Count > 0 && approvedOverride is null)
+        {
+            var existingRequest = await dbContext.ActualRunOverrideRequests.AsNoTracking()
+                .Where(x => x.OperationKey == form.OperationKey.Trim())
+                .Select(x => (long?)x.Id)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (existingRequest is not null)
+            {
+                return $"Inventory shortage override request #{existingRequest.Value} is pending administrator approval.";
+            }
+
+            var request = new ActualRunOverrideRequest
+            {
+                ActualRunId = run?.Id,
+                RunProjectionId = form.RunProjectionId,
+                OperationType = run is null ? ActualRunRevisionTypes.Create : ActualRunRevisionTypes.Edit,
+                OperationKey = form.OperationKey.Trim(),
+                Status = ActualRunOverrideStatuses.Pending,
+                ExpectedConcurrencyVersion = run?.ConcurrencyVersion,
+                RunAt = form.RunAt,
+                Notes = NormalizeOptional(form.Notes),
+                RequestedByUserId = userId.Value,
+                RequestedAt = DateTimeOffset.UtcNow
+            };
+            foreach (var item in resolved)
+            {
+                request.Lines.Add(new ActualRunOverrideRequestLine
+                {
+                    WarehouseId = item.Snapshot.WarehouseId,
+                    RoomId = item.Snapshot.RoomId,
+                    CropYear = item.Snapshot.CropYear,
+                    GrowerLotId = item.Snapshot.GrowerLotId,
+                    FruitProfileId = item.Snapshot.FruitProfileId,
+                    GrowerName = item.Snapshot.Grower,
+                    LotNumber = item.Snapshot.Lot,
+                    PoolStart = item.Snapshot.PoolStart,
+                    VarietyCode = item.Snapshot.Variety,
+                    InventoryStatus = item.Snapshot.InventoryStatus,
+                    AvailableBins = item.EffectiveAvailable,
+                    RequestedBins = item.Form.BinsRun,
+                    ShortageBins = Math.Max(0, item.Form.BinsRun - item.EffectiveAvailable),
+                    RunProjectionSourceId = item.Form.RunProjectionSourceId
+                });
+            }
+            dbContext.ActualRunOverrideRequests.Add(request);
+            dbContext.AuditLogs.Add(new AuditLog
+            {
+                Action = "OverdrawAttempt",
+                EntityName = nameof(ActualRunOverrideRequest),
+                EntityKey = form.OperationKey.Trim(),
+                UserId = userId,
+                AfterValuesJson = JsonSerializer.Serialize(new
+                {
+                    ActualRunId = run?.Id,
+                    Rows = shortages.Select(x => new
+                    {
+                        x.Snapshot.RoomId,
+                        x.Snapshot.Lot,
+                        x.Snapshot.Variety,
+                        x.Available,
+                        Requested = x.Form.BinsRun,
+                        x.Shortage
+                    })
+                }),
+                SourceApplication = SourceApplication,
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+            return $"Inventory shortage override request #{request.Id} is pending approval by a different administrator.";
+        }
+
+        if (approvedOverride is not null)
+        {
+            if (approvedOverride.Status != ActualRunOverrideStatuses.Pending)
+            {
+                return "The override request is no longer pending.";
+            }
+            if (approvedOverride.RequestedByUserId == userId.Value)
+            {
+                return "The user who requested an overdraw cannot approve their own override.";
+            }
+            if (string.IsNullOrWhiteSpace(approvalReason))
+            {
+                return "An administrator override reason is required.";
+            }
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (run is null)
+        {
+            run = new ActualRun
+            {
+                RunProjectionId = form.RunProjectionId,
+                Status = ActualRunStatuses.Active,
+                CurrentRevisionNumber = 0,
+                ConcurrencyVersion = 1,
+                RunAt = form.RunAt,
+                Notes = NormalizeOptional(form.Notes),
+                CreatedByUserId = userId,
+                CreatedAt = now
+            };
+            dbContext.ActualRuns.Add(run);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var operationType = activeEntries.Count == 0
+            ? ActualRunRevisionTypes.Create
+            : ActualRunRevisionTypes.Edit;
+        var revision = new ActualRunRevision
+        {
+            ActualRunId = run.Id,
+            RevisionNumber = run.CurrentRevisionNumber + 1,
+            OperationType = operationType,
+            OperationKey = form.OperationKey.Trim(),
+            IsCurrent = true,
+            CreatedByUserId = userId,
+            CreatedAt = now
+        };
+        foreach (var oldRevision in run.Revisions.Where(x => x.IsCurrent))
+        {
+            oldRevision.IsCurrent = false;
+        }
+        dbContext.ActualRunRevisions.Add(revision);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var activeProjectionSources = activeEntries.Count == 0
+            ? new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
+            : await dbContext.RunProjectionSources
+                .AsNoTracking()
+                .Where(x => x.ActualBinsRunEntryId != null
+                    && activeEntries.Select(y => y.Id).Contains(x.ActualBinsRunEntryId.Value))
+                .Join(
+                    dbContext.BinsRunEntries.AsNoTracking(),
+                    source => source.ActualBinsRunEntryId,
+                    entry => entry.Id,
+                    (source, entry) => new
+                    {
+                        source.Id,
+                        Key = LedgerInventoryKey(entry.WarehouseId, entry.RoomId, entry.CropYear, entry.LotNumber, entry.VarietyCode ?? "")
+                    })
+                .ToDictionaryAsync(x => x.Key, x => x.Id, StringComparer.OrdinalIgnoreCase, cancellationToken);
+
+        if (activeEntries.Count > 0)
+        {
+            await ReverseEntriesAsync(run, revision, activeEntries, userId.Value, "Actual Run revision", cancellationToken);
+        }
+
+        foreach (var item in resolved)
+        {
+            var previous = item.EffectiveAvailable;
+            var next = previous - item.Form.BinsRun;
+            var isOverride = item.Form.BinsRun > previous;
+            var adjustment = CreateAdjustment(
+                item.Snapshot,
+                -item.Form.BinsRun,
+                previous,
+                next,
+                AdjustmentType,
+                userId,
+                form.RunAt,
+                form.Notes);
+            adjustment.ActualRunId = run.Id;
+            adjustment.ActualRunRevisionId = revision.Id;
+            adjustment.Source = $"Actual Run #{run.Id}";
+            adjustment.Reason = operationType;
+            dbContext.RoomInventoryAdjustments.Add(adjustment);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            var entry = new BinsRunEntry
+            {
+                ReceiptId = null,
+                SourceInventoryAdjustmentId = item.Snapshot.InventoryAdjustmentId,
+                InventoryAdjustmentId = adjustment.Id,
+                WarehouseId = item.Snapshot.WarehouseId,
+                RoomId = item.Snapshot.RoomId,
+                CropYear = item.Snapshot.CropYear,
+                GrowerLotId = item.Snapshot.GrowerLotId,
+                FruitProfileId = item.Snapshot.FruitProfileId,
+                GrowerName = item.Snapshot.Grower,
+                LotNumber = item.Snapshot.Lot,
+                PoolStart = item.Snapshot.PoolStart,
+                VarietyCode = item.Snapshot.Variety,
+                InventoryStatus = item.Snapshot.InventoryStatus,
+                PreviousAvailableBins = previous,
+                BinsRun = item.Form.BinsRun,
+                NewAvailableBins = next,
+                Notes = NormalizeOptional(form.Notes),
+                RunAt = form.RunAt,
+                CreatedByUserId = userId,
+                CreatedAt = now,
+                ActualRunId = run.Id,
+                ActualRunRevisionId = revision.Id,
+                TransactionType = ActualRunTransactionTypes.Depletion,
+                IsOverdrawOverride = isOverride,
+                OverrideAvailableBins = isOverride ? previous : null,
+                OverrideRequestedBins = isOverride ? item.Form.BinsRun : null,
+                OverrideShortageBins = isOverride ? item.Form.BinsRun - previous : null,
+                OverrideReason = isOverride ? approvalReason : null,
+                OverrideApprovedByUserId = isOverride ? userId : null,
+                OverrideApprovedAt = isOverride ? now : null
+            };
+            dbContext.BinsRunEntries.Add(entry);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            var projectionSourceId = item.Form.RunProjectionSourceId
+                ?? activeProjectionSources.GetValueOrDefault(item.Form.InventoryKey.Trim());
+            await LinkProjectionSourceAsync(form.RunProjectionId, projectionSourceId, entry, userId.Value, cancellationToken);
+        }
+
+        run.RunProjectionId = form.RunProjectionId;
+        run.RunAt = form.RunAt;
+        run.Notes = NormalizeOptional(form.Notes);
+        run.CurrentRevisionNumber = revision.RevisionNumber;
+        run.UpdatedByUserId = userId;
+        run.UpdatedAt = now;
+        if (operationType == ActualRunRevisionTypes.Edit)
+        {
+            run.ConcurrencyVersion++;
+        }
+
+        if (approvedOverride is not null)
+        {
+            approvedOverride.Status = ActualRunOverrideStatuses.Approved;
+            approvedOverride.ApprovedByUserId = userId;
+            approvedOverride.ApprovedAt = now;
+            approvedOverride.ApprovalReason = approvalReason;
+        }
+
+        await AddActualRunAuditAsync(operationType, run, revision, userId.Value, new
+        {
+            Lines = resolved.Select(x => new
+            {
+                x.Snapshot.RoomId,
+                x.Snapshot.Lot,
+                x.Snapshot.Variety,
+                Available = x.EffectiveAvailable,
+                Requested = x.Form.BinsRun,
+                Result = x.EffectiveAvailable - x.Form.BinsRun
+            }),
+            OverdrawApproved = approvedOverride is not null,
+            OverrideRequestId = approvedOverride?.Id,
+            OverrideReason = approvalReason
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        return null;
+    }
+
+    private async Task ReverseEntriesAsync(
+        ActualRun run,
+        ActualRunRevision revision,
+        IReadOnlyList<BinsRunEntry> entries,
+        int userId,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        var roomIds = entries.Select(x => x.RoomId).Distinct().ToList();
+        var warehouseId = entries.Select(x => x.WarehouseId).Distinct().SingleOrDefault();
+        var snapshots = await GetCurrentInventorySnapshotsForRoomsAsync(warehouseId, roomIds, cancellationToken);
+        foreach (var entry in entries)
+        {
+            if (entry.IsReversed)
+            {
+                continue;
+            }
+            if (await dbContext.BinsRunEntries.AsNoTracking().AnyAsync(x => x.ReversesBinsRunEntryId == entry.Id, cancellationToken))
+            {
+                throw new InvalidOperationException($"Bins Run entry #{entry.Id} has already been reversed.");
+            }
+
+            var snapshot = snapshots.Single(x => SameInventory(entry, x));
+            var previous = snapshot.CurrentBins;
+            var next = previous + entry.BinsRun;
+            var adjustment = CreateAdjustment(snapshot, entry.BinsRun, previous, next, ReversalAdjustmentType, userId, DateTimeOffset.UtcNow, reason);
+            adjustment.ActualRunId = run.Id;
+            adjustment.ActualRunRevisionId = revision.Id;
+            adjustment.Source = $"Actual Run #{run.Id} reversal";
+            adjustment.Reason = reason;
+            dbContext.RoomInventoryAdjustments.Add(adjustment);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            var reversal = new BinsRunEntry
+            {
+                ReceiptId = null,
+                SourceInventoryAdjustmentId = entry.SourceInventoryAdjustmentId,
+                InventoryAdjustmentId = adjustment.Id,
+                WarehouseId = entry.WarehouseId,
+                RoomId = entry.RoomId,
+                CropYear = entry.CropYear,
+                GrowerLotId = entry.GrowerLotId,
+                FruitProfileId = entry.FruitProfileId,
+                GrowerName = entry.GrowerName,
+                LotNumber = entry.LotNumber,
+                PoolStart = entry.PoolStart,
+                VarietyCode = entry.VarietyCode,
+                InventoryStatus = entry.InventoryStatus,
+                PreviousAvailableBins = previous,
+                BinsRun = entry.BinsRun,
+                NewAvailableBins = next,
+                Notes = reason,
+                RunAt = DateTimeOffset.UtcNow,
+                CreatedByUserId = userId,
+                CreatedAt = DateTimeOffset.UtcNow,
+                ActualRunId = run.Id,
+                ActualRunRevisionId = revision.Id,
+                TransactionType = ActualRunTransactionTypes.Reversal,
+                ReversesBinsRunEntryId = entry.Id
+            };
+            dbContext.BinsRunEntries.Add(reversal);
+            entry.IsReversed = true;
+            entry.ReversedAt = DateTimeOffset.UtcNow;
+            entry.ReversedByUserId = userId;
+            entry.ReverseReason = reason;
+            entry.UpdatedAt = DateTimeOffset.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            snapshots = snapshots
+                .Select(x => SameInventory(entry, x) ? x with { CurrentBins = next } : x)
+                .ToList();
+        }
+    }
+
+    private async Task LinkProjectionSourceAsync(
+        long? projectionId,
+        long? sourceId,
+        BinsRunEntry entry,
+        int userId,
+        CancellationToken cancellationToken)
+    {
+        if (projectionId is null || sourceId is null)
+        {
+            return;
+        }
+
+        var source = await dbContext.RunProjectionSources
+            .Include(x => x.RunProjection)
+            .SingleOrDefaultAsync(x => x.Id == sourceId.Value && x.RunProjectionId == projectionId.Value, cancellationToken);
+        if (source is null)
+        {
+            throw new InvalidOperationException("The selected projection source was not found.");
+        }
+        if (source.SourceType != RunProjectionSourceTypes.Inventory)
+        {
+            throw new InvalidOperationException("Only an inventory projection source can be linked to an Actual Run.");
+        }
+
+        source.ActualBinsRunEntryId = entry.Id;
+        source.UpdatedAt = DateTimeOffset.UtcNow;
+        source.RunProjection.UpdatedAt = DateTimeOffset.UtcNow;
+        source.RunProjection.UpdatedByUserId = userId;
+        source.RunProjection.ConcurrencyVersion++;
+    }
+
     private async Task<string?> SaveNewBalanceAsync(long? entryId, BinsRunForm form, ClaimsPrincipal user, string auditAction, CancellationToken cancellationToken)
     {
         if (form.BinsRun <= 0)
@@ -390,6 +1164,7 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                 InventoryAdjustmentId = adjustment.Id,
                 WarehouseId = snapshot.WarehouseId,
                 RoomId = snapshot.RoomId,
+                CropYear = snapshot.CropYear,
                 GrowerLotId = snapshot.GrowerLotId,
                 FruitProfileId = snapshot.FruitProfileId,
                 GrowerName = snapshot.Grower,
@@ -413,6 +1188,7 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
             entry.InventoryAdjustmentId = adjustment.Id;
             entry.WarehouseId = snapshot.WarehouseId;
             entry.RoomId = snapshot.RoomId;
+            entry.CropYear = snapshot.CropYear;
             entry.GrowerLotId = snapshot.GrowerLotId;
             entry.FruitProfileId = snapshot.FruitProfileId;
             entry.GrowerName = snapshot.Grower;
@@ -501,7 +1277,9 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
                     x.ReceiptDate,
                     x.FruitProfileId,
                     x.FruitType,
-                    x.CanonicalOrchardBlockId);
+                    x.CanonicalOrchardBlockId,
+                    x.CropYear,
+                    x.ProductionType);
             })
             .ToList();
 
@@ -667,165 +1445,323 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
 
     private async Task<InventorySnapshot?> GetCurrentInventoryByKeyAsync(string inventoryKey, CancellationToken cancellationToken)
     {
-        var parts = inventoryKey.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length < 2)
+        if (!TryParseLedgerInventoryKey(inventoryKey, out var warehouseId, out var roomId, out var cropYear, out var lot, out var variety))
         {
             return null;
         }
 
-        if (parts[0].Equals("R", StringComparison.OrdinalIgnoreCase) && long.TryParse(parts[1], out var receiptId))
-        {
-            return (await GetCurrentInventorySnapshotsAsync(null, null, cancellationToken)).SingleOrDefault(x => x.ReceiptId == receiptId);
-        }
-
-        if (parts[0].Equals("A", StringComparison.OrdinalIgnoreCase) && long.TryParse(parts[1], out var adjustmentId))
-        {
-            var snapshots = await GetCurrentInventorySnapshotsAsync(null, null, cancellationToken);
-            var byAdjustmentId = snapshots.SingleOrDefault(x => x.InventoryAdjustmentId == adjustmentId);
-            if (byAdjustmentId is not null)
-            {
-                return byAdjustmentId;
-            }
-
-            if (parts.Length >= 3)
-            {
-                var lotKey = parts[2];
-                return snapshots.SingleOrDefault(x => x.ReceiptId is null
-                    && string.Equals(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), lotKey, StringComparison.OrdinalIgnoreCase));
-            }
-        }
-
-        return null;
+        return (await GetCurrentInventorySnapshotsForRoomsAsync(warehouseId, [roomId], cancellationToken))
+            .SingleOrDefault(x => x.CropYear == cropYear
+                && string.Equals(x.Lot, lot, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(x.Variety, variety, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<InventorySnapshot?> GetCurrentInventoryByEntryAsync(BinsRunEntry entry, CancellationToken cancellationToken)
     {
         var snapshots = await GetCurrentInventorySnapshotsAsync(entry.WarehouseId, entry.RoomId, cancellationToken);
         return snapshots.SingleOrDefault(x =>
-            (entry.ReceiptId is not null && x.ReceiptId == entry.ReceiptId)
-            || (entry.ReceiptId is null
-                && x.ReceiptId is null
-                && string.Equals(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), CurrentStorageLotKey(entry.RoomId, entry.LotNumber, entry.VarietyCode ?? ""), StringComparison.OrdinalIgnoreCase)));
+            x.CropYear == entry.CropYear
+            && string.Equals(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), CurrentStorageLotKey(entry.RoomId, entry.LotNumber, entry.VarietyCode ?? ""), StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<IReadOnlyList<InventorySnapshot>> GetCurrentInventorySnapshotsAsync(int? warehouseId, int? roomId, CancellationToken cancellationToken)
+        => await GetCurrentInventorySnapshotsForRoomsAsync(
+            warehouseId,
+            roomId is null ? null : [roomId.Value],
+            cancellationToken);
+
+    private async Task<IReadOnlyList<InventorySnapshot>> GetCurrentInventorySnapshotsForRoomsAsync(
+        int? warehouseId,
+        IReadOnlyCollection<int>? roomIds,
+        CancellationToken cancellationToken)
     {
-        var receiptsQuery = dbContext.Receipts.AsNoTracking()
-            .Include(x => x.Warehouse)
-            .Include(x => x.Room)
-            .Include(x => x.FruitProfile)
-            .Where(x => !x.IsDeleted)
-            .Where(x => x.ReceiptType == "Truck receipt");
-        if (warehouseId is not null) receiptsQuery = receiptsQuery.Where(x => x.WarehouseId == warehouseId);
-        if (roomId is not null) receiptsQuery = receiptsQuery.Where(x => x.RoomId == roomId);
-
-        var receipts = await receiptsQuery.ToListAsync(cancellationToken);
-        var correctionCutoffs = await dbContext.RoomInventoryAdjustments.AsNoTracking()
-            .Where(x => x.ReceiptId == null && x.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType)
-            .Where(x => roomId == null || x.RoomId == roomId)
-            .GroupBy(x => x.RoomId)
-            .Select(x => new { RoomId = x.Key, Cutoff = x.Max(y => y.AdjustmentAt) })
-            .ToDictionaryAsync(x => x.RoomId, x => x.Cutoff, cancellationToken);
-        receipts = receipts
-            .Where(x => !HasStorageExcludedIdentifierPrefix(x.CompuTechReceiptId, "LS"))
-            .Where(x => !HasStorageExcludedIdentifierPrefix(x.CompuTechReceiptId, "DS"))
-            .Where(x => !correctionCutoffs.TryGetValue(x.RoomId, out var cutoff) || x.ReceivedAt > cutoff)
-            .ToList();
-        var receiptIds = receipts.Select(x => x.Id).ToList();
-        var depletionByReceipt = await dbContext.RoomDepletions.AsNoTracking()
-            .Where(x => receiptIds.Contains(x.ReceiptId) && !x.IsVoided)
-            .GroupBy(x => x.ReceiptId)
-            .Select(x => new { ReceiptId = x.Key, Bins = x.Sum(y => y.BinCountDepleted) })
-            .ToDictionaryAsync(x => x.ReceiptId, x => x.Bins, cancellationToken);
-        var receiptAdjustments = await dbContext.RoomInventoryAdjustments.AsNoTracking()
-            .Where(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
-            .ToListAsync(cancellationToken);
-        var latestAdjustmentByReceipt = receiptAdjustments
-            .GroupBy(x => x.ReceiptId!.Value)
-            .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First());
-
-        var receiptSnapshots = receipts.Select(receipt =>
+        var stopwatch = Stopwatch.StartNew();
+        var query = dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.LotNumber != "" && x.VarietyCode != null && x.VarietyCode != "");
+        if (warehouseId is not null)
         {
-            var latest = latestAdjustmentByReceipt.GetValueOrDefault(receipt.Id);
-            var currentBins = latest is null ? Math.Max(0, receipt.BinCount - depletionByReceipt.GetValueOrDefault(receipt.Id)) : Math.Max(0, latest.NewBinCount);
-            return new InventorySnapshot(
-                $"R:{receipt.Id}",
-                receipt.Id,
-                receipt.CompuTechReceiptId,
-                latest?.Id,
-                receipt.WarehouseId,
-                receipt.RoomId,
-                receipt.Warehouse.Code,
-                receipt.Room.CropQcRoomName ?? receipt.Room.DisplayName ?? receipt.Room.Code,
-                receipt.GrowerLotId,
-                receipt.FruitProfileId,
-                receipt.GrowerName,
-                receipt.GrowerNumber,
-                !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode,
-                receipt.PoolStart,
-                 receipt.FruitProfile.VarietyCode,
-                 receipt.FruitProfile.FruitType,
-                 receipt.CanonicalOrchardBlockId,
-                 "",
-                 currentBins,
-                receipt.ReceivedAt);
-        });
+            query = query.Where(x => x.WarehouseId == warehouseId.Value);
+        }
 
-        var adjustmentQuery = dbContext.RoomInventoryAdjustments.AsNoTracking()
-            .Include(x => x.Warehouse)
-            .Include(x => x.Room)
-            .Include(x => x.FruitProfile)
-            .Where(x => x.ReceiptId == null || x.AdjustmentType == "TransferIn");
-        if (warehouseId is not null) adjustmentQuery = adjustmentQuery.Where(x => x.WarehouseId == warehouseId);
-        if (roomId is not null) adjustmentQuery = adjustmentQuery.Where(x => x.RoomId == roomId);
+        if (roomIds is { Count: > 0 })
+        {
+            query = query.Where(x => roomIds.Contains(x.RoomId));
+        }
 
-        var adjustmentSnapshots = ApplyLatestCurrentBalanceRows(await adjustmentQuery.ToListAsync(cancellationToken))
-            .Select(x => new InventorySnapshot(
-                $"A:{x.Id}:{CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? "")}",
-                null,
-                null,
+        var grouped = await query
+            .GroupBy(x => new { x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.VarietyCode })
+            .Select(x => new
+            {
+                x.Key.WarehouseId,
+                x.Key.RoomId,
+                x.Key.CropYear,
+                x.Key.LotNumber,
+                VarietyCode = x.Key.VarietyCode!,
+                CurrentBins = x.Sum(y => y.ChangeAmount),
+                LatestAdjustmentId = x.Max(y => y.Id)
+            })
+            .OrderBy(x => x.WarehouseId)
+            .ThenBy(x => x.RoomId)
+            .ThenBy(x => x.LotNumber)
+            .Take(MaximumRoomLotRows + 1)
+            .ToListAsync(cancellationToken);
+        if (grouped.Count > MaximumRoomLotRows)
+        {
+            throw new InvalidOperationException($"Room inventory selection exceeds the safe limit of {MaximumRoomLotRows} room-lot rows. Filter by facility or room.");
+        }
+
+        var latestIds = grouped.Select(x => x.LatestAdjustmentId).ToList();
+        var metadata = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => latestIds.Contains(x.Id))
+            .Select(x => new
+            {
                 x.Id,
                 x.WarehouseId,
                 x.RoomId,
-                x.Warehouse.Code,
-                x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
+                Facility = x.Warehouse.Code,
+                Room = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
                 x.GrowerLotId,
                 x.FruitProfileId,
                 x.GrowerName,
+                x.PoolStart,
+                FruitType = x.FruitProfile == null ? "" : x.FruitProfile.FruitType,
+                ProductionType = x.FruitProfile == null ? "" : x.FruitProfile.ProductionType,
+                IsOrganic = x.FruitProfile == null ? (bool?)null : x.FruitProfile.IsOrganic,
+                x.InventoryStatus,
+                x.AdjustmentAt
+            })
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
+
+        var result = grouped.Select(x =>
+        {
+            var latest = metadata[x.LatestAdjustmentId];
+            return new InventorySnapshot(
+                LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.VarietyCode),
+                null,
+                null,
+                x.LatestAdjustmentId,
+                x.WarehouseId,
+                x.RoomId,
+                latest.Facility,
+                latest.Room,
+                x.CropYear,
+                latest.GrowerLotId,
+                latest.FruitProfileId,
+                latest.GrowerName,
                 null,
                 x.LotNumber,
-                x.PoolStart,
-                 x.VarietyCode ?? "",
-                 x.FruitProfile?.FruitType ?? "",
-                 null,
-                 x.InventoryStatus ?? "",
-                Math.Max(0, x.NewBinCount),
-                null));
+                latest.PoolStart,
+                x.VarietyCode,
+                latest.FruitType,
+                latest.ProductionType,
+                latest.IsOrganic,
+                null,
+                latest.InventoryStatus ?? "",
+                x.CurrentBins,
+                latest.AdjustmentAt);
+        }).ToList();
 
-        return receiptSnapshots.Concat(adjustmentSnapshots).ToList();
+        stopwatch.Stop();
+        logger.LogInformation(
+            "Actual Run room inventory loaded from ledger. QueryCount={QueryCount} RowCount={RowCount} WarehouseId={WarehouseId} RoomCount={RoomCount} ElapsedMs={ElapsedMs}",
+            2,
+            result.Count,
+            warehouseId,
+            roomIds?.Count ?? 0,
+            stopwatch.ElapsedMilliseconds);
+        return result;
     }
 
-    private static bool HasStorageExcludedIdentifierPrefix(string receiptId, string prefix) =>
-        receiptId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-        && (receiptId.Length == prefix.Length || !char.IsLetterOrDigit(receiptId[prefix.Length]));
-
-    private static IEnumerable<RoomInventoryAdjustment> ApplyLatestCurrentBalanceRows(IEnumerable<RoomInventoryAdjustment> adjustments) =>
-        adjustments
-            .Where(x => !string.IsNullOrWhiteSpace(x.LotNumber))
-            .GroupBy(x => CurrentStorageLotKey(x.RoomId, x.LotNumber, x.VarietyCode ?? ""), StringComparer.OrdinalIgnoreCase)
-            .SelectMany(group =>
+    private async Task<IReadOnlyList<ActualRunHistoryItemViewModel>> GetActualRunHistoryAsync(
+        BinsRunFilterForm filter,
+        CancellationToken cancellationToken)
+    {
+        var runs = await dbContext.ActualRuns.AsNoTracking()
+            .Where(x => filter.WarehouseId == null || x.Entries.Any(y => y.WarehouseId == filter.WarehouseId))
+            .Where(x => filter.RoomId == null || x.Entries.Any(y => y.RoomId == filter.RoomId))
+            .OrderByDescending(x => x.RunAt)
+            .ThenByDescending(x => x.Id)
+            .Take(50)
+            .Select(x => new ActualRunHistoryItemViewModel
             {
-                var latestEffectiveDate = group.Max(x => x.AdjustmentAt);
-                var latestRows = group.Where(x => x.AdjustmentAt == latestEffectiveDate).ToList();
-                var latestCreatedAt = latestRows.Max(x => x.CreatedAt);
-                return latestRows.Where(x => x.CreatedAt == latestCreatedAt);
-            });
+                Id = x.Id,
+                RunProjectionId = x.RunProjectionId,
+                Status = x.Status,
+                RevisionNumber = x.CurrentRevisionNumber,
+                ConcurrencyVersion = x.ConcurrencyVersion,
+                RunAt = x.RunAt,
+                Notes = x.Notes,
+                CreatedBy = x.CreatedByUser == null ? "" : x.CreatedByUser.DisplayName,
+                CreatedAt = x.CreatedAt,
+                CanceledAt = x.CanceledAt,
+                CancellationReason = x.CancellationReason
+            })
+            .ToListAsync(cancellationToken);
+        if (runs.Count == 0)
+        {
+            return runs;
+        }
+
+        var runIds = runs.Select(x => x.Id).ToList();
+        var lineRows = await dbContext.BinsRunEntries.AsNoTracking()
+            .Where(x => x.ActualRunId != null && runIds.Contains(x.ActualRunId.Value))
+            .OrderBy(x => x.ActualRunRevisionId)
+            .ThenBy(x => x.Id)
+            .Select(x => new
+            {
+                RunId = x.ActualRunId!.Value,
+                x.Id,
+                x.WarehouseId,
+                x.RoomId,
+                x.CropYear,
+                x.TransactionType,
+                Room = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
+                Grower = x.GrowerName,
+                Lot = x.LotNumber,
+                Variety = x.VarietyCode ?? "",
+                x.PreviousAvailableBins,
+                x.BinsRun,
+                x.NewAvailableBins,
+                x.IsReversed,
+                x.IsOverdrawOverride,
+                x.OverrideReason
+            })
+            .ToListAsync(cancellationToken);
+        var lines = lineRows.Select(x => new
+        {
+            x.RunId,
+            Line = new ActualRunHistoryLineViewModel
+            {
+                Id = x.Id,
+                InventoryKey = LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.Lot, x.Variety),
+                TransactionType = x.TransactionType,
+                Room = x.Room,
+                Grower = x.Grower,
+                Lot = x.Lot,
+                Variety = x.Variety,
+                PreviousAvailableBins = x.PreviousAvailableBins,
+                BinsRun = x.BinsRun,
+                NewAvailableBins = x.NewAvailableBins,
+                IsReversed = x.IsReversed,
+                IsOverdrawOverride = x.IsOverdrawOverride,
+                OverrideReason = x.OverrideReason
+            }
+        }).ToList();
+        var byRun = lines.GroupBy(x => x.RunId).ToDictionary(x => x.Key, x => (IReadOnlyList<ActualRunHistoryLineViewModel>)x.Select(y => y.Line).ToList());
+        foreach (var run in runs)
+        {
+            run.Lines = byRun.GetValueOrDefault(run.Id) ?? [];
+        }
+        return runs;
+    }
+
+    private async Task<IReadOnlyList<ActualRunOverrideRequestViewModel>> GetPendingOverrideRequestsAsync(
+        BinsRunFilterForm filter,
+        CancellationToken cancellationToken)
+    {
+        var requests = await dbContext.ActualRunOverrideRequests.AsNoTracking()
+            .Where(x => x.Status == ActualRunOverrideStatuses.Pending)
+            .Where(x => filter.WarehouseId == null || x.Lines.Any(y => y.WarehouseId == filter.WarehouseId))
+            .OrderBy(x => x.RequestedAt)
+            .Take(50)
+            .Select(x => new ActualRunOverrideRequestViewModel
+            {
+                Id = x.Id,
+                ActualRunId = x.ActualRunId,
+                OperationType = x.OperationType,
+                RequestedBy = x.RequestedByUser.DisplayName,
+                RequestedAt = x.RequestedAt,
+                Lines = x.Lines.OrderBy(y => y.RoomId).ThenBy(y => y.LotNumber).Select(y => new ActualRunOverrideLineViewModel
+                {
+                    Room = y.Room.CropQcRoomName ?? y.Room.DisplayName ?? y.Room.Code,
+                    Lot = y.LotNumber,
+                    Variety = y.VarietyCode,
+                    AvailableBins = y.AvailableBins,
+                    RequestedBins = y.RequestedBins,
+                    ShortageBins = y.ShortageBins
+                }).ToList()
+            })
+            .ToListAsync(cancellationToken);
+        return requests;
+    }
+
+    private Task AddActualRunAuditAsync(string action, ActualRun run, ActualRunRevision revision, int userId, object details)
+    {
+        dbContext.AuditLogs.Add(new AuditLog
+        {
+            Action = action,
+            EntityName = nameof(ActualRun),
+            EntityKey = run.Id.ToString(),
+            UserId = userId,
+            AfterValuesJson = JsonSerializer.Serialize(new
+            {
+                run.Id,
+                RevisionId = revision.Id,
+                revision.RevisionNumber,
+                revision.OperationType,
+                run.Status,
+                run.RunAt,
+                Details = details
+            }),
+            SourceApplication = SourceApplication,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        return Task.CompletedTask;
+    }
+
+    private static bool SameInventory(BinsRunEntry entry, InventorySnapshot snapshot) =>
+        entry.WarehouseId == snapshot.WarehouseId
+        && entry.RoomId == snapshot.RoomId
+        && entry.CropYear == snapshot.CropYear
+        && string.Equals(entry.LotNumber, snapshot.Lot, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(entry.VarietyCode, snapshot.Variety, StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
+
+    private static string LedgerInventoryKey(int warehouseId, int roomId, int? cropYear, string lot, string variety) =>
+        $"L:{warehouseId}:{roomId}:{cropYear?.ToString() ?? "-"}:{Uri.EscapeDataString(lot.Trim())}:{Uri.EscapeDataString(variety.Trim())}";
+
+    private static bool TryParseLedgerInventoryKey(
+        string value,
+        out int warehouseId,
+        out int roomId,
+        out int? cropYear,
+        out string lot,
+        out string variety)
+    {
+        warehouseId = 0;
+        roomId = 0;
+        cropYear = null;
+        lot = "";
+        variety = "";
+        var parts = value.Split(':');
+        if (parts.Length != 6
+            || !parts[0].Equals("L", StringComparison.OrdinalIgnoreCase)
+            || !int.TryParse(parts[1], out warehouseId)
+            || !int.TryParse(parts[2], out roomId))
+        {
+            return false;
+        }
+        var parsedCropYear = 0;
+        if (parts[3] != "-" && !int.TryParse(parts[3], out parsedCropYear))
+        {
+            return false;
+        }
+        if (parts[3] != "-")
+        {
+            cropYear = parsedCropYear;
+        }
+        lot = Uri.UnescapeDataString(parts[4]).Trim();
+        variety = Uri.UnescapeDataString(parts[5]).Trim();
+        return warehouseId > 0 && roomId > 0 && lot.Length > 0 && variety.Length > 0;
+    }
 
     private static RoomInventoryAdjustment CreateAdjustment(InventorySnapshot snapshot, int changeAmount, int previous, int next, string adjustmentType, int? userId, DateTimeOffset adjustmentAt, string? notes) =>
         new()
         {
-            ReceiptId = snapshot.ReceiptId,
-            CropYear = null,
+            ReceiptId = null,
+            CropYear = snapshot.CropYear,
             WarehouseId = snapshot.WarehouseId,
             RoomId = snapshot.RoomId,
             GrowerLotId = snapshot.GrowerLotId,
@@ -932,6 +1868,7 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         int RoomId,
         string Facility,
         string Room,
+        int? CropYear,
         int? GrowerLotId,
         int? FruitProfileId,
         string Grower,
@@ -940,6 +1877,8 @@ public sealed class BinsRunService(CropQcDbContext dbContext, IUserAccessService
         string? PoolStart,
         string Variety,
         string FruitType,
+        string ProductionType,
+        bool? IsOrganic,
         int? CanonicalOrchardBlockId,
         string InventoryStatus,
         int CurrentBins,

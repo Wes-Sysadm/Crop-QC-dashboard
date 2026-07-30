@@ -5,6 +5,7 @@ using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CropQc.Web.Controllers;
 
@@ -514,6 +515,99 @@ public sealed class BinsRunController(
             Section = "Actual",
             ProjectionId = form.RunProjectionId
         });
+    }
+
+    [HttpPost("ActualRuns")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    public async Task<IActionResult> CreateActualRun(ActualRunForm form, CancellationToken cancellationToken)
+    {
+        var error = await ExecuteActualRunOperationAsync(
+            () => binsRunService.CreateActualRunAsync(form, User, cancellationToken),
+            "Create",
+            form.Id,
+            cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Actual Run recorded and room inventory depleted.";
+        return RedirectToAction(nameof(Index), new { Section = "Actual", form.RunProjectionId });
+    }
+
+    [HttpPost("ActualRuns/{id:long}")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    public async Task<IActionResult> UpdateActualRun(long id, ActualRunForm form, CancellationToken cancellationToken)
+    {
+        var error = await ExecuteActualRunOperationAsync(
+            () => binsRunService.UpdateActualRunAsync(id, form, User, cancellationToken),
+            "Edit",
+            id,
+            cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Actual Run corrected through ledger reversals and new depletions.";
+        return RedirectToAction(nameof(Index), new { Section = "Actual" });
+    }
+
+    [HttpPost("ActualRuns/{id:long}/Cancel")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunAdmin)]
+    public async Task<IActionResult> CancelActualRun(long id, CancelActualRunForm form, CancellationToken cancellationToken)
+    {
+        form.Id = id;
+        var error = await ExecuteActualRunOperationAsync(
+            () => binsRunService.CancelActualRunAsync(form, User, cancellationToken),
+            "Cancel",
+            id,
+            cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Actual Run canceled and room inventory restored by reversal transactions.";
+        return RedirectToAction(nameof(Index), new { Section = "Actual" });
+    }
+
+    [HttpPost("ActualRunOverrides/{id:long}/Approve")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunAdmin)]
+    public async Task<IActionResult> ApproveActualRunOverride(long id, ApproveActualRunOverrideForm form, CancellationToken cancellationToken)
+    {
+        form.RequestId = id;
+        var error = await ExecuteActualRunOperationAsync(
+            () => binsRunService.ApproveActualRunOverrideAsync(form, User, cancellationToken),
+            "ApproveOverdraw",
+            null,
+            cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Actual Run shortage approved and room inventory depleted.";
+        return RedirectToAction(nameof(Index), new { Section = "Actual" });
+    }
+
+    private async Task<string?> ExecuteActualRunOperationAsync(
+        Func<Task<string?>> operation,
+        string operationName,
+        long? actualRunId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await operation();
+        }
+        catch (DbUpdateConcurrencyException exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Actual Run concurrency conflict. Operation={Operation} ActualRunId={ActualRunId}",
+                operationName,
+                actualRunId);
+            return "Inventory or this Actual Run changed during save. Reload and review the current room balances before retrying.";
+        }
+        catch (DbUpdateException exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Actual Run database write conflict. Operation={Operation} ActualRunId={ActualRunId}",
+                operationName,
+                actualRunId);
+            return "The inventory transaction could not be completed atomically. No partial Actual Run was saved; reload current balances and retry.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Actual Run validation or ledger conflict. Operation={Operation} ActualRunId={ActualRunId}",
+                operationName,
+                actualRunId);
+            return exception.Message;
+        }
     }
 
     [HttpPost("{id:long}/Edit")]

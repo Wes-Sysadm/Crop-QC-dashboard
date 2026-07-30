@@ -97,6 +97,10 @@ public sealed class RoomInventoryAdjustment
     public int? CreatedByUserId { get; set; }
     public User? CreatedByUser { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+    public long? ActualRunId { get; set; }
+    public ActualRun? ActualRun { get; set; }
+    public long? ActualRunRevisionId { get; set; }
+    public ActualRunRevision? ActualRunRevision { get; set; }
 }
 
 public sealed class BinsRunEntry
@@ -112,6 +116,7 @@ public sealed class BinsRunEntry
     public Warehouse Warehouse { get; set; } = null!;
     public int RoomId { get; set; }
     public Room Room { get; set; } = null!;
+    public int? CropYear { get; set; }
     public int? GrowerLotId { get; set; }
     public GrowerLot? GrowerLot { get; set; }
     public int? FruitProfileId { get; set; }
@@ -139,6 +144,135 @@ public sealed class BinsRunEntry
     public int? ReversedByUserId { get; set; }
     public User? ReversedByUser { get; set; }
     public string? ReverseReason { get; set; }
+    public long? ActualRunId { get; set; }
+    public ActualRun? ActualRun { get; set; }
+    public long? ActualRunRevisionId { get; set; }
+    public ActualRunRevision? ActualRunRevision { get; set; }
+    public string TransactionType { get; set; } = ActualRunTransactionTypes.Legacy;
+    public long? ReversesBinsRunEntryId { get; set; }
+    public BinsRunEntry? ReversesBinsRunEntry { get; set; }
+    public bool IsOverdrawOverride { get; set; }
+    public int? OverrideAvailableBins { get; set; }
+    public int? OverrideRequestedBins { get; set; }
+    public int? OverrideShortageBins { get; set; }
+    public string? OverrideReason { get; set; }
+    public int? OverrideApprovedByUserId { get; set; }
+    public User? OverrideApprovedByUser { get; set; }
+    public DateTimeOffset? OverrideApprovedAt { get; set; }
+}
+
+public static class ActualRunStatuses
+{
+    public const string Active = "Active";
+    public const string Canceled = "Canceled";
+}
+
+public static class ActualRunRevisionTypes
+{
+    public const string Create = "Create";
+    public const string Edit = "Edit";
+    public const string Cancel = "Cancel";
+}
+
+public static class ActualRunTransactionTypes
+{
+    public const string Legacy = "Legacy";
+    public const string Depletion = "Depletion";
+    public const string Reversal = "Reversal";
+}
+
+public static class ActualRunOverrideStatuses
+{
+    public const string Pending = "Pending";
+    public const string Approved = "Approved";
+    public const string Superseded = "Superseded";
+}
+
+public sealed class ActualRun
+{
+    public long Id { get; set; }
+    public long? RunProjectionId { get; set; }
+    public RunProjection? RunProjection { get; set; }
+    public required string Status { get; set; }
+    public int CurrentRevisionNumber { get; set; }
+    public long ConcurrencyVersion { get; set; } = 1;
+    public DateTimeOffset RunAt { get; set; }
+    public string? Notes { get; set; }
+    public int? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public int? UpdatedByUserId { get; set; }
+    public User? UpdatedByUser { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public int? CanceledByUserId { get; set; }
+    public User? CanceledByUser { get; set; }
+    public DateTimeOffset? CanceledAt { get; set; }
+    public string? CancellationReason { get; set; }
+    public ICollection<ActualRunRevision> Revisions { get; } = new List<ActualRunRevision>();
+    public ICollection<BinsRunEntry> Entries { get; } = new List<BinsRunEntry>();
+}
+
+public sealed class ActualRunRevision
+{
+    public long Id { get; set; }
+    public long ActualRunId { get; set; }
+    public ActualRun ActualRun { get; set; } = null!;
+    public int RevisionNumber { get; set; }
+    public required string OperationType { get; set; }
+    public required string OperationKey { get; set; }
+    public bool IsCurrent { get; set; }
+    public string? Reason { get; set; }
+    public int? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public ICollection<BinsRunEntry> Entries { get; } = new List<BinsRunEntry>();
+    public ICollection<RoomInventoryAdjustment> InventoryAdjustments { get; } = new List<RoomInventoryAdjustment>();
+}
+
+public sealed class ActualRunOverrideRequest
+{
+    public long Id { get; set; }
+    public long? ActualRunId { get; set; }
+    public ActualRun? ActualRun { get; set; }
+    public long? RunProjectionId { get; set; }
+    public RunProjection? RunProjection { get; set; }
+    public required string OperationType { get; set; }
+    public required string OperationKey { get; set; }
+    public required string Status { get; set; }
+    public long? ExpectedConcurrencyVersion { get; set; }
+    public DateTimeOffset RunAt { get; set; }
+    public string? Notes { get; set; }
+    public int RequestedByUserId { get; set; }
+    public User RequestedByUser { get; set; } = null!;
+    public DateTimeOffset RequestedAt { get; set; }
+    public int? ApprovedByUserId { get; set; }
+    public User? ApprovedByUser { get; set; }
+    public DateTimeOffset? ApprovedAt { get; set; }
+    public string? ApprovalReason { get; set; }
+    public ICollection<ActualRunOverrideRequestLine> Lines { get; } = new List<ActualRunOverrideRequestLine>();
+}
+
+public sealed class ActualRunOverrideRequestLine
+{
+    public long Id { get; set; }
+    public long ActualRunOverrideRequestId { get; set; }
+    public ActualRunOverrideRequest ActualRunOverrideRequest { get; set; } = null!;
+    public int WarehouseId { get; set; }
+    public Warehouse Warehouse { get; set; } = null!;
+    public int RoomId { get; set; }
+    public Room Room { get; set; } = null!;
+    public int? CropYear { get; set; }
+    public int? GrowerLotId { get; set; }
+    public int? FruitProfileId { get; set; }
+    public required string GrowerName { get; set; }
+    public required string LotNumber { get; set; }
+    public string? PoolStart { get; set; }
+    public required string VarietyCode { get; set; }
+    public string? InventoryStatus { get; set; }
+    public int AvailableBins { get; set; }
+    public int RequestedBins { get; set; }
+    public int ShortageBins { get; set; }
+    public long? RunProjectionSourceId { get; set; }
 }
 
 public sealed class QcSample
