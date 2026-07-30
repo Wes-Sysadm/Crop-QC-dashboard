@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedPackoutMigration = "20260729165910_AddPackoutProjectionReconciliation";
+    public const string ExpectedSchemaMigration = "20260729230451_AddActualRunRoomInventoryLedger";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -28,7 +28,17 @@ public static class DatabaseStartupDiagnostics
         new("QcSamples.DefectInspectionStatus", "QcSamples", "DefectInspectionStatus"),
         new("BinsRunEntries.IsReconciled", "BinsRunEntries", "IsReconciled"),
         new("BinsRunEntries.ReconciledAt", "BinsRunEntries", "ReconciledAt"),
-        new("BinsRunEntries.ReconciledByUserId", "BinsRunEntries", "ReconciledByUserId")
+        new("BinsRunEntries.ReconciledByUserId", "BinsRunEntries", "ReconciledByUserId"),
+        new("ActualRuns", "ActualRuns", null),
+        new("ActualRunRevisions", "ActualRunRevisions", null),
+        new("ActualRunOverrideRequests", "ActualRunOverrideRequests", null),
+        new("ActualRunOverrideRequestLines", "ActualRunOverrideRequestLines", null),
+        new("RoomInventoryAdjustments.ActualRunId", "RoomInventoryAdjustments", "ActualRunId"),
+        new("RoomInventoryAdjustments.ActualRunRevisionId", "RoomInventoryAdjustments", "ActualRunRevisionId"),
+        new("BinsRunEntries.ActualRunId", "BinsRunEntries", "ActualRunId"),
+        new("BinsRunEntries.ActualRunRevisionId", "BinsRunEntries", "ActualRunRevisionId"),
+        new("BinsRunEntries.TransactionType", "BinsRunEntries", "TransactionType"),
+        new("BinsRunEntries.ReversesBinsRunEntryId", "BinsRunEntries", "ReversesBinsRunEntryId")
     ];
 
     public static async Task InspectAsync(
@@ -115,7 +125,7 @@ public static class DatabaseStartupDiagnostics
             {
                 logger.LogInformation(
                     "Application schema check succeeded. Expected migration {ExpectedMigration}; checked object count {CheckedObjectCount}.",
-                    ExpectedPackoutMigration,
+                    ExpectedSchemaMigration,
                     RequiredSchemaExpectations.Length);
             }
             else
@@ -129,7 +139,7 @@ public static class DatabaseStartupDiagnostics
                     provider,
                     applicationVersion,
                     deployedCommit,
-                    ExpectedPackoutMigration,
+                    ExpectedSchemaMigration,
                     partiallyUpdated,
                     string.Join(", ", missing),
                     "Keep the prior compatible deployment active, run the reviewed PostgreSQL preflight, obtain backup and production authorization, apply the approved compatibility script, then verify before redeploying.");
@@ -162,13 +172,13 @@ public static class DatabaseStartupDiagnostics
         var applicationVersion = GetApplicationVersion();
         var referenceId = Guid.NewGuid().ToString("N")[..8];
 
-        if (!string.Equals(expectedMigration, ExpectedPackoutMigration, StringComparison.Ordinal))
+        if (!string.Equals(expectedMigration, ExpectedSchemaMigration, StringComparison.Ordinal))
         {
             logger.LogError(
                 "Database deployment gate rejected an unknown expected migration. Reference {ReferenceId}; requested migration {RequestedMigration}; supported migration {ExpectedMigration}.",
                 referenceId,
                 expectedMigration,
-                ExpectedPackoutMigration);
+                ExpectedSchemaMigration);
             return false;
         }
 

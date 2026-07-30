@@ -161,24 +161,28 @@ public sealed class DatabaseRegressionDiagnosticsTests
     }
 
     [Fact]
-    public void RenderUsesFailClosedPackoutSchemaGateBeforeBothWebDeployments()
+    public void RenderUsesFailClosedLatestSchemaGateBeforeBothWebDeployments()
     {
         var blueprint = File.ReadAllText(FindRepositoryFile("render.yaml"));
-        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260729165910_AddPackoutProjectionReconciliation";
+        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260729230451_AddActualRunRoomInventoryLedger";
 
         Assert.Equal(2, blueprint.Split(command, StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("dotnet ef database update", blueprint, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void StartupDiagnosticsLogSafePackoutSchemaDetailsAndOperatorAction()
+    public void StartupDiagnosticsLogSafeLatestSchemaDetailsAndOperatorAction()
     {
         var diagnostics = File.ReadAllText(FindRepositoryFile(
             "src", "CropQc.Web", "Services", "DatabaseStartupDiagnostics.cs"));
         var program = File.ReadAllText(FindRepositoryFile(
             "src", "CropQc.Web", "Program.cs"));
 
-        Assert.Contains("ExpectedPackoutMigration", diagnostics);
+        Assert.Contains("ExpectedSchemaMigration", diagnostics);
+        Assert.Contains("\"ActualRuns\"", diagnostics);
+        Assert.Contains("\"ActualRunRevisions\"", diagnostics);
+        Assert.Contains("\"ActualRunOverrideRequests\"", diagnostics);
+        Assert.Contains("\"ActualRunOverrideRequestLines\"", diagnostics);
         Assert.Contains("Reference {ReferenceId}", diagnostics);
         Assert.Contains("application version {ApplicationVersion}", diagnostics);
         Assert.Contains("expected migration {ExpectedMigration}", diagnostics);
