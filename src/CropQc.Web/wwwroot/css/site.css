@@ -47,6 +47,31 @@ h2 { margin: 28px 0 12px; font-size: 20px; }
     opacity: .28;
     background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.75) 0 8px, rgba(22,101,52,.62) 8px 13px, rgba(255,255,255,.75) 13px 21px);
 }
+
+.room-multi-select {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: .45rem .8rem;
+    min-width: min(100%, 720px);
+    padding: .75rem;
+    border: 1px solid var(--border);
+    border-radius: .5rem;
+}
+
+.actual-run-ledger-table tr.selected {
+    outline: 2px solid currentColor;
+    outline-offset: -2px;
+}
+
+.actual-run-ledger-table .compact-number {
+    min-width: 6rem;
+    width: 7rem;
+}
+
+.text-danger {
+    color: #a51d2d;
+    font-weight: 700;
+}
 .room-card-content { position: relative; z-index: 1; display: grid; gap: 12px; min-width: 0; padding: 12px; border-radius: 5px; background: rgba(255,255,255,.9); box-shadow: 0 1px 3px rgba(23, 32, 42, .12); }
 .room-card:hover { text-decoration: none; border-color: #9fb2c3; box-shadow: 0 2px 8px rgba(23, 32, 42, .08); }
 .room-card.ready { border-left-color: #2e7d32; }

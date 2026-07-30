@@ -401,11 +401,14 @@ public sealed class BinsRunPageViewModel
 {
     public BinsRunFilterForm Filter { get; set; } = new();
     public BinsRunForm Form { get; set; } = new();
+    public ActualRunForm ActualRunForm { get; set; } = new();
     public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
     public IReadOnlyList<Room> Rooms { get; set; } = [];
     public BinsRunRoomSummaryViewModel? RoomSummary { get; set; }
     public IReadOnlyList<BinsRunInventoryOptionViewModel> AvailableInventory { get; set; } = [];
     public IReadOnlyList<BinsRunHistoryItemViewModel> History { get; set; } = [];
+    public IReadOnlyList<ActualRunHistoryItemViewModel> ActualRuns { get; set; } = [];
+    public IReadOnlyList<ActualRunOverrideRequestViewModel> PendingOverrideRequests { get; set; } = [];
     public bool CanRecord { get; set; }
     public bool CanAdmin { get; set; }
     public bool CanTransfer { get; set; }
@@ -425,6 +428,7 @@ public sealed class BinsRunFilterForm
     public string Section { get; set; } = "Planner";
     public int? WarehouseId { get; set; }
     public int? RoomId { get; set; }
+    public List<int> RoomIds { get; set; } = [];
     public DateTime? FromDate { get; set; }
     public DateTime? ToDate { get; set; }
     public DateOnly? PlannedDate { get; set; }
@@ -434,6 +438,7 @@ public sealed class BinsRunFilterForm
     public string Facility { get; set; } = "All";
     public string ProjectionVisibility { get; set; } = "Active";
     public string ProjectionSort { get; set; } = "Facility";
+    public long? EditActualRunId { get; set; }
 }
 
 public sealed class BinsRunForm
@@ -447,6 +452,39 @@ public sealed class BinsRunForm
     public string? Notes { get; set; }
     public long? RunProjectionId { get; set; }
     public long? RunProjectionSourceId { get; set; }
+}
+
+public sealed class ActualRunForm
+{
+    public long? Id { get; set; }
+    public long ConcurrencyVersion { get; set; }
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public long? RunProjectionId { get; set; }
+    public DateTimeOffset RunAt { get; set; } = DateTimeOffset.UtcNow;
+    public string? Notes { get; set; }
+    public List<ActualRunLineForm> Lines { get; set; } = [];
+}
+
+public sealed class ActualRunLineForm
+{
+    public string InventoryKey { get; set; } = "";
+    public int BinsRun { get; set; }
+    public int ExpectedAvailableBins { get; set; }
+    public long? RunProjectionSourceId { get; set; }
+}
+
+public sealed class CancelActualRunForm
+{
+    public long Id { get; set; }
+    public long ConcurrencyVersion { get; set; }
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public string Reason { get; set; } = "";
+}
+
+public sealed class ApproveActualRunOverrideForm
+{
+    public long RequestId { get; set; }
+    public string Reason { get; set; } = "";
 }
 
 public sealed class BinsRunProjectionRequest
@@ -472,7 +510,62 @@ public sealed record BinsRunInventoryOptionViewModel(
     DateTimeOffset? ReceiptDate,
     int? FruitProfileId,
     string FruitType,
-    int? CanonicalOrchardBlockId);
+    int? CanonicalOrchardBlockId,
+    int? CropYear = null,
+    string ProductionType = "");
+
+public sealed class ActualRunHistoryItemViewModel
+{
+    public long Id { get; set; }
+    public long? RunProjectionId { get; set; }
+    public string Status { get; set; } = "";
+    public int RevisionNumber { get; set; }
+    public long ConcurrencyVersion { get; set; }
+    public DateTimeOffset RunAt { get; set; }
+    public string? Notes { get; set; }
+    public string CreatedBy { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? CanceledAt { get; set; }
+    public string? CancellationReason { get; set; }
+    public IReadOnlyList<ActualRunHistoryLineViewModel> Lines { get; set; } = [];
+}
+
+public sealed class ActualRunHistoryLineViewModel
+{
+    public long Id { get; set; }
+    public string InventoryKey { get; set; } = "";
+    public string TransactionType { get; set; } = "";
+    public string Room { get; set; } = "";
+    public string Grower { get; set; } = "";
+    public string Lot { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public int PreviousAvailableBins { get; set; }
+    public int BinsRun { get; set; }
+    public int NewAvailableBins { get; set; }
+    public bool IsReversed { get; set; }
+    public bool IsOverdrawOverride { get; set; }
+    public string? OverrideReason { get; set; }
+}
+
+public sealed class ActualRunOverrideRequestViewModel
+{
+    public long Id { get; set; }
+    public long? ActualRunId { get; set; }
+    public string OperationType { get; set; } = "";
+    public string RequestedBy { get; set; } = "";
+    public DateTimeOffset RequestedAt { get; set; }
+    public IReadOnlyList<ActualRunOverrideLineViewModel> Lines { get; set; } = [];
+}
+
+public sealed class ActualRunOverrideLineViewModel
+{
+    public string Room { get; set; } = "";
+    public string Lot { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public int AvailableBins { get; set; }
+    public int RequestedBins { get; set; }
+    public int ShortageBins { get; set; }
+}
 
 public sealed class BinsRunRoomSummaryViewModel
 {

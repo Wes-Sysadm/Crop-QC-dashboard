@@ -1587,6 +1587,18 @@ public sealed class RunProjectionTests
 
         public Task<string?> ReverseAsync(ReverseBinsRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+
+        public Task<string?> CreateActualRunAsync(ActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<string?> UpdateActualRunAsync(long id, ActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<string?> CancelActualRunAsync(CancelActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<string?> ApproveActualRunOverrideAsync(ApproveActualRunOverrideForm form, ClaimsPrincipal user, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private static string ReadRepositoryFile(params string[] parts) => File.ReadAllText(RepositoryFile(parts));
