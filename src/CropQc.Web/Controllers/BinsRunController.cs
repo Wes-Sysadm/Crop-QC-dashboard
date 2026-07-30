@@ -22,42 +22,50 @@ public sealed class BinsRunController(
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
     public async Task<IActionResult> Index([FromQuery] BinsRunFilterForm filter, CancellationToken cancellationToken)
     {
-        var model = await binsRunService.GetPageAsync(filter, User, cancellationToken);
-        try
+        var activeSection = string.IsNullOrWhiteSpace(filter.Section) ? "Planner" : filter.Section.Trim();
+        var loadPlanner = activeSection.Equals("Planner", StringComparison.OrdinalIgnoreCase)
+            || filter.ProjectionId is not null;
+        var model = activeSection.Equals("Planner", StringComparison.OrdinalIgnoreCase)
+            ? new BinsRunPageViewModel { Filter = filter }
+            : await binsRunService.GetPageAsync(filter, User, cancellationToken);
+        if (loadPlanner)
         {
-            model.Planner = await runProjectionService.GetPlannerAsync(
-                filter.PlannedDate,
-                filter.ProjectionId,
-                filter.Facility,
-                filter.ProjectionVisibility,
-                filter.ProjectionSort,
-                User,
-                cancellationToken);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            var diagnostic = DatabaseFailureDiagnostics.Classify(exception);
-            var correlationId = string.IsNullOrWhiteSpace(HttpContext.TraceIdentifier)
-                ? Guid.NewGuid().ToString("N")[..12]
-                : HttpContext.TraceIdentifier;
-            logger.LogError(
-                exception,
-                "Bins Run planner load failed. Route={Route} ProjectionId={ProjectionId} CorrelationId={CorrelationId} Category={Category} ProviderCode={ProviderCode}",
-                "/BinsRun",
-                filter.ProjectionId,
-                correlationId,
-                diagnostic.Category,
-                diagnostic.ProviderCode);
-            model.Planner = new RunProjectionPlannerViewModel
+            try
             {
-                SelectedDate = filter.PlannedDate ?? businessTime.PacificDate(businessTime.UtcNow),
-                PacificToday = businessTime.PacificDate(businessTime.UtcNow),
-                SelectedFacility = string.IsNullOrWhiteSpace(filter.Facility) ? "All" : filter.Facility,
-                SelectedDeletionStatus = string.IsNullOrWhiteSpace(filter.ProjectionVisibility) ? "Active" : filter.ProjectionVisibility,
-                SelectedSort = string.IsNullOrWhiteSpace(filter.ProjectionSort) ? "Facility" : filter.ProjectionSort,
-                PlannerWarning = $"{diagnostic.SafeMessage} The Bins Run inventory and transfer tools remain available. Reference {correlationId}.",
-                DiagnosticReference = correlationId
-            };
+                model.Planner = await runProjectionService.GetPlannerAsync(
+                    filter.PlannedDate,
+                    filter.ProjectionId,
+                    filter.Facility,
+                    filter.ProjectionVisibility,
+                    filter.ProjectionSort,
+                    User,
+                    cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                var diagnostic = DatabaseFailureDiagnostics.Classify(exception);
+                var correlationId = string.IsNullOrWhiteSpace(HttpContext.TraceIdentifier)
+                    ? Guid.NewGuid().ToString("N")[..12]
+                    : HttpContext.TraceIdentifier;
+                logger.LogError(
+                    exception,
+                    "Bins Run planner load failed. Route={Route} ProjectionId={ProjectionId} CorrelationId={CorrelationId} Category={Category} ProviderCode={ProviderCode}",
+                    "/BinsRun",
+                    filter.ProjectionId,
+                    correlationId,
+                    diagnostic.Category,
+                    diagnostic.ProviderCode);
+                model.Planner = new RunProjectionPlannerViewModel
+                {
+                    SelectedDate = filter.PlannedDate ?? businessTime.PacificDate(businessTime.UtcNow),
+                    PacificToday = businessTime.PacificDate(businessTime.UtcNow),
+                    SelectedFacility = string.IsNullOrWhiteSpace(filter.Facility) ? "All" : filter.Facility,
+                    SelectedDeletionStatus = string.IsNullOrWhiteSpace(filter.ProjectionVisibility) ? "Active" : filter.ProjectionVisibility,
+                    SelectedSort = string.IsNullOrWhiteSpace(filter.ProjectionSort) ? "Facility" : filter.ProjectionSort,
+                    PlannerWarning = $"{diagnostic.SafeMessage} The Bins Run inventory and transfer tools remain available. Reference {correlationId}.",
+                    DiagnosticReference = correlationId
+                };
+            }
         }
         if (filter.RoomId is int roomId)
         {

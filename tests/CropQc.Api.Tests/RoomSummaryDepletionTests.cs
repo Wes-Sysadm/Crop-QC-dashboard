@@ -114,7 +114,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("GroupBy(x => x.VarietyKey", service);
         Assert.Contains("bins / (decimal)totalBins * 100m", service);
         Assert.Contains("organicBins / (decimal)currentBins > 0.51m", service);
-        Assert.Contains("varietyColorService.GetResolvedColorsAsync(keys", service);
+        Assert.Contains("dbContext.VarietyColorConfigurations.AsNoTracking()", service);
+        Assert.Contains("Where(x => keys.Contains(x.VarietyKey))", service);
         Assert.Contains("BuildVarietyBandBackground(room.VarietyColorSegments)", dashboard);
         Assert.Contains("majority-organic", dashboard);
         Assert.Contains("Majority organic", dashboard);

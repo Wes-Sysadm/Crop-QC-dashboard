@@ -92,12 +92,14 @@ public sealed class PerformanceDiagnosticsTests
 
         Assert.Equal(1, counter.Count);
         Assert.Equal(12.5, counter.ElapsedMilliseconds, precision: 1);
+        Assert.Equal(12.5, counter.SlowestCommandMilliseconds, precision: 1);
         Assert.Equal(1, counter.FailedCount);
 
         counter.Reset();
 
         Assert.Equal(0, counter.Count);
         Assert.Equal(0, counter.ElapsedMilliseconds);
+        Assert.Equal(0, counter.SlowestCommandMilliseconds);
         Assert.Equal(0, counter.FailedCount);
     }
 
@@ -132,6 +134,7 @@ public sealed class PerformanceDiagnosticsTests
         Assert.Equal(8, metric.ResponseBytes);
         Assert.Equal(1, metric.ExternalCallCount);
         Assert.Equal(1, metric.ExternalProviderCounts["GoogleDrive"]);
+        Assert.True(metric.ProcessAllocatedBytesDelta >= 0);
     }
 
     [Fact]
@@ -256,6 +259,19 @@ public sealed class PerformanceDiagnosticsTests
         Assert.Contains("\"PerformanceDiagnostics\"", settings);
         Assert.Contains("\"QueryCountWarningThreshold\"", settings);
         Assert.Contains("\"ResponseBytesWarningThreshold\"", settings);
+    }
+
+    [Fact]
+    public void HighTrafficPages_UseBoundedReadPaths()
+    {
+        var dashboard = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
+        var binsRunController = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "BinsRunController.cs"));
+
+        Assert.Contains("await BuildRoomLotSummariesAsync(null, cancellationToken)", dashboard);
+        Assert.Contains(".AsSplitQuery()", dashboard);
+        Assert.Contains("activeSection.Equals(\"Planner\"", binsRunController);
+        Assert.Contains("? new BinsRunPageViewModel { Filter = filter }", binsRunController);
+        Assert.Contains(": await binsRunService.GetPageAsync", binsRunController);
     }
 
     [Fact]
