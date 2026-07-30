@@ -25,7 +25,9 @@ try {
         if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $component.sha256) { throw "Checksum mismatch for $($component.name)." }
     }
 
-    $dump = Get-ChildItem -LiteralPath $tempRoot -Filter "*.sql.gz" | Select-Object -Single
+    $dumps = @(Get-ChildItem -LiteralPath $tempRoot -Filter "*.sql.gz")
+    if ($dumps.Count -ne 1) { throw "Expected exactly one PostgreSQL dump but found $($dumps.Count)." }
+    $dump = $dumps[0]
     $sqlPath = Join-Path $tempRoot "restore.sql"
     $source = [System.IO.File]::OpenRead($dump.FullName)
     try {

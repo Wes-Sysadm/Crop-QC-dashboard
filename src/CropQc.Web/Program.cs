@@ -246,6 +246,9 @@ builder.Services.AddScoped<IUserAccessService, UserAccessService>();
 builder.Services.AddScoped<IAuthorizationHandler, PageAccessAuthorizationHandler>();
 builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportService>();
+builder.Services.AddScoped<IRoomInventoryLedgerQueryService, RoomInventoryLedgerQueryService>();
+builder.Services.AddScoped<IRoomInventoryReconciliationService, RoomInventoryReconciliationService>();
+builder.Services.AddScoped<IInventoryDeductionInvariantService, InventoryDeductionInvariantService>();
 builder.Services.AddScoped<IBinsRunService, BinsRunService>();
 builder.Services.AddScoped<IRunProjectionService, RunProjectionService>();
 builder.Services.AddScoped<IPackoutReportParser, PackoutReportParser>();
@@ -282,11 +285,17 @@ builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorage
 var app = builder.Build();
 LogEmailConfiguration(app);
 LogEnvironmentConfiguration(app);
+var ensureCreatedOnStartup = app.Configuration.GetValue<bool>("Database:EnsureCreatedOnStartup");
+var seedMasterDataOnStartup = app.Configuration.GetValue<bool>("Database:SeedMasterDataOnStartup");
+ProductionDatabaseSafety.RejectProductionStartupMutation(
+    appEnvironmentOptions.IsProduction,
+    ensureCreatedOnStartup,
+    seedMasterDataOnStartup);
 var isRender = !string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_HOSTNAME"])
     || !string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_URL"]);
 var useForwardedHeaders = isRender || app.Configuration.GetValue<bool>("ASPNETCORE_FORWARDEDHEADERS_ENABLED");
 
-if (app.Configuration.GetValue<bool>("Database:EnsureCreatedOnStartup"))
+if (ensureCreatedOnStartup)
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
@@ -303,7 +312,15 @@ if (schemaVerificationCommand is not null)
         app.Configuration,
         app.Environment,
         expectedMigration);
-    Environment.ExitCode = schemaIsReady ? 0 : 1;
+    var deductionsAreReady = schemaIsReady
+        && await VerifyInventoryDeductionReadinessAsync(app.Services);
+    Environment.ExitCode = schemaIsReady && deductionsAreReady ? 0 : 1;
+    return;
+}
+
+if (args.Contains("--verify-inventory-deductions", StringComparer.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = await VerifyInventoryDeductionReadinessAsync(app.Services) ? 0 : 1;
     return;
 }
 
@@ -367,7 +384,7 @@ if (receiptPurgeCommand is not null)
     return;
 }
 
-if (app.Configuration.GetValue<bool>("Database:SeedMasterDataOnStartup"))
+if (seedMasterDataOnStartup)
 {
     using var scope = app.Services.CreateScope();
     var seeder = scope.ServiceProvider.GetRequiredService<IMasterDataSeeder>();
@@ -1239,6 +1256,34 @@ static async Task EnsureRequiredSampleTypesAsync(IServiceProvider services)
     {
         logger.LogWarning(ex, "Required sample type check skipped or failed.");
     }
+}
+
+static async Task<bool> VerifyInventoryDeductionReadinessAsync(IServiceProvider services)
+{
+    using var invariantScope = services.CreateScope();
+    var invariant = invariantScope.ServiceProvider.GetRequiredService<IInventoryDeductionInvariantService>();
+    var result = await invariant.VerifyReadinessAsync(CancellationToken.None);
+    var invariantLogger = invariantScope.ServiceProvider
+        .GetRequiredService<ILoggerFactory>()
+        .CreateLogger("InventoryDeductionReadiness");
+    invariantLogger.LogInformation(
+        "Inventory deduction readiness inspected {NegativeCount} negative adjustments: {HistoricalCount} historical, {NewFormatCount} new-format, {IssueCount} issue(s), {BlockingCount} blocking.",
+        result.NegativeAdjustmentCount,
+        result.HistoricalNegativeCount,
+        result.NewFormatNegativeCount,
+        result.Issues.Count,
+        result.Issues.Count(x => x.BlocksDeployment));
+    foreach (var issue in result.Issues)
+    {
+        invariantLogger.LogWarning(
+            "Inventory deduction readiness issue {Code} for adjustment {AdjustmentId}; invariant version {InvariantVersion}; blocking {BlocksDeployment}.",
+            issue.Code,
+            issue.AdjustmentId,
+            issue.InvariantVersion,
+            issue.BlocksDeployment);
+    }
+
+    return result.IsReady;
 }
 
 static void ConfigureDataProtection(IServiceCollection services, IConfiguration configuration)

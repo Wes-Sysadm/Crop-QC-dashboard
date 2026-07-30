@@ -150,6 +150,25 @@ public sealed class DashboardSummaryPerformanceDatasetTests
                     UpdatedAt = now.AddDays(-40)
                 };
                 db.Receipts.Add(receipt);
+                db.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
+                {
+                    Id = 5000 + receipt.Id,
+                    CropYear = receipt.CropYear,
+                    Receipt = receipt,
+                    Warehouse = warehouse,
+                    Room = room,
+                    FruitProfile = profile,
+                    GrowerName = receipt.GrowerName,
+                    LotNumber = receipt.GrowerNumber ?? receipt.LotCode,
+                    VarietyCode = profile.VarietyCode,
+                    OldBinCount = 0,
+                    ChangeAmount = bins,
+                    NewBinCount = bins,
+                    AdjustmentType = "ReceiptAdd",
+                    Source = "Receiving inventory added",
+                    AdjustmentAt = receipt.ReceivedAt,
+                    CreatedAt = receipt.CreatedAt
+                });
 
                 if (roomIndex % 10 == 0 && lotIndex == 3)
                 {

@@ -1,0 +1,234 @@
+@model RoomInventoryReconciliationPageViewModel
+@{
+    ViewData["Title"] = "Room Inventory Ledger Reconciliation";
+}
+
+<div class="page-heading">
+    <div>
+        <h1>Room Inventory Ledger Reconciliation</h1>
+        <p class="muted">Read-only evidence from the permanent room ledger. This report cannot change, reverse, or correct inventory.</p>
+    </div>
+    <a class="button secondary-button" href="/Admin/RoomInventory">Current Inventory Baseline</a>
+</div>
+
+@if (Model.GlobalWarnings.Count > 0)
+{
+    <section class="notice warning" aria-label="Global ledger warnings">
+        <strong>Transaction integrity warnings</strong>
+        <ul>
+            @foreach (var warning in Model.GlobalWarnings)
+            {
+                <li>@warning</li>
+            }
+        </ul>
+    </section>
+}
+
+<section class="panel">
+    <form class="toolbar" method="get" action="/Admin/RoomInventory/Reconciliation">
+        <label class="field">Facility
+            <select name="WarehouseId">
+                <option value="">All</option>
+                @foreach (var option in Model.Warehouses)
+                {
+                    <option value="@option.Id" selected="@(Model.Filter.WarehouseId == option.Id ? "selected" : null)">@option.Label</option>
+                }
+            </select>
+        </label>
+        <label class="field">Room
+            <select name="RoomId">
+                <option value="">All</option>
+                @foreach (var option in Model.Rooms)
+                {
+                    <option value="@option.Id" selected="@(Model.Filter.RoomId == option.Id ? "selected" : null)">@option.Label</option>
+                }
+            </select>
+        </label>
+        <label class="field">Lot
+            <input name="Lot" value="@Model.Filter.Lot" />
+        </label>
+        <label class="field">Variety
+            <input name="Variety" value="@Model.Filter.Variety" />
+        </label>
+        <label class="checkbox-field">
+            <input type="checkbox" name="WarningsOnly" value="true" checked="@(Model.Filter.WarningsOnly ? "checked" : null)" />
+            Warnings only
+        </label>
+        <button type="submit" class="secondary-button">Filter</button>
+    </form>
+
+    <div class="metric-grid">
+        <div><strong>@Model.InboundReceiptBins</strong><span>Supporting receipt bins</span></div>
+        <div><strong>@Model.LedgerBalance</strong><span>Permanent ledger balance</span></div>
+        <div><strong>@Model.UnledgeredInboundBins</strong><span>Receipt bins without ledger origin</span></div>
+        <div><strong>@Model.Rows.Count(x => x.Warnings.Count > 0)</strong><span>Rows with warnings</span></div>
+    </div>
+</section>
+
+<section class="panel">
+    <h2>Negative adjustment parent evidence</h2>
+    <p class="muted">Every new-format deduction must have exactly one persisted Bins Run or Transfer parent. Historical warnings are shown without changing their records.</p>
+    @if (Model.NegativeAdjustments.Count == 0)
+    {
+        <p class="muted">No negative room-ledger adjustments match the selected filters.</p>
+    }
+    else
+    {
+        <div class="table-wrap contained-table">
+            <table class="responsive-table">
+                <thead>
+                <tr>
+                    <th>Adjustment</th>
+                    <th>Facility / Room</th>
+                    <th>Crop Year</th>
+                    <th>Grower / Lot</th>
+                    <th>Variety / Production</th>
+                    <th class="numeric-cell">Bins</th>
+                    <th>Type</th>
+                    <th>Parent</th>
+                    <th>Actual Run</th>
+                    <th>Created</th>
+                    <th>Match / Effect</th>
+                    <th>Warnings</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach (var row in Model.NegativeAdjustments)
+                {
+                    <tr>
+                        <td><strong>#@row.AdjustmentId</strong><br /><span class="muted">v@row.InvariantVersion</span></td>
+                        <td>@row.Facility / @row.Room</td>
+                        <td>@(row.CropYear?.ToString() ?? "-")</td>
+                        <td>@row.Grower<br /><strong>@row.Lot</strong></td>
+                        <td>@row.Variety<br /><span class="muted">@(string.IsNullOrWhiteSpace(row.ProductionType) ? "-" : row.ProductionType)</span></td>
+                        <td class="numeric-cell">@row.Quantity</td>
+                        <td>@row.AdjustmentType</td>
+                        <td>
+                            @row.ParentType
+                            @if (row.BinsRunId is not null)
+                            {
+                                <br /><span>Bins Run #@row.BinsRunId</span>
+                            }
+                            @if (row.TransferId is not null)
+                            {
+                                <br /><span>Transfer #@row.TransferId</span>
+                            }
+                        </td>
+                        <td>@(row.ActualRunId is null ? "-" : $"#{row.ActualRunId}")</td>
+                        <td>@BusinessTime.FormatPacific(row.AdjustmentAt)<br /><span class="muted">@row.CreatedBy</span></td>
+                        <td>
+                            <span class="status @(row.ParentMatches ? "ready" : "attention")">@(row.ParentMatches ? "Matches" : "Review")</span>
+                            <br /><span>@(row.CurrentlyAffectsInventory ? "Affects inventory" : "Superseded")</span>
+                        </td>
+                        <td class="wrap-cell">
+                            @if (row.Warnings.Count == 0)
+                            {
+                                <span class="status ready">No warning</span>
+                            }
+                            else
+                            {
+                                <ul>
+                                    @foreach (var warning in row.Warnings)
+                                    {
+                                        <li>@warning</li>
+                                    }
+                                </ul>
+                                @if (!string.IsNullOrWhiteSpace(row.RecordedSource))
+                                {
+                                    <span class="muted">Recorded source: @row.RecordedSource</span>
+                                }
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<section class="panel">
+    <h2>Room-and-lot ledger evidence</h2>
+    <p class="muted">Positive and negative columns are ledger transactions. Bins Run and Actual Run entries are classifications of those same adjustments and are not subtracted a second time.</p>
+    @if (Model.Rows.Count == 0)
+    {
+        <p class="muted">No room-ledger rows match the selected filters.</p>
+    }
+    else
+    {
+        <div class="table-wrap contained-table">
+            <table class="responsive-table">
+                <thead>
+                <tr>
+                    <th>Facility / Room</th>
+                    <th>Crop Year</th>
+                    <th>Grower / Lot</th>
+                    <th>Stored / Canonical Variety</th>
+                    <th>Production</th>
+                    <th class="numeric-cell">Receipt Bins</th>
+                    <th class="numeric-cell">No Ledger Origin</th>
+                    <th class="numeric-cell">Positive</th>
+                    <th class="numeric-cell">Negative</th>
+                    <th class="numeric-cell">Legacy Bins Run</th>
+                    <th class="numeric-cell">Actual Run Out</th>
+                    <th class="numeric-cell">Actual Run Reversed</th>
+                    <th class="numeric-cell">Transfer In / Out</th>
+                    <th class="numeric-cell">True Up</th>
+                    <th class="numeric-cell">Other</th>
+                    <th class="numeric-cell">Ledger Balance</th>
+                    <th>Transactions</th>
+                    <th>Warnings</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach (var row in Model.Rows)
+                {
+                    <tr>
+                        <td><strong>@row.Facility / @row.Room</strong></td>
+                        <td>@(row.CropYear?.ToString() ?? "-")</td>
+                        <td><span class="wrap-cell">@row.Grower</span><br /><strong>@row.Lot</strong></td>
+                        <td>
+                            <span>@(string.IsNullOrWhiteSpace(row.StoredVariety) ? "(blank)" : row.StoredVariety)</span>
+                            <br /><strong>@row.CanonicalVariety</strong>
+                        </td>
+                        <td>@(string.IsNullOrWhiteSpace(row.ProductionType) ? "-" : row.ProductionType)</td>
+                        <td class="numeric-cell">@row.InboundReceiptBins</td>
+                        <td class="numeric-cell">@row.UnledgeredInboundBins</td>
+                        <td class="numeric-cell">@row.PositiveLedgerBins</td>
+                        <td class="numeric-cell">@row.NegativeLedgerBins</td>
+                        <td class="numeric-cell">@row.LegacyBinsRunDepletionBins</td>
+                        <td class="numeric-cell">@row.ActualRunDepletionBins</td>
+                        <td class="numeric-cell">@row.ActualRunReversalBins</td>
+                        <td class="numeric-cell">@row.TransferInBins / @row.TransferOutBins</td>
+                        <td class="numeric-cell">@row.TrueUpBins</td>
+                        <td class="numeric-cell">@row.OtherAdjustmentBins</td>
+                        <td class="numeric-cell"><strong>@row.LedgerBalance</strong></td>
+                        <td>
+                            @row.TransactionCount
+                            @if (row.FirstTransactionAt is not null)
+                            {
+                                <br /><span class="muted">@BusinessTime.FormatPacific(row.FirstTransactionAt) &ndash; @BusinessTime.FormatPacific(row.LastTransactionAt)</span>
+                            }
+                        </td>
+                        <td class="wrap-cell">
+                            @if (row.Warnings.Count == 0)
+                            {
+                                <span class="status ready">No warning</span>
+                            }
+                            else
+                            {
+                                <ul>
+                                    @foreach (var warning in row.Warnings)
+                                    {
+                                        <li>@warning</li>
+                                    }
+                                </ul>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>

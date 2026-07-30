@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260729230451_AddActualRunRoomInventoryLedger";
+    public const string ExpectedSchemaMigration = "20260730150926_EnforceRoomInventoryDeductionParents";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -38,7 +38,11 @@ public static class DatabaseStartupDiagnostics
         new("BinsRunEntries.ActualRunId", "BinsRunEntries", "ActualRunId"),
         new("BinsRunEntries.ActualRunRevisionId", "BinsRunEntries", "ActualRunRevisionId"),
         new("BinsRunEntries.TransactionType", "BinsRunEntries", "TransactionType"),
-        new("BinsRunEntries.ReversesBinsRunEntryId", "BinsRunEntries", "ReversesBinsRunEntryId")
+        new("BinsRunEntries.ReversesBinsRunEntryId", "BinsRunEntries", "ReversesBinsRunEntryId"),
+        new("RoomTransfers", "RoomTransfers", null),
+        new("RoomInventoryAdjustments.InventoryInvariantVersion", "RoomInventoryAdjustments", "InventoryInvariantVersion"),
+        new("RoomInventoryAdjustments.InventoryOperationKey", "RoomInventoryAdjustments", "InventoryOperationKey"),
+        new("RoomInventoryAdjustments.RoomTransferId", "RoomInventoryAdjustments", "RoomTransferId")
     ];
 
     public static async Task InspectAsync(

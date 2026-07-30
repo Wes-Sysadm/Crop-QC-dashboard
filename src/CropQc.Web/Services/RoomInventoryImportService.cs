@@ -76,6 +76,34 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
 
         var user = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Email == changedByEmail, cancellationToken);
         var now = DateTimeOffset.UtcNow;
+        var reductions = preview.Rows
+            .Where(x => x.Action is "Add" or "Update" or "Replace")
+            .Where(x => x.OldBinCount is not null && x.NewBinCount < x.OldBinCount)
+            .ToList();
+        if (reductions.Count > 0)
+        {
+            foreach (var row in reductions)
+            {
+                dbContext.AuditLogs.Add(new AuditLog
+                {
+                    Action = "RejectedStartingInventoryReduction",
+                    EntityName = nameof(RoomInventoryAdjustment),
+                    EntityKey = $"{row.Facility}:{row.CropQcRoomName}:{row.LotNumber}:{row.Variety}",
+                    UserId = user?.Id,
+                    AfterValuesJson = JsonSerializer.Serialize(new
+                    {
+                        row.OldBinCount,
+                        row.NewBinCount,
+                        Reason = "Established inventory may only leave a room through Bins Run or Transfer."
+                    }),
+                    SourceApplication = "Web",
+                    CreatedAt = now
+                });
+            }
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return (preview, "Current Inventory Baseline cannot lower established inventory. Record inventory leaving a room through Bins Run or Transfer.");
+        }
+
         foreach (var row in preview.Rows.Where(x => x.Action is "Add" or "Update" or "Replace"))
         {
             var oldCount = row.OldBinCount;

@@ -1146,6 +1146,7 @@ else
             else
             {
                 <form class="form-grid" method="post" action="/BinsRun/Transfer">
+                    <input type="hidden" name="OperationKey" value="@Model.TransferForm.OperationKey" />
                     <input type="hidden" name="FromRoomId" value="@Model.Filter.RoomId" />
                     <label class="field wide">Source lot
                         <select name="SourceLotKey" required>

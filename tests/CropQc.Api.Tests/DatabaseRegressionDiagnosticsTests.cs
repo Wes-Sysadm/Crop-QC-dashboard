@@ -164,7 +164,7 @@ public sealed class DatabaseRegressionDiagnosticsTests
     public void RenderUsesFailClosedLatestSchemaGateBeforeBothWebDeployments()
     {
         var blueprint = File.ReadAllText(FindRepositoryFile("render.yaml"));
-        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260729230451_AddActualRunRoomInventoryLedger";
+        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260730150926_EnforceRoomInventoryDeductionParents";
 
         Assert.Equal(2, blueprint.Split(command, StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("dotnet ef database update", blueprint, StringComparison.OrdinalIgnoreCase);
@@ -183,6 +183,10 @@ public sealed class DatabaseRegressionDiagnosticsTests
         Assert.Contains("\"ActualRunRevisions\"", diagnostics);
         Assert.Contains("\"ActualRunOverrideRequests\"", diagnostics);
         Assert.Contains("\"ActualRunOverrideRequestLines\"", diagnostics);
+        Assert.Contains("\"RoomTransfers\"", diagnostics);
+        Assert.Contains("\"RoomInventoryAdjustments\", \"InventoryInvariantVersion\"", diagnostics);
+        Assert.Contains("\"RoomInventoryAdjustments\", \"InventoryOperationKey\"", diagnostics);
+        Assert.Contains("\"RoomInventoryAdjustments\", \"RoomTransferId\"", diagnostics);
         Assert.Contains("Reference {ReferenceId}", diagnostics);
         Assert.Contains("application version {ApplicationVersion}", diagnostics);
         Assert.Contains("expected migration {ExpectedMigration}", diagnostics);
@@ -192,6 +196,8 @@ public sealed class DatabaseRegressionDiagnosticsTests
         Assert.Contains("No schema changes were attempted", diagnostics);
         Assert.Contains("--verify-schema=", program);
         Assert.Contains("VerifyRequiredSchemaAsync", program);
+        Assert.Contains("VerifyInventoryDeductionReadinessAsync", program);
+        Assert.Contains("schemaIsReady && deductionsAreReady", program);
         Assert.DoesNotContain("Database.Migrate", program, StringComparison.OrdinalIgnoreCase);
     }
 

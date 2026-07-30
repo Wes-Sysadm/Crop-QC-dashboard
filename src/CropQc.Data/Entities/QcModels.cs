@@ -97,10 +97,53 @@ public sealed class RoomInventoryAdjustment
     public int? CreatedByUserId { get; set; }
     public User? CreatedByUser { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+    public int InventoryInvariantVersion { get; set; }
+    public string? InventoryOperationKey { get; set; }
+    public long? RoomTransferId { get; set; }
+    public RoomTransfer? RoomTransfer { get; set; }
     public long? ActualRunId { get; set; }
     public ActualRun? ActualRun { get; set; }
     public long? ActualRunRevisionId { get; set; }
     public ActualRunRevision? ActualRunRevision { get; set; }
+}
+
+public sealed class RoomTransfer
+{
+    public long Id { get; set; }
+    public required string OperationKey { get; set; }
+    public int SourceWarehouseId { get; set; }
+    public Warehouse SourceWarehouse { get; set; } = null!;
+    public int SourceRoomId { get; set; }
+    public Room SourceRoom { get; set; } = null!;
+    public int DestinationWarehouseId { get; set; }
+    public Warehouse DestinationWarehouse { get; set; } = null!;
+    public int DestinationRoomId { get; set; }
+    public Room DestinationRoom { get; set; } = null!;
+    public int? CropYear { get; set; }
+    public int? GrowerLotId { get; set; }
+    public int? FruitProfileId { get; set; }
+    public FruitProfile? FruitProfile { get; set; }
+    public required string GrowerName { get; set; }
+    public required string LotNumber { get; set; }
+    public string? PoolStart { get; set; }
+    public string? VarietyCode { get; set; }
+    public string? InventoryStatus { get; set; }
+    public int BinCount { get; set; }
+    public required string Reason { get; set; }
+    public string? Notes { get; set; }
+    public DateTimeOffset TransferredAt { get; set; }
+    public int? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public bool IsReversed { get; set; }
+    public DateTimeOffset? ReversedAt { get; set; }
+    public int? ReversedByUserId { get; set; }
+    public User? ReversedByUser { get; set; }
+    public string? ReverseReason { get; set; }
+    public long? ReversesRoomTransferId { get; set; }
+    public RoomTransfer? ReversesRoomTransfer { get; set; }
+    public RoomTransfer? ReversalTransfer { get; set; }
+    public ICollection<RoomInventoryAdjustment> InventoryAdjustments { get; } = new List<RoomInventoryAdjustment>();
 }
 
 public sealed class BinsRunEntry
