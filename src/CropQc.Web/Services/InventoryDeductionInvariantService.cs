@@ -134,7 +134,7 @@ public sealed class InventoryDeductionInvariantService(
                 ?? trackedTransfers.SingleOrDefault(x => adjustment.RoomTransferId == x.Id || ReferenceEquals(x, adjustment.RoomTransfer))
                 ?? persistedTransfers.SingleOrDefault(x => x.Id == adjustment.RoomTransferId);
             var parentCount = binsParents.Count + (transfer is null ? 0 : 1);
-            const bool blocks = true;
+            var blocks = adjustment.InventoryInvariantVersion >= CurrentVersion;
 
             if (adjustment.ChangeAmount < 0 && parentCount == 0)
             {

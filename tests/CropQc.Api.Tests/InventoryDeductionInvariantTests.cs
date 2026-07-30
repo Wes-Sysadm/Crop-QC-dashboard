@@ -110,7 +110,7 @@ public sealed class InventoryDeductionInvariantTests
     }
 
     [Fact]
-    public async Task Readiness_CountsHistoricalAndNewOrphansAndFailsClosed()
+    public async Task Readiness_ReportsHistoricalOrphansButOnlyNewFormatOrphansBlock()
     {
         using var db = CreateDb();
         var historical = Adjustment(-4);
@@ -126,9 +126,31 @@ public sealed class InventoryDeductionInvariantTests
         Assert.Equal(2, result.NegativeAdjustmentCount);
         Assert.Equal(1, result.HistoricalNegativeCount);
         Assert.Equal(1, result.NewFormatNegativeCount);
-        Assert.Contains(result.Issues, x => x.BlocksDeployment && x.AdjustmentId == historical.Id);
+        Assert.Contains(result.Issues, x => !x.BlocksDeployment && x.AdjustmentId == historical.Id);
         Assert.Contains(result.Issues, x => x.BlocksDeployment && x.AdjustmentId == current.Id);
         Assert.False(result.IsReady);
+    }
+
+    [Fact]
+    public async Task Readiness_HistoricalOrphanAloneIsReportedWithoutBlockingDeployment()
+    {
+        using var db = CreateDb();
+        var historical = Adjustment(-4);
+        historical.InventoryInvariantVersion = 0;
+        historical.InventoryOperationKey = null;
+        db.RoomInventoryAdjustments.Add(historical);
+        await db.SaveChangesAsync();
+
+        var result = await Service(db).VerifyReadinessAsync(CancellationToken.None);
+
+        Assert.Equal(1, result.NegativeAdjustmentCount);
+        Assert.Equal(1, result.HistoricalNegativeCount);
+        Assert.Equal(0, result.NewFormatNegativeCount);
+        var issue = Assert.Single(result.Issues);
+        Assert.Equal(historical.Id, issue.AdjustmentId);
+        Assert.Equal("NoParent", issue.Code);
+        Assert.False(issue.BlocksDeployment);
+        Assert.True(result.IsReady);
     }
 
     [Fact]
