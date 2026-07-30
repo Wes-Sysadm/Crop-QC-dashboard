@@ -89,12 +89,15 @@ public sealed class DashboardDataService(
     IUserAccessService? userAccessService = null,
     ICanonicalGrowerService? canonicalGrowerService = null,
     IBusinessTimeService? businessTime = null,
-    IFacilityContextService? facilityContextService = null) : IDashboardDataService
+    IFacilityContextService? facilityContextService = null,
+    IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null) : IDashboardDataService
 {
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
     private static readonly string[] ReceiptTypeOptions = ["Truck receipt", "Door sample", "Lot sample"];
     private IBusinessTimeService BusinessTime { get; } = businessTime ?? new PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock());
     private IFacilityContextService FacilityContext { get; } = facilityContextService ?? new FacilityContextService(dbContext);
+    private IRoomInventoryLedgerQueryService RoomInventoryLedger { get; } =
+        roomInventoryLedgerQueryService ?? new RoomInventoryLedgerQueryService(dbContext);
 
     public async Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
     {
@@ -2758,96 +2761,31 @@ public sealed class DashboardDataService(
 
     private async Task<IReadOnlyList<DashboardInventorySnapshot>> BuildDashboardCurrentInventorySnapshotsAsync(int? roomId, CancellationToken cancellationToken)
     {
-        var receiptsQuery = dbContext.Receipts.AsNoTracking()
-            .Include(x => x.Warehouse)
-            .Include(x => x.Room)
-                .ThenInclude(x => x.Warehouse)
-            .Include(x => x.FruitProfile)
-            .Where(x => !x.IsDeleted)
-            .Where(x => x.ReceiptType == "Truck receipt");
-        if (roomId is not null)
-        {
-            receiptsQuery = receiptsQuery.Where(x => x.RoomId == roomId);
-        }
-
-        var receipts = await receiptsQuery.ToListAsync(cancellationToken);
-        var roomCorrectionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
-        receipts = receipts
-            .Where(x => ReceiptStorageExclusionReason(x, "", roomCorrectionCutoffs) is null)
-            .ToList();
-        var receiptIds = receipts.Select(x => x.Id).ToList();
-        var depletionByReceipt = await dbContext.RoomDepletions.AsNoTracking()
-            .Where(x => receiptIds.Contains(x.ReceiptId) && !x.IsVoided)
-            .GroupBy(x => x.ReceiptId)
-            .Select(x => new { ReceiptId = x.Key, Bins = x.Sum(y => y.BinCountDepleted) })
-            .ToDictionaryAsync(x => x.ReceiptId, x => x.Bins, cancellationToken);
-        var latestAdjustmentByReceipt = (await dbContext.RoomInventoryAdjustments.AsNoTracking()
-                .Where(x => x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
-                .ToListAsync(cancellationToken))
-            .GroupBy(x => x.ReceiptId!.Value)
-            .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First());
-
-        var receiptSnapshots = receipts.Select(receipt =>
-        {
-            var latest = latestAdjustmentByReceipt.GetValueOrDefault(receipt.Id);
-            var currentBins = latest is null
-                ? Math.Max(0, receipt.BinCount - depletionByReceipt.GetValueOrDefault(receipt.Id))
-                : Math.Max(0, latest.NewBinCount);
-            var variety = VarietyColorService.IdentityFromProfile(receipt.FruitProfile);
-            return new DashboardInventorySnapshot(
-                receipt.RoomId,
-                receipt.Warehouse.Code,
-                FacilityCode(receipt.Warehouse.Code, receipt.Warehouse.Name),
-                RoomLocationGroup(receipt.Room),
-                receipt.Room.CropQcRoomName ?? receipt.Room.DisplayName ?? receipt.Room.Code,
-                receipt.GrowerName,
-                !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode,
-                receipt.FruitProfile.VarietyCode,
-                variety.Key,
-                variety.Name,
-                receipt.FruitProfile.IsOrganic,
-                "",
-                currentBins,
-                receipt.ReceivedAt);
-        });
-
-        var adjustmentQuery = dbContext.RoomInventoryAdjustments.AsNoTracking()
-            .Include(x => x.Warehouse)
-            .Include(x => x.Room)
-                .ThenInclude(x => x.Warehouse)
-            .Include(x => x.FruitProfile)
-            .Where(x => x.ReceiptId == null || x.AdjustmentType == "TransferIn");
-        if (roomId is not null)
-        {
-            adjustmentQuery = adjustmentQuery.Where(x => x.RoomId == roomId);
-        }
-
-        var adjustmentSnapshots = ApplyLatestCurrentBalanceRows((await adjustmentQuery.ToListAsync(cancellationToken))
-                .Where(x => !IsSupersededByRoomCurrentBalanceCorrection(x, roomCorrectionCutoffs)))
+        var ledgerRows = await RoomInventoryLedger.GetSnapshotsAsync(
+            null,
+            roomId is null ? null : [roomId.Value],
+            cancellationToken);
+        return ledgerRows
+            .Where(x => x.CurrentBins > 0)
             .Select(x =>
             {
-                var variety = x.FruitProfile is null
-                    ? VarietyColorService.NormalizeIdentity(x.VarietyCode, x.VarietyCode)
-                    : VarietyColorService.IdentityFromProfile(x.FruitProfile);
+                var variety = VarietyColorService.NormalizeIdentity(x.VarietyName, x.Variety);
                 return new DashboardInventorySnapshot(
                     x.RoomId,
-                    x.Warehouse.Code,
-                    FacilityCode(x.Warehouse.Code, x.Warehouse.Name),
-                    !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : RoomLocationGroup(x.Room),
-                    x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
-                    x.GrowerName,
-                    x.LotNumber,
-                    x.VarietyCode ?? "",
+                    x.Facility,
+                    FacilityCode(x.Facility, x.Facility),
+                    x.LocationGroup,
+                    x.Room,
+                    x.Grower,
+                    x.Lot,
+                    x.Variety,
                     variety.Key,
                     variety.Name,
-                    x.FruitProfile?.IsOrganic,
-                    x.InventoryStatus ?? "",
-                    Math.Max(0, x.NewBinCount),
-                    null);
-            });
-
-        return receiptSnapshots.Concat(adjustmentSnapshots)
-            .Where(x => x.CurrentBins > 0)
+                    x.IsOrganic,
+                    x.InventoryStatus,
+                    x.CurrentBins,
+                    x.LastTransactionAt);
+            })
             .ToList();
     }
 
@@ -3466,6 +3404,8 @@ public sealed class DashboardDataService(
                 InventoryKey = $"R:{receipt.Id}",
                 ReceiptId = receipt.Id,
                 RoomId = receipt.RoomId,
+                CropYear = receipt.CropYear,
+                FruitProfileId = receipt.FruitProfileId,
                 Warehouse = receipt.Warehouse.Code,
                 Facility = FacilityCode(receipt.Warehouse.Code, receipt.Warehouse.Name),
                 LocationGroup = RoomLocationGroup(receipt.Room),
@@ -3502,6 +3442,11 @@ public sealed class DashboardDataService(
         var startingInventoryLotSummaries = await BuildAdjustmentOnlyLotSummariesAsync(roomId, cancellationToken);
         var lotSummaries = receiptLotSummaries.Concat(startingInventoryLotSummaries).ToList();
         ApplyQcConditionData(lotSummaries, conditionSamplesByLot);
+        var ledgerSnapshots = await RoomInventoryLedger.GetSnapshotsAsync(
+            null,
+            roomId is null ? null : [roomId.Value],
+            cancellationToken);
+        ApplyLedgerBalances(lotSummaries, ledgerSnapshots);
 
         foreach (var group in lotSummaries.Where(x => x.CurrentBins > 0).GroupBy(x => x.RoomId))
         {
@@ -3514,6 +3459,44 @@ public sealed class DashboardDataService(
 
         return lotSummaries;
     }
+
+    private static void ApplyLedgerBalances(
+        IReadOnlyList<RoomLotSummaryViewModel> lotSummaries,
+        IReadOnlyList<RoomInventoryLedgerSnapshot> ledgerSnapshots)
+    {
+        var balances = ledgerSnapshots.ToDictionary(
+            x => LedgerLotKey(x.RoomId, x.CropYear, x.Lot, x.Variety, x.FruitProfileId),
+            x => Math.Max(0, x.CurrentBins),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var group in lotSummaries.GroupBy(
+                     x => LedgerLotKey(x.RoomId, x.CropYear, x.LotCode, x.VarietyCode, x.FruitProfileId),
+                     StringComparer.OrdinalIgnoreCase))
+        {
+            var remaining = balances.GetValueOrDefault(group.Key);
+            foreach (var lot in group
+                         .OrderBy(x => x.ReceiptId is null)
+                         .ThenBy(x => x.ReceiptId)
+                         .ThenBy(x => x.InventoryAdjustmentId))
+            {
+                var assigned = Math.Min(Math.Max(0, lot.CurrentBins), remaining);
+                lot.CurrentBins = assigned;
+                lot.DepletedBins = Math.Max(0, lot.OriginalBins - assigned);
+                lot.DepletionStatus = assigned > 0 ? "Current" : lot.DepletedBins > 0 ? "Depleted" : "No bins";
+                remaining -= assigned;
+            }
+
+            if (remaining > 0 && group.FirstOrDefault() is { } first)
+            {
+                first.CurrentBins += remaining;
+                first.OriginalBins = Math.Max(first.OriginalBins, first.CurrentBins);
+                first.DepletedBins = Math.Max(0, first.OriginalBins - first.CurrentBins);
+                first.DepletionStatus = "Current";
+            }
+        }
+    }
+
+    private static string LedgerLotKey(int roomId, int? cropYear, string lot, string variety, int? fruitProfileId) =>
+        $"{roomId}|{cropYear?.ToString(CultureInfo.InvariantCulture) ?? "-"}|{lot.Trim().ToUpperInvariant()}|{variety.Trim().ToUpperInvariant()}|{fruitProfileId?.ToString(CultureInfo.InvariantCulture) ?? "-"}";
 
     private void ApplyQcConditionData(
         IReadOnlyList<RoomLotSummaryViewModel> lotSummaries,
@@ -3570,6 +3553,8 @@ public sealed class DashboardDataService(
                 ReceiptId = null,
                 InventoryAdjustmentId = x.Id,
                 RoomId = x.RoomId,
+                CropYear = x.CropYear,
+                FruitProfileId = x.FruitProfileId,
                 Warehouse = x.Warehouse.Code,
                 Facility = FacilityCode(x.Warehouse.Code, x.Warehouse.Name),
                 LocationGroup = !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : RoomLocationGroup(x.Room),

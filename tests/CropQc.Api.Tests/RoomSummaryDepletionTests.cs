@@ -109,8 +109,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("ConventionalBins", model);
         Assert.Contains("UnknownOrganicStatusBins", model);
         Assert.Contains("IsMajorityOrganic", model);
-        Assert.Contains("VarietyColorService.IdentityFromProfile(receipt.FruitProfile)", service);
-        Assert.Contains("x.FruitProfile?.IsOrganic", service);
+        Assert.Contains("VarietyColorService.NormalizeIdentity(x.VarietyName, x.Variety)", service);
+        Assert.Contains("x.IsOrganic", service);
         Assert.Contains("GroupBy(x => x.VarietyKey", service);
         Assert.Contains("bins / (decimal)totalBins * 100m", service);
         Assert.Contains("organicBins / (decimal)currentBins > 0.51m", service);

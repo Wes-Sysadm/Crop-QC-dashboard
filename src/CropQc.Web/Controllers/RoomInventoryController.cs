@@ -6,7 +6,12 @@ using Microsoft.AspNetCore.Mvc;
 namespace CropQc.Web.Controllers;
 
 [Route("Admin/RoomInventory")]
-public sealed class RoomInventoryController(IRoomInventoryImportService roomInventoryImportService, IAdminAuthorizationService authorizationService, IUserAccessService userAccessService, ILogger<RoomInventoryController> logger) : Controller
+public sealed class RoomInventoryController(
+    IRoomInventoryImportService roomInventoryImportService,
+    IRoomInventoryReconciliationService reconciliationService,
+    IAdminAuthorizationService authorizationService,
+    IUserAccessService userAccessService,
+    ILogger<RoomInventoryController> logger) : Controller
 {
     [HttpGet("")]
     [Authorize(Policy = AccessPolicyNames.CurrentLotsView)]
@@ -21,6 +26,13 @@ public sealed class RoomInventoryController(IRoomInventoryImportService roomInve
             return CurrentLotsFailure(filter, ex, "load");
         }
     }
+
+    [HttpGet("Reconciliation")]
+    [Authorize(Policy = AccessPolicyNames.CurrentLotsAdmin)]
+    public async Task<IActionResult> Reconciliation(
+        [FromQuery] RoomInventoryReconciliationFilter filter,
+        CancellationToken cancellationToken) =>
+        View(await reconciliationService.GetPageAsync(filter, cancellationToken));
 
     [HttpGet("Template")]
     [Authorize(Policy = AccessPolicyNames.CurrentLotsView)]

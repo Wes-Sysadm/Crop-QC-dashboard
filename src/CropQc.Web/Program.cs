@@ -246,6 +246,8 @@ builder.Services.AddScoped<IUserAccessService, UserAccessService>();
 builder.Services.AddScoped<IAuthorizationHandler, PageAccessAuthorizationHandler>();
 builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportService>();
+builder.Services.AddScoped<IRoomInventoryLedgerQueryService, RoomInventoryLedgerQueryService>();
+builder.Services.AddScoped<IRoomInventoryReconciliationService, RoomInventoryReconciliationService>();
 builder.Services.AddScoped<IBinsRunService, BinsRunService>();
 builder.Services.AddScoped<IRunProjectionService, RunProjectionService>();
 builder.Services.AddScoped<IPackoutReportParser, PackoutReportParser>();
@@ -282,11 +284,17 @@ builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorage
 var app = builder.Build();
 LogEmailConfiguration(app);
 LogEnvironmentConfiguration(app);
+var ensureCreatedOnStartup = app.Configuration.GetValue<bool>("Database:EnsureCreatedOnStartup");
+var seedMasterDataOnStartup = app.Configuration.GetValue<bool>("Database:SeedMasterDataOnStartup");
+ProductionDatabaseSafety.RejectProductionStartupMutation(
+    appEnvironmentOptions.IsProduction,
+    ensureCreatedOnStartup,
+    seedMasterDataOnStartup);
 var isRender = !string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_HOSTNAME"])
     || !string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_URL"]);
 var useForwardedHeaders = isRender || app.Configuration.GetValue<bool>("ASPNETCORE_FORWARDEDHEADERS_ENABLED");
 
-if (app.Configuration.GetValue<bool>("Database:EnsureCreatedOnStartup"))
+if (ensureCreatedOnStartup)
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
@@ -367,7 +375,7 @@ if (receiptPurgeCommand is not null)
     return;
 }
 
-if (app.Configuration.GetValue<bool>("Database:SeedMasterDataOnStartup"))
+if (seedMasterDataOnStartup)
 {
     using var scope = app.Services.CreateScope();
     var seeder = scope.ServiceProvider.GetRequiredService<IMasterDataSeeder>();

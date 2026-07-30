@@ -189,6 +189,8 @@ public sealed class RoomLotSummaryViewModel
     public long? ReceiptId { get; set; }
     public long? InventoryAdjustmentId { get; set; }
     public int RoomId { get; set; }
+    public int? CropYear { get; set; }
+    public int? FruitProfileId { get; set; }
     public string Warehouse { get; set; } = "";
     public string Facility { get; set; } = "";
     public string LocationGroup { get; set; } = "";

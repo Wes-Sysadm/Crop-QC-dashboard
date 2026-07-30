@@ -59,7 +59,9 @@ public sealed class Evanca12RoomCountTests
         var room = await db.Rooms.FirstAsync(x => x.Code == "EVANCA12");
         var fuji = await db.FruitProfiles.FirstAsync(x => x.VarietyCode == "FUJI");
         var receivedAt = DateTimeOffset.Parse("2026-06-18T07:30:00-07:00");
-        db.Receipts.Add(Receipt(130, "EVANCA12-FUTURE-TRUCK", "Truck receipt", 10, receivedAt, warehouse, room, fuji));
+        var futureReceipt = Receipt(130, "EVANCA12-FUTURE-TRUCK", "Truck receipt", 10, receivedAt, warehouse, room, fuji);
+        db.Receipts.Add(futureReceipt);
+        db.RoomInventoryAdjustments.Add(ReceiptInventoryAdjustment(430, futureReceipt));
         await db.SaveChangesAsync();
 
         var service = CreateService(db);
@@ -537,6 +539,9 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
             Sample(220, 120, truckSample),
             Sample(221, 120, truckSample));
         await db.SaveChangesAsync();
+        var truckReceipt = await db.Receipts.SingleAsync(x => x.Id == 120);
+        db.RoomInventoryAdjustments.Add(ReceiptInventoryAdjustment(420, truckReceipt));
+        await db.SaveChangesAsync();
     }
 
     private static void SeedImportMasterData(CropQcDbContext db)
@@ -607,6 +612,26 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         BinCount = bins,
         CreatedAt = receivedAt,
         UpdatedAt = receivedAt
+    };
+
+    private static RoomInventoryAdjustment ReceiptInventoryAdjustment(long id, Receipt receipt) => new()
+    {
+        Id = id,
+        CropYear = receipt.CropYear,
+        Receipt = receipt,
+        Warehouse = receipt.Warehouse,
+        Room = receipt.Room,
+        FruitProfile = receipt.FruitProfile,
+        GrowerName = receipt.GrowerName,
+        LotNumber = receipt.GrowerNumber ?? receipt.LotCode,
+        VarietyCode = receipt.FruitProfile.VarietyCode,
+        OldBinCount = 0,
+        ChangeAmount = receipt.BinCount,
+        NewBinCount = receipt.BinCount,
+        AdjustmentType = "ReceiptAdd",
+        Source = "Receiving inventory added",
+        AdjustmentAt = receipt.ReceivedAt,
+        CreatedAt = receipt.ReceivedAt
     };
 
     private static QcSample Sample(long id, long receiptId, SampleType sampleType) =>

@@ -53,6 +53,7 @@
                 var canAccessQcStations = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.QcStations, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessMasterData = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.MasterData, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessCurrentLots = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.CurrentLots, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
+                var canAdminCurrentLots = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.CurrentLots, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
                 var canAccessBinsRun = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.BinsRun, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessDownloads = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Downloads, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessConfiguration = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Configuration, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
@@ -111,6 +112,10 @@
                             @if (canAccessCurrentLots)
                             {
                                 <a href="/Admin/RoomInventory">Current Lots</a>
+                                @if (canAdminCurrentLots)
+                                {
+                                    <a href="/Admin/RoomInventory/Reconciliation">Inventory Reconciliation</a>
+                                }
                             }
                             @if (canAccessDownloads)
                             {
