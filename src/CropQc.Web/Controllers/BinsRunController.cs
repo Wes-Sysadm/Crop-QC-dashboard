@@ -274,30 +274,47 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Projections/{id:long}/Packout")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.PackoutResultsCreate)]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> UploadPackout(long id, PackoutUploadForm form, CancellationToken cancellationToken)
+    public IActionResult RejectProjectionPackoutUpload(long id)
     {
-        form.RunProjectionId = id;
+        TempData["Error"] = "Packout Results belong to Actual Runs. Open the Actual Run and upload the report there.";
+        return RedirectToAction(nameof(ProjectionOutcome), new { id });
+    }
+
+    [HttpGet("ActualRuns/{id:long}")]
+    [Authorize(Policy = AccessPolicyNames.ActualRunsView)]
+    public async Task<IActionResult> ActualRunDetail(long id, CancellationToken cancellationToken)
+    {
+        var model = await binsRunService.GetActualRunDetailAsync(id, User, cancellationToken);
+        return model is null ? NotFound() : View("ActualRunDetail", model);
+    }
+
+    [HttpPost("ActualRuns/{id:long}/Packout")]
+    [Authorize(Policy = AccessPolicyNames.PackoutResultsCreate)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UploadActualRunPackout(long id, PackoutUploadForm form, CancellationToken cancellationToken)
+    {
+        form.ActualRunId = id;
         var result = await packoutReconciliationService.UploadAsync(form, User, cancellationToken);
         if (result.Error is not null)
         {
             TempData["Error"] = result.Error;
             return result.Id is long existingId
                 ? RedirectToAction(nameof(PackoutReview), new { id = existingId })
-                : RedirectToAction(nameof(ProjectionOutcome), new { id });
+                : RedirectToAction(nameof(ActualRunDetail), new { id });
         }
         if (result.Id is null)
         {
             TempData["Error"] = "Packout report upload failed.";
-            return RedirectToAction(nameof(ProjectionOutcome), new { id });
+            return RedirectToAction(nameof(ActualRunDetail), new { id });
         }
-        TempData["Success"] = "Packout report parsed. Review all flagged rows before finalizing.";
+        TempData["Success"] = "Packout Result parsed. Review all flagged rows before finalizing.";
         return RedirectToAction(nameof(PackoutReview), new { id = result.Id.Value });
     }
 
     [HttpGet("Packout/{id:long}")]
-    [Authorize(Policy = AccessPolicyNames.ProjectionOutcomeView)]
+    [Authorize(Policy = AccessPolicyNames.PackoutResultsView)]
     public async Task<IActionResult> PackoutReview(long id, CancellationToken cancellationToken)
     {
         var model = await packoutReconciliationService.GetAsync(id, User, cancellationToken);
@@ -305,7 +322,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Packout/{id:long}/Line")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.PackoutResultsCreate)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdatePackoutLine(long id, PackoutLineReviewForm form, CancellationToken cancellationToken)
     {
@@ -316,7 +333,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Packout/{id:long}/SecondaryOutputs")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.PackoutResultsCreate)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdatePackoutSecondaryOutputs(long id, PackoutSecondaryOutputForm form, CancellationToken cancellationToken)
     {
@@ -327,7 +344,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Packout/{id:long}/Finalize")]
-    [Authorize(Policy = AccessPolicyNames.ProjectionOutcomeAdmin)]
+    [Authorize(Policy = AccessPolicyNames.PackoutResultsAdmin)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> FinalizePackout(long id, PackoutFinalizeForm form, CancellationToken cancellationToken)
     {
@@ -338,30 +355,30 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Packout/{id:long}/Reopen")]
-    [Authorize(Policy = AccessPolicyNames.ProjectionOutcomeCreate)]
+    [Authorize(Policy = AccessPolicyNames.PackoutResultsAdmin)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ReopenPackout(long id, PackoutReopenForm form, CancellationToken cancellationToken)
     {
         form.PackoutRunId = id;
         var error = await packoutReconciliationService.ReopenAsync(form, User, cancellationToken);
-        TempData[error is null ? "Success" : "Error"] = error ?? "Packout feedback reopened. The projection is editable again.";
+        TempData[error is null ? "Success" : "Error"] = error ?? "Packout Result reopened for administrator correction.";
         return RedirectToAction(nameof(PackoutReview), new { id });
     }
 
     [HttpPost("Packout/{id:long}/Delete")]
-    [Authorize(Policy = AccessPolicyNames.ProjectionOutcomeCreate)]
+    [Authorize(Policy = AccessPolicyNames.PackoutResultsCreate)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeletePendingPackout(long id, long concurrencyVersion, CancellationToken cancellationToken)
     {
         var result = await packoutReconciliationService.DeletePendingAsync(id, concurrencyVersion, User, cancellationToken);
         TempData[result.Error is null ? "Success" : "Error"] = result.Error ?? "Pending actual-run upload removed. Its source hashes and deletion audit were preserved.";
-        return result.ProjectionId == 0
-            ? RedirectToAction(nameof(Index), new { Section = "Planner" })
-            : RedirectToAction(nameof(ProjectionOutcome), new { id = result.ProjectionId });
+        return result.ActualRunId == 0
+            ? RedirectToAction(nameof(Index), new { Section = "Actual" })
+            : RedirectToAction(nameof(ActualRunDetail), new { id = result.ActualRunId });
     }
 
     [HttpGet("Packout/{id:long}/Download")]
-    [Authorize(Policy = AccessPolicyNames.ProjectionOutcomeAdmin)]
+    [Authorize(Policy = AccessPolicyNames.PackoutResultsAdmin)]
     public async Task<IActionResult> DownloadPackout(long id, CancellationToken cancellationToken)
     {
         var result = await packoutReconciliationService.DownloadAsync(id, User, cancellationToken);
@@ -520,13 +537,12 @@ public sealed class BinsRunController(
         {
             form.WarehouseId,
             form.RoomId,
-            Section = "Actual",
-            ProjectionId = form.RunProjectionId
+            Section = "Actual"
         });
     }
 
     [HttpPost("ActualRuns")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.ActualRunsCreate)]
     public async Task<IActionResult> CreateActualRun(ActualRunForm form, CancellationToken cancellationToken)
     {
         var error = await ExecuteActualRunOperationAsync(
@@ -535,11 +551,11 @@ public sealed class BinsRunController(
             form.Id,
             cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Actual Run recorded and room inventory depleted.";
-        return RedirectToAction(nameof(Index), new { Section = "Actual", form.RunProjectionId });
+        return RedirectToAction(nameof(Index), new { Section = "Actual" });
     }
 
     [HttpPost("ActualRuns/{id:long}")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    [Authorize(Policy = AccessPolicyNames.ActualRunsCreate)]
     public async Task<IActionResult> UpdateActualRun(long id, ActualRunForm form, CancellationToken cancellationToken)
     {
         var error = await ExecuteActualRunOperationAsync(
@@ -552,7 +568,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("ActualRuns/{id:long}/Cancel")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunAdmin)]
+    [Authorize(Policy = AccessPolicyNames.ActualRunsAdmin)]
     public async Task<IActionResult> CancelActualRun(long id, CancelActualRunForm form, CancellationToken cancellationToken)
     {
         form.Id = id;
@@ -566,7 +582,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("ActualRunOverrides/{id:long}/Approve")]
-    [Authorize(Policy = AccessPolicyNames.BinsRunAdmin)]
+    [Authorize(Policy = AccessPolicyNames.ActualRunsAdmin)]
     public async Task<IActionResult> ApproveActualRunOverride(long id, ApproveActualRunOverrideForm form, CancellationToken cancellationToken)
     {
         form.RequestId = id;

@@ -441,14 +441,16 @@ public sealed class PackoutReconciliationTests
     [Fact]
     public void UserInterface_RequiresRunIdentityAndExplicitNegativeConfirmation()
     {
-        var upload = Read("src", "CropQc.Web", "Views", "BinsRun", "ProjectionOutcome.cshtml");
+        var upload = Read("src", "CropQc.Web", "Views", "BinsRun", "ActualRunDetail.cshtml");
         var review = Read("src", "CropQc.Web", "Views", "BinsRun", "PackoutReview.cshtml");
+        var projection = Read("src", "CropQc.Web", "Views", "BinsRun", "ProjectionOutcome.cshtml");
 
         Assert.Contains("name=\"PackingDate\"", upload);
         Assert.Contains("name=\"RunNumber\"", upload);
+        Assert.DoesNotContain("name=\"PackingDate\"", projection);
         Assert.Contains("NegativeQuantityConfirmed", review);
         Assert.Contains("Original uploads are deleted after parsing", review);
-        Assert.Contains("Projection Outcome Admin", Read("src", "CropQc.Web", "Services", "PackoutReconciliationService.cs"));
+        Assert.Contains("Packout Result Admin", Read("src", "CropQc.Web", "Services", "PackoutReconciliationService.cs"));
     }
 
     private static QcSample Sample(SampleType type) => new()

@@ -45,6 +45,8 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<ActualRunRevision> ActualRunRevisions => Set<ActualRunRevision>();
     public DbSet<ActualRunOverrideRequest> ActualRunOverrideRequests => Set<ActualRunOverrideRequest>();
     public DbSet<ActualRunOverrideRequestLine> ActualRunOverrideRequestLines => Set<ActualRunOverrideRequestLine>();
+    public DbSet<RunExpectation> RunExpectations => Set<RunExpectation>();
+    public DbSet<RunExpectationSource> RunExpectationSources => Set<RunExpectationSource>();
     public DbSet<RunProjection> RunProjections => Set<RunProjection>();
     public DbSet<RunProjectionSource> RunProjectionSources => Set<RunProjectionSource>();
     public DbSet<RunProjectionSizeResult> RunProjectionSizeResults => Set<RunProjectionSizeResult>();
@@ -55,6 +57,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<PackoutReportSource> PackoutReportSources => Set<PackoutReportSource>();
     public DbSet<PackoutReportLine> PackoutReportLines => Set<PackoutReportLine>();
     public DbSet<PackoutEmailAttempt> PackoutEmailAttempts => Set<PackoutEmailAttempt>();
+    public DbSet<PackoutSourceAllocation> PackoutSourceAllocations => Set<PackoutSourceAllocation>();
     public DbSet<CommercialPackPlan> CommercialPackPlans => Set<CommercialPackPlan>();
     public DbSet<CommercialPackDefinition> CommercialPackDefinitions => Set<CommercialPackDefinition>();
     public DbSet<CommercialPackEligibleSize> CommercialPackEligibleSizes => Set<CommercialPackEligibleSize>();
@@ -215,6 +218,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         ConfigureQc(modelBuilder, IsPostgreSqlProvider());
         ConfigureCommercialPacks(modelBuilder);
         ConfigureRunProjections(modelBuilder);
+        ConfigureRunExpectations(modelBuilder, IsPostgreSqlProvider());
         ConfigurePackoutReconciliation(modelBuilder);
         ConfigureAudit(modelBuilder);
         ConfigureDashboardConfiguration(modelBuilder);
@@ -423,10 +427,19 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.ReopenReason).HasMaxLength(1000);
             entity.HasIndex(x => new { x.FacilitySnapshot, x.PackingDate, x.RunNumber }).IsUnique();
             entity.HasIndex(x => new { x.RunProjectionId, x.Status });
+            entity.HasIndex(x => x.RunExpectationId);
             entity.HasIndex(x => x.BinsRunEntryId).IsUnique();
             entity.HasOne(x => x.RunProjection)
-                .WithMany(x => x.PackoutRuns)
+                .WithMany(x => x.LegacyPackoutRuns)
                 .HasForeignKey(x => x.RunProjectionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ActualRun)
+                .WithMany(x => x.PackoutRuns)
+                .HasForeignKey(x => x.ActualRunId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.RunExpectation)
+                .WithMany(x => x.PackoutRuns)
+                .HasForeignKey(x => x.RunExpectationId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.BinsRunEntry)
                 .WithOne()
@@ -488,6 +501,96 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .HasForeignKey(x => x.SenderUserId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
+    }
+
+    private static void ConfigureRunExpectations(ModelBuilder modelBuilder, bool isPostgreSqlProvider)
+    {
+        modelBuilder.Entity<RunExpectation>(entity =>
+        {
+            entity.Property(x => x.FacilitySnapshot).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.GrossPounds).HasPrecision(18, 4);
+            entity.Property(x => x.ExpectedPackoutPercent).HasPrecision(8, 4);
+            entity.Property(x => x.ExpectedPackedPounds).HasPrecision(18, 4);
+            entity.Property(x => x.ExpectedPackedBoxes).HasPrecision(18, 4);
+            entity.Property(x => x.ExpectedCullPounds).HasPrecision(18, 4);
+            entity.Property(x => x.ExpectedJuicePounds).HasPrecision(18, 4);
+            entity.Property(x => x.ExpectedPeelerPounds).HasPrecision(18, 4);
+            entity.Property(x => x.ExpectedWastePounds).HasPrecision(18, 4);
+            entity.Property(x => x.ConfidencePercent).HasPrecision(8, 4);
+            entity.Property(x => x.CalculationVersion).HasMaxLength(75).IsRequired();
+            entity.HasIndex(x => x.ActualRunRevisionId).IsUnique();
+            entity.HasIndex(x => new { x.ActualRunId, x.RevisionNumber }).IsUnique();
+            entity.HasOne(x => x.ActualRun)
+                .WithMany(x => x.Expectations)
+                .HasForeignKey(x => x.ActualRunId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ActualRunRevision)
+                .WithOne(x => x.RunExpectation)
+                .HasForeignKey<RunExpectation>(x => x.ActualRunRevisionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<RunExpectationSource>(entity =>
+        {
+            entity.Property(x => x.FacilitySnapshot).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.RoomSnapshot).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.GrowerSnapshot).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.LotSnapshot).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.VarietySnapshot).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.ProductionTypeSnapshot).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.ContributionPercent).HasPrecision(9, 6);
+            entity.Property(x => x.GrossPounds).HasPrecision(18, 4);
+            entity.Property(x => x.ExpectedPackedPounds).HasPrecision(18, 4);
+            entity.Property(x => x.ExpectedCullPounds).HasPrecision(18, 4);
+            entity.Property(x => x.ConfidencePercent).HasPrecision(8, 4);
+            entity.Property(x => x.WarningSnapshot).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.RunExpectationId, x.BinsRunEntryId }).IsUnique();
+            entity.HasIndex(x => new { x.WarehouseId, x.RoomId, x.CropYearSnapshot, x.LotSnapshot, x.VarietySnapshot });
+            entity.HasOne(x => x.RunExpectation)
+                .WithMany(x => x.Sources)
+                .HasForeignKey(x => x.RunExpectationId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.BinsRunEntry)
+                .WithMany()
+                .HasForeignKey(x => x.BinsRunEntryId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.QcSample)
+                .WithMany()
+                .HasForeignKey(x => x.QcSampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<PackoutSourceAllocation>(entity =>
+        {
+            entity.Property(x => x.ContributionPercent).HasPrecision(9, 6);
+            entity.Property(x => x.AllocatedPackedPounds).HasPrecision(18, 6);
+            entity.Property(x => x.AllocatedResidualPounds).HasPrecision(18, 6);
+            entity.Property(x => x.AllocatedJuicePounds).HasPrecision(18, 6);
+            entity.Property(x => x.AllocatedPeelerPounds).HasPrecision(18, 6);
+            entity.Property(x => x.AllocatedWastePounds).HasPrecision(18, 6);
+            entity.Property(x => x.AllocationVersion).HasMaxLength(75).IsRequired();
+            entity.HasIndex(x => new { x.PackoutRunId, x.RunExpectationSourceId }).IsUnique();
+            entity.HasOne(x => x.PackoutRun)
+                .WithMany(x => x.SourceAllocations)
+                .HasForeignKey(x => x.PackoutRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.RunExpectationSource)
+                .WithMany()
+                .HasForeignKey(x => x.RunExpectationSourceId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        var currentPackoutIndex = modelBuilder.Entity<PackoutRun>()
+            .HasIndex(x => x.ActualRunId)
+            .IsUnique()
+            .HasDatabaseName("UX_PackoutRuns_ActualRunId");
+        currentPackoutIndex.HasFilter(isPostgreSqlProvider
+            ? "\"ActualRunId\" IS NOT NULL"
+            : "[ActualRunId] IS NOT NULL");
     }
 
     private static void ConfigureCommercialPacks(ModelBuilder modelBuilder)

@@ -49,10 +49,10 @@ public sealed class BinsRunWorkflowTests
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Create), AccessPolicyNames.BinsRunEdit);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Edit), AccessPolicyNames.BinsRunEdit);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Reverse), AccessPolicyNames.BinsRunAdmin);
-        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.CreateActualRun), AccessPolicyNames.BinsRunEdit);
-        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.UpdateActualRun), AccessPolicyNames.BinsRunEdit);
-        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.CancelActualRun), AccessPolicyNames.BinsRunAdmin);
-        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.ApproveActualRunOverride), AccessPolicyNames.BinsRunAdmin);
+        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.CreateActualRun), AccessPolicyNames.ActualRunsCreate);
+        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.UpdateActualRun), AccessPolicyNames.ActualRunsCreate);
+        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.CancelActualRun), AccessPolicyNames.ActualRunsAdmin);
+        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.ApproveActualRunOverride), AccessPolicyNames.ActualRunsAdmin);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.ReverseTransfer), AccessPolicyNames.TransfersAdmin);
         AssertActionPolicy<RoomInventoryController>(
             nameof(RoomInventoryController.Reconciliation),
@@ -428,9 +428,9 @@ public sealed class BinsRunWorkflowTests
         await db.SaveChangesAsync();
         var baselineAdjustments = await db.RoomInventoryAdjustments.CountAsync();
 
-        var error = await service.CreateAsync(ActualRunForm(option, projection), user, CancellationToken.None);
+        var error = await service.CreateAsync(ProjectionConversionForm(option, projection), user, CancellationToken.None);
 
-        Assert.Contains("deleted projection", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cannot be converted", error, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(baselineAdjustments, await db.RoomInventoryAdjustments.CountAsync());
         Assert.Empty(await db.BinsRunEntries.ToListAsync());
     }
@@ -449,9 +449,9 @@ public sealed class BinsRunWorkflowTests
         await db.SaveChangesAsync();
         var baselineAdjustments = await db.RoomInventoryAdjustments.CountAsync();
 
-        var error = await service.CreateAsync(ActualRunForm(option, projection), user, CancellationToken.None);
+        var error = await service.CreateAsync(ProjectionConversionForm(option, projection), user, CancellationToken.None);
 
-        Assert.Contains("assigned WP or EBS facility", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cannot be converted", error, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(baselineAdjustments, await db.RoomInventoryAdjustments.CountAsync());
         Assert.Empty(await db.BinsRunEntries.ToListAsync());
     }
@@ -563,6 +563,13 @@ public sealed class BinsRunWorkflowTests
             Assert.Equal(run.Id, x.ActualRunId);
         });
         Assert.Equal(3, await db.RoomInventoryAdjustments.CountAsync(x => x.ActualRunId == run.Id));
+        var expectation = await db.RunExpectations.Include(x => x.Sources).SingleAsync();
+        Assert.Equal(run.Id, expectation.ActualRunId);
+        Assert.Equal(1, expectation.RevisionNumber);
+        Assert.Equal(75, expectation.TotalBins);
+        Assert.Equal(3, expectation.Sources.Count);
+        Assert.Null(run.RunProjectionId);
+        Assert.Equal(1, await db.RunExpectations.CountAsync());
         var ledgerAfterSave = await new RoomInventoryLedgerQueryService(db)
             .GetSnapshotsAsync(1000, [1001, 1002], CancellationToken.None);
         Assert.Equal(80, ledgerAfterSave.Single(x => x.RoomId == 1001 && x.Lot == "LOT-120").CurrentBins);
@@ -598,6 +605,14 @@ public sealed class BinsRunWorkflowTests
         await db.Entry(run).ReloadAsync();
         Assert.Equal(2, run.CurrentRevisionNumber);
         Assert.Equal(2, run.ConcurrencyVersion);
+        Assert.Equal(2, await db.RunExpectations.CountAsync(x => x.ActualRunId == run.Id));
+        Assert.Equal(
+            new[] { 1, 2 },
+            await db.RunExpectations
+                .Where(x => x.ActualRunId == run.Id)
+                .OrderBy(x => x.RevisionNumber)
+                .Select(x => x.RevisionNumber)
+                .ToArrayAsync());
         Assert.True((await db.BinsRunEntries.SingleAsync(x => x.Id == originalEntry.Id)).IsReversed);
         var reversal = await db.BinsRunEntries.SingleAsync(x => x.ReversesBinsRunEntryId == originalEntry.Id);
         Assert.Equal(ActualRunTransactionTypes.Reversal, reversal.TransactionType);
@@ -883,10 +898,7 @@ public sealed class BinsRunWorkflowTests
             manager,
             CancellationToken.None);
         var legacyOption = legacyPage.AvailableInventory.Single(x => x.Lot == "LOT-30");
-        var legacyProjection = ProjectionForActual(legacyOption, 1000);
-        db.RunProjections.Add(legacyProjection);
-        await db.SaveChangesAsync();
-        var legacyForm = ActualRunForm(legacyOption, legacyProjection);
+        var legacyForm = ActualRunForm(legacyOption);
         legacyForm.OperationKey = Guid.NewGuid().ToString("N");
         legacyForm.BinsRun = 5;
         Assert.Null(await service.CreateAsync(legacyForm, manager, CancellationToken.None));
@@ -1415,7 +1427,9 @@ public sealed class BinsRunWorkflowTests
         return projection;
     }
 
-    private static BinsRunForm ActualRunForm(BinsRunInventoryOptionViewModel option, RunProjection projection) =>
+    private static BinsRunForm ActualRunForm(
+        BinsRunInventoryOptionViewModel option,
+        RunProjection? projection = null) =>
         new()
         {
             WarehouseId = option.WarehouseId,
@@ -1423,8 +1437,6 @@ public sealed class BinsRunWorkflowTests
             InventoryKey = option.InventoryKey,
             BinsRun = 5,
             ExpectedAvailableBins = option.CurrentBins,
-            RunProjectionId = projection.Id,
-            RunProjectionSourceId = projection.Sources.Single().Id,
             RunAt = DateTimeOffset.UtcNow
         };
 
@@ -1440,6 +1452,14 @@ public sealed class BinsRunWorkflowTests
                 ExpectedAvailableBins = x.Option.CurrentBins
             }).ToList()
         };
+
+    private static BinsRunForm ProjectionConversionForm(BinsRunInventoryOptionViewModel option, RunProjection projection)
+    {
+        var form = ActualRunForm(option, projection);
+        form.RunProjectionId = projection.Id;
+        form.RunProjectionSourceId = projection.Sources.Single().Id;
+        return form;
+    }
 
     private static User User(int id, string email, PageAccessLevel binsRunLevel) => new()
     {

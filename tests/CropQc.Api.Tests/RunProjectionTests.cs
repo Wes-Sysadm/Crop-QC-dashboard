@@ -1576,6 +1576,9 @@ public sealed class RunProjectionTests
         public Task<BinsRunPageViewModel> GetPageAsync(BinsRunFilterForm filter, ClaimsPrincipal user, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
+        public Task<ActualRunDetailViewModel?> GetActualRunDetailAsync(long id, ClaimsPrincipal user, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
         public Task<BinsRunProjectionViewModel> GetProjectionAsync(BinsRunProjectionRequest request, ClaimsPrincipal user, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 

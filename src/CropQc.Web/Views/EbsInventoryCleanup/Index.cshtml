@@ -1,0 +1,76 @@
+@model EbsInventoryCleanupPageViewModel
+@{
+    ViewData["Title"] = "EBS Historical Inventory Cleanup";
+}
+
+<div class="room-card-header">
+    <div>
+        <h1>EBS Historical Inventory Cleanup</h1>
+        <p class="muted">Admin-only review of active EBS room-lot balances outside Gala in Evans 7. Nothing changes until an administrator confirms one exact row.</p>
+    </div>
+</div>
+
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
+@if (TempData["Success"] is string success)
+{
+    <p class="notice success">@success</p>
+}
+
+<section class="panel">
+    <p class="notice warning">Confirm physical disposition and the best-supported run date before approval. Approval creates a permanent Bins Run and its single linked room-ledger deduction; it never uses a general negative true-up.</p>
+    @if (Model.Rows.Count == 0)
+    {
+        <p>No stale EBS balances are visible on this page.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Room</th><th>Lot / grower</th><th>Fruit</th><th>Current</th><th>Evidence</th><th>Last activity</th><th>Review</th></tr>
+                </thead>
+                <tbody>
+                @foreach (var row in Model.Rows)
+                {
+                    <tr>
+                        <td>@row.Room</td>
+                        <td><strong>@row.Lot</strong><br /><span class="muted">@row.Grower · crop @row.CropYear</span></td>
+                        <td>@row.Variety<br /><span class="muted">@row.ProductionType</span></td>
+                        <td><strong>@row.CurrentBins bins</strong><br /><span class="muted">origin @row.PositiveLedgerOrigin · runs @row.BinsRunDeductions · transfers @row.TransferActivity · true-ups @row.TrueUps</span></td>
+                        <td>@row.EvidenceSource<br /><span class="notice warning">@row.WarningReason</span></td>
+                        <td>@BusinessTime.FormatPacific(row.LastActivityAt)</td>
+                        <td>
+                            <details>
+                                <summary>Approve cleanup</summary>
+                                <form method="post" action="/Admin/EbsInventoryCleanup/Approve" class="form-grid">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="InventorySnapshotId" value="@row.InventorySnapshotId" />
+                                    <input type="hidden" name="ExpectedCurrentBins" value="@row.CurrentBins" />
+                                    <input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" />
+                                    <label>Best-supported run date/time<input type="datetime-local" name="RunAt" required /></label>
+                                    <label class="wide">Required explanation<textarea name="Reason" maxlength="1000" required>Historical inventory cleanup — fruit was packed before current room-ledger tracking was complete.</textarea></label>
+                                    <button type="submit" class="danger-button">Record historical Bins Run</button>
+                                </form>
+                            </details>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+    <p class="muted">Showing @Model.Rows.Count of @Model.TotalRows rows.</p>
+    <div class="action-bar">
+        @if (Model.HasPreviousPage)
+        {
+            <a class="button secondary-button" href="?page=@(Model.Page - 1)&amp;pageSize=@Model.PageSize">Previous</a>
+        }
+        @if (Model.HasNextPage)
+        {
+            <a class="button secondary-button" href="?page=@(Model.Page + 1)&amp;pageSize=@Model.PageSize">Next</a>
+        }
+    </div>
+</section>

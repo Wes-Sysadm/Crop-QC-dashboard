@@ -4,8 +4,7 @@ namespace CropQc.Web.Models;
 
 public sealed class PackoutUploadForm
 {
-    public long RunProjectionId { get; set; }
-    public long? BinsRunEntryId { get; set; }
+    public long ActualRunId { get; set; }
     public DateOnly PackingDate { get; set; }
     public int RunNumber { get; set; } = 1;
     public decimal DumpedBins { get; set; }
@@ -79,7 +78,9 @@ public sealed class PackoutAnalysisConfigurationForm
 public sealed class PackoutRunViewModel
 {
     public long Id { get; set; }
-    public long RunProjectionId { get; set; }
+    public long? RunProjectionId { get; set; }
+    public long? ActualRunId { get; set; }
+    public long? RunExpectationId { get; set; }
     public string ProjectionName { get; set; } = "";
     public long? BinsRunEntryId { get; set; }
     public string Status { get; set; } = "";

@@ -46,7 +46,8 @@ public sealed class PackoutFeedbackWorkbookService(
     private static IEnumerable<IReadOnlyList<string?>> Rows(PackoutRun run)
     {
         yield return new string?[] { "Crop QC Packout Feedback" };
-        yield return new string?[] { "Projection", run.RunProjection.Name };
+        yield return new string?[] { "Actual Run", run.ActualRunId?.ToString(CultureInfo.InvariantCulture) ?? "Legacy" };
+        yield return new string?[] { "Run Expectation", run.RunExpectationId?.ToString(CultureInfo.InvariantCulture) ?? "Legacy projection snapshot" };
         yield return new string?[] { "Facility", run.FacilitySnapshot };
         yield return new string?[] { "Packing date", run.PackingDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) };
         yield return new string?[] { "Run number", run.RunNumber.ToString(CultureInfo.InvariantCulture) };
@@ -67,27 +68,47 @@ public sealed class PackoutFeedbackWorkbookService(
         yield return new string?[] { "Reconciliation warning", run.HasReconciliationWarning ? "Yes - exceeds 10% of dumped pounds" : "No" };
         yield return new string?[] { "Calculation version", run.CalculationVersion };
         yield return Array.Empty<string?>();
-        yield return new string?[] { "Projection source snapshots" };
-        yield return new string?[] { "Source ID", "Grower", "Lot", "Room", "Variety", "Current remaining bins", "Projected bins", "Size fruit", "Grade fruit", "Joint fruit", "Defect %", "Bins Run ID", "Receipt IDs", "Sample IDs" };
-        foreach (var source in run.RunProjection.Sources.OrderBy(x => x.SortOrder).ThenBy(x => x.Id))
+        yield return new string?[] { "Run Expectation source snapshots" };
+        yield return new string?[] { "Source ID", "Grower", "Lot", "Room", "Variety", "Bins contributed", "Contribution %", "QC fruit", "Confidence %", "Bins Run ID", "QC sample ID" };
+        if (run.RunExpectation is not null)
         {
-            yield return new string?[]
+            foreach (var source in run.RunExpectation.Sources.OrderBy(x => x.Id))
             {
-                source.Id.ToString(CultureInfo.InvariantCulture),
-                source.GrowerSnapshot,
-                source.LotSnapshot,
-                source.RoomSnapshot,
-                source.VarietySnapshot,
-                source.AvailableBinsSnapshot?.ToString(CultureInfo.InvariantCulture),
-                source.PlannedBins.ToString(CultureInfo.InvariantCulture),
-                source.SizeBasisFruitCount.ToString(CultureInfo.InvariantCulture),
-                source.GradeBasisFruitCount.ToString(CultureInfo.InvariantCulture),
-                source.JointSizeGradeBasisFruitCount.ToString(CultureInfo.InvariantCulture),
-                Format(source.TotalDefectPercentageSnapshot),
-                source.ActualBinsRunEntryId?.ToString(CultureInfo.InvariantCulture),
-                source.ContributingReceiptIdsJson,
-                source.ContributingSampleIdsJson
-            };
+                yield return new string?[]
+                {
+                    source.Id.ToString(CultureInfo.InvariantCulture),
+                    source.GrowerSnapshot,
+                    source.LotSnapshot,
+                    source.RoomSnapshot,
+                    source.VarietySnapshot,
+                    source.BinsContributed.ToString(CultureInfo.InvariantCulture),
+                    Format(source.ContributionPercent),
+                    source.QcFruitCountSnapshot.ToString(CultureInfo.InvariantCulture),
+                    Format(source.ConfidencePercent),
+                    source.BinsRunEntryId.ToString(CultureInfo.InvariantCulture),
+                    source.QcSampleId?.ToString(CultureInfo.InvariantCulture)
+                };
+            }
+        }
+        else if (run.RunProjection is not null)
+        {
+            foreach (var source in run.RunProjection.Sources.OrderBy(x => x.SortOrder).ThenBy(x => x.Id))
+            {
+                yield return new string?[]
+                {
+                    source.Id.ToString(CultureInfo.InvariantCulture),
+                    source.GrowerSnapshot,
+                    source.LotSnapshot,
+                    source.RoomSnapshot,
+                    source.VarietySnapshot,
+                    source.PlannedBins.ToString(CultureInfo.InvariantCulture),
+                    null,
+                    source.SizeBasisFruitCount.ToString(CultureInfo.InvariantCulture),
+                    null,
+                    source.ActualBinsRunEntryId?.ToString(CultureInfo.InvariantCulture),
+                    source.SelectedQcSampleId?.ToString(CultureInfo.InvariantCulture)
+                };
+            }
         }
         yield return Array.Empty<string?>();
         yield return new string?[] { "Accuracy components" };
@@ -130,6 +151,29 @@ public sealed class PackoutFeedbackWorkbookService(
                 Format(source.Confidence is null ? null : source.Confidence * 100m),
                 source.ParsedAt.ToString("u", CultureInfo.InvariantCulture)
             };
+        }
+        if (run.SourceAllocations.Count > 0)
+        {
+            yield return Array.Empty<string?>();
+            yield return new string?[] { "Estimated Allocation by Source Lot" };
+            yield return new string?[] { "Source", "Bins", "Contribution %", "Packed lb", "Whole boxes", "Residual lb", "Juice lb", "Peeler lb", "Waste lb", "Allocation version" };
+            foreach (var allocation in run.SourceAllocations.OrderBy(x => x.RunExpectationSourceId))
+            {
+                var source = allocation.RunExpectationSource;
+                yield return new string?[]
+                {
+                    $"{source.GrowerSnapshot} / {source.LotSnapshot} / {source.RoomSnapshot}",
+                    allocation.BinsContributed.ToString(CultureInfo.InvariantCulture),
+                    Format(allocation.ContributionPercent),
+                    Format(allocation.AllocatedPackedPounds),
+                    allocation.AllocatedWholeBoxes.ToString(CultureInfo.InvariantCulture),
+                    Format(allocation.AllocatedResidualPounds),
+                    Format(allocation.AllocatedJuicePounds),
+                    Format(allocation.AllocatedPeelerPounds),
+                    Format(allocation.AllocatedWastePounds),
+                    allocation.AllocationVersion
+                };
+            }
         }
     }
 

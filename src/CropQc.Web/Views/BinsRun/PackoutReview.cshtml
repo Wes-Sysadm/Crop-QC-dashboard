@@ -6,11 +6,18 @@
 
 <div class="room-card-header">
     <div>
-        <h1>Actual Packout Review</h1>
+        <h1>Packout Result Review</h1>
         <p class="muted">@Model.Facility · crop @Model.CropYear · lot @Model.LotNumber · @Model.Variety · @(Model.IsOrganic ? "Organic" : "Conventional")</p>
     </div>
     <div class="action-bar">
-        <a class="button secondary-button" href="/BinsRun/Projections/@Model.RunProjectionId/Outcome">Projection outcome</a>
+        @if (Model.ActualRunId is long actualRunId)
+        {
+            <a class="button secondary-button" href="/BinsRun/ActualRuns/@actualRunId">Actual Run</a>
+        }
+        else if (Model.RunProjectionId is long legacyProjectionId)
+        {
+            <a class="button secondary-button" href="/BinsRun/Projections/@legacyProjectionId/Outcome">Legacy Planning Projection</a>
+        }
         @if (Model.CanAdmin)
         {
             <a class="button secondary-button" href="/BinsRun/Packout/@Model.Id/Download">Download feedback workbook</a>
