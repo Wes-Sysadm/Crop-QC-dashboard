@@ -27,8 +27,13 @@ the separate Planning Projection reset or any EBS inventory cleanup.
 6. Apply
    `scripts/postgresql/apply-projection-actual-run-separation-schema.sql`.
 7. Run `scripts/postgresql/verify-projection-actual-run-separation.sql`.
-8. Require migration-applied `true`, all three tables present, no duplicate
+8. Require `application_object_state_ready` to be `true`, all three tables,
+   required columns, indexes, and foreign keys to be present, no duplicate
    current Actual Run packouts, and zero orphan snapshot/allocation rows.
+   The compatibility apply deliberately does not insert into
+   `__EFMigrationsHistory`; the read-only object-state verification is the
+   production authority until the historical migration chain is reconciled in
+   a separately reviewed operation.
 9. Deploy the exact merged commit and verify health and authenticated pages.
 10. Re-enable autodeploy only after smoke verification.
 
@@ -49,3 +54,25 @@ roll the application back to the prior deployed commit. The prior application
 ignores the new nullable columns and additive tables. Do not run the EF `Down`
 migration in production without a separately reviewed rollback and explicit
 authorization.
+
+## Incident recovery order
+
+The production schema apply is a separate, explicitly authorized operation.
+Do not run it merely because the application reports that the schema is behind.
+
+1. Keep Render auto-deploy disabled.
+2. Run the read-only preflight and retain its object-state output.
+3. Capture and verify the mandatory production backup.
+4. Restore that backup into a disposable PostgreSQL database.
+5. Run preflight, apply, verify, and the Actual Run transaction test against
+   the restored copy.
+6. Obtain explicit production schema authorization.
+7. Run the exact reviewed apply script once against production.
+8. Run the read-only verification and the deployment gate.
+9. Deploy the exact approved application commit only after both checks pass.
+
+The apply script is transactional, uses an advisory lock, is safe to rerun when
+the EF history row is absent, and refuses an inconsistent state where EF
+history claims the migration is present but core objects are missing. It never
+deletes or updates Actual Runs, Bins Run entries, room adjustments, projections,
+packout results, or inventory.

@@ -10,6 +10,7 @@ using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -649,6 +650,62 @@ public sealed class BinsRunWorkflowTests
         Assert.Contains("Packout Result and supporting documents", detail);
         Assert.Contains("No Packout Result has been uploaded", detail);
         Assert.DoesNotContain("The dashboard could not complete the request", detail);
+    }
+
+    [Fact]
+    public async Task ActualRun_RunExpectationFailure_RollsBackRunLedgerAndInventoryAtomically()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<CropQcDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var db = new CropQcDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        await SeedActualRunLedgerOnlyAsync(db);
+        var baselineAdjustments = await db.RoomInventoryAdjustments.CountAsync();
+        var service = CreateService(
+            db,
+            new ThrowingRunExpectationService(),
+            new StaticRoomInventoryLedgerQueryService(
+            [
+                new(
+                    1000, "ART", 1001, "Evans-12", "", 2026, null, 1000,
+                    "Test Grower", "LOT-120", null, "ACTUALRUNTEST", "ACTUALRUNTEST",
+                    "Actual Run Test Apple", "Apple", "Conventional", false, "",
+                    120, 0, 0, 0, 0, 0, 0, 0, 120, 120, 1,
+                    DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 8001)
+            ]));
+        var user = Principal("manager@fruitandland.com");
+        var option = new BinsRunInventoryOptionViewModel(
+            "L:1000:1001:2026:LOT-120:ACTUALRUNTEST:1000",
+            null,
+            8001,
+            1000,
+            1001,
+            "Evans-12 / LOT-120",
+            "Test Grower",
+            "LOT-120",
+            "ACTUALRUNTEST",
+            "Evans-12",
+            120,
+            "",
+            null,
+            1000,
+            "Apple",
+            null,
+            2026,
+            "Conventional");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateActualRunAsync(GroupForm((option, 10)), user, CancellationToken.None));
+
+        db.ChangeTracker.Clear();
+        Assert.Empty(await db.ActualRuns.AsNoTracking().ToListAsync());
+        Assert.Empty(await db.ActualRunRevisions.AsNoTracking().ToListAsync());
+        Assert.Empty(await db.BinsRunEntries.AsNoTracking().ToListAsync());
+        Assert.Empty(await db.RunExpectations.AsNoTracking().ToListAsync());
+        Assert.Equal(baselineAdjustments, await db.RoomInventoryAdjustments.AsNoTracking().CountAsync());
     }
 
     [Fact]
@@ -1597,8 +1654,42 @@ public sealed class BinsRunWorkflowTests
         CreatedAt = DateTimeOffset.UtcNow
     };
 
-    private static BinsRunService CreateService(CropQcDbContext db) =>
-        new(db, new UserAccessService(db, new ConfigurationBuilder().Build()), NullLogger<BinsRunService>.Instance);
+    private static BinsRunService CreateService(
+        CropQcDbContext db,
+        IRunExpectationService? runExpectationService = null,
+        IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null) =>
+        new(
+            db,
+            new UserAccessService(db, new ConfigurationBuilder().Build()),
+            NullLogger<BinsRunService>.Instance,
+            roomInventoryLedgerQueryService: roomInventoryLedgerQueryService,
+            runExpectationService: runExpectationService);
+
+    private sealed class ThrowingRunExpectationService : IRunExpectationService
+    {
+        public Task<RunExpectation> CreateFrozenAsync(
+            ActualRun actualRun,
+            ActualRunRevision revision,
+            IReadOnlyList<BinsRunEntry> activeEntries,
+            int userId,
+            DateTimeOffset calculatedAt,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Simulated missing Run Expectation schema.");
+    }
+
+    private sealed class StaticRoomInventoryLedgerQueryService(
+        IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots) : IRoomInventoryLedgerQueryService
+    {
+        public Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsync(
+            int? warehouseId,
+            IReadOnlyCollection<int>? roomIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<RoomInventoryLedgerSnapshot>>(
+                snapshots.Where(x =>
+                    (warehouseId is null || x.WarehouseId == warehouseId)
+                    && (roomIds is null || roomIds.Count == 0 || roomIds.Contains(x.RoomId)))
+                .ToList());
+    }
 
     private static DashboardDataService CreateDashboardService(CropQcDbContext db, ClaimsPrincipal principal)
     {

@@ -67,7 +67,9 @@ public sealed class PackoutSourceAllocationService : IPackoutSourceAllocationSer
             result.Add(new PackoutSourceAllocation
             {
                 PackoutRunId = packout.Id,
+                PackoutRun = packout,
                 RunExpectationSourceId = source.Id,
+                RunExpectationSource = source,
                 BinsContributed = source.BinsContributed,
                 ContributionPercent = decimal.Round(share * 100m, 6),
                 AllocatedPackedPounds = packed,
