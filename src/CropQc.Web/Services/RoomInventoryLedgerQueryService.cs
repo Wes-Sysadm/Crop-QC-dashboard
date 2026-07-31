@@ -56,7 +56,17 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
             x.Id,
             x.WarehouseId,
             x.RoomId,
-            CropYear = x.CropYear ?? (x.Receipt == null ? null : (int?)x.Receipt.CropYear),
+            CropYear = x.CropYear
+                ?? (x.Receipt == null ? null : (int?)x.Receipt.CropYear)
+                ?? dbContext.BinsRunEntries
+                    .Where(entry => entry.InventoryAdjustmentId == x.Id)
+                    .Select(entry => entry.CropYear
+                        ?? (entry.Receipt == null ? null : (int?)entry.Receipt.CropYear)
+                        ?? (entry.SourceInventoryAdjustment == null ? null : entry.SourceInventoryAdjustment.CropYear)
+                        ?? (entry.SourceInventoryAdjustment == null || entry.SourceInventoryAdjustment.Receipt == null
+                            ? null
+                            : (int?)entry.SourceInventoryAdjustment.Receipt.CropYear))
+                    .FirstOrDefault(),
             LotNumber = x.LotNumber != ""
                 ? x.LotNumber
                 : x.Receipt == null

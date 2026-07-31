@@ -17,7 +17,11 @@ public interface IRoomInventoryImportService
     string GetCsvExample();
 }
 
-public sealed class RoomInventoryImportService(CropQcDbContext dbContext, IWebHostEnvironment environment, ICropYearService cropYearService) : IRoomInventoryImportService
+public sealed class RoomInventoryImportService(
+    CropQcDbContext dbContext,
+    IWebHostEnvironment environment,
+    ICropYearService cropYearService,
+    IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null) : IRoomInventoryImportService
 {
     public const string BuiltInEbsSeedFileName = "ebs-starting-room-inventory.csv";
     public const string StartingInventoryAdjustmentType = "StartingInventoryImport";
@@ -30,6 +34,8 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
 2026,EBS,EVANCA12,,1570,FUJI,819,Sealed,2026-06-18,Wes verified baseline
 2026,EBS,EVANCA12,,1030,FUJI,85,Sealed,2026-06-18,Wes verified baseline
 """;
+    private IRoomInventoryLedgerQueryService RoomInventoryLedger { get; } =
+        roomInventoryLedgerQueryService ?? new RoomInventoryLedgerQueryService(dbContext);
 
     public async Task<RoomInventoryImportPageViewModel> GetPageAsync(RoomInventoryImportForm filter, CancellationToken cancellationToken)
     {
@@ -479,27 +485,42 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
             .ThenBy(x => x.Id)
             .Select(x => CurrentLotBreakdownRow(x, includedIds))
             .ToList();
-        var latest = validAdjustments
-            .Where(x => includedIds.Contains(x.Id))
-            .Where(x => x.NewBinCount > 0)
-            .Select(x => new RoomInventoryCurrentLotViewModel
+        var invalidBaselineKeys = adjustments
+            .Where(x => CurrentLotInvalidReason(x) is not null)
+            .Select(x => CurrentLedgerKey(x.RoomId, x.CropYear, x.LotNumber, x.FruitProfile?.VarietyCode ?? x.VarietyCode ?? "", x.FruitProfileId))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var ledgerSnapshots = await RoomInventoryLedger.GetSnapshotsAsync(null, null, cancellationToken);
+        var roomIds = ledgerSnapshots.Select(x => x.RoomId).Distinct().ToList();
+        var rooms = await dbContext.Rooms.AsNoTracking()
+            .Where(x => roomIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
+        var latest = ledgerSnapshots
+            .Where(x => x.CurrentBins > 0)
+            .Where(x => !invalidBaselineKeys.Contains(CurrentLedgerKey(x.RoomId, x.CropYear, x.Lot, x.Variety, x.FruitProfileId)))
+            .Select(x =>
             {
-                RoomId = x.RoomId,
-                CropYear = x.CropYear,
-                Facility = x.Room.Warehouse.Code,
-                SubLocation = !string.IsNullOrWhiteSpace(x.SourceSubLocation) ? x.SourceSubLocation! : DetermineEbsSubLocation(x.Room.CropQcRoomName ?? x.Room.Code, x.SourceRoomCode ?? x.Room.CompuTechRoomCode ?? ""),
-                CropQcRoomName = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
-                CompuTechRoomCode = x.SourceRoomCode ?? x.Room.CompuTechRoomCode ?? "",
-                RoomCode = x.Room.CropQcRoomName ?? x.Room.Code,
-                MasterRoomCode = x.Room.Code,
-                Grower = x.GrowerName ?? "",
-                LotNumber = x.LotNumber ?? "",
-                PoolStart = x.PoolStart ?? "",
-                Variety = x.VarietyCode ?? "",
-                InventoryStatus = x.InventoryStatus ?? "",
-                CurrentBins = x.NewBinCount,
-                Source = x.Source ?? x.Reason ?? "",
-                LastAdjustmentAt = x.AdjustmentAt
+                var room = rooms[x.RoomId];
+                return new RoomInventoryCurrentLotViewModel
+                {
+                    RoomId = x.RoomId,
+                    CropYear = x.CropYear,
+                    Facility = x.Facility,
+                    SubLocation = !string.IsNullOrWhiteSpace(x.LocationGroup)
+                        ? x.LocationGroup
+                        : DetermineEbsSubLocation(x.Room, room.CompuTechRoomCode ?? ""),
+                    CropQcRoomName = x.Room,
+                    CompuTechRoomCode = room.CompuTechRoomCode ?? "",
+                    RoomCode = x.Room,
+                    MasterRoomCode = room.Code,
+                    Grower = x.Grower,
+                    LotNumber = x.Lot,
+                    PoolStart = x.PoolStart ?? "",
+                    Variety = x.Variety,
+                    InventoryStatus = x.InventoryStatus,
+                    CurrentBins = x.CurrentBins,
+                    Source = "Permanent room inventory ledger",
+                    LastAdjustmentAt = x.LastTransactionAt
+                };
             })
             .ToList();
 
@@ -543,6 +564,9 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
             .ToList(),
             breakdown);
     }
+
+    private static string CurrentLedgerKey(int roomId, int? cropYear, string lot, string variety, int? fruitProfileId) =>
+        $"{roomId}|{cropYear?.ToString(CultureInfo.InvariantCulture) ?? "-"}|{lot.Trim().ToUpperInvariant()}|{variety.Trim().ToUpperInvariant()}|{fruitProfileId?.ToString(CultureInfo.InvariantCulture) ?? "-"}";
 
     private static string? CurrentLotInvalidReason(RoomInventoryAdjustment adjustment)
     {
