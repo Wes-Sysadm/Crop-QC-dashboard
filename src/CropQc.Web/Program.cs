@@ -1330,3 +1330,5 @@ static async Task EnsureAccessMatrixAsync(IServiceProvider services)
     var accessService = scope.ServiceProvider.GetRequiredService<IUserAccessService>();
     await accessService.EnsureAccessMatrixAsync(CancellationToken.None);
 }
+
+public partial class Program;

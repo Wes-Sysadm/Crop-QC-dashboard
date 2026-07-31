@@ -6,6 +6,9 @@ public sealed class EbsInventoryCleanupPageViewModel
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 50;
     public int TotalRows { get; set; }
+    public int ProtectedRoomId { get; set; }
+    public string ProtectedRoom { get; set; } = "";
+    public int CandidateCurrentBins { get; set; }
     public bool HasPreviousPage => Page > 1;
     public bool HasNextPage => Page * PageSize < TotalRows;
 }
@@ -30,13 +33,4 @@ public sealed class EbsInventoryCleanupRowViewModel
     public DateTimeOffset LastActivityAt { get; set; }
     public string EvidenceSource { get; set; } = "";
     public string WarningReason { get; set; } = "";
-}
-
-public sealed class ApproveEbsInventoryCleanupForm
-{
-    public long InventorySnapshotId { get; set; }
-    public int ExpectedCurrentBins { get; set; }
-    public DateTimeOffset RunAt { get; set; }
-    public string Reason { get; set; } = "";
-    public string OperationKey { get; set; } = "";
 }

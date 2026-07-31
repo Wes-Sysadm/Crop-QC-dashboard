@@ -252,134 +252,156 @@ public sealed class BinsRunService(
             run.TotalBins <= 0 ? 0m : decimal.Round(x.Bins / (decimal)run.TotalBins * 100m, 4)))
             .ToList();
 
-        var expectationRows = await dbContext.RunExpectations.AsNoTracking()
-            .Where(x => x.ActualRunId == id)
-            .OrderByDescending(x => x.RevisionNumber)
-            .Take(50)
-            .Select(x => new
-            {
-                x.Id,
-                x.RevisionNumber,
-                x.TotalBins,
-                x.GrossPounds,
-                x.ExpectedPackoutPercent,
-                x.ExpectedPackedPounds,
-                x.ExpectedWholeBoxes,
-                x.ExpectedCullPounds,
-                x.ExpectedJuicePounds,
-                x.ExpectedPeelerPounds,
-                x.ExpectedWastePounds,
-                x.ConfidencePercent,
-                x.SizeDistributionSnapshotJson,
-                x.GradeDistributionSnapshotJson,
-                x.CalculationVersion,
-                x.CalculatedAt
-            })
-            .ToListAsync(cancellationToken);
-        run.Expectations = expectationRows
-            .Select(x => new RunExpectationViewModel
-            {
-                Id = x.Id,
-                RevisionNumber = x.RevisionNumber,
-                TotalBins = x.TotalBins,
-                GrossPounds = x.GrossPounds,
-                ExpectedPackoutPercent = x.ExpectedPackoutPercent,
-                ExpectedPackedPounds = x.ExpectedPackedPounds,
-                ExpectedWholeBoxes = x.ExpectedWholeBoxes,
-                ExpectedCullPounds = x.ExpectedCullPounds,
-                ExpectedJuicePounds = x.ExpectedJuicePounds,
-                ExpectedPeelerPounds = x.ExpectedPeelerPounds,
-                ExpectedWastePounds = x.ExpectedWastePounds,
-                ConfidencePercent = x.ConfidencePercent,
-                SizeDistribution = DeserializeDistribution(x.SizeDistributionSnapshotJson),
-                GradeDistribution = DeserializeDistribution(x.GradeDistributionSnapshotJson),
-                CalculationVersion = x.CalculationVersion,
-                CalculatedAt = x.CalculatedAt
-            })
-            .ToList();
-        run.CurrentExpectation = run.Expectations.SingleOrDefault(x => x.RevisionNumber == run.RevisionNumber);
-
-        run.CanViewPackout = await userAccessService.HasAccessAsync(
-            user,
-            ApplicationAreas.PackoutResults,
-            PageAccessLevel.View,
-            cancellationToken);
-        var packout = !run.CanViewPackout
-            ? null
-            : await dbContext.PackoutRuns.AsNoTracking()
-            .Where(x => x.ActualRunId == id
-                || (x.ActualRunId == null
-                    && x.BinsRunEntry != null
-                    && x.BinsRunEntry.ActualRunId == id))
-            .OrderByDescending(x => x.ActualRunId != null)
-            .ThenByDescending(x => x.Id)
-            .Select(x => new ActualRunPackoutViewModel
-            {
-                Id = x.Id,
-                Status = x.Status,
-                DumpedBins = x.DumpedBins,
-                PackedPounds = x.PackedProductPounds,
-                JuicePounds = x.JuicePounds,
-                PeelerPounds = x.PeelerSlicerPounds,
-                WastePounds = x.WastePounds,
-                ActualPackoutPercent = x.ActualPackoutPercent,
-                AccuracyPercent = x.OverallAccuracyScore,
-                SizeAccuracyPercent = x.SizeAccuracyScore,
-                GradeAccuracyPercent = x.GradeAccuracyScore
-            })
-            .FirstOrDefaultAsync(cancellationToken);
-        if (packout is not null)
+        try
         {
-            packout.PackoutVariancePercent = packout.ActualPackoutPercent - run.CurrentExpectation?.ExpectedPackoutPercent;
-            var roomLotAllocations = await dbContext.PackoutSourceAllocations.AsNoTracking()
-                .Where(x => x.PackoutRunId == packout.Id)
-                .OrderBy(x => x.RunExpectationSource.RoomSnapshot)
-                .ThenBy(x => x.RunExpectationSource.LotSnapshot)
-                .Take(250)
-                .Select(x => new EstimatedAllocationViewModel(
-                    x.RunExpectationSource.RoomSnapshot,
-                    x.RunExpectationSource.GrowerSnapshot,
-                    x.RunExpectationSource.LotSnapshot,
-                    x.BinsContributed,
-                    x.ContributionPercent,
-                    x.AllocatedPackedPounds,
-                    x.AllocatedWholeBoxes,
-                    x.AllocatedResidualPounds,
-                    x.AllocatedJuicePounds,
-                    x.AllocatedPeelerPounds,
-                    x.AllocatedWastePounds,
-                    x.AllocationVersion))
+            var expectationRows = await dbContext.RunExpectations.AsNoTracking()
+                .Where(x => x.ActualRunId == id)
+                .OrderByDescending(x => x.RevisionNumber)
+                .Take(50)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.RevisionNumber,
+                    x.TotalBins,
+                    x.GrossPounds,
+                    x.ExpectedPackoutPercent,
+                    x.ExpectedPackedPounds,
+                    x.ExpectedWholeBoxes,
+                    x.ExpectedCullPounds,
+                    x.ExpectedJuicePounds,
+                    x.ExpectedPeelerPounds,
+                    x.ExpectedWastePounds,
+                    x.ConfidencePercent,
+                    x.SizeDistributionSnapshotJson,
+                    x.GradeDistributionSnapshotJson,
+                    x.CalculationVersion,
+                    x.CalculatedAt
+                })
                 .ToListAsync(cancellationToken);
-            packout.Allocations = roomLotAllocations
-                .GroupBy(
-                    x => new
-                    {
-                        Grower = x.Grower.Trim().ToUpperInvariant(),
-                        Lot = x.Lot.Trim().ToUpperInvariant(),
-                        x.AllocationVersion
-                    })
-                .Select(x => new EstimatedAllocationViewModel(
-                    string.Join(", ", x.Select(y => y.Room).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(y => y)),
-                    x.First().Grower,
-                    x.First().Lot,
-                    x.Sum(y => y.Bins),
-                    x.Sum(y => y.ContributionPercent),
-                    x.Sum(y => y.PackedPounds),
-                    x.Sum(y => y.WholeBoxes),
-                    x.Sum(y => y.ResidualPounds),
-                    x.Sum(y => y.JuicePounds),
-                    x.Sum(y => y.PeelerPounds),
-                    x.Sum(y => y.WastePounds),
-                    x.Key.AllocationVersion))
-                .OrderBy(x => x.Lot, StringComparer.OrdinalIgnoreCase)
+            run.Expectations = expectationRows
+                .Select(x => new RunExpectationViewModel
+                {
+                    Id = x.Id,
+                    RevisionNumber = x.RevisionNumber,
+                    TotalBins = x.TotalBins,
+                    GrossPounds = x.GrossPounds,
+                    ExpectedPackoutPercent = x.ExpectedPackoutPercent,
+                    ExpectedPackedPounds = x.ExpectedPackedPounds,
+                    ExpectedWholeBoxes = x.ExpectedWholeBoxes,
+                    ExpectedCullPounds = x.ExpectedCullPounds,
+                    ExpectedJuicePounds = x.ExpectedJuicePounds,
+                    ExpectedPeelerPounds = x.ExpectedPeelerPounds,
+                    ExpectedWastePounds = x.ExpectedWastePounds,
+                    ConfidencePercent = x.ConfidencePercent,
+                    SizeDistribution = DeserializeDistribution(x.SizeDistributionSnapshotJson),
+                    GradeDistribution = DeserializeDistribution(x.GradeDistributionSnapshotJson),
+                    CalculationVersion = x.CalculationVersion,
+                    CalculatedAt = x.CalculatedAt
+                })
                 .ToList();
+            run.CurrentExpectation = run.Expectations.SingleOrDefault(x => x.RevisionNumber == run.RevisionNumber);
+
+            run.CanViewPackout = await userAccessService.HasAccessAsync(
+                user,
+                ApplicationAreas.PackoutResults,
+                PageAccessLevel.View,
+                cancellationToken);
+            var packout = !run.CanViewPackout
+                ? null
+                : await dbContext.PackoutRuns.AsNoTracking()
+                .Where(x => x.ActualRunId == id
+                    || (x.ActualRunId == null
+                        && x.BinsRunEntry != null
+                        && x.BinsRunEntry.ActualRunId == id))
+                .OrderByDescending(x => x.ActualRunId != null)
+                .ThenByDescending(x => x.Id)
+                .Select(x => new ActualRunPackoutViewModel
+                {
+                    Id = x.Id,
+                    Status = x.Status,
+                    DumpedBins = x.DumpedBins,
+                    PackedPounds = x.PackedProductPounds,
+                    JuicePounds = x.JuicePounds,
+                    PeelerPounds = x.PeelerSlicerPounds,
+                    WastePounds = x.WastePounds,
+                    ActualPackoutPercent = x.ActualPackoutPercent,
+                    AccuracyPercent = x.OverallAccuracyScore,
+                    SizeAccuracyPercent = x.SizeAccuracyScore,
+                    GradeAccuracyPercent = x.GradeAccuracyScore
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (packout is not null)
+            {
+                packout.PackoutVariancePercent = packout.ActualPackoutPercent - run.CurrentExpectation?.ExpectedPackoutPercent;
+                var roomLotAllocations = await dbContext.PackoutSourceAllocations.AsNoTracking()
+                    .Where(x => x.PackoutRunId == packout.Id)
+                    .OrderBy(x => x.RunExpectationSource.RoomSnapshot)
+                    .ThenBy(x => x.RunExpectationSource.LotSnapshot)
+                    .Take(250)
+                    .Select(x => new EstimatedAllocationViewModel(
+                        x.RunExpectationSource.RoomSnapshot,
+                        x.RunExpectationSource.GrowerSnapshot,
+                        x.RunExpectationSource.LotSnapshot,
+                        x.BinsContributed,
+                        x.ContributionPercent,
+                        x.AllocatedPackedPounds,
+                        x.AllocatedWholeBoxes,
+                        x.AllocatedResidualPounds,
+                        x.AllocatedJuicePounds,
+                        x.AllocatedPeelerPounds,
+                        x.AllocatedWastePounds,
+                        x.AllocationVersion))
+                    .ToListAsync(cancellationToken);
+                packout.Allocations = roomLotAllocations
+                    .GroupBy(
+                        x => new
+                        {
+                            Grower = x.Grower.Trim().ToUpperInvariant(),
+                            Lot = x.Lot.Trim().ToUpperInvariant(),
+                            x.AllocationVersion
+                        })
+                    .Select(x => new EstimatedAllocationViewModel(
+                        string.Join(", ", x.Select(y => y.Room).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(y => y)),
+                        x.First().Grower,
+                        x.First().Lot,
+                        x.Sum(y => y.Bins),
+                        x.Sum(y => y.ContributionPercent),
+                        x.Sum(y => y.PackedPounds),
+                        x.Sum(y => y.WholeBoxes),
+                        x.Sum(y => y.ResidualPounds),
+                        x.Sum(y => y.JuicePounds),
+                        x.Sum(y => y.PeelerPounds),
+                        x.Sum(y => y.WastePounds),
+                        x.Key.AllocationVersion))
+                    .OrderBy(x => x.Lot, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+            run.Packout = packout;
+            run.CanUploadPackout = packout is null
+                && run.Status == ActualRunStatuses.Active
+                && await userAccessService.HasAccessAsync(user, ApplicationAreas.PackoutResults, PageAccessLevel.Create, cancellationToken);
+            run.CanEditPackout = await userAccessService.HasAccessAsync(user, ApplicationAreas.PackoutResults, PageAccessLevel.Create, cancellationToken);
+            run.CanAdminPackout = await userAccessService.HasAccessAsync(user, ApplicationAreas.PackoutResults, PageAccessLevel.Admin, cancellationToken);
         }
-        run.Packout = packout;
-        run.CanUploadPackout = packout is null
-            && run.Status == ActualRunStatuses.Active
-            && await userAccessService.HasAccessAsync(user, ApplicationAreas.PackoutResults, PageAccessLevel.Create, cancellationToken);
-        run.CanEditPackout = await userAccessService.HasAccessAsync(user, ApplicationAreas.PackoutResults, PageAccessLevel.Create, cancellationToken);
-        run.CanAdminPackout = await userAccessService.HasAccessAsync(user, ApplicationAreas.PackoutResults, PageAccessLevel.Admin, cancellationToken);
+        catch (Exception exception) when (
+            DatabaseFailureDiagnostics.Classify(exception).Category == DatabaseFailureCategory.SchemaMismatch)
+        {
+            var diagnostic = DatabaseFailureDiagnostics.Classify(exception);
+            var referenceId = Guid.NewGuid().ToString("N")[..8];
+            logger.LogError(
+                exception,
+                "Actual Run detail optional schema is unavailable. Reference={ReferenceId} ActualRunId={ActualRunId} ProviderCode={ProviderCode}. Base Actual Run and source contribution were loaded.",
+                referenceId,
+                id,
+                diagnostic.ProviderCode ?? "None");
+            run.DetailWarning =
+                $"Run Expectation and Packout Result details are temporarily unavailable because the database update required by this release has not been completed. The Actual Run itself is unchanged. Reference {referenceId}.";
+            run.OptionalDetailAvailable = false;
+            run.CanViewPackout = false;
+            run.CanUploadPackout = false;
+            run.CanEditPackout = false;
+            run.CanAdminPackout = false;
+        }
         return run;
     }
 

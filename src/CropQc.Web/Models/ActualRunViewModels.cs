@@ -1,5 +1,11 @@
 namespace CropQc.Web.Models;
 
+public sealed class ActualRunDetailUnavailableViewModel
+{
+    public long ActualRunId { get; set; }
+    public string ReferenceId { get; set; } = "";
+}
+
 public sealed class ActualRunDetailViewModel
 {
     public long Id { get; set; }
@@ -18,6 +24,8 @@ public sealed class ActualRunDetailViewModel
     public bool CanUploadPackout { get; set; }
     public bool CanEditPackout { get; set; }
     public bool CanAdminPackout { get; set; }
+    public bool OptionalDetailAvailable { get; set; } = true;
+    public string? DetailWarning { get; set; }
 }
 
 public sealed record ActualRunContributionViewModel(

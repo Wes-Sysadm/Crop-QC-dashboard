@@ -582,6 +582,76 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task ActualRunDetail_LoadsCreatedRunExpectationAndEmptySupportingDocumentArea()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var user = Principal("manager@fruitandland.com");
+        var option = (await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] },
+            user,
+            CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        Assert.Null(await service.CreateActualRunAsync(GroupForm((option, 10)), user, CancellationToken.None));
+        var runId = await db.ActualRuns.Select(x => x.Id).SingleAsync();
+
+        var detail = await service.GetActualRunDetailAsync(runId, user, CancellationToken.None);
+
+        Assert.NotNull(detail);
+        Assert.Equal(runId, detail!.Id);
+        Assert.NotNull(detail.CurrentExpectation);
+        Assert.Null(detail.Packout);
+        Assert.True(detail.OptionalDetailAvailable);
+        Assert.Null(detail.DetailWarning);
+    }
+
+    [Fact]
+    public async Task ActualRunDetail_LoadsLegacyRunWithoutExpectationOrPackout()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var user = Principal("manager@fruitandland.com");
+        var option = (await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] },
+            user,
+            CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        Assert.Null(await service.CreateActualRunAsync(GroupForm((option, 10)), user, CancellationToken.None));
+        var runId = await db.ActualRuns.Select(x => x.Id).SingleAsync();
+        db.RunExpectationSources.RemoveRange(db.RunExpectationSources);
+        db.RunExpectations.RemoveRange(db.RunExpectations);
+        await db.SaveChangesAsync();
+
+        var detail = await service.GetActualRunDetailAsync(runId, user, CancellationToken.None);
+
+        Assert.NotNull(detail);
+        Assert.Empty(detail!.Expectations);
+        Assert.Null(detail.CurrentExpectation);
+        Assert.Null(detail.Packout);
+        Assert.True(detail.OptionalDetailAvailable);
+        Assert.NotEmpty(detail.Contributions);
+    }
+
+    [Fact]
+    public void ActualRunHistory_LinkTargetsDetailRouteAndDetailViewExposesSupportingDocuments()
+    {
+        var index = File.ReadAllText(FindRepositoryFile(
+            "src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
+        var detail = File.ReadAllText(FindRepositoryFile(
+            "src", "CropQc.Web", "Views", "BinsRun", "ActualRunDetail.cshtml"));
+        var controller = File.ReadAllText(FindRepositoryFile(
+            "src", "CropQc.Web", "Controllers", "BinsRunController.cs"));
+
+        Assert.Contains("href=\"/BinsRun/ActualRuns/@run.Id\"", index);
+        Assert.Contains("[HttpGet(\"ActualRuns/{id:long}\")]", controller);
+        Assert.Contains("Packout Result and supporting documents", detail);
+        Assert.Contains("No Packout Result has been uploaded", detail);
+        Assert.DoesNotContain("The dashboard could not complete the request", detail);
+    }
+
+    [Fact]
     public async Task ActualRun_EditUsesReversalsThenCancelRestoresEveryRoom()
     {
         using var db = CreateDbContext();
