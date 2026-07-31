@@ -439,6 +439,46 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         Assert.Contains("new RoomSummaryFilterForm { Facility = \"EBS\"", email);
     }
 
+    [Fact]
+    public async Task DashboardRoomsAndCurrentInventory_UseCanonicalLedgerIdentityWithoutWriting()
+    {
+        await using var db = CreateDbContext();
+        await SeedCanonicalInventorySourceRegressionAsync(db);
+        var dashboardService = CreateService(db);
+        var importService = CreateImportService(db);
+        var adjustmentCountBefore = await db.RoomInventoryAdjustments.CountAsync();
+        var adjustmentBinsBefore = await db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount);
+
+        var dashboard = await dashboardService.GetHomeDashboardAsync(new RoomSummaryFilterForm { Facility = "All" }, CancellationToken.None);
+        var rooms = await dashboardService.GetRoomsAsync(new RoomSummaryFilterForm { Facility = "All" }, CancellationToken.None);
+        var currentInventory = await importService.GetPageAsync(new RoomInventoryImportForm { Facility = "All" }, CancellationToken.None);
+
+        Assert.Null(dashboard.DataWarning);
+        Assert.Null(rooms.DataWarning);
+        Assert.DoesNotContain(dashboard.RoomSummaries, x => x.RoomCode == "EBS-TEST");
+        Assert.Equal(0, rooms.Rooms.Where(x => x.RoomCode == "EBS-TEST").Sum(x => x.CurrentBinsCount ?? 0));
+        Assert.DoesNotContain(currentInventory.CurrentLots, x => x.RoomCode == "EBS-TEST");
+
+        var dashboardTotals = dashboard.StorageByFacility.ToDictionary(x => x.Facility, x => x.CurrentBins);
+        var roomTotals = rooms.Rooms.GroupBy(x => x.Facility).ToDictionary(x => x.Key, x => x.Sum(y => y.CurrentBinsCount ?? 0));
+        var currentInventoryTotals = currentInventory.CurrentLots.GroupBy(x => x.Facility).ToDictionary(x => x.Key, x => x.Sum(y => y.CurrentBins));
+        Assert.Equal(new Dictionary<string, int> { ["DH"] = 1, ["EBS"] = 388, ["WP"] = 565 }, dashboardTotals);
+        Assert.Equal(dashboardTotals, roomTotals);
+        Assert.Equal(dashboardTotals, currentInventoryTotals);
+        Assert.Equal(388, dashboard.RoomSummaries.Single(x => x.RoomCode == "Evans Street 7").CurrentBinsCount);
+
+        Assert.Equal(adjustmentCountBefore, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(adjustmentBinsBefore, await db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount));
+
+        var evansSeven = await db.Rooms.SingleAsync(x => x.Code == "EVANS7");
+        var gala = await db.FruitProfiles.SingleAsync(x => x.Id == 9902);
+        db.RoomInventoryAdjustments.Add(InventoryAdjustment(9906, evansSeven.Warehouse, evansSeven, gala, "EVANS-GALA", 12, 2026, "ReceiptAdd"));
+        await db.SaveChangesAsync();
+
+        var refreshed = await dashboardService.GetHomeDashboardAsync(new RoomSummaryFilterForm { Facility = "EBS" }, CancellationToken.None);
+        Assert.Equal(400, refreshed.StorageByFacility.Single().CurrentBins);
+    }
+
     private static CropQcDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<CropQcDbContext>()
@@ -457,6 +497,77 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         });
         return db;
     }
+
+    private static async Task SeedCanonicalInventorySourceRegressionAsync(CropQcDbContext db)
+    {
+        var ebs = new Warehouse { Id = 9901, Code = "EBS", Name = "Earl Brown Storage" };
+        var wp = new Warehouse { Id = 9902, Code = "WP", Name = "Windy Point" };
+        var dh = new Warehouse { Id = 9903, Code = "DH", Name = "DH" };
+        var ebsTest = new Room { Id = 9901, Warehouse = ebs, Code = "EBS-TEST", Name = "EBS Test", CropQcRoomName = "EBS-TEST", IsActive = true };
+        var evansSeven = new Room { Id = 9902, Warehouse = ebs, Code = "EVANS7", Name = "Evans Street 7", CropQcRoomName = "Evans Street 7", IsActive = true };
+        var wpRoom = new Room { Id = 9903, Warehouse = wp, Code = "WP-4", Name = "WP-4", CropQcRoomName = "WP-4", IsActive = true };
+        var dhRoom = new Room { Id = 9904, Warehouse = dh, Code = "DH-1", Name = "DH-1", CropQcRoomName = "DH-1", IsActive = true };
+        var red = new FruitProfile { Id = 9901, Name = "Red Delicious", VarietyCode = "RED", FruitType = "Apple", ProductionType = "Conventional" };
+        var gala = new FruitProfile { Id = 9902, Name = "Gala", VarietyCode = "GALA", FruitType = "Apple", ProductionType = "Conventional" };
+        var bartlett = new FruitProfile { Id = 9903, Name = "Bartlett", VarietyCode = "BART", FruitType = "Pear", ProductionType = "Conventional" };
+        db.Warehouses.AddRange(ebs, wp, dh);
+        db.Rooms.AddRange(ebsTest, evansSeven, wpRoom, dhRoom);
+        db.FruitProfiles.AddRange(red, gala, bartlett);
+
+        var source = InventoryAdjustment(9901, ebs, ebsTest, red, "TEST-LOT", 100, 2025, RoomInventoryImportService.StartingInventoryAdjustmentType);
+        var depletion = InventoryAdjustment(9902, ebs, ebsTest, red, "TEST-LOT", -100, null, BinsRunService.AdjustmentType);
+        db.RoomInventoryAdjustments.AddRange(
+            source,
+            depletion,
+            InventoryAdjustment(9903, ebs, evansSeven, gala, "EVANS-GALA", 388, 2026, RoomInventoryImportService.StartingInventoryAdjustmentType),
+            InventoryAdjustment(9904, wp, wpRoom, bartlett, "WP-BART", 565, 2026, "ReceiptAdd"),
+            InventoryAdjustment(9905, dh, dhRoom, gala, "DH-GALA", 1, 2026, "ReceiptAdd"));
+        db.BinsRunEntries.Add(new BinsRunEntry
+        {
+            Id = 9901,
+            SourceInventoryAdjustment = source,
+            InventoryAdjustment = depletion,
+            Warehouse = ebs,
+            Room = ebsTest,
+            CropYear = null,
+            FruitProfile = red,
+            GrowerName = "Test",
+            LotNumber = "TEST-LOT",
+            VarietyCode = "RED",
+            PreviousAvailableBins = 100,
+            BinsRun = 100,
+            NewAvailableBins = 0,
+            RunAt = DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
+            CreatedAt = DateTimeOffset.Parse("2026-07-01T00:00:00Z")
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static RoomInventoryAdjustment InventoryAdjustment(
+        long id,
+        Warehouse warehouse,
+        Room room,
+        FruitProfile profile,
+        string lot,
+        int change,
+        int? cropYear,
+        string adjustmentType) => new()
+        {
+            Id = id,
+            CropYear = cropYear,
+            Warehouse = warehouse,
+            Room = room,
+            FruitProfile = profile,
+            GrowerName = "Test",
+            LotNumber = lot,
+            VarietyCode = profile.VarietyCode,
+            ChangeAmount = change,
+            NewBinCount = Math.Max(0, change),
+            AdjustmentType = adjustmentType,
+            Source = "Regression fixture",
+            AdjustmentAt = DateTimeOffset.Parse("2026-06-01T00:00:00Z").AddMinutes(id - 9900),
+            CreatedAt = DateTimeOffset.Parse("2026-06-01T00:00:00Z").AddMinutes(id - 9900)
+        };
 
     private static async Task AssertRoomTotalAsync(DashboardDataService service, int roomId, int expectedBins)
     {
