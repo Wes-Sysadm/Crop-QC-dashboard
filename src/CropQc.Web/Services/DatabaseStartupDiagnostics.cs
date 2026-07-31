@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260730150926_EnforceRoomInventoryDeductionParents";
+    public const string ExpectedSchemaMigration = "20260731014107_SeparatePlanningProjectionsFromActualRuns";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -42,7 +42,118 @@ public static class DatabaseStartupDiagnostics
         new("RoomTransfers", "RoomTransfers", null),
         new("RoomInventoryAdjustments.InventoryInvariantVersion", "RoomInventoryAdjustments", "InventoryInvariantVersion"),
         new("RoomInventoryAdjustments.InventoryOperationKey", "RoomInventoryAdjustments", "InventoryOperationKey"),
-        new("RoomInventoryAdjustments.RoomTransferId", "RoomInventoryAdjustments", "RoomTransferId")
+        new("RoomInventoryAdjustments.RoomTransferId", "RoomInventoryAdjustments", "RoomTransferId"),
+        new("RunExpectations", "RunExpectations", null),
+        new("RunExpectations.Id", "RunExpectations", "Id", RequireNotNullable: true),
+        new("RunExpectations.ActualRunId", "RunExpectations", "ActualRunId", RequireNotNullable: true),
+        new("RunExpectations.ActualRunRevisionId", "RunExpectations", "ActualRunRevisionId", RequireNotNullable: true),
+        new("RunExpectations.RevisionNumber", "RunExpectations", "RevisionNumber", RequireNotNullable: true),
+        new("RunExpectations.FacilityWarehouseId", "RunExpectations", "FacilityWarehouseId", RequireNotNullable: true),
+        new("RunExpectations.FacilitySnapshot", "RunExpectations", "FacilitySnapshot", RequireNotNullable: true),
+        new("RunExpectations.RunAtSnapshot", "RunExpectations", "RunAtSnapshot", RequireNotNullable: true),
+        new("RunExpectations.TotalBins", "RunExpectations", "TotalBins", RequireNotNullable: true),
+        new("RunExpectations.GrossPounds", "RunExpectations", "GrossPounds", RequireNotNullable: true),
+        new("RunExpectations.ExpectedPackoutPercent", "RunExpectations", "ExpectedPackoutPercent", RequireNotNullable: true),
+        new("RunExpectations.ExpectedPackedPounds", "RunExpectations", "ExpectedPackedPounds", RequireNotNullable: true),
+        new("RunExpectations.ExpectedPackedBoxes", "RunExpectations", "ExpectedPackedBoxes", RequireNotNullable: true),
+        new("RunExpectations.ExpectedWholeBoxes", "RunExpectations", "ExpectedWholeBoxes", RequireNotNullable: true),
+        new("RunExpectations.ExpectedCullPounds", "RunExpectations", "ExpectedCullPounds", RequireNotNullable: true),
+        new("RunExpectations.ExpectedJuicePounds", "RunExpectations", "ExpectedJuicePounds", RequireNotNullable: true),
+        new("RunExpectations.ExpectedPeelerPounds", "RunExpectations", "ExpectedPeelerPounds", RequireNotNullable: true),
+        new("RunExpectations.ExpectedWastePounds", "RunExpectations", "ExpectedWastePounds", RequireNotNullable: true),
+        new("RunExpectations.ConfidencePercent", "RunExpectations", "ConfidencePercent", RequireNotNullable: true),
+        new("RunExpectations.SizeDistributionSnapshotJson", "RunExpectations", "SizeDistributionSnapshotJson", RequireNotNullable: true),
+        new("RunExpectations.GradeDistributionSnapshotJson", "RunExpectations", "GradeDistributionSnapshotJson", RequireNotNullable: true),
+        new("RunExpectations.ConfigurationSnapshotJson", "RunExpectations", "ConfigurationSnapshotJson", RequireNotNullable: true),
+        new("RunExpectations.CalculationVersion", "RunExpectations", "CalculationVersion", RequireNotNullable: true),
+        new("RunExpectations.CalculatedAt", "RunExpectations", "CalculatedAt", RequireNotNullable: true),
+        new("RunExpectations.CreatedByUserId", "RunExpectations", "CreatedByUserId", RequireNullable: true),
+        new("RunExpectationSources", "RunExpectationSources", null),
+        new("RunExpectationSources.Id", "RunExpectationSources", "Id", RequireNotNullable: true),
+        new("RunExpectationSources.RunExpectationId", "RunExpectationSources", "RunExpectationId", RequireNotNullable: true),
+        new("RunExpectationSources.BinsRunEntryId", "RunExpectationSources", "BinsRunEntryId", RequireNotNullable: true),
+        new("RunExpectationSources.WarehouseId", "RunExpectationSources", "WarehouseId", RequireNotNullable: true),
+        new("RunExpectationSources.RoomId", "RunExpectationSources", "RoomId", RequireNotNullable: true),
+        new("RunExpectationSources.FacilitySnapshot", "RunExpectationSources", "FacilitySnapshot", RequireNotNullable: true),
+        new("RunExpectationSources.RoomSnapshot", "RunExpectationSources", "RoomSnapshot", RequireNotNullable: true),
+        new("RunExpectationSources.CropYearSnapshot", "RunExpectationSources", "CropYearSnapshot", RequireNullable: true),
+        new("RunExpectationSources.GrowerLotId", "RunExpectationSources", "GrowerLotId", RequireNullable: true),
+        new("RunExpectationSources.FruitProfileId", "RunExpectationSources", "FruitProfileId", RequireNullable: true),
+        new("RunExpectationSources.GrowerSnapshot", "RunExpectationSources", "GrowerSnapshot", RequireNotNullable: true),
+        new("RunExpectationSources.LotSnapshot", "RunExpectationSources", "LotSnapshot", RequireNotNullable: true),
+        new("RunExpectationSources.VarietySnapshot", "RunExpectationSources", "VarietySnapshot", RequireNotNullable: true),
+        new("RunExpectationSources.ProductionTypeSnapshot", "RunExpectationSources", "ProductionTypeSnapshot", RequireNotNullable: true),
+        new("RunExpectationSources.IsOrganicSnapshot", "RunExpectationSources", "IsOrganicSnapshot", RequireNotNullable: true),
+        new("RunExpectationSources.BinsContributed", "RunExpectationSources", "BinsContributed", RequireNotNullable: true),
+        new("RunExpectationSources.ContributionPercent", "RunExpectationSources", "ContributionPercent", RequireNotNullable: true),
+        new("RunExpectationSources.QcSampleId", "RunExpectationSources", "QcSampleId", RequireNullable: true),
+        new("RunExpectationSources.QcSampleTakenAtSnapshot", "RunExpectationSources", "QcSampleTakenAtSnapshot", RequireNullable: true),
+        new("RunExpectationSources.QcFruitCountSnapshot", "RunExpectationSources", "QcFruitCountSnapshot", RequireNotNullable: true),
+        new("RunExpectationSources.QcMeasurementSnapshotJson", "RunExpectationSources", "QcMeasurementSnapshotJson", RequireNotNullable: true),
+        new("RunExpectationSources.SizeDistributionSnapshotJson", "RunExpectationSources", "SizeDistributionSnapshotJson", RequireNotNullable: true),
+        new("RunExpectationSources.GradeDistributionSnapshotJson", "RunExpectationSources", "GradeDistributionSnapshotJson", RequireNotNullable: true),
+        new("RunExpectationSources.GrossPounds", "RunExpectationSources", "GrossPounds", RequireNotNullable: true),
+        new("RunExpectationSources.ExpectedPackedPounds", "RunExpectationSources", "ExpectedPackedPounds", RequireNotNullable: true),
+        new("RunExpectationSources.ExpectedWholeBoxes", "RunExpectationSources", "ExpectedWholeBoxes", RequireNotNullable: true),
+        new("RunExpectationSources.ExpectedCullPounds", "RunExpectationSources", "ExpectedCullPounds", RequireNotNullable: true),
+        new("RunExpectationSources.ConfidencePercent", "RunExpectationSources", "ConfidencePercent", RequireNotNullable: true),
+        new("RunExpectationSources.WarningSnapshot", "RunExpectationSources", "WarningSnapshot", RequireNullable: true),
+        new("PackoutSourceAllocations", "PackoutSourceAllocations", null),
+        new("PackoutSourceAllocations.Id", "PackoutSourceAllocations", "Id", RequireNotNullable: true),
+        new("PackoutSourceAllocations.PackoutRunId", "PackoutSourceAllocations", "PackoutRunId", RequireNotNullable: true),
+        new("PackoutSourceAllocations.RunExpectationSourceId", "PackoutSourceAllocations", "RunExpectationSourceId", RequireNotNullable: true),
+        new("PackoutSourceAllocations.BinsContributed", "PackoutSourceAllocations", "BinsContributed", RequireNotNullable: true),
+        new("PackoutSourceAllocations.ContributionPercent", "PackoutSourceAllocations", "ContributionPercent", RequireNotNullable: true),
+        new("PackoutSourceAllocations.AllocatedPackedPounds", "PackoutSourceAllocations", "AllocatedPackedPounds", RequireNotNullable: true),
+        new("PackoutSourceAllocations.AllocatedWholeBoxes", "PackoutSourceAllocations", "AllocatedWholeBoxes", RequireNotNullable: true),
+        new("PackoutSourceAllocations.AllocatedResidualPounds", "PackoutSourceAllocations", "AllocatedResidualPounds", RequireNotNullable: true),
+        new("PackoutSourceAllocations.AllocatedJuicePounds", "PackoutSourceAllocations", "AllocatedJuicePounds", RequireNotNullable: true),
+        new("PackoutSourceAllocations.AllocatedPeelerPounds", "PackoutSourceAllocations", "AllocatedPeelerPounds", RequireNotNullable: true),
+        new("PackoutSourceAllocations.AllocatedWastePounds", "PackoutSourceAllocations", "AllocatedWastePounds", RequireNotNullable: true),
+        new("PackoutSourceAllocations.PackCodeAllocationJson", "PackoutSourceAllocations", "PackCodeAllocationJson", RequireNotNullable: true),
+        new("PackoutSourceAllocations.SizeAllocationJson", "PackoutSourceAllocations", "SizeAllocationJson", RequireNotNullable: true),
+        new("PackoutSourceAllocations.GradeAllocationJson", "PackoutSourceAllocations", "GradeAllocationJson", RequireNotNullable: true),
+        new("PackoutSourceAllocations.AllocationVersion", "PackoutSourceAllocations", "AllocationVersion", RequireNotNullable: true),
+        new("PackoutSourceAllocations.CalculatedAt", "PackoutSourceAllocations", "CalculatedAt", RequireNotNullable: true),
+        new("PackoutRuns.ActualRunId", "PackoutRuns", "ActualRunId", RequireNullable: true),
+        new("PackoutRuns.RunExpectationId", "PackoutRuns", "RunExpectationId", RequireNullable: true),
+        new("PackoutRuns.RunProjectionId", "PackoutRuns", "RunProjectionId", RequireNullable: true)
+    ];
+
+    private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
+    [
+        new("IX_PackoutRuns_RunExpectationId", "PackoutRuns", "IX_PackoutRuns_RunExpectationId"),
+        new("UX_PackoutRuns_ActualRunId", "PackoutRuns", "UX_PackoutRuns_ActualRunId", RequireUnique: true),
+        new("IX_PackoutSourceAllocations_PackoutRunId_RunExpectationSourceId", "PackoutSourceAllocations", "IX_PackoutSourceAllocations_PackoutRunId_RunExpectationSourceId", RequireUnique: true),
+        new("IX_PackoutSourceAllocations_RunExpectationSourceId", "PackoutSourceAllocations", "IX_PackoutSourceAllocations_RunExpectationSourceId"),
+        new("IX_RunExpectations_ActualRunId_RevisionNumber", "RunExpectations", "IX_RunExpectations_ActualRunId_RevisionNumber", RequireUnique: true),
+        new("IX_RunExpectations_ActualRunRevisionId", "RunExpectations", "IX_RunExpectations_ActualRunRevisionId", RequireUnique: true),
+        new("IX_RunExpectations_CreatedByUserId", "RunExpectations", "IX_RunExpectations_CreatedByUserId"),
+        new("IX_RunExpectationSources_BinsRunEntryId", "RunExpectationSources", "IX_RunExpectationSources_BinsRunEntryId"),
+        new("IX_RunExpectationSources_QcSampleId", "RunExpectationSources", "IX_RunExpectationSources_QcSampleId"),
+        new("IX_RunExpectationSources_RunExpectationId_BinsRunEntryId", "RunExpectationSources", "IX_RunExpectationSources_RunExpectationId_BinsRunEntryId", RequireUnique: true),
+        new("IX_RunExpectationSources_WarehouseId_RoomId_CropYearSnapshot_LotSnapshot_VarietySnapshot", "RunExpectationSources", "IX_RunExpectationSources_WarehouseId_RoomId_CropYearSnapshot_LotSnapshot_VarietySnapshot")
+    ];
+
+    private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
+    [
+        new("FK_PackoutRuns_ActualRuns_ActualRunId", "PackoutRuns", "FK_PackoutRuns_ActualRuns_ActualRunId"),
+        new("FK_PackoutRuns_RunExpectations_RunExpectationId", "PackoutRuns", "FK_PackoutRuns_RunExpectations_RunExpectationId"),
+        new("FK_RunExpectations_ActualRunRevisions_ActualRunRevisionId", "RunExpectations", "FK_RunExpectations_ActualRunRevisions_ActualRunRevisionId"),
+        new("FK_RunExpectations_ActualRuns_ActualRunId", "RunExpectations", "FK_RunExpectations_ActualRuns_ActualRunId"),
+        new("FK_RunExpectations_Users_CreatedByUserId", "RunExpectations", "FK_RunExpectations_Users_CreatedByUserId"),
+        new("FK_RunExpectationSources_BinsRunEntries_BinsRunEntryId", "RunExpectationSources", "FK_RunExpectationSources_BinsRunEntries_BinsRunEntryId"),
+        new("FK_RunExpectationSources_QcSamples_QcSampleId", "RunExpectationSources", "FK_RunExpectationSources_QcSamples_QcSampleId"),
+        new("FK_RunExpectationSources_RunExpectations_RunExpectationId", "RunExpectationSources", "FK_RunExpectationSources_RunExpectations_RunExpectationId"),
+        new("FK_PackoutSourceAllocations_PackoutRuns_PackoutRunId", "PackoutSourceAllocations", "FK_PackoutSourceAllocations_PackoutRuns_PackoutRunId"),
+        new("FK_PackoutSourceAllocations_RunExpectationSources_RunExpectationSourceId", "PackoutSourceAllocations", "FK_PackoutSourceAllocations_RunExpectationSources_RunExpectationSourceId")
+    ];
+
+    private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
+    [
+        new("PK_RunExpectations", "RunExpectations", "PK_RunExpectations"),
+        new("PK_RunExpectationSources", "RunExpectationSources", "PK_RunExpectationSources"),
+        new("PK_PackoutSourceAllocations", "PackoutSourceAllocations", "PK_PackoutSourceAllocations")
     ];
 
     public static async Task InspectAsync(
@@ -138,12 +249,12 @@ public static class DatabaseStartupDiagnostics
                 logger.LogInformation(
                     "Application schema check succeeded. Expected migration {ExpectedMigration}; checked object count {CheckedObjectCount}.",
                     ExpectedSchemaMigration,
-                    RequiredSchemaExpectations.Length);
+                    RequiredObjectCount);
             }
             else
             {
                 var referenceId = Guid.NewGuid().ToString("N")[..8];
-                var partiallyUpdated = missing.Count < RequiredSchemaExpectations.Length;
+                var partiallyUpdated = missing.Count < RequiredObjectCount;
                 logger.LogError(
                     "Database schema mismatch detected. Reference {ReferenceId}; category {Category}; provider {Provider}; application version {ApplicationVersion}; deployed commit {DeployedCommit}; expected migration {ExpectedMigration}; partially updated {PartiallyUpdated}; missing objects {MissingObjects}; operator action {OperatorAction}. Production data was not modified.",
                     referenceId,
@@ -222,7 +333,7 @@ public static class DatabaseStartupDiagnostics
                     applicationVersion,
                     deployedCommit,
                     expectedMigration,
-                    RequiredSchemaExpectations.Length);
+                    RequiredObjectCount);
                 return true;
             }
 
@@ -235,7 +346,7 @@ public static class DatabaseStartupDiagnostics
                 applicationVersion,
                 deployedCommit,
                 expectedMigration,
-                missing.Count < RequiredSchemaExpectations.Length,
+                missing.Count < RequiredObjectCount,
                 string.Join(", ", missing),
                 "Keep the prior compatible deployment active. Run the reviewed preflight and apply scripts only after a verified backup and explicit production authorization, then run verification and retry the deployment.");
             return false;
@@ -277,7 +388,11 @@ public static class DatabaseStartupDiagnostics
             foreach (var expectation in RequiredSchemaExpectations)
             {
                 await using var command = connection.CreateCommand();
-                command.CommandText = SchemaExistsSql(provider, expectation.ColumnName is not null);
+                command.CommandText = SchemaExistsSql(
+                    provider,
+                    expectation.ColumnName is not null,
+                    expectation.RequireNullable,
+                    expectation.RequireNotNullable);
 
                 var tableParameter = command.CreateParameter();
                 tableParameter.ParameterName = "tableName";
@@ -294,6 +409,45 @@ public static class DatabaseStartupDiagnostics
 
                 var result = await command.ExecuteScalarAsync(cancellationToken);
                 if (!Convert.ToBoolean(result))
+                {
+                    missing.Add(expectation.DisplayName);
+                }
+            }
+
+            foreach (var expectation in RequiredIndexExpectations)
+            {
+                if (!await NamedObjectExistsAsync(
+                    connection,
+                    provider,
+                    expectation,
+                    SchemaNamedObjectKind.Index,
+                    cancellationToken))
+                {
+                    missing.Add(expectation.DisplayName);
+                }
+            }
+
+            foreach (var expectation in RequiredForeignKeyExpectations)
+            {
+                if (!await NamedObjectExistsAsync(
+                    connection,
+                    provider,
+                    expectation,
+                    SchemaNamedObjectKind.ForeignKey,
+                    cancellationToken))
+                {
+                    missing.Add(expectation.DisplayName);
+                }
+            }
+
+            foreach (var expectation in RequiredPrimaryKeyExpectations)
+            {
+                if (!await NamedObjectExistsAsync(
+                    connection,
+                    provider,
+                    expectation,
+                    SchemaNamedObjectKind.PrimaryKey,
+                    cancellationToken))
                 {
                     missing.Add(expectation.DisplayName);
                 }
@@ -317,10 +471,57 @@ public static class DatabaseStartupDiagnostics
         ?? typeof(DatabaseStartupDiagnostics).Assembly.GetName().Version?.ToString()
         ?? "Unknown";
 
-    private static string SchemaExistsSql(string provider, bool column)
+    private static int RequiredObjectCount =>
+        RequiredSchemaExpectations.Length
+        + RequiredIndexExpectations.Length
+        + RequiredForeignKeyExpectations.Length
+        + RequiredPrimaryKeyExpectations.Length;
+
+    private static async Task<bool> NamedObjectExistsAsync(
+        System.Data.Common.DbConnection connection,
+        string provider,
+        SchemaNamedObjectExpectation expectation,
+        SchemaNamedObjectKind kind,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = NamedObjectExistsSql(provider, kind);
+
+        var tableParameter = command.CreateParameter();
+        tableParameter.ParameterName = "tableName";
+        tableParameter.Value = expectation.TableName;
+        command.Parameters.Add(tableParameter);
+
+        var objectParameter = command.CreateParameter();
+        objectParameter.ParameterName = "objectName";
+        objectParameter.Value = expectation.ObjectName;
+        command.Parameters.Add(objectParameter);
+
+        var uniqueParameter = command.CreateParameter();
+        uniqueParameter.ParameterName = "requireUnique";
+        uniqueParameter.Value = expectation.RequireUnique;
+        command.Parameters.Add(uniqueParameter);
+
+        return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private static string SchemaExistsSql(
+        string provider,
+        bool column,
+        bool requireNullable,
+        bool requireNotNullable)
     {
         if (provider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
         {
+            if (column && requireNullable)
+            {
+                return "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = @tableName AND column_name = @columnName AND is_nullable = 'YES');";
+            }
+            if (column && requireNotNullable)
+            {
+                return "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = @tableName AND column_name = @columnName AND is_nullable = 'NO');";
+            }
+
             return column
                 ? "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = @tableName AND column_name = @columnName);"
                 : "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = @tableName);";
@@ -328,6 +529,15 @@ public static class DatabaseStartupDiagnostics
 
         if (provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
         {
+            if (column && requireNullable)
+            {
+                return "SELECT CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@tableName) AND name = @columnName AND is_nullable = 1) THEN 1 ELSE 0 END);";
+            }
+            if (column && requireNotNullable)
+            {
+                return "SELECT CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@tableName) AND name = @columnName AND is_nullable = 0) THEN 1 ELSE 0 END);";
+            }
+
             return column
                 ? "SELECT CONVERT(bit, CASE WHEN COL_LENGTH(@tableName, @columnName) IS NULL THEN 0 ELSE 1 END);"
                 : "SELECT CONVERT(bit, CASE WHEN OBJECT_ID(@tableName, 'U') IS NULL THEN 0 ELSE 1 END);";
@@ -336,5 +546,48 @@ public static class DatabaseStartupDiagnostics
         throw new InvalidOperationException($"Unsupported database provider '{provider}' for schema diagnostics.");
     }
 
-    private sealed record SchemaExpectation(string DisplayName, string TableName, string? ColumnName);
+    private static string NamedObjectExistsSql(string provider, SchemaNamedObjectKind kind)
+    {
+        if (provider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
+        {
+            return kind switch
+            {
+                SchemaNamedObjectKind.ForeignKey => "SELECT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname = current_schema() AND t.relname = @tableName AND c.conname = left(@objectName, 63) AND c.contype = 'f');",
+                SchemaNamedObjectKind.PrimaryKey => "SELECT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname = current_schema() AND t.relname = @tableName AND c.conname = left(@objectName, 63) AND c.contype = 'p');",
+                _ => "SELECT EXISTS (SELECT 1 FROM pg_class i JOIN pg_index ix ON ix.indexrelid = i.oid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname = current_schema() AND t.relname = @tableName AND i.relname = left(@objectName, 63) AND (NOT @requireUnique OR ix.indisunique));"
+            };
+        }
+
+        if (provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+        {
+            return kind switch
+            {
+                SchemaNamedObjectKind.ForeignKey => "SELECT CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID(@tableName) AND name = @objectName) THEN 1 ELSE 0 END);",
+                SchemaNamedObjectKind.PrimaryKey => "SELECT CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM sys.key_constraints WHERE parent_object_id = OBJECT_ID(@tableName) AND name = @objectName AND type = 'PK') THEN 1 ELSE 0 END);",
+                _ => "SELECT CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(@tableName) AND name = @objectName AND (@requireUnique = 0 OR is_unique = 1)) THEN 1 ELSE 0 END);"
+            };
+        }
+
+        throw new InvalidOperationException($"Unsupported database provider '{provider}' for schema diagnostics.");
+    }
+
+    private sealed record SchemaExpectation(
+        string DisplayName,
+        string TableName,
+        string? ColumnName,
+        bool RequireNullable = false,
+        bool RequireNotNullable = false);
+
+    private sealed record SchemaNamedObjectExpectation(
+        string DisplayName,
+        string TableName,
+        string ObjectName,
+        bool RequireUnique = false);
+
+    private enum SchemaNamedObjectKind
+    {
+        Index,
+        ForeignKey,
+        PrimaryKey
+    }
 }

@@ -68,13 +68,15 @@ public sealed class PackoutReconciliationService(
         }
 
         var actualRun = await dbContext.ActualRuns
-            .AsSplitQuery()
-            .Include(x => x.Expectations.Where(y => y.RevisionNumber == x.CurrentRevisionNumber))
-                .ThenInclude(x => x.Sources)
             .SingleOrDefaultAsync(x => x.Id == form.ActualRunId, cancellationToken);
         if (actualRun is null) return (null, "Actual Run was not found.");
         if (actualRun.Status != ActualRunStatuses.Active) return (null, "A Packout Result can be uploaded only for an active Actual Run.");
-        var expectation = actualRun.Expectations.SingleOrDefault();
+        var expectation = await dbContext.RunExpectations
+            .Include(x => x.Sources)
+            .SingleOrDefaultAsync(
+                x => x.ActualRunId == actualRun.Id
+                    && x.RevisionNumber == actualRun.CurrentRevisionNumber,
+                cancellationToken);
         if (expectation is null) return (null, "The current Actual Run revision does not have a frozen Run Expectation.");
         if (expectation.Sources.Count == 0) return (null, "The Run Expectation has no source contribution rows.");
         var facilityCode = expectation.FacilitySnapshot;

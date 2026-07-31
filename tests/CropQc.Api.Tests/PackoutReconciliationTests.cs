@@ -2,8 +2,13 @@ using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
+using CropQc.Shared.Time;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Security.Claims;
+using System.Text;
 
 namespace CropQc.Api.Tests;
 
@@ -191,6 +196,252 @@ public sealed class PackoutReconciliationTests
         {
             File.Delete(path);
         }
+    }
+
+    [Fact]
+    public async Task ActualRunSupportingDocument_UploadReviewFinalize_DoesNotChangeInventory()
+    {
+        await using var db = Db();
+        if (db.Database.IsRelational())
+        {
+            Assert.True(
+                await db.Database.EnsureCreatedAsync(),
+                "The configured disposable PostgreSQL packout database must start empty.");
+        }
+        var now = DateTimeOffset.Parse("2026-07-31T16:00:00Z");
+        var user = new User
+        {
+            Email = ApplicationAreas.OwnerEmail,
+            DisplayName = "Packout Test Owner",
+            IsActive = true,
+            CreatedAt = now
+        };
+        var warehouse = new Warehouse
+        {
+            Id = 9100,
+            Code = "PACKOUTTEST",
+            Name = "Disposable Packout Test",
+            IsActive = true
+        };
+        var room = new Room
+        {
+            Id = 9101,
+            WarehouseId = warehouse.Id,
+            Warehouse = warehouse,
+            Code = "PACKOUT-1",
+            Name = "Packout Room 1",
+            CropQcRoomName = "PACKOUT-1",
+            IsActive = true
+        };
+        var actualRun = new ActualRun
+        {
+            Id = 9200,
+            Status = ActualRunStatuses.Active,
+            CurrentRevisionNumber = 1,
+            RunAt = now,
+            CreatedAt = now
+        };
+        var revision = new ActualRunRevision
+        {
+            Id = 9201,
+            ActualRunId = actualRun.Id,
+            ActualRun = actualRun,
+            RevisionNumber = 1,
+            OperationType = ActualRunRevisionTypes.Create,
+            OperationKey = "packout-test-create",
+            IsCurrent = true,
+            CreatedAt = now
+        };
+        var adjustment = new RoomInventoryAdjustment
+        {
+            Id = 9500,
+            ActualRunId = actualRun.Id,
+            ActualRun = actualRun,
+            ActualRunRevisionId = revision.Id,
+            ActualRunRevision = revision,
+            WarehouseId = warehouse.Id,
+            Warehouse = warehouse,
+            RoomId = room.Id,
+            Room = room,
+            CropYear = 2026,
+            GrowerName = "Test Grower",
+            LotNumber = "1084",
+            VarietyCode = "Bartlett",
+            OldBinCount = 20,
+            ChangeAmount = -10,
+            NewBinCount = 10,
+            AdjustmentType = BinsRunService.AdjustmentType,
+            Source = "Disposable Actual Run test",
+            AdjustmentAt = now,
+            CreatedAt = now,
+            InventoryInvariantVersion = 1,
+            InventoryOperationKey = "packout-test-depletion"
+        };
+        var binsRun = new BinsRunEntry
+        {
+            Id = 9202,
+            ActualRunId = actualRun.Id,
+            ActualRun = actualRun,
+            ActualRunRevisionId = revision.Id,
+            ActualRunRevision = revision,
+            InventoryAdjustmentId = adjustment.Id,
+            InventoryAdjustment = adjustment,
+            WarehouseId = warehouse.Id,
+            Warehouse = warehouse,
+            RoomId = room.Id,
+            Room = room,
+            CropYear = 2026,
+            GrowerName = "Test Grower",
+            LotNumber = "1084",
+            VarietyCode = "Bartlett",
+            PreviousAvailableBins = 20,
+            BinsRun = 10,
+            NewAvailableBins = 10,
+            RunAt = now,
+            CreatedAt = now,
+            TransactionType = ActualRunTransactionTypes.Depletion
+        };
+        var expectation = new RunExpectation
+        {
+            Id = 9203,
+            ActualRunId = actualRun.Id,
+            ActualRun = actualRun,
+            ActualRunRevisionId = revision.Id,
+            ActualRunRevision = revision,
+            RevisionNumber = 1,
+            FacilityWarehouseId = warehouse.Id,
+            FacilitySnapshot = "WP",
+            RunAtSnapshot = now,
+            TotalBins = 10,
+            GrossPounds = 9200m,
+            ExpectedPackoutPercent = 80m,
+            ExpectedPackedPounds = 7360m,
+            ExpectedPackedBoxes = 184m,
+            ExpectedWholeBoxes = 184,
+            ExpectedCullPounds = 1840m,
+            ExpectedJuicePounds = 736m,
+            ExpectedPeelerPounds = 644m,
+            ExpectedWastePounds = 460m,
+            ConfidencePercent = 90m,
+            SizeDistributionSnapshotJson = "{\"80\":100}",
+            GradeDistributionSnapshotJson = "{}",
+            ConfigurationSnapshotJson = "{}",
+            CalculationVersion = RunExpectationCalculationVersions.Current,
+            CalculatedAt = now
+        };
+        expectation.Sources.Add(new RunExpectationSource
+        {
+            Id = 9204,
+            RunExpectationId = expectation.Id,
+            RunExpectation = expectation,
+            BinsRunEntryId = binsRun.Id,
+            BinsRunEntry = binsRun,
+            WarehouseId = warehouse.Id,
+            RoomId = room.Id,
+            FacilitySnapshot = "WP",
+            RoomSnapshot = "WP-1",
+            CropYearSnapshot = 2026,
+            GrowerSnapshot = "Test Grower",
+            LotSnapshot = "1084",
+            VarietySnapshot = "Bartlett",
+            ProductionTypeSnapshot = "Conventional",
+            BinsContributed = 10,
+            ContributionPercent = 100m,
+            QcFruitCountSnapshot = 25,
+            QcMeasurementSnapshotJson = "{}",
+            SizeDistributionSnapshotJson = "{\"80\":100}",
+            GradeDistributionSnapshotJson = "{}",
+            GrossPounds = 9200m,
+            ExpectedPackedPounds = 7360m,
+            ExpectedWholeBoxes = 184,
+            ExpectedCullPounds = 1840m,
+            ConfidencePercent = 90m
+        });
+        db.AddRange(user, warehouse, room, actualRun, revision, adjustment, binsRun, expectation);
+        db.PackCodeDefinitions.Add(new PackCodeDefinition
+        {
+            Code = "WP",
+            NormalizedCode = "WP",
+            DisplayName = "40-pound box",
+            ProductCategory = PackoutProductCategories.Packed,
+            NetWeightPounds = 40m,
+            SizeCategory = 80,
+            IsActive = true,
+            CreatedAt = now
+        });
+        await db.SaveChangesAsync();
+
+        var options = new PackoutProcessingOptions();
+        var configuration = new ConfigurationBuilder().Build();
+        var emailSender = new RecordingEmailSender();
+        var service = new PackoutReconciliationService(
+            db,
+            new PackoutReportParser(options, NullLogger<PackoutReportParser>.Instance),
+            new PackoutFeedbackWorkbookService(options, NullLogger<PackoutFeedbackWorkbookService>.Instance),
+            emailSender,
+            new UserAccessService(db, configuration),
+            new PacificBusinessTimeService(new FixedClock(now)),
+            configuration,
+            options,
+            new PackoutOperationCoordinator(),
+            NullLogger<PackoutReconciliationService>.Instance);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Email, ApplicationAreas.OwnerEmail)], "Test"));
+        var csv = Encoding.UTF8.GetBytes("REG BART US1 80 WP 12");
+        await using var stream = new MemoryStream(csv);
+        var formFile = new FormFile(stream, 0, csv.Length, "Files", "packout.csv")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "text/csv"
+        };
+        var inventoryCountBefore = await db.RoomInventoryAdjustments.CountAsync();
+
+        var upload = await service.UploadAsync(new PackoutUploadForm
+        {
+            ActualRunId = actualRun.Id,
+            PackingDate = new DateOnly(2026, 7, 31),
+            RunNumber = 1,
+            DumpedBins = 10m,
+            Files = [formFile]
+        }, principal, CancellationToken.None);
+
+        Assert.Null(upload.Error);
+        var review = await service.GetAsync(upload.Id!.Value, principal, CancellationToken.None);
+        Assert.NotNull(review);
+        Assert.Single(review.Sources);
+        Assert.Single(review.Lines);
+        Assert.True(review.Lines[0].RequiresReview);
+
+        var correctionError = await service.UpdateLineAsync(new PackoutLineReviewForm
+        {
+            PackoutRunId = review.Id,
+            LineId = review.Lines[0].Id,
+            ConcurrencyVersion = review.ConcurrencyVersion,
+            PackCode = "WP",
+            Quantity = 12m,
+            NetWeightPounds = 40m,
+            SizeCategory = 80,
+            ProductCategory = PackoutProductCategories.Packed,
+            CorrectionReason = "Confirmed the supported test report row."
+        }, principal, CancellationToken.None);
+
+        Assert.Null(correctionError);
+        review = await service.GetAsync(upload.Id.Value, principal, CancellationToken.None);
+        Assert.NotNull(review);
+        Assert.False(review.Lines[0].RequiresReview);
+
+        var finalized = await service.FinalizeAsync(new PackoutFinalizeForm
+        {
+            PackoutRunId = review.Id,
+            ConcurrencyVersion = review.ConcurrencyVersion
+        }, principal, CancellationToken.None);
+
+        Assert.Null(finalized.Error);
+        Assert.NotNull(finalized.Workbook);
+        Assert.Single(emailSender.Messages);
+        Assert.Equal(PackoutRunStatuses.Finalized, (await db.PackoutRuns.SingleAsync()).Status);
+        Assert.Single(await db.PackoutSourceAllocations.ToListAsync());
+        Assert.Equal(inventoryCountBefore, await db.RoomInventoryAdjustments.CountAsync());
     }
 
     [Fact]
@@ -510,6 +761,15 @@ public sealed class PackoutReconciliationTests
 
     private static CropQcDbContext Db()
     {
+        var postgres = Environment.GetEnvironmentVariable("CROPQC_TEST_PACKOUT_POSTGRES");
+        if (!string.IsNullOrWhiteSpace(postgres))
+        {
+            ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(postgres);
+            var postgresOptions = new DbContextOptionsBuilder<CropQcDbContext>();
+            CropQcDatabase.Configure(postgresOptions, DatabaseProviders.PostgreSql, postgres);
+            return new CropQcDbContext(postgresOptions.Options);
+        }
+
         var options = new DbContextOptionsBuilder<CropQcDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
             .Options;
@@ -520,5 +780,21 @@ public sealed class PackoutReconciliationTests
     {
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
         return File.ReadAllText(Path.Combine([root, .. parts]));
+    }
+
+    private sealed class FixedClock(DateTimeOffset utcNow) : IClock
+    {
+        public DateTimeOffset UtcNow { get; } = utcNow;
+    }
+
+    private sealed class RecordingEmailSender : IQcEmailSender
+    {
+        public List<QcEmailMessage> Messages { get; } = [];
+
+        public Task<QcEmailSendResult> SendAsync(User sender, QcEmailMessage message, CancellationToken cancellationToken)
+        {
+            Messages.Add(message);
+            return Task.FromResult(QcEmailSendResult.Sent("packout-test-message"));
+        }
     }
 }
