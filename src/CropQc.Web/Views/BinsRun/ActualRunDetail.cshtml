@@ -18,6 +18,11 @@
     </div>
 </section>
 
+@if (!string.IsNullOrWhiteSpace(Model.DetailWarning))
+{
+    <p class="notice warning" role="alert">@Model.DetailWarning</p>
+}
+
 <section class="panel">
     <h2>Actual Run summary</h2>
     <dl class="summary-grid">
@@ -62,7 +67,11 @@
 
 <section class="panel">
     <h2>Run Expectation</h2>
-    @if (Model.CurrentExpectation is null)
+    @if (!Model.OptionalDetailAvailable)
+    {
+        <p class="warning">Run Expectation data is unavailable until the required database update is completed. The Actual Run summary and source contribution above remain available.</p>
+    }
+    else if (Model.CurrentExpectation is null)
     {
         <p class="warning">This legacy Actual Run does not have a frozen Run Expectation.</p>
     }
@@ -137,8 +146,12 @@
 </section>
 
 <section class="panel">
-    <h2>Packout Result</h2>
-    @if (!Model.CanViewPackout)
+    <h2>Packout Result and supporting documents</h2>
+    @if (!Model.OptionalDetailAvailable)
+    {
+        <p class="warning">The supporting-document area is reachable, but upload and Packout Result data are unavailable until the required database update is completed.</p>
+    }
+    else if (!Model.CanViewPackout)
     {
         <p class="muted">Packout Result View access is required.</p>
     }

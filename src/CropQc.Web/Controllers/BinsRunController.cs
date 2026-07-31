@@ -286,8 +286,31 @@ public sealed class BinsRunController(
     [Authorize(Policy = AccessPolicyNames.ActualRunsView)]
     public async Task<IActionResult> ActualRunDetail(long id, CancellationToken cancellationToken)
     {
-        var model = await binsRunService.GetActualRunDetailAsync(id, User, cancellationToken);
-        return model is null ? NotFound() : View("ActualRunDetail", model);
+        try
+        {
+            var model = await binsRunService.GetActualRunDetailAsync(id, User, cancellationToken);
+            return model is null ? NotFound() : View("ActualRunDetail", model);
+        }
+        catch (Exception exception) when (
+            exception is not UnauthorizedAccessException
+            && exception is not OperationCanceledException)
+        {
+            var diagnostic = DatabaseFailureDiagnostics.Classify(exception);
+            var referenceId = Guid.NewGuid().ToString("N")[..8];
+            logger.LogError(
+                exception,
+                "Actual Run detail request failed. Reference={ReferenceId} ActualRunId={ActualRunId} Category={Category} ProviderCode={ProviderCode}.",
+                referenceId,
+                id,
+                diagnostic.Category,
+                diagnostic.ProviderCode ?? "None");
+            Response.StatusCode = StatusCodes.Status500InternalServerError;
+            return View("ActualRunDetailUnavailable", new ActualRunDetailUnavailableViewModel
+            {
+                ActualRunId = id,
+                ReferenceId = referenceId
+            });
+        }
     }
 
     [HttpPost("ActualRuns/{id:long}/Packout")]

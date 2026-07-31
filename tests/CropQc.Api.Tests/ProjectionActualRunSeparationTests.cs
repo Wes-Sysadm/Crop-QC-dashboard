@@ -72,11 +72,11 @@ public sealed class ProjectionActualRunSeparationTests
     }
 
     [Fact]
-    public void EbsCleanup_ProtectsOnlyGalaInEvans7()
+    public void EbsCleanup_ProtectsEvans7ByRoomIdentityRegardlessOfFruit()
     {
-        Assert.True(EbsInventoryCleanupService.IsProtectedGalaEvans7(Snapshot("Evans 7", "GALA", "Gala")));
-        Assert.False(EbsInventoryCleanupService.IsProtectedGalaEvans7(Snapshot("Evans 7", "PL", "Pink Lady")));
-        Assert.False(EbsInventoryCleanupService.IsProtectedGalaEvans7(Snapshot("Evans 6", "GALA", "Gala")));
+        Assert.True(EbsInventoryCleanupService.IsEvans7Room(Room("EVANS-7", "Evans Street 7")));
+        Assert.True(EbsInventoryCleanupService.IsEvans7Room(Room("OTHER", "Evans 7")));
+        Assert.False(EbsInventoryCleanupService.IsEvans7Room(Room("EVANS-6", "Evans Street 6")));
     }
 
     [Fact]
@@ -173,40 +173,8 @@ public sealed class ProjectionActualRunSeparationTests
             WastePounds = waste
         };
 
-    private static RoomInventoryLedgerSnapshot Snapshot(string room, string variety, string varietyName) =>
-        new(
-            1,
-            "EBS",
-            2,
-            room,
-            "",
-            2026,
-            null,
-            3,
-            "Grower",
-            "Lot",
-            null,
-            variety,
-            variety,
-            varietyName,
-            "Apple",
-            "Conventional",
-            false,
-            "Active",
-            10,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            10,
-            1,
-            DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow,
-            5);
+    private static EbsInventoryCleanupService.ProtectedRoomIdentity Room(string code, string name) =>
+        new(1, code, name, null, null, null);
 
     private static string Read(params string[] parts) =>
         File.ReadAllText(RepositoryFile(parts));

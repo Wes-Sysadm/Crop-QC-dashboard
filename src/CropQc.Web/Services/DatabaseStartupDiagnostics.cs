@@ -55,6 +55,14 @@ public static class DatabaseStartupDiagnostics
         var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseStartupDiagnostics");
         var provider = db.Database.ProviderName ?? "Unknown";
+        if (!db.Database.IsRelational())
+        {
+            logger.LogInformation(
+                "Database startup migration diagnostics skipped for non-relational provider {Provider}.",
+                provider);
+            return;
+        }
+
         var deployedCommit = configuration["RENDER_GIT_COMMIT"] ?? configuration["SourceVersion"] ?? "Unknown";
         var applicationVersion = GetApplicationVersion();
         var compiledMigrations = db.Database.GetMigrations().ToArray();

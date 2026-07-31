@@ -1,0 +1,20 @@
+@model ActualRunDetailUnavailableViewModel
+@{
+    ViewData["Title"] = $"Actual Run #{Model.ActualRunId} unavailable";
+}
+
+<section class="page-header">
+    <div>
+        <p class="eyebrow">Actual Run</p>
+        <h1>Actual Run #@Model.ActualRunId could not be displayed</h1>
+    </div>
+</section>
+
+<section class="panel">
+    <p class="notice error" role="alert">
+        The Actual Run detail page could not be loaded. No inventory or run data was changed.
+        Try again after the reported problem is corrected, or provide reference
+        <strong>@Model.ReferenceId</strong> to an administrator.
+    </p>
+    <a class="button secondary-button" href="/BinsRun?Section=Actual">Return to Actual Run history</a>
+</section>
