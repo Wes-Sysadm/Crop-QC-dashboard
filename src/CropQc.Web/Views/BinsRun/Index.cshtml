@@ -93,6 +93,7 @@
              data-selected-date="@Model.Planner.SelectedDate.ToString("yyyy-MM-dd")"
              data-direct-projection-open="@Model.Planner.IsDirectProjectionOpen.ToString().ToLowerInvariant()"
              data-today-url="@plannerTodayUrl">
+        <p class="notice"><strong>This plan has not changed inventory.</strong> Planning Projections are independent what-if snapshots and are never converted into Actual Runs.</p>
         <div class="room-card-header">
             <div>
                 <h2>Planned Run Date</h2>
@@ -229,7 +230,7 @@
                            ? $"/BinsRun?Section=Planner&PlannedDate={item.PlannedRunDate:yyyy-MM-dd}&ProjectionId={item.Id}&RoomId={Model.Filter.RoomId}&Facility={plannerFacility}&ProjectionVisibility={plannerVisibility}&ProjectionSort={plannerSort}"
                            : $"/BinsRun/Projections/{item.Id}/Outcome")">
                         <span class="status pending">@item.ProjectionMode</span>
-                        <span><strong><span class="facility-badge">@item.FacilityCode</span> @item.Name</strong><small>@item.Status · @item.SourceCount source(s) @(item.IsDeleted ? "· Deleted" : "")</small></span>
+                        <span><strong><span class="facility-badge">@item.FacilityCode</span> @item.Name</strong><small>@ProjectionStatusLabel(item.Status) · @item.SourceCount source(s) @(item.IsDeleted ? "· Deleted" : "")</small></span>
                         <span><strong>@item.TotalPlannedBins bins</strong><small>@decimal.Floor(item.TotalPackedProjectedBoxes) whole packed boxes · @(item.EffectivePackoutPercent is decimal pct ? $"{pct:0.##}% packout" : "packout n/a") · @BusinessTime.FormatPacific(item.UpdatedAt)</small><small class="projection-card-action">@(item.IsDeleted ? "Inspect deleted record" : "View Outcome")</small></span>
                     </a>
                     @if (!item.IsDeleted)
@@ -292,7 +293,7 @@
                         <p><strong>@selected.ProjectionMode projection</strong> · crop year @selected.CropYear</p>
                         <p>@selected.PlannedRunDate.ToString("dddd, MMMM d, yyyy") · @selected.Creator · updated @BusinessTime.FormatPacific(selected.UpdatedAt)</p>
                     </div>
-                    <span class="status @ProjectionStatusClass(selected.Status)">@selected.Status</span>
+                    <span class="status @ProjectionStatusClass(selected.Status)">@ProjectionStatusLabel(selected.Status)</span>
                 </div>
                 @if (selected.IsDeleted)
                 {
@@ -931,9 +932,9 @@
                 {
                     <a class="button danger-button" href="/BinsRun/Projections/@selected.Id/Delete">Delete Projection</a>
                 }
-                else if (!selected.IsDeleted && (selected.Status == "Converted to Actual Run" || selected.ConvertedSourceCount > 0))
+                else if (!selected.IsDeleted && selected.ConvertedSourceCount > 0)
                 {
-                    <span class="muted">Deletion unavailable: an actual Bins Run is linked.</span>
+                    <span class="muted">Deletion unavailable: a legacy Bins Run is linked.</span>
                 }
             </div>
         </section>
@@ -953,7 +954,7 @@
                             <td><span class="facility-badge">@item.FacilityCode</span></td>
                             <td><a href="/BinsRun?Section=Planner&amp;PlannedDate=@item.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@item.Id&amp;Facility=@plannerFacility&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">@item.Name</a></td>
                             <td>@item.ProjectionMode</td>
-                            <td>@item.Status @(item.IsDeleted ? "· Deleted" : "")</td>
+                            <td>@ProjectionStatusLabel(item.Status) @(item.IsDeleted ? "· Deleted" : "")</td>
                             <td>@item.PlannedRunDate</td>
                             <td>@item.TotalPlannedBins</td>
                             <td>@BusinessTime.FormatPacific(item.UpdatedAt)</td>
@@ -1015,19 +1016,9 @@ else
         <section class="panel">
             <h2>@(Model.ActualRunForm.Id is null ? "Record Actual Run" : $"Correct Actual Run #{Model.ActualRunForm.Id}")</h2>
             <p class="muted">Current room inventory ledger balances are the source of truth. Select exact room-lot rows and enter bins pulled from each room. Receipts are not used.</p>
-            @if (Model.Filter.ProjectionId is not null)
-            {
-                <p class="notice">This form was opened from projection #@Model.Filter.ProjectionId. Review and confirm the actual quantity; the plan has not changed inventory.</p>
-                @if (conversionSource?.AvailableBinsSnapshot is int plannedAvailable
-                    && conversionInventory is not null
-                    && conversionInventory.CurrentBins != plannedAvailable)
-                {
-                    <p class="notice warning">Inventory changed since planning: @plannedAvailable bins were available when projected; @conversionInventory.CurrentBins are available now. Enter and confirm the actual bins run.</p>
-                }
-            }
             @if (!Model.CanRecord)
             {
-                <p class="notice warning">Bins Run Edit access is required.</p>
+                <p class="notice warning">Actual Run Create access is required.</p>
             }
             else if (Model.Filter.RoomIds.Count == 0)
             {
@@ -1047,7 +1038,6 @@ else
                     <input type="hidden" name="Id" value="@Model.ActualRunForm.Id" />
                     <input type="hidden" name="ConcurrencyVersion" value="@Model.ActualRunForm.ConcurrencyVersion" />
                     <input type="hidden" name="OperationKey" value="@Model.ActualRunForm.OperationKey" />
-                    <input type="hidden" name="RunProjectionId" value="@Model.ActualRunForm.RunProjectionId" />
                     <div class="table-wrap wide">
                         <table class="actual-run-ledger-table">
                             <thead>
@@ -1065,11 +1055,6 @@ else
                                         <input type="hidden" name="Lines.Index" value="@i" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].InventoryKey" value="@option.InventoryKey" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].ExpectedAvailableBins" value="@effectiveAvailable" data-actual-line-field disabled="@(!isSelected)" />
-                                        @if (Model.Filter.ProjectionSourceId is long projectionSourceId
-                                            && string.Equals(option.InventoryKey, conversionInventory?.InventoryKey, StringComparison.OrdinalIgnoreCase))
-                                        {
-                                            <input type="hidden" name="Lines[@i].RunProjectionSourceId" value="@projectionSourceId" data-actual-line-field disabled="@(!isSelected)" />
-                                        }
                                     </td>
                                     <td>@option.Room</td>
                                     <td><strong>@option.Lot</strong><br /><span class="muted">@option.Grower</span></td>
@@ -1227,6 +1212,7 @@ else
                     <details class="subpanel" open="@(Model.ActualRunForm.Id == run.Id)">
                         <summary><strong>Actual Run #@run.Id</strong> · @run.Status · revision @run.RevisionNumber · @BusinessTime.FormatPacific(run.RunAt)</summary>
                         <p class="muted">@run.Notes</p>
+                        <p><a href="/BinsRun/ActualRuns/@run.Id">Open Actual Run, Run Expectation, and Packout Result</a></p>
                         <div class="table-wrap">
                             <table>
                                 <thead><tr><th>Event</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Old</th><th>Bins</th><th>New</th><th>Override</th></tr></thead>
@@ -1677,6 +1663,9 @@ else
         "Cancelled" or "Expired" or "Superseded" => "missing",
         _ => "pending"
     };
+
+    private static string ProjectionStatusLabel(string status) =>
+        status == "Converted to Actual Run" ? "Legacy linked projection" : status;
 
     private static string Format(decimal? value, string suffix) => value is null ? "No data" : $"{value:0.##}{suffix}";
 }

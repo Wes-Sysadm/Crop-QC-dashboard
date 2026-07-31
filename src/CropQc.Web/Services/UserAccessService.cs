@@ -45,6 +45,9 @@ public static class ApplicationAreas
     public const string QcReports = "qc-reports";
     public const string ProjectionPlanner = "projection-planner";
     public const string ProjectionOutcome = "projection-outcome";
+    public const string ActualRuns = "actual-runs";
+    public const string PackoutResults = "packout-results";
+    public const string HistoricalInventoryCleanup = "historical-inventory-cleanup";
     public const string Transfers = "transfers";
     public const string TrueUp = "true-up";
     public const string Inventory = "inventory";
@@ -73,7 +76,10 @@ public static class ApplicationAreas
         new(CurrentLots, "Current Lots", "Inventory", "/Admin/RoomInventory"),
         new(BinsRun, "Bins Run", "Inventory", "/BinsRun"),
         new(ProjectionPlanner, "Projection Planner", "Planning", "/BinsRun?Section=Planner", BinsRun),
-        new(ProjectionOutcome, "Projection Outcome", "Planning", "/BinsRun?Section=Planner", BinsRun),
+        new(ProjectionOutcome, "Planning Projection Reports", "Planning", "/BinsRun?Section=Planner", BinsRun),
+        new(ActualRuns, "Actual Runs", "Operations", "/BinsRun?Section=Actual", BinsRun),
+        new(PackoutResults, "Packout Results", "Operations", "/BinsRun?Section=Actual", ProjectionOutcome),
+        new(HistoricalInventoryCleanup, "Historical Inventory Cleanup", "Admin/System", "/Admin/EbsInventoryCleanup", DataCleanup),
         new(Rooms, "Rooms", "Inventory", "/Rooms"),
         new(Transfers, "Transfers", "Inventory", "/BinsRun?Section=Transfer", RoomTransactions),
         new(TrueUp, "True Up", "Inventory", "/BinsRun?Section=TrueUp", RoomTransactions),
@@ -142,6 +148,13 @@ public static class AccessPolicyNames
     public const string ProjectionOutcomeView = "ProjectionOutcomeView";
     public const string ProjectionOutcomeCreate = "ProjectionOutcomeCreate";
     public const string ProjectionOutcomeAdmin = "ProjectionOutcomeAdmin";
+    public const string ActualRunsView = "ActualRunsView";
+    public const string ActualRunsCreate = "ActualRunsCreate";
+    public const string ActualRunsAdmin = "ActualRunsAdmin";
+    public const string PackoutResultsView = "PackoutResultsView";
+    public const string PackoutResultsCreate = "PackoutResultsCreate";
+    public const string PackoutResultsAdmin = "PackoutResultsAdmin";
+    public const string HistoricalInventoryCleanupAdmin = "HistoricalInventoryCleanupAdmin";
     public const string TransfersCreate = "TransfersCreate";
     public const string TransfersAdmin = "TransfersAdmin";
     public const string TrueUpAdmin = "TrueUpAdmin";
@@ -202,7 +215,11 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
         {
             return PageAccessLevel.Admin;
         }
-        return levels.TryGetValue(areaKey, out var level) ? ParseLevel(level) : PageAccessLevel.None;
+        if (levels.TryGetValue(areaKey, out var level)) return ParseLevel(level);
+        var legacyArea = ApplicationAreas.All.SingleOrDefault(x => x.Key == areaKey)?.LegacyAreaKey;
+        return legacyArea is not null && levels.TryGetValue(legacyArea, out var legacyLevel)
+            ? ParseLevel(legacyLevel)
+            : PageAccessLevel.None;
     }
 
     public async Task<IReadOnlyList<UserAccessMatrixRow>> GetMatrixAsync(CancellationToken cancellationToken)

@@ -20,7 +20,7 @@ public interface IPackoutReconciliationService
     Task<string?> UpdateSecondaryOutputsAsync(PackoutSecondaryOutputForm form, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<(byte[]? Workbook, string? FileName, string? Error)> FinalizeAsync(PackoutFinalizeForm form, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<string?> ReopenAsync(PackoutReopenForm form, ClaimsPrincipal principal, CancellationToken cancellationToken);
-    Task<(long ProjectionId, string? Error)> DeletePendingAsync(long id, long concurrencyVersion, ClaimsPrincipal principal, CancellationToken cancellationToken);
+    Task<(long ActualRunId, string? Error)> DeletePendingAsync(long id, long concurrencyVersion, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<(byte[]? Workbook, string? FileName)> DownloadAsync(long id, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<string?> SavePackCodeAsync(PackCodeDefinitionForm form, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<string?> SaveConfigurationAsync(PackoutAnalysisConfigurationForm form, ClaimsPrincipal principal, CancellationToken cancellationToken);
@@ -36,10 +36,13 @@ public sealed class PackoutReconciliationService(
     IConfiguration configuration,
     PackoutProcessingOptions processingOptions,
     IPackoutOperationCoordinator operationCoordinator,
-    ILogger<PackoutReconciliationService> logger) : IPackoutReconciliationService
+    ILogger<PackoutReconciliationService> logger,
+    IPackoutSourceAllocationService? sourceAllocationService = null) : IPackoutReconciliationService
 {
     private const string SourceApplication = "CropQc.Web";
     private const string FeedbackRecipient = "wes@fruitandland.com";
+    private IPackoutSourceAllocationService SourceAllocations { get; } =
+        sourceAllocationService ?? new PackoutSourceAllocationService();
 
     public async Task<(long? Id, string? Error)> UploadAsync(
         PackoutUploadForm form,
@@ -48,12 +51,12 @@ public sealed class PackoutReconciliationService(
     {
         if (!await CanEditAsync(principal, cancellationToken))
         {
-            return (null, "Bins Run Create access is required to upload actual packout results.");
+            return (null, "Actual Run View and Packout Result Create access are required to upload a Packout Result.");
         }
-        using var uploadOperation = operationCoordinator.TryEnter(form.RunProjectionId, "upload");
+        using var uploadOperation = operationCoordinator.TryEnter(form.ActualRunId, "upload");
         if (uploadOperation is null)
         {
-            return (null, "A packout upload for this projection is already being processed. Wait for it to finish before trying again.");
+            return (null, "A Packout Result upload for this Actual Run is already being processed. Wait for it to finish before trying again.");
         }
         if (form.DumpedBins <= 0m) return (null, "Dumped bins must be greater than zero.");
         if (form.PackingDate == default) return (null, "Packing date is required.");
@@ -64,43 +67,29 @@ public sealed class PackoutReconciliationService(
             return (null, uploadLimitError);
         }
 
-        var projection = await ProjectionQuery()
-            .SingleOrDefaultAsync(x => x.Id == form.RunProjectionId, cancellationToken);
-        if (projection is null || projection.IsDeleted) return (null, "Projection was not found.");
-        if (projection.ProjectionMode != RunProjectionModes.Inventory)
-        {
-            return (null, "Actual packout reports can be reconciled only to an Inventory projection.");
-        }
-        if (projection.Sources.Count == 0 || projection.Sources.Any(x => x.Commodity == "Unknown"))
-        {
-            return (null, "The projection needs resolved inventory sources before actual packout can be uploaded.");
-        }
-        var profileIds = projection.Sources.Select(x => x.FruitProfileId).Distinct().ToList();
-        var profiles = await dbContext.FruitProfiles.AsNoTracking().Where(x => profileIds.Contains(x.Id)).ToListAsync(cancellationToken);
-        if (profiles.Select(x => new { x.VarietyCode, x.IsOrganic }).Distinct().Count() != 1)
-        {
-            return (null, "Actual reconciliation requires projection sources with the same variety and Organic/Conventional status.");
-        }
-        var facilityCode = projection.FacilityWarehouse?.Code ?? projection.FacilityCodeSnapshot ?? "";
+        var actualRun = await dbContext.ActualRuns
+            .AsSplitQuery()
+            .Include(x => x.Expectations.Where(y => y.RevisionNumber == x.CurrentRevisionNumber))
+                .ThenInclude(x => x.Sources)
+            .SingleOrDefaultAsync(x => x.Id == form.ActualRunId, cancellationToken);
+        if (actualRun is null) return (null, "Actual Run was not found.");
+        if (actualRun.Status != ActualRunStatuses.Active) return (null, "A Packout Result can be uploaded only for an active Actual Run.");
+        var expectation = actualRun.Expectations.SingleOrDefault();
+        if (expectation is null) return (null, "The current Actual Run revision does not have a frozen Run Expectation.");
+        if (expectation.Sources.Count == 0) return (null, "The Run Expectation has no source contribution rows.");
+        var facilityCode = expectation.FacilitySnapshot;
         var existingRunId = await dbContext.PackoutRuns
-            .Where(
-                x => x.FacilitySnapshot == facilityCode
-                    && x.PackingDate == form.PackingDate
-                    && x.RunNumber == form.RunNumber)
+            .Where(x => x.ActualRunId == actualRun.Id
+                || (x.ActualRunId == null
+                    && x.BinsRunEntry != null
+                    && x.BinsRunEntry.ActualRunId == actualRun.Id))
+            .OrderByDescending(x => x.ActualRunId != null)
+            .ThenByDescending(x => x.Id)
             .Select(x => (long?)x.Id)
-            .SingleOrDefaultAsync(cancellationToken);
+            .FirstOrDefaultAsync(cancellationToken);
         if (existingRunId is long existingId)
         {
-            return (existingId, "An actual run already exists for this facility, packing date, and run number. Use the existing run, or reopen and remove its pending replacement before uploading a corrected report.");
-        }
-
-        BinsRunEntry? binsRun = null;
-        if (form.BinsRunEntryId is long binsRunId)
-        {
-            binsRun = await dbContext.BinsRunEntries.AsNoTracking().SingleOrDefaultAsync(x => x.Id == binsRunId, cancellationToken);
-            if (binsRun is null || binsRun.IsReversed) return (null, "Select an active Bins Run record.");
-            var linkedIds = projection.Sources.Where(x => x.ActualBinsRunEntryId is not null).Select(x => x.ActualBinsRunEntryId!.Value).ToHashSet();
-            if (!linkedIds.Contains(binsRun.Id)) return (null, "The selected Bins Run is not linked to this projection.");
+            return (existingId, "This Actual Run already has a Packout Result. Replace an unfinalized upload from its review page instead of creating a second result.");
         }
 
         var parseStopwatch = Stopwatch.StartNew();
@@ -162,19 +151,28 @@ public sealed class PackoutReconciliationService(
         var userId = await CurrentUserIdAsync(principal, cancellationToken);
         var now = businessTime.UtcNow;
         var configuration = await LoadConfigurationAsync(cancellationToken);
-        var isPear = profiles.First().FruitType.Equals("Pear", StringComparison.OrdinalIgnoreCase);
+        var firstSource = expectation.Sources.First();
+        var sourcePoundsPerBin = firstSource.BinsContributed <= 0
+            ? 0m
+            : firstSource.GrossPounds / firstSource.BinsContributed;
+        var isPear = Math.Abs(sourcePoundsPerBin - configuration.PearBinWeightPounds)
+            < Math.Abs(sourcePoundsPerBin - configuration.AppleBinWeightPounds);
         var run = new PackoutRun
         {
-            RunProjectionId = projection.Id,
-            BinsRunEntryId = binsRun?.Id,
+            RunProjectionId = null,
+            ActualRunId = actualRun.Id,
+            RunExpectationId = expectation.Id,
+            ActualRun = actualRun,
+            RunExpectation = expectation,
+            BinsRunEntryId = null,
             Status = PackoutRunStatuses.Review,
             FacilitySnapshot = facilityCode,
             PackingDate = form.PackingDate,
             RunNumber = form.RunNumber,
-            LotNumberSnapshot = string.Join(" + ", projection.Sources.Select(x => x.LotSnapshot).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase)),
-            VarietySnapshot = profiles.First().Name,
-            IsOrganicSnapshot = profiles.First().IsOrganic,
-            CropYearSnapshot = projection.CropYear,
+            LotNumberSnapshot = string.Join(" + ", expectation.Sources.Select(x => x.LotSnapshot).Distinct(StringComparer.OrdinalIgnoreCase)),
+            VarietySnapshot = expectation.Sources.First().VarietySnapshot,
+            IsOrganicSnapshot = expectation.Sources.First().IsOrganicSnapshot,
+            CropYearSnapshot = expectation.Sources.First().CropYearSnapshot ?? 0,
             DumpedBins = form.DumpedBins,
             PoundsPerBin = isPear ? configuration.PearBinWeightPounds : configuration.AppleBinWeightPounds,
             CreatedAt = now,
@@ -182,7 +180,7 @@ public sealed class PackoutReconciliationService(
             CreatedByUserId = userId,
             UpdatedByUserId = userId,
             CalculationVersion = PackoutReconciliationCalculationService.CurrentCalculationVersion,
-            ProjectionSnapshotJson = JsonSerializer.Serialize(ProjectionSnapshot(projection)),
+            ProjectionSnapshotJson = JsonSerializer.Serialize(ExpectationSnapshot(expectation)),
             ConfigurationSnapshotJson = JsonSerializer.Serialize(ConfigurationSnapshot(configuration))
         };
         var definitions = await dbContext.PackCodeDefinitions.Where(x => x.IsActive).ToListAsync(cancellationToken);
@@ -251,14 +249,12 @@ public sealed class PackoutReconciliationService(
             }
         }
         dbContext.PackoutRuns.Add(run);
-        projection.UpdatedAt = now;
-        projection.UpdatedByUserId = userId;
-        projection.ConcurrencyVersion++;
         await dbContext.SaveChangesAsync(cancellationToken);
         await RecalculateAsync(run, cancellationToken);
         AddAudit("UploadPackoutReports", run, userId, null, new
         {
-            run.RunProjectionId,
+            run.ActualRunId,
+            run.RunExpectationId,
             run.DumpedBins,
             SourceFiles = run.Sources.Select(x => new { x.OriginalFileName, x.Sha256, x.ParserName }),
             ParsedLines = run.Lines.Count,
@@ -271,21 +267,25 @@ public sealed class PackoutReconciliationService(
 
     public async Task<PackoutRunViewModel?> GetAsync(long id, ClaimsPrincipal principal, CancellationToken cancellationToken)
     {
-        if (!await accessService.HasAccessAsync(principal, ApplicationAreas.ProjectionOutcome, PageAccessLevel.View, cancellationToken))
+        if (!await accessService.HasAccessAsync(principal, ApplicationAreas.PackoutResults, PageAccessLevel.View, cancellationToken))
         {
-            throw new UnauthorizedAccessException("Projection Outcome View access is required.");
+            throw new UnauthorizedAccessException("Packout Result View access is required.");
         }
         var run = await RunQuery(asTracking: false).SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (run is null) return null;
         var configuration = await LoadConfigurationAsync(cancellationToken);
         var hasEditAccess = await CanEditAsync(principal, cancellationToken);
         var canEdit = hasEditAccess && run.Status != PackoutRunStatuses.Finalized;
-        var canAdmin = await accessService.HasAccessAsync(principal, ApplicationAreas.ProjectionOutcome, PageAccessLevel.Admin, cancellationToken);
+        var canAdmin = await accessService.HasAccessAsync(principal, ApplicationAreas.PackoutResults, PageAccessLevel.Admin, cancellationToken);
         return new PackoutRunViewModel
         {
             Id = run.Id,
             RunProjectionId = run.RunProjectionId,
-            ProjectionName = run.RunProjection.Name,
+            ActualRunId = run.ActualRunId,
+            RunExpectationId = run.RunExpectationId,
+            ProjectionName = run.ActualRunId is long actualRunId
+                ? $"Actual Run #{actualRunId}"
+                : run.RunProjection?.Name ?? "Legacy Packout Result",
             BinsRunEntryId = run.BinsRunEntryId,
             Status = run.Status,
             Facility = run.FacilitySnapshot,
@@ -339,7 +339,7 @@ public sealed class PackoutReconciliationService(
 
     public async Task<string?> UpdateLineAsync(PackoutLineReviewForm form, ClaimsPrincipal principal, CancellationToken cancellationToken)
     {
-        if (!await CanEditAsync(principal, cancellationToken)) return "Bins Run Create access is required.";
+        if (!await CanEditAsync(principal, cancellationToken)) return "Actual Run View and Packout Result Create access are required.";
         var run = await RunQuery().SingleOrDefaultAsync(x => x.Id == form.PackoutRunId, cancellationToken);
         if (run is null) return "Packout reconciliation was not found.";
         var guard = EditableGuard(run, form.ConcurrencyVersion);
@@ -381,7 +381,7 @@ public sealed class PackoutReconciliationService(
 
     public async Task<string?> UpdateSecondaryOutputsAsync(PackoutSecondaryOutputForm form, ClaimsPrincipal principal, CancellationToken cancellationToken)
     {
-        if (!await CanEditAsync(principal, cancellationToken)) return "Bins Run Create access is required.";
+        if (!await CanEditAsync(principal, cancellationToken)) return "Actual Run View and Packout Result Create access are required.";
         var run = await RunQuery().SingleOrDefaultAsync(x => x.Id == form.PackoutRunId, cancellationToken);
         if (run is null) return "Packout reconciliation was not found.";
         var guard = EditableGuard(run, form.ConcurrencyVersion);
@@ -415,9 +415,9 @@ public sealed class PackoutReconciliationService(
         ClaimsPrincipal principal,
         CancellationToken cancellationToken)
     {
-        if (!await accessService.HasAccessAsync(principal, ApplicationAreas.ProjectionOutcome, PageAccessLevel.Admin, cancellationToken))
+        if (!await accessService.HasAccessAsync(principal, ApplicationAreas.PackoutResults, PageAccessLevel.Admin, cancellationToken))
         {
-            return (null, null, "Projection Outcome Admin access is required to finalize actual-run feedback.");
+            return (null, null, "Packout Result Admin access is required to finalize an Actual Run result.");
         }
         using var finalizeOperation = operationCoordinator.TryEnter(form.PackoutRunId, "finalize");
         if (finalizeOperation is null)
@@ -435,25 +435,26 @@ public sealed class PackoutReconciliationService(
         if (run is null) return (null, null, "Packout reconciliation was not found.");
         var guard = EditableGuard(run, form.ConcurrencyVersion);
         if (guard is not null) return (null, null, guard);
-        var linkedBinsRunIds = run.RunProjection.Sources
-            .Where(x => x.SourceType == RunProjectionSourceTypes.Inventory)
-            .Select(x => x.ActualBinsRunEntryId)
-            .ToList();
-        if (linkedBinsRunIds.Count == 0 || linkedBinsRunIds.Any(x => x is null))
+        var linkedIds = run.RunExpectation?.Sources
+            .Select(x => x.BinsRunEntryId)
+            .Distinct()
+            .ToList()
+            ?? run.RunProjection?.Sources
+                .Where(x => x.ActualBinsRunEntryId is not null)
+                .Select(x => x.ActualBinsRunEntryId!.Value)
+                .Distinct()
+                .ToList()
+            ?? [];
+        if (linkedIds.Count == 0)
         {
-            return (null, null, "Finalize and link every applicable Bins Run component before finalizing packout feedback.");
+            return (null, null, "The Packout Result has no persisted Actual Run depletion rows.");
         }
-        var linkedIds = linkedBinsRunIds.Select(x => x!.Value).Distinct().ToList();
         var linkedBinsRuns = await dbContext.BinsRunEntries
             .Where(x => linkedIds.Contains(x.Id))
             .ToListAsync(cancellationToken);
         if (linkedBinsRuns.Count != linkedIds.Count || linkedBinsRuns.Any(x => x.IsReversed))
         {
             return (null, null, "One or more linked Bins Run components are missing or reversed.");
-        }
-        if (!run.RunProjection.IsLocked)
-        {
-            return (null, null, "The shared projection is not locked yet. Finalize every linked Bins Run component first.");
         }
         if (run.Lines.Count == 0 || run.Lines.Any(x => x.RequiresReview || x.Quantity is null || x.NetWeightPounds is null || string.IsNullOrWhiteSpace(x.ProductCategory)))
         {
@@ -466,7 +467,7 @@ public sealed class PackoutReconciliationService(
         var sender = userId is int id
             ? await dbContext.Users.SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             : null;
-        if (sender is null) return (null, null, "A signed-in user is required to send final packout feedback.");
+        if (sender is null) return (null, null, "A signed-in user is required to finalize the Packout Result.");
         var fileName = $"packout-feedback-{run.CropYearSnapshot}-{SafeFileName(run.LotNumberSnapshot)}-{run.Id}.xlsx";
         var workbook = workbookService.Build(run);
         AddAudit("GeneratePackoutFeedbackWorkbook", run, userId, null, new { FileName = fileName, WorksheetCount = 1 });
@@ -505,9 +506,6 @@ public sealed class PackoutReconciliationService(
         run.FinalReportFileName = fileName;
         run.FinalReportSha256 = Convert.ToHexString(SHA256.HashData(workbook)).ToLowerInvariant();
         run.FinalEmailMessageId = sent.MessageId;
-        run.RunProjection.IsLocked = true;
-        run.RunProjection.LockedAt ??= businessTime.UtcNow;
-        run.RunProjection.LockedByUserId ??= userId;
         foreach (var linkedBinsRun in linkedBinsRuns)
         {
             linkedBinsRun.IsReconciled = true;
@@ -521,8 +519,10 @@ public sealed class PackoutReconciliationService(
         logger.LogInformation(
             "Packout finalization completed. Packout run {PackoutRunId}; QC sample count {QcSampleCount}; receipt count {ReceiptCount}; component count {ComponentCount}; Excel row count {ExcelRowCount}; elapsed ms {ElapsedMilliseconds}; working set delta bytes {WorkingSetDeltaBytes}.",
             run.Id,
-            run.RunProjection.Sources.Sum(x => CountJsonIds(x.ContributingSampleIdsJson)),
-            run.RunProjection.Sources.Sum(x => CountJsonIds(x.ContributingReceiptIdsJson)),
+            run.RunExpectation?.Sources.Count(x => x.QcSampleId != null)
+                ?? run.RunProjection?.Sources.Sum(x => CountJsonIds(x.ContributingSampleIdsJson))
+                ?? 0,
+            run.RunProjection?.Sources.Sum(x => CountJsonIds(x.ContributingReceiptIdsJson)) ?? 0,
             linkedBinsRuns.Count,
             run.Lines.Count,
             finalizeStopwatch.ElapsedMilliseconds,
@@ -533,28 +533,27 @@ public sealed class PackoutReconciliationService(
     public async Task<string?> ReopenAsync(PackoutReopenForm form, ClaimsPrincipal principal, CancellationToken cancellationToken)
     {
         if (!await CanEditAsync(principal, cancellationToken)
-            && !await accessService.HasAccessAsync(principal, ApplicationAreas.ProjectionOutcome, PageAccessLevel.Admin, cancellationToken))
+            && !await accessService.HasAccessAsync(principal, ApplicationAreas.PackoutResults, PageAccessLevel.Admin, cancellationToken))
         {
-            return "Projection Outcome Create or Admin access is required to reopen finalized feedback.";
+            return "Packout Result Create or Admin access is required to reopen finalized feedback.";
         }
         if (string.IsNullOrWhiteSpace(form.Reason)) return "A reopen reason is required.";
         var run = await RunQuery().SingleOrDefaultAsync(x => x.Id == form.PackoutRunId, cancellationToken);
         if (run is null) return "Packout reconciliation was not found.";
         if (run.ConcurrencyVersion != form.ConcurrencyVersion) return "This packout reconciliation changed after the page loaded. Reload before continuing.";
-        if (run.Status != PackoutRunStatuses.Finalized) return "Only finalized packout feedback can be reopened.";
+        if (run.Status != PackoutRunStatuses.Finalized) return "Only a finalized Packout Result can be reopened.";
         var userId = await CurrentUserIdAsync(principal, cancellationToken);
         run.Status = PackoutRunStatuses.Reopened;
         run.ReopenedAt = businessTime.UtcNow;
         run.ReopenedByUserId = userId;
         run.ReopenReason = form.Reason.Trim();
-        run.RunProjection.IsLocked = false;
-        run.RunProjection.LockedAt = null;
-        run.RunProjection.LockedByUserId = null;
-        var linkedIds = run.RunProjection.Sources
-            .Where(x => x.ActualBinsRunEntryId is not null)
-            .Select(x => x.ActualBinsRunEntryId!.Value)
-            .Distinct()
-            .ToList();
+        var linkedIds = run.RunExpectation?.Sources.Select(x => x.BinsRunEntryId).Distinct().ToList()
+            ?? run.RunProjection?.Sources
+                .Where(x => x.ActualBinsRunEntryId is not null)
+                .Select(x => x.ActualBinsRunEntryId!.Value)
+                .Distinct()
+                .ToList()
+            ?? [];
         var linkedBinsRuns = await dbContext.BinsRunEntries.Where(x => linkedIds.Contains(x.Id)).ToListAsync(cancellationToken);
         foreach (var linkedBinsRun in linkedBinsRuns)
         {
@@ -568,7 +567,7 @@ public sealed class PackoutReconciliationService(
         return null;
     }
 
-    public async Task<(long ProjectionId, string? Error)> DeletePendingAsync(
+    public async Task<(long ActualRunId, string? Error)> DeletePendingAsync(
         long id,
         long concurrencyVersion,
         ClaimsPrincipal principal,
@@ -576,25 +575,25 @@ public sealed class PackoutReconciliationService(
     {
         if (!await CanEditAsync(principal, cancellationToken))
         {
-            return (0, "Projection Outcome Create access is required to remove a pending actual run.");
+            return (0, "Packout Result Create access is required to remove a pending result.");
         }
         var run = await RunQuery().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (run is null) return (0, "Packout reconciliation was not found.");
         if (run.ConcurrencyVersion != concurrencyVersion)
         {
-            return (run.RunProjectionId, "This packout reconciliation changed after the page loaded. Reload before removing it.");
+            return (run.ActualRunId ?? 0, "This Packout Result changed after the page loaded. Reload before removing it.");
         }
         if (run.Status == PackoutRunStatuses.Finalized)
         {
-            return (run.RunProjectionId, "Finalized actual runs cannot be deleted. Reopen it first; finalized email and audit history remain preserved.");
+            return (run.ActualRunId ?? 0, "Finalized Packout Results cannot be deleted. Reopen it first; finalized audit history remains preserved.");
         }
         if (run.BinsRunEntry?.IsReconciled == true)
         {
-            return (run.RunProjectionId, "A reconciled Bins Run cannot be removed until the actual run is reopened.");
+            return (run.ActualRunId ?? 0, "A reconciled Bins Run cannot be removed until the Packout Result is reopened.");
         }
 
         var userId = await CurrentUserIdAsync(principal, cancellationToken);
-        var projectionId = run.RunProjectionId;
+        var actualRunId = run.ActualRunId ?? 0;
         AddAudit("DeletePendingPackout", run, userId, new
         {
             run.Status,
@@ -606,14 +605,14 @@ public sealed class PackoutReconciliationService(
         }, null);
         dbContext.PackoutRuns.Remove(run);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return (projectionId, null);
+        return (actualRunId, null);
     }
 
     public async Task<(byte[]? Workbook, string? FileName)> DownloadAsync(long id, ClaimsPrincipal principal, CancellationToken cancellationToken)
     {
-        if (!await accessService.HasAccessAsync(principal, ApplicationAreas.ProjectionOutcome, PageAccessLevel.Admin, cancellationToken))
+        if (!await accessService.HasAccessAsync(principal, ApplicationAreas.PackoutResults, PageAccessLevel.Admin, cancellationToken))
         {
-            throw new UnauthorizedAccessException("Projection Outcome Admin access is required for protected exports.");
+            throw new UnauthorizedAccessException("Packout Result Admin access is required for protected exports.");
         }
         using var downloadOperation = operationCoordinator.TryEnter(id, "workbook");
         if (downloadOperation is null)
@@ -737,12 +736,21 @@ public sealed class PackoutReconciliationService(
     {
         var stopwatch = Stopwatch.StartNew();
         var startingWorkingSet = Environment.WorkingSet;
-        var projectedSize = WeightedProjectedSize(run.RunProjection);
-        var projectedGrade = WeightedProjectedGrade(run.RunProjection);
-        decimal? expectedPackout = run.RunProjection.TotalProjectedPounds <= 0m
-            ? null
-            : run.RunProjection.TotalPackedProjectedPounds / run.RunProjection.TotalProjectedPounds * 100m;
+        var expectation = run.RunExpectation;
+        var projectedSize = expectation is null
+            ? run.RunProjection is null ? [] : WeightedProjectedSize(run.RunProjection)
+            : DeserializeDistribution(expectation.SizeDistributionSnapshotJson);
+        var projectedGrade = expectation is null
+            ? run.RunProjection is null ? [] : WeightedProjectedGrade(run.RunProjection)
+            : DeserializeDistribution(expectation.GradeDistributionSnapshotJson);
+        decimal? expectedPackout = expectation?.ExpectedPackoutPercent
+            ?? (run.RunProjection is null || run.RunProjection.TotalProjectedPounds <= 0m
+                ? null
+                : run.RunProjection.TotalPackedProjectedPounds / run.RunProjection.TotalProjectedPounds * 100m);
         var expectedCull = expectedPackout is null ? null : 100m - expectedPackout;
+        var juiceCullShare = run.RunProjection?.JuiceCullShare ?? ProjectionOutcomeCalculator.JuiceRate;
+        var peelerCullShare = run.RunProjection?.PeelerCullShare ?? ProjectionOutcomeCalculator.PeelerRate;
+        var wasteCullShare = run.RunProjection?.WasteCullShare ?? ProjectionOutcomeCalculator.WasteRate;
         var lines = run.Lines
             .Where(x => x.Quantity is not null and not 0m
                 && x.NetWeightPounds is > 0m
@@ -761,9 +769,9 @@ public sealed class PackoutReconciliationService(
             projectedSize,
             projectedGrade,
             expectedPackout,
-            expectedCull * run.RunProjection.JuiceCullShare,
-            expectedCull * run.RunProjection.PeelerCullShare,
-            expectedCull * run.RunProjection.WasteCullShare,
+            expectedCull * juiceCullShare,
+            expectedCull * peelerCullShare,
+            expectedCull * wasteCullShare,
             new PackoutAccuracyWeights(
                 configuration.SizeScoreWeight,
                 configuration.GradeScoreWeight,
@@ -800,13 +808,25 @@ public sealed class PackoutReconciliationService(
             calculation.WasteAccuracy,
             calculation.OverallAccuracy
         });
+        if (expectation is not null)
+        {
+            if (run.SourceAllocations.Count > 0)
+            {
+                dbContext.PackoutSourceAllocations.RemoveRange(run.SourceAllocations);
+                run.SourceAllocations.Clear();
+            }
+            foreach (var allocation in SourceAllocations.Allocate(run, expectation, businessTime.UtcNow))
+            {
+                run.SourceAllocations.Add(allocation);
+            }
+        }
         stopwatch.Stop();
         logger.LogInformation(
             "Actual-run analysis completed. Packout run {PackoutRunId}; parsed row count {ParsedRowCount}; analyzed row count {AnalyzedRowCount}; projection source count {ProjectionSourceCount}; elapsed ms {ElapsedMilliseconds}; working set delta bytes {WorkingSetDeltaBytes}.",
             run.Id,
             run.Lines.Count,
             lines.Count,
-            run.RunProjection.Sources.Count,
+            expectation?.Sources.Count ?? run.RunProjection?.Sources.Count ?? 0,
             stopwatch.ElapsedMilliseconds,
             Environment.WorkingSet - startingWorkingSet);
         await Task.CompletedTask;
@@ -826,11 +846,26 @@ public sealed class PackoutReconciliationService(
             .AsSplitQuery()
             .Include(x => x.RunProjection).ThenInclude(x => x.Sources).ThenInclude(x => x.SizeResults)
             .Include(x => x.RunProjection).ThenInclude(x => x.Sources).ThenInclude(x => x.GradeResults)
+            .Include(x => x.RunExpectation).ThenInclude(x => x.Sources)
+            .Include(x => x.SourceAllocations).ThenInclude(x => x.RunExpectationSource)
             .Include(x => x.BinsRunEntry)
             .Include(x => x.Sources)
             .Include(x => x.Lines).ThenInclude(x => x.PackoutReportSource)
             .Include(x => x.Lines).ThenInclude(x => x.Grade);
         return asTracking ? query : query.AsNoTracking();
+    }
+
+    private static Dictionary<string, decimal> DeserializeDistribution(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, decimal>>(json)
+                ?? new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        }
     }
 
     private async Task<long> StageUploadAsync(
@@ -892,8 +927,8 @@ public sealed class PackoutReconciliationService(
     }
 
     private async Task<bool> CanEditAsync(ClaimsPrincipal principal, CancellationToken cancellationToken) =>
-        await accessService.HasAccessAsync(principal, ApplicationAreas.BinsRun, PageAccessLevel.Create, cancellationToken)
-        && await accessService.HasAccessAsync(principal, ApplicationAreas.ProjectionOutcome, PageAccessLevel.Create, cancellationToken);
+        await accessService.HasAccessAsync(principal, ApplicationAreas.ActualRuns, PageAccessLevel.View, cancellationToken)
+        && await accessService.HasAccessAsync(principal, ApplicationAreas.PackoutResults, PageAccessLevel.Create, cancellationToken);
 
     private async Task<PackoutAnalysisConfiguration> LoadConfigurationAsync(CancellationToken cancellationToken) =>
         await dbContext.PackoutAnalysisConfigurations.SingleOrDefaultAsync(x => x.Id == 1, cancellationToken)
@@ -910,7 +945,7 @@ public sealed class PackoutReconciliationService(
     private static string? EditableGuard(PackoutRun run, long concurrencyVersion)
     {
         if (run.ConcurrencyVersion != concurrencyVersion) return "This packout reconciliation changed after the page loaded. Reload before saving.";
-        if (run.Status == PackoutRunStatuses.Finalized) return "Finalized packout feedback is immutable. An administrator must reopen it first.";
+        if (run.Status == PackoutRunStatuses.Finalized) return "A finalized Packout Result is immutable. An administrator must reopen it first.";
         return null;
     }
 
@@ -983,6 +1018,43 @@ public sealed class PackoutReconciliationService(
         })
     };
 
+    private static object ExpectationSnapshot(RunExpectation expectation) => new
+    {
+        expectation.Id,
+        expectation.ActualRunId,
+        expectation.ActualRunRevisionId,
+        expectation.RevisionNumber,
+        expectation.FacilitySnapshot,
+        expectation.RunAtSnapshot,
+        expectation.TotalBins,
+        expectation.GrossPounds,
+        expectation.ExpectedPackoutPercent,
+        expectation.ExpectedPackedPounds,
+        expectation.ExpectedWholeBoxes,
+        expectation.ExpectedCullPounds,
+        expectation.ExpectedJuicePounds,
+        expectation.ExpectedPeelerPounds,
+        expectation.ExpectedWastePounds,
+        expectation.ConfidencePercent,
+        expectation.CalculationVersion,
+        expectation.CalculatedAt,
+        Sources = expectation.Sources.Select(x => new
+        {
+            x.Id,
+            x.BinsRunEntryId,
+            x.RoomSnapshot,
+            x.GrowerSnapshot,
+            x.LotSnapshot,
+            x.VarietySnapshot,
+            x.BinsContributed,
+            x.ContributionPercent,
+            x.QcSampleId,
+            x.QcSampleTakenAtSnapshot,
+            x.QcFruitCountSnapshot,
+            x.ConfidencePercent
+        })
+    };
+
     private static object ConfigurationSnapshot(PackoutAnalysisConfiguration configuration) => new
     {
         configuration.AppleBinWeightPounds,
@@ -1028,17 +1100,23 @@ public sealed class PackoutReconciliationService(
 
     private (string Text, string Html) BuildEmailBodies(PackoutRun run)
     {
-        var title = run.ReopenedAt is null ? "Final packout feedback" : "Updated packout feedback";
+        var title = run.ReopenedAt is null ? "Final Packout Result" : "Updated Packout Result";
         var production = run.IsOrganicSnapshot ? "Organic" : "Conventional";
         var siteBase = configuration["PublicBaseUrl"] ?? configuration["QcStation:ApiBaseUrl"];
         var analysisUrl = Uri.TryCreate(siteBase?.TrimEnd('/'), UriKind.Absolute, out var baseUri)
             ? new Uri(baseUri, $"/BinsRun/Packout/{run.Id}").ToString()
             : null;
-        var sources = run.RunProjection.Sources
-            .OrderBy(x => x.SortOrder)
-            .ThenBy(x => x.Id)
-            .Select(x => $"{x.GrowerSnapshot ?? "Unknown grower"} / lot {x.LotSnapshot ?? "Unknown"} / {x.RoomSnapshot ?? "Unassigned room"}")
-            .ToList();
+        var sources = run.RunExpectation is not null
+            ? run.RunExpectation.Sources
+                .OrderBy(x => x.Id)
+                .Select(x => $"{x.GrowerSnapshot} / lot {x.LotSnapshot} / {x.RoomSnapshot}")
+                .ToList()
+            : run.RunProjection?.Sources
+                .OrderBy(x => x.SortOrder)
+                .ThenBy(x => x.Id)
+                .Select(x => $"{x.GrowerSnapshot ?? "Unknown grower"} / lot {x.LotSnapshot ?? "Unknown"} / {x.RoomSnapshot ?? "Unassigned room"}")
+                .ToList()
+            ?? [];
         var oddity = run.HasReconciliationWarning
             ? $"Oddity: packed plus secondary output differs from dumped weight by {run.ReconciliationDifferencePounds:0.##} lb (more than 10%). This does not reduce the accuracy score."
             : $"Weight reconciliation difference: {run.ReconciliationDifferencePounds:0.##} lb.";
@@ -1080,12 +1158,14 @@ public sealed class PackoutReconciliationService(
     }
 
     private static decimal? ProjectedPackout(PackoutRun run) =>
-        run.RunProjection.TotalProjectedPounds <= 0m
+        run.RunExpectation?.ExpectedPackoutPercent
+        ?? (run.RunProjection is null || run.RunProjection.TotalProjectedPounds <= 0m
             ? null
-            : run.RunProjection.TotalPackedProjectedPounds / run.RunProjection.TotalProjectedPounds * 100m;
+            : run.RunProjection.TotalPackedProjectedPounds / run.RunProjection.TotalProjectedPounds * 100m);
 
     private static decimal? WeightedProjectionDefectPercentage(PackoutRun run)
     {
+        if (run.RunProjection is null) return null;
         var represented = run.RunProjection.Sources.Where(x => x.TotalDefectPercentageSnapshot is not null).ToList();
         var denominator = represented.Sum(x => Math.Max(0m, x.PackedProjectedPounds));
         return denominator <= 0m

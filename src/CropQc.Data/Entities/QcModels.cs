@@ -253,6 +253,8 @@ public sealed class ActualRun
     public string? CancellationReason { get; set; }
     public ICollection<ActualRunRevision> Revisions { get; } = new List<ActualRunRevision>();
     public ICollection<BinsRunEntry> Entries { get; } = new List<BinsRunEntry>();
+    public ICollection<RunExpectation> Expectations { get; } = new List<RunExpectation>();
+    public ICollection<PackoutRun> PackoutRuns { get; } = new List<PackoutRun>();
 }
 
 public sealed class ActualRunRevision
@@ -270,6 +272,7 @@ public sealed class ActualRunRevision
     public DateTimeOffset CreatedAt { get; set; }
     public ICollection<BinsRunEntry> Entries { get; } = new List<BinsRunEntry>();
     public ICollection<RoomInventoryAdjustment> InventoryAdjustments { get; } = new List<RoomInventoryAdjustment>();
+    public RunExpectation? RunExpectation { get; set; }
 }
 
 public sealed class ActualRunOverrideRequest

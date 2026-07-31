@@ -59,7 +59,8 @@
                 var canAccessConfiguration = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Configuration, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
                 var canAccessBackups = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Backups, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
                 var canAccessDataCleanup = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.DataCleanup, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
-                var showAdminMenu = canAccessUsers || canAccessQcStations || canAccessMasterData || canAccessCurrentLots || canAccessDownloads || canAccessConfiguration || canAccessBackups || canAccessDataCleanup;
+                var canAccessHistoricalInventoryCleanup = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.HistoricalInventoryCleanup, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
+                var showAdminMenu = canAccessUsers || canAccessQcStations || canAccessMasterData || canAccessCurrentLots || canAccessDownloads || canAccessConfiguration || canAccessBackups || canAccessDataCleanup || canAccessHistoricalInventoryCleanup;
                 @if (canAccessDashboard)
                 {
                     <a asp-controller="Home" asp-action="Index" asp-route-facility="@facilityRouteValue">Dashboard</a>
@@ -133,6 +134,10 @@
                             @if (canAccessDataCleanup)
                             {
                                 <a href="/Admin/DataCleanup">Data Cleanup</a>
+                            }
+                            @if (canAccessHistoricalInventoryCleanup)
+                            {
+                                <a href="/Admin/EbsInventoryCleanup">EBS Historical Inventory Cleanup</a>
                             }
                         </div>
                     </details>

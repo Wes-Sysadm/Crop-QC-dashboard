@@ -66,8 +66,12 @@ public sealed class PackCodeDefinition
 public sealed class PackoutRun
 {
     public long Id { get; set; }
-    public long RunProjectionId { get; set; }
-    public RunProjection RunProjection { get; set; } = null!;
+    public long? RunProjectionId { get; set; }
+    public RunProjection? RunProjection { get; set; }
+    public long? ActualRunId { get; set; }
+    public ActualRun? ActualRun { get; set; }
+    public long? RunExpectationId { get; set; }
+    public RunExpectation? RunExpectation { get; set; }
     public long? BinsRunEntryId { get; set; }
     public BinsRunEntry? BinsRunEntry { get; set; }
     public required string Status { get; set; }
@@ -127,6 +131,7 @@ public sealed class PackoutRun
     public ICollection<PackoutReportSource> Sources { get; } = new List<PackoutReportSource>();
     public ICollection<PackoutReportLine> Lines { get; } = new List<PackoutReportLine>();
     public ICollection<PackoutEmailAttempt> EmailAttempts { get; } = new List<PackoutEmailAttempt>();
+    public ICollection<PackoutSourceAllocation> SourceAllocations { get; } = new List<PackoutSourceAllocation>();
 }
 
 public sealed class PackoutReportSource

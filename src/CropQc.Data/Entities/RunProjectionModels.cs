@@ -10,7 +10,7 @@ public static class RunProjectionStatuses
     public const string Cancelled = "Cancelled";
 
     public static readonly IReadOnlySet<string> Editable =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Draft, Ready };
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Draft };
 }
 
 public static class RunProjectionModes
@@ -101,7 +101,7 @@ public sealed class RunProjection
     public Guid? DeletionOperationId { get; set; }
     public string? DeletedFromStatus { get; set; }
     public ICollection<RunProjectionSource> Sources { get; } = new List<RunProjectionSource>();
-    public ICollection<PackoutRun> PackoutRuns { get; } = new List<PackoutRun>();
+    public ICollection<PackoutRun> LegacyPackoutRuns { get; } = new List<PackoutRun>();
 }
 
 public sealed class RunProjectionSource

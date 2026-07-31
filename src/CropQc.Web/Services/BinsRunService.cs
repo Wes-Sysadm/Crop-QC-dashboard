@@ -14,6 +14,7 @@ namespace CropQc.Web.Services;
 public interface IBinsRunService
 {
     Task<BinsRunPageViewModel> GetPageAsync(BinsRunFilterForm filter, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<ActualRunDetailViewModel?> GetActualRunDetailAsync(long id, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<BinsRunProjectionViewModel> GetProjectionAsync(BinsRunProjectionRequest request, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<IReadOnlyList<RunProjectionInventorySource>> SearchPlanningInventoryAsync(string? query, int? warehouseId, int? roomId, int take, CancellationToken cancellationToken);
     Task<RunProjectionInventorySource?> GetPlanningInventoryAsync(string inventoryKey, CancellationToken cancellationToken);
@@ -31,7 +32,8 @@ public sealed class BinsRunService(
     IUserAccessService userAccessService,
     ILogger<BinsRunService> logger,
     IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null,
-    IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null) : IBinsRunService
+    IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null,
+    IRunExpectationService? runExpectationService = null) : IBinsRunService
 {
     public const string AdjustmentType = "BinsRun";
     public const string ReversalAdjustmentType = "BinsRunReversal";
@@ -41,11 +43,16 @@ public sealed class BinsRunService(
     private IInventoryDeductionInvariantService InventoryInvariant { get; } =
         inventoryDeductionInvariantService
         ?? new InventoryDeductionInvariantService(dbContext, NullLogger<InventoryDeductionInvariantService>.Instance);
+    private IRunExpectationService RunExpectations { get; } =
+        runExpectationService
+        ?? new RunExpectationService(dbContext, NullLogger<RunExpectationService>.Instance);
 
     public async Task<BinsRunPageViewModel> GetPageAsync(BinsRunFilterForm filter, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
-        var canRecord = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Edit, cancellationToken);
-        var canAdmin = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Admin, cancellationToken);
+        var canRecord = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Edit, cancellationToken)
+            || await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Edit, cancellationToken);
+        var canAdmin = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Admin, cancellationToken)
+            || await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken);
         var canTransfer = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
         var canTrueUp = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken);
         if (filter.EditActualRunId is long requestedRunId && filter.RoomIds.Count == 0)
@@ -118,7 +125,7 @@ public sealed class BinsRunService(
             Id = editRun?.Id,
             ConcurrencyVersion = editRun?.ConcurrencyVersion ?? 0,
             RunAt = editRun?.RunAt ?? DateTimeOffset.UtcNow,
-            RunProjectionId = editRun?.RunProjectionId ?? filter.ProjectionId,
+            RunProjectionId = editRun?.RunProjectionId,
             Notes = editRun?.Notes,
             Lines = editRun?.Lines
                 .Where(x => x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed)
@@ -183,6 +190,197 @@ public sealed class BinsRunService(
             CanTrueUp = canTrueUp,
             SelectedAvailableBins = selectedOption?.CurrentBins
         };
+    }
+
+    public async Task<ActualRunDetailViewModel?> GetActualRunDetailAsync(
+        long id,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.View, cancellationToken))
+        {
+            throw new UnauthorizedAccessException("Actual Run View access is required.");
+        }
+
+        var run = await dbContext.ActualRuns.AsNoTracking()
+            .Where(x => x.Id == id)
+            .Select(x => new ActualRunDetailViewModel
+            {
+                Id = x.Id,
+                Status = x.Status,
+                RevisionNumber = x.CurrentRevisionNumber,
+                RunAt = x.RunAt,
+                CreatedBy = x.CreatedByUser == null ? "" : x.CreatedByUser.DisplayName,
+                Notes = x.Notes
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (run is null) return null;
+
+        var contributionRows = await dbContext.BinsRunEntries.AsNoTracking()
+            .Where(x => x.ActualRunId == id
+                && x.ActualRunRevisionId != null
+                && x.TransactionType == ActualRunTransactionTypes.Depletion
+                && !x.IsReversed
+                && x.ActualRunRevision!.IsCurrent)
+            .OrderBy(x => x.RoomId)
+            .ThenBy(x => x.LotNumber)
+            .Select(x => new
+            {
+                x.Id,
+                Facility = x.Warehouse.Code,
+                Room = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
+                Grower = x.GrowerName,
+                Lot = x.LotNumber,
+                Variety = x.VarietyCode ?? "",
+                ProductionType = x.FruitProfile == null ? (x.InventoryStatus ?? "") : x.FruitProfile.ProductionType,
+                x.CropYear,
+                Bins = x.BinsRun
+            })
+            .Take(250)
+            .ToListAsync(cancellationToken);
+        run.TotalBins = contributionRows.Sum(x => x.Bins);
+        run.Facility = contributionRows.Select(x => x.Facility).FirstOrDefault() ?? "";
+        run.Contributions = contributionRows.Select(x => new ActualRunContributionViewModel(
+            x.Id,
+            x.Room,
+            x.Grower,
+            x.Lot,
+            x.Variety,
+            x.ProductionType,
+            x.CropYear,
+            x.Bins,
+            run.TotalBins <= 0 ? 0m : decimal.Round(x.Bins / (decimal)run.TotalBins * 100m, 4)))
+            .ToList();
+
+        var expectationRows = await dbContext.RunExpectations.AsNoTracking()
+            .Where(x => x.ActualRunId == id)
+            .OrderByDescending(x => x.RevisionNumber)
+            .Take(50)
+            .Select(x => new
+            {
+                x.Id,
+                x.RevisionNumber,
+                x.TotalBins,
+                x.GrossPounds,
+                x.ExpectedPackoutPercent,
+                x.ExpectedPackedPounds,
+                x.ExpectedWholeBoxes,
+                x.ExpectedCullPounds,
+                x.ExpectedJuicePounds,
+                x.ExpectedPeelerPounds,
+                x.ExpectedWastePounds,
+                x.ConfidencePercent,
+                x.SizeDistributionSnapshotJson,
+                x.GradeDistributionSnapshotJson,
+                x.CalculationVersion,
+                x.CalculatedAt
+            })
+            .ToListAsync(cancellationToken);
+        run.Expectations = expectationRows
+            .Select(x => new RunExpectationViewModel
+            {
+                Id = x.Id,
+                RevisionNumber = x.RevisionNumber,
+                TotalBins = x.TotalBins,
+                GrossPounds = x.GrossPounds,
+                ExpectedPackoutPercent = x.ExpectedPackoutPercent,
+                ExpectedPackedPounds = x.ExpectedPackedPounds,
+                ExpectedWholeBoxes = x.ExpectedWholeBoxes,
+                ExpectedCullPounds = x.ExpectedCullPounds,
+                ExpectedJuicePounds = x.ExpectedJuicePounds,
+                ExpectedPeelerPounds = x.ExpectedPeelerPounds,
+                ExpectedWastePounds = x.ExpectedWastePounds,
+                ConfidencePercent = x.ConfidencePercent,
+                SizeDistribution = DeserializeDistribution(x.SizeDistributionSnapshotJson),
+                GradeDistribution = DeserializeDistribution(x.GradeDistributionSnapshotJson),
+                CalculationVersion = x.CalculationVersion,
+                CalculatedAt = x.CalculatedAt
+            })
+            .ToList();
+        run.CurrentExpectation = run.Expectations.SingleOrDefault(x => x.RevisionNumber == run.RevisionNumber);
+
+        run.CanViewPackout = await userAccessService.HasAccessAsync(
+            user,
+            ApplicationAreas.PackoutResults,
+            PageAccessLevel.View,
+            cancellationToken);
+        var packout = !run.CanViewPackout
+            ? null
+            : await dbContext.PackoutRuns.AsNoTracking()
+            .Where(x => x.ActualRunId == id
+                || (x.ActualRunId == null
+                    && x.BinsRunEntry != null
+                    && x.BinsRunEntry.ActualRunId == id))
+            .OrderByDescending(x => x.ActualRunId != null)
+            .ThenByDescending(x => x.Id)
+            .Select(x => new ActualRunPackoutViewModel
+            {
+                Id = x.Id,
+                Status = x.Status,
+                DumpedBins = x.DumpedBins,
+                PackedPounds = x.PackedProductPounds,
+                JuicePounds = x.JuicePounds,
+                PeelerPounds = x.PeelerSlicerPounds,
+                WastePounds = x.WastePounds,
+                ActualPackoutPercent = x.ActualPackoutPercent,
+                AccuracyPercent = x.OverallAccuracyScore,
+                SizeAccuracyPercent = x.SizeAccuracyScore,
+                GradeAccuracyPercent = x.GradeAccuracyScore
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (packout is not null)
+        {
+            packout.PackoutVariancePercent = packout.ActualPackoutPercent - run.CurrentExpectation?.ExpectedPackoutPercent;
+            var roomLotAllocations = await dbContext.PackoutSourceAllocations.AsNoTracking()
+                .Where(x => x.PackoutRunId == packout.Id)
+                .OrderBy(x => x.RunExpectationSource.RoomSnapshot)
+                .ThenBy(x => x.RunExpectationSource.LotSnapshot)
+                .Take(250)
+                .Select(x => new EstimatedAllocationViewModel(
+                    x.RunExpectationSource.RoomSnapshot,
+                    x.RunExpectationSource.GrowerSnapshot,
+                    x.RunExpectationSource.LotSnapshot,
+                    x.BinsContributed,
+                    x.ContributionPercent,
+                    x.AllocatedPackedPounds,
+                    x.AllocatedWholeBoxes,
+                    x.AllocatedResidualPounds,
+                    x.AllocatedJuicePounds,
+                    x.AllocatedPeelerPounds,
+                    x.AllocatedWastePounds,
+                    x.AllocationVersion))
+                .ToListAsync(cancellationToken);
+            packout.Allocations = roomLotAllocations
+                .GroupBy(
+                    x => new
+                    {
+                        Grower = x.Grower.Trim().ToUpperInvariant(),
+                        Lot = x.Lot.Trim().ToUpperInvariant(),
+                        x.AllocationVersion
+                    })
+                .Select(x => new EstimatedAllocationViewModel(
+                    string.Join(", ", x.Select(y => y.Room).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(y => y)),
+                    x.First().Grower,
+                    x.First().Lot,
+                    x.Sum(y => y.Bins),
+                    x.Sum(y => y.ContributionPercent),
+                    x.Sum(y => y.PackedPounds),
+                    x.Sum(y => y.WholeBoxes),
+                    x.Sum(y => y.ResidualPounds),
+                    x.Sum(y => y.JuicePounds),
+                    x.Sum(y => y.PeelerPounds),
+                    x.Sum(y => y.WastePounds),
+                    x.Key.AllocationVersion))
+                .OrderBy(x => x.Lot, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        run.Packout = packout;
+        run.CanUploadPackout = packout is null
+            && run.Status == ActualRunStatuses.Active
+            && await userAccessService.HasAccessAsync(user, ApplicationAreas.PackoutResults, PageAccessLevel.Create, cancellationToken);
+        run.CanEditPackout = await userAccessService.HasAccessAsync(user, ApplicationAreas.PackoutResults, PageAccessLevel.Create, cancellationToken);
+        run.CanAdminPackout = await userAccessService.HasAccessAsync(user, ApplicationAreas.PackoutResults, PageAccessLevel.Admin, cancellationToken);
+        return run;
     }
 
     public async Task<BinsRunProjectionViewModel> GetProjectionAsync(BinsRunProjectionRequest request, ClaimsPrincipal user, CancellationToken cancellationToken)
@@ -345,24 +543,26 @@ public sealed class BinsRunService(
 
     public async Task<string?> CreateActualRunAsync(ActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
-        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Edit, cancellationToken))
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Edit, cancellationToken))
         {
-            return "Bins Run Create access is required to record an Actual Run.";
+            return "Actual Run Create access is required to record an Actual Run.";
         }
 
         form.Id = null;
         form.ConcurrencyVersion = 0;
+        form.RunProjectionId = null;
         return await SaveActualRunAsync(form, user, null, null, cancellationToken);
     }
 
     public async Task<string?> UpdateActualRunAsync(long id, ActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
-        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Edit, cancellationToken))
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Edit, cancellationToken))
         {
-            return "Bins Run Create access is required to edit an Actual Run.";
+            return "Actual Run Create access is required to edit an Actual Run.";
         }
 
         form.Id = id;
+        form.RunProjectionId = null;
         return await SaveActualRunAsync(form, user, null, null, cancellationToken);
     }
 
@@ -371,9 +571,9 @@ public sealed class BinsRunService(
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
-        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Admin, cancellationToken))
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken))
         {
-            return "Bins Run Admin access is required to approve an inventory shortage.";
+            return "Actual Run Admin access is required to approve an inventory shortage.";
         }
 
         if (string.IsNullOrWhiteSpace(form.Reason))
@@ -405,7 +605,7 @@ public sealed class BinsRunService(
             Id = request.ActualRunId,
             ConcurrencyVersion = request.ExpectedConcurrencyVersion ?? 0,
             OperationKey = request.OperationKey,
-            RunProjectionId = request.RunProjectionId,
+            RunProjectionId = null,
             RunAt = request.RunAt,
             Notes = request.Notes,
             Lines = request.Lines.Select(x => new ActualRunLineForm
@@ -425,9 +625,9 @@ public sealed class BinsRunService(
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
-        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Admin, cancellationToken))
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken))
         {
-            return "Bins Run Admin access is required to cancel an Actual Run.";
+            return "Actual Run Admin access is required to cancel an Actual Run.";
         }
 
         if (string.IsNullOrWhiteSpace(form.Reason))
@@ -707,7 +907,7 @@ public sealed class BinsRunService(
             var request = new ActualRunOverrideRequest
             {
                 ActualRunId = run?.Id,
-                RunProjectionId = form.RunProjectionId,
+                RunProjectionId = null,
                 OperationType = run is null ? ActualRunRevisionTypes.Create : ActualRunRevisionTypes.Edit,
                 OperationKey = form.OperationKey.Trim(),
                 Status = ActualRunOverrideStatuses.Pending,
@@ -789,7 +989,7 @@ public sealed class BinsRunService(
         {
             run = new ActualRun
             {
-                RunProjectionId = form.RunProjectionId,
+                RunProjectionId = null,
                 Status = ActualRunStatuses.Active,
                 CurrentRevisionNumber = 0,
                 ConcurrencyVersion = 1,
@@ -822,28 +1022,12 @@ public sealed class BinsRunService(
         dbContext.ActualRunRevisions.Add(revision);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        var activeProjectionSources = activeEntries.Count == 0
-            ? new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
-            : await dbContext.RunProjectionSources
-                .AsNoTracking()
-                .Where(x => x.ActualBinsRunEntryId != null
-                    && activeEntries.Select(y => y.Id).Contains(x.ActualBinsRunEntryId.Value))
-                .Join(
-                    dbContext.BinsRunEntries.AsNoTracking(),
-                    source => source.ActualBinsRunEntryId,
-                    entry => entry.Id,
-                    (source, entry) => new
-                    {
-                        source.Id,
-                        Key = LedgerInventoryKey(entry.WarehouseId, entry.RoomId, entry.CropYear, entry.LotNumber, entry.VarietyCode ?? "", entry.FruitProfileId)
-                    })
-                .ToDictionaryAsync(x => x.Key, x => x.Id, StringComparer.OrdinalIgnoreCase, cancellationToken);
-
         if (activeEntries.Count > 0)
         {
             await ReverseEntriesAsync(run, revision, activeEntries, userId.Value, "Actual Run revision", cancellationToken);
         }
 
+        var createdEntries = new List<BinsRunEntry>(resolved.Count);
         foreach (var item in resolved)
         {
             var previous = item.EffectiveAvailable;
@@ -903,12 +1087,9 @@ public sealed class BinsRunService(
             entry.InventoryAdjustment = adjustment;
             dbContext.BinsRunEntries.Add(entry);
             await dbContext.SaveChangesAsync(cancellationToken);
-            var projectionSourceId = item.Form.RunProjectionSourceId
-                ?? activeProjectionSources.GetValueOrDefault(item.Form.InventoryKey.Trim());
-            await LinkProjectionSourceAsync(form.RunProjectionId, projectionSourceId, entry, userId.Value, cancellationToken);
+            createdEntries.Add(entry);
         }
 
-        run.RunProjectionId = form.RunProjectionId;
         run.RunAt = form.RunAt;
         run.Notes = NormalizeOptional(form.Notes);
         run.CurrentRevisionNumber = revision.RevisionNumber;
@@ -927,6 +1108,14 @@ public sealed class BinsRunService(
             approvedOverride.ApprovalReason = approvalReason;
         }
 
+        var expectation = await RunExpectations.CreateFrozenAsync(
+            run,
+            revision,
+            createdEntries,
+            userId.Value,
+            now,
+            cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
         await AddActualRunAuditAsync(operationType, run, revision, userId.Value, new
         {
             Lines = resolved.Select(x => new
@@ -940,7 +1129,9 @@ public sealed class BinsRunService(
             }),
             OverdrawApproved = approvedOverride is not null,
             OverrideRequestId = approvedOverride?.Id,
-            OverrideReason = approvalReason
+            OverrideReason = approvalReason,
+            RunExpectationId = expectation.Id,
+            RunExpectationVersion = expectation.CalculationVersion
         });
         await dbContext.SaveChangesAsync(cancellationToken);
         await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
@@ -1071,9 +1262,9 @@ public sealed class BinsRunService(
         {
             return "Select available inventory.";
         }
-        if (entryId is null && (form.RunProjectionId is null || form.RunProjectionSourceId is null))
+        if (entryId is null && (form.RunProjectionId is not null || form.RunProjectionSourceId is not null))
         {
-            return "Create and select an Inventory projection before finalizing a Bins Run depletion.";
+            return "Planning Projections cannot be converted into operational inventory deductions. Record an independent Actual Run from exact room-lot balances.";
         }
 
         await using var transaction = await BeginTransactionIfSupportedAsync(cancellationToken);
@@ -1856,6 +2047,24 @@ public sealed class BinsRunService(
         entry.IsReversed,
         entry.ReverseReason
     };
+
+    private static IReadOnlyDictionary<string, decimal> DeserializeDistribution(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, decimal>>(json)
+                ?? new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
 
     private static string CurrentStorageLotKey(int roomId, string lot, string variety) =>
         RoomInventoryImportService.CurrentStorageLotKey(roomId, lot, variety);

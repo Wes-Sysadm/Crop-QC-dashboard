@@ -78,7 +78,6 @@ public sealed class RunProjectionService(
     {
         await RequireAsync(user, PageAccessLevel.View, cancellationToken);
         var settings = await LoadSettingsAsync(cancellationToken);
-        await ExpireDraftsAsync(settings.DraftExpirationDays, cancellationToken);
         var canEdit = await CanAsync(user, PageAccessLevel.Edit, cancellationToken);
         var canAdmin = await CanAsync(user, PageAccessLevel.Admin, cancellationToken);
         var selectedFacility = NormalizeFacilityFilter(facility, canAdmin);
@@ -346,7 +345,7 @@ public sealed class RunProjectionService(
     {
         if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.ProjectionOutcome, PageAccessLevel.View, cancellationToken))
         {
-            throw new UnauthorizedAccessException("Projection Outcome View access is required.");
+            throw new UnauthorizedAccessException("Planning Projection Report View access is required.");
         }
         var canAdmin = await userAccessService.HasAccessAsync(user, ApplicationAreas.ProjectionOutcome, PageAccessLevel.Admin, cancellationToken);
         var detail = await GetDetailAsync(id, false, canAdmin, cancellationToken);
