@@ -1,4 +1,4 @@
-﻿START TRANSACTION;
+START TRANSACTION;
 
 \set ON_ERROR_STOP on
 set local lock_timeout = '15s';

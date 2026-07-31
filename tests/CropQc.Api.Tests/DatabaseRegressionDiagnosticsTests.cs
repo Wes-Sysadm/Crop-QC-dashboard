@@ -184,8 +184,13 @@ public sealed class DatabaseRegressionDiagnosticsTests
     [Fact]
     public void ActualRunProductionApply_IsTransactionalIdempotentAndDoesNotForgeHistory()
     {
-        var script = File.ReadAllText(FindRepositoryFile(
-            "scripts", "postgresql", "apply-projection-actual-run-separation-schema.sql"));
+        var path = FindRepositoryFile(
+            "scripts", "postgresql", "apply-projection-actual-run-separation-schema.sql");
+        var bytes = File.ReadAllBytes(path);
+        var script = File.ReadAllText(path);
+
+        Assert.False(bytes.Length >= 3 && bytes[0] == 0xef && bytes[1] == 0xbb && bytes[2] == 0xbf,
+            "The psql production apply script must be UTF-8 without a byte-order mark.");
 
         Assert.Contains(@"\set ON_ERROR_STOP on", script);
         Assert.Contains("START TRANSACTION", script, StringComparison.OrdinalIgnoreCase);
