@@ -161,10 +161,85 @@ public sealed class DatabaseRegressionDiagnosticsTests
     }
 
     [Fact]
+    public void ActualRunProductionPreflight_IsReadOnlyAndReportsPartialObjectState()
+    {
+        var script = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "preflight-projection-actual-run-separation.sql"));
+
+        Assert.Contains("begin transaction read only;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("RunExpectations", script);
+        Assert.Contains("PackoutRuns.ActualRunId", script);
+        Assert.Contains("pg_indexes", script);
+        Assert.Contains("pg_constraint", script);
+        Assert.DoesNotContain("alter table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("create table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\ninsert into ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\nupdate ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\ndelete from ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("truncate ", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ActualRunProductionApply_IsTransactionalIdempotentAndDoesNotForgeHistory()
+    {
+        var script = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "apply-projection-actual-run-separation-schema.sql"));
+
+        Assert.Contains(@"\set ON_ERROR_STOP on", script);
+        Assert.Contains("START TRANSACTION", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("COMMIT", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pg_advisory_xact_lock", script);
+        Assert.Contains("ADD COLUMN IF NOT EXISTS", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CREATE TABLE IF NOT EXISTS", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("INDEX IF NOT EXISTS", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("POSTCHECK_NAMED_OBJECTS", script);
+        Assert.Contains("pg_constraint", script);
+        Assert.Contains("pg_indexes", script);
+        Assert.Contains("Transaction rolled back", script);
+        Assert.DoesNotContain("DELETE FROM", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DROP TABLE", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("TRUNCATE ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("INSERT INTO \"__EFMigrationsHistory\"", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("UPDATE \"__EFMigrationsHistory\"", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ActualRunProductionVerification_IsReadOnlyAndExercisesApplicationQueries()
+    {
+        var script = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "verify-projection-actual-run-separation.sql"));
+
+        Assert.Contains("begin transaction read only;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("application_object_state_ready", script);
+        Assert.Contains("where false;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("required foreign key", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("alter table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("create table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\ninsert into ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\nupdate ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\ndelete from ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("truncate ", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ActualRunController_ReturnsSafeSchemaBehindMessageWithReference()
+    {
+        var controller = File.ReadAllText(FindRepositoryFile(
+            "src", "CropQc.Web", "Controllers", "BinsRunController.cs"));
+
+        Assert.Contains("IsSchemaMismatch", controller);
+        Assert.Contains("database update required by this release has not been completed", controller);
+        Assert.Contains("No inventory was changed", controller);
+        Assert.Contains("Reference {referenceId}", controller);
+        Assert.Contains("Transaction was not committed", controller);
+        Assert.DoesNotContain("RunExpectations does not exist", controller);
+    }
+
+    [Fact]
     public void RenderUsesFailClosedLatestSchemaGateBeforeBothWebDeployments()
     {
         var blueprint = File.ReadAllText(FindRepositoryFile("render.yaml"));
-        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260730150926_EnforceRoomInventoryDeductionParents";
+        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260731014107_SeparatePlanningProjectionsFromActualRuns";
 
         Assert.Equal(2, blueprint.Split(command, StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("dotnet ef database update", blueprint, StringComparison.OrdinalIgnoreCase);
@@ -187,6 +262,14 @@ public sealed class DatabaseRegressionDiagnosticsTests
         Assert.Contains("\"RoomInventoryAdjustments\", \"InventoryInvariantVersion\"", diagnostics);
         Assert.Contains("\"RoomInventoryAdjustments\", \"InventoryOperationKey\"", diagnostics);
         Assert.Contains("\"RoomInventoryAdjustments\", \"RoomTransferId\"", diagnostics);
+        Assert.Contains("\"RunExpectations\"", diagnostics);
+        Assert.Contains("\"RunExpectationSources\"", diagnostics);
+        Assert.Contains("\"PackoutSourceAllocations\"", diagnostics);
+        Assert.Contains("\"PackoutRuns\", \"ActualRunId\"", diagnostics);
+        Assert.Contains("\"PackoutRuns\", \"RunExpectationId\"", diagnostics);
+        Assert.Contains("RequireNullable: true", diagnostics);
+        Assert.Contains("RequiredIndexExpectations", diagnostics);
+        Assert.Contains("RequiredForeignKeyExpectations", diagnostics);
         Assert.Contains("Reference {ReferenceId}", diagnostics);
         Assert.Contains("application version {ApplicationVersion}", diagnostics);
         Assert.Contains("expected migration {ExpectedMigration}", diagnostics);

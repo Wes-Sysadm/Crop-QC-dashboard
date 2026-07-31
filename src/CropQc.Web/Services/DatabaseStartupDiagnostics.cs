@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260730150926_EnforceRoomInventoryDeductionParents";
+    public const string ExpectedSchemaMigration = "20260731014107_SeparatePlanningProjectionsFromActualRuns";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -42,7 +42,42 @@ public static class DatabaseStartupDiagnostics
         new("RoomTransfers", "RoomTransfers", null),
         new("RoomInventoryAdjustments.InventoryInvariantVersion", "RoomInventoryAdjustments", "InventoryInvariantVersion"),
         new("RoomInventoryAdjustments.InventoryOperationKey", "RoomInventoryAdjustments", "InventoryOperationKey"),
-        new("RoomInventoryAdjustments.RoomTransferId", "RoomInventoryAdjustments", "RoomTransferId")
+        new("RoomInventoryAdjustments.RoomTransferId", "RoomInventoryAdjustments", "RoomTransferId"),
+        new("RunExpectations", "RunExpectations", null),
+        new("RunExpectationSources", "RunExpectationSources", null),
+        new("PackoutSourceAllocations", "PackoutSourceAllocations", null),
+        new("PackoutRuns.ActualRunId", "PackoutRuns", "ActualRunId"),
+        new("PackoutRuns.RunExpectationId", "PackoutRuns", "RunExpectationId"),
+        new("PackoutRuns.RunProjectionId nullable", "PackoutRuns", "RunProjectionId", RequireNullable: true)
+    ];
+
+    private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
+    [
+        new("IX_PackoutRuns_RunExpectationId", "PackoutRuns", "IX_PackoutRuns_RunExpectationId"),
+        new("UX_PackoutRuns_ActualRunId", "PackoutRuns", "UX_PackoutRuns_ActualRunId"),
+        new("IX_PackoutSourceAllocations_PackoutRunId_RunExpectationSourceId", "PackoutSourceAllocations", "IX_PackoutSourceAllocations_PackoutRunId_RunExpectationSourceId"),
+        new("IX_PackoutSourceAllocations_RunExpectationSourceId", "PackoutSourceAllocations", "IX_PackoutSourceAllocations_RunExpectationSourceId"),
+        new("IX_RunExpectations_ActualRunId_RevisionNumber", "RunExpectations", "IX_RunExpectations_ActualRunId_RevisionNumber"),
+        new("IX_RunExpectations_ActualRunRevisionId", "RunExpectations", "IX_RunExpectations_ActualRunRevisionId"),
+        new("IX_RunExpectations_CreatedByUserId", "RunExpectations", "IX_RunExpectations_CreatedByUserId"),
+        new("IX_RunExpectationSources_BinsRunEntryId", "RunExpectationSources", "IX_RunExpectationSources_BinsRunEntryId"),
+        new("IX_RunExpectationSources_QcSampleId", "RunExpectationSources", "IX_RunExpectationSources_QcSampleId"),
+        new("IX_RunExpectationSources_RunExpectationId_BinsRunEntryId", "RunExpectationSources", "IX_RunExpectationSources_RunExpectationId_BinsRunEntryId"),
+        new("IX_RunExpectationSources_WarehouseId_RoomId_CropYearSnapshot_LotSnapshot_VarietySnapshot", "RunExpectationSources", "IX_RunExpectationSources_WarehouseId_RoomId_CropYearSnapshot_LotSnapshot_VarietySnapshot")
+    ];
+
+    private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
+    [
+        new("FK_PackoutRuns_ActualRuns_ActualRunId", "PackoutRuns", "FK_PackoutRuns_ActualRuns_ActualRunId"),
+        new("FK_PackoutRuns_RunExpectations_RunExpectationId", "PackoutRuns", "FK_PackoutRuns_RunExpectations_RunExpectationId"),
+        new("FK_RunExpectations_ActualRunRevisions_ActualRunRevisionId", "RunExpectations", "FK_RunExpectations_ActualRunRevisions_ActualRunRevisionId"),
+        new("FK_RunExpectations_ActualRuns_ActualRunId", "RunExpectations", "FK_RunExpectations_ActualRuns_ActualRunId"),
+        new("FK_RunExpectations_Users_CreatedByUserId", "RunExpectations", "FK_RunExpectations_Users_CreatedByUserId"),
+        new("FK_RunExpectationSources_BinsRunEntries_BinsRunEntryId", "RunExpectationSources", "FK_RunExpectationSources_BinsRunEntries_BinsRunEntryId"),
+        new("FK_RunExpectationSources_QcSamples_QcSampleId", "RunExpectationSources", "FK_RunExpectationSources_QcSamples_QcSampleId"),
+        new("FK_RunExpectationSources_RunExpectations_RunExpectationId", "RunExpectationSources", "FK_RunExpectationSources_RunExpectations_RunExpectationId"),
+        new("FK_PackoutSourceAllocations_PackoutRuns_PackoutRunId", "PackoutSourceAllocations", "FK_PackoutSourceAllocations_PackoutRuns_PackoutRunId"),
+        new("FK_PackoutSourceAllocations_RunExpectationSources_RunExpectationSourceId", "PackoutSourceAllocations", "FK_PackoutSourceAllocations_RunExpectationSources_RunExpectationSourceId")
     ];
 
     public static async Task InspectAsync(
@@ -130,12 +165,14 @@ public static class DatabaseStartupDiagnostics
                 logger.LogInformation(
                     "Application schema check succeeded. Expected migration {ExpectedMigration}; checked object count {CheckedObjectCount}.",
                     ExpectedSchemaMigration,
-                    RequiredSchemaExpectations.Length);
+                    RequiredSchemaExpectations.Length
+                    + RequiredIndexExpectations.Length
+                    + RequiredForeignKeyExpectations.Length);
             }
             else
             {
                 var referenceId = Guid.NewGuid().ToString("N")[..8];
-                var partiallyUpdated = missing.Count < RequiredSchemaExpectations.Length;
+                var partiallyUpdated = missing.Count < RequiredObjectCount;
                 logger.LogError(
                     "Database schema mismatch detected. Reference {ReferenceId}; category {Category}; provider {Provider}; application version {ApplicationVersion}; deployed commit {DeployedCommit}; expected migration {ExpectedMigration}; partially updated {PartiallyUpdated}; missing objects {MissingObjects}; operator action {OperatorAction}. Production data was not modified.",
                     referenceId,
@@ -214,7 +251,7 @@ public static class DatabaseStartupDiagnostics
                     applicationVersion,
                     deployedCommit,
                     expectedMigration,
-                    RequiredSchemaExpectations.Length);
+                    RequiredObjectCount);
                 return true;
             }
 
@@ -227,7 +264,7 @@ public static class DatabaseStartupDiagnostics
                 applicationVersion,
                 deployedCommit,
                 expectedMigration,
-                missing.Count < RequiredSchemaExpectations.Length,
+                missing.Count < RequiredObjectCount,
                 string.Join(", ", missing),
                 "Keep the prior compatible deployment active. Run the reviewed preflight and apply scripts only after a verified backup and explicit production authorization, then run verification and retry the deployment.");
             return false;
@@ -269,7 +306,10 @@ public static class DatabaseStartupDiagnostics
             foreach (var expectation in RequiredSchemaExpectations)
             {
                 await using var command = connection.CreateCommand();
-                command.CommandText = SchemaExistsSql(provider, expectation.ColumnName is not null);
+                command.CommandText = SchemaExistsSql(
+                    provider,
+                    expectation.ColumnName is not null,
+                    expectation.RequireNullable);
 
                 var tableParameter = command.CreateParameter();
                 tableParameter.ParameterName = "tableName";
@@ -286,6 +326,32 @@ public static class DatabaseStartupDiagnostics
 
                 var result = await command.ExecuteScalarAsync(cancellationToken);
                 if (!Convert.ToBoolean(result))
+                {
+                    missing.Add(expectation.DisplayName);
+                }
+            }
+
+            foreach (var expectation in RequiredIndexExpectations)
+            {
+                if (!await NamedObjectExistsAsync(
+                    connection,
+                    provider,
+                    expectation,
+                    foreignKey: false,
+                    cancellationToken))
+                {
+                    missing.Add(expectation.DisplayName);
+                }
+            }
+
+            foreach (var expectation in RequiredForeignKeyExpectations)
+            {
+                if (!await NamedObjectExistsAsync(
+                    connection,
+                    provider,
+                    expectation,
+                    foreignKey: true,
+                    cancellationToken))
                 {
                     missing.Add(expectation.DisplayName);
                 }
@@ -309,10 +375,43 @@ public static class DatabaseStartupDiagnostics
         ?? typeof(DatabaseStartupDiagnostics).Assembly.GetName().Version?.ToString()
         ?? "Unknown";
 
-    private static string SchemaExistsSql(string provider, bool column)
+    private static int RequiredObjectCount =>
+        RequiredSchemaExpectations.Length
+        + RequiredIndexExpectations.Length
+        + RequiredForeignKeyExpectations.Length;
+
+    private static async Task<bool> NamedObjectExistsAsync(
+        System.Data.Common.DbConnection connection,
+        string provider,
+        SchemaNamedObjectExpectation expectation,
+        bool foreignKey,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = NamedObjectExistsSql(provider, foreignKey);
+
+        var tableParameter = command.CreateParameter();
+        tableParameter.ParameterName = "tableName";
+        tableParameter.Value = expectation.TableName;
+        command.Parameters.Add(tableParameter);
+
+        var objectParameter = command.CreateParameter();
+        objectParameter.ParameterName = "objectName";
+        objectParameter.Value = expectation.ObjectName;
+        command.Parameters.Add(objectParameter);
+
+        return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private static string SchemaExistsSql(string provider, bool column, bool requireNullable)
     {
         if (provider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
         {
+            if (column && requireNullable)
+            {
+                return "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = @tableName AND column_name = @columnName AND is_nullable = 'YES');";
+            }
+
             return column
                 ? "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = @tableName AND column_name = @columnName);"
                 : "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = @tableName);";
@@ -320,6 +419,11 @@ public static class DatabaseStartupDiagnostics
 
         if (provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
         {
+            if (column && requireNullable)
+            {
+                return "SELECT CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@tableName) AND name = @columnName AND is_nullable = 1) THEN 1 ELSE 0 END);";
+            }
+
             return column
                 ? "SELECT CONVERT(bit, CASE WHEN COL_LENGTH(@tableName, @columnName) IS NULL THEN 0 ELSE 1 END);"
                 : "SELECT CONVERT(bit, CASE WHEN OBJECT_ID(@tableName, 'U') IS NULL THEN 0 ELSE 1 END);";
@@ -328,5 +432,33 @@ public static class DatabaseStartupDiagnostics
         throw new InvalidOperationException($"Unsupported database provider '{provider}' for schema diagnostics.");
     }
 
-    private sealed record SchemaExpectation(string DisplayName, string TableName, string? ColumnName);
+    private static string NamedObjectExistsSql(string provider, bool foreignKey)
+    {
+        if (provider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
+        {
+            return foreignKey
+                ? "SELECT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname = current_schema() AND t.relname = @tableName AND c.conname = left(@objectName, 63) AND c.contype = 'f');"
+                : "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = current_schema() AND tablename = @tableName AND indexname = left(@objectName, 63));";
+        }
+
+        if (provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+        {
+            return foreignKey
+                ? "SELECT CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID(@tableName) AND name = @objectName) THEN 1 ELSE 0 END);"
+                : "SELECT CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(@tableName) AND name = @objectName) THEN 1 ELSE 0 END);";
+        }
+
+        throw new InvalidOperationException($"Unsupported database provider '{provider}' for schema diagnostics.");
+    }
+
+    private sealed record SchemaExpectation(
+        string DisplayName,
+        string TableName,
+        string? ColumnName,
+        bool RequireNullable = false);
+
+    private sealed record SchemaNamedObjectExpectation(
+        string DisplayName,
+        string TableName,
+        string ObjectName);
 }

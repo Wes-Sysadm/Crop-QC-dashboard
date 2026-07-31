@@ -286,8 +286,16 @@ public sealed class BinsRunController(
     [Authorize(Policy = AccessPolicyNames.ActualRunsView)]
     public async Task<IActionResult> ActualRunDetail(long id, CancellationToken cancellationToken)
     {
-        var model = await binsRunService.GetActualRunDetailAsync(id, User, cancellationToken);
-        return model is null ? NotFound() : View("ActualRunDetail", model);
+        try
+        {
+            var model = await binsRunService.GetActualRunDetailAsync(id, User, cancellationToken);
+            return model is null ? NotFound() : View("ActualRunDetail", model);
+        }
+        catch (Exception exception) when (IsSchemaMismatch(exception))
+        {
+            TempData["Error"] = LogActualRunSchemaMismatch(exception, "View", id);
+            return RedirectToAction(nameof(Index), new { Section = "Actual" });
+        }
     }
 
     [HttpPost("ActualRuns/{id:long}/Packout")]
@@ -605,6 +613,10 @@ public sealed class BinsRunController(
         {
             return await operation();
         }
+        catch (Exception exception) when (IsSchemaMismatch(exception))
+        {
+            return LogActualRunSchemaMismatch(exception, operationName, actualRunId);
+        }
         catch (DbUpdateConcurrencyException exception)
         {
             logger.LogWarning(
@@ -632,6 +644,23 @@ public sealed class BinsRunController(
                 actualRunId);
             return exception.Message;
         }
+    }
+
+    private static bool IsSchemaMismatch(Exception exception) =>
+        DatabaseFailureDiagnostics.Classify(exception).Category == DatabaseFailureCategory.SchemaMismatch;
+
+    private string LogActualRunSchemaMismatch(Exception exception, string operationName, long? actualRunId)
+    {
+        var diagnostic = DatabaseFailureDiagnostics.Classify(exception);
+        var referenceId = Guid.NewGuid().ToString("N")[..8];
+        logger.LogError(
+            exception,
+            "Actual Run database schema mismatch. Reference={ReferenceId} Operation={Operation} ActualRunId={ActualRunId} ProviderCode={ProviderCode}. Transaction was not committed.",
+            referenceId,
+            operationName,
+            actualRunId,
+            diagnostic.ProviderCode ?? "None");
+        return $"Actual Run is temporarily unavailable because the database update required by this release has not been completed. No inventory was changed. Reference {referenceId}.";
     }
 
     [HttpPost("{id:long}/Edit")]
