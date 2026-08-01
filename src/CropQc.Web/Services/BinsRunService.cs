@@ -55,15 +55,35 @@ public sealed class BinsRunService(
             || await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken);
         var canTransfer = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
         var canTrueUp = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken);
-        if (filter.EditActualRunId is long requestedRunId && filter.RoomIds.Count == 0)
-        {
-            filter.RoomIds = await dbContext.BinsRunEntries.AsNoTracking()
+        var editInventoryRows = filter.EditActualRunId is long requestedRunId
+            ? await dbContext.BinsRunEntries.AsNoTracking()
                 .Where(x => x.ActualRunId == requestedRunId
                     && x.TransactionType == ActualRunTransactionTypes.Depletion
                     && !x.IsReversed)
+                .Select(x => new
+                {
+                    x.WarehouseId,
+                    x.RoomId,
+                    x.CropYear,
+                    x.GrowerLotId,
+                    x.LotNumber,
+                    Variety = x.VarietyCode ?? "",
+                    x.FruitProfileId
+                })
+                .ToListAsync(cancellationToken)
+            : [];
+        if (editInventoryRows.Count > 0 && filter.RoomIds.Count == 0)
+        {
+            filter.RoomIds = editInventoryRows
                 .Select(x => x.RoomId)
                 .Distinct()
-                .ToListAsync(cancellationToken);
+                .ToList();
+            filter.SelectionMode = ActualRunSelectionModes.ByRoom;
+            var editWarehouseIds = editInventoryRows.Select(x => x.WarehouseId).Distinct().ToList();
+            if (filter.WarehouseId is null && editWarehouseIds.Count == 1)
+            {
+                filter.WarehouseId = editWarehouseIds[0];
+            }
         }
         var selectedRoomIds = filter.RoomIds.Where(x => x > 0).Distinct().ToList();
         if (filter.RoomId is int selectedRoomId && !selectedRoomIds.Contains(selectedRoomId))
@@ -72,15 +92,41 @@ public sealed class BinsRunService(
         }
         filter.RoomIds = selectedRoomIds;
 
+        if (filter.WarehouseId is null && selectedRoomIds.Count > 0)
+        {
+            var selectedWarehouseIds = await dbContext.Rooms.AsNoTracking()
+                .Where(x => selectedRoomIds.Contains(x.Id))
+                .Select(x => x.WarehouseId)
+                .Distinct()
+                .Take(2)
+                .ToListAsync(cancellationToken);
+            if (selectedWarehouseIds.Count == 1)
+            {
+                filter.WarehouseId = selectedWarehouseIds[0];
+            }
+        }
+
         var isActualSection = filter.Section.Equals("Actual", StringComparison.OrdinalIgnoreCase);
-        var snapshots = isActualSection && selectedRoomIds.Count == 0
+        var selectionByVariety = string.Equals(filter.SelectionMode, ActualRunSelectionModes.ByVariety, StringComparison.OrdinalIgnoreCase);
+        filter.SelectionMode = selectionByVariety ? ActualRunSelectionModes.ByVariety : ActualRunSelectionModes.ByRoom;
+        var actualSelectionReady = filter.WarehouseId is not null
+            && (selectionByVariety ? filter.FruitProfileId is not null : selectedRoomIds.Count > 0);
+        var snapshots = isActualSection && !actualSelectionReady
             ? []
             : await GetCurrentInventorySnapshotsForRoomsAsync(
                 filter.WarehouseId,
-                selectedRoomIds.Count == 0 ? null : selectedRoomIds,
+                selectionByVariety || selectedRoomIds.Count == 0 ? null : selectedRoomIds,
+                selectionByVariety ? filter.FruitProfileId : null,
                 cancellationToken);
         var currentSnapshots = isActualSection
-            ? snapshots.ToList()
+            ? snapshots.Where(x => x.CurrentBins > 0 || editInventoryRows.Any(y =>
+                y.WarehouseId == x.WarehouseId
+                && y.RoomId == x.RoomId
+                && y.CropYear == x.CropYear
+                && string.Equals(y.LotNumber, x.Lot, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(y.Variety, x.Variety, StringComparison.OrdinalIgnoreCase)
+                && (y.FruitProfileId is null || y.FruitProfileId == x.FruitProfileId)
+                && (y.GrowerLotId is null || y.GrowerLotId == x.GrowerLotId))).ToList()
             : snapshots.Where(x => x.CurrentBins > 0).ToList();
         IReadOnlyDictionary<string, LotSampleDistribution> sampleData = isActualSection
             ? new Dictionary<string, LotSampleDistribution>(StringComparer.OrdinalIgnoreCase)
@@ -129,14 +175,37 @@ public sealed class BinsRunService(
             Notes = editRun?.Notes,
             Lines = editRun?.Lines
                 .Where(x => x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed)
-                .Select(x => new ActualRunLineForm
+                .Select(x =>
                 {
-                    InventoryKey = x.InventoryKey,
-                    BinsRun = x.BinsRun,
-                    ExpectedAvailableBins = options.FirstOrDefault(y => y.InventoryKey == x.InventoryKey)?.CurrentBins + x.BinsRun ?? x.BinsRun
+                    var currentOption = options.SingleOrDefault(y =>
+                        y.RoomId == x.RoomId
+                        && y.CropYear == x.CropYear
+                        && string.Equals(y.Lot, x.Lot, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(y.Variety, x.Variety, StringComparison.OrdinalIgnoreCase)
+                        && (x.FruitProfileId is null || y.FruitProfileId == x.FruitProfileId)
+                        && (x.GrowerLotId is null || y.GrowerLotId == x.GrowerLotId));
+                    return new ActualRunLineForm
+                    {
+                        InventoryKey = currentOption?.InventoryKey ?? x.InventoryKey,
+                        BinsRun = x.BinsRun,
+                        ExpectedAvailableBins = (currentOption?.CurrentBins ?? 0) + x.BinsRun
+                    };
                 })
                 .ToList() ?? []
         };
+        var inventorySelectionMessage = !isActualSection
+            ? null
+            : filter.WarehouseId is null
+                ? "Select a facility before loading current inventory."
+                : selectionByVariety && filter.FruitProfileId is null
+                    ? "Select a variety to load its positive room-lot balances across the facility."
+                    : !selectionByVariety && selectedRoomIds.Count == 0
+                        ? "Select one or more rooms to load their positive room-lot balances."
+                        : options.Count == 0
+                            ? selectionByVariety
+                                ? "This variety has no positive current inventory in the selected facility."
+                                : "The selected rooms have no positive current inventory."
+                            : null;
 
         return new BinsRunPageViewModel
         {
@@ -154,8 +223,16 @@ public sealed class BinsRunService(
             ActualRunForm = actualRunForm,
             Warehouses = await dbContext.Warehouses.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Code).ToListAsync(cancellationToken),
             Rooms = rooms,
+            FruitProfiles = isActualSection
+                ? await dbContext.FruitProfiles.AsNoTracking()
+                    .Where(x => x.IsActive)
+                    .OrderBy(x => x.Name)
+                    .ThenBy(x => x.ProductionType)
+                    .ToListAsync(cancellationToken)
+                : [],
             RoomSummary = roomSummary,
             AvailableInventory = options,
+            InventorySelectionMessage = inventorySelectionMessage,
             History = await historyQuery
                 .OrderByDescending(x => x.RunAt)
                 .ThenByDescending(x => x.Id)
@@ -632,7 +709,7 @@ public sealed class BinsRunService(
             Notes = request.Notes,
             Lines = request.Lines.Select(x => new ActualRunLineForm
             {
-                InventoryKey = LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.VarietyCode, x.FruitProfileId),
+                InventoryKey = LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.VarietyCode, x.FruitProfileId, x.GrowerLotId),
                 BinsRun = x.RequestedBins,
                 ExpectedAvailableBins = x.AvailableBins,
                 RunProjectionSourceId = x.RunProjectionSourceId
@@ -857,14 +934,14 @@ public sealed class BinsRunService(
             }
         }
 
-        var parsed = new List<(ActualRunLineForm Form, int WarehouseId, int RoomId, int? CropYear, string Lot, string Variety, int? FruitProfileId)>();
+        var parsed = new List<(ActualRunLineForm Form, int WarehouseId, int RoomId, int? CropYear, string Lot, string Variety, int? FruitProfileId, int? GrowerLotId)>();
         foreach (var line in normalizedLines)
         {
-            if (!TryParseLedgerInventoryKey(line.InventoryKey, out var warehouseId, out var roomId, out var cropYear, out var lot, out var variety, out var fruitProfileId))
+            if (!TryParseLedgerInventoryKey(line.InventoryKey, out var warehouseId, out var roomId, out var cropYear, out var lot, out var variety, out var fruitProfileId, out var growerLotId))
             {
                 return "One or more selected inventory rows are not room-ledger inventory.";
             }
-            parsed.Add((line, warehouseId, roomId, cropYear, lot, variety, fruitProfileId));
+            parsed.Add((line, warehouseId, roomId, cropYear, lot, variety, fruitProfileId, growerLotId));
         }
 
         var warehouseIds = parsed.Select(x => x.WarehouseId).Distinct().ToList();
@@ -874,15 +951,23 @@ public sealed class BinsRunService(
         }
 
         var roomIds = parsed.Select(x => x.RoomId).Distinct().ToList();
-        var snapshots = await GetCurrentInventorySnapshotsForRoomsAsync(warehouseIds[0], roomIds, cancellationToken);
-        var byKey = snapshots.ToDictionary(x => x.InventoryKey, StringComparer.OrdinalIgnoreCase);
+        var snapshots = await GetCurrentInventorySnapshotsForRoomsAsync(warehouseIds[0], roomIds, null, cancellationToken);
         var resolved = new List<(ActualRunLineForm Form, InventorySnapshot Snapshot, int EffectiveAvailable)>();
         foreach (var line in parsed)
         {
-            if (!byKey.TryGetValue(line.Form.InventoryKey.Trim(), out var snapshot))
+            var candidates = snapshots.Where(x =>
+                    x.RoomId == line.RoomId
+                    && x.CropYear == line.CropYear
+                    && string.Equals(x.Lot, line.Lot, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(x.Variety, line.Variety, StringComparison.OrdinalIgnoreCase)
+                    && (line.FruitProfileId is null || x.FruitProfileId == line.FruitProfileId)
+                    && (line.GrowerLotId is null || x.GrowerLotId == line.GrowerLotId))
+                .ToList();
+            if (candidates.Count != 1)
             {
                 return $"Room inventory is no longer available for lot {line.Lot} / {line.Variety}.";
             }
+            var snapshot = candidates[0];
 
             var restored = activeEntries
                 .Where(x => SameInventory(x, snapshot))
@@ -1175,7 +1260,7 @@ public sealed class BinsRunService(
     {
         var roomIds = entries.Select(x => x.RoomId).Distinct().ToList();
         var warehouseId = entries.Select(x => x.WarehouseId).Distinct().SingleOrDefault();
-        var snapshots = await GetCurrentInventorySnapshotsForRoomsAsync(warehouseId, roomIds, cancellationToken);
+        var snapshots = await GetCurrentInventorySnapshotsForRoomsAsync(warehouseId, roomIds, null, cancellationToken);
         foreach (var entry in entries)
         {
             if (entry.IsReversed)
@@ -1523,7 +1608,11 @@ public sealed class BinsRunService(
                     x.FruitType,
                     x.CanonicalOrchardBlockId,
                     x.CropYear,
-                    x.ProductionType);
+                    x.ProductionType,
+                    x.Facility,
+                    x.Room,
+                    x.GrowerLotId,
+                    x.ReceiptReference ?? $"Ledger adjustment #{x.InventoryAdjustmentId}");
             })
             .ToList();
 
@@ -1689,16 +1778,17 @@ public sealed class BinsRunService(
 
     private async Task<InventorySnapshot?> GetCurrentInventoryByKeyAsync(string inventoryKey, CancellationToken cancellationToken)
     {
-        if (!TryParseLedgerInventoryKey(inventoryKey, out var warehouseId, out var roomId, out var cropYear, out var lot, out var variety, out var fruitProfileId))
+        if (!TryParseLedgerInventoryKey(inventoryKey, out var warehouseId, out var roomId, out var cropYear, out var lot, out var variety, out var fruitProfileId, out var growerLotId))
         {
             return null;
         }
 
-        return (await GetCurrentInventorySnapshotsForRoomsAsync(warehouseId, [roomId], cancellationToken))
+        return (await GetCurrentInventorySnapshotsForRoomsAsync(warehouseId, [roomId], fruitProfileId, cancellationToken))
             .SingleOrDefault(x => x.CropYear == cropYear
                 && string.Equals(x.Lot, lot, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(x.Variety, variety, StringComparison.OrdinalIgnoreCase)
-                && (fruitProfileId is null || x.FruitProfileId == fruitProfileId));
+                && (fruitProfileId is null || x.FruitProfileId == fruitProfileId)
+                && (growerLotId is null || x.GrowerLotId == growerLotId));
     }
 
     private async Task<InventorySnapshot?> GetCurrentInventoryByEntryAsync(BinsRunEntry entry, CancellationToken cancellationToken)
@@ -1706,6 +1796,7 @@ public sealed class BinsRunService(
         var snapshots = await GetCurrentInventorySnapshotsAsync(entry.WarehouseId, entry.RoomId, cancellationToken);
         return snapshots.SingleOrDefault(x =>
             x.CropYear == entry.CropYear
+            && (entry.GrowerLotId is null || x.GrowerLotId == entry.GrowerLotId)
             && (entry.FruitProfileId is null || x.FruitProfileId == entry.FruitProfileId)
             && string.Equals(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), CurrentStorageLotKey(entry.RoomId, entry.LotNumber, entry.VarietyCode ?? ""), StringComparison.OrdinalIgnoreCase));
     }
@@ -1714,20 +1805,22 @@ public sealed class BinsRunService(
         => await GetCurrentInventorySnapshotsForRoomsAsync(
             warehouseId,
             roomId is null ? null : [roomId.Value],
+            null,
             cancellationToken);
 
     private async Task<IReadOnlyList<InventorySnapshot>> GetCurrentInventorySnapshotsForRoomsAsync(
         int? warehouseId,
         IReadOnlyCollection<int>? roomIds,
+        int? fruitProfileId,
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
-        var ledgerSnapshots = await RoomInventoryLedger.GetSnapshotsAsync(warehouseId, roomIds, cancellationToken);
+        var ledgerSnapshots = await RoomInventoryLedger.GetSnapshotsAsync(warehouseId, roomIds, fruitProfileId, cancellationToken);
         var result = ledgerSnapshots.Select(x =>
             new InventorySnapshot(
-                LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.Lot, x.Variety, x.FruitProfileId),
+                LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.Lot, x.Variety, x.FruitProfileId, x.GrowerLotId),
                 null,
-                null,
+                x.SourceReference,
                 x.LatestAdjustmentId,
                 x.WarehouseId,
                 x.RoomId,
@@ -1803,6 +1896,7 @@ public sealed class BinsRunService(
                 x.WarehouseId,
                 x.RoomId,
                 x.CropYear,
+                x.GrowerLotId,
                 x.FruitProfileId,
                 x.TransactionType,
                 Room = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
@@ -1823,7 +1917,11 @@ public sealed class BinsRunService(
             Line = new ActualRunHistoryLineViewModel
             {
                 Id = x.Id,
-                InventoryKey = LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.Lot, x.Variety, x.FruitProfileId),
+                InventoryKey = LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.Lot, x.Variety, x.FruitProfileId, x.GrowerLotId),
+                RoomId = x.RoomId,
+                CropYear = x.CropYear,
+                GrowerLotId = x.GrowerLotId,
+                FruitProfileId = x.FruitProfileId,
                 TransactionType = x.TransactionType,
                 Room = x.Room,
                 Grower = x.Grower,
@@ -1910,8 +2008,15 @@ public sealed class BinsRunService(
     private static string NormalizeOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
 
-    private static string LedgerInventoryKey(int warehouseId, int roomId, int? cropYear, string lot, string variety, int? fruitProfileId) =>
-        $"L:{warehouseId}:{roomId}:{cropYear?.ToString() ?? "-"}:{Uri.EscapeDataString(lot.Trim())}:{Uri.EscapeDataString(variety.Trim())}:{fruitProfileId?.ToString() ?? "-"}";
+    private static string LedgerInventoryKey(
+        int warehouseId,
+        int roomId,
+        int? cropYear,
+        string lot,
+        string variety,
+        int? fruitProfileId,
+        int? growerLotId) =>
+        $"L:{warehouseId}:{roomId}:{cropYear?.ToString() ?? "-"}:{Uri.EscapeDataString(lot.Trim())}:{Uri.EscapeDataString(variety.Trim())}:{fruitProfileId?.ToString() ?? "-"}:{growerLotId?.ToString() ?? "-"}";
 
     private static bool TryParseLedgerInventoryKey(
         string value,
@@ -1920,7 +2025,8 @@ public sealed class BinsRunService(
         out int? cropYear,
         out string lot,
         out string variety,
-        out int? fruitProfileId)
+        out int? fruitProfileId,
+        out int? growerLotId)
     {
         warehouseId = 0;
         roomId = 0;
@@ -1928,8 +2034,9 @@ public sealed class BinsRunService(
         lot = "";
         variety = "";
         fruitProfileId = null;
+        growerLotId = null;
         var parts = value.Split(':');
-        if (parts.Length is not (6 or 7)
+        if (parts.Length is not (6 or 7 or 8)
             || !parts[0].Equals("L", StringComparison.OrdinalIgnoreCase)
             || !int.TryParse(parts[1], out warehouseId)
             || !int.TryParse(parts[2], out roomId))
@@ -1947,13 +2054,21 @@ public sealed class BinsRunService(
         }
         lot = Uri.UnescapeDataString(parts[4]).Trim();
         variety = Uri.UnescapeDataString(parts[5]).Trim();
-        if (parts.Length == 7 && parts[6] != "-")
+        if (parts.Length >= 7 && parts[6] != "-")
         {
             if (!int.TryParse(parts[6], out var parsedFruitProfileId))
             {
                 return false;
             }
             fruitProfileId = parsedFruitProfileId;
+        }
+        if (parts.Length == 8 && parts[7] != "-")
+        {
+            if (!int.TryParse(parts[7], out var parsedGrowerLotId))
+            {
+                return false;
+            }
+            growerLotId = parsedGrowerLotId;
         }
         return warehouseId > 0 && roomId > 0 && lot.Length > 0 && variety.Length > 0;
     }

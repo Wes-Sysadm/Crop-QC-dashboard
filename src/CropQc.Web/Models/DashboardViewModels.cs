@@ -414,6 +414,7 @@ public sealed class BinsRunPageViewModel
     public ActualRunForm ActualRunForm { get; set; } = new();
     public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
     public IReadOnlyList<Room> Rooms { get; set; } = [];
+    public IReadOnlyList<FruitProfile> FruitProfiles { get; set; } = [];
     public BinsRunRoomSummaryViewModel? RoomSummary { get; set; }
     public IReadOnlyList<BinsRunInventoryOptionViewModel> AvailableInventory { get; set; } = [];
     public IReadOnlyList<BinsRunHistoryItemViewModel> History { get; set; } = [];
@@ -424,6 +425,7 @@ public sealed class BinsRunPageViewModel
     public bool CanTransfer { get; set; }
     public bool CanTrueUp { get; set; }
     public int? SelectedAvailableBins { get; set; }
+    public string? InventorySelectionMessage { get; set; }
     public RunProjectionPlannerViewModel Planner { get; set; } = new();
     public RoomTransferForm TransferForm { get; set; } = new();
     public RoomInventoryTrueUpForm TrueUpForm { get; set; } = new();
@@ -439,6 +441,8 @@ public sealed class BinsRunFilterForm
     public int? WarehouseId { get; set; }
     public int? RoomId { get; set; }
     public List<int> RoomIds { get; set; } = [];
+    public string SelectionMode { get; set; } = ActualRunSelectionModes.ByRoom;
+    public int? FruitProfileId { get; set; }
     public DateTime? FromDate { get; set; }
     public DateTime? ToDate { get; set; }
     public DateOnly? PlannedDate { get; set; }
@@ -449,6 +453,12 @@ public sealed class BinsRunFilterForm
     public string ProjectionVisibility { get; set; } = "Active";
     public string ProjectionSort { get; set; } = "Facility";
     public long? EditActualRunId { get; set; }
+}
+
+public static class ActualRunSelectionModes
+{
+    public const string ByRoom = "Room";
+    public const string ByVariety = "Variety";
 }
 
 public sealed class BinsRunForm
@@ -523,7 +533,11 @@ public sealed record BinsRunInventoryOptionViewModel(
     string FruitType,
     int? CanonicalOrchardBlockId,
     int? CropYear = null,
-    string ProductionType = "");
+    string ProductionType = "",
+    string Facility = "",
+    string RoomName = "",
+    int? GrowerLotId = null,
+    string SourceReference = "");
 
 public sealed class ActualRunHistoryItemViewModel
 {
@@ -545,6 +559,10 @@ public sealed class ActualRunHistoryLineViewModel
 {
     public long Id { get; set; }
     public string InventoryKey { get; set; } = "";
+    public int RoomId { get; set; }
+    public int? CropYear { get; set; }
+    public int? GrowerLotId { get; set; }
+    public int? FruitProfileId { get; set; }
     public string TransactionType { get; set; } = "";
     public string Room { get; set; } = "";
     public string Grower { get; set; } = "";
