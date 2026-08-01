@@ -20,6 +20,8 @@ public sealed class PerformanceDiagnosticsTests
         Assert.True(options.RequestTimingEnabled);
         Assert.True(options.EfQueryCountingEnabled);
         Assert.False(options.IncludeUserIdentifier);
+        Assert.True(options.LogEveryRequest);
+        Assert.False(options.RuntimeMemoryTelemetryEnabled);
     }
 
     [Fact]
@@ -32,6 +34,90 @@ public sealed class PerformanceDiagnosticsTests
         Assert.False(options.Enabled);
         Assert.False(options.RequestTimingEnabled);
         Assert.False(options.EfQueryCountingEnabled);
+        Assert.False(options.LogEveryRequest);
+        Assert.False(options.RuntimeMemoryTelemetryEnabled);
+    }
+
+    [Fact]
+    public void ProductionMemoryTelemetry_IsExplicitClampedAndHasOrderedThresholds()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["PerformanceDiagnostics:Enabled"] = "true",
+            ["PerformanceDiagnostics:RuntimeMemoryTelemetryEnabled"] = "true",
+            ["PerformanceDiagnostics:RuntimeMemoryTelemetryIntervalSeconds"] = "5",
+            ["PerformanceDiagnostics:RuntimeMemoryWarningWorkingSetBytes"] = "1000",
+            ["PerformanceDiagnostics:RuntimeMemoryCriticalWorkingSetBytes"] = "900",
+            ["PerformanceDiagnostics:IncludeUserIdentifier"] = "false"
+        }).Build();
+
+        var options = PerformanceDiagnosticsOptions.FromConfiguration(configuration, new FakeHostEnvironment("Production"));
+
+        Assert.True(options.RuntimeMemoryTelemetryEnabled);
+        Assert.Equal(60, options.RuntimeMemoryTelemetryIntervalSeconds);
+        Assert.Equal(1000, options.RuntimeMemoryWarningWorkingSetBytes);
+        Assert.Equal(1001, options.RuntimeMemoryCriticalWorkingSetBytes);
+        Assert.False(options.IncludeUserIdentifier);
+        Assert.False(options.LogEveryRequest);
+    }
+
+    [Theory]
+    [InlineData(99, 100, 200, RuntimeMemoryPressureLevel.Normal)]
+    [InlineData(100, 100, 200, RuntimeMemoryPressureLevel.Elevated)]
+    [InlineData(199, 100, 200, RuntimeMemoryPressureLevel.Elevated)]
+    [InlineData(200, 100, 200, RuntimeMemoryPressureLevel.Critical)]
+    public void RuntimeMemoryPressureClassifier_UsesConfiguredBoundaries(
+        long workingSet,
+        long warning,
+        long critical,
+        RuntimeMemoryPressureLevel expected) =>
+        Assert.Equal(expected, RuntimeMemoryPressureClassifier.Classify(workingSet, warning, critical));
+
+    [Fact]
+    public void RequestActivityTracker_IsBoundedResettableAndDisposalIsIdempotent()
+    {
+        var tracker = new RequestActivityTracker();
+        var first = tracker.Track();
+        using var second = tracker.Track();
+
+        var active = tracker.SnapshotAndResetPeriod();
+        Assert.Equal(2, active.ActiveRequests);
+        Assert.Equal(2, active.PeakActiveRequests);
+        Assert.Equal(2, active.StartedRequests);
+        Assert.Equal(0, active.CompletedRequests);
+
+        first.Dispose();
+        first.Dispose();
+        second.Dispose();
+        var completed = tracker.SnapshotAndResetPeriod();
+        Assert.Equal(0, completed.ActiveRequests);
+        Assert.Equal(2, completed.PeakActiveRequests);
+        Assert.Equal(0, completed.StartedRequests);
+        Assert.Equal(2, completed.CompletedRequests);
+
+        var reset = tracker.SnapshotAndResetPeriod();
+        Assert.Equal(0, reset.ActiveRequests);
+        Assert.Equal(0, reset.PeakActiveRequests);
+        Assert.Equal(0, reset.StartedRequests);
+        Assert.Equal(0, reset.CompletedRequests);
+    }
+
+    [Fact]
+    public async Task RuntimeMemoryTelemetryHostedService_CancelsPromptly()
+    {
+        var service = new RuntimeMemoryTelemetryHostedService(
+            new PerformanceDiagnosticsOptions
+            {
+                Enabled = true,
+                RuntimeMemoryTelemetryEnabled = true,
+                RuntimeMemoryTelemetryIntervalSeconds = 60
+            },
+            new RequestActivityTracker(),
+            NullLogger<RuntimeMemoryTelemetryHostedService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        await service.StopAsync(timeout.Token);
     }
 
     [Fact]
@@ -168,6 +254,29 @@ public sealed class PerformanceDiagnosticsTests
     }
 
     [Fact]
+    public async Task RequestActivity_IsReleasedWhenRequestFailsBeforeDiagnosticsRun()
+    {
+        var options = new PerformanceDiagnosticsOptions();
+        var tracker = new RequestActivityTracker();
+        var middleware = new RequestPerformanceDiagnosticsMiddleware(
+            _ => throw new InvalidOperationException("test failure"),
+            NullLogger<RequestPerformanceDiagnosticsMiddleware>.Instance,
+            options,
+            new BoundedPerformanceRequestMetricSink(options),
+            new PerformanceExternalCallCounter(),
+            tracker);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            middleware.InvokeAsync(new DefaultHttpContext(), new PerformanceQueryCounter()));
+
+        var snapshot = tracker.SnapshotAndResetPeriod();
+        Assert.Equal(0, snapshot.ActiveRequests);
+        Assert.Equal(1, snapshot.PeakActiveRequests);
+        Assert.Equal(1, snapshot.StartedRequests);
+        Assert.Equal(1, snapshot.CompletedRequests);
+    }
+
+    [Fact]
     public async Task ExternalCallCounter_IsIsolatedAcrossConcurrentRequests()
     {
         var options = new PerformanceDiagnosticsOptions
@@ -255,6 +364,8 @@ public sealed class PerformanceDiagnosticsTests
         Assert.Contains("PerformanceDbCommandInterceptor", program);
         Assert.Contains("BoundedPerformanceRequestMetricSink", program);
         Assert.Contains("PerformanceExternalCallCounter", program);
+        Assert.Contains("RequestActivityTracker", program);
+        Assert.Contains("RuntimeMemoryTelemetryHostedService", program);
         Assert.Contains("UseMiddleware<RequestPerformanceDiagnosticsMiddleware>", program);
         Assert.Contains("\"PerformanceDiagnostics\"", settings);
         Assert.Contains("\"QueryCountWarningThreshold\"", settings);
@@ -268,10 +379,32 @@ public sealed class PerformanceDiagnosticsTests
         var binsRunController = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "BinsRunController.cs"));
 
         Assert.Contains("await BuildRoomLotSummariesAsync(null, cancellationToken)", dashboard);
-        Assert.Contains(".AsSplitQuery()", dashboard);
+        var compactStart = dashboard.IndexOf("private async Task<IReadOnlyList<RoomConditionSample>> LoadRoomConditionSamplesAsync", StringComparison.Ordinal);
+        var compactEnd = dashboard.IndexOf("private async Task<IReadOnlyList<RoomLotSummaryViewModel>> BuildAdjustmentOnlyLotSummariesAsync", compactStart, StringComparison.Ordinal);
+        var compactPath = dashboard[compactStart..compactEnd];
+        Assert.Contains("RoomConditionSampleHeader", compactPath);
+        Assert.Contains("RoomConditionFruitRowData", compactPath);
+        Assert.DoesNotContain(".Include(", compactPath);
+        Assert.DoesNotContain(".AsSplitQuery()", compactPath);
         Assert.Contains("activeSection.Equals(\"Planner\"", binsRunController);
         Assert.Contains("? new BinsRunPageViewModel { Filter = filter }", binsRunController);
         Assert.Contains(": await binsRunService.GetPageAsync", binsRunController);
+    }
+
+    [Fact]
+    public void ProductionTelemetryAndPolling_AreBoundedAndDoNotIncludeUserIdentifiers()
+    {
+        var render = File.ReadAllText(FindRepositoryFile("render.yaml")).ReplaceLineEndings("\n");
+        var autosave = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "js", "field-sample-autosave.js"));
+        var sampleView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Samples", "Details.cshtml"));
+
+        Assert.Contains("PerformanceDiagnostics__RecentRequestLimit\n        value: 0", render);
+        Assert.Contains("PerformanceDiagnostics__IncludeUserIdentifier\n        value: false", render);
+        Assert.Contains("PerformanceDiagnostics__LogEveryRequest\n        value: false", render);
+        Assert.Contains("PerformanceDiagnostics__RuntimeMemoryTelemetryIntervalSeconds\n        value: 60", render);
+        Assert.Contains("Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command\n        value: Warning", render);
+        Assert.DoesNotContain("setInterval(refreshFieldSample, 3000)", autosave);
+        Assert.Contains("Math.Clamp(parsedRefreshInterval, 15, 300)", sampleView);
     }
 
     [Fact]

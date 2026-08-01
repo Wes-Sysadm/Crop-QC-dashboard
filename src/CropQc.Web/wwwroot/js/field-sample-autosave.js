@@ -618,7 +618,6 @@
         restorePending();
         updateTerminology();
         document.querySelectorAll(".fruit-row").forEach(updateDefectUi);
-        setInterval(refreshFieldSample, 3000);
         setInterval(() => { if (hasPending()) flush(); }, 5000);
     };
 })();

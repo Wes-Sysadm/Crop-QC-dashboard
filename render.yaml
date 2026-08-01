@@ -30,6 +30,30 @@ services:
         value: wes@fruitandland.com
       - key: Authentication__SessionDays
         value: 7
+      - key: Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command
+        value: Warning
+      - key: PerformanceDiagnostics__Enabled
+        value: true
+      - key: PerformanceDiagnostics__RequestTimingEnabled
+        value: true
+      - key: PerformanceDiagnostics__EfQueryCountingEnabled
+        value: true
+      - key: PerformanceDiagnostics__ProcessAllocatedBytesWarningThreshold
+        value: 12582912
+      - key: PerformanceDiagnostics__RecentRequestLimit
+        value: 0
+      - key: PerformanceDiagnostics__IncludeUserIdentifier
+        value: false
+      - key: PerformanceDiagnostics__LogEveryRequest
+        value: false
+      - key: PerformanceDiagnostics__RuntimeMemoryTelemetryEnabled
+        value: true
+      - key: PerformanceDiagnostics__RuntimeMemoryTelemetryIntervalSeconds
+        value: 60
+      - key: PerformanceDiagnostics__RuntimeMemoryWarningWorkingSetBytes
+        value: 402653184
+      - key: PerformanceDiagnostics__RuntimeMemoryCriticalWorkingSetBytes
+        value: 471859200
       - key: Authentication__Google__ClientId
         sync: false
       - key: Authentication__Google__ClientSecret

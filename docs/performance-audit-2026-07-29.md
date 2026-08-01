@@ -54,7 +54,14 @@ Rooms and Current Inventory intentionally trade two extra compact split queries 
 
 ## Remaining risks and follow-up
 
-- Rooms and Current Inventory still allocate about 20 MB per representative warm request because they materialize the valid fruit-reading and defect graph needed for current condition summaries. The split, purpose-specific query removed the cartesian expansion and reduced latency substantially, but a future PR could replace the remaining entity graph with compact aggregate DTOs after adding equivalence tests for all room-count and defect calculations.
+An August 1 follow-up replaced the remaining Rooms/Current Inventory entity graph
+with compact scalar projections. On the newer verified production restore, process
+allocation fell from about 24 MiB to about 10 MiB per request, and a mixed
+concurrency-8 route run fell from 495.6 MB to 255.7 MB total allocation. See
+[production-memory-incident-2026-08-01.md](production-memory-incident-2026-08-01.md)
+for the incident evidence, controls, and benchmark matrix.
+
+- Rooms and Current Inventory now allocate about 10 MB per request on the August 1 restored-production benchmark. This remains the largest measured read allocation, so the runtime warning threshold and regression benchmark should be retained as the dataset grows.
 - Run Planner remains above the 15-query target. The safe next step is to batch QC-choice and inventory-mapping lookups for all selected projection sources; this was not combined into this focused PR because those lookups affect projection editing behavior.
 - Receipts, Field Sample detail, and Admin Users return approximately 184–207 KB of HTML. Pagination or deferred detail panels would reduce transfer and rendering cost as the dataset grows.
 - Cold-request costs include JIT and EF query compilation. Ready-to-run publishing or compiled hot queries can be assessed separately if Render cold starts remain material.

@@ -25,8 +25,13 @@ Configuration section: `PerformanceDiagnostics`
 - `RequestElapsedWarningThresholdMs`: optional warning threshold for total request time.
 - `DatabaseElapsedWarningThresholdMs`: optional warning threshold for cumulative EF command time.
 - `ResponseBytesWarningThreshold`: optional warning threshold for response bytes.
+- `ProcessAllocatedBytesWarningThreshold`: optional warning threshold for the process-wide allocation delta observed during a request.
 - `RecentRequestLimit`: maximum in-memory recent request metrics retained for local/staging diagnostics. Set to `0` to disable retention.
 - `IncludeUserIdentifier`: defaults to `false`; when enabled, logs the authenticated user identifier available from claims.
+- `LogEveryRequest`: defaults to `false` in Production; warnings still log when a configured threshold is exceeded.
+- `RuntimeMemoryTelemetryEnabled`: enables the bounded process/GC/request-concurrency summary when diagnostics are enabled.
+- `RuntimeMemoryTelemetryIntervalSeconds`: clamped to 60–3,600 seconds.
+- `RuntimeMemoryWarningWorkingSetBytes` and `RuntimeMemoryCriticalWorkingSetBytes`: classify the periodic summary without changing request behavior.
 
 Thresholds warn only. They do not fail or block production requests.
 
@@ -43,12 +48,17 @@ Each measured request records:
 - `DatabaseElapsedMs`
 - `DatabaseCommandFailureCount`
 - `ResponseBytes`
+- `ProcessAllocatedBytesDelta`
 - `ExternalCallCount`
 - `ExternalProviderCounts`
 - `WarningThresholdExceeded`
 - `TraceIdentifier`
 
 External provider counts are aggregate-only. They currently identify Google Drive file-storage operations, Gmail API sends, and Google OAuth token refresh attempts.
+
+Runtime memory summaries contain only aggregate process, GC, request-concurrency,
+thread, runtime, and uptime values. They do not include routes, SQL, parameters,
+user identifiers, request/response bodies, credentials, or application records.
 
 ## Representative Dataset Design
 
