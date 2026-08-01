@@ -9,6 +9,12 @@ public interface IRoomInventoryLedgerQueryService
         int? warehouseId,
         IReadOnlyCollection<int>? roomIds,
         CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsync(
+        int? warehouseId,
+        IReadOnlyCollection<int>? roomIds,
+        int? fruitProfileId,
+        CancellationToken cancellationToken);
 }
 
 public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomInventoryLedgerQueryService
@@ -18,6 +24,13 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
     public async Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsync(
         int? warehouseId,
         IReadOnlyCollection<int>? roomIds,
+        CancellationToken cancellationToken) =>
+        await GetSnapshotsAsync(warehouseId, roomIds, null, cancellationToken);
+
+    public async Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsync(
+        int? warehouseId,
+        IReadOnlyCollection<int>? roomIds,
+        int? fruitProfileId,
         CancellationToken cancellationToken)
     {
         var query = dbContext.RoomInventoryAdjustments.AsNoTracking();
@@ -47,6 +60,9 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                     && newerBaselineRow.ReceiptId == null
                     && newerBaselineRow.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType
                     && newerBaselineRow.AdjustmentAt == x.AdjustmentAt
+                    && newerBaselineRow.CropYear == x.CropYear
+                    && newerBaselineRow.GrowerLotId == x.GrowerLotId
+                    && newerBaselineRow.FruitProfileId == x.FruitProfileId
                     && newerBaselineRow.LotNumber == x.LotNumber
                     && newerBaselineRow.VarietyCode == x.VarietyCode
                     && newerBaselineRow.CreatedAt > x.CreatedAt));
@@ -56,6 +72,7 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
             x.Id,
             x.WarehouseId,
             x.RoomId,
+            x.GrowerLotId,
             CropYear = x.CropYear
                 ?? (x.Receipt == null ? null : (int?)x.Receipt.CropYear)
                 ?? dbContext.BinsRunEntries
@@ -86,17 +103,23 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
             x.ActualRunId,
             x.AdjustmentAt
         });
-        var grouped = await normalizedQuery
+        if (fruitProfileId is not null)
+        {
+            normalizedQuery = normalizedQuery.Where(x => x.FruitProfileId == fruitProfileId.Value);
+        }
+
+        var persistedGroups = await normalizedQuery
             .Where(x => x.LotNumber != "" && x.VarietyCode != "")
-            .GroupBy(x => new { x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.VarietyCode, x.FruitProfileId })
-            .Select(x => new
+            .GroupBy(x => new { x.WarehouseId, x.RoomId, x.CropYear, x.GrowerLotId, x.LotNumber, x.VarietyCode, x.FruitProfileId })
+            .Select(x => new GroupedLedgerRow
             {
-                x.Key.WarehouseId,
-                x.Key.RoomId,
-                x.Key.CropYear,
-                x.Key.LotNumber,
+                WarehouseId = x.Key.WarehouseId,
+                RoomId = x.Key.RoomId,
+                CropYear = x.Key.CropYear,
+                GrowerLotId = x.Key.GrowerLotId,
+                LotNumber = x.Key.LotNumber,
                 VarietyCode = x.Key.VarietyCode!,
-                x.Key.FruitProfileId,
+                FruitProfileId = x.Key.FruitProfileId,
                 CurrentBins = x.Sum(y => y.ChangeAmount),
                 PositiveBins = x.Sum(y => y.ChangeAmount > 0 ? y.ChangeAmount : 0),
                 NegativeBins = x.Sum(y => y.ChangeAmount < 0 ? y.ChangeAmount : 0),
@@ -117,10 +140,52 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
             .ThenBy(x => x.VarietyCode)
             .Take(MaximumRoomLotRows + 1)
             .ToListAsync(cancellationToken);
-        if (grouped.Count > MaximumRoomLotRows)
+        if (persistedGroups.Count > MaximumRoomLotRows)
         {
             throw new InvalidOperationException($"Room inventory selection exceeds the safe limit of {MaximumRoomLotRows} room-lot rows. Filter by facility or room.");
         }
+
+        var canonicalYears = persistedGroups
+            .GroupBy(CanonicalIdentity)
+            .ToDictionary(
+                x => x.Key,
+                x => x.Where(y => y.CropYear is not null).Select(y => y.CropYear!.Value).Distinct().ToList());
+        var grouped = persistedGroups
+            .GroupBy(x => new
+            {
+                Identity = CanonicalIdentity(x),
+                CropYear = x.CropYear ?? (canonicalYears[CanonicalIdentity(x)].Count == 1
+                    ? canonicalYears[CanonicalIdentity(x)][0]
+                    : (int?)null)
+            })
+            .Select(x => new GroupedLedgerRow
+            {
+                WarehouseId = x.First().WarehouseId,
+                RoomId = x.First().RoomId,
+                CropYear = x.Key.CropYear,
+                GrowerLotId = x.First().GrowerLotId,
+                LotNumber = x.First().LotNumber,
+                VarietyCode = x.First().VarietyCode,
+                FruitProfileId = x.First().FruitProfileId,
+                CurrentBins = x.Sum(y => y.CurrentBins),
+                PositiveBins = x.Sum(y => y.PositiveBins),
+                NegativeBins = x.Sum(y => y.NegativeBins),
+                ActualRunDepletionBins = x.Sum(y => y.ActualRunDepletionBins),
+                ActualRunReversalBins = x.Sum(y => y.ActualRunReversalBins),
+                LegacyBinsRunDepletionBins = x.Sum(y => y.LegacyBinsRunDepletionBins),
+                TransferInBins = x.Sum(y => y.TransferInBins),
+                TransferOutBins = x.Sum(y => y.TransferOutBins),
+                TrueUpBins = x.Sum(y => y.TrueUpBins),
+                TransactionCount = x.Sum(y => y.TransactionCount),
+                FirstTransactionAt = x.Min(y => y.FirstTransactionAt),
+                LastTransactionAt = x.Max(y => y.LastTransactionAt),
+                LatestAdjustmentId = x.Max(y => y.LatestAdjustmentId)
+            })
+            .OrderBy(x => x.WarehouseId)
+            .ThenBy(x => x.RoomId)
+            .ThenBy(x => x.LotNumber)
+            .ThenBy(x => x.VarietyCode)
+            .ToList();
 
         var latestIds = grouped.Select(x => x.LatestAdjustmentId).ToList();
         var metadata = await dbContext.RoomInventoryAdjustments.AsNoTracking()
@@ -156,6 +221,9 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                     : x.Receipt == null
                         ? null
                         : x.Receipt.FruitProfile.IsOrganic,
+                SourceReference = x.Receipt != null
+                    ? "Receipt " + x.Receipt.CompuTechReceiptId
+                    : x.Source ?? x.Reason ?? x.AdjustmentType,
                 x.InventoryStatus
             })
             .ToDictionaryAsync(x => x.Id, cancellationToken);
@@ -177,7 +245,7 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 latest.Room,
                 latest.LocationGroup,
                 x.CropYear,
-                latest.GrowerLotId,
+                x.GrowerLotId ?? latest.GrowerLotId,
                 x.FruitProfileId,
                 latest.GrowerName,
                 x.LotNumber,
@@ -202,8 +270,50 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 x.TransactionCount,
                 x.FirstTransactionAt,
                 x.LastTransactionAt,
-                x.LatestAdjustmentId);
+                x.LatestAdjustmentId,
+                latest.SourceReference);
         }).ToList();
+    }
+
+    private static CanonicalLedgerIdentity CanonicalIdentity(GroupedLedgerRow row) =>
+        new(
+            row.WarehouseId,
+            row.RoomId,
+            row.GrowerLotId,
+            row.LotNumber.Trim().ToUpperInvariant(),
+            row.VarietyCode.Trim().ToUpperInvariant(),
+            row.FruitProfileId);
+
+    private sealed record CanonicalLedgerIdentity(
+        int WarehouseId,
+        int RoomId,
+        int? GrowerLotId,
+        string LotNumber,
+        string VarietyCode,
+        int? FruitProfileId);
+
+    private sealed class GroupedLedgerRow
+    {
+        public int WarehouseId { get; init; }
+        public int RoomId { get; init; }
+        public int? CropYear { get; init; }
+        public int? GrowerLotId { get; init; }
+        public string LotNumber { get; init; } = "";
+        public string VarietyCode { get; init; } = "";
+        public int? FruitProfileId { get; init; }
+        public int CurrentBins { get; init; }
+        public int PositiveBins { get; init; }
+        public int NegativeBins { get; init; }
+        public int ActualRunDepletionBins { get; init; }
+        public int ActualRunReversalBins { get; init; }
+        public int LegacyBinsRunDepletionBins { get; init; }
+        public int TransferInBins { get; init; }
+        public int TransferOutBins { get; init; }
+        public int TrueUpBins { get; init; }
+        public int TransactionCount { get; init; }
+        public DateTimeOffset FirstTransactionAt { get; init; }
+        public DateTimeOffset LastTransactionAt { get; init; }
+        public long LatestAdjustmentId { get; init; }
     }
 }
 
@@ -239,4 +349,5 @@ public sealed record RoomInventoryLedgerSnapshot(
     int TransactionCount,
     DateTimeOffset FirstTransactionAt,
     DateTimeOffset LastTransactionAt,
-    long LatestAdjustmentId);
+    long LatestAdjustmentId,
+    string SourceReference = "");

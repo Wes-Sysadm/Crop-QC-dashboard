@@ -456,8 +456,13 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         Assert.Null(dashboard.DataWarning);
         Assert.Null(rooms.DataWarning);
         Assert.DoesNotContain(dashboard.RoomSummaries, x => x.RoomCode == "EBS-TEST");
+        Assert.DoesNotContain(dashboard.RoomSummaries, x => x.RoomCode == "Evans-12");
+        Assert.Equal(1, dashboard.RoomSummaries.Single(x => x.RoomCode == "DH-1").CurrentBinsCount);
         Assert.Equal(0, rooms.Rooms.Where(x => x.RoomCode == "EBS-TEST").Sum(x => x.CurrentBinsCount ?? 0));
+        Assert.Equal(0, rooms.Rooms.Where(x => x.RoomCode == "Evans-12").Sum(x => x.CurrentBinsCount ?? 0));
+        Assert.Equal(1, rooms.Rooms.Single(x => x.RoomCode == "DH-1").CurrentBinsCount);
         Assert.DoesNotContain(currentInventory.CurrentLots, x => x.RoomCode == "EBS-TEST");
+        Assert.DoesNotContain(currentInventory.CurrentLots, x => x.RoomCode == "Evans-12" || x.Variety == "ATGL");
 
         var dashboardTotals = dashboard.StorageByFacility.ToDictionary(x => x.Facility, x => x.CurrentBins);
         var roomTotals = rooms.Rooms.GroupBy(x => x.Facility).ToDictionary(x => x.Key, x => x.Sum(y => y.CurrentBinsCount ?? 0));
@@ -507,21 +512,31 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         var evansSeven = new Room { Id = 9902, Warehouse = ebs, Code = "EVANS7", Name = "Evans Street 7", CropQcRoomName = "Evans Street 7", IsActive = true };
         var wpRoom = new Room { Id = 9903, Warehouse = wp, Code = "WP-4", Name = "WP-4", CropQcRoomName = "WP-4", IsActive = true };
         var dhRoom = new Room { Id = 9904, Warehouse = dh, Code = "DH-1", Name = "DH-1", CropQcRoomName = "DH-1", IsActive = true };
+        var evansTwelve = new Room { Id = 9905, Warehouse = ebs, Code = "EVANS-12", Name = "Evans Street 12", CropQcRoomName = "Evans-12", IsActive = true };
         var red = new FruitProfile { Id = 9901, Name = "Red Delicious", VarietyCode = "RED", FruitType = "Apple", ProductionType = "Conventional" };
         var gala = new FruitProfile { Id = 9902, Name = "Gala", VarietyCode = "GALA", FruitType = "Apple", ProductionType = "Conventional" };
         var bartlett = new FruitProfile { Id = 9903, Name = "Bartlett", VarietyCode = "BART", FruitType = "Pear", ProductionType = "Conventional" };
+        var fuji = new FruitProfile { Id = 9904, Name = "Fuji", VarietyCode = "FUJI", FruitType = "Apple", ProductionType = "Conventional" };
+        var autumnGlory = new FruitProfile { Id = 9905, Name = "Autumn Glory", VarietyCode = "ATGL", FruitType = "Apple", ProductionType = "Conventional" };
         db.Warehouses.AddRange(ebs, wp, dh);
-        db.Rooms.AddRange(ebsTest, evansSeven, wpRoom, dhRoom);
-        db.FruitProfiles.AddRange(red, gala, bartlett);
+        db.Rooms.AddRange(ebsTest, evansSeven, wpRoom, dhRoom, evansTwelve);
+        db.FruitProfiles.AddRange(red, gala, bartlett, fuji, autumnGlory);
 
         var source = InventoryAdjustment(9901, ebs, ebsTest, red, "TEST-LOT", 100, 2025, RoomInventoryImportService.StartingInventoryAdjustmentType);
         var depletion = InventoryAdjustment(9902, ebs, ebsTest, red, "TEST-LOT", -100, null, BinsRunService.AdjustmentType);
+        var fujiSource = InventoryAdjustment(9910, ebs, evansTwelve, fuji, "1570", 120, 2025, RoomInventoryImportService.StartingInventoryAdjustmentType);
+        var fujiFirst = InventoryAdjustment(9911, ebs, evansTwelve, fuji, "1570", -50, null, BinsRunService.AdjustmentType);
+        var fujiSecond = InventoryAdjustment(9912, ebs, evansTwelve, fuji, "1570", -70, null, BinsRunService.AdjustmentType);
         db.RoomInventoryAdjustments.AddRange(
             source,
             depletion,
             InventoryAdjustment(9903, ebs, evansSeven, gala, "EVANS-GALA", 388, 2026, RoomInventoryImportService.StartingInventoryAdjustmentType),
             InventoryAdjustment(9904, wp, wpRoom, bartlett, "WP-BART", 565, 2026, "ReceiptAdd"),
-            InventoryAdjustment(9905, dh, dhRoom, gala, "DH-GALA", 1, 2026, "ReceiptAdd"));
+            InventoryAdjustment(9905, dh, dhRoom, gala, "DH-GALA", 1, 2026, "ReceiptAdd"),
+            fujiSource,
+            fujiFirst,
+            fujiSecond,
+            InventoryAdjustment(9913, dh, dhRoom, autumnGlory, "1030", 0, 2025, "ReceiptAdd"));
         db.BinsRunEntries.Add(new BinsRunEntry
         {
             Id = 9901,
@@ -540,8 +555,40 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
             RunAt = DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
             CreatedAt = DateTimeOffset.Parse("2026-07-01T00:00:00Z")
         });
+        db.BinsRunEntries.AddRange(
+            LegacyBinsRunEntry(9910, ebs, evansTwelve, fuji, fujiSource, fujiFirst, "1570", 120, 50, 70),
+            LegacyBinsRunEntry(9911, ebs, evansTwelve, fuji, fujiFirst, fujiSecond, "1570", 70, 70, 0));
         await db.SaveChangesAsync();
     }
+
+    private static BinsRunEntry LegacyBinsRunEntry(
+        long id,
+        Warehouse warehouse,
+        Room room,
+        FruitProfile profile,
+        RoomInventoryAdjustment source,
+        RoomInventoryAdjustment adjustment,
+        string lot,
+        int previous,
+        int bins,
+        int next) => new()
+        {
+            Id = id,
+            SourceInventoryAdjustment = source,
+            InventoryAdjustment = adjustment,
+            Warehouse = warehouse,
+            Room = room,
+            FruitProfile = profile,
+            GrowerName = "Test",
+            LotNumber = lot,
+            VarietyCode = profile.VarietyCode,
+            PreviousAvailableBins = previous,
+            BinsRun = bins,
+            NewAvailableBins = next,
+            RunAt = adjustment.AdjustmentAt,
+            CreatedAt = adjustment.CreatedAt,
+            TransactionType = ActualRunTransactionTypes.Legacy
+        };
 
     private static RoomInventoryAdjustment InventoryAdjustment(
         long id,

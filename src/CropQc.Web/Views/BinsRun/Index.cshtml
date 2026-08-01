@@ -969,12 +969,16 @@
 else
 {
     <section class="panel">
-        <h2>@(activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase) ? "Select Rooms" : "Select Room")</h2>
+        <h2>@(activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase) ? "Find Current Inventory" : "Select Room")</h2>
         <form class="toolbar bins-run-filter" method="get" action="/BinsRun">
             <input type="hidden" name="Section" value="@activeSection" />
+            @if (Model.Filter.EditActualRunId is long editActualRunId)
+            {
+                <input type="hidden" name="EditActualRunId" value="@editActualRunId" />
+            }
             <label>Facility
                 <select name="WarehouseId" onchange="this.form.submit()">
-                    <option value="">All facilities</option>
+                    <option value="">@(activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase) ? "Select facility" : "All facilities")</option>
                     @foreach (var warehouse in Model.Warehouses)
                     {
                         <option value="@warehouse.Id" selected="@(Model.Filter.WarehouseId == warehouse.Id)">@warehouse.Code</option>
@@ -983,17 +987,43 @@ else
             </label>
             @if (activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase))
             {
-                <fieldset class="room-multi-select">
-                    <legend>Rooms included in this Actual Run</legend>
-                    @foreach (var room in Model.Rooms)
-                    {
-                        <label class="checkbox-field">
-                            <input type="checkbox" name="RoomIds" value="@room.Id" checked="@Model.Filter.RoomIds.Contains(room.Id)" />
-                            @room.Warehouse.Code / @(room.CropQcRoomName ?? room.DisplayName ?? room.Code)
-                        </label>
-                    }
-                </fieldset>
-                <button type="submit">Load Current Room Inventory</button>
+                <label>Find inventory
+                    <select name="SelectionMode" onchange="this.form.submit()" disabled="@(Model.Filter.EditActualRunId is not null)">
+                        <option value="@ActualRunSelectionModes.ByRoom" selected="@(Model.Filter.SelectionMode == ActualRunSelectionModes.ByRoom)">By Room</option>
+                        <option value="@ActualRunSelectionModes.ByVariety" selected="@(Model.Filter.SelectionMode == ActualRunSelectionModes.ByVariety)">By Variety</option>
+                    </select>
+                </label>
+                @if (Model.Filter.EditActualRunId is not null)
+                {
+                    <input type="hidden" name="SelectionMode" value="@ActualRunSelectionModes.ByRoom" />
+                }
+                @if (Model.Filter.SelectionMode == ActualRunSelectionModes.ByVariety)
+                {
+                    <label>Variety
+                        <select name="FruitProfileId">
+                            <option value="">Select variety</option>
+                            @foreach (var profile in Model.FruitProfiles)
+                            {
+                                <option value="@profile.Id" selected="@(Model.Filter.FruitProfileId == profile.Id)">@profile.Name · @profile.ProductionType</option>
+                            }
+                        </select>
+                    </label>
+                    <button type="submit">Load Current Inventory by Variety</button>
+                }
+                else
+                {
+                    <fieldset class="room-multi-select">
+                        <legend>Rooms included in this Actual Run</legend>
+                        @foreach (var room in Model.Rooms)
+                        {
+                            <label class="checkbox-field">
+                                <input type="checkbox" name="RoomIds" value="@room.Id" checked="@Model.Filter.RoomIds.Contains(room.Id)" />
+                                @room.Warehouse.Code / @(room.CropQcRoomName ?? room.DisplayName ?? room.Code)
+                            </label>
+                        }
+                    </fieldset>
+                    <button type="submit">Load Current Inventory by Room</button>
+                }
             }
             else
             {
@@ -1020,13 +1050,9 @@ else
             {
                 <p class="notice warning">Actual Run Create access is required.</p>
             }
-            else if (Model.Filter.RoomIds.Count == 0)
+            else if (!string.IsNullOrWhiteSpace(Model.InventorySelectionMessage))
             {
-                <p class="empty-state">Select one or more rooms to load their current lot balances.</p>
-            }
-            else if (Model.AvailableInventory.Count == 0)
-            {
-                <p class="empty-state">The selected rooms have no room-ledger inventory rows.</p>
+                <p class="empty-state">@Model.InventorySelectionMessage</p>
             }
             else
             {
@@ -1041,7 +1067,7 @@ else
                     <div class="table-wrap wide">
                         <table class="actual-run-ledger-table">
                             <thead>
-                                <tr><th>Use</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Production</th><th>Crop year</th><th>Current</th><th>Bins pulled</th><th>Projected remaining</th><th>Shortage / override</th></tr>
+                                <tr><th>Use</th><th>Facility</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Production</th><th>Crop year</th><th>Current</th><th>Source / trace</th><th>Bins pulled</th><th>Projected remaining</th><th>Shortage / override</th></tr>
                             </thead>
                             <tbody>
                             @for (var i = 0; i < Model.AvailableInventory.Count; i++)
@@ -1056,12 +1082,19 @@ else
                                         <input type="hidden" name="Lines[@i].InventoryKey" value="@option.InventoryKey" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].ExpectedAvailableBins" value="@effectiveAvailable" data-actual-line-field disabled="@(!isSelected)" />
                                     </td>
-                                    <td>@option.Room</td>
+                                    <td>@option.Facility</td>
+                                    <td>@option.RoomName</td>
                                     <td><strong>@option.Lot</strong><br /><span class="muted">@option.Grower</span></td>
                                     <td>@option.Variety</td>
                                     <td>@(string.IsNullOrWhiteSpace(option.ProductionType) ? "Unknown" : option.ProductionType)</td>
                                     <td>@(option.CropYear?.ToString() ?? "Unknown")</td>
                                     <td>@effectiveAvailable</td>
+                                    <td>
+                                        <details>
+                                            <summary>@option.SourceReference</summary>
+                                            <span class="muted">Grower lot @(option.GrowerLotId?.ToString() ?? "—") · Profile @(option.FruitProfileId?.ToString() ?? "—") · Adjustment @(option.InventoryAdjustmentId?.ToString() ?? "—")</span>
+                                        </details>
+                                    </td>
                                     <td><input class="compact-number" type="number" min="1" name="Lines[@i].BinsRun" value="@(isSelected ? editLine!.BinsRun : "")" data-actual-line-field data-bins-pulled disabled="@(!isSelected)" /></td>
                                     <td data-projected-balance>@effectiveAvailable</td>
                                     <td data-shortage-status>None</td>

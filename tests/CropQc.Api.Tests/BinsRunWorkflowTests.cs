@@ -577,7 +577,7 @@ public sealed class BinsRunWorkflowTests
         Assert.Equal(-40, ledgerAfterSave.Single(x => x.RoomId == 1001 && x.Lot == "LOT-120").NegativeBins);
         var refreshed = await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001, 1002] }, user, CancellationToken.None);
         Assert.Equal(80, refreshed.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-120").CurrentBins);
-        Assert.Equal(0, refreshed.AvailableInventory.Single(x => x.RoomId == 1002 && x.Lot == "LOT-120").CurrentBins);
+        Assert.DoesNotContain(refreshed.AvailableInventory, x => x.RoomId == 1002 && x.Lot == "LOT-120");
         Assert.Equal(20, refreshed.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-30").CurrentBins);
         Assert.Equal(receiptCount, await db.Receipts.CountAsync());
     }
@@ -1116,6 +1116,156 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task RoomLedger_ChainedLegacyBinsRunWithoutCropYear_CanonicalizesToZeroAndIsNotSelectable()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var warehouse = await db.Warehouses.SingleAsync(x => x.Id == 1000);
+        var room = await db.Rooms.SingleAsync(x => x.Id == 1001);
+        var fruit = await db.FruitProfiles.SingleAsync(x => x.Id == 1000);
+        var baseline = await db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 8001);
+        var first = LegacyDepletion(8501, warehouse, room, fruit, "LOT-120", 120, 50, 70);
+        var second = LegacyDepletion(8502, warehouse, room, fruit, "LOT-120", 70, 70, 0);
+        db.RoomInventoryAdjustments.AddRange(first, second);
+        db.BinsRunEntries.AddRange(
+            LegacyEntry(8601, warehouse, room, fruit, baseline, first, "LOT-120", 120, 50, 70),
+            LegacyEntry(8602, warehouse, room, fruit, first, second, "LOT-120", 70, 70, 0));
+        await db.SaveChangesAsync();
+
+        var snapshots = await new RoomInventoryLedgerQueryService(db)
+            .GetSnapshotsAsync(1000, [1001], CancellationToken.None);
+        var canonical = snapshots.Single(x => x.Lot == "LOT-120");
+        Assert.Equal(2026, canonical.CropYear);
+        Assert.Equal(0, canonical.CurrentBins);
+        Assert.Equal(3, canonical.TransactionCount);
+
+        var page = await CreateService(db).GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] },
+            Principal("manager@fruitandland.com"),
+            CancellationToken.None);
+        Assert.DoesNotContain(page.AvailableInventory, x => x.Lot == "LOT-120");
+    }
+
+    [Fact]
+    public async Task ActualRunInventory_ByRoomAndByVariety_ReturnSamePositiveStableRowsWithoutWrites()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var user = Principal("manager@fruitandland.com");
+        var before = new
+        {
+            Adjustments = await db.RoomInventoryAdjustments.CountAsync(),
+            Entries = await db.BinsRunEntries.CountAsync(),
+            Receipts = await db.Receipts.CountAsync(),
+            Audits = await db.AuditLogs.CountAsync()
+        };
+
+        var byRoom = await service.GetPageAsync(
+            new BinsRunFilterForm
+            {
+                Section = "Actual",
+                WarehouseId = 1000,
+                SelectionMode = ActualRunSelectionModes.ByRoom,
+                RoomIds = [1001, 1002]
+            },
+            user,
+            CancellationToken.None);
+        var byVariety = await service.GetPageAsync(
+            new BinsRunFilterForm
+            {
+                Section = "Actual",
+                WarehouseId = 1000,
+                SelectionMode = ActualRunSelectionModes.ByVariety,
+                FruitProfileId = 1000
+            },
+            user,
+            CancellationToken.None);
+        var oneRoom = await service.GetPageAsync(
+            new BinsRunFilterForm
+            {
+                Section = "Actual",
+                WarehouseId = 1000,
+                SelectionMode = ActualRunSelectionModes.ByRoom,
+                RoomIds = [1001]
+            },
+            user,
+            CancellationToken.None);
+        var emptyVariety = await service.GetPageAsync(
+            new BinsRunFilterForm
+            {
+                Section = "Actual",
+                WarehouseId = 1000,
+                SelectionMode = ActualRunSelectionModes.ByVariety,
+                FruitProfileId = 9999
+            },
+            user,
+            CancellationToken.None);
+
+        Assert.NotEmpty(byRoom.AvailableInventory);
+        Assert.All(byRoom.AvailableInventory, x => Assert.True(x.CurrentBins > 0));
+        Assert.Equal(
+            byRoom.AvailableInventory.Select(x => x.InventoryKey).OrderBy(x => x),
+            byVariety.AvailableInventory.Select(x => x.InventoryKey).OrderBy(x => x));
+        Assert.Equal(new[] { 1001, 1002 }, byVariety.AvailableInventory.Select(x => x.RoomId).Distinct().OrderBy(x => x));
+        Assert.All(oneRoom.AvailableInventory, x => Assert.Equal(1001, x.RoomId));
+        Assert.Equal(
+            byRoom.AvailableInventory.Where(x => x.RoomId == 1001).Select(x => x.InventoryKey).OrderBy(x => x),
+            oneRoom.AvailableInventory.Select(x => x.InventoryKey).OrderBy(x => x));
+        Assert.Equal(byRoom.AvailableInventory.Count, byRoom.AvailableInventory.Select(x => x.InventoryKey).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Empty(emptyVariety.AvailableInventory);
+        Assert.Contains("no positive current inventory", emptyVariety.InventorySelectionMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.All(byVariety.AvailableInventory, x => Assert.Equal(1000, x.FruitProfileId));
+        Assert.All(byVariety.AvailableInventory, x =>
+        {
+            Assert.Equal("EBS", x.Facility);
+            Assert.False(string.IsNullOrWhiteSpace(x.RoomName));
+            Assert.False(string.IsNullOrWhiteSpace(x.SourceReference));
+        });
+        Assert.Equal(before.Adjustments, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(before.Entries, await db.BinsRunEntries.CountAsync());
+        Assert.Equal(before.Receipts, await db.Receipts.CountAsync());
+        Assert.Equal(before.Audits, await db.AuditLogs.CountAsync());
+    }
+
+    [Fact]
+    public async Task RoomLedger_KeepsRoomGrowerLotAndCropYearIdentitiesSeparate()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var warehouse = await db.Warehouses.SingleAsync(x => x.Id == 1000);
+        var roomOne = await db.Rooms.SingleAsync(x => x.Id == 1001);
+        var roomTwo = await db.Rooms.SingleAsync(x => x.Id == 1002);
+        var fruit = await db.FruitProfiles.SingleAsync(x => x.Id == 1000);
+        var rows = new[]
+        {
+            Adjustment(8701, warehouse, roomOne, fruit, "IDENTITY", 5),
+            Adjustment(8702, warehouse, roomOne, fruit, "IDENTITY", 6),
+            Adjustment(8703, warehouse, roomOne, fruit, "IDENTITY", 7),
+            Adjustment(8704, warehouse, roomTwo, fruit, "IDENTITY", 8)
+        };
+        rows[0].CropYear = 2025;
+        rows[0].GrowerLotId = 11;
+        rows[1].CropYear = 2026;
+        rows[1].GrowerLotId = 11;
+        rows[2].CropYear = 2026;
+        rows[2].GrowerLotId = 12;
+        rows[3].CropYear = 2026;
+        rows[3].GrowerLotId = 11;
+        db.RoomInventoryAdjustments.AddRange(rows);
+        await db.SaveChangesAsync();
+
+        var snapshots = (await new RoomInventoryLedgerQueryService(db)
+                .GetSnapshotsAsync(1000, [1001, 1002], 1000, CancellationToken.None))
+            .Where(x => x.Lot == "IDENTITY")
+            .ToList();
+
+        Assert.Equal(4, snapshots.Count);
+        Assert.Equal(new[] { 5, 6, 7, 8 }, snapshots.Select(x => x.CurrentBins).OrderBy(x => x));
+        Assert.Equal(4, snapshots.Select(x => (x.RoomId, x.CropYear, x.GrowerLotId)).Distinct().Count());
+    }
+
+    [Fact]
     public async Task Reconciliation_IsReadOnly_AndReportsUnledgeredReceiptOrigin()
     {
         using var db = CreateDbContext();
@@ -1627,6 +1777,63 @@ public sealed class BinsRunWorkflowTests
         CreatedAt = DateTimeOffset.UtcNow
     };
 
+    private static RoomInventoryAdjustment LegacyDepletion(
+        long id,
+        Warehouse warehouse,
+        Room room,
+        FruitProfile fruit,
+        string lot,
+        int previous,
+        int bins,
+        int next) => new()
+        {
+            Id = id,
+            CropYear = null,
+            Warehouse = warehouse,
+            Room = room,
+            FruitProfile = fruit,
+            GrowerName = "Wes Verified Current Inventory",
+            LotNumber = lot,
+            VarietyCode = fruit.VarietyCode,
+            OldBinCount = previous,
+            ChangeAmount = -bins,
+            NewBinCount = next,
+            AdjustmentType = BinsRunService.AdjustmentType,
+            Source = "Bins Run",
+            AdjustmentAt = DateTimeOffset.Parse("2026-07-20T00:00:00Z").AddMinutes(id),
+            CreatedAt = DateTimeOffset.Parse("2026-07-20T00:00:00Z").AddMinutes(id)
+        };
+
+    private static BinsRunEntry LegacyEntry(
+        long id,
+        Warehouse warehouse,
+        Room room,
+        FruitProfile fruit,
+        RoomInventoryAdjustment source,
+        RoomInventoryAdjustment adjustment,
+        string lot,
+        int previous,
+        int bins,
+        int next) => new()
+        {
+            Id = id,
+            SourceInventoryAdjustment = source,
+            InventoryAdjustment = adjustment,
+            Warehouse = warehouse,
+            Room = room,
+            CropYear = null,
+            FruitProfile = fruit,
+            GrowerName = "Wes Verified Current Inventory",
+            LotNumber = lot,
+            VarietyCode = fruit.VarietyCode,
+            PreviousAvailableBins = previous,
+            BinsRun = bins,
+            NewAvailableBins = next,
+            RunAt = adjustment.AdjustmentAt,
+            CreatedAt = adjustment.CreatedAt,
+            TransactionType = ActualRunTransactionTypes.Legacy
+        };
+
     private static QcSample Sample(long id, long receiptId, SampleType sampleType, DateTimeOffset sampleTakenAt) => new()
     {
         Id = id,
@@ -1684,10 +1891,18 @@ public sealed class BinsRunWorkflowTests
             int? warehouseId,
             IReadOnlyCollection<int>? roomIds,
             CancellationToken cancellationToken) =>
+            GetSnapshotsAsync(warehouseId, roomIds, null, cancellationToken);
+
+        public Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsync(
+            int? warehouseId,
+            IReadOnlyCollection<int>? roomIds,
+            int? fruitProfileId,
+            CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<RoomInventoryLedgerSnapshot>>(
                 snapshots.Where(x =>
                     (warehouseId is null || x.WarehouseId == warehouseId)
-                    && (roomIds is null || roomIds.Count == 0 || roomIds.Contains(x.RoomId)))
+                    && (roomIds is null || roomIds.Count == 0 || roomIds.Contains(x.RoomId))
+                    && (fruitProfileId is null || x.FruitProfileId == fruitProfileId))
                 .ToList());
     }
 
