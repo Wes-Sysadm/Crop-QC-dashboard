@@ -44,6 +44,49 @@ public sealed class DashboardSummaryPerformanceDatasetTests
     }
 
     [Fact]
+    public async Task CompactRoomConditionProjection_PreservesLotStatisticsDefectsAndSampleLinks()
+    {
+        await using var db = CreateDbContext();
+        await SeedRepresentativeDashboardDatasetAsync(db);
+        foreach (var adjustment in await db.RoomInventoryAdjustments.ToListAsync())
+        {
+            adjustment.LotNumber = adjustment.Receipt!.LotCode;
+        }
+        foreach (var sample in await db.QcSamples.Include(x => x.SampleType).Where(x => x.SampleType.Name != "Receiving Sample").ToListAsync())
+        {
+            sample.IsDeleted = true;
+        }
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var detail = await service.GetRoomDetailAsync(5, CancellationToken.None);
+
+        Assert.Null(detail.DataWarning);
+        var receiptLots = detail.CurrentLots.Concat(detail.DepletedLots).Where(x => x.ReceiptId is not null).ToList();
+        Assert.Equal(3, receiptLots.Count);
+        var firstLot = receiptLots.Single(x => x.GrowerNumber == "G001");
+        var secondLot = receiptLots.Single(x => x.GrowerNumber == "G002");
+        var thirdLot = receiptLots.Single(x => x.GrowerNumber == "G003");
+        Assert.Equal(13.75m, firstLot.AveragePressureLbs);
+        Assert.Equal(12.75m, secondLot.AveragePressureLbs);
+        Assert.Equal(11.77m, thirdLot.AveragePressureLbs);
+        Assert.All(receiptLots, lot => Assert.Equal(3m, lot.AverageStarch));
+        Assert.Equal("Rot: 1", firstLot.DefectSummary);
+        Assert.Equal("Rot: 1", secondLot.DefectSummary);
+        Assert.Equal("Rot: 1", thirdLot.DefectSummary);
+        Assert.Equal(10, firstLot.EnteredFruitCount);
+        Assert.Equal(25, secondLot.EnteredFruitCount);
+        Assert.Equal(50, thirdLot.EnteredFruitCount);
+        Assert.All(receiptLots, lot =>
+        {
+            Assert.Equal(1, lot.SampleCount);
+            Assert.Single(lot.Samples);
+            Assert.Equal("Receiving Sample", lot.LatestQcSource);
+            Assert.Single(lot.Samples.Select(x => x.SampleId).Distinct());
+        });
+    }
+
+    [Fact]
     public void DashboardOptimization_DocumentsRepresentativeDatasetAndBaselineLimitations()
     {
         var docs = File.ReadAllText(FindRepositoryFile("docs", "performance-baseline.md"));

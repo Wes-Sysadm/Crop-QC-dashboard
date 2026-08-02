@@ -222,6 +222,7 @@ builder.Services.AddScoped<PerformanceQueryCounter>();
 builder.Services.AddScoped<IPerformanceQueryCounter>(services => services.GetRequiredService<PerformanceQueryCounter>());
 builder.Services.AddSingleton<IPerformanceExternalCallCounter, PerformanceExternalCallCounter>();
 builder.Services.AddSingleton<IPerformanceRequestMetricSink, BoundedPerformanceRequestMetricSink>();
+builder.Services.AddSingleton<IRequestActivityTracker, RequestActivityTracker>();
 builder.Services.AddScoped<PerformanceDbCommandInterceptor>();
 builder.Services.AddDbContext<CropQcDbContext>((services, options) =>
 {
@@ -284,6 +285,7 @@ builder.Services.AddScoped<IBackupNotificationService, BackupNotificationService
 builder.Services.AddScoped<IReceiptPurgeService, ReceiptPurgeService>();
 builder.Services.AddHostedService<EbsDailyBinsEmailHostedService>();
 builder.Services.AddHostedService<BackupNotificationHostedService>();
+builder.Services.AddHostedService<RuntimeMemoryTelemetryHostedService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
 builder.Services.AddSingleton(CreateGoogleDriveStorageOptions(builder.Configuration));
 builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorageService(

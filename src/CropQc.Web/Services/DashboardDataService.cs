@@ -3703,25 +3703,17 @@ public sealed class DashboardDataService(
         var latestAdjustmentByReceipt = receiptAdjustments
             .GroupBy(x => x.ReceiptId!.Value)
             .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First());
-        var samples = await dbContext.QcSamples.AsNoTracking()
-            .Where(x => !x.IsDeleted && x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
-            .Include(x => x.SampleType)
-            .Include(x => x.Receipt!).ThenInclude(x => x.FruitProfile)
-            .Include(x => x.FruitReadings).ThenInclude(x => x.Grade)
-            .Include(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
-            .Include(x => x.FruitReadings).ThenInclude(x => x.Defects).ThenInclude(x => x.DefectType)
-            .AsSplitQuery()
-            .ToListAsync(cancellationToken);
-        var samplesByReceipt = samples.GroupBy(x => x.ReceiptId!.Value).ToDictionary(x => x.Key, x => x.ToList());
+        var samples = await LoadRoomConditionSamplesAsync(receiptIds, cancellationToken);
+        var samplesByReceipt = samples.GroupBy(x => x.ReceiptId).ToDictionary(x => x.Key, x => x.ToList());
         var conditionSamplesByLot = samples
-            .GroupBy(x => QcConditionLotKey(x.Receipt!), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(x => QcConditionLotKey(x.RoomId, x.GrowerNumber, x.LotCode, x.VarietyCode), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.SampleTakenAt).ThenByDescending(y => y.Id).ToList(), StringComparer.OrdinalIgnoreCase);
 
         var roomCorrectionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
         var receiptLotSummaries = receipts
             .Where(receipt => ReceiptStorageExclusionReason(
                 receipt,
-                string.Join(", ", samplesByReceipt.GetValueOrDefault(receipt.Id, []).Select(x => x.SampleType.Name).Distinct(StringComparer.OrdinalIgnoreCase)),
+                string.Join(", ", samplesByReceipt.GetValueOrDefault(receipt.Id, []).Select(x => x.SampleType).Distinct(StringComparer.OrdinalIgnoreCase)),
                 roomCorrectionCutoffs) is null)
             .GroupBy(ReceiptDedupeKey, StringComparer.OrdinalIgnoreCase)
             .Select(x => x.OrderByDescending(y => y.UpdatedAt).ThenByDescending(y => y.Id).First())
@@ -3765,12 +3757,12 @@ public sealed class DashboardDataService(
                 DefectSummary = SummarizeDefects(lotSamples),
                 LastSampleDate = lotSamples.Count == 0 ? null : lotSamples.Max(x => x.SampleTakenAt),
                 SampleCount = lotSamples.Count,
-                EnteredFruitCount = lotSamples.SelectMany(x => x.FruitReadings).Count(HasEnteredFruitData),
+                EnteredFruitCount = lotSamples.SelectMany(x => x.FruitRows).Count(HasEnteredFruitData),
                 DepletionStatus = currentBins > 0 ? "Current" : depleted > 0 ? "Depleted" : "No bins",
-                ReviewFlags = BuildRoomReviewFlags(pressures, starch, lotSamples.SelectMany(x => x.FruitReadings).ToList(), MonthPressureChange(receipt.RoomId, currentMonth: true, lotSamples)),
+                ReviewFlags = BuildRoomReviewFlags(pressures, starch, lotSamples.SelectMany(x => x.FruitRows).ToList(), MonthPressureChange(receipt.RoomId, currentMonth: true, lotSamples)),
                 Samples = lotSamples
                     .OrderByDescending(x => x.SampleTakenAt)
-                    .Select(x => new RoomSampleLinkViewModel(x.Id, x.SampleSequenceNumber <= 1 ? receipt.CompuTechReceiptId : $"{receipt.CompuTechReceiptId}({x.SampleSequenceNumber})", x.SampleType.Name))
+                    .Select(x => new RoomSampleLinkViewModel(x.Id, x.SampleSequenceNumber <= 1 ? receipt.CompuTechReceiptId : $"{receipt.CompuTechReceiptId}({x.SampleSequenceNumber})", x.SampleType))
                     .ToList()
             };
         }).ToList();
@@ -3836,7 +3828,7 @@ public sealed class DashboardDataService(
 
     private void ApplyQcConditionData(
         IReadOnlyList<RoomLotSummaryViewModel> lotSummaries,
-        IReadOnlyDictionary<string, List<QcSample>> conditionSamplesByLot)
+        IReadOnlyDictionary<string, List<RoomConditionSample>> conditionSamplesByLot)
     {
         foreach (var lot in lotSummaries)
         {
@@ -3855,14 +3847,97 @@ public sealed class DashboardDataService(
             lot.AverageStarch = AverageOrNull(StarchValues([latest]).ToList()) ?? AverageOrNull(starch);
             lot.DefectSummary = SummarizeDefects(lotSamples);
             lot.LastSampleDate = latest.SampleTakenAt;
-            lot.LatestQcSource = latest.SampleType.Name;
+            lot.LatestQcSource = latest.SampleType;
             lot.SampleCount = lotSamples.Count;
-            lot.EnteredFruitCount = lotSamples.SelectMany(x => x.FruitReadings).Count(HasEnteredFruitData);
-            lot.ReviewFlags = BuildRoomReviewFlags(pressures, starch, lotSamples.SelectMany(x => x.FruitReadings).ToList(), lot.MonthOverMonthPressureChangeLbs);
+            lot.EnteredFruitCount = lotSamples.SelectMany(x => x.FruitRows).Count(HasEnteredFruitData);
+            lot.ReviewFlags = BuildRoomReviewFlags(pressures, starch, lotSamples.SelectMany(x => x.FruitRows).ToList(), lot.MonthOverMonthPressureChangeLbs);
             lot.Samples = lotSamples
-                .Select(x => new RoomSampleLinkViewModel(x.Id, x.SampleSequenceNumber <= 1 ? x.Receipt.CompuTechReceiptId : $"{x.Receipt.CompuTechReceiptId}({x.SampleSequenceNumber})", x.SampleType.Name))
+                .Select(x => new RoomSampleLinkViewModel(x.Id, x.SampleSequenceNumber <= 1 ? x.DisplayReceiptId : $"{x.DisplayReceiptId}({x.SampleSequenceNumber})", x.SampleType))
                 .ToList();
         }
+    }
+
+    private async Task<IReadOnlyList<RoomConditionSample>> LoadRoomConditionSamplesAsync(
+        IReadOnlyList<long> receiptIds,
+        CancellationToken cancellationToken)
+    {
+        if (receiptIds.Count == 0)
+        {
+            return [];
+        }
+
+        var headers = await dbContext.QcSamples.AsNoTracking()
+            .Where(x => !x.IsDeleted && x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
+            .Select(x => new RoomConditionSampleHeader(
+                x.Id,
+                x.ReceiptId!.Value,
+                x.Receipt!.RoomId,
+                x.Receipt.GrowerNumber ?? "",
+                x.Receipt.LotCode,
+                x.Receipt.FruitProfile.VarietyCode,
+                x.Receipt.CompuTechReceiptId,
+                x.SampleSequenceNumber,
+                x.SampleType.Name,
+                x.SampleTakenAt))
+            .ToListAsync(cancellationToken);
+        var sampleIds = headers.Select(x => x.Id).ToList();
+        if (sampleIds.Count == 0)
+        {
+            return [];
+        }
+
+        var fruitRows = await dbContext.QcFruitReadings.AsNoTracking()
+            .Where(x => sampleIds.Contains(x.QcSampleId))
+            .Select(x => new RoomConditionFruitRowData(
+                x.Id,
+                x.QcSampleId,
+                x.Pressure1Lbs,
+                x.Pressure2Lbs,
+                x.WeightGrams,
+                x.GradeId,
+                x.StarchScaleValueId,
+                x.StarchScaleValue == null ? null : x.StarchScaleValue.Value,
+                x.SizeCategory,
+                x.IsCompleted))
+            .ToListAsync(cancellationToken);
+        var readingIds = fruitRows.Select(x => x.Id).ToList();
+        var defectsByReading = readingIds.Count == 0
+            ? new Dictionary<long, List<string>>()
+            : (await dbContext.QcFruitDefects.AsNoTracking()
+                .Where(x => readingIds.Contains(x.QcFruitReadingId))
+                .Select(x => new { x.QcFruitReadingId, x.DefectType.Name })
+                .ToListAsync(cancellationToken))
+                .GroupBy(x => x.QcFruitReadingId)
+                .ToDictionary(x => x.Key, x => x.Select(y => y.Name).ToList());
+        var fruitRowsBySample = fruitRows
+            .GroupBy(x => x.SampleId)
+            .ToDictionary(
+                x => x.Key,
+                x => x.Select(row => new RoomConditionFruitRow(
+                    row.Pressure1Lbs,
+                    row.Pressure2Lbs,
+                    row.WeightGrams,
+                    row.GradeId,
+                    row.StarchScaleValueId,
+                    row.Starch,
+                    row.SizeCategory,
+                    row.IsCompleted,
+                    defectsByReading.GetValueOrDefault(row.Id, [])))
+                    .ToList());
+
+        return headers.Select(header => new RoomConditionSample(
+                header.Id,
+                header.ReceiptId,
+                header.RoomId,
+                header.GrowerNumber,
+                header.LotCode,
+                header.VarietyCode,
+                header.DisplayReceiptId,
+                header.SampleSequenceNumber,
+                header.SampleType,
+                header.SampleTakenAt,
+                fruitRowsBySample.GetValueOrDefault(header.Id, [])))
+            .ToList();
     }
 
     private async Task<IReadOnlyList<RoomLotSummaryViewModel>> BuildAdjustmentOnlyLotSummariesAsync(int? roomId, CancellationToken cancellationToken)
@@ -4641,6 +4716,21 @@ public sealed class DashboardDataService(
         return decimal.Round(currentValues.Average() - previousValues.Average(), 2);
     }
 
+    private decimal? MonthPressureChange(int roomId, bool currentMonth, IReadOnlyList<RoomConditionSample> alreadyLoadedSamples)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var currentStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var previousStart = currentStart.AddMonths(-1);
+        var currentValues = PressureValues(alreadyLoadedSamples.Where(x => x.SampleTakenAt >= currentStart)).ToList();
+        var previousValues = PressureValues(alreadyLoadedSamples.Where(x => x.SampleTakenAt >= previousStart && x.SampleTakenAt < currentStart)).ToList();
+        if (currentValues.Count == 0 || previousValues.Count == 0)
+        {
+            return null;
+        }
+
+        return decimal.Round(currentValues.Average() - previousValues.Average(), 2);
+    }
+
     private IReadOnlyList<string> BuildRoomReviewFlags(IReadOnlyList<decimal> pressures, IReadOnlyList<decimal> starchValues, IReadOnlyList<QcFruitReading> rows, decimal? monthPressureChange)
     {
         var flags = new List<string>();
@@ -4666,20 +4756,66 @@ public sealed class DashboardDataService(
         return flags;
     }
 
+    private IReadOnlyList<string> BuildRoomReviewFlags(IReadOnlyList<decimal> pressures, IReadOnlyList<decimal> starchValues, IReadOnlyList<RoomConditionFruitRow> rows, decimal? monthPressureChange)
+    {
+        var flags = new List<string>();
+        var averagePressure = AverageOrNull(pressures);
+        AddThresholdReason(flags, averagePressure, "DashboardReview:LowPressureLbs", threshold => averagePressure < threshold, threshold => $"Average pressure {averagePressure:0.##} lbs is below configured low threshold {threshold:0.##} lbs.");
+        AddThresholdReason(flags, averagePressure, "DashboardReview:HighPressureLbs", threshold => averagePressure > threshold, threshold => $"Average pressure {averagePressure:0.##} lbs is above configured high threshold {threshold:0.##} lbs.");
+        var averageStarch = AverageOrNull(starchValues);
+        AddThresholdReason(flags, averageStarch, "DashboardReview:HighStarch", threshold => averageStarch > threshold, threshold => $"Average starch {averageStarch:0.##} is above configured threshold {threshold:0.##}.");
+        var variance = StandardDeviationOrNull(pressures);
+        AddThresholdReason(flags, variance, "DashboardReview:HighPressureVarianceLbs", threshold => variance > threshold, threshold => $"Pressure standard deviation {variance:0.##} lbs is above configured threshold {threshold:0.##} lbs.");
+        var completedRows = rows.Where(x => x.IsCompleted).ToList();
+        if (completedRows.Count > 0)
+        {
+            var defectPercent = decimal.Round(completedRows.Count(x => x.DefectNames.Count > 0) * 100m / completedRows.Count, 2);
+            AddThresholdReason(flags, defectPercent, "DashboardReview:HighDefectPercent", threshold => defectPercent > threshold, threshold => $"Defects are present on {defectPercent:0.##}% of completed fruit, above configured threshold {threshold:0.##}%.");
+        }
+
+        if (monthPressureChange < 0)
+        {
+            AddThresholdReason(flags, Math.Abs(monthPressureChange.Value), "DashboardReview:PressureDropLbs", threshold => Math.Abs(monthPressureChange.Value) > threshold, threshold => $"Month-over-month pressure dropped {Math.Abs(monthPressureChange.Value):0.##} lbs, above configured drop threshold {threshold:0.##} lbs.");
+        }
+
+        return flags;
+    }
+
     private static IEnumerable<decimal> PressureValues(IEnumerable<QcSample> samples) =>
         PressureCalculationService.ValidSideReadings(
             samples.SelectMany(x => x.FruitReadings).Select(x => (x.Pressure1Lbs, x.Pressure2Lbs)));
+
+    private static IEnumerable<decimal> PressureValues(IEnumerable<RoomConditionSample> samples) =>
+        PressureCalculationService.ValidSideReadings(
+            samples.SelectMany(x => x.FruitRows).Select(x => (x.Pressure1Lbs, x.Pressure2Lbs)));
 
     private static IEnumerable<decimal> StarchValues(IEnumerable<QcSample> samples) =>
         samples.SelectMany(x => x.FruitReadings)
             .Where(x => x.StarchScaleValue is not null)
             .Select(x => x.StarchScaleValue!.Value);
 
+    private static IEnumerable<decimal> StarchValues(IEnumerable<RoomConditionSample> samples) =>
+        samples.SelectMany(x => x.FruitRows)
+            .Where(x => x.Starch is not null)
+            .Select(x => x.Starch!.Value);
+
     private static string SummarizeDefects(IEnumerable<QcSample> samples)
     {
         var groups = samples.SelectMany(x => x.FruitReadings)
             .SelectMany(x => x.Defects)
             .Select(x => x.DefectType.Name)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .GroupBy(x => x)
+            .OrderBy(x => x.Key)
+            .Select(x => $"{x.Key}: {x.Count()}")
+            .ToList();
+        return groups.Count == 0 ? "None" : string.Join(", ", groups);
+    }
+
+    private static string SummarizeDefects(IEnumerable<RoomConditionSample> samples)
+    {
+        var groups = samples.SelectMany(x => x.FruitRows)
+            .SelectMany(x => x.DefectNames)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .GroupBy(x => x)
             .OrderBy(x => x.Key)
@@ -4725,6 +4861,15 @@ public sealed class DashboardDataService(
         row.StarchScaleValueId is not null ||
         row.SizeCategory is not null ||
         row.Defects.Count > 0;
+
+    private static bool HasEnteredFruitData(RoomConditionFruitRow row) =>
+        row.Pressure1Lbs is not null ||
+        row.Pressure2Lbs is not null ||
+        row.WeightGrams is not null ||
+        row.GradeId is not null ||
+        row.StarchScaleValueId is not null ||
+        row.SizeCategory is not null ||
+        row.DefectNames.Count > 0;
 
     private Task<bool> CanEditSamplesAsync(CancellationToken cancellationToken) =>
         HasAccessAsync(ApplicationAreas.DailyQc, PageAccessLevel.Edit, cancellationToken);
@@ -5976,6 +6121,54 @@ public sealed class DashboardDataService(
     }
 
     private sealed record DashboardSampleMarker(DateTimeOffset SampleTakenAt, string SampleType);
+
+    private sealed record RoomConditionSampleHeader(
+        long Id,
+        long ReceiptId,
+        int RoomId,
+        string GrowerNumber,
+        string LotCode,
+        string VarietyCode,
+        string DisplayReceiptId,
+        int SampleSequenceNumber,
+        string SampleType,
+        DateTimeOffset SampleTakenAt);
+
+    private sealed record RoomConditionFruitRowData(
+        long Id,
+        long SampleId,
+        decimal? Pressure1Lbs,
+        decimal? Pressure2Lbs,
+        decimal? WeightGrams,
+        int? GradeId,
+        int? StarchScaleValueId,
+        decimal? Starch,
+        int? SizeCategory,
+        bool IsCompleted);
+
+    private sealed record RoomConditionFruitRow(
+        decimal? Pressure1Lbs,
+        decimal? Pressure2Lbs,
+        decimal? WeightGrams,
+        int? GradeId,
+        int? StarchScaleValueId,
+        decimal? Starch,
+        int? SizeCategory,
+        bool IsCompleted,
+        IReadOnlyList<string> DefectNames);
+
+    private sealed record RoomConditionSample(
+        long Id,
+        long ReceiptId,
+        int RoomId,
+        string GrowerNumber,
+        string LotCode,
+        string VarietyCode,
+        string DisplayReceiptId,
+        int SampleSequenceNumber,
+        string SampleType,
+        DateTimeOffset SampleTakenAt,
+        IReadOnlyList<RoomConditionFruitRow> FruitRows);
 
     private sealed record DashboardRoomAttention(
         string Category,

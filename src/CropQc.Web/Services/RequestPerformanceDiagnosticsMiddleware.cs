@@ -8,10 +8,12 @@ public sealed class RequestPerformanceDiagnosticsMiddleware(
     ILogger<RequestPerformanceDiagnosticsMiddleware> logger,
     PerformanceDiagnosticsOptions options,
     IPerformanceRequestMetricSink metricSink,
-    IPerformanceExternalCallCounter externalCallCounter)
+    IPerformanceExternalCallCounter externalCallCounter,
+    IRequestActivityTracker? requestActivityTracker = null)
 {
     public async Task InvokeAsync(HttpContext context, IPerformanceQueryCounter queryCounter)
     {
+        using var requestActivity = requestActivityTracker?.Track();
         if (!options.Enabled || (!options.RequestTimingEnabled && !options.EfQueryCountingEnabled))
         {
             await next(context);
@@ -52,7 +54,8 @@ public sealed class RequestPerformanceDiagnosticsMiddleware(
                 elapsedMilliseconds,
                 queryCount,
                 databaseElapsedMilliseconds,
-                responseBytes);
+                responseBytes,
+                allocatedBytesDelta);
 
             var metric = new PerformanceRequestMetric(
                 DateTimeOffset.UtcNow,
@@ -91,7 +94,7 @@ public sealed class RequestPerformanceDiagnosticsMiddleware(
                     metric.TraceIdentifier,
                     metric.UserIdentifier);
             }
-            else
+            else if (options.LogEveryRequest)
             {
                 logger.LogInformation(
                     "Request {RequestMethod} {RequestPath} completed with {StatusCode} in {ElapsedMilliseconds} ms using {EfQueryCount} EF commands in {EfElapsedMilliseconds} ms; slowest EF command {SlowestEfCommandMilliseconds} ms; process allocation delta {ProcessAllocatedBytesDelta} bytes; {ResponseBytes} response bytes. External calls: {ExternalCallCount}. TraceIdentifier: {TraceIdentifier}. UserIdentifier: {UserIdentifier}.",
@@ -115,7 +118,8 @@ public sealed class RequestPerformanceDiagnosticsMiddleware(
         double elapsedMilliseconds,
         int queryCount,
         double databaseElapsedMilliseconds,
-        long? responseBytes) =>
+        long? responseBytes,
+        long allocatedBytes) =>
         options.EfQueryCountingEnabled
             && options.QueryCountWarningThreshold is { } queryThreshold
             && queryCount > queryThreshold
@@ -125,7 +129,9 @@ public sealed class RequestPerformanceDiagnosticsMiddleware(
             && databaseElapsedMilliseconds > databaseThreshold
         || options.ResponseBytesWarningThreshold is { } responseThreshold
             && responseBytes is { } bytes
-            && bytes > responseThreshold;
+            && bytes > responseThreshold
+        || options.ProcessAllocatedBytesWarningThreshold is { } allocationThreshold
+            && allocatedBytes > allocationThreshold;
 
     private static bool CanCountResponseBytes(HttpContext context) =>
         !HttpMethods.IsHead(context.Request.Method);

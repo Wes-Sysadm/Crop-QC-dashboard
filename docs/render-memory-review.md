@@ -1,5 +1,9 @@
 # Render memory review
 
+> August 1, 2026 follow-up: the recurring production restart was confirmed as a
+> Render 512 MiB memory-limit termination. The dominant read path and its remediation
+> are documented in [production-memory-incident-2026-08-01.md](production-memory-incident-2026-08-01.md).
+
 This review covers the projection, actual-run reconciliation, uploaded-report parsing,
 and Excel export paths introduced or exercised by the packout workflow. It does not
 attribute the Render restart to a specific request because the service alert did not
