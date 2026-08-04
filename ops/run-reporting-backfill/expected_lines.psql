@@ -18,4 +18,23 @@ INSERT INTO expected_run_reporting_lines VALUES
     (32, 'WP',  2026, 19, 'ORBA', 'Organic',      true,  '1080'),
     (34, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
     (35, 'EBS', 2026, 2,  'GALA', 'Conventional', false, '9290'),
-    (36, 'EBS', 2026, 2,  'GALA', 'Conventional', false, '1565');
+    (36, 'EBS', 2026, 2,  'GALA', 'Conventional', false, '1565'),
+    (37, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
+    (38, 'WP',  2026, 2,  'GALA', 'Conventional', false, '1565'),
+    (39, 'WP',  2026, 2,  'GALA', 'Conventional', false, '1084');
+
+DROP TABLE IF EXISTS expected_actual_run_facilities;
+CREATE TEMP TABLE expected_actual_run_facilities (
+    actual_run_id bigint PRIMARY KEY,
+    facility_code text NOT NULL,
+    warehouse_id integer NOT NULL
+);
+
+INSERT INTO expected_actual_run_facilities VALUES
+    (1, 'WP', 4),
+    (2, 'WP', 4),
+    (3, 'WP', 4),
+    (4, 'WP', 4),
+    (5, 'EBS', 1),
+    (6, 'WP', 4),
+    (7, 'WP', 4);

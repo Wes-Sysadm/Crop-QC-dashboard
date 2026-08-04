@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260731014107_SeparatePlanningProjectionsFromActualRuns";
+    public const string ExpectedSchemaMigration = "20260804052104_AddFacilityRunReporting";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -117,7 +117,38 @@ public static class DatabaseStartupDiagnostics
         new("PackoutSourceAllocations.CalculatedAt", "PackoutSourceAllocations", "CalculatedAt", RequireNotNullable: true),
         new("PackoutRuns.ActualRunId", "PackoutRuns", "ActualRunId", RequireNullable: true),
         new("PackoutRuns.RunExpectationId", "PackoutRuns", "RunExpectationId", RequireNullable: true),
-        new("PackoutRuns.RunProjectionId", "PackoutRuns", "RunProjectionId", RequireNullable: true)
+        new("PackoutRuns.RunProjectionId", "PackoutRuns", "RunProjectionId", RequireNullable: true),
+        new("UserEmploymentHistory", "UserEmploymentHistory", null),
+        new("UserEmploymentHistory.Id", "UserEmploymentHistory", "Id", RequireNotNullable: true),
+        new("UserEmploymentHistory.UserId", "UserEmploymentHistory", "UserId", RequireNotNullable: true),
+        new("UserEmploymentHistory.PreviousEmploymentFacility", "UserEmploymentHistory", "PreviousEmploymentFacility", RequireNotNullable: true),
+        new("UserEmploymentHistory.EmploymentFacility", "UserEmploymentHistory", "EmploymentFacility", RequireNotNullable: true),
+        new("UserEmploymentHistory.EffectiveAt", "UserEmploymentHistory", "EffectiveAt", RequireNotNullable: true),
+        new("UserEmploymentHistory.ChangedByUserId", "UserEmploymentHistory", "ChangedByUserId", RequireNullable: true),
+        new("UserEmploymentHistory.ChangedAt", "UserEmploymentHistory", "ChangedAt", RequireNotNullable: true),
+        new("Users.EmploymentFacility", "Users", "EmploymentFacility", RequireNotNullable: true),
+        new("Users.EmploymentEffectiveAt", "Users", "EmploymentEffectiveAt", RequireNullable: true),
+        new("Users.EmploymentUpdatedAt", "Users", "EmploymentUpdatedAt", RequireNullable: true),
+        new("Users.EmploymentUpdatedByUserId", "Users", "EmploymentUpdatedByUserId", RequireNullable: true),
+        new("ActualRuns.RunFacilityWarehouseId", "ActualRuns", "RunFacilityWarehouseId", RequireNullable: true),
+        new("ActualRuns.RunFacilityCodeSnapshot", "ActualRuns", "RunFacilityCodeSnapshot", RequireNullable: true),
+        new("ActualRuns.RunFacilityAssignmentSource", "ActualRuns", "RunFacilityAssignmentSource", RequireNullable: true),
+        new("ActualRuns.RunFacilityAssignedAt", "ActualRuns", "RunFacilityAssignedAt", RequireNullable: true),
+        new("ActualRuns.RunFacilityAssignedByUserId", "ActualRuns", "RunFacilityAssignedByUserId", RequireNullable: true),
+        new("ActualRunOverrideRequests.RunFacilityWarehouseId", "ActualRunOverrideRequests", "RunFacilityWarehouseId", RequireNullable: true),
+        new("ActualRunOverrideRequests.RunFacilityCodeSnapshot", "ActualRunOverrideRequests", "RunFacilityCodeSnapshot", RequireNullable: true),
+        new("ActualRunOverrideRequests.RunFacilityAssignmentSource", "ActualRunOverrideRequests", "RunFacilityAssignmentSource", RequireNullable: true),
+        new("BinsRunEntries.ReportingFacilityWarehouseId", "BinsRunEntries", "ReportingFacilityWarehouseId", RequireNullable: true),
+        new("BinsRunEntries.ReportingFacilityCodeSnapshot", "BinsRunEntries", "ReportingFacilityCodeSnapshot", RequireNullable: true),
+        new("BinsRunEntries.ReportingFacilityAssignmentSource", "BinsRunEntries", "ReportingFacilityAssignmentSource", RequireNullable: true),
+        new("BinsRunEntries.ReportingFacilityAssignedAt", "BinsRunEntries", "ReportingFacilityAssignedAt", RequireNullable: true),
+        new("BinsRunEntries.ReportingFacilityAssignedByUserId", "BinsRunEntries", "ReportingFacilityAssignedByUserId", RequireNullable: true),
+        new("BinsRunEntries.ReportingCropYearSnapshot", "BinsRunEntries", "ReportingCropYearSnapshot", RequireNullable: true),
+        new("BinsRunEntries.ReportingFruitProfileIdSnapshot", "BinsRunEntries", "ReportingFruitProfileIdSnapshot", RequireNullable: true),
+        new("BinsRunEntries.ReportingVarietyCodeSnapshot", "BinsRunEntries", "ReportingVarietyCodeSnapshot", RequireNullable: true),
+        new("BinsRunEntries.ProductionTypeSnapshot", "BinsRunEntries", "ProductionTypeSnapshot", RequireNullable: true),
+        new("BinsRunEntries.IsOrganicSnapshot", "BinsRunEntries", "IsOrganicSnapshot", RequireNullable: true),
+        new("BinsRunEntries.GrowerNumberSnapshot", "BinsRunEntries", "GrowerNumberSnapshot", RequireNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
@@ -132,7 +163,16 @@ public static class DatabaseStartupDiagnostics
         new("IX_RunExpectationSources_BinsRunEntryId", "RunExpectationSources", "IX_RunExpectationSources_BinsRunEntryId"),
         new("IX_RunExpectationSources_QcSampleId", "RunExpectationSources", "IX_RunExpectationSources_QcSampleId"),
         new("IX_RunExpectationSources_RunExpectationId_BinsRunEntryId", "RunExpectationSources", "IX_RunExpectationSources_RunExpectationId_BinsRunEntryId", RequireUnique: true),
-        new("IX_RunExpectationSources_WarehouseId_RoomId_CropYearSnapshot_LotSnapshot_VarietySnapshot", "RunExpectationSources", "IX_RunExpectationSources_WarehouseId_RoomId_CropYearSnapshot_LotSnapshot_VarietySnapshot")
+        new("IX_RunExpectationSources_WarehouseId_RoomId_CropYearSnapshot_LotSnapshot_VarietySnapshot", "RunExpectationSources", "IX_RunExpectationSources_WarehouseId_RoomId_CropYearSnapshot_LotSnapshot_VarietySnapshot"),
+        new("IX_Users_EmploymentFacility", "Users", "IX_Users_EmploymentFacility"),
+        new("IX_Users_EmploymentUpdatedByUserId", "Users", "IX_Users_EmploymentUpdatedByUserId"),
+        new("IX_ActualRuns_RunFacilityAssignedByUserId", "ActualRuns", "IX_ActualRuns_RunFacilityAssignedByUserId"),
+        new("IX_ActualRuns_RunFacilityWarehouseId_Status_RunAt", "ActualRuns", "IX_ActualRuns_RunFacilityWarehouseId_Status_RunAt"),
+        new("IX_ActualRunOverrideRequests_RunFacilityWarehouseId", "ActualRunOverrideRequests", "IX_ActualRunOverrideRequests_RunFacilityWarehouseId"),
+        new("IX_BinsRunEntries_ReportingFacilityAssignedByUserId", "BinsRunEntries", "IX_BinsRunEntries_ReportingFacilityAssignedByUserId"),
+        new("IX_BinsRunEntries_ReportingFacilityWarehouseId_ReportingCropYearSnapshot_RunAt", "BinsRunEntries", "IX_BinsRunEntries_ReportingFacilityWarehouseId_ReportingCropYearSnapshot_RunAt"),
+        new("IX_UserEmploymentHistory_ChangedByUserId", "UserEmploymentHistory", "IX_UserEmploymentHistory_ChangedByUserId"),
+        new("IX_UserEmploymentHistory_UserId_ChangedAt", "UserEmploymentHistory", "IX_UserEmploymentHistory_UserId_ChangedAt")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
@@ -146,14 +186,23 @@ public static class DatabaseStartupDiagnostics
         new("FK_RunExpectationSources_QcSamples_QcSampleId", "RunExpectationSources", "FK_RunExpectationSources_QcSamples_QcSampleId"),
         new("FK_RunExpectationSources_RunExpectations_RunExpectationId", "RunExpectationSources", "FK_RunExpectationSources_RunExpectations_RunExpectationId"),
         new("FK_PackoutSourceAllocations_PackoutRuns_PackoutRunId", "PackoutSourceAllocations", "FK_PackoutSourceAllocations_PackoutRuns_PackoutRunId"),
-        new("FK_PackoutSourceAllocations_RunExpectationSources_RunExpectationSourceId", "PackoutSourceAllocations", "FK_PackoutSourceAllocations_RunExpectationSources_RunExpectationSourceId")
+        new("FK_PackoutSourceAllocations_RunExpectationSources_RunExpectationSourceId", "PackoutSourceAllocations", "FK_PackoutSourceAllocations_RunExpectationSources_RunExpectationSourceId"),
+        new("FK_ActualRunOverrideRequests_Warehouses_RunFacilityWarehouseId", "ActualRunOverrideRequests", "FK_ActualRunOverrideRequests_Warehouses_RunFacilityWarehouseId"),
+        new("FK_ActualRuns_Users_RunFacilityAssignedByUserId", "ActualRuns", "FK_ActualRuns_Users_RunFacilityAssignedByUserId"),
+        new("FK_ActualRuns_Warehouses_RunFacilityWarehouseId", "ActualRuns", "FK_ActualRuns_Warehouses_RunFacilityWarehouseId"),
+        new("FK_BinsRunEntries_Users_ReportingFacilityAssignedByUserId", "BinsRunEntries", "FK_BinsRunEntries_Users_ReportingFacilityAssignedByUserId"),
+        new("FK_BinsRunEntries_Warehouses_ReportingFacilityWarehouseId", "BinsRunEntries", "FK_BinsRunEntries_Warehouses_ReportingFacilityWarehouseId"),
+        new("FK_Users_Users_EmploymentUpdatedByUserId", "Users", "FK_Users_Users_EmploymentUpdatedByUserId"),
+        new("FK_UserEmploymentHistory_Users_ChangedByUserId", "UserEmploymentHistory", "FK_UserEmploymentHistory_Users_ChangedByUserId"),
+        new("FK_UserEmploymentHistory_Users_UserId", "UserEmploymentHistory", "FK_UserEmploymentHistory_Users_UserId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
     [
         new("PK_RunExpectations", "RunExpectations", "PK_RunExpectations"),
         new("PK_RunExpectationSources", "RunExpectationSources", "PK_RunExpectationSources"),
-        new("PK_PackoutSourceAllocations", "PackoutSourceAllocations", "PK_PackoutSourceAllocations")
+        new("PK_PackoutSourceAllocations", "PackoutSourceAllocations", "PK_PackoutSourceAllocations"),
+        new("PK_UserEmploymentHistory", "UserEmploymentHistory", "PK_UserEmploymentHistory")
     ];
 
     public static async Task InspectAsync(

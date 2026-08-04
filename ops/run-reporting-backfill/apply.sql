@@ -4,28 +4,20 @@
 BEGIN;
 \ir expected_lines.psql
 
-CREATE TEMP TABLE expected_actual_run_facilities (
-    actual_run_id bigint PRIMARY KEY,
-    facility_code text NOT NULL,
-    warehouse_id integer NOT NULL
-) ON COMMIT DROP;
-INSERT INTO expected_actual_run_facilities VALUES
-    (1,'WP',4), (2,'WP',4), (3,'WP',4), (4,'WP',4), (5,'EBS',1);
-
 DO $conflicts$
 BEGIN
     IF EXISTS (
         SELECT 1 FROM expected_actual_run_facilities e JOIN "ActualRuns" a ON a."Id"=e.actual_run_id
         WHERE (a."RunFacilityWarehouseId" IS NOT NULL AND a."RunFacilityWarehouseId"<>e.warehouse_id)
            OR (a."RunFacilityCodeSnapshot" IS NOT NULL AND a."RunFacilityCodeSnapshot"<>e.facility_code)
-           OR (a."RunFacilityAssignmentSource" IS NOT NULL AND a."RunFacilityAssignmentSource"<>'ReviewedProductionBackfill:20260801')
+           OR (a."RunFacilityAssignmentSource" IS NOT NULL AND a."RunFacilityAssignmentSource"<>'ReviewedProductionBackfill:20260804-run39')
     ) THEN RAISE EXCEPTION 'Conflicting existing Actual Run facility attribution'; END IF;
 
     IF EXISTS (
         SELECT 1 FROM expected_run_reporting_lines e JOIN "BinsRunEntries" b ON b."Id"=e.entry_id
         WHERE (b."ReportingFacilityWarehouseId" IS NOT NULL AND b."ReportingFacilityWarehouseId"<>CASE e.facility_code WHEN 'WP' THEN 4 WHEN 'EBS' THEN 1 END)
            OR (b."ReportingFacilityCodeSnapshot" IS NOT NULL AND b."ReportingFacilityCodeSnapshot" IS DISTINCT FROM e.facility_code)
-           OR (b."ReportingFacilityAssignmentSource" IS NOT NULL AND b."ReportingFacilityAssignmentSource"<>'ReviewedProductionBackfill:20260801')
+           OR (b."ReportingFacilityAssignmentSource" IS NOT NULL AND b."ReportingFacilityAssignmentSource"<>'ReviewedProductionBackfill:20260804-run39')
            OR (b."ReportingCropYearSnapshot" IS NOT NULL AND b."ReportingCropYearSnapshot"<>e.crop_year)
            OR (b."ReportingFruitProfileIdSnapshot" IS NOT NULL AND b."ReportingFruitProfileIdSnapshot"<>e.fruit_profile_id)
            OR (b."ReportingVarietyCodeSnapshot" IS NOT NULL AND b."ReportingVarietyCodeSnapshot"<>e.variety_code)
@@ -63,7 +55,7 @@ FROM pending_users;
 INSERT INTO "AuditLogs" ("UserId","Action","EntityName","EntityKey","BeforeValuesJson","AfterValuesJson","SourceApplication","CreatedAt")
 SELECT NULL, 'ReviewedEmploymentBackfill', 'User', "Id"::text,
        jsonb_build_object('EmploymentFacility',before_facility)::text,
-       jsonb_build_object('EmploymentFacility',after_facility,'reviewedBackup','20260801')::text,
+       jsonb_build_object('EmploymentFacility',after_facility,'reviewedBackup','20260804-run39')::text,
        'ops/run-reporting-backfill', transaction_timestamp()
 FROM pending_users;
 
@@ -74,12 +66,12 @@ SELECT a."Id", a."RunFacilityWarehouseId" AS before_warehouse_id,
 FROM "ActualRuns" a JOIN expected_actual_run_facilities e ON e.actual_run_id=a."Id"
 WHERE a."RunFacilityWarehouseId" IS DISTINCT FROM e.warehouse_id
    OR a."RunFacilityCodeSnapshot" IS DISTINCT FROM e.facility_code
-   OR a."RunFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260801';
+   OR a."RunFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260804-run39';
 
 UPDATE "ActualRuns" a SET
     "RunFacilityWarehouseId"=p.warehouse_id,
     "RunFacilityCodeSnapshot"=p.facility_code,
-    "RunFacilityAssignmentSource"='ReviewedProductionBackfill:20260801',
+    "RunFacilityAssignmentSource"='ReviewedProductionBackfill:20260804-run39',
     "RunFacilityAssignedByUserId"=NULL,
     "RunFacilityAssignedAt"=COALESCE(a."RunFacilityAssignedAt",transaction_timestamp())
 FROM pending_actual_runs p WHERE a."Id"=p."Id";
@@ -87,7 +79,7 @@ FROM pending_actual_runs p WHERE a."Id"=p."Id";
 INSERT INTO "AuditLogs" ("UserId","Action","EntityName","EntityKey","BeforeValuesJson","AfterValuesJson","SourceApplication","CreatedAt")
 SELECT NULL, 'ReviewedRunFacilityBackfill', 'ActualRun', "Id"::text,
        jsonb_build_object('warehouseId',before_warehouse_id,'facility',before_code,'source',before_source)::text,
-       jsonb_build_object('warehouseId',warehouse_id,'facility',facility_code,'source','ReviewedProductionBackfill:20260801')::text,
+       jsonb_build_object('warehouseId',warehouse_id,'facility',facility_code,'source','ReviewedProductionBackfill:20260804-run39')::text,
        'ops/run-reporting-backfill', transaction_timestamp()
 FROM pending_actual_runs;
 
@@ -96,7 +88,7 @@ SELECT b."Id", to_jsonb(b) AS before_values
 FROM "BinsRunEntries" b JOIN expected_run_reporting_lines e ON e.entry_id=b."Id"
 WHERE b."ReportingFacilityWarehouseId" IS DISTINCT FROM CASE e.facility_code WHEN 'WP' THEN 4 WHEN 'EBS' THEN 1 END
    OR b."ReportingFacilityCodeSnapshot" IS DISTINCT FROM e.facility_code
-   OR b."ReportingFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260801'
+   OR b."ReportingFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260804-run39'
    OR b."ReportingCropYearSnapshot" IS DISTINCT FROM e.crop_year
    OR b."ReportingFruitProfileIdSnapshot" IS DISTINCT FROM e.fruit_profile_id
    OR b."ReportingVarietyCodeSnapshot" IS DISTINCT FROM e.variety_code
@@ -107,7 +99,7 @@ WHERE b."ReportingFacilityWarehouseId" IS DISTINCT FROM CASE e.facility_code WHE
 UPDATE "BinsRunEntries" b SET
     "ReportingFacilityWarehouseId"=CASE e.facility_code WHEN 'WP' THEN 4 WHEN 'EBS' THEN 1 END,
     "ReportingFacilityCodeSnapshot"=e.facility_code,
-    "ReportingFacilityAssignmentSource"='ReviewedProductionBackfill:20260801',
+    "ReportingFacilityAssignmentSource"='ReviewedProductionBackfill:20260804-run39',
     "ReportingFacilityAssignedByUserId"=NULL,
     "ReportingFacilityAssignedAt"=COALESCE(b."ReportingFacilityAssignedAt",transaction_timestamp()),
     "ReportingCropYearSnapshot"=e.crop_year,
@@ -132,7 +124,7 @@ SELECT NULL, 'ReviewedRunReportingBackfill', 'BinsRunEntry', p."Id"::text,
          'growerNumber',p.before_values->'GrowerNumberSnapshot')::text,
        jsonb_build_object('facility',e.facility_code,'cropYear',e.crop_year,'fruitProfileId',e.fruit_profile_id,
          'variety',e.variety_code,'productionType',e.production_type,'isOrganic',e.is_organic,
-         'growerNumber',e.grower_number,'source','ReviewedProductionBackfill:20260801')::text,
+         'growerNumber',e.grower_number,'source','ReviewedProductionBackfill:20260804-run39')::text,
        'ops/run-reporting-backfill', transaction_timestamp()
 FROM pending_entries p JOIN expected_run_reporting_lines e ON e.entry_id=p."Id";
 

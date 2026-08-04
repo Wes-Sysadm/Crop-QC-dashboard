@@ -58,7 +58,10 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
             new("SampleRefresh", $"/Samples/{receiptSampleId}/refresh"),
             new("FieldSamples", "/FieldSamples"),
             new("BinsRunActual", "/BinsRun?Section=Actual"),
-            new("BinsRunPlanner", "/BinsRun?Section=Planner")
+            new("BinsRunPlanner", "/BinsRun?Section=Planner"),
+            new("RunReportingSummary", "/BinsRun?Section=Actual"),
+            new("RunReportingDetail", "/BinsRun?Section=RunTotals&ReportFacility=WP&ReportCropYear=2026"),
+            new("RunReportingNeedsReview", "/BinsRun?Section=NeedsReview")
         };
         if (fieldSampleId is not null)
         {
@@ -70,6 +73,9 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
         phases.Add(await RunPhaseAsync(client, "rooms-sequential-100", routes.Where(x => x.Name == "Rooms").ToList(), 100, 1));
         phases.Add(await RunPhaseAsync(client, "current-inventory-sequential-100", routes.Where(x => x.Name == "CurrentInventory").ToList(), 100, 1));
         phases.Add(await RunPhaseAsync(client, "sample-refresh-sequential-100", routes.Where(x => x.Name == "SampleRefresh").ToList(), 100, 1));
+        phases.Add(await RunPhaseAsync(client, "run-reporting-summary-sequential-100", routes.Where(x => x.Name == "RunReportingSummary").ToList(), 100, 1));
+        phases.Add(await RunPhaseAsync(client, "run-reporting-detail-sequential-100", routes.Where(x => x.Name == "RunReportingDetail").ToList(), 100, 1));
+        phases.Add(await RunPhaseAsync(client, "run-reporting-needs-review-sequential-100", routes.Where(x => x.Name == "RunReportingNeedsReview").ToList(), 100, 1));
         phases.Add(await RunPhaseAsync(client, "mixed-concurrency-2", routes, 100, 2));
         phases.Add(await RunPhaseAsync(client, "mixed-concurrency-4", routes, 100, 4));
         phases.Add(await RunPhaseAsync(client, "mixed-concurrency-8", routes, 100, 8));
@@ -91,6 +97,9 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
         AssertAllocatedBytesPerRequestAtMost(phases, "rooms-sequential-100", 12 * 1024 * 1024);
         AssertAllocatedBytesPerRequestAtMost(phases, "current-inventory-sequential-100", 12 * 1024 * 1024);
         AssertAllocatedBytesPerRequestAtMost(phases, "sample-refresh-sequential-100", 1024 * 1024);
+        AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-summary-sequential-100", 16 * 1024 * 1024);
+        AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-detail-sequential-100", 16 * 1024 * 1024);
+        AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-needs-review-sequential-100", 16 * 1024 * 1024);
         AssertAllocatedBytesPerRequestAtMost(phases, "mixed-concurrency-8", 4 * 1024 * 1024);
         Assert.True(
             phases.Single(x => x.Name == "mixed-concurrency-8").PeakWorkingSetBytes <= 384L * 1024 * 1024,
