@@ -7,7 +7,6 @@ DO $preflight$
 DECLARE
     entry_fingerprint text;
     run_fingerprint text;
-    user_fingerprint text;
     mismatch_count integer;
     protected record;
     actual_count bigint;
@@ -56,10 +55,10 @@ BEGIN
 
     IF (SELECT COUNT(*) FROM "BinsRunEntries") <> 39
        OR (SELECT COALESCE(SUM("BinsRun"), 0) FROM "BinsRunEntries") <> 8330 THEN
-        RAISE EXCEPTION 'BinsRunEntries count or quantity differs from backup run 39';
+        RAISE EXCEPTION 'BinsRunEntries count or quantity differs from backup run 40';
     END IF;
     IF (SELECT COUNT(*) FROM "ActualRuns") <> 7 THEN
-        RAISE EXCEPTION 'ActualRuns count differs from backup run 39';
+        RAISE EXCEPTION 'ActualRuns count differs from backup run 40';
     END IF;
 
     SELECT md5(string_agg(concat_ws('|', "Id", "ActualRunId", "ActualRunRevisionId", "TransactionType",
@@ -78,31 +77,21 @@ BEGIN
         RAISE EXCEPTION 'ActualRuns operational fingerprint mismatch: %', run_fingerprint;
     END IF;
 
-    SELECT md5(string_agg(md5(jsonb_build_object(
-        'Id', "Id", 'Email', "Email", 'DisplayName', "DisplayName", 'PasswordHash', "PasswordHash",
-        'PasswordLastChangedAt', "PasswordLastChangedAt", 'IsActive', "IsActive", 'CreatedAt', "CreatedAt",
-        'UpdatedAt', "UpdatedAt", 'GoogleSubjectId', "GoogleSubjectId", 'Domain', "Domain",
-        'LastLoginAt', "LastLoginAt")::text), '' ORDER BY "Id"))
-    INTO user_fingerprint FROM "Users";
-    IF user_fingerprint <> '71c814138ee478f021a6beac4121d46d' THEN
-        RAISE EXCEPTION 'Users operational fingerprint mismatch: %', user_fingerprint;
-    END IF;
-
     FOR protected IN SELECT * FROM expected_protected_operational_fingerprints ORDER BY table_name LOOP
         EXECUTE format(
             'SELECT count(*), md5(coalesce(string_agg(row_hash, '''' ORDER BY row_hash), '''')) FROM (SELECT md5(row_to_json(t)::text) AS row_hash FROM %I AS t) AS rows',
             protected.table_name)
         INTO actual_count, actual_fingerprint;
         IF actual_count <> protected.row_count OR actual_fingerprint <> protected.row_fingerprint THEN
-            RAISE EXCEPTION 'Protected table % differs from backup run 39 (count %, fingerprint %)',
+            RAISE EXCEPTION 'Protected table % differs from backup run 40 (count %, fingerprint %)',
                 protected.table_name, actual_count, actual_fingerprint;
         END IF;
     END LOOP;
 
-    IF (SELECT COUNT(*) FROM "AuditLogs" WHERE "Id" <= 13806) <> 13806
+    IF (SELECT COUNT(*) FROM "AuditLogs" WHERE "Id" <= 14415) <> 14415
        OR (SELECT md5(string_agg(md5(row_to_json(a)::text), '' ORDER BY md5(row_to_json(a)::text)))
-           FROM "AuditLogs" AS a WHERE "Id" <= 13806) <> 'ca5228e0e4c66d09cd5d4e4d9406c229' THEN
-        RAISE EXCEPTION 'Pre-existing audit records differ from backup run 39';
+           FROM "AuditLogs" AS a WHERE "Id" <= 14415) <> '0dd1c86e19af4edc5753826dfd1c9e38' THEN
+        RAISE EXCEPTION 'Pre-existing audit records differ from backup run 40';
     END IF;
 
     IF (SELECT COUNT(*) FROM "__EFMigrationsHistory" WHERE "MigrationId" <> '20260804052104_AddFacilityRunReporting') <> 24
@@ -114,14 +103,42 @@ BEGIN
         RAISE EXCEPTION 'Migration history differs from the reviewed bounded compatibility state';
     END IF;
 
-    IF (SELECT COUNT(*) FROM "Users" WHERE "Id"=8 AND "Email"='alexis@wp-packing.com' AND "DisplayName"='Alexis Ledezma') <> 1
-       OR (SELECT COUNT(*) FROM "Users" WHERE "Id"=2 AND "Email"='rob@earlbrownandsons.com' AND "DisplayName"='Robert Fulgham') <> 1 THEN
-        RAISE EXCEPTION 'Alexis or Robert exact user identity does not match backup run 39';
+    IF EXISTS (
+        SELECT 1
+        FROM expected_attribution_users AS expected
+        LEFT JOIN "Users" AS actual ON actual."Id"=expected.user_id
+        WHERE actual."Id" IS NULL
+           OR actual."Email" IS DISTINCT FROM expected.email
+           OR actual."DisplayName" IS DISTINCT FROM expected.display_name
+           OR actual."IsActive" IS DISTINCT FROM true
+    ) OR (SELECT COUNT(*) FROM expected_attribution_users) <> 2 THEN
+        RAISE EXCEPTION 'Target reporting user identity or active status differs from backup run 40';
+    END IF;
+    IF EXISTS (
+        SELECT 1
+        FROM expected_attribution_users AS expected
+        JOIN "Users" AS actual ON actual."Id"=expected.user_id
+        WHERE actual."EmploymentFacility" IS DISTINCT FROM 'Unassigned'
+          AND actual."EmploymentFacility" IS DISTINCT FROM expected.facility_code
+    ) THEN
+        RAISE EXCEPTION 'A target reporting user has a conflicting Employment Facility';
     END IF;
     IF (SELECT COUNT(*) FROM "Warehouses" WHERE "Code"='WP' AND "Id"=4 AND "IsActive") <> 1
        OR (SELECT COUNT(*) FROM "Warehouses" WHERE "Code"='EBS' AND "Id"=1 AND "IsActive") <> 1
        OR (SELECT COUNT(*) FROM "Warehouses" WHERE "Code" IN ('WP','EBS')) <> 2 THEN
         RAISE EXCEPTION 'WP or EBS warehouse identity is missing, duplicated, or inactive';
+    END IF;
+
+    SELECT COUNT(*) INTO mismatch_count
+    FROM expected_actual_run_facilities AS expected
+    LEFT JOIN "ActualRuns" AS actual ON actual."Id"=expected.actual_run_id
+    LEFT JOIN expected_attribution_users AS recording_user ON recording_user.user_id=actual."CreatedByUserId"
+    WHERE actual."Id" IS NULL
+       OR actual."CreatedByUserId" IS DISTINCT FROM expected.created_by_user_id
+       OR recording_user.facility_code IS DISTINCT FROM expected.facility_code
+       OR recording_user.warehouse_id IS DISTINCT FROM expected.warehouse_id;
+    IF mismatch_count <> 0 OR (SELECT COUNT(*) FROM expected_actual_run_facilities) <> 7 THEN
+        RAISE EXCEPTION 'Expected Actual Run identities or recording-user attribution differ from backup run 40';
     END IF;
 
     SELECT COUNT(*) INTO mismatch_count
@@ -139,8 +156,11 @@ BEGIN
        OR fp."IsOrganic" IS DISTINCT FROM e.is_organic
        OR COALESCE(b."CropYear", s."CropYear", sr."CropYear", er."CropYear", parent."CropYear", parent_source."CropYear") IS DISTINCT FROM e.crop_year
        OR COALESCE(er."GrowerNumber", sr."GrowerNumber") IS DISTINCT FROM e.grower_number
-       OR (e.facility_code='WP' AND b."CreatedByUserId"<>8)
-       OR (e.facility_code='EBS' AND b."CreatedByUserId"<>2)
+       OR b."CreatedByUserId" IS DISTINCT FROM e.created_by_user_id
+       OR NOT EXISTS (
+           SELECT 1 FROM expected_attribution_users AS recording_user
+           WHERE recording_user.user_id=e.created_by_user_id
+             AND recording_user.facility_code=e.facility_code)
        OR b."IsReversed";
     IF mismatch_count <> 0 OR (SELECT COUNT(*) FROM expected_run_reporting_lines) <> 11 THEN
         RAISE EXCEPTION 'Reviewed line-by-line metadata mismatch (% rows)', mismatch_count;
@@ -169,7 +189,7 @@ BEGIN
         WHERE b."Id"=33 AND b."CreatedByUserId"=8 AND b."BinsRun"=173 AND b."CropYear"=2026
           AND COALESCE(er."GrowerNumber",sr."GrowerNumber") IS NULL
     ) THEN
-        RAISE EXCEPTION 'Authoritative Needs Review line 33 no longer matches backup run 39';
+        RAISE EXCEPTION 'Authoritative Needs Review line 33 no longer matches backup run 40';
     END IF;
 
     IF EXISTS (
@@ -205,16 +225,17 @@ BEGIN
     INTO initial_state;
 
     SELECT
-        EXISTS (SELECT 1 FROM "Users" WHERE "Id"=8 AND "EmploymentFacility"='WP' AND "EmploymentEffectiveAt"='2026-07-28 05:11:00+00')
-        AND EXISTS (SELECT 1 FROM "Users" WHERE "Id"=2 AND "EmploymentFacility"='EBS' AND "EmploymentEffectiveAt"='2026-08-01 01:07:00+00')
-        AND (SELECT COUNT(*) FROM "UserEmploymentHistory" WHERE ("UserId"=8 AND "EmploymentFacility"='WP' AND "EffectiveAt"='2026-07-28 05:11:00+00') OR ("UserId"=2 AND "EmploymentFacility"='EBS' AND "EffectiveAt"='2026-08-01 01:07:00+00')) = 2
+        NOT EXISTS (SELECT 1 FROM expected_attribution_users AS e JOIN "Users" AS u ON u."Id"=e.user_id
+            WHERE u."EmploymentFacility" IS DISTINCT FROM e.facility_code OR u."EmploymentEffectiveAt" IS DISTINCT FROM e.effective_at)
+        AND (SELECT COUNT(*) FROM expected_attribution_users AS e JOIN "UserEmploymentHistory" AS h ON h."UserId"=e.user_id
+             WHERE h."EmploymentFacility"=e.facility_code AND h."EffectiveAt"=e.effective_at) = 2
         AND NOT EXISTS (SELECT 1 FROM expected_actual_run_facilities AS e JOIN "ActualRuns" AS a ON a."Id"=e.actual_run_id
             WHERE a."RunFacilityWarehouseId" IS DISTINCT FROM e.warehouse_id OR a."RunFacilityCodeSnapshot" IS DISTINCT FROM e.facility_code OR
-                  a."RunFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260804-run39')
+                  a."RunFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260804-run40')
         AND NOT EXISTS (SELECT 1 FROM expected_run_reporting_lines AS e JOIN "BinsRunEntries" AS b ON b."Id"=e.entry_id
             WHERE b."ReportingFacilityWarehouseId" IS DISTINCT FROM CASE e.facility_code WHEN 'WP' THEN 4 WHEN 'EBS' THEN 1 END OR
                   b."ReportingFacilityCodeSnapshot" IS DISTINCT FROM e.facility_code OR
-                  b."ReportingFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260804-run39' OR
+                  b."ReportingFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260804-run40' OR
                   b."ReportingCropYearSnapshot" IS DISTINCT FROM e.crop_year OR
                   b."ReportingFruitProfileIdSnapshot" IS DISTINCT FROM e.fruit_profile_id OR
                   b."ReportingVarietyCodeSnapshot" IS DISTINCT FROM e.variety_code OR
@@ -224,7 +245,7 @@ BEGIN
     INTO applied_state;
 
     IF NOT initial_state AND NOT applied_state THEN
-        RAISE EXCEPTION 'Attribution state is neither the exact initial run-39 state nor the exact idempotent applied state';
+        RAISE EXCEPTION 'Attribution state is neither the exact initial run-40 state nor the exact idempotent applied state';
     END IF;
 END $preflight$;
 

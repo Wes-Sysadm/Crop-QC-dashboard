@@ -1,6 +1,21 @@
+DROP TABLE IF EXISTS expected_attribution_users;
+CREATE TEMP TABLE expected_attribution_users (
+    user_id integer PRIMARY KEY,
+    email text NOT NULL,
+    display_name text NOT NULL,
+    facility_code text NOT NULL,
+    warehouse_id integer NOT NULL,
+    effective_at timestamptz NOT NULL
+);
+
+INSERT INTO expected_attribution_users VALUES
+    (2, 'rob@earlbrownandsons.com', 'Robert Fulgham', 'EBS', 1, '2026-08-01 01:07:00+00'),
+    (8, 'alexis@wp-packing.com', 'Alexis Ledezma', 'WP', 4, '2026-07-28 05:11:00+00');
+
 DROP TABLE IF EXISTS expected_run_reporting_lines;
 CREATE TEMP TABLE expected_run_reporting_lines (
     entry_id bigint PRIMARY KEY,
+    created_by_user_id integer NOT NULL,
     facility_code text NOT NULL,
     crop_year integer NOT NULL,
     fruit_profile_id integer NOT NULL,
@@ -11,30 +26,31 @@ CREATE TEMP TABLE expected_run_reporting_lines (
 );
 
 INSERT INTO expected_run_reporting_lines VALUES
-    (28, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
-    (29, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
-    (30, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
-    (31, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
-    (32, 'WP',  2026, 19, 'ORBA', 'Organic',      true,  '1080'),
-    (34, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
-    (35, 'EBS', 2026, 2,  'GALA', 'Conventional', false, '9290'),
-    (36, 'EBS', 2026, 2,  'GALA', 'Conventional', false, '1565'),
-    (37, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
-    (38, 'WP',  2026, 2,  'GALA', 'Conventional', false, '1565'),
-    (39, 'WP',  2026, 2,  'GALA', 'Conventional', false, '1084');
+    (28, 8, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
+    (29, 8, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
+    (30, 8, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
+    (31, 8, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
+    (32, 8, 'WP',  2026, 19, 'ORBA', 'Organic',      true,  '1080'),
+    (34, 8, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
+    (35, 2, 'EBS', 2026, 2,  'GALA', 'Conventional', false, '9290'),
+    (36, 2, 'EBS', 2026, 2,  'GALA', 'Conventional', false, '1565'),
+    (37, 8, 'WP',  2026, 17, 'BART', 'Conventional', false, '1084'),
+    (38, 8, 'WP',  2026, 2,  'GALA', 'Conventional', false, '1565'),
+    (39, 8, 'WP',  2026, 2,  'GALA', 'Conventional', false, '1084');
 
 DROP TABLE IF EXISTS expected_actual_run_facilities;
 CREATE TEMP TABLE expected_actual_run_facilities (
     actual_run_id bigint PRIMARY KEY,
+    created_by_user_id integer NOT NULL,
     facility_code text NOT NULL,
     warehouse_id integer NOT NULL
 );
 
 INSERT INTO expected_actual_run_facilities VALUES
-    (1, 'WP', 4),
-    (2, 'WP', 4),
-    (3, 'WP', 4),
-    (4, 'WP', 4),
-    (5, 'EBS', 1),
-    (6, 'WP', 4),
-    (7, 'WP', 4);
+    (1, 8, 'WP', 4),
+    (2, 8, 'WP', 4),
+    (3, 8, 'WP', 4),
+    (4, 8, 'WP', 4),
+    (5, 2, 'EBS', 1),
+    (6, 8, 'WP', 4),
+    (7, 8, 'WP', 4);
