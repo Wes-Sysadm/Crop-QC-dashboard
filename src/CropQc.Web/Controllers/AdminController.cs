@@ -213,6 +213,15 @@ public sealed class AdminController(
         return RedirectToAction(nameof(Users));
     }
 
+    [HttpPost("Users/Employment")]
+    [Authorize(Policy = AccessPolicyNames.UsersAdmin)]
+    public async Task<IActionResult> UpdateUserEmployment(UpdateUserEmploymentForm form, CancellationToken cancellationToken)
+    {
+        var error = await userAdminService.UpdateUserEmploymentAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "User employment updated.";
+        return RedirectToAction(nameof(Users));
+    }
+
     [HttpPost("Users/Matrix")]
     [Authorize(Policy = AccessPolicyNames.PermissionMatrixAdmin)]
     public async Task<IActionResult> UpdateUserMatrix(UserAccessMatrixForm form, CancellationToken cancellationToken)

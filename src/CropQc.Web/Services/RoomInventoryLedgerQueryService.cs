@@ -199,6 +199,8 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 x.GrowerLotId,
                 FruitProfileId = x.FruitProfileId ?? (x.Receipt == null ? null : (int?)x.Receipt.FruitProfileId),
                 x.GrowerName,
+                ReceiptGrowerNumber = x.Receipt == null ? null : x.Receipt.GrowerNumber,
+                GrowerLotNumber = x.GrowerLot == null ? null : x.GrowerLot.LotNumber,
                 x.PoolStart,
                 StoredVarietyCode = x.VarietyCode ?? "",
                 VarietyName = x.FruitProfile != null
@@ -248,6 +250,7 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 x.GrowerLotId ?? latest.GrowerLotId,
                 x.FruitProfileId,
                 latest.GrowerName,
+                ResolveGrowerNumber(latest.ReceiptGrowerNumber, latest.GrowerLotNumber),
                 x.LotNumber,
                 latest.PoolStart,
                 latest.StoredVarietyCode,
@@ -273,6 +276,16 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 x.LatestAdjustmentId,
                 latest.SourceReference);
         }).ToList();
+    }
+
+    private static string? ResolveGrowerNumber(string? receiptGrowerNumber, string? growerLotNumber)
+    {
+        var values = new[] { receiptGrowerNumber, growerLotNumber }
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return values.Count == 1 ? values[0] : null;
     }
 
     private static CanonicalLedgerIdentity CanonicalIdentity(GroupedLedgerRow row) =>
@@ -327,6 +340,7 @@ public sealed record RoomInventoryLedgerSnapshot(
     int? GrowerLotId,
     int? FruitProfileId,
     string Grower,
+    string? GrowerNumber,
     string Lot,
     string? PoolStart,
     string StoredVarietyCode,

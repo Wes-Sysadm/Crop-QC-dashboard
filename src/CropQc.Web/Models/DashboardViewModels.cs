@@ -424,6 +424,11 @@ public sealed class BinsRunPageViewModel
     public bool CanAdmin { get; set; }
     public bool CanTransfer { get; set; }
     public bool CanTrueUp { get; set; }
+    public string CurrentEmploymentFacility { get; set; } = EmploymentFacilities.Unassigned;
+    public int? ForcedRunFacilityWarehouseId { get; set; }
+    public string? ForcedRunFacilityCode { get; set; }
+    public bool RequiresRunFacilitySelection { get; set; }
+    public IReadOnlyList<Warehouse> RunFacilityOptions { get; set; } = [];
     public int? SelectedAvailableBins { get; set; }
     public string? InventorySelectionMessage { get; set; }
     public RunProjectionPlannerViewModel Planner { get; set; } = new();
@@ -433,6 +438,7 @@ public sealed class BinsRunPageViewModel
     public IReadOnlyList<RoomReceiptOptionViewModel> TrueUpReceiptOptions { get; set; } = [];
     public IReadOnlyList<RoomTransferDestinationViewModel> TransferDestinationOptions { get; set; } = [];
     public IReadOnlyList<RoomInventoryAdjustmentListItemViewModel> InventoryActivity { get; set; } = [];
+    public RunReportingPageViewModel RunReporting { get; set; } = new();
 }
 
 public sealed class BinsRunFilterForm
@@ -453,6 +459,12 @@ public sealed class BinsRunFilterForm
     public string ProjectionVisibility { get; set; } = "Active";
     public string ProjectionSort { get; set; } = "Facility";
     public long? EditActualRunId { get; set; }
+    public string? ReportFacility { get; set; }
+    public int? ReportCropYear { get; set; }
+    public string? ReportVarietyKey { get; set; }
+    public DateOnly? ReportWeekStart { get; set; }
+    public string? ReportGrowerNumber { get; set; }
+    public int ReportPage { get; set; } = 1;
 }
 
 public static class ActualRunSelectionModes
@@ -481,6 +493,7 @@ public sealed class ActualRunForm
     public long ConcurrencyVersion { get; set; }
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public long? RunProjectionId { get; set; }
+    public int? RunFacilityWarehouseId { get; set; }
     public DateTimeOffset RunAt { get; set; } = DateTimeOffset.UtcNow;
     public string? Notes { get; set; }
     public List<ActualRunLineForm> Lines { get; set; } = [];
@@ -549,6 +562,8 @@ public sealed class ActualRunHistoryItemViewModel
     public DateTimeOffset RunAt { get; set; }
     public string? Notes { get; set; }
     public string CreatedBy { get; set; } = "";
+    public int? RunFacilityWarehouseId { get; set; }
+    public string RunFacility { get; set; } = "Unresolved";
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? CanceledAt { get; set; }
     public string? CancellationReason { get; set; }
@@ -957,9 +972,31 @@ public sealed class UserAdminPageViewModel
     public IReadOnlyList<RoleOptionViewModel> Roles { get; set; } = [];
     public IReadOnlyList<RolePermissionViewModel> RolePermissions { get; set; } = [];
     public AddUserForm AddUserForm { get; set; } = new();
+    public IReadOnlyList<string> EmploymentOptions { get; set; } =
+        [EmploymentFacilities.Wp, EmploymentFacilities.Ebs, EmploymentFacilities.Shared, EmploymentFacilities.Unassigned];
 }
 
-public sealed record UserAdminListItem(int Id, string Email, string DisplayName, string Domain, string Role, string RoleSummary, bool IsActive, DateTimeOffset? LastLoginAt);
+public sealed record UserEmploymentHistoryViewModel(
+    long Id,
+    string PreviousEmploymentFacility,
+    string EmploymentFacility,
+    DateTimeOffset EffectiveAt,
+    string ChangedBy,
+    DateTimeOffset ChangedAt);
+public sealed record UserAdminListItem(
+    int Id,
+    string Email,
+    string DisplayName,
+    string Domain,
+    string Role,
+    string RoleSummary,
+    bool IsActive,
+    DateTimeOffset? LastLoginAt,
+    string EmploymentFacility,
+    DateTimeOffset? EmploymentEffectiveAt,
+    string EmploymentChangedBy,
+    DateTimeOffset? EmploymentChangedAt,
+    IReadOnlyList<UserEmploymentHistoryViewModel> EmploymentHistory);
 public sealed record ApplicationAreaViewModel(string Key, string Name, string Group, string Route);
 public sealed record UserAccessMatrixRow(int Id, string Email, string DisplayName, bool IsActive, string Role, IReadOnlyDictionary<string, PageAccessLevel> Access);
 public sealed record RoleOptionViewModel(int Id, string Name, string Summary);
@@ -978,6 +1015,13 @@ public sealed class UpdateUserAccessForm
     public int UserId { get; set; }
     public int RoleId { get; set; }
     public bool IsActive { get; set; }
+}
+
+public sealed class UpdateUserEmploymentForm
+{
+    public int UserId { get; set; }
+    public string EmploymentFacility { get; set; } = EmploymentFacilities.Unassigned;
+    public DateTimeOffset? EffectiveAt { get; set; }
 }
 
 public sealed class UserAccessMatrixForm

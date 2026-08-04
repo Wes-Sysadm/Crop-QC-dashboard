@@ -24,12 +24,51 @@
     <p class="notice success">@success</p>
 }
 
+<section class="run-total-summary-grid" aria-label="WP and EBS bins actually run">
+    @foreach (var facility in Model.RunReporting.FacilitySummaries)
+    {
+        <article class="panel run-total-summary-card">
+            <h2>@facility.Facility Run Total</h2>
+            @if (facility.CropYears.Count == 0)
+            {
+                <p class="muted">No validated attributed runs yet.</p>
+            }
+            else
+            {
+                <ul>
+                    @foreach (var year in facility.CropYears)
+                    {
+                        <li><a href="/BinsRun?Section=RunTotals&amp;ReportFacility=@facility.Facility&amp;ReportCropYear=@year.CropYear"><strong>@year.CropYear Crop</strong> — @year.Bins.ToString("N0") bins</a></li>
+                    }
+                </ul>
+            }
+        </article>
+    }
+</section>
+@if (Model.RunReporting.OlderCropYears.Count > 0)
+{
+    <details class="panel compact-panel">
+        <summary>View Older Crop Years</summary>
+        <p>
+            @foreach (var year in Model.RunReporting.OlderCropYears)
+            {
+                <a class="button-link" href="/BinsRun?Section=RunTotals&amp;ReportFacility=WP&amp;ReportCropYear=@year">@year Crop</a>
+            }
+        </p>
+    </details>
+}
+
 <nav class="operation-tabs" aria-label="Bins Run and Transfers sections">
     <a class="@(activeSection.Equals("Planner", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Planner&amp;RoomId=@Model.Filter.RoomId">Run Planner</a>
     <a class="@(activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Actual&amp;RoomId=@Model.Filter.RoomId">Record Actual Run</a>
     <a class="@(activeSection.Equals("Transfer", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Transfer&amp;RoomId=@Model.Filter.RoomId">Transfer</a>
     <a class="@(activeSection.Equals("TrueUp", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=TrueUp&amp;RoomId=@Model.Filter.RoomId">True Up</a>
     <a class="@(activeSection.Equals("Activity", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Activity&amp;RoomId=@Model.Filter.RoomId">Recent Activity</a>
+    <a class="@(activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=RunTotals&amp;ReportFacility=WP&amp;ReportCropYear=@Model.RunReporting.CurrentCropYear">Run Totals</a>
+    @if (Model.RunReporting.CanViewNeedsReview)
+    {
+        <a class="@(activeSection.Equals("NeedsReview", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=NeedsReview">Needs Review</a>
+    }
 </nav>
 
 @if (activeSection.Equals("Planner", StringComparison.OrdinalIgnoreCase))
@@ -966,6 +1005,146 @@
         </section>
     }
 }
+else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
+{
+    var detail = Model.RunReporting.Detail;
+    <section class="panel">
+        <div class="room-card-header">
+            <div>
+                <h2>Run Totals</h2>
+                <p class="muted">Validated operational depletion quantities only. Run Facility controls production credit; source inventory remains shared.</p>
+            </div>
+            <form class="inline-form" method="get" action="/BinsRun">
+                <input type="hidden" name="Section" value="RunTotals" />
+                <label>Facility
+                    <select name="ReportFacility">
+                        @foreach (var facility in new[] { "WP", "EBS" })
+                        {
+                            <option value="@facility" selected="@(detail?.Facility == facility || Model.Filter.ReportFacility == facility)">@facility</option>
+                        }
+                    </select>
+                </label>
+                <label>Crop year
+                    <input type="number" name="ReportCropYear" min="2000" max="2200" value="@(detail?.CropYear ?? Model.RunReporting.CurrentCropYear)" />
+                </label>
+                <button type="submit">Open</button>
+            </form>
+        </div>
+    </section>
+    @if (detail is null)
+    {
+        <p class="empty-state">Select WP or EBS and a crop year.</p>
+    }
+    else
+    {
+        <section class="panel">
+            <h2>@detail.Facility · @detail.CropYear Crop</h2>
+            <p><strong>@detail.TotalBins.ToString("N0") bins</strong> through @detail.SelectedCutoff.ToString("MMM. d, yyyy") versus @detail.PriorBins.ToString("N0") bins for @detail.PriorCropYear through @detail.PriorCutoff.ToString("MMM. d, yyyy").</p>
+            <p class="muted">Difference: @detail.DifferenceBins.ToString("+N0;-N0;0") bins / @(detail.DifferencePercent is null ? "percentage unavailable" : $"{detail.DifferencePercent:+0.0;-0.0;0.0}%") · windows @detail.SelectedStart.ToString("MMM. d, yyyy")–@detail.SelectedCutoff.ToString("MMM. d, yyyy") and @detail.PriorStart.ToString("MMM. d, yyyy")–@detail.PriorCutoff.ToString("MMM. d, yyyy").</p>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Variety / Production</th><th>@detail.CropYear through cutoff</th><th>@detail.PriorCropYear through cutoff</th><th>Difference</th></tr></thead>
+                    <tbody>
+                    @foreach (var variety in detail.Varieties)
+                    {
+                        <tr>
+                            <td>@variety.Variety — @variety.ProductionType</td>
+                            <td>@variety.Bins.ToString("N0")</td>
+                            <td>@variety.PriorBins.ToString("N0")</td>
+                            <td>@variety.DifferenceBins.ToString("+N0;-N0;0") / @(variety.DifferencePercent is null ? "N/A" : $"{variety.DifferencePercent:+0.0;-0.0;0.0}%")</td>
+                        </tr>
+                    }
+                    </tbody>
+                    <tfoot><tr><th>Facility total</th><th>@detail.Varieties.Sum(x => x.Bins).ToString("N0")</th><th>@detail.Varieties.Sum(x => x.PriorBins).ToString("N0")</th><th></th></tr></tfoot>
+                </table>
+            </div>
+        </section>
+        <section class="panel">
+            <h2>Weekly and Grower Drilldown</h2>
+            @foreach (var week in detail.Weeks)
+            {
+                <details class="subpanel" open="@(detail.SelectedVarietyKey == week.VarietyKey && detail.SelectedWeekStart == week.WeekStart)">
+                    <summary><strong>@week.Variety — @week.ProductionType</strong> · Week of @week.WeekStart.ToString("MMM. d") — @week.WeekEnd.ToString("MMM. d, yyyy") · @week.Bins.ToString("N0") bins</summary>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Grower number</th><th>Bins</th><th>Contributing runs / records</th><th>Support</th></tr></thead>
+                            <tbody>
+                            @foreach (var grower in week.Growers)
+                            {
+                                var supportUrl = $"/BinsRun?Section=RunTotals&ReportFacility={detail.Facility}&ReportCropYear={detail.CropYear}&ReportVarietyKey={Uri.EscapeDataString(week.VarietyKey)}&ReportWeekStart={week.WeekStart:yyyy-MM-dd}&ReportGrowerNumber={Uri.EscapeDataString(grower.GrowerNumber)}";
+                                <tr><td>@grower.GrowerNumber</td><td>@grower.Bins.ToString("N0")</td><td>@grower.RecordCount</td><td><a href="@supportUrl">View supporting runs</a></td></tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </details>
+            }
+            @if (!string.IsNullOrWhiteSpace(detail.SelectedGrowerNumber))
+            {
+                <section class="subpanel">
+                    <h3>Supporting records · Grower @detail.SelectedGrowerNumber</h3>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Record</th><th>Run time (Pacific)</th><th>Employee</th><th>Run / Source Facility</th><th>Room / Lot</th><th>Crop / Variety</th><th>Bins</th><th>Status</th></tr></thead>
+                            <tbody>
+                            @foreach (var record in detail.SupportingRecords)
+                            {
+                                <tr>
+                                    <td><a href="@record.RecordUrl">@record.RecordType #@(record.ActualRunId ?? record.EntryId)</a></td>
+                                    <td>@BusinessTime.FormatPacific(record.RunAt)</td><td>@record.RecordedEmployee</td>
+                                    <td>@record.RunFacility / @record.SourceFacility</td><td>@record.SourceRoom / @record.Lot<br />Grower @record.GrowerNumber</td>
+                                    <td>@record.CropYear / @record.Variety — @record.ProductionType</td><td>@record.Bins</td><td>@record.Status</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (detail.HasMoreSupportingRecords)
+                    {
+                        <a class="button-link" href="@($"/BinsRun?Section=RunTotals&ReportFacility={detail.Facility}&ReportCropYear={detail.CropYear}&ReportVarietyKey={Uri.EscapeDataString(detail.SelectedVarietyKey!)}&ReportWeekStart={detail.SelectedWeekStart:yyyy-MM-dd}&ReportGrowerNumber={Uri.EscapeDataString(detail.SelectedGrowerNumber!)}&ReportPage={detail.SupportingPage + 1}")">Next supporting page</a>
+                    }
+                </section>
+            }
+        </section>
+    }
+}
+else if (activeSection.Equals("NeedsReview", StringComparison.OrdinalIgnoreCase))
+{
+    <section class="panel">
+        <h2>Run Reporting Needs Review</h2>
+        <p class="muted">Live, read-only validation. Fix the linked source record through its authorized workflow; there is no bulk repair or automatic assignment here.</p>
+        @if (!Model.RunReporting.CanViewNeedsReview)
+        {
+            <p class="notice warning">Bins Run Edit or Admin access is required.</p>
+        }
+        else if (Model.RunReporting.Issues.Count == 0)
+        {
+            <p class="empty-state">No reporting exceptions were found in the bounded review window.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Issue</th><th>Excluded bins</th><th>Crop / Variety</th><th>User / Run time</th><th>Source</th></tr></thead>
+                    <tbody>
+                    @foreach (var issue in Model.RunReporting.Issues)
+                    {
+                        <tr>
+                            <td><strong>@issue.IssueType</strong><br /><span class="muted">@issue.Explanation</span></td>
+                            <td>@issue.ExcludedBins.ToString("N0")</td><td>@(issue.CropYear?.ToString() ?? "Missing") / @(string.IsNullOrWhiteSpace(issue.Variety) ? "Missing" : issue.Variety)</td>
+                            <td>@issue.RecordedUser<br />@BusinessTime.FormatPacific(issue.RunAt)</td><td><a href="@issue.RecordUrl">@issue.RecordSource</a></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+            @if (Model.RunReporting.HasMoreIssues)
+            {
+                <a class="button-link" href="/BinsRun?Section=NeedsReview&amp;ReportPage=@(Model.RunReporting.NeedsReviewPage + 1)">Next page</a>
+            }
+        }
+    </section>
+}
 else
 {
     <section class="panel">
@@ -1050,6 +1229,10 @@ else
             {
                 <p class="notice warning">Actual Run Create access is required.</p>
             }
+            else if (Model.ActualRunForm.Id is null && Model.CurrentEmploymentFacility == CropQc.Data.Entities.EmploymentFacilities.Unassigned)
+            {
+                <p class="notice warning">An administrator must assign your Employment Facility before you can record an Actual Run. Shared inventory remains available for viewing.</p>
+            }
             else if (!string.IsNullOrWhiteSpace(Model.InventorySelectionMessage))
             {
                 <p class="empty-state">@Model.InventorySelectionMessage</p>
@@ -1064,6 +1247,29 @@ else
                     <input type="hidden" name="Id" value="@Model.ActualRunForm.Id" />
                     <input type="hidden" name="ConcurrencyVersion" value="@Model.ActualRunForm.ConcurrencyVersion" />
                     <input type="hidden" name="OperationKey" value="@Model.ActualRunForm.OperationKey" />
+                    @if (Model.ActualRunForm.Id is not null)
+                    {
+                        <input type="hidden" name="RunFacilityWarehouseId" value="@Model.ActualRunForm.RunFacilityWarehouseId" />
+                        <p class="notice wide"><strong>Run Facility:</strong> @(Model.ActualRuns.FirstOrDefault(x => x.Id == Model.ActualRunForm.Id)?.RunFacility ?? "Unresolved"). Corrections permanently retain this attribution.</p>
+                    }
+                    else if (Model.RequiresRunFacilitySelection)
+                    {
+                        <label class="field wide">Run Facility
+                            <select name="RunFacilityWarehouseId" required>
+                                <option value="">Select WP or EBS</option>
+                                @foreach (var facility in Model.RunFacilityOptions)
+                                {
+                                    <option value="@facility.Id">@facility.Code — @facility.Name</option>
+                                }
+                            </select>
+                            <span class="muted">Shared / Management employees must explicitly select the facility receiving production credit.</span>
+                        </label>
+                    }
+                    else
+                    {
+                        <input type="hidden" name="RunFacilityWarehouseId" value="@Model.ForcedRunFacilityWarehouseId" />
+                        <p class="notice wide"><strong>Run Facility:</strong> @Model.ForcedRunFacilityCode, assigned from your Employment Facility. Source inventory may still come from either facility.</p>
+                    }
                     <div class="table-wrap wide">
                         <table class="actual-run-ledger-table">
                             <thead>
@@ -1243,7 +1449,7 @@ else
                 @foreach (var run in Model.ActualRuns)
                 {
                     <details class="subpanel" open="@(Model.ActualRunForm.Id == run.Id)">
-                        <summary><strong>Actual Run #@run.Id</strong> · @run.Status · revision @run.RevisionNumber · @BusinessTime.FormatPacific(run.RunAt)</summary>
+                        <summary><strong>Actual Run #@run.Id</strong> · @run.RunFacility · @run.Status · revision @run.RevisionNumber · @BusinessTime.FormatPacific(run.RunAt)</summary>
                         <p class="muted">@run.Notes</p>
                         <p><a href="/BinsRun/ActualRuns/@run.Id">Open Actual Run, Run Expectation, and Packout Result</a></p>
                         <div class="table-wrap">
@@ -1306,7 +1512,7 @@ else
                         <tbody>
                         @foreach (var item in Model.History)
                         {
-                            <tr>
+                            <tr id="bins-run-@item.Id">
                                 <td>@BusinessTime.FormatPacific(item.RunAt)</td><td>@item.Room</td><td>@item.Inventory</td>
                                 <td>@item.PreviousAvailableBins</td><td>@item.BinsRun</td><td>@item.NewAvailableBins</td>
                                 <td>@item.CreatedBy</td><td>@(item.IsReversed ? "Reversed" : "Active")</td>

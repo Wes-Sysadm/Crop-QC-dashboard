@@ -553,6 +553,8 @@ public sealed class BinsRunWorkflowTests
         Assert.Null(duplicateError);
         var run = await db.ActualRuns.SingleAsync();
         Assert.Equal(ActualRunStatuses.Active, run.Status);
+        Assert.Equal(EmploymentFacilities.Ebs, run.RunFacilityCodeSnapshot);
+        Assert.Equal(RunFacilityAssignmentSources.Employment, run.RunFacilityAssignmentSource);
         Assert.Equal(1, run.CurrentRevisionNumber);
         Assert.Equal(3, firstEntryCount);
         Assert.Equal(firstEntryCount, await db.BinsRunEntries.CountAsync());
@@ -562,6 +564,11 @@ public sealed class BinsRunWorkflowTests
             Assert.Null(x.ReceiptId);
             Assert.Equal(ActualRunTransactionTypes.Depletion, x.TransactionType);
             Assert.Equal(run.Id, x.ActualRunId);
+            Assert.Equal(EmploymentFacilities.Ebs, x.ReportingFacilityCodeSnapshot);
+            Assert.Equal(2026, x.ReportingCropYearSnapshot);
+            Assert.Equal("FUJI", x.ReportingVarietyCodeSnapshot);
+            Assert.Equal("Conventional", x.ProductionTypeSnapshot);
+            Assert.False(x.IsOrganicSnapshot);
         });
         Assert.Equal(3, await db.RoomInventoryAdjustments.CountAsync(x => x.ActualRunId == run.Id));
         var expectation = await db.RunExpectations.Include(x => x.Sources).SingleAsync();
@@ -580,6 +587,59 @@ public sealed class BinsRunWorkflowTests
         Assert.DoesNotContain(refreshed.AvailableInventory, x => x.RoomId == 1002 && x.Lot == "LOT-120");
         Assert.Equal(20, refreshed.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-30").CurrentBins);
         Assert.Equal(receiptCount, await db.Receipts.CountAsync());
+    }
+
+    [Fact]
+    public async Task ActualRun_SharedUserSelectsReportingFacilityWithoutRestrictingSourceInventory()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var employee = await db.Users.SingleAsync(x => x.Email == "manager@fruitandland.com");
+        employee.EmploymentFacility = EmploymentFacilities.Shared;
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var principal = Principal(employee.Email);
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, principal, CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var wp = await db.Warehouses.Where(x => x.Code == EmploymentFacilities.Wp).OrderByDescending(x => x.Id).FirstAsync();
+        var form = GroupForm((option, 10));
+        form.RunFacilityWarehouseId = wp.Id;
+
+        Assert.Null(await service.CreateActualRunAsync(form, principal, CancellationToken.None));
+
+        var run = await db.ActualRuns.SingleAsync();
+        var line = await db.BinsRunEntries.SingleAsync();
+        Assert.Equal(EmploymentFacilities.Wp, run.RunFacilityCodeSnapshot);
+        Assert.Equal(RunFacilityAssignmentSources.SharedSelection, run.RunFacilityAssignmentSource);
+        Assert.Equal(EmploymentFacilities.Ebs, line.Warehouse.Code);
+        Assert.Equal(EmploymentFacilities.Wp, line.ReportingFacilityCodeSnapshot);
+
+        employee.EmploymentFacility = EmploymentFacilities.Ebs;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        Assert.Equal(EmploymentFacilities.Wp, (await db.ActualRuns.SingleAsync()).RunFacilityCodeSnapshot);
+    }
+
+    [Fact]
+    public async Task ActualRun_UnassignedUserIsBlockedAndEmploymentUserCannotChooseOtherFacility()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var employee = await db.Users.SingleAsync(x => x.Email == "manager@fruitandland.com");
+        var service = CreateService(db);
+        var principal = Principal(employee.Email);
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, principal, CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var wp = await db.Warehouses.Where(x => x.Code == EmploymentFacilities.Wp).OrderByDescending(x => x.Id).FirstAsync();
+        var wrongFacility = GroupForm((option, 10));
+        wrongFacility.RunFacilityWarehouseId = wp.Id;
+
+        Assert.Contains("requires this run to be credited to EBS", await service.CreateActualRunAsync(wrongFacility, principal, CancellationToken.None));
+
+        employee.EmploymentFacility = EmploymentFacilities.Unassigned;
+        await db.SaveChangesAsync();
+        Assert.Contains("assign your Employment Facility", await service.CreateActualRunAsync(GroupForm((option, 10)), principal, CancellationToken.None));
+        Assert.Empty(await db.ActualRuns.ToListAsync());
     }
 
     [Fact]
@@ -671,7 +731,7 @@ public sealed class BinsRunWorkflowTests
             [
                 new(
                     1000, "ART", 1001, "Evans-12", "", 2026, null, 1000,
-                    "Test Grower", "LOT-120", null, "ACTUALRUNTEST", "ACTUALRUNTEST",
+                    "Test Grower", null, "LOT-120", null, "ACTUALRUNTEST", "ACTUALRUNTEST",
                     "Actual Run Test Apple", "Apple", "Conventional", false, "",
                     120, 0, 0, 0, 0, 0, 0, 0, 120, 120, 1,
                     DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 8001)
@@ -768,6 +828,7 @@ public sealed class BinsRunWorkflowTests
         Assert.Null(repeatedCancel);
         await db.Entry(run).ReloadAsync();
         Assert.Equal(ActualRunStatuses.Canceled, run.Status);
+        Assert.Equal(EmploymentFacilities.Ebs, run.RunFacilityCodeSnapshot);
         Assert.Equal("Run canceled before packout", run.CancellationReason);
         Assert.Equal(entriesAfterCancel, await db.BinsRunEntries.CountAsync());
         var restored = await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001, 1002] }, manager, CancellationToken.None);
@@ -1551,7 +1612,7 @@ public sealed class BinsRunWorkflowTests
         db.Warehouses.Add(warehouse);
         db.Rooms.Add(room);
         db.FruitProfiles.AddRange(conventional, organic);
-        db.Users.Add(User(1001, "manager@fruitandland.com", PageAccessLevel.Edit));
+        db.Users.Add(User(1001, "manager@fruitandland.com", PageAccessLevel.Edit, EmploymentFacilities.Wp));
 
         var conventionalReceipt = ProductionReceipt(9001, 325, "1084", conventional, warehouse, room);
         var organicReceipt = ProductionReceipt(9002, 310, "1080", organic, warehouse, room);
@@ -1738,13 +1799,14 @@ public sealed class BinsRunWorkflowTests
         return form;
     }
 
-    private static User User(int id, string email, PageAccessLevel binsRunLevel) => new()
+    private static User User(int id, string email, PageAccessLevel binsRunLevel, string employmentFacility = EmploymentFacilities.Ebs) => new()
     {
         Id = id,
         Email = email,
         DisplayName = email,
         Domain = "fruitandland.com",
         IsActive = true,
+        EmploymentFacility = employmentFacility,
         CreatedAt = DateTimeOffset.UtcNow,
         PageAccesses =
         {

@@ -12,6 +12,7 @@ public interface IUserAdminService
     Task<UserAdminPageViewModel> GetUsersAsync(CancellationToken cancellationToken);
     Task<string?> AddUserAsync(AddUserForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> UpdateUserAccessAsync(UpdateUserAccessForm form, string changedByEmail, CancellationToken cancellationToken);
+    Task<string?> UpdateUserEmploymentAsync(UpdateUserEmploymentForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> UpdateUserMatrixAsync(UserAccessMatrixForm form, string changedByEmail, CancellationToken cancellationToken);
 }
 
@@ -58,6 +59,8 @@ public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthentica
         var roles = roleEntities.Select(x => new RoleOptionViewModel(x.Id, x.Name, RoleSummary(x.Name))).ToList();
         var users = await dbContext.Users.AsNoTracking()
             .Include(x => x.UserRoles).ThenInclude(x => x.Role)
+            .Include(x => x.EmploymentUpdatedByUser)
+            .Include(x => x.EmploymentHistory).ThenInclude(x => x.ChangedByUser)
             .OrderBy(x => x.Email)
             .ToListAsync(cancellationToken);
 
@@ -79,7 +82,21 @@ public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthentica
                     roleName,
                     RoleSummary(roleName),
                     x.IsActive,
-                    x.LastLoginAt);
+                    x.LastLoginAt,
+                    x.EmploymentFacility,
+                    x.EmploymentEffectiveAt,
+                    x.EmploymentUpdatedByUser?.DisplayName ?? x.EmploymentUpdatedByUser?.Email ?? "—",
+                    x.EmploymentUpdatedAt,
+                    x.EmploymentHistory
+                        .OrderByDescending(history => history.ChangedAt)
+                        .Select(history => new UserEmploymentHistoryViewModel(
+                            history.Id,
+                            history.PreviousEmploymentFacility,
+                            history.EmploymentFacility,
+                            history.EffectiveAt,
+                            history.ChangedByUser?.DisplayName ?? history.ChangedByUser?.Email ?? "System",
+                            history.ChangedAt))
+                        .ToList());
             }).ToList()
         };
     }
@@ -143,6 +160,63 @@ public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthentica
         user.IsActive = form.IsActive;
         user.UpdatedAt = DateTimeOffset.UtcNow;
         await AddAuditAsync("update", "users", user.Id.ToString(), changedByEmail, before, JsonSerializer.Serialize(new { user.Email, Role = role.Name, user.IsActive }), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
+    public async Task<string?> UpdateUserEmploymentAsync(UpdateUserEmploymentForm form, string changedByEmail, CancellationToken cancellationToken)
+    {
+        var normalized = EmploymentFacilities.Normalize(form.EmploymentFacility);
+        if (normalized is null)
+        {
+            return "Employment must be WP, EBS, Shared / Management, or Unassigned.";
+        }
+
+        var user = await dbContext.Users.SingleOrDefaultAsync(x => x.Id == form.UserId, cancellationToken);
+        if (user is null)
+        {
+            return "User not found.";
+        }
+
+        var changedBy = await dbContext.Users.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Email == changedByEmail, cancellationToken);
+        if (changedBy is null)
+        {
+            return "The administrator account could not be resolved.";
+        }
+
+        var previous = EmploymentFacilities.Normalize(user.EmploymentFacility) ?? EmploymentFacilities.Unassigned;
+        var previousEffectiveAt = user.EmploymentEffectiveAt;
+        var effectiveAt = form.EffectiveAt ?? DateTimeOffset.UtcNow;
+        if (string.Equals(previous, normalized, StringComparison.OrdinalIgnoreCase)
+            && user.EmploymentEffectiveAt == effectiveAt)
+        {
+            return null;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        user.EmploymentFacility = normalized;
+        user.EmploymentEffectiveAt = effectiveAt;
+        user.EmploymentUpdatedByUserId = changedBy.Id;
+        user.EmploymentUpdatedAt = now;
+        user.UpdatedAt = now;
+        dbContext.UserEmploymentHistory.Add(new UserEmploymentHistory
+        {
+            UserId = user.Id,
+            PreviousEmploymentFacility = previous,
+            EmploymentFacility = normalized,
+            EffectiveAt = effectiveAt,
+            ChangedByUserId = changedBy.Id,
+            ChangedAt = now
+        });
+        await AddAuditAsync(
+            "update-employment",
+            "user-employment",
+            user.Id.ToString(),
+            changedByEmail,
+            JsonSerializer.Serialize(new { user.Email, EmploymentFacility = previous, EmploymentEffectiveAt = previousEffectiveAt }),
+            JsonSerializer.Serialize(new { user.Email, EmploymentFacility = normalized, EffectiveAt = effectiveAt }),
+            cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return null;
     }

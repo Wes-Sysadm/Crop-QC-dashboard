@@ -9,6 +9,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<User> Users => Set<User>();
     public DbSet<UserGoogleCredential> UserGoogleCredentials => Set<UserGoogleCredential>();
     public DbSet<UserPageAccess> UserPageAccesses => Set<UserPageAccess>();
+    public DbSet<UserEmploymentHistory> UserEmploymentHistory => Set<UserEmploymentHistory>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
@@ -765,8 +766,29 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.GoogleSubjectId).HasMaxLength(200);
             entity.Property(x => x.Domain).HasMaxLength(150).IsRequired();
             entity.Property(x => x.PasswordHash).HasMaxLength(500);
+            entity.Property(x => x.EmploymentFacility).HasMaxLength(25).HasDefaultValue(EmploymentFacilities.Unassigned).IsRequired();
             entity.HasIndex(x => x.Email).IsUnique();
             entity.HasIndex(x => x.GoogleSubjectId);
+            entity.HasIndex(x => x.EmploymentFacility);
+            entity.HasOne(x => x.EmploymentUpdatedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.EmploymentUpdatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<UserEmploymentHistory>(entity =>
+        {
+            entity.Property(x => x.PreviousEmploymentFacility).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.EmploymentFacility).HasMaxLength(25).IsRequired();
+            entity.HasIndex(x => new { x.UserId, x.ChangedAt });
+            entity.HasOne(x => x.User)
+                .WithMany(x => x.EmploymentHistory)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.ChangedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.ChangedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<UserGoogleCredential>(entity =>
@@ -1272,6 +1294,11 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.ReverseReason).HasMaxLength(1000);
             entity.Property(x => x.TransactionType).HasMaxLength(25).HasDefaultValue(ActualRunTransactionTypes.Legacy).IsRequired();
             entity.Property(x => x.OverrideReason).HasMaxLength(1000);
+            entity.Property(x => x.ReportingFacilityAssignmentSource).HasMaxLength(50);
+            entity.Property(x => x.ReportingFacilityCodeSnapshot).HasMaxLength(25);
+            entity.Property(x => x.ProductionTypeSnapshot).HasMaxLength(50);
+            entity.Property(x => x.GrowerNumberSnapshot).HasMaxLength(50);
+            entity.Property(x => x.ReportingVarietyCodeSnapshot).HasMaxLength(100);
             entity.HasIndex(x => new { x.RoomId, x.RunAt });
             entity.HasIndex(x => new { x.ReceiptId, x.IsReversed });
             entity.HasIndex(x => new { x.ActualRunId, x.ActualRunRevisionId, x.TransactionType });
@@ -1279,6 +1306,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .IsUnique()
                 .HasDatabaseName("UX_BinsRunEntries_InventoryAdjustmentId_Invariant");
             entity.HasIndex(x => x.ReversesBinsRunEntryId);
+            entity.HasIndex(x => new { x.ReportingFacilityWarehouseId, x.ReportingCropYearSnapshot, x.RunAt });
             entity.HasOne(x => x.Receipt)
                 .WithMany()
                 .HasForeignKey(x => x.ReceiptId)
@@ -1335,6 +1363,14 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .WithMany()
                 .HasForeignKey(x => x.OverrideApprovedByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.ReportingFacilityWarehouse)
+                .WithMany()
+                .HasForeignKey(x => x.ReportingFacilityWarehouseId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ReportingFacilityAssignedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.ReportingFacilityAssignedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<RoomTransfer>(entity =>
@@ -1371,13 +1407,18 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.Status).HasMaxLength(25).IsRequired();
             entity.Property(x => x.Notes).HasMaxLength(1000);
             entity.Property(x => x.CancellationReason).HasMaxLength(1000);
+            entity.Property(x => x.RunFacilityAssignmentSource).HasMaxLength(50);
+            entity.Property(x => x.RunFacilityCodeSnapshot).HasMaxLength(25);
             entity.Property(x => x.ConcurrencyVersion).IsConcurrencyToken();
             entity.HasIndex(x => new { x.Status, x.RunAt });
             entity.HasIndex(x => x.RunProjectionId);
+            entity.HasIndex(x => new { x.RunFacilityWarehouseId, x.Status, x.RunAt });
             entity.HasOne(x => x.RunProjection).WithMany().HasForeignKey(x => x.RunProjectionId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.CanceledByUser).WithMany().HasForeignKey(x => x.CanceledByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.RunFacilityWarehouse).WithMany().HasForeignKey(x => x.RunFacilityWarehouseId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.RunFacilityAssignedByUser).WithMany().HasForeignKey(x => x.RunFacilityAssignedByUserId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ActualRunRevision>(entity =>
@@ -1399,12 +1440,15 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.Status).HasMaxLength(25).IsRequired();
             entity.Property(x => x.Notes).HasMaxLength(1000);
             entity.Property(x => x.ApprovalReason).HasMaxLength(1000);
+            entity.Property(x => x.RunFacilityCodeSnapshot).HasMaxLength(25);
+            entity.Property(x => x.RunFacilityAssignmentSource).HasMaxLength(50);
             entity.HasIndex(x => x.OperationKey).IsUnique();
             entity.HasIndex(x => new { x.Status, x.RequestedAt });
             entity.HasOne(x => x.ActualRun).WithMany().HasForeignKey(x => x.ActualRunId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.RunProjection).WithMany().HasForeignKey(x => x.RunProjectionId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.RequestedByUser).WithMany().HasForeignKey(x => x.RequestedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.ApprovedByUser).WithMany().HasForeignKey(x => x.ApprovedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.RunFacilityWarehouse).WithMany().HasForeignKey(x => x.RunFacilityWarehouseId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ActualRunOverrideRequestLine>(entity =>

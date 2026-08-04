@@ -13,10 +13,49 @@ public sealed class User
     public DateTimeOffset? LastLoginAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
+    public string EmploymentFacility { get; set; } = EmploymentFacilities.Unassigned;
+    public DateTimeOffset? EmploymentEffectiveAt { get; set; }
+    public int? EmploymentUpdatedByUserId { get; set; }
+    public User? EmploymentUpdatedByUser { get; set; }
+    public DateTimeOffset? EmploymentUpdatedAt { get; set; }
     public ICollection<UserRole> UserRoles { get; } = new List<UserRole>();
     public ICollection<UserPageAccess> PageAccesses { get; } = new List<UserPageAccess>();
     public ICollection<QcSample> TakenSamples { get; } = new List<QcSample>();
     public ICollection<UserGoogleCredential> GoogleCredentials { get; } = new List<UserGoogleCredential>();
+    public ICollection<UserEmploymentHistory> EmploymentHistory { get; } = new List<UserEmploymentHistory>();
+}
+
+public static class EmploymentFacilities
+{
+    public const string Wp = "WP";
+    public const string Ebs = "EBS";
+    public const string Shared = "Shared";
+    public const string Unassigned = "Unassigned";
+
+    public static readonly IReadOnlySet<string> All =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Wp, Ebs, Shared, Unassigned };
+
+    public static string? Normalize(string? value) => value?.Trim().ToUpperInvariant() switch
+    {
+        "WP" => Wp,
+        "EBS" => Ebs,
+        "SHARED" or "SHARED / MANAGEMENT" or "MANAGEMENT" => Shared,
+        "UNASSIGNED" => Unassigned,
+        _ => null
+    };
+}
+
+public sealed class UserEmploymentHistory
+{
+    public long Id { get; set; }
+    public int UserId { get; set; }
+    public User User { get; set; } = null!;
+    public required string PreviousEmploymentFacility { get; set; }
+    public required string EmploymentFacility { get; set; }
+    public DateTimeOffset EffectiveAt { get; set; }
+    public int? ChangedByUserId { get; set; }
+    public User? ChangedByUser { get; set; }
+    public DateTimeOffset ChangedAt { get; set; }
 }
 
 public sealed class UserPageAccess

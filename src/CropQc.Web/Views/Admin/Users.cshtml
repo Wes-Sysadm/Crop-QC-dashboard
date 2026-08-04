@@ -85,6 +85,7 @@
                 <th>Role</th>
                 <th>Active</th>
                 <th>Last Login</th>
+                <th>Employment</th>
                 <th>Update</th>
             </tr>
         </thead>
@@ -100,6 +101,44 @@
                 </td>
                 <td>@(user.IsActive ? "Yes" : "No")</td>
                 <td>@BusinessTime.FormatPacific(user.LastLoginAt, empty: "Never")</td>
+                <td>
+                    <section class="employment-card" aria-label="Employment for @user.DisplayName">
+                        <strong>@(user.EmploymentFacility == CropQc.Data.Entities.EmploymentFacilities.Shared ? "Shared / Management" : user.EmploymentFacility)</strong>
+                        <div class="muted">Effective @BusinessTime.FormatPacific(user.EmploymentEffectiveAt, empty: "Not assigned")</div>
+                        <div class="muted">Changed by @user.EmploymentChangedBy @BusinessTime.FormatPacific(user.EmploymentChangedAt, empty: "")</div>
+                        <form class="form-grid compact-form" method="post" action="/Admin/Users/Employment">
+                            <input type="hidden" name="UserId" value="@user.Id" />
+                            <label class="field">Assignment
+                                <select name="EmploymentFacility" required>
+                                    @foreach (var option in Model.EmploymentOptions)
+                                    {
+                                        <option value="@option" selected="@(option == user.EmploymentFacility)">@(option == CropQc.Data.Entities.EmploymentFacilities.Shared ? "Shared / Management" : option)</option>
+                                    }
+                                </select>
+                            </label>
+                            <label class="field">Effective date/time (ISO 8601 with offset)
+                                <input type="text" name="EffectiveAt" placeholder="2026-08-03T08:00:00-07:00" value="@(user.EmploymentEffectiveAt is null ? "" : BusinessTime.ToPacific(user.EmploymentEffectiveAt.Value).ToString("yyyy-MM-ddTHH:mm:sszzz"))" />
+                            </label>
+                            <button class="secondary-button" type="submit">Save Employment</button>
+                        </form>
+                        <details>
+                            <summary>Employment audit history (@user.EmploymentHistory.Count)</summary>
+                            @if (user.EmploymentHistory.Count == 0)
+                            {
+                                <p class="muted">No employment changes recorded.</p>
+                            }
+                            else
+                            {
+                                <ul>
+                                    @foreach (var history in user.EmploymentHistory)
+                                    {
+                                        <li>@history.PreviousEmploymentFacility → @history.EmploymentFacility, effective @BusinessTime.FormatPacific(history.EffectiveAt), changed by @history.ChangedBy @BusinessTime.FormatPacific(history.ChangedAt)</li>
+                                    }
+                                </ul>
+                            }
+                        </details>
+                    </section>
+                </td>
                 <td>
                     <form class="button-row" method="post" action="/Admin/Users/Update">
                         <input type="hidden" name="UserId" value="@user.Id" />
