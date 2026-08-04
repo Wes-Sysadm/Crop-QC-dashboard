@@ -21,13 +21,17 @@ public sealed class RunReportingService(
     IUserAccessService userAccessService,
     IConfiguration configuration) : IRunReportingService
 {
+    public const int DefaultAuthoritativeStartCropYear = 2026;
     public const int MaximumWeeklySourceRows = 5000;
     public const int SupportingPageSize = 50;
     public const int NeedsReviewPageSize = 100;
-    public const int MaximumNeedsReviewCandidateRows = 2000;
 
     private int StartMonth => Math.Clamp(configuration.GetValue("RunReporting:CropYearStartMonth", 7), 1, 12);
     private int StartDay => Math.Clamp(configuration.GetValue("RunReporting:CropYearStartDay", 15), 1, 28);
+    private int AuthoritativeStartCropYear => Math.Clamp(
+        configuration.GetValue("RunReporting:AuthoritativeStartCropYear", DefaultAuthoritativeStartCropYear),
+        2000,
+        2200);
 
     public async Task<RunReportingPageViewModel> GetAsync(
         BinsRunFilterForm filter,
@@ -36,7 +40,10 @@ public sealed class RunReportingService(
     {
         var today = businessTime.PacificDate(businessTime.UtcNow);
         var currentCropYear = CurrentCropYear(today, StartMonth, StartDay);
-        var summaryYears = new[] { currentCropYear, currentCropYear - 1, currentCropYear - 2 };
+        var summaryYears = Enumerable.Range(0, 3)
+            .Select(offset => currentCropYear - offset)
+            .Where(year => year >= AuthoritativeStartCropYear)
+            .ToList();
         var summary = new Dictionary<string, List<RunCropYearSummaryViewModel>>(StringComparer.OrdinalIgnoreCase)
         {
             [EmploymentFacilities.Wp] = [],
@@ -45,12 +52,11 @@ public sealed class RunReportingService(
         foreach (var cropYear in summaryYears)
         {
             var summaryCutoff = today < PeriodEnd(cropYear) ? today : PeriodEnd(cropYear);
-            foreach (var row in await GetFacilityTotalsAsync(cropYear, summaryCutoff, cancellationToken))
+            var totals = (await GetFacilityTotalsAsync(cropYear, summaryCutoff, cancellationToken))
+                .ToDictionary(x => x.Facility, x => x.Bins, StringComparer.OrdinalIgnoreCase);
+            foreach (var facility in new[] { EmploymentFacilities.Wp, EmploymentFacilities.Ebs })
             {
-                if (row.Bins > 0 && summary.TryGetValue(row.Facility, out var values))
-                {
-                    values.Add(new RunCropYearSummaryViewModel(cropYear, row.Bins));
-                }
+                summary[facility].Add(new RunCropYearSummaryViewModel(cropYear, totals.GetValueOrDefault(facility)));
             }
         }
 
@@ -62,6 +68,7 @@ public sealed class RunReportingService(
         var model = new RunReportingPageViewModel
         {
             CurrentCropYear = currentCropYear,
+            AuthoritativeStartCropYear = AuthoritativeStartCropYear,
             FacilitySummaries = summary.Select(x => new RunFacilitySummaryViewModel(x.Key, x.Value)).ToList(),
             OlderCropYears = await GetOlderYearsAsync(currentCropYear - 2, cancellationToken),
             CanViewNeedsReview = canViewNeedsReview
@@ -69,6 +76,7 @@ public sealed class RunReportingService(
 
         if (filter.Section.Equals("RunTotals", StringComparison.OrdinalIgnoreCase)
             && filter.ReportCropYear is int selectedYear
+            && selectedYear >= AuthoritativeStartCropYear
             && NormalizeFacility(filter.ReportFacility) is string selectedFacility)
         {
             model.Detail = await GetDetailAsync(selectedFacility, selectedYear, filter, today, cancellationToken);
@@ -76,11 +84,10 @@ public sealed class RunReportingService(
         else if (filter.Section.Equals("NeedsReview", StringComparison.OrdinalIgnoreCase) && canViewNeedsReview)
         {
             var page = Math.Max(1, filter.ReportPage);
-            var issues = await GetNeedsReviewAsync(cancellationToken);
-            var pageRows = issues.Skip((page - 1) * NeedsReviewPageSize).Take(NeedsReviewPageSize + 1).ToList();
+            var review = await GetNeedsReviewPageAsync(page, cancellationToken);
             model.NeedsReviewPage = page;
-            model.HasMoreIssues = pageRows.Count > NeedsReviewPageSize;
-            model.Issues = pageRows.Take(NeedsReviewPageSize).ToList();
+            model.HasMoreIssues = review.HasMoreRecords;
+            model.Issues = review.Issues;
         }
 
         return model;
@@ -103,6 +110,10 @@ public sealed class RunReportingService(
 
     private IQueryable<BinsRunEntry> ValidLines(int cropYear, DateOnly cutoff)
     {
+        if (cropYear < AuthoritativeStartCropYear)
+        {
+            return dbContext.BinsRunEntries.AsNoTracking().Where(_ => false);
+        }
         var startUtc = UtcStart(PeriodStart(cropYear));
         var endUtc = UtcEndExclusive(cutoff > PeriodEnd(cropYear) ? PeriodEnd(cropYear) : cutoff);
         return dbContext.BinsRunEntries.AsNoTracking()
@@ -144,7 +155,8 @@ public sealed class RunReportingService(
     private async Task<IReadOnlyList<int>> GetOlderYearsAsync(int newestExcluded, CancellationToken cancellationToken)
     {
         var candidateYears = await dbContext.BinsRunEntries.AsNoTracking()
-            .Where(x => x.ReportingCropYearSnapshot != null && x.ReportingCropYearSnapshot < newestExcluded)
+            .Where(x => x.ReportingCropYearSnapshot >= AuthoritativeStartCropYear
+                && x.ReportingCropYearSnapshot < newestExcluded)
             .Where(x => x.ProductionTypeSnapshot != null && x.GrowerNumberSnapshot != null)
             .Select(x => x.ReportingCropYearSnapshot!.Value)
             .Distinct()
@@ -176,26 +188,29 @@ public sealed class RunReportingService(
         {
             selectedCutoff = selectedStart.AddDays(-1);
         }
-        var priorYear = cropYear - 1;
-        var priorStart = PeriodStart(priorYear);
-        var priorCutoff = EquivalentPriorCutoff(selectedCutoff);
+        var priorYear = cropYear > AuthoritativeStartCropYear ? cropYear - 1 : (int?)null;
+        var priorStart = priorYear is int authoritativePriorYear ? PeriodStart(authoritativePriorYear) : (DateOnly?)null;
+        var priorCutoff = priorYear is not null ? EquivalentPriorCutoff(selectedCutoff) : (DateOnly?)null;
 
         var selectedGroups = selectedCutoff < selectedStart
             ? new List<VarietyTotalRow>()
             : await VarietyTotalsQuery(facility, cropYear, selectedCutoff).ToListAsync(cancellationToken);
-        var priorGroups = priorCutoff < priorStart
+        var priorGroups = priorYear is null || priorCutoff!.Value < priorStart!.Value
             ? new List<VarietyTotalRow>()
-            : await VarietyTotalsQuery(facility, priorYear, priorCutoff).ToListAsync(cancellationToken);
+            : await VarietyTotalsQuery(facility, priorYear.Value, priorCutoff!.Value).ToListAsync(cancellationToken);
+        var selectedLookup = selectedGroups.ToDictionary(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase);
         var priorLookup = priorGroups.ToDictionary(x => x.VarietyKey, x => x.Bins, StringComparer.OrdinalIgnoreCase);
-        var varieties = selectedGroups
-            .Select(x => new RunVarietyTotalViewModel(
-                x.VarietyKey,
-                x.FruitProfileId,
-                x.Variety,
-                x.ProductionType,
-                x.IsOrganic,
-                x.Bins,
-                priorLookup.GetValueOrDefault(x.VarietyKey)))
+        var varieties = selectedGroups.Concat(priorGroups)
+            .GroupBy(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Select(identity => new RunVarietyTotalViewModel(
+                identity.VarietyKey,
+                identity.FruitProfileId,
+                identity.Variety,
+                identity.ProductionType,
+                identity.IsOrganic,
+                selectedLookup.TryGetValue(identity.VarietyKey, out var selected) ? selected.Bins : 0,
+                priorLookup.GetValueOrDefault(identity.VarietyKey)))
             .OrderBy(x => x.Variety)
             .ThenBy(x => x.ProductionType)
             .ToList();
@@ -254,7 +269,7 @@ public sealed class RunReportingService(
             CropYear = cropYear,
             TotalBins = varieties.Sum(x => x.Bins),
             PriorCropYear = priorYear,
-            PriorBins = priorGroups.Sum(x => x.Bins),
+            PriorBins = priorYear is null ? 0 : priorGroups.Sum(x => x.Bins),
             SelectedStart = selectedStart,
             SelectedCutoff = selectedCutoff,
             PriorStart = priorStart,
@@ -350,12 +365,25 @@ public sealed class RunReportingService(
             .ToListAsync(cancellationToken);
     }
 
-    private async Task<IReadOnlyList<RunReportingIssueViewModel>> GetNeedsReviewAsync(CancellationToken cancellationToken)
+    private async Task<NeedsReviewPage> GetNeedsReviewPageAsync(int page, CancellationToken cancellationToken)
     {
+        var authoritativeRecordStartUtc = UtcStart(PeriodStart(AuthoritativeStartCropYear));
         var rows = await dbContext.BinsRunEntries.AsNoTracking()
+            .Where(x => x.ReportingCropYearSnapshot >= AuthoritativeStartCropYear
+                || (x.ReportingCropYearSnapshot == null
+                    && ((x.CropYear
+                            ?? (x.Receipt == null ? null : (int?)x.Receipt.CropYear)
+                            ?? (x.SourceInventoryAdjustment == null ? null : x.SourceInventoryAdjustment.CropYear)
+                            ?? x.InventoryAdjustment.CropYear) >= AuthoritativeStartCropYear
+                        || ((x.CropYear
+                                ?? (x.Receipt == null ? null : (int?)x.Receipt.CropYear)
+                                ?? (x.SourceInventoryAdjustment == null ? null : x.SourceInventoryAdjustment.CropYear)
+                                ?? x.InventoryAdjustment.CropYear) == null
+                            && x.CreatedAt >= authoritativeRecordStartUtc))))
             .OrderByDescending(x => x.RunAt)
             .ThenByDescending(x => x.Id)
-            .Take(MaximumNeedsReviewCandidateRows)
+            .Skip((page - 1) * NeedsReviewPageSize)
+            .Take(NeedsReviewPageSize + 1)
             .Select(x => new IssueCandidate
             {
                 Id = x.Id,
@@ -370,27 +398,68 @@ public sealed class RunReportingService(
                 FacilityAssignmentSource = x.ActualRunId != null ? x.ActualRun!.RunFacilityAssignmentSource : x.ReportingFacilityAssignmentSource,
                 SourceFacility = x.Warehouse.Code,
                 CropYear = x.ReportingCropYearSnapshot,
+                OperationalCropYear = x.CropYear
+                    ?? (x.Receipt == null ? null : (int?)x.Receipt.CropYear)
+                    ?? (x.SourceInventoryAdjustment == null ? null : x.SourceInventoryAdjustment.CropYear)
+                    ?? x.InventoryAdjustment.CropYear,
                 FruitProfileId = x.ReportingFruitProfileIdSnapshot,
                 Variety = x.ReportingVarietyCodeSnapshot ?? "",
                 ProductionType = x.ProductionTypeSnapshot,
                 IsOrganic = x.IsOrganicSnapshot,
                 GrowerNumber = x.GrowerNumberSnapshot,
                 ReceiptGrowerNumber = x.Receipt == null ? null : x.Receipt.GrowerNumber,
-                GrowerLotNumber = x.GrowerLot == null ? null : x.GrowerLot.LotNumber,
                 CreatedByUserId = x.CreatedByUserId,
                 RecordedUser = x.CreatedByUser == null ? "Unknown" : x.CreatedByUser.DisplayName,
-                EmploymentFacility = x.CreatedByUser == null ? null : x.CreatedByUser.EmploymentFacility,
                 RunAt = x.RunAt,
                 Bins = x.BinsRun
             })
             .ToListAsync(cancellationToken);
+        var hasMoreRecords = rows.Count > NeedsReviewPageSize;
+        rows = rows.Take(NeedsReviewPageSize).ToList();
+
+        var userIds = rows.Where(x => x.CreatedByUserId is not null)
+            .Select(x => x.CreatedByUserId!.Value)
+            .Distinct()
+            .ToList();
+        var employmentUsers = await dbContext.Users.AsNoTracking()
+            .Where(x => userIds.Contains(x.Id))
+            .Select(x => new EmploymentUser(x.Id, x.EmploymentFacility, x.EmploymentEffectiveAt))
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
+        var employmentHistory = await dbContext.UserEmploymentHistory.AsNoTracking()
+            .Where(x => userIds.Contains(x.UserId))
+            .Select(x => new
+            {
+                x.Id,
+                x.UserId,
+                x.PreviousEmploymentFacility,
+                x.EmploymentFacility,
+                x.EffectiveAt
+            })
+            .ToListAsync(cancellationToken);
+        var employmentHistoryByUser = employmentHistory
+            .GroupBy(x => x.UserId)
+            .ToDictionary(
+                x => x.Key,
+                x => (IReadOnlyList<EmploymentTransition>)x
+                    .OrderBy(item => item.EffectiveAt)
+                    .ThenBy(item => item.Id)
+                    .Select(item => new EmploymentTransition(
+                        item.UserId,
+                        item.PreviousEmploymentFacility,
+                        item.EmploymentFacility,
+                        item.EffectiveAt))
+                    .ToList());
 
         var issues = new List<RunReportingIssueViewModel>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in rows)
         {
-            var isQuantityLine = (row.TransactionType == ActualRunTransactionTypes.Depletion && row.ActualRunId is not null)
-                || (row.TransactionType == ActualRunTransactionTypes.Legacy && row.ActualRunId is null);
+            var isQuantityLine = row.TransactionType == ActualRunTransactionTypes.Legacy && row.ActualRunId is null && !row.IsReversed
+                || row.TransactionType == ActualRunTransactionTypes.Depletion
+                    && row.ActualRunId is not null
+                    && !row.IsReversed
+                    && row.RevisionIsCurrent
+                    && row.ActualRunStatus == ActualRunStatuses.Active;
 
             void Add(string type, string explanation)
             {
@@ -399,7 +468,7 @@ public sealed class RunReportingService(
                     type,
                     explanation,
                     row.TransactionType == ActualRunTransactionTypes.Reversal ? 0 : row.Bins,
-                    row.CropYear,
+                    row.CropYear ?? row.OperationalCropYear,
                     row.Variety,
                     row.RecordedUser,
                     row.RunAt,
@@ -408,9 +477,13 @@ public sealed class RunReportingService(
                     row.Id));
             }
 
-            if (isQuantityLine && row.CropYear is null)
+            if (isQuantityLine && row.CropYear is null && row.OperationalCropYear is null)
             {
                 Add("Missing crop year", "The operational line has no authoritative fruit crop year.");
+            }
+            else if (isQuantityLine && row.CropYear is null && row.OperationalCropYear >= AuthoritativeStartCropYear)
+            {
+                Add("Missing reporting crop-year snapshot", "The authoritative operational crop year was not persisted in the immutable reporting snapshot.");
             }
             else if (isQuantityLine && row.CropYear is int cropYear)
             {
@@ -429,7 +502,14 @@ public sealed class RunReportingService(
             {
                 Add("Unknown recording employee", "The recording user is missing.");
             }
-            var employment = EmploymentFacilities.Normalize(row.EmploymentFacility);
+            var employment = row.CreatedByUserId is int createdByUserId
+                && employmentUsers.TryGetValue(createdByUserId, out var employmentUser)
+                    ? ResolveEmploymentAt(
+                        employmentUser.CurrentFacility,
+                        employmentUser.CurrentEffectiveAt,
+                        employmentHistoryByUser.GetValueOrDefault(createdByUserId) ?? [],
+                        row.RunAt)
+                    : EmploymentFacilities.Unassigned;
             if (isQuantityLine && employment == EmploymentFacilities.Unassigned)
             {
                 Add("Employee employment is Unassigned", "The recorded employee currently has no deterministic employment assignment.");
@@ -445,6 +525,12 @@ public sealed class RunReportingService(
             {
                 Add("Shared / Management run missing explicit facility", "A Shared / Management run has no explicit saved WP or EBS choice.");
             }
+            else if (isQuantityLine
+                && employment == EmploymentFacilities.Shared
+                && row.FacilityAssignmentSource != RunFacilityAssignmentSources.SharedSelection)
+            {
+                Add("Shared / Management run missing explicit facility", "A Shared / Management run must preserve an explicit saved WP or EBS choice.");
+            }
             if (isQuantityLine && row.FruitProfileId is null)
             {
                 Add("Missing fruit-profile identity", "No canonical fruit-profile identity is persisted.");
@@ -459,19 +545,10 @@ public sealed class RunReportingService(
             }
             if (isQuantityLine && string.IsNullOrWhiteSpace(row.GrowerNumber))
             {
-                var sourceNumbers = new[] { row.ReceiptGrowerNumber, row.GrowerLotNumber }
-                    .Where(x => !string.IsNullOrWhiteSpace(x))
-                    .Select(x => x!.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                Add(sourceNumbers.Count > 1 ? "Ambiguous grower number" : "Missing grower number",
-                    sourceNumbers.Count > 1
-                        ? "Receipt and Grower Lot identify different grower numbers."
-                        : "No authoritative grower-number snapshot is persisted.");
-            }
-            if (isQuantityLine && NormalizeFacility(row.SourceFacility) is null)
-            {
-                Add("Missing or unknown source facility", "The source warehouse is not a recognized WP or EBS facility.");
+                Add("Missing grower number",
+                    string.IsNullOrWhiteSpace(row.ReceiptGrowerNumber)
+                        ? "No authoritative grower-number snapshot or receipt grower number is available. Grower Lot lot numbers are not grower numbers."
+                        : "The authoritative receipt grower number was not persisted in the reporting snapshot.");
             }
             if (row.IsReversed && !row.HasReversal && row.TransactionType != ActualRunTransactionTypes.Reversal)
             {
@@ -481,22 +558,17 @@ public sealed class RunReportingService(
             {
                 Add("Unresolved correction or reversal", "The reversal has no source-line relationship.");
             }
-            if (row.ActualRunStatus == ActualRunStatuses.Canceled && !row.IsReversed && row.TransactionType == ActualRunTransactionTypes.Depletion)
-            {
-                Add("Canceled run still contributing quantity", "A canceled run contains an unreversed depletion line.");
-            }
-            if (row.ActualRunId is not null && !row.RevisionIsCurrent && !row.IsReversed && row.TransactionType == ActualRunTransactionTypes.Depletion)
-            {
-                Add("Superseded line still contributing quantity", "A non-current Actual Run revision contains an unreversed depletion line.");
-            }
             if (row.TransactionType == ActualRunTransactionTypes.Legacy && row.ActualRunId is not null)
             {
                 Add("Legacy Bins Run represented by Actual Run", "The line is marked Legacy while also linked to an Actual Run and could otherwise be counted twice.");
             }
         }
 
+        var pageEntryIds = rows.Select(x => x.Id).ToList();
         var duplicateEntryIds = await dbContext.BinsRunEntries.AsNoTracking()
-            .Where(x => !x.IsReversed
+            .Where(x => pageEntryIds.Contains(x.Id)
+                && x.ReportingCropYearSnapshot >= AuthoritativeStartCropYear
+                && !x.IsReversed
                 && x.TransactionType == ActualRunTransactionTypes.Depletion
                 && x.ActualRunRevisionId != null
                 && x.ActualRunRevision!.IsCurrent
@@ -506,7 +578,6 @@ public sealed class RunReportingService(
                     && other.ActualRunRevisionId == x.ActualRunRevisionId
                     && other.InventoryAdjustmentId == x.InventoryAdjustmentId))
             .Select(x => x.Id)
-            .Take(100)
             .ToListAsync(cancellationToken);
         foreach (var id in duplicateEntryIds)
         {
@@ -524,7 +595,32 @@ public sealed class RunReportingService(
                 $"/BinsRun/ActualRuns/{row.ActualRunId}",
                 row.Id));
         }
-        return issues.OrderByDescending(x => x.RunAt).ThenBy(x => x.IssueType).ToList();
+        return new NeedsReviewPage(
+            issues.OrderByDescending(x => x.RunAt).ThenBy(x => x.IssueType).ToList(),
+            hasMoreRecords);
+    }
+
+    public static string ResolveEmploymentAt(
+        string? currentFacility,
+        DateTimeOffset? currentEffectiveAt,
+        IReadOnlyList<EmploymentTransition> history,
+        DateTimeOffset runAt)
+    {
+        var latest = history.LastOrDefault(x => x.EffectiveAt <= runAt);
+        if (latest is not null)
+        {
+            return EmploymentFacilities.Normalize(latest.NewFacility) ?? EmploymentFacilities.Unassigned;
+        }
+
+        var earliest = history.FirstOrDefault();
+        if (earliest is not null)
+        {
+            return EmploymentFacilities.Normalize(earliest.PreviousFacility) ?? EmploymentFacilities.Unassigned;
+        }
+
+        return currentEffectiveAt is null || currentEffectiveAt <= runAt
+            ? EmploymentFacilities.Normalize(currentFacility) ?? EmploymentFacilities.Unassigned
+            : EmploymentFacilities.Unassigned;
     }
 
     private static string? NormalizeFacility(string? facility) => facility?.Trim().ToUpperInvariant() switch
@@ -552,6 +648,13 @@ public sealed class RunReportingService(
     }
 
     private sealed record FacilityTotal(string Facility, int Bins);
+    private sealed record NeedsReviewPage(IReadOnlyList<RunReportingIssueViewModel> Issues, bool HasMoreRecords);
+    private sealed record EmploymentUser(int Id, string? CurrentFacility, DateTimeOffset? CurrentEffectiveAt);
+    public sealed record EmploymentTransition(
+        int UserId,
+        string? PreviousFacility,
+        string? NewFacility,
+        DateTimeOffset EffectiveAt);
     private sealed record VarietyTotalRow(int FruitProfileId, string Variety, string ProductionType, bool IsOrganic, int Bins)
     {
         public string VarietyKey => RunReportingService.VarietyKey(FruitProfileId, Variety, ProductionType, IsOrganic);
@@ -575,16 +678,15 @@ public sealed class RunReportingService(
         public string? FacilityAssignmentSource { get; init; }
         public string SourceFacility { get; init; } = "";
         public int? CropYear { get; init; }
+        public int? OperationalCropYear { get; init; }
         public int? FruitProfileId { get; init; }
         public string Variety { get; init; } = "";
         public string? ProductionType { get; init; }
         public bool? IsOrganic { get; init; }
         public string? GrowerNumber { get; init; }
         public string? ReceiptGrowerNumber { get; init; }
-        public string? GrowerLotNumber { get; init; }
         public int? CreatedByUserId { get; init; }
         public string RecordedUser { get; init; } = "";
-        public string? EmploymentFacility { get; init; }
         public DateTimeOffset RunAt { get; init; }
         public int Bins { get; init; }
     }

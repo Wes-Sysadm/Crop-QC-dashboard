@@ -731,7 +731,7 @@ public sealed class BinsRunWorkflowTests
             [
                 new(
                     1000, "ART", 1001, "Evans-12", "", 2026, null, 1000,
-                    "Test Grower", null, "LOT-120", null, "ACTUALRUNTEST", "ACTUALRUNTEST",
+                    "Test Grower", "1084", "LOT-120", null, "ACTUALRUNTEST", "ACTUALRUNTEST",
                     "Actual Run Test Apple", "Apple", "Conventional", false, "",
                     120, 0, 0, 0, 0, 0, 0, 0, 120, 120, 1,
                     DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 8001)
@@ -1327,6 +1327,132 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task RoomLedger_NeverTreatsGrowerLotLotNumberAsGrowerNumber()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var warehouse = await db.Warehouses.SingleAsync(x => x.Id == 1000);
+        var room = await db.Rooms.SingleAsync(x => x.Id == 1001);
+        var fruit = await db.FruitProfiles.SingleAsync(x => x.Id == 1000);
+        var growerLot = new GrowerLot
+        {
+            Id = 9900,
+            Grower = "Lot-only grower",
+            LotNumber = "7777",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var adjustment = Adjustment(9900, warehouse, room, fruit, "LOT-ONLY", 9);
+        adjustment.GrowerLot = growerLot;
+        adjustment.GrowerLotId = growerLot.Id;
+        db.AddRange(growerLot, adjustment);
+        await db.SaveChangesAsync();
+
+        var snapshot = (await new RoomInventoryLedgerQueryService(db)
+                .GetSnapshotsAsync(warehouse.Id, [room.Id], fruit.Id, CancellationToken.None))
+            .Single(x => x.Lot == "LOT-ONLY");
+
+        Assert.Null(snapshot.GrowerNumber);
+        Assert.Equal("7777", growerLot.LotNumber);
+        var service = CreateService(db);
+        var option = (await service.GetPageAsync(
+                new BinsRunFilterForm { Section = "Actual", WarehouseId = warehouse.Id, RoomIds = [room.Id] },
+                Principal("manager@fruitandland.com"),
+                CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-ONLY");
+        Assert.Contains("authoritative receipt grower number", await service.CreateActualRunAsync(
+            GroupForm((option, 1)),
+            Principal("manager@fruitandland.com"),
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ActualRun_DuplicateWpOrEbsWarehouseConfigurationFailsClosed()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        db.Warehouses.Add(new Warehouse { Id = 9901, Code = EmploymentFacilities.Ebs, Name = "Duplicate EBS", IsActive = true });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var principal = Principal("manager@fruitandland.com");
+        var option = (await service.GetPageAsync(
+                new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] },
+                principal,
+                CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+
+        var error = await service.CreateActualRunAsync(GroupForm((option, 1)), principal, CancellationToken.None);
+
+        Assert.Contains("Exactly one active WP warehouse and one active EBS warehouse", error);
+        Assert.Empty(await db.ActualRuns.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ActualRun_MissingWpOrEbsWarehouseConfigurationFailsClosed()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        foreach (var wp in await db.Warehouses.Where(x => x.Code == EmploymentFacilities.Wp).ToListAsync())
+        {
+            wp.IsActive = false;
+        }
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var principal = Principal("manager@fruitandland.com");
+        var option = (await service.GetPageAsync(
+                new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] },
+                principal,
+                CancellationToken.None))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+
+        var error = await service.CreateActualRunAsync(GroupForm((option, 1)), principal, CancellationToken.None);
+
+        Assert.Contains("Exactly one active WP warehouse and one active EBS warehouse", error);
+        Assert.Empty(await db.ActualRuns.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ActualRun_AuthoritativeWritesRequireCompleteReportingIdentity()
+    {
+        using var db = CreateDbContext();
+        await SeedActualRunLedgerOnlyAsync(db);
+        var complete = new RoomInventoryLedgerSnapshot(
+            1000, "ART", 1001, "Evans-12", "", 2026, null, 1000,
+            "Test Grower", "1084", "LOT-120", null, "ACTUALRUNTEST", "ACTUALRUNTEST",
+            "Actual Run Test Apple", "Apple", "Conventional", false, "",
+            120, 0, 0, 0, 0, 0, 0, 0, 120, 120, 1,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 8001);
+        var cases = new[]
+        {
+            ("crop year", complete with { CropYear = null }, "Crop year is required"),
+            ("fruit profile", complete with { FruitProfileId = null }, "canonical variety, production type"),
+            ("variety", complete with { Variety = "" }, "not room-ledger inventory"),
+            ("production type", complete with { ProductionType = "" }, "canonical variety, production type"),
+            ("organic status", complete with { IsOrganic = null }, "Organic/Conventional status"),
+            ("grower number", complete with { GrowerNumber = null }, "authoritative receipt grower number")
+        };
+        var principal = Principal("manager@fruitandland.com");
+        foreach (var (field, snapshot, expectedError) in cases)
+        {
+            var service = CreateService(
+                db,
+                roomInventoryLedgerQueryService: new StaticRoomInventoryLedgerQueryService([snapshot]));
+            var option = (await service.GetPageAsync(
+                    new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] },
+                    principal,
+                    CancellationToken.None))
+                .AvailableInventory.Single();
+
+            var error = await service.CreateActualRunAsync(GroupForm((option, 1)), principal, CancellationToken.None);
+
+            Assert.NotNull(error);
+            Assert.True(error.Contains(expectedError, StringComparison.OrdinalIgnoreCase), $"{field}: {error}");
+            Assert.Empty(await db.ActualRuns.ToListAsync());
+        }
+    }
+
+    [Fact]
     public async Task Reconciliation_IsReadOnly_AndReportsUnledgeredReceiptOrigin()
     {
         using var db = CreateDbContext();
@@ -1481,6 +1607,10 @@ public sealed class BinsRunWorkflowTests
 
     private static async Task SeedInventoryAsync(CropQcDbContext db)
     {
+        foreach (var seededEbs in await db.Warehouses.Where(x => x.Code == EmploymentFacilities.Ebs).ToListAsync())
+        {
+            seededEbs.IsActive = false;
+        }
         var warehouse = new Warehouse { Id = 1000, Code = "EBS", Name = "EBS", IsActive = true };
         var room = new Room { Id = 1001, WarehouseId = warehouse.Id, Warehouse = warehouse, Code = "EVANCA12", Name = "Evans 12", CropQcRoomName = "Evans-12", IsActive = true };
         var otherRoom = new Room { Id = 1002, WarehouseId = warehouse.Id, Warehouse = warehouse, Code = "LAMBCA17", Name = "Lamb 17", CropQcRoomName = "Lamb-17", IsActive = true };
@@ -1525,7 +1655,10 @@ public sealed class BinsRunWorkflowTests
             UpdatedAt = DateTimeOffset.UtcNow
         },
         SampleReceipt(7002, "QC-LOT-120", "LOT-120", warehouse, room, fruit),
-        SampleReceipt(7003, "QC-LOT-30", "LOT-30", warehouse, room, fruit));
+        SampleReceipt(7003, "QC-LOT-30", "LOT-30", warehouse, room, fruit),
+        SampleReceipt(7004, "QC-OTHER-LOT-120", "LOT-120", warehouse, otherRoom, fruit),
+        SampleReceipt(7005, "QC-LOT-OTHER", "LOT-OTHER", warehouse, otherRoom, fruit),
+        SampleReceipt(7006, "QC-HISTORY", "HISTORY", warehouse, room, fruit));
         db.QcSamples.Add(new QcSample
         {
             Id = 7101,
@@ -1579,6 +1712,10 @@ public sealed class BinsRunWorkflowTests
 
     private static async Task SeedProductionLikeBartlettLedgerAsync(CropQcDbContext db)
     {
+        foreach (var seededWp in await db.Warehouses.Where(x => x.Code == EmploymentFacilities.Wp).ToListAsync())
+        {
+            seededWp.IsActive = false;
+        }
         var warehouse = new Warehouse { Id = 2000, Code = "WP", Name = "Windy Point", IsActive = true };
         var room = new Room
         {

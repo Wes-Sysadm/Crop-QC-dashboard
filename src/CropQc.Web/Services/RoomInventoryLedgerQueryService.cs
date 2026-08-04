@@ -90,6 +90,38 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                     ? ""
                     : x.Receipt.GrowerNumber ?? x.Receipt.LotCode,
             FruitProfileId = x.FruitProfileId ?? (x.Receipt == null ? null : (int?)x.Receipt.FruitProfileId),
+            GrowerNumber = x.Receipt != null
+                ? x.Receipt.GrowerNumber
+                : dbContext.BinsRunEntries
+                    .Where(entry => entry.InventoryAdjustmentId == x.Id)
+                    .Select(entry => entry.Receipt != null
+                        ? entry.Receipt.GrowerNumber
+                        : entry.SourceInventoryAdjustment != null && entry.SourceInventoryAdjustment.Receipt != null
+                            ? entry.SourceInventoryAdjustment.Receipt.GrowerNumber
+                            : null)
+                    .FirstOrDefault()
+                    ?? (dbContext.Receipts
+                            .Where(receipt => receipt.WarehouseId == x.WarehouseId
+                                && receipt.RoomId == x.RoomId
+                                && receipt.CropYear == x.CropYear
+                                && (x.FruitProfileId == null || receipt.FruitProfileId == x.FruitProfileId)
+                                && (receipt.GrowerNumber == x.LotNumber || receipt.LotCode == x.LotNumber)
+                                && receipt.GrowerNumber != null
+                                && receipt.GrowerNumber != "")
+                            .Select(receipt => receipt.GrowerNumber)
+                            .Distinct()
+                            .Count() == 1
+                        ? dbContext.Receipts
+                            .Where(receipt => receipt.WarehouseId == x.WarehouseId
+                                && receipt.RoomId == x.RoomId
+                                && receipt.CropYear == x.CropYear
+                                && (x.FruitProfileId == null || receipt.FruitProfileId == x.FruitProfileId)
+                                && (receipt.GrowerNumber == x.LotNumber || receipt.LotCode == x.LotNumber)
+                                && receipt.GrowerNumber != null
+                                && receipt.GrowerNumber != "")
+                            .Select(receipt => receipt.GrowerNumber)
+                            .FirstOrDefault()
+                        : null),
             VarietyCode = x.FruitProfile != null
                 ? x.FruitProfile.VarietyCode
                 : x.Receipt != null
@@ -120,6 +152,13 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 LotNumber = x.Key.LotNumber,
                 VarietyCode = x.Key.VarietyCode!,
                 FruitProfileId = x.Key.FruitProfileId,
+                GrowerNumberCount = x.Where(y => y.GrowerNumber != null && y.GrowerNumber != "")
+                    .Select(y => y.GrowerNumber)
+                    .Distinct()
+                    .Count(),
+                GrowerNumber = x.Where(y => y.GrowerNumber != null && y.GrowerNumber != "")
+                    .Select(y => y.GrowerNumber)
+                    .FirstOrDefault(),
                 CurrentBins = x.Sum(y => y.ChangeAmount),
                 PositiveBins = x.Sum(y => y.ChangeAmount > 0 ? y.ChangeAmount : 0),
                 NegativeBins = x.Sum(y => y.ChangeAmount < 0 ? y.ChangeAmount : 0),
@@ -158,28 +197,38 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                     ? canonicalYears[CanonicalIdentity(x)][0]
                     : (int?)null)
             })
-            .Select(x => new GroupedLedgerRow
+            .Select(x =>
             {
-                WarehouseId = x.First().WarehouseId,
-                RoomId = x.First().RoomId,
-                CropYear = x.Key.CropYear,
-                GrowerLotId = x.First().GrowerLotId,
-                LotNumber = x.First().LotNumber,
-                VarietyCode = x.First().VarietyCode,
-                FruitProfileId = x.First().FruitProfileId,
-                CurrentBins = x.Sum(y => y.CurrentBins),
-                PositiveBins = x.Sum(y => y.PositiveBins),
-                NegativeBins = x.Sum(y => y.NegativeBins),
-                ActualRunDepletionBins = x.Sum(y => y.ActualRunDepletionBins),
-                ActualRunReversalBins = x.Sum(y => y.ActualRunReversalBins),
-                LegacyBinsRunDepletionBins = x.Sum(y => y.LegacyBinsRunDepletionBins),
-                TransferInBins = x.Sum(y => y.TransferInBins),
-                TransferOutBins = x.Sum(y => y.TransferOutBins),
-                TrueUpBins = x.Sum(y => y.TrueUpBins),
-                TransactionCount = x.Sum(y => y.TransactionCount),
-                FirstTransactionAt = x.Min(y => y.FirstTransactionAt),
-                LastTransactionAt = x.Max(y => y.LastTransactionAt),
-                LatestAdjustmentId = x.Max(y => y.LatestAdjustmentId)
+                var growerNumbers = x.Where(y => y.GrowerNumberCount == 1 && !string.IsNullOrWhiteSpace(y.GrowerNumber))
+                    .Select(y => y.GrowerNumber!.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                var hasAmbiguousSource = x.Any(y => y.GrowerNumberCount > 1);
+                return new GroupedLedgerRow
+                {
+                    WarehouseId = x.First().WarehouseId,
+                    RoomId = x.First().RoomId,
+                    CropYear = x.Key.CropYear,
+                    GrowerLotId = x.First().GrowerLotId,
+                    LotNumber = x.First().LotNumber,
+                    VarietyCode = x.First().VarietyCode,
+                    FruitProfileId = x.First().FruitProfileId,
+                    GrowerNumberCount = hasAmbiguousSource ? 2 : growerNumbers.Count,
+                    GrowerNumber = !hasAmbiguousSource && growerNumbers.Count == 1 ? growerNumbers[0] : null,
+                    CurrentBins = x.Sum(y => y.CurrentBins),
+                    PositiveBins = x.Sum(y => y.PositiveBins),
+                    NegativeBins = x.Sum(y => y.NegativeBins),
+                    ActualRunDepletionBins = x.Sum(y => y.ActualRunDepletionBins),
+                    ActualRunReversalBins = x.Sum(y => y.ActualRunReversalBins),
+                    LegacyBinsRunDepletionBins = x.Sum(y => y.LegacyBinsRunDepletionBins),
+                    TransferInBins = x.Sum(y => y.TransferInBins),
+                    TransferOutBins = x.Sum(y => y.TransferOutBins),
+                    TrueUpBins = x.Sum(y => y.TrueUpBins),
+                    TransactionCount = x.Sum(y => y.TransactionCount),
+                    FirstTransactionAt = x.Min(y => y.FirstTransactionAt),
+                    LastTransactionAt = x.Max(y => y.LastTransactionAt),
+                    LatestAdjustmentId = x.Max(y => y.LatestAdjustmentId)
+                };
             })
             .OrderBy(x => x.WarehouseId)
             .ThenBy(x => x.RoomId)
@@ -199,8 +248,6 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 x.GrowerLotId,
                 FruitProfileId = x.FruitProfileId ?? (x.Receipt == null ? null : (int?)x.Receipt.FruitProfileId),
                 x.GrowerName,
-                ReceiptGrowerNumber = x.Receipt == null ? null : x.Receipt.GrowerNumber,
-                GrowerLotNumber = x.GrowerLot == null ? null : x.GrowerLot.LotNumber,
                 x.PoolStart,
                 StoredVarietyCode = x.VarietyCode ?? "",
                 VarietyName = x.FruitProfile != null
@@ -250,7 +297,7 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 x.GrowerLotId ?? latest.GrowerLotId,
                 x.FruitProfileId,
                 latest.GrowerName,
-                ResolveGrowerNumber(latest.ReceiptGrowerNumber, latest.GrowerLotNumber),
+                x.GrowerNumberCount == 1 ? x.GrowerNumber : null,
                 x.LotNumber,
                 latest.PoolStart,
                 latest.StoredVarietyCode,
@@ -276,16 +323,6 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 x.LatestAdjustmentId,
                 latest.SourceReference);
         }).ToList();
-    }
-
-    private static string? ResolveGrowerNumber(string? receiptGrowerNumber, string? growerLotNumber)
-    {
-        var values = new[] { receiptGrowerNumber, growerLotNumber }
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Select(x => x!.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        return values.Count == 1 ? values[0] : null;
     }
 
     private static CanonicalLedgerIdentity CanonicalIdentity(GroupedLedgerRow row) =>
@@ -314,6 +351,8 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
         public string LotNumber { get; init; } = "";
         public string VarietyCode { get; init; } = "";
         public int? FruitProfileId { get; init; }
+        public int GrowerNumberCount { get; init; }
+        public string? GrowerNumber { get; init; }
         public int CurrentBins { get; init; }
         public int PositiveBins { get; init; }
         public int NegativeBins { get; init; }

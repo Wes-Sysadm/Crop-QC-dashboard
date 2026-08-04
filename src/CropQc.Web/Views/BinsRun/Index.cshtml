@@ -1025,7 +1025,7 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
                     </select>
                 </label>
                 <label>Crop year
-                    <input type="number" name="ReportCropYear" min="2000" max="2200" value="@(detail?.CropYear ?? Model.RunReporting.CurrentCropYear)" />
+                    <input type="number" name="ReportCropYear" min="@Model.RunReporting.AuthoritativeStartCropYear" max="2200" value="@(detail?.CropYear ?? Model.RunReporting.CurrentCropYear)" />
                 </label>
                 <button type="submit">Open</button>
             </form>
@@ -1039,23 +1039,34 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
     {
         <section class="panel">
             <h2>@detail.Facility · @detail.CropYear Crop</h2>
-            <p><strong>@detail.TotalBins.ToString("N0") bins</strong> through @detail.SelectedCutoff.ToString("MMM. d, yyyy") versus @detail.PriorBins.ToString("N0") bins for @detail.PriorCropYear through @detail.PriorCutoff.ToString("MMM. d, yyyy").</p>
-            <p class="muted">Difference: @detail.DifferenceBins.ToString("+N0;-N0;0") bins / @(detail.DifferencePercent is null ? "percentage unavailable" : $"{detail.DifferencePercent:+0.0;-0.0;0.0}%") · windows @detail.SelectedStart.ToString("MMM. d, yyyy")–@detail.SelectedCutoff.ToString("MMM. d, yyyy") and @detail.PriorStart.ToString("MMM. d, yyyy")–@detail.PriorCutoff.ToString("MMM. d, yyyy").</p>
+            @if (!detail.HasAuthoritativePriorBaseline)
+            {
+                <p><strong>@detail.TotalBins.ToString("N0") bins</strong> through @detail.SelectedCutoff.ToString("MMM. d, yyyy").</p>
+                <p class="muted"><strong>No authoritative prior-year baseline.</strong> Crop years before @Model.RunReporting.AuthoritativeStartCropYear are intentionally excluded.</p>
+            }
+            else
+            {
+                <p><strong>@detail.TotalBins.ToString("N0") bins</strong> through @detail.SelectedCutoff.ToString("MMM. d, yyyy") versus @detail.PriorBins.ToString("N0") bins for @detail.PriorCropYear through @detail.PriorCutoff!.Value.ToString("MMM. d, yyyy").</p>
+                <p class="muted">Difference: @detail.DifferenceBins!.Value.ToString("+N0;-N0;0") bins / @(detail.DifferencePercent is null ? "percentage unavailable" : $"{detail.DifferencePercent:+0.0;-0.0;0.0}%") · windows @detail.SelectedStart.ToString("MMM. d, yyyy")–@detail.SelectedCutoff.ToString("MMM. d, yyyy") and @detail.PriorStart!.Value.ToString("MMM. d, yyyy")–@detail.PriorCutoff!.Value.ToString("MMM. d, yyyy").</p>
+            }
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Variety / Production</th><th>@detail.CropYear through cutoff</th><th>@detail.PriorCropYear through cutoff</th><th>Difference</th></tr></thead>
+                    <thead><tr><th>Variety / Production</th><th>@detail.CropYear through cutoff</th>@if (detail.HasAuthoritativePriorBaseline) { <th>@detail.PriorCropYear through cutoff</th><th>Difference</th> }</tr></thead>
                     <tbody>
                     @foreach (var variety in detail.Varieties)
                     {
                         <tr>
                             <td>@variety.Variety — @variety.ProductionType</td>
                             <td>@variety.Bins.ToString("N0")</td>
-                            <td>@variety.PriorBins.ToString("N0")</td>
-                            <td>@variety.DifferenceBins.ToString("+N0;-N0;0") / @(variety.DifferencePercent is null ? "N/A" : $"{variety.DifferencePercent:+0.0;-0.0;0.0}%")</td>
+                            @if (detail.HasAuthoritativePriorBaseline)
+                            {
+                                <td>@variety.PriorBins.ToString("N0")</td>
+                                <td>@variety.DifferenceBins.ToString("+N0;-N0;0") / @(variety.DifferencePercent is null ? "N/A" : $"{variety.DifferencePercent:+0.0;-0.0;0.0}%")</td>
+                            }
                         </tr>
                     }
                     </tbody>
-                    <tfoot><tr><th>Facility total</th><th>@detail.Varieties.Sum(x => x.Bins).ToString("N0")</th><th>@detail.Varieties.Sum(x => x.PriorBins).ToString("N0")</th><th></th></tr></tfoot>
+                    <tfoot><tr><th>Facility total</th><th>@detail.Varieties.Sum(x => x.Bins).ToString("N0")</th>@if (detail.HasAuthoritativePriorBaseline) { <th>@detail.Varieties.Sum(x => x.PriorBins).ToString("N0")</th><th></th> }</tr></tfoot>
                 </table>
             </div>
         </section>
@@ -1119,7 +1130,7 @@ else if (activeSection.Equals("NeedsReview", StringComparison.OrdinalIgnoreCase)
         }
         else if (Model.RunReporting.Issues.Count == 0)
         {
-            <p class="empty-state">No reporting exceptions were found in the bounded review window.</p>
+            <p class="empty-state">No authoritative reporting exceptions were found on this page.</p>
         }
         else
         {

@@ -1,40 +1,26 @@
 # Run reporting restored-production analysis
 
-Analysis date: August 3, 2026. Source backup and hash are documented in `ops/run-reporting-backfill/README.md`.
+Analysis revised August 4, 2026. Source backup and hash are documented in `ops/run-reporting-backfill/README.md`.
 
-## Exact identities and classification
+## Authoritative boundary
 
-- Alexis Ledezma is user 8 (`alexis@wp-packing.com`): Actual Runs 1–4 and Bins Run entries 28–34 are deterministically WP.
-- Robert Fulgham is user 2 (`rob@earlbrownandsons.com`): Actual Run 5 and Bins Run entries 1–2, 4–27, and 35–36 are deterministically EBS.
-- Bins Run entry 3 was recorded by user 1 and remains unresolved (306 excluded bins).
-- Every one of the 36 quantity lines has one exact crop year, fruit-profile identity, canonical variety, production type, Organic/Conventional value, and grower number through persisted operational relationships.
-- Legacy entries 13 and 14 obtain crop 2025 through their exact parent Bins Run adjustment relationship; crop year is not inferred from run calendar year.
+Crop year 2026 is the first authoritative run-reporting year. The deterministic missing-crop-year boundary is the persisted `BinsRunEntry.CreatedAt` timestamp at or after the first instant of crop 2026: July 15, 2026 at 12:00 AM Pacific. A blank crop year created before that boundary is treated as testing-era history and ignored; a blank crop year created on or after it is evaluated in Needs Review. An explicit crop year below 2026 is always excluded regardless of creation date.
 
-The active quantity definition yields five active Actual Runs, six active Actual Run depletion lines, and 30 unreversed legacy lines. No legacy line is also represented by an Actual Run. The report reads `BinsRunEntries` once and does not add linked room-ledger quantities.
+Crop year 2025 and earlier are not claimed to be complete or reliable. They are omitted from totals, comparisons, weekly and grower drilldowns, Older Crop Years, and Needs Review. No historical employment reconstruction or reporting attribution is required for them. Legacy entry 3 and its unresolved 306 crop-2025 bins remain operationally unchanged.
 
-## Proposed totals and exclusions
+## Strict authoritative identity
 
-Crop 2026: WP 892 bins (seven lines), EBS 388 bins (two lines). Crop 2025: EBS 6,363 bins (26 lines). Crop 2024: no included activity. The single unresolved 2025 line excludes 306 bins and produces the overlapping Needs Review explanations “Missing Run Facility,” “Historical attribution unresolved,” and “Employee employment is Unassigned.”
+- Alexis Ledezma is user 8 (`alexis@wp-packing.com`): authoritative Actual Runs 1–4 are deterministically WP.
+- Robert Fulgham is user 2 (`rob@earlbrownandsons.com`): authoritative Actual Run 5 is deterministically EBS.
+- Employment validation resolves the assignment effective at each run time, so a later employment change cannot invalidate an earlier legitimate run.
+- Run Facility is immutable WP or EBS reporting identity and is independent of source inventory facility.
+- Grower number comes only from fields that represent grower number. `GrowerLot.LotNumber` is never used as a grower number.
+- Active current quantities count once. Canceled, reversed, and superseded quantities count zero.
 
-For the August 3, 2026 cutoff, the equivalent prior cutoff is August 3, 2025. The restored data therefore compares WP crop 2026 `892 vs 0` and EBS crop 2026 `388 vs 0`. Viewing crop 2025 as of August 3, 2026 yields EBS `6,363 vs 0` against crop 2024 through August 3, 2025.
+## Stale-backup observations
 
-## Rehearsal and performance
+The August 1 backup is not current enough for authorization. Under the revised strict rules it yields WP 719 bins and EBS 388 bins for crop 2026. Bins Run entry 33 contributes 173 operational bins but lacks an authoritative grower number, so it is excluded and appears in Needs Review. The earlier 892 WP figure included that line by treating a Grower Lot lot number as a grower number and is therefore only a superseded preliminary observation, not a hard-coded expectation.
 
-The additive PostgreSQL migration was applied to a disposable clone. The backup has a pre-existing EF migration-history drift (a prior packout column exists while its history row is absent), so the new migration was rehearsed as an explicitly bounded script from `20260731014107_SeparatePlanningProjectionsFromActualRuns` to `20260804052104_AddFacilityRunReporting`.
+Crop 2026 has no authoritative prior-year baseline and is never compared with crop 2025. Crop 2027 begins prior-year comparison against crop 2026, including varieties that exist only in the prior year.
 
-Backfill rehearsal results:
-
-- preflight passed all exact identities, operational relationships, counts, and fingerprints;
-- first apply changed and audited 2 employment assignments, 5 Actual Runs, and 36 reporting lines;
-- verify reproduced the proposed totals and preserved both operational fingerprints;
-- second apply changed 0 users, 0 runs, and 0 lines.
-
-Warm read-only service probe on the production-sized restored copy:
-
-| Page | Time | SQL commands | Managed allocations |
-|---|---:|---:|---:|
-| facility summary | 7 ms | 4 | 201,800 bytes |
-| WP crop-2026 detail | 39 ms | 7 | 1,086,152 bytes |
-| Needs Review | 40 ms | 6 | 1,234,248 bytes |
-
-The selected detail returned total 892, two variety identities, two weekly rows, and prior total 0. Needs Review returned three explanations for the one unresolved line. These are a single local run, not a load-test percentile.
+Before production authorization, regenerate a current backup and restored-copy classification, including all activity added after August 1. The resulting WP and EBS crop-2026 totals must be reported from that current evidence, not copied from this stale analysis.

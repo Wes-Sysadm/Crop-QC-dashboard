@@ -47,7 +47,6 @@ BEGIN
     LEFT JOIN "RoomInventoryAdjustments" s ON s."Id"=b."SourceInventoryAdjustmentId"
     LEFT JOIN "Receipts" sr ON sr."Id"=s."ReceiptId"
     LEFT JOIN "Receipts" er ON er."Id"=b."ReceiptId"
-    LEFT JOIN "GrowerLots" gl ON gl."Id"=b."GrowerLotId"
     LEFT JOIN "FruitProfiles" fp ON fp."Id"=b."FruitProfileId"
     LEFT JOIN "BinsRunEntries" parent ON parent."InventoryAdjustmentId"=b."SourceInventoryAdjustmentId"
     LEFT JOIN "RoomInventoryAdjustments" parent_source ON parent_source."Id"=parent."SourceInventoryAdjustmentId"
@@ -56,25 +55,37 @@ BEGIN
        OR fp."ProductionType" IS DISTINCT FROM e.production_type
        OR fp."IsOrganic" IS DISTINCT FROM e.is_organic
        OR COALESCE(b."CropYear", s."CropYear", sr."CropYear", er."CropYear", parent."CropYear", parent_source."CropYear") IS DISTINCT FROM e.crop_year
-       OR COALESCE(er."GrowerNumber", sr."GrowerNumber", gl."LotNumber") IS DISTINCT FROM e.grower_number
+       OR COALESCE(er."GrowerNumber", sr."GrowerNumber") IS DISTINCT FROM e.grower_number
        OR (e.facility_code='WP' AND b."CreatedByUserId"<>8)
-       OR (e.facility_code='EBS' AND b."CreatedByUserId"<>2)
-       OR (e.facility_code IS NULL AND b."CreatedByUserId" IN (2,8));
-    IF mismatch_count <> 0 OR (SELECT COUNT(*) FROM expected_run_reporting_lines) <> 36 THEN
+       OR (e.facility_code='EBS' AND b."CreatedByUserId"<>2);
+    IF mismatch_count <> 0 OR (SELECT COUNT(*) FROM expected_run_reporting_lines) <> 8 THEN
         RAISE EXCEPTION 'Reviewed line-by-line metadata mismatch (% rows)', mismatch_count;
     END IF;
 
-    IF EXISTS (
-        SELECT 1 FROM expected_run_reporting_lines e
-        JOIN "BinsRunEntries" b ON b."Id"=e.entry_id
+    IF NOT EXISTS (
+        SELECT 1 FROM "BinsRunEntries" b
         LEFT JOIN "RoomInventoryAdjustments" s ON s."Id"=b."SourceInventoryAdjustmentId"
         LEFT JOIN "Receipts" sr ON sr."Id"=s."ReceiptId"
         LEFT JOIN "Receipts" er ON er."Id"=b."ReceiptId"
-        LEFT JOIN "GrowerLots" gl ON gl."Id"=b."GrowerLotId"
-        WHERE array_length(array_remove(ARRAY[er."GrowerNumber",sr."GrowerNumber",gl."LotNumber"],NULL),1) > 1
-          AND (SELECT COUNT(DISTINCT n) FROM unnest(array_remove(ARRAY[er."GrowerNumber",sr."GrowerNumber",gl."LotNumber"],NULL)) n) > 1
+        WHERE b."Id"=33 AND b."CreatedByUserId"=8 AND b."BinsRun"=173
+          AND COALESCE(er."GrowerNumber",sr."GrowerNumber") IS NULL
     ) THEN
-        RAISE EXCEPTION 'At least one grower number has conflicting authoritative sources';
+        RAISE EXCEPTION 'Reviewed authoritative Needs Review line 33 no longer matches';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM "BinsRunEntries"
+        WHERE "Id" BETWEEN 1 AND 27
+          AND ("ReportingFacilityWarehouseId" IS NOT NULL
+            OR "ReportingFacilityCodeSnapshot" IS NOT NULL
+            OR "ReportingCropYearSnapshot" IS NOT NULL
+            OR "ReportingFruitProfileIdSnapshot" IS NOT NULL
+            OR "ReportingVarietyCodeSnapshot" IS NOT NULL
+            OR "ProductionTypeSnapshot" IS NOT NULL
+            OR "IsOrganicSnapshot" IS NOT NULL
+            OR "GrowerNumberSnapshot" IS NOT NULL)
+    ) THEN
+        RAISE EXCEPTION 'Pre-2026 reporting snapshots must remain untouched';
     END IF;
 
     IF EXISTS (SELECT 1 FROM "Users" WHERE "Id" IN (2,8) AND "EmploymentFacility" NOT IN ('Unassigned','WP','EBS')) THEN

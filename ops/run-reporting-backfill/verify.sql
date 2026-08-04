@@ -26,9 +26,24 @@ BEGIN
     ) THEN RAISE EXCEPTION 'An Actual Run facility does not match the reviewed classification'; END IF;
     IF (SELECT COUNT(*) FROM "AuditLogs" WHERE "Action"='ReviewedEmploymentBackfill' AND "EntityKey" IN ('2','8')) < 2
        OR (SELECT COUNT(*) FROM "AuditLogs" WHERE "Action"='ReviewedRunFacilityBackfill' AND "EntityKey" IN ('1','2','3','4','5')) < 5
-       OR (SELECT COUNT(*) FROM "AuditLogs" WHERE "Action"='ReviewedRunReportingBackfill' AND "EntityKey"::bigint BETWEEN 1 AND 36) < 36 THEN
+       OR (SELECT COUNT(*) FROM "AuditLogs" WHERE "Action"='ReviewedRunReportingBackfill' AND "EntityKey"::bigint IN (28,29,30,31,32,34,35,36)) < 8 THEN
         RAISE EXCEPTION 'Required attribution audits are missing';
     END IF;
+    IF EXISTS (
+        SELECT 1 FROM "BinsRunEntries" WHERE "Id" BETWEEN 1 AND 27
+          AND ("ReportingFacilityWarehouseId" IS NOT NULL
+            OR "ReportingFacilityCodeSnapshot" IS NOT NULL
+            OR "ReportingCropYearSnapshot" IS NOT NULL
+            OR "ReportingFruitProfileIdSnapshot" IS NOT NULL
+            OR "ReportingVarietyCodeSnapshot" IS NOT NULL
+            OR "ProductionTypeSnapshot" IS NOT NULL
+            OR "IsOrganicSnapshot" IS NOT NULL
+            OR "GrowerNumberSnapshot" IS NOT NULL)
+    ) THEN RAISE EXCEPTION 'Pre-2026 records were changed'; END IF;
+    IF EXISTS (
+        SELECT 1 FROM "BinsRunEntries" WHERE "Id"=33
+          AND ("ReportingCropYearSnapshot" IS NOT NULL OR "GrowerNumberSnapshot" IS NOT NULL)
+    ) THEN RAISE EXCEPTION 'Unresolved authoritative line 33 must remain excluded for Needs Review'; END IF;
     IF (SELECT md5(string_agg(concat_ws('|', "Id", "ActualRunId", "ActualRunRevisionId", "TransactionType",
         "CreatedByUserId", "RunAt", "BinsRun", "CropYear", "ReceiptId", "SourceInventoryAdjustmentId",
         "InventoryAdjustmentId", "WarehouseId", "RoomId", "GrowerLotId", "FruitProfileId", "VarietyCode",
@@ -45,6 +60,6 @@ SELECT facility_code, crop_year, COUNT(*) AS included_lines, SUM(b."BinsRun") AS
 FROM expected_run_reporting_lines e JOIN "BinsRunEntries" b ON b."Id"=e.entry_id
 WHERE facility_code IS NOT NULL
 GROUP BY facility_code,crop_year ORDER BY crop_year,facility_code;
-SELECT 'Missing Run Facility / Historical attribution unresolved' AS issue_type, COUNT(*) AS records, SUM(b."BinsRun") AS excluded_bins
-FROM expected_run_reporting_lines e JOIN "BinsRunEntries" b ON b."Id"=e.entry_id WHERE e.facility_code IS NULL;
+SELECT 'Missing authoritative grower number' AS issue_type, COUNT(*) AS records, SUM("BinsRun") AS excluded_bins
+FROM "BinsRunEntries" WHERE "Id"=33;
 ROLLBACK;

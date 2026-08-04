@@ -3,6 +3,7 @@ namespace CropQc.Web.Models;
 public sealed class RunReportingPageViewModel
 {
     public int CurrentCropYear { get; set; }
+    public int AuthoritativeStartCropYear { get; set; }
     public IReadOnlyList<RunFacilitySummaryViewModel> FacilitySummaries { get; set; } = [];
     public IReadOnlyList<int> OlderCropYears { get; set; } = [];
     public RunTotalsDetailViewModel? Detail { get; set; }
@@ -23,14 +24,15 @@ public sealed class RunTotalsDetailViewModel
     public string Facility { get; set; } = "";
     public int CropYear { get; set; }
     public int TotalBins { get; set; }
-    public int PriorCropYear { get; set; }
+    public int? PriorCropYear { get; set; }
+    public bool HasAuthoritativePriorBaseline => PriorCropYear is not null;
     public int PriorBins { get; set; }
-    public int DifferenceBins => TotalBins - PriorBins;
-    public decimal? DifferencePercent => PriorBins == 0 ? null : (TotalBins - PriorBins) * 100m / PriorBins;
+    public int? DifferenceBins => HasAuthoritativePriorBaseline ? TotalBins - PriorBins : null;
+    public decimal? DifferencePercent => !HasAuthoritativePriorBaseline || PriorBins == 0 ? null : (TotalBins - PriorBins) * 100m / PriorBins;
     public DateOnly SelectedStart { get; set; }
     public DateOnly SelectedCutoff { get; set; }
-    public DateOnly PriorStart { get; set; }
-    public DateOnly PriorCutoff { get; set; }
+    public DateOnly? PriorStart { get; set; }
+    public DateOnly? PriorCutoff { get; set; }
     public IReadOnlyList<RunVarietyTotalViewModel> Varieties { get; set; } = [];
     public IReadOnlyList<RunWeekTotalViewModel> Weeks { get; set; } = [];
     public IReadOnlyList<RunSupportingRecordViewModel> SupportingRecords { get; set; } = [];

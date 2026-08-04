@@ -41,20 +41,23 @@ END $conflicts$;
 
 CREATE TEMP TABLE pending_users ON COMMIT DROP AS
 SELECT u."Id", u."EmploymentFacility" AS before_facility,
-       CASE u."Id" WHEN 8 THEN 'WP' ELSE 'EBS' END AS after_facility
+       CASE u."Id" WHEN 8 THEN 'WP' ELSE 'EBS' END AS after_facility,
+       (SELECT MIN(b."RunAt") FROM "BinsRunEntries" b
+        JOIN expected_run_reporting_lines e ON e.entry_id=b."Id"
+        WHERE b."CreatedByUserId"=u."Id") AS effective_at
 FROM "Users" u
 WHERE u."Id" IN (2,8)
   AND u."EmploymentFacility" IS DISTINCT FROM CASE u."Id" WHEN 8 THEN 'WP' ELSE 'EBS' END;
 
 UPDATE "Users" u SET
     "EmploymentFacility"=p.after_facility,
-    "EmploymentEffectiveAt"=transaction_timestamp(),
+    "EmploymentEffectiveAt"=p.effective_at,
     "EmploymentUpdatedByUserId"=NULL,
     "EmploymentUpdatedAt"=transaction_timestamp()
 FROM pending_users p WHERE u."Id"=p."Id";
 
 INSERT INTO "UserEmploymentHistory" ("UserId","PreviousEmploymentFacility","EmploymentFacility","EffectiveAt","ChangedByUserId","ChangedAt")
-SELECT "Id", before_facility, after_facility, transaction_timestamp(), NULL, transaction_timestamp()
+SELECT "Id", before_facility, after_facility, effective_at, NULL, transaction_timestamp()
 FROM pending_users;
 
 INSERT INTO "AuditLogs" ("UserId","Action","EntityName","EntityKey","BeforeValuesJson","AfterValuesJson","SourceApplication","CreatedAt")
@@ -93,7 +96,7 @@ SELECT b."Id", to_jsonb(b) AS before_values
 FROM "BinsRunEntries" b JOIN expected_run_reporting_lines e ON e.entry_id=b."Id"
 WHERE b."ReportingFacilityWarehouseId" IS DISTINCT FROM CASE e.facility_code WHEN 'WP' THEN 4 WHEN 'EBS' THEN 1 END
    OR b."ReportingFacilityCodeSnapshot" IS DISTINCT FROM e.facility_code
-   OR b."ReportingFacilityAssignmentSource" IS DISTINCT FROM CASE WHEN e.facility_code IS NULL THEN NULL ELSE 'ReviewedProductionBackfill:20260801' END
+   OR b."ReportingFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260801'
    OR b."ReportingCropYearSnapshot" IS DISTINCT FROM e.crop_year
    OR b."ReportingFruitProfileIdSnapshot" IS DISTINCT FROM e.fruit_profile_id
    OR b."ReportingVarietyCodeSnapshot" IS DISTINCT FROM e.variety_code
@@ -104,9 +107,9 @@ WHERE b."ReportingFacilityWarehouseId" IS DISTINCT FROM CASE e.facility_code WHE
 UPDATE "BinsRunEntries" b SET
     "ReportingFacilityWarehouseId"=CASE e.facility_code WHEN 'WP' THEN 4 WHEN 'EBS' THEN 1 END,
     "ReportingFacilityCodeSnapshot"=e.facility_code,
-    "ReportingFacilityAssignmentSource"=CASE WHEN e.facility_code IS NULL THEN NULL ELSE 'ReviewedProductionBackfill:20260801' END,
+    "ReportingFacilityAssignmentSource"='ReviewedProductionBackfill:20260801',
     "ReportingFacilityAssignedByUserId"=NULL,
-    "ReportingFacilityAssignedAt"=CASE WHEN e.facility_code IS NULL THEN NULL ELSE COALESCE(b."ReportingFacilityAssignedAt",transaction_timestamp()) END,
+    "ReportingFacilityAssignedAt"=COALESCE(b."ReportingFacilityAssignedAt",transaction_timestamp()),
     "ReportingCropYearSnapshot"=e.crop_year,
     "ReportingFruitProfileIdSnapshot"=e.fruit_profile_id,
     "ReportingVarietyCodeSnapshot"=e.variety_code,
