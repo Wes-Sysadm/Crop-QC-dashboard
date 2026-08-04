@@ -202,6 +202,26 @@ public sealed class BinsRunEntry
     public int? OverrideApprovedByUserId { get; set; }
     public User? OverrideApprovedByUser { get; set; }
     public DateTimeOffset? OverrideApprovedAt { get; set; }
+    public int? ReportingFacilityWarehouseId { get; set; }
+    public Warehouse? ReportingFacilityWarehouse { get; set; }
+    public string? ReportingFacilityCodeSnapshot { get; set; }
+    public string? ReportingFacilityAssignmentSource { get; set; }
+    public int? ReportingFacilityAssignedByUserId { get; set; }
+    public User? ReportingFacilityAssignedByUser { get; set; }
+    public DateTimeOffset? ReportingFacilityAssignedAt { get; set; }
+    public string? ProductionTypeSnapshot { get; set; }
+    public bool? IsOrganicSnapshot { get; set; }
+    public string? GrowerNumberSnapshot { get; set; }
+    public int? ReportingCropYearSnapshot { get; set; }
+    public int? ReportingFruitProfileIdSnapshot { get; set; }
+    public string? ReportingVarietyCodeSnapshot { get; set; }
+}
+
+public static class RunFacilityAssignmentSources
+{
+    public const string Employment = "Employment";
+    public const string SharedSelection = "SharedSelection";
+    public const string HistoricalBackfill = "HistoricalBackfill";
 }
 
 public static class ActualRunStatuses
@@ -251,6 +271,13 @@ public sealed class ActualRun
     public User? CanceledByUser { get; set; }
     public DateTimeOffset? CanceledAt { get; set; }
     public string? CancellationReason { get; set; }
+    public int? RunFacilityWarehouseId { get; set; }
+    public Warehouse? RunFacilityWarehouse { get; set; }
+    public string? RunFacilityCodeSnapshot { get; set; }
+    public string? RunFacilityAssignmentSource { get; set; }
+    public int? RunFacilityAssignedByUserId { get; set; }
+    public User? RunFacilityAssignedByUser { get; set; }
+    public DateTimeOffset? RunFacilityAssignedAt { get; set; }
     public ICollection<ActualRunRevision> Revisions { get; } = new List<ActualRunRevision>();
     public ICollection<BinsRunEntry> Entries { get; } = new List<BinsRunEntry>();
     public ICollection<RunExpectation> Expectations { get; } = new List<RunExpectation>();
@@ -295,6 +322,10 @@ public sealed class ActualRunOverrideRequest
     public User? ApprovedByUser { get; set; }
     public DateTimeOffset? ApprovedAt { get; set; }
     public string? ApprovalReason { get; set; }
+    public int? RunFacilityWarehouseId { get; set; }
+    public Warehouse? RunFacilityWarehouse { get; set; }
+    public string? RunFacilityCodeSnapshot { get; set; }
+    public string? RunFacilityAssignmentSource { get; set; }
     public ICollection<ActualRunOverrideRequestLine> Lines { get; } = new List<ActualRunOverrideRequestLine>();
 }
 

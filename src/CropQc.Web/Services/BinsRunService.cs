@@ -33,7 +33,8 @@ public sealed class BinsRunService(
     ILogger<BinsRunService> logger,
     IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null,
     IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null,
-    IRunExpectationService? runExpectationService = null) : IBinsRunService
+    IRunExpectationService? runExpectationService = null,
+    IConfiguration? configuration = null) : IBinsRunService
 {
     public const string AdjustmentType = "BinsRun";
     public const string ReversalAdjustmentType = "BinsRunReversal";
@@ -46,11 +47,37 @@ public sealed class BinsRunService(
     private IRunExpectationService RunExpectations { get; } =
         runExpectationService
         ?? new RunExpectationService(dbContext, NullLogger<RunExpectationService>.Instance);
+    private int AuthoritativeStartCropYear { get; } = Math.Clamp(
+        configuration?.GetValue(
+            "RunReporting:AuthoritativeStartCropYear",
+            RunReportingService.DefaultAuthoritativeStartCropYear)
+            ?? RunReportingService.DefaultAuthoritativeStartCropYear,
+        2000,
+        2200);
 
     public async Task<BinsRunPageViewModel> GetPageAsync(BinsRunFilterForm filter, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
-        var canRecord = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Edit, cancellationToken)
-            || await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Edit, cancellationToken);
+        var currentEmail = user.FindFirstValue(ClaimTypes.Email)?.Trim().ToLowerInvariant();
+        var currentEmployment = currentEmail is null
+            ? EmploymentFacilities.Unassigned
+            : await dbContext.Users.AsNoTracking()
+                .Where(x => x.Email == currentEmail && x.IsActive)
+                .Select(x => x.EmploymentFacility)
+                .SingleOrDefaultAsync(cancellationToken) ?? EmploymentFacilities.Unassigned;
+        currentEmployment = EmploymentFacilities.Normalize(currentEmployment) ?? EmploymentFacilities.Unassigned;
+        var runFacilityCandidates = await dbContext.Warehouses.AsNoTracking()
+            .Where(x => x.IsActive && (x.Code == EmploymentFacilities.Wp || x.Code == EmploymentFacilities.Ebs))
+            .OrderBy(x => x.Code)
+            .ToListAsync(cancellationToken);
+        var facilityConfigurationValid = new[] { EmploymentFacilities.Wp, EmploymentFacilities.Ebs }
+            .All(code => runFacilityCandidates.Count(x => string.Equals(x.Code, code, StringComparison.OrdinalIgnoreCase)) == 1);
+        var runFacilities = facilityConfigurationValid ? runFacilityCandidates : [];
+        var forcedFacility = currentEmployment is EmploymentFacilities.Wp or EmploymentFacilities.Ebs
+            ? runFacilities.FirstOrDefault(x => x.Code == currentEmployment)
+            : null;
+        var canRecord = facilityConfigurationValid
+            && (await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Edit, cancellationToken)
+                || await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Edit, cancellationToken));
         var canAdmin = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Admin, cancellationToken)
             || await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken);
         var canTransfer = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
@@ -172,6 +199,7 @@ public sealed class BinsRunService(
             ConcurrencyVersion = editRun?.ConcurrencyVersion ?? 0,
             RunAt = editRun?.RunAt ?? DateTimeOffset.UtcNow,
             RunProjectionId = editRun?.RunProjectionId,
+            RunFacilityWarehouseId = editRun?.RunFacilityWarehouseId ?? forcedFacility?.Id,
             Notes = editRun?.Notes,
             Lines = editRun?.Lines
                 .Where(x => x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed)
@@ -193,7 +221,9 @@ public sealed class BinsRunService(
                 })
                 .ToList() ?? []
         };
-        var inventorySelectionMessage = !isActualSection
+        var inventorySelectionMessage = isActualSection && !facilityConfigurationValid
+            ? "Run recording is unavailable because exactly one active WP warehouse and one active EBS warehouse are required."
+            : !isActualSection
             ? null
             : filter.WarehouseId is null
                 ? "Select a facility before loading current inventory."
@@ -265,6 +295,11 @@ public sealed class BinsRunService(
             CanAdmin = canAdmin,
             CanTransfer = canTransfer,
             CanTrueUp = canTrueUp,
+            CurrentEmploymentFacility = currentEmployment,
+            ForcedRunFacilityWarehouseId = forcedFacility?.Id,
+            ForcedRunFacilityCode = forcedFacility?.Code,
+            RequiresRunFacilitySelection = currentEmployment == EmploymentFacilities.Shared,
+            RunFacilityOptions = runFacilities,
             SelectedAvailableBins = selectedOption?.CurrentBins
         };
     }
@@ -707,6 +742,7 @@ public sealed class BinsRunService(
             RunProjectionId = null,
             RunAt = request.RunAt,
             Notes = request.Notes,
+            RunFacilityWarehouseId = request.RunFacilityWarehouseId,
             Lines = request.Lines.Select(x => new ActualRunLineForm
             {
                 InventoryKey = LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.VarietyCode, x.FruitProfileId, x.GrowerLotId),
@@ -875,6 +911,17 @@ public sealed class BinsRunService(
             return "The current user account could not be resolved.";
         }
 
+        var canAdminEitherFacility = await userAccessService.HasAccessAsync(
+                user,
+                ApplicationAreas.ActualRuns,
+                PageAccessLevel.Admin,
+                cancellationToken)
+            || await userAccessService.HasAccessAsync(
+                user,
+                ApplicationAreas.BinsRun,
+                PageAccessLevel.Admin,
+                cancellationToken);
+
         await using var transaction = await BeginTransactionIfSupportedAsync(cancellationToken);
         var duplicateRevision = await dbContext.ActualRunRevisions.AsNoTracking()
             .Where(x => x.OperationKey == form.OperationKey.Trim())
@@ -990,6 +1037,38 @@ public sealed class BinsRunService(
             return "All room-lot rows in one Actual Run must have the same Organic/Conventional status.";
         }
 
+        var resolvedCropYear = resolved.Select(x => x.Snapshot.CropYear).Distinct().Single();
+        if (resolvedCropYear is null)
+        {
+            return "Crop year is required before an Actual Run can be recorded.";
+        }
+        var isAuthoritative = resolvedCropYear.Value >= AuthoritativeStartCropYear;
+        if (isAuthoritative && resolved.Any(x => x.Snapshot.FruitProfileId is null
+            || string.IsNullOrWhiteSpace(x.Snapshot.Variety)
+            || string.IsNullOrWhiteSpace(x.Snapshot.ProductionType)
+            || x.Snapshot.IsOrganic is null
+            || string.IsNullOrWhiteSpace(x.Snapshot.GrowerNumber)))
+        {
+            return $"Crop {resolvedCropYear} Actual Runs require canonical variety, production type, Organic/Conventional status, and an authoritative receipt grower number.";
+        }
+
+        var facilityResolution = approvedOverride is null
+            ? await ResolveRunFacilityAsync(
+                userId.Value,
+                form.RunFacilityWarehouseId,
+                run,
+                canAdminEitherFacility,
+                form.RunAt,
+                isAuthoritative,
+                cancellationToken)
+            : isAuthoritative
+                ? await ResolveApprovedOverrideFacilityAsync(approvedOverride, run, cancellationToken)
+                : RunFacilityResolution.NotAuthoritative();
+        if (facilityResolution.Error is not null)
+        {
+            return facilityResolution.Error;
+        }
+
         var shortages = resolved
             .Where(x => x.Form.BinsRun > x.EffectiveAvailable)
             .Select(x => new
@@ -1022,7 +1101,10 @@ public sealed class BinsRunService(
                 RunAt = form.RunAt,
                 Notes = NormalizeOptional(form.Notes),
                 RequestedByUserId = userId.Value,
-                RequestedAt = DateTimeOffset.UtcNow
+                RequestedAt = DateTimeOffset.UtcNow,
+                RunFacilityWarehouseId = facilityResolution.WarehouseId,
+                RunFacilityCodeSnapshot = facilityResolution.Code,
+                RunFacilityAssignmentSource = facilityResolution.AssignmentSource
             };
             foreach (var item in resolved)
             {
@@ -1103,7 +1185,12 @@ public sealed class BinsRunService(
                 RunAt = form.RunAt,
                 Notes = NormalizeOptional(form.Notes),
                 CreatedByUserId = userId,
-                CreatedAt = now
+                CreatedAt = now,
+                RunFacilityWarehouseId = facilityResolution.WarehouseId,
+                RunFacilityCodeSnapshot = facilityResolution.Code,
+                RunFacilityAssignmentSource = facilityResolution.AssignmentSource,
+                RunFacilityAssignedByUserId = userId,
+                RunFacilityAssignedAt = now
             };
             dbContext.ActualRuns.Add(run);
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -1189,7 +1276,18 @@ public sealed class BinsRunService(
                 OverrideShortageBins = isOverride ? item.Form.BinsRun - previous : null,
                 OverrideReason = isOverride ? approvalReason : null,
                 OverrideApprovedByUserId = isOverride ? userId : null,
-                OverrideApprovedAt = isOverride ? now : null
+                OverrideApprovedAt = isOverride ? now : null,
+                ReportingFacilityWarehouseId = isAuthoritative ? run.RunFacilityWarehouseId : null,
+                ReportingFacilityCodeSnapshot = isAuthoritative ? run.RunFacilityCodeSnapshot : null,
+                ReportingFacilityAssignmentSource = isAuthoritative ? run.RunFacilityAssignmentSource : null,
+                ReportingFacilityAssignedByUserId = isAuthoritative ? userId : null,
+                ReportingFacilityAssignedAt = isAuthoritative ? now : null,
+                ProductionTypeSnapshot = item.Snapshot.ProductionType,
+                IsOrganicSnapshot = item.Snapshot.IsOrganic,
+                GrowerNumberSnapshot = item.Snapshot.GrowerNumber,
+                ReportingCropYearSnapshot = item.Snapshot.CropYear,
+                ReportingFruitProfileIdSnapshot = item.Snapshot.FruitProfileId,
+                ReportingVarietyCodeSnapshot = item.Snapshot.Variety
             };
             entry.InventoryAdjustment = adjustment;
             dbContext.BinsRunEntries.Add(entry);
@@ -1238,7 +1336,9 @@ public sealed class BinsRunService(
             OverrideRequestId = approvedOverride?.Id,
             OverrideReason = approvalReason,
             RunExpectationId = expectation.Id,
-            RunExpectationVersion = expectation.CalculationVersion
+            RunExpectationVersion = expectation.CalculationVersion,
+            RunFacility = facilityResolution.Code,
+            RunFacilityAssignmentSource = facilityResolution.AssignmentSource
         });
         await dbContext.SaveChangesAsync(cancellationToken);
         await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
@@ -1310,7 +1410,18 @@ public sealed class BinsRunService(
                 ActualRunId = run.Id,
                 ActualRunRevisionId = revision.Id,
                 TransactionType = ActualRunTransactionTypes.Reversal,
-                ReversesBinsRunEntryId = entry.Id
+                ReversesBinsRunEntryId = entry.Id,
+                ReportingFacilityWarehouseId = entry.ReportingFacilityWarehouseId,
+                ReportingFacilityCodeSnapshot = entry.ReportingFacilityCodeSnapshot,
+                ReportingFacilityAssignmentSource = entry.ReportingFacilityAssignmentSource,
+                ReportingFacilityAssignedByUserId = entry.ReportingFacilityAssignedByUserId,
+                ReportingFacilityAssignedAt = entry.ReportingFacilityAssignedAt,
+                ProductionTypeSnapshot = entry.ProductionTypeSnapshot,
+                IsOrganicSnapshot = entry.IsOrganicSnapshot,
+                GrowerNumberSnapshot = entry.GrowerNumberSnapshot,
+                ReportingCropYearSnapshot = entry.ReportingCropYearSnapshot,
+                ReportingFruitProfileIdSnapshot = entry.ReportingFruitProfileIdSnapshot,
+                ReportingVarietyCodeSnapshot = entry.ReportingVarietyCodeSnapshot
             };
             reversal.InventoryAdjustment = adjustment;
             dbContext.BinsRunEntries.Add(reversal);
@@ -1446,6 +1557,19 @@ public sealed class BinsRunService(
         {
             return "Selected inventory does not belong to the selected facility.";
         }
+        if (snapshot.CropYear is null)
+        {
+            return "Crop year is required before Bins Run inventory can be recorded.";
+        }
+        var isAuthoritative = snapshot.CropYear.Value >= AuthoritativeStartCropYear;
+        if (isAuthoritative && (snapshot.FruitProfileId is null
+            || string.IsNullOrWhiteSpace(snapshot.Variety)
+            || string.IsNullOrWhiteSpace(snapshot.ProductionType)
+            || snapshot.IsOrganic is null
+            || string.IsNullOrWhiteSpace(snapshot.GrowerNumber)))
+        {
+            return $"Crop {snapshot.CropYear} Bins Run entries require canonical variety, production type, Organic/Conventional status, and an authoritative receipt grower number.";
+        }
         if (linkedProjection is not null
             && (linkedProjection.FacilityWarehouseId is null
                 || linkedProjection.FacilityWarehouseId != snapshot.WarehouseId))
@@ -1465,6 +1589,17 @@ public sealed class BinsRunService(
         }
 
         var userId = await CurrentUserIdAsync(user, cancellationToken);
+        var legacyFacility = await ResolveLegacyReportingFacilityAsync(
+            userId,
+            user,
+            existing,
+            form.RunAt,
+            isAuthoritative,
+            cancellationToken);
+        if (legacyFacility.Error is not null)
+        {
+            return legacyFacility.Error;
+        }
         var newAvailable = effectiveAvailable - form.BinsRun;
         var operationKey = string.IsNullOrWhiteSpace(form.OperationKey)
             ? Guid.NewGuid().ToString("N")
@@ -1528,7 +1663,18 @@ public sealed class BinsRunService(
             RunAt = form.RunAt,
             CreatedByUserId = userId,
             CreatedAt = DateTimeOffset.UtcNow,
-            TransactionType = ActualRunTransactionTypes.Legacy
+            TransactionType = ActualRunTransactionTypes.Legacy,
+            ReportingFacilityWarehouseId = legacyFacility.WarehouseId,
+            ReportingFacilityCodeSnapshot = legacyFacility.Code,
+            ReportingFacilityAssignmentSource = legacyFacility.AssignmentSource,
+            ReportingFacilityAssignedByUserId = legacyFacility.WarehouseId is null ? null : userId,
+            ReportingFacilityAssignedAt = legacyFacility.WarehouseId is null ? null : DateTimeOffset.UtcNow,
+            ProductionTypeSnapshot = snapshot.ProductionType,
+            IsOrganicSnapshot = snapshot.IsOrganic,
+            GrowerNumberSnapshot = snapshot.GrowerNumber,
+            ReportingCropYearSnapshot = snapshot.CropYear,
+            ReportingFruitProfileIdSnapshot = snapshot.FruitProfileId,
+            ReportingVarietyCodeSnapshot = snapshot.Variety
         };
         dbContext.BinsRunEntries.Add(entry);
 
@@ -1830,7 +1976,7 @@ public sealed class BinsRunService(
                 x.GrowerLotId,
                 x.FruitProfileId,
                 x.Grower,
-                null,
+                x.GrowerNumber,
                 x.Lot,
                 x.PoolStart,
                 x.Variety,
@@ -1874,6 +2020,8 @@ public sealed class BinsRunService(
                 RunAt = x.RunAt,
                 Notes = x.Notes,
                 CreatedBy = x.CreatedByUser == null ? "" : x.CreatedByUser.DisplayName,
+                RunFacilityWarehouseId = x.RunFacilityWarehouseId,
+                RunFacility = x.RunFacilityCodeSnapshot ?? (x.RunFacilityWarehouse == null ? "Unresolved" : x.RunFacilityWarehouse.Code),
                 CreatedAt = x.CreatedAt,
                 CanceledAt = x.CanceledAt,
                 CancellationReason = x.CancellationReason
@@ -2132,7 +2280,18 @@ public sealed class BinsRunService(
             ActualRunId = original.ActualRunId,
             ActualRunRevisionId = original.ActualRunRevisionId,
             TransactionType = ActualRunTransactionTypes.Reversal,
-            ReversesBinsRunEntryId = original.Id
+            ReversesBinsRunEntryId = original.Id,
+            ReportingFacilityWarehouseId = original.ReportingFacilityWarehouseId,
+            ReportingFacilityCodeSnapshot = original.ReportingFacilityCodeSnapshot,
+            ReportingFacilityAssignmentSource = original.ReportingFacilityAssignmentSource,
+            ReportingFacilityAssignedByUserId = original.ReportingFacilityAssignedByUserId,
+            ReportingFacilityAssignedAt = original.ReportingFacilityAssignedAt,
+            ProductionTypeSnapshot = original.ProductionTypeSnapshot,
+            IsOrganicSnapshot = original.IsOrganicSnapshot,
+            GrowerNumberSnapshot = original.GrowerNumberSnapshot,
+            ReportingCropYearSnapshot = original.ReportingCropYearSnapshot,
+            ReportingFruitProfileIdSnapshot = original.ReportingFruitProfileIdSnapshot,
+            ReportingVarietyCodeSnapshot = original.ReportingVarietyCodeSnapshot
         };
 
     private async Task<IDbContextTransaction?> BeginTransactionIfSupportedAsync(CancellationToken cancellationToken)
@@ -2143,12 +2302,279 @@ public sealed class BinsRunService(
             : await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
     }
 
+    private async Task<RunFacilityResolution> ResolveRunFacilityAsync(
+        int userId,
+        int? requestedWarehouseId,
+        ActualRun? existingRun,
+        bool canAdminEitherFacility,
+        DateTimeOffset runAt,
+        bool isAuthoritative,
+        CancellationToken cancellationToken)
+    {
+        var employment = await ResolveEmploymentAtAsync(userId, runAt, cancellationToken);
+        if (!isAuthoritative)
+        {
+            return existingRun is null && employment == EmploymentFacilities.Unassigned
+                ? RunFacilityResolution.Failed("An administrator must assign your Employment Facility before you can record an Actual Run.")
+                : RunFacilityResolution.NotAuthoritative();
+        }
+        if (await AuthoritativeWarehouseConfigurationErrorAsync(cancellationToken) is string facilityConfigurationError)
+        {
+            return RunFacilityResolution.Failed(facilityConfigurationError);
+        }
+
+        if (existingRun is not null)
+        {
+            if (existingRun.RunFacilityWarehouseId is null)
+            {
+                return RunFacilityResolution.Failed("This historical Actual Run has no Run Facility and cannot be corrected until its attribution is reviewed.");
+            }
+            if (requestedWarehouseId is not null && requestedWarehouseId != existingRun.RunFacilityWarehouseId)
+            {
+                return RunFacilityResolution.Failed("A correction must retain the Actual Run's original Run Facility.");
+            }
+
+            var persistedCode = existingRun.RunFacilityCodeSnapshot;
+            if (string.IsNullOrWhiteSpace(persistedCode))
+            {
+                persistedCode = await dbContext.Warehouses.AsNoTracking()
+                    .Where(x => x.Id == existingRun.RunFacilityWarehouseId)
+                    .Select(x => x.Code)
+                    .SingleOrDefaultAsync(cancellationToken);
+            }
+            if (persistedCode is not (EmploymentFacilities.Wp or EmploymentFacilities.Ebs))
+            {
+                return RunFacilityResolution.Failed("The Actual Run's persisted facility is not WP or EBS and requires review.");
+            }
+            if (employment is EmploymentFacilities.Wp or EmploymentFacilities.Ebs
+                && !string.Equals(employment, persistedCode, StringComparison.OrdinalIgnoreCase)
+                && !canAdminEitherFacility)
+            {
+                return RunFacilityResolution.Failed($"Your {employment} employment assignment cannot correct a {persistedCode} Actual Run.");
+            }
+            if (employment == EmploymentFacilities.Unassigned && !canAdminEitherFacility)
+            {
+                return RunFacilityResolution.Failed("An administrator must assign an Employment Facility before you can correct an Actual Run.");
+            }
+
+            return new RunFacilityResolution(
+                existingRun.RunFacilityWarehouseId,
+                persistedCode,
+                existingRun.RunFacilityAssignmentSource ?? RunFacilityAssignmentSources.HistoricalBackfill,
+                null);
+        }
+
+        if (employment == EmploymentFacilities.Unassigned)
+        {
+            return RunFacilityResolution.Failed("An administrator must assign your Employment Facility before you can record an Actual Run.");
+        }
+
+        if (employment is EmploymentFacilities.Wp or EmploymentFacilities.Ebs)
+        {
+            var assignedCandidates = await dbContext.Warehouses.AsNoTracking()
+                .Where(x => x.IsActive && x.Code == employment)
+                .Take(2)
+                .ToListAsync(cancellationToken);
+            if (assignedCandidates.Count != 1)
+            {
+                return RunFacilityResolution.Failed($"Exactly one active {employment} warehouse is required before runs can be recorded.");
+            }
+            var assigned = assignedCandidates[0];
+            if (requestedWarehouseId is not null && requestedWarehouseId != assigned.Id)
+            {
+                return RunFacilityResolution.Failed($"Your Employment Facility requires this run to be credited to {employment}.");
+            }
+            return new RunFacilityResolution(assigned.Id, assigned.Code, RunFacilityAssignmentSources.Employment, null);
+        }
+
+        if (requestedWarehouseId is null)
+        {
+            return RunFacilityResolution.Failed("Shared / Management users must explicitly select WP or EBS as the Run Facility.");
+        }
+        var selected = await dbContext.Warehouses.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == requestedWarehouseId && x.IsActive, cancellationToken);
+        if (selected?.Code is not (EmploymentFacilities.Wp or EmploymentFacilities.Ebs))
+        {
+            return RunFacilityResolution.Failed("Run Facility must be an active WP or EBS facility.");
+        }
+        if (await dbContext.Warehouses.AsNoTracking().CountAsync(
+                x => x.IsActive && x.Code == selected.Code,
+                cancellationToken) != 1)
+        {
+            return RunFacilityResolution.Failed($"Exactly one active {selected.Code} warehouse is required before runs can be recorded.");
+        }
+        return new RunFacilityResolution(selected.Id, selected.Code, RunFacilityAssignmentSources.SharedSelection, null);
+    }
+
+    private async Task<RunFacilityResolution> ResolveApprovedOverrideFacilityAsync(
+        ActualRunOverrideRequest request,
+        ActualRun? existingRun,
+        CancellationToken cancellationToken)
+    {
+        if (request.RunFacilityWarehouseId is null)
+        {
+            return RunFacilityResolution.Failed("The pending override has no persisted Run Facility and cannot be applied.");
+        }
+        if (existingRun?.RunFacilityWarehouseId is int existingFacilityId
+            && existingFacilityId != request.RunFacilityWarehouseId)
+        {
+            return RunFacilityResolution.Failed("The pending correction would change the Actual Run's original Run Facility.");
+        }
+        var code = request.RunFacilityCodeSnapshot;
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            code = await dbContext.Warehouses.AsNoTracking()
+                .Where(x => x.Id == request.RunFacilityWarehouseId)
+                .Select(x => x.Code)
+                .SingleOrDefaultAsync(cancellationToken);
+        }
+        if (code is not (EmploymentFacilities.Wp or EmploymentFacilities.Ebs))
+        {
+            return RunFacilityResolution.Failed("The pending override's Run Facility is not WP or EBS.");
+        }
+        return new RunFacilityResolution(
+            request.RunFacilityWarehouseId,
+            code,
+            request.RunFacilityAssignmentSource ?? RunFacilityAssignmentSources.HistoricalBackfill,
+            null);
+    }
+
+    private async Task<RunFacilityResolution> ResolveLegacyReportingFacilityAsync(
+        int? userId,
+        ClaimsPrincipal principal,
+        BinsRunEntry? existing,
+        DateTimeOffset runAt,
+        bool isAuthoritative,
+        CancellationToken cancellationToken)
+    {
+        if (userId is null)
+        {
+            return RunFacilityResolution.Failed("The current user account could not be resolved.");
+        }
+        var employment = await ResolveEmploymentAtAsync(userId.Value, runAt, cancellationToken);
+        var canAdminEitherFacility = await userAccessService.HasAccessAsync(
+            principal,
+            ApplicationAreas.BinsRun,
+            PageAccessLevel.Admin,
+            cancellationToken);
+
+        if (!isAuthoritative)
+        {
+            return existing is null && employment == EmploymentFacilities.Unassigned
+                ? RunFacilityResolution.Failed("An administrator must assign your Employment Facility before you can record a Bins Run.")
+                : RunFacilityResolution.NotAuthoritative();
+        }
+        if (await AuthoritativeWarehouseConfigurationErrorAsync(cancellationToken) is string facilityConfigurationError)
+        {
+            return RunFacilityResolution.Failed(facilityConfigurationError);
+        }
+
+        if (existing is not null)
+        {
+            if (existing.ReportingFacilityWarehouseId is null
+                || existing.ReportingFacilityCodeSnapshot is not (EmploymentFacilities.Wp or EmploymentFacilities.Ebs))
+            {
+                return RunFacilityResolution.Failed("This historical Bins Run has no Run Facility and cannot be corrected until its attribution is reviewed.");
+            }
+            if (employment is EmploymentFacilities.Wp or EmploymentFacilities.Ebs
+                && !string.Equals(employment, existing.ReportingFacilityCodeSnapshot, StringComparison.OrdinalIgnoreCase)
+                && !canAdminEitherFacility)
+            {
+                return RunFacilityResolution.Failed($"Your {employment} employment assignment cannot correct a {existing.ReportingFacilityCodeSnapshot} Bins Run.");
+            }
+            if (employment == EmploymentFacilities.Unassigned && !canAdminEitherFacility)
+            {
+                return RunFacilityResolution.Failed("An administrator must assign your Employment Facility before you can correct a Bins Run.");
+            }
+            return new RunFacilityResolution(
+                existing.ReportingFacilityWarehouseId,
+                existing.ReportingFacilityCodeSnapshot,
+                existing.ReportingFacilityAssignmentSource,
+                null);
+        }
+
+        if (employment == EmploymentFacilities.Shared)
+        {
+            return RunFacilityResolution.Failed("Shared / Management employees must use Record Actual Run to select WP or EBS explicitly.");
+        }
+        if (employment is not (EmploymentFacilities.Wp or EmploymentFacilities.Ebs))
+        {
+            return RunFacilityResolution.Failed("An administrator must assign your Employment Facility before you can record a Bins Run.");
+        }
+        var facilityCandidates = await dbContext.Warehouses.AsNoTracking()
+            .Where(x => x.IsActive && x.Code == employment)
+            .Take(2)
+            .ToListAsync(cancellationToken);
+        return facilityCandidates.Count != 1
+            ? RunFacilityResolution.Failed($"Exactly one active {employment} warehouse is required before runs can be recorded.")
+            : new RunFacilityResolution(facilityCandidates[0].Id, facilityCandidates[0].Code, RunFacilityAssignmentSources.Employment, null);
+    }
+
+    private async Task<string> ResolveEmploymentAtAsync(
+        int userId,
+        DateTimeOffset runAt,
+        CancellationToken cancellationToken)
+    {
+        var user = await dbContext.Users.AsNoTracking()
+            .Where(x => x.Id == userId && x.IsActive)
+            .Select(x => new { x.EmploymentFacility, x.EmploymentEffectiveAt })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (user is null)
+        {
+            return EmploymentFacilities.Unassigned;
+        }
+
+        var history = await dbContext.UserEmploymentHistory.AsNoTracking()
+            .Where(x => x.UserId == userId)
+            .Select(x => new
+            {
+                x.Id,
+                x.UserId,
+                x.PreviousEmploymentFacility,
+                x.EmploymentFacility,
+                x.EffectiveAt
+            })
+            .ToListAsync(cancellationToken);
+        var transitions = history
+            .OrderBy(x => x.EffectiveAt)
+            .ThenBy(x => x.Id)
+            .Select(x => new RunReportingService.EmploymentTransition(
+                x.UserId,
+                x.PreviousEmploymentFacility,
+                x.EmploymentFacility,
+                x.EffectiveAt))
+            .ToList();
+        return RunReportingService.ResolveEmploymentAt(
+            user.EmploymentFacility,
+            user.EmploymentEffectiveAt,
+            transitions,
+            runAt);
+    }
+
+    private async Task<string?> AuthoritativeWarehouseConfigurationErrorAsync(CancellationToken cancellationToken)
+    {
+        var facilities = await dbContext.Warehouses.AsNoTracking()
+            .Where(x => x.IsActive && (x.Code == EmploymentFacilities.Wp || x.Code == EmploymentFacilities.Ebs))
+            .Select(x => x.Code)
+            .ToListAsync(cancellationToken);
+        return new[] { EmploymentFacilities.Wp, EmploymentFacilities.Ebs }
+            .All(code => facilities.Count(x => string.Equals(x, code, StringComparison.OrdinalIgnoreCase)) == 1)
+            ? null
+            : "Exactly one active WP warehouse and one active EBS warehouse are required before authoritative runs can be recorded.";
+    }
+
     private async Task<int?> CurrentUserIdAsync(ClaimsPrincipal user, CancellationToken cancellationToken)
     {
         var email = user.FindFirstValue(ClaimTypes.Email);
         return string.IsNullOrWhiteSpace(email)
             ? null
             : await dbContext.Users.AsNoTracking().Where(x => x.Email == email).Select(x => (int?)x.Id).SingleOrDefaultAsync(cancellationToken);
+    }
+
+    private sealed record RunFacilityResolution(int? WarehouseId, string? Code, string? AssignmentSource, string? Error)
+    {
+        public static RunFacilityResolution Failed(string error) => new(null, null, null, error);
+        public static RunFacilityResolution NotAuthoritative() => new(null, null, null, null);
     }
 
     private async Task AddAuditAsync(string action, BinsRunEntry entry, int? userId, object? before, object? after, CancellationToken cancellationToken)

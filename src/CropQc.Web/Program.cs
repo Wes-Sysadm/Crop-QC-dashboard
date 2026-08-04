@@ -259,6 +259,7 @@ builder.Services.AddScoped<IRoomInventoryReconciliationService, RoomInventoryRec
 builder.Services.AddScoped<IEbsInventoryCleanupService, EbsInventoryCleanupService>();
 builder.Services.AddScoped<IInventoryDeductionInvariantService, InventoryDeductionInvariantService>();
 builder.Services.AddScoped<IBinsRunService, BinsRunService>();
+builder.Services.AddScoped<IRunReportingService, RunReportingService>();
 builder.Services.AddScoped<IRunExpectationService, RunExpectationService>();
 builder.Services.AddSingleton<IPackoutSourceAllocationService, PackoutSourceAllocationService>();
 builder.Services.AddScoped<IRunProjectionService, RunProjectionService>();

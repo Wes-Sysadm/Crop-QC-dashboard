@@ -1,0 +1,35 @@
+DROP TABLE IF EXISTS expected_protected_operational_fingerprints;
+CREATE TEMP TABLE expected_protected_operational_fingerprints (
+    table_name text PRIMARY KEY,
+    row_count bigint NOT NULL,
+    row_fingerprint text NOT NULL
+);
+
+INSERT INTO expected_protected_operational_fingerprints VALUES
+    ('ActualRunOverrideRequestLines', 0,    'd41d8cd98f00b204e9800998ecf8427e'),
+    ('ActualRunOverrideRequests',     0,    'd41d8cd98f00b204e9800998ecf8427e'),
+    ('ActualRunRevisions',            7,    '725ed6f40accaed7749fb86baeaab4c8'),
+    ('GrowerLots',                    398,  '0cdca95e06fd8b3a37d978fda098fd00'),
+    ('PackoutAnalysisConfigurations', 1,    'b8f95b26e5911dff8de1a606b0648aab'),
+    ('PackoutEmailAttempts',          0,    'd41d8cd98f00b204e9800998ecf8427e'),
+    ('PackoutReportLines',            0,    'd41d8cd98f00b204e9800998ecf8427e'),
+    ('PackoutReportSources',          0,    'd41d8cd98f00b204e9800998ecf8427e'),
+    ('PackoutRuns',                   0,    'd41d8cd98f00b204e9800998ecf8427e'),
+    ('PackoutSourceAllocations',      0,    'd41d8cd98f00b204e9800998ecf8427e'),
+    ('QcFruitDefects',                3064, '4f8a61aaa333818fabe2c5fea1796eec'),
+    ('QcFruitReadings',               4122, 'e8589bc1851ec3394be1dd8a1d8bf8d2'),
+    ('QcPhotos',                      662,  '608f05edb9a399a8ead18f18afba6856'),
+    ('QcSamples',                     156,  '8680bf42dfba4b95e5254ae77d158404'),
+    ('QcSummaryEmailLogs',            136,  '1e817fd5c6b5d50284182adf05c1e762'),
+    ('Receipts',                      136,  'ce6c70ec9bbd5a4adb23929bcd10e717'),
+    ('RoomDepletions',                6,    'b96250d92cc142c664ee3d60c6386955'),
+    ('RoomInventoryAdjustments',      142,  'dba346c2518962118fd85ecc9399df3d'),
+    ('Rooms',                         68,   '1042c181ba82afbf6c69763b3e514b49'),
+    ('RoomTransfers',                 0,    'd41d8cd98f00b204e9800998ecf8427e'),
+    ('RunExpectations',               4,    '3ac130a48f52c2477d43ffb8c4633e01'),
+    ('RunExpectationSources',         6,    '134a7a454efc34491b753e4e1e77d9e7'),
+    ('RunProjectionGradeResults',     25,   '0f3a72c88186584532ebe14fb070e7dc'),
+    ('RunProjections',                14,   'd464c77f0b9101cdea53995a5ddf8353'),
+    ('RunProjectionSizeResults',      80,   'b34d14a6bf25718ceff4de3bf25f26db'),
+    ('RunProjectionSources',          9,    'ba1559bb9c576ae9d438fa1ca7bc36a9'),
+    ('Warehouses',                    4,    '3bf886a794a6c390d4f7e3bbf5fd5451');

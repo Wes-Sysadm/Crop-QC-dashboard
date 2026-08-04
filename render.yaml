@@ -3,7 +3,7 @@ services:
     name: crop-qc-dashboard
     runtime: docker
     dockerfilePath: ./Dockerfile
-    preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260731014107_SeparatePlanningProjectionsFromActualRuns
+    preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260804052104_AddFacilityRunReporting
     healthCheckPath: /health
     disks:
       - name: crop-qc-dashboard-data
@@ -161,7 +161,7 @@ services:
     name: crop-qc-dashboard-staging
     runtime: docker
     dockerfilePath: ./Dockerfile
-    preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260731014107_SeparatePlanningProjectionsFromActualRuns
+    preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260804052104_AddFacilityRunReporting
     healthCheckPath: /health
     disks:
       - name: crop-qc-dashboard-staging-data

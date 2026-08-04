@@ -16,7 +16,8 @@ public sealed class BinsRunController(
     IPackoutReconciliationService packoutReconciliationService,
     IDashboardDataService dashboardDataService,
     IBusinessTimeService businessTime,
-    ILogger<BinsRunController> logger) : Controller
+    ILogger<BinsRunController> logger,
+    IRunReportingService? runReportingService = null) : Controller
 {
     [HttpGet("")]
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
@@ -76,6 +77,11 @@ public sealed class BinsRunController(
             model.TrueUpReceiptOptions = room.DepletionReceiptOptions;
             model.TransferDestinationOptions = room.TransferDestinationOptions;
             model.InventoryActivity = room.InventoryAdjustments.Take(100).ToList();
+        }
+
+        if (runReportingService is not null)
+        {
+            model.RunReporting = await runReportingService.GetAsync(filter, User, cancellationToken);
         }
 
         return View(model);

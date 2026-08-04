@@ -248,10 +248,67 @@ public sealed class DatabaseRegressionDiagnosticsTests
     public void RenderUsesFailClosedLatestSchemaGateBeforeBothWebDeployments()
     {
         var blueprint = File.ReadAllText(FindRepositoryFile("render.yaml"));
-        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260731014107_SeparatePlanningProjectionsFromActualRuns";
+        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260804052104_AddFacilityRunReporting";
 
         Assert.Equal(2, blueprint.Split(command, StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("dotnet ef database update", blueprint, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void FacilityRunReportingProductionPreflight_IsReadOnlyAndDetectsPartialObjectState()
+    {
+        var script = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "preflight-facility-run-reporting-schema.sql"));
+
+        Assert.Contains("begin transaction read only;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("20260804052104_AddFacilityRunReporting", script);
+        Assert.Contains("UserEmploymentHistory", script);
+        Assert.Contains("GrowerNumberSnapshot", script);
+        Assert.Contains("Unexpected partial facility-reporting schema", script);
+        Assert.DoesNotContain("alter table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("create table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\ninsert into ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\nupdate ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\ndelete from ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("truncate ", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void FacilityRunReportingProductionApply_IsTransactionalFailClosedAndOnlyRecordsItsOwnMigration()
+    {
+        var script = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "apply-facility-run-reporting-schema.sql"));
+
+        Assert.Contains(@"\set ON_ERROR_STOP on", script);
+        Assert.Contains("start transaction;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("commit;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pg_advisory_xact_lock", script);
+        Assert.Contains("Unexpected partial facility-reporting schema", script);
+        Assert.Contains("20260804052104_AddFacilityRunReporting", script);
+        Assert.Contains("INSERT INTO \"__EFMigrationsHistory\"", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("20260731014107_SeparatePlanningProjectionsFromActualRuns', '8.0.11", script);
+        Assert.DoesNotContain("delete from", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("drop table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("truncate ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("update \"__EFMigrationsHistory\"", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void FacilityRunReportingProductionVerification_IsReadOnlyAndChecksRequiredRelationships()
+    {
+        var script = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "verify-facility-run-reporting.sql"));
+
+        Assert.Contains("begin transaction read only;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("UserEmploymentHistory", script);
+        Assert.Contains("IX_UserEmploymentHistory_UserId_ChangedAt", script);
+        Assert.Contains("FK_BinsRunEntries_Warehouses_ReportingFacilityWarehouseId", script);
+        Assert.DoesNotContain("alter table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("create table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\ninsert into ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\nupdate ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\ndelete from ", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("truncate ", script, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -276,6 +333,13 @@ public sealed class DatabaseRegressionDiagnosticsTests
         Assert.Contains("\"PackoutSourceAllocations\"", diagnostics);
         Assert.Contains("\"PackoutRuns\", \"ActualRunId\"", diagnostics);
         Assert.Contains("\"PackoutRuns\", \"RunExpectationId\"", diagnostics);
+        Assert.Contains("\"UserEmploymentHistory\"", diagnostics);
+        Assert.Contains("\"Users\", \"EmploymentFacility\"", diagnostics);
+        Assert.Contains("\"ActualRuns\", \"RunFacilityWarehouseId\"", diagnostics);
+        Assert.Contains("\"ActualRunOverrideRequests\", \"RunFacilityWarehouseId\"", diagnostics);
+        Assert.Contains("\"BinsRunEntries\", \"ReportingFacilityWarehouseId\"", diagnostics);
+        Assert.Contains("IX_UserEmploymentHistory_UserId_ChangedAt", diagnostics);
+        Assert.Contains("FK_BinsRunEntries_Warehouses_ReportingFacilityWarehouseId", diagnostics);
         Assert.Contains("RequireNullable: true", diagnostics);
         Assert.Contains("RequiredIndexExpectations", diagnostics);
         Assert.Contains("RequiredForeignKeyExpectations", diagnostics);
