@@ -55,10 +55,10 @@ BEGIN
 
     IF (SELECT COUNT(*) FROM "BinsRunEntries") <> 39
        OR (SELECT COALESCE(SUM("BinsRun"), 0) FROM "BinsRunEntries") <> 8330 THEN
-        RAISE EXCEPTION 'BinsRunEntries count or quantity differs from backup run 40';
+        RAISE EXCEPTION 'BinsRunEntries count or quantity differs from backup run 41';
     END IF;
     IF (SELECT COUNT(*) FROM "ActualRuns") <> 7 THEN
-        RAISE EXCEPTION 'ActualRuns count differs from backup run 40';
+        RAISE EXCEPTION 'ActualRuns count differs from backup run 41';
     END IF;
 
     SELECT md5(string_agg(concat_ws('|', "Id", "ActualRunId", "ActualRunRevisionId", "TransactionType",
@@ -83,15 +83,15 @@ BEGIN
             protected.table_name)
         INTO actual_count, actual_fingerprint;
         IF actual_count <> protected.row_count OR actual_fingerprint <> protected.row_fingerprint THEN
-            RAISE EXCEPTION 'Protected table % differs from backup run 40 (count %, fingerprint %)',
+            RAISE EXCEPTION 'Protected table % differs from backup run 41 (count %, fingerprint %)',
                 protected.table_name, actual_count, actual_fingerprint;
         END IF;
     END LOOP;
 
-    IF (SELECT COUNT(*) FROM "AuditLogs" WHERE "Id" <= 14415) <> 14415
+    IF (SELECT COUNT(*) FROM "AuditLogs" WHERE "Id" <= 14895) <> 14895
        OR (SELECT md5(string_agg(md5(row_to_json(a)::text), '' ORDER BY md5(row_to_json(a)::text)))
-           FROM "AuditLogs" AS a WHERE "Id" <= 14415) <> '0dd1c86e19af4edc5753826dfd1c9e38' THEN
-        RAISE EXCEPTION 'Pre-existing audit records differ from backup run 40';
+           FROM "AuditLogs" AS a WHERE "Id" <= 14895) <> '525e6afa0e9b61b7fb428be5e461a884' THEN
+        RAISE EXCEPTION 'Pre-existing audit records differ from backup run 41';
     END IF;
 
     IF (SELECT COUNT(*) FROM "__EFMigrationsHistory" WHERE "MigrationId" <> '20260804052104_AddFacilityRunReporting') <> 24
@@ -112,7 +112,7 @@ BEGIN
            OR actual."DisplayName" IS DISTINCT FROM expected.display_name
            OR actual."IsActive" IS DISTINCT FROM true
     ) OR (SELECT COUNT(*) FROM expected_attribution_users) <> 2 THEN
-        RAISE EXCEPTION 'Target reporting user identity or active status differs from backup run 40';
+        RAISE EXCEPTION 'Target reporting user identity or active status differs from backup run 41';
     END IF;
     IF EXISTS (
         SELECT 1
@@ -138,7 +138,7 @@ BEGIN
        OR recording_user.facility_code IS DISTINCT FROM expected.facility_code
        OR recording_user.warehouse_id IS DISTINCT FROM expected.warehouse_id;
     IF mismatch_count <> 0 OR (SELECT COUNT(*) FROM expected_actual_run_facilities) <> 7 THEN
-        RAISE EXCEPTION 'Expected Actual Run identities or recording-user attribution differ from backup run 40';
+        RAISE EXCEPTION 'Expected Actual Run identities or recording-user attribution differ from backup run 41';
     END IF;
 
     SELECT COUNT(*) INTO mismatch_count
@@ -189,7 +189,7 @@ BEGIN
         WHERE b."Id"=33 AND b."CreatedByUserId"=8 AND b."BinsRun"=173 AND b."CropYear"=2026
           AND COALESCE(er."GrowerNumber",sr."GrowerNumber") IS NULL
     ) THEN
-        RAISE EXCEPTION 'Authoritative Needs Review line 33 no longer matches backup run 40';
+        RAISE EXCEPTION 'Authoritative Needs Review line 33 no longer matches backup run 41';
     END IF;
 
     IF EXISTS (
@@ -245,7 +245,7 @@ BEGIN
     INTO applied_state;
 
     IF NOT initial_state AND NOT applied_state THEN
-        RAISE EXCEPTION 'Attribution state is neither the exact initial run-40 state nor the exact idempotent applied state';
+        RAISE EXCEPTION 'Attribution state is neither the exact initial run-41 state nor the exact idempotent applied state';
     END IF;
 END $preflight$;
 

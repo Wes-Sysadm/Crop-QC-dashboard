@@ -248,7 +248,7 @@ public sealed class DatabaseRegressionDiagnosticsTests
     public void RenderUsesFailClosedLatestSchemaGateBeforeBothWebDeployments()
     {
         var blueprint = File.ReadAllText(FindRepositoryFile("render.yaml"));
-        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260804052104_AddFacilityRunReporting";
+        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260805014812_AddReceiptInventoryOverrides";
 
         Assert.Equal(2, blueprint.Split(command, StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("dotnet ef database update", blueprint, StringComparison.OrdinalIgnoreCase);
@@ -340,6 +340,11 @@ public sealed class DatabaseRegressionDiagnosticsTests
         Assert.Contains("\"BinsRunEntries\", \"ReportingFacilityWarehouseId\"", diagnostics);
         Assert.Contains("IX_UserEmploymentHistory_UserId_ChangedAt", diagnostics);
         Assert.Contains("FK_BinsRunEntries_Warehouses_ReportingFacilityWarehouseId", diagnostics);
+        Assert.Contains("\"ReceiptInventoryOverrides\"", diagnostics);
+        Assert.Contains("\"Receipts\", \"ConcurrencyVersion\"", diagnostics);
+        Assert.Contains("\"RoomInventoryAdjustments\", \"ReceiptInventoryOverrideId\"", diagnostics);
+        Assert.Contains("IX_ReceiptInventoryOverrides_OperationKey", diagnostics);
+        Assert.Contains("FK_RoomInventoryAdjustments_ReceiptOverrides_OverrideId", diagnostics);
         Assert.Contains("RequireNullable: true", diagnostics);
         Assert.Contains("RequiredIndexExpectations", diagnostics);
         Assert.Contains("RequiredForeignKeyExpectations", diagnostics);

@@ -11,6 +11,8 @@ namespace CropQc.Web.Controllers;
 public sealed class ReceiptsController(
     IDashboardDataService dataService,
     IReceiptPurgeService receiptPurgeService,
+    IReceiptInventoryOverrideService receiptInventoryOverrideService,
+    IUserAccessService userAccessService,
     IReceivingExportService exportService,
     FileStorageOptions fileStorageOptions,
     ILogger<ReceiptsController> logger) : Controller
@@ -49,8 +51,20 @@ public sealed class ReceiptsController(
 
     [Authorize(Policy = AccessPolicyNames.ReceiptEditEdit)]
     [HttpGet("{id:long}/Edit")]
-    public async Task<IActionResult> Edit(long id, CancellationToken cancellationToken) =>
-        View(await dataService.GetReceiptEditAsync(id, cancellationToken));
+    public async Task<IActionResult> Edit(long id, CancellationToken cancellationToken)
+    {
+        var model = await dataService.GetReceiptEditAsync(id, cancellationToken);
+        model.CanAdminOverride = await userAccessService.HasAccessAsync(
+            User,
+            ApplicationAreas.Receipts,
+            PageAccessLevel.Admin,
+            cancellationToken);
+        if (model.CanAdminOverride)
+        {
+            model.AdminOverridePreview = await receiptInventoryOverrideService.GetPreviewAsync(id, cancellationToken);
+        }
+        return View(model);
+    }
 
     [Authorize(Policy = AccessPolicyNames.ReceiptEditEdit)]
     [HttpPost("{id:long}/Edit")]
@@ -65,10 +79,42 @@ public sealed class ReceiptsController(
     }
 
     [Authorize(Policy = AccessPolicyNames.ReceiptDeleteAdmin)]
+    [HttpPost("{id:long}/AdminInventoryOverride")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AdminInventoryOverride(
+        long id,
+        AdminReceiptInventoryOverrideForm form,
+        CancellationToken cancellationToken)
+    {
+        form.Id = id;
+        var result = await receiptInventoryOverrideService.ApplyEditAsync(form, User, cancellationToken);
+        if (!result.Succeeded)
+        {
+            TempData["Error"] = result.Error;
+            return result.IsConflict
+                ? Conflict(new { error = result.Error })
+                : RedirectToAction(nameof(Edit), new { id });
+        }
+        TempData["Success"] = result.WasIdempotent
+            ? $"Receipt inventory override {result.OverrideId:D} was already applied."
+            : $"Receipt inventory override {result.OverrideId:D} was applied.";
+        return RedirectToAction(nameof(OverrideDetails), new { overrideId = result.OverrideId });
+    }
+
+    [Authorize(Policy = AccessPolicyNames.ReceiptDeleteAdmin)]
     [HttpGet("{id:long}/Delete")]
     public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken)
     {
         var model = await receiptPurgeService.GetDeletionConfirmationAsync(id, cancellationToken);
+        var preview = model is null ? null : await receiptInventoryOverrideService.GetPreviewAsync(id, cancellationToken);
+        if (model is not null && preview is not null)
+        {
+            model.CurrentInventory = preview.CurrentInventory;
+            model.ConsumedBins = preview.ConsumedBins;
+            model.ConcurrencyVersion = preview.ConcurrencyVersion;
+            model.CurrentBalances = preview.Balances;
+            model.Form.ExpectedConcurrencyVersion = preview.ConcurrencyVersion;
+        }
         return model is null ? NotFound() : View(model);
     }
 
@@ -78,14 +124,26 @@ public sealed class ReceiptsController(
     public async Task<IActionResult> Delete(long id, DeleteReceiptForm form, CancellationToken cancellationToken)
     {
         form.Id = id;
-        var error = await receiptPurgeService.DeleteEligibleReceiptAsync(
-            form,
-            User.FindFirstValue(ClaimTypes.Email) ?? "unknown",
-            cancellationToken);
-        TempData[error is null ? "Success" : "Error"] = error ?? "Receipt deleted.";
-        return error is null
-            ? RedirectToAction(nameof(Index))
+        var result = await receiptInventoryOverrideService.VoidAsync(form, User, cancellationToken);
+        TempData[result.Succeeded ? "Success" : "Error"] = result.Succeeded
+            ? $"Receipt voided through administrator override {result.OverrideId:D}."
+            : result.Error;
+        return result.Succeeded
+            ? RedirectToAction(nameof(OverrideDetails), new { overrideId = result.OverrideId })
             : RedirectToAction(nameof(Delete), new { id });
+    }
+
+    [Authorize(Policy = AccessPolicyNames.ReceiptDeleteAdmin)]
+    [HttpGet("Admin/Voided")]
+    public async Task<IActionResult> AdminVoided(CancellationToken cancellationToken) =>
+        View(await receiptInventoryOverrideService.GetVoidedReceiptsAsync(cancellationToken));
+
+    [Authorize(Policy = AccessPolicyNames.ReceiptDeleteAdmin)]
+    [HttpGet("Admin/Overrides/{overrideId:guid}")]
+    public async Task<IActionResult> OverrideDetails(Guid overrideId, CancellationToken cancellationToken)
+    {
+        var model = await receiptInventoryOverrideService.GetAuditDetailAsync(overrideId, cancellationToken);
+        return model is null ? NotFound() : View(model);
     }
 
     [HttpPost("{id:long}/samples")]

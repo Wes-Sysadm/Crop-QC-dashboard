@@ -1,0 +1,37 @@
+@model ReceiptInventoryOverrideAuditViewModel
+@{
+    ViewData["Title"] = "Receipt Admin Override Audit";
+}
+
+<h1>Receipt Admin Override Audit</h1>
+<section class="panel">
+    <h2>@Model.Action — @Model.Id</h2>
+    <dl class="summary-list">
+        <dt>Receipt</dt><dd>@Model.ReceiptNumber (#@Model.ReceiptId) @(Model.ReceiptIsVoided ? "— voided" : "")</dd>
+        <dt>Administrator</dt><dd>@Model.Administrator</dd>
+        <dt>Created</dt><dd>@BusinessTime.FormatPacific(Model.CreatedAt)</dd>
+        <dt>Reason</dt><dd>@Model.Reason</dd>
+        <dt>Receipt quantity</dt><dd>@Model.OldReceiptBins → @Model.NewReceiptBins</dd>
+        <dt>Attributable inventory</dt><dd>@Model.CurrentInventoryBefore → @Model.CurrentInventoryAfter (delta @Model.InventoryDelta)</dd>
+        <dt>Negative inventory acknowledged</dt><dd>@(Model.NegativeInventoryAcknowledged ? "Yes" : "No")</dd>
+    </dl>
+    <div class="button-row">
+        @if (!Model.ReceiptIsVoided) { <a class="button secondary-button" href="/Receipts/@Model.ReceiptId">Receipt history</a> }
+        <a class="button secondary-button" href="/Admin/RoomInventory/Reconciliation">Inventory Reconciliation</a>
+        <a class="button secondary-button" href="/Receipts/Admin/Voided">Voided receipt administration</a>
+    </div>
+</section>
+<section class="panel">
+    <h2>Ledger adjustments</h2>
+    @if (Model.Adjustments.Count == 0) { <p>No inventory remained to remove; the audited receipt operation has no ledger rows.</p> }
+    else
+    {
+        <table class="data-table"><thead><tr><th>ID</th><th>Facility / Room</th><th>Crop year</th><th>Lot / Variety</th><th>Before</th><th>Change</th><th>After</th></tr></thead><tbody>
+        @foreach (var row in Model.Adjustments)
+        {
+            <tr><td>#@row.Id</td><td>@row.Facility / @row.Room</td><td>@row.CropYear</td><td>@row.Lot / @row.Variety</td><td>@row.OldBins</td><td>@row.Change</td><td>@row.NewBins</td></tr>
+        }
+        </tbody></table>
+    }
+</section>
+<details class="panel"><summary>Immutable before/after receipt snapshots</summary><h3>Before</h3><pre>@Model.BeforeSnapshotJson</pre><h3>After</h3><pre>@Model.AfterSnapshotJson</pre></details>

@@ -1,0 +1,22 @@
+@model IReadOnlyList<VoidedReceiptAdminViewModel>
+@{
+    ViewData["Title"] = "Voided Receipt Administration";
+}
+
+<h1>Voided Receipt Administration</h1>
+<p class="muted">Soft-voided receipts remain here as administrator evidence. Their operational history and override ledger records are retained.</p>
+<section class="panel">
+    @if (Model.Count == 0)
+    {
+        <p>No receipts have been voided through a Receipt Admin Override.</p>
+    }
+    else
+    {
+        <table class="data-table"><thead><tr><th>Receipt</th><th>Crop year</th><th>Voided</th><th>Administrator</th><th>Inventory removed</th><th>Reason</th><th>Audit</th></tr></thead><tbody>
+        @foreach (var item in Model)
+        {
+            <tr><td>@item.ReceiptNumber (#@item.ReceiptId)</td><td>@item.CropYear</td><td>@(item.VoidedAt is null ? "—" : BusinessTime.FormatPacific(item.VoidedAt.Value))</td><td>@item.Administrator</td><td>@item.RemovedInventory</td><td>@item.Reason</td><td><a href="/Receipts/Admin/Overrides/@item.OverrideId">Open override</a></td></tr>
+        }
+        </tbody></table>
+    }
+</section>

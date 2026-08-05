@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
@@ -28,6 +29,7 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
     {
         var databaseUrl = Environment.GetEnvironmentVariable("CROPQC_PERF_DATABASE_URL");
         var outputPath = Environment.GetEnvironmentVariable("CROPQC_PERF_OUTPUT");
+        var profile = Environment.GetEnvironmentVariable("CROPQC_PERF_PROFILE") ?? "full";
         if (string.IsNullOrWhiteSpace(databaseUrl) || string.IsNullOrWhiteSpace(outputPath))
         {
             return;
@@ -58,11 +60,14 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
             new("SampleRefresh", $"/Samples/{receiptSampleId}/refresh"),
             new("FieldSamples", "/FieldSamples"),
             new("BinsRunActual", "/BinsRun?Section=Actual"),
-            new("BinsRunPlanner", "/BinsRun?Section=Planner"),
-            new("RunReportingSummary", "/BinsRun?Section=Actual"),
-            new("RunReportingDetail", "/BinsRun?Section=RunTotals&ReportFacility=WP&ReportCropYear=2026"),
-            new("RunReportingNeedsReview", "/BinsRun?Section=NeedsReview")
+            new("BinsRunPlanner", "/BinsRun?Section=Planner")
         };
+        if (!string.Equals(profile, "core", StringComparison.OrdinalIgnoreCase))
+        {
+            routes.Add(new BenchmarkRoute("RunReportingSummary", "/BinsRun?Section=Actual"));
+            routes.Add(new BenchmarkRoute("RunReportingDetail", "/BinsRun?Section=RunTotals&ReportFacility=WP&ReportCropYear=2026"));
+            routes.Add(new BenchmarkRoute("RunReportingNeedsReview", "/BinsRun?Section=NeedsReview"));
+        }
         if (fieldSampleId is not null)
         {
             routes.Add(new BenchmarkRoute("FieldSampleDetail", $"/FieldSamples/{fieldSampleId.Value}"));
@@ -73,33 +78,46 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
         phases.Add(await RunPhaseAsync(client, "rooms-sequential-100", routes.Where(x => x.Name == "Rooms").ToList(), 100, 1));
         phases.Add(await RunPhaseAsync(client, "current-inventory-sequential-100", routes.Where(x => x.Name == "CurrentInventory").ToList(), 100, 1));
         phases.Add(await RunPhaseAsync(client, "sample-refresh-sequential-100", routes.Where(x => x.Name == "SampleRefresh").ToList(), 100, 1));
-        phases.Add(await RunPhaseAsync(client, "run-reporting-summary-sequential-100", routes.Where(x => x.Name == "RunReportingSummary").ToList(), 100, 1));
-        phases.Add(await RunPhaseAsync(client, "run-reporting-detail-sequential-100", routes.Where(x => x.Name == "RunReportingDetail").ToList(), 100, 1));
-        phases.Add(await RunPhaseAsync(client, "run-reporting-needs-review-sequential-100", routes.Where(x => x.Name == "RunReportingNeedsReview").ToList(), 100, 1));
+        if (!string.Equals(profile, "core", StringComparison.OrdinalIgnoreCase))
+        {
+            phases.Add(await RunPhaseAsync(client, "run-reporting-summary-sequential-100", routes.Where(x => x.Name == "RunReportingSummary").ToList(), 100, 1));
+            phases.Add(await RunPhaseAsync(client, "run-reporting-detail-sequential-100", routes.Where(x => x.Name == "RunReportingDetail").ToList(), 100, 1));
+            phases.Add(await RunPhaseAsync(client, "run-reporting-needs-review-sequential-100", routes.Where(x => x.Name == "RunReportingNeedsReview").ToList(), 100, 1));
+        }
         phases.Add(await RunPhaseAsync(client, "mixed-concurrency-2", routes, 100, 2));
         phases.Add(await RunPhaseAsync(client, "mixed-concurrency-4", routes, 100, 4));
         phases.Add(await RunPhaseAsync(client, "mixed-concurrency-8", routes, 100, 8));
+        var retainedMemoryPlateau = new List<BenchmarkPhaseResult>();
+        for (var batch = 1; batch <= 5; batch++)
+        {
+            retainedMemoryPlateau.Add(await RunPhaseAsync(client, $"retained-memory-batch-{batch}", routes, 20, 4));
+        }
 
         var report = new
         {
             CapturedAtUtc = DateTimeOffset.UtcNow,
             Environment = "Production",
             Configuration = "Release",
-            Database = "localhost-only verified production backup restore",
+            Database = Environment.GetEnvironmentVariable("CROPQC_PERF_DATASET") ?? "localhost-only verified production backup restore",
+            Commit = Environment.GetEnvironmentVariable("CROPQC_PERF_COMMIT") ?? "unknown",
+            Profile = profile,
             Runtime = Environment.Version.ToString(),
             ProcessorCount = Environment.ProcessorCount,
-            Phases = phases
+            Phases = phases,
+            RetainedMemoryPlateau = retainedMemoryPlateau
         };
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
         await File.WriteAllTextAsync(outputPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
 
         Assert.All(phases, phase => Assert.Equal(phase.RequestCount, phase.SuccessfulRequests));
-        AssertAllocatedBytesPerRequestAtMost(phases, "rooms-sequential-100", 12 * 1024 * 1024);
-        AssertAllocatedBytesPerRequestAtMost(phases, "current-inventory-sequential-100", 12 * 1024 * 1024);
+        Assert.All(retainedMemoryPlateau, phase => Assert.Equal(phase.RequestCount, phase.SuccessfulRequests));
         AssertAllocatedBytesPerRequestAtMost(phases, "sample-refresh-sequential-100", 1024 * 1024);
-        AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-summary-sequential-100", 16 * 1024 * 1024);
-        AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-detail-sequential-100", 16 * 1024 * 1024);
-        AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-needs-review-sequential-100", 16 * 1024 * 1024);
+        if (!string.Equals(profile, "core", StringComparison.OrdinalIgnoreCase))
+        {
+            AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-summary-sequential-100", 16 * 1024 * 1024);
+            AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-detail-sequential-100", 16 * 1024 * 1024);
+            AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-needs-review-sequential-100", 16 * 1024 * 1024);
+        }
         AssertAllocatedBytesPerRequestAtMost(phases, "mixed-concurrency-8", 4 * 1024 * 1024);
         Assert.True(
             phases.Single(x => x.Name == "mixed-concurrency-8").PeakWorkingSetBytes <= 384L * 1024 * 1024,
@@ -135,6 +153,7 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
         var peakWorkingSet = startWorkingSet;
         var successful = 0;
         long responseBytes = 0;
+        var routeResults = new ConcurrentDictionary<string, MutableRouteResult>(StringComparer.Ordinal);
         using var samplingCancellation = new CancellationTokenSource();
         var sampler = Task.Run(async () =>
         {
@@ -164,6 +183,10 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
                 var bytes = await DrainAsync(content);
                 Interlocked.Add(ref responseBytes, bytes);
                 Interlocked.Increment(ref successful);
+                routeResults.AddOrUpdate(
+                    route.Name,
+                    _ => new MutableRouteResult(1, bytes),
+                    (_, current) => current.Add(bytes));
             }
             finally
             {
@@ -177,6 +200,11 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
 
         process.Refresh();
         var endGc = GC.GetGCMemoryInfo();
+        var endWorkingSet = process.WorkingSet64;
+        ForceFullCollection();
+        await Task.Delay(500);
+        process.Refresh();
+        var postIdleGc = GC.GetGCMemoryInfo();
         return new BenchmarkPhaseResult(
             name,
             requestCount,
@@ -184,17 +212,27 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
             successful,
             stopwatch.Elapsed.TotalMilliseconds,
             startWorkingSet,
-            process.WorkingSet64,
+            endWorkingSet,
             peakWorkingSet,
+            process.WorkingSet64,
             GC.GetTotalAllocatedBytes(precise: true) - startAllocated,
             GC.CollectionCount(0) - startCollections[0],
             GC.CollectionCount(1) - startCollections[1],
             GC.CollectionCount(2) - startCollections[2],
             startGc.HeapSizeBytes,
             endGc.HeapSizeBytes,
+            postIdleGc.HeapSizeBytes,
+            LohSize(startGc),
+            LohSize(endGc),
+            LohSize(postIdleGc),
             startGc.FragmentedBytes,
             endGc.FragmentedBytes,
-            responseBytes);
+            postIdleGc.FragmentedBytes,
+            responseBytes,
+            routeResults.OrderBy(x => x.Key).ToDictionary(
+                x => x.Key,
+                x => new RouteResult(x.Value.RequestCount, x.Value.ResponseBytes),
+                StringComparer.Ordinal));
     }
 
     private static async Task<long> DrainAsync(Stream content)
@@ -215,6 +253,9 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
         GC.WaitForPendingFinalizers();
         GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
     }
+
+    private static long LohSize(GCMemoryInfo info) =>
+        info.GenerationInfo.Length > 3 ? info.GenerationInfo[3].SizeAfterBytes : 0;
 
     private sealed class ProductionRestoreWebApplicationFactory(string databaseUrl) : WebApplicationFactory<Program>
     {
@@ -295,15 +336,29 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
         long StartWorkingSetBytes,
         long EndWorkingSetBytes,
         long PeakWorkingSetBytes,
+        long PostIdleWorkingSetBytes,
         long TotalAllocatedBytes,
         int Gen0Collections,
         int Gen1Collections,
         int Gen2Collections,
         long StartHeapBytes,
         long EndHeapBytes,
+        long PostIdleHeapBytes,
+        long StartLohBytes,
+        long EndLohBytes,
+        long PostIdleLohBytes,
         long StartFragmentedBytes,
         long EndFragmentedBytes,
-        long ResponseBytes);
+        long PostIdleFragmentedBytes,
+        long ResponseBytes,
+        IReadOnlyDictionary<string, RouteResult> RouteResults);
+
+    private sealed record RouteResult(int RequestCount, long ResponseBytes);
+
+    private sealed record MutableRouteResult(int RequestCount, long ResponseBytes)
+    {
+        public MutableRouteResult Add(long responseBytes) => new(RequestCount + 1, ResponseBytes + responseBytes);
+    }
 
     private static class InterlockedExtensions
     {

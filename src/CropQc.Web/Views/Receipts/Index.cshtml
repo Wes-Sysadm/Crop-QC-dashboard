@@ -7,9 +7,14 @@
     var growerLotsJson = JsonSerializer.Serialize(Model.GrowerLots.Select(x => new { id = x.Id, grower = x.Grower, lot = x.LotNumber, label = $"{x.Grower} - {x.LotNumber}" }));
     var hasRequiredMasterData = Model.Warehouses.Count > 0 && Model.Rooms.Count > 0 && Model.FruitProfiles.Count > 0;
     var canEditReceipts = await UserAccess.HasAccessAsync(User, ApplicationAreas.Receipts, PageAccessLevel.Edit, Context.RequestAborted);
+    var canAdminReceipts = await UserAccess.HasAccessAsync(User, ApplicationAreas.Receipts, PageAccessLevel.Admin, Context.RequestAborted);
 }
 
 <h1>Receipts</h1>
+@if (canAdminReceipts)
+{
+    <p><a class="button secondary-button" href="/Receipts/Admin/Voided">Voided Receipt Administration</a></p>
+}
 @await Html.PartialAsync("_PageRefreshControls")
 @if (Model.DataWarning is not null)
 {

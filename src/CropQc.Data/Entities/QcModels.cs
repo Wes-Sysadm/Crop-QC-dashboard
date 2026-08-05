@@ -24,6 +24,7 @@ public sealed class Receipt
     public int BinCount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    public long ConcurrencyVersion { get; set; }
     public bool IsTestData { get; set; }
     public bool IsDeleted { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
@@ -34,6 +35,40 @@ public sealed class Receipt
     public ICollection<QcSummaryEmailLog> SummaryEmailLogs { get; } = new List<QcSummaryEmailLog>();
     public ICollection<RoomDepletion> RoomDepletions { get; } = new List<RoomDepletion>();
     public ICollection<RoomInventoryAdjustment> RoomInventoryAdjustments { get; } = new List<RoomInventoryAdjustment>();
+    public ICollection<ReceiptInventoryOverride> InventoryOverrides { get; } = new List<ReceiptInventoryOverride>();
+}
+
+public static class ReceiptInventoryOverrideActionTypes
+{
+    public const string QuantityCorrection = "QuantityCorrection";
+    public const string InventoryReclassification = "InventoryReclassification";
+    public const string VoidReceipt = "VoidReceipt";
+}
+
+public sealed class ReceiptInventoryOverride
+{
+    public Guid Id { get; set; }
+    public long ReceiptId { get; set; }
+    public Receipt Receipt { get; set; } = null!;
+    public required string ActionType { get; set; }
+    public int OldReceiptBinCount { get; set; }
+    public int NewReceiptBinCount { get; set; }
+    public int InventoryDelta { get; set; }
+    public int CurrentInventoryBefore { get; set; }
+    public int CurrentInventoryAfter { get; set; }
+    public int AdministratorUserId { get; set; }
+    public User AdministratorUser { get; set; } = null!;
+    public required string Reason { get; set; }
+    public required string OperationKey { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public bool NegativeInventoryAcknowledged { get; set; }
+    public string? VoidConfirmationDetails { get; set; }
+    public required string BeforeReceiptSnapshotJson { get; set; }
+    public required string AfterReceiptSnapshotJson { get; set; }
+    public required string AffectedInventorySnapshotJson { get; set; }
+    public int ExpectedAdjustmentCount { get; set; }
+    public bool IsComplete { get; set; }
+    public ICollection<RoomInventoryAdjustment> InventoryAdjustments { get; } = new List<RoomInventoryAdjustment>();
 }
 
 public sealed class RoomDepletion
@@ -101,6 +136,8 @@ public sealed class RoomInventoryAdjustment
     public string? InventoryOperationKey { get; set; }
     public long? RoomTransferId { get; set; }
     public RoomTransfer? RoomTransfer { get; set; }
+    public Guid? ReceiptInventoryOverrideId { get; set; }
+    public ReceiptInventoryOverride? ReceiptInventoryOverride { get; set; }
     public long? ActualRunId { get; set; }
     public ActualRun? ActualRun { get; set; }
     public long? ActualRunRevisionId { get; set; }

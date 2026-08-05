@@ -227,6 +227,7 @@ public sealed class RoomInventoryReconciliationService(
             .Include(x => x.FruitProfile)
             .Include(x => x.CreatedByUser)
             .Include(x => x.RoomTransfer)
+            .Include(x => x.ReceiptInventoryOverride)
             .Where(x => x.ChangeAmount < 0)
             .Where(x => filter.WarehouseId == null || x.WarehouseId == filter.WarehouseId)
             .Where(x => filter.RoomId == null || x.RoomId == filter.RoomId)
@@ -275,7 +276,10 @@ public sealed class RoomInventoryReconciliationService(
             var warnings = (issueLookup.GetValueOrDefault(x.Id) ?? [])
                 .Select(y => $"{y.Code}: {y.Message}")
                 .ToList();
-            var parentType = parents.Count > 0 && x.RoomTransfer is not null
+            var namedParentCount = (parents.Count > 0 ? 1 : 0)
+                + (x.RoomTransfer is not null ? 1 : 0)
+                + (x.ReceiptInventoryOverride is not null ? 1 : 0);
+            var parentType = namedParentCount > 1
                 ? "Multiple"
                 : parents.Count > 0
                     ? "Bins Run"
@@ -283,7 +287,11 @@ public sealed class RoomInventoryReconciliationService(
                         ? "Transfer"
                         : x.RoomTransferId is not null
                             ? "Missing Transfer"
-                            : "None";
+                            : x.ReceiptInventoryOverride is not null
+                                ? "Receipt Admin Override"
+                                : x.ReceiptInventoryOverrideId is not null
+                                    ? "Missing Receipt Admin Override"
+                                    : "None";
             var profile = x.FruitProfile ?? x.Receipt?.FruitProfile;
             var baselineKey = BaselineKey(
                 x.RoomId,
@@ -308,10 +316,11 @@ public sealed class RoomInventoryReconciliationService(
                 ParentType = parentType,
                 BinsRunId = parents.Count == 1 ? parents[0].Id : null,
                 TransferId = x.RoomTransferId,
+                ReceiptInventoryOverrideId = x.ReceiptInventoryOverrideId,
                 ActualRunId = x.ActualRunId,
                 CreatedBy = x.CreatedByUser?.DisplayName ?? "Unknown",
                 AdjustmentAt = x.AdjustmentAt,
-                ParentMatches = warnings.Count == 0 && parentType is "Bins Run" or "Transfer",
+                ParentMatches = warnings.Count == 0 && parentType is "Bins Run" or "Transfer" or "Receipt Admin Override",
                 CurrentlyAffectsInventory = currentlyAffects,
                 InvariantVersion = x.InventoryInvariantVersion,
                 RecordedSource = x.Source ?? "",

@@ -1,9 +1,9 @@
 @model ReceiptDeletionConfirmationViewModel
 @{
-    ViewData["Title"] = "Delete Receipt";
+    ViewData["Title"] = "Admin Void Receipt";
 }
 
-<h1>Delete Receipt</h1>
+<h1>Admin Void Receipt</h1>
 
 @if (TempData["Error"] is string error)
 {
@@ -12,7 +12,7 @@
 
 <section class="panel danger-zone">
     <h2>@Model.ReceiptNumber — Crop Year @Model.CropYear</h2>
-    <p class="notice warning">Receipt deletion is restricted to administrators. Operational history is never silently cascade-deleted.</p>
+    <p class="notice warning">This action soft-voids active receiving inventory. Operational history is preserved and the inventory effect is recorded as a durable Receipt Admin Override.</p>
     <dl class="summary-list">
         <dt>Received</dt><dd>@BusinessTime.FormatPacific(Model.ReceivedAt)</dd>
         <dt>Grower</dt><dd>@Model.Grower</dd>
@@ -21,62 +21,74 @@
         <dt>Lot</dt><dd>@Model.Lot</dd>
         <dt>Warehouse / room</dt><dd>@Model.Warehouse / @Model.Room</dd>
         <dt>Gross bins</dt><dd>@Model.GrossBins</dd>
+        <dt>Current attributable inventory</dt><dd>@Model.CurrentInventory</dd>
+        <dt>Already run or consumed</dt><dd>@Model.ConsumedBins</dd>
     </dl>
 </section>
 
 <section class="panel">
-    <h2>Dependent Data</h2>
+    <h2>Affected history and inventory</h2>
     <div class="stat-grid">
         <div class="stat-card"><strong>@Model.Dependencies.QcSamples</strong><span>QC samples</span></div>
-        <div class="stat-card"><strong>@Model.Dependencies.FruitReadings</strong><span>Fruit rows</span></div>
-        <div class="stat-card"><strong>@Model.Dependencies.Defects</strong><span>Defects</span></div>
         <div class="stat-card"><strong>@Model.Dependencies.Photos</strong><span>Photos</span></div>
         <div class="stat-card"><strong>@Model.Dependencies.EmailLogs</strong><span>Email logs</span></div>
         <div class="stat-card"><strong>@Model.Dependencies.InventoryAdjustments</strong><span>Inventory records</span></div>
         <div class="stat-card"><strong>@Model.Dependencies.Transfers</strong><span>Transfers</span></div>
-        <div class="stat-card"><strong>@Model.Dependencies.DepletionsAndTrueUps</strong><span>Depletion / true-up</span></div>
         <div class="stat-card"><strong>@Model.Dependencies.BinsRun</strong><span>Bins Run</span></div>
-        <div class="stat-card"><strong>@Model.Dependencies.OfflineSyncItems</strong><span>Sync records</span></div>
-        <div class="stat-card"><strong>@Model.Dependencies.AuditRecords</strong><span>Audit records preserved</span></div>
+        <div class="stat-card"><strong>@Model.Dependencies.AuditRecords</strong><span>Audit records</span></div>
     </div>
 
-    @if (Model.HasBlockingOperationalHistory)
+    @if (Model.CurrentBalances.Count > 0)
     {
-        <p class="notice error"><strong>Normal deletion is blocked.</strong> This receipt has operational history:</p>
-        <ul class="list">
-            @foreach (var reason in Model.BlockingReasons)
+        <h3>Current receipt inventory lineage</h3>
+        <table class="data-table">
+            <thead><tr><th>Facility</th><th>Room</th><th>Crop year</th><th>Lot</th><th>Variety</th><th>Current bins</th></tr></thead>
+            <tbody>
+            @foreach (var balance in Model.CurrentBalances)
             {
-                <li>@reason</li>
+                <tr><td>@balance.Warehouse</td><td>@balance.Room</td><td>@balance.CropYear</td><td>@balance.Lot</td><td>@balance.Variety</td><td>@balance.CurrentBins</td></tr>
             }
-        </ul>
-        <p>Use only a separately reviewed, verified-backup-gated purge operation when removal of that history is explicitly authorized.</p>
+            </tbody>
+        </table>
     }
-    else
-    {
-        <p>This action soft-deletes the receipt from active workflows. The immutable deletion audit and existing audit records remain.</p>
-        <form method="post" action="/Receipts/@Model.Id/Delete" data-prevent-double-submit="true">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="Id" value="@Model.Id" />
-            <input type="hidden" name="OperationToken" value="@Model.Form.OperationToken" />
-            <div class="field">
-                <label for="confirmationValue">Type receipt number <strong>@Model.ReceiptNumber</strong></label>
-                <input id="confirmationValue" name="ConfirmationValue" autocomplete="off" required />
-            </div>
-            <div class="field">
-                <label for="deletionReason">Deletion reason</label>
-                <textarea id="deletionReason" name="Reason" maxlength="1000" required></textarea>
-            </div>
+
+    <p>Completed Bins Runs, Actual Runs, transfers, QC samples, photos, send history, and audits remain unchanged. Only current remaining receipt inventory will be removed.</p>
+    <form method="post" action="/Receipts/@Model.Id/Delete" data-prevent-double-submit="true">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="Id" value="@Model.Id" />
+        <input type="hidden" name="OperationToken" value="@Model.Form.OperationToken" />
+        <input type="hidden" name="ExpectedConcurrencyVersion" value="@Model.ConcurrencyVersion" />
+        <div class="field">
+            <label for="confirmationValue">Type receipt number <strong>@Model.ReceiptNumber</strong></label>
+            <input id="confirmationValue" name="ConfirmationValue" autocomplete="off" required />
+        </div>
+        <div class="field">
+            <label for="deletionReason">Required void reason</label>
+            <textarea id="deletionReason" name="Reason" maxlength="1000" required></textarea>
+        </div>
+        <label class="checkbox-field">
+            <input type="checkbox" name="ConfirmDeletion" value="true" required />
+            I confirm that the displayed receipt identity and crop year are correct.
+        </label>
+        <input type="hidden" name="ConfirmDeletion" value="false" />
+        <label class="checkbox-field">
+            <input type="checkbox" name="ConfirmInventoryChange" value="true" required />
+            I explicitly confirm that current remaining inventory will be removed while operational history is preserved.
+        </label>
+        <input type="hidden" name="ConfirmInventoryChange" value="false" />
+        @if (Model.CurrentInventory < 0)
+        {
             <label class="checkbox-field">
-                <input type="checkbox" name="ConfirmDeletion" value="true" required />
-                I confirm that the displayed receipt identity and crop year are correct.
+                <input type="checkbox" name="AcknowledgeNegativeInventory" value="true" required />
+                I understand this receipt has a negative inventory balance that requires review.
             </label>
-            <input type="hidden" name="ConfirmDeletion" value="false" />
-            <div class="button-row">
-                <button type="submit">Delete Receipt</button>
-                <a class="button secondary-button" href="/Receipts/@Model.Id">Cancel</a>
-            </div>
-        </form>
-    }
+            <input type="hidden" name="AcknowledgeNegativeInventory" value="false" />
+        }
+        <div class="button-row">
+            <button type="submit">Admin Void Receipt</button>
+            <a class="button secondary-button" href="/Receipts/@Model.Id">Cancel</a>
+        </div>
+    </form>
 </section>
 
 <script>
@@ -87,6 +99,6 @@
             return;
         }
         button.disabled = true;
-        button.textContent = "Deleting…";
+        button.textContent = "Voiding…";
     });
 </script>
