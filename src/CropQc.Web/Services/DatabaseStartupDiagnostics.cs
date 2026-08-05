@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260804052104_AddFacilityRunReporting";
+    public const string ExpectedSchemaMigration = "20260805014812_AddReceiptInventoryOverrides";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -148,7 +148,15 @@ public static class DatabaseStartupDiagnostics
         new("BinsRunEntries.ReportingVarietyCodeSnapshot", "BinsRunEntries", "ReportingVarietyCodeSnapshot", RequireNullable: true),
         new("BinsRunEntries.ProductionTypeSnapshot", "BinsRunEntries", "ProductionTypeSnapshot", RequireNullable: true),
         new("BinsRunEntries.IsOrganicSnapshot", "BinsRunEntries", "IsOrganicSnapshot", RequireNullable: true),
-        new("BinsRunEntries.GrowerNumberSnapshot", "BinsRunEntries", "GrowerNumberSnapshot", RequireNullable: true)
+        new("BinsRunEntries.GrowerNumberSnapshot", "BinsRunEntries", "GrowerNumberSnapshot", RequireNullable: true),
+        new("Receipts.ConcurrencyVersion", "Receipts", "ConcurrencyVersion", RequireNotNullable: true),
+        new("ReceiptInventoryOverrides", "ReceiptInventoryOverrides", null),
+        new("ReceiptInventoryOverrides.Id", "ReceiptInventoryOverrides", "Id", RequireNotNullable: true),
+        new("ReceiptInventoryOverrides.ReceiptId", "ReceiptInventoryOverrides", "ReceiptId", RequireNotNullable: true),
+        new("ReceiptInventoryOverrides.AdministratorUserId", "ReceiptInventoryOverrides", "AdministratorUserId", RequireNotNullable: true),
+        new("ReceiptInventoryOverrides.OperationKey", "ReceiptInventoryOverrides", "OperationKey", RequireNotNullable: true),
+        new("ReceiptInventoryOverrides.IsComplete", "ReceiptInventoryOverrides", "IsComplete", RequireNotNullable: true),
+        new("RoomInventoryAdjustments.ReceiptInventoryOverrideId", "RoomInventoryAdjustments", "ReceiptInventoryOverrideId", RequireNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
@@ -172,7 +180,10 @@ public static class DatabaseStartupDiagnostics
         new("IX_BinsRunEntries_ReportingFacilityAssignedByUserId", "BinsRunEntries", "IX_BinsRunEntries_ReportingFacilityAssignedByUserId"),
         new("IX_BinsRunEntries_ReportingFacilityWarehouseId_ReportingCropYearSnapshot_RunAt", "BinsRunEntries", "IX_BinsRunEntries_ReportingFacilityWarehouseId_ReportingCropYearSnapshot_RunAt"),
         new("IX_UserEmploymentHistory_ChangedByUserId", "UserEmploymentHistory", "IX_UserEmploymentHistory_ChangedByUserId"),
-        new("IX_UserEmploymentHistory_UserId_ChangedAt", "UserEmploymentHistory", "IX_UserEmploymentHistory_UserId_ChangedAt")
+        new("IX_UserEmploymentHistory_UserId_ChangedAt", "UserEmploymentHistory", "IX_UserEmploymentHistory_UserId_ChangedAt"),
+        new("IX_ReceiptInventoryOverrides_OperationKey", "ReceiptInventoryOverrides", "IX_ReceiptInventoryOverrides_OperationKey", RequireUnique: true),
+        new("IX_ReceiptInventoryOverrides_ReceiptId_CreatedAt", "ReceiptInventoryOverrides", "IX_ReceiptInventoryOverrides_ReceiptId_CreatedAt"),
+        new("IX_RoomInventoryAdjustments_ReceiptInventoryOverrideId", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_ReceiptInventoryOverrideId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
@@ -194,7 +205,10 @@ public static class DatabaseStartupDiagnostics
         new("FK_BinsRunEntries_Warehouses_ReportingFacilityWarehouseId", "BinsRunEntries", "FK_BinsRunEntries_Warehouses_ReportingFacilityWarehouseId"),
         new("FK_Users_Users_EmploymentUpdatedByUserId", "Users", "FK_Users_Users_EmploymentUpdatedByUserId"),
         new("FK_UserEmploymentHistory_Users_ChangedByUserId", "UserEmploymentHistory", "FK_UserEmploymentHistory_Users_ChangedByUserId"),
-        new("FK_UserEmploymentHistory_Users_UserId", "UserEmploymentHistory", "FK_UserEmploymentHistory_Users_UserId")
+        new("FK_UserEmploymentHistory_Users_UserId", "UserEmploymentHistory", "FK_UserEmploymentHistory_Users_UserId"),
+        new("FK_ReceiptInventoryOverrides_Receipts_ReceiptId", "ReceiptInventoryOverrides", "FK_ReceiptInventoryOverrides_Receipts_ReceiptId"),
+        new("FK_ReceiptInventoryOverrides_Users_AdministratorUserId", "ReceiptInventoryOverrides", "FK_ReceiptInventoryOverrides_Users_AdministratorUserId"),
+        new("FK_RoomInventoryAdjustments_ReceiptInventoryOverrides_ReceiptInventoryOverrideId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_ReceiptInventoryOverrides_ReceiptInventoryOverrideId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
@@ -202,7 +216,8 @@ public static class DatabaseStartupDiagnostics
         new("PK_RunExpectations", "RunExpectations", "PK_RunExpectations"),
         new("PK_RunExpectationSources", "RunExpectationSources", "PK_RunExpectationSources"),
         new("PK_PackoutSourceAllocations", "PackoutSourceAllocations", "PK_PackoutSourceAllocations"),
-        new("PK_UserEmploymentHistory", "UserEmploymentHistory", "PK_UserEmploymentHistory")
+        new("PK_UserEmploymentHistory", "UserEmploymentHistory", "PK_UserEmploymentHistory"),
+        new("PK_ReceiptInventoryOverrides", "ReceiptInventoryOverrides", "PK_ReceiptInventoryOverrides")
     ];
 
     public static async Task InspectAsync(

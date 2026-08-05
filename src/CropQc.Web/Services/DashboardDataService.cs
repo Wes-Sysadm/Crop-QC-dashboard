@@ -1369,6 +1369,23 @@ public sealed class DashboardDataService(
 
             var samples = await QuerySamples().Where(x => x.ReceiptId == id).OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleSequenceNumber).ToListAsync(cancellationToken);
             var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.ReceiptId == id && !x.IsDeleted).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
+            var inventoryOverrides = await dbContext.ReceiptInventoryOverrides.AsNoTracking()
+                .Where(x => x.ReceiptId == id)
+                .OrderByDescending(x => x.CreatedAt)
+                .Select(x => new ReceiptInventoryOverrideHistoryViewModel(
+                    x.Id,
+                    x.ActionType,
+                    x.AdministratorUser.DisplayName,
+                    x.CreatedAt,
+                    x.Reason,
+                    x.OldReceiptBinCount,
+                    x.NewReceiptBinCount,
+                    x.InventoryDelta,
+                    x.CurrentInventoryBefore,
+                    x.CurrentInventoryAfter,
+                    x.NegativeInventoryAcknowledged,
+                    x.InventoryAdjustments.Count))
+                .ToListAsync(cancellationToken);
             return new ReceiptDetailViewModel
             {
                 Receipt = ReceiptListItem(receipt),
@@ -1377,6 +1394,7 @@ public sealed class DashboardDataService(
                 PhotoGroups = GroupPhotos(photos, canDelete: false),
                 CanDeleteSamples = await HasAccessAsync(ApplicationAreas.DailyQc, PageAccessLevel.Admin, cancellationToken),
                 DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
+                InventoryOverrides = inventoryOverrides,
                 AddPhotoForm = new AddPhotoMetadataForm
                 {
                     ReceiptId = receipt.Id,
@@ -1449,6 +1467,7 @@ public sealed class DashboardDataService(
             growerLot = await dbContext.GrowerLots.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.GrowerLotId && x.IsActive, cancellationToken);
         }
 
+        var oldReceiptBinCount = receipt.BinCount;
         var before = JsonSerializer.Serialize(new
         {
             receipt.CropYear,
@@ -1468,18 +1487,32 @@ public sealed class DashboardDataService(
         var currentBins = wasInventory ? await GetCurrentBinsForReceiptAsync(receipt.Id, cancellationToken) : 0;
         var growerName = growerLot?.Grower ?? form.GrowerName.Trim();
         var lotNumber = growerLot?.LotNumber ?? form.GrowerNumber.Trim();
-        if (wasInventory
-            && IsInventoryReceiptType(receiptType)
-            && form.BinCount < currentBins)
+        var hasInventoryHistory = wasInventory && await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .AnyAsync(x => x.ReceiptId == receipt.Id, cancellationToken);
+        var hasPriorInventoryOverride = hasInventoryHistory && await dbContext.ReceiptInventoryOverrides.AsNoTracking()
+            .AnyAsync(x => x.ReceiptId == receipt.Id, cancellationToken);
+        var quantityChanged = form.BinCount != receipt.BinCount;
+        var inventoryIdentityChanged = receipt.CropYear != form.CropYear
+            || receipt.WarehouseId != form.WarehouseId
+            || receipt.RoomId != form.RoomId
+            || receipt.FruitProfileId != form.FruitProfileId
+            || receipt.GrowerLotId != growerLot?.Id
+            || !string.Equals(receipt.GrowerNumber ?? receipt.LotCode, lotNumber, StringComparison.OrdinalIgnoreCase)
+            || wasInventory != IsInventoryReceiptType(receiptType);
+        var requiresAdminQuantityOverride = quantityChanged
+            && (form.BinCount < receipt.BinCount || hasPriorInventoryOverride);
+        if (hasInventoryHistory && (requiresAdminQuantityOverride || inventoryIdentityChanged))
         {
             var rejectingUser = await GetCurrentUserAsync(cancellationToken);
             await AuditRejectedInventoryDeductionAsync(
                 "ReceiptEdit",
                 receipt.Id.ToString(),
                 rejectingUser,
-                $"Rejected requested receipt reduction from {currentBins} to {form.BinCount}.",
+                $"Rejected requested inventory-affecting receipt edit from {receipt.BinCount} to {form.BinCount} bins.",
                 cancellationToken);
-            return "Inventory leaving a room must be recorded through Bins Run or Transfer. The receipt reduction was not saved.";
+            return quantityChanged && form.BinCount < receipt.BinCount
+                ? "Inventory leaving a room must be recorded through Bins Run or Transfer. The receipt reduction was not saved."
+                : "Inventory-affecting receipt corrections require Receipts Admin and an explicit Admin Inventory Override. The receipt was not changed.";
         }
 
         receipt.CropYear = form.CropYear;
@@ -1496,20 +1529,22 @@ public sealed class DashboardDataService(
         receipt.LotCode = lotNumber;
         receipt.BinCount = Math.Max(0, form.BinCount);
         receipt.UpdatedAt = DateTimeOffset.UtcNow;
+        receipt.ConcurrencyVersion++;
 
         var currentUser = await GetCurrentUserAsync(cancellationToken);
-        if (IsInventoryReceiptType(receiptType))
+        if (IsInventoryReceiptType(receiptType) && (!wasInventory || !hasInventoryHistory || quantityChanged))
         {
+            var changeAmount = wasInventory ? receipt.BinCount - oldReceiptBinCount : receipt.BinCount;
             AddRoomInventoryAdjustment(
                 receipt,
                 currentUser,
                 "ReceiptEdit",
                 oldBinCount: wasInventory ? currentBins : null,
-                changeAmount: receipt.BinCount - (wasInventory ? currentBins : 0),
-                newBinCount: receipt.BinCount,
+                changeAmount: changeAmount,
+                newBinCount: currentBins + changeAmount,
                 adjustmentAt: DateTimeOffset.UtcNow,
-                reason: "Admin receipt correction",
-                notes: $"Admin corrected receipt {receipt.CompuTechReceiptId}; current bins set to {receipt.BinCount}.",
+                reason: "Receipt source adjustment",
+                notes: $"Receipt {receipt.CompuTechReceiptId} quantity changed from {oldReceiptBinCount} to {receipt.BinCount} bins.",
                 roomDepletionId: null);
         }
 

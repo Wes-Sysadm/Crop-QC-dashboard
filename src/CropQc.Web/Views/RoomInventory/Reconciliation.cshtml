@@ -67,7 +67,7 @@
 
 <section class="panel">
     <h2>Negative adjustment parent evidence</h2>
-    <p class="muted">Every new-format deduction must have exactly one persisted Bins Run or Transfer parent. Historical warnings are shown without changing their records.</p>
+    <p class="muted">Every new-format deduction must have exactly one persisted Bins Run, Transfer, or Receipt Admin Override parent. Historical warnings are shown without changing their records.</p>
     @if (Model.NegativeAdjustments.Count == 0)
     {
         <p class="muted">No negative room-ledger adjustments match the selected filters.</p>
@@ -112,6 +112,10 @@
                             @if (row.TransferId is not null)
                             {
                                 <br /><span>Transfer #@row.TransferId</span>
+                            }
+                            @if (row.ReceiptInventoryOverrideId is not null)
+                            {
+                                <br /><span>Receipt Admin Override @row.ReceiptInventoryOverrideId</span>
                             }
                         </td>
                         <td>@(row.ActualRunId is null ? "-" : $"#{row.ActualRunId}")</td>

@@ -3,7 +3,7 @@ services:
     name: crop-qc-dashboard
     runtime: docker
     dockerfilePath: ./Dockerfile
-    preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260804052104_AddFacilityRunReporting
+    preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260805014812_AddReceiptInventoryOverrides
     healthCheckPath: /health
     disks:
       - name: crop-qc-dashboard-data
@@ -161,7 +161,7 @@ services:
     name: crop-qc-dashboard-staging
     runtime: docker
     dockerfilePath: ./Dockerfile
-    preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260804052104_AddFacilityRunReporting
+    preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260805014812_AddReceiptInventoryOverrides
     healthCheckPath: /health
     disks:
       - name: crop-qc-dashboard-staging-data

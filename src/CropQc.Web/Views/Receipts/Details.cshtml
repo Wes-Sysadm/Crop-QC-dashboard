@@ -39,7 +39,7 @@
             }
             @if (canDeleteReceipt)
             {
-                <a class="button danger-button" href="/Receipts/@Model.Receipt.Id/Delete">Delete Receipt</a>
+                <a class="button danger-button" href="/Receipts/@Model.Receipt.Id/Delete">Admin Void Receipt</a>
             }
         </div>
         @if (Model.Samples.Any())
@@ -63,6 +63,26 @@
         </form>
         }
     </section>
+
+    @if (Model.InventoryOverrides.Count > 0)
+    {
+        <section class="panel">
+            <h2>Receipt Admin Override History</h2>
+            <table class="data-table"><thead><tr><th>ID / Time</th><th>Action</th><th>Administrator</th><th>Receipt bins</th><th>Inventory</th><th>Reason / Audit</th></tr></thead><tbody>
+            @foreach (var item in Model.InventoryOverrides)
+            {
+                <tr>
+                    <td><code>@item.Id</code><br />@BusinessTime.FormatPacific(item.CreatedAt)</td>
+                    <td>@item.Action</td><td>@item.Administrator</td>
+                    <td>@item.OldReceiptBins → @item.NewReceiptBins</td>
+                    <td>@item.CurrentInventoryBefore → @item.CurrentInventoryAfter (@item.InventoryDelta)<br />@item.LedgerAdjustmentCount ledger row(s)</td>
+                    <td>@item.Reason@if (item.NegativeInventoryAcknowledged) { <br /><strong>Negative inventory acknowledged</strong> }</td>
+                </tr>
+            }
+            </tbody></table>
+            <a class="button secondary-button" href="/Admin/RoomInventory/Reconciliation">Open Inventory Reconciliation</a>
+        </section>
+    }
 
     @if (canEditReceipt)
     {

@@ -381,7 +381,8 @@ public sealed class BusinessTimeAndReceiptPurgeTests
     {
         var source = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "ReceiptsController.cs"));
 
-        Assert.Equal(2, source.Split("AccessPolicyNames.ReceiptDeleteAdmin", StringSplitOptions.None).Length - 1);
+        Assert.Equal(5, source.Split("AccessPolicyNames.ReceiptDeleteAdmin", StringSplitOptions.None).Length - 1);
+        Assert.Contains("AdminInventoryOverride", source);
     }
 
     [Fact]
@@ -392,7 +393,8 @@ public sealed class BusinessTimeAndReceiptPurgeTests
         Assert.Contains("ConfirmationValue", source);
         Assert.Contains("Reason", source);
         Assert.Contains("ConfirmDeletion", source);
-        Assert.Contains("Dependent Data", source);
+        Assert.Contains("Affected history and inventory", source);
+        Assert.Contains("ConfirmInventoryChange", source);
     }
 
     private static PacificBusinessTimeService Service(DateTimeOffset now) =>

@@ -1110,12 +1110,99 @@ public sealed class EditReceiptPageViewModel
     public IReadOnlyList<Room> Rooms { get; set; } = [];
     public IReadOnlyList<FruitProfile> FruitProfiles { get; set; } = [];
     public IReadOnlyList<GrowerLot> GrowerLots { get; set; } = [];
+    public bool CanAdminOverride { get; set; }
+    public ReceiptInventoryOverridePreviewViewModel? AdminOverridePreview { get; set; }
 }
 
-public sealed class UpdateReceiptForm : CreateReceiptForm
+public class UpdateReceiptForm : CreateReceiptForm
 {
     public long Id { get; set; }
 }
+
+public sealed class AdminReceiptInventoryOverrideForm : UpdateReceiptForm
+{
+    public long ExpectedConcurrencyVersion { get; set; }
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public string Reason { get; set; } = "";
+    public bool ConfirmInventoryChange { get; set; }
+    public bool AcknowledgeNegativeInventory { get; set; }
+}
+
+public sealed class ReceiptInventoryOverridePreviewViewModel
+{
+    public long ReceiptId { get; set; }
+    public long ConcurrencyVersion { get; set; }
+    public int ReceiptBinCount { get; set; }
+    public int CurrentInventory { get; set; }
+    public int ConsumedBins { get; set; }
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public IReadOnlyList<ReceiptInventoryBalanceViewModel> Balances { get; set; } = [];
+    public int BinsRunCount { get; set; }
+    public int ActualRunCount { get; set; }
+    public int TransferCount { get; set; }
+    public bool HasPriorOverride { get; set; }
+}
+
+public sealed record ReceiptInventoryBalanceViewModel(
+    int WarehouseId,
+    string Warehouse,
+    int RoomId,
+    string Room,
+    int? CropYear,
+    int? GrowerLotId,
+    int? FruitProfileId,
+    string Grower,
+    string Lot,
+    string Variety,
+    string InventoryStatus,
+    int CurrentBins);
+
+public sealed record ReceiptInventoryOverrideResult(Guid? OverrideId, string? Error, bool IsConflict = false, bool WasIdempotent = false)
+{
+    public bool Succeeded => Error is null;
+}
+
+public sealed class ReceiptInventoryOverrideAuditViewModel
+{
+    public Guid Id { get; set; }
+    public long ReceiptId { get; set; }
+    public string ReceiptNumber { get; set; } = "";
+    public bool ReceiptIsVoided { get; set; }
+    public string Action { get; set; } = "";
+    public string Administrator { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+    public string Reason { get; set; } = "";
+    public int OldReceiptBins { get; set; }
+    public int NewReceiptBins { get; set; }
+    public int InventoryDelta { get; set; }
+    public int CurrentInventoryBefore { get; set; }
+    public int CurrentInventoryAfter { get; set; }
+    public bool NegativeInventoryAcknowledged { get; set; }
+    public string BeforeSnapshotJson { get; set; } = "";
+    public string AfterSnapshotJson { get; set; } = "";
+    public IReadOnlyList<ReceiptInventoryOverrideAdjustmentViewModel> Adjustments { get; set; } = [];
+}
+
+public sealed record ReceiptInventoryOverrideAdjustmentViewModel(
+    long Id,
+    string Facility,
+    string Room,
+    int? CropYear,
+    string Lot,
+    string Variety,
+    int OldBins,
+    int Change,
+    int NewBins);
+
+public sealed record VoidedReceiptAdminViewModel(
+    long ReceiptId,
+    string ReceiptNumber,
+    int CropYear,
+    DateTimeOffset? VoidedAt,
+    string Reason,
+    Guid OverrideId,
+    string Administrator,
+    int RemovedInventory);
 
 public sealed class DeleteReceiptForm
 {
@@ -1123,7 +1210,10 @@ public sealed class DeleteReceiptForm
     public string Reason { get; set; } = "";
     public string ConfirmationValue { get; set; } = "";
     public bool ConfirmDeletion { get; set; }
+    public bool ConfirmInventoryChange { get; set; }
+    public bool AcknowledgeNegativeInventory { get; set; }
     public string OperationToken { get; set; } = "";
+    public long ExpectedConcurrencyVersion { get; set; }
 }
 
 public sealed class ReceiptDeletionConfirmationViewModel
@@ -1139,6 +1229,10 @@ public sealed class ReceiptDeletionConfirmationViewModel
     public string Warehouse { get; set; } = "";
     public string Room { get; set; } = "";
     public int GrossBins { get; set; }
+    public int CurrentInventory { get; set; }
+    public int ConsumedBins { get; set; }
+    public long ConcurrencyVersion { get; set; }
+    public IReadOnlyList<ReceiptInventoryBalanceViewModel> CurrentBalances { get; set; } = [];
     public ReceiptDependencyCountsViewModel Dependencies { get; set; } = new();
     public bool HasBlockingOperationalHistory { get; set; }
     public IReadOnlyList<string> BlockingReasons { get; set; } = [];
@@ -1282,7 +1376,22 @@ public sealed class ReceiptDetailViewModel
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
     public bool CanDeleteSamples { get; set; }
     public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
+    public IReadOnlyList<ReceiptInventoryOverrideHistoryViewModel> InventoryOverrides { get; set; } = [];
 }
+
+public sealed record ReceiptInventoryOverrideHistoryViewModel(
+    Guid Id,
+    string Action,
+    string Administrator,
+    DateTimeOffset CreatedAt,
+    string Reason,
+    int OldReceiptBins,
+    int NewReceiptBins,
+    int InventoryDelta,
+    int CurrentInventoryBefore,
+    int CurrentInventoryAfter,
+    bool NegativeInventoryAcknowledged,
+    int LedgerAdjustmentCount);
 
 public sealed class SampleListItemViewModel
 {

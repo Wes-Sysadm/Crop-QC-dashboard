@@ -18,7 +18,7 @@ public sealed class InventoryDeductionInvariantTests
         var exception = await Assert.ThrowsAsync<InventoryDeductionInvariantException>(
             () => service.ValidateBeforeCommitAsync(CancellationToken.None));
 
-        Assert.Contains("required Bins Run or Transfer relationship", exception.Message);
+        Assert.Contains("required Bins Run, Transfer, or Receipt Admin Override relationship", exception.Message);
     }
 
     [Fact]

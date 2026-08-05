@@ -38,6 +38,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<StarchScaleValue> StarchScaleValues => Set<StarchScaleValue>();
     public DbSet<FruitSizeConversionThreshold> FruitSizeConversionThresholds => Set<FruitSizeConversionThreshold>();
     public DbSet<Receipt> Receipts => Set<Receipt>();
+    public DbSet<ReceiptInventoryOverride> ReceiptInventoryOverrides => Set<ReceiptInventoryOverride>();
     public DbSet<RoomDepletion> RoomDepletions => Set<RoomDepletion>();
     public DbSet<RoomInventoryAdjustment> RoomInventoryAdjustments => Set<RoomInventoryAdjustment>();
     public DbSet<RoomTransfer> RoomTransfers => Set<RoomTransfer>();
@@ -1155,6 +1156,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.GrowerName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.LotCode).HasMaxLength(100).IsRequired();
             entity.Property(x => x.DeleteReason).HasMaxLength(1000);
+            entity.Property(x => x.ConcurrencyVersion).IsConcurrencyToken();
             entity.HasIndex(x => x.CompuTechReceiptId);
             entity.HasIndex(x => new { x.CropYear, x.IsDeleted });
             entity.HasOne(x => x.Warehouse)
@@ -1177,6 +1179,27 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .WithMany()
                 .HasForeignKey(x => x.CanonicalOrchardBlockId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ReceiptInventoryOverride>(entity =>
+        {
+            entity.Property(x => x.ActionType).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.OperationKey).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.VoidConfirmationDetails).HasMaxLength(1000);
+            entity.Property(x => x.BeforeReceiptSnapshotJson).IsRequired();
+            entity.Property(x => x.AfterReceiptSnapshotJson).IsRequired();
+            entity.Property(x => x.AffectedInventorySnapshotJson).IsRequired();
+            entity.HasIndex(x => x.OperationKey).IsUnique();
+            entity.HasIndex(x => new { x.ReceiptId, x.CreatedAt });
+            entity.HasOne(x => x.Receipt)
+                .WithMany(x => x.InventoryOverrides)
+                .HasForeignKey(x => x.ReceiptId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.AdministratorUser)
+                .WithMany()
+                .HasForeignKey(x => x.AdministratorUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<RoomDepletion>(entity =>
@@ -1233,6 +1256,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasIndex(x => new { x.ReceiptId, x.AdjustmentAt });
             entity.HasIndex(x => new { x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.VarietyCode, x.AdjustmentAt });
             entity.HasIndex(x => new { x.ActualRunId, x.ActualRunRevisionId });
+            entity.HasIndex(x => x.ReceiptInventoryOverrideId);
             var operationKeyIndex = entity.HasIndex(x => x.InventoryOperationKey).IsUnique();
             operationKeyIndex.HasFilter(isPostgreSqlProvider
                 ? "\"InventoryOperationKey\" IS NOT NULL"
@@ -1272,6 +1296,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.RoomTransfer)
                 .WithMany(x => x.InventoryAdjustments)
                 .HasForeignKey(x => x.RoomTransferId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ReceiptInventoryOverride)
+                .WithMany(x => x.InventoryAdjustments)
+                .HasForeignKey(x => x.ReceiptInventoryOverrideId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.ActualRun)
                 .WithMany()

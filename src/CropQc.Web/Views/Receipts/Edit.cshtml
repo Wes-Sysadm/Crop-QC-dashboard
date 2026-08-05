@@ -19,6 +19,7 @@
 
 <section class="panel">
     <form class="form-grid" method="post" action="/Receipts/@form.Id/Edit">
+        @Html.AntiForgeryToken()
         <input type="hidden" name="Id" value="@form.Id" />
         <div class="field"><label>Crop Year</label><input name="CropYear" value="@form.CropYear" required /></div>
         <div class="field"><label>Received At (Pacific)</label><input name="ReceivedAt" type="datetime-local" value="@BusinessTime.FormatPacificInput(form.ReceivedAt)" required /></div>
@@ -74,6 +75,43 @@
         </datalist>
         <div class="field"><label>Bin Count</label><input name="BinCount" type="number" min="0" value="@form.BinCount" required /></div>
         <label class="checkbox-field"><input type="checkbox" name="ConfirmCropYear" value="true" checked /> Confirm Crop Year</label><input type="hidden" name="ConfirmCropYear" value="false" />
+        @if (Model.CanAdminOverride && Model.AdminOverridePreview is not null)
+        {
+            var preview = Model.AdminOverridePreview;
+            <section id="adminInventoryOverride" class="panel danger-zone wide" hidden
+                     data-original-bins="@form.BinCount" data-original-warehouse="@form.WarehouseId"
+                     data-original-room="@form.RoomId" data-original-crop-year="@form.CropYear"
+                     data-original-grower-lot="@form.GrowerLotId" data-original-grower-number="@form.GrowerNumber"
+                     data-original-fruit-profile="@form.FruitProfileId" data-has-prior-override="@preview.HasPriorOverride.ToString().ToLowerInvariant()">
+                <h2>Admin Inventory Override</h2>
+                <p class="notice warning">This is an audited inventory operation, not a normal receipt edit. Historical runs and transfers will not be rewritten.</p>
+                <dl class="summary-list">
+                    <dt>Current receipt quantity</dt><dd>@preview.ReceiptBinCount bins</dd>
+                    <dt>Proposed quantity</dt><dd><span id="overrideProposedBins">@preview.ReceiptBinCount</span> bins</dd>
+                    <dt>Quantity change</dt><dd><span id="overrideBinDelta">0</span> bins</dd>
+                    <dt>Current attributable inventory</dt><dd>@preview.CurrentInventory bins</dd>
+                    <dt>Net already run or consumed</dt><dd>@preview.ConsumedBins bins</dd>
+                    <dt>Operational history</dt><dd>@preview.BinsRunCount Bins Run line(s), @preview.ActualRunCount Actual Run(s), @preview.TransferCount transfer(s)</dd>
+                </dl>
+                @if (preview.Balances.Count > 0)
+                {
+                    <table class="data-table"><thead><tr><th>Facility</th><th>Room</th><th>Crop year</th><th>Lot</th><th>Variety</th><th>Current bins</th></tr></thead><tbody>
+                    @foreach (var balance in preview.Balances)
+                    {
+                        <tr><td>@balance.Warehouse</td><td>@balance.Room</td><td>@balance.CropYear</td><td>@balance.Lot</td><td>@balance.Variety</td><td>@balance.CurrentBins</td></tr>
+                    }
+                    </tbody></table>
+                }
+                <input type="hidden" name="ExpectedConcurrencyVersion" value="@preview.ConcurrencyVersion" />
+                <input type="hidden" name="OperationKey" value="@preview.OperationKey" />
+                <div class="field wide"><label for="adminOverrideReason">Required override reason</label><textarea id="adminOverrideReason" name="Reason" maxlength="1000"></textarea></div>
+                <label class="checkbox-field wide"><input type="checkbox" name="ConfirmInventoryChange" value="true" /> I confirm that this correction will change inventory and create a durable Receipt Admin Override.</label>
+                <input type="hidden" name="ConfirmInventoryChange" value="false" />
+                <label id="negativeInventoryAcknowledgment" class="checkbox-field wide" hidden><input type="checkbox" name="AcknowledgeNegativeInventory" value="true" /> I understand this correction will create a negative inventory balance that requires review.</label>
+                <input type="hidden" name="AcknowledgeNegativeInventory" value="false" />
+                <button type="submit" formaction="/Receipts/@form.Id/AdminInventoryOverride">Apply Admin Inventory Override</button>
+            </section>
+        }
         <div class="button-row">
             <button type="submit">Save Receipt</button>
             <a class="button secondary-button" href="/Receipts/@form.Id">Cancel</a>
@@ -137,5 +175,32 @@
                 growerLotSelect.value = "";
             }
         });
+
+        const overrideSection = document.getElementById("adminInventoryOverride");
+        if (overrideSection) {
+            const watched = ["BinCount", "WarehouseId", "RoomId", "CropYear", "GrowerLotId", "GrowerNumber", "FruitProfileId"];
+            const currentValue = name => document.querySelector(`[name='${name}']`)?.value ?? "";
+            const normalize = value => (value || "").trim().toLowerCase();
+            function updateOverrideVisibility() {
+                const proposed = Number(currentValue("BinCount"));
+                const original = Number(overrideSection.dataset.originalBins);
+                const identityChanged = Number(currentValue("WarehouseId")) !== Number(overrideSection.dataset.originalWarehouse)
+                    || Number(currentValue("RoomId")) !== Number(overrideSection.dataset.originalRoom)
+                    || Number(currentValue("CropYear")) !== Number(overrideSection.dataset.originalCropYear)
+                    || normalize(currentValue("GrowerLotId")) !== normalize(overrideSection.dataset.originalGrowerLot)
+                    || normalize(currentValue("GrowerNumber")) !== normalize(overrideSection.dataset.originalGrowerNumber)
+                    || Number(currentValue("FruitProfileId")) !== Number(overrideSection.dataset.originalFruitProfile);
+                const priorOverrideRequiresAuditedIncrease = overrideSection.dataset.hasPriorOverride === "true" && proposed > original;
+                overrideSection.hidden = proposed >= original && !identityChanged && !priorOverrideRequiresAuditedIncrease;
+                document.getElementById("overrideProposedBins").textContent = Number.isFinite(proposed) ? proposed : "n/a";
+                document.getElementById("overrideBinDelta").textContent = Number.isFinite(proposed) ? proposed - original : "n/a";
+                document.getElementById("negativeInventoryAcknowledgment").hidden = @(Model.AdminOverridePreview?.CurrentInventory ?? 0) + (Number.isFinite(proposed) ? proposed - original : 0) >= 0;
+            }
+            for (const name of watched) {
+                document.querySelector(`[name='${name}']`)?.addEventListener("change", updateOverrideVisibility);
+                document.querySelector(`[name='${name}']`)?.addEventListener("input", updateOverrideVisibility);
+            }
+            updateOverrideVisibility();
+        }
     })();
 </script>

@@ -37,6 +37,7 @@ public sealed class RoomInventoryNegativeAdjustmentViewModel
     public string ParentType { get; set; } = "";
     public long? BinsRunId { get; set; }
     public long? TransferId { get; set; }
+    public Guid? ReceiptInventoryOverrideId { get; set; }
     public long? ActualRunId { get; set; }
     public string CreatedBy { get; set; } = "";
     public DateTimeOffset AdjustmentAt { get; set; }
