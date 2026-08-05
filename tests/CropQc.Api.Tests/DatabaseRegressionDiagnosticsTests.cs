@@ -344,7 +344,7 @@ public sealed class DatabaseRegressionDiagnosticsTests
         Assert.Contains("\"Receipts\", \"ConcurrencyVersion\"", diagnostics);
         Assert.Contains("\"RoomInventoryAdjustments\", \"ReceiptInventoryOverrideId\"", diagnostics);
         Assert.Contains("IX_ReceiptInventoryOverrides_OperationKey", diagnostics);
-        Assert.Contains("FK_RoomInventoryAdjustments_ReceiptInventoryOverrides_ReceiptInventoryOverrideId", diagnostics);
+        Assert.Contains("FK_RoomInventoryAdjustments_ReceiptOverrides_OverrideId", diagnostics);
         Assert.Contains("RequireNullable: true", diagnostics);
         Assert.Contains("RequiredIndexExpectations", diagnostics);
         Assert.Contains("RequiredForeignKeyExpectations", diagnostics);

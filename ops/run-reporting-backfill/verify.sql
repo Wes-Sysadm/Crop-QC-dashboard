@@ -28,7 +28,7 @@ BEGIN
            OR b."IsOrganicSnapshot" IS DISTINCT FROM e.is_organic
            OR b."GrowerNumberSnapshot" IS DISTINCT FROM e.grower_number
     ) THEN
-        RAISE EXCEPTION 'A reporting line does not match the run-40 classification';
+        RAISE EXCEPTION 'A reporting line does not match the run-41 classification';
     END IF;
 
     IF EXISTS (
@@ -38,7 +38,7 @@ BEGIN
            OR a."RunFacilityCodeSnapshot" IS DISTINCT FROM e.facility_code
            OR a."RunFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260804-run40'
     ) THEN
-        RAISE EXCEPTION 'An Actual Run facility does not match the run-40 classification';
+        RAISE EXCEPTION 'An Actual Run facility does not match the run-41 classification';
     END IF;
 
     IF (SELECT COUNT(*) FROM "AuditLogs" WHERE "Action"='ReviewedEmploymentBackfill' AND "SourceApplication"='ops/run-reporting-backfill' AND "EntityKey" IN ('2','8')) <> 2

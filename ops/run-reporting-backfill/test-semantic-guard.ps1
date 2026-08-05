@@ -17,9 +17,12 @@ if ($LASTEXITCODE -ne 0) {
     throw "Could not inspect disposable PostgreSQL container $ContainerName."
 }
 
-$postgresUser = (($containerEnvironment | Where-Object { $_ -like 'POSTGRES_USER=*' }) -split '=', 2)[1]
-if ([string]::IsNullOrWhiteSpace($postgresUser)) {
-    throw 'The disposable PostgreSQL container does not expose POSTGRES_USER.'
+$postgresUserEntry = $containerEnvironment | Where-Object { $_ -like 'POSTGRES_USER=*' } | Select-Object -First 1
+$postgresUser = if ([string]::IsNullOrWhiteSpace($postgresUserEntry)) {
+    'postgres'
+}
+else {
+    ($postgresUserEntry -split '=', 2)[1]
 }
 
 $containerPackagePath = '/tmp/run-reporting-semantic-guard-tests'

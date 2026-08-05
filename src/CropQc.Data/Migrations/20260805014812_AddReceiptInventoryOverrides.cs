@@ -87,7 +87,7 @@ namespace CropQc.Data.Migrations
                 columns: new[] { "ReceiptId", "CreatedAt" });
 
             migrationBuilder.AddForeignKey(
-                name: "FK_RoomInventoryAdjustments_ReceiptInventoryOverrides_ReceiptInventoryOverrideId",
+                name: "FK_RoomInventoryAdjustments_ReceiptOverrides_OverrideId",
                 table: "RoomInventoryAdjustments",
                 column: "ReceiptInventoryOverrideId",
                 principalTable: "ReceiptInventoryOverrides",
@@ -99,7 +99,7 @@ namespace CropQc.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(
-                name: "FK_RoomInventoryAdjustments_ReceiptInventoryOverrides_ReceiptInventoryOverrideId",
+                name: "FK_RoomInventoryAdjustments_ReceiptOverrides_OverrideId",
                 table: "RoomInventoryAdjustments");
 
             migrationBuilder.DropTable(

@@ -392,7 +392,20 @@ public sealed class ReceiptInventoryOverrideTests
         var roomB = new Room { Id = 93202, Warehouse = warehouse, WarehouseId = warehouse.Id, Code = "B", Name = "Room B" };
         var conventional = new FruitProfile { Id = 93301, Name = "PG Gala", VarietyCode = "PG-GALA", FruitType = "Apple", ProductionType = "Conventional" };
         var organic = new FruitProfile { Id = 93302, Name = "PG Organic Gala", VarietyCode = "PG-ORG-GALA", FruitType = "Apple", ProductionType = "Organic", IsOrganic = true };
-        var admin = new User { Id = 93401, Email = ApplicationAreas.OwnerEmail, DisplayName = "PostgreSQL Receipt Admin", Domain = "fruitandland.com", CreatedAt = Now };
+        var admin = new User
+        {
+            Id = 93401,
+            Email = "pg-receipt-admin@example.invalid",
+            DisplayName = "PostgreSQL Receipt Admin",
+            Domain = "example.invalid",
+            CreatedAt = Now
+        };
+        admin.PageAccesses.Add(new UserPageAccess
+        {
+            AreaKey = ApplicationAreas.Receipts,
+            AccessLevel = PageAccessLevel.Admin.ToString(),
+            UpdatedAt = Now
+        });
         db.AddRange(warehouse, roomA, roomB, conventional, organic, admin);
         var quantityReceipt = PgReceipt(93501, "PG-OVERRIDE-QUANTITY", warehouse, roomA, conventional);
         var transferReceipt = PgReceipt(93502, "PG-OVERRIDE-TRANSFER", warehouse, roomA, conventional);

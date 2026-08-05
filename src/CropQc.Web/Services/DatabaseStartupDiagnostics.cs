@@ -208,7 +208,7 @@ public static class DatabaseStartupDiagnostics
         new("FK_UserEmploymentHistory_Users_UserId", "UserEmploymentHistory", "FK_UserEmploymentHistory_Users_UserId"),
         new("FK_ReceiptInventoryOverrides_Receipts_ReceiptId", "ReceiptInventoryOverrides", "FK_ReceiptInventoryOverrides_Receipts_ReceiptId"),
         new("FK_ReceiptInventoryOverrides_Users_AdministratorUserId", "ReceiptInventoryOverrides", "FK_ReceiptInventoryOverrides_Users_AdministratorUserId"),
-        new("FK_RoomInventoryAdjustments_ReceiptInventoryOverrides_ReceiptInventoryOverrideId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_ReceiptInventoryOverrides_ReceiptInventoryOverrideId")
+        new("FK_RoomInventoryAdjustments_ReceiptOverrides_OverrideId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_ReceiptOverrides_OverrideId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
