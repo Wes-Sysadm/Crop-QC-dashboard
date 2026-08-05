@@ -1,27 +1,28 @@
-# Restored production report — backup run 39
+# Restored production report — backup run 40
 
 ## Backup evidence
 
-- Run ID: 39 (`PreDeployment`, `Succeeded`)
+- Run ID: 40 (`PreDeployment`, `Succeeded`)
 - Production SHA: `2b840ef23b505300a7c0be0ca2b011f5355a0e98`
-- Started: `2026-08-04 17:41:35.399718+00`
-- Completed: `2026-08-04 17:44:01.001141+00`
-- Package: `cropqc-production-predeployment-20260804-174135.zip`
-- Size: 1,137,016 bytes
-- SHA-256: `ee635396b27edde3cc3d4b183caea588827b92047732efe6ba3bd3ae2c17232d`
-- Sidecar: `cropqc-production-predeployment-20260804-174135.manifest.json`
-- Package storage reference: `1sfVeSnUWN8SMchK8NmbFbg2AxjiesewL`
-- Sidecar storage reference: `1k74DFfUEx1z9rg4OnUDmuEWQyDsvabVo`
-- Independent checks: exact size/hash, readable ZIP, readable nonempty PostgreSQL dump, four readable JSON components, component sizes/hashes, sidecar/run-record agreement
+- Started: `2026-08-04 20:58:59.256411+00`
+- Completed: `2026-08-04 21:01:30.459091+00`
+- Package: `cropqc-production-predeployment-20260804-205859.zip`
+- Size: 1,188,705 bytes
+- SHA-256: `4083417f42030141cb75b7634add1e899477c73d404e4ee679938772dfc577b7`
+- Package storage reference: `1cu4ujncHNNrFlXr4GJDyCcCfjtupcj9j`
+- Sidecar: `cropqc-production-predeployment-20260804-205859.manifest.json`
+- Sidecar storage reference: `1oQkYthEQ9pAifbl8T9ur1-ie-Cehuv2s`
+- Upload verification: `2026-08-04 21:01:30.221708+00`
+- Retention completed: `2026-08-04 21:01:30.272728+00`
+- Lease released: `2026-08-04 21:01:30.459091+00`
+- Independent checks: exact size/hash; readable ZIP; readable nonempty 38,515,807-character PostgreSQL dump; readable configuration, schema, and photo-manifest JSON; exact component sizes/hashes; sidecar/run-record agreement
 - Notification: failed separately because Gmail permission was unavailable; no email was dispatched and backup success was unaffected
 
 ## Restored baseline
 
-The exact package was restored without errors to localhost-only PostgreSQL 18 database `cropqc_prod_run39_restore_20260804`. Key baseline counts were: Users 10, Warehouses 4, Receipts 136, Grower Lots 398, Actual Runs 7, Actual Run revisions 7, Bins Run entries 39, Room inventory adjustments 142, transfers 0, Run Expectations 4, Packout Runs 0, Run Projections 14, QC samples 156, QC fruit readings 4,122, QC photos 662, and audit logs 13,806.
+The exact package restored without errors to localhost-only PostgreSQL 18 database `cropqc_prod_run40_restore_20260804`. Key baseline counts were: Users 40, Warehouses 4, Receipts 137, Grower Lots 398, Actual Runs 7, Actual Run revisions 7, Bins Run entries 39, room inventory adjustments 145, transfers 0, Run Expectations 4, Packout Runs 0, Run Projections 14, QC samples 162, QC fruit readings 4,243, QC photos 687, and audit logs 14,415.
 
 The database had 24 migration-history rows through `20260727003738_AddGrowerLotProjectionSnapshotsAndPermissionLevels`. Required later application objects through `20260731014107_SeparatePlanningProjectionsFromActualRuns` were present even though that migration-history row was absent. The rehearsal did not fabricate the missing row. It applied and recorded only `20260804052104_AddFacilityRunReporting` after exact object-state verification.
-
-A second restore, `cropqc_prod_run39_sequence_20260804`, rehearsed the exact production sequence from the untouched dump: read-only schema preflight, read-only attribution preflight, bounded compatibility schema apply, object verification, first attribution apply, verification, second attribution apply, and final verification. Every step passed; the second apply changed zero rows.
 
 ## Attribution result
 
@@ -29,11 +30,22 @@ A second restore, `cropqc_prod_run39_sequence_20260804`, rehearsed the exact pro
 - EBS crop 2026: 2 included lines, 388 bins
 - Excluded Needs Review: entry 33, 173 bins, missing authoritative grower number
 - Pre-2026: 27 lines untouched and excluded from reporting/review
+- New Actual Runs since run 39: 0
+- New Bins Run lines since run 39: 0
 
-First application: 2 users, 7 Actual Runs, 11 Bins Run lines. Second application: 0 users, 0 Actual Runs, 0 Bins Run lines. Verification after both applications reproduced the same totals and exclusion.
+The exact sequence began on the untouched restore: protected fingerprints, schema preflight, attribution preflight, additive schema apply, object verification, attribution apply, totals verification, second attribution apply, and final verification. First application changed 2 users, 7 Actual Runs, and 11 Bins Run lines. Second application changed 0 users, 0 Actual Runs, and 0 lines. Protected operational fingerprints remained identical.
 
-Protected counts and deterministic row fingerprints remained identical for receipts, Grower Lots, warehouses, rooms, inventory adjustments, depletions, transfers, Actual Run revisions, override requests, Run Expectations, projections, packout records, and QC records. Operational-field fingerprints also remained identical for Users, Actual Runs, and Bins Run entries; all 13,806 pre-existing audit rows remained unchanged.
+## Semantic guard result
 
-## Restored-production performance
+The complete Users-table fingerprint was removed. No authentication/session/provisioning field participates in a deployment blocker. Exact semantic checks remain for Alexis and Robert, every reviewed recording user and facility, every reviewed Bins Run and Actual Run identity, the authoritative classification set, WP/EBS warehouses, audit prefix, migration state, and protected operational tables.
 
-The Release read-only benchmark completed every request successfully against the second restore. Over 100 sequential requests each, Run Reporting summary allocated 694,538 bytes/request, detail allocated 2,626,718 bytes/request, and Needs Review allocated 2,655,826 bytes/request. The mixed route matrix allocated 3,089,675 bytes/request at concurrency 8 and peaked at 255.3 MiB, below the established 384 MiB PR #168 warning threshold. No automatic refresh loop was introduced.
+Fifteen disposable PostgreSQL scenarios passed. Changes only to `LastLoginAt`, generic `UpdatedAt`, an unrelated new user, or an unrelated login passed. Changes to either target email, either target active state, either target Employment Facility, a reviewed quantity, a run recorder, a new crop-2026 line, or a protected relationship failed. Reapplying the already-applied package remained idempotent.
+
+## Release-blocking performance result
+
+The Release PR #168 production-restore benchmark was run twice against the run-40 restore. Every request succeeded, reporting summary/detail/Needs Review remained bounded, and mixed-concurrency-8 peaked at 257.5–257.6 MiB, below the 384 MiB warning threshold. The Rooms phase nevertheless exceeded its unchanged 12 MiB allocation guard twice:
+
+- first run: 12,587,325 bytes/request (4,413 bytes over);
+- second run: 12,686,571 bytes/request (103,659 bytes over).
+
+The same code against run 39 had measured 12,417,694 bytes/request. The follow-up branch changes no application code, but the repeated current-data benchmark failure remains unexplained and was treated as a meaningful fail-closed condition. The production release stopped before PR readiness/merge, maintenance mode, schema application, attribution, or deployment.

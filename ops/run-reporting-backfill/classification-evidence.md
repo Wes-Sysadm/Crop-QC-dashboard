@@ -1,6 +1,8 @@
-# Backup run 39 classification evidence
+# Backup run 40 classification evidence
 
-Source: independently verified production backup run 39, restored to localhost-only PostgreSQL 18 database `cropqc_prod_run39_restore_20260804`.
+Source: independently verified production backup run 40, restored to localhost-only PostgreSQL 18 database `cropqc_prod_run40_restore_20260804`.
+
+No Actual Run or Bins Run line was added after backup run 39. The authoritative line classification therefore remains the same, while all package fingerprints were regenerated from run 40.
 
 Facility credit is derived only from the exact recording employee identity. Crop year is derived from authoritative line/source/receipt metadata. Grower number uses only `Receipts.GrowerNumber`; `GrowerLots.LotNumber` is never used.
 

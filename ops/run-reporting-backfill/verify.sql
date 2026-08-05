@@ -20,7 +20,7 @@ BEGIN
         JOIN "BinsRunEntries" AS b ON b."Id"=e.entry_id
         WHERE b."ReportingFacilityWarehouseId" IS DISTINCT FROM CASE e.facility_code WHEN 'WP' THEN 4 WHEN 'EBS' THEN 1 END
            OR b."ReportingFacilityCodeSnapshot" IS DISTINCT FROM e.facility_code
-           OR b."ReportingFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260804-run39'
+           OR b."ReportingFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260804-run40'
            OR b."ReportingCropYearSnapshot" IS DISTINCT FROM e.crop_year
            OR b."ReportingFruitProfileIdSnapshot" IS DISTINCT FROM e.fruit_profile_id
            OR b."ReportingVarietyCodeSnapshot" IS DISTINCT FROM e.variety_code
@@ -28,7 +28,7 @@ BEGIN
            OR b."IsOrganicSnapshot" IS DISTINCT FROM e.is_organic
            OR b."GrowerNumberSnapshot" IS DISTINCT FROM e.grower_number
     ) THEN
-        RAISE EXCEPTION 'A reporting line does not match the run-39 classification';
+        RAISE EXCEPTION 'A reporting line does not match the run-40 classification';
     END IF;
 
     IF EXISTS (
@@ -36,9 +36,9 @@ BEGIN
         JOIN "ActualRuns" AS a ON a."Id"=e.actual_run_id
         WHERE a."RunFacilityWarehouseId" IS DISTINCT FROM e.warehouse_id
            OR a."RunFacilityCodeSnapshot" IS DISTINCT FROM e.facility_code
-           OR a."RunFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260804-run39'
+           OR a."RunFacilityAssignmentSource" IS DISTINCT FROM 'ReviewedProductionBackfill:20260804-run40'
     ) THEN
-        RAISE EXCEPTION 'An Actual Run facility does not match the run-39 classification';
+        RAISE EXCEPTION 'An Actual Run facility does not match the run-40 classification';
     END IF;
 
     IF (SELECT COUNT(*) FROM "AuditLogs" WHERE "Action"='ReviewedEmploymentBackfill' AND "SourceApplication"='ops/run-reporting-backfill' AND "EntityKey" IN ('2','8')) <> 2
