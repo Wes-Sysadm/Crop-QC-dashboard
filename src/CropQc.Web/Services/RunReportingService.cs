@@ -19,7 +19,8 @@ public sealed class RunReportingService(
     CropQcDbContext dbContext,
     IBusinessTimeService businessTime,
     IUserAccessService userAccessService,
-    IConfiguration configuration) : IRunReportingService
+    IConfiguration configuration,
+    IVarietyColorService? varietyColorService = null) : IRunReportingService
 {
     public const int DefaultAuthoritativeStartCropYear = 2026;
     public const int MaximumWeeklySourceRows = 5000;
@@ -198,19 +199,38 @@ public sealed class RunReportingService(
         var priorGroups = priorYear is null || priorCutoff!.Value < priorStart!.Value
             ? new List<VarietyTotalRow>()
             : await VarietyTotalsQuery(facility, priorYear.Value, priorCutoff!.Value).ToListAsync(cancellationToken);
+        var receivedGroups = await ReceiptVarietyTotalsQuery(facility, cropYear).ToListAsync(cancellationToken);
         var selectedLookup = selectedGroups.ToDictionary(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase);
         var priorLookup = priorGroups.ToDictionary(x => x.VarietyKey, x => x.Bins, StringComparer.OrdinalIgnoreCase);
-        var varieties = selectedGroups.Concat(priorGroups)
+        var receivedLookup = receivedGroups.ToDictionary(x => x.VarietyKey, x => x.Bins, StringComparer.OrdinalIgnoreCase);
+        var identities = selectedGroups.Concat(priorGroups).Concat(receivedGroups)
             .GroupBy(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
-            .Select(identity => new RunVarietyTotalViewModel(
-                identity.VarietyKey,
-                identity.FruitProfileId,
-                identity.Variety,
-                identity.ProductionType,
-                identity.IsOrganic,
-                selectedLookup.TryGetValue(identity.VarietyKey, out var selected) ? selected.Bins : 0,
-                priorLookup.GetValueOrDefault(identity.VarietyKey)))
+            .ToList();
+        var colorKeys = identities
+            .Select(x => VarietyColorService.NormalizeIdentity(x.Variety, x.Variety).Key)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var colors = varietyColorService is null
+            ? new Dictionary<string, VarietyColorResolved>(StringComparer.OrdinalIgnoreCase)
+            : await varietyColorService.GetResolvedColorsReadOnlyAsync(colorKeys, cancellationToken);
+        var varieties = identities
+            .Select(identity =>
+            {
+                var color = ResolveColor(identity.Variety, colors);
+                return new RunVarietyTotalViewModel(
+                    identity.VarietyKey,
+                    identity.FruitProfileId,
+                    identity.Variety,
+                    identity.ProductionType,
+                    identity.IsOrganic,
+                    receivedLookup.GetValueOrDefault(identity.VarietyKey),
+                    selectedLookup.TryGetValue(identity.VarietyKey, out var selected) ? selected.Bins : 0,
+                    priorLookup.GetValueOrDefault(identity.VarietyKey),
+                    color.HexColor,
+                    ReportingColorPresentation.TextColor(color.HexColor),
+                    color.IsConfigured);
+            })
             .OrderBy(x => x.Variety)
             .ThenBy(x => x.ProductionType)
             .ToList();
@@ -268,6 +288,7 @@ public sealed class RunReportingService(
             Facility = facility,
             CropYear = cropYear,
             TotalBins = varieties.Sum(x => x.Bins),
+            TotalReceivedBins = varieties.Sum(x => x.ReceivedBins),
             PriorCropYear = priorYear,
             PriorBins = priorYear is null ? 0 : priorGroups.Sum(x => x.Bins),
             SelectedStart = selectedStart,
@@ -316,6 +337,38 @@ public sealed class RunReportingService(
                 x.Key.ProductionType,
                 x.Key.IsOrganic,
                 x.Sum(y => y.BinsRun)));
+
+    private IQueryable<VarietyTotalRow> ReceiptVarietyTotalsQuery(string facility, int cropYear) =>
+        dbContext.Receipts.AsNoTracking()
+            .Where(x => !x.IsDeleted && !x.IsTestData && x.CropYear == cropYear)
+            .Where(x => x.Warehouse.Code == facility)
+            .Where(x => x.GrowerNumber != null && x.GrowerNumber != ""
+                && x.LotCode != ""
+                && x.FruitProfile.VarietyCode != ""
+                && x.FruitProfile.ProductionType != "")
+            .GroupBy(x => new
+            {
+                x.FruitProfileId,
+                Variety = x.FruitProfile.VarietyCode,
+                x.FruitProfile.ProductionType,
+                x.FruitProfile.IsOrganic
+            })
+            .Select(x => new VarietyTotalRow(
+                x.Key.FruitProfileId,
+                x.Key.Variety,
+                x.Key.ProductionType,
+                x.Key.IsOrganic,
+                x.Sum(y => y.BinCount)));
+
+    private static VarietyColorResolved ResolveColor(
+        string variety,
+        IReadOnlyDictionary<string, VarietyColorResolved> colors)
+    {
+        var identity = VarietyColorService.NormalizeIdentity(variety, variety);
+        return colors.TryGetValue(identity.Key, out var resolved)
+            ? resolved
+            : new VarietyColorResolved(identity.Key, identity.Name, VarietyColorService.FallbackColor(identity.Key), false);
+    }
 
     private async Task<IReadOnlyList<RunSupportingRecordViewModel>> GetSupportingRecordsAsync(
         string facility,

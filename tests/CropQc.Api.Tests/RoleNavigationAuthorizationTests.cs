@@ -88,6 +88,20 @@ public sealed class RoleNavigationAuthorizationTests
     }
 
     [Fact]
+    public void GrowerLotProgress_IsReadOnlyAndRequiresBinsRunView()
+    {
+        AssertControllerPolicy<RunReportingController>(AccessPolicyNames.BinsRunView);
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "RunReportingController.cs"));
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "RunReporting", "Growers.cshtml"));
+        var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+
+        Assert.Contains("[HttpGet(\"Growers\")]", controller);
+        Assert.DoesNotContain("[HttpPost", controller);
+        Assert.DoesNotContain("method=\"post\"", view, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("/RunReporting/Growers?Facility=All", layout);
+    }
+
+    [Fact]
     public void RolePermissionMatrix_MatchesNavigationAccess()
     {
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "UserAccessService.cs"));

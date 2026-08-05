@@ -12,6 +12,7 @@ public interface IVarietyColorService
 {
     Task<VarietyColorsAdminViewModel> GetAdminPageAsync(bool canManage, CancellationToken cancellationToken);
     Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsAsync(IEnumerable<string> varietyKeys, CancellationToken cancellationToken);
+    Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsReadOnlyAsync(IEnumerable<string> varietyKeys, CancellationToken cancellationToken);
     Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsForMasterDataAsync(CancellationToken cancellationToken);
     Task<string?> SaveAsync(VarietyColorForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> ResetAsync(VarietyColorForm form, string changedByEmail, CancellationToken cancellationToken);
@@ -70,6 +71,18 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
     public async Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsAsync(IEnumerable<string> varietyKeys, CancellationToken cancellationToken)
     {
         await EnsureSchemaAsync(cancellationToken);
+        return await ResolveColorsCoreAsync(varietyKeys, cancellationToken);
+    }
+
+    public Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsReadOnlyAsync(
+        IEnumerable<string> varietyKeys,
+        CancellationToken cancellationToken) =>
+        ResolveColorsCoreAsync(varietyKeys, cancellationToken);
+
+    private async Task<IReadOnlyDictionary<string, VarietyColorResolved>> ResolveColorsCoreAsync(
+        IEnumerable<string> varietyKeys,
+        CancellationToken cancellationToken)
+    {
         var keys = varietyKeys
             .Select(x => NormalizeIdentity(x, x).Key)
             .Where(x => !string.IsNullOrWhiteSpace(x))

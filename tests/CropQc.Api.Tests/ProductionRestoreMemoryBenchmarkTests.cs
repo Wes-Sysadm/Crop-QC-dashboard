@@ -67,6 +67,7 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
             routes.Add(new BenchmarkRoute("RunReportingSummary", "/BinsRun?Section=Actual"));
             routes.Add(new BenchmarkRoute("RunReportingDetail", "/BinsRun?Section=RunTotals&ReportFacility=WP&ReportCropYear=2026"));
             routes.Add(new BenchmarkRoute("RunReportingNeedsReview", "/BinsRun?Section=NeedsReview"));
+            routes.Add(new BenchmarkRoute("GrowerLotProgress", "/RunReporting/Growers?CropYear=2026&Facility=All"));
         }
         if (fieldSampleId is not null)
         {
@@ -83,6 +84,7 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
             phases.Add(await RunPhaseAsync(client, "run-reporting-summary-sequential-100", routes.Where(x => x.Name == "RunReportingSummary").ToList(), 100, 1));
             phases.Add(await RunPhaseAsync(client, "run-reporting-detail-sequential-100", routes.Where(x => x.Name == "RunReportingDetail").ToList(), 100, 1));
             phases.Add(await RunPhaseAsync(client, "run-reporting-needs-review-sequential-100", routes.Where(x => x.Name == "RunReportingNeedsReview").ToList(), 100, 1));
+            phases.Add(await RunPhaseAsync(client, "grower-lot-progress-sequential-100", routes.Where(x => x.Name == "GrowerLotProgress").ToList(), 100, 1));
         }
         phases.Add(await RunPhaseAsync(client, "mixed-concurrency-2", routes, 100, 2));
         phases.Add(await RunPhaseAsync(client, "mixed-concurrency-4", routes, 100, 4));
@@ -117,6 +119,7 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
             AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-summary-sequential-100", 16 * 1024 * 1024);
             AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-detail-sequential-100", 16 * 1024 * 1024);
             AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-needs-review-sequential-100", 16 * 1024 * 1024);
+            AssertAllocatedBytesPerRequestAtMost(phases, "grower-lot-progress-sequential-100", 16 * 1024 * 1024);
         }
         AssertAllocatedBytesPerRequestAtMost(phases, "mixed-concurrency-8", 4 * 1024 * 1024);
         Assert.True(

@@ -55,6 +55,34 @@ public sealed class RunReportingTests
     }
 
     [Fact]
+    public async Task RunTotalsVarietyCards_UseSharedConfiguredColorAndReadableContrast()
+    {
+        using var db = CreateDbContext();
+        await SeedAsync(db);
+        db.VarietyColorConfigurations.Add(new VarietyColorConfiguration
+        {
+            VarietyKey = "BART",
+            VarietyName = "BART",
+            HexColor = "#F5E66A",
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var page = await CreateService(db).GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026
+        }, Principal(), CancellationToken.None);
+
+        var variety = Assert.Single(Assert.IsType<RunTotalsDetailViewModel>(page.Detail).Varieties);
+        Assert.Equal("#F5E66A", variety.ColorHex);
+        Assert.Equal("#17212B", variety.TextColorHex);
+        Assert.True(variety.IsColorConfigured);
+    }
+
+    [Fact]
     public async Task NeedsReview_IsReadOnly_AndFlagsExcludedIdentityAndPeriodProblems()
     {
         using var db = CreateDbContext();
@@ -262,7 +290,8 @@ public sealed class RunReportingTests
             db,
             new PacificBusinessTimeService(new FixedClock(utcNow ?? new DateTimeOffset(2026, 8, 3, 19, 0, 0, TimeSpan.Zero))),
             new AllowAccess(),
-            configuration);
+            configuration,
+            new VarietyColorService(db));
     }
 
     private static async Task SeedAsync(CropQcDbContext db)

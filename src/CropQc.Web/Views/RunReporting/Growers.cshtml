@@ -1,0 +1,273 @@
+@model GrowerLotProgressPageViewModel
+@{
+    ViewData["Title"] = "Grower & Lot Progress";
+    var filter = Model.Filter;
+    string Escape(string? value) => Uri.EscapeDataString(value ?? "");
+    string PageUrl(
+        int? page = null,
+        string? grower = null,
+        string? variety = null,
+        string? lot = null,
+        DateOnly? week = null,
+        int? supportPage = null) =>
+        $"/RunReporting/Growers?CropYear={filter.CropYear}&Facility={Escape(filter.Facility)}&GrowerSearch={Escape(filter.GrowerSearch)}&LotSearch={Escape(filter.LotSearch)}&VarietyKey={Escape(filter.VarietyKey)}&ProductionType={Escape(filter.ProductionType)}&Sort={Escape(filter.Sort)}&Page={page ?? filter.Page}&ExpandedGrowerNumber={Escape(grower)}&ExpandedVarietyKey={Escape(variety)}&SelectedLotKey={Escape(lot)}&SelectedWeekStart={(week is null ? "" : week.Value.ToString("yyyy-MM-dd"))}&SupportingPage={supportPage ?? 1}";
+}
+
+<div class="room-card-header">
+    <div>
+        <h1>Grower &amp; Lot Progress</h1>
+        <p class="muted">Authoritative full-bin receipts and source run quantities, grouped Grower → Variety → Lot → Week.</p>
+    </div>
+    <div class="action-bar">
+        @if (filter.Facility is "WP" or "EBS")
+        {
+            <a class="button secondary-button" href="/BinsRun?Section=RunTotals&amp;ReportFacility=@filter.Facility&amp;ReportCropYear=@filter.CropYear">Run Totals</a>
+        }
+        else
+        {
+            <a class="button secondary-button" href="/BinsRun?Section=RunTotals&amp;ReportFacility=WP&amp;ReportCropYear=@filter.CropYear">WP Run Totals</a>
+            <a class="button secondary-button" href="/BinsRun?Section=RunTotals&amp;ReportFacility=EBS&amp;ReportCropYear=@filter.CropYear">EBS Run Totals</a>
+        }
+        <a class="button secondary-button" href="/BinsRun?Section=NeedsReview">Needs Review</a>
+    </div>
+</div>
+
+<nav class="operation-tabs" aria-label="Run reporting pages">
+    <a href="/BinsRun?Section=RunTotals&amp;ReportFacility=@(filter.Facility == "All" ? "WP" : filter.Facility)&amp;ReportCropYear=@filter.CropYear">Run Totals</a>
+    <a class="active" href="@PageUrl()">Grower &amp; Lot Progress</a>
+</nav>
+
+<section class="panel">
+    <form class="toolbar grower-progress-filter" method="get" action="/RunReporting/Growers">
+        <label>Crop year
+            <select name="CropYear">
+                @foreach (var cropYear in Model.CropYears)
+                {
+                    <option value="@cropYear" selected="@(cropYear == filter.CropYear)">@cropYear</option>
+                }
+            </select>
+        </label>
+        <label>Facility
+            <select name="Facility">
+                @foreach (var facility in new[] { "All", "WP", "EBS" })
+                {
+                    <option value="@facility" selected="@(facility == filter.Facility)">@facility</option>
+                }
+            </select>
+        </label>
+        <label>Grower number or name
+            <input name="GrowerSearch" value="@filter.GrowerSearch" maxlength="100" />
+        </label>
+        <label>Lot number
+            <input name="LotSearch" value="@filter.LotSearch" maxlength="100" />
+        </label>
+        <label>Variety
+            <select name="VarietyKey">
+                <option value="">All canonical varieties</option>
+                @foreach (var option in Model.VarietyOptions)
+                {
+                    <option value="@option.VarietyKey" selected="@(option.VarietyKey == filter.VarietyKey)">@option.Variety — @(option.IsOrganic ? "Organic" : "Conventional")</option>
+                }
+            </select>
+        </label>
+        <label>Production
+            <select name="ProductionType">
+                <option value="">Organic + Conventional</option>
+                <option value="Conventional" selected="@(filter.ProductionType == "Conventional")">Conventional</option>
+                <option value="Organic" selected="@(filter.ProductionType == "Organic")">Organic</option>
+            </select>
+        </label>
+        <label>Sort growers
+            <select name="Sort">
+                <option value="GrowerNumber" selected="@(filter.Sort == "GrowerNumber")">Grower number</option>
+                <option value="GrowerName" selected="@(filter.Sort == "GrowerName")">Grower name</option>
+                <option value="BinsReceived" selected="@(filter.Sort == "BinsReceived")">Bins received</option>
+                <option value="BinsRun" selected="@(filter.Sort == "BinsRun")">Bins run</option>
+            </select>
+        </label>
+        <button type="submit">Apply filters</button>
+        <a class="button secondary-button" href="/RunReporting/Growers">Reset</a>
+    </form>
+    <p class="notice"><strong>Facility meaning:</strong> Received is based on where the fruit was physically received. Run is based on the facility credited for packing. The All view provides the complete grower and lot totals across both facilities.</p>
+    <p class="muted">Facility-specific Received and Run use different facility meanings and are not expected to reconcile with one another. Received − Run is intentionally not labeled as remaining inventory.</p>
+</section>
+
+<section class="metric-grid grower-progress-summary" aria-label="Grower and lot progress totals">
+    <article class="metric-card"><span class="metric-label">Growers</span><strong>@Model.GrowerCount.ToString("N0")</strong></article>
+    <article class="metric-card"><span class="metric-label">Received lots</span><strong>@Model.ReceivedLotCount.ToString("N0")</strong></article>
+    <article class="metric-card"><span class="metric-label">Bins received</span><strong>@Model.BinsReceived.ToString("N0")</strong></article>
+    <article class="metric-card"><span class="metric-label">Bins run</span><strong>@Model.BinsRun.ToString("N0")</strong></article>
+</section>
+
+@if (Model.Growers.Count == 0)
+{
+    <p class="empty-state">No authoritative grower or lot totals match these filters.</p>
+}
+else
+{
+    <div class="grower-progress-list">
+        @foreach (var grower in Model.Growers)
+        {
+            <section class="panel grower-progress-card">
+                <div class="room-card-header">
+                    <div>
+                        <h2>Grower @grower.GrowerNumber@(string.IsNullOrWhiteSpace(grower.GrowerName) ? "" : $" — {grower.GrowerName}")</h2>
+                        <div class="grower-progress-inline-metrics">
+                            <span>Lots: <strong>@grower.ReceivedLotCount.ToString("N0")</strong></span>
+                            <span>Received: <strong>@grower.BinsReceived.ToString("N0") bins</strong></span>
+                            <span>Run: <strong>@grower.BinsRun.ToString("N0") bins</strong></span>
+                        </div>
+                    </div>
+                    <a class="button secondary-button" href="@(grower.IsExpanded ? PageUrl(grower: "") : PageUrl(grower: grower.GrowerNumber))">@(grower.IsExpanded ? "Close" : "Open varieties")</a>
+                </div>
+
+                @if (grower.IsExpanded)
+                {
+                    <div class="grower-variety-grid">
+                        @foreach (var variety in grower.Varieties)
+                        {
+                            var varietyLabel = variety.IsOrganic ? "Organic" : "Conventional";
+                            <article class="grower-variety-card @(variety.IsOrganic ? "organic" : "conventional")" style="--variety-bg: @variety.ColorHex; --variety-text: @variety.TextColorHex">
+                                <div class="grower-variety-card-content">
+                                    <div>
+                                        <h3>@variety.Variety</h3>
+                                        <span class="production-badge">@varietyLabel</span>
+                                    </div>
+                                    <dl>
+                                        <div><dt>Received</dt><dd>@variety.BinsReceived.ToString("N0") bins</dd></div>
+                                        <div><dt>Run</dt><dd>@variety.BinsRun.ToString("N0") bins</dd></div>
+                                        <div><dt>Lots</dt><dd>@variety.ReceivedLotCount.ToString("N0")</dd></div>
+                                        @if (variety.RunPercent is decimal percent)
+                                        {
+                                            <div><dt>Run percentage</dt><dd>@percent.ToString("0.0")%</dd></div>
+                                        }
+                                    </dl>
+                                    <a class="variety-card-action" href="@(variety.IsExpanded ? PageUrl(grower: grower.GrowerNumber) : PageUrl(grower: grower.GrowerNumber, variety: variety.VarietyKey))">@(variety.IsExpanded ? "Close lots" : "View lots")</a>
+                                </div>
+                            </article>
+
+                            @if (variety.IsExpanded)
+                            {
+                                <section class="grower-lot-detail">
+                                    <h3 class="selected-variety-header @(variety.IsOrganic ? "organic" : "conventional")" style="--variety-bg: @variety.ColorHex; --variety-text: @variety.TextColorHex">@variety.Variety — @varietyLabel lots</h3>
+                                    @if (variety.Lots.Count == 0)
+                                    {
+                                        <p class="empty-state">This is a valid run-only variety; no received lot is available for the current filter.</p>
+                                    }
+                                    else
+                                    {
+                                        <div class="table-wrap">
+                                            <table>
+                                                <thead><tr><th>Lot</th><th>Grower</th><th>Received at</th><th>Receipt dates</th><th>Receipts</th><th>Received</th><th>Run</th><th>Run records</th><th>Weekly detail</th></tr></thead>
+                                                <tbody>
+                                                @foreach (var lot in variety.Lots)
+                                                {
+                                                    <tr>
+                                                        <td><strong>@lot.LotNumber</strong>@if (lot.GrowerLotId is int id) { <br /><span class="muted">Grower Lot ID @id</span> }</td>
+                                                        <td>@lot.GrowerNumber</td>
+                                                        <td>@(string.IsNullOrWhiteSpace(lot.ReceivingFacilities) ? "Run-only source" : lot.ReceivingFacilities)</td>
+                                                        <td>@(lot.FirstReceiptAt is null ? "—" : BusinessTime.FormatPacific(lot.FirstReceiptAt.Value))<br />@(lot.LatestReceiptAt is null || lot.LatestReceiptAt == lot.FirstReceiptAt ? "" : BusinessTime.FormatPacific(lot.LatestReceiptAt.Value))</td>
+                                                        <td>@lot.ReceiptCount.ToString("N0")</td>
+                                                        <td>@lot.BinsReceived.ToString("N0")</td>
+                                                        <td>@lot.BinsRun.ToString("N0")</td>
+                                                        <td>@lot.RunRecordCount.ToString("N0")</td>
+                                                        <td><a href="@(lot.IsSelected ? PageUrl(grower: grower.GrowerNumber, variety: variety.VarietyKey) : PageUrl(grower: grower.GrowerNumber, variety: variety.VarietyKey, lot: lot.LotKey))">@(lot.IsSelected ? "Close weeks" : "View weeks")</a></td>
+                                                    </tr>
+                                                    @if (lot.IsSelected)
+                                                    {
+                                                        <tr class="lot-week-detail-row">
+                                                            <td colspan="9">
+                                                                <h4>Weekly Run detail — Lot @lot.LotNumber</h4>
+                                                                @if (lot.Weeks.Count == 0)
+                                                                {
+                                                                    <p class="empty-state">No authoritative run quantities for this lot and facility filter.</p>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <div class="table-wrap">
+                                                                        <table>
+                                                                            <thead><tr><th>Sunday–Saturday week</th><th>Bins run</th><th>Cumulative</th><th>Run records</th><th>Support</th></tr></thead>
+                                                                            <tbody>
+                                                                            @foreach (var week in lot.Weeks)
+                                                                            {
+                                                                                <tr>
+                                                                                    <td>@week.WeekStart.ToString("MMM. d") — @week.WeekEnd.ToString("MMM. d, yyyy")</td>
+                                                                                    <td>@week.BinsRun.ToString("N0")</td><td>@week.CumulativeBinsRun.ToString("N0")</td><td>@week.RunRecordCount.ToString("N0")</td>
+                                                                                    <td><a href="@PageUrl(grower: grower.GrowerNumber, variety: variety.VarietyKey, lot: lot.LotKey, week: week.WeekStart)">View supporting runs</a></td>
+                                                                                </tr>
+                                                                                @if (week.IsSelected)
+                                                                                {
+                                                                                    <tr>
+                                                                                        <td colspan="5">
+                                                                                            <div class="table-wrap supporting-run-table">
+                                                                                                <table>
+                                                                                                    <thead><tr><th>Record</th><th>Run time (Pacific)</th><th>Employee</th><th>Run / source</th><th>Room / lot</th><th>Grower / variety</th><th>Bins</th><th>Status</th></tr></thead>
+                                                                                                    <tbody>
+                                                                                                    @foreach (var record in week.SupportingRecords)
+                                                                                                    {
+                                                                                                        <tr>
+                                                                                                            <td><a href="@record.RecordUrl">@record.RecordType #@(record.ActualRunId ?? record.EntryId)</a></td>
+                                                                                                            <td>@BusinessTime.FormatPacific(record.RunAt)</td><td>@record.RecordedEmployee</td>
+                                                                                                            <td>@record.RunFacility / @record.SourceFacility</td><td>@record.SourceRoom / @record.Lot</td>
+                                                                                                            <td>@record.GrowerNumber / @record.Variety — @record.ProductionType<br />Crop @record.CropYear</td>
+                                                                                                            <td>@record.Bins.ToString("N0")</td><td>@record.Status</td>
+                                                                                                        </tr>
+                                                                                                    }
+                                                                                                    </tbody>
+                                                                                                </table>
+                                                                                            </div>
+                                                                                            @if (week.HasMoreSupportingRecords)
+                                                                                            {
+                                                                                                <a class="button-link" href="@PageUrl(grower: grower.GrowerNumber, variety: variety.VarietyKey, lot: lot.LotKey, week: week.WeekStart, supportPage: filter.SupportingPage + 1)">Next supporting page</a>
+                                                                                            }
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                }
+                                                                            }
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+                                                                }
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
+                                </section>
+                            }
+                        }
+                    </div>
+                }
+            </section>
+        }
+    </div>
+}
+
+<nav class="pagination" aria-label="Grower pages">
+    @if (Model.HasPreviousPage)
+    {
+        <a class="button-link" href="@PageUrl(page: Model.Page - 1)">Previous growers</a>
+    }
+    <span>Page @Model.Page</span>
+    @if (Model.HasNextPage)
+    {
+        <a class="button-link" href="@PageUrl(page: Model.Page + 1)">Next growers</a>
+    }
+</nav>
+
+@if (Model.ExcludedIssues.Count > 0)
+{
+    <section class="panel">
+        <h2>Excluded authoritative records</h2>
+        <p class="muted">Incomplete crop-@filter.CropYear identities are not included in totals. Correct the source record; it will enter the report automatically.</p>
+        <ul>
+            @foreach (var issue in Model.ExcludedIssues)
+            {
+                <li><a href="@issue.RecordUrl">@issue.IssueType</a> — @issue.Explanation</li>
+            }
+        </ul>
+    </section>
+}
