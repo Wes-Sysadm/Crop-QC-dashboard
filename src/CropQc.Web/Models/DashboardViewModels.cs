@@ -246,12 +246,16 @@ public sealed class RoomLotSummaryViewModel
     public string DepletionStatus { get; set; } = "Current";
     public IReadOnlyList<string> ReviewFlags { get; set; } = [];
     public string? WeakestReason { get; set; }
+    public IReadOnlyList<RoomReceiptEvidenceLinkViewModel> ReceiptEvidence { get; set; } = [];
+    public int ReceiptEvidenceCount { get; set; }
     public IReadOnlyList<RoomSampleLinkViewModel> Samples { get; set; } = [];
+    public int SampleEvidenceCount { get; set; }
 }
 
 public sealed record RoomReceiptOptionViewModel(long ReceiptId, string Label, int CurrentBins);
 public sealed record RoomInventoryLotOptionViewModel(string LotKey, string Label, int CurrentBins);
 public sealed record RoomTransferDestinationViewModel(int RoomId, string Label);
+public sealed record RoomReceiptEvidenceLinkViewModel(long ReceiptId, string DisplayReceiptId);
 public sealed record RoomSampleLinkViewModel(long SampleId, string DisplayReceiptId, string SampleType);
 
 public sealed class RoomInventoryAdjustmentListItemViewModel
@@ -476,7 +480,6 @@ public sealed class BinsRunFilterForm
     public List<int> RoomIds { get; set; } = [];
     public string SelectionMode { get; set; } = ActualRunSelectionModes.ByRoom;
     public int? FruitProfileId { get; set; }
-    public int? GrowerLotId { get; set; }
     public DateTime? FromDate { get; set; }
     public DateTime? ToDate { get; set; }
     public DateOnly? PlannedDate { get; set; }
@@ -1348,6 +1351,7 @@ public sealed class CurrentGrowerLotsFilterForm
 
 public sealed class CurrentGrowerLotViewModel
 {
+    public int? GrowerLotId { get; set; }
     public int? CropYear { get; set; }
     public string Grower { get; set; } = "";
     public string GrowerNumber { get; set; } = "";

@@ -135,9 +135,11 @@
                             <dt>Defects</dt><dd>@lot.DefectSummary</dd>
                         </dl>
                         <div class="action-bar">
-                            @if (lot.ReceiptId is long receiptId) { <a class="button secondary-button" href="/Receipts/@receiptId">Receipt</a> }
+                            @foreach (var receipt in lot.ReceiptEvidence.Take(4)) { <a class="button secondary-button" href="/Receipts/@receipt.ReceiptId">Receipt @receipt.DisplayReceiptId</a> }
+                            @if (lot.ReceiptEvidenceCount > 4) { <span class="station-code">+ @(lot.ReceiptEvidenceCount - 4) more receipt evidence</span> }
                             @if (lot.GrowerLotId is int growerLotId) { <a class="button secondary-button" href="/MasterData/grower-lots?Search=@growerLotId">Grower Lot</a> }
                             @foreach (var sample in lot.Samples.Take(4)) { <a class="button secondary-button" href="/Samples/@sample.SampleId">@sample.DisplayReceiptId QC</a> }
+                            @if (lot.SampleEvidenceCount > 4) { <span class="station-code">+ @(lot.SampleEvidenceCount - 4) more QC evidence</span> }
                             <a class="button secondary-button" href="/Rooms/@lot.RoomId/CountBreakdown">Inventory evidence</a>
                         </div>
                     </article>

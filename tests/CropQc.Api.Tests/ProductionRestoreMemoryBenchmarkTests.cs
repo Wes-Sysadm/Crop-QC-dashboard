@@ -98,6 +98,7 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
             new("DashboardEBS", "/?Facility=EBS"),
             new("Rooms", "/Rooms?Facility=All"),
             new("CurrentInventory", "/GrowerLots/Current?Facility=All"),
+            new("CurrentInventoryCanonicalAlias", "/GrowerLots/Current?Facility=All&CropYear=2026&Variety=BART"),
             new("RoomDetail", $"/Rooms/{roomId}"),
             new("Receipts", "/Receipts"),
             new("ReceiptDetail", $"/Receipts/{receiptId}"),
@@ -177,7 +178,9 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
         phases.Add(await RunPhaseAsync(client, "dashboard-wp-sequential-100", routes.Where(x => x.Name == "DashboardWP").ToList(), 100, 1));
         phases.Add(await RunPhaseAsync(client, "dashboard-ebs-sequential-100", routes.Where(x => x.Name == "DashboardEBS").ToList(), 100, 1));
         phases.Add(await RunPhaseAsync(client, "rooms-sequential-100", routes.Where(x => x.Name == "Rooms").ToList(), 100, 1));
+        phases.Add(await RunPhaseAsync(client, "room-detail-sequential-100", routes.Where(x => x.Name == "RoomDetail").ToList(), 100, 1));
         phases.Add(await RunPhaseAsync(client, "current-inventory-sequential-100", routes.Where(x => x.Name == "CurrentInventory").ToList(), 100, 1));
+        phases.Add(await RunPhaseAsync(client, "current-inventory-canonical-alias-sequential-100", routes.Where(x => x.Name == "CurrentInventoryCanonicalAlias").ToList(), 100, 1));
         phases.Add(await RunPhaseAsync(client, "sample-refresh-sequential-100", routes.Where(x => x.Name == "SampleRefresh").ToList(), 100, 1));
         if (!string.Equals(profile, "core", StringComparison.OrdinalIgnoreCase))
         {
@@ -196,7 +199,7 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
         }
         // WP/EBS dashboard variants have dedicated 100-request phases above. Keep the mixed
         // route weighting aligned with the historical benchmark by retaining one dashboard route.
-        var mixedRoutes = routes.Where(x => x.Name is not "DashboardWP" and not "DashboardEBS").ToList();
+        var mixedRoutes = routes.Where(x => x.Name is not "DashboardWP" and not "DashboardEBS" and not "CurrentInventoryCanonicalAlias").ToList();
         phases.Add(await RunPhaseAsync(client, "mixed-concurrency-2", mixedRoutes, 100, 2));
         phases.Add(await RunPhaseAsync(client, "mixed-concurrency-4", mixedRoutes, 100, 4));
         phases.Add(await RunPhaseAsync(client, "mixed-concurrency-8", mixedRoutes, 100, 8));
@@ -229,6 +232,7 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
         AssertAllocatedBytesPerRequestAtMost(phases, "dashboard-ebs-sequential-100", 4 * 1024 * 1024);
         AssertAllocatedBytesPerRequestAtMost(phases, "rooms-sequential-100", 16 * 1024 * 1024);
         AssertAllocatedBytesPerRequestAtMost(phases, "current-inventory-sequential-100", 16 * 1024 * 1024);
+        AssertAllocatedBytesPerRequestAtMost(phases, "current-inventory-canonical-alias-sequential-100", 16 * 1024 * 1024);
         AssertAllocatedBytesPerRequestAtMost(phases, "sample-refresh-sequential-100", 1024 * 1024);
         if (!string.Equals(profile, "core", StringComparison.OrdinalIgnoreCase))
         {

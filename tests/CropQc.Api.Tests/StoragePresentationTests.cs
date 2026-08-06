@@ -113,15 +113,16 @@ public sealed class StoragePresentationTests
     }
 
     [Fact]
-    public void CurrentStorageFilters_ConstrainSourceQueriesBeforeMaterialization()
+    public void CurrentStorageFilters_ConstrainSafeSourcesAndApplyIdentityFiltersAfterReconciliation()
     {
         var service = ReadRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs");
 
         Assert.Contains("var scopedRoomIds = await scopedRoomQuery.Select(x => x.Id).ToListAsync", service);
         Assert.Contains("receiptsQuery = receiptsQuery.Where(x => allowedRoomIds.Contains(x.RoomId))", service);
         Assert.Contains("receiptsQuery = receiptsQuery.Where(x => x.CropYear == cropYear)", service);
-        Assert.Contains("receiptsQuery = receiptsQuery.Where(x => x.GrowerName.Contains(grower)", service);
-        Assert.Contains("receiptsQuery = receiptsQuery.Where(x => x.FruitProfile.VarietyCode.Contains(variety))", service);
+        Assert.Contains("var canonicalVarietyFilter = await BuildCanonicalVarietyFilterAsync", service);
+        Assert.Contains("varietyFilter.FruitProfileIds.Contains(x.FruitProfileId)", service);
+        Assert.Contains("CurrentLotMatchesFilter(x, filter, canonicalVarietyFilter)", service);
         Assert.Contains("query = query.Where(x => allowedRoomIds.Contains(x.RoomId))", service);
         Assert.Contains("allowedRoomIds ?? (roomId is null ? null : [roomId.Value])", service);
     }
