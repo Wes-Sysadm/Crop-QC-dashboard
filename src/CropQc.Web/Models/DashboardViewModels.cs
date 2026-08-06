@@ -93,6 +93,9 @@ public sealed class RoomVarietyColorSegmentViewModel
 {
     public string VarietyKey { get; set; } = "";
     public string VarietyName { get; set; } = "";
+    public string ProductionType { get; set; } = "";
+    public bool? IsOrganic { get; set; }
+    public string OrganicLabel => IsOrganic switch { true => "Organic", false => "Conventional", _ => "Organic status unavailable" };
     public int CurrentBins { get; set; }
     public decimal Percent { get; set; }
     public string HexColor { get; set; } = "#607D8B";
@@ -104,6 +107,7 @@ public sealed class RoomDetailViewModel
     public string? DataWarning { get; set; }
     public RoomSummaryItemViewModel? Summary { get; set; }
     public IReadOnlyList<RoomLotSummaryViewModel> CurrentLots { get; set; } = [];
+    public IReadOnlyList<RoomGrowerSummaryViewModel> CurrentGrowers { get; set; } = [];
     public IReadOnlyList<RoomLotSummaryViewModel> DepletedLots { get; set; } = [];
     public IReadOnlyList<RoomDepletionListItemViewModel> Depletions { get; set; } = [];
     public IReadOnlyList<RoomInventoryAdjustmentListItemViewModel> InventoryAdjustments { get; set; } = [];
@@ -118,6 +122,20 @@ public sealed class RoomDetailViewModel
     public RoomInventoryTrueUpForm TrueUpForm { get; set; } = new();
     public RoomTransferForm TransferForm { get; set; } = new();
     public bool CanManageDepletions { get; set; }
+}
+
+public sealed class RoomGrowerSummaryViewModel
+{
+    public string GrowerNumber { get; set; } = "";
+    public string GrowerName { get; set; } = "";
+    public int CurrentBins { get; set; }
+    public int CurrentLotCount { get; set; }
+    public decimal? WeightedPressureLbs { get; set; }
+    public int PressureRepresentedBins { get; set; }
+    public decimal? WeightedStarch { get; set; }
+    public int StarchRepresentedBins { get; set; }
+    public IReadOnlyList<VarietyBinPresentationViewModel> Varieties { get; set; } = [];
+    public IReadOnlyList<RoomLotSummaryViewModel> Lots { get; set; } = [];
 }
 
 public sealed class RoomProjectionRequest
@@ -191,6 +209,7 @@ public sealed class RoomLotSummaryViewModel
     public int RoomId { get; set; }
     public int? CropYear { get; set; }
     public int? FruitProfileId { get; set; }
+    public int? GrowerLotId { get; set; }
     public string Warehouse { get; set; } = "";
     public string Facility { get; set; } = "";
     public string LocationGroup { get; set; } = "";
@@ -203,7 +222,13 @@ public sealed class RoomLotSummaryViewModel
     public string GrowerName { get; set; } = "";
     public string LotCode { get; set; } = "";
     public string VarietyCode { get; set; } = "";
+    public string CanonicalVarietyKey { get; set; } = "";
+    public string CanonicalVarietyName { get; set; } = "";
+    public string ProductionType { get; set; } = "";
+    public bool? IsOrganic { get; set; }
+    public string VarietyHexColor { get; set; } = "#607D8B";
     public string InventoryStatus { get; set; } = "";
+    public DateTimeOffset? FirstReceivedAt { get; set; }
     public int OriginalBins { get; set; }
     public int DepletedBins { get; set; }
     public int CurrentBins { get; set; }
@@ -212,6 +237,8 @@ public sealed class RoomLotSummaryViewModel
     public decimal? MonthOverMonthPressureChangeLbs { get; set; }
     public decimal? AverageStarch { get; set; }
     public string DefectSummary { get; set; } = "None";
+    public string GradeSummary { get; set; } = "Unavailable";
+    public string SizeSummary { get; set; } = "Unavailable";
     public DateTimeOffset? LastSampleDate { get; set; }
     public string LatestQcSource { get; set; } = "";
     public int SampleCount { get; set; }
@@ -449,6 +476,7 @@ public sealed class BinsRunFilterForm
     public List<int> RoomIds { get; set; } = [];
     public string SelectionMode { get; set; } = ActualRunSelectionModes.ByRoom;
     public int? FruitProfileId { get; set; }
+    public int? GrowerLotId { get; set; }
     public DateTime? FromDate { get; set; }
     public DateTime? ToDate { get; set; }
     public DateOnly? PlannedDate { get; set; }
@@ -465,6 +493,19 @@ public sealed class BinsRunFilterForm
     public DateOnly? ReportWeekStart { get; set; }
     public string? ReportGrowerNumber { get; set; }
     public int ReportPage { get; set; } = 1;
+}
+
+public sealed class VarietyBinPresentationViewModel
+{
+    public string CanonicalVarietyKey { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string ProductionType { get; set; } = "";
+    public bool? IsOrganic { get; set; }
+    public string OrganicLabel => IsOrganic switch { true => "Organic", false => "Conventional", _ => "Organic status unavailable" };
+    public string HexColor { get; set; } = "#607D8B";
+    public bool IsConfiguredColor { get; set; }
+    public int BinCount { get; set; }
+    public decimal Percent { get; set; }
 }
 
 public static class ActualRunSelectionModes
@@ -1082,7 +1123,10 @@ public sealed record ReceiptListItemViewModel(
     int BinCount,
     int SampleCount = 0,
     string QcStatus = "",
-    DateTimeOffset? LastUpdatedAt = null);
+    DateTimeOffset? LastUpdatedAt = null,
+    string ProductionType = "",
+    bool? IsOrganic = null,
+    IReadOnlyList<VarietyBinPresentationViewModel>? Varieties = null);
 
 public class CreateReceiptForm
 {
@@ -1267,11 +1311,28 @@ public sealed class CurrentGrowerLotsPageViewModel
     public string? DataWarning { get; set; }
     public CurrentGrowerLotsFilterForm Filter { get; set; } = new();
     public IReadOnlyList<CurrentGrowerLotViewModel> Lots { get; set; } = [];
+    public IReadOnlyList<CurrentStorageGrowerViewModel> Growers { get; set; } = [];
+    public int TotalCurrentBins => Growers.Sum(x => x.CurrentBins);
     public IReadOnlyList<int> CropYears { get; set; } = [];
     public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
     public IReadOnlyList<Room> Rooms { get; set; } = [];
-    public IReadOnlyList<string> Growers { get; set; } = [];
+    public IReadOnlyList<string> GrowerOptions { get; set; } = [];
     public IReadOnlyList<string> Varieties { get; set; } = [];
+}
+
+public sealed class CurrentStorageGrowerViewModel
+{
+    public string GrowerNumber { get; set; } = "";
+    public string GrowerName { get; set; } = "";
+    public int CurrentBins { get; set; }
+    public int CurrentLotCount { get; set; }
+    public int CurrentRoomCount { get; set; }
+    public decimal? WeightedPressureLbs { get; set; }
+    public int PressureRepresentedBins { get; set; }
+    public decimal? WeightedStarch { get; set; }
+    public int StarchRepresentedBins { get; set; }
+    public IReadOnlyList<VarietyBinPresentationViewModel> Varieties { get; set; } = [];
+    public IReadOnlyList<CurrentGrowerLotViewModel> Lots { get; set; } = [];
 }
 
 public sealed class CurrentGrowerLotsFilterForm
@@ -1289,8 +1350,12 @@ public sealed class CurrentGrowerLotViewModel
 {
     public int? CropYear { get; set; }
     public string Grower { get; set; } = "";
+    public string GrowerNumber { get; set; } = "";
     public string Lot { get; set; } = "";
     public string Variety { get; set; } = "";
+    public string ProductionType { get; set; } = "";
+    public bool? IsOrganic { get; set; }
+    public string VarietyHexColor { get; set; } = "#607D8B";
     public string Warehouse { get; set; } = "";
     public string Room { get; set; } = "";
     public int CurrentBins { get; set; }

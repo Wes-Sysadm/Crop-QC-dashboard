@@ -1,12 +1,12 @@
 @model EbsInventoryCleanupPageViewModel
 @{
-    ViewData["Title"] = "EBS Test Inventory Cleanup Review";
+    ViewData["Title"] = "EBS Historical Inventory Cleanup";
 }
 
 <div class="room-card-header">
     <div>
-        <h1>EBS Test Inventory Cleanup Review</h1>
-        <p class="muted">Admin-only, read-only review of EBS inventory outside the protected Evans 7 room. This page cannot change inventory.</p>
+        <h1>EBS Historical Inventory Cleanup</h1>
+        <p class="muted">Historical, read-only review of the one-time EBS inventory correction where prior bins were brought back into the system. This is not a recurring inventory workflow.</p>
     </div>
 </div>
 
@@ -22,7 +22,8 @@
         Production cleanup requires the reviewed preflight/apply/verify package, a verified backup,
         and separate explicit authorization.
     </p>
-    <p><strong>Candidate balance outside Evans 7:</strong> @Model.CandidateCurrentBins bins across @Model.TotalRows room-lot balances.</p>
+    <p><strong>Unresolved candidate balance outside Evans 7:</strong> @Model.CandidateCurrentBins bins across @Model.TotalRows room-lot balances.</p>
+    <p><a class="button secondary-button" href="/Admin/RoomInventory/Reconciliation">Open Inventory Reconciliation</a></p>
     @if (Model.Rows.Count == 0)
     {
         <p>No EBS inventory outside Evans 7 is visible on this page.</p>

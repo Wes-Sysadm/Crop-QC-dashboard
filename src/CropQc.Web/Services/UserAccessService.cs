@@ -79,7 +79,7 @@ public static class ApplicationAreas
         new(ProjectionOutcome, "Planning Projection Reports", "Planning", "/BinsRun?Section=Planner", BinsRun),
         new(ActualRuns, "Actual Runs", "Operations", "/BinsRun?Section=Actual", BinsRun),
         new(PackoutResults, "Packout Results", "Operations", "/BinsRun?Section=Actual", ProjectionOutcome),
-        new(HistoricalInventoryCleanup, "Historical Inventory Cleanup", "Admin/System", "/Admin/EbsInventoryCleanup", DataCleanup),
+        new(HistoricalInventoryCleanup, "EBS Historical Cleanup", "Admin/System", "/Admin/EbsInventoryCleanup", DataCleanup),
         new(Rooms, "Rooms", "Inventory", "/Rooms"),
         new(Transfers, "Transfers", "Inventory", "/BinsRun?Section=Transfer", RoomTransactions),
         new(TrueUp, "True Up", "Inventory", "/BinsRun?Section=TrueUp", RoomTransactions),

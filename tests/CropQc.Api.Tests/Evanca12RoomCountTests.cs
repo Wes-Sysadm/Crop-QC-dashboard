@@ -38,7 +38,7 @@ public sealed class Evanca12RoomCountTests
         Assert.Equal(40, truckDetail.Summary?.CurrentBinsCount);
         Assert.NotNull(detail.Summary);
         Assert.Equal(1022, detail.Summary!.CurrentBinsCount);
-        Assert.Equal("FUJI Sealed: 1022 bins", detail.Summary.VarietyStatusSummary);
+        Assert.Equal("Fuji: 1022 bins", detail.Summary.VarietyStatusSummary);
         Assert.Equal(3, detail.CurrentLots.Count);
         Assert.Equal(1022, breakdown.IncludedBins);
         Assert.Contains(detail.CurrentLots, x => x.InventoryStatus == "Sealed" && x.LotCode == "1570" && x.CurrentBins == 819);
@@ -119,7 +119,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         Assert.Equal(3, await db.RoomInventoryAdjustments.CountAsync(CancellationToken.None));
         var current = await CreateService(db).GetRoomDetailAsync(12, CancellationToken.None);
         Assert.Equal(1022, current.Summary?.CurrentBinsCount);
-        Assert.Equal("FUJI Sealed: 1022 bins", current.Summary?.VarietyStatusSummary);
+        Assert.Equal("Fuji: 1022 bins", current.Summary?.VarietyStatusSummary);
     }
 
     [Fact]
@@ -248,7 +248,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         Assert.Null(page.DataWarning);
         Assert.Equal(3, page.Lots.Count);
         Assert.Equal(1022, page.Lots.Sum(x => x.CurrentBins));
-        Assert.Contains(page.Lots, x => x.Lot == "1570" && x.Variety == "FUJI" && x.CurrentBins == 819);
+        Assert.Contains(page.Lots, x => x.Lot == "1570" && x.Variety == "Fuji" && x.CurrentBins == 819);
         Assert.DoesNotContain(page.Lots, x => x.CurrentBins is 700 or 800);
     }
 

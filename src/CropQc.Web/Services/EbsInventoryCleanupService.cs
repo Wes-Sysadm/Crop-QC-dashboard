@@ -143,7 +143,7 @@ public sealed class EbsInventoryCleanupService(
             TrueUps = x.TrueUpBins,
             LastActivityAt = x.LastTransactionAt,
             EvidenceSource = $"Permanent room ledger ({x.TransactionCount} transactions)",
-            WarningReason = "EBS test inventory outside the protected Evans 7 room. Removal requires the reviewed operational script and explicit production authorization."
+            WarningReason = "Historical EBS balance outside the protected Evans 7 room. This read-only evidence does not authorize a correction."
         };
 
     public sealed record ProtectedRoomIdentity(

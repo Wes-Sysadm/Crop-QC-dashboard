@@ -137,7 +137,9 @@
 <div class="receipt-result-grid">
 @foreach (var receipt in Model.Receipts)
 {
-    <article class="receipt-card">
+    var receiptVarieties = receipt.Varieties ?? Array.Empty<VarietyBinPresentationViewModel>();
+    <article class="receipt-card receipt-card-colored @(receipt.IsOrganic == true ? "organic" : "")" style="--receipt-variety-bg: @BuildVarietyBandBackground(receiptVarieties)">
+        <div class="receipt-card-content">
         <div class="receipt-card-main">
             <div>
                 <h3><a href="/Receipts/@receipt.Id">@receipt.CompuTechReceiptId</a></h3>
@@ -153,21 +155,49 @@
             <dt>Grower</dt><dd>@receipt.GrowerName</dd>
             <dt>Receipt Type</dt><dd>@receipt.ReceiptType</dd>
             <dt>Lot #</dt><dd>@(string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? "-" : receipt.GrowerNumber)</dd>
-            <dt>Variety</dt><dd>@receipt.VarietyCode</dd>
+            <dt>Variety</dt><dd>
+                @foreach (var variety in receiptVarieties)
+                {
+                    <span class="receipt-variety-label"><i style="background: @variety.HexColor"></i>@variety.DisplayName — @IdentityLabel(variety.ProductionType, variety.OrganicLabel)@($" · {variety.BinCount:N0} bins")</span>
+                }
+            </dd>
             <dt>Bins</dt><dd>@receipt.BinCount</dd>
             <dt>Samples</dt><dd>@receipt.SampleCount</dd>
             <dt>QC Status</dt><dd>@receipt.QcStatus</dd>
             <dt>Last Updated</dt><dd>@BusinessTime.FormatPacific(receipt.LastUpdatedAt, empty: "-")</dd>
         </dl>
+        </div>
     </article>
 }
 </div>
 
 @functions {
+    private static string IdentityLabel(string? productionType, string organicLabel) =>
+        string.IsNullOrWhiteSpace(productionType) || string.Equals(productionType, organicLabel, StringComparison.OrdinalIgnoreCase)
+            ? organicLabel
+            : $"{productionType} · {organicLabel}";
+
     private bool IsReceiptTypeSelected(string receiptType)
     {
         var selected = string.IsNullOrWhiteSpace(Model.Search.ReceiptType) ? "Truck receipt" : Model.Search.ReceiptType;
         return string.Equals(selected, receiptType, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildVarietyBandBackground(IReadOnlyList<VarietyBinPresentationViewModel> varieties)
+    {
+        if (varieties.Count == 0) return "#E7ECEF";
+        if (varieties.Count == 1) return varieties[0].HexColor;
+        var total = varieties.Sum(x => Math.Max(0, x.BinCount));
+        var offset = 0m;
+        var stops = new List<string>();
+        foreach (var variety in varieties)
+        {
+            var share = total > 0 ? Math.Max(0, variety.BinCount) / (decimal)total * 100m : 100m / varieties.Count;
+            var end = offset + share;
+            stops.Add($"{variety.HexColor} {offset:0.###}% {end:0.###}%");
+            offset = end;
+        }
+        return $"linear-gradient(110deg, {string.Join(", ", stops)})";
     }
 }
 
