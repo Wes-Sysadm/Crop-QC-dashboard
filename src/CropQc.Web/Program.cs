@@ -261,6 +261,7 @@ builder.Services.AddScoped<IInventoryDeductionInvariantService, InventoryDeducti
 builder.Services.AddScoped<IReceiptInventoryOverrideService, ReceiptInventoryOverrideService>();
 builder.Services.AddScoped<IBinsRunService, BinsRunService>();
 builder.Services.AddScoped<IRunReportingService, RunReportingService>();
+builder.Services.AddScoped<IGrowerLotProgressService, GrowerLotProgressService>();
 builder.Services.AddScoped<IRunExpectationService, RunExpectationService>();
 builder.Services.AddSingleton<IPackoutSourceAllocationService, PackoutSourceAllocationService>();
 builder.Services.AddScoped<IRunProjectionService, RunProjectionService>();

@@ -65,6 +65,7 @@
     <a class="@(activeSection.Equals("TrueUp", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=TrueUp&amp;RoomId=@Model.Filter.RoomId">True Up</a>
     <a class="@(activeSection.Equals("Activity", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Activity&amp;RoomId=@Model.Filter.RoomId">Recent Activity</a>
     <a class="@(activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=RunTotals&amp;ReportFacility=WP&amp;ReportCropYear=@Model.RunReporting.CurrentCropYear">Run Totals</a>
+    <a href="/RunReporting/Growers?CropYear=@Model.RunReporting.CurrentCropYear&amp;Facility=All">Grower &amp; Lot Progress</a>
     @if (Model.RunReporting.CanViewNeedsReview)
     {
         <a class="@(activeSection.Equals("NeedsReview", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=NeedsReview">Needs Review</a>
@@ -1049,29 +1050,40 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
                 <p><strong>@detail.TotalBins.ToString("N0") bins</strong> through @detail.SelectedCutoff.ToString("MMM. d, yyyy") versus @detail.PriorBins.ToString("N0") bins for @detail.PriorCropYear through @detail.PriorCutoff!.Value.ToString("MMM. d, yyyy").</p>
                 <p class="muted">Difference: @detail.DifferenceBins!.Value.ToString("+N0;-N0;0") bins / @(detail.DifferencePercent is null ? "percentage unavailable" : $"{detail.DifferencePercent:+0.0;-0.0;0.0}%") · windows @detail.SelectedStart.ToString("MMM. d, yyyy")–@detail.SelectedCutoff.ToString("MMM. d, yyyy") and @detail.PriorStart!.Value.ToString("MMM. d, yyyy")–@detail.PriorCutoff!.Value.ToString("MMM. d, yyyy").</p>
             }
-            <div class="table-wrap">
-                <table>
-                    <thead><tr><th>Variety / Production</th><th>@detail.CropYear through cutoff</th>@if (detail.HasAuthoritativePriorBaseline) { <th>@detail.PriorCropYear through cutoff</th><th>Difference</th> }</tr></thead>
-                    <tbody>
-                    @foreach (var variety in detail.Varieties)
-                    {
-                        <tr>
-                            <td>@variety.Variety — @variety.ProductionType</td>
-                            <td>@variety.Bins.ToString("N0")</td>
+            <p><strong>@detail.TotalReceivedBins.ToString("N0") bins received</strong> at @detail.Facility · <strong>@detail.TotalBins.ToString("N0") bins run</strong> credited to @detail.Facility.</p>
+            <div class="run-variety-card-grid">
+                @foreach (var variety in detail.Varieties)
+                {
+                    var productionLabel = variety.IsOrganic ? "Organic" : "Conventional";
+                    <a class="run-variety-card @(variety.IsOrganic ? "organic" : "conventional")"
+                       style="--variety-bg: @variety.ColorHex; --variety-text: @variety.TextColorHex"
+                       href="@($"/BinsRun?Section=RunTotals&ReportFacility={detail.Facility}&ReportCropYear={detail.CropYear}&ReportVarietyKey={Uri.EscapeDataString(variety.VarietyKey)}")">
+                        <span class="run-variety-card-content">
+                            <strong>@variety.Variety</strong>
+                            <span class="production-badge">@productionLabel</span>
+                            <span>Received: <b>@variety.ReceivedBins.ToString("N0") bins</b></span>
+                            <span>Run: <b>@variety.Bins.ToString("N0") bins</b></span>
                             @if (detail.HasAuthoritativePriorBaseline)
                             {
-                                <td>@variety.PriorBins.ToString("N0")</td>
-                                <td>@variety.DifferenceBins.ToString("+N0;-N0;0") / @(variety.DifferencePercent is null ? "N/A" : $"{variety.DifferencePercent:+0.0;-0.0;0.0}%")</td>
+                                <span>@detail.PriorCropYear Run: <b>@variety.PriorBins.ToString("N0")</b></span>
+                                <span>Difference: <b>@variety.DifferenceBins.ToString("+N0;-N0;0")</b> / @(variety.DifferencePercent is null ? "N/A" : $"{variety.DifferencePercent:+0.0;-0.0;0.0}%")</span>
                             }
-                        </tr>
-                    }
-                    </tbody>
-                    <tfoot><tr><th>Facility total</th><th>@detail.Varieties.Sum(x => x.Bins).ToString("N0")</th>@if (detail.HasAuthoritativePriorBaseline) { <th>@detail.Varieties.Sum(x => x.PriorBins).ToString("N0")</th><th></th> }</tr></tfoot>
-                </table>
+                        </span>
+                    </a>
+                }
             </div>
+            <p><a href="/RunReporting/Growers?CropYear=@detail.CropYear&amp;Facility=@detail.Facility">Open Grower &amp; Lot Progress with these filters</a></p>
         </section>
         <section class="panel">
-            <h2>Weekly and Grower Drilldown</h2>
+            <h2>@(string.IsNullOrWhiteSpace(detail.SelectedVarietyKey) ? "Select a variety for weekly detail" : "Weekly and Grower Drilldown")</h2>
+            @if (detail.Varieties.SingleOrDefault(x => x.VarietyKey == detail.SelectedVarietyKey) is { } selectedVariety)
+            {
+                <div class="selected-variety-header @(selectedVariety.IsOrganic ? "organic" : "conventional")" style="--variety-bg: @selectedVariety.ColorHex; --variety-text: @selectedVariety.TextColorHex">
+                    <strong>@selectedVariety.Variety</strong>
+                    <span class="production-badge">@(selectedVariety.IsOrganic ? "Organic" : "Conventional")</span>
+                </div>
+                <p><a href="/BinsRun?Section=RunTotals&amp;ReportFacility=@detail.Facility&amp;ReportCropYear=@detail.CropYear">Clear variety selection</a></p>
+            }
             @foreach (var week in detail.Weeks)
             {
                 <details class="subpanel" open="@(detail.SelectedVarietyKey == week.VarietyKey && detail.SelectedWeekStart == week.WeekStart)">

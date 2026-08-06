@@ -46,12 +46,49 @@ public sealed class RunReportingTests
         var detail = Assert.IsType<RunTotalsDetailViewModel>(detailPage.Detail);
         Assert.Equal(60, detail.TotalBins);
         Assert.Equal(detail.TotalBins, detail.Varieties.Sum(x => x.Bins));
-        Assert.Equal(detail.TotalBins, detail.Weeks.Sum(x => x.Bins));
+        Assert.Empty(detail.Weeks);
+        var selectedPage = await service.GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026,
+            ReportVarietyKey = Assert.Single(detail.Varieties).VarietyKey
+        }, principal, CancellationToken.None);
+        var selectedDetail = Assert.IsType<RunTotalsDetailViewModel>(selectedPage.Detail);
+        Assert.Equal(selectedDetail.TotalBins, selectedDetail.Weeks.Sum(x => x.Bins));
         Assert.Equal(0, detail.PriorBins);
         Assert.False(detail.HasAuthoritativePriorBaseline);
         Assert.Null(detail.PriorCropYear);
         Assert.DoesNotContain(detail.Varieties, x => x.Bins is 70 or 90 or 99);
         Assert.All(summary.FacilitySummaries.SelectMany(x => x.CropYears), x => Assert.True(x.CropYear >= 2026));
+    }
+
+    [Fact]
+    public async Task RunTotalsVarietyCards_UseSharedConfiguredColorAndReadableContrast()
+    {
+        using var db = CreateDbContext();
+        await SeedAsync(db);
+        db.VarietyColorConfigurations.Add(new VarietyColorConfiguration
+        {
+            VarietyKey = "BART",
+            VarietyName = "BART",
+            HexColor = "#F5E66A",
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var page = await CreateService(db).GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026
+        }, Principal(), CancellationToken.None);
+
+        var variety = Assert.Single(Assert.IsType<RunTotalsDetailViewModel>(page.Detail).Varieties);
+        Assert.Equal("#F5E66A", variety.ColorHex);
+        Assert.Equal("#17212B", variety.TextColorHex);
+        Assert.True(variety.IsColorConfigured);
     }
 
     [Fact]
@@ -262,7 +299,8 @@ public sealed class RunReportingTests
             db,
             new PacificBusinessTimeService(new FixedClock(utcNow ?? new DateTimeOffset(2026, 8, 3, 19, 0, 0, TimeSpan.Zero))),
             new AllowAccess(),
-            configuration);
+            configuration,
+            new VarietyColorService(db));
     }
 
     private static async Task SeedAsync(CropQcDbContext db)

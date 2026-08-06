@@ -199,6 +199,30 @@ tr:last-child td { border-bottom: 0; }
 .compact-form-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); align-items: end; }
 .variety-color-form { align-items: end; }
 .variety-color-form input[type="color"] { width: 54px; padding: 2px; }
+
+.run-variety-card-grid, .grower-variety-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 1rem 0; }
+.run-variety-card, .grower-variety-card { position: relative; overflow: hidden; border: 1px solid rgba(23,33,43,.24); border-radius: 10px; background: var(--variety-bg); color: var(--variety-text); box-shadow: 0 2px 7px rgba(23,33,43,.12); }
+.run-variety-card { display: block; color: var(--variety-text); text-decoration: none; }
+.run-variety-card:hover, .run-variety-card:focus-visible { outline: 3px solid #1f6feb; outline-offset: 2px; }
+.run-variety-card.organic::after, .grower-variety-card.organic::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(135deg, transparent 0, transparent 11px, rgba(255,255,255,.22) 11px, rgba(255,255,255,.22) 17px); }
+.run-variety-card-content, .grower-variety-card-content { position: relative; z-index: 1; display: grid; gap: .45rem; padding: 1rem; }
+.run-variety-card-content > strong, .grower-variety-card h3 { font-size: 1.15rem; margin: 0; }
+.production-badge { display: inline-block; width: fit-content; padding: .12rem .45rem; border: 1px solid currentColor; border-radius: 999px; font-size: .8rem; font-weight: 700; background: rgba(255,255,255,.18); }
+.grower-variety-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; margin: .45rem 0; }
+.grower-variety-card dl div { display: grid; }
+.grower-variety-card dt { font-size: .76rem; opacity: .86; }
+.grower-variety-card dd { margin: 0; font-weight: 700; }
+.variety-card-action { width: fit-content; color: var(--variety-text); font-weight: 700; text-decoration: underline; }
+.selected-variety-header { position: relative; overflow: hidden; display: flex; align-items: center; gap: .6rem; margin: .75rem 0; padding: .65rem .85rem; border-radius: 7px; background: var(--variety-bg); color: var(--variety-text); }
+.selected-variety-header.organic::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(135deg, transparent 0, transparent 11px, rgba(255,255,255,.22) 11px, rgba(255,255,255,.22) 17px); }
+.selected-variety-header > * { position: relative; z-index: 1; }
+.grower-progress-list { display: grid; gap: 1rem; }
+.grower-progress-inline-metrics { display: flex; flex-wrap: wrap; gap: .65rem 1.35rem; }
+.grower-lot-detail { grid-column: 1 / -1; }
+.lot-week-detail-row > td { background: #f5f8fb; padding: 1rem; }
+.supporting-run-table { margin-top: .75rem; }
+.grower-progress-filter label { min-width: 150px; }
+.pagination { display: flex; align-items: center; justify-content: center; gap: 1rem; margin: 1.25rem 0; }
 .access-matrix { display: grid; gap: 14px; }
 .access-user-card { display: grid; gap: 12px; padding: 14px; border: 1px solid #d9e1e8; border-radius: 6px; background: white; min-width: 0; }
 .access-user-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }

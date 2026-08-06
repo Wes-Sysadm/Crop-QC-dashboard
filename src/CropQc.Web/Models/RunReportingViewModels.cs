@@ -24,6 +24,7 @@ public sealed class RunTotalsDetailViewModel
     public string Facility { get; set; } = "";
     public int CropYear { get; set; }
     public int TotalBins { get; set; }
+    public int TotalReceivedBins { get; set; }
     public int? PriorCropYear { get; set; }
     public bool HasAuthoritativePriorBaseline => PriorCropYear is not null;
     public int PriorBins { get; set; }
@@ -49,8 +50,12 @@ public sealed record RunVarietyTotalViewModel(
     string Variety,
     string ProductionType,
     bool IsOrganic,
+    int ReceivedBins,
     int Bins,
-    int PriorBins)
+    int PriorBins,
+    string ColorHex = "#2F80ED",
+    string TextColorHex = "#FFFFFF",
+    bool IsColorConfigured = false)
 {
     public int DifferenceBins => Bins - PriorBins;
     public decimal? DifferencePercent => PriorBins == 0 ? null : (Bins - PriorBins) * 100m / PriorBins;
@@ -96,3 +101,112 @@ public sealed record RunReportingIssueViewModel(
     string RecordSource,
     string RecordUrl,
     long EntryId);
+
+public sealed class GrowerLotProgressFilterForm
+{
+    public int? CropYear { get; set; }
+    public string Facility { get; set; } = "All";
+    public string? GrowerSearch { get; set; }
+    public string? LotSearch { get; set; }
+    public string? VarietyKey { get; set; }
+    public string? ProductionType { get; set; }
+    public string Sort { get; set; } = "GrowerNumber";
+    public int Page { get; set; } = 1;
+    public string? ExpandedGrowerNumber { get; set; }
+    public string? ExpandedVarietyKey { get; set; }
+    public string? SelectedLotKey { get; set; }
+    public DateOnly? SelectedWeekStart { get; set; }
+    public int SupportingPage { get; set; } = 1;
+}
+
+public sealed class GrowerLotProgressPageViewModel
+{
+    public int AuthoritativeStartCropYear { get; set; }
+    public int CurrentCropYear { get; set; }
+    public GrowerLotProgressFilterForm Filter { get; set; } = new();
+    public IReadOnlyList<int> CropYears { get; set; } = [];
+    public IReadOnlyList<GrowerLotVarietyOptionViewModel> VarietyOptions { get; set; } = [];
+    public int GrowerCount { get; set; }
+    public int ReceivedLotCount { get; set; }
+    public int BinsReceived { get; set; }
+    public int BinsRun { get; set; }
+    public IReadOnlyList<GrowerProgressViewModel> Growers { get; set; } = [];
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; }
+    public bool HasPreviousPage => Page > 1;
+    public bool HasNextPage { get; set; }
+    public string? FilterValidationMessage { get; set; }
+    public int ExcludedReceiptCount { get; set; }
+    public int ExcludedRunLineCount { get; set; }
+    public bool ExcludedSampleIsBounded { get; set; }
+    public IReadOnlyList<GrowerLotProgressIssueViewModel> ExcludedIssues { get; set; } = [];
+}
+
+public sealed record GrowerLotVarietyOptionViewModel(string VarietyKey, string Variety, string ProductionType, bool IsOrganic);
+
+public sealed class GrowerProgressViewModel
+{
+    public string GrowerNumber { get; set; } = "";
+    public string? GrowerName { get; set; }
+    public int ReceivedLotCount { get; set; }
+    public int BinsReceived { get; set; }
+    public int BinsRun { get; set; }
+    public bool IsExpanded { get; set; }
+    public IReadOnlyList<GrowerVarietyProgressViewModel> Varieties { get; set; } = [];
+}
+
+public sealed class GrowerVarietyProgressViewModel
+{
+    public string VarietyKey { get; set; } = "";
+    public int FruitProfileId { get; set; }
+    public string Variety { get; set; } = "";
+    public string ProductionType { get; set; } = "";
+    public bool IsOrganic { get; set; }
+    public int BinsReceived { get; set; }
+    public int BinsRun { get; set; }
+    public int ReceivedLotCount { get; set; }
+    public decimal? RunPercent => BinsReceived > 0 ? BinsRun * 100m / BinsReceived : null;
+    public string ColorHex { get; set; } = "#2F80ED";
+    public string TextColorHex { get; set; } = "#FFFFFF";
+    public bool IsColorConfigured { get; set; }
+    public bool IsExpanded { get; set; }
+    public IReadOnlyList<GrowerLotProgressViewModel> Lots { get; set; } = [];
+}
+
+public sealed class GrowerLotProgressViewModel
+{
+    public string LotKey { get; set; } = "";
+    public int? GrowerLotId { get; set; }
+    public string CanonicalVarietyKey { get; set; } = "";
+    public string LotNumber { get; set; } = "";
+    public string GrowerNumber { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public string ProductionType { get; set; } = "";
+    public bool IsOrganic { get; set; }
+    public string ReceivingFacilities { get; set; } = "";
+    public DateTimeOffset? FirstReceiptAt { get; set; }
+    public DateTimeOffset? LatestReceiptAt { get; set; }
+    public int ReceiptCount { get; set; }
+    public int BinsReceived { get; set; }
+    public int BinsRun { get; set; }
+    public int RunRecordCount { get; set; }
+    public bool IsSelected { get; set; }
+    public string? WeeklyDetailWarning { get; set; }
+    public IReadOnlyList<GrowerLotWeekProgressViewModel> Weeks { get; set; } = [];
+}
+
+public sealed class GrowerLotWeekProgressViewModel
+{
+    public DateOnly WeekStart { get; set; }
+    public DateOnly WeekEnd => WeekStart.AddDays(6);
+    public int BinsRun { get; set; }
+    public int CumulativeBinsRun { get; set; }
+    public int RunRecordCount { get; set; }
+    public bool IsSelected { get; set; }
+    public IReadOnlyList<RunSupportingRecordViewModel> SupportingRecords { get; set; } = [];
+    public int SupportingPage { get; set; } = 1;
+    public bool HasPreviousSupportingRecords => SupportingPage > 1;
+    public bool HasMoreSupportingRecords { get; set; }
+}
+
+public sealed record GrowerLotProgressIssueViewModel(string IssueType, string Explanation, string RecordUrl);
