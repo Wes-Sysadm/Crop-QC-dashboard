@@ -87,6 +87,23 @@ public sealed class DashboardSummaryPerformanceDatasetTests
     }
 
     [Fact]
+    public async Task HomeDashboard_PreservesQcSectionsWhenRoomInventoryFails()
+    {
+        await using var db = CreateDbContext();
+        await SeedRepresentativeDashboardDatasetAsync(db);
+        var service = CreateService(db, new ThrowingLedgerQuery());
+
+        var dashboard = await service.GetHomeDashboardAsync(new RoomSummaryFilterForm(), CancellationToken.None);
+
+        Assert.NotNull(dashboard.DataWarning);
+        Assert.Contains("Room inventory cards and summaries could not be loaded", dashboard.DataWarning);
+        Assert.Equal(40 * 3, dashboard.TodaySamples.Count);
+        Assert.Contains(dashboard.Cards, x => x.Label == "Today's Receiving Samples" && x.Count > 0);
+        Assert.Empty(dashboard.RoomSummaries);
+        Assert.Empty(dashboard.StorageByFacility);
+    }
+
+    [Fact]
     public void DashboardOptimization_DocumentsRepresentativeDatasetAndBaselineLimitations()
     {
         var docs = File.ReadAllText(FindRepositoryFile("docs", "performance-baseline.md"));
@@ -307,7 +324,9 @@ public sealed class DashboardSummaryPerformanceDatasetTests
         CapturedAt = now
     };
 
-    private static DashboardDataService CreateService(CropQcDbContext db)
+    private static DashboardDataService CreateService(
+        CropQcDbContext db,
+        IRoomInventoryLedgerQueryService? ledgerQuery = null)
     {
         var httpContext = new DefaultHttpContext
         {
@@ -333,7 +352,24 @@ public sealed class DashboardSummaryPerformanceDatasetTests
             new CropYearService(db, configuration),
             new HttpContextAccessor { HttpContext = httpContext },
             configuration,
-            NullLogger<DashboardDataService>.Instance);
+            NullLogger<DashboardDataService>.Instance,
+            roomInventoryLedgerQueryService: ledgerQuery);
+    }
+
+    private sealed class ThrowingLedgerQuery : IRoomInventoryLedgerQueryService
+    {
+        public Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsync(
+            int? warehouseId,
+            IReadOnlyCollection<int>? roomIds,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Incident fixture room-ledger failure.");
+
+        public Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsync(
+            int? warehouseId,
+            IReadOnlyCollection<int>? roomIds,
+            int? fruitProfileId,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Incident fixture room-ledger failure.");
     }
 
     private sealed class FakeFileStorageService : IFileStorageService

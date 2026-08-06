@@ -110,19 +110,49 @@ public sealed class DashboardDataService(
     public async Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
     {
         var normalizedRoomFilter = NormalizeRoomSummaryFilter(roomSummaryFilter);
+        var activeCropYear = cropYearService.GetCurrentCropYear(BusinessTime.NowPacific);
+        IReadOnlyList<SampleListItemViewModel> todaySamples = [];
+        string? qcWarning = null;
         try
         {
             var todayRange = BusinessTime.UtcRangeForPacificDate(BusinessTime.PacificDate(BusinessTime.UtcNow));
-            var todaySamples = (await BuildTodayDashboardSamplesAsync(todayRange, cancellationToken))
+            todaySamples = (await BuildTodayDashboardSamplesAsync(todayRange, cancellationToken))
                 .Where(x => FacilityContext.Matches(x.Warehouse, x.Warehouse, normalizedRoomFilter.Facility))
                 .ToList();
-            var dashboardLots = (await BuildDashboardCurrentInventorySnapshotsAsync(null, cancellationToken))
+        }
+        catch (Exception ex)
+        {
+            qcWarning = DatabaseWarning(
+                ex,
+                "Home dashboard QC",
+                "Today's QC cards and samples could not be loaded. Other dashboard sections remain available.");
+        }
+
+        IReadOnlyList<DashboardInventorySnapshot> dashboardLots = [];
+        IReadOnlyList<RoomSummaryItemViewModel> roomSummaries = [];
+        string? inventoryWarning = null;
+        try
+        {
+            dashboardLots = (await BuildDashboardCurrentInventorySnapshotsAsync(null, cancellationToken))
                 .Where(x => x.CurrentBins > 0 && FacilityContext.Matches(x.Facility, x.Facility, normalizedRoomFilter.Facility))
                 .ToList();
-            var roomSummaries = await BuildDashboardRoomSummariesAsync(dashboardLots, normalizedRoomFilter, cancellationToken);
-            var totalCurrentBins = dashboardLots.Sum(x => x.CurrentBins);
-            var currentGrowerLots = dashboardLots.Select(x => CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
-            var cards = BuildHomeCards(
+            roomSummaries = await BuildDashboardRoomSummariesAsync(dashboardLots, normalizedRoomFilter, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            inventoryWarning = DatabaseWarning(
+                ex,
+                "Home dashboard room inventory",
+                "Room inventory cards and summaries could not be loaded. Today's QC cards and samples remain available.");
+        }
+
+        var totalCurrentBins = dashboardLots.Sum(x => x.CurrentBins);
+        var currentGrowerLots = dashboardLots.Select(x => CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        return new HomeDashboardViewModel
+        {
+            ActiveCropYear = activeCropYear,
+            DataWarning = JoinWarnings(qcWarning, inventoryWarning),
+            Cards = BuildHomeCards(
                 todaySamples.Count(x => x.SampleType.Contains("Receiving", StringComparison.OrdinalIgnoreCase)),
                 todaySamples.Count(IsReadyToEmail),
                 todaySamples.Count(x => !x.IsReady),
@@ -130,38 +160,22 @@ public sealed class DashboardDataService(
                 todaySamples.Count(x => x.ReviewReasons.Count > 0),
                 totalCurrentBins,
                 currentGrowerLots,
-                normalizedRoomFilter.Facility);
-            return new HomeDashboardViewModel
-            {
-                ActiveCropYear = cropYearService.GetCurrentCropYear(BusinessTime.NowPacific),
-                Cards = cards,
-                TodaySamples = todaySamples,
-                RoomSummaryFilter = normalizedRoomFilter,
-                RoomSummaries = roomSummaries,
-                StorageByFacility = dashboardLots
-                    .GroupBy(x => x.Facility)
-                    .Select(x => new StorageFacilitySummaryViewModel
-                    {
-                        Facility = x.Key,
-                        CurrentBins = x.Sum(y => y.CurrentBins),
-                        CurrentGrowerLots = x.Select(y => CurrentDashboardLotKey(y.RoomId, y.Lot, y.Variety)).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
-                        CurrentRooms = x.Select(y => y.RoomId).Distinct().Count()
-                    })
-                    .OrderBy(x => x.Facility)
-                    .ToList()
-            };
-        }
-        catch (Exception ex)
-        {
-            return new HomeDashboardViewModel
-            {
-                ActiveCropYear = cropYearService.GetCurrentCropYear(BusinessTime.NowPacific),
-                DataWarning = DatabaseWarning(ex, "Home dashboard"),
-                Cards = BuildHomeCards(0, 0, 0, 0, 0, 0, 0, normalizedRoomFilter.Facility),
-                RoomSummaryFilter = normalizedRoomFilter,
-                RoomSummaries = []
-            };
-        }
+                normalizedRoomFilter.Facility),
+            TodaySamples = todaySamples,
+            RoomSummaryFilter = normalizedRoomFilter,
+            RoomSummaries = roomSummaries,
+            StorageByFacility = dashboardLots
+                .GroupBy(x => x.Facility)
+                .Select(x => new StorageFacilitySummaryViewModel
+                {
+                    Facility = x.Key,
+                    CurrentBins = x.Sum(y => y.CurrentBins),
+                    CurrentGrowerLots = x.Select(y => CurrentDashboardLotKey(y.RoomId, y.Lot, y.Variety)).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                    CurrentRooms = x.Select(y => y.RoomId).Distinct().Count()
+                })
+                .OrderBy(x => x.Facility)
+                .ToList()
+        };
     }
 
     public async Task<RoomsPageViewModel> GetRoomsAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
@@ -3823,13 +3837,41 @@ public sealed class DashboardDataService(
         return lotSummaries;
     }
 
-    private static void ApplyLedgerBalances(
+    private void ApplyLedgerBalances(
         IReadOnlyList<RoomLotSummaryViewModel> lotSummaries,
         IReadOnlyList<RoomInventoryLedgerSnapshot> ledgerSnapshots)
     {
-        var balances = ledgerSnapshots.ToDictionary(
-            x => LedgerLotKey(x.RoomId, x.CropYear, x.Lot, x.Variety, x.FruitProfileId),
-            x => Math.Max(0, x.CurrentBins),
+        var balanceGroups = ledgerSnapshots
+            .GroupBy(
+                x => LedgerLotKey(x.RoomId, x.CropYear, x.Lot, x.Variety, x.FruitProfileId),
+                StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var conflictingGroups = balanceGroups
+            .Where(x => !CanReconcileDashboardLedgerSnapshots(x))
+            .ToList();
+        if (conflictingGroups.Count > 0)
+        {
+            var sample = conflictingGroups
+                .Take(5)
+                .Select(x => $"{x.Key} [{DashboardLedgerIdentitySummary(x)}]");
+            var suffix = conflictingGroups.Count > 5 ? $"; plus {conflictingGroups.Count - 5} more" : "";
+            throw new InvalidOperationException(
+                $"Room inventory ledger contains {conflictingGroups.Count} conflicting dashboard key(s): {string.Join("; ", sample)}{suffix}. "
+                + "The conflicting quantities were not selected or discarded.");
+        }
+
+        var compatibleDuplicates = balanceGroups.Where(x => x.Count() > 1).ToList();
+        if (compatibleDuplicates.Count > 0)
+        {
+            logger.LogWarning(
+                "Room inventory dashboard reconciled {DuplicateKeyCount} compatible duplicate ledger key(s) by summing authoritative balances before display clamping. Sample keys: {DuplicateKeys}. No ledger rows were changed.",
+                compatibleDuplicates.Count,
+                string.Join(", ", compatibleDuplicates.Take(5).Select(x => x.Key)));
+        }
+
+        var balances = balanceGroups.ToDictionary(
+            x => x.Key,
+            x => Math.Max(0, x.Sum(y => y.CurrentBins)),
             StringComparer.OrdinalIgnoreCase);
         foreach (var group in lotSummaries.GroupBy(
                      x => LedgerLotKey(x.RoomId, x.CropYear, x.LotCode, x.VarietyCode, x.FruitProfileId),
@@ -3890,6 +3932,33 @@ public sealed class DashboardDataService(
                 .Select(x => new RoomSampleLinkViewModel(x.Id, x.SampleSequenceNumber <= 1 ? x.DisplayReceiptId : $"{x.DisplayReceiptId}({x.SampleSequenceNumber})", x.SampleType))
                 .ToList();
         }
+    }
+
+    private static bool CanReconcileDashboardLedgerSnapshots(IEnumerable<RoomInventoryLedgerSnapshot> snapshots)
+    {
+        var rows = snapshots.ToList();
+        return rows.Select(x => x.WarehouseId).Distinct().Count() <= 1
+            && rows.Where(x => x.GrowerLotId is not null).Select(x => x.GrowerLotId).Distinct().Count() <= 1
+            && DistinctNonEmpty(rows.Select(x => x.GrowerNumber)) <= 1
+            && DistinctNonEmpty(rows.Select(x => x.InventoryStatus)) <= 1
+            && DistinctNonEmpty(rows.Select(x => x.ProductionType)) <= 1
+            && rows.Where(x => x.IsOrganic is not null).Select(x => x.IsOrganic).Distinct().Count() <= 1;
+    }
+
+    private static int DistinctNonEmpty(IEnumerable<string?> values) =>
+        values.Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+    private static string DashboardLedgerIdentitySummary(IEnumerable<RoomInventoryLedgerSnapshot> snapshots)
+    {
+        var rows = snapshots.ToList();
+        var growerLotIds = rows.Where(x => x.GrowerLotId is not null).Select(x => x.GrowerLotId!.Value).Distinct().OrderBy(x => x).ToList();
+        return $"snapshots={rows.Count}, warehouses={string.Join(",", rows.Select(x => x.WarehouseId).Distinct().OrderBy(x => x))}, "
+            + $"growerLotIds={(growerLotIds.Count == 0 ? "legacy-only" : string.Join(",", growerLotIds))}, "
+            + $"growers={string.Join(",", rows.Select(x => x.GrowerNumber).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase))}, "
+            + $"statuses={string.Join(",", rows.Select(x => x.InventoryStatus).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase))}";
     }
 
     private async Task<IReadOnlyList<RoomConditionSample>> LoadRoomConditionSamplesAsync(
@@ -5987,7 +6056,13 @@ public sealed class DashboardDataService(
         return string.Concat(value.Select(ch => invalidChars.Contains(ch) || char.IsWhiteSpace(ch) ? '_' : ch));
     }
 
-    private string DatabaseWarning(Exception exception, string operation)
+    private static string? JoinWarnings(params string?[] warnings)
+    {
+        var messages = warnings.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+        return messages.Count == 0 ? null : string.Join(" ", messages);
+    }
+
+    private string DatabaseWarning(Exception exception, string operation, string? safeMessage = null)
     {
         var diagnostic = DatabaseFailureDiagnostics.Classify(exception);
         var reference = Guid.NewGuid().ToString("N")[..8];
@@ -5999,7 +6074,7 @@ public sealed class DashboardDataService(
             dbContext.Database.ProviderName ?? "Unknown",
             diagnostic.ProviderCode ?? "None",
             reference);
-        return $"{diagnostic.SafeMessage} Reference {reference}.";
+        return $"{safeMessage ?? diagnostic.SafeMessage} Reference {reference}.";
     }
 
     private static string SafeErrorMessage(Exception exception)
