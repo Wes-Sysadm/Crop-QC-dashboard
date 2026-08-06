@@ -26,6 +26,49 @@ namespace CropQc.Api.Tests;
 public sealed class ProductionRestoreMemoryBenchmarkTests
 {
     [Fact]
+    public async Task ProductionRestore_IncidentBdb7aeaf_RoomInventoryRoutesRemainReadOnlyAndRenderWithoutWarnings_WhenConfigured()
+    {
+        var databaseUrl = Environment.GetEnvironmentVariable("CROPQC_PERF_DATABASE_URL");
+        if (string.IsNullOrWhiteSpace(databaseUrl))
+        {
+            return;
+        }
+
+        await using var factory = new ProductionRestoreWebApplicationFactory(databaseUrl);
+        long adjustmentCountBefore;
+        int adjustmentQuantityBefore;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            adjustmentCountBefore = await db.RoomInventoryAdjustments.AsNoTracking().LongCountAsync();
+            adjustmentQuantityBefore = await db.RoomInventoryAdjustments.AsNoTracking().SumAsync(x => x.ChangeAmount);
+        }
+
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(BenchmarkAuthenticationHandler.SchemeName);
+        foreach (var route in new[]
+                 {
+                     "/?Facility=All", "/?Facility=WP", "/?Facility=EBS",
+                     "/Rooms?Facility=All", "/Rooms?Facility=WP", "/Rooms?Facility=EBS",
+                     "/GrowerLots/Current?Facility=All", "/GrowerLots/Current?Facility=WP", "/GrowerLots/Current?Facility=EBS"
+                 })
+        {
+            using var response = await client.GetAsync(route);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var html = await response.Content.ReadAsStringAsync();
+            Assert.DoesNotContain("Room inventory cards and summaries could not be loaded", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("Dashboard data could not be loaded", html, StringComparison.Ordinal);
+        }
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            Assert.Equal(adjustmentCountBefore, await db.RoomInventoryAdjustments.AsNoTracking().LongCountAsync());
+            Assert.Equal(adjustmentQuantityBefore, await db.RoomInventoryAdjustments.AsNoTracking().SumAsync(x => x.ChangeAmount));
+        }
+    }
+
+    [Fact]
     public async Task ProductionRestore_ReadOnlyRouteMatrix_RecordsBoundedMemoryProfile_WhenConfigured()
     {
         var databaseUrl = Environment.GetEnvironmentVariable("CROPQC_PERF_DATABASE_URL");
@@ -50,7 +93,9 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
 
         var routes = new List<BenchmarkRoute>
         {
-            new("Dashboard", "/"),
+            new("DashboardAll", "/?Facility=All"),
+            new("DashboardWP", "/?Facility=WP"),
+            new("DashboardEBS", "/?Facility=EBS"),
             new("Rooms", "/Rooms?Facility=All"),
             new("CurrentInventory", "/GrowerLots/Current?Facility=All"),
             new("RoomDetail", $"/Rooms/{roomId}"),
@@ -128,6 +173,9 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
 
         var phases = new List<BenchmarkPhaseResult>();
         phases.Add(await RunPhaseAsync(client, "cold-route-matrix", routes, routes.Count, 1));
+        phases.Add(await RunPhaseAsync(client, "dashboard-all-sequential-100", routes.Where(x => x.Name == "DashboardAll").ToList(), 100, 1));
+        phases.Add(await RunPhaseAsync(client, "dashboard-wp-sequential-100", routes.Where(x => x.Name == "DashboardWP").ToList(), 100, 1));
+        phases.Add(await RunPhaseAsync(client, "dashboard-ebs-sequential-100", routes.Where(x => x.Name == "DashboardEBS").ToList(), 100, 1));
         phases.Add(await RunPhaseAsync(client, "rooms-sequential-100", routes.Where(x => x.Name == "Rooms").ToList(), 100, 1));
         phases.Add(await RunPhaseAsync(client, "current-inventory-sequential-100", routes.Where(x => x.Name == "CurrentInventory").ToList(), 100, 1));
         phases.Add(await RunPhaseAsync(client, "sample-refresh-sequential-100", routes.Where(x => x.Name == "SampleRefresh").ToList(), 100, 1));
@@ -146,13 +194,16 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
             phases.Add(await RunPhaseAsync(client, "run-reporting-needs-review-sequential-100", routes.Where(x => x.Name == "RunReportingNeedsReview").ToList(), 100, 1));
             phases.Add(await RunPhaseAsync(client, "grower-lot-progress-sequential-100", routes.Where(x => x.Name == "GrowerLotProgress").ToList(), 100, 1));
         }
-        phases.Add(await RunPhaseAsync(client, "mixed-concurrency-2", routes, 100, 2));
-        phases.Add(await RunPhaseAsync(client, "mixed-concurrency-4", routes, 100, 4));
-        phases.Add(await RunPhaseAsync(client, "mixed-concurrency-8", routes, 100, 8));
+        // WP/EBS dashboard variants have dedicated 100-request phases above. Keep the mixed
+        // route weighting aligned with the historical benchmark by retaining one dashboard route.
+        var mixedRoutes = routes.Where(x => x.Name is not "DashboardWP" and not "DashboardEBS").ToList();
+        phases.Add(await RunPhaseAsync(client, "mixed-concurrency-2", mixedRoutes, 100, 2));
+        phases.Add(await RunPhaseAsync(client, "mixed-concurrency-4", mixedRoutes, 100, 4));
+        phases.Add(await RunPhaseAsync(client, "mixed-concurrency-8", mixedRoutes, 100, 8));
         var retainedMemoryPlateau = new List<BenchmarkPhaseResult>();
         for (var batch = 1; batch <= 5; batch++)
         {
-            retainedMemoryPlateau.Add(await RunPhaseAsync(client, $"retained-memory-batch-{batch}", routes, 20, 4));
+            retainedMemoryPlateau.Add(await RunPhaseAsync(client, $"retained-memory-batch-{batch}", mixedRoutes, 20, 4));
         }
 
         var report = new
@@ -173,6 +224,11 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
 
         Assert.All(phases, phase => Assert.Equal(phase.RequestCount, phase.SuccessfulRequests));
         Assert.All(retainedMemoryPlateau, phase => Assert.Equal(phase.RequestCount, phase.SuccessfulRequests));
+        AssertAllocatedBytesPerRequestAtMost(phases, "dashboard-all-sequential-100", 4 * 1024 * 1024);
+        AssertAllocatedBytesPerRequestAtMost(phases, "dashboard-wp-sequential-100", 4 * 1024 * 1024);
+        AssertAllocatedBytesPerRequestAtMost(phases, "dashboard-ebs-sequential-100", 4 * 1024 * 1024);
+        AssertAllocatedBytesPerRequestAtMost(phases, "rooms-sequential-100", 16 * 1024 * 1024);
+        AssertAllocatedBytesPerRequestAtMost(phases, "current-inventory-sequential-100", 16 * 1024 * 1024);
         AssertAllocatedBytesPerRequestAtMost(phases, "sample-refresh-sequential-100", 1024 * 1024);
         if (!string.Equals(profile, "core", StringComparison.OrdinalIgnoreCase))
         {
@@ -181,10 +237,15 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
             AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-needs-review-sequential-100", 16 * 1024 * 1024);
             AssertAllocatedBytesPerRequestAtMost(phases, "grower-lot-progress-sequential-100", 16 * 1024 * 1024);
         }
-        AssertAllocatedBytesPerRequestAtMost(phases, "mixed-concurrency-8", 4 * 1024 * 1024);
+        // A mixed allocation average changes whenever a broken route starts returning its real
+        // result instead of a small error page. Route-specific guards above detect real allocation
+        // regressions without rewarding failed requests; concurrency is guarded by working set.
         Assert.True(
             phases.Single(x => x.Name == "mixed-concurrency-8").PeakWorkingSetBytes <= 384L * 1024 * 1024,
             "The concurrency-8 peak working set exceeded the 384 MiB production warning threshold.");
+        Assert.True(
+            retainedMemoryPlateau[^1].PostIdleWorkingSetBytes <= retainedMemoryPlateau[0].PostIdleWorkingSetBytes + 16L * 1024 * 1024,
+            "Post-idle working set increased across retained-memory batches instead of reaching a plateau.");
     }
 
     private static void AssertAllocatedBytesPerRequestAtMost(

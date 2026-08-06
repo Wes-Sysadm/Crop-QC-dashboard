@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Security.Claims;
 
@@ -484,6 +485,74 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         Assert.Equal(400, refreshed.StorageByFacility.Single().CurrentBins);
     }
 
+    [Fact]
+    public async Task IncidentBdb7aeaf_CompatibleLegacyAndGrowerLotSnapshotsReconcileWithoutDroppingBins()
+    {
+        await using var db = CreateDbContext();
+        var warehouse = new Warehouse { Id = 904, Code = "WP", Name = "WP Packing" };
+        var room = new Room { Id = 901, Warehouse = warehouse, Code = "WP-1", Name = "WP-1", CropQcRoomName = "WP-1", CapacityBins = 500 };
+        var profile = new FruitProfile { Id = 917, Name = "Bartlett", VarietyCode = "BART", FruitType = "Pear", ProductionType = "Conventional" };
+        var growerLot = new GrowerLot
+        {
+            Id = 90398,
+            Grower = "Grower 1084",
+            LotNumber = "1084",
+            CreatedAt = DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
+            UpdatedAt = DateTimeOffset.Parse("2026-07-01T00:00:00Z")
+        };
+        db.AddRange(
+            warehouse,
+            room,
+            profile,
+            growerLot,
+            IncidentReceipt(92, 64, warehouse, room, profile, null),
+            IncidentReceipt(93, 145, warehouse, room, profile, growerLot));
+        await db.SaveChangesAsync();
+        var adjustmentsBefore = await db.RoomInventoryAdjustments.CountAsync();
+        var logger = new ListLogger<DashboardDataService>();
+        var service = CreateService(db, new FixedLedgerQuery([
+            IncidentSnapshot(null, 0, 89),
+            IncidentSnapshot(90398, 145, 138)
+        ]), logger);
+
+        var home = await service.GetHomeDashboardAsync(new RoomSummaryFilterForm { Facility = "All" }, CancellationToken.None);
+        var rooms = await service.GetRoomsAsync(new RoomSummaryFilterForm { Facility = "All" }, CancellationToken.None);
+        var lots = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026 }, CancellationToken.None);
+
+        Assert.Null(home.DataWarning);
+        Assert.Null(rooms.DataWarning);
+        Assert.Null(lots.DataWarning);
+        Assert.Equal(145, home.StorageByFacility.Single().CurrentBins);
+        Assert.Equal(145, rooms.Rooms.Single().CurrentBinsCount);
+        Assert.Equal(145, lots.Lots.Sum(x => x.CurrentBins));
+        Assert.Contains(logger.Messages, x => x.Contains("901|2026|1084|BART|917", StringComparison.Ordinal));
+        Assert.Equal(adjustmentsBefore, await db.RoomInventoryAdjustments.CountAsync());
+    }
+
+    [Fact]
+    public async Task ConflictingNonNullGrowerLotSnapshotsFailClosedWithBoundedDiagnostic()
+    {
+        await using var db = CreateDbContext();
+        var warehouse = new Warehouse { Id = 904, Code = "WP", Name = "WP Packing" };
+        var room = new Room { Id = 901, Warehouse = warehouse, Code = "WP-1", Name = "WP-1", CropQcRoomName = "WP-1", CapacityBins = 500 };
+        var profile = new FruitProfile { Id = 917, Name = "Bartlett", VarietyCode = "BART", FruitType = "Pear", ProductionType = "Conventional" };
+        db.AddRange(warehouse, room, profile, IncidentReceipt(92, 100, warehouse, room, profile, null));
+        await db.SaveChangesAsync();
+        var logger = new ListLogger<DashboardDataService>();
+        var service = CreateService(db, new FixedLedgerQuery([
+            IncidentSnapshot(90398, 60, 138),
+            IncidentSnapshot(90399, 40, 139)
+        ]), logger);
+
+        var rooms = await service.GetRoomsAsync(new RoomSummaryFilterForm { Facility = "All" }, CancellationToken.None);
+
+        Assert.NotNull(rooms.DataWarning);
+        Assert.Empty(rooms.Rooms);
+        Assert.Contains(logger.Messages, x => x.Contains("growerLotIds=90398,90399", StringComparison.Ordinal));
+        Assert.Contains(logger.Messages, x => x.Contains("quantities were not selected or discarded", StringComparison.Ordinal));
+        Assert.Empty(db.RoomInventoryAdjustments);
+    }
+
     private static CropQcDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<CropQcDbContext>()
@@ -823,7 +892,10 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         CreatedAt = DateTimeOffset.UtcNow
     };
 
-    private static DashboardDataService CreateService(CropQcDbContext db)
+    private static DashboardDataService CreateService(
+        CropQcDbContext db,
+        IRoomInventoryLedgerQueryService? ledgerQuery = null,
+        ILogger<DashboardDataService>? logger = null)
     {
         var httpContext = new DefaultHttpContext
         {
@@ -849,7 +921,105 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
             new CropYearService(db, configuration),
             new HttpContextAccessor { HttpContext = httpContext },
             configuration,
-            NullLogger<DashboardDataService>.Instance);
+            logger ?? NullLogger<DashboardDataService>.Instance,
+            roomInventoryLedgerQueryService: ledgerQuery);
+    }
+
+    private static Receipt IncidentReceipt(
+        long id,
+        int bins,
+        Warehouse warehouse,
+        Room room,
+        FruitProfile profile,
+        GrowerLot? growerLot) => new()
+        {
+            Id = id,
+            CropYear = 2026,
+            ReceivedAt = DateTimeOffset.Parse("2026-07-26T19:34:00Z").AddMinutes(id - 92),
+            CompuTechReceiptId = $"INC-{id}",
+            Warehouse = warehouse,
+            Room = room,
+            FruitProfile = profile,
+            GrowerLot = growerLot,
+            GrowerNumber = "1084",
+            GrowerName = "Grower 1084",
+            LotCode = "1084",
+            BinCount = bins,
+            CreatedAt = DateTimeOffset.Parse("2026-07-26T19:35:00Z").AddMinutes(id - 92),
+            UpdatedAt = DateTimeOffset.Parse("2026-07-26T19:35:00Z").AddMinutes(id - 92)
+        };
+
+    private static RoomInventoryLedgerSnapshot IncidentSnapshot(int? growerLotId, int currentBins, long latestAdjustmentId) => new(
+        904,
+        "WP",
+        901,
+        "WP-1",
+        "",
+        2026,
+        growerLotId,
+        917,
+        "Grower 1084",
+        "1084",
+        "1084",
+        null,
+        "BART",
+        "BART",
+        "Bartlett",
+        "Pear",
+        "Conventional",
+        false,
+        "",
+        Math.Max(0, currentBins),
+        Math.Min(0, currentBins),
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        currentBins,
+        1,
+        DateTimeOffset.Parse("2026-07-26T19:34:00Z"),
+        DateTimeOffset.Parse("2026-08-04T01:28:00Z"),
+        latestAdjustmentId,
+        growerLotId is null ? "Legacy receipt inventory" : $"Grower Lot {growerLotId}");
+
+    private sealed class FixedLedgerQuery(IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots) : IRoomInventoryLedgerQueryService
+    {
+        public Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsync(
+            int? warehouseId,
+            IReadOnlyCollection<int>? roomIds,
+            CancellationToken cancellationToken) =>
+            GetSnapshotsAsync(warehouseId, roomIds, null, cancellationToken);
+
+        public Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsync(
+            int? warehouseId,
+            IReadOnlyCollection<int>? roomIds,
+            int? fruitProfileId,
+            CancellationToken cancellationToken)
+        {
+            var filtered = snapshots
+                .Where(x => warehouseId is null || x.WarehouseId == warehouseId)
+                .Where(x => roomIds is not { Count: > 0 } || roomIds.Contains(x.RoomId))
+                .Where(x => fruitProfileId is null || x.FruitProfileId == fruitProfileId)
+                .ToList();
+            return Task.FromResult<IReadOnlyList<RoomInventoryLedgerSnapshot>>(filtered);
+        }
+    }
+
+    private sealed class ListLogger<T> : ILogger<T>
+    {
+        public List<string> Messages { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Messages.Add($"{formatter(state, exception)} {exception}");
     }
 
     private static RoomInventoryImportService CreateImportService(CropQcDbContext db)
