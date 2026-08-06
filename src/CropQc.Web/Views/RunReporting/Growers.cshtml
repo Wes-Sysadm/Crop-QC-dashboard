@@ -37,6 +37,11 @@
     <a class="active" href="@PageUrl()">Grower &amp; Lot Progress</a>
 </nav>
 
+@if (!string.IsNullOrWhiteSpace(Model.FilterValidationMessage))
+{
+    <p class="notice warning" role="alert">@Model.FilterValidationMessage</p>
+}
+
 <section class="panel">
     <form class="toolbar grower-progress-filter" method="get" action="/RunReporting/Growers">
         <label>Crop year
@@ -113,7 +118,7 @@ else
                     <div>
                         <h2>Grower @grower.GrowerNumber@(string.IsNullOrWhiteSpace(grower.GrowerName) ? "" : $" — {grower.GrowerName}")</h2>
                         <div class="grower-progress-inline-metrics">
-                            <span>Lots: <strong>@grower.ReceivedLotCount.ToString("N0")</strong></span>
+                            <span>Received lots: <strong>@grower.ReceivedLotCount.ToString("N0")</strong></span>
                             <span>Received: <strong>@grower.BinsReceived.ToString("N0") bins</strong></span>
                             <span>Run: <strong>@grower.BinsRun.ToString("N0") bins</strong></span>
                         </div>
@@ -136,7 +141,7 @@ else
                                     <dl>
                                         <div><dt>Received</dt><dd>@variety.BinsReceived.ToString("N0") bins</dd></div>
                                         <div><dt>Run</dt><dd>@variety.BinsRun.ToString("N0") bins</dd></div>
-                                        <div><dt>Lots</dt><dd>@variety.ReceivedLotCount.ToString("N0")</dd></div>
+                                        <div><dt>Received lots</dt><dd>@variety.ReceivedLotCount.ToString("N0")</dd></div>
                                         @if (variety.RunPercent is decimal percent)
                                         {
                                             <div><dt>Run percentage</dt><dd>@percent.ToString("0.0")%</dd></div>
@@ -178,7 +183,11 @@ else
                                                         <tr class="lot-week-detail-row">
                                                             <td colspan="9">
                                                                 <h4>Weekly Run detail — Lot @lot.LotNumber</h4>
-                                                                @if (lot.Weeks.Count == 0)
+                                                                @if (!string.IsNullOrWhiteSpace(lot.WeeklyDetailWarning))
+                                                                {
+                                                                    <p class="notice warning" role="alert">@lot.WeeklyDetailWarning</p>
+                                                                }
+                                                                else if (lot.Weeks.Count == 0)
                                                                 {
                                                                     <p class="empty-state">No authoritative run quantities for this lot and facility filter.</p>
                                                                 }
@@ -216,10 +225,17 @@ else
                                                                                                     </tbody>
                                                                                                 </table>
                                                                                             </div>
-                                                                                            @if (week.HasMoreSupportingRecords)
-                                                                                            {
-                                                                                                <a class="button-link" href="@PageUrl(grower: grower.GrowerNumber, variety: variety.VarietyKey, lot: lot.LotKey, week: week.WeekStart, supportPage: filter.SupportingPage + 1)">Next supporting page</a>
-                                                                                            }
+                                                                                            <nav class="pagination" aria-label="Supporting run pages">
+                                                                                                @if (week.HasPreviousSupportingRecords)
+                                                                                                {
+                                                                                                    <a class="button-link" href="@PageUrl(grower: grower.GrowerNumber, variety: variety.VarietyKey, lot: lot.LotKey, week: week.WeekStart, supportPage: week.SupportingPage - 1)">Previous supporting page</a>
+                                                                                                }
+                                                                                                <span>Supporting page @week.SupportingPage</span>
+                                                                                                @if (week.HasMoreSupportingRecords)
+                                                                                                {
+                                                                                                    <a class="button-link" href="@PageUrl(grower: grower.GrowerNumber, variety: variety.VarietyKey, lot: lot.LotKey, week: week.WeekStart, supportPage: week.SupportingPage + 1)">Next supporting page</a>
+                                                                                                }
+                                                                                            </nav>
                                                                                         </td>
                                                                                     </tr>
                                                                                 }
@@ -258,11 +274,20 @@ else
     }
 </nav>
 
-@if (Model.ExcludedIssues.Count > 0)
+@if (Model.ExcludedReceiptCount > 0 || Model.ExcludedRunLineCount > 0)
 {
     <section class="panel">
         <h2>Excluded authoritative records</h2>
-        <p class="muted">Incomplete crop-@filter.CropYear identities are not included in totals. Correct the source record; it will enter the report automatically.</p>
+        <p><strong>@Model.ExcludedReceiptCount.ToString("N0") receipts</strong> and <strong>@Model.ExcludedRunLineCount.ToString("N0") run lines</strong> are excluded for incomplete reporting identity.</p>
+        <p class="muted">Incomplete crop-@filter.CropYear identities are not included in totals. Correct the source record; it will enter the report automatically. Canceled, reversed, and superseded quantities are inactive and are not identity errors.</p>
+        @if (Model.ExcludedSampleIsBounded)
+        {
+            <p class="notice">A bounded sample is shown here. <a href="/BinsRun?Section=NeedsReview">Open Run Reporting Needs Review</a> for the complete database-paged operational review.</p>
+        }
+        else
+        {
+            <p><a href="/BinsRun?Section=NeedsReview">Open Run Reporting Needs Review</a></p>
+        }
         <ul>
             @foreach (var issue in Model.ExcludedIssues)
             {

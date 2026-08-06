@@ -135,6 +135,10 @@ public sealed class GrowerLotProgressPageViewModel
     public int PageSize { get; set; }
     public bool HasPreviousPage => Page > 1;
     public bool HasNextPage { get; set; }
+    public string? FilterValidationMessage { get; set; }
+    public int ExcludedReceiptCount { get; set; }
+    public int ExcludedRunLineCount { get; set; }
+    public bool ExcludedSampleIsBounded { get; set; }
     public IReadOnlyList<GrowerLotProgressIssueViewModel> ExcludedIssues { get; set; } = [];
 }
 
@@ -173,7 +177,7 @@ public sealed class GrowerLotProgressViewModel
 {
     public string LotKey { get; set; } = "";
     public int? GrowerLotId { get; set; }
-    public int FruitProfileId { get; set; }
+    public string CanonicalVarietyKey { get; set; } = "";
     public string LotNumber { get; set; } = "";
     public string GrowerNumber { get; set; } = "";
     public string Variety { get; set; } = "";
@@ -187,6 +191,7 @@ public sealed class GrowerLotProgressViewModel
     public int BinsRun { get; set; }
     public int RunRecordCount { get; set; }
     public bool IsSelected { get; set; }
+    public string? WeeklyDetailWarning { get; set; }
     public IReadOnlyList<GrowerLotWeekProgressViewModel> Weeks { get; set; } = [];
 }
 
@@ -199,6 +204,8 @@ public sealed class GrowerLotWeekProgressViewModel
     public int RunRecordCount { get; set; }
     public bool IsSelected { get; set; }
     public IReadOnlyList<RunSupportingRecordViewModel> SupportingRecords { get; set; } = [];
+    public int SupportingPage { get; set; } = 1;
+    public bool HasPreviousSupportingRecords => SupportingPage > 1;
     public bool HasMoreSupportingRecords { get; set; }
 }
 

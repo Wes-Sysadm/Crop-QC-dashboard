@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Security.Claims;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Time;
@@ -106,6 +107,27 @@ public sealed class GrowerLotProgressTests
     }
 
     [Fact]
+    public async Task AllFacilities_ExcludesReceiptsOutsideWpAndEbs()
+    {
+        await using var db = CreateDbContext();
+        var seed = await SeedAsync(db);
+        var third = new Warehouse { Id = 98600, Code = "THIRD", Name = "Third warehouse" };
+        var thirdRoom = new Room { Id = 98600, Warehouse = third, Code = "THIRD-R1", Name = "Third room", IsActive = true };
+        db.AddRange(third, thirdRoom, NewReceipt(98600, "9999", "Third Grower", "THIRD-LOT", 77, third, thirdRoom, seed.Fruit, null));
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var all = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, Facility = "All" }, CancellationToken.None);
+        var wp = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, Facility = "WP" }, CancellationToken.None);
+        var ebs = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, Facility = "EBS" }, CancellationToken.None);
+
+        Assert.Equal(wp.BinsReceived + ebs.BinsReceived, all.BinsReceived);
+        Assert.Equal(100, all.BinsReceived);
+        Assert.DoesNotContain(all.Growers, x => x.GrowerNumber == "9999");
+        Assert.Equal(1, all.ReceivedLotCount);
+    }
+
+    [Fact]
     public async Task PreAuthoritativeAndCanceledOrReversedLines_AreExcluded()
     {
         await using var db = CreateDbContext();
@@ -166,8 +188,182 @@ public sealed class GrowerLotProgressTests
         Assert.Equal(100, page.BinsReceived);
         Assert.Equal(60, page.BinsRun);
         Assert.Contains(page.ExcludedIssues, x => x.IssueType == "Receipt identity incomplete" && x.RecordUrl == "/Receipts/98400");
-        Assert.Contains(page.ExcludedIssues, x => x.IssueType == "Run lot identity incomplete");
+        Assert.Contains(page.ExcludedIssues, x => x.IssueType == "Run reporting identity incomplete");
+        Assert.Equal(1, page.ExcludedReceiptCount);
+        Assert.Equal(1, page.ExcludedRunLineCount);
         Assert.DoesNotContain(page.Growers, x => string.IsNullOrWhiteSpace(x.GrowerNumber));
+        var needsReview = await CreateRunReportingService(db).GetAsync(
+            new BinsRunFilterForm { Section = "NeedsReview" },
+            Principal(),
+            CancellationToken.None);
+        Assert.Contains(needsReview.Issues, x => x.EntryId == 84 && x.IssueType == "Missing source lot");
+    }
+
+    [Fact]
+    public async Task VarietySelection_HonorsCanonicalProductionAndOrganicIdentity_AndFailsClosed()
+    {
+        await using var db = CreateDbContext();
+        var seed = await SeedAsync(db);
+        var organic = new FruitProfile { Id = 98700, Name = "Organic Gala", VarietyCode = "Gala", FruitType = "Apple", ProductionType = "Organic", IsOrganic = true, IsActive = true };
+        var organicLot = new GrowerLot { Id = 98700, Grower = "Smith Orchards", LotNumber = "ORG-7", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
+        db.AddRange(organic, organicLot,
+            NewReceipt(98700, "1084", "Smith Orchards", "ORG-7", 25, seed.Ebs, seed.Room, organic, organicLot),
+            NewLine(87, 15, 2026, "1084", "ORG-7", organicLot, seed.Ebs, seed.Wp, seed.Room, organic, seed.User));
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var options = (await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026 }, CancellationToken.None)).VarietyOptions;
+        var organicKey = options.Single(x => x.VarietyKey.StartsWith("GALA|", StringComparison.Ordinal) && x.IsOrganic).VarietyKey;
+        var conventionalKey = options.Single(x => x.VarietyKey.StartsWith("GALA|", StringComparison.Ordinal) && !x.IsOrganic).VarietyKey;
+        var organicOnly = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, VarietyKey = organicKey }, CancellationToken.None);
+        var conventionalOnly = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, VarietyKey = conventionalKey }, CancellationToken.None);
+        var intersection = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, VarietyKey = organicKey, ProductionType = "Conventional" }, CancellationToken.None);
+        var malformed = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, VarietyKey = "GALA|Organic|true|tampered" }, CancellationToken.None);
+
+        Assert.Equal((25, 15), (organicOnly.BinsReceived, organicOnly.BinsRun));
+        Assert.Equal((100, 60), (conventionalOnly.BinsReceived, conventionalOnly.BinsRun));
+        Assert.Equal((0, 0), (intersection.BinsReceived, intersection.BinsRun));
+        Assert.Equal((0, 0), (malformed.BinsReceived, malformed.BinsRun));
+        Assert.NotNull(malformed.FilterValidationMessage);
+    }
+
+    [Fact]
+    public async Task CanonicalProfileAliases_ReconcileOneLotAndItsWeeklySupportingLines()
+    {
+        await using var db = CreateDbContext();
+        var seed = await SeedAsync(db);
+        var receiptProfile = new FruitProfile { Id = 98800, Name = "GSMT", VarietyCode = "GSMT", FruitType = "Apple", ProductionType = "Conventional", IsOrganic = false, IsActive = true };
+        var runProfile = new FruitProfile { Id = 98801, Name = "Grannysmith", VarietyCode = "Grannysmith", FruitType = "Apple", ProductionType = "Conventional", IsOrganic = false, IsActive = true };
+        var aliasLot = new GrowerLot { Id = 98800, Grower = "Alias Orchard", LotNumber = "GS-88", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
+        db.AddRange(receiptProfile, runProfile, aliasLot,
+            NewReceipt(98800, "3088", "Alias Orchard", "GS-88", 40, seed.Ebs, seed.Room, receiptProfile, aliasLot),
+            NewLine(88, 30, 2026, "3088", "GS-88", aliasLot, seed.Ebs, seed.Wp, seed.Room, runProfile, seed.User));
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var growerPage = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, ExpandedGrowerNumber = "3088" }, CancellationToken.None);
+        var variety = Assert.Single(growerPage.Growers.Single(x => x.GrowerNumber == "3088").Varieties);
+        Assert.Equal("Granny Smith", variety.Variety);
+        var lotPage = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, ExpandedGrowerNumber = "3088", ExpandedVarietyKey = variety.VarietyKey }, CancellationToken.None);
+        var lot = Assert.Single(Assert.Single(lotPage.Growers.Single(x => x.GrowerNumber == "3088").Varieties).Lots);
+        Assert.Equal((40, 30), (lot.BinsReceived, lot.BinsRun));
+        var weeklyPage = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, ExpandedGrowerNumber = "3088", ExpandedVarietyKey = variety.VarietyKey, SelectedLotKey = lot.LotKey }, CancellationToken.None);
+        var selected = Assert.Single(Assert.Single(weeklyPage.Growers.Single(x => x.GrowerNumber == "3088").Varieties).Lots);
+        Assert.Equal(selected.BinsRun, selected.Weeks.Sum(x => x.BinsRun));
+    }
+
+    [Fact]
+    public async Task ExclusionReview_CoversEveryRequiredIdentity_WithoutInactiveFalsePositives()
+    {
+        await using var db = CreateDbContext();
+        var seed = await SeedAsync(db);
+        var lines = Enumerable.Range(0, 8)
+            .Select(offset => NewLine(200 + offset, 1, 2026, "1084", "EXCLUDED", seed.GrowerLot, seed.Ebs, seed.Wp, seed.Room, seed.Fruit, seed.User))
+            .ToArray();
+        lines[0].ReportingCropYearSnapshot = null;
+        lines[1].ReportingFruitProfileIdSnapshot = null;
+        lines[2].ReportingVarietyCodeSnapshot = null;
+        lines[3].ProductionTypeSnapshot = null;
+        lines[4].IsOrganicSnapshot = null;
+        lines[5].GrowerNumberSnapshot = null;
+        lines[6].LotNumber = "";
+        lines[7].ReportingFacilityCodeSnapshot = null;
+        var canceled = NewRun(299, seed.User, seed.Wp, ActualRunStatuses.Canceled);
+        var canceledRevision = NewRevision(299, canceled, true);
+        var inactive = NewLine(299, 50, 2026, "", "", seed.GrowerLot, seed.Ebs, seed.Wp, seed.Room, seed.Fruit, seed.User, canceled, canceledRevision);
+        inactive.ReportingVarietyCodeSnapshot = null;
+        db.AddRange(lines);
+        db.AddRange(canceled, canceledRevision, inactive);
+        await db.SaveChangesAsync();
+
+        var page = await CreateService(db).GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026 }, CancellationToken.None);
+
+        Assert.Equal(8, page.ExcludedRunLineCount);
+        Assert.Equal(8, page.ExcludedIssues.Count(x => x.IssueType == "Run reporting identity incomplete"));
+        Assert.DoesNotContain(page.ExcludedIssues, x => x.RecordUrl.Contains("299", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task OversizedLot_ReturnsControlledWarningAndKeepsTotals()
+    {
+        await using var db = CreateDbContext();
+        var seed = await SeedAsync(db);
+        for (var index = 0; index <= GrowerLotProgressService.MaximumLotRunRows; index++)
+        {
+            db.BinsRunEntries.Add(NewLine(10000 + index, 1, 2026, "1084", "9290", seed.GrowerLot, seed.Ebs, seed.Wp, seed.Room, seed.Fruit, seed.User));
+        }
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var expanded = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, ExpandedGrowerNumber = "1084" }, CancellationToken.None);
+        var variety = Assert.Single(Assert.Single(expanded.Growers).Varieties);
+        var lots = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, ExpandedGrowerNumber = "1084", ExpandedVarietyKey = variety.VarietyKey }, CancellationToken.None);
+        var lot = Assert.Single(Assert.Single(Assert.Single(lots.Growers).Varieties).Lots);
+        var selectedPage = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, ExpandedGrowerNumber = "1084", ExpandedVarietyKey = variety.VarietyKey, SelectedLotKey = lot.LotKey }, CancellationToken.None);
+        var selected = Assert.Single(Assert.Single(Assert.Single(selectedPage.Growers).Varieties).Lots);
+
+        Assert.NotNull(selected.WeeklyDetailWarning);
+        Assert.Empty(selected.Weeks);
+        Assert.Equal(GrowerLotProgressService.MaximumLotRunRows + 1 + 60, selected.BinsRun);
+    }
+
+    [Fact]
+    public async Task SupportingPagination_NormalizesAndProvidesPreviousAndNextState()
+    {
+        await using var db = CreateDbContext();
+        var seed = await SeedAsync(db);
+        for (var index = 0; index < 51; index++)
+        {
+            db.BinsRunEntries.Add(NewLine(400 + index, 1, 2026, "1084", "9290", seed.GrowerLot, seed.Ebs, seed.Wp, seed.Room, seed.Fruit, seed.User));
+        }
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var expanded = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, ExpandedGrowerNumber = "1084" }, CancellationToken.None);
+        var variety = Assert.Single(Assert.Single(expanded.Growers).Varieties);
+        var lotPage = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, ExpandedGrowerNumber = "1084", ExpandedVarietyKey = variety.VarietyKey }, CancellationToken.None);
+        var lot = Assert.Single(Assert.Single(Assert.Single(lotPage.Growers).Varieties).Lots);
+        var weekPage = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, ExpandedGrowerNumber = "1084", ExpandedVarietyKey = variety.VarietyKey, SelectedLotKey = lot.LotKey }, CancellationToken.None);
+        var week = Assert.Single(Assert.Single(Assert.Single(Assert.Single(weekPage.Growers).Varieties).Lots).Weeks);
+        var secondPage = await service.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, ExpandedGrowerNumber = "1084", ExpandedVarietyKey = variety.VarietyKey, SelectedLotKey = lot.LotKey, SelectedWeekStart = week.WeekStart, SupportingPage = 999 }, CancellationToken.None);
+        var selectedWeek = Assert.Single(Assert.Single(Assert.Single(Assert.Single(secondPage.Growers).Varieties).Lots).Weeks);
+
+        Assert.Equal(2, selectedWeek.SupportingPage);
+        Assert.True(selectedWeek.HasPreviousSupportingRecords);
+        Assert.False(selectedWeek.HasMoreSupportingRecords);
+        Assert.Equal(2, selectedWeek.SupportingRecords.Count);
+    }
+
+    [Fact]
+    public async Task GrowerAndRunTotals_ReconcileAcrossEveryDrilldownLevel()
+    {
+        await using var db = CreateDbContext();
+        await SeedAsync(db);
+        var growerService = CreateService(db);
+        var growerPage = await growerService.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, Facility = "WP", ExpandedGrowerNumber = "1084" }, CancellationToken.None);
+        var variety = Assert.Single(Assert.Single(growerPage.Growers).Varieties);
+        var lotPage = await growerService.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, Facility = "WP", ExpandedGrowerNumber = "1084", ExpandedVarietyKey = variety.VarietyKey }, CancellationToken.None);
+        var lot = Assert.Single(Assert.Single(Assert.Single(lotPage.Growers).Varieties).Lots);
+        var weeklyPage = await growerService.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, Facility = "WP", ExpandedGrowerNumber = "1084", ExpandedVarietyKey = variety.VarietyKey, SelectedLotKey = lot.LotKey }, CancellationToken.None);
+        var selectedLot = Assert.Single(Assert.Single(Assert.Single(weeklyPage.Growers).Varieties).Lots);
+        var runTotals = await CreateRunReportingService(db).GetAsync(new BinsRunFilterForm { Section = "RunTotals", ReportFacility = "WP", ReportCropYear = 2026 }, Principal(), CancellationToken.None);
+        var detail = Assert.IsType<RunTotalsDetailViewModel>(runTotals.Detail);
+
+        Assert.Equal(detail.TotalBins, growerPage.BinsRun);
+        Assert.Equal(growerPage.BinsRun, growerPage.Growers.Sum(x => x.BinsRun));
+        Assert.Equal(growerPage.Growers.Single().BinsRun, growerPage.Growers.Single().Varieties.Sum(x => x.BinsRun));
+        Assert.Equal(variety.BinsRun, lotPage.Growers.Single().Varieties.Single().Lots.Sum(x => x.BinsRun));
+        Assert.Equal(selectedLot.BinsRun, selectedLot.Weeks.Sum(x => x.BinsRun));
+        var selectedWeek = Assert.Single(selectedLot.Weeks);
+        var supportPage = await growerService.GetAsync(new GrowerLotProgressFilterForm
+        {
+            CropYear = 2026,
+            Facility = "WP",
+            ExpandedGrowerNumber = "1084",
+            ExpandedVarietyKey = variety.VarietyKey,
+            SelectedLotKey = lot.LotKey,
+            SelectedWeekStart = selectedWeek.WeekStart
+        }, CancellationToken.None);
+        var supportWeek = Assert.Single(Assert.Single(Assert.Single(Assert.Single(supportPage.Growers).Varieties).Lots).Weeks);
+        Assert.Equal(supportWeek.BinsRun, supportWeek.SupportingRecords.Sum(x => x.Bins));
     }
 
     [Fact]
@@ -239,6 +435,21 @@ public sealed class GrowerLotProgressTests
             ["RunReporting:CropYearStartMonth"] = "7",
             ["RunReporting:CropYearStartDay"] = "15"
         }).Build());
+
+    private static RunReportingService CreateRunReportingService(CropQcDbContext db) => new(
+        db,
+        new PacificBusinessTimeService(new FixedClock(DateTimeOffset.Parse("2026-08-20T19:00:00Z"))),
+        new AllowAccess(),
+        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["RunReporting:AuthoritativeStartCropYear"] = "2026",
+            ["RunReporting:CropYearStartMonth"] = "7",
+            ["RunReporting:CropYearStartDay"] = "15"
+        }).Build(),
+        new VarietyColorService(db));
+
+    private static ClaimsPrincipal Principal() => new(
+        new ClaimsIdentity([new Claim(ClaimTypes.Email, "owner@fruitandland.com")], "Test"));
 
     private static CropQcDbContext CreateDbContext()
     {
@@ -424,6 +635,14 @@ public sealed class GrowerLotProgressTests
 
     private sealed record Seed(Warehouse Ebs, Warehouse Wp, Room Room, FruitProfile Fruit, GrowerLot GrowerLot, User User, Receipt Receipt);
     private sealed class FixedClock(DateTimeOffset utcNow) : IClock { public DateTimeOffset UtcNow => utcNow; }
+    private sealed class AllowAccess : IUserAccessService
+    {
+        public Task<bool> HasAccessAsync(ClaimsPrincipal principal, string areaKey, PageAccessLevel minimumLevel, CancellationToken cancellationToken) => Task.FromResult(true);
+        public Task<PageAccessLevel> GetAccessLevelAsync(string? email, string areaKey, CancellationToken cancellationToken) => Task.FromResult(PageAccessLevel.Admin);
+        public Task<IReadOnlyList<UserAccessMatrixRow>> GetMatrixAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task EnsureAccessMatrixAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<string?> SaveMatrixAsync(UserAccessMatrixForm form, string changedByEmail, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
     private sealed class CommandCounter : DbCommandInterceptor
     {
         public int ReaderCommandCount { get; private set; }

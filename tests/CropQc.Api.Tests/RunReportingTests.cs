@@ -46,7 +46,16 @@ public sealed class RunReportingTests
         var detail = Assert.IsType<RunTotalsDetailViewModel>(detailPage.Detail);
         Assert.Equal(60, detail.TotalBins);
         Assert.Equal(detail.TotalBins, detail.Varieties.Sum(x => x.Bins));
-        Assert.Equal(detail.TotalBins, detail.Weeks.Sum(x => x.Bins));
+        Assert.Empty(detail.Weeks);
+        var selectedPage = await service.GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026,
+            ReportVarietyKey = Assert.Single(detail.Varieties).VarietyKey
+        }, principal, CancellationToken.None);
+        var selectedDetail = Assert.IsType<RunTotalsDetailViewModel>(selectedPage.Detail);
+        Assert.Equal(selectedDetail.TotalBins, selectedDetail.Weeks.Sum(x => x.Bins));
         Assert.Equal(0, detail.PriorBins);
         Assert.False(detail.HasAuthoritativePriorBaseline);
         Assert.Null(detail.PriorCropYear);

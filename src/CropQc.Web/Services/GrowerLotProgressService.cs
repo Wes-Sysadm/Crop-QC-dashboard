@@ -41,10 +41,11 @@ public sealed class GrowerLotProgressService(
         filter.Facility = facility;
         filter.Page = page;
         filter.Sort = NormalizeSort(filter.Sort);
+        filter.SupportingPage = Math.Max(1, filter.SupportingPage);
 
-        var varietyProfileIds = await ResolveVarietyProfileIdsAsync(filter.VarietyKey, cancellationToken);
-        var receipts = ValidReceipts(cropYear, facility, filter, varietyProfileIds);
-        var runs = ValidRunLines(cropYear, facility, filter, varietyProfileIds);
+        var selectedVariety = await ResolveVarietySelectionAsync(filter.VarietyKey, cancellationToken);
+        var receipts = ValidReceipts(cropYear, facility, filter, selectedVariety);
+        var runs = ValidRunLines(cropYear, facility, filter, selectedVariety);
 
         var receiptTotals = receipts
             .GroupBy(x => x.GrowerNumber!)
@@ -84,8 +85,18 @@ public sealed class GrowerLotProgressService(
             {
                 x.GrowerNumber,
                 x.GrowerLotId,
-                x.LotCode,
-                x.FruitProfileId,
+                LotCode = x.GrowerLotId == null ? x.LotCode : "",
+                CanonicalVariety = x.FruitProfile.VarietyCode.ToUpper() == "GSMT"
+                    || x.FruitProfile.VarietyCode.ToUpper() == "GRANNYSMITH"
+                    || x.FruitProfile.VarietyCode.ToUpper() == "GRANNY SMITH"
+                        ? "GRANNY SMITH"
+                        : x.FruitProfile.VarietyCode.ToUpper() == "PINK"
+                            || x.FruitProfile.VarietyCode.ToUpper() == "PINK LADY"
+                                ? "PINK LADY"
+                                : x.FruitProfile.VarietyCode.ToUpper() == "RED"
+                                    || x.FruitProfile.VarietyCode.ToUpper() == "RED DELICIOUS"
+                                        ? "RED DELICIOUS"
+                                        : x.FruitProfile.VarietyCode.ToUpper(),
                 x.FruitProfile.ProductionType,
                 x.FruitProfile.IsOrganic
             })
@@ -208,9 +219,14 @@ public sealed class GrowerLotProgressService(
             Page = page,
             PageSize = DefaultPageSize,
             HasNextPage = hasNextPage,
-            ExcludedIssues = await GetExcludedIssuesAsync(cropYear, cancellationToken)
+            FilterValidationMessage = selectedVariety.ValidationMessage
         };
 
+        var excluded = await GetExcludedReviewAsync(cropYear, facility, cancellationToken);
+        model.ExcludedReceiptCount = excluded.ReceiptCount;
+        model.ExcludedRunLineCount = excluded.RunLineCount;
+        model.ExcludedSampleIsBounded = excluded.IsBounded;
+        model.ExcludedIssues = excluded.Issues;
         await PopulateSelectedLotAsync(model, runs, cancellationToken);
         return model;
     }
@@ -219,10 +235,11 @@ public sealed class GrowerLotProgressService(
         int cropYear,
         string facility,
         GrowerLotProgressFilterForm filter,
-        IReadOnlyList<int>? varietyProfileIds)
+        VarietySelection selectedVariety)
     {
         var query = dbContext.Receipts.AsNoTracking()
             .Where(x => x.CropYear == cropYear && !x.IsDeleted && !x.IsTestData)
+            .Where(x => x.Warehouse.Code == EmploymentFacilities.Wp || x.Warehouse.Code == EmploymentFacilities.Ebs)
             .Where(x => x.GrowerNumber != null && x.GrowerNumber != ""
                 && x.LotCode != ""
                 && x.FruitProfile.VarietyCode != ""
@@ -238,7 +255,12 @@ public sealed class GrowerLotProgressService(
             var lot = filter.LotSearch.Trim();
             query = query.Where(x => x.LotCode.Contains(lot));
         }
-        if (varietyProfileIds is not null) query = query.Where(x => varietyProfileIds.Contains(x.FruitProfileId));
+        if (selectedVariety.IsSpecified)
+        {
+            query = query.Where(x => selectedVariety.ProfileIds.Contains(x.FruitProfileId)
+                && x.FruitProfile.ProductionType == selectedVariety.ProductionType
+                && x.FruitProfile.IsOrganic == selectedVariety.IsOrganic);
+        }
         if (filter.ProductionType == "Organic") query = query.Where(x => x.FruitProfile.IsOrganic);
         if (filter.ProductionType == "Conventional") query = query.Where(x => !x.FruitProfile.IsOrganic);
         return query;
@@ -248,32 +270,10 @@ public sealed class GrowerLotProgressService(
         int cropYear,
         string facility,
         GrowerLotProgressFilterForm filter,
-        IReadOnlyList<int>? varietyProfileIds)
+        VarietySelection selectedVariety)
     {
-        var query = dbContext.BinsRunEntries.AsNoTracking()
-            .Where(x => x.ReportingCropYearSnapshot == cropYear)
-            .Where(x => x.ReportingFruitProfileIdSnapshot != null
-                && x.ReportingVarietyCodeSnapshot != null && x.ReportingVarietyCodeSnapshot != ""
-                && x.ProductionTypeSnapshot != null && x.ProductionTypeSnapshot != ""
-                && x.IsOrganicSnapshot != null
-                && x.GrowerNumberSnapshot != null && x.GrowerNumberSnapshot != ""
-                && x.LotNumber != "")
-            .Where(x =>
-                (x.TransactionType == ActualRunTransactionTypes.Depletion
-                    && x.ActualRunId != null
-                    && x.ActualRun != null
-                    && x.ActualRun.Status == ActualRunStatuses.Active
-                    && x.ActualRunRevisionId != null
-                    && x.ActualRunRevision != null
-                    && x.ActualRunRevision.IsCurrent
-                    && !x.IsReversed
-                    && (x.ActualRun.RunFacilityCodeSnapshot == EmploymentFacilities.Wp
-                        || x.ActualRun.RunFacilityCodeSnapshot == EmploymentFacilities.Ebs))
-                || (x.TransactionType == ActualRunTransactionTypes.Legacy
-                    && x.ActualRunId == null
-                    && !x.IsReversed
-                    && (x.ReportingFacilityCodeSnapshot == EmploymentFacilities.Wp
-                        || x.ReportingFacilityCodeSnapshot == EmploymentFacilities.Ebs)));
+        var query = AuthoritativeRunReportingQuery.ApplyValidRules(dbContext.BinsRunEntries.AsNoTracking())
+            .Where(x => x.ReportingCropYearSnapshot == cropYear);
         if (facility != "All")
         {
             query = query.Where(x => (x.ActualRunId != null
@@ -290,7 +290,12 @@ public sealed class GrowerLotProgressService(
             var lot = filter.LotSearch.Trim();
             query = query.Where(x => x.LotNumber.Contains(lot));
         }
-        if (varietyProfileIds is not null) query = query.Where(x => varietyProfileIds.Contains(x.ReportingFruitProfileIdSnapshot!.Value));
+        if (selectedVariety.IsSpecified)
+        {
+            query = query.Where(x => selectedVariety.ProfileIds.Contains(x.ReportingFruitProfileIdSnapshot!.Value)
+                && x.ProductionTypeSnapshot == selectedVariety.ProductionType
+                && x.IsOrganicSnapshot == selectedVariety.IsOrganic);
+        }
         if (filter.ProductionType == "Organic") query = query.Where(x => x.IsOrganicSnapshot == true);
         if (filter.ProductionType == "Conventional") query = query.Where(x => x.IsOrganicSnapshot == false);
         return query;
@@ -359,7 +364,7 @@ public sealed class GrowerLotProgressService(
             {
                 LotKey = key,
                 GrowerLotId = source?.GrowerLotId ?? runSource?.GrowerLotId,
-                FruitProfileId = source?.FruitProfileId ?? runSource?.FruitProfileId ?? identity.FruitProfileId,
+                CanonicalVarietyKey = CanonicalVarietyKey(source?.Variety ?? runSource?.Variety ?? identity.Variety),
                 LotNumber = source?.LotNumber ?? runSource?.LotNumber ?? "",
                 GrowerNumber = growerNumber,
                 Variety = canonicalVariety,
@@ -384,7 +389,12 @@ public sealed class GrowerLotProgressService(
     {
         var selected = model.Growers.SelectMany(x => x.Varieties).SelectMany(x => x.Lots).SingleOrDefault(x => x.IsSelected);
         if (selected is null) return;
-        var selectedRuns = FilterLot(runs, selected);
+        var profiles = await ResolveCanonicalProfilesAsync(
+            selected.CanonicalVarietyKey,
+            selected.ProductionType,
+            selected.IsOrganic,
+            cancellationToken);
+        var selectedRuns = FilterLot(runs, selected, profiles.ProfileIds);
         var rows = await selectedRuns
             .OrderBy(x => x.RunAt)
             .ThenBy(x => x.Id)
@@ -393,7 +403,8 @@ public sealed class GrowerLotProgressService(
             .ToListAsync(cancellationToken);
         if (rows.Count > MaximumLotRunRows)
         {
-            throw new InvalidOperationException($"Lot run detail exceeds the safe limit of {MaximumLotRunRows} lines. Narrow the facility filter.");
+            selected.WeeklyDetailWarning = "Weekly detail is too large to display safely. Select WP or EBS, or narrow the filters.";
+            return;
         }
         var cumulative = 0;
         var weeks = new List<GrowerLotWeekProgressViewModel>();
@@ -419,8 +430,12 @@ public sealed class GrowerLotProgressService(
         var startUtc = businessTime.UtcRangeForPacificDate(selectedWeek.WeekStart).Start;
         var endUtc = businessTime.UtcRangeForPacificDate(selectedWeek.WeekEnd.AddDays(1)).Start;
         var page = Math.Max(1, model.Filter.SupportingPage);
-        var records = await selectedRuns
-            .Where(x => x.RunAt >= startUtc && x.RunAt < endUtc)
+        var selectedWeekRuns = selectedRuns.Where(x => x.RunAt >= startUtc && x.RunAt < endUtc);
+        var supportingLineCount = await selectedWeekRuns.CountAsync(cancellationToken);
+        var lastPage = Math.Max(1, (int)Math.Ceiling(supportingLineCount / (decimal)SupportingPageSize));
+        page = Math.Min(page, lastPage);
+        model.Filter.SupportingPage = page;
+        var records = await selectedWeekRuns
             .OrderBy(x => x.RunAt)
             .ThenBy(x => x.Id)
             .Skip((page - 1) * SupportingPageSize)
@@ -444,33 +459,58 @@ public sealed class GrowerLotProgressService(
                 x.ActualRunId == null ? "Legacy active" : "Active"))
             .ToListAsync(cancellationToken);
         selectedWeek.HasMoreSupportingRecords = records.Count > SupportingPageSize;
+        selectedWeek.SupportingPage = page;
         selectedWeek.SupportingRecords = records.Take(SupportingPageSize).ToList();
     }
 
-    private static IQueryable<BinsRunEntry> FilterLot(IQueryable<BinsRunEntry> query, GrowerLotProgressViewModel lot)
+    private static IQueryable<BinsRunEntry> FilterLot(
+        IQueryable<BinsRunEntry> query,
+        GrowerLotProgressViewModel lot,
+        IReadOnlyList<int> profileIds)
     {
         if (lot.GrowerLotId is int growerLotId)
         {
             return query.Where(x => x.GrowerLotId == growerLotId
                 && x.GrowerNumberSnapshot == lot.GrowerNumber
-                && x.ReportingFruitProfileIdSnapshot == lot.FruitProfileId
+                && profileIds.Contains(x.ReportingFruitProfileIdSnapshot!.Value)
                 && x.ProductionTypeSnapshot == lot.ProductionType
                 && x.IsOrganicSnapshot == lot.IsOrganic);
         }
         return query.Where(x => x.GrowerLotId == null
             && x.GrowerNumberSnapshot == lot.GrowerNumber
             && x.LotNumber == lot.LotNumber
-            && x.ReportingFruitProfileIdSnapshot == lot.FruitProfileId
+            && profileIds.Contains(x.ReportingFruitProfileIdSnapshot!.Value)
             && x.ProductionTypeSnapshot == lot.ProductionType
             && x.IsOrganicSnapshot == lot.IsOrganic);
     }
 
-    private async Task<IReadOnlyList<int>?> ResolveVarietyProfileIdsAsync(string? varietyKey, CancellationToken cancellationToken)
+    private async Task<VarietySelection> ResolveVarietySelectionAsync(string? varietyKey, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(varietyKey)) return null;
-        var canonicalKey = varietyKey.Split('|')[0];
-        var profiles = await dbContext.FruitProfiles.AsNoTracking().Select(x => new { x.Id, x.VarietyCode }).ToListAsync(cancellationToken);
-        return profiles.Where(x => Same(CanonicalVarietyKey(x.VarietyCode), canonicalKey)).Select(x => x.Id).ToList();
+        if (string.IsNullOrWhiteSpace(varietyKey)) return VarietySelection.None;
+        if (!TryParseVarietyKey(varietyKey, out var canonicalKey, out var productionType, out var isOrganic))
+        {
+            return VarietySelection.Invalid("The selected variety is invalid. No records were included; choose a variety from the list.");
+        }
+        var profiles = await ResolveCanonicalProfilesAsync(canonicalKey, productionType, isOrganic, cancellationToken);
+        return profiles.ProfileIds.Count == 0
+            ? VarietySelection.Invalid("The selected variety is no longer available. No records were included; choose a current variety from the list.")
+            : new VarietySelection(true, canonicalKey, productionType, isOrganic, profiles.ProfileIds, null);
+    }
+
+    private async Task<CanonicalProfiles> ResolveCanonicalProfilesAsync(
+        string canonicalKey,
+        string productionType,
+        bool isOrganic,
+        CancellationToken cancellationToken)
+    {
+        var profiles = await dbContext.FruitProfiles.AsNoTracking()
+            .Where(x => x.ProductionType == productionType && x.IsOrganic == isOrganic)
+            .Select(x => new { x.Id, x.VarietyCode })
+            .ToListAsync(cancellationToken);
+        var matching = profiles
+            .Where(x => Same(CanonicalVarietyKey(x.VarietyCode), canonicalKey))
+            .ToList();
+        return new CanonicalProfiles(matching.Select(x => x.Id).ToList());
     }
 
     private async Task<IReadOnlyList<GrowerLotVarietyOptionViewModel>> GetVarietyOptionsAsync(CancellationToken cancellationToken)
@@ -493,28 +533,78 @@ public sealed class GrowerLotProgressService(
             .ToList();
     }
 
-    private async Task<IReadOnlyList<GrowerLotProgressIssueViewModel>> GetExcludedIssuesAsync(int cropYear, CancellationToken cancellationToken)
+    private async Task<ExcludedReview> GetExcludedReviewAsync(
+        int cropYear,
+        string facility,
+        CancellationToken cancellationToken)
     {
-        var receiptIssues = await dbContext.Receipts.AsNoTracking()
+        const int sampleLimit = 20;
+        var receiptCandidates = dbContext.Receipts.AsNoTracking()
             .Where(x => x.CropYear == cropYear && !x.IsDeleted && !x.IsTestData)
-            .Where(x => x.GrowerNumber == null || x.GrowerNumber == "" || x.LotCode == "" || x.FruitProfile.VarietyCode == "" || x.FruitProfile.ProductionType == "")
+            .Where(x => x.Warehouse.Code == EmploymentFacilities.Wp || x.Warehouse.Code == EmploymentFacilities.Ebs);
+        if (facility != "All") receiptCandidates = receiptCandidates.Where(x => x.Warehouse.Code == facility);
+        var invalidReceipts = receiptCandidates
+            .Where(x => x.GrowerNumber == null || x.GrowerNumber == ""
+                || x.LotCode == ""
+                || x.FruitProfile.VarietyCode == ""
+                || x.FruitProfile.ProductionType == "");
+        var receiptSamples = await invalidReceipts
             .OrderByDescending(x => x.ReceivedAt)
-            .Take(10)
-            .Select(x => new GrowerLotProgressIssueViewModel(
+            .ThenByDescending(x => x.Id)
+            .Take(sampleLimit)
+            .Select(x => new ExcludedIssueSample(
+                invalidReceipts.Count(),
                 "Receipt identity incomplete",
                 "The authoritative receipt is excluded until grower, lot, variety, and production identity are complete.",
                 $"/Receipts/{x.Id}"))
             .ToListAsync(cancellationToken);
-        var runIssues = await dbContext.BinsRunEntries.AsNoTracking()
-            .Where(x => x.ReportingCropYearSnapshot == cropYear && x.LotNumber == "")
+        var receiptCount = receiptSamples.FirstOrDefault()?.TotalCount ?? 0;
+        var receiptIssues = receiptSamples.Select(x => x.ToViewModel()).ToList();
+
+        var activeLines = AuthoritativeRunReportingQuery.ApplyActiveQuantityRules(dbContext.BinsRunEntries.AsNoTracking())
+            .Where(x => x.ReportingCropYearSnapshot == cropYear
+                || (x.ReportingCropYearSnapshot == null
+                    && (x.CropYear
+                        ?? (x.Receipt == null ? null : (int?)x.Receipt.CropYear)
+                        ?? (x.SourceInventoryAdjustment == null ? null : x.SourceInventoryAdjustment.CropYear)
+                        ?? x.InventoryAdjustment.CropYear) == cropYear));
+        if (facility != "All")
+        {
+            activeLines = activeLines.Where(x => (x.ActualRunId != null
+                ? x.ActualRun!.RunFacilityCodeSnapshot
+                : x.ReportingFacilityCodeSnapshot) == facility);
+        }
+        var invalidRuns = activeLines.Where(x => x.ReportingCropYearSnapshot == null
+            || x.ReportingFruitProfileIdSnapshot == null
+            || x.ReportingVarietyCodeSnapshot == null || x.ReportingVarietyCodeSnapshot == ""
+            || x.ProductionTypeSnapshot == null || x.ProductionTypeSnapshot == ""
+            || x.IsOrganicSnapshot == null
+            || x.GrowerNumberSnapshot == null || x.GrowerNumberSnapshot == ""
+            || x.LotNumber == ""
+            || x.Warehouse.Code == ""
+            || (x.ActualRunId != null
+                ? x.ActualRun!.RunFacilityCodeSnapshot != EmploymentFacilities.Wp
+                    && x.ActualRun.RunFacilityCodeSnapshot != EmploymentFacilities.Ebs
+                : x.ReportingFacilityCodeSnapshot != EmploymentFacilities.Wp
+                    && x.ReportingFacilityCodeSnapshot != EmploymentFacilities.Ebs));
+        var remainingSample = Math.Max(0, sampleLimit - receiptIssues.Count);
+        var runSamples = await invalidRuns
             .OrderByDescending(x => x.RunAt)
-            .Take(10)
-            .Select(x => new GrowerLotProgressIssueViewModel(
-                "Run lot identity incomplete",
-                "The authoritative run line is excluded from grower and lot totals until exact lot identity is available.",
+            .ThenByDescending(x => x.Id)
+            .Take(Math.Max(1, remainingSample))
+            .Select(x => new ExcludedIssueSample(
+                invalidRuns.Count(),
+                "Run reporting identity incomplete",
+                "The active authoritative run line is excluded until crop, fruit profile, variety, production, organic/conventional, grower, lot, source, and Run Facility identity are complete.",
                 x.ActualRunId == null ? $"/BinsRun?Section=Activity#bins-run-{x.Id}" : $"/BinsRun/ActualRuns/{x.ActualRunId}"))
             .ToListAsync(cancellationToken);
-        return receiptIssues.Concat(runIssues).Take(20).ToList();
+        var runLineCount = runSamples.FirstOrDefault()?.TotalCount ?? 0;
+        var runIssues = runSamples.Take(remainingSample).Select(x => x.ToViewModel()).ToList();
+        return new ExcludedReview(
+            receiptCount,
+            runLineCount,
+            receiptCount + runLineCount > sampleLimit,
+            receiptIssues.Concat(runIssues).ToList());
     }
 
     private static IOrderedQueryable<GrowerContribution> OrderGrowers(IQueryable<GrowerContribution> query, string sort) => sort switch
@@ -543,12 +633,31 @@ public sealed class GrowerLotProgressService(
     private static string CanonicalVarietyKey(string variety) => VarietyColorService.NormalizeIdentity(variety, variety).Key;
     private static string VarietyKey(string variety, string productionType, bool organic) =>
         $"{CanonicalVarietyKey(variety)}|{Uri.EscapeDataString(productionType)}|{organic}";
-    private static string LotKey(ReceiptAggregateRow row) => LotKey(row.GrowerLotId, row.GrowerNumber, row.LotNumber, row.FruitProfileId, row.ProductionType, row.IsOrganic);
-    private static string LotKey(RunAggregateRow row) => LotKey(row.GrowerLotId, row.GrowerNumber, row.LotNumber, row.FruitProfileId, row.ProductionType, row.IsOrganic);
-    private static string LotKey(int? growerLotId, string grower, string lot, int fruitProfileId, string productionType, bool organic) =>
+    private static bool TryParseVarietyKey(string key, out string canonicalKey, out string productionType, out bool organic)
+    {
+        canonicalKey = "";
+        productionType = "";
+        organic = false;
+        try
+        {
+            var parts = key.Split('|');
+            if (parts.Length != 3 || string.IsNullOrWhiteSpace(parts[0])) return false;
+            canonicalKey = parts[0].Trim().ToUpperInvariant();
+            productionType = Uri.UnescapeDataString(parts[1]);
+            return productionType.Length > 0 && bool.TryParse(parts[2], out organic);
+        }
+        catch (UriFormatException)
+        {
+            return false;
+        }
+    }
+
+    private static string LotKey(ReceiptAggregateRow row) => LotKey(row.GrowerLotId, row.GrowerNumber, row.LotNumber, row.Variety, row.ProductionType, row.IsOrganic);
+    private static string LotKey(RunAggregateRow row) => LotKey(row.GrowerLotId, row.GrowerNumber, row.LotNumber, row.Variety, row.ProductionType, row.IsOrganic);
+    private static string LotKey(int? growerLotId, string grower, string lot, string variety, string productionType, bool organic) =>
         growerLotId is int id
-            ? $"G:{id}|{fruitProfileId}|{Uri.EscapeDataString(productionType)}|{organic}"
-            : $"C:{Uri.EscapeDataString(grower)}|{Uri.EscapeDataString(lot)}|{fruitProfileId}|{Uri.EscapeDataString(productionType)}|{organic}";
+            ? $"G:{id}|{Uri.EscapeDataString(grower)}|{CanonicalVarietyKey(variety)}|{Uri.EscapeDataString(productionType)}|{organic}"
+            : $"C:{Uri.EscapeDataString(grower)}|{Uri.EscapeDataString(lot)}|{CanonicalVarietyKey(variety)}|{Uri.EscapeDataString(productionType)}|{organic}";
     private static bool Same(string? left, string? right) => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 
     private sealed class GrowerContribution
@@ -590,6 +699,23 @@ public sealed class GrowerLotProgressService(
 
     private sealed record VarietyRow(int FruitProfileId, string Variety, string ProductionType, bool IsOrganic);
     private sealed record LotRunRow(long EntryId, long? ActualRunId, DateTimeOffset RunAt, int Bins);
+    private sealed record ExcludedReview(int ReceiptCount, int RunLineCount, bool IsBounded, IReadOnlyList<GrowerLotProgressIssueViewModel> Issues);
+    private sealed record ExcludedIssueSample(int TotalCount, string IssueType, string Explanation, string RecordUrl)
+    {
+        public GrowerLotProgressIssueViewModel ToViewModel() => new(IssueType, Explanation, RecordUrl);
+    }
+    private sealed record VarietySelection(
+        bool IsSpecified,
+        string CanonicalKey,
+        string ProductionType,
+        bool IsOrganic,
+        IReadOnlyList<int> ProfileIds,
+        string? ValidationMessage)
+    {
+        public static VarietySelection None { get; } = new(false, "", "", false, [], null);
+        public static VarietySelection Invalid(string message) => new(true, "", "", false, [], message);
+    }
+    private sealed record CanonicalProfiles(IReadOnlyList<int> ProfileIds);
 }
 
 public static class ReportingColorPresentation

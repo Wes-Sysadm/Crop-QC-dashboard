@@ -1082,8 +1082,9 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
                     <strong>@selectedVariety.Variety</strong>
                     <span class="production-badge">@(selectedVariety.IsOrganic ? "Organic" : "Conventional")</span>
                 </div>
+                <p><a href="/BinsRun?Section=RunTotals&amp;ReportFacility=@detail.Facility&amp;ReportCropYear=@detail.CropYear">Clear variety selection</a></p>
             }
-            @foreach (var week in detail.Weeks.Where(x => string.IsNullOrWhiteSpace(detail.SelectedVarietyKey) || x.VarietyKey == detail.SelectedVarietyKey))
+            @foreach (var week in detail.Weeks)
             {
                 <details class="subpanel" open="@(detail.SelectedVarietyKey == week.VarietyKey && detail.SelectedWeekStart == week.WeekStart)">
                     <summary><strong>@week.Variety — @week.ProductionType</strong> · Week of @week.WeekStart.ToString("MMM. d") — @week.WeekEnd.ToString("MMM. d, yyyy") · @week.Bins.ToString("N0") bins</summary>

@@ -6,6 +6,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using CropQc.Data;
+using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
@@ -64,10 +65,61 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
         };
         if (!string.Equals(profile, "core", StringComparison.OrdinalIgnoreCase))
         {
+            var progressService = scope.ServiceProvider.GetRequiredService<IGrowerLotProgressService>();
+            var overviewModel = await progressService.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, Facility = "All" }, CancellationToken.None);
+            var firstGrower = overviewModel.Growers.FirstOrDefault(x => x.BinsRun > 0) ?? overviewModel.Growers.FirstOrDefault();
+            GrowerVarietyProgressViewModel? firstVariety = null;
+            GrowerLotProgressViewModel? firstLot = null;
+            GrowerLotWeekProgressViewModel? firstWeek = null;
+            if (firstGrower is not null)
+            {
+                var growerModel = await progressService.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, Facility = "All", ExpandedGrowerNumber = firstGrower.GrowerNumber }, CancellationToken.None);
+                var growerVarieties = growerModel.Growers.Single(x => x.GrowerNumber == firstGrower.GrowerNumber).Varieties;
+                firstVariety = growerVarieties.FirstOrDefault(x => x.BinsRun > 0) ?? growerVarieties.FirstOrDefault();
+                if (firstVariety is not null)
+                {
+                    var lotModel = await progressService.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, Facility = "All", ExpandedGrowerNumber = firstGrower.GrowerNumber, ExpandedVarietyKey = firstVariety.VarietyKey }, CancellationToken.None);
+                    var varietyLots = lotModel.Growers.Single(x => x.GrowerNumber == firstGrower.GrowerNumber).Varieties.Single(x => x.VarietyKey == firstVariety.VarietyKey).Lots;
+                    firstLot = varietyLots.FirstOrDefault(x => x.BinsRun > 0) ?? varietyLots.FirstOrDefault();
+                    if (firstLot is not null)
+                    {
+                        var weekModel = await progressService.GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026, Facility = "All", ExpandedGrowerNumber = firstGrower.GrowerNumber, ExpandedVarietyKey = firstVariety.VarietyKey, SelectedLotKey = firstLot.LotKey }, CancellationToken.None);
+                        firstWeek = weekModel.Growers.Single(x => x.GrowerNumber == firstGrower.GrowerNumber).Varieties.Single(x => x.VarietyKey == firstVariety.VarietyKey).Lots.Single(x => x.LotKey == firstLot.LotKey).Weeks.FirstOrDefault();
+                    }
+                }
+            }
+            var runReporting = scope.ServiceProvider.GetRequiredService<IRunReportingService>();
+            var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, ApplicationAreas.OwnerEmail)], BenchmarkAuthenticationHandler.SchemeName));
+            var runTotalsModel = await runReporting.GetAsync(new BinsRunFilterForm { Section = "RunTotals", ReportFacility = "WP", ReportCropYear = 2026 }, principal, CancellationToken.None);
+            var firstRunVariety = runTotalsModel.Detail?.Varieties.FirstOrDefault();
+
             routes.Add(new BenchmarkRoute("RunReportingSummary", "/BinsRun?Section=Actual"));
-            routes.Add(new BenchmarkRoute("RunReportingDetail", "/BinsRun?Section=RunTotals&ReportFacility=WP&ReportCropYear=2026"));
+            routes.Add(new BenchmarkRoute("RunReportingNoVariety", "/BinsRun?Section=RunTotals&ReportFacility=WP&ReportCropYear=2026"));
+            if (firstRunVariety is not null)
+            {
+                routes.Add(new BenchmarkRoute("RunReportingSelectedVariety", $"/BinsRun?Section=RunTotals&ReportFacility=WP&ReportCropYear=2026&ReportVarietyKey={Uri.EscapeDataString(firstRunVariety.VarietyKey)}"));
+            }
             routes.Add(new BenchmarkRoute("RunReportingNeedsReview", "/BinsRun?Section=NeedsReview"));
             routes.Add(new BenchmarkRoute("GrowerLotProgress", "/RunReporting/Growers?CropYear=2026&Facility=All"));
+            if (firstGrower is not null)
+            {
+                var growerQuery = $"CropYear=2026&Facility=All&ExpandedGrowerNumber={Uri.EscapeDataString(firstGrower.GrowerNumber)}";
+                routes.Add(new BenchmarkRoute("GrowerLotSelectedGrower", $"/RunReporting/Growers?{growerQuery}"));
+                if (firstVariety is not null)
+                {
+                    var varietyQuery = $"{growerQuery}&ExpandedVarietyKey={Uri.EscapeDataString(firstVariety.VarietyKey)}";
+                    routes.Add(new BenchmarkRoute("GrowerLotSelectedVariety", $"/RunReporting/Growers?{varietyQuery}"));
+                    if (firstLot is not null)
+                    {
+                        var lotQuery = $"{varietyQuery}&SelectedLotKey={Uri.EscapeDataString(firstLot.LotKey)}";
+                        routes.Add(new BenchmarkRoute("GrowerLotSelectedLot", $"/RunReporting/Growers?{lotQuery}"));
+                        if (firstWeek is not null)
+                        {
+                            routes.Add(new BenchmarkRoute("GrowerLotSelectedWeek", $"/RunReporting/Growers?{lotQuery}&SelectedWeekStart={firstWeek.WeekStart:yyyy-MM-dd}&SupportingPage=1"));
+                        }
+                    }
+                }
+            }
         }
         if (fieldSampleId is not null)
         {
@@ -82,7 +134,15 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
         if (!string.Equals(profile, "core", StringComparison.OrdinalIgnoreCase))
         {
             phases.Add(await RunPhaseAsync(client, "run-reporting-summary-sequential-100", routes.Where(x => x.Name == "RunReportingSummary").ToList(), 100, 1));
-            phases.Add(await RunPhaseAsync(client, "run-reporting-detail-sequential-100", routes.Where(x => x.Name == "RunReportingDetail").ToList(), 100, 1));
+            phases.Add(await RunPhaseAsync(client, "run-reporting-no-variety-sequential-100", routes.Where(x => x.Name == "RunReportingNoVariety").ToList(), 100, 1));
+            foreach (var routeName in new[] { "RunReportingSelectedVariety", "GrowerLotSelectedGrower", "GrowerLotSelectedVariety", "GrowerLotSelectedLot", "GrowerLotSelectedWeek" })
+            {
+                var selectedRoutes = routes.Where(x => x.Name == routeName).ToList();
+                if (selectedRoutes.Count > 0)
+                {
+                    phases.Add(await RunPhaseAsync(client, $"{routeName}-sequential-100", selectedRoutes, 100, 1));
+                }
+            }
             phases.Add(await RunPhaseAsync(client, "run-reporting-needs-review-sequential-100", routes.Where(x => x.Name == "RunReportingNeedsReview").ToList(), 100, 1));
             phases.Add(await RunPhaseAsync(client, "grower-lot-progress-sequential-100", routes.Where(x => x.Name == "GrowerLotProgress").ToList(), 100, 1));
         }
@@ -117,7 +177,7 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
         if (!string.Equals(profile, "core", StringComparison.OrdinalIgnoreCase))
         {
             AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-summary-sequential-100", 16 * 1024 * 1024);
-            AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-detail-sequential-100", 16 * 1024 * 1024);
+            AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-no-variety-sequential-100", 16 * 1024 * 1024);
             AssertAllocatedBytesPerRequestAtMost(phases, "run-reporting-needs-review-sequential-100", 16 * 1024 * 1024);
             AssertAllocatedBytesPerRequestAtMost(phases, "grower-lot-progress-sequential-100", 16 * 1024 * 1024);
         }
