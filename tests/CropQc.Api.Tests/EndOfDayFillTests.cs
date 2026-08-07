@@ -6,6 +6,7 @@ using CropQc.Web.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CropQc.Api.Tests;
@@ -228,7 +229,7 @@ public sealed class EndOfDayFillTests
     public async Task AdminConfiguration_RejectsCrossFacilityAndDuplicateActiveMembership_AndAuditsAssignments()
     {
         await using var fixture = await Fixture.CreateAsync();
-        var admin = new EndOfDayFillAdminService(fixture.Db);
+        var admin = fixture.CreateAdminService();
         var crossFacility = await admin.SaveGroupAsync(new EndOfDayFillGroupForm { Name = "Bad", Facility = "EBS", IsActive = true, RoomIds = [Fixture.RoomId] }, Fixture.SenderEmail, default);
         Assert.Contains("does not belong", crossFacility);
 
@@ -245,7 +246,7 @@ public sealed class EndOfDayFillTests
     public async Task AdminConfiguration_CreatesAndEditsGroupsAndRecipientsWithAuditHistory()
     {
         await using var fixture = await Fixture.CreateAsync();
-        var admin = new EndOfDayFillAdminService(fixture.Db);
+        var admin = fixture.CreateAdminService();
 
         Assert.Null(await admin.SaveGroupAsync(new EndOfDayFillGroupForm
         {
@@ -292,6 +293,175 @@ public sealed class EndOfDayFillTests
         Assert.False(await fixture.Service.HasGroupAssignmentAsync(Fixture.UnassignedEmail, 1, default));
     }
 
+    [Fact]
+    public async Task RequestCancellationAfterReservation_DoesNotAbandonCriticalSendOrFinalization()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        using var request = new CancellationTokenSource();
+        fixture.Sender.OnSend = token =>
+        {
+            request.Cancel();
+            Assert.False(token.IsCancellationRequested);
+        };
+        var preview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, request.Token);
+
+        var result = await fixture.Service.SendAsync(Fixture.SenderEmail,
+            new EndOfDayFillSendForm { GroupId = 1, PreviewToken = preview.PreviewToken!, PhysicalCountConfirmed = true }, request.Token);
+
+        Assert.True(result.Success);
+        Assert.True(request.IsCancellationRequested);
+        Assert.Equal(EndOfDayFillSendStatuses.Succeeded, (await fixture.Db.EndOfDayFillReportSends.SingleAsync()).Status);
+        Assert.Empty(await fixture.Db.EndOfDayFillSendReservations.ToListAsync());
+    }
+
+    [Fact]
+    public async Task StaleReservation_IsVisibleAndBlocksNormalSend()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var originalPreview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+        var pending = await fixture.CreateUncertainPendingAsync();
+        fixture.Clock.UtcNow = fixture.Clock.UtcNow.Add(EndOfDayFillRecoveryPolicy.StaleAfter).AddSeconds(1);
+
+        var preview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+        var blocked = await fixture.Service.SendAsync(Fixture.SenderEmail,
+            new EndOfDayFillSendForm { GroupId = 1, PreviewToken = originalPreview.PreviewToken!, PhysicalCountConfirmed = true }, default);
+        var adminPage = await fixture.CreateAdminService().GetPageAsync(default);
+
+        Assert.False(preview.CanSend);
+        Assert.True(preview.PendingAttempt?.IsStale);
+        Assert.Equal(pending.Id, preview.PendingAttempt?.SendAttemptId);
+        Assert.Contains("uncertain outcome", blocked.Message);
+        Assert.Equal(pending.Id, Assert.Single(adminPage.StaleAttempts).SendAttemptId);
+        Assert.NotNull(await fixture.CreateAdminService().GetPendingDetailAsync(pending.Id, default));
+    }
+
+    [Fact]
+    public async Task ConfirmedSent_PromotesPending_ReleasesReservation_AndAdvancesRevisionSafely()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var pending = await fixture.CreateUncertainPendingAsync();
+        fixture.Clock.UtcNow = fixture.Clock.UtcNow.AddMinutes(16);
+        var admin = fixture.CreateAdminService();
+
+        var error = await admin.ResolvePendingSendAsync(new EndOfDayFillRecoveryForm
+        {
+            SendAttemptId = pending.Id,
+            Resolution = "confirmed-sent",
+            Reason = "Verified in sender Gmail Sent folder.",
+            GmailMessageId = "manually-recorded-id",
+            Confirmed = true
+        }, Fixture.SenderEmail, default);
+
+        Assert.Null(error);
+        var stored = await fixture.Db.EndOfDayFillReportSends.SingleAsync(x => x.Id == pending.Id);
+        Assert.Equal(EndOfDayFillSendStatuses.Succeeded, stored.Status);
+        Assert.Equal(stored.AttemptedAt, stored.SentAt);
+        Assert.Equal("manually-recorded-id", stored.GmailMessageId);
+        Assert.Empty(await fixture.Db.EndOfDayFillSendReservations.ToListAsync());
+        Assert.Contains(await fixture.Db.AuditLogs.ToListAsync(), x => x.Action == "manual-confirmed-sent" && x.EntityKey == pending.Id.ToString());
+
+        var identical = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+        var duplicate = await fixture.Service.SendAsync(Fixture.SenderEmail,
+            new EndOfDayFillSendForm { GroupId = 1, PreviewToken = identical.PreviewToken!, PhysicalCountConfirmed = true }, default);
+        Assert.False(duplicate.Success);
+        Assert.Contains("No report data has changed", duplicate.Message);
+
+        fixture.Inventory.Bins++;
+        var changed = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+        var revision = await fixture.Service.SendAsync(Fixture.SenderEmail,
+            new EndOfDayFillSendForm { GroupId = 1, PreviewToken = changed.PreviewToken!, PhysicalCountConfirmed = true }, default);
+        Assert.True(revision.Success);
+        Assert.Equal(1, (await fixture.Db.EndOfDayFillReportSends.SingleAsync(x => x.Status == EndOfDayFillSendStatuses.Succeeded && x.Id != pending.Id)).RevisionNumber);
+    }
+
+    [Fact]
+    public async Task ConfirmedNotSent_FailsPending_DoesNotAdvanceRevision_AndResolutionIsFailClosed()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var pending = await fixture.CreateUncertainPendingAsync();
+        fixture.Clock.UtcNow = fixture.Clock.UtcNow.AddMinutes(16);
+        var admin = fixture.CreateAdminService();
+        var form = new EndOfDayFillRecoveryForm
+        {
+            SendAttemptId = pending.Id,
+            Resolution = "confirmed-not-sent",
+            Reason = "Verified no matching message in sender Gmail Sent folder.",
+            Confirmed = true
+        };
+
+        Assert.Null(await admin.ResolvePendingSendAsync(form, Fixture.SenderEmail, default));
+        var secondResolution = await admin.ResolvePendingSendAsync(new EndOfDayFillRecoveryForm
+        {
+            SendAttemptId = pending.Id,
+            Resolution = "confirmed-sent",
+            Reason = "A second administrator disagreed.",
+            Confirmed = true
+        }, Fixture.SenderEmail, default);
+        Assert.Contains("already been resolved", secondResolution);
+        Assert.Equal(EndOfDayFillSendStatuses.Failed, (await fixture.Db.EndOfDayFillReportSends.SingleAsync(x => x.Id == pending.Id)).Status);
+        Assert.Contains(await fixture.Db.AuditLogs.ToListAsync(), x => x.Action == "manual-confirmed-not-sent");
+
+        var retryPreview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+        var retry = await fixture.Service.SendAsync(Fixture.SenderEmail,
+            new EndOfDayFillSendForm { GroupId = 1, PreviewToken = retryPreview.PreviewToken!, PhysicalCountConfirmed = true }, default);
+        Assert.True(retry.Success);
+        Assert.Equal(0, (await fixture.Db.EndOfDayFillReportSends.SingleAsync(x => x.Status == EndOfDayFillSendStatuses.Succeeded)).RevisionNumber);
+    }
+
+    [Fact]
+    public async Task RecoveryRejectsActiveReservationMissingConfirmationAndUnknownAdministrator()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var pending = await fixture.CreateUncertainPendingAsync();
+        var admin = fixture.CreateAdminService();
+        var form = new EndOfDayFillRecoveryForm { SendAttemptId = pending.Id, Resolution = "confirmed-not-sent", Reason = "Checked sender account carefully.", Confirmed = true };
+
+        Assert.Contains("processing window", await admin.ResolvePendingSendAsync(form, Fixture.SenderEmail, default));
+        fixture.Clock.UtcNow = fixture.Clock.UtcNow.AddMinutes(16);
+        form.Confirmed = false;
+        Assert.Contains("Explicitly confirm", await admin.ResolvePendingSendAsync(form, Fixture.SenderEmail, default));
+        form.Confirmed = true;
+        Assert.Contains("Admin access", await admin.ResolvePendingSendAsync(form, Fixture.UnassignedEmail, default));
+        Assert.True(await fixture.Db.EndOfDayFillSendReservations.AnyAsync());
+    }
+
+    [Fact]
+    public async Task GmailSuccessWithRepeatedDatabaseFinalizationFailure_RemainsPendingAndCannotDuplicate()
+    {
+        var interceptor = new FailSendFinalizationInterceptor(EndOfDayFillRecoveryPolicy.FinalizationAttempts);
+        await using var fixture = await Fixture.CreateAsync(interceptor);
+        var preview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+
+        var result = await fixture.Service.SendAsync(Fixture.SenderEmail,
+            new EndOfDayFillSendForm { GroupId = 1, PreviewToken = preview.PreviewToken!, PhysicalCountConfirmed = true }, default);
+
+        Assert.False(result.Success);
+        Assert.Contains("could not be safely finalized", result.Message);
+        Assert.Single(fixture.Sender.Messages);
+        Assert.Equal(EndOfDayFillSendStatuses.Pending, (await fixture.Db.EndOfDayFillReportSends.SingleAsync()).Status);
+        Assert.True(await fixture.Db.EndOfDayFillSendReservations.AnyAsync());
+        var blocked = await fixture.Service.SendAsync(Fixture.SenderEmail,
+            new EndOfDayFillSendForm { GroupId = 1, PreviewToken = preview.PreviewToken!, PhysicalCountConfirmed = true }, default);
+        Assert.False(blocked.Success);
+        Assert.Single(fixture.Sender.Messages);
+    }
+
+    [Fact]
+    public async Task FutureWpRoomUsesCentralFacilityIdentityWithoutLocationNameRecognition()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var room = await fixture.Db.Rooms.SingleAsync(x => x.Id == Fixture.RoomId);
+        room.Code = "FUTURE-42";
+        room.Name = "Future expansion room";
+        room.DisplayName = "Future expansion room";
+        await fixture.Db.SaveChangesAsync();
+
+        var preview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+
+        Assert.True(preview.CanSend);
+        Assert.DoesNotContain(preview.Issues, x => x.Code == "cross-facility-room");
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         public const string SenderEmail = "sender@fruitandland.com";
@@ -312,14 +482,16 @@ public sealed class EndOfDayFillTests
             Inventory = inventory;
             Sender = sender;
             Clock = clock;
-            Service = new EndOfDayFillService(db, inventory, sender, new EmailOptions { Provider = EmailProviders.GmailUser }, new PacificBusinessTimeService(clock), new EphemeralDataProtectionProvider(), NullLogger<EndOfDayFillService>.Instance);
+            Service = new EndOfDayFillService(db, inventory, sender, new EmailOptions { Provider = EmailProviders.GmailUser }, new PacificBusinessTimeService(clock), new EphemeralDataProtectionProvider(), new FacilityContextService(db), NullLogger<EndOfDayFillService>.Instance);
         }
 
-        public static async Task<Fixture> CreateAsync()
+        public static async Task<Fixture> CreateAsync(IInterceptor? interceptor = null)
         {
             var connection = new SqliteConnection("Data Source=:memory:");
             await connection.OpenAsync();
-            var db = new CropQcDbContext(new DbContextOptionsBuilder<CropQcDbContext>().UseSqlite(connection).Options);
+            var options = new DbContextOptionsBuilder<CropQcDbContext>().UseSqlite(connection);
+            if (interceptor is not null) options.AddInterceptors(interceptor);
+            var db = new CropQcDbContext(options.Options);
             await db.Database.EnsureCreatedAsync();
             var sender = new User { Email = SenderEmail, DisplayName = "Current Sender", Domain = "fruitandland.com", IsActive = true, CreatedAt = DateTimeOffset.UtcNow };
             var unassigned = new User { Email = UnassignedEmail, DisplayName = "No Access", Domain = "fruitandland.com", IsActive = true, CreatedAt = DateTimeOffset.UtcNow };
@@ -337,6 +509,20 @@ public sealed class EndOfDayFillTests
             var fakeSender = new FakeEmailSender();
             var clock = new MutableClock { UtcNow = new DateTimeOffset(2026, 8, 7, 4, 22, 0, TimeSpan.Zero) };
             return new Fixture(connection, db, inventory, fakeSender, clock);
+        }
+
+        public EndOfDayFillAdminService CreateAdminService() => new(Db, new FacilityContextService(Db), new PacificBusinessTimeService(Clock), new FakeUserAccessService());
+
+        public async Task<EndOfDayFillReportSend> CreateUncertainPendingAsync()
+        {
+            Sender.ThrowAfterAccept = true;
+            var preview = await Service.GetPreviewAsync(SenderEmail, 1, default);
+            var result = await Service.SendAsync(SenderEmail,
+                new EndOfDayFillSendForm { GroupId = 1, PreviewToken = preview.PreviewToken!, PhysicalCountConfirmed = true }, default);
+            Sender.ThrowAfterAccept = false;
+            Assert.False(result.Success);
+            Assert.Contains("could not be safely finalized", result.Message);
+            return await Db.EndOfDayFillReportSends.SingleAsync(x => x.Status == EndOfDayFillSendStatuses.Pending);
         }
 
         public async ValueTask DisposeAsync()
@@ -367,13 +553,50 @@ public sealed class EndOfDayFillTests
     private sealed class FakeEmailSender : IQcEmailSender
     {
         public bool FailNext { get; set; }
+        public bool ThrowAfterAccept { get; set; }
+        public Action<CancellationToken>? OnSend { get; set; }
         public List<(User Sender, QcEmailMessage Message)> Messages { get; } = [];
         public Task<QcEmailSendResult> SendAsync(User sender, QcEmailMessage message, CancellationToken cancellationToken)
         {
+            OnSend?.Invoke(cancellationToken);
             Messages.Add((sender, message));
+            if (ThrowAfterAccept) throw new InvalidOperationException("Simulated process failure after fake Gmail acceptance.");
             if (FailNext) { FailNext = false; return Task.FromResult(QcEmailSendResult.Failed("fake failure")); }
             return Task.FromResult(QcEmailSendResult.Sent("fake-gmail-id"));
         }
+    }
+
+    private sealed class FailSendFinalizationInterceptor(int failures) : SaveChangesInterceptor
+    {
+        private int remainingFailures = failures;
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (remainingFailures > 0
+                && eventData.Context?.ChangeTracker.Entries<EndOfDayFillReportSend>()
+                    .Any(x => x.State == EntityState.Modified && x.Entity.Status != EndOfDayFillSendStatuses.Pending) == true)
+            {
+                remainingFailures--;
+                throw new DbUpdateException("Simulated finalization failure.");
+            }
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class FakeUserAccessService : IUserAccessService
+    {
+        public Task<bool> HasAccessAsync(System.Security.Claims.ClaimsPrincipal principal, string areaKey, PageAccessLevel minimumLevel, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+        public Task<PageAccessLevel> GetAccessLevelAsync(string? email, string areaKey, CancellationToken cancellationToken) =>
+            Task.FromResult(email == Fixture.SenderEmail ? PageAccessLevel.Admin : PageAccessLevel.None);
+        public Task<IReadOnlyList<UserAccessMatrixRow>> GetMatrixAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserAccessMatrixRow>>([]);
+        public Task EnsureAccessMatrixAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<string?> SaveMatrixAsync(UserAccessMatrixForm form, string changedByEmail, CancellationToken cancellationToken) =>
+            Task.FromResult<string?>(null);
     }
 
     private sealed class MutableClock : IClock { public DateTimeOffset UtcNow { get; set; } }

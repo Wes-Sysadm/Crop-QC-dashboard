@@ -222,11 +222,11 @@ namespace CropQc.Data.Migrations
                 INSERT INTO [EndOfDayFillReportGroupRooms] ([ReportGroupId], [RoomId], [CreatedAt], [CreatedByUserId])
                 SELECT 1, r.[Id], SYSUTCDATETIME(), NULL
                 FROM [Rooms] r INNER JOIN [Warehouses] w ON w.[Id] = r.[WarehouseId]
-                WHERE r.[IsActive] = 1 AND LOWER(LTRIM(RTRIM(w.[Code]))) IN ('dh', 'mcdougall');
+                WHERE r.[IsActive] = 1 AND w.[IsActive] = 1 AND LOWER(LTRIM(RTRIM(w.[Code]))) IN ('dh', 'mcdougall');
                 INSERT INTO [EndOfDayFillReportGroupRooms] ([ReportGroupId], [RoomId], [CreatedAt], [CreatedByUserId])
                 SELECT 2, r.[Id], SYSUTCDATETIME(), NULL
                 FROM [Rooms] r INNER JOIN [Warehouses] w ON w.[Id] = r.[WarehouseId]
-                WHERE r.[IsActive] = 1 AND LOWER(LTRIM(RTRIM(w.[Code]))) = 'ebs';
+                WHERE r.[IsActive] = 1 AND w.[IsActive] = 1 AND LOWER(LTRIM(RTRIM(w.[Code]))) = 'ebs';
                 INSERT INTO [EndOfDayFillUserGroupAssignments] ([UserId], [ReportGroupId], [CreatedAt], [CreatedByUserId])
                 SELECT [Id], 1, SYSUTCDATETIME(), NULL FROM [Users] WHERE LOWER(LTRIM(RTRIM([Email]))) IN ('jorge@wp-packing.com', 'wes@fruitandland.com');
                 INSERT INTO [EndOfDayFillUserGroupAssignments] ([UserId], [ReportGroupId], [CreatedAt], [CreatedByUserId])
@@ -243,11 +243,11 @@ namespace CropQc.Data.Migrations
                 INSERT INTO "EndOfDayFillReportGroupRooms" ("ReportGroupId", "RoomId", "CreatedAt", "CreatedByUserId")
                 SELECT 1, r."Id", CURRENT_TIMESTAMP, NULL
                 FROM "Rooms" r INNER JOIN "Warehouses" w ON w."Id" = r."WarehouseId"
-                WHERE r."IsActive" AND lower(btrim(w."Code")) IN ('dh', 'mcdougall');
+                WHERE r."IsActive" AND w."IsActive" AND lower(btrim(w."Code")) IN ('dh', 'mcdougall');
                 INSERT INTO "EndOfDayFillReportGroupRooms" ("ReportGroupId", "RoomId", "CreatedAt", "CreatedByUserId")
                 SELECT 2, r."Id", CURRENT_TIMESTAMP, NULL
                 FROM "Rooms" r INNER JOIN "Warehouses" w ON w."Id" = r."WarehouseId"
-                WHERE r."IsActive" AND lower(btrim(w."Code")) = 'ebs';
+                WHERE r."IsActive" AND w."IsActive" AND lower(btrim(w."Code")) = 'ebs';
                 INSERT INTO "EndOfDayFillUserGroupAssignments" ("UserId", "ReportGroupId", "CreatedAt", "CreatedByUserId")
                 SELECT "Id", 1, CURRENT_TIMESTAMP, NULL FROM "Users" WHERE lower(btrim("Email")) IN ('jorge@wp-packing.com', 'wes@fruitandland.com');
                 INSERT INTO "EndOfDayFillUserGroupAssignments" ("UserId", "ReportGroupId", "CreatedAt", "CreatedByUserId")

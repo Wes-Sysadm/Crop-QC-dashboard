@@ -39,4 +39,20 @@ public sealed class EndOfDayFillAdminController(IEndOfDayFillAdminService servic
         TempData[error is null ? "Success" : "Error"] = error ?? "End of Day Fill report assignments updated.";
         return Redirect("/Admin/Users");
     }
+
+    [HttpGet("recovery/{id:long}")]
+    public async Task<IActionResult> PendingDetail(long id, CancellationToken cancellationToken)
+    {
+        var model = await service.GetPendingDetailAsync(id, cancellationToken);
+        return model is null ? NotFound() : View("~/Views/EndOfDayFill/HistoryDetail.cshtml", model);
+    }
+
+    [HttpPost("recovery")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResolvePending(EndOfDayFillRecoveryForm form, CancellationToken cancellationToken)
+    {
+        var error = await service.ResolvePendingSendAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "The uncertain End of Day Fill send was resolved.";
+        return RedirectToAction(nameof(Index));
+    }
 }

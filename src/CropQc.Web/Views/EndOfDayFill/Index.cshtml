@@ -49,6 +49,17 @@
         </section>
     }
 
+    @if (Model.PendingAttempt is not null)
+    {
+        var pending = Model.PendingAttempt;
+        <section class="panel notice warning" role="alert">
+            <h2>@(pending.IsStale ? "Previous send has an uncertain outcome" : "Previous send is still being processed")</h2>
+            <p>Do not resend. @(pending.IsStale ? "Ask a Master Data administrator to verify the sender's Gmail Sent folder and resolve the pending attempt." : "Wait for the current send to finish, then refresh.")</p>
+            <dl><dt>Report group</dt><dd>@pending.GroupName</dd><dt>Sender</dt><dd>@pending.Sender</dd><dt>Attempted</dt><dd>@pending.AttemptedAt</dd><dt>Subject</dt><dd>@pending.Subject</dd><dt>Recipients</dt><dd>@pending.Recipients</dd><dt>Revision candidate</dt><dd>@(pending.RevisionNumber == 0 ? "Original" : $"REVISION {pending.RevisionNumber}")</dd><dt>Snapshot</dt><dd><code>@pending.SnapshotHash</code></dd></dl>
+            <a href="/EndOfDayFill/History/@pending.SendAttemptId">View exact candidate report</a>
+        </section>
+    }
+
     @if (Model.Rooms.Count == 0)
     {
         <p class="empty-state">No occupied rooms are currently included in this report group.</p>

@@ -13,9 +13,21 @@ public sealed class EndOfDayFillPreviewViewModel
     public IReadOnlyList<EndOfDayFillValidationIssue> Issues { get; set; } = [];
     public string? PreviewToken { get; set; }
     public bool GmailReady { get; set; }
+    public EndOfDayFillPendingAttemptViewModel? PendingAttempt { get; set; }
     public bool CanSend => SelectedGroupId is not null && Issues.Count == 0 && GmailReady && !string.IsNullOrWhiteSpace(PreviewToken);
     public EndOfDayFillSendForm Form { get; set; } = new();
 }
+
+public sealed record EndOfDayFillPendingAttemptViewModel(
+    long SendAttemptId,
+    string GroupName,
+    string Sender,
+    DateTimeOffset AttemptedAt,
+    string Subject,
+    string Recipients,
+    int RevisionNumber,
+    string SnapshotHash,
+    bool IsStale);
 
 public sealed record EndOfDayFillValidationIssue(string Code, string Message, int? RoomId = null);
 
@@ -95,6 +107,7 @@ public sealed class EndOfDayFillAdminPageViewModel
     public IReadOnlyList<EndOfDayFillAdminGroupViewModel> Groups { get; set; } = [];
     public IReadOnlyList<EndOfDayFillAdminRoomViewModel> Rooms { get; set; } = [];
     public IReadOnlyList<EndOfDayFillAdminRecipientViewModel> Recipients { get; set; } = [];
+    public IReadOnlyList<EndOfDayFillPendingAttemptViewModel> StaleAttempts { get; set; } = [];
 }
 
 public sealed record EndOfDayFillAdminGroupViewModel(int Id, string Name, string Facility, bool IsActive, IReadOnlyList<int> RoomIds);
@@ -122,4 +135,13 @@ public sealed class EndOfDayFillUserAssignmentsForm
 {
     public int UserId { get; set; }
     public List<int> GroupIds { get; set; } = [];
+}
+
+public sealed class EndOfDayFillRecoveryForm
+{
+    public long SendAttemptId { get; set; }
+    public string Resolution { get; set; } = "";
+    public string Reason { get; set; } = "";
+    public string? GmailMessageId { get; set; }
+    public bool Confirmed { get; set; }
 }

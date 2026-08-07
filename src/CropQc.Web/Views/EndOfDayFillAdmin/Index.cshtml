@@ -5,6 +5,31 @@
 @if (TempData["Error"] is not null) { <p class="notice warning">@TempData["Error"]</p> }
 @if (TempData["Success"] is not null) { <p class="notice success">@TempData["Success"]</p> }
 
+@if (Model.StaleAttempts.Count > 0)
+{
+    <section class="panel notice warning" role="alert">
+        <h2>Stale or uncertain email sends require review</h2>
+        <p>Do not resend. Verify the sender's Gmail Sent folder, open the exact candidate report, then record one explicit outcome.</p>
+        @foreach (var attempt in Model.StaleAttempts)
+        {
+            <article class="panel">
+                <h3>@attempt.GroupName — @(attempt.RevisionNumber == 0 ? "Original" : $"REVISION {attempt.RevisionNumber}")</h3>
+                <dl><dt>Sender</dt><dd>@attempt.Sender</dd><dt>Attempted</dt><dd>@attempt.AttemptedAt</dd><dt>Subject</dt><dd>@attempt.Subject</dd><dt>Recipients</dt><dd>@attempt.Recipients</dd><dt>Snapshot</dt><dd><code>@attempt.SnapshotHash</code></dd></dl>
+                <p><a href="/MasterData/end-of-day-fill-groups/recovery/@attempt.SendAttemptId">View exact candidate report</a></p>
+                <form method="post" action="/MasterData/end-of-day-fill-groups/recovery" class="form-grid">
+                    <input type="hidden" name="SendAttemptId" value="@attempt.SendAttemptId" />
+                    <label class="field">Verified result<select name="Resolution" required><option value="">Select after checking Gmail Sent</option><option value="confirmed-sent">Confirmed sent</option><option value="confirmed-not-sent">Confirmed not sent</option></select></label>
+                    <label class="field">Reason<input name="Reason" required minlength="5" maxlength="1000" /></label>
+                    <label class="field">Gmail message ID, if known<input name="GmailMessageId" maxlength="500" /></label>
+                    <label class="checkbox-field"><input type="checkbox" name="Confirmed" value="true" required /> I verified the sender's Gmail Sent folder and confirm this resolution.</label>
+                    <input type="hidden" name="Confirmed" value="false" />
+                    <button type="submit">Resolve uncertain send</button>
+                </form>
+            </article>
+        }
+    </section>
+}
+
 <section class="panel"><h2>Create report group</h2><form method="post" action="/MasterData/end-of-day-fill-groups/group" class="form-grid"><label class="field">Name<input name="Name" required maxlength="150" /></label><label class="field">Facility<select name="Facility"><option>WP</option><option>EBS</option></select></label><label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked /> Active</label><input type="hidden" name="IsActive" value="false" /><button type="submit">Create</button></form></section>
 
 @foreach (var group in Model.Groups)

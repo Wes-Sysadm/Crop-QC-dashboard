@@ -35,6 +35,14 @@ public sealed class EndOfDayFillInventorySource(IDashboardDataService dashboardD
         dashboardDataService.GetAuthoritativeCurrentRoomLotsAsync(roomIds, cancellationToken);
 }
 
+public static class EndOfDayFillRecoveryPolicy
+{
+    public const int AdvisoryLockNamespace = 1162102342;
+    public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(15);
+    public static readonly TimeSpan CriticalSendTimeout = TimeSpan.FromMinutes(2);
+    public const int FinalizationAttempts = 3;
+}
+
 public sealed class EndOfDayFillService(
     CropQcDbContext dbContext,
     IEndOfDayFillInventorySource inventorySource,
@@ -42,6 +50,7 @@ public sealed class EndOfDayFillService(
     EmailOptions emailOptions,
     IBusinessTimeService businessTime,
     IDataProtectionProvider dataProtectionProvider,
+    IFacilityContextService facilityContext,
     ILogger<EndOfDayFillService> logger) : IEndOfDayFillService
 {
     private const string TokenPurpose = "CropQc.EndOfDayFill.Preview.v1";
@@ -97,6 +106,16 @@ public sealed class EndOfDayFillService(
         var model = build.Model;
         model.Groups = groups;
         model.Form = new EndOfDayFillSendForm { GroupId = selectedId.Value };
+        var reservation = await GetPendingReservationAsync(selectedId.Value, cancellationToken);
+        if (reservation is not null)
+        {
+            model.PendingAttempt = PendingView(reservation);
+            model.Issues = [.. model.Issues, new(
+                model.PendingAttempt.IsStale ? "uncertain-send" : "send-in-progress",
+                model.PendingAttempt.IsStale
+                    ? "A previous email send has an uncertain outcome. Do not resend until an administrator verifies Gmail Sent and resolves it."
+                    : "A previous email send is still being processed. Wait for it to finish, then refresh.")];
+        }
         if (build.Snapshot is not null && model.Issues.Count == 0)
         {
             model.PreviewToken = protector.Protect(JsonSerializer.Serialize(
@@ -143,72 +162,15 @@ public sealed class EndOfDayFillService(
 
         var nowPacific = businessTime.NowPacific;
         var reportDate = DateOnly.FromDateTime(nowPacific.DateTime);
-        EndOfDayFillReportSend? attempt = null;
-        try
+        var reservationResult = await CreateReservationAsync(user, form.GroupId, build.Snapshot, nowPacific, reportDate, cancellationToken);
+        if (reservationResult.Attempt is null)
         {
-            await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
-            if (await dbContext.EndOfDayFillSendReservations.AnyAsync(x => x.ReportGroupId == form.GroupId, cancellationToken))
-            {
-                return new(false, false, "Another send for this report group is already in progress. Wait for it to finish, then refresh.");
-            }
-
-            var latestSuccess = await dbContext.EndOfDayFillReportSends.AsNoTracking()
-                .Where(x => x.ReportGroupId == form.GroupId
-                    && x.PacificReportDate == reportDate
-                    && x.Status == EndOfDayFillSendStatuses.Succeeded)
-                .OrderByDescending(x => x.RevisionNumber)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (latestSuccess?.SnapshotHash == build.Snapshot.Hash)
-            {
-                return new(false, false,
-                    $"No report data has changed since the last successful End of Day Fill Report sent at {businessTime.FormatPacific(latestSuccess.SentAt)}. A revision cannot be sent.");
-            }
-
-            var revision = latestSuccess is null ? 0 : latestSuccess.RevisionNumber + 1;
-            var rendered = RenderEmail(build.Snapshot, revision, nowPacific);
-            attempt = new EndOfDayFillReportSend
-            {
-                ReportGroupId = form.GroupId,
-                ReportGroupName = build.Snapshot.GroupName,
-                Facility = build.Snapshot.Facility,
-                PacificReportDate = reportDate,
-                RevisionNumber = revision,
-                SenderUserId = user.Id,
-                SenderEmail = user.Email,
-                SenderDisplayName = user.DisplayName,
-                RecipientsJson = JsonSerializer.Serialize(build.Snapshot.Recipients, SnapshotJsonOptions),
-                PhysicalCountConfirmed = true,
-                SnapshotHash = build.Snapshot.Hash,
-                SnapshotJson = build.Snapshot.Json,
-                Subject = rendered.Subject,
-                HtmlBody = rendered.Html,
-                TextBody = rendered.Text,
-                Status = EndOfDayFillSendStatuses.Pending,
-                CreatedAt = businessTime.UtcNow,
-                AttemptedAt = businessTime.UtcNow
-            };
-            dbContext.EndOfDayFillReportSends.Add(attempt);
-            await dbContext.SaveChangesAsync(cancellationToken);
-            dbContext.EndOfDayFillSendReservations.Add(new EndOfDayFillSendReservation
-            {
-                ReportGroupId = form.GroupId,
-                PacificReportDate = reportDate,
-                RevisionNumber = revision,
-                SnapshotHash = build.Snapshot.Hash,
-                SendAttemptId = attempt.Id,
-                CreatedAt = businessTime.UtcNow
-            });
-            await dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
+            return new(false, false, reservationResult.Message ?? "The send reservation could not be created safely. Refresh and try again.");
         }
-        catch (DbUpdateException ex)
-        {
-            logger.LogInformation(ex, "Concurrent End of Day Fill reservation was rejected for group {GroupId}.", form.GroupId);
-            dbContext.ChangeTracker.Clear();
-            return new(false, false, "Another send for this report group is already in progress. Wait for it to finish, then refresh.");
-        }
+        var attempt = reservationResult.Attempt;
 
         QcEmailSendResult send;
+        using var criticalSection = new CancellationTokenSource(EndOfDayFillRecoveryPolicy.CriticalSendTimeout);
         try
         {
             send = await emailSender.SendAsync(user, new QcEmailMessage(
@@ -218,41 +180,203 @@ public sealed class EndOfDayFillService(
                 attempt!.Subject,
                 attempt.TextBody,
                 attempt.HtmlBody,
-                []), cancellationToken);
+                []), criticalSection.Token);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
-            logger.LogError(ex, "End of Day Fill Gmail send failed for attempt {AttemptId}.", attempt!.Id);
-            send = QcEmailSendResult.Failed("The Gmail send failed unexpectedly.");
+            logger.LogCritical(ex, "End of Day Fill Gmail dispatch outcome is uncertain for attempt {AttemptId}. The reservation remains fail-closed.", attempt!.Id);
+            return new(false, false, "The email delivery result could not be safely finalized. Do not resend until an administrator verifies the pending attempt.", attempt.Id);
         }
 
-        await using (var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken))
+        using var finalizationSection = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+        if (!await FinalizeSendAsync(attempt!.Id, form.GroupId, reportDate, user.Id, send, finalizationSection.Token))
         {
-            var persisted = await dbContext.EndOfDayFillReportSends.SingleAsync(x => x.Id == attempt!.Id, cancellationToken);
-            var reservation = await dbContext.EndOfDayFillSendReservations.SingleOrDefaultAsync(x => x.ReportGroupId == form.GroupId, cancellationToken);
-            if (send.Success)
-            {
-                persisted.Status = EndOfDayFillSendStatuses.Succeeded;
-                persisted.SentAt = businessTime.UtcNow;
-                persisted.GmailMessageId = send.MessageId;
-                persisted.SuccessRevisionKey = $"{form.GroupId}:{reportDate:yyyyMMdd}:{persisted.RevisionNumber}";
-                persisted.SuccessSnapshotKey = $"{form.GroupId}:{reportDate:yyyyMMdd}:{persisted.RevisionNumber}:{persisted.SnapshotHash}";
-            }
-            else
-            {
-                persisted.Status = EndOfDayFillSendStatuses.Failed;
-                persisted.FailureReason = SafeFailure(send.Error);
-            }
-            if (reservation is not null) dbContext.EndOfDayFillSendReservations.Remove(reservation);
-            dbContext.AuditLogs.Add(BuildAudit(user.Id, send.Success ? "send-success" : "send-failure", "end-of-day-fill-report-send", persisted.Id.ToString(CultureInfo.InvariantCulture),
-                JsonSerializer.Serialize(new { persisted.ReportGroupId, persisted.PacificReportDate, persisted.RevisionNumber, persisted.SnapshotHash, persisted.Status }, SnapshotJsonOptions)));
-            await dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
+            return new(false, false, "The email delivery result could not be safely finalized. Do not resend until an administrator verifies the pending attempt.", attempt.Id);
         }
 
         return send.Success
             ? new(true, false, $"{(attempt!.RevisionNumber == 0 ? "End of Day Fill Report" : $"REVISION {attempt.RevisionNumber}")} sent successfully.", attempt.Id)
             : new(false, false, send.Error ?? "The Gmail send failed.", attempt!.Id);
+    }
+
+    private async Task<ReservationResult> CreateReservationAsync(
+        User user,
+        int groupId,
+        ReportSnapshot snapshot,
+        DateTimeOffset nowPacific,
+        DateOnly reportDate,
+        CancellationToken cancellationToken)
+    {
+        for (var reservationAttempt = 1; reservationAttempt <= 3; reservationAttempt++)
+        {
+            try
+            {
+                dbContext.ChangeTracker.Clear();
+                var isPostgreSql = dbContext.Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL";
+                await using var transaction = await dbContext.Database.BeginTransactionAsync(
+                    isPostgreSql ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable,
+                    cancellationToken);
+                if (isPostgreSql)
+                {
+                    await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                        $"SELECT pg_advisory_xact_lock({EndOfDayFillRecoveryPolicy.AdvisoryLockNamespace}, {groupId})",
+                        cancellationToken);
+                }
+                var existingReservation = await dbContext.EndOfDayFillSendReservations.AsNoTracking()
+                    .Include(x => x.SendAttempt)
+                    .SingleOrDefaultAsync(x => x.ReportGroupId == groupId, cancellationToken);
+                if (existingReservation is not null)
+                {
+                    var stale = businessTime.UtcNow - existingReservation.CreatedAt >= EndOfDayFillRecoveryPolicy.StaleAfter;
+                    return new(null, stale
+                        ? "A previous send has an uncertain outcome. Do not resend until an administrator verifies the sender's Gmail Sent folder and resolves the pending attempt."
+                        : "Another send for this report group is already in progress. Wait for it to finish, then refresh.");
+                }
+
+                var latestSuccess = await dbContext.EndOfDayFillReportSends.AsNoTracking()
+                    .Where(x => x.ReportGroupId == groupId && x.PacificReportDate == reportDate && x.Status == EndOfDayFillSendStatuses.Succeeded)
+                    .OrderByDescending(x => x.RevisionNumber)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (latestSuccess?.SnapshotHash == snapshot.Hash)
+                    return new(null, $"No report data has changed since the last successful End of Day Fill Report sent at {businessTime.FormatPacific(latestSuccess.SentAt)}. A revision cannot be sent.");
+
+                var revision = latestSuccess is null ? 0 : latestSuccess.RevisionNumber + 1;
+                var rendered = RenderEmail(snapshot, revision, nowPacific);
+                var attempt = new EndOfDayFillReportSend
+                {
+                    ReportGroupId = groupId,
+                    ReportGroupName = snapshot.GroupName,
+                    Facility = snapshot.Facility,
+                    PacificReportDate = reportDate,
+                    RevisionNumber = revision,
+                    SenderUserId = user.Id,
+                    SenderEmail = user.Email,
+                    SenderDisplayName = user.DisplayName,
+                    RecipientsJson = JsonSerializer.Serialize(snapshot.Recipients, SnapshotJsonOptions),
+                    PhysicalCountConfirmed = true,
+                    SnapshotHash = snapshot.Hash,
+                    SnapshotJson = snapshot.Json,
+                    Subject = rendered.Subject,
+                    HtmlBody = rendered.Html,
+                    TextBody = rendered.Text,
+                    Status = EndOfDayFillSendStatuses.Pending,
+                    CreatedAt = businessTime.UtcNow,
+                    AttemptedAt = businessTime.UtcNow
+                };
+                dbContext.EndOfDayFillReportSends.Add(attempt);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                dbContext.EndOfDayFillSendReservations.Add(new EndOfDayFillSendReservation
+                {
+                    ReportGroupId = groupId,
+                    PacificReportDate = reportDate,
+                    RevisionNumber = revision,
+                    SnapshotHash = snapshot.Hash,
+                    SendAttemptId = attempt.Id,
+                    CreatedAt = businessTime.UtcNow
+                });
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return new(attempt, null);
+            }
+            catch (Exception ex) when (IsSerializationConflict(ex) && reservationAttempt < 3 && !cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning(ex, "End of Day Fill reservation serialization conflict for group {GroupId}; retry {Retry} of 3.", groupId, reservationAttempt + 1);
+                dbContext.ChangeTracker.Clear();
+                await Task.Delay(TimeSpan.FromMilliseconds(50 * reservationAttempt), cancellationToken);
+            }
+            catch (DbUpdateException ex)
+            {
+                logger.LogInformation(ex, "Concurrent End of Day Fill reservation was rejected for group {GroupId}.", groupId);
+                dbContext.ChangeTracker.Clear();
+                return new(null, "Another send for this report group is already in progress. Wait for it to finish, then refresh.");
+            }
+            catch (Exception ex) when (IsSerializationConflict(ex))
+            {
+                logger.LogError(ex, "End of Day Fill reservation serialization conflict persisted after bounded retries for group {GroupId}.", groupId);
+                dbContext.ChangeTracker.Clear();
+                return new(null, "The send reservation could not be created safely because of concurrent activity. Refresh and try again.");
+            }
+        }
+        return new(null, "The send reservation could not be created safely. Refresh and try again.");
+    }
+
+    private static bool IsSerializationConflict(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.SerializationFailure or Npgsql.PostgresErrorCodes.DeadlockDetected }) return true;
+        }
+        return false;
+    }
+
+    private async Task<bool> FinalizeSendAsync(
+        long attemptId,
+        int groupId,
+        DateOnly reportDate,
+        int userId,
+        QcEmailSendResult send,
+        CancellationToken cancellationToken)
+    {
+        for (var finalizationAttempt = 1; finalizationAttempt <= EndOfDayFillRecoveryPolicy.FinalizationAttempts; finalizationAttempt++)
+        {
+            try
+            {
+                dbContext.ChangeTracker.Clear();
+                var isPostgreSql = dbContext.Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL";
+                await using var transaction = await dbContext.Database.BeginTransactionAsync(
+                    isPostgreSql ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable,
+                    cancellationToken);
+                if (isPostgreSql)
+                {
+                    await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                        $"SELECT pg_advisory_xact_lock({EndOfDayFillRecoveryPolicy.AdvisoryLockNamespace}, {groupId})",
+                        cancellationToken);
+                }
+                var persisted = await dbContext.EndOfDayFillReportSends.SingleAsync(x => x.Id == attemptId, cancellationToken);
+                var reservation = await dbContext.EndOfDayFillSendReservations.SingleOrDefaultAsync(
+                    x => x.ReportGroupId == groupId && x.SendAttemptId == attemptId, cancellationToken);
+                if (persisted.Status != EndOfDayFillSendStatuses.Pending || reservation is null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    logger.LogCritical("End of Day Fill finalization found inconsistent persisted state for attempt {AttemptId}; status {Status}; reservation present {ReservationPresent}.", attemptId, persisted.Status, reservation is not null);
+                    dbContext.ChangeTracker.Clear();
+                    return false;
+                }
+
+                if (send.Success)
+                {
+                    persisted.Status = EndOfDayFillSendStatuses.Succeeded;
+                    persisted.SentAt = businessTime.UtcNow;
+                    persisted.GmailMessageId = send.MessageId;
+                    persisted.SuccessRevisionKey = $"{groupId}:{reportDate:yyyyMMdd}:{persisted.RevisionNumber}";
+                    persisted.SuccessSnapshotKey = $"{groupId}:{reportDate:yyyyMMdd}:{persisted.RevisionNumber}:{persisted.SnapshotHash}";
+                }
+                else
+                {
+                    persisted.Status = EndOfDayFillSendStatuses.Failed;
+                    persisted.FailureReason = SafeFailure(send.Error);
+                }
+                dbContext.EndOfDayFillSendReservations.Remove(reservation);
+                dbContext.AuditLogs.Add(BuildAudit(userId, send.Success ? "send-success" : "send-failure", "end-of-day-fill-report-send", persisted.Id.ToString(CultureInfo.InvariantCulture),
+                    JsonSerializer.Serialize(new { persisted.ReportGroupId, persisted.PacificReportDate, persisted.RevisionNumber, persisted.SnapshotHash, persisted.Status }, SnapshotJsonOptions)));
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return true;
+            }
+            catch (Exception ex) when (finalizationAttempt < EndOfDayFillRecoveryPolicy.FinalizationAttempts && !cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning(ex, "End of Day Fill finalization attempt {FinalizationAttempt} failed for send attempt {AttemptId}; retrying.", finalizationAttempt, attemptId);
+                await Task.Delay(TimeSpan.FromMilliseconds(100 * finalizationAttempt), cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogCritical(ex, "End of Day Fill email result could not be finalized after {FinalizationAttempts} attempts for send attempt {AttemptId}. The reservation remains fail-closed.", finalizationAttempt, attemptId);
+                dbContext.ChangeTracker.Clear();
+                return false;
+            }
+        }
+        dbContext.ChangeTracker.Clear();
+        return false;
     }
 
     public async Task<EndOfDayFillHistoryPageViewModel> GetHistoryAsync(string? email, CancellationToken cancellationToken)
@@ -330,7 +454,7 @@ public sealed class EndOfDayFillService(
         if (group.Rooms.Count == 0) issues.Add(new("no-rooms", "Assign at least one room to this report group in Master Data."));
         foreach (var membership in group.Rooms)
         {
-            if (!RoomBelongsToFacility(membership.Room, group.Facility))
+            if (!facilityContext.GetOperatingCompanyFacility(membership.Room.Warehouse.Code, membership.Room.Warehouse.Name).Equals(group.Facility, StringComparison.OrdinalIgnoreCase))
             {
                 issues.Add(new("cross-facility-room", $"Room {membership.Room.Code} does not belong to {group.Facility}.", membership.RoomId));
             }
@@ -469,19 +593,24 @@ public sealed class EndOfDayFillService(
         return new(subject, html.ToString(), text.ToString());
     }
 
-    private static bool RoomBelongsToFacility(Room room, string facility)
+    private async Task<EndOfDayFillSendReservation?> GetPendingReservationAsync(int groupId, CancellationToken cancellationToken) =>
+        await dbContext.EndOfDayFillSendReservations.AsNoTracking()
+            .Include(x => x.SendAttempt)
+            .SingleOrDefaultAsync(x => x.ReportGroupId == groupId, cancellationToken);
+
+    private EndOfDayFillPendingAttemptViewModel PendingView(EndOfDayFillSendReservation reservation)
     {
-        var warehouse = $"{room.Warehouse.Code} {room.Warehouse.Name}";
-        var actual = warehouse.Contains("EBS", StringComparison.OrdinalIgnoreCase) || warehouse.Contains("Earl Brown", StringComparison.OrdinalIgnoreCase)
-            ? "EBS"
-            : warehouse.Contains("WP", StringComparison.OrdinalIgnoreCase)
-                || warehouse.Contains("Windy Point", StringComparison.OrdinalIgnoreCase)
-                || warehouse.Contains("MCD", StringComparison.OrdinalIgnoreCase)
-                || warehouse.Contains("McDougall", StringComparison.OrdinalIgnoreCase)
-                || warehouse.Contains("DH", StringComparison.OrdinalIgnoreCase)
-                    ? "WP"
-                    : "Other";
-        return actual.Equals(facility, StringComparison.OrdinalIgnoreCase);
+        var send = reservation.SendAttempt;
+        return new(
+            send.Id,
+            send.ReportGroupName,
+            $"{send.SenderDisplayName} <{send.SenderEmail}>",
+            send.AttemptedAt,
+            send.Subject,
+            string.Join(", ", JsonSerializer.Deserialize<List<string>>(send.RecipientsJson, SnapshotJsonOptions) ?? []),
+            send.RevisionNumber,
+            send.SnapshotHash,
+            businessTime.UtcNow - reservation.CreatedAt >= EndOfDayFillRecoveryPolicy.StaleAfter);
     }
 
     private static bool IsValidEmail(string email)
@@ -504,6 +633,7 @@ public sealed class EndOfDayFillService(
     };
 
     private sealed record PreviewToken(int UserId, int GroupId, string SnapshotHash);
+    private sealed record ReservationResult(EndOfDayFillReportSend? Attempt, string? Message);
     private sealed record SnapshotBuild(EndOfDayFillPreviewViewModel Model, ReportSnapshot? Snapshot);
     private sealed record ReportSnapshot(string GroupName, string Facility, IReadOnlyList<string> Recipients, IReadOnlyList<EndOfDayFillRoomViewModel> Rooms, string Json, string Hash);
     private sealed record RenderedEmail(string Subject, string Html, string Text);

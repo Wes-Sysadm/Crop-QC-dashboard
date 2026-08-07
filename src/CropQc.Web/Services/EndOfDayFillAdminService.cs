@@ -3,6 +3,7 @@ using System.Data;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,9 +15,15 @@ public interface IEndOfDayFillAdminService
     Task<string?> SaveGroupAsync(EndOfDayFillGroupForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> SaveRecipientAsync(EndOfDayFillRecipientForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> SaveUserAssignmentsAsync(EndOfDayFillUserAssignmentsForm form, string changedByEmail, CancellationToken cancellationToken);
+    Task<EndOfDayFillHistoryDetailViewModel?> GetPendingDetailAsync(long sendAttemptId, CancellationToken cancellationToken);
+    Task<string?> ResolvePendingSendAsync(EndOfDayFillRecoveryForm form, string changedByEmail, CancellationToken cancellationToken);
 }
 
-public sealed class EndOfDayFillAdminService(CropQcDbContext dbContext) : IEndOfDayFillAdminService
+public sealed class EndOfDayFillAdminService(
+    CropQcDbContext dbContext,
+    IFacilityContextService facilityContext,
+    IBusinessTimeService businessTime,
+    IUserAccessService userAccessService) : IEndOfDayFillAdminService
 {
     public async Task<EndOfDayFillAdminPageViewModel> GetPageAsync(CancellationToken cancellationToken)
     {
@@ -34,11 +41,20 @@ public sealed class EndOfDayFillAdminService(CropQcDbContext dbContext) : IEndOf
         var recipients = await dbContext.EndOfDayFillReportRecipients.AsNoTracking()
             .OrderBy(x => x.SortOrder).ThenBy(x => x.EmailAddress)
             .ToListAsync(cancellationToken);
+        var staleBefore = businessTime.UtcNow - EndOfDayFillRecoveryPolicy.StaleAfter;
+        var reservations = await dbContext.EndOfDayFillSendReservations.AsNoTracking()
+            .Include(x => x.SendAttempt)
+            .ToListAsync(cancellationToken);
+        var staleAttempts = reservations
+            .Where(x => x.CreatedAt <= staleBefore && x.SendAttempt.Status == EndOfDayFillSendStatuses.Pending)
+            .OrderBy(x => x.CreatedAt)
+            .ToList();
         return new EndOfDayFillAdminPageViewModel
         {
             Groups = groups.Select(x => new EndOfDayFillAdminGroupViewModel(x.Id, x.Name, x.Facility, x.IsActive, x.Rooms.Select(r => r.RoomId).Order().ToList())).ToList(),
-            Rooms = rooms.Select(x => new EndOfDayFillAdminRoomViewModel(x.Id, OperationalFacility(x.Warehouse), x.Code, x.DisplayName ?? x.Name, x.SubLocation, x.CapacityBins, activeMembership.GetValueOrDefault(x.Id))).ToList(),
-            Recipients = recipients.Select(x => new EndOfDayFillAdminRecipientViewModel(x.Id, x.EmailAddress, x.IsActive, x.SortOrder)).ToList()
+            Rooms = rooms.Select(x => new EndOfDayFillAdminRoomViewModel(x.Id, facilityContext.GetOperatingCompanyFacility(x.Warehouse.Code, x.Warehouse.Name), x.Code, x.DisplayName ?? x.Name, x.SubLocation, x.CapacityBins, activeMembership.GetValueOrDefault(x.Id))).ToList(),
+            Recipients = recipients.Select(x => new EndOfDayFillAdminRecipientViewModel(x.Id, x.EmailAddress, x.IsActive, x.SortOrder)).ToList(),
+            StaleAttempts = staleAttempts.Select(x => PendingView(x.SendAttempt, true)).ToList()
         };
     }
 
@@ -51,7 +67,7 @@ public sealed class EndOfDayFillAdminService(CropQcDbContext dbContext) : IEndOf
         var selectedRoomIds = form.RoomIds.Distinct().ToList();
         var rooms = await dbContext.Rooms.Include(x => x.Warehouse).Where(x => selectedRoomIds.Contains(x.Id)).ToListAsync(cancellationToken);
         if (rooms.Count != selectedRoomIds.Count) return "One or more selected rooms no longer exist.";
-        var wrongFacility = rooms.FirstOrDefault(x => !OperationalFacility(x.Warehouse).Equals(facility, StringComparison.OrdinalIgnoreCase));
+        var wrongFacility = rooms.FirstOrDefault(x => !facilityContext.GetOperatingCompanyFacility(x.Warehouse.Code, x.Warehouse.Name).Equals(facility, StringComparison.OrdinalIgnoreCase));
         if (wrongFacility is not null) return $"Room {wrongFacility.Code} does not belong to {facility}.";
 
         var duplicate = await dbContext.EndOfDayFillReportGroupRooms.AsNoTracking()
@@ -144,18 +160,125 @@ public sealed class EndOfDayFillAdminService(CropQcDbContext dbContext) : IEndOf
         return null;
     }
 
-    private async Task<User?> FindUserAsync(string email, CancellationToken ct) => await dbContext.Users.SingleOrDefaultAsync(x => x.Email.ToLower() == email.Trim().ToLower(), ct);
-    private static string OperationalFacility(Warehouse warehouse)
+    public async Task<EndOfDayFillHistoryDetailViewModel?> GetPendingDetailAsync(long sendAttemptId, CancellationToken cancellationToken)
     {
-        var identity = $"{warehouse.Code} {warehouse.Name}";
-        if (identity.Contains("EBS", StringComparison.OrdinalIgnoreCase) || identity.Contains("Earl Brown", StringComparison.OrdinalIgnoreCase)) return "EBS";
-        if (identity.Contains("WP", StringComparison.OrdinalIgnoreCase)
-            || identity.Contains("Windy Point", StringComparison.OrdinalIgnoreCase)
-            || identity.Contains("MCD", StringComparison.OrdinalIgnoreCase)
-            || identity.Contains("McDougall", StringComparison.OrdinalIgnoreCase)
-            || identity.Contains("DH", StringComparison.OrdinalIgnoreCase)) return "WP";
-        return "Other";
+        var send = await dbContext.EndOfDayFillReportSends.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == sendAttemptId && x.Status == EndOfDayFillSendStatuses.Pending, cancellationToken);
+        return send is null ? null : ToHistoryDetail(send);
     }
+
+    public async Task<string?> ResolvePendingSendAsync(EndOfDayFillRecoveryForm form, string changedByEmail, CancellationToken cancellationToken)
+    {
+        if (await userAccessService.GetAccessLevelAsync(changedByEmail, ApplicationAreas.MasterData, cancellationToken) < PageAccessLevel.Admin)
+            return "Master Data Admin access is required to resolve an uncertain send.";
+        if (!form.Confirmed) return "Explicitly confirm the recovery decision.";
+        var reason = form.Reason.Trim();
+        if (reason.Length is < 5 or > 1000) return "A recovery reason between 5 and 1,000 characters is required.";
+        var confirmedSent = form.Resolution.Equals("confirmed-sent", StringComparison.OrdinalIgnoreCase);
+        var confirmedNotSent = form.Resolution.Equals("confirmed-not-sent", StringComparison.OrdinalIgnoreCase);
+        if (!confirmedSent && !confirmedNotSent) return "Choose Confirmed sent or Confirmed not sent.";
+
+        var administrator = await FindUserAsync(changedByEmail, cancellationToken);
+        if (administrator is null) return "The administrator account could not be resolved.";
+
+        var pendingGroupId = await dbContext.EndOfDayFillReportSends.AsNoTracking()
+            .Where(x => x.Id == form.SendAttemptId && x.Status == EndOfDayFillSendStatuses.Pending)
+            .Select(x => (int?)x.ReportGroupId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (pendingGroupId is null) return "This pending attempt has already been resolved or does not exist.";
+
+        var isPostgreSql = dbContext.Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL";
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            isPostgreSql ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable,
+            cancellationToken);
+        if (isPostgreSql)
+        {
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock({EndOfDayFillRecoveryPolicy.AdvisoryLockNamespace}, {pendingGroupId.Value})",
+                cancellationToken);
+        }
+        var reservation = await dbContext.EndOfDayFillSendReservations
+            .Include(x => x.SendAttempt)
+            .SingleOrDefaultAsync(x => x.SendAttemptId == form.SendAttemptId, cancellationToken);
+        if (reservation is null || reservation.SendAttempt.Status != EndOfDayFillSendStatuses.Pending)
+            return "This pending attempt has already been resolved or no longer has its fail-closed reservation.";
+        if (businessTime.UtcNow - reservation.CreatedAt < EndOfDayFillRecoveryPolicy.StaleAfter)
+            return $"This send is still inside the {EndOfDayFillRecoveryPolicy.StaleAfter.TotalMinutes:N0}-minute processing window.";
+
+        var attempt = reservation.SendAttempt;
+        if (confirmedSent)
+        {
+            var successRevisionKey = $"{attempt.ReportGroupId}:{attempt.PacificReportDate:yyyyMMdd}:{attempt.RevisionNumber}";
+            if (await dbContext.EndOfDayFillReportSends.AsNoTracking().AnyAsync(
+                    x => x.Id != attempt.Id && x.SuccessRevisionKey == successRevisionKey, cancellationToken))
+                return "A successful report already occupies this revision. The pending attempt was not changed.";
+            attempt.Status = EndOfDayFillSendStatuses.Succeeded;
+            attempt.SentAt = attempt.AttemptedAt;
+            attempt.GmailMessageId = string.IsNullOrWhiteSpace(form.GmailMessageId) ? null : form.GmailMessageId.Trim()[..Math.Min(form.GmailMessageId.Trim().Length, 500)];
+            attempt.SuccessRevisionKey = successRevisionKey;
+            attempt.SuccessSnapshotKey = $"{attempt.ReportGroupId}:{attempt.PacificReportDate:yyyyMMdd}:{attempt.RevisionNumber}:{attempt.SnapshotHash}";
+            attempt.FailureReason = null;
+        }
+        else
+        {
+            attempt.Status = EndOfDayFillSendStatuses.Failed;
+            var failureReason = $"Administrator confirmed email was not delivered. {reason}";
+            attempt.FailureReason = failureReason[..Math.Min(failureReason.Length, 2000)];
+        }
+
+        dbContext.EndOfDayFillSendReservations.Remove(reservation);
+        dbContext.AuditLogs.Add(Audit(
+            administrator.Id,
+            confirmedSent ? "manual-confirmed-sent" : "manual-confirmed-not-sent",
+            "end-of-day-fill-report-send",
+            attempt.Id.ToString(),
+            JsonSerializer.Serialize(new { Status = EndOfDayFillSendStatuses.Pending, reservation.CreatedAt }),
+            JsonSerializer.Serialize(new
+            {
+                attempt.Status,
+                attempt.SentAt,
+                attempt.SuccessRevisionKey,
+                Reason = reason,
+                ResolvedByUserId = administrator.Id,
+                ResolvedAt = businessTime.UtcNow,
+                SentAtEvidence = confirmedSent ? "Original attempted timestamp; administrator verified Gmail Sent folder" : null
+            })));
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return null;
+    }
+
+    private async Task<User?> FindUserAsync(string email, CancellationToken ct) => await dbContext.Users.SingleOrDefaultAsync(x => x.Email.ToLower() == email.Trim().ToLower(), ct);
+    private static EndOfDayFillPendingAttemptViewModel PendingView(EndOfDayFillReportSend send, bool isStale) => new(
+        send.Id,
+        send.ReportGroupName,
+        $"{send.SenderDisplayName} <{send.SenderEmail}>",
+        send.AttemptedAt,
+        send.Subject,
+        string.Join(", ", JsonSerializer.Deserialize<List<string>>(send.RecipientsJson) ?? []),
+        send.RevisionNumber,
+        send.SnapshotHash,
+        isStale);
+
+    private static EndOfDayFillHistoryDetailViewModel ToHistoryDetail(EndOfDayFillReportSend send) => new()
+    {
+        Id = send.Id,
+        GroupName = send.ReportGroupName,
+        Facility = send.Facility,
+        ReportDate = send.PacificReportDate,
+        RevisionNumber = send.RevisionNumber,
+        Sender = $"{send.SenderDisplayName} <{send.SenderEmail}>",
+        Recipients = string.Join(", ", JsonSerializer.Deserialize<List<string>>(send.RecipientsJson) ?? []),
+        Status = send.Status,
+        SnapshotJson = send.SnapshotJson,
+        Subject = send.Subject,
+        HtmlBody = send.HtmlBody,
+        TextBody = send.TextBody,
+        GmailMessageId = send.GmailMessageId,
+        AttemptedAt = send.AttemptedAt,
+        SentAt = send.SentAt,
+        FailureReason = send.FailureReason
+    };
     private static AuditLog Audit(int userId, string action, string entity, string key, string? before, string? after) => new()
     {
         UserId = userId,
