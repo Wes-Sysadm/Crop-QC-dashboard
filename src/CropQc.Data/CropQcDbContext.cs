@@ -81,6 +81,12 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<ReceiptDeletionAudit> ReceiptDeletionAudits => Set<ReceiptDeletionAudit>();
     public DbSet<ReceiptPurgeOperation> ReceiptPurgeOperations => Set<ReceiptPurgeOperation>();
     public DbSet<FieldSampleDeletionAudit> FieldSampleDeletionAudits => Set<FieldSampleDeletionAudit>();
+    public DbSet<EndOfDayFillReportGroup> EndOfDayFillReportGroups => Set<EndOfDayFillReportGroup>();
+    public DbSet<EndOfDayFillReportGroupRoom> EndOfDayFillReportGroupRooms => Set<EndOfDayFillReportGroupRoom>();
+    public DbSet<EndOfDayFillReportRecipient> EndOfDayFillReportRecipients => Set<EndOfDayFillReportRecipient>();
+    public DbSet<EndOfDayFillUserGroupAssignment> EndOfDayFillUserGroupAssignments => Set<EndOfDayFillUserGroupAssignment>();
+    public DbSet<EndOfDayFillReportSend> EndOfDayFillReportSends => Set<EndOfDayFillReportSend>();
+    public DbSet<EndOfDayFillSendReservation> EndOfDayFillSendReservations => Set<EndOfDayFillSendReservation>();
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
@@ -227,7 +233,83 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         ConfigureBackups(modelBuilder);
         ConfigureReceiptDeletion(modelBuilder);
         ConfigureFieldSampleDeletion(modelBuilder);
+        ConfigureEndOfDayFill(modelBuilder);
         SeedData(modelBuilder);
+    }
+
+    private static void ConfigureEndOfDayFill(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<EndOfDayFillReportGroup>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.Facility).HasMaxLength(10).IsRequired();
+            entity.HasIndex(x => x.Name).IsUnique();
+            entity.ToTable(table => table.HasCheckConstraint("CK_EndOfDayFillReportGroups_Facility", "\"Facility\" IN ('WP', 'EBS')"));
+        });
+
+        modelBuilder.Entity<EndOfDayFillReportGroupRoom>(entity =>
+        {
+            entity.HasIndex(x => new { x.ReportGroupId, x.RoomId }).IsUnique();
+            entity.HasOne(x => x.ReportGroup).WithMany(x => x.Rooms).HasForeignKey(x => x.ReportGroupId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<EndOfDayFillReportRecipient>(entity =>
+        {
+            entity.Property(x => x.EmailAddress).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.NormalizedEmailAddress).HasMaxLength(320).IsRequired();
+            entity.HasIndex(x => x.NormalizedEmailAddress).IsUnique();
+            entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<EndOfDayFillUserGroupAssignment>(entity =>
+        {
+            entity.HasIndex(x => new { x.UserId, x.ReportGroupId }).IsUnique();
+            entity.HasOne(x => x.User).WithMany(x => x.UserAssignments).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.ReportGroup).WithMany(x => x.UserAssignments).HasForeignKey(x => x.ReportGroupId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<EndOfDayFillReportSend>(entity =>
+        {
+            entity.Property(x => x.ReportGroupName).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.Facility).HasMaxLength(10).IsRequired();
+            entity.Property(x => x.SenderEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.SenderDisplayName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.RecipientsJson).HasMaxLength(10000).IsRequired();
+            entity.Property(x => x.SnapshotHash).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.SnapshotJson).HasMaxLength(500000).IsRequired();
+            entity.Property(x => x.SuccessRevisionKey).HasMaxLength(200);
+            entity.Property(x => x.SuccessSnapshotKey).HasMaxLength(250);
+            entity.Property(x => x.Subject).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.HtmlBody).HasMaxLength(1000000).IsRequired();
+            entity.Property(x => x.TextBody).HasMaxLength(500000).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.FailureReason).HasMaxLength(2000);
+            entity.Property(x => x.GmailMessageId).HasMaxLength(500);
+            entity.HasIndex(x => new { x.ReportGroupId, x.PacificReportDate, x.Status });
+            entity.HasIndex(x => x.SuccessRevisionKey).IsUnique();
+            entity.HasIndex(x => x.SuccessSnapshotKey);
+            entity.HasOne(x => x.ReportGroup).WithMany(x => x.Sends).HasForeignKey(x => x.ReportGroupId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.SenderUser).WithMany().HasForeignKey(x => x.SenderUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<EndOfDayFillSendReservation>(entity =>
+        {
+            entity.HasKey(x => x.ReportGroupId);
+            entity.Property(x => x.SnapshotHash).HasMaxLength(64).IsRequired();
+            entity.HasOne(x => x.ReportGroup).WithOne().HasForeignKey<EndOfDayFillSendReservation>(x => x.ReportGroupId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.SendAttempt).WithOne().HasForeignKey<EndOfDayFillSendReservation>(x => x.SendAttemptId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EndOfDayFillReportGroup>().HasData(
+            new EndOfDayFillReportGroup { Id = 1, Name = "WP End of Day Fill", Facility = "WP", IsActive = true, CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch },
+            new EndOfDayFillReportGroup { Id = 2, Name = "EBS End of Day Fill", Facility = "EBS", IsActive = true, CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch });
+        modelBuilder.Entity<EndOfDayFillReportRecipient>().HasData(
+            new EndOfDayFillReportRecipient { Id = 1, EmailAddress = "wes@fruitandland.com", NormalizedEmailAddress = "WES@FRUITANDLAND.COM", IsActive = true, SortOrder = 10, CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch },
+            new EndOfDayFillReportRecipient { Id = 2, EmailAddress = "jorge@wp-packing.com", NormalizedEmailAddress = "JORGE@WP-PACKING.COM", IsActive = true, SortOrder = 20, CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch },
+            new EndOfDayFillReportRecipient { Id = 3, EmailAddress = "rob@earlbrownandsons.com", NormalizedEmailAddress = "ROB@EARLBROWNANDSONS.COM", IsActive = true, SortOrder = 30, CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch });
     }
 
     private bool IsPostgreSqlProvider() =>

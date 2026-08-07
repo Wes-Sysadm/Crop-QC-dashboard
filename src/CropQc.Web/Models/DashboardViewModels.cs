@@ -1015,6 +1015,7 @@ public sealed class UserAdminPageViewModel
     public IReadOnlyList<ApplicationAreaViewModel> Areas { get; set; } = [];
     public IReadOnlyList<RoleOptionViewModel> Roles { get; set; } = [];
     public IReadOnlyList<RolePermissionViewModel> RolePermissions { get; set; } = [];
+    public IReadOnlyList<EndOfDayFillGroupOption> EndOfDayFillGroups { get; set; } = [];
     public AddUserForm AddUserForm { get; set; } = new();
     public IReadOnlyList<string> EmploymentOptions { get; set; } =
         [EmploymentFacilities.Wp, EmploymentFacilities.Ebs, EmploymentFacilities.Shared, EmploymentFacilities.Unassigned];
@@ -1040,7 +1041,8 @@ public sealed record UserAdminListItem(
     DateTimeOffset? EmploymentEffectiveAt,
     string EmploymentChangedBy,
     DateTimeOffset? EmploymentChangedAt,
-    IReadOnlyList<UserEmploymentHistoryViewModel> EmploymentHistory);
+    IReadOnlyList<UserEmploymentHistoryViewModel> EmploymentHistory,
+    IReadOnlyList<int> EndOfDayFillGroupIds);
 public sealed record ApplicationAreaViewModel(string Key, string Name, string Group, string Route);
 public sealed record UserAccessMatrixRow(int Id, string Email, string DisplayName, bool IsActive, string Role, IReadOnlyDictionary<string, PageAccessLevel> Access);
 public sealed record RoleOptionViewModel(int Id, string Name, string Summary);

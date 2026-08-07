@@ -1,0 +1,9 @@
+@model EndOfDayFillHistoryPageViewModel
+@{ ViewData["Title"] = "End of Day Fill Send History"; }
+<div class="page-heading-row"><div><h1>End of Day Fill Send History</h1><p class="muted">Immutable successful and failed send attempts for your assigned groups.</p></div><a class="secondary-button" href="/EndOfDayFill">Back to report</a></div>
+<div class="table-wrap"><table><thead><tr><th>Attempt</th><th>Group</th><th>Revision</th><th>Sender</th><th>Recipients</th><th>Status</th><th>Sent</th><th></th></tr></thead><tbody>
+@foreach (var send in Model.Sends)
+{
+    <tr><td>@BusinessTime.FormatPacific(send.AttemptedAt)</td><td>@send.GroupName (@send.Facility)</td><td>@(send.RevisionNumber == 0 ? "Original" : $"REVISION {send.RevisionNumber}")</td><td>@send.Sender</td><td>@send.Recipients</td><td>@send.Status @send.FailureReason</td><td>@BusinessTime.FormatPacific(send.SentAt)</td><td><a href="/EndOfDayFill/History/@send.Id">View exact report</a></td></tr>
+}
+</tbody></table></div>

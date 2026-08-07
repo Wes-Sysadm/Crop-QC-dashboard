@@ -1,0 +1,33 @@
+@model EndOfDayFillAdminPageViewModel
+@{ ViewData["Title"] = "End of Day Fill Report Groups"; }
+<partial name="_MasterDataNavigation" model='"end-of-day-fill"' />
+<div class="page-heading-row"><div><h1>End of Day Fill Report Groups</h1><p class="muted">Configure explicit room scopes and the global recipient list. Room membership is never inferred from display text.</p></div><a href="/MasterData">Back to Master Data</a></div>
+@if (TempData["Error"] is not null) { <p class="notice warning">@TempData["Error"]</p> }
+@if (TempData["Success"] is not null) { <p class="notice success">@TempData["Success"]</p> }
+
+<section class="panel"><h2>Create report group</h2><form method="post" action="/MasterData/end-of-day-fill-groups/group" class="form-grid"><label class="field">Name<input name="Name" required maxlength="150" /></label><label class="field">Facility<select name="Facility"><option>WP</option><option>EBS</option></select></label><label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked /> Active</label><input type="hidden" name="IsActive" value="false" /><button type="submit">Create</button></form></section>
+
+@foreach (var group in Model.Groups)
+{
+    <section class="panel">
+        <form method="post" action="/MasterData/end-of-day-fill-groups/group">
+            <input type="hidden" name="Id" value="@group.Id" />
+            <div class="form-grid"><label class="field">Name<input name="Name" value="@group.Name" required maxlength="150" /></label><label class="field">Facility<select name="Facility"><option selected="@(group.Facility == "WP")">WP</option><option selected="@(group.Facility == "EBS")">EBS</option></select></label><label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@group.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" /></div>
+            <h3>Explicit room membership</h3>
+            <div class="checkbox-grid">
+            @foreach (var room in Model.Rooms.Where(x => x.Facility == group.Facility))
+            {
+                var unavailable = room.ActiveGroupId is not null && room.ActiveGroupId != group.Id;
+                <label class="checkbox-field"><input type="checkbox" name="RoomIds" value="@room.Id" checked="@group.RoomIds.Contains(room.Id)" disabled="@unavailable" /> <strong>@room.Code</strong> — @room.Name — @room.Location — @room.CapacityBins bins @if (unavailable) { <span>(assigned to another active group)</span> }</label>
+            }
+            </div><button type="submit">Save group and rooms</button>
+        </form>
+    </section>
+}
+
+<section class="panel"><h2>Report Recipients</h2><p class="muted">Global recipients for every End of Day Fill report.</p>
+@foreach (var recipient in Model.Recipients)
+{
+    <form method="post" action="/MasterData/end-of-day-fill-groups/recipient" class="toolbar"><input type="hidden" name="Id" value="@recipient.Id" /><label class="field">Email<input type="email" name="EmailAddress" value="@recipient.Email" required /></label><label class="field">Order<input type="number" name="SortOrder" value="@recipient.SortOrder" /></label><label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@recipient.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" /><button class="secondary-button" type="submit">Save</button></form>
+}
+<h3>Add recipient</h3><form method="post" action="/MasterData/end-of-day-fill-groups/recipient" class="toolbar"><label class="field">Email<input type="email" name="EmailAddress" required /></label><label class="field">Order<input type="number" name="SortOrder" value="100" /></label><label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked /> Active</label><input type="hidden" name="IsActive" value="false" /><button type="submit">Add recipient</button></form></section>

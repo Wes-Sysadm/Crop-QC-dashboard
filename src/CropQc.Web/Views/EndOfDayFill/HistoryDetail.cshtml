@@ -1,0 +1,5 @@
+@model EndOfDayFillHistoryDetailViewModel
+@{ ViewData["Title"] = "End of Day Fill Report History"; }
+<div class="page-heading-row"><h1>@Model.GroupName — @(Model.RevisionNumber == 0 ? "Original" : $"REVISION {Model.RevisionNumber}")</h1><a class="secondary-button" href="/EndOfDayFill/History">Back to history</a></div>
+<section class="panel"><dl class="detail-list"><dt>Status</dt><dd>@Model.Status</dd><dt>Sender</dt><dd>@Model.Sender</dd><dt>Recipients</dt><dd>@Model.Recipients</dd><dt>Attempted</dt><dd>@BusinessTime.FormatPacific(Model.AttemptedAt)</dd><dt>Sent</dt><dd>@BusinessTime.FormatPacific(Model.SentAt)</dd><dt>Gmail message ID</dt><dd>@(Model.GmailMessageId ?? "Unavailable")</dd></dl>@if (Model.FailureReason is not null) { <p class="notice warning">@Model.FailureReason</p> }</section>
+<section class="panel"><h2>Exact sent email</h2><p><strong>@Model.Subject</strong></p><div class="sent-email-preview">@Html.Raw(Model.HtmlBody)</div><details><summary>Plain text body</summary><pre>@Model.TextBody</pre></details><details><summary>Canonical snapshot JSON</summary><pre>@Model.SnapshotJson</pre></details></section>

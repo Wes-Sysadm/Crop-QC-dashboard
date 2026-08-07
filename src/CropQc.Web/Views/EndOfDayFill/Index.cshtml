@@ -1,0 +1,105 @@
+@model EndOfDayFillPreviewViewModel
+@{
+    ViewData["Title"] = "End of Day Fill";
+}
+
+<div class="page-heading-row">
+    <div><h1>End of Day Fill</h1><p class="muted">Manual current-room fill report after a physical count.</p></div>
+    <a class="secondary-button" href="/EndOfDayFill/History">Send History</a>
+</div>
+
+@if (TempData["Error"] is not null) { <p class="notice warning">@TempData["Error"]</p> }
+@if (TempData["Success"] is not null) { <p class="notice success">@TempData["Success"]</p> }
+
+@if (Model.Groups.Count > 1)
+{
+    <form class="toolbar" method="get" action="/EndOfDayFill">
+        <label class="field">Report group
+            <select name="groupId" onchange="this.form.submit()">
+                <option value="">Select a report group</option>
+                @foreach (var group in Model.Groups)
+                {
+                    <option value="@group.Id" selected="@(group.Id == Model.SelectedGroupId)">@group.Name (@group.Facility)</option>
+                }
+            </select>
+        </label>
+        <noscript><button type="submit">Preview</button></noscript>
+    </form>
+}
+
+@if (Model.SelectedGroupId is not null)
+{
+    <section class="panel">
+        <h2>@Model.GroupName — @Model.Facility</h2>
+        <p><strong>Recipients:</strong> @string.Join(", ", Model.Recipients)</p>
+        <p class="muted">Empty configured rooms are validated but omitted from the email.</p>
+        <a class="secondary-button" href="/EndOfDayFill?groupId=@Model.SelectedGroupId">Refresh Preview</a>
+    </section>
+
+    @if (Model.Issues.Count > 0)
+    {
+        <section class="panel notice warning" role="alert">
+            <h2>Send blocked</h2>
+            <ul>
+                @foreach (var issue in Model.Issues)
+                {
+                    <li>@issue.Message @if (issue.RoomId is not null) { <a href="/Rooms/@issue.RoomId">Open room</a> }</li>
+                }
+            </ul>
+        </section>
+    }
+
+    @if (Model.Rooms.Count == 0)
+    {
+        <p class="empty-state">No occupied rooms are currently included in this report group.</p>
+    }
+    else
+    {
+        <div class="end-of-day-fill-grid">
+        @foreach (var room in Model.Rooms)
+        {
+            <article class="panel end-of-day-fill-room">
+                <h2>@room.RoomCode — @room.RoomName</h2>
+                <p class="room-fill-total"><strong>@room.CurrentBins.ToString("N0") / @room.CapacityBins.ToString("N0") bins — @room.PercentFull.ToString("N1")% full</strong></p>
+                @foreach (var variety in room.Varieties)
+                {
+                    <section class="end-of-day-fill-variety @(variety.IsOrganic ? "organic-stripe" : "")" style="border-left-color:@variety.HexColor">
+                        <h3>@variety.Name — @variety.ProductionType — @(variety.IsOrganic ? "Organic" : "Conventional")</h3>
+                        <p><strong>@variety.Bins.ToString("N0") bins</strong></p>
+                        <ul>
+                        @foreach (var grower in variety.Growers)
+                        {
+                            <li>Grower @grower.GrowerNumber@(string.IsNullOrWhiteSpace(grower.GrowerName) ? "" : $" — {grower.GrowerName}") — @grower.Bins.ToString("N0") bins</li>
+                        }
+                        </ul>
+                    </section>
+                }
+            </article>
+        }
+        </div>
+    }
+
+    <section class="panel">
+        <form method="post" action="/EndOfDayFill/Send" id="end-of-day-fill-send-form">
+            <input type="hidden" name="GroupId" value="@Model.SelectedGroupId" />
+            <input type="hidden" name="PreviewToken" value="@Model.PreviewToken" />
+            <label class="checkbox-field physical-count-confirmation">
+                <input id="physical-count-confirmed" type="checkbox" name="PhysicalCountConfirmed" value="true" disabled="@(!Model.CanSend)" />
+                I confirm that a physical count has been completed and that the room inventory shown above is correct.
+            </label>
+            <input type="hidden" name="PhysicalCountConfirmed" value="false" />
+            <button id="send-end-of-day-fill" type="submit" disabled>Send End of Day Fill Report</button>
+        </form>
+    </section>
+}
+
+<script>
+(() => {
+    const confirmation = document.getElementById('physical-count-confirmed');
+    const send = document.getElementById('send-end-of-day-fill');
+    if (!confirmation || !send) return;
+    const sync = () => send.disabled = !confirmation.checked || confirmation.disabled;
+    confirmation.addEventListener('change', sync);
+    sync();
+})();
+</script>

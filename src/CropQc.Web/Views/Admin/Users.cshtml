@@ -86,6 +86,7 @@
                 <th>Active</th>
                 <th>Last Login</th>
                 <th>Employment</th>
+                <th>End of Day Fill</th>
                 <th>Update</th>
             </tr>
         </thead>
@@ -138,6 +139,16 @@
                             }
                         </details>
                     </section>
+                </td>
+                <td>
+                    <form method="post" action="/Admin/Users/EndOfDayFillGroups" class="stack-form compact-form">
+                        <input type="hidden" name="UserId" value="@user.Id" />
+                        @foreach (var group in Model.EndOfDayFillGroups)
+                        {
+                            <label class="checkbox-field"><input type="checkbox" name="GroupIds" value="@group.Id" checked="@user.EndOfDayFillGroupIds.Contains(group.Id)" /> @group.Name (@group.Facility)</label>
+                        }
+                        <button class="secondary-button" type="submit">Save report groups</button>
+                    </form>
                 </td>
                 <td>
                     <form class="button-row" method="post" action="/Admin/Users/Update">

@@ -4,6 +4,7 @@
 @inject CropQc.Web.Services.IAdminAuthorizationService AdminAuthorization
 @inject CropQc.Web.Services.IUserAccessService UserAccess
 @inject CropQc.Web.Services.IFacilityContextService FacilityContext
+@inject CropQc.Web.Services.IEndOfDayFillService EndOfDayFill
 @inject CropQc.Web.Services.AppEnvironmentOptions AppEnvironment
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 <html lang="en">
@@ -60,6 +61,7 @@
                 var canAccessBackups = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Backups, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
                 var canAccessDataCleanup = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.DataCleanup, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
                 var canAccessHistoricalInventoryCleanup = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.HistoricalInventoryCleanup, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
+                var canAccessEndOfDayFill = await EndOfDayFill.HasActiveAssignmentAsync(currentEmail, Context.RequestAborted);
                 var showAdminMenu = canAccessUsers || canAccessQcStations || canAccessMasterData || canAccessCurrentLots || canAccessDownloads || canAccessConfiguration || canAccessBackups || canAccessDataCleanup || canAccessHistoricalInventoryCleanup;
                 @if (canAccessDashboard)
                 {
@@ -80,6 +82,10 @@
                 @if (canAccessRooms)
                 {
                     <a asp-controller="Home" asp-action="Rooms" asp-route-facility="@facilityRouteValue">Rooms</a>
+                }
+                @if (canAccessEndOfDayFill)
+                {
+                    <a href="/EndOfDayFill">End of Day Fill</a>
                 }
                 @if (canAccessBinsRun)
                 {
