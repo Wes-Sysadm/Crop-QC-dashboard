@@ -1,6 +1,11 @@
 namespace CropQc.Web.Models;
 
-public sealed record EndOfDayFillGroupOption(int Id, string Name, string Facility);
+public sealed record EndOfDayFillGroupOption(
+    int Id,
+    string Name,
+    string Facility,
+    bool IsActive = true,
+    bool IsCurrentAssignment = false);
 
 public sealed class EndOfDayFillPreviewViewModel
 {

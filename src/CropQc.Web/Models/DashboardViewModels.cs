@@ -950,6 +950,7 @@ public sealed class MasterDataEditForm
     public int? Id { get; set; }
     public int? WarehouseId { get; set; }
     public int? EndOfDayFillReportGroupId { get; set; }
+    public IReadOnlyList<EndOfDayFillGroupOption> EndOfDayFillReportGroups { get; set; } = [];
     public string Code { get; set; } = "";
     public string Name { get; set; } = "";
     public string? Description { get; set; }

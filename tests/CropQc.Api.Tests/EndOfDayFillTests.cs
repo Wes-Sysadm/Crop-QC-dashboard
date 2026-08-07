@@ -314,6 +314,116 @@ public sealed class EndOfDayFillTests
     }
 
     [Fact]
+    public async Task RoomMasterData_PreservesCurrentInactiveAssignment_ButRejectsNewOrIncompatibleUse()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var masterData = fixture.CreateMasterDataService();
+        var wp = await fixture.Db.Warehouses.SingleAsync(x => x.Code == "WP");
+        var ebs = await fixture.Db.Warehouses.SingleAsync(x => x.Code == "EBS");
+        var currentGroup = await fixture.Db.EndOfDayFillReportGroups.SingleAsync(x => x.Id == 1);
+        var alternateGroup = new EndOfDayFillReportGroup
+        {
+            Name = "Alternate WP End of Day Fill",
+            Facility = "WP",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        fixture.Db.EndOfDayFillReportGroups.Add(alternateGroup);
+        await fixture.Db.SaveChangesAsync();
+
+        Assert.Null(await masterData.SaveMasterDataAsync(new MasterDataEditForm
+        {
+            Type = "rooms",
+            WarehouseId = wp.Id,
+            Code = "DH-3",
+            Name = "Move candidate",
+            CapacityBins = 300,
+            IsActive = true,
+            EndOfDayFillReportGroupId = currentGroup.Id
+        }, Fixture.SenderEmail, default));
+        var moveCandidate = await fixture.Db.Rooms.SingleAsync(x => x.Code == "DH-3");
+
+        currentGroup.IsActive = false;
+        await fixture.Db.SaveChangesAsync();
+
+        var currentRoomForm = (await masterData.GetEditFormAsync("rooms", Fixture.RoomId, default))!;
+        var inactiveCurrentOption = Assert.Single(currentRoomForm.EndOfDayFillReportGroups, x => x.Id == currentGroup.Id);
+        Assert.False(inactiveCurrentOption.IsActive);
+        Assert.True(inactiveCurrentOption.IsCurrentAssignment);
+        var addRoomForm = (await masterData.GetMasterDataAsync("rooms", true, default)).EditForm!;
+        Assert.DoesNotContain(addRoomForm.EndOfDayFillReportGroups, x => x.Id == currentGroup.Id);
+        Assert.Contains(addRoomForm.EndOfDayFillReportGroups, x => x.Id == alternateGroup.Id && x.IsActive);
+
+        currentRoomForm.CapacityBins = 925;
+        Assert.Null(await masterData.SaveMasterDataAsync(currentRoomForm, Fixture.SenderEmail, default));
+        var afterCapacityEdit = await fixture.Db.Rooms.AsNoTracking().SingleAsync(x => x.Id == Fixture.RoomId);
+        Assert.Equal(925, afterCapacityEdit.CapacityBins);
+        Assert.Equal(currentGroup.Id, afterCapacityEdit.EndOfDayFillReportGroupId);
+
+        currentRoomForm = (await masterData.GetEditFormAsync("rooms", Fixture.RoomId, default))!;
+        currentRoomForm.Name = "Renamed while report inactive";
+        Assert.Null(await masterData.SaveMasterDataAsync(currentRoomForm, Fixture.SenderEmail, default));
+        var afterNameEdit = await fixture.Db.Rooms.AsNoTracking().SingleAsync(x => x.Id == Fixture.RoomId);
+        Assert.Equal("Renamed while report inactive", afterNameEdit.Name);
+        Assert.Equal(currentGroup.Id, afterNameEdit.EndOfDayFillReportGroupId);
+
+        var newRoomError = await masterData.SaveMasterDataAsync(new MasterDataEditForm
+        {
+            Type = "rooms",
+            WarehouseId = wp.Id,
+            Code = "DH-INACTIVE-NEW",
+            Name = "Invalid new assignment",
+            CapacityBins = 10,
+            IsActive = true,
+            EndOfDayFillReportGroupId = currentGroup.Id
+        }, Fixture.SenderEmail, default);
+        Assert.Contains("inactive", newRoomError);
+        Assert.DoesNotContain(await fixture.Db.Rooms.AsNoTracking().ToListAsync(), x => x.Code == "DH-INACTIVE-NEW");
+
+        var differentRoomForm = (await masterData.GetEditFormAsync("rooms", Fixture.UnconfiguredRoomId, default))!;
+        differentRoomForm.EndOfDayFillReportGroupId = currentGroup.Id;
+        Assert.Contains("inactive", await masterData.SaveMasterDataAsync(differentRoomForm, Fixture.SenderEmail, default));
+        Assert.Null((await fixture.Db.Rooms.AsNoTracking().SingleAsync(x => x.Id == Fixture.UnconfiguredRoomId)).EndOfDayFillReportGroupId);
+
+        var incompatibleMove = (await masterData.GetEditFormAsync("rooms", moveCandidate.Id, default))!;
+        incompatibleMove.WarehouseId = ebs.Id;
+        Assert.Contains("EBS", await masterData.SaveMasterDataAsync(incompatibleMove, Fixture.SenderEmail, default));
+        var rejectedMove = await fixture.Db.Rooms.AsNoTracking().SingleAsync(x => x.Id == moveCandidate.Id);
+        Assert.Equal(wp.Id, rejectedMove.WarehouseId);
+        Assert.Equal(currentGroup.Id, rejectedMove.EndOfDayFillReportGroupId);
+
+        var compatibleMove = (await masterData.GetEditFormAsync("rooms", moveCandidate.Id, default))!;
+        compatibleMove.EndOfDayFillReportGroupId = alternateGroup.Id;
+        Assert.Null(await masterData.SaveMasterDataAsync(compatibleMove, Fixture.SenderEmail, default));
+        Assert.Equal(alternateGroup.Id, (await fixture.Db.Rooms.AsNoTracking().SingleAsync(x => x.Id == moveCandidate.Id)).EndOfDayFillReportGroupId);
+
+        var clearCurrent = (await masterData.GetEditFormAsync("rooms", Fixture.RoomId, default))!;
+        clearCurrent.EndOfDayFillReportGroupId = null;
+        Assert.Null(await masterData.SaveMasterDataAsync(clearCurrent, Fixture.SenderEmail, default));
+        Assert.Null((await fixture.Db.Rooms.AsNoTracking().SingleAsync(x => x.Id == Fixture.RoomId)).EndOfDayFillReportGroupId);
+
+        var currentRoomAudits = await fixture.Db.AuditLogs.AsNoTracking()
+            .Where(x => x.EntityName == "rooms" && x.EntityKey == Fixture.RoomId.ToString())
+            .OrderBy(x => x.Id)
+            .ToListAsync();
+        Assert.True(currentRoomAudits.Count >= 3);
+        Assert.All(currentRoomAudits.Take(2), audit =>
+        {
+            Assert.Contains($"\"PreviousEndOfDayFillReportGroupId\":{currentGroup.Id}", audit.AfterValuesJson);
+            Assert.Contains($"\"EndOfDayFillReportGroupId\":{currentGroup.Id}", audit.AfterValuesJson);
+        });
+        Assert.Contains(currentRoomAudits, audit =>
+            audit.AfterValuesJson!.Contains($"\"PreviousEndOfDayFillReportGroupId\":{currentGroup.Id}")
+            && audit.AfterValuesJson.Contains("\"EndOfDayFillReportGroupId\":null"));
+        Assert.Contains(await fixture.Db.AuditLogs.AsNoTracking().ToListAsync(), audit =>
+            audit.EntityName == "rooms"
+            && audit.EntityKey == moveCandidate.Id.ToString()
+            && audit.AfterValuesJson!.Contains($"\"PreviousEndOfDayFillReportGroupId\":{currentGroup.Id}")
+            && audit.AfterValuesJson.Contains($"\"EndOfDayFillReportGroupId\":{alternateGroup.Id}"));
+    }
+
+    [Fact]
     public async Task EmptyRoomAssignment_ChangesSnapshot_InvalidatesPreview_AndPermitsRevision()
     {
         await using var fixture = await Fixture.CreateAsync();

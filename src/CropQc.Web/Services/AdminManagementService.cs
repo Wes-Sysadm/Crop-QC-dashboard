@@ -85,7 +85,7 @@ public sealed class AdminManagementService(
         return type.ToLowerInvariant() switch
         {
             "warehouses" => await dbContext.Warehouses.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.Code, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
-            "rooms" => await dbContext.Rooms.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, WarehouseId = x.WarehouseId, EndOfDayFillReportGroupId = x.EndOfDayFillReportGroupId, Code = x.Code, Name = x.Name, CompuTechCode = x.CompuTechRoomCode, CapacityBins = x.CapacityBins, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
+            "rooms" => await WithEndOfDayFillReportGroupsAsync(await dbContext.Rooms.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, WarehouseId = x.WarehouseId, EndOfDayFillReportGroupId = x.EndOfDayFillReportGroupId, Code = x.Code, Name = x.Name, CompuTechCode = x.CompuTechRoomCode, CapacityBins = x.CapacityBins, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken),
             "fruit-profiles" => await WithFruitProfileColorAsync(await WithCommodityOptions(await dbContext.FruitProfiles.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.VarietyCode, Name = x.Name, Description = x.Description, FruitType = x.FruitType, ProductionType = x.ProductionType, IsOrganic = x.IsOrganic, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken), cancellationToken),
             "grades" => await dbContext.Grades.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.Code, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "defects" => await dbContext.DefectTypes.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
@@ -438,7 +438,8 @@ public sealed class AdminManagementService(
             .ThenBy(x => x.CropQcRoomName ?? x.Code)
             .Select(x => new MasterDataEditItem(x.Id, new[] { x.Warehouse.Code, x.Warehouse.Name, x.CropQcRoomName ?? x.Code, x.CompuTechRoomCode ?? "", x.SubLocation ?? "", x.Name, x.CapacityBins.ToString(), x.EndOfDayFillReportGroup == null ? "Not included" : x.EndOfDayFillReportGroup.Name, YesNo(x.IsActive) }, x.IsActive, null))
             .ToListAsync(ct);
-        return Page("Rooms", "rooms", ["Warehouse Code", "Warehouse Name", "Crop QC Room", "Compu-Tech Code", "SubLocation", "Room Name", "Capacity Bins", "End of Day Fill Report", "Active"], rows, canEdit);
+        var page = Page("Rooms", "rooms", ["Warehouse Code", "Warehouse Name", "Crop QC Room", "Compu-Tech Code", "SubLocation", "Room Name", "Capacity Bins", "End of Day Fill Report", "Active"], rows, canEdit);
+        return page with { EditForm = await WithEndOfDayFillReportGroupsAsync(page.EditForm, ct) };
     }
 
     private async Task<MasterDataPageViewModel> FruitProfilesPage(bool canEdit, CancellationToken ct)
@@ -1234,18 +1235,20 @@ public sealed class AdminManagementService(
         if (await dbContext.Rooms.AnyAsync(x => x.WarehouseId == form.WarehouseId && x.Code == form.Code.Trim() && x.Id != (form.Id ?? 0), ct)) return "Room code must be unique per warehouse.";
         var warehouse = await dbContext.Warehouses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.WarehouseId.Value, ct);
         if (warehouse is null) return "Warehouse not found.";
+        var entity = form.Id is null ? new Room { Code = "", Name = "" } : await dbContext.Rooms.Include(x => x.EndOfDayFillReportGroup).SingleOrDefaultAsync(x => x.Id == form.Id.Value, ct);
+        if (entity is null) return "Room not found.";
         EndOfDayFillReportGroup? reportGroup = null;
         if (form.EndOfDayFillReportGroupId is int reportGroupId)
         {
             reportGroup = await dbContext.EndOfDayFillReportGroups.AsNoTracking().SingleOrDefaultAsync(x => x.Id == reportGroupId, ct);
             if (reportGroup is null) return "The selected End of Day Fill report does not exist.";
-            if (!reportGroup.IsActive) return "The selected End of Day Fill report is inactive and cannot be assigned.";
+            var preservesCurrentInactiveAssignment = form.Id is not null && entity.EndOfDayFillReportGroupId == reportGroupId;
+            if (!reportGroup.IsActive && !preservesCurrentInactiveAssignment)
+                return "The selected End of Day Fill report is inactive and cannot be newly assigned.";
             var operatingCompany = facilityContext.GetOperatingCompanyFacility(warehouse.Code, warehouse.Name);
             if (!reportGroup.Facility.Equals(operatingCompany, StringComparison.OrdinalIgnoreCase))
                 return $"{warehouse.Code} rooms can only be assigned to an active {operatingCompany} End of Day Fill report.";
         }
-        var entity = form.Id is null ? new Room { Code = "", Name = "" } : await dbContext.Rooms.Include(x => x.EndOfDayFillReportGroup).SingleOrDefaultAsync(x => x.Id == form.Id.Value, ct);
-        if (entity is null) return "Room not found.";
         var action = form.Id is null ? "create" : "update";
         var previousGroupId = entity.EndOfDayFillReportGroupId;
         var previousGroupName = entity.EndOfDayFillReportGroup?.Name;
@@ -1286,6 +1289,19 @@ public sealed class AdminManagementService(
         }), ct);
         await dbContext.SaveChangesAsync(ct);
         return null;
+    }
+
+    private async Task<MasterDataEditForm?> WithEndOfDayFillReportGroupsAsync(MasterDataEditForm? form, CancellationToken ct)
+    {
+        if (form is null) return null;
+        var currentGroupId = form.EndOfDayFillReportGroupId;
+        form.EndOfDayFillReportGroups = await dbContext.EndOfDayFillReportGroups.AsNoTracking()
+            .Where(x => x.IsActive || x.Id == currentGroupId)
+            .OrderBy(x => x.Facility)
+            .ThenBy(x => x.Name)
+            .Select(x => new EndOfDayFillGroupOption(x.Id, x.Name, x.Facility, x.IsActive, x.Id == currentGroupId))
+            .ToListAsync(ct);
+        return form;
     }
 
     private async Task<string?> SaveFruitProfile(MasterDataEditForm form, string by, CancellationToken ct)

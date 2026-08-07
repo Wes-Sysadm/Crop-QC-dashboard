@@ -3,9 +3,6 @@
 @inject CropQc.Web.Services.IFacilityContextService FacilityContext
 @{
     var warehouses = DbContext.Warehouses.OrderBy(x => x.Code).ToList();
-    var endOfDayFillGroups = Model.Type == "rooms"
-        ? DbContext.EndOfDayFillReportGroups.Where(x => x.IsActive).OrderBy(x => x.Facility).ThenBy(x => x.Name).ToList()
-        : [];
     var commodityOptions = (Model.CommodityOptions.Count > 0 ? Model.CommodityOptions : new[] { "Apple", "Pear" })
         .Append(Model.FruitType)
         .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -37,9 +34,10 @@ else if (Model.Type == "rooms")
         <label>End of Day Fill Report</label>
         <select name="EndOfDayFillReportGroupId" data-end-of-day-fill-group>
             <option value="">Not included</option>
-            @foreach (var group in endOfDayFillGroups)
+            @foreach (var group in Model.EndOfDayFillReportGroups)
             {
-                <option value="@group.Id" data-facility="@group.Facility" selected="@(Model.EndOfDayFillReportGroupId == group.Id ? "selected" : null)">@group.Name</option>
+                var optionLabel = group.IsActive ? group.Name : $"{group.Name} — Inactive (current assignment)";
+                <option value="@group.Id" data-facility="@group.Facility" data-active="@group.IsActive.ToString().ToLowerInvariant()" data-current="@group.IsCurrentAssignment.ToString().ToLowerInvariant()" selected="@(Model.EndOfDayFillReportGroupId == group.Id ? "selected" : null)">@optionLabel</option>
             }
         </select>
         <span class="muted" data-end-of-day-fill-group-help>Only active reports for the selected room warehouse are available. This room record is the authoritative report membership.</span>
@@ -60,11 +58,14 @@ else if (Model.Type == "rooms")
                 });
                 const selected = group.selectedOptions[0];
                 const incompatibleSelection = selected?.value && selected.dataset.facility !== facility;
+                const inactiveCurrentSelection = selected?.value && selected.dataset.active === "false" && selected.dataset.current === "true";
                 group.setCustomValidity(incompatibleSelection
                     ? `The selected ${selected.dataset.facility} report cannot be assigned to this ${facility || "unresolved"} room.`
                     : "");
                 help.textContent = incompatibleSelection
                     ? `The selected report belongs to ${selected.dataset.facility}. Choose ${facility || "the room's facility"} or Not included before saving.`
+                    : inactiveCurrentSelection
+                        ? "This report is inactive but remains this Room's stored assignment. Choose another active report or Not included to change it."
                     : "Only active reports for the selected room warehouse are available. This room record is the authoritative report membership.";
             };
             warehouse?.addEventListener("change", filterGroups);
