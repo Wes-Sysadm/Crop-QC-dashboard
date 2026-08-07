@@ -9,6 +9,7 @@ public interface IFacilityContextService
     IReadOnlyList<string> SelectableFacilities { get; }
     string Normalize(string? facility);
     string GetFacilityCode(string? warehouseCode, string? warehouseName = null);
+    string GetOperatingCompanyFacility(string? warehouseCode, string? warehouseName = null);
     bool Matches(string? warehouseCode, string? warehouseName, string? selectedFacility);
     Task<IReadOnlySet<int>> GetWarehouseIdsAsync(string? selectedFacility, CancellationToken cancellationToken);
 }
@@ -46,6 +47,14 @@ public sealed class FacilityContextService(CropQcDbContext dbContext) : IFacilit
         if (combined.Contains("Windy Point", StringComparison.OrdinalIgnoreCase)) return "WP";
         return string.IsNullOrWhiteSpace(code) ? "Other" : code.ToUpperInvariant();
     }
+
+    public string GetOperatingCompanyFacility(string? warehouseCode, string? warehouseName = null) =>
+        GetFacilityCode(warehouseCode, warehouseName) switch
+        {
+            "WP" or "MCD" or "DH" => "WP",
+            "EBS" => "EBS",
+            _ => "Other"
+        };
 
     public bool Matches(string? warehouseCode, string? warehouseName, string? selectedFacility)
     {

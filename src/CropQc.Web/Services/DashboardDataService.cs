@@ -48,6 +48,7 @@ public interface IDashboardDataService
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, string? facility, CancellationToken cancellationToken);
     Task<RoomDetailViewModel> GetRoomDetailAsync(int roomId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<RoomLotSummaryViewModel>> GetAuthoritativeCurrentRoomLotsAsync(IReadOnlyCollection<int> roomIds, CancellationToken cancellationToken);
     Task<BinsRunProjectionViewModel> GetRoomProjectionAsync(int roomId, RoomProjectionRequest request, CancellationToken cancellationToken);
     Task<RoomCountBreakdownViewModel> GetRoomCountBreakdownAsync(int roomId, CancellationToken cancellationToken);
     Task<string?> CreateRoomDepletionAsync(RoomDepletionForm form, CancellationToken cancellationToken);
@@ -180,6 +181,20 @@ public sealed class DashboardDataService(
                 .ToList()
         };
     }
+
+    public async Task<IReadOnlyList<RoomLotSummaryViewModel>> GetAuthoritativeCurrentRoomLotsAsync(
+        IReadOnlyCollection<int> roomIds,
+        CancellationToken cancellationToken) =>
+        (await BuildRoomLotSummariesAsync(null, cancellationToken, roomIds))
+        .Where(x => x.CurrentBins > 0)
+        .OrderBy(x => x.RoomId)
+        .ThenBy(x => x.CanonicalVarietyName)
+        .ThenBy(x => x.ProductionType)
+        .ThenBy(x => x.IsOrganic)
+        .ThenBy(x => x.GrowerNumber)
+        .ThenBy(x => x.GrowerLotId)
+        .ThenBy(x => x.InventoryKey)
+        .ToList();
 
     public async Task<RoomsPageViewModel> GetRoomsAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
     {

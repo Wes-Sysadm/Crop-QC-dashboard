@@ -248,7 +248,7 @@ public sealed class DatabaseRegressionDiagnosticsTests
     public void RenderUsesFailClosedLatestSchemaGateBeforeBothWebDeployments()
     {
         var blueprint = File.ReadAllText(FindRepositoryFile("render.yaml"));
-        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260805014812_AddReceiptInventoryOverrides";
+        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260807044836_AddEndOfDayFillReporting";
 
         Assert.Equal(2, blueprint.Split(command, StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("dotnet ef database update", blueprint, StringComparison.OrdinalIgnoreCase);
@@ -309,6 +309,57 @@ public sealed class DatabaseRegressionDiagnosticsTests
         Assert.DoesNotContain("\nupdate ", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("\ndelete from ", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("truncate ", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EndOfDayFillProductionPreflight_IsReadOnlyAndReportsExactCandidatesSafely()
+    {
+        var script = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "preflight-end-of-day-fill-reporting.sql"));
+        Assert.Contains("begin transaction read only;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("candidate_room_count", script);
+        Assert.Contains("gmail_credential_present", script);
+        Assert.Contains("gmail_send_scope_present", script);
+        Assert.Contains("lower(btrim(w.\"Code\")) IN ('dh', 'mcdougall', 'ebs')", script);
+        Assert.DoesNotContain("AccessTokenEncrypted\" AS", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("RefreshTokenEncrypted\" AS", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("alter table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("create table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\ninsert into ", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EndOfDayFillProductionApply_IsTransactionalIdempotentAndLeavesMigrationHistoryUntouched()
+    {
+        var script = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "apply-end-of-day-fill-reporting-schema.sql"));
+        Assert.Contains(@"\set ON_ERROR_STOP on", script);
+        Assert.Contains("pg_advisory_xact_lock", script);
+        Assert.Contains("ON CONFLICT", script);
+        Assert.Contains("Unsupported partial End of Day Fill schema", script);
+        Assert.Contains("ALTER TABLE \"Rooms\" ADD COLUMN \"EndOfDayFillReportGroupId\"", script);
+        Assert.Contains("Preserving authoritative Room master-data assignments on repeat apply", script);
+        Assert.Contains("Room capacity fingerprint changed", script);
+        Assert.DoesNotContain("CREATE TABLE \"EndOfDayFillReportGroupRooms\"", script);
+        Assert.Contains("migration history is intentionally untouched", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("INSERT INTO \"__EFMigrationsHistory\"", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("delete from", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("truncate ", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EndOfDayFillProductionVerification_IsReadOnlyAndChecksSchemaConfigurationAndEmptyHistory()
+    {
+        var script = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "verify-end-of-day-fill-reporting.sql"));
+        Assert.Contains("begin transaction read only;", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CK_EndOfDayFillReportGroups_Facility", script);
+        Assert.Contains("IX_EndOfDayFillReportSends_SuccessRevisionKey", script);
+        Assert.Contains("FK_EndOfDayFillSendReservations_EndOfDayFillReportSends_SendAttemptId", script);
+        Assert.Contains("FK_Rooms_EndOfDayFillReportGroups_EndOfDayFillReportGroupId", script);
+        Assert.Contains("Obsolete room-membership join table must not exist", script);
+        Assert.Contains("initial_send_count", script);
+        Assert.Contains("initial_reservation_count", script);
+        Assert.DoesNotContain("alter table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("create table", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\ninsert into ", script, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

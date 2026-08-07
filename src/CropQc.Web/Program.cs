@@ -236,6 +236,9 @@ builder.Services.AddDbContext<CropQcDbContext>((services, options) =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IDashboardDataService, DashboardDataService>();
+builder.Services.AddScoped<IEndOfDayFillService, EndOfDayFillService>();
+builder.Services.AddScoped<IEndOfDayFillAdminService, EndOfDayFillAdminService>();
+builder.Services.AddScoped<IEndOfDayFillInventorySource, EndOfDayFillInventorySource>();
 builder.Services.AddScoped<IGoogleUserProvisioningService, GoogleUserProvisioningService>();
 builder.Services.AddScoped<IGoogleCredentialStore, GoogleCredentialStore>();
 builder.Services.AddScoped<IQcEmailSender, GmailUserEmailSender>();

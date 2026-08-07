@@ -23,6 +23,7 @@ public sealed class User
     public ICollection<QcSample> TakenSamples { get; } = new List<QcSample>();
     public ICollection<UserGoogleCredential> GoogleCredentials { get; } = new List<UserGoogleCredential>();
     public ICollection<UserEmploymentHistory> EmploymentHistory { get; } = new List<UserEmploymentHistory>();
+    public ICollection<EndOfDayFillUserGroupAssignment> UserAssignments { get; } = new List<EndOfDayFillUserGroupAssignment>();
 }
 
 public static class EmploymentFacilities

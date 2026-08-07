@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260805014812_AddReceiptInventoryOverrides";
+    public const string ExpectedSchemaMigration = "20260807044836_AddEndOfDayFillReporting";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -156,7 +156,23 @@ public static class DatabaseStartupDiagnostics
         new("ReceiptInventoryOverrides.AdministratorUserId", "ReceiptInventoryOverrides", "AdministratorUserId", RequireNotNullable: true),
         new("ReceiptInventoryOverrides.OperationKey", "ReceiptInventoryOverrides", "OperationKey", RequireNotNullable: true),
         new("ReceiptInventoryOverrides.IsComplete", "ReceiptInventoryOverrides", "IsComplete", RequireNotNullable: true),
-        new("RoomInventoryAdjustments.ReceiptInventoryOverrideId", "RoomInventoryAdjustments", "ReceiptInventoryOverrideId", RequireNullable: true)
+        new("RoomInventoryAdjustments.ReceiptInventoryOverrideId", "RoomInventoryAdjustments", "ReceiptInventoryOverrideId", RequireNullable: true),
+        new("EndOfDayFillReportGroups", "EndOfDayFillReportGroups", null),
+        new("EndOfDayFillReportGroups.Facility", "EndOfDayFillReportGroups", "Facility", RequireNotNullable: true),
+        new("Rooms.EndOfDayFillReportGroupId", "Rooms", "EndOfDayFillReportGroupId", RequireNullable: true),
+        new("EndOfDayFillReportRecipients", "EndOfDayFillReportRecipients", null),
+        new("EndOfDayFillReportRecipients.NormalizedEmailAddress", "EndOfDayFillReportRecipients", "NormalizedEmailAddress", RequireNotNullable: true),
+        new("EndOfDayFillUserGroupAssignments", "EndOfDayFillUserGroupAssignments", null),
+        new("EndOfDayFillUserGroupAssignments.UserId", "EndOfDayFillUserGroupAssignments", "UserId", RequireNotNullable: true),
+        new("EndOfDayFillUserGroupAssignments.ReportGroupId", "EndOfDayFillUserGroupAssignments", "ReportGroupId", RequireNotNullable: true),
+        new("EndOfDayFillReportSends", "EndOfDayFillReportSends", null),
+        new("EndOfDayFillReportSends.PacificReportDate", "EndOfDayFillReportSends", "PacificReportDate", RequireNotNullable: true),
+        new("EndOfDayFillReportSends.RevisionNumber", "EndOfDayFillReportSends", "RevisionNumber", RequireNotNullable: true),
+        new("EndOfDayFillReportSends.SnapshotHash", "EndOfDayFillReportSends", "SnapshotHash", RequireNotNullable: true),
+        new("EndOfDayFillReportSends.SnapshotJson", "EndOfDayFillReportSends", "SnapshotJson", RequireNotNullable: true),
+        new("EndOfDayFillReportSends.Status", "EndOfDayFillReportSends", "Status", RequireNotNullable: true),
+        new("EndOfDayFillSendReservations", "EndOfDayFillSendReservations", null),
+        new("EndOfDayFillSendReservations.SendAttemptId", "EndOfDayFillSendReservations", "SendAttemptId", RequireNotNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
@@ -183,7 +199,13 @@ public static class DatabaseStartupDiagnostics
         new("IX_UserEmploymentHistory_UserId_ChangedAt", "UserEmploymentHistory", "IX_UserEmploymentHistory_UserId_ChangedAt"),
         new("IX_ReceiptInventoryOverrides_OperationKey", "ReceiptInventoryOverrides", "IX_ReceiptInventoryOverrides_OperationKey", RequireUnique: true),
         new("IX_ReceiptInventoryOverrides_ReceiptId_CreatedAt", "ReceiptInventoryOverrides", "IX_ReceiptInventoryOverrides_ReceiptId_CreatedAt"),
-        new("IX_RoomInventoryAdjustments_ReceiptInventoryOverrideId", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_ReceiptInventoryOverrideId")
+        new("IX_RoomInventoryAdjustments_ReceiptInventoryOverrideId", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_ReceiptInventoryOverrideId"),
+        new("IX_EndOfDayFillReportGroups_Name", "EndOfDayFillReportGroups", "IX_EndOfDayFillReportGroups_Name", RequireUnique: true),
+        new("IX_Rooms_EndOfDayFillReportGroupId", "Rooms", "IX_Rooms_EndOfDayFillReportGroupId"),
+        new("IX_EndOfDayFillReportRecipients_NormalizedEmailAddress", "EndOfDayFillReportRecipients", "IX_EndOfDayFillReportRecipients_NormalizedEmailAddress", RequireUnique: true),
+        new("IX_EndOfDayFillUserGroupAssignments_UserId_ReportGroupId", "EndOfDayFillUserGroupAssignments", "IX_EndOfDayFillUserGroupAssignments_UserId_ReportGroupId", RequireUnique: true),
+        new("IX_EndOfDayFillReportSends_SuccessRevisionKey", "EndOfDayFillReportSends", "IX_EndOfDayFillReportSends_SuccessRevisionKey", RequireUnique: true),
+        new("IX_EndOfDayFillSendReservations_SendAttemptId", "EndOfDayFillSendReservations", "IX_EndOfDayFillSendReservations_SendAttemptId", RequireUnique: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
@@ -208,7 +230,11 @@ public static class DatabaseStartupDiagnostics
         new("FK_UserEmploymentHistory_Users_UserId", "UserEmploymentHistory", "FK_UserEmploymentHistory_Users_UserId"),
         new("FK_ReceiptInventoryOverrides_Receipts_ReceiptId", "ReceiptInventoryOverrides", "FK_ReceiptInventoryOverrides_Receipts_ReceiptId"),
         new("FK_ReceiptInventoryOverrides_Users_AdministratorUserId", "ReceiptInventoryOverrides", "FK_ReceiptInventoryOverrides_Users_AdministratorUserId"),
-        new("FK_RoomInventoryAdjustments_ReceiptOverrides_OverrideId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_ReceiptOverrides_OverrideId")
+        new("FK_RoomInventoryAdjustments_ReceiptOverrides_OverrideId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_ReceiptOverrides_OverrideId"),
+        new("FK_Rooms_EndOfDayFillReportGroups_EndOfDayFillReportGroupId", "Rooms", "FK_Rooms_EndOfDayFillReportGroups_EndOfDayFillReportGroupId"),
+        new("FK_EndOfDayFillUserGroupAssignments_Users_UserId", "EndOfDayFillUserGroupAssignments", "FK_EndOfDayFillUserGroupAssignments_Users_UserId"),
+        new("FK_EndOfDayFillReportSends_EndOfDayFillReportGroups_ReportGroupId", "EndOfDayFillReportSends", "FK_EndOfDayFillReportSends_EndOfDayFillReportGroups_ReportGroupId"),
+        new("FK_EndOfDayFillSendReservations_EndOfDayFillReportSends_SendAttemptId", "EndOfDayFillSendReservations", "FK_EndOfDayFillSendReservations_EndOfDayFillReportSends_SendAttemptId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
@@ -217,7 +243,12 @@ public static class DatabaseStartupDiagnostics
         new("PK_RunExpectationSources", "RunExpectationSources", "PK_RunExpectationSources"),
         new("PK_PackoutSourceAllocations", "PackoutSourceAllocations", "PK_PackoutSourceAllocations"),
         new("PK_UserEmploymentHistory", "UserEmploymentHistory", "PK_UserEmploymentHistory"),
-        new("PK_ReceiptInventoryOverrides", "ReceiptInventoryOverrides", "PK_ReceiptInventoryOverrides")
+        new("PK_ReceiptInventoryOverrides", "ReceiptInventoryOverrides", "PK_ReceiptInventoryOverrides"),
+        new("PK_EndOfDayFillReportGroups", "EndOfDayFillReportGroups", "PK_EndOfDayFillReportGroups"),
+        new("PK_EndOfDayFillReportRecipients", "EndOfDayFillReportRecipients", "PK_EndOfDayFillReportRecipients"),
+        new("PK_EndOfDayFillUserGroupAssignments", "EndOfDayFillUserGroupAssignments", "PK_EndOfDayFillUserGroupAssignments"),
+        new("PK_EndOfDayFillReportSends", "EndOfDayFillReportSends", "PK_EndOfDayFillReportSends"),
+        new("PK_EndOfDayFillSendReservations", "EndOfDayFillSendReservations", "PK_EndOfDayFillSendReservations")
     ];
 
     public static async Task InspectAsync(

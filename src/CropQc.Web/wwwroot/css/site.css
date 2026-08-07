@@ -1524,3 +1524,14 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 .room-detail-hero-content { background: rgba(255,255,255,.94); border-radius: 5px; padding: 16px; position: relative; z-index: 1; }
 .combined-qc-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .room-detail-varieties { margin: 10px 0 16px; }
+.end-of-day-fill-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+    gap: 1rem;
+}
+
+.end-of-day-fill-room { align-self: start; }
+.end-of-day-fill-variety { border-left: 8px solid #607d8b; padding: .5rem .75rem; margin-top: .75rem; background: color-mix(in srgb, var(--surface, #fff) 92%, transparent); }
+.end-of-day-fill-variety.organic-stripe { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.32) 0 8px, transparent 8px 16px); }
+.physical-count-confirmation { margin: 1rem 0; font-weight: 600; }
+.sent-email-preview { overflow-x: auto; border: 1px solid #ccc; padding: 1rem; background: #fff; color: #111; }

@@ -59,11 +59,13 @@ public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthentica
         var roles = roleEntities.Select(x => new RoleOptionViewModel(x.Id, x.Name, RoleSummary(x.Name))).ToList();
         var users = await dbContext.Users.AsNoTracking()
             .Include(x => x.UserRoles).ThenInclude(x => x.Role)
+            .Include(x => x.UserAssignments)
             .Include(x => x.EmploymentUpdatedByUser)
             .Include(x => x.EmploymentHistory).ThenInclude(x => x.ChangedByUser)
             .OrderBy(x => x.Email)
             .ToListAsync(cancellationToken);
 
+        var fillGroups = await dbContext.EndOfDayFillReportGroups.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken);
         return new UserAdminPageViewModel
         {
             Roles = roles,
@@ -71,6 +73,7 @@ public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthentica
             Areas = ApplicationAreas.All.Select(x => new ApplicationAreaViewModel(x.Key, x.Name, x.Group, x.Route)).ToList(),
             AccessMatrix = await userAccessService.GetMatrixAsync(cancellationToken),
             AddUserForm = new AddUserForm { RoleId = roles.FirstOrDefault(x => x.Name == "Viewer")?.Id ?? roles.FirstOrDefault()?.Id ?? 0 },
+            EndOfDayFillGroups = fillGroups.Select(x => new EndOfDayFillGroupOption(x.Id, x.Name, x.Facility)).ToList(),
             Users = users.Select(x =>
             {
                 var roleName = PrimaryRoleName(x);
@@ -96,7 +99,8 @@ public sealed class UserAdminService(CropQcDbContext dbContext, GoogleAuthentica
                             history.EffectiveAt,
                             history.ChangedByUser?.DisplayName ?? history.ChangedByUser?.Email ?? "System",
                             history.ChangedAt))
-                        .ToList());
+                        .ToList(),
+                    x.UserAssignments.Select(assignment => assignment.ReportGroupId).Order().ToList());
             }).ToList()
         };
     }
