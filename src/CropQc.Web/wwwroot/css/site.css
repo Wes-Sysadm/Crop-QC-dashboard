@@ -1488,3 +1488,39 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     }
 
 }
+
+/* Shared current-storage presentation */
+.dedicated-room-card { min-height: 300px; position: relative; }
+.dedicated-room-card.empty-room-card { --room-variety-bg: #e7ecef; }
+.dedicated-room-card .room-card-content { height: 100%; }
+.room-location { font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.room-capacity { font-size: 1.08rem; margin: 0; }
+.room-percent { color: #4a5968; font-weight: 750; margin: -8px 0 0; }
+.compact-room-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.room-variety-breakdown { display: grid; gap: 7px; }
+.variety-bin-chip { align-items: center; background: rgba(255,255,255,.94); border-left: 6px solid var(--variety-color); border-radius: 5px; color: #17202a; display: grid; gap: 2px 8px; grid-template-columns: 14px minmax(0,1fr) auto; padding: 7px 9px; }
+.variety-bin-chip i, .variety-inline-label i { background: var(--variety-color); border: 1px solid rgba(0,0,0,.24); border-radius: 50%; height: 12px; width: 12px; }
+.variety-bin-chip small { grid-column: 2; }
+.variety-bin-chip b { grid-column: 3; grid-row: 1 / span 2; white-space: nowrap; }
+.variety-bin-chip.organic, .variety-inline-label.organic, .storage-variety-legend .organic { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.15) 0 6px, rgba(22,101,52,.13) 6px 10px); }
+.room-more-varieties, .room-card-actions, .card-interactive { position: relative; z-index: 3; }
+.room-more-varieties summary { cursor: pointer; font-weight: 800; }
+.card-stretched-link::after { content: ""; inset: 0; position: absolute; z-index: 2; }
+.room-card-actions a, .room-more-varieties summary, .room-more-varieties a { position: relative; z-index: 4; }
+.receipt-card-colored { background: var(--receipt-variety-bg, #e7ecef); overflow: hidden; position: relative; }
+.receipt-card-colored.organic::after { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 8px, rgba(22,101,52,.35) 8px 13px, rgba(255,255,255,.55) 13px 21px); content: ""; inset: 0; opacity: .42; pointer-events: none; position: absolute; }
+.receipt-card-content { background: rgba(255,255,255,.92); border-radius: 5px; display: grid; gap: 12px; padding: 12px; position: relative; z-index: 1; }
+.receipt-variety-label { align-items: center; display: inline-flex; flex-wrap: wrap; gap: 6px; margin: 0 8px 4px 0; }
+.receipt-variety-label i { border: 1px solid rgba(0,0,0,.25); border-radius: 50%; height: 14px; width: 14px; }
+.bins-in-storage-column { min-width: 150px; text-align: center !important; }
+.storage-grower-grid, .room-grower-grid { display: grid; gap: 14px; }
+.storage-grower-card, .room-grower-card { background: #fff; border: 1px solid #d9e1e8; border-radius: 8px; padding: 12px 14px; }
+.storage-grower-card > summary, .room-grower-card > summary { align-items: center; cursor: pointer; display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between; }
+.storage-grower-card > summary strong, .room-grower-card > summary strong { font-size: 1.06rem; }
+.storage-variety-legend, .storage-qc-metrics, .storage-grower-card .table-wrap, .room-grower-card > .room-metrics, .room-grower-card > .variety-legend, .room-grower-lots { margin-top: 12px; }
+.variety-inline-label { align-items: center; display: inline-flex; gap: 6px; padding: 3px 6px; }
+.room-detail-hero { background: var(--room-variety-bg, #607d8b); overflow: hidden; padding: 12px; position: relative; }
+.room-detail-hero.majority-organic::after { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.58) 0 8px, rgba(22,101,52,.42) 8px 13px, rgba(255,255,255,.58) 13px 21px); content: ""; inset: 0; opacity: .35; pointer-events: none; position: absolute; }
+.room-detail-hero-content { background: rgba(255,255,255,.94); border-radius: 5px; padding: 16px; position: relative; z-index: 1; }
+.combined-qc-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.room-detail-varieties { margin: 10px 0 16px; }

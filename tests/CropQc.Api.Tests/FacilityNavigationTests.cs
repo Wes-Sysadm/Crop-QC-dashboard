@@ -107,15 +107,17 @@ public sealed class FacilityNavigationTests
         var layout = Read("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml");
         var masterData = Read("src", "CropQc.Web", "Views", "MasterData", "Index.cshtml");
         var growerLots = Read("src", "CropQc.Web", "Views", "Home", "GrowerLots.cshtml");
+        var masterDataNavigation = Read("src", "CropQc.Web", "Views", "Shared", "_MasterDataNavigation.cshtml");
 
         Assert.DoesNotContain(">Variety Colors</a>", layout);
         Assert.DoesNotContain(">Orchard QC Recipients</a>", layout);
         Assert.DoesNotContain(">Orchard Manager Import</a>", layout);
         Assert.Contains("Fruit Profiles", masterData);
         Assert.Contains("Variety Codes", masterData);
-        Assert.Contains("/Admin/OrchardRecipients", growerLots);
-        Assert.Contains("/Admin/OrchardRecipientImports", growerLots);
-        Assert.Contains("Unmatched Identities", growerLots);
+        Assert.Contains("_MasterDataNavigation", growerLots);
+        Assert.Contains("/Admin/OrchardRecipients", masterDataNavigation);
+        Assert.Contains("/Admin/OrchardRecipientImports", masterDataNavigation);
+        Assert.Contains("Unmatched Identities", masterDataNavigation);
     }
 
     private static CropQcDbContext CreateDb()

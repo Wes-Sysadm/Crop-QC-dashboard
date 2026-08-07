@@ -21,7 +21,9 @@
 
 @if (Model.Summary is not null)
 {
-    <section class="panel">
+    var dominant = Model.Summary.VarietyColorSegments.FirstOrDefault();
+    <section class="panel room-detail-hero @(Model.Summary.IsMajorityOrganic ? "majority-organic" : "")" style="--room-variety-bg: @(dominant?.HexColor ?? "#607D8B")">
+        <div class="room-detail-hero-content">
         <div class="room-card-header">
             <div>
                 <h2>@Model.Summary.Warehouse / @Model.Summary.RoomCode</h2>
@@ -29,28 +31,28 @@
             </div>
             <span class="status @RoomStatusClass(Model.Summary.Status)">@Model.Summary.Status</span>
         </div>
-        <dl class="summary-list">
-            <dt>Current lots</dt><dd>@Model.Summary.CurrentLotsCount</dd>
-            <dt>Current bins</dt><dd>@(Model.Summary.CurrentBinsCount?.ToString() ?? "Empty")</dd>
-            <dt>Starting season bins</dt><dd>@Model.Summary.StartingSeasonBins</dd>
-            <dt>Net change</dt><dd>@FormatSigned(Model.Summary.NetChangeBins)</dd>
-            <dt>Compu-Tech code</dt><dd>@(string.IsNullOrWhiteSpace(Model.Summary.CompuTechCode) ? "-" : Model.Summary.CompuTechCode)</dd>
-            <dt>Variety/status</dt><dd>@Model.Summary.VarietyStatusSummary</dd>
-            <dt>Organic status</dt><dd>@Model.Summary.OrganicBins organic / @Model.Summary.ConventionalBins conventional / @Model.Summary.UnknownOrganicStatusBins unknown <span class="muted">(stripes @(Model.Summary.IsMajorityOrganic ? "active" : "inactive"))</span></dd>
-            <dt>Last activity</dt><dd>@BusinessTime.FormatPacific(Model.Summary.LastActivityAt, empty: "No activity")</dd>
-            <dt>Average pressure</dt><dd>@Format(Model.Summary.AveragePressureLbs)</dd>
-            <dt>Pressure std dev</dt><dd>@Format(Model.Summary.PressureStdDevLbs)</dd>
-            <dt>Month-over-month pressure</dt><dd>@FormatChange(Model.Summary.MonthOverMonthPressureChangeLbs)</dd>
-            <dt>Harvest starch</dt><dd>@Format(Model.Summary.AverageStarch)</dd>
-            <dt>Defects</dt><dd>@Model.Summary.DefectSummary</dd>
-            <dt>Last sample</dt><dd>@BusinessTime.FormatPacific(Model.Summary.LastSampleDate, empty: "No data")</dd>
+        <p class="room-capacity"><strong>@FormatBins(Model.Summary.CurrentBinsCount ?? 0) bins</strong> / @(Model.Summary.IsCapacityConfigured ? $"{FormatBins(Model.Summary.RoomCapacityBins)} capacity" : "capacity not configured") · @(Model.Summary.PercentFull is null ? "percent full unavailable" : $"{Model.Summary.PercentFull:0.#}% full")</p>
+        <h2>Combined QC</h2>
+        <p class="muted">Current room balances are the weight. Lots missing a metric are excluded from that metric's denominator.</p>
+        <dl class="room-metrics room-qc-metrics combined-qc-grid">
+            <div><dt>Weighted receiving pressure</dt><dd>@FormatLbs(Model.Summary.AveragePressureLbs)</dd><small>@Coverage(Model.Summary.ReceivingPressureRepresentedBins, Model.Summary.CurrentBinsCount ?? 0)</small></div>
+            <div><dt>Weighted latest pressure</dt><dd>@FormatLbs(Model.Summary.LatestPressureLbs)</dd><small>@Coverage(Model.Summary.LatestPressureRepresentedBins, Model.Summary.CurrentBinsCount ?? 0)</small></div>
+            <div><dt>Weighted starch</dt><dd>@Format(Model.Summary.AverageStarch)</dd><small>@Coverage(Model.Summary.ReceivingStarchRepresentedBins, Model.Summary.CurrentBinsCount ?? 0)</small></div>
+            <div><dt>30-day pressure change</dt><dd>@FormatChange(Model.Summary.MonthOverMonthPressureChangeLbs)</dd><small>@Coverage(Model.Summary.PressureChangeRepresentedBins, Model.Summary.CurrentBinsCount ?? 0)</small></div>
+            <div><dt>Pressure standard deviation</dt><dd>@FormatLbs(Model.Summary.PressureStdDevLbs)</dd><small>@Coverage(Model.Summary.PressureStandardDeviationRepresentedBins, Model.Summary.CurrentBinsCount ?? 0)</small></div>
+            <div><dt>Latest applicable sample</dt><dd>@BusinessTime.FormatPacific(Model.Summary.LatestPressureDate ?? Model.Summary.LastSampleDate, empty: "Unavailable")</dd></div>
+            <div><dt>Defect summary</dt><dd>@(string.IsNullOrWhiteSpace(Model.Summary.DefectSummary) ? "Unavailable" : Model.Summary.DefectSummary)</dd></div>
+            <div><dt>Grade coverage</dt><dd>@Coverage(Model.BaselineProjection.GradeRepresentedBins, Model.Summary.CurrentBinsCount ?? 0)</dd></div>
+            <div><dt>Size coverage</dt><dd>@Coverage(Model.BaselineProjection.SizeRepresentedBins, Model.Summary.CurrentBinsCount ?? 0)</dd></div>
         </dl>
-        <div class="variety-legend">
+        <h3>Current variety composition</h3>
+        <div class="variety-legend room-detail-varieties">
             @foreach (var segment in Model.Summary.VarietyColorSegments)
             {
-                <span><i style="background: @segment.HexColor"></i>@segment.VarietyName - @segment.CurrentBins bins@(segment.IsConfiguredColor ? "" : " (fallback)")</span>
+                <span><i style="background: @segment.HexColor"></i>@segment.VarietyName · @IdentityLabel(segment.ProductionType, segment.OrganicLabel) — @FormatBins(segment.CurrentBins) bins (@segment.Percent.ToString("0.#")%)</span>
             }
         </div>
+        @if (Model.Summary.IsMajorityOrganic) { <p><strong>Majority organic</strong></p> }
         <div class="action-bar">
             <a class="button" href="/BinsRun?RoomId=@Model.Summary.RoomId&amp;Section=Planner&amp;Facility=@Model.Summary.Warehouse">Open in Bins Run &amp; Transfers</a>
             <a class="button secondary-button" href="/Rooms/@Model.Summary.RoomId/CountBreakdown">View Count Breakdown</a>
@@ -80,6 +82,7 @@
                 <span>@Model.Summary.WeakestLotReason</span>
             </p>
         }
+        </div>
     </section>
 }
 
@@ -89,17 +92,60 @@
 }
 
 <section class="panel">
-    <h2>Current Lots</h2>
-    @if (Model.CurrentLots.Count == 0)
+    <h2>Current fruit by grower</h2>
+    <p class="muted">Room → Grower → Variety → Lot → QC samples and inventory evidence</p>
+    @if (Model.CurrentGrowers.Count == 0)
     {
         <p class="muted">No active lots are currently assigned to this room.</p>
     }
     else
     {
-        <div class="responsive-card-grid">
-        @foreach (var lot in Model.CurrentLots)
+        <div class="room-grower-grid">
+        @foreach (var grower in Model.CurrentGrowers)
         {
-            @await Html.PartialAsync("_RoomLotCard", lot)
+            <details class="room-grower-card">
+                <summary>
+                    <span><strong>Grower @grower.GrowerNumber</strong> — @grower.GrowerName</span>
+                    <span>@FormatBins(grower.CurrentBins) bins · @grower.CurrentLotCount lots</span>
+                </summary>
+                <dl class="room-metrics">
+                    <div><dt>Weighted pressure</dt><dd>@FormatLbs(grower.WeightedPressureLbs)</dd><small>@Coverage(grower.PressureRepresentedBins, grower.CurrentBins)</small></div>
+                    <div><dt>Weighted starch</dt><dd>@Format(grower.WeightedStarch)</dd><small>@Coverage(grower.StarchRepresentedBins, grower.CurrentBins)</small></div>
+                </dl>
+                <div class="variety-legend">
+                @foreach (var variety in grower.Varieties)
+                {
+                    <span><i style="background: @variety.HexColor"></i>@variety.DisplayName · @variety.OrganicLabel — @FormatBins(variety.BinCount) bins</span>
+                }
+                </div>
+                <div class="responsive-card-grid room-grower-lots">
+                @foreach (var lot in grower.Lots)
+                {
+                    <article class="subpanel">
+                        <h3>@lot.CanonicalVarietyName — Lot @lot.LotCode</h3>
+                        <p>@IdentityLabel(lot.ProductionType, lot.IsOrganic == true ? "Organic" : lot.IsOrganic == false ? "Conventional" : "Organic status unavailable")</p>
+                        <dl class="summary-list">
+                            <dt>Current bins in this room</dt><dd>@FormatBins(lot.CurrentBins)</dd>
+                            <dt>Receiving date</dt><dd>@BusinessTime.FormatPacific(lot.FirstReceivedAt, empty: "Unavailable")</dd>
+                            <dt>Latest QC</dt><dd>@BusinessTime.FormatPacific(lot.LastSampleDate, empty: "Unavailable")</dd>
+                            <dt>Receiving/latest pressure</dt><dd>@FormatLbs(lot.AveragePressureLbs)</dd>
+                            <dt>Starch</dt><dd>@Format(lot.AverageStarch)</dd>
+                            <dt>Grade</dt><dd>@lot.GradeSummary</dd>
+                            <dt>Size</dt><dd>@lot.SizeSummary</dd>
+                            <dt>Defects</dt><dd>@lot.DefectSummary</dd>
+                        </dl>
+                        <div class="action-bar">
+                            @foreach (var receipt in lot.ReceiptEvidence.Take(4)) { <a class="button secondary-button" href="/Receipts/@receipt.ReceiptId">Receipt @receipt.DisplayReceiptId</a> }
+                            @if (lot.ReceiptEvidenceCount > 4) { <span class="station-code">+ @(lot.ReceiptEvidenceCount - 4) more receipt evidence</span> }
+                            @if (lot.GrowerLotId is int growerLotId) { <a class="button secondary-button" href="/MasterData/grower-lots?Search=@growerLotId">Grower Lot</a> }
+                            @foreach (var sample in lot.Samples.Take(4)) { <a class="button secondary-button" href="/Samples/@sample.SampleId">@sample.DisplayReceiptId QC</a> }
+                            @if (lot.SampleEvidenceCount > 4) { <span class="station-code">+ @(lot.SampleEvidenceCount - 4) more QC evidence</span> }
+                            <a class="button secondary-button" href="/Rooms/@lot.RoomId/CountBreakdown">Inventory evidence</a>
+                        </div>
+                    </article>
+                }
+                </div>
+            </details>
         }
         </div>
     }
@@ -290,12 +336,22 @@
 </section>
 
 @functions {
+    private static string IdentityLabel(string? productionType, string organicLabel) =>
+        string.IsNullOrWhiteSpace(productionType) || string.Equals(productionType, organicLabel, StringComparison.OrdinalIgnoreCase)
+            ? organicLabel
+            : $"{productionType} · {organicLabel}";
+
     private static string RoomStatusClass(string status) =>
         status.Contains("review", StringComparison.OrdinalIgnoreCase) ? "review" :
         status.Contains("active", StringComparison.OrdinalIgnoreCase) ? "ready" :
         status.Contains("empty", StringComparison.OrdinalIgnoreCase) ? "pending" : "";
 
-    private static string Format(decimal? value) => value?.ToString("0.##") ?? "No data";
+    private static string Format(decimal? value) => value?.ToString("0.##") ?? "Unavailable";
+    private static string FormatLbs(decimal? value) => value is null ? "Unavailable" : $"{value:0.##} lb";
+    private static string FormatBins(int value) => value.ToString("N0");
+    private static string Coverage(int represented, int total) => total <= 0
+        ? "Coverage unavailable"
+        : $"Coverage: {represented:N0} of {total:N0} current bins ({decimal.Round(represented / (decimal)total * 100m, 1):0.#}%)";
     private static string FormatSigned(int value) => value > 0 ? $"+{value}" : value.ToString();
     private static string FormatChange(decimal? value) => value is null
         ? "N/A"

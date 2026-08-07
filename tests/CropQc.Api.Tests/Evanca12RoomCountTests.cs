@@ -38,7 +38,7 @@ public sealed class Evanca12RoomCountTests
         Assert.Equal(40, truckDetail.Summary?.CurrentBinsCount);
         Assert.NotNull(detail.Summary);
         Assert.Equal(1022, detail.Summary!.CurrentBinsCount);
-        Assert.Equal("FUJI Sealed: 1022 bins", detail.Summary.VarietyStatusSummary);
+        Assert.Equal("Fuji: 1022 bins", detail.Summary.VarietyStatusSummary);
         Assert.Equal(3, detail.CurrentLots.Count);
         Assert.Equal(1022, breakdown.IncludedBins);
         Assert.Contains(detail.CurrentLots, x => x.InventoryStatus == "Sealed" && x.LotCode == "1570" && x.CurrentBins == 819);
@@ -119,7 +119,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         Assert.Equal(3, await db.RoomInventoryAdjustments.CountAsync(CancellationToken.None));
         var current = await CreateService(db).GetRoomDetailAsync(12, CancellationToken.None);
         Assert.Equal(1022, current.Summary?.CurrentBinsCount);
-        Assert.Equal("FUJI Sealed: 1022 bins", current.Summary?.VarietyStatusSummary);
+        Assert.Equal("Fuji: 1022 bins", current.Summary?.VarietyStatusSummary);
     }
 
     [Fact]
@@ -248,7 +248,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         Assert.Null(page.DataWarning);
         Assert.Equal(3, page.Lots.Count);
         Assert.Equal(1022, page.Lots.Sum(x => x.CurrentBins));
-        Assert.Contains(page.Lots, x => x.Lot == "1570" && x.Variety == "FUJI" && x.CurrentBins == 819);
+        Assert.Contains(page.Lots, x => x.Lot == "1570" && x.Variety == "Fuji" && x.CurrentBins == 819);
         Assert.DoesNotContain(page.Lots, x => x.CurrentBins is 700 or 800);
     }
 
@@ -329,10 +329,10 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         var page = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { CropYear = 2026, RoomId = 17 }, CancellationToken.None);
 
         Assert.Equal(1918, detail.Summary?.CurrentBinsCount);
-        Assert.Contains(detail.CurrentLots, x => x.LotCode == "1020" && x.CurrentBins == 226);
-        Assert.Contains(detail.CurrentLots, x => x.LotCode == "1020" && x.CurrentBins == 333);
-        Assert.Contains(page.Lots, x => x.Lot == "1020" && x.CurrentBins == 226 && x.Grower == "");
-        Assert.Contains(page.Lots, x => x.Lot == "1020" && x.CurrentBins == 333 && x.Grower == "");
+        Assert.Contains(detail.CurrentLots, x => x.LotCode == "1020" && x.CurrentBins == 559);
+        Assert.Single(detail.CurrentLots, x => x.LotCode == "1020");
+        Assert.Contains(page.Lots, x => x.Lot == "1020" && x.CurrentBins == 559 && x.Grower == "");
+        Assert.Single(page.Lots, x => x.Lot == "1020");
     }
 
     [Fact]
@@ -485,70 +485,256 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         Assert.Equal(400, refreshed.StorageByFacility.Single().CurrentBins);
     }
 
-    [Fact]
-    public async Task IncidentBdb7aeaf_CompatibleLegacyAndGrowerLotSnapshotsReconcileWithoutDroppingBins()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task IncidentBdb7aeaf_ZeroLegacyAndCanonicalGrowerLotReconcileToOneExactIdentity(bool reverseReceiptOrder)
     {
-        await using var db = CreateDbContext();
-        var warehouse = new Warehouse { Id = 904, Code = "WP", Name = "WP Packing" };
-        var room = new Room { Id = 901, Warehouse = warehouse, Code = "WP-1", Name = "WP-1", CropQcRoomName = "WP-1", CapacityBins = 500 };
-        var profile = new FruitProfile { Id = 917, Name = "Bartlett", VarietyCode = "BART", FruitType = "Pear", ProductionType = "Conventional" };
+        await using var db = CreateEmptyDbContext();
+        var warehouse = new Warehouse { Id = 1, Code = "WP", Name = "WP Packing" };
+        var room = new Room { Id = 1, Warehouse = warehouse, Code = "WP-1", Name = "WP-1", CropQcRoomName = "WP-1", CapacityBins = 500 };
+        var profile = new FruitProfile { Id = 17, Name = "Bartlett", VarietyCode = "BART", FruitType = "Pear", ProductionType = "Conventional" };
         var growerLot = new GrowerLot
         {
-            Id = 90398,
+            Id = 398,
             Grower = "Grower 1084",
             LotNumber = "1084",
             CreatedAt = DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
             UpdatedAt = DateTimeOffset.Parse("2026-07-01T00:00:00Z")
         };
-        db.AddRange(
-            warehouse,
-            room,
-            profile,
-            growerLot,
-            IncidentReceipt(92, 64, warehouse, room, profile, null),
-            IncidentReceipt(93, 145, warehouse, room, profile, growerLot));
+        var legacyReceipt = IncidentReceipt(reverseReceiptOrder ? 93 : 92, 64, warehouse, room, profile, null);
+        var canonicalReceipt = IncidentReceipt(reverseReceiptOrder ? 92 : 93, 145, warehouse, room, profile, growerLot);
+        var sampleType = new SampleType { Id = 71, Name = "Truck Sample", IsActive = true };
+        var sample = Sample(7101, canonicalReceipt.Id, sampleType, DateTimeOffset.Parse("2026-08-01T18:00:00Z"));
+        var entities = reverseReceiptOrder
+            ? new object[] { warehouse, room, profile, growerLot, sampleType, canonicalReceipt, legacyReceipt, sample, FruitReading(71001, sample.Id, 15m) }
+            : new object[] { warehouse, room, profile, growerLot, sampleType, legacyReceipt, canonicalReceipt, sample, FruitReading(71001, sample.Id, 15m) };
+        db.AddRange(entities);
         await db.SaveChangesAsync();
         var adjustmentsBefore = await db.RoomInventoryAdjustments.CountAsync();
         var logger = new ListLogger<DashboardDataService>();
         var service = CreateService(db, new FixedLedgerQuery([
             IncidentSnapshot(null, 0, 89),
-            IncidentSnapshot(90398, 145, 138)
+            IncidentSnapshot(398, 145, 138)
         ]), logger);
 
         var home = await service.GetHomeDashboardAsync(new RoomSummaryFilterForm { Facility = "All" }, CancellationToken.None);
         var rooms = await service.GetRoomsAsync(new RoomSummaryFilterForm { Facility = "All" }, CancellationToken.None);
+        var detail = await service.GetRoomDetailAsync(room.Id, CancellationToken.None);
         var lots = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026 }, CancellationToken.None);
+        var wpLots = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "WP", CropYear = 2026 }, CancellationToken.None);
+        var ebsLots = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "EBS", CropYear = 2026 }, CancellationToken.None);
+        var growerLots = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Grower = "1084" }, CancellationToken.None);
+        var searchLots = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Search = "1084" }, CancellationToken.None);
+        var canonicalVariety = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Variety = "Bartlett" }, CancellationToken.None);
+        var rawVarietyCode = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Variety = "BART" }, CancellationToken.None);
+        var unrelated = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Variety = "Gala" }, CancellationToken.None);
+        var unrelatedGrower = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Grower = "9999" }, CancellationToken.None);
+        var unrelatedSearch = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Search = "NO-SUCH-LOT" }, CancellationToken.None);
+        var unrelatedYear = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2025 }, CancellationToken.None);
+        var unrelatedWarehouse = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, WarehouseId = 9999 }, CancellationToken.None);
 
         Assert.Null(home.DataWarning);
         Assert.Null(rooms.DataWarning);
+        Assert.Null(detail.DataWarning);
         Assert.Null(lots.DataWarning);
         Assert.Equal(145, home.StorageByFacility.Single().CurrentBins);
+        Assert.Equal(1, home.StorageByFacility.Single().CurrentGrowerLots);
         Assert.Equal(145, rooms.Rooms.Single().CurrentBinsCount);
-        Assert.Equal(145, lots.Lots.Sum(x => x.CurrentBins));
-        Assert.Contains(logger.Messages, x => x.Contains("901|2026|1084|BART|917", StringComparison.Ordinal));
+        Assert.Equal(1, rooms.Rooms.Single().CurrentLotsCount);
+        var current = Assert.Single(detail.CurrentLots);
+        Assert.Equal(398, current.GrowerLotId);
+        Assert.Equal(145, current.CurrentBins);
+        Assert.Equal(2, current.ReceiptEvidenceCount);
+        Assert.Contains(current.ReceiptEvidence, x => x.ReceiptId == legacyReceipt.Id);
+        Assert.Contains(current.ReceiptEvidence, x => x.ReceiptId == canonicalReceipt.Id);
+        var grower = Assert.Single(detail.CurrentGrowers);
+        Assert.Equal(145, grower.CurrentBins);
+        Assert.Equal(1, grower.CurrentLotCount);
+        Assert.Equal(145, grower.PressureRepresentedBins);
+        Assert.Equal(15m, grower.WeightedPressureLbs);
+        var displayedLot = Assert.Single(lots.Lots);
+        Assert.Equal(398, displayedLot.GrowerLotId);
+        Assert.Equal(145, displayedLot.CurrentBins);
+        var storedGrower = Assert.Single(lots.Growers);
+        Assert.Equal(1, storedGrower.CurrentLotCount);
+        Assert.Equal(145, storedGrower.CurrentBins);
+        Assert.Equal(145, storedGrower.PressureRepresentedBins);
+        Assert.Equal(15m, storedGrower.WeightedPressureLbs);
+        Assert.Equal(145, wpLots.TotalCurrentBins);
+        Assert.Equal(0, ebsLots.TotalCurrentBins);
+        Assert.Equal(wpLots.TotalCurrentBins + ebsLots.TotalCurrentBins, lots.TotalCurrentBins);
+        Assert.Equal(145, growerLots.TotalCurrentBins);
+        Assert.Equal(145, searchLots.TotalCurrentBins);
+        Assert.Equal(145, canonicalVariety.TotalCurrentBins);
+        Assert.Equal(canonicalVariety.TotalCurrentBins, rawVarietyCode.TotalCurrentBins);
+        Assert.Equal(0, unrelated.TotalCurrentBins);
+        Assert.Equal(0, unrelatedGrower.TotalCurrentBins);
+        Assert.Equal(0, unrelatedSearch.TotalCurrentBins);
+        Assert.Equal(0, unrelatedYear.TotalCurrentBins);
+        Assert.Equal(0, unrelatedWarehouse.TotalCurrentBins);
+        Assert.Equal(lots.TotalCurrentBins, lots.Lots.Sum(x => x.CurrentBins));
+        Assert.Equal(lots.TotalCurrentBins, lots.Growers.Sum(x => x.CurrentBins));
+        Assert.Equal(lots.TotalCurrentBins, lots.Growers.SelectMany(x => x.Varieties).Sum(x => x.BinCount));
+        Assert.Contains(logger.Messages, x => x.Contains("1|2026|1084|BART|17", StringComparison.Ordinal));
+        Assert.Equal(adjustmentsBefore, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(2, await db.Receipts.CountAsync());
+    }
+
+    [Fact]
+    public async Task CurrentStorageVarietyFilter_ResolvesCanonicalAliasesAcrossReceiptsAndAdjustmentOnlyRows()
+    {
+        await using var db = CreateEmptyDbContext();
+        var warehouse = new Warehouse { Id = 31, Code = "WP", Name = "WP Packing" };
+        var room = new Room { Id = 32, Warehouse = warehouse, Code = "WP-ALIAS", Name = "WP Alias", CropQcRoomName = "WP Alias", CapacityBins = 500 };
+        var gsmt = new FruitProfile { Id = 41, Name = "GSMT", VarietyCode = "GSMT", FruitType = "Apple", ProductionType = "Conventional", IsOrganic = false };
+        var grannysmith = new FruitProfile { Id = 42, Name = "Grannysmith", VarietyCode = "GRANNYSMITH", FruitType = "Apple", ProductionType = "Conventional", IsOrganic = false };
+        var canonicalOrganic = new FruitProfile { Id = 43, Name = "Organic Granny Smith", VarietyCode = "GRANNY SMITH", FruitType = "Apple", ProductionType = "Organic", IsOrganic = true };
+        var gala = new FruitProfile { Id = 44, Name = "Gala", VarietyCode = "GALA", FruitType = "Apple", ProductionType = "Conventional", IsOrganic = false };
+        var receipts = new[]
+        {
+            AliasReceipt(4101, "ALIAS-GSMT", "1084", "A-1", 10, warehouse, room, gsmt),
+            AliasReceipt(4102, "ALIAS-GRANNYSMITH", "1084", "A-2", 20, warehouse, room, grannysmith),
+            AliasReceipt(4103, "ALIAS-CANONICAL", "1084", "A-3", 30, warehouse, room, canonicalOrganic),
+            AliasReceipt(4104, "UNRELATED-GALA", "1084", "G-1", 50, warehouse, room, gala)
+        };
+        var adjustmentOnly = new RoomInventoryAdjustment
+        {
+            Id = 4199,
+            CropYear = 2026,
+            Warehouse = warehouse,
+            Room = room,
+            GrowerName = "Grower 1084",
+            LotNumber = "A-4",
+            VarietyCode = "Grannysmith",
+            ChangeAmount = 40,
+            NewBinCount = 40,
+            AdjustmentType = RoomInventoryImportService.StartingInventoryAdjustmentType,
+            Source = "Alias adjustment fixture",
+            AdjustmentAt = DateTimeOffset.Parse("2026-08-01T00:00:00Z"),
+            CreatedAt = DateTimeOffset.Parse("2026-08-01T00:00:00Z")
+        };
+        db.AddRange(warehouse, room, gsmt, grannysmith, canonicalOrganic, gala);
+        db.Receipts.AddRange(receipts);
+        db.RoomInventoryAdjustments.Add(adjustmentOnly);
+        await db.SaveChangesAsync();
+        var adjustmentCount = await db.RoomInventoryAdjustments.CountAsync();
+        var service = CreateService(db, new FixedLedgerQuery([
+            StorageSnapshot(warehouse.Id, room.Id, gsmt.Id, "A-1", "GSMT", "GSMT", "Conventional", false, 10),
+            StorageSnapshot(warehouse.Id, room.Id, grannysmith.Id, "A-2", "GRANNYSMITH", "Grannysmith", "Conventional", false, 20),
+            StorageSnapshot(warehouse.Id, room.Id, canonicalOrganic.Id, "A-3", "GRANNY SMITH", "Organic Granny Smith", "Organic", true, 30),
+            StorageSnapshot(warehouse.Id, room.Id, null, "A-4", "Grannysmith", "Grannysmith", "", null, 40),
+            StorageSnapshot(warehouse.Id, room.Id, gala.Id, "G-1", "GALA", "Gala", "Conventional", false, 50)
+        ]));
+
+        var canonical = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Variety = "Granny Smith" }, CancellationToken.None);
+        var rawGsmt = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Variety = "GSMT" }, CancellationToken.None);
+        var rawGrannysmith = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Variety = "grAnNySmItH" }, CancellationToken.None);
+        var unrelated = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Variety = "Gala" }, CancellationToken.None);
+
+        Assert.Null(canonical.DataWarning);
+        Assert.Equal(100, canonical.TotalCurrentBins);
+        Assert.Equal(canonical.TotalCurrentBins, rawGsmt.TotalCurrentBins);
+        Assert.Equal(canonical.TotalCurrentBins, rawGrannysmith.TotalCurrentBins);
+        Assert.Equal(4, canonical.Lots.Count);
+        Assert.Contains(canonical.Lots, x => x.Lot == "A-4" && x.CurrentBins == 40);
+        Assert.DoesNotContain(canonical.Lots, x => x.Lot == "G-1");
+        Assert.Equal(50, unrelated.TotalCurrentBins);
+        Assert.All(canonical.Lots, x => Assert.Equal("Granny Smith", x.Variety));
+        var identities = canonical.Growers.SelectMany(x => x.Varieties).ToList();
+        Assert.Contains(identities, x => x.IsOrganic == true && x.ProductionType == "Organic");
+        Assert.Contains(identities, x => x.IsOrganic == false && x.ProductionType == "Conventional");
+        Assert.Equal(adjustmentCount, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(4, await db.Receipts.CountAsync());
+    }
+
+    [Fact]
+    public async Task PostgreSql_CurrentStorageCanonicalAliasFiltering_UsesAuthoritativeLedger_WhenConfigured()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_TEST_CURRENT_STORAGE_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return;
+        }
+
+        ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connectionString);
+        var options = new DbContextOptionsBuilder<CropQcDbContext>();
+        CropQcDatabase.Configure(options, DatabaseProviders.PostgreSql, connectionString);
+        await using var db = new CropQcDbContext(options.Options);
+        Assert.True(await db.Database.EnsureCreatedAsync(), "The configured current-storage PostgreSQL database must start empty.");
+        var warehouse = await db.Warehouses.SingleAsync(x => x.Code == "WP");
+        var room = new Room { Id = 31002, Warehouse = warehouse, Code = "WP-ALIAS", Name = "WP Alias", CropQcRoomName = "WP Alias", CapacityBins = 500 };
+        var gsmt = new FruitProfile { Id = 31011, Name = "GSMT", VarietyCode = "PR174_GSMT", FruitType = "Apple", ProductionType = "Conventional", IsOrganic = false };
+        var grannysmith = new FruitProfile { Id = 31012, Name = "Grannysmith", VarietyCode = "PR174_GRANNYSMITH", FruitType = "Apple", ProductionType = "Conventional", IsOrganic = false };
+        var organic = new FruitProfile { Id = 31013, Name = "Organic Granny Smith", VarietyCode = "PR174_GRANNY_SMITH", FruitType = "Apple", ProductionType = "Organic", IsOrganic = true };
+        var gala = new FruitProfile { Id = 31014, Name = "Gala", VarietyCode = "PR174_GALA", FruitType = "Apple", ProductionType = "Conventional", IsOrganic = false };
+        var receipts = new[]
+        {
+            AliasReceipt(31101, "PG-GSMT", "1084", "A-1", 10, warehouse, room, gsmt),
+            AliasReceipt(31102, "PG-GRANNYSMITH", "1084", "A-2", 20, warehouse, room, grannysmith),
+            AliasReceipt(31103, "PG-CANONICAL", "1084", "A-3", 30, warehouse, room, organic),
+            AliasReceipt(31104, "PG-GALA", "1084", "G-1", 50, warehouse, room, gala)
+        };
+        db.AddRange(room, gsmt, grannysmith, organic, gala);
+        db.Receipts.AddRange(receipts);
+        db.RoomInventoryAdjustments.AddRange(
+            RealReceiptAdjustment(31201, receipts[0]),
+            RealReceiptAdjustment(31202, receipts[1]),
+            RealReceiptAdjustment(31203, receipts[2]),
+            RealReceiptAdjustment(31204, receipts[3]),
+            new RoomInventoryAdjustment
+            {
+                Id = 31205,
+                CropYear = 2026,
+                Warehouse = warehouse,
+                Room = room,
+                GrowerName = "Grower 1084",
+                LotNumber = "A-4",
+                VarietyCode = "Grannysmith",
+                ChangeAmount = 40,
+                NewBinCount = 40,
+                AdjustmentType = RoomInventoryImportService.StartingInventoryAdjustmentType,
+                Source = "PostgreSQL alias fixture",
+                AdjustmentAt = DateTimeOffset.Parse("2026-08-01T00:00:00Z"),
+                CreatedAt = DateTimeOffset.Parse("2026-08-01T00:00:00Z")
+            });
+        await db.SaveChangesAsync();
+        var adjustmentsBefore = await db.RoomInventoryAdjustments.CountAsync();
+        var service = CreateService(db);
+
+        var canonical = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Variety = "Granny Smith" }, CancellationToken.None);
+        var raw = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Variety = "GSMT" }, CancellationToken.None);
+        var unrelated = await service.GetCurrentGrowerLotsAsync(new CurrentGrowerLotsFilterForm { Facility = "All", CropYear = 2026, Variety = "Gala" }, CancellationToken.None);
+
+        Assert.Null(canonical.DataWarning);
+        Assert.Equal(100, canonical.TotalCurrentBins);
+        Assert.Equal(canonical.TotalCurrentBins, raw.TotalCurrentBins);
+        Assert.Equal(50, unrelated.TotalCurrentBins);
+        Assert.Contains(canonical.Lots, x => x.Lot == "A-4" && x.CurrentBins == 40);
+        Assert.All(canonical.Lots, x => Assert.Equal("Granny Smith", x.Variety));
         Assert.Equal(adjustmentsBefore, await db.RoomInventoryAdjustments.CountAsync());
     }
 
     [Fact]
     public async Task ConflictingNonNullGrowerLotSnapshotsFailClosedWithBoundedDiagnostic()
     {
-        await using var db = CreateDbContext();
-        var warehouse = new Warehouse { Id = 904, Code = "WP", Name = "WP Packing" };
-        var room = new Room { Id = 901, Warehouse = warehouse, Code = "WP-1", Name = "WP-1", CropQcRoomName = "WP-1", CapacityBins = 500 };
-        var profile = new FruitProfile { Id = 917, Name = "Bartlett", VarietyCode = "BART", FruitType = "Pear", ProductionType = "Conventional" };
+        await using var db = CreateEmptyDbContext();
+        var warehouse = new Warehouse { Id = 1, Code = "WP", Name = "WP Packing" };
+        var room = new Room { Id = 1, Warehouse = warehouse, Code = "WP-1", Name = "WP-1", CropQcRoomName = "WP-1", CapacityBins = 500 };
+        var profile = new FruitProfile { Id = 17, Name = "Bartlett", VarietyCode = "BART", FruitType = "Pear", ProductionType = "Conventional" };
         db.AddRange(warehouse, room, profile, IncidentReceipt(92, 100, warehouse, room, profile, null));
         await db.SaveChangesAsync();
         var logger = new ListLogger<DashboardDataService>();
         var service = CreateService(db, new FixedLedgerQuery([
-            IncidentSnapshot(90398, 60, 138),
-            IncidentSnapshot(90399, 40, 139)
+            IncidentSnapshot(398, 60, 138),
+            IncidentSnapshot(399, 40, 139)
         ]), logger);
 
         var rooms = await service.GetRoomsAsync(new RoomSummaryFilterForm { Facility = "All" }, CancellationToken.None);
 
         Assert.NotNull(rooms.DataWarning);
         Assert.Empty(rooms.Rooms);
-        Assert.Contains(logger.Messages, x => x.Contains("growerLotIds=90398,90399", StringComparison.Ordinal));
+        Assert.Contains(logger.Messages, x => x.Contains("growerLotIds=398,399", StringComparison.Ordinal));
         Assert.Contains(logger.Messages, x => x.Contains("quantities were not selected or discarded", StringComparison.Ordinal));
         Assert.Empty(db.RoomInventoryAdjustments);
     }
@@ -560,6 +746,24 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
             .Options;
         var db = new CropQcDbContext(options);
         db.Database.EnsureCreated();
+        db.Users.Add(new User
+        {
+            Id = 9001,
+            Email = "wes@fruitandland.com",
+            DisplayName = "Wes",
+            Domain = "fruitandland.com",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        return db;
+    }
+
+    private static CropQcDbContext CreateEmptyDbContext()
+    {
+        var options = new DbContextOptionsBuilder<CropQcDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var db = new CropQcDbContext(options);
         db.Users.Add(new User
         {
             Id = 9001,
@@ -949,15 +1153,62 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
             UpdatedAt = DateTimeOffset.Parse("2026-07-26T19:35:00Z").AddMinutes(id - 92)
         };
 
+    private static Receipt AliasReceipt(
+        long id,
+        string receiptNumber,
+        string growerNumber,
+        string lot,
+        int bins,
+        Warehouse warehouse,
+        Room room,
+        FruitProfile profile) => new()
+        {
+            Id = id,
+            CropYear = 2026,
+            ReceivedAt = DateTimeOffset.Parse("2026-08-01T17:00:00Z").AddMinutes(id - 4101),
+            CompuTechReceiptId = receiptNumber,
+            ReceiptType = "Truck receipt",
+            Warehouse = warehouse,
+            Room = room,
+            FruitProfile = profile,
+            GrowerNumber = growerNumber,
+            GrowerName = "Grower 1084",
+            LotCode = lot,
+            BinCount = bins,
+            CreatedAt = DateTimeOffset.Parse("2026-08-01T17:00:00Z").AddMinutes(id - 4101),
+            UpdatedAt = DateTimeOffset.Parse("2026-08-01T17:00:00Z").AddMinutes(id - 4101)
+        };
+
+    private static RoomInventoryAdjustment RealReceiptAdjustment(long id, Receipt receipt) => new()
+    {
+        Id = id,
+        CropYear = receipt.CropYear,
+        GrowerLotId = receipt.GrowerLotId,
+        Receipt = receipt,
+        Warehouse = receipt.Warehouse,
+        Room = receipt.Room,
+        FruitProfile = receipt.FruitProfile,
+        GrowerName = receipt.GrowerName,
+        LotNumber = receipt.LotCode,
+        VarietyCode = receipt.FruitProfile.VarietyCode,
+        OldBinCount = 0,
+        ChangeAmount = receipt.BinCount,
+        NewBinCount = receipt.BinCount,
+        AdjustmentType = "ReceiptAdd",
+        Source = "Receiving inventory added",
+        AdjustmentAt = receipt.ReceivedAt,
+        CreatedAt = receipt.ReceivedAt
+    };
+
     private static RoomInventoryLedgerSnapshot IncidentSnapshot(int? growerLotId, int currentBins, long latestAdjustmentId) => new(
-        904,
+        1,
         "WP",
-        901,
+        1,
         "WP-1",
         "",
         2026,
         growerLotId,
-        917,
+        17,
         "Grower 1084",
         "1084",
         "1084",
@@ -984,6 +1235,51 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         DateTimeOffset.Parse("2026-08-04T01:28:00Z"),
         latestAdjustmentId,
         growerLotId is null ? "Legacy receipt inventory" : $"Grower Lot {growerLotId}");
+
+    private static RoomInventoryLedgerSnapshot StorageSnapshot(
+        int warehouseId,
+        int roomId,
+        int? fruitProfileId,
+        string lot,
+        string variety,
+        string varietyName,
+        string productionType,
+        bool? isOrganic,
+        int currentBins) => new(
+            warehouseId,
+            "WP",
+            roomId,
+            "WP Alias",
+            "",
+            2026,
+            null,
+            fruitProfileId,
+            "Grower 1084",
+            "1084",
+            lot,
+            null,
+            variety,
+            variety,
+            varietyName,
+            "Apple",
+            productionType,
+            isOrganic,
+            "",
+            currentBins,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            currentBins,
+            1,
+            DateTimeOffset.Parse("2026-08-01T17:00:00Z"),
+            DateTimeOffset.Parse("2026-08-01T17:00:00Z"),
+            9000 + currentBins,
+            "Alias test evidence");
 
     private sealed class FixedLedgerQuery(IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots) : IRoomInventoryLedgerQueryService
     {

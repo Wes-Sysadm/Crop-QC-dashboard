@@ -1,24 +1,12 @@
 @model CurrentGrowerLotsPageViewModel
-@inject IUserAccessService UserAccess
 @{
     ViewData["Title"] = "Grower Lots In Storage";
     ViewData["AutoRefresh"] = "true";
-    var canManageRecipients = await UserAccess.HasAccessAsync(User, ApplicationAreas.Configuration, PageAccessLevel.Admin, Context.RequestAborted);
 }
 
 <h1>Grower Lots In Storage</h1>
-<nav class="operation-tabs" aria-label="Grower Lots administration">
-    <a class="active" href="/GrowerLots/Current?Facility=@Model.Filter.Facility">Grower Lots</a>
-    <a href="/RunReporting/Growers?Facility=@Model.Filter.Facility">Grower &amp; Lot Progress</a>
-    <a href="/MasterData/canonical-growers">Growers</a>
-    <a href="/MasterData/orchard-blocks">Orchards / Blocks</a>
-    @if (canManageRecipients)
-    {
-        <a href="/Admin/OrchardRecipients">QC Recipients</a>
-        <a href="/Admin/OrchardRecipientImports">Manager Import</a>
-        <a href="/Admin/OrchardRecipientImports#recent-review-batches">Unmatched Identities</a>
-    }
-</nav>
+@await Html.PartialAsync("_MasterDataNavigation", "grower-lots")
+<p><a href="/RunReporting/Growers?Facility=@Model.Filter.Facility">Open Grower &amp; Lot Progress reporting</a></p>
 @await Html.PartialAsync("_PageRefreshControls")
 @if (Model.DataWarning is not null)
 {
@@ -66,51 +54,80 @@
         </select>
     </div>
     <div class="field"><label>Grower</label><input name="Grower" value="@Model.Filter.Grower" list="grower-options" /></div>
-    <datalist id="grower-options">@foreach (var grower in Model.Growers){<option value="@grower"></option>}</datalist>
+    <datalist id="grower-options">@foreach (var grower in Model.GrowerOptions){<option value="@grower"></option>}</datalist>
     <div class="field"><label>Variety</label><input name="Variety" value="@Model.Filter.Variety" list="variety-options" /></div>
     <datalist id="variety-options">@foreach (var variety in Model.Varieties){<option value="@variety"></option>}</datalist>
     <div class="field"><label>Lot/Search</label><input name="Search" value="@Model.Filter.Search" /></div>
     <button type="submit">Apply</button>
 </form>
 
-<div class="table-wrap operational-table-wrap">
-    <table class="operational-table">
-        <thead>
-            <tr>
-                <th>Grower</th>
-                <th>Lot</th>
-                <th>Variety</th>
-                <th>Warehouse</th>
-                <th>Room</th>
-                <th>Bins Currently In Storage</th>
-                <th>Receipt/First Received</th>
-                <th>Last QC Sample</th>
-                <th>Latest QC Source</th>
-                <th>Latest Avg Pressure</th>
-                <th>Latest Starch</th>
-            </tr>
-        </thead>
-        <tbody>
-        @foreach (var lot in Model.Lots)
-        {
-            <tr>
-                <td>@lot.Grower</td>
-                <td>@lot.Lot</td>
-                <td>@lot.Variety</td>
-                <td>@lot.Warehouse</td>
-                <td>@lot.Room</td>
-                <td class="numeric-cell">@lot.CurrentBins</td>
-                <td>@BusinessTime.FormatPacific(lot.FirstReceivedAt, empty: "Current inventory baseline")</td>
-                <td>@BusinessTime.FormatPacific(lot.LastQcSampleAt, empty: "-")</td>
-                <td>@(string.IsNullOrWhiteSpace(lot.LatestQcSource) ? "-" : lot.LatestQcSource)</td>
-                <td>@Format(lot.LatestAveragePressure)</td>
-                <td>@Format(lot.LatestStarch)</td>
-            </tr>
-        }
-        </tbody>
-    </table>
-</div>
+<section class="metric-grid storage-metrics" aria-label="Current storage totals">
+    <div><strong>@Model.Growers.Count</strong><span>Growers</span></div>
+    <div><strong>@Model.Growers.Sum(x => x.CurrentLotCount)</strong><span>Current lots</span></div>
+    <div><strong>@Model.Growers.Sum(x => x.CurrentRoomCount)</strong><span>Grower-room groups</span></div>
+    <div><strong>@Model.TotalCurrentBins.ToString("N0")</strong><span>Bins in storage</span></div>
+</section>
+
+@if (Model.Growers.Count == 0)
+{
+    <p class="notice">No current grower lots match the selected filters.</p>
+}
+else
+{
+    <div class="storage-grower-grid">
+    @foreach (var grower in Model.Growers)
+    {
+        <details class="storage-grower-card" open="@(Model.Growers.Count <= 4 ? "open" : null)">
+            <summary>
+                <span><strong>Grower @grower.GrowerNumber — @grower.GrowerName</strong></span>
+                <span>@grower.CurrentBins.ToString("N0") bins · @grower.CurrentLotCount lots in @grower.CurrentRoomCount rooms</span>
+            </summary>
+            <div class="variety-legend storage-variety-legend">
+            @foreach (var variety in grower.Varieties)
+            {
+                <span class="@(variety.IsOrganic == true ? "organic" : "")"><i style="background: @variety.HexColor"></i>@variety.DisplayName · @IdentityLabel(variety.ProductionType, variety.OrganicLabel) — @variety.BinCount.ToString("N0") bins</span>
+            }
+            </div>
+            <dl class="room-metrics storage-qc-metrics">
+                <div><dt>Weighted pressure</dt><dd>@FormatLbs(grower.WeightedPressureLbs)</dd><small>@Coverage(grower.PressureRepresentedBins, grower.CurrentBins)</small></div>
+                <div><dt>Weighted starch</dt><dd>@Format(grower.WeightedStarch)</dd><small>@Coverage(grower.StarchRepresentedBins, grower.CurrentBins)</small></div>
+            </dl>
+            <div class="table-wrap operational-table-wrap">
+                <table class="operational-table current-storage-table">
+                    <thead><tr><th>Lot</th><th>Variety</th><th>Facility</th><th>Room</th><th class="bins-in-storage-column">Bins Currently In Storage</th><th>First received</th><th>Last QC sample</th><th>Latest QC source</th><th>Latest avg pressure</th><th>Latest starch</th></tr></thead>
+                    <tbody>
+                    @foreach (var lot in grower.Lots)
+                    {
+                        <tr>
+                            <td>@lot.Lot</td>
+                            <td><span class="variety-inline-label @(lot.IsOrganic == true ? "organic" : "")" style="--variety-color: @lot.VarietyHexColor"><i></i>@lot.Variety · @(lot.IsOrganic == true ? "Organic" : lot.IsOrganic == false ? "Conventional" : "Status unavailable")</span></td>
+                            <td>@lot.Warehouse</td>
+                            <td>@lot.Room</td>
+                            <td class="bins-in-storage-column">@lot.CurrentBins.ToString("N0")</td>
+                            <td>@BusinessTime.FormatPacific(lot.FirstReceivedAt, empty: "Current inventory baseline")</td>
+                            <td>@BusinessTime.FormatPacific(lot.LastQcSampleAt, empty: "-")</td>
+                            <td>@(string.IsNullOrWhiteSpace(lot.LatestQcSource) ? "-" : lot.LatestQcSource)</td>
+                            <td>@FormatLbs(lot.LatestAveragePressure)</td>
+                            <td>@Format(lot.LatestStarch)</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    }
+    </div>
+}
 
 @functions {
+    private static string IdentityLabel(string? productionType, string organicLabel) =>
+        string.IsNullOrWhiteSpace(productionType) || string.Equals(productionType, organicLabel, StringComparison.OrdinalIgnoreCase)
+            ? organicLabel
+            : $"{productionType} · {organicLabel}";
+
     private static string Format(decimal? value) => value?.ToString("0.##") ?? "-";
+    private static string FormatLbs(decimal? value) => value is null ? "Unavailable" : $"{value:0.##} lb";
+    private static string Coverage(int represented, int total) => total <= 0
+        ? "Coverage unavailable"
+        : $"Coverage: {represented:N0} of {total:N0} bins ({decimal.Round(represented / (decimal)total * 100m, 1):0.#}%)";
 }

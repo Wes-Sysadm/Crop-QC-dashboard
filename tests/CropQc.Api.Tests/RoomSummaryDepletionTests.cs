@@ -111,7 +111,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("IsMajorityOrganic", model);
         Assert.Contains("VarietyColorService.NormalizeIdentity(x.VarietyName, x.Variety)", service);
         Assert.Contains("x.IsOrganic", service);
-        Assert.Contains("GroupBy(x => x.VarietyKey", service);
+        Assert.Contains("x.VarietyKey}\\u001f{x.ProductionType}\\u001f{x.IsOrganic", service);
         Assert.Contains("bins / (decimal)totalBins * 100m", service);
         Assert.Contains("organicBins / (decimal)currentBins > 0.51m", service);
         Assert.Contains("dbContext.VarietyColorConfigurations.AsNoTracking()", service);
@@ -121,8 +121,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Majority organic", dashboard);
         Assert.Contains("Organic status unknown", dashboard);
         Assert.Contains("variety-legend", dashboard);
-        Assert.Contains("Organic status", room);
-        Assert.Contains("stripes", room);
+        Assert.Contains("OrganicLabel", room);
+        Assert.Contains("Majority organic", room);
         Assert.Contains("repeating-linear-gradient(135deg", css);
         Assert.Contains("background: var(--room-variety-bg", css);
     }
@@ -316,8 +316,9 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("NetChangeBins", model);
         Assert.Contains("CompuTechCode", model);
         Assert.Contains("LastActivityAt", model);
-        Assert.Contains("Current Bins", rooms);
-        Assert.Contains("Starting Season", rooms);
+        Assert.Contains("bins</strong> /", rooms);
+        Assert.Contains("capacity", rooms);
+        Assert.Contains("Current grower lots", rooms);
         Assert.Contains("Linked Receipts", room);
         Assert.Contains("Room Transaction History", room);
     }
@@ -618,8 +619,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("CurrentGrowerLotsPageViewModel", model);
         Assert.Contains("/GrowerLots/Current", dashboard);
         Assert.Contains("Bins Currently In Storage", growerLots);
-        Assert.Contains("Last QC Sample", growerLots);
-        Assert.Contains("Latest Avg Pressure", growerLots);
+        Assert.Contains("Last QC sample", growerLots);
+        Assert.Contains("Latest avg pressure", growerLots);
         Assert.Contains("GetCurrentGrowerLotsAsync", controller);
     }
 
@@ -717,7 +718,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Projected Packed Boxes by Pack", binsRun);
         Assert.Contains("Change Over Time", room);
         Assert.Contains("plan has not changed inventory", binsRun);
-        Assert.Contains("Current Lots", room);
+        Assert.Contains("Current fruit by grower", room);
         Assert.Contains("Linked Receipts", room);
         Assert.Contains("Room Transaction History", room);
         Assert.Contains("Depletion History", room);
