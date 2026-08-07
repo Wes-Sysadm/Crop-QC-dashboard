@@ -438,7 +438,7 @@ public sealed class EndOfDayFillService(
     private async Task<SnapshotBuild> BuildSnapshotAsync(User user, int groupId, CancellationToken cancellationToken)
     {
         var group = await dbContext.EndOfDayFillReportGroups.AsNoTracking()
-            .Include(x => x.Rooms).ThenInclude(x => x.Room).ThenInclude(x => x.Warehouse)
+            .Include(x => x.Rooms).ThenInclude(x => x.Warehouse)
             .SingleOrDefaultAsync(x => x.Id == groupId, cancellationToken);
         var recipients = await dbContext.EndOfDayFillReportRecipients.AsNoTracking()
             .Where(x => x.IsActive)
@@ -452,11 +452,11 @@ public sealed class EndOfDayFillService(
             return new(new EndOfDayFillPreviewViewModel { SelectedGroupId = groupId, Issues = issues }, null);
         }
         if (group.Rooms.Count == 0) issues.Add(new("no-rooms", "Assign at least one room to this report group in Master Data."));
-        foreach (var membership in group.Rooms)
+        foreach (var room in group.Rooms)
         {
-            if (!facilityContext.GetOperatingCompanyFacility(membership.Room.Warehouse.Code, membership.Room.Warehouse.Name).Equals(group.Facility, StringComparison.OrdinalIgnoreCase))
+            if (!facilityContext.GetOperatingCompanyFacility(room.Warehouse.Code, room.Warehouse.Name).Equals(group.Facility, StringComparison.OrdinalIgnoreCase))
             {
-                issues.Add(new("cross-facility-room", $"Room {membership.Room.Code} does not belong to {group.Facility}.", membership.RoomId));
+                issues.Add(new("cross-facility-room", $"Room {room.Code} does not belong to {group.Facility}.", room.Id));
             }
         }
         if (recipients.Count == 0) issues.Add(new("no-recipients", "Add at least one active report recipient in Master Data."));
@@ -472,7 +472,7 @@ public sealed class EndOfDayFillService(
         {
             try
             {
-                lots = await inventorySource.GetCurrentLotsAsync(group.Rooms.Select(x => x.RoomId).ToList(), cancellationToken);
+                lots = await inventorySource.GetCurrentLotsAsync(group.Rooms.Select(x => x.Id).ToList(), cancellationToken);
             }
             catch (InvalidOperationException ex)
             {
@@ -493,12 +493,12 @@ public sealed class EndOfDayFillService(
         }
 
         var rooms = new List<EndOfDayFillRoomViewModel>();
-        foreach (var membership in group.Rooms.OrderBy(x => x.Room.SortOrder).ThenBy(x => x.Room.Code))
+        foreach (var room in group.Rooms.Where(x => x.IsActive).OrderBy(x => x.SortOrder).ThenBy(x => x.Code))
         {
-            var roomLots = lots.Where(x => x.RoomId == membership.RoomId && x.CurrentBins > 0).ToList();
+            var roomLots = lots.Where(x => x.RoomId == room.Id && x.CurrentBins > 0).ToList();
             if (roomLots.Count == 0) continue;
-            if (membership.Room.CapacityBins <= 0)
-                issues.Add(new("invalid-capacity", $"Room {membership.Room.Code} is occupied but has no valid configured capacity.", membership.RoomId));
+            if (room.CapacityBins <= 0)
+                issues.Add(new("invalid-capacity", $"Room {room.Code} is occupied but has no valid configured capacity.", room.Id));
             var varieties = roomLots
                 .GroupBy(x => new { x.CanonicalVarietyKey, x.CanonicalVarietyName, x.ProductionType, Organic = x.IsOrganic == true, x.VarietyHexColor })
                 .Select(v => new EndOfDayFillVarietyViewModel
@@ -517,14 +517,14 @@ public sealed class EndOfDayFillService(
                 .ToList();
             var currentBins = roomLots.Sum(x => x.CurrentBins);
             if (varieties.Sum(x => x.Growers.Sum(g => g.Bins)) != currentBins)
-                issues.Add(new("room-reconciliation", $"Room {membership.Room.Code} does not reconcile to its variety/grower detail.", membership.RoomId));
+                issues.Add(new("room-reconciliation", $"Room {room.Code} does not reconcile to its variety/grower detail.", room.Id));
             rooms.Add(new EndOfDayFillRoomViewModel
             {
-                RoomId = membership.RoomId,
-                RoomCode = membership.Room.Code,
-                RoomName = membership.Room.DisplayName ?? membership.Room.Name,
+                RoomId = room.Id,
+                RoomCode = room.Code,
+                RoomName = room.DisplayName ?? room.Name,
                 CurrentBins = currentBins,
-                CapacityBins = membership.Room.CapacityBins,
+                CapacityBins = room.CapacityBins,
                 Varieties = varieties
             });
         }
@@ -545,7 +545,7 @@ public sealed class EndOfDayFillService(
             group.Id,
             group.Name.Trim(),
             group.Facility,
-            group.Rooms.Select(x => x.RoomId).Order().ToArray(),
+            group.Rooms.Select(x => x.Id).Order().ToArray(),
             recipients.Select(NormalizeEmail).Order(StringComparer.Ordinal).ToArray(),
             rooms.Select(room => new NormalizedRoom(room.RoomId, room.RoomCode, room.RoomName, room.CapacityBins, room.CurrentBins,
                 room.Varieties.Select(v => new NormalizedVariety(v.CanonicalKey, v.Name, v.ProductionType, v.IsOrganic,

@@ -82,7 +82,6 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<ReceiptPurgeOperation> ReceiptPurgeOperations => Set<ReceiptPurgeOperation>();
     public DbSet<FieldSampleDeletionAudit> FieldSampleDeletionAudits => Set<FieldSampleDeletionAudit>();
     public DbSet<EndOfDayFillReportGroup> EndOfDayFillReportGroups => Set<EndOfDayFillReportGroup>();
-    public DbSet<EndOfDayFillReportGroupRoom> EndOfDayFillReportGroupRooms => Set<EndOfDayFillReportGroupRoom>();
     public DbSet<EndOfDayFillReportRecipient> EndOfDayFillReportRecipients => Set<EndOfDayFillReportRecipient>();
     public DbSet<EndOfDayFillUserGroupAssignment> EndOfDayFillUserGroupAssignments => Set<EndOfDayFillUserGroupAssignment>();
     public DbSet<EndOfDayFillReportSend> EndOfDayFillReportSends => Set<EndOfDayFillReportSend>();
@@ -247,12 +246,13 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.ToTable(table => table.HasCheckConstraint("CK_EndOfDayFillReportGroups_Facility", "\"Facility\" IN ('WP', 'EBS')"));
         });
 
-        modelBuilder.Entity<EndOfDayFillReportGroupRoom>(entity =>
+        modelBuilder.Entity<Room>(entity =>
         {
-            entity.HasIndex(x => new { x.ReportGroupId, x.RoomId }).IsUnique();
-            entity.HasOne(x => x.ReportGroup).WithMany(x => x.Rooms).HasForeignKey(x => x.ReportGroupId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(x => x.EndOfDayFillReportGroupId);
+            entity.HasOne(x => x.EndOfDayFillReportGroup)
+                .WithMany(x => x.Rooms)
+                .HasForeignKey(x => x.EndOfDayFillReportGroupId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<EndOfDayFillReportRecipient>(entity =>

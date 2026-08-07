@@ -105,13 +105,12 @@ public sealed class EndOfDayFillHistoryDetailViewModel
 public sealed class EndOfDayFillAdminPageViewModel
 {
     public IReadOnlyList<EndOfDayFillAdminGroupViewModel> Groups { get; set; } = [];
-    public IReadOnlyList<EndOfDayFillAdminRoomViewModel> Rooms { get; set; } = [];
     public IReadOnlyList<EndOfDayFillAdminRecipientViewModel> Recipients { get; set; } = [];
     public IReadOnlyList<EndOfDayFillPendingAttemptViewModel> StaleAttempts { get; set; } = [];
 }
 
-public sealed record EndOfDayFillAdminGroupViewModel(int Id, string Name, string Facility, bool IsActive, IReadOnlyList<int> RoomIds);
-public sealed record EndOfDayFillAdminRoomViewModel(int Id, string Facility, string Code, string Name, string? Location, int CapacityBins, int? ActiveGroupId);
+public sealed record EndOfDayFillAdminGroupViewModel(int Id, string Name, string Facility, bool IsActive, int AssignedRoomCount, IReadOnlyList<EndOfDayFillAdminRoomViewModel> AssignedRooms);
+public sealed record EndOfDayFillAdminRoomViewModel(int Id, string Facility, string Code, string Name, string? Location, int CapacityBins);
 public sealed record EndOfDayFillAdminRecipientViewModel(int Id, string Email, bool IsActive, int SortOrder);
 
 public sealed class EndOfDayFillGroupForm
@@ -120,7 +119,6 @@ public sealed class EndOfDayFillGroupForm
     public string Name { get; set; } = "";
     public string Facility { get; set; } = "";
     public bool IsActive { get; set; }
-    public List<int> RoomIds { get; set; } = [];
 }
 
 public sealed class EndOfDayFillRecipientForm

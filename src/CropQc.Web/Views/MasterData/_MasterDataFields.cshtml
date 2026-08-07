@@ -1,7 +1,11 @@
 @model MasterDataEditForm
 @inject CropQc.Data.CropQcDbContext DbContext
+@inject CropQc.Web.Services.IFacilityContextService FacilityContext
 @{
     var warehouses = DbContext.Warehouses.OrderBy(x => x.Code).ToList();
+    var endOfDayFillGroups = Model.Type == "rooms"
+        ? DbContext.EndOfDayFillReportGroups.Where(x => x.IsActive).OrderBy(x => x.Facility).ThenBy(x => x.Name).ToList()
+        : [];
     var commodityOptions = (Model.CommodityOptions.Count > 0 ? Model.CommodityOptions : new[] { "Apple", "Pear" })
         .Append(Model.FruitType)
         .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -29,6 +33,45 @@ else if (Model.Type == "rooms")
     <div class="field"><label>Name</label><input name="Name" value="@Model.Name" required /></div>
     <div class="field"><label>Compu-Tech Code</label><input name="CompuTechCode" value="@Model.CompuTechCode" maxlength="100" /></div>
     <div class="field"><label>Capacity Bins</label><input name="CapacityBins" type="number" min="0" value="@Model.CapacityBins" required /></div>
+    <div class="field wide">
+        <label>End of Day Fill Report</label>
+        <select name="EndOfDayFillReportGroupId" data-end-of-day-fill-group>
+            <option value="">Not included</option>
+            @foreach (var group in endOfDayFillGroups)
+            {
+                <option value="@group.Id" data-facility="@group.Facility" selected="@(Model.EndOfDayFillReportGroupId == group.Id ? "selected" : null)">@group.Name</option>
+            }
+        </select>
+        <span class="muted" data-end-of-day-fill-group-help>Only active reports for the selected room warehouse are available. This room record is the authoritative report membership.</span>
+    </div>
+    <script>
+        (() => {
+            const warehouse = document.querySelector('select[name="WarehouseId"]');
+            const group = document.querySelector('[data-end-of-day-fill-group]');
+            const help = document.querySelector('[data-end-of-day-fill-group-help]');
+            const facilities = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(warehouses.ToDictionary(x => x.Id.ToString(), x => FacilityContext.GetOperatingCompanyFacility(x.Code, x.Name))));
+            const filterGroups = () => {
+                const facility = facilities[warehouse?.value] || "";
+                [...group.options].forEach(option => {
+                    if (!option.value) return;
+                    const incompatible = option.dataset.facility !== facility;
+                    option.hidden = incompatible && !option.selected;
+                    option.disabled = incompatible && !option.selected;
+                });
+                const selected = group.selectedOptions[0];
+                const incompatibleSelection = selected?.value && selected.dataset.facility !== facility;
+                group.setCustomValidity(incompatibleSelection
+                    ? `The selected ${selected.dataset.facility} report cannot be assigned to this ${facility || "unresolved"} room.`
+                    : "");
+                help.textContent = incompatibleSelection
+                    ? `The selected report belongs to ${selected.dataset.facility}. Choose ${facility || "the room's facility"} or Not included before saving.`
+                    : "Only active reports for the selected room warehouse are available. This room record is the authoritative report membership.";
+            };
+            warehouse?.addEventListener("change", filterGroups);
+            group?.addEventListener("change", filterGroups);
+            filterGroups();
+        })();
+    </script>
 }
 else if (Model.Type == "grower-lots")
 {

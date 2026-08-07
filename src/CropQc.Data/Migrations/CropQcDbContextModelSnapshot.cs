@@ -1488,38 +1488,6 @@ namespace CropQc.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("CropQc.Data.Entities.EndOfDayFillReportGroupRoom", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("CreatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ReportGroupId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("RoomId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("RoomId");
-
-                    b.HasIndex("ReportGroupId", "RoomId")
-                        .IsUnique();
-
-                    b.ToTable("EndOfDayFillReportGroupRooms");
-                });
-
             modelBuilder.Entity("CropQc.Data.Entities.EndOfDayFillReportRecipient", b =>
                 {
                     b.Property<int>("Id")
@@ -4695,6 +4663,9 @@ namespace CropQc.Data.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
 
+                    b.Property<int?>("EndOfDayFillReportGroupId")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -4714,6 +4685,8 @@ namespace CropQc.Data.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EndOfDayFillReportGroupId");
 
                     b.HasIndex("WarehouseId", "Code")
                         .IsUnique();
@@ -6884,32 +6857,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("CommercialPackPlan");
                 });
 
-            modelBuilder.Entity("CropQc.Data.Entities.EndOfDayFillReportGroupRoom", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.EndOfDayFillReportGroup", "ReportGroup")
-                        .WithMany("Rooms")
-                        .HasForeignKey("ReportGroupId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.Room", "Room")
-                        .WithMany()
-                        .HasForeignKey("RoomId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("ReportGroup");
-
-                    b.Navigation("Room");
-                });
-
             modelBuilder.Entity("CropQc.Data.Entities.EndOfDayFillReportRecipient", b =>
                 {
                     b.HasOne("CropQc.Data.Entities.User", "UpdatedByUser")
@@ -7576,11 +7523,18 @@ namespace CropQc.Data.Migrations
 
             modelBuilder.Entity("CropQc.Data.Entities.Room", b =>
                 {
+                    b.HasOne("CropQc.Data.Entities.EndOfDayFillReportGroup", "EndOfDayFillReportGroup")
+                        .WithMany("Rooms")
+                        .HasForeignKey("EndOfDayFillReportGroupId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("CropQc.Data.Entities.Warehouse", "Warehouse")
                         .WithMany("Rooms")
                         .HasForeignKey("WarehouseId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("EndOfDayFillReportGroup");
 
                     b.Navigation("Warehouse");
                 });

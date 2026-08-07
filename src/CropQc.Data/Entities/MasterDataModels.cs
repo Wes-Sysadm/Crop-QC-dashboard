@@ -24,6 +24,8 @@ public sealed class Room
     public int SortOrder { get; set; }
     public int CapacityBins { get; set; }
     public bool IsActive { get; set; } = true;
+    public int? EndOfDayFillReportGroupId { get; set; }
+    public EndOfDayFillReportGroup? EndOfDayFillReportGroup { get; set; }
 }
 
 public sealed class GrowerLot

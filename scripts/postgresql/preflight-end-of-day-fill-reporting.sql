@@ -18,12 +18,19 @@ BEGIN
 
     SELECT count(*) INTO target_table_count
     FROM (VALUES
-        ('EndOfDayFillReportGroups'), ('EndOfDayFillReportGroupRooms'),
+        ('EndOfDayFillReportGroups'),
         ('EndOfDayFillReportRecipients'), ('EndOfDayFillUserGroupAssignments'),
         ('EndOfDayFillReportSends'), ('EndOfDayFillSendReservations')) AS expected(name)
     WHERE to_regclass(format('%I.%I', current_schema(), expected.name)) IS NOT NULL;
-    IF target_table_count NOT IN (0, 6) THEN
-        RAISE EXCEPTION 'Unsupported partial End of Day Fill table state detected (% of 6 tables). No changes were made.', target_table_count;
+    IF target_table_count NOT IN (0, 5) THEN
+        RAISE EXCEPTION 'Unsupported partial End of Day Fill table state detected (% of 5 tables). No changes were made.', target_table_count;
+    END IF;
+    IF (target_table_count = 0 AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='Rooms' AND column_name='EndOfDayFillReportGroupId'))
+       OR (target_table_count = 5 AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='Rooms' AND column_name='EndOfDayFillReportGroupId')) THEN
+        RAISE EXCEPTION 'Unsupported partial Room End of Day Fill assignment state. No changes were made.';
+    END IF;
+    IF to_regclass(format('%I.%I', current_schema(), 'EndOfDayFillReportGroupRooms')) IS NOT NULL THEN
+        RAISE EXCEPTION 'Obsolete draft EndOfDayFillReportGroupRooms table detected. No changes were made.';
     END IF;
 
     IF target_table_count = 0 THEN
@@ -32,7 +39,7 @@ BEGIN
         WHERE n.nspname=current_schema()
           AND c.relname IN (
             'IX_EndOfDayFillReportGroups_Name',
-            'IX_EndOfDayFillReportGroupRooms_ReportGroupId_RoomId',
+            'IX_Rooms_EndOfDayFillReportGroupId',
             'IX_EndOfDayFillReportRecipients_NormalizedEmailAddress',
             'IX_EndOfDayFillUserGroupAssignments_UserId_ReportGroupId',
             'IX_EndOfDayFillReportSends_SuccessRevisionKey',
@@ -53,7 +60,7 @@ BEGIN
         RAISE EXCEPTION 'Expected exactly one active DH, McDougall, and EBS warehouse identity. No changes were made.';
     END IF;
 
-    IF target_table_count = 6 THEN
+    IF target_table_count = 5 THEN
         IF EXISTS (SELECT 1 FROM "EndOfDayFillReportSends")
            OR EXISTS (SELECT 1 FROM "EndOfDayFillSendReservations") THEN
             RAISE EXCEPTION 'Existing End of Day Fill send or reservation data is incompatible with an initial deployment apply.';

@@ -109,21 +109,10 @@ public sealed class EndOfDayFillProductionRestoreBenchmarkTests
         var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
         var user = await db.Users.SingleAsync(x => x.Email.ToLower() == ApplicationAreas.OwnerEmail);
         var primary = await db.EndOfDayFillReportGroups.SingleAsync(x => x.Name == "WP End of Day Fill");
-        var warehouseId = await db.EndOfDayFillReportGroupRooms
-            .Where(x => x.ReportGroupId == primary.Id)
-            .Select(x => x.Room.WarehouseId)
+        var warehouseId = await db.Rooms
+            .Where(x => x.EndOfDayFillReportGroupId == primary.Id)
+            .Select(x => x.WarehouseId)
             .FirstAsync();
-        var rooms = Enumerable.Range(1, concurrentGroups).Select(index => new Room
-        {
-            WarehouseId = warehouseId,
-            Code = $"EOD-BENCH-{index:D3}",
-            Name = $"Disposable EOD benchmark room {index:D3}",
-            DisplayName = $"Disposable EOD benchmark room {index:D3}",
-            CapacityBins = 1,
-            SortOrder = 10000 + index,
-            IsActive = true
-        }).ToList();
-        db.Rooms.AddRange(rooms);
         var groups = Enumerable.Range(1, concurrentGroups).Select(index => new EndOfDayFillReportGroup
         {
             Name = $"EOD disposable benchmark {index:D3}",
@@ -134,9 +123,20 @@ public sealed class EndOfDayFillProductionRestoreBenchmarkTests
         }).ToList();
         db.EndOfDayFillReportGroups.AddRange(groups);
         await db.SaveChangesAsync();
+        var rooms = Enumerable.Range(1, concurrentGroups).Select(index => new Room
+        {
+            WarehouseId = warehouseId,
+            Code = $"EOD-BENCH-{index:D3}",
+            Name = $"Disposable EOD benchmark room {index:D3}",
+            DisplayName = $"Disposable EOD benchmark room {index:D3}",
+            CapacityBins = 1,
+            SortOrder = 10000 + index,
+            IsActive = true,
+            EndOfDayFillReportGroupId = groups[index - 1].Id
+        }).ToList();
+        db.Rooms.AddRange(rooms);
         for (var index = 0; index < groups.Count; index++)
         {
-            db.EndOfDayFillReportGroupRooms.Add(new EndOfDayFillReportGroupRoom { ReportGroupId = groups[index].Id, RoomId = rooms[index].Id, CreatedAt = DateTimeOffset.UtcNow });
             db.EndOfDayFillUserGroupAssignments.Add(new EndOfDayFillUserGroupAssignment { UserId = user.Id, ReportGroupId = groups[index].Id, CreatedAt = DateTimeOffset.UtcNow });
         }
         await db.SaveChangesAsync();

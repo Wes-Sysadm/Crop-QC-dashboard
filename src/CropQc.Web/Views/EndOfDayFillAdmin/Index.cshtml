@@ -1,7 +1,7 @@
 @model EndOfDayFillAdminPageViewModel
 @{ ViewData["Title"] = "End of Day Fill Report Groups"; }
 <partial name="_MasterDataNavigation" model='"end-of-day-fill"' />
-<div class="page-heading-row"><div><h1>End of Day Fill Report Groups</h1><p class="muted">Configure explicit room scopes and the global recipient list. Room membership is never inferred from display text.</p></div><a href="/MasterData">Back to Master Data</a></div>
+<div class="page-heading-row"><div><h1>End of Day Fill Report Groups</h1><p class="muted">Configure report definitions and the global recipient list. Room membership is authoritative on each Room master record.</p></div><a href="/MasterData">Back to Master Data</a></div>
 @if (TempData["Error"] is not null) { <p class="notice warning">@TempData["Error"]</p> }
 @if (TempData["Success"] is not null) { <p class="notice success">@TempData["Success"]</p> }
 
@@ -38,14 +38,22 @@
         <form method="post" action="/MasterData/end-of-day-fill-groups/group">
             <input type="hidden" name="Id" value="@group.Id" />
             <div class="form-grid"><label class="field">Name<input name="Name" value="@group.Name" required maxlength="150" /></label><label class="field">Facility<select name="Facility"><option selected="@(group.Facility == "WP")">WP</option><option selected="@(group.Facility == "EBS")">EBS</option></select></label><label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@group.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" /></div>
-            <h3>Explicit room membership</h3>
-            <div class="checkbox-grid">
-            @foreach (var room in Model.Rooms.Where(x => x.Facility == group.Facility))
+            <h3>Rooms assigned to this report: @group.AssignedRoomCount</h3>
+            @if (group.AssignedRooms.Count > 0)
             {
-                var unavailable = room.ActiveGroupId is not null && room.ActiveGroupId != group.Id;
-                <label class="checkbox-field"><input type="checkbox" name="RoomIds" value="@room.Id" checked="@group.RoomIds.Contains(room.Id)" disabled="@unavailable" /> <strong>@room.Code</strong> — @room.Name — @room.Location — @room.CapacityBins bins @if (unavailable) { <span>(assigned to another active group)</span> }</label>
+                <ul class="compact-list">
+                @foreach (var room in group.AssignedRooms)
+                {
+                    <li><strong>@room.Code</strong> — @room.Name @if (!string.IsNullOrWhiteSpace(room.Location)) { <span>— @room.Location</span> } — @room.CapacityBins bins</li>
+                }
+                </ul>
             }
-            </div><button type="submit">Save group and rooms</button>
+            else
+            {
+                <p class="muted">No rooms are currently assigned.</p>
+            }
+            <p><a href="/MasterData/rooms">Manage room assignments</a></p>
+            <button type="submit">Save group</button>
         </form>
     </section>
 }

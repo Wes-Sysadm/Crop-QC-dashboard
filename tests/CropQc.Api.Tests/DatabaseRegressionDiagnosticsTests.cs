@@ -335,6 +335,10 @@ public sealed class DatabaseRegressionDiagnosticsTests
         Assert.Contains("pg_advisory_xact_lock", script);
         Assert.Contains("ON CONFLICT", script);
         Assert.Contains("Unsupported partial End of Day Fill schema", script);
+        Assert.Contains("ALTER TABLE \"Rooms\" ADD COLUMN \"EndOfDayFillReportGroupId\"", script);
+        Assert.Contains("Preserving authoritative Room master-data assignments on repeat apply", script);
+        Assert.Contains("Room capacity fingerprint changed", script);
+        Assert.DoesNotContain("CREATE TABLE \"EndOfDayFillReportGroupRooms\"", script);
         Assert.Contains("migration history is intentionally untouched", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("INSERT INTO \"__EFMigrationsHistory\"", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("delete from", script, StringComparison.OrdinalIgnoreCase);
@@ -349,6 +353,8 @@ public sealed class DatabaseRegressionDiagnosticsTests
         Assert.Contains("CK_EndOfDayFillReportGroups_Facility", script);
         Assert.Contains("IX_EndOfDayFillReportSends_SuccessRevisionKey", script);
         Assert.Contains("FK_EndOfDayFillSendReservations_EndOfDayFillReportSends_SendAttemptId", script);
+        Assert.Contains("FK_Rooms_EndOfDayFillReportGroups_EndOfDayFillReportGroupId", script);
+        Assert.Contains("Obsolete room-membership join table must not exist", script);
         Assert.Contains("initial_send_count", script);
         Assert.Contains("initial_reservation_count", script);
         Assert.DoesNotContain("alter table", script, StringComparison.OrdinalIgnoreCase);

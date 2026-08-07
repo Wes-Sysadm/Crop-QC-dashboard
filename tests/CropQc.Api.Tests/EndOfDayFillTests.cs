@@ -226,15 +226,12 @@ public sealed class EndOfDayFillTests
     }
 
     [Fact]
-    public async Task AdminConfiguration_RejectsCrossFacilityAndDuplicateActiveMembership_AndAuditsAssignments()
+    public async Task GroupConfiguration_DoesNotOwnRoomMembership_AndAuditsUserAssignments()
     {
         await using var fixture = await Fixture.CreateAsync();
         var admin = fixture.CreateAdminService();
-        var crossFacility = await admin.SaveGroupAsync(new EndOfDayFillGroupForm { Name = "Bad", Facility = "EBS", IsActive = true, RoomIds = [Fixture.RoomId] }, Fixture.SenderEmail, default);
-        Assert.Contains("does not belong", crossFacility);
-
-        var duplicate = await admin.SaveGroupAsync(new EndOfDayFillGroupForm { Name = "Other WP", Facility = "WP", IsActive = true, RoomIds = [Fixture.RoomId] }, Fixture.SenderEmail, default);
-        Assert.Contains("already belongs", duplicate);
+        Assert.Null(await admin.SaveGroupAsync(new EndOfDayFillGroupForm { Name = "Other WP", Facility = "WP", IsActive = true }, Fixture.SenderEmail, default));
+        Assert.Equal(1, (await admin.GetPageAsync(default)).Groups.Single(x => x.Id == 1).AssignedRoomCount);
 
         var user = await fixture.Db.Users.SingleAsync(x => x.Email == Fixture.UnassignedEmail);
         Assert.Null(await admin.SaveUserAssignmentsAsync(new EndOfDayFillUserAssignmentsForm { UserId = user.Id, GroupIds = [1] }, Fixture.SenderEmail, default));
@@ -252,19 +249,17 @@ public sealed class EndOfDayFillTests
         {
             Name = "Second WP scope",
             Facility = "WP",
-            IsActive = true,
-            RoomIds = [Fixture.UnconfiguredRoomId]
+            IsActive = true
         }, Fixture.SenderEmail, default));
         var group = await fixture.Db.EndOfDayFillReportGroups.Include(x => x.Rooms).SingleAsync(x => x.Name == "Second WP scope");
-        Assert.Equal([Fixture.UnconfiguredRoomId], group.Rooms.Select(x => x.RoomId));
+        Assert.Empty(group.Rooms);
 
         Assert.Null(await admin.SaveGroupAsync(new EndOfDayFillGroupForm
         {
             Id = group.Id,
             Name = "Renamed WP scope",
             Facility = "WP",
-            IsActive = false,
-            RoomIds = [Fixture.UnconfiguredRoomId]
+            IsActive = false
         }, Fixture.SenderEmail, default));
         Assert.False((await fixture.Db.EndOfDayFillReportGroups.SingleAsync(x => x.Id == group.Id)).IsActive);
 
@@ -279,6 +274,66 @@ public sealed class EndOfDayFillTests
         Assert.Contains(await fixture.Db.AuditLogs.ToListAsync(), x => x.EntityName == "end-of-day-fill-report-group" && x.Action == "create");
         Assert.Contains(await fixture.Db.AuditLogs.ToListAsync(), x => x.EntityName == "end-of-day-fill-report-group" && x.Action == "update");
         Assert.Contains(await fixture.Db.AuditLogs.ToListAsync(), x => x.EntityName == "end-of-day-fill-report-recipient" && x.Action == "create");
+    }
+
+    [Fact]
+    public async Task RoomMasterData_OwnsAssignment_ValidatesFacility_PreservesAndAuditsChanges()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var masterData = fixture.CreateMasterDataService();
+        var wp = await fixture.Db.Warehouses.SingleAsync(x => x.Code == "WP");
+        var ebs = await fixture.Db.Warehouses.SingleAsync(x => x.Code == "EBS");
+
+        Assert.Null(await masterData.SaveMasterDataAsync(new MasterDataEditForm { Type = "rooms", WarehouseId = wp.Id, Code = "WP-NONE", Name = "No report", CapacityBins = 10, IsActive = true }, Fixture.SenderEmail, default));
+        Assert.Null((await fixture.Db.Rooms.SingleAsync(x => x.Code == "WP-NONE")).EndOfDayFillReportGroupId);
+
+        Assert.Null(await masterData.SaveMasterDataAsync(new MasterDataEditForm { Type = "rooms", WarehouseId = ebs.Id, Code = "EBS-ASSIGNED", Name = "EBS assigned", CapacityBins = 20, IsActive = true, EndOfDayFillReportGroupId = 2 }, Fixture.SenderEmail, default));
+        var assigned = await fixture.Db.Rooms.SingleAsync(x => x.Code == "EBS-ASSIGNED");
+        Assert.Equal(2, assigned.EndOfDayFillReportGroupId);
+
+        var invalid = await masterData.SaveMasterDataAsync(new MasterDataEditForm { Type = "rooms", Id = assigned.Id, WarehouseId = ebs.Id, Code = assigned.Code, Name = assigned.Name, CapacityBins = 20, IsActive = true, EndOfDayFillReportGroupId = 1 }, Fixture.SenderEmail, default);
+        Assert.Contains("EBS", invalid);
+        Assert.Equal(2, (await fixture.Db.Rooms.AsNoTracking().SingleAsync(x => x.Id == assigned.Id)).EndOfDayFillReportGroupId);
+
+        var edit = (await masterData.GetEditFormAsync("rooms", assigned.Id, default))!;
+        edit.Name = "Unrelated rename";
+        Assert.Null(await masterData.SaveMasterDataAsync(edit, Fixture.SenderEmail, default));
+        Assert.Equal(2, (await fixture.Db.Rooms.AsNoTracking().SingleAsync(x => x.Id == assigned.Id)).EndOfDayFillReportGroupId);
+        edit.EndOfDayFillReportGroupId = null;
+        Assert.Null(await masterData.SaveMasterDataAsync(edit, Fixture.SenderEmail, default));
+        Assert.Null((await fixture.Db.Rooms.AsNoTracking().SingleAsync(x => x.Id == assigned.Id)).EndOfDayFillReportGroupId);
+
+        (await fixture.Db.EndOfDayFillReportGroups.SingleAsync(x => x.Id == 2)).IsActive = false;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Contains("inactive", await masterData.SaveMasterDataAsync(new MasterDataEditForm { Type = "rooms", WarehouseId = ebs.Id, Code = "EBS-INACTIVE", Name = "Inactive", CapacityBins = 10, IsActive = true, EndOfDayFillReportGroupId = 2 }, Fixture.SenderEmail, default));
+
+        var page = await masterData.GetMasterDataAsync("rooms", true, default);
+        Assert.Contains("End of Day Fill Report", page.Columns);
+        Assert.Contains(page.Items, x => x.Cells.Contains("WP End of Day Fill"));
+        Assert.Contains(await fixture.Db.AuditLogs.ToListAsync(), x => x.EntityName == "rooms" && x.AfterValuesJson!.Contains("PreviousEndOfDayFillReportGroup"));
+    }
+
+    [Fact]
+    public async Task EmptyRoomAssignment_ChangesSnapshot_InvalidatesPreview_AndPermitsRevision()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var first = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+        Assert.True((await fixture.Service.SendAsync(Fixture.SenderEmail, new EndOfDayFillSendForm { GroupId = 1, PreviewToken = first.PreviewToken!, PhysicalCountConfirmed = true }, default)).Success);
+
+        var stale = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+        var emptyRoom = await fixture.Db.Rooms.SingleAsync(x => x.Id == Fixture.UnconfiguredRoomId);
+        emptyRoom.EndOfDayFillReportGroupId = 1;
+        fixture.Inventory.IncludeUnconfiguredRoom = false;
+        await fixture.Db.SaveChangesAsync();
+
+        var staleResult = await fixture.Service.SendAsync(Fixture.SenderEmail, new EndOfDayFillSendForm { GroupId = 1, PreviewToken = stale.PreviewToken!, PhysicalCountConfirmed = true }, default);
+        Assert.True(staleResult.StalePreview);
+        var changed = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+        Assert.Single(changed.Rooms);
+        Assert.NotEqual(stale.PreviewToken, changed.PreviewToken);
+        Assert.Equal([Fixture.RoomId, Fixture.UnconfiguredRoomId], fixture.Inventory.RequestedRoomIds);
+        Assert.True((await fixture.Service.SendAsync(Fixture.SenderEmail, new EndOfDayFillSendForm { GroupId = 1, PreviewToken = changed.PreviewToken, PhysicalCountConfirmed = true }, default)).Success);
+        Assert.Equal(1, (await fixture.Db.EndOfDayFillReportSends.SingleAsync(x => x.RevisionNumber == 1)).RevisionNumber);
     }
 
     [Fact]
@@ -498,10 +553,9 @@ public sealed class EndOfDayFillTests
             var warehouse = await db.Warehouses.SingleAsync(x => x.Code == "WP");
             db.AddRange(sender, unassigned);
             await db.SaveChangesAsync();
-            var room = new Room { Id = RoomId, WarehouseId = warehouse.Id, Code = "DH-1", Name = "DH Room 1", DisplayName = "DH-1", CapacityBins = 900, IsActive = true };
+            var room = new Room { Id = RoomId, WarehouseId = warehouse.Id, Code = "DH-1", Name = "DH Room 1", DisplayName = "DH-1", CapacityBins = 900, IsActive = true, EndOfDayFillReportGroupId = 1 };
             var unconfigured = new Room { Id = UnconfiguredRoomId, WarehouseId = warehouse.Id, Code = "DH-2", Name = "DH Room 2", CapacityBins = 900, IsActive = true };
             db.AddRange(room, unconfigured);
-            db.EndOfDayFillReportGroupRooms.Add(new EndOfDayFillReportGroupRoom { ReportGroupId = 1, RoomId = RoomId, CreatedAt = DateTimeOffset.UtcNow, CreatedByUserId = sender.Id });
             db.EndOfDayFillUserGroupAssignments.Add(new EndOfDayFillUserGroupAssignment { UserId = sender.Id, ReportGroupId = 1, CreatedAt = DateTimeOffset.UtcNow, CreatedByUserId = sender.Id });
             db.UserGoogleCredentials.Add(new UserGoogleCredential { UserId = sender.Id, Provider = "Google", RefreshTokenEncrypted = "test-only", Scope = GmailScopes.Send, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow });
             await db.SaveChangesAsync();
@@ -512,6 +566,7 @@ public sealed class EndOfDayFillTests
         }
 
         public EndOfDayFillAdminService CreateAdminService() => new(Db, new FacilityContextService(Db), new PacificBusinessTimeService(Clock), new FakeUserAccessService());
+        public AdminManagementService CreateMasterDataService() => new(Db, new VarietyColorService(Db), new CanonicalGrowerService(Db), new FacilityContextService(Db));
 
         public async Task<EndOfDayFillReportSend> CreateUncertainPendingAsync()
         {
@@ -537,6 +592,7 @@ public sealed class EndOfDayFillTests
         public int Bins { get; set; } = 145;
         public string GrowerNumber { get; set; } = "1084";
         public string CanonicalName { get; set; } = "Gala";
+        public bool IncludeUnconfiguredRoom { get; set; } = true;
         public IReadOnlyList<int> RequestedRoomIds { get; private set; } = [];
         public Task<IReadOnlyList<RoomLotSummaryViewModel>> GetCurrentLotsAsync(IReadOnlyCollection<int> roomIds, CancellationToken cancellationToken)
         {
@@ -546,7 +602,7 @@ public sealed class EndOfDayFillTests
                 new() { RoomId = Fixture.RoomId, RoomCode = "DH-1", CurrentBins = Bins, GrowerNumber = GrowerNumber, GrowerName = "Smith Orchards", CanonicalVarietyKey = CanonicalName.Length == 0 ? "" : "gala", CanonicalVarietyName = CanonicalName, ProductionType = "Fresh", IsOrganic = false, VarietyHexColor = "#c62828", InventoryKey = "canonical-398", GrowerLotId = 398 },
                 new() { RoomId = Fixture.UnconfiguredRoomId, RoomCode = "DH-2", CurrentBins = 999, GrowerNumber = "9999", GrowerName = "Excluded", CanonicalVarietyKey = "fuji", CanonicalVarietyName = "Fuji", ProductionType = "Fresh", IsOrganic = false, InventoryKey = "excluded" }
             ];
-            return Task.FromResult<IReadOnlyList<RoomLotSummaryViewModel>>(result.Where(x => roomIds.Contains(x.RoomId)).ToList());
+            return Task.FromResult<IReadOnlyList<RoomLotSummaryViewModel>>(result.Where(x => roomIds.Contains(x.RoomId) && (IncludeUnconfiguredRoom || x.RoomId != Fixture.UnconfiguredRoomId)).ToList());
         }
     }
 

@@ -15,21 +15,9 @@ public sealed class EndOfDayFillReportGroup
     public bool IsActive { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
-    public ICollection<EndOfDayFillReportGroupRoom> Rooms { get; } = new List<EndOfDayFillReportGroupRoom>();
+    public ICollection<Room> Rooms { get; } = new List<Room>();
     public ICollection<EndOfDayFillUserGroupAssignment> UserAssignments { get; } = new List<EndOfDayFillUserGroupAssignment>();
     public ICollection<EndOfDayFillReportSend> Sends { get; } = new List<EndOfDayFillReportSend>();
-}
-
-public sealed class EndOfDayFillReportGroupRoom
-{
-    public int Id { get; set; }
-    public int ReportGroupId { get; set; }
-    public EndOfDayFillReportGroup ReportGroup { get; set; } = null!;
-    public int RoomId { get; set; }
-    public Room Room { get; set; } = null!;
-    public DateTimeOffset CreatedAt { get; set; }
-    public int? CreatedByUserId { get; set; }
-    public User? CreatedByUser { get; set; }
 }
 
 public sealed class EndOfDayFillReportRecipient

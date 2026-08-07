@@ -14,6 +14,12 @@ namespace CropQc.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AddColumn<int>(
+                name: "EndOfDayFillReportGroupId",
+                table: "Rooms",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"),
+                nullable: true);
+
             migrationBuilder.CreateTable(
                 name: "EndOfDayFillReportGroups",
                 columns: table => new
@@ -54,41 +60,6 @@ namespace CropQc.Data.Migrations
                     table.ForeignKey(
                         name: "FK_EndOfDayFillReportRecipients_Users_UpdatedByUserId",
                         column: x => x.UpdatedByUserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "EndOfDayFillReportGroupRooms",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1")
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    ReportGroupId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
-                    RoomId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
-                    CreatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false),
-                    CreatedByUserId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_EndOfDayFillReportGroupRooms", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_EndOfDayFillReportGroupRooms_EndOfDayFillReportGroups_ReportGroupId",
-                        column: x => x.ReportGroupId,
-                        principalTable: "EndOfDayFillReportGroups",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_EndOfDayFillReportGroupRooms_Rooms_RoomId",
-                        column: x => x.RoomId,
-                        principalTable: "Rooms",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_EndOfDayFillReportGroupRooms_Users_CreatedByUserId",
-                        column: x => x.CreatedByUserId,
                         principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.SetNull);
@@ -219,12 +190,12 @@ namespace CropQc.Data.Migrations
                     (2, 'jorge@wp-packing.com', 'JORGE@WP-PACKING.COM', 1, 20, '1970-01-01T00:00:00+00:00', '1970-01-01T00:00:00+00:00', NULL),
                     (3, 'rob@earlbrownandsons.com', 'ROB@EARLBROWNANDSONS.COM', 1, 30, '1970-01-01T00:00:00+00:00', '1970-01-01T00:00:00+00:00', NULL);
                 SET IDENTITY_INSERT [EndOfDayFillReportRecipients] OFF;
-                INSERT INTO [EndOfDayFillReportGroupRooms] ([ReportGroupId], [RoomId], [CreatedAt], [CreatedByUserId])
-                SELECT 1, r.[Id], SYSUTCDATETIME(), NULL
+                UPDATE r
+                SET [EndOfDayFillReportGroupId] = 1
                 FROM [Rooms] r INNER JOIN [Warehouses] w ON w.[Id] = r.[WarehouseId]
                 WHERE r.[IsActive] = 1 AND w.[IsActive] = 1 AND LOWER(LTRIM(RTRIM(w.[Code]))) IN ('dh', 'mcdougall');
-                INSERT INTO [EndOfDayFillReportGroupRooms] ([ReportGroupId], [RoomId], [CreatedAt], [CreatedByUserId])
-                SELECT 2, r.[Id], SYSUTCDATETIME(), NULL
+                UPDATE r
+                SET [EndOfDayFillReportGroupId] = 2
                 FROM [Rooms] r INNER JOIN [Warehouses] w ON w.[Id] = r.[WarehouseId]
                 WHERE r.[IsActive] = 1 AND w.[IsActive] = 1 AND LOWER(LTRIM(RTRIM(w.[Code]))) = 'ebs';
                 INSERT INTO [EndOfDayFillUserGroupAssignments] ([UserId], [ReportGroupId], [CreatedAt], [CreatedByUserId])
@@ -240,14 +211,14 @@ namespace CropQc.Data.Migrations
                     (1, 'wes@fruitandland.com', 'WES@FRUITANDLAND.COM', TRUE, 10, TIMESTAMPTZ '1970-01-01 00:00:00+00', TIMESTAMPTZ '1970-01-01 00:00:00+00', NULL),
                     (2, 'jorge@wp-packing.com', 'JORGE@WP-PACKING.COM', TRUE, 20, TIMESTAMPTZ '1970-01-01 00:00:00+00', TIMESTAMPTZ '1970-01-01 00:00:00+00', NULL),
                     (3, 'rob@earlbrownandsons.com', 'ROB@EARLBROWNANDSONS.COM', TRUE, 30, TIMESTAMPTZ '1970-01-01 00:00:00+00', TIMESTAMPTZ '1970-01-01 00:00:00+00', NULL);
-                INSERT INTO "EndOfDayFillReportGroupRooms" ("ReportGroupId", "RoomId", "CreatedAt", "CreatedByUserId")
-                SELECT 1, r."Id", CURRENT_TIMESTAMP, NULL
-                FROM "Rooms" r INNER JOIN "Warehouses" w ON w."Id" = r."WarehouseId"
-                WHERE r."IsActive" AND w."IsActive" AND lower(btrim(w."Code")) IN ('dh', 'mcdougall');
-                INSERT INTO "EndOfDayFillReportGroupRooms" ("ReportGroupId", "RoomId", "CreatedAt", "CreatedByUserId")
-                SELECT 2, r."Id", CURRENT_TIMESTAMP, NULL
-                FROM "Rooms" r INNER JOIN "Warehouses" w ON w."Id" = r."WarehouseId"
-                WHERE r."IsActive" AND w."IsActive" AND lower(btrim(w."Code")) = 'ebs';
+                UPDATE "Rooms" r
+                SET "EndOfDayFillReportGroupId" = 1
+                FROM "Warehouses" w
+                WHERE w."Id" = r."WarehouseId" AND r."IsActive" AND w."IsActive" AND lower(btrim(w."Code")) IN ('dh', 'mcdougall');
+                UPDATE "Rooms" r
+                SET "EndOfDayFillReportGroupId" = 2
+                FROM "Warehouses" w
+                WHERE w."Id" = r."WarehouseId" AND r."IsActive" AND w."IsActive" AND lower(btrim(w."Code")) = 'ebs';
                 INSERT INTO "EndOfDayFillUserGroupAssignments" ("UserId", "ReportGroupId", "CreatedAt", "CreatedByUserId")
                 SELECT "Id", 1, CURRENT_TIMESTAMP, NULL FROM "Users" WHERE lower(btrim("Email")) IN ('jorge@wp-packing.com', 'wes@fruitandland.com');
                 INSERT INTO "EndOfDayFillUserGroupAssignments" ("UserId", "ReportGroupId", "CreatedAt", "CreatedByUserId")
@@ -257,20 +228,9 @@ namespace CropQc.Data.Migrations
                 """));
 
             migrationBuilder.CreateIndex(
-                name: "IX_EndOfDayFillReportGroupRooms_CreatedByUserId",
-                table: "EndOfDayFillReportGroupRooms",
-                column: "CreatedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EndOfDayFillReportGroupRooms_ReportGroupId_RoomId",
-                table: "EndOfDayFillReportGroupRooms",
-                columns: new[] { "ReportGroupId", "RoomId" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EndOfDayFillReportGroupRooms_RoomId",
-                table: "EndOfDayFillReportGroupRooms",
-                column: "RoomId");
+                name: "IX_Rooms_EndOfDayFillReportGroupId",
+                table: "Rooms",
+                column: "EndOfDayFillReportGroupId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_EndOfDayFillReportGroups_Name",
@@ -332,13 +292,22 @@ namespace CropQc.Data.Migrations
                 table: "EndOfDayFillUserGroupAssignments",
                 columns: new[] { "UserId", "ReportGroupId" },
                 unique: true);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_Rooms_EndOfDayFillReportGroups_EndOfDayFillReportGroupId",
+                table: "Rooms",
+                column: "EndOfDayFillReportGroupId",
+                principalTable: "EndOfDayFillReportGroups",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.SetNull);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "EndOfDayFillReportGroupRooms");
+            migrationBuilder.DropForeignKey(
+                name: "FK_Rooms_EndOfDayFillReportGroups_EndOfDayFillReportGroupId",
+                table: "Rooms");
 
             migrationBuilder.DropTable(
                 name: "EndOfDayFillReportRecipients");
@@ -354,6 +323,14 @@ namespace CropQc.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "EndOfDayFillReportGroups");
+
+            migrationBuilder.DropIndex(
+                name: "IX_Rooms_EndOfDayFillReportGroupId",
+                table: "Rooms");
+
+            migrationBuilder.DropColumn(
+                name: "EndOfDayFillReportGroupId",
+                table: "Rooms");
         }
     }
 }

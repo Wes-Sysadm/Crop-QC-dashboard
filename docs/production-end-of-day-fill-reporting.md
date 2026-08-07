@@ -8,9 +8,9 @@ Production has known EF migration-history drift. Fresh and normally tracked data
 4. Run `scripts/postgresql/verify-end-of-day-fill-reporting.sql`, then repeat apply and verify.
 5. Run `dotnet CropQc.Web.dll --verify-schema=20260807044836_AddEndOfDayFillReporting` and inventory-deduction readiness against the restored copy.
 
-The compatibility apply intentionally does **not** insert or repair `__EFMigrationsHistory`. Required state is verified by exact tables, columns, indexes, primary keys, foreign keys, checks, seeded configuration, assignments, and empty send/reservation history.
+The compatibility apply intentionally does **not** insert or repair `__EFMigrationsHistory`. Required state is verified by exact tables, columns, indexes, primary keys, foreign keys, checks, seeded configuration, assignments, and empty send/reservation history. It also fingerprints every Room capacity before applying and rolls back if any capacity changes.
 
-Initial membership is explicit after apply: active rooms from exact active `DH` and `McDougall` warehouses enter the WP group; active rooms from exact active `EBS` enter the EBS group. Runtime report validation uses the centralized facility context and persisted membership and does not recognize DH, McDougall, Lamb, Evans, or BM itself.
+`Rooms.EndOfDayFillReportGroupId` is the sole room-membership source; the draft join table was removed. Initial membership is explicit after first apply: active rooms from exact active `DH` and `McDougall` warehouses enter the WP group; active rooms from exact active `EBS` enter the EBS group. A repeat apply preserves Room master-data assignments rather than reseeding them. Runtime report validation uses the centralized facility context and persisted Room FK and does not recognize DH, McDougall, Lamb, Evans, or BM itself.
 
 Stale send reservations are never expired automatically. At 15 minutes, normal Send remains blocked and the Master Data Admin recovery UI requires an administrator to verify the sender's Gmail Sent folder, record a reason, and choose Confirmed sent or Confirmed not sent. Confirmed sent uses the immutable attempted report and its original attempted timestamp as the best persisted sent-time evidence when Gmail does not provide a recoverable timestamp.
 

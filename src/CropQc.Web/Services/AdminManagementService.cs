@@ -22,9 +22,14 @@ public interface IAdminManagementService
     Task<string?> SaveConfigurationAsync(ConfigurationEditForm form, string changedByEmail, CancellationToken cancellationToken);
 }
 
-public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyColorService varietyColorService, ICanonicalGrowerService? canonicalGrowerService = null) : IAdminManagementService
+public sealed class AdminManagementService(
+    CropQcDbContext dbContext,
+    IVarietyColorService varietyColorService,
+    ICanonicalGrowerService? canonicalGrowerService = null,
+    IFacilityContextService? facilityContextService = null) : IAdminManagementService
 {
     private static readonly IBusinessTimeService BusinessTime = new PacificBusinessTimeService(new SystemClock());
+    private readonly IFacilityContextService facilityContext = facilityContextService ?? new FacilityContextService(dbContext);
     private static readonly string[] DefaultCommodityOptions = ["Apple", "Pear"];
 
     private static readonly IReadOnlyList<(string Key, string Value, string Description, string ValueType)> ConfigurationDefaults =
@@ -80,7 +85,7 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
         return type.ToLowerInvariant() switch
         {
             "warehouses" => await dbContext.Warehouses.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.Code, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
-            "rooms" => await dbContext.Rooms.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, WarehouseId = x.WarehouseId, Code = x.Code, Name = x.Name, CompuTechCode = x.CompuTechRoomCode, CapacityBins = x.CapacityBins, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
+            "rooms" => await dbContext.Rooms.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, WarehouseId = x.WarehouseId, EndOfDayFillReportGroupId = x.EndOfDayFillReportGroupId, Code = x.Code, Name = x.Name, CompuTechCode = x.CompuTechRoomCode, CapacityBins = x.CapacityBins, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "fruit-profiles" => await WithFruitProfileColorAsync(await WithCommodityOptions(await dbContext.FruitProfiles.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.VarietyCode, Name = x.Name, Description = x.Description, FruitType = x.FruitType, ProductionType = x.ProductionType, IsOrganic = x.IsOrganic, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken), cancellationToken),
             "grades" => await dbContext.Grades.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Code = x.Code, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "defects" => await dbContext.DefectTypes.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
@@ -426,13 +431,14 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
     {
         var rows = await dbContext.Rooms.AsNoTracking()
             .Include(x => x.Warehouse)
+            .Include(x => x.EndOfDayFillReportGroup)
             .OrderBy(x => x.Warehouse.Code)
             .ThenBy(x => x.SubLocation)
             .ThenBy(x => x.SortOrder)
             .ThenBy(x => x.CropQcRoomName ?? x.Code)
-            .Select(x => new MasterDataEditItem(x.Id, new[] { x.Warehouse.Code, x.Warehouse.Name, x.CropQcRoomName ?? x.Code, x.CompuTechRoomCode ?? "", x.SubLocation ?? "", x.Name, x.CapacityBins.ToString(), YesNo(x.IsActive) }, x.IsActive, null))
+            .Select(x => new MasterDataEditItem(x.Id, new[] { x.Warehouse.Code, x.Warehouse.Name, x.CropQcRoomName ?? x.Code, x.CompuTechRoomCode ?? "", x.SubLocation ?? "", x.Name, x.CapacityBins.ToString(), x.EndOfDayFillReportGroup == null ? "Not included" : x.EndOfDayFillReportGroup.Name, YesNo(x.IsActive) }, x.IsActive, null))
             .ToListAsync(ct);
-        return Page("Rooms", "rooms", ["Warehouse Code", "Warehouse Name", "Crop QC Room", "Compu-Tech Code", "SubLocation", "Room Name", "Capacity Bins", "Active"], rows, canEdit);
+        return Page("Rooms", "rooms", ["Warehouse Code", "Warehouse Name", "Crop QC Room", "Compu-Tech Code", "SubLocation", "Room Name", "Capacity Bins", "End of Day Fill Report", "Active"], rows, canEdit);
     }
 
     private async Task<MasterDataPageViewModel> FruitProfilesPage(bool canEdit, CancellationToken ct)
@@ -1226,14 +1232,58 @@ public sealed class AdminManagementService(CropQcDbContext dbContext, IVarietyCo
     {
         if (form.WarehouseId is null || Blank(form.Code) || Blank(form.Name)) return "Warehouse, code, and name are required.";
         if (await dbContext.Rooms.AnyAsync(x => x.WarehouseId == form.WarehouseId && x.Code == form.Code.Trim() && x.Id != (form.Id ?? 0), ct)) return "Room code must be unique per warehouse.";
-        var entity = form.Id is null ? new Room { Code = "", Name = "" } : await dbContext.Rooms.FindAsync([form.Id.Value], ct);
+        var warehouse = await dbContext.Warehouses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.WarehouseId.Value, ct);
+        if (warehouse is null) return "Warehouse not found.";
+        EndOfDayFillReportGroup? reportGroup = null;
+        if (form.EndOfDayFillReportGroupId is int reportGroupId)
+        {
+            reportGroup = await dbContext.EndOfDayFillReportGroups.AsNoTracking().SingleOrDefaultAsync(x => x.Id == reportGroupId, ct);
+            if (reportGroup is null) return "The selected End of Day Fill report does not exist.";
+            if (!reportGroup.IsActive) return "The selected End of Day Fill report is inactive and cannot be assigned.";
+            var operatingCompany = facilityContext.GetOperatingCompanyFacility(warehouse.Code, warehouse.Name);
+            if (!reportGroup.Facility.Equals(operatingCompany, StringComparison.OrdinalIgnoreCase))
+                return $"{warehouse.Code} rooms can only be assigned to an active {operatingCompany} End of Day Fill report.";
+        }
+        var entity = form.Id is null ? new Room { Code = "", Name = "" } : await dbContext.Rooms.Include(x => x.EndOfDayFillReportGroup).SingleOrDefaultAsync(x => x.Id == form.Id.Value, ct);
         if (entity is null) return "Room not found.";
         var action = form.Id is null ? "create" : "update";
-        var before = form.Id is null ? null : JsonSerializer.Serialize(entity);
-        entity.WarehouseId = form.WarehouseId.Value; entity.Code = form.Code.Trim(); entity.Name = form.Name.Trim(); entity.CompuTechRoomCode = Blank(form.CompuTechCode) ? null : form.CompuTechCode!.Trim(); entity.CapacityBins = form.CapacityBins; entity.IsActive = form.IsActive;
+        var previousGroupId = entity.EndOfDayFillReportGroupId;
+        var previousGroupName = entity.EndOfDayFillReportGroup?.Name;
+        var before = form.Id is null ? null : JsonSerializer.Serialize(new
+        {
+            RoomId = entity.Id,
+            entity.Code,
+            entity.WarehouseId,
+            entity.Name,
+            entity.CompuTechRoomCode,
+            entity.CapacityBins,
+            entity.IsActive,
+            EndOfDayFillReportGroupId = previousGroupId,
+            EndOfDayFillReportGroup = previousGroupName
+        });
+        entity.WarehouseId = form.WarehouseId.Value;
+        entity.Code = form.Code.Trim();
+        entity.Name = form.Name.Trim();
+        entity.CompuTechRoomCode = Blank(form.CompuTechCode) ? null : form.CompuTechCode!.Trim();
+        entity.CapacityBins = form.CapacityBins;
+        entity.IsActive = form.IsActive;
+        entity.EndOfDayFillReportGroupId = form.EndOfDayFillReportGroupId;
         if (form.Id is null) dbContext.Rooms.Add(entity);
         await dbContext.SaveChangesAsync(ct);
-        await AddAuditAsync(action, "rooms", entity.Id.ToString(), by, before, JsonSerializer.Serialize(entity), ct);
+        await AddAuditAsync(action, "rooms", entity.Id.ToString(), by, before, JsonSerializer.Serialize(new
+        {
+            RoomId = entity.Id,
+            entity.Code,
+            entity.WarehouseId,
+            entity.Name,
+            entity.CompuTechRoomCode,
+            entity.CapacityBins,
+            entity.IsActive,
+            PreviousEndOfDayFillReportGroupId = previousGroupId,
+            PreviousEndOfDayFillReportGroup = previousGroupName,
+            EndOfDayFillReportGroupId = reportGroup?.Id,
+            EndOfDayFillReportGroup = reportGroup?.Name
+        }), ct);
         await dbContext.SaveChangesAsync(ct);
         return null;
     }
