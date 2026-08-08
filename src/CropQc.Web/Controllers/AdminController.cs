@@ -18,8 +18,8 @@ public sealed class AdminController(
 {
     [HttpGet("Users")]
     [Authorize(Policy = AccessPolicyNames.UsersAdmin)]
-    public async Task<IActionResult> Users(CancellationToken cancellationToken) =>
-        View(await userAdminService.GetUsersAsync(cancellationToken));
+    public async Task<IActionResult> Users([FromQuery] int? roleId, CancellationToken cancellationToken) =>
+        View(await userAdminService.GetUsersAsync(roleId, cancellationToken));
 
     [HttpGet("Downloads")]
     [Authorize(Policy = AccessPolicyNames.DownloadsView)]
@@ -77,24 +77,12 @@ public sealed class AdminController(
     [HttpGet("DataCleanup")]
     [Authorize(Policy = AccessPolicyNames.DataCleanupAdmin)]
     public async Task<IActionResult> DataCleanup([FromQuery] DataCleanupFilterForm filter, CancellationToken cancellationToken)
-    {
-        if (!IsDataCleanupAllowed())
-        {
-            return Forbid();
-        }
-
-        return View(await dataCleanupService.BuildPageAsync(filter, cancellationToken));
-    }
+        => View(await dataCleanupService.BuildPageAsync(filter, cancellationToken));
 
     [HttpPost("DataCleanup/Execute")]
     [Authorize(Policy = AccessPolicyNames.DataCleanupAdmin)]
     public async Task<IActionResult> ExecuteDataCleanup(DataCleanupFilterForm filter, CancellationToken cancellationToken)
     {
-        if (!IsDataCleanupAllowed())
-        {
-            return Forbid();
-        }
-
         var (preview, error) = await dataCleanupService.ExecuteAsync(filter, authorizationService.GetEmail(User) ?? "", cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? $"Cleanup complete. Samples affected: {preview.SamplesAffected}. Receipts affected: {preview.ReceiptsAffected}.";
         return RedirectToAction(nameof(DataCleanup), filter);
@@ -171,30 +159,6 @@ public sealed class AdminController(
     private FileContentResult DownloadQcStationConfig(QcStationConfigDownload download) =>
         File(System.Text.Encoding.UTF8.GetBytes(download.Json), "application/json", download.FileName);
 
-    private bool IsDataCleanupAllowed()
-    {
-        var email = authorizationService.GetEmail(User);
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            return false;
-        }
-
-        return GetDataCleanupAllowedEmails().Contains(email.Trim(), StringComparer.OrdinalIgnoreCase);
-    }
-
-    private IReadOnlyList<string> GetDataCleanupAllowedEmails()
-    {
-        var configured = configuration["DataCleanup:AllowedEmails"];
-        if (string.IsNullOrWhiteSpace(configured))
-        {
-            configured = "wes@fruitandland.com";
-        }
-
-        return configured
-            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .ToList();
-    }
-
     [HttpPost("Users/Add")]
     [Authorize(Policy = AccessPolicyNames.UsersAdmin)]
     public async Task<IActionResult> AddUser(AddUserForm form, CancellationToken cancellationToken)
@@ -222,13 +186,31 @@ public sealed class AdminController(
         return RedirectToAction(nameof(Users));
     }
 
-    [HttpPost("Users/Matrix")]
+    [HttpPost("Users/Roles/Create")]
     [Authorize(Policy = AccessPolicyNames.PermissionMatrixAdmin)]
-    public async Task<IActionResult> UpdateUserMatrix(UserAccessMatrixForm form, CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateRole(CreateRoleForm form, CancellationToken cancellationToken)
     {
-        var error = await userAdminService.UpdateUserMatrixAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
-        TempData[error is null ? "Success" : "Error"] = error ?? "User access matrix updated.";
+        var error = await userAdminService.CreateRoleAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Role created.";
         return RedirectToAction(nameof(Users));
+    }
+
+    [HttpPost("Users/Roles/Update")]
+    [Authorize(Policy = AccessPolicyNames.PermissionMatrixAdmin)]
+    public async Task<IActionResult> UpdateRole(UpdateRoleForm form, CancellationToken cancellationToken)
+    {
+        var error = await userAdminService.UpdateRoleAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Role updated.";
+        return RedirectToAction(nameof(Users), new { roleId = form.RoleId });
+    }
+
+    [HttpPost("Users/Roles/Matrix")]
+    [Authorize(Policy = AccessPolicyNames.PermissionMatrixAdmin)]
+    public async Task<IActionResult> UpdateRoleMatrix(RoleAccessMatrixForm form, CancellationToken cancellationToken)
+    {
+        var error = await userAdminService.UpdateRoleMatrixAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Role permission matrix updated.";
+        return RedirectToAction(nameof(Users), new { roleId = form.RoleId });
     }
 
 }

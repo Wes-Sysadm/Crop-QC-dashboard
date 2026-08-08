@@ -420,7 +420,6 @@ await EnsureRoomMetadataSchemaAsync(app.Services);
 await EnsureRoomInventoryAdjustmentSchemaAsync(app.Services);
 await EnsureBinsRunSchemaAsync(app.Services);
 await EnsureRequiredSampleTypesAsync(app.Services);
-await EnsureAccessMatrixAsync(app.Services);
 
 if (useForwardedHeaders)
 {
@@ -1330,13 +1329,6 @@ static void AddAccessPolicy(AuthorizationOptions options, string policyName, str
     options.AddPolicy(policyName, policy => policy
         .RequireAuthenticatedUser()
         .AddRequirements(new PageAccessRequirement(areaKey, minimumLevel)));
-}
-
-static async Task EnsureAccessMatrixAsync(IServiceProvider services)
-{
-    using var scope = services.CreateScope();
-    var accessService = scope.ServiceProvider.GetRequiredService<IUserAccessService>();
-    await accessService.EnsureAccessMatrixAsync(CancellationToken.None);
 }
 
 public partial class Program;

@@ -39,7 +39,7 @@ Normal QC Summary sending should require:
   - Door or Room: Whole sample (`SampleBeforeCutting`) and Cut apples (`CutFruit`).
   - Line: Whole sample (`SampleBeforeCutting`) and Cut apples (`CutFruit`). Hectre can be attached when applicable, but it does not block normal send by default.
 
-Normal ready-sample sending is available to Admin, Manager, and QC User roles. Manager/Admin override send can send even when required data is missing, with an override reason. Viewer users cannot send.
+Normal ready-sample sending is governed by the user's role matrix (QC Tech is the replacement for the legacy QC User role). Manager/Admin override send requires the corresponding Admin-level matrix access and an override reason. Viewer users cannot send.
 
 ## Email Body Format
 

@@ -5534,11 +5534,7 @@ public sealed class DashboardDataService(
 
         if (userAccessService is null)
         {
-            return Task.FromResult(
-                UserAccessService.IsOwner(user.FindFirstValue(ClaimTypes.Email))
-                || user.IsInRole("Admin")
-                || (minimumLevel <= PageAccessLevel.Edit && (user.IsInRole("Manager") || user.IsInRole("QC User")))
-                || (minimumLevel == PageAccessLevel.View && user.Identity?.IsAuthenticated == true));
+            return Task.FromResult(UserAccessService.IsOwner(user.FindFirstValue(ClaimTypes.Email)));
         }
 
         return userAccessService.HasAccessAsync(user, areaKey, minimumLevel, cancellationToken);

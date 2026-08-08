@@ -481,8 +481,6 @@ public sealed class RunReportingTests
     {
         public Task<bool> HasAccessAsync(ClaimsPrincipal principal, string areaKey, PageAccessLevel minimumLevel, CancellationToken cancellationToken) => Task.FromResult(true);
         public Task<PageAccessLevel> GetAccessLevelAsync(string? email, string areaKey, CancellationToken cancellationToken) => Task.FromResult(PageAccessLevel.Admin);
-        public Task<IReadOnlyList<UserAccessMatrixRow>> GetMatrixAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task EnsureAccessMatrixAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<string?> SaveMatrixAsync(UserAccessMatrixForm form, string changedByEmail, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public void InvalidateAll() { }
     }
 }

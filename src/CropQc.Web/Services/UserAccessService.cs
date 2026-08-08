@@ -81,6 +81,7 @@ public static class ApplicationAreas
         new(PackoutResults, "Packout Results", "Operations", "/BinsRun?Section=Actual", ProjectionOutcome),
         new(HistoricalInventoryCleanup, "EBS Historical Cleanup", "Admin/System", "/Admin/EbsInventoryCleanup", DataCleanup),
         new(Rooms, "Rooms", "Inventory", "/Rooms"),
+        new(RoomTransactions, "Room Transactions", "Inventory", "/BinsRun"),
         new(Transfers, "Transfers", "Inventory", "/BinsRun?Section=Transfer", RoomTransactions),
         new(TrueUp, "True Up", "Inventory", "/BinsRun?Section=TrueUp", RoomTransactions),
         new(Inventory, "Inventory", "Inventory", "/Admin/RoomInventory", CurrentLots),
@@ -91,6 +92,9 @@ public static class ApplicationAreas
         new(PermissionMatrix, "Permission Matrix", "Admin/System", "/Admin/Users", Users),
         new(QcStations, "QC Stations", "Admin/System", "/Admin/QcStations"),
         new(Downloads, "Downloads", "Admin/System", "/Admin/Downloads"),
+        new(Configuration, "Configuration", "Admin/System", "/Admin/Configuration"),
+        new(VarietyColors, "Variety Colors", "Master Data", "/MasterData/fruit-profiles"),
+        new(Backups, "Backups", "Admin/System", "/Admin/Backups"),
         new(OrchardRecipients, "Orchard Recipients", "Admin/System", "/OrchardRecipients", Configuration),
         new(OrchardManagers, "Orchard Managers", "Admin/System", "/OrchardRecipients", Configuration),
         new(Facilities, "Facilities", "Master Data", "/MasterData/warehouses", MasterData),
@@ -169,6 +173,66 @@ public static class AccessPolicyNames
     public const string EmailConfigurationAdmin = "EmailConfigurationAdmin";
 }
 
+public static class BuiltInRoleAccessDefaults
+{
+    public static IReadOnlyDictionary<string, PageAccessLevel> For(string roleName)
+    {
+        var access = ApplicationAreas.All.ToDictionary(x => x.Key, _ => PageAccessLevel.None, StringComparer.OrdinalIgnoreCase);
+        if (string.Equals(roleName, BuiltInRoleNames.Admin, StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var area in ApplicationAreas.All) access[area.Key] = PageAccessLevel.Admin;
+            return access;
+        }
+
+        Grant(access, PageAccessLevel.View,
+            ApplicationAreas.Dashboard, ApplicationAreas.DailyQc, ApplicationAreas.FieldSamples,
+            ApplicationAreas.QcReports, ApplicationAreas.Receipts, ApplicationAreas.CurrentLots,
+            ApplicationAreas.Rooms, ApplicationAreas.Inventory, ApplicationAreas.GrowerLots);
+
+        if (string.Equals(roleName, BuiltInRoleNames.Viewer, StringComparison.OrdinalIgnoreCase)) return access;
+
+        Grant(access, PageAccessLevel.Create,
+            ApplicationAreas.DailyQc, ApplicationAreas.FieldSamples, ApplicationAreas.Receipts);
+
+        if (string.Equals(roleName, BuiltInRoleNames.QcTech, StringComparison.OrdinalIgnoreCase)) return access;
+
+        if (string.Equals(roleName, BuiltInRoleNames.QcAdmin, StringComparison.OrdinalIgnoreCase))
+        {
+            Grant(access, PageAccessLevel.Admin,
+                ApplicationAreas.DailyQc, ApplicationAreas.FieldSamples, ApplicationAreas.QcReports,
+                ApplicationAreas.QcStations, ApplicationAreas.Varieties, ApplicationAreas.Grades,
+                ApplicationAreas.Defects, ApplicationAreas.SizeConfiguration, ApplicationAreas.VarietyColors,
+                ApplicationAreas.OrchardRecipients, ApplicationAreas.OrchardManagers);
+            access[ApplicationAreas.MasterData] = PageAccessLevel.View;
+            return access;
+        }
+
+        if (string.Equals(roleName, BuiltInRoleNames.Manager, StringComparison.OrdinalIgnoreCase))
+        {
+            Grant(access, PageAccessLevel.Admin,
+                ApplicationAreas.DailyQc, ApplicationAreas.FieldSamples, ApplicationAreas.QcReports,
+                ApplicationAreas.Receipts, ApplicationAreas.CurrentLots, ApplicationAreas.BinsRun,
+                ApplicationAreas.Rooms, ApplicationAreas.RoomTransactions, ApplicationAreas.GrowerLots,
+                ApplicationAreas.ProjectionPlanner, ApplicationAreas.ProjectionOutcome, ApplicationAreas.ActualRuns,
+                ApplicationAreas.PackoutResults, ApplicationAreas.Transfers, ApplicationAreas.TrueUp,
+                ApplicationAreas.Inventory, ApplicationAreas.MasterData, ApplicationAreas.QcStations,
+                ApplicationAreas.OrchardRecipients, ApplicationAreas.OrchardManagers,
+                ApplicationAreas.Facilities, ApplicationAreas.Varieties, ApplicationAreas.Grades,
+                ApplicationAreas.Defects, ApplicationAreas.SizeConfiguration, ApplicationAreas.VarietyColors,
+                ApplicationAreas.ImportTools, ApplicationAreas.ExportTools);
+            access[ApplicationAreas.Downloads] = PageAccessLevel.View;
+            access[ApplicationAreas.AuditHistory] = PageAccessLevel.View;
+        }
+
+        return access;
+    }
+
+    private static void Grant(IDictionary<string, PageAccessLevel> access, PageAccessLevel level, params string[] keys)
+    {
+        foreach (var key in keys) access[key] = level;
+    }
+}
+
 public sealed class PageAccessRequirement(string areaKey, PageAccessLevel minimumLevel) : IAuthorizationRequirement
 {
     public string AreaKey { get; } = areaKey;
@@ -179,14 +243,12 @@ public interface IUserAccessService
 {
     Task<bool> HasAccessAsync(ClaimsPrincipal principal, string areaKey, PageAccessLevel minimumLevel, CancellationToken cancellationToken);
     Task<PageAccessLevel> GetAccessLevelAsync(string? email, string areaKey, CancellationToken cancellationToken);
-    Task<IReadOnlyList<UserAccessMatrixRow>> GetMatrixAsync(CancellationToken cancellationToken);
-    Task EnsureAccessMatrixAsync(CancellationToken cancellationToken);
-    Task<string?> SaveMatrixAsync(UserAccessMatrixForm form, string changedByEmail, CancellationToken cancellationToken);
+    void InvalidateAll();
 }
 
 public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration configuration) : IUserAccessService
 {
-    private readonly ConcurrentDictionary<string, Lazy<Task<IReadOnlyDictionary<string, string>>>> accessLevelsByEmail =
+    private readonly ConcurrentDictionary<string, Lazy<Task<RoleAccessState>>> accessLevelsByEmail =
         new(StringComparer.OrdinalIgnoreCase);
 
     public async Task<bool> HasAccessAsync(ClaimsPrincipal principal, string areaKey, PageAccessLevel minimumLevel, CancellationToken cancellationToken)
@@ -200,200 +262,36 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
         email = NormalizeEmail(email);
         if (email is null) return PageAccessLevel.None;
         if (IsOwner(email)) return PageAccessLevel.Admin;
-        if (RequiresAllowedEmail(areaKey) && !ConfiguredEmails($"{ConfigPrefix(areaKey)}:AllowedEmails", ApplicationAreas.OwnerEmail).Contains(email, StringComparer.OrdinalIgnoreCase))
-        {
-            return PageAccessLevel.None;
-        }
 
-        var levels = await accessLevelsByEmail.GetOrAdd(
+        _ = configuration;
+        var state = await accessLevelsByEmail.GetOrAdd(
             email,
-            normalizedEmail => new Lazy<Task<IReadOnlyDictionary<string, string>>>(
-                () => LoadAccessLevelsAsync(normalizedEmail, cancellationToken),
+            normalizedEmail => new Lazy<Task<RoleAccessState>>(
+                () => LoadAccessStateAsync(normalizedEmail, cancellationToken),
                 LazyThreadSafetyMode.ExecutionAndPublication)).Value;
-        if (levels.TryGetValue(ApplicationAreas.MasterData, out var masterData)
-            && ParseLevel(masterData) == PageAccessLevel.Admin)
-        {
-            return PageAccessLevel.Admin;
-        }
-        if (levels.TryGetValue(areaKey, out var level)) return ParseLevel(level);
+        if (!state.IsValid) return PageAccessLevel.None;
+        if (string.Equals(state.RoleName, BuiltInRoleNames.Admin, StringComparison.OrdinalIgnoreCase)) return PageAccessLevel.Admin;
+        if (state.Levels.TryGetValue(areaKey, out var level)) return ParseLevel(level);
         var legacyArea = ApplicationAreas.All.SingleOrDefault(x => x.Key == areaKey)?.LegacyAreaKey;
-        return legacyArea is not null && levels.TryGetValue(legacyArea, out var legacyLevel)
+        return legacyArea is not null && state.Levels.TryGetValue(legacyArea, out var legacyLevel)
             ? ParseLevel(legacyLevel)
             : PageAccessLevel.None;
     }
 
-    public async Task<IReadOnlyList<UserAccessMatrixRow>> GetMatrixAsync(CancellationToken cancellationToken)
+    public void InvalidateAll() => accessLevelsByEmail.Clear();
+
+    private async Task<RoleAccessState> LoadAccessStateAsync(string email, CancellationToken cancellationToken)
     {
-        await EnsureAccessMatrixAsync(cancellationToken);
-        var users = await dbContext.Users.AsNoTracking()
-            .Include(x => x.UserRoles).ThenInclude(x => x.Role)
-            .Include(x => x.PageAccesses)
-            .OrderBy(x => x.Email)
-            .ToListAsync(cancellationToken);
-
-        return users.Select(user => new UserAccessMatrixRow(
-            user.Id,
-            user.Email,
-            user.DisplayName,
-            user.IsActive,
-            user.UserRoles.OrderBy(x => x.RoleId).Select(x => x.Role.Name).FirstOrDefault() ?? "Viewer",
-            ApplicationAreas.All.ToDictionary(
-                area => area.Key,
-                area => IsOwner(user.Email)
-                    || ParseLevel(user.PageAccesses.SingleOrDefault(x => x.AreaKey == ApplicationAreas.MasterData)?.AccessLevel) == PageAccessLevel.Admin
-                        ? PageAccessLevel.Admin
-                        : ParseLevel(user.PageAccesses.SingleOrDefault(x => x.AreaKey == area.Key)?.AccessLevel))))
-            .ToList();
-    }
-
-    public async Task EnsureAccessMatrixAsync(CancellationToken cancellationToken)
-    {
-        await EnsureSchemaAsync(cancellationToken);
-        var users = await dbContext.Users
-            .Include(x => x.UserRoles).ThenInclude(x => x.Role)
-            .Include(x => x.PageAccesses)
-            .ToListAsync(cancellationToken);
-
-        foreach (var user in users)
-        {
-            foreach (var area in ApplicationAreas.All)
-            {
-                if (user.PageAccesses.Any(x => x.AreaKey == area.Key)) continue;
-                var inherited = area.LegacyAreaKey is null
-                    ? DefaultForRole(user.UserRoles.Select(x => x.Role.Name), area.Key)
-                    : ParseLevel(user.PageAccesses.SingleOrDefault(x => x.AreaKey == area.LegacyAreaKey)?.AccessLevel);
-                dbContext.UserPageAccesses.Add(new UserPageAccess
-                {
-                    UserId = user.Id,
-                    AreaKey = area.Key,
-                    AccessLevel = PersistedLevel(inherited),
-                    UpdatedAt = DateTimeOffset.UtcNow
-                });
-            }
-        }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-    }
-
-    public async Task<string?> SaveMatrixAsync(UserAccessMatrixForm form, string changedByEmail, CancellationToken cancellationToken)
-    {
-        await EnsureAccessMatrixAsync(cancellationToken);
-        var user = await dbContext.Users.Include(x => x.PageAccesses).SingleOrDefaultAsync(x => x.Id == form.UserId, cancellationToken);
-        if (user is null) return "User not found.";
-        var changedBy = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Email == changedByEmail, cancellationToken);
-
-        user.IsActive = form.IsActive;
-        user.UpdatedAt = DateTimeOffset.UtcNow;
-        foreach (var area in ApplicationAreas.All)
-        {
-            var requested = form.Access.TryGetValue(area.Key, out var raw) ? ParseLevel(raw) : PageAccessLevel.None;
-            var existing = user.PageAccesses.SingleOrDefault(x => x.AreaKey == area.Key);
-            if (existing is null)
-            {
-                existing = new UserPageAccess { UserId = user.Id, AreaKey = area.Key, AccessLevel = PageAccessLevel.None.ToString(), UpdatedAt = DateTimeOffset.UtcNow };
-                dbContext.UserPageAccesses.Add(existing);
-            }
-
-            var old = ParseLevel(existing.AccessLevel);
-            if (old == requested) continue;
-            existing.AccessLevel = PersistedLevel(requested);
-            existing.UpdatedAt = DateTimeOffset.UtcNow;
-            existing.UpdatedByUserId = changedBy?.Id;
-            dbContext.AuditLogs.Add(new AuditLog
-            {
-                Action = "update",
-                EntityName = "user-page-access",
-                EntityKey = $"{user.Id}:{area.Key}",
-                UserId = changedBy?.Id,
-                BeforeValuesJson = JsonSerializer.Serialize(new { user.Email, Area = area.Key, AccessLevel = old.ToString() }),
-                AfterValuesJson = JsonSerializer.Serialize(new { user.Email, Area = area.Key, AccessLevel = requested.ToString() }),
-                SourceApplication = "CropQc.Web",
-                CreatedAt = DateTimeOffset.UtcNow
-            });
-        }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        accessLevelsByEmail.TryRemove(user.Email, out _);
-        return null;
-    }
-
-    private async Task<IReadOnlyDictionary<string, string>> LoadAccessLevelsAsync(
-        string email,
-        CancellationToken cancellationToken)
-    {
-        var rows = await dbContext.UserPageAccesses.AsNoTracking()
+        var assignments = await dbContext.UserRoles.AsNoTracking()
+            .Include(x => x.Role).ThenInclude(x => x.PageAccesses)
             .Where(x => x.User.Email == email && x.User.IsActive)
-            .Select(x => new { x.AreaKey, x.AccessLevel })
             .ToListAsync(cancellationToken);
-        return rows.ToDictionary(x => x.AreaKey, x => x.AccessLevel, StringComparer.OrdinalIgnoreCase);
-    }
-
-    public static PageAccessLevel DefaultForRole(IEnumerable<string> roles, string areaKey)
-    {
-        var role = roles.FirstOrDefault() ?? "Viewer";
-        if (string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase)) return PageAccessLevel.Admin;
-        if (areaKey is ApplicationAreas.Users or ApplicationAreas.Configuration or ApplicationAreas.VarietyColors or ApplicationAreas.Backups or ApplicationAreas.Downloads or ApplicationAreas.DataCleanup or ApplicationAreas.CropYearReview)
-        {
-            return PageAccessLevel.None;
-        }
-
-        if (string.Equals(role, "Manager", StringComparison.OrdinalIgnoreCase))
-        {
-            return areaKey is ApplicationAreas.QcStations or ApplicationAreas.MasterData or ApplicationAreas.CurrentLots or ApplicationAreas.RoomTransactions
-                ? PageAccessLevel.Admin
-                : areaKey is ApplicationAreas.BinsRun
-                    ? PageAccessLevel.Create
-                : PageAccessLevel.Create;
-        }
-
-        if (string.Equals(role, "QC User", StringComparison.OrdinalIgnoreCase))
-        {
-            return areaKey is ApplicationAreas.Dashboard or ApplicationAreas.Receipts or ApplicationAreas.DailyQc or ApplicationAreas.FieldSamples or ApplicationAreas.ReceiptEdit
-                ? PageAccessLevel.Create
-                : areaKey is ApplicationAreas.Rooms or ApplicationAreas.GrowerLots ? PageAccessLevel.View : PageAccessLevel.None;
-        }
-
-        return areaKey is ApplicationAreas.Dashboard or ApplicationAreas.Receipts or ApplicationAreas.DailyQc or ApplicationAreas.FieldSamples ? PageAccessLevel.View : PageAccessLevel.None;
-    }
-
-    private async Task EnsureSchemaAsync(CancellationToken cancellationToken)
-    {
-        var provider = dbContext.Database.ProviderName ?? "";
-        if (provider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
-        {
-            await dbContext.Database.ExecuteSqlRawAsync("""
-                CREATE TABLE IF NOT EXISTS "UserPageAccesses" (
-                    "Id" integer GENERATED BY DEFAULT AS IDENTITY,
-                    "UserId" integer NOT NULL,
-                    "AreaKey" character varying(100) NOT NULL,
-                    "AccessLevel" character varying(25) NOT NULL,
-                    "UpdatedByUserId" integer NULL,
-                    "UpdatedAt" timestamp with time zone NOT NULL DEFAULT now(),
-                    CONSTRAINT "PK_UserPageAccesses" PRIMARY KEY ("Id"),
-                    CONSTRAINT "FK_UserPageAccesses_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE
-                );
-                CREATE UNIQUE INDEX IF NOT EXISTS "IX_UserPageAccesses_UserId_AreaKey" ON "UserPageAccesses" ("UserId", "AreaKey");
-                """, cancellationToken);
-        }
-        else if (provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
-        {
-            await dbContext.Database.ExecuteSqlRawAsync("""
-                IF OBJECT_ID(N'[UserPageAccesses]', N'U') IS NULL
-                BEGIN
-                    CREATE TABLE [UserPageAccesses] (
-                        [Id] int IDENTITY(1,1) NOT NULL,
-                        [UserId] int NOT NULL,
-                        [AreaKey] nvarchar(100) NOT NULL,
-                        [AccessLevel] nvarchar(25) NOT NULL,
-                        [UpdatedByUserId] int NULL,
-                        [UpdatedAt] datetimeoffset NOT NULL CONSTRAINT [DF_UserPageAccesses_UpdatedAt] DEFAULT SYSDATETIMEOFFSET(),
-                        CONSTRAINT [PK_UserPageAccesses] PRIMARY KEY ([Id]),
-                        CONSTRAINT [FK_UserPageAccesses_Users_UserId] FOREIGN KEY ([UserId]) REFERENCES [Users] ([Id]) ON DELETE CASCADE
-                    );
-                    CREATE UNIQUE INDEX [IX_UserPageAccesses_UserId_AreaKey] ON [UserPageAccesses] ([UserId], [AreaKey]);
-                END
-                """, cancellationToken);
-        }
+        if (assignments.Count != 1 || !assignments[0].Role.IsActive) return RoleAccessState.Invalid;
+        var role = assignments[0].Role;
+        return new RoleAccessState(
+            true,
+            role.Name,
+            role.PageAccesses.ToDictionary(x => x.AreaKey, x => x.AccessLevel, StringComparer.OrdinalIgnoreCase));
     }
 
     public static PageAccessLevel ParseLevel(string? value) =>
@@ -401,14 +299,16 @@ public sealed class UserAccessService(CropQcDbContext dbContext, IConfiguration 
             ? PageAccessLevel.Create
             : Enum.TryParse<PageAccessLevel>(value, true, out var parsed) ? parsed : PageAccessLevel.None;
 
-    private static string PersistedLevel(PageAccessLevel level) =>
+    public static string PersistedLevel(PageAccessLevel level) =>
         level == PageAccessLevel.Create ? nameof(PageAccessLevel.Create) : level.ToString();
 
     private static string? NormalizeEmail(string? email) => string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
     public static bool IsOwner(string? email) => string.Equals(NormalizeEmail(email), ApplicationAreas.OwnerEmail, StringComparison.OrdinalIgnoreCase);
-    private static bool RequiresAllowedEmail(string areaKey) => areaKey is ApplicationAreas.DataCleanup or ApplicationAreas.CropYearReview;
-    private static string ConfigPrefix(string areaKey) => areaKey == ApplicationAreas.CropYearReview ? "CropYearReview" : "DataCleanup";
-    private IReadOnlyList<string> ConfiguredEmails(string key, string fallback) => (configuration[key] ?? fallback).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+    private sealed record RoleAccessState(bool IsValid, string RoleName, IReadOnlyDictionary<string, string> Levels)
+    {
+        public static RoleAccessState Invalid { get; } = new(false, "", new Dictionary<string, string>());
+    }
 }
 
 public sealed class PageAccessAuthorizationHandler(IUserAccessService accessService) : AuthorizationHandler<PageAccessRequirement>

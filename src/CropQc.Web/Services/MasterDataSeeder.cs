@@ -18,7 +18,6 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
         logger.LogInformation("Master data seed started.");
 
         var roomsBeforeSeed = await dbContext.Rooms.CountAsync(cancellationToken);
-        await SeedRolesAsync(cancellationToken);
         var warehouses = await SeedWarehousesAsync(cancellationToken);
         var roomsAdded = await SeedRoomsAsync(warehouses, cancellationToken);
         await SeedGradesAsync(cancellationToken);
@@ -44,23 +43,6 @@ public sealed class MasterDataSeeder(CropQcDbContext dbContext, ILogger<MasterDa
             fruitProfileCount,
             gradeCount,
             defectCount);
-    }
-
-    private async Task SeedRolesAsync(CancellationToken cancellationToken)
-    {
-        foreach (var role in new[]
-        {
-            ("Admin", "Full dashboard and configuration access."),
-            ("Manager", "Manage QC receiving workflows and resend summaries."),
-            ("QC User", "Capture receiving samples and QC readings."),
-            ("Viewer", "Read-only dashboard access.")
-        })
-        {
-            if (!await dbContext.Roles.AnyAsync(x => x.Name == role.Item1, cancellationToken))
-            {
-                dbContext.Roles.Add(new Role { Name = role.Item1, Description = role.Item2, IsSystemRole = true });
-            }
-        }
     }
 
     private async Task<Dictionary<string, Warehouse>> SeedWarehousesAsync(CancellationToken cancellationToken)

@@ -5,8 +5,8 @@ MVP 1 is Receiving/QC only. It does not include storage inventory, room controll
 ## Users and Security
 
 - Email/password login.
-- Roles: Admin, Manager, QC User, Viewer.
-- Roles and permissions are admin-configurable.
+- Built-in roles: Admin, Manager, QC Tech, QC Admin, Viewer; custom roles are supported.
+- Every user has exactly one role, and roles and their permission matrices are admin-configurable.
 - Password policy is configurable from the dashboard:
   - Yearly reset.
   - Minimum 8 characters.
@@ -68,7 +68,7 @@ Photos and attachments will be stored in Google Shared Drive. The database store
 - QC Summary email sends from the logged-in Google Workspace user through Gmail API when `Email__Provider=GmailUser` is configured. Allowed company domains are `fruitandland.com`, `earlbrownandsons.com`, and `wp-packingllc.com`. During testing, configured recipients are `rob@earlbrownandsons.com,wes@fruitandland.com`.
 - Dashboard metric cards click through to filtered receipt/Daily QC pages. Samples Missing Data and Samples Needing Review show missing fields/photos or review threshold reasons.
 - Admin Downloads links to the shared Google Drive hosted-files folder and installer/support files only. Station-specific QC Station config JSON is downloaded from Admin -> QC Stations.
-- Admin Data Cleanup requires Admin role plus an email listed in `DataCleanup__AllowedEmails`; default access is limited to `wes@fruitandland.com`.
+- Admin Data Cleanup requires Admin access in the Data Cleanup role-matrix cell; the owner account remains the documented break-glass exception.
 - Normal pages should be responsive and avoid page-level horizontal scrolling.
 - Reply-To is the user who took the sample.
 - Managers and Admins can resend with a reason.

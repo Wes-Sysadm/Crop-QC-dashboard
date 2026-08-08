@@ -1,23 +1,23 @@
+using System.Data.Common;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Web.Services;
 using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
-using System.Data.Common;
 
 namespace CropQc.Api.Tests;
 
 public sealed class PermissionMatrixV2Tests
 {
     [Fact]
-    public async Task CreateIncludesViewButDoesNotGrantAdminActions()
+    public async Task AccessComesFromTheUsersSingleActiveRole()
     {
         await using var db = CreateDb();
-        var user = User("planner@example.com");
-        user.PageAccesses.Add(Access(ApplicationAreas.ProjectionPlanner, "Create"));
-        db.Users.Add(user);
+        var role = Role("Planner", (ApplicationAreas.ProjectionPlanner, PageAccessLevel.Create));
+        var user = User("planner@example.com", role);
+        db.AddRange(role, user);
         await db.SaveChangesAsync();
         var service = Service(db);
 
@@ -27,17 +27,101 @@ public sealed class PermissionMatrixV2Tests
     }
 
     [Fact]
-    public async Task MasterDataAdminActsAsSiteAdminForCurrentAndFutureAreas()
+    public async Task UsersWithTheSameRoleReceiveTheSameAccess()
     {
         await using var db = CreateDb();
-        var user = User("master-admin@example.com");
-        user.PageAccesses.Add(Access(ApplicationAreas.MasterData, "Admin"));
-        db.Users.Add(user);
+        var role = Role("Line team", (ApplicationAreas.Receipts, PageAccessLevel.Create));
+        var first = User("first@example.com", role);
+        var second = User("second@example.com", role);
+        db.AddRange(role, first, second);
         await db.SaveChangesAsync();
         var service = Service(db);
 
-        Assert.Equal(PageAccessLevel.Admin, await service.GetAccessLevelAsync(user.Email, ApplicationAreas.PermissionMatrix, default));
-        Assert.Equal(PageAccessLevel.Admin, await service.GetAccessLevelAsync(user.Email, "future-admin-section", default));
+        Assert.Equal(
+            await service.GetAccessLevelAsync(first.Email, ApplicationAreas.Receipts, default),
+            await service.GetAccessLevelAsync(second.Email, ApplicationAreas.Receipts, default));
+    }
+
+    [Fact]
+    public async Task LegacyPerUserRowsDoNotGrantOrOverrideAccess()
+    {
+        await using var db = CreateDb();
+        var role = Role("Viewer custom", (ApplicationAreas.Receipts, PageAccessLevel.View));
+        var user = User("legacy@example.com", role);
+        user.PageAccesses.Add(new UserPageAccess
+        {
+            AreaKey = ApplicationAreas.Receipts,
+            AccessLevel = nameof(PageAccessLevel.Admin),
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        db.AddRange(role, user);
+        await db.SaveChangesAsync();
+
+        Assert.Equal(PageAccessLevel.View, await Service(db).GetAccessLevelAsync(user.Email, ApplicationAreas.Receipts, default));
+    }
+
+    [Fact]
+    public async Task MasterDataAdminDoesNotElevateUnrelatedOrFutureAreas()
+    {
+        await using var db = CreateDb();
+        var role = Role("Master data editor", (ApplicationAreas.MasterData, PageAccessLevel.Admin));
+        var user = User("master@example.com", role);
+        db.AddRange(role, user);
+        await db.SaveChangesAsync();
+        var service = Service(db);
+
+        Assert.Equal(PageAccessLevel.None, await service.GetAccessLevelAsync(user.Email, ApplicationAreas.PermissionMatrix, default));
+        Assert.Equal(PageAccessLevel.None, await service.GetAccessLevelAsync(user.Email, "future-admin-section", default));
+    }
+
+    [Fact]
+    public async Task DataCleanupAndCropYearReviewFollowExplicitRoleCells()
+    {
+        await using var db = CreateDb();
+        var role = Role("Cleanup reviewer",
+            (ApplicationAreas.DataCleanup, PageAccessLevel.Admin),
+            (ApplicationAreas.CropYearReview, PageAccessLevel.View));
+        var user = User("not-owner@example.com", role);
+        db.AddRange(role, user);
+        await db.SaveChangesAsync();
+        var service = Service(db);
+
+        Assert.Equal(PageAccessLevel.Admin, await service.GetAccessLevelAsync(user.Email, ApplicationAreas.DataCleanup, default));
+        Assert.Equal(PageAccessLevel.View, await service.GetAccessLevelAsync(user.Email, ApplicationAreas.CropYearReview, default));
+    }
+
+    [Fact]
+    public async Task MissingMultipleOrInactiveRoleAssignmentsFailClosed()
+    {
+        await using var db = CreateDb();
+        var active = Role("Active", (ApplicationAreas.Dashboard, PageAccessLevel.View));
+        var inactive = Role("Inactive", (ApplicationAreas.Dashboard, PageAccessLevel.Admin));
+        inactive.IsActive = false;
+        var missing = BareUser("missing@example.com");
+        var multiple = User("multiple@example.com", active);
+        multiple.UserRoles.Add(new UserRole { Role = inactive });
+        var disabledRole = User("inactive@example.com", inactive);
+        db.AddRange(active, inactive, missing, multiple, disabledRole);
+        await db.SaveChangesAsync();
+        var service = Service(db);
+
+        Assert.Equal(PageAccessLevel.None, await service.GetAccessLevelAsync(missing.Email, ApplicationAreas.Dashboard, default));
+        Assert.Equal(PageAccessLevel.None, await service.GetAccessLevelAsync(multiple.Email, ApplicationAreas.Dashboard, default));
+        Assert.Equal(PageAccessLevel.None, await service.GetAccessLevelAsync(disabledRole.Email, ApplicationAreas.Dashboard, default));
+    }
+
+    [Fact]
+    public async Task AdminRoleAndOwnerBreakGlassHaveFullAccess()
+    {
+        await using var db = CreateDb();
+        var adminRole = Role(BuiltInRoleNames.Admin);
+        var admin = User("admin@example.com", adminRole);
+        db.AddRange(adminRole, admin);
+        await db.SaveChangesAsync();
+        var service = Service(db);
+
+        Assert.Equal(PageAccessLevel.Admin, await service.GetAccessLevelAsync(admin.Email, ApplicationAreas.DataCleanup, default));
+        Assert.Equal(PageAccessLevel.Admin, await service.GetAccessLevelAsync(ApplicationAreas.OwnerEmail, "unregistered-break-glass-area", default));
     }
 
     [Fact]
@@ -52,24 +136,7 @@ public sealed class PermissionMatrixV2Tests
     }
 
     [Fact]
-    public void MigrationCopiesLegacyLevelsWithoutPromotingCreateToAdmin()
-    {
-        var migration = Directory.GetFiles(RepositoryRoot(), "*AddGrowerLotProjectionSnapshotsAndPermissionLevels.cs", SearchOption.AllDirectories)
-            .Single(x => !x.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase));
-        var text = File.ReadAllText(migration);
-
-        Assert.Contains("source.[AccessLevel]", text);
-        Assert.Contains("source.\"AccessLevel\"", text);
-        Assert.Contains("SET [AccessLevel] = 'Create'", text);
-        Assert.Contains("legacy.[AreaKey] = 'receipt-delete'", text);
-        Assert.Contains("receipts.[AreaKey] = 'receipts'", text);
-        Assert.DoesNotContain("SET source.[AccessLevel] = 'Admin'", text);
-        Assert.DoesNotContain("DropTable", text);
-        Assert.DoesNotContain("DeleteData", text);
-    }
-
-    [Fact]
-    public async Task RepeatedPermissionChecksLoadOneAccessSnapshotPerRequestScope()
+    public async Task RepeatedPermissionChecksLoadOneRoleSnapshotPerRequestScope()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
@@ -80,11 +147,12 @@ public sealed class PermissionMatrixV2Tests
             .Options;
         await using var db = new CropQcDbContext(options);
         await db.Database.EnsureCreatedAsync();
-        var user = User("multi-area@example.com");
-        user.PageAccesses.Add(Access(ApplicationAreas.Dashboard, "View"));
-        user.PageAccesses.Add(Access(ApplicationAreas.FieldSamples, "Create"));
-        user.PageAccesses.Add(Access(ApplicationAreas.ProjectionPlanner, "Admin"));
-        db.Users.Add(user);
+        var role = Role("Multi area",
+            (ApplicationAreas.Dashboard, PageAccessLevel.View),
+            (ApplicationAreas.FieldSamples, PageAccessLevel.Create),
+            (ApplicationAreas.ProjectionPlanner, PageAccessLevel.Admin));
+        var user = User("multi-area@example.com", role);
+        db.AddRange(role, user);
         await db.SaveChangesAsync();
         counter.Reset();
         var service = Service(db);
@@ -92,8 +160,25 @@ public sealed class PermissionMatrixV2Tests
         Assert.Equal(PageAccessLevel.View, await service.GetAccessLevelAsync(user.Email, ApplicationAreas.Dashboard, default));
         Assert.Equal(PageAccessLevel.Create, await service.GetAccessLevelAsync(user.Email, ApplicationAreas.FieldSamples, default));
         Assert.Equal(PageAccessLevel.Admin, await service.GetAccessLevelAsync(user.Email, ApplicationAreas.ProjectionPlanner, default));
-
         Assert.Equal(1, counter.ReaderCount);
+    }
+
+    [Fact]
+    public async Task RelationalDatabasePreventsMoreThanOneRolePerUser()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<CropQcDbContext>().UseSqlite(connection).Options;
+        await using var db = new CropQcDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        var firstRole = Role("First role");
+        var secondRole = Role("Second role");
+        var user = User("single-role@example.com", firstRole);
+        db.AddRange(firstRole, secondRole, user);
+        await db.SaveChangesAsync();
+
+        db.UserRoles.Add(new UserRole { UserId = user.Id, Role = secondRole });
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
     }
 
     private static CropQcDbContext CreateDb() =>
@@ -104,20 +189,39 @@ public sealed class PermissionMatrixV2Tests
     private static UserAccessService Service(CropQcDbContext db) =>
         new(db, new ConfigurationBuilder().Build());
 
-    private static User User(string email) =>
-        new() { Email = email, DisplayName = email, Domain = "example.com", CreatedAt = DateTimeOffset.UtcNow };
-
-    private static UserPageAccess Access(string area, string level) =>
-        new() { AreaKey = area, AccessLevel = level, UpdatedAt = DateTimeOffset.UtcNow };
-
-    private static string RepositoryRoot()
+    private static User BareUser(string email) => new()
     {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null && !File.Exists(Path.Combine(current.FullName, "CropQc.sln")))
+        Email = email,
+        DisplayName = email,
+        Domain = "example.com",
+        CreatedAt = DateTimeOffset.UtcNow
+    };
+
+    private static User User(string email, Role role)
+    {
+        var user = BareUser(email);
+        user.UserRoles.Add(new UserRole { Role = role });
+        return user;
+    }
+
+    private static Role Role(string name, params (string Area, PageAccessLevel Level)[] access)
+    {
+        var role = new Role
         {
-            current = current.Parent;
+            Name = name,
+            NormalizedName = BuiltInRoleNames.Normalize(name),
+            IsActive = true
+        };
+        foreach (var (area, level) in access)
+        {
+            role.PageAccesses.Add(new RolePageAccess
+            {
+                AreaKey = area,
+                AccessLevel = UserAccessService.PersistedLevel(level),
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
         }
-        return current?.FullName ?? throw new InvalidOperationException("Repository root not found.");
+        return role;
     }
 
     private sealed class CommandCounter : DbCommandInterceptor

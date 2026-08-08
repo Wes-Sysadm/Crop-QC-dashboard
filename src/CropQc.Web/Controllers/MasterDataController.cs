@@ -16,7 +16,7 @@ public sealed class MasterDataController(
     {
         type ??= "index";
         if (!await CanTypeAsync(type, PageAccessLevel.View, cancellationToken)) return Forbid();
-        return View(await adminService.GetMasterDataAsync(type, authorizationService.IsManagerOrAdmin(User), cancellationToken));
+        return View(await adminService.GetMasterDataAsync(type, await CanTypeAsync(type, PageAccessLevel.Admin, cancellationToken), cancellationToken));
     }
 
     [HttpGet("{type}/Edit/{id:int}")]
@@ -78,7 +78,7 @@ public sealed class MasterDataController(
     {
         if (!await accessService.HasAccessAsync(User, ApplicationAreas.ImportTools, PageAccessLevel.Admin, cancellationToken)) return Forbid();
         var preview = await adminService.PreviewGrowerLotImportAsync(form, cancellationToken);
-        var model = await adminService.GetMasterDataAsync("grower-lots", authorizationService.IsManagerOrAdmin(User), cancellationToken);
+        var model = await adminService.GetMasterDataAsync("grower-lots", await CanTypeAsync("grower-lots", PageAccessLevel.Admin, cancellationToken), cancellationToken);
         return View("Index", model with { ImportPreview = preview });
     }
 
@@ -91,7 +91,7 @@ public sealed class MasterDataController(
         if (error is not null)
         {
             TempData["Error"] = error;
-            var model = await adminService.GetMasterDataAsync("grower-lots", authorizationService.IsManagerOrAdmin(User), cancellationToken);
+            var model = await adminService.GetMasterDataAsync("grower-lots", await CanTypeAsync("grower-lots", PageAccessLevel.Admin, cancellationToken), cancellationToken);
             return View("Index", model with { ImportPreview = preview });
         }
 

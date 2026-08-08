@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260807044836_AddEndOfDayFillReporting";
+    public const string ExpectedSchemaMigration = "20260807210820_AddRoleBasedUserAccess";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -172,7 +172,15 @@ public static class DatabaseStartupDiagnostics
         new("EndOfDayFillReportSends.SnapshotJson", "EndOfDayFillReportSends", "SnapshotJson", RequireNotNullable: true),
         new("EndOfDayFillReportSends.Status", "EndOfDayFillReportSends", "Status", RequireNotNullable: true),
         new("EndOfDayFillSendReservations", "EndOfDayFillSendReservations", null),
-        new("EndOfDayFillSendReservations.SendAttemptId", "EndOfDayFillSendReservations", "SendAttemptId", RequireNotNullable: true)
+        new("EndOfDayFillSendReservations.SendAttemptId", "EndOfDayFillSendReservations", "SendAttemptId", RequireNotNullable: true),
+        new("Roles.IsActive", "Roles", "IsActive", RequireNotNullable: true),
+        new("Roles.NormalizedName", "Roles", "NormalizedName", RequireNotNullable: true),
+        new("RolePageAccesses", "RolePageAccesses", null),
+        new("RolePageAccesses.RoleId", "RolePageAccesses", "RoleId", RequireNotNullable: true),
+        new("RolePageAccesses.AreaKey", "RolePageAccesses", "AreaKey", RequireNotNullable: true),
+        new("RolePageAccesses.AccessLevel", "RolePageAccesses", "AccessLevel", RequireNotNullable: true),
+        new("RolePageAccesses.UpdatedByUserId", "RolePageAccesses", "UpdatedByUserId", RequireNullable: true),
+        new("RolePageAccesses.UpdatedAt", "RolePageAccesses", "UpdatedAt", RequireNotNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
@@ -205,7 +213,11 @@ public static class DatabaseStartupDiagnostics
         new("IX_EndOfDayFillReportRecipients_NormalizedEmailAddress", "EndOfDayFillReportRecipients", "IX_EndOfDayFillReportRecipients_NormalizedEmailAddress", RequireUnique: true),
         new("IX_EndOfDayFillUserGroupAssignments_UserId_ReportGroupId", "EndOfDayFillUserGroupAssignments", "IX_EndOfDayFillUserGroupAssignments_UserId_ReportGroupId", RequireUnique: true),
         new("IX_EndOfDayFillReportSends_SuccessRevisionKey", "EndOfDayFillReportSends", "IX_EndOfDayFillReportSends_SuccessRevisionKey", RequireUnique: true),
-        new("IX_EndOfDayFillSendReservations_SendAttemptId", "EndOfDayFillSendReservations", "IX_EndOfDayFillSendReservations_SendAttemptId", RequireUnique: true)
+        new("IX_EndOfDayFillSendReservations_SendAttemptId", "EndOfDayFillSendReservations", "IX_EndOfDayFillSendReservations_SendAttemptId", RequireUnique: true),
+        new("IX_Roles_NormalizedName", "Roles", "IX_Roles_NormalizedName", RequireUnique: true),
+        new("IX_UserRoles_UserId", "UserRoles", "IX_UserRoles_UserId", RequireUnique: true),
+        new("IX_RolePageAccesses_RoleId_AreaKey", "RolePageAccesses", "IX_RolePageAccesses_RoleId_AreaKey", RequireUnique: true),
+        new("IX_RolePageAccesses_UpdatedByUserId", "RolePageAccesses", "IX_RolePageAccesses_UpdatedByUserId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
@@ -234,7 +246,9 @@ public static class DatabaseStartupDiagnostics
         new("FK_Rooms_EndOfDayFillReportGroups_EndOfDayFillReportGroupId", "Rooms", "FK_Rooms_EndOfDayFillReportGroups_EndOfDayFillReportGroupId"),
         new("FK_EndOfDayFillUserGroupAssignments_Users_UserId", "EndOfDayFillUserGroupAssignments", "FK_EndOfDayFillUserGroupAssignments_Users_UserId"),
         new("FK_EndOfDayFillReportSends_EndOfDayFillReportGroups_ReportGroupId", "EndOfDayFillReportSends", "FK_EndOfDayFillReportSends_EndOfDayFillReportGroups_ReportGroupId"),
-        new("FK_EndOfDayFillSendReservations_EndOfDayFillReportSends_SendAttemptId", "EndOfDayFillSendReservations", "FK_EndOfDayFillSendReservations_EndOfDayFillReportSends_SendAttemptId")
+        new("FK_EndOfDayFillSendReservations_EndOfDayFillReportSends_SendAttemptId", "EndOfDayFillSendReservations", "FK_EndOfDayFillSendReservations_EndOfDayFillReportSends_SendAttemptId"),
+        new("FK_RolePageAccesses_Roles_RoleId", "RolePageAccesses", "FK_RolePageAccesses_Roles_RoleId"),
+        new("FK_RolePageAccesses_Users_UpdatedByUserId", "RolePageAccesses", "FK_RolePageAccesses_Users_UpdatedByUserId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
@@ -248,7 +262,8 @@ public static class DatabaseStartupDiagnostics
         new("PK_EndOfDayFillReportRecipients", "EndOfDayFillReportRecipients", "PK_EndOfDayFillReportRecipients"),
         new("PK_EndOfDayFillUserGroupAssignments", "EndOfDayFillUserGroupAssignments", "PK_EndOfDayFillUserGroupAssignments"),
         new("PK_EndOfDayFillReportSends", "EndOfDayFillReportSends", "PK_EndOfDayFillReportSends"),
-        new("PK_EndOfDayFillSendReservations", "EndOfDayFillSendReservations", "PK_EndOfDayFillSendReservations")
+        new("PK_EndOfDayFillSendReservations", "EndOfDayFillSendReservations", "PK_EndOfDayFillSendReservations"),
+        new("PK_RolePageAccesses", "RolePageAccesses", "PK_RolePageAccesses")
     ];
 
     public static async Task InspectAsync(

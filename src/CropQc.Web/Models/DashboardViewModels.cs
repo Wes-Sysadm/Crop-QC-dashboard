@@ -1013,10 +1013,9 @@ public sealed class UserAdminPageViewModel
 {
     public string? DataWarning { get; set; }
     public IReadOnlyList<UserAdminListItem> Users { get; set; } = [];
-    public IReadOnlyList<UserAccessMatrixRow> AccessMatrix { get; set; } = [];
     public IReadOnlyList<ApplicationAreaViewModel> Areas { get; set; } = [];
-    public IReadOnlyList<RoleOptionViewModel> Roles { get; set; } = [];
-    public IReadOnlyList<RolePermissionViewModel> RolePermissions { get; set; } = [];
+    public IReadOnlyList<RoleAdminListItemViewModel> Roles { get; set; } = [];
+    public RoleAdminDetailViewModel? SelectedRole { get; set; }
     public IReadOnlyList<EndOfDayFillGroupOption> EndOfDayFillGroups { get; set; } = [];
     public AddUserForm AddUserForm { get; set; } = new();
     public IReadOnlyList<string> EmploymentOptions { get; set; } =
@@ -1044,11 +1043,27 @@ public sealed record UserAdminListItem(
     string EmploymentChangedBy,
     DateTimeOffset? EmploymentChangedAt,
     IReadOnlyList<UserEmploymentHistoryViewModel> EmploymentHistory,
-    IReadOnlyList<int> EndOfDayFillGroupIds);
+    IReadOnlyList<int> EndOfDayFillGroupIds,
+    bool IsOwner,
+    int? RoleId);
 public sealed record ApplicationAreaViewModel(string Key, string Name, string Group, string Route);
-public sealed record UserAccessMatrixRow(int Id, string Email, string DisplayName, bool IsActive, string Role, IReadOnlyDictionary<string, PageAccessLevel> Access);
-public sealed record RoleOptionViewModel(int Id, string Name, string Summary);
-public sealed record RolePermissionViewModel(string Permission, string Admin, string Manager, string QcUser, string Viewer);
+public sealed record RoleAdminListItemViewModel(
+    int Id,
+    string Name,
+    string Description,
+    bool IsSystemRole,
+    bool IsActive,
+    int AssignedActiveUserCount,
+    bool IsAdmin,
+    bool HasCompleteMatrix);
+public sealed record RoleAdminDetailViewModel(
+    int Id,
+    string Name,
+    string Description,
+    bool IsSystemRole,
+    bool IsActive,
+    bool IsAdmin,
+    IReadOnlyDictionary<string, PageAccessLevel> Access);
 
 public sealed class AddUserForm
 {
@@ -1072,10 +1087,24 @@ public sealed class UpdateUserEmploymentForm
     public DateTimeOffset? EffectiveAt { get; set; }
 }
 
-public sealed class UserAccessMatrixForm
+public sealed class CreateRoleForm
 {
-    public int UserId { get; set; }
+    public string Name { get; set; } = "";
+    public string? Description { get; set; }
+    public int? CopyFromRoleId { get; set; }
+}
+
+public sealed class UpdateRoleForm
+{
+    public int RoleId { get; set; }
+    public string Name { get; set; } = "";
+    public string? Description { get; set; }
     public bool IsActive { get; set; }
+}
+
+public sealed class RoleAccessMatrixForm
+{
+    public int RoleId { get; set; }
     public Dictionary<string, string> Access { get; set; } = [];
 }
 

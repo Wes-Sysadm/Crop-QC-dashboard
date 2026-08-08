@@ -820,11 +820,7 @@ public sealed class EndOfDayFillTests
             Task.FromResult(false);
         public Task<PageAccessLevel> GetAccessLevelAsync(string? email, string areaKey, CancellationToken cancellationToken) =>
             Task.FromResult(email == Fixture.SenderEmail ? PageAccessLevel.Admin : PageAccessLevel.None);
-        public Task<IReadOnlyList<UserAccessMatrixRow>> GetMatrixAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<UserAccessMatrixRow>>([]);
-        public Task EnsureAccessMatrixAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<string?> SaveMatrixAsync(UserAccessMatrixForm form, string changedByEmail, CancellationToken cancellationToken) =>
-            Task.FromResult<string?>(null);
+        public void InvalidateAll() { }
     }
 
     private sealed class MutableClock : IClock { public DateTimeOffset UtcNow { get; set; } }

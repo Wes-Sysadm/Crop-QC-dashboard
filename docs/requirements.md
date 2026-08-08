@@ -7,8 +7,8 @@ Crop QC Dashboard supports receiving quality control workflows. MVP 1 is limited
 ## MVP 1 Functional Scope
 
 - Email/password login.
-- Roles: Admin, Manager, QC User, Viewer.
-- Admin-configurable roles and permissions.
+- Built-in roles: Admin, Manager, QC Tech, QC Admin, Viewer; custom roles are supported.
+- Every user has exactly one role, and Admins configure permissions once per role with no per-user override.
 - Password policy configurable from the dashboard:
   - Yearly reset.
   - Minimum 8 characters.
@@ -59,8 +59,8 @@ Crop QC Dashboard supports receiving quality control workflows. MVP 1 is limited
 - Dashboard room rollups show current non-depleted fruit only, with pressure, pressure standard deviation, month-over-month pressure change, harvest starch, defects, latest sample date, lot/bin counts, and configured review flags when data exists.
 - Room drill-down shows current lots, depleted/history lots, related receipt/sample links, depletion history, and a Manager/Admin action to record bins sent to line.
 - Depletion is the production-safe way to remove fruit from active room summaries when bins are sent to line. Depletion records are additive and audited; they never delete receipts, QC samples, fruit rows, photos, email logs, or historical room/sample data.
-- Managers and Admins can create and void depletion records. QC Users and Viewers cannot create or void depletion records. Voided depletion records remain in history and are ignored by current-room calculations.
-- Admin Data Cleanup is restricted by both Admin role and `DataCleanup__AllowedEmails`; the default allowed email is `wes@fruitandland.com`.
+- Roles with the required room-transaction matrix level can create and void depletion records. The default QC Tech and Viewer roles cannot. Voided depletion records remain in history and are ignored by current-room calculations.
+- Admin Data Cleanup is restricted by the explicit Data Cleanup role-matrix cell, with only the documented owner break-glass exception.
 - Offline capture in Windows QC Station app.
 - Sync to the Render/Postgres backend and Google Drive storage when internet returns.
 - Photos and attachments stored in Google Shared Drive.
