@@ -285,7 +285,12 @@ public sealed class EndOfDayFillTests
         var ebs = await fixture.Db.Warehouses.SingleAsync(x => x.Code == "EBS");
 
         Assert.Null(await masterData.SaveMasterDataAsync(new MasterDataEditForm { Type = "rooms", WarehouseId = wp.Id, Code = "WP-NONE", Name = "No report", CapacityBins = 10, IsActive = true }, Fixture.SenderEmail, default));
-        Assert.Null((await fixture.Db.Rooms.SingleAsync(x => x.Code == "WP-NONE")).EndOfDayFillReportGroupId);
+        var futureRoom = await fixture.Db.Rooms.SingleAsync(x => x.Code == "WP-NONE");
+        Assert.Null(futureRoom.EndOfDayFillReportGroupId);
+        var futureRoomEdit = (await masterData.GetEditFormAsync("rooms", futureRoom.Id, default))!;
+        futureRoomEdit.EndOfDayFillReportGroupId = 1;
+        Assert.Null(await masterData.SaveMasterDataAsync(futureRoomEdit, Fixture.SenderEmail, default));
+        Assert.Equal(1, (await fixture.Db.Rooms.AsNoTracking().SingleAsync(x => x.Id == futureRoom.Id)).EndOfDayFillReportGroupId);
 
         Assert.Null(await masterData.SaveMasterDataAsync(new MasterDataEditForm { Type = "rooms", WarehouseId = ebs.Id, Code = "EBS-ASSIGNED", Name = "EBS assigned", CapacityBins = 20, IsActive = true, EndOfDayFillReportGroupId = 2 }, Fixture.SenderEmail, default));
         var assigned = await fixture.Db.Rooms.SingleAsync(x => x.Code == "EBS-ASSIGNED");

@@ -319,7 +319,16 @@ public sealed class DatabaseRegressionDiagnosticsTests
         Assert.Contains("candidate_room_count", script);
         Assert.Contains("gmail_credential_present", script);
         Assert.Contains("gmail_send_scope_present", script);
-        Assert.Contains("lower(btrim(w.\"Code\")) IN ('dh', 'mcdougall', 'ebs')", script);
+        Assert.Contains("generate_series(1, 22)", script);
+        Assert.Contains("generate_series(3, 16)", script);
+        Assert.Contains("generate_series(13, 17)", script);
+        Assert.Contains("generate_series(1, 12)", script);
+        Assert.Contains("generate_series(1, 6)", script);
+        Assert.Contains("expected_room_count <> 63", script);
+        Assert.Contains("wp_candidate_count <> 36", script);
+        Assert.Contains("ebs_candidate_count <> 27", script);
+        Assert.Contains("'mcd-01'", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("excluded_not_seeded", script);
         Assert.DoesNotContain("AccessTokenEncrypted\" AS", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("RefreshTokenEncrypted\" AS", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("alter table", script, StringComparison.OrdinalIgnoreCase);
@@ -338,6 +347,12 @@ public sealed class DatabaseRegressionDiagnosticsTests
         Assert.Contains("ALTER TABLE \"Rooms\" ADD COLUMN \"EndOfDayFillReportGroupId\"", script);
         Assert.Contains("Preserving authoritative Room master-data assignments on repeat apply", script);
         Assert.Contains("Room capacity fingerprint changed", script);
+        Assert.Contains("generate_series(1, 22)", script);
+        Assert.Contains("generate_series(3, 16)", script);
+        Assert.Contains("wp_candidate_count <> 36", script);
+        Assert.Contains("ebs_candidate_count <> 27", script);
+        Assert.Contains("lower(btrim(r.\"Code\"))=lower(e.room_code)", script);
+        Assert.DoesNotContain("lower(btrim(w.\"Code\")) IN ('dh','mcdougall','ebs')\n  AND g.\"Name\"", script);
         Assert.DoesNotContain("CREATE TABLE \"EndOfDayFillReportGroupRooms\"", script);
         Assert.Contains("migration history is intentionally untouched", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("INSERT INTO \"__EFMigrationsHistory\"", script, StringComparison.OrdinalIgnoreCase);
@@ -355,11 +370,33 @@ public sealed class DatabaseRegressionDiagnosticsTests
         Assert.Contains("FK_EndOfDayFillSendReservations_EndOfDayFillReportSends_SendAttemptId", script);
         Assert.Contains("FK_Rooms_EndOfDayFillReportGroups_EndOfDayFillReportGroupId", script);
         Assert.Contains("Obsolete room-membership join table must not exist", script);
+        Assert.Contains("wp_assignment_count <> 36", script);
+        Assert.Contains("ebs_assignment_count <> 27", script);
+        Assert.Contains("MCD-01 must remain excluded", script);
+        Assert.Contains("excluded_not_seeded", script);
         Assert.Contains("initial_send_count", script);
         Assert.Contains("initial_reservation_count", script);
         Assert.DoesNotContain("alter table", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("create table", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("\ninsert into ", script, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EndOfDayFillMigration_SeedsOnlyTheReviewedRoomAllowlist()
+    {
+        var migration = File.ReadAllText(FindRepositoryFile(
+            "src", "CropQc.Data", "Migrations", "20260807044836_AddEndOfDayFillReporting.cs"));
+
+        Assert.Contains("'dh-1','dh-2','dh-3'", migration);
+        Assert.Contains("'dh-20','dh-21','dh-22'", migration);
+        Assert.Contains("'mcd-3','mcd-4','mcd-5'", migration);
+        Assert.Contains("'mcd-14','mcd-15','mcd-16'", migration);
+        Assert.Contains("'lamb-13','lamb-14','lamb-15','lamb-16','lamb-17'", migration);
+        Assert.Contains("'evans-backside','evans-bkt','evans-hallway1','evans-hallway2'", migration);
+        Assert.Contains("'bm-1','bm-2','bm-3','bm-4','bm-5','bm-6'", migration);
+        Assert.DoesNotContain("'mcd-01'", migration, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("lower(btrim(w.\"Code\")) IN ('dh', 'mcdougall')", migration);
+        Assert.DoesNotContain("LOWER(LTRIM(RTRIM(w.[Code]))) IN ('dh', 'mcdougall')", migration);
     }
 
     [Fact]

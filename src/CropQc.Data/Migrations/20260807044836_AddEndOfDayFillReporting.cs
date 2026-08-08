@@ -193,11 +193,23 @@ namespace CropQc.Data.Migrations
                 UPDATE r
                 SET [EndOfDayFillReportGroupId] = 1
                 FROM [Rooms] r INNER JOIN [Warehouses] w ON w.[Id] = r.[WarehouseId]
-                WHERE r.[IsActive] = 1 AND w.[IsActive] = 1 AND LOWER(LTRIM(RTRIM(w.[Code]))) IN ('dh', 'mcdougall');
+                WHERE r.[IsActive] = 1 AND w.[IsActive] = 1 AND (
+                    (LOWER(LTRIM(RTRIM(w.[Code]))) = 'dh' AND LOWER(LTRIM(RTRIM(r.[Code]))) IN
+                        ('dh-1','dh-2','dh-3','dh-4','dh-5','dh-6','dh-7','dh-8','dh-9','dh-10','dh-11','dh-12','dh-13','dh-14','dh-15','dh-16','dh-17','dh-18','dh-19','dh-20','dh-21','dh-22'))
+                    OR
+                    (LOWER(LTRIM(RTRIM(w.[Code]))) = 'mcdougall' AND LOWER(LTRIM(RTRIM(r.[Code]))) IN
+                        ('mcd-3','mcd-4','mcd-5','mcd-6','mcd-7','mcd-8','mcd-9','mcd-10','mcd-11','mcd-12','mcd-13','mcd-14','mcd-15','mcd-16'))
+                );
                 UPDATE r
                 SET [EndOfDayFillReportGroupId] = 2
                 FROM [Rooms] r INNER JOIN [Warehouses] w ON w.[Id] = r.[WarehouseId]
-                WHERE r.[IsActive] = 1 AND w.[IsActive] = 1 AND LOWER(LTRIM(RTRIM(w.[Code]))) = 'ebs';
+                WHERE r.[IsActive] = 1 AND w.[IsActive] = 1
+                  AND LOWER(LTRIM(RTRIM(w.[Code]))) = 'ebs'
+                  AND LOWER(LTRIM(RTRIM(r.[Code]))) IN
+                    ('lamb-13','lamb-14','lamb-15','lamb-16','lamb-17',
+                     'evans-1','evans-2','evans-3','evans-4','evans-5','evans-6','evans-7','evans-8','evans-9','evans-10','evans-11','evans-12',
+                     'evans-backside','evans-bkt','evans-hallway1','evans-hallway2',
+                     'bm-1','bm-2','bm-3','bm-4','bm-5','bm-6');
                 INSERT INTO [EndOfDayFillUserGroupAssignments] ([UserId], [ReportGroupId], [CreatedAt], [CreatedByUserId])
                 SELECT [Id], 1, SYSUTCDATETIME(), NULL FROM [Users] WHERE LOWER(LTRIM(RTRIM([Email]))) IN ('jorge@wp-packing.com', 'wes@fruitandland.com');
                 INSERT INTO [EndOfDayFillUserGroupAssignments] ([UserId], [ReportGroupId], [CreatedAt], [CreatedByUserId])
@@ -214,11 +226,23 @@ namespace CropQc.Data.Migrations
                 UPDATE "Rooms" r
                 SET "EndOfDayFillReportGroupId" = 1
                 FROM "Warehouses" w
-                WHERE w."Id" = r."WarehouseId" AND r."IsActive" AND w."IsActive" AND lower(btrim(w."Code")) IN ('dh', 'mcdougall');
+                WHERE w."Id" = r."WarehouseId" AND r."IsActive" AND w."IsActive" AND (
+                    (lower(btrim(w."Code")) = 'dh' AND lower(btrim(r."Code")) IN
+                        ('dh-1','dh-2','dh-3','dh-4','dh-5','dh-6','dh-7','dh-8','dh-9','dh-10','dh-11','dh-12','dh-13','dh-14','dh-15','dh-16','dh-17','dh-18','dh-19','dh-20','dh-21','dh-22'))
+                    OR
+                    (lower(btrim(w."Code")) = 'mcdougall' AND lower(btrim(r."Code")) IN
+                        ('mcd-3','mcd-4','mcd-5','mcd-6','mcd-7','mcd-8','mcd-9','mcd-10','mcd-11','mcd-12','mcd-13','mcd-14','mcd-15','mcd-16'))
+                );
                 UPDATE "Rooms" r
                 SET "EndOfDayFillReportGroupId" = 2
                 FROM "Warehouses" w
-                WHERE w."Id" = r."WarehouseId" AND r."IsActive" AND w."IsActive" AND lower(btrim(w."Code")) = 'ebs';
+                WHERE w."Id" = r."WarehouseId" AND r."IsActive" AND w."IsActive"
+                  AND lower(btrim(w."Code")) = 'ebs'
+                  AND lower(btrim(r."Code")) IN
+                    ('lamb-13','lamb-14','lamb-15','lamb-16','lamb-17',
+                     'evans-1','evans-2','evans-3','evans-4','evans-5','evans-6','evans-7','evans-8','evans-9','evans-10','evans-11','evans-12',
+                     'evans-backside','evans-bkt','evans-hallway1','evans-hallway2',
+                     'bm-1','bm-2','bm-3','bm-4','bm-5','bm-6');
                 INSERT INTO "EndOfDayFillUserGroupAssignments" ("UserId", "ReportGroupId", "CreatedAt", "CreatedByUserId")
                 SELECT "Id", 1, CURRENT_TIMESTAMP, NULL FROM "Users" WHERE lower(btrim("Email")) IN ('jorge@wp-packing.com', 'wes@fruitandland.com');
                 INSERT INTO "EndOfDayFillUserGroupAssignments" ("UserId", "ReportGroupId", "CreatedAt", "CreatedByUserId")
