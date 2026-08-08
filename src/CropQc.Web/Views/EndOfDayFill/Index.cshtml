@@ -92,6 +92,7 @@
 
     <section class="panel">
         <form method="post" action="/EndOfDayFill/Send" id="end-of-day-fill-send-form">
+            @Html.AntiForgeryToken()
             <input type="hidden" name="GroupId" value="@Model.SelectedGroupId" />
             <input type="hidden" name="PreviewToken" value="@Model.PreviewToken" />
             <label class="checkbox-field physical-count-confirmation">

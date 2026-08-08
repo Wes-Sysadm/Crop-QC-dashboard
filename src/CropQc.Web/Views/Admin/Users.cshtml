@@ -142,6 +142,7 @@
                 </td>
                 <td>
                     <form method="post" action="/Admin/Users/EndOfDayFillGroups" class="stack-form compact-form">
+                        @Html.AntiForgeryToken()
                         <input type="hidden" name="UserId" value="@user.Id" />
                         @foreach (var group in Model.EndOfDayFillGroups)
                         {
