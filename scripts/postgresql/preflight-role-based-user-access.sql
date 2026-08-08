@@ -16,8 +16,20 @@ BEGIN
     IF to_regclass(format('%I.%I', current_schema(), 'Users')) IS NULL
        OR to_regclass(format('%I.%I', current_schema(), 'Roles')) IS NULL
        OR to_regclass(format('%I.%I', current_schema(), 'UserRoles')) IS NULL
-       OR to_regclass(format('%I.%I', current_schema(), 'UserPageAccesses')) IS NULL THEN
+       OR to_regclass(format('%I.%I', current_schema(), 'UserPageAccesses')) IS NULL
+       OR to_regclass(format('%I.%I', current_schema(), 'EndOfDayFillReportGroups')) IS NULL
+       OR to_regclass(format('%I.%I', current_schema(), 'EndOfDayFillReportRecipients')) IS NULL
+       OR to_regclass(format('%I.%I', current_schema(), 'EndOfDayFillUserGroupAssignments')) IS NULL
+       OR to_regclass(format('%I.%I', current_schema(), 'EndOfDayFillReportSends')) IS NULL
+       OR to_regclass(format('%I.%I', current_schema(), 'EndOfDayFillSendReservations')) IS NULL THEN
         RAISE EXCEPTION 'Required legacy user-access objects are missing. No changes were made.';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema=current_schema() AND table_name='Rooms'
+          AND column_name='EndOfDayFillReportGroupId') THEN
+        RAISE EXCEPTION 'The deployed End-of-Day Fill room assignment column is missing. No changes were made.';
     END IF;
 
     SELECT count(*) INTO target_tables
@@ -55,6 +67,29 @@ GROUP BY u."Id",u."Email",u."DisplayName",u."IsActive"
 ORDER BY lower(u."Email"),u."Id";
 
 SELECT count(*) AS legacy_user_page_access_rows FROM "UserPageAccesses";
+
+SELECT g."Id",g."Name",g."Facility",g."IsActive",count(r."Id") AS assigned_rooms
+FROM "EndOfDayFillReportGroups" g
+LEFT JOIN "Rooms" r ON r."EndOfDayFillReportGroupId"=g."Id"
+GROUP BY g."Id",g."Name",g."Facility",g."IsActive"
+ORDER BY g."Facility",g."Id";
+
+SELECT lower("EmailAddress") AS email,"IsActive","SortOrder"
+FROM "EndOfDayFillReportRecipients"
+ORDER BY "SortOrder",lower("EmailAddress"),"Id";
+
+SELECT lower(u."Email") AS email,string_agg(g."Facility",',' ORDER BY g."Facility") AS report_groups
+FROM "EndOfDayFillUserGroupAssignments" a
+JOIN "Users" u ON u."Id"=a."UserId"
+JOIN "EndOfDayFillReportGroups" g ON g."Id"=a."ReportGroupId"
+GROUP BY u."Id",u."Email"
+ORDER BY lower(u."Email"),u."Id";
+
+SELECT count(*) AS room_rows,
+       md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."Id"),'')) AS room_assignment_capacity_fingerprint
+FROM (SELECT "Id","CapacityBins","EndOfDayFillReportGroupId" FROM "Rooms") x;
+SELECT count(*) AS end_of_day_fill_sends FROM "EndOfDayFillReportSends";
+SELECT count(*) AS end_of_day_fill_reservations FROM "EndOfDayFillSendReservations";
 
 SELECT 'DataCleanup:AllowedEmails' AS legacy_gate,
        :'data_cleanup_allowed_emails' AS configured_emails

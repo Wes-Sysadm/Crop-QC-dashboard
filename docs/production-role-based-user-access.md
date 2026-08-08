@@ -18,9 +18,9 @@ Viewer, QC Tech, QC Admin, and Manager matrices are editable after creation. Adm
 
 ## Newest verified-backup analysis
 
-Production was checked immediately before this analysis and is still running `d8a4a904b4f0778ac3a528e1b86f00ad97860458`; `main` is `e91dff190996284c23aa369c1010b2aacad80770`. PR #175 is therefore not deployed. In particular, the fresh production database does not contain the End-of-Day Fill tables or user/group assignments yet; there are no PR #175 assignments to verify or preserve in this baseline.
+Production and `main` were checked immediately before this analysis and both resolve to `138ca27415c6368a360d847ae367596b08af3ff2`. This includes the merged End-of-Day Fill release, its antiforgery/Data Protection hotfix, and the reviewed 42-WP/27-EBS Room scope. The restored baseline contains the complete End-of-Day Fill schema and configuration and is the authoritative source for the preservation checks below.
 
-Backup run 46 started at `2026-08-07 23:23:25.673010+00` (16:23:25 Pacific) and completed at `2026-08-07 23:26:26.940043+00` (16:26:26 Pacific) with status `Succeeded`. Its package is `cropqc-production-predeployment-20260807-232325.zip`, 1,578,062 bytes, SHA-256 `63f3b6966a1d79c8af48ace01968cc84f61f0ed0ba1ad87ea76ee30f48fc38ca`. The persisted run records Google Drive read-back verification, retention completion, and lease release. The independently downloaded ZIP and sidecar agree with the persisted record. All four component hashes agree with `backup-manifest.json`; the configuration, schema, and photo manifests are readable; and the PostgreSQL 18 dump expands to a readable 47,772,975-byte SQL stream. The exact package was restored to a new localhost-only PostgreSQL 18 database.
+Backup run 52 started at `2026-08-08 19:58:47.0390263+00` (12:58:47 Pacific) and completed at `2026-08-08 20:02:02+00` (13:02:02 Pacific) with status `Succeeded`. Its package is `cropqc-production-predeployment-20260808-195847.zip`, 1,693,275 bytes, SHA-256 `d57d30118a73d4a87f524eb8640cb2d5c0b1b4335935e823717593e826fd6eee`. The persisted run records Google Drive read-back verification, retention completion, and lease release. The exact Drive package was independently downloaded; its ZIP is readable, all four component sizes and SHA-256 values agree with `backup-manifest.json`, the configuration, schema, and photo manifests are readable, and the PostgreSQL dump expands to a readable 50,138,176-byte SQL stream. The package was restored to the new localhost-only PostgreSQL 18 database `cropqc_run52_role_refresh`.
 
 The restored database contains 12 active users, four legacy role rows, 17 `UserRoles` assignments, no zero-role user, five multiple-role users, and 480 preserved `UserPageAccesses` rows:
 
@@ -83,13 +83,13 @@ The table compares each unresolved current profile with the compiled built-in de
 
 | User | Employment | End-of-Day Fill | Closest built-in | Matches / differs | Viewer | QC Tech | QC Admin | Manager | Shared-profile candidate |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Shianne Allen | Unassigned | unavailable; PR #175 not deployed | QC Tech | 34 / 6 | 33/7, +4/-3 | 34/6, +5/-1 | 24/16, +16/-0 | 10/30, +30/-0 | none |
-| Harvest Log | Unassigned | unavailable; PR #175 not deployed | Viewer | 31 / 9 | 31/9, +0/-9 | 28/12, +3/-9 | 20/20, +13/-7 | 9/31, +30/-1 | none |
-| Alexis Ledezma | WP | unavailable; PR #175 not deployed | Manager | 30 / 10 | 2/38, +0/-38 | 2/38, +0/-38 | 13/27, +0/-27 | 30/10, +0/-10 | Custom profile A |
-| James Foreman | Unassigned | unavailable; PR #175 not deployed | Manager | 30 / 10 | 2/38, +0/-38 | 2/38, +0/-38 | 13/27, +0/-27 | 30/10, +0/-10 | Custom profile A |
-| Jorge Ledezma | Unassigned | unavailable; PR #175 not deployed | Manager | 30 / 10 | 2/38, +0/-38 | 2/38, +0/-38 | 13/27, +0/-27 | 30/10, +0/-10 | Custom profile A |
-| Maria Ledezma | Unassigned | unavailable; PR #175 not deployed | QC Tech | 25 / 15 | 23/17, +0/-17 | 25/15, +0/-15 | 14/26, +12/-14 | 10/30, +29/-1 | none |
-| Kyle Hendrickson | Unassigned | unavailable; PR #175 not deployed | QC Tech | 15 / 25 | 14/26, +0/-26 | 15/25, +1/-24 | 11/29, +11/-18 | 11/29, +28/-1 | none |
+| Shianne Allen | Unassigned | none | QC Tech | 34 / 6 | 33/7, +4/-3 | 34/6, +5/-1 | 24/16, +16/-0 | 10/30, +30/-0 | none |
+| Harvest Log | Unassigned | none | Viewer | 31 / 9 | 31/9, +0/-9 | 28/12, +3/-9 | 20/20, +13/-7 | 9/31, +30/-1 | none |
+| Alexis Ledezma | WP | none | Manager | 30 / 10 | 2/38, +0/-38 | 2/38, +0/-38 | 13/27, +0/-27 | 30/10, +0/-10 | Custom profile A |
+| James Foreman | Unassigned | none | Manager | 30 / 10 | 2/38, +0/-38 | 2/38, +0/-38 | 13/27, +0/-27 | 30/10, +0/-10 | Custom profile A |
+| Jorge Ledezma | Unassigned | WP | Manager | 30 / 10 | 2/38, +0/-38 | 2/38, +0/-38 | 13/27, +0/-27 | 30/10, +0/-10 | Custom profile A |
+| Maria Ledezma | Unassigned | none | QC Tech | 25 / 15 | 23/17, +0/-17 | 25/15, +0/-15 | 14/26, +12/-14 | 10/30, +29/-1 | none |
+| Kyle Hendrickson | Unassigned | none | QC Tech | 15 / 25 | 14/26, +0/-26 | 15/25, +1/-24 | 11/29, +11/-18 | 11/29, +28/-1 | none |
 
 The least-delta candidates above are analysis aids, not assignments. In particular, a smaller numerical delta can still remove important operational access.
 
@@ -112,11 +112,13 @@ The compatibility package currently preserves the agreed legacy matrix for an in
 
 ### Disposable resolved-state rehearsal
 
-The run-46 clone used the five approved redundant-role removals and the following explicitly labeled test fixture only: Alexis, James, and Jorge -> `TEST FIXTURE ONLY - Custom profile A`; Harvest -> B; Kyle -> C; Maria -> D; Shianne -> E. These fixture roles preserve the five distinct unresolved fingerprints and are not production recommendations.
+The run-52 clone used the five approved redundant-role removals and the following explicitly labeled test fixture only: Alexis, James, and Jorge -> `TEST FIXTURE ONLY - Custom profile A`; Harvest -> B; Kyle -> C; Maria -> D; Shianne -> E. These fixture roles preserve the five distinct unresolved fingerprints and are not production recommendations.
 
 The first compatibility apply and verification passed, every active user ended with exactly one role, all 480 `UserPageAccesses` rows remained intact, and every active role received a complete 40-cell authoritative matrix. Admin had 40 Admin cells; the owner break-glass account remained Admin. The only before/after access differences were Robert's two documented Admin normalizations. A second apply changed no role assignment, matrix, or protected operational fingerprint, and verification passed again.
 
-Protected hashes were identical before the first apply, after the first apply, and after the second apply for Users (12), User employment history (2), Google credentials (12), Receipts (182), QC Samples (203), Grower Lots (398), Room Inventory Adjustments (217), Bins Run entries (49), Actual Runs (12), Actual Run revisions (12), and Room Transfers (0). This separately confirms that employment facility, Google identity, active status, last-login data, Gmail credentials, and operational records did not change. End-of-Day Fill assignments could not be compared because their schema is not deployed in the current production baseline.
+Protected hashes were identical before the first apply, after the first apply, and after the second apply for Users (12), User employment history (2), Google credentials (12), Receipts (195), QC Samples (216), Grower Lots (398), Room Inventory Adjustments (234), Bins Run entries (53), Actual Runs (14), Actual Run revisions (14), and Room Transfers (0). This separately confirms that employment facility, Google identity, active status, last-login data, Gmail credentials, and operational records did not change.
+
+The compatibility package now captures and compares exact in-transaction fingerprints for all End-of-Day Fill groups (2), recipients (3), user/group assignments (4), Room assignments and capacities (69), sends (0), and reservations (0). Both the first and second applies reproduced the same fingerprints. Verification retained Jorge -> WP, Rob -> EBS, Wes -> EBS + WP, 42 WP Rooms, 27 EBS Rooms, MCD-01 and WP-4 through WP-8 in WP, all three reviewed recipients, and unchanged Room capacities. Role conversion remains completely separate from user-specific End-of-Day Fill assignment.
 
 ## Package use
 
@@ -131,7 +133,7 @@ The package is bounded to role authorization objects and does not alter `__EFMig
 4. Run `verify-role-based-user-access.sql` with the same variables. Review every before/after row; only the documented Admin full-access normalization is expected.
 5. Run apply and verification again to prove idempotency before deployment.
 
-On the untouched run-46 restore the apply stops before DDL with `Every active user must have exactly one reviewed role before conversion`; `RolePageAccesses` remains absent. The disposable mapping above demonstrates the package mechanics only. Production remains blocked until the seven unresolved role decisions and the intended treatment of compiled built-in defaults versus preserved current matrices are explicitly reviewed.
+On the untouched run-52 restore the apply stops before DDL with `Every active user must have exactly one reviewed role before conversion`; `RolePageAccesses` remains absent. The disposable mapping above demonstrates the package mechanics only. Production remains blocked until the seven unresolved role decisions and the intended treatment of compiled built-in defaults versus preserved current matrices are explicitly reviewed.
 
 ## Runtime authorization
 

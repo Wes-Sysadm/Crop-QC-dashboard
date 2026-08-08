@@ -10,6 +10,31 @@
 BEGIN;
 SELECT pg_advisory_xact_lock(hashtextextended('CropQc:20260807210820_AddRoleBasedUserAccess',0));
 
+CREATE TEMP TABLE _protected_end_of_day_fill_state(
+    object_name text PRIMARY KEY,
+    row_count bigint NOT NULL,
+    fingerprint text NOT NULL
+) ON COMMIT DROP;
+
+INSERT INTO _protected_end_of_day_fill_state
+SELECT 'EndOfDayFillReportGroups',count(*),md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."Id"),''))
+FROM (SELECT * FROM "EndOfDayFillReportGroups") x
+UNION ALL
+SELECT 'EndOfDayFillReportRecipients',count(*),md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."Id"),''))
+FROM (SELECT * FROM "EndOfDayFillReportRecipients") x
+UNION ALL
+SELECT 'EndOfDayFillUserGroupAssignments',count(*),md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."Id"),''))
+FROM (SELECT * FROM "EndOfDayFillUserGroupAssignments") x
+UNION ALL
+SELECT 'RoomEndOfDayFillAssignmentsAndCapacities',count(*),md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."Id"),''))
+FROM (SELECT "Id","CapacityBins","EndOfDayFillReportGroupId" FROM "Rooms") x
+UNION ALL
+SELECT 'EndOfDayFillReportSends',count(*),md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."Id"),''))
+FROM (SELECT * FROM "EndOfDayFillReportSends") x
+UNION ALL
+SELECT 'EndOfDayFillSendReservations',count(*),md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."ReportGroupId"),''))
+FROM (SELECT * FROM "EndOfDayFillSendReservations") x;
+
 DO $precheck$
 DECLARE target_exists boolean;
 BEGIN
@@ -153,5 +178,40 @@ FROM "Roles" r CROSS JOIN _role_area_definition a
 LEFT JOIN _role_legacy_effective e ON e.role_id=r."Id" AND e.area_key=a.area_key
 GROUP BY r."Id",r."Name",a.area_key;
 \endif
+
+CREATE TEMP TABLE _protected_end_of_day_fill_state_after ON COMMIT DROP AS
+SELECT 'EndOfDayFillReportGroups' object_name,count(*) row_count,md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."Id"),'')) fingerprint
+FROM (SELECT * FROM "EndOfDayFillReportGroups") x
+UNION ALL
+SELECT 'EndOfDayFillReportRecipients',count(*),md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."Id"),''))
+FROM (SELECT * FROM "EndOfDayFillReportRecipients") x
+UNION ALL
+SELECT 'EndOfDayFillUserGroupAssignments',count(*),md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."Id"),''))
+FROM (SELECT * FROM "EndOfDayFillUserGroupAssignments") x
+UNION ALL
+SELECT 'RoomEndOfDayFillAssignmentsAndCapacities',count(*),md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."Id"),''))
+FROM (SELECT "Id","CapacityBins","EndOfDayFillReportGroupId" FROM "Rooms") x
+UNION ALL
+SELECT 'EndOfDayFillReportSends',count(*),md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."Id"),''))
+FROM (SELECT * FROM "EndOfDayFillReportSends") x
+UNION ALL
+SELECT 'EndOfDayFillSendReservations',count(*),md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."ReportGroupId"),''))
+FROM (SELECT * FROM "EndOfDayFillSendReservations") x;
+
+DO $end_of_day_fill_preservation$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM _protected_end_of_day_fill_state before_state
+        FULL JOIN _protected_end_of_day_fill_state_after after_state USING(object_name)
+        WHERE before_state.row_count IS DISTINCT FROM after_state.row_count
+           OR before_state.fingerprint IS DISTINCT FROM after_state.fingerprint) THEN
+        RAISE EXCEPTION 'Role conversion changed protected End-of-Day Fill configuration or history. Transaction rolled back.';
+    END IF;
+END $end_of_day_fill_preservation$;
+
+SELECT object_name,row_count,fingerprint
+FROM _protected_end_of_day_fill_state_after
+ORDER BY object_name;
 
 COMMIT;

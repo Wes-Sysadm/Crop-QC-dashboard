@@ -407,6 +407,39 @@ public sealed class DatabaseRegressionDiagnosticsTests
     }
 
     [Fact]
+    public void RoleCompatibilityPackage_FingerprintsAndPreservesDeployedEndOfDayFillState()
+    {
+        var preflight = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "preflight-role-based-user-access.sql"));
+        var apply = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "apply-role-based-user-access-schema.sql"));
+        var verify = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "verify-role-based-user-access.sql"));
+
+        foreach (var objectName in new[]
+                 {
+                     "EndOfDayFillReportGroups",
+                     "EndOfDayFillReportRecipients",
+                     "EndOfDayFillUserGroupAssignments",
+                     "EndOfDayFillReportSends",
+                     "EndOfDayFillSendReservations"
+                 })
+        {
+            Assert.Contains(objectName, preflight);
+            Assert.Contains(objectName, apply);
+            Assert.Contains(objectName, verify);
+        }
+
+        Assert.Contains("EndOfDayFillReportGroupId", preflight);
+        Assert.Contains("RoomEndOfDayFillAssignmentsAndCapacities", apply);
+        Assert.Contains("_protected_end_of_day_fill_state_after", apply);
+        Assert.Contains("Role conversion changed protected End-of-Day Fill configuration or history", apply);
+        Assert.Contains("preserved_room_assignment_capacity_fingerprint", verify);
+        Assert.DoesNotContain("UPDATE \"EndOfDayFill", apply, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DELETE FROM \"EndOfDayFill", apply, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void StartupDiagnosticsLogSafeLatestSchemaDetailsAndOperatorAction()
     {
         var diagnostics = File.ReadAllText(FindRepositoryFile(

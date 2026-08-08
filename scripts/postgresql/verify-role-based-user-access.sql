@@ -131,5 +131,24 @@ LEFT JOIN "Roles" r ON r."Id"=ur."RoleId"
 ORDER BY lower(u."Email"),u."Id";
 
 SELECT count(*) AS preserved_legacy_user_page_access_rows FROM "UserPageAccesses";
+SELECT g."Name",g."Facility",g."IsActive",count(r."Id") AS preserved_assigned_rooms
+FROM "EndOfDayFillReportGroups" g
+LEFT JOIN "Rooms" r ON r."EndOfDayFillReportGroupId"=g."Id"
+GROUP BY g."Id",g."Name",g."Facility",g."IsActive"
+ORDER BY g."Facility",g."Id";
+SELECT lower("EmailAddress") AS preserved_recipient,"IsActive","SortOrder"
+FROM "EndOfDayFillReportRecipients"
+ORDER BY "SortOrder",lower("EmailAddress"),"Id";
+SELECT lower(u."Email") AS email,string_agg(g."Facility",',' ORDER BY g."Facility") AS preserved_report_groups
+FROM "EndOfDayFillUserGroupAssignments" a
+JOIN "Users" u ON u."Id"=a."UserId"
+JOIN "EndOfDayFillReportGroups" g ON g."Id"=a."ReportGroupId"
+GROUP BY u."Id",u."Email"
+ORDER BY lower(u."Email"),u."Id";
+SELECT count(*) AS room_rows,
+       md5(coalesce(string_agg(row_to_json(x)::text,E'\n' ORDER BY x."Id"),'')) AS preserved_room_assignment_capacity_fingerprint
+FROM (SELECT "Id","CapacityBins","EndOfDayFillReportGroupId" FROM "Rooms") x;
+SELECT count(*) AS preserved_end_of_day_fill_sends FROM "EndOfDayFillReportSends";
+SELECT count(*) AS preserved_end_of_day_fill_reservations FROM "EndOfDayFillSendReservations";
 SELECT 'passed' AS role_based_access_verification;
 ROLLBACK;
