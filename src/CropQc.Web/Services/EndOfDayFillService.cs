@@ -575,7 +575,7 @@ public sealed class EndOfDayFillService(
             text.AppendLine($"{room.RoomCode} — {room.RoomName}").AppendLine($"{room.CurrentBins:N0} / {room.CapacityBins:N0} bins — {room.PercentFull:N1}% full");
             foreach (var variety in room.Varieties)
             {
-                var identity = VarietyDisplayIdentity(variety);
+                var identity = variety.DisplayIdentity;
                 html.Append($"<h3 style=\"border-left:8px solid {encoder.Encode(variety.HexColor)};padding-left:8px\">{encoder.Encode(identity)} — {variety.Bins:N0} bins</h3><ul>");
                 text.AppendLine($"{identity} — {variety.Bins:N0} bins");
                 foreach (var grower in variety.Growers)
@@ -591,16 +591,6 @@ public sealed class EndOfDayFillService(
         }
         html.Append("</main>");
         return new(subject, html.ToString(), text.ToString());
-    }
-
-    private static string VarietyDisplayIdentity(EndOfDayFillVarietyViewModel variety)
-    {
-        var organicLabel = variety.IsOrganic ? "Organic" : "Conventional";
-        var productionType = variety.ProductionType.Trim();
-        return string.IsNullOrWhiteSpace(productionType)
-            || productionType.Equals(organicLabel, StringComparison.OrdinalIgnoreCase)
-            ? $"{variety.Name} — {organicLabel}"
-            : $"{variety.Name} — {productionType} — {organicLabel}";
     }
 
     private async Task<EndOfDayFillSendReservation?> GetPendingReservationAsync(int groupId, CancellationToken cancellationToken) =>

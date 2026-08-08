@@ -56,6 +56,19 @@ public sealed class EndOfDayFillVarietyViewModel
     public string HexColor { get; set; } = "#607D8B";
     public int Bins { get; set; }
     public IReadOnlyList<EndOfDayFillGrowerViewModel> Growers { get; set; } = [];
+
+    public string DisplayIdentity
+    {
+        get
+        {
+            var organicLabel = IsOrganic ? "Organic" : "Conventional";
+            var productionType = ProductionType.Trim();
+            return string.IsNullOrWhiteSpace(productionType)
+                || productionType.Equals(organicLabel, StringComparison.OrdinalIgnoreCase)
+                ? $"{Name} — {organicLabel}"
+                : $"{Name} — {productionType} — {organicLabel}";
+        }
+    }
 }
 
 public sealed record EndOfDayFillGrowerViewModel(string GrowerNumber, string GrowerName, int Bins);

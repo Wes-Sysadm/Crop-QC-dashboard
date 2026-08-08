@@ -251,6 +251,87 @@ public sealed class RoleUserAdminTests
         Assert.Single(await db.UserGoogleCredentials.Where(x => x.UserId == first.Id).ToListAsync());
     }
 
+    [Fact]
+    public async Task ImportedMigrationRoleIsEditableVisibleAndListsAssignedUsers()
+    {
+        await using var db = CreateDb();
+        var administrator = AddAdministrator(db);
+        var imported = NewRole("Imported Access A");
+        imported.Description = "Imported from the legacy per-user access matrix during the role-based authorization conversion. Review and rename or reassign in User Administration.";
+        foreach (var area in ApplicationAreas.All) imported.PageAccesses.Add(Cell(area.Key));
+        var alexis = User("alexis@wp-packing.com");
+        alexis.DisplayName = "Alexis Ledezma";
+        alexis.UserRoles.Add(new UserRole { Role = imported });
+        var james = User("james@fruitandland.com");
+        james.DisplayName = "James Foreman";
+        james.UserRoles.Add(new UserRole { Role = imported });
+        var jorge = User("jorge@wp-packing.com");
+        jorge.DisplayName = "Jorge Ledezma";
+        jorge.UserRoles.Add(new UserRole { Role = imported });
+        var archived = User("archived@fruitandland.com");
+        archived.DisplayName = "Archived User";
+        archived.IsActive = false;
+        archived.UserRoles.Add(new UserRole { Role = imported });
+        db.AddRange(imported, alexis, james, jorge, archived);
+        await db.SaveChangesAsync();
+        var service = Service(db, new TrackingAccessService());
+
+        var page = await service.GetUsersAsync(imported.Id, default);
+        var summary = Assert.Single(page.Roles, x => x.Id == imported.Id);
+        Assert.True(summary.IsImportedMigrationRole);
+        Assert.False(summary.IsSystemRole);
+        Assert.True(summary.IsActive);
+        Assert.Equal(["Alexis Ledezma", "Archived User (inactive)", "James Foreman", "Jorge Ledezma"], summary.AssignedUsers);
+        Assert.True(page.SelectedRole!.IsImportedMigrationRole);
+        Assert.Equal(summary.AssignedUsers, page.SelectedRole.AssignedUsers);
+
+        Assert.Null(await service.UpdateRoleAsync(new UpdateRoleForm
+        {
+            RoleId = imported.Id,
+            Name = "Packing Operations Review",
+            Description = imported.Description,
+            IsActive = true
+        }, administrator.Email, default));
+        Assert.Equal("Packing Operations Review", imported.Name);
+        var renamedPage = await service.GetUsersAsync(imported.Id, default);
+        Assert.True(renamedPage.SelectedRole!.IsImportedMigrationRole);
+        Assert.Contains("active users", await service.UpdateRoleAsync(new UpdateRoleForm
+        {
+            RoleId = imported.Id,
+            Name = imported.Name,
+            Description = imported.Description,
+            IsActive = false
+        }, administrator.Email, default));
+    }
+
+    [Fact]
+    public async Task RoleComparisonReturnsOnlyDifferencesAndCountsGainsLossesAndUnchangedAreas()
+    {
+        await using var db = CreateDb();
+        var current = NewRole("Imported Access B");
+        var compared = NewRole("QC Review Candidate");
+        foreach (var area in ApplicationAreas.All)
+        {
+            current.PageAccesses.Add(Cell(area.Key));
+            compared.PageAccesses.Add(Cell(area.Key));
+        }
+        current.PageAccesses.Single(x => x.AreaKey == ApplicationAreas.Receipts).AccessLevel = nameof(PageAccessLevel.View);
+        current.PageAccesses.Single(x => x.AreaKey == ApplicationAreas.Transfers).AccessLevel = nameof(PageAccessLevel.Admin);
+        compared.PageAccesses.Single(x => x.AreaKey == ApplicationAreas.Receipts).AccessLevel = nameof(PageAccessLevel.Create);
+        db.AddRange(current, compared);
+        await db.SaveChangesAsync();
+
+        var page = await Service(db, new TrackingAccessService()).GetUsersAsync(current.Id, compared.Id, default);
+
+        var comparison = Assert.IsType<RoleComparisonViewModel>(page.RoleComparison);
+        Assert.Equal(1, comparison.AreasGained);
+        Assert.Equal(1, comparison.AreasLost);
+        Assert.Equal(ApplicationAreas.All.Count - 2, comparison.UnchangedAreas);
+        Assert.Equal(2, comparison.Differences.Count);
+        Assert.Contains(comparison.Differences, x => x.AreaKey == ApplicationAreas.Receipts && x.Change == "Gain");
+        Assert.Contains(comparison.Differences, x => x.AreaKey == ApplicationAreas.Transfers && x.Change == "Loss");
+    }
+
     private static CropQcDbContext CreateDb()
     {
         var db = new CropQcDbContext(new DbContextOptionsBuilder<CropQcDbContext>()

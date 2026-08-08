@@ -432,9 +432,16 @@ public sealed class DatabaseRegressionDiagnosticsTests
 
         Assert.Contains("EndOfDayFillReportGroupId", preflight);
         Assert.Contains("RoomEndOfDayFillAssignmentsAndCapacities", apply);
-        Assert.Contains("_protected_end_of_day_fill_state_after", apply);
-        Assert.Contains("Role conversion changed protected End-of-Day Fill configuration or history", apply);
+        Assert.Contains("_protected_state_after", apply);
+        Assert.Contains("Role conversion changed legacy evidence or protected End-of-Day Fill state", apply);
         Assert.Contains("preserved_room_assignment_capacity_fingerprint", verify);
+        Assert.Contains("Imported Access A", preflight);
+        Assert.Contains("Imported Access E", apply);
+        Assert.Contains("38d291003ef3287eaf098fc161c4496d", preflight);
+        Assert.Contains("4c094069afe868d0f2be67fd41965528", apply);
+        Assert.Contains("rob@earlbrownandsons.com", verify);
+        Assert.Contains("crop-year-review", verify);
+        Assert.Contains("data-cleanup", verify);
         Assert.DoesNotContain("UPDATE \"EndOfDayFill", apply, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("DELETE FROM \"EndOfDayFill", apply, StringComparison.OrdinalIgnoreCase);
     }

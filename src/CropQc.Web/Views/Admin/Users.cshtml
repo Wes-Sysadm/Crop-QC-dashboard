@@ -36,24 +36,35 @@
 
     <div class="user-admin-list">
         <table class="responsive-admin-table">
-            <thead><tr><th>User</th><th>Role / Status</th><th>Employment</th><th>End of Day Fill</th><th>Update</th></tr></thead>
+            <thead><tr><th>Display Name</th><th>Email</th><th>Active</th><th>Role</th><th>Employment</th><th>End of Day Fill</th><th>Last Login</th></tr></thead>
             <tbody>
             @foreach (var user in Model.Users)
             {
                 <tr>
                     <td>
                         <strong>@user.DisplayName</strong>
-                        <div>@user.Email</div>
-                        <div class="muted">Last login: @BusinessTime.FormatPacific(user.LastLoginAt, empty: "Never")</div>
                         @if (user.IsOwner) { <span class="status">Owner break-glass</span> }
                     </td>
+                    <td>@user.Email</td>
+                    <td>@(user.IsActive ? "Active" : "Inactive")</td>
                     <td>
-                        <span class="status">@user.Role</span>
+                        <form class="stack-form compact-form" method="post" action="/Admin/Users/Update">
+                            <input type="hidden" name="UserId" value="@user.Id" />
+                            <select name="RoleId" aria-label="Role for @user.DisplayName" required>
+                                @foreach (var role in Model.Roles.Where(x => x.IsActive || x.Id == user.RoleId))
+                                {
+                                    <option value="@role.Id" selected="@(role.Id == user.RoleId)" disabled="@(!role.IsActive && role.Id != user.RoleId)">@role.Name@(!role.IsActive ? " — Inactive" : "")</option>
+                                }
+                            </select>
+                            <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@user.IsActive" /> Active</label>
+                            <input type="hidden" name="IsActive" value="false" />
+                            <button class="secondary-button" type="submit">Save role</button>
+                        </form>
                         <div class="muted">@user.RoleSummary</div>
-                        <div>@(user.IsActive ? "Active" : "Inactive")</div>
                     </td>
                     <td>
-                        <section class="employment-card" aria-label="Employment for @user.DisplayName">
+                        <details class="employment-card">
+                            <summary><strong>@(user.EmploymentFacility == CropQc.Data.Entities.EmploymentFacilities.Shared ? "Shared / Management" : user.EmploymentFacility)</strong></summary>
                             <strong>@(user.EmploymentFacility == CropQc.Data.Entities.EmploymentFacilities.Shared ? "Shared / Management" : user.EmploymentFacility)</strong>
                             <div class="muted">Effective @BusinessTime.FormatPacific(user.EmploymentEffectiveAt, empty: "Not assigned")</div>
                             <form class="form-grid compact-form" method="post" action="/Admin/Users/Employment">
@@ -74,35 +85,23 @@
                             <details><summary>Employment history (@user.EmploymentHistory.Count)</summary>
                                 <ul>@foreach (var history in user.EmploymentHistory) { <li>@history.PreviousEmploymentFacility → @history.EmploymentFacility, effective @BusinessTime.FormatPacific(history.EffectiveAt), by @history.ChangedBy</li> }</ul>
                             </details>
-                        </section>
+                        </details>
                     </td>
                     <td>
-                        <form method="post" action="/Admin/Users/EndOfDayFillGroups" class="stack-form compact-form">
-                            @Html.AntiForgeryToken()
-                            <input type="hidden" name="UserId" value="@user.Id" />
-                            @foreach (var group in Model.EndOfDayFillGroups)
-                            {
-                                <label class="checkbox-field"><input type="checkbox" name="GroupIds" value="@group.Id" checked="@user.EndOfDayFillGroupIds.Contains(group.Id)" /> @group.Name (@group.Facility)</label>
-                            }
-                            <button class="secondary-button" type="submit">Save report groups</button>
-                        </form>
+                        <details>
+                            <summary>@(user.EndOfDayFillGroupIds.Count == 0 ? "None" : $"{user.EndOfDayFillGroupIds.Count} report group(s)")</summary>
+                            <form method="post" action="/Admin/Users/EndOfDayFillGroups" class="stack-form compact-form">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="UserId" value="@user.Id" />
+                                @foreach (var group in Model.EndOfDayFillGroups)
+                                {
+                                    <label class="checkbox-field"><input type="checkbox" name="GroupIds" value="@group.Id" checked="@user.EndOfDayFillGroupIds.Contains(group.Id)" /> @group.Name (@group.Facility)</label>
+                                }
+                                <button class="secondary-button" type="submit">Save report groups</button>
+                            </form>
+                        </details>
                     </td>
-                    <td>
-                        <form class="stack-form compact-form" method="post" action="/Admin/Users/Update">
-                            <input type="hidden" name="UserId" value="@user.Id" />
-                            <label class="field">Role
-                                <select name="RoleId" required>
-                                    @foreach (var role in Model.Roles.Where(x => x.IsActive || x.Id == user.RoleId))
-                                    {
-                                        <option value="@role.Id" selected="@(role.Id == user.RoleId)" disabled="@(!role.IsActive && role.Id != user.RoleId)">@role.Name@(!role.IsActive ? " — Inactive" : "")</option>
-                                    }
-                                </select>
-                            </label>
-                            <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@user.IsActive" /> Active</label>
-                            <input type="hidden" name="IsActive" value="false" />
-                            <button class="secondary-button" type="submit">Save User</button>
-                        </form>
-                    </td>
+                    <td>@BusinessTime.FormatPacific(user.LastLoginAt, empty: "Never")</td>
                 </tr>
             }
             </tbody>
@@ -120,8 +119,10 @@
                 <h3><a href="/Admin/Users?roleId=@role.Id#roles">@role.Name</a></h3>
                 <div>@(role.IsSystemRole ? "System role" : "Custom role") · @(role.IsActive ? "Active" : "Inactive")</div>
                 <div>@role.AssignedActiveUserCount active user(s)</div>
+                @if (role.IsImportedMigrationRole) { <div class="notice warning">Migration role — review recommended</div> }
                 @if (!role.HasCompleteMatrix && !role.IsAdmin) { <div class="notice warning">Missing matrix rows fail closed.</div> }
                 <p class="muted">@role.Description</p>
+                @if (role.AssignedUsers.Count > 0) { <div><strong>Assigned:</strong> @string.Join(", ", role.AssignedUsers)</div> }
             </article>
         }
     </div>
@@ -144,6 +145,8 @@
     {
         <hr />
         <h3>@selected.Name</h3>
+        @if (selected.IsImportedMigrationRole) { <p class="notice warning"><strong>Migration role — review recommended.</strong> This editable custom role preserves imported legacy access until its assigned users are deliberately reassigned.</p> }
+        <p><strong>Assigned users:</strong> @(selected.AssignedUsers.Count == 0 ? "None" : string.Join(", ", selected.AssignedUsers))</p>
         <form class="toolbar" method="post" action="/Admin/Users/Roles/Update">
             <input type="hidden" name="RoleId" value="@selected.Id" />
             <label class="field">Name<input name="Name" value="@selected.Name" maxlength="100" readonly="@selected.IsSystemRole" required /></label>
@@ -184,5 +187,42 @@
                 <button type="submit">Save Full Role Matrix</button>
             }
         </form>
+
+        <section class="panel">
+            <h4>Compare role</h4>
+            <form class="toolbar" method="get" action="/Admin/Users">
+                <input type="hidden" name="roleId" value="@selected.Id" />
+                <label class="field">Comparison role
+                    <select name="compareRoleId" required>
+                        <option value="">Select a role</option>
+                        @foreach (var role in Model.Roles.Where(x => x.Id != selected.Id))
+                        {
+                            <option value="@role.Id" selected="@(Model.RoleComparison?.ComparedRoleId == role.Id)">@role.Name</option>
+                        }
+                    </select>
+                </label>
+                <button class="secondary-button" type="submit">Show differences</button>
+            </form>
+            @if (Model.RoleComparison is { } comparison)
+            {
+                <p><strong>@comparison.CurrentRoleName → @comparison.ComparedRoleName:</strong> @comparison.AreasGained gain(s), @comparison.AreasLost loss(es), @comparison.UnchangedAreas unchanged.</p>
+                @if (comparison.Differences.Count == 0)
+                {
+                    <p class="notice success">The two matrices are identical.</p>
+                }
+                else
+                {
+                    <table class="responsive-admin-table">
+                        <thead><tr><th>Area</th><th>Current access</th><th>Compared access</th><th>Change</th></tr></thead>
+                        <tbody>
+                        @foreach (var difference in comparison.Differences)
+                        {
+                            <tr><td>@difference.AreaName <span class="muted">(@difference.Group)</span></td><td>@difference.CurrentAccess</td><td>@difference.ComparedAccess</td><td>@difference.Change</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+            }
+        </section>
     }
 </section>

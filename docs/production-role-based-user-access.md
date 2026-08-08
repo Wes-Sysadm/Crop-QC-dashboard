@@ -1,144 +1,134 @@
 # Production role-based user access
 
-This release changes application authorization from per-user `UserPageAccesses` rows to one active role and a complete `RolePageAccesses` matrix. The legacy table remains intact as rollback and migration evidence, but the application no longer reads or writes it for authorization.
+This release changes application authorization from per-user `UserPageAccesses` rows to one active role and a complete `RolePageAccesses` matrix. Legacy rows remain intact as rollback and audit evidence, but the converted application no longer reads or writes them for authorization.
 
-## Fresh-database matrices
+## Fresh-database roles
 
-Every built-in role receives one row for each of the 40 centralized `ApplicationAreas`. Areas not named below are explicitly `None`.
+Fresh databases contain only the five standard active system roles. Production-specific imported roles are created only by the reviewed compatibility package.
 
-| Role | Admin | Create | View |
-| --- | --- | --- | --- |
-| Viewer | none | none | Dashboard; Receipt QC; Field Samples; QC Reports; Receipts; Current Lots; Rooms; Inventory; Grower Lots |
-| QC Tech | none | Receipt QC; Field Samples; Receipts | Dashboard; QC Reports; Current Lots; Rooms; Inventory; Grower Lots |
-| QC Admin | Receipt QC; Field Samples; QC Reports; QC Stations; Varieties; Grades; Defects; Size Configuration; Variety Colors; Orchard Recipients; Orchard Managers | Receipts | Dashboard; Current Lots; Rooms; Inventory; Grower Lots; Master Data |
-| Manager | Receipt QC; Field Samples; QC Reports; Receipts; Current Lots; Bins Run; Rooms; Room Transactions; Grower Lots; Projection Planner; Planning Projection Reports; Actual Runs; Packout Results; Transfers; True Up; Inventory; Master Data; QC Stations; Orchard Recipients; Orchard Managers; Facilities; Varieties; Grades; Defects; Size Configuration; Variety Colors; Import Tools; Export Tools | none | Dashboard; Downloads; Audit History |
-| Admin | all 40 areas | none | none |
+| Role | Default matrix |
+| --- | --- |
+| Viewer | Read-only operational overview and inventory pages |
+| QC Tech | Viewer access plus QC and receipt data entry |
+| QC Admin | QC/master-data administration plus receipt creation |
+| Manager | Broad operational and master-data administration |
+| Admin | Admin for all 40 application areas |
 
-Viewer, QC Tech, QC Admin, and Manager matrices are editable after creation. Admin is a read-only full-access system role. `wes@fruitandland.com` remains the clearly labeled owner break-glass identity and resolves to Admin independently of its stored matrix.
+Viewer, QC Tech, QC Admin, and Manager matrices are editable after creation. Admin is a read-only, full-access system role. `wes@fruitandland.com` remains the owner break-glass identity and resolves to Admin independently of stored matrix rows.
 
-## Newest verified-backup analysis
+## Authoritative production baseline
 
-Production and `main` were rechecked after the End-of-Day Fill email-formatting release and both resolve to `cc9f979463da3fb55993f14472d3d2bec4186ccc`. This includes the merged End-of-Day Fill release, its antiforgery/Data Protection hotfix, the reviewed 42-WP/27-EBS Room scope, and the formatting-only correction from PR #180. The formatting release changed no schema, report configuration, user/role data, or report snapshot hashing. The restored baseline therefore remains authoritative for the preservation checks below.
+Production and `main` both resolved to `cc9f979463da3fb55993f14472d3d2bec4186ccc` when this analysis was refreshed. That deployment includes End-of-Day Fill, its antiforgery/Data Protection fix, the reviewed 42-WP/27-EBS room configuration, and PR #180's formatting-only email change.
 
-Backup run 52 started at `2026-08-08 19:58:47.0390263+00` (12:58:47 Pacific) and completed at `2026-08-08 20:02:02+00` (13:02:02 Pacific) with status `Succeeded`. Its package is `cropqc-production-predeployment-20260808-195847.zip`, 1,693,275 bytes, SHA-256 `d57d30118a73d4a87f524eb8640cb2d5c0b1b4335935e823717593e826fd6eee`. The persisted run records Google Drive read-back verification, retention completion, and lease release. The exact Drive package was independently downloaded; its ZIP is readable, all four component sizes and SHA-256 values agree with `backup-manifest.json`, the configuration, schema, and photo manifests are readable, and the PostgreSQL dump expands to a readable 50,138,176-byte SQL stream. The package was restored to the new localhost-only PostgreSQL 18 database `cropqc_run52_role_refresh`.
+Fresh predeployment backup run 54 is the authoritative database baseline:
 
-Immediately before deploying `cc9f979463da3fb55993f14472d3d2bec4186ccc`, backup run 53 completed successfully at `2026-08-08 21:02:23+00` (14:02:23 Pacific). Its package is `cropqc-production-predeployment-20260808-205908.zip`, 1,703,711 bytes, SHA-256 `bf8022fa7bb87d7a7d46c6e5f3dc959cd9d747256f5bfa9c322eef85c46f0f98`. Independent read-back confirmed a readable ZIP and PostgreSQL dump and exact manifest/component hashes. Because PR #180 was formatting-only and made no database writes, run 53 is additional recovery evidence while the fully restored run-52 role analysis remains valid.
+- started: `2026-08-08T22:13:17.3239852+00:00` (15:13:17 Pacific)
+- upload/read-back verified: `2026-08-08T22:16:28+00:00` (15:16:28 Pacific)
+- package: `cropqc-production-predeployment-20260808-221317.zip`
+- exact size: `1,713,680` bytes
+- SHA-256: `24d22e96b0fe8328111eb6d552e0423a3598d9dfa3e55106cf569e054bc4893e`
+- deployed commit captured: `cc9f979463da3fb55993f14472d3d2bec4186ccc`
+- storage: restricted Google Drive package `1lYD4A364cecyAG8AXGrANoHRyVUTjxFA`
 
-The restored database contains 12 active users, four legacy role rows, 17 `UserRoles` assignments, no zero-role user, five multiple-role users, and 480 preserved `UserPageAccesses` rows:
+The exact Drive package was independently downloaded. Its ZIP is readable, the PostgreSQL dump is readable and nonempty, the configuration/schema/photo exports parse as JSON, and every component size and SHA-256 agrees with `backup-manifest.json`. The persisted backup record reports `Succeeded`, upload read-back verification, retention completion, and lease release. It was restored into localhost-only PostgreSQL 18 databases for untouched preflight, clean conversion rehearsal, repeat/idempotency verification, and negative fingerprint-guard testing.
 
-| User | Employment facility | Current role rows | Gmail credential present |
-| --- | --- | --- | --- |
-| Ada Hernandez | Unassigned | QC User, Viewer | yes |
-| Alexis Ledezma | WP | Viewer | yes |
-| Dan Kezele | Unassigned | Manager, Viewer | yes |
-| Harvest Log | Unassigned | Viewer | yes |
-| James Foreman | Unassigned | Viewer | yes |
-| Jorge Ledezma | Unassigned | Viewer | yes |
-| Kyle Hendrickson | Unassigned | Viewer | yes |
-| Maria Ledezma | Unassigned | Viewer | yes |
-| Maurya Dunning | Unassigned | Manager, Viewer | yes |
-| Robert Fulgham | EBS | Admin, Viewer | yes |
-| Shianne Allen | Unassigned | Viewer | yes |
-| Wes Cusick | Unassigned | Admin, Viewer | yes |
+The restored database contains 12 active users, four legacy roles, 17 legacy `UserRoles` relationships, and 480 preserved `UserPageAccesses` rows. Five users have a redundant second Viewer relationship. There are no production custom roles before conversion.
 
-Credential presence was checked without reading or emitting tokens. There are no existing custom roles. `QC Tech` does not exist, so `QC User` can be renamed in place without an identity collision. `QC Admin` is new.
+## Reviewed legacy effective access
 
-### Current effective 40-area profiles
+The compatibility scripts reproduce the old runtime rules, including direct `UserPageAccess`, legacy-area fallback, Master Data Admin elevation, legacy Data Cleanup/Crop Year Review email gates, owner break-glass, and active state. Every reviewed profile contains exactly 40 application areas.
 
-The deployed `DataCleanup__AllowedEmails` and `CropYearReview__AllowedEmails` environment values are unset, so the deployed application uses its `wes@fruitandland.com` fallback for both gates. Every profile below contains exactly 40 areas. The old hidden Master Data Admin elevation explains the unexpectedly broad profiles.
+| Users | Admin | Create | View | None | MD5 fingerprint |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Ada Hernandez | 1 | 15 | 1 | 23 | `38d291003ef3287eaf098fc161c4496d` |
+| Alexis Ledezma, Dan Kezele, James Foreman, Jorge Ledezma, Maurya Dunning, Robert Fulgham | 38 | 0 | 0 | 2 | `4c094069afe868d0f2be67fd41965528` |
+| Harvest Log | 0 | 3 | 15 | 22 | `d9184fc3c77b3ceff3c9ff6f08f603c6` |
+| Kyle Hendrickson | 0 | 16 | 11 | 13 | `7bb78e3a6bc3c6d779804438458849eb` |
+| Maria Ledezma | 1 | 16 | 0 | 23 | `5fa520cf854f0158aea6eb14f2e7b967` |
+| Shianne Allen | 0 | 3 | 2 | 35 | `38d476024d63b43fba825b0f450751be` |
+| Wes Cusick | 40 | 0 | 0 | 0 | `85f8d6a96a71434b59e3dfdc5ef6318e` |
 
-| Users | Admin | Create | View | None |
-| --- | ---: | ---: | ---: | ---: |
-| Ada | 1 | 15 | 1 | 23 |
-| Alexis, Dan, James, Jorge, Maurya, Robert | 38 | 0 | 0 | 2 |
-| Harvest Log | 0 | 3 | 15 | 22 |
-| Kyle | 0 | 16 | 11 | 13 |
-| Maria | 1 | 16 | 0 | 23 |
-| Shianne | 0 | 3 | 2 | 35 |
-| Wes | 40 | 0 | 0 | 0 |
+An exact user identity or fingerprint mismatch aborts before persistent DDL. A negative rehearsal changed Harvest Log's disposable legacy matrix; the package rejected it with the reviewed-fingerprint error, and `RolePageAccesses` remained absent with the original four roles, 17 role relationships, and all 480 legacy rows intact.
 
-Exact area membership:
+## Deterministic production bridge
 
-- Ada: Admin = Receipts. View = Grower Lots. Create = Actual Runs, Bins Run, Current Lots, Receipt QC, Dashboard, Field Samples, Inventory, Packout Results, Planning Projection Reports, Projection Planner, QC Reports, Rooms, Room Transactions, Transfers, True Up. All other areas are None.
-- Alexis, Dan, James, Jorge, Maurya, and Robert: Admin for every area except Crop Year Review and Data Cleanup, which are None.
-- Harvest Log: Create = Email Configuration, Orchard Managers, Orchard Recipients. View = Actual Runs, Bins Run, Current Lots, Receipt QC, Dashboard, Field Samples, Grower Lots, Inventory, Packout Results, Planning Projection Reports, Projection Planner, QC Reports, Receipts, Rooms, Transfers. All other areas are None.
-- Kyle: Create = Actual Runs, Bins Run, Current Lots, Receipt QC, Dashboard, Grower Lots, Inventory, Packout Results, Planning Projection Reports, Projection Planner, QC Reports, Receipts, Rooms, Room Transactions, Transfers, True Up. View = Audit History, Defects, Downloads, Export Tools, Facilities, Field Samples, Grades, Import Tools, Master Data, Size Configuration, Varieties. All other areas are None.
-- Maria: Admin = Receipts. Create = Actual Runs, Bins Run, Current Lots, Receipt QC, Dashboard, Field Samples, Grower Lots, Inventory, Packout Results, Planning Projection Reports, Projection Planner, QC Reports, Rooms, Room Transactions, Transfers, True Up. All other areas are None.
-- Shianne: Create = Receipt QC, QC Reports, Receipts. View = Dashboard, Field Samples. All other areas are None.
-- Wes: Admin for all 40 areas through the owner break-glass rule.
+The reviewed conversion does not force unmatched users into a closest built-in role. It creates five active, editable, non-system roles that exactly reproduce the five distinct unresolved matrices. Their description identifies them as migration roles and recommends later review in User Administration.
 
-The current Viewer assignees conflict in 38 of 40 areas. A single catch-all Viewer conversion cannot preserve their access.
+| Final role | Assigned active users | Matrix fingerprint |
+| --- | --- | --- |
+| QC Tech | Ada Hernandez | `38d291003ef3287eaf098fc161c4496d` |
+| Manager | Dan Kezele; Maurya Dunning | `4c094069afe868d0f2be67fd41965528` |
+| Admin | Robert Fulgham; Wes Cusick | `85f8d6a96a71434b59e3dfdc5ef6318e` |
+| Imported Access A | Alexis Ledezma; James Foreman; Jorge Ledezma | `4c094069afe868d0f2be67fd41965528` |
+| Imported Access B | Harvest Log | `d9184fc3c77b3ceff3c9ff6f08f603c6` |
+| Imported Access C | Kyle Hendrickson | `7bb78e3a6bc3c6d779804438458849eb` |
+| Imported Access D | Maria Ledezma | `5fa520cf854f0158aea6eb14f2e7b967` |
+| Imported Access E | Shianne Allen | `38d476024d63b43fba825b0f450751be` |
 
-### Approved redundant-role cleanup
+The shared A role is based on a byte-for-byte identical reviewed matrix, not a guessed job function. A-E naming is fixed by the reviewed user mapping and does not depend on role IDs or runtime discovery. Fresh databases do not receive these roles.
 
-The reviewed cleanup removes only the redundant Viewer assignment from Ada, Dan, Maurya, Robert, and Wes. Ada retains role ID 3, whose identity is renamed from `QC User` to `QC Tech`; Dan and Maurya retain Manager; Robert and Wes retain Admin. The cleanup was rehearsed only on a disposable clone and was not applied to production.
+The conversion renames the existing QC User identity to QC Tech and removes redundant Viewer relationships from Ada, Dan, Maurya, Robert, and Wes. Every active user ends with exactly one role.
 
-Admin is intentionally full access. Robert's exact permission delta is therefore:
+Admin intentionally means full application administration. Robert's only reviewed before/after differences are:
 
-- Crop Year Review: None -> Admin.
-- Data Cleanup: None -> Admin.
-- The other 38 areas are unchanged at Admin.
+- Data Cleanup: `None` -> `Admin`
+- Crop Year Review: `None` -> `Admin`
 
-### Role decisions required
+All other users have zero effective-access changes in all 40 areas. All 480 legacy `UserPageAccesses` rows remain unchanged and become read-only migration/audit evidence.
 
-The table compares each unresolved current profile with the compiled built-in defaults. `+` is the number of additional grants and `-` the number of reductions. No exact built-in match exists for any unresolved user.
+## End-of-Day Fill preservation
 
-| User | Employment | End-of-Day Fill | Closest built-in | Matches / differs | Viewer | QC Tech | QC Admin | Manager | Shared-profile candidate |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Shianne Allen | Unassigned | none | QC Tech | 34 / 6 | 33/7, +4/-3 | 34/6, +5/-1 | 24/16, +16/-0 | 10/30, +30/-0 | none |
-| Harvest Log | Unassigned | none | Viewer | 31 / 9 | 31/9, +0/-9 | 28/12, +3/-9 | 20/20, +13/-7 | 9/31, +30/-1 | none |
-| Alexis Ledezma | WP | none | Manager | 30 / 10 | 2/38, +0/-38 | 2/38, +0/-38 | 13/27, +0/-27 | 30/10, +0/-10 | Custom profile A |
-| James Foreman | Unassigned | none | Manager | 30 / 10 | 2/38, +0/-38 | 2/38, +0/-38 | 13/27, +0/-27 | 30/10, +0/-10 | Custom profile A |
-| Jorge Ledezma | Unassigned | WP | Manager | 30 / 10 | 2/38, +0/-38 | 2/38, +0/-38 | 13/27, +0/-27 | 30/10, +0/-10 | Custom profile A |
-| Maria Ledezma | Unassigned | none | QC Tech | 25 / 15 | 23/17, +0/-17 | 25/15, +0/-15 | 14/26, +12/-14 | 10/30, +29/-1 | none |
-| Kyle Hendrickson | Unassigned | none | QC Tech | 15 / 25 | 14/26, +0/-26 | 15/25, +1/-24 | 11/29, +11/-18 | 11/29, +28/-1 | none |
+Role assignment remains separate from user-specific End-of-Day Fill assignment. Run 54 contains:
 
-The least-delta candidates above are analysis aids, not assignments. In particular, a smaller numerical delta can still remove important operational access.
+- WP rooms: 42
+- EBS rooms: 27
+- total assigned rooms: 69
+- MCD-01 and WP-4 through WP-8 included in WP
+- recipients: `wes@fruitandland.com`, `jorge@wp-packing.com`, `rob@earlbrownandsons.com`
+- Jorge -> WP; Rob -> EBS; Wes -> WP + EBS
+- successful send history rows: 2
+- active reservations: 0
 
-Human-reviewable deltas for the plausible candidates:
+First apply, first verify, repeat apply, and repeat verify reproduced the same protected fingerprints:
 
-- Alexis, James, or Jorge -> Manager: no grants. Would reduce Audit History Admin -> View, Backup History Admin -> None, Backups Admin -> None, Configuration Admin -> None, Dashboard Admin -> View, Downloads Admin -> View, EBS Historical Cleanup Admin -> None, Email Configuration Admin -> None, Permission Matrix Admin -> None, and Users Admin -> None. Thirty areas are unchanged.
-- Alexis, James, or Jorge -> QC Admin: no grants. Would reduce Actual Runs, Audit History, Backup History, Backups, Bins Run, Configuration, Downloads, EBS Historical Cleanup, Email Configuration, Export Tools, Facilities, Import Tools, Packout Results, Permission Matrix, Planning Projection Reports, Projection Planner, Room Transactions, Transfers, True Up, and Users from Admin to None; Current Lots, Dashboard, Grower Lots, Inventory, Master Data, and Rooms from Admin to View; and Receipts from Admin to Create. Thirteen areas are unchanged.
-- Harvest Log -> Viewer: no grants. Would remove Actual Runs View, Bins Run View, Email Configuration Create, Orchard Managers Create, Orchard Recipients Create, Packout Results View, Planning Projection Reports View, Projection Planner View, and Transfers View. Thirty-one areas are unchanged.
-- Harvest Log -> QC Tech: would grant Field Samples, Receipt QC, and Receipts from View to Create; it would remove the same nine areas listed for Viewer. Twenty-eight areas are unchanged.
-- Kyle -> QC Tech: would grant Field Samples View -> Create. It would remove Actual Runs, Bins Run, Packout Results, Planning Projection Reports, Projection Planner, Room Transactions, Transfers, and True Up from Create to None; reduce Current Lots, Dashboard, Grower Lots, Inventory, QC Reports, and Rooms from Create to View; and remove Audit History, Defects, Downloads, Export Tools, Facilities, Grades, Import Tools, Master Data, Size Configuration, and Varieties from View to None. Fifteen areas are unchanged.
-- Kyle -> Viewer: no grants. It has the same reductions as QC Tech plus Receipt QC and Receipts Create -> View and Field Samples View remains unchanged. Fourteen areas are unchanged.
-- Maria -> QC Tech: no grants. Would remove Actual Runs, Bins Run, Packout Results, Planning Projection Reports, Projection Planner, Room Transactions, Transfers, and True Up from Create to None; reduce Current Lots, Dashboard, Grower Lots, Inventory, QC Reports, and Rooms from Create to View; and reduce Receipts Admin -> Create. Twenty-five areas are unchanged.
-- Maria -> Viewer: no grants. It has the QC Tech reductions, plus Field Samples, Receipt QC, and Receipts are reduced to View. Twenty-three areas are unchanged.
-- Shianne -> QC Tech: would grant Current Lots, Grower Lots, Inventory, and Rooms None -> View plus Field Samples View -> Create; it would reduce QC Reports Create -> View. Thirty-four areas are unchanged.
-- Shianne -> Viewer: would grant Current Lots, Grower Lots, Inventory, and Rooms None -> View; it would reduce QC Reports, Receipt QC, and Receipts from Create to View. Thirty-three areas are unchanged.
+| Protected state | Rows | MD5 fingerprint |
+| --- | ---: | --- |
+| End-of-Day Fill groups | 2 | `4ed24ac0ab6c6ce1525799c5b427ad0d` |
+| Recipients | 3 | `25450543a5e2af47d5a3642fbd33983c` |
+| User/group assignments | 4 | `74c7bf40bfd8e94da81f6756d4c55de1` |
+| Room assignments and capacities | 69 | `a168b825cd73c3104b6648bff75a138c` |
+| Send history | 2 | `7c63ed8bee27486fefc73ad9da734a93` |
+| Reservations | 0 | `d41d8cd98f00b204e9800998ecf8427e` |
+| Legacy UserPageAccess evidence | 480 | `f2b8fb86c5411fb70a9ce4b7ba0900ac` |
 
-Alexis, James, and Jorge have byte-for-byte identical 40-area fingerprints and are therefore a candidate shared custom role, labeled `Custom profile A` until their actual function is confirmed. Harvest, Kyle, Maria, and Shianne each have a unique matrix. No role name based on a guessed job function is proposed.
+The role package does not update End-of-Day Fill groups, recipients, assignments, room membership, room capacities, history, reservations, or report snapshots. The web-preview formatting correction uses the same display semantics as email rendering and does not alter raw `ProductionType`, `IsOrganic`, report grouping, quantities, or snapshot hashing.
 
-The compatibility package currently preserves the agreed legacy matrix for an in-use non-Admin role when its assignees agree, while Admin is normalized to full access. Consequently, the disposable QC Tech matrix preserved Ada's legacy profile and the Manager matrix preserved Dan and Maurya's shared 38-Admin/2-None profile. A future production mapping must explicitly decide whether unresolved users join one of those preserved production matrices, adopt the compiled built-in defaults, or use a reviewed custom role; this analysis does not silently choose among those outcomes.
+## Disposable PostgreSQL 18 rehearsal
 
-### Disposable resolved-state rehearsal
+Against an untouched run-54 restore:
 
-The run-52 clone used the five approved redundant-role removals and the following explicitly labeled test fixture only: Alexis, James, and Jorge -> `TEST FIXTURE ONLY - Custom profile A`; Harvest -> B; Kyle -> C; Maria -> D; Shianne -> E. These fixture roles preserve the five distinct unresolved fingerprints and are not production recommendations.
+1. read-only preflight passed all 12 exact identity/fingerprint guards;
+2. first apply created 10 roles total, 400 complete matrix rows, and reduced role relationships from 17 to 12;
+3. verification found exactly Robert's two reviewed Admin normalizations and no other access differences;
+4. all protected End-of-Day Fill and legacy-access fingerprints remained identical;
+5. second apply reported the schema already present and performed verification without rewriting configuration;
+6. second verification passed with the same assignments, matrices, differences, and protected fingerprints.
 
-The first compatibility apply and verification passed, every active user ended with exactly one role, all 480 `UserPageAccesses` rows remained intact, and every active role received a complete 40-cell authoritative matrix. Admin had 40 Admin cells; the owner break-glass account remained Admin. The only before/after access differences were Robert's two documented Admin normalizations. A second apply changed no role assignment, matrix, or protected operational fingerprint, and verification passed again.
-
-Protected hashes were identical before the first apply, after the first apply, and after the second apply for Users (12), User employment history (2), Google credentials (12), Receipts (195), QC Samples (216), Grower Lots (398), Room Inventory Adjustments (234), Bins Run entries (53), Actual Runs (14), Actual Run revisions (14), and Room Transfers (0). This separately confirms that employment facility, Google identity, active status, last-login data, Gmail credentials, and operational records did not change.
-
-The compatibility package now captures and compares exact in-transaction fingerprints for all End-of-Day Fill groups (2), recipients (3), user/group assignments (4), Room assignments and capacities (69), sends (0), and reservations (0). Both the first and second applies reproduced the same fingerprints. Verification retained Jorge -> WP, Rob -> EBS, Wes -> EBS + WP, 42 WP Rooms, 27 EBS Rooms, MCD-01 and WP-4 through WP-8 in WP, all three reviewed recipients, and unchanged Room capacities. Role conversion remains completely separate from user-specific End-of-Day Fill assignment.
+The package remains transactional, audited, fail-closed, and idempotent. It does not change employment, Gmail credentials, Receiving, QC, inventory, Bins Run, Actual Runs, transfers, true-ups, Grower Lots, projections, or packout data. It does not insert or repair `__EFMigrationsHistory`.
 
 ## Package use
 
-The package is bounded to role authorization objects and does not alter `__EFMigrationsHistory`:
+1. Run `preflight-role-based-user-access.sql` read-only against the current database, using the actual legacy email-list configuration when it differs from repository defaults.
+2. Require all 12 reviewed identities and fingerprints to match exactly.
+3. Apply `apply-role-based-user-access-schema.sql` transactionally.
+4. Run `verify-role-based-user-access.sql` and review the user-by-user/area-by-area output. Only Robert's two documented Admin grants may differ.
+5. Run apply and verification again to prove idempotency.
+6. Run the application object-state gate, inventory readiness, and normal release validation before any separately authorized deployment.
 
-1. Run `preflight-role-based-user-access.sql` read-only, supplying the actual deployed legacy email lists when they differ from the repository defaults:
+Production role data is not changed by this draft PR work. The package must be regenerated and reviewed if any guarded identity, legacy effective matrix, or protected End-of-Day Fill fingerprint changes before a future production window.
 
-   `psql ... -v data_cleanup_allowed_emails='...' -v crop_year_review_allowed_emails='...' -f scripts/postgresql/preflight-role-based-user-access.sql`
+## Runtime authorization and administration
 
-2. Resolve every reported zero/multiple-role user and every same-role matrix conflict through a separately reviewed mapping. Re-run preflight until clean.
-3. Apply `apply-role-based-user-access-schema.sql` transactionally with the same two variables.
-4. Run `verify-role-based-user-access.sql` with the same variables. Review every before/after row; only the documented Admin full-access normalization is expected.
-5. Run apply and verification again to prove idempotency before deployment.
+Authorization resolves normalized email to an active user, requires exactly one active role, then reads that role's complete matrix. Missing roles, multiple roles, inactive roles, invalid levels, and missing matrix rows fail closed. Admin is always full access, and owner break-glass remains available.
 
-On the untouched run-52 restore the apply stops before DDL with `Every active user must have exactly one reviewed role before conversion`; `RolePageAccesses` remains absent. The disposable mapping above demonstrates the package mechanics only. Production remains blocked until the seven unresolved role decisions and the intended treatment of compiled built-in defaults versus preserved current matrices are explicitly reviewed.
-
-## Runtime authorization
-
-Authorization resolves normalized email to an active User, requires exactly one active Role, then reads that role's matrix. Missing roles, multiple roles, inactive roles, invalid levels, and missing area rows fail closed. The only role-name-specific behavior is Admin full access; the only email-specific behavior is the owner break-glass override. Role claims remain in the authentication ticket only to display the signed-in role label and are not used by application authorization policies.
-
-`UserPageAccesses` remains modeled solely so existing records can be retained and inspected. Normal sign-in, User Administration, role edits, and authorization do not create, update, or consult those rows.
+User Administration shows a compact user list with role dropdown, employment details, End-of-Day Fill assignments, and last login. Employment and report assignments remain user-specific. Roles & Permissions renders one selected matrix, assigned users, imported-role warnings, and a differences-only comparison against another role with gain/loss/unchanged counts. Imported roles can be renamed, edited, and reassigned; a role cannot be deactivated while active users remain assigned.

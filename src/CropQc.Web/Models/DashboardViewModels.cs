@@ -1016,6 +1016,7 @@ public sealed class UserAdminPageViewModel
     public IReadOnlyList<ApplicationAreaViewModel> Areas { get; set; } = [];
     public IReadOnlyList<RoleAdminListItemViewModel> Roles { get; set; } = [];
     public RoleAdminDetailViewModel? SelectedRole { get; set; }
+    public RoleComparisonViewModel? RoleComparison { get; set; }
     public IReadOnlyList<EndOfDayFillGroupOption> EndOfDayFillGroups { get; set; } = [];
     public AddUserForm AddUserForm { get; set; } = new();
     public IReadOnlyList<string> EmploymentOptions { get; set; } =
@@ -1055,7 +1056,9 @@ public sealed record RoleAdminListItemViewModel(
     bool IsActive,
     int AssignedActiveUserCount,
     bool IsAdmin,
-    bool HasCompleteMatrix);
+    bool HasCompleteMatrix,
+    bool IsImportedMigrationRole,
+    IReadOnlyList<string> AssignedUsers);
 public sealed record RoleAdminDetailViewModel(
     int Id,
     string Name,
@@ -1063,7 +1066,27 @@ public sealed record RoleAdminDetailViewModel(
     bool IsSystemRole,
     bool IsActive,
     bool IsAdmin,
+    bool IsImportedMigrationRole,
+    IReadOnlyList<string> AssignedUsers,
     IReadOnlyDictionary<string, PageAccessLevel> Access);
+
+public sealed record RoleComparisonDifferenceViewModel(
+    string AreaKey,
+    string AreaName,
+    string Group,
+    PageAccessLevel CurrentAccess,
+    PageAccessLevel ComparedAccess,
+    string Change);
+
+public sealed record RoleComparisonViewModel(
+    int CurrentRoleId,
+    string CurrentRoleName,
+    int ComparedRoleId,
+    string ComparedRoleName,
+    int AreasGained,
+    int AreasLost,
+    int UnchangedAreas,
+    IReadOnlyList<RoleComparisonDifferenceViewModel> Differences);
 
 public sealed class AddUserForm
 {

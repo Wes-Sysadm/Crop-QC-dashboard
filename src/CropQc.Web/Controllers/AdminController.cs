@@ -18,8 +18,8 @@ public sealed class AdminController(
 {
     [HttpGet("Users")]
     [Authorize(Policy = AccessPolicyNames.UsersAdmin)]
-    public async Task<IActionResult> Users([FromQuery] int? roleId, CancellationToken cancellationToken) =>
-        View(await userAdminService.GetUsersAsync(roleId, cancellationToken));
+    public async Task<IActionResult> Users([FromQuery] int? roleId, [FromQuery] int? compareRoleId, CancellationToken cancellationToken) =>
+        View(await userAdminService.GetUsersAsync(roleId, compareRoleId, cancellationToken));
 
     [HttpGet("Downloads")]
     [Authorize(Policy = AccessPolicyNames.DownloadsView)]

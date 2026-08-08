@@ -11,6 +11,7 @@ namespace CropQc.Web.Services;
 public interface IUserAdminService
 {
     Task<UserAdminPageViewModel> GetUsersAsync(int? selectedRoleId, CancellationToken cancellationToken);
+    Task<UserAdminPageViewModel> GetUsersAsync(int? selectedRoleId, int? compareRoleId, CancellationToken cancellationToken);
     Task<string?> AddUserAsync(AddUserForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> UpdateUserAccessAsync(UpdateUserAccessForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> UpdateUserEmploymentAsync(UpdateUserEmploymentForm form, string changedByEmail, CancellationToken cancellationToken);
@@ -24,7 +25,13 @@ public sealed class UserAdminService(
     GoogleAuthenticationOptions authOptions,
     IUserAccessService userAccessService) : IUserAdminService
 {
-    public async Task<UserAdminPageViewModel> GetUsersAsync(int? selectedRoleId, CancellationToken cancellationToken)
+    private const string ImportedRolePrefix = "Imported Access ";
+    private const string ImportedRoleDescriptionPrefix = "Imported from the legacy per-user access matrix";
+
+    public Task<UserAdminPageViewModel> GetUsersAsync(int? selectedRoleId, CancellationToken cancellationToken) =>
+        GetUsersAsync(selectedRoleId, null, cancellationToken);
+
+    public async Task<UserAdminPageViewModel> GetUsersAsync(int? selectedRoleId, int? compareRoleId, CancellationToken cancellationToken)
     {
         var roleEntities = await dbContext.Roles.AsNoTracking()
             .Include(x => x.PageAccesses)
@@ -34,6 +41,7 @@ public sealed class UserAdminService(
         var selectedRole = roleEntities.SingleOrDefault(x => x.Id == selectedRoleId)
             ?? roleEntities.FirstOrDefault(x => x.Name == BuiltInRoleNames.Viewer)
             ?? roleEntities.FirstOrDefault();
+        var comparisonRole = roleEntities.SingleOrDefault(x => x.Id == compareRoleId && x.Id != selectedRole?.Id);
         var roles = roleEntities.Select(ToRoleListItem).ToList();
         var users = await dbContext.Users.AsNoTracking()
             .Include(x => x.UserRoles).ThenInclude(x => x.Role)
@@ -51,6 +59,9 @@ public sealed class UserAdminService(
             Roles = roles,
             Areas = ApplicationAreas.All.Select(x => new ApplicationAreaViewModel(x.Key, x.Name, x.Group, x.Route)).ToList(),
             SelectedRole = selectedRole is null ? null : ToRoleDetail(selectedRole),
+            RoleComparison = selectedRole is null || comparisonRole is null
+                ? null
+                : CompareRoles(selectedRole, comparisonRole),
             AddUserForm = new AddUserForm
             {
                 RoleId = roleEntities.FirstOrDefault(x => x.Name == BuiltInRoleNames.Viewer && x.IsActive)?.Id
@@ -285,17 +296,61 @@ public sealed class UserAdminService(
     private RoleAdminListItemViewModel ToRoleListItem(Role role) => new(
         role.Id, role.Name, role.Description ?? "", role.IsSystemRole, role.IsActive,
         role.UserRoles.Count(x => x.User.IsActive), role.Name == BuiltInRoleNames.Admin,
-        ApplicationAreas.All.All(area => role.PageAccesses.Any(x => x.AreaKey == area.Key)));
+        ApplicationAreas.All.All(area => role.PageAccesses.Any(x => x.AreaKey == area.Key)),
+        IsImportedMigrationRole(role),
+        role.UserRoles
+            .Select(x => x.User.DisplayName + (x.User.IsActive ? "" : " (inactive)"))
+            .OrderBy(x => x).ToList());
 
     private RoleAdminDetailViewModel ToRoleDetail(Role role) => new(
         role.Id, role.Name, role.Description ?? "", role.IsSystemRole, role.IsActive,
         role.Name == BuiltInRoleNames.Admin,
+        IsImportedMigrationRole(role),
+        role.UserRoles
+            .Select(x => x.User.DisplayName + (x.User.IsActive ? "" : " (inactive)"))
+            .OrderBy(x => x).ToList(),
         ApplicationAreas.All.ToDictionary(
             area => area.Key,
             area => role.Name == BuiltInRoleNames.Admin
                 ? PageAccessLevel.Admin
                 : UserAccessService.ParseLevel(role.PageAccesses.SingleOrDefault(x => x.AreaKey == area.Key)?.AccessLevel),
             StringComparer.OrdinalIgnoreCase));
+
+    private RoleComparisonViewModel CompareRoles(Role current, Role compared)
+    {
+        var currentAccess = ToRoleDetail(current).Access;
+        var comparedAccess = ToRoleDetail(compared).Access;
+        var differences = ApplicationAreas.All
+            .Select(area => new
+            {
+                Area = area,
+                Current = currentAccess[area.Key],
+                Compared = comparedAccess[area.Key]
+            })
+            .Where(x => x.Current != x.Compared)
+            .Select(x => new RoleComparisonDifferenceViewModel(
+                x.Area.Key,
+                x.Area.Name,
+                x.Area.Group,
+                x.Current,
+                x.Compared,
+                x.Compared > x.Current ? "Gain" : "Loss"))
+            .ToList();
+        return new RoleComparisonViewModel(
+            current.Id,
+            current.Name,
+            compared.Id,
+            compared.Name,
+            differences.Count(x => x.Change == "Gain"),
+            differences.Count(x => x.Change == "Loss"),
+            ApplicationAreas.All.Count - differences.Count,
+            differences);
+    }
+
+    private static bool IsImportedMigrationRole(Role role) =>
+        !role.IsSystemRole
+        && (role.Name.StartsWith(ImportedRolePrefix, StringComparison.OrdinalIgnoreCase)
+            || (role.Description?.StartsWith(ImportedRoleDescriptionPrefix, StringComparison.OrdinalIgnoreCase) ?? false));
 
     private static UserAdminListItem ToUserListItem(User user)
     {
