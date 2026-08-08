@@ -7,7 +7,13 @@ CREATE TEMP TABLE _end_of_day_fill_room_capacity_before ON COMMIT DROP AS
 SELECT "Id", "CapacityBins" FROM "Rooms";
 
 DO $precheck$
-DECLARE target_table_count integer;
+DECLARE
+    target_table_count integer;
+    expected_room_count integer;
+    wp_candidate_count integer;
+    ebs_candidate_count integer;
+    unresolved_room_count integer;
+    duplicate_room_code_count integer;
 BEGIN
     SELECT count(*) INTO target_table_count
     FROM (VALUES
@@ -26,6 +32,48 @@ BEGIN
     IF (SELECT count(*) FROM "Warehouses" WHERE "IsActive" AND lower(btrim("Code")) IN ('dh','mcdougall','ebs')) <> 3
        OR EXISTS (SELECT lower(btrim("Code")) FROM "Warehouses" WHERE "IsActive" AND lower(btrim("Code")) IN ('dh','mcdougall','ebs') GROUP BY lower(btrim("Code")) HAVING count(*) <> 1) THEN
         RAISE EXCEPTION 'Expected exactly one active DH, McDougall, and EBS warehouse identity. Transaction rolled back.';
+    END IF;
+
+    SELECT count(*) INTO duplicate_room_code_count
+    FROM (
+        SELECT w."Id", lower(btrim(r."Code")) AS normalized_room_code
+        FROM "Warehouses" w
+        JOIN "Rooms" r ON r."WarehouseId"=w."Id"
+        WHERE w."IsActive" AND lower(btrim(w."Code")) IN ('dh','mcdougall','ebs')
+        GROUP BY w."Id", lower(btrim(r."Code"))
+        HAVING count(*) <> 1
+    ) duplicates;
+    IF duplicate_room_code_count <> 0 THEN
+        RAISE EXCEPTION 'Duplicate normalized Room codes exist in the reviewed DH, McDougall, or EBS warehouse scope. Transaction rolled back.';
+    END IF;
+
+    WITH expected(facility, warehouse_code, room_code) AS (
+        SELECT 'WP', 'dh', 'DH-' || n FROM generate_series(1, 22) AS n
+        UNION ALL SELECT 'WP', 'mcdougall', 'MCD-' || n FROM generate_series(3, 16) AS n
+        UNION ALL SELECT 'EBS', 'ebs', 'LAMB-' || n FROM generate_series(13, 17) AS n
+        UNION ALL SELECT 'EBS', 'ebs', 'EVANS-' || n FROM generate_series(1, 12) AS n
+        UNION ALL SELECT 'EBS', 'ebs', room_code FROM (VALUES
+            ('EVANS-BACKSIDE'), ('EVANS-BKT'), ('EVANS-HALLWAY1'), ('EVANS-HALLWAY2')) special(room_code)
+        UNION ALL SELECT 'EBS', 'ebs', 'BM-' || n FROM generate_series(1, 6) AS n
+    ), resolved AS (
+        SELECT e.facility, e.warehouse_code, e.room_code, count(r."Id") AS match_count
+        FROM expected e
+        LEFT JOIN "Warehouses" w
+          ON w."IsActive" AND lower(btrim(w."Code"))=e.warehouse_code
+        LEFT JOIN "Rooms" r
+          ON r."WarehouseId"=w."Id" AND r."IsActive"
+         AND lower(btrim(r."Code"))=lower(e.room_code)
+        GROUP BY e.facility, e.warehouse_code, e.room_code
+    )
+    SELECT count(*),
+           count(*) FILTER (WHERE facility='WP' AND match_count=1),
+           count(*) FILTER (WHERE facility='EBS' AND match_count=1),
+           count(*) FILTER (WHERE match_count<>1)
+    INTO expected_room_count, wp_candidate_count, ebs_candidate_count, unresolved_room_count
+    FROM resolved;
+    IF expected_room_count <> 63 OR wp_candidate_count <> 36 OR ebs_candidate_count <> 27 OR unresolved_room_count <> 0 THEN
+        RAISE EXCEPTION 'Reviewed End of Day Fill Room scope did not resolve exactly. expected=63 wp=% ebs=% missing_or_ambiguous=%. Transaction rolled back.',
+            wp_candidate_count, ebs_candidate_count, unresolved_room_count;
     END IF;
 END $precheck$;
 
@@ -136,11 +184,22 @@ ON CONFLICT ("NormalizedEmailAddress") DO NOTHING;
 \if :schema_exists
 \echo 'Preserving authoritative Room master-data assignments on repeat apply.'
 \else
+WITH expected(facility, warehouse_code, room_code) AS (
+    SELECT 'WP', 'dh', 'DH-' || n FROM generate_series(1, 22) AS n
+    UNION ALL SELECT 'WP', 'mcdougall', 'MCD-' || n FROM generate_series(3, 16) AS n
+    UNION ALL SELECT 'EBS', 'ebs', 'LAMB-' || n FROM generate_series(13, 17) AS n
+    UNION ALL SELECT 'EBS', 'ebs', 'EVANS-' || n FROM generate_series(1, 12) AS n
+    UNION ALL SELECT 'EBS', 'ebs', room_code FROM (VALUES
+        ('EVANS-BACKSIDE'), ('EVANS-BKT'), ('EVANS-HALLWAY1'), ('EVANS-HALLWAY2')) special(room_code)
+    UNION ALL SELECT 'EBS', 'ebs', 'BM-' || n FROM generate_series(1, 6) AS n
+)
 UPDATE "Rooms" r SET "EndOfDayFillReportGroupId"=g."Id"
-FROM "Warehouses" w, "EndOfDayFillReportGroups" g
+FROM "Warehouses" w, "EndOfDayFillReportGroups" g, expected e
 WHERE w."Id"=r."WarehouseId" AND r."IsActive" AND w."IsActive"
-  AND lower(btrim(w."Code")) IN ('dh','mcdougall','ebs')
-  AND g."Name"=CASE WHEN lower(btrim(w."Code")) IN ('dh','mcdougall') THEN 'WP End of Day Fill' ELSE 'EBS End of Day Fill' END
+  AND lower(btrim(w."Code"))=e.warehouse_code
+  AND lower(btrim(r."Code"))=lower(e.room_code)
+  AND g."Facility"=e.facility
+  AND g."Name"=CASE e.facility WHEN 'WP' THEN 'WP End of Day Fill' ELSE 'EBS End of Day Fill' END
   AND r."EndOfDayFillReportGroupId" IS DISTINCT FROM g."Id";
 \endif
 

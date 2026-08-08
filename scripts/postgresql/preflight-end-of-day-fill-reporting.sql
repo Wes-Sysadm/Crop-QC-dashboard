@@ -7,6 +7,11 @@ DECLARE
     target_table_count integer;
     conflicting_name_count integer;
     warehouse_identity_count integer;
+    expected_room_count integer;
+    wp_candidate_count integer;
+    ebs_candidate_count integer;
+    unresolved_room_count integer;
+    duplicate_room_code_count integer;
 BEGIN
     SELECT string_agg(expected.name, ', ' ORDER BY expected.name)
     INTO missing_base
@@ -60,6 +65,48 @@ BEGIN
         RAISE EXCEPTION 'Expected exactly one active DH, McDougall, and EBS warehouse identity. No changes were made.';
     END IF;
 
+    SELECT count(*) INTO duplicate_room_code_count
+    FROM (
+        SELECT w."Id", lower(btrim(r."Code")) AS normalized_room_code
+        FROM "Warehouses" w
+        JOIN "Rooms" r ON r."WarehouseId"=w."Id"
+        WHERE w."IsActive" AND lower(btrim(w."Code")) IN ('dh', 'mcdougall', 'ebs')
+        GROUP BY w."Id", lower(btrim(r."Code"))
+        HAVING count(*) <> 1
+    ) duplicates;
+    IF duplicate_room_code_count <> 0 THEN
+        RAISE EXCEPTION 'Duplicate normalized Room codes exist in the reviewed DH, McDougall, or EBS warehouse scope. No changes were made.';
+    END IF;
+
+    WITH expected(facility, warehouse_code, room_code) AS (
+        SELECT 'WP', 'dh', 'DH-' || n FROM generate_series(1, 22) AS n
+        UNION ALL SELECT 'WP', 'mcdougall', 'MCD-' || n FROM generate_series(3, 16) AS n
+        UNION ALL SELECT 'EBS', 'ebs', 'LAMB-' || n FROM generate_series(13, 17) AS n
+        UNION ALL SELECT 'EBS', 'ebs', 'EVANS-' || n FROM generate_series(1, 12) AS n
+        UNION ALL SELECT 'EBS', 'ebs', room_code FROM (VALUES
+            ('EVANS-BACKSIDE'), ('EVANS-BKT'), ('EVANS-HALLWAY1'), ('EVANS-HALLWAY2')) special(room_code)
+        UNION ALL SELECT 'EBS', 'ebs', 'BM-' || n FROM generate_series(1, 6) AS n
+    ), resolved AS (
+        SELECT e.facility, e.warehouse_code, e.room_code, count(r."Id") AS match_count
+        FROM expected e
+        LEFT JOIN "Warehouses" w
+          ON w."IsActive" AND lower(btrim(w."Code"))=e.warehouse_code
+        LEFT JOIN "Rooms" r
+          ON r."WarehouseId"=w."Id" AND r."IsActive"
+         AND lower(btrim(r."Code"))=lower(e.room_code)
+        GROUP BY e.facility, e.warehouse_code, e.room_code
+    )
+    SELECT count(*),
+           count(*) FILTER (WHERE facility='WP' AND match_count=1),
+           count(*) FILTER (WHERE facility='EBS' AND match_count=1),
+           count(*) FILTER (WHERE match_count<>1)
+    INTO expected_room_count, wp_candidate_count, ebs_candidate_count, unresolved_room_count
+    FROM resolved;
+    IF expected_room_count <> 63 OR wp_candidate_count <> 36 OR ebs_candidate_count <> 27 OR unresolved_room_count <> 0 THEN
+        RAISE EXCEPTION 'Reviewed End of Day Fill Room scope did not resolve exactly. expected=63 wp=% ebs=% missing_or_ambiguous=%. No changes were made.',
+            wp_candidate_count, ebs_candidate_count, unresolved_room_count;
+    END IF;
+
     IF target_table_count = 5 THEN
         IF EXISTS (SELECT 1 FROM "EndOfDayFillReportSends")
            OR EXISTS (SELECT 1 FROM "EndOfDayFillSendReservations") THEN
@@ -68,19 +115,45 @@ BEGIN
     END IF;
 END $preflight$;
 
-SELECT CASE WHEN lower(btrim(w."Code")) IN ('dh', 'mcdougall') THEN 'WP End of Day Fill' ELSE 'EBS End of Day Fill' END AS report_group,
+WITH expected(facility, warehouse_code, room_code) AS (
+    SELECT 'WP', 'dh', 'DH-' || n FROM generate_series(1, 22) AS n
+    UNION ALL SELECT 'WP', 'mcdougall', 'MCD-' || n FROM generate_series(3, 16) AS n
+    UNION ALL SELECT 'EBS', 'ebs', 'LAMB-' || n FROM generate_series(13, 17) AS n
+    UNION ALL SELECT 'EBS', 'ebs', 'EVANS-' || n FROM generate_series(1, 12) AS n
+    UNION ALL SELECT 'EBS', 'ebs', room_code FROM (VALUES
+        ('EVANS-BACKSIDE'), ('EVANS-BKT'), ('EVANS-HALLWAY1'), ('EVANS-HALLWAY2')) special(room_code)
+    UNION ALL SELECT 'EBS', 'ebs', 'BM-' || n FROM generate_series(1, 6) AS n
+)
+SELECT CASE e.facility WHEN 'WP' THEN 'WP End of Day Fill' ELSE 'EBS End of Day Fill' END AS report_group,
        w."Id" AS warehouse_id, w."Code" AS warehouse_code, w."Name" AS warehouse_name,
        r."Id" AS room_id, r."Code" AS room_code, coalesce(r."DisplayName", r."Name") AS room_display_name,
        r."SubLocation" AS sub_location, r."CapacityBins" AS capacity_bins
-FROM "Rooms" r JOIN "Warehouses" w ON w."Id"=r."WarehouseId"
-WHERE r."IsActive" AND w."IsActive" AND lower(btrim(w."Code")) IN ('dh', 'mcdougall', 'ebs')
+FROM expected e
+JOIN "Warehouses" w ON w."IsActive" AND lower(btrim(w."Code"))=e.warehouse_code
+JOIN "Rooms" r ON r."WarehouseId"=w."Id" AND r."IsActive" AND lower(btrim(r."Code"))=lower(e.room_code)
 ORDER BY report_group, lower(w."Code"), r."SortOrder", r."Code";
 
-SELECT CASE WHEN lower(btrim(w."Code")) IN ('dh', 'mcdougall') THEN 'WP End of Day Fill' ELSE 'EBS End of Day Fill' END AS report_group,
+WITH expected(facility, warehouse_code, room_code) AS (
+    SELECT 'WP', 'dh', 'DH-' || n FROM generate_series(1, 22) AS n
+    UNION ALL SELECT 'WP', 'mcdougall', 'MCD-' || n FROM generate_series(3, 16) AS n
+    UNION ALL SELECT 'EBS', 'ebs', 'LAMB-' || n FROM generate_series(13, 17) AS n
+    UNION ALL SELECT 'EBS', 'ebs', 'EVANS-' || n FROM generate_series(1, 12) AS n
+    UNION ALL SELECT 'EBS', 'ebs', room_code FROM (VALUES
+        ('EVANS-BACKSIDE'), ('EVANS-BKT'), ('EVANS-HALLWAY1'), ('EVANS-HALLWAY2')) special(room_code)
+    UNION ALL SELECT 'EBS', 'ebs', 'BM-' || n FROM generate_series(1, 6) AS n
+)
+SELECT CASE e.facility WHEN 'WP' THEN 'WP End of Day Fill' ELSE 'EBS End of Day Fill' END AS report_group,
        count(*) AS candidate_room_count
-FROM "Rooms" r JOIN "Warehouses" w ON w."Id"=r."WarehouseId"
-WHERE r."IsActive" AND w."IsActive" AND lower(btrim(w."Code")) IN ('dh', 'mcdougall', 'ebs')
-GROUP BY report_group ORDER BY report_group;
+FROM expected e
+JOIN "Warehouses" w ON w."IsActive" AND lower(btrim(w."Code"))=e.warehouse_code
+JOIN "Rooms" r ON r."WarehouseId"=w."Id" AND r."IsActive" AND lower(btrim(r."Code"))=lower(e.room_code)
+GROUP BY e.facility ORDER BY report_group;
+
+SELECT w."Code" AS warehouse_code, r."Id" AS room_id, r."Code" AS room_code,
+       r."CapacityBins" AS capacity_bins, 'excluded_not_seeded' AS seed_status
+FROM "Rooms" r
+JOIN "Warehouses" w ON w."Id"=r."WarehouseId"
+WHERE lower(btrim(w."Code"))='mcdougall' AND lower(btrim(r."Code"))='mcd-01';
 
 SELECT u."Id" AS user_id, lower(btrim(u."Email")) AS normalized_email, u."DisplayName", u."IsActive",
        EXISTS (SELECT 1 FROM "UserGoogleCredentials" g WHERE g."UserId"=u."Id" AND lower(g."Provider")='google'
