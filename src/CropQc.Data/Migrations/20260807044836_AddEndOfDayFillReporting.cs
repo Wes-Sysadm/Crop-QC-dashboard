@@ -198,7 +198,10 @@ namespace CropQc.Data.Migrations
                         ('dh-1','dh-2','dh-3','dh-4','dh-5','dh-6','dh-7','dh-8','dh-9','dh-10','dh-11','dh-12','dh-13','dh-14','dh-15','dh-16','dh-17','dh-18','dh-19','dh-20','dh-21','dh-22'))
                     OR
                     (LOWER(LTRIM(RTRIM(w.[Code]))) = 'mcdougall' AND LOWER(LTRIM(RTRIM(r.[Code]))) IN
-                        ('mcd-3','mcd-4','mcd-5','mcd-6','mcd-7','mcd-8','mcd-9','mcd-10','mcd-11','mcd-12','mcd-13','mcd-14','mcd-15','mcd-16'))
+                        ('mcd-01','mcd-3','mcd-4','mcd-5','mcd-6','mcd-7','mcd-8','mcd-9','mcd-10','mcd-11','mcd-12','mcd-13','mcd-14','mcd-15','mcd-16'))
+                    OR
+                    (LOWER(LTRIM(RTRIM(w.[Code]))) = 'wp' AND LOWER(LTRIM(RTRIM(r.[Code]))) IN
+                        ('wp-4','wp-5','wp-6','wp-7','wp-8'))
                 );
                 UPDATE r
                 SET [EndOfDayFillReportGroupId] = 2
@@ -231,7 +234,10 @@ namespace CropQc.Data.Migrations
                         ('dh-1','dh-2','dh-3','dh-4','dh-5','dh-6','dh-7','dh-8','dh-9','dh-10','dh-11','dh-12','dh-13','dh-14','dh-15','dh-16','dh-17','dh-18','dh-19','dh-20','dh-21','dh-22'))
                     OR
                     (lower(btrim(w."Code")) = 'mcdougall' AND lower(btrim(r."Code")) IN
-                        ('mcd-3','mcd-4','mcd-5','mcd-6','mcd-7','mcd-8','mcd-9','mcd-10','mcd-11','mcd-12','mcd-13','mcd-14','mcd-15','mcd-16'))
+                        ('mcd-01','mcd-3','mcd-4','mcd-5','mcd-6','mcd-7','mcd-8','mcd-9','mcd-10','mcd-11','mcd-12','mcd-13','mcd-14','mcd-15','mcd-16'))
+                    OR
+                    (lower(btrim(w."Code")) = 'wp' AND lower(btrim(r."Code")) IN
+                        ('wp-4','wp-5','wp-6','wp-7','wp-8'))
                 );
                 UPDATE "Rooms" r
                 SET "EndOfDayFillReportGroupId" = 2

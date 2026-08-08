@@ -56,13 +56,13 @@ BEGIN
 
     SELECT count(*) INTO warehouse_identity_count
     FROM "Warehouses"
-    WHERE "IsActive" AND lower(btrim("Code")) IN ('dh', 'mcdougall', 'ebs');
-    IF warehouse_identity_count <> 3
+    WHERE "IsActive" AND lower(btrim("Code")) IN ('dh', 'mcdougall', 'wp', 'ebs');
+    IF warehouse_identity_count <> 4
        OR EXISTS (
           SELECT lower(btrim("Code")) FROM "Warehouses"
-          WHERE "IsActive" AND lower(btrim("Code")) IN ('dh', 'mcdougall', 'ebs')
+          WHERE "IsActive" AND lower(btrim("Code")) IN ('dh', 'mcdougall', 'wp', 'ebs')
           GROUP BY lower(btrim("Code")) HAVING count(*) <> 1) THEN
-        RAISE EXCEPTION 'Expected exactly one active DH, McDougall, and EBS warehouse identity. No changes were made.';
+        RAISE EXCEPTION 'Expected exactly one active DH, McDougall, WP, and EBS warehouse identity. No changes were made.';
     END IF;
 
     SELECT count(*) INTO duplicate_room_code_count
@@ -70,17 +70,19 @@ BEGIN
         SELECT w."Id", lower(btrim(r."Code")) AS normalized_room_code
         FROM "Warehouses" w
         JOIN "Rooms" r ON r."WarehouseId"=w."Id"
-        WHERE w."IsActive" AND lower(btrim(w."Code")) IN ('dh', 'mcdougall', 'ebs')
+        WHERE w."IsActive" AND lower(btrim(w."Code")) IN ('dh', 'mcdougall', 'wp', 'ebs')
         GROUP BY w."Id", lower(btrim(r."Code"))
         HAVING count(*) <> 1
     ) duplicates;
     IF duplicate_room_code_count <> 0 THEN
-        RAISE EXCEPTION 'Duplicate normalized Room codes exist in the reviewed DH, McDougall, or EBS warehouse scope. No changes were made.';
+        RAISE EXCEPTION 'Duplicate normalized Room codes exist in the reviewed DH, McDougall, WP, or EBS warehouse scope. No changes were made.';
     END IF;
 
     WITH expected(facility, warehouse_code, room_code) AS (
         SELECT 'WP', 'dh', 'DH-' || n FROM generate_series(1, 22) AS n
+        UNION ALL SELECT 'WP', 'mcdougall', 'MCD-01'
         UNION ALL SELECT 'WP', 'mcdougall', 'MCD-' || n FROM generate_series(3, 16) AS n
+        UNION ALL SELECT 'WP', 'wp', 'WP-' || n FROM generate_series(4, 8) AS n
         UNION ALL SELECT 'EBS', 'ebs', 'LAMB-' || n FROM generate_series(13, 17) AS n
         UNION ALL SELECT 'EBS', 'ebs', 'EVANS-' || n FROM generate_series(1, 12) AS n
         UNION ALL SELECT 'EBS', 'ebs', room_code FROM (VALUES
@@ -102,8 +104,8 @@ BEGIN
            count(*) FILTER (WHERE match_count<>1)
     INTO expected_room_count, wp_candidate_count, ebs_candidate_count, unresolved_room_count
     FROM resolved;
-    IF expected_room_count <> 63 OR wp_candidate_count <> 36 OR ebs_candidate_count <> 27 OR unresolved_room_count <> 0 THEN
-        RAISE EXCEPTION 'Reviewed End of Day Fill Room scope did not resolve exactly. expected=63 wp=% ebs=% missing_or_ambiguous=%. No changes were made.',
+    IF expected_room_count <> 69 OR wp_candidate_count <> 42 OR ebs_candidate_count <> 27 OR unresolved_room_count <> 0 THEN
+        RAISE EXCEPTION 'Reviewed End of Day Fill Room scope did not resolve exactly. expected=69 wp=% ebs=% missing_or_ambiguous=%. No changes were made.',
             wp_candidate_count, ebs_candidate_count, unresolved_room_count;
     END IF;
 
@@ -117,7 +119,9 @@ END $preflight$;
 
 WITH expected(facility, warehouse_code, room_code) AS (
     SELECT 'WP', 'dh', 'DH-' || n FROM generate_series(1, 22) AS n
+    UNION ALL SELECT 'WP', 'mcdougall', 'MCD-01'
     UNION ALL SELECT 'WP', 'mcdougall', 'MCD-' || n FROM generate_series(3, 16) AS n
+    UNION ALL SELECT 'WP', 'wp', 'WP-' || n FROM generate_series(4, 8) AS n
     UNION ALL SELECT 'EBS', 'ebs', 'LAMB-' || n FROM generate_series(13, 17) AS n
     UNION ALL SELECT 'EBS', 'ebs', 'EVANS-' || n FROM generate_series(1, 12) AS n
     UNION ALL SELECT 'EBS', 'ebs', room_code FROM (VALUES
@@ -135,7 +139,9 @@ ORDER BY report_group, lower(w."Code"), r."SortOrder", r."Code";
 
 WITH expected(facility, warehouse_code, room_code) AS (
     SELECT 'WP', 'dh', 'DH-' || n FROM generate_series(1, 22) AS n
+    UNION ALL SELECT 'WP', 'mcdougall', 'MCD-01'
     UNION ALL SELECT 'WP', 'mcdougall', 'MCD-' || n FROM generate_series(3, 16) AS n
+    UNION ALL SELECT 'WP', 'wp', 'WP-' || n FROM generate_series(4, 8) AS n
     UNION ALL SELECT 'EBS', 'ebs', 'LAMB-' || n FROM generate_series(13, 17) AS n
     UNION ALL SELECT 'EBS', 'ebs', 'EVANS-' || n FROM generate_series(1, 12) AS n
     UNION ALL SELECT 'EBS', 'ebs', room_code FROM (VALUES
@@ -150,7 +156,7 @@ JOIN "Rooms" r ON r."WarehouseId"=w."Id" AND r."IsActive" AND lower(btrim(r."Cod
 GROUP BY e.facility ORDER BY report_group;
 
 SELECT w."Code" AS warehouse_code, r."Id" AS room_id, r."Code" AS room_code,
-       r."CapacityBins" AS capacity_bins, 'excluded_not_seeded' AS seed_status
+       r."CapacityBins" AS capacity_bins, 'included_approved_scope' AS seed_status
 FROM "Rooms" r
 JOIN "Warehouses" w ON w."Id"=r."WarehouseId"
 WHERE lower(btrim(w."Code"))='mcdougall' AND lower(btrim(r."Code"))='mcd-01';

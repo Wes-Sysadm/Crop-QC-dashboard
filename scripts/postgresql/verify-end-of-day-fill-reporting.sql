@@ -51,11 +51,13 @@ BEGIN
     IF (SELECT count(*) FROM "EndOfDayFillReportGroups" WHERE ("Name"='WP End of Day Fill' AND "Facility"='WP' AND "IsActive") OR ("Name"='EBS End of Day Fill' AND "Facility"='EBS' AND "IsActive")) <> 2 THEN RAISE EXCEPTION 'Initial report-group configuration is incorrect'; END IF;
     IF (SELECT count(*) FROM "EndOfDayFillReportRecipients" WHERE "IsActive" AND "NormalizedEmailAddress" IN ('WES@FRUITANDLAND.COM','JORGE@WP-PACKING.COM','ROB@EARLBROWNANDSONS.COM')) <> 3 THEN RAISE EXCEPTION 'Initial recipient configuration is incorrect'; END IF;
     IF to_regclass(format('%I.%I', current_schema(), 'EndOfDayFillReportGroupRooms')) IS NOT NULL THEN RAISE EXCEPTION 'Obsolete room-membership join table must not exist'; END IF;
-    IF EXISTS (SELECT 1 FROM "Rooms" r JOIN "Warehouses" w ON w."Id"=r."WarehouseId" JOIN "EndOfDayFillReportGroups" g ON g."Id"=r."EndOfDayFillReportGroupId" WHERE g."Facility" <> CASE WHEN lower(btrim(w."Code")) IN ('dh','mcdougall') THEN 'WP' WHEN lower(btrim(w."Code"))='ebs' THEN 'EBS' ELSE '' END) THEN RAISE EXCEPTION 'Cross-facility Room report assignment detected'; END IF;
+    IF EXISTS (SELECT 1 FROM "Rooms" r JOIN "Warehouses" w ON w."Id"=r."WarehouseId" JOIN "EndOfDayFillReportGroups" g ON g."Id"=r."EndOfDayFillReportGroupId" WHERE g."Facility" <> CASE WHEN lower(btrim(w."Code")) IN ('dh','mcdougall','wp') THEN 'WP' WHEN lower(btrim(w."Code"))='ebs' THEN 'EBS' ELSE '' END) THEN RAISE EXCEPTION 'Cross-facility Room report assignment detected'; END IF;
 
     WITH expected(facility, warehouse_code, room_code) AS (
         SELECT 'WP', 'dh', 'DH-' || n FROM generate_series(1, 22) AS n
+        UNION ALL SELECT 'WP', 'mcdougall', 'MCD-01'
         UNION ALL SELECT 'WP', 'mcdougall', 'MCD-' || n FROM generate_series(3, 16) AS n
+        UNION ALL SELECT 'WP', 'wp', 'WP-' || n FROM generate_series(4, 8) AS n
         UNION ALL SELECT 'EBS', 'ebs', 'LAMB-' || n FROM generate_series(13, 17) AS n
         UNION ALL SELECT 'EBS', 'ebs', 'EVANS-' || n FROM generate_series(1, 12) AS n
         UNION ALL SELECT 'EBS', 'ebs', room_code FROM (VALUES
@@ -75,14 +77,16 @@ BEGIN
       ON g."Facility"=e.facility
      AND g."Name"=CASE e.facility WHEN 'WP' THEN 'WP End of Day Fill' ELSE 'EBS End of Day Fill' END
      AND r."EndOfDayFillReportGroupId"=g."Id";
-    IF wp_assignment_count <> 36 OR ebs_assignment_count <> 27 THEN
+    IF wp_assignment_count <> 42 OR ebs_assignment_count <> 27 THEN
         RAISE EXCEPTION 'Initial Room assignments are incomplete or incorrect. wp=% ebs=%', wp_assignment_count, ebs_assignment_count;
     END IF;
 
     IF EXISTS (
         WITH expected(facility, warehouse_code, room_code) AS (
             SELECT 'WP', 'dh', 'DH-' || n FROM generate_series(1, 22) AS n
+            UNION ALL SELECT 'WP', 'mcdougall', 'MCD-01'
             UNION ALL SELECT 'WP', 'mcdougall', 'MCD-' || n FROM generate_series(3, 16) AS n
+            UNION ALL SELECT 'WP', 'wp', 'WP-' || n FROM generate_series(4, 8) AS n
             UNION ALL SELECT 'EBS', 'ebs', 'LAMB-' || n FROM generate_series(13, 17) AS n
             UNION ALL SELECT 'EBS', 'ebs', 'EVANS-' || n FROM generate_series(1, 12) AS n
             UNION ALL SELECT 'EBS', 'ebs', room_code FROM (VALUES
@@ -99,13 +103,14 @@ BEGIN
                 AND lower(e.room_code)=lower(btrim(r."Code")))
     ) THEN RAISE EXCEPTION 'An unexpected Room is assigned to an initial End of Day Fill report'; END IF;
 
-    IF EXISTS (
+    IF NOT EXISTS (
         SELECT 1 FROM "Rooms" r
         JOIN "Warehouses" w ON w."Id"=r."WarehouseId"
+        JOIN "EndOfDayFillReportGroups" g ON g."Id"=r."EndOfDayFillReportGroupId"
         WHERE lower(btrim(w."Code"))='mcdougall'
           AND lower(btrim(r."Code"))='mcd-01'
-          AND r."EndOfDayFillReportGroupId" IS NOT NULL
-    ) THEN RAISE EXCEPTION 'MCD-01 must remain excluded from End of Day Fill reporting'; END IF;
+          AND g."Name"='WP End of Day Fill' AND g."Facility"='WP'
+    ) THEN RAISE EXCEPTION 'MCD-01 must be included in WP End of Day Fill reporting'; END IF;
     IF EXISTS (
          (SELECT lower(btrim(u."Email")) AS email, required.report_group
           FROM "Users" u
@@ -126,7 +131,7 @@ FROM "Rooms" r JOIN "EndOfDayFillReportGroups" g ON g."Id"=r."EndOfDayFillReport
 ORDER BY g."Name", w."Code", r."Code";
 SELECT g."Name", count(*) AS room_count FROM "Rooms" r JOIN "EndOfDayFillReportGroups" g ON g."Id"=r."EndOfDayFillReportGroupId" GROUP BY g."Name" ORDER BY g."Name";
 SELECT w."Code" AS warehouse_code, r."Id" AS room_id, r."Code" AS room_code,
-       r."CapacityBins" AS capacity_bins, r."EndOfDayFillReportGroupId", 'excluded_not_seeded' AS seed_status
+       r."CapacityBins" AS capacity_bins, r."EndOfDayFillReportGroupId", 'included_approved_scope' AS seed_status
 FROM "Rooms" r JOIN "Warehouses" w ON w."Id"=r."WarehouseId"
 WHERE lower(btrim(w."Code"))='mcdougall' AND lower(btrim(r."Code"))='mcd-01';
 SELECT u."Id", lower(btrim(u."Email")) AS email, g."Name" AS report_group FROM "EndOfDayFillUserGroupAssignments" a JOIN "Users" u ON u."Id"=a."UserId" JOIN "EndOfDayFillReportGroups" g ON g."Id"=a."ReportGroupId" ORDER BY email,report_group;

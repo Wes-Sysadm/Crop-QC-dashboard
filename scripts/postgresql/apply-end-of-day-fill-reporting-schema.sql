@@ -29,9 +29,9 @@ BEGIN
        OR to_regclass(format('%I.%I', current_schema(), 'EndOfDayFillReportGroupRooms')) IS NOT NULL THEN
         RAISE EXCEPTION 'Unsupported or obsolete Room assignment schema. Transaction rolled back.';
     END IF;
-    IF (SELECT count(*) FROM "Warehouses" WHERE "IsActive" AND lower(btrim("Code")) IN ('dh','mcdougall','ebs')) <> 3
-       OR EXISTS (SELECT lower(btrim("Code")) FROM "Warehouses" WHERE "IsActive" AND lower(btrim("Code")) IN ('dh','mcdougall','ebs') GROUP BY lower(btrim("Code")) HAVING count(*) <> 1) THEN
-        RAISE EXCEPTION 'Expected exactly one active DH, McDougall, and EBS warehouse identity. Transaction rolled back.';
+    IF (SELECT count(*) FROM "Warehouses" WHERE "IsActive" AND lower(btrim("Code")) IN ('dh','mcdougall','wp','ebs')) <> 4
+       OR EXISTS (SELECT lower(btrim("Code")) FROM "Warehouses" WHERE "IsActive" AND lower(btrim("Code")) IN ('dh','mcdougall','wp','ebs') GROUP BY lower(btrim("Code")) HAVING count(*) <> 1) THEN
+        RAISE EXCEPTION 'Expected exactly one active DH, McDougall, WP, and EBS warehouse identity. Transaction rolled back.';
     END IF;
 
     SELECT count(*) INTO duplicate_room_code_count
@@ -39,17 +39,19 @@ BEGIN
         SELECT w."Id", lower(btrim(r."Code")) AS normalized_room_code
         FROM "Warehouses" w
         JOIN "Rooms" r ON r."WarehouseId"=w."Id"
-        WHERE w."IsActive" AND lower(btrim(w."Code")) IN ('dh','mcdougall','ebs')
+        WHERE w."IsActive" AND lower(btrim(w."Code")) IN ('dh','mcdougall','wp','ebs')
         GROUP BY w."Id", lower(btrim(r."Code"))
         HAVING count(*) <> 1
     ) duplicates;
     IF duplicate_room_code_count <> 0 THEN
-        RAISE EXCEPTION 'Duplicate normalized Room codes exist in the reviewed DH, McDougall, or EBS warehouse scope. Transaction rolled back.';
+        RAISE EXCEPTION 'Duplicate normalized Room codes exist in the reviewed DH, McDougall, WP, or EBS warehouse scope. Transaction rolled back.';
     END IF;
 
     WITH expected(facility, warehouse_code, room_code) AS (
         SELECT 'WP', 'dh', 'DH-' || n FROM generate_series(1, 22) AS n
+        UNION ALL SELECT 'WP', 'mcdougall', 'MCD-01'
         UNION ALL SELECT 'WP', 'mcdougall', 'MCD-' || n FROM generate_series(3, 16) AS n
+        UNION ALL SELECT 'WP', 'wp', 'WP-' || n FROM generate_series(4, 8) AS n
         UNION ALL SELECT 'EBS', 'ebs', 'LAMB-' || n FROM generate_series(13, 17) AS n
         UNION ALL SELECT 'EBS', 'ebs', 'EVANS-' || n FROM generate_series(1, 12) AS n
         UNION ALL SELECT 'EBS', 'ebs', room_code FROM (VALUES
@@ -71,8 +73,8 @@ BEGIN
            count(*) FILTER (WHERE match_count<>1)
     INTO expected_room_count, wp_candidate_count, ebs_candidate_count, unresolved_room_count
     FROM resolved;
-    IF expected_room_count <> 63 OR wp_candidate_count <> 36 OR ebs_candidate_count <> 27 OR unresolved_room_count <> 0 THEN
-        RAISE EXCEPTION 'Reviewed End of Day Fill Room scope did not resolve exactly. expected=63 wp=% ebs=% missing_or_ambiguous=%. Transaction rolled back.',
+    IF expected_room_count <> 69 OR wp_candidate_count <> 42 OR ebs_candidate_count <> 27 OR unresolved_room_count <> 0 THEN
+        RAISE EXCEPTION 'Reviewed End of Day Fill Room scope did not resolve exactly. expected=69 wp=% ebs=% missing_or_ambiguous=%. Transaction rolled back.',
             wp_candidate_count, ebs_candidate_count, unresolved_room_count;
     END IF;
 END $precheck$;
@@ -186,7 +188,9 @@ ON CONFLICT ("NormalizedEmailAddress") DO NOTHING;
 \else
 WITH expected(facility, warehouse_code, room_code) AS (
     SELECT 'WP', 'dh', 'DH-' || n FROM generate_series(1, 22) AS n
+    UNION ALL SELECT 'WP', 'mcdougall', 'MCD-01'
     UNION ALL SELECT 'WP', 'mcdougall', 'MCD-' || n FROM generate_series(3, 16) AS n
+    UNION ALL SELECT 'WP', 'wp', 'WP-' || n FROM generate_series(4, 8) AS n
     UNION ALL SELECT 'EBS', 'ebs', 'LAMB-' || n FROM generate_series(13, 17) AS n
     UNION ALL SELECT 'EBS', 'ebs', 'EVANS-' || n FROM generate_series(1, 12) AS n
     UNION ALL SELECT 'EBS', 'ebs', room_code FROM (VALUES
