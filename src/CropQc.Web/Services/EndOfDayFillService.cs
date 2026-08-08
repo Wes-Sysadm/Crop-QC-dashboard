@@ -560,8 +560,8 @@ public sealed class EndOfDayFillService(
         var encoder = HtmlEncoder.Default;
         var date = nowPacific.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture);
         var time = nowPacific.ToString("h:mm tt", CultureInfo.InvariantCulture);
-        var revisionPrefix = revision == 0 ? "" : $"REVISION {revision} — ";
-        var subject = $"{revisionPrefix}End of Day Fill Report — {snapshot.Facility} — {date}";
+        var revisionPrefix = revision == 0 ? "" : $"REVISION {revision} - ";
+        var subject = $"{revisionPrefix}End of Day Fill Report - {snapshot.Facility} - {date}";
         var html = new StringBuilder("<main style=\"font-family:Arial,sans-serif;max-width:720px;margin:auto\">");
         html.Append("<h1>End of Day Fill Report</h1>");
         if (revision > 0) html.Append($"<p><strong style=\"font-size:1.2em\">REVISION {revision}</strong></p>");
@@ -575,9 +575,9 @@ public sealed class EndOfDayFillService(
             text.AppendLine($"{room.RoomCode} — {room.RoomName}").AppendLine($"{room.CurrentBins:N0} / {room.CapacityBins:N0} bins — {room.PercentFull:N1}% full");
             foreach (var variety in room.Varieties)
             {
-                var identity = $"{variety.Name} — {variety.ProductionType} — {(variety.IsOrganic ? "Organic" : "Conventional")}";
+                var identity = VarietyDisplayIdentity(variety);
                 html.Append($"<h3 style=\"border-left:8px solid {encoder.Encode(variety.HexColor)};padding-left:8px\">{encoder.Encode(identity)} — {variety.Bins:N0} bins</h3><ul>");
-                text.AppendLine(identity);
+                text.AppendLine($"{identity} — {variety.Bins:N0} bins");
                 foreach (var grower in variety.Growers)
                 {
                     var growerName = string.IsNullOrWhiteSpace(grower.GrowerName) ? "" : $" — {grower.GrowerName}";
@@ -591,6 +591,16 @@ public sealed class EndOfDayFillService(
         }
         html.Append("</main>");
         return new(subject, html.ToString(), text.ToString());
+    }
+
+    private static string VarietyDisplayIdentity(EndOfDayFillVarietyViewModel variety)
+    {
+        var organicLabel = variety.IsOrganic ? "Organic" : "Conventional";
+        var productionType = variety.ProductionType.Trim();
+        return string.IsNullOrWhiteSpace(productionType)
+            || productionType.Equals(organicLabel, StringComparison.OrdinalIgnoreCase)
+            ? $"{variety.Name} — {organicLabel}"
+            : $"{variety.Name} — {productionType} — {organicLabel}";
     }
 
     private async Task<EndOfDayFillSendReservation?> GetPendingReservationAsync(int groupId, CancellationToken cancellationToken) =>
