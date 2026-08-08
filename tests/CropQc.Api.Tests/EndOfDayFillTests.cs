@@ -64,7 +64,10 @@ public sealed class EndOfDayFillTests
         var message = Assert.Single(fixture.Sender.Messages);
         Assert.Equal(Fixture.SenderEmail, message.Message.From);
         Assert.Equal("wes@fruitandland.com, jorge@wp-packing.com, rob@earlbrownandsons.com", message.Message.To);
-        Assert.Equal("End of Day Fill Report — WP — August 6, 2026", message.Message.Subject);
+        Assert.Equal("End of Day Fill Report - WP - August 6, 2026", message.Message.Subject);
+        Assert.DoesNotContain('—', message.Message.Subject);
+        Assert.DoesNotContain("Ã", message.Message.Subject);
+        Assert.DoesNotContain("Â", message.Message.Subject);
         Assert.Contains("End of Day Fill Report as of August 6, 2026 — 9:22 PM Pacific", message.Message.HtmlBody);
         Assert.Contains("Grower 1084 — Smith Orchards — 145 bins", message.Message.TextBody);
         Assert.DoesNotContain("pressure", message.Message.TextBody, StringComparison.OrdinalIgnoreCase);
@@ -103,9 +106,61 @@ public sealed class EndOfDayFillTests
         var revision = await fixture.Service.SendAsync(Fixture.SenderEmail,
             new EndOfDayFillSendForm { GroupId = 1, PreviewToken = revisionPreview.PreviewToken!, PhysicalCountConfirmed = true }, default);
         Assert.True(revision.Success);
-        Assert.StartsWith("REVISION 1 — End of Day Fill Report", fixture.Sender.Messages.Last().Message.Subject);
+        Assert.Equal("REVISION 1 - End of Day Fill Report - WP - August 6, 2026", fixture.Sender.Messages.Last().Message.Subject);
         Assert.Contains("REVISION 1", fixture.Sender.Messages.Last().Message.HtmlBody);
         Assert.Equal([0, 1], await fixture.Db.EndOfDayFillReportSends.Where(x => x.Status == EndOfDayFillSendStatuses.Succeeded).OrderBy(x => x.RevisionNumber).Select(x => x.RevisionNumber).ToListAsync());
+    }
+
+    [Fact]
+    public async Task EmailFormatting_UsesAsciiSubjectSeparators_AndDeduplicatesOrganicIdentity()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var group = await fixture.Db.EndOfDayFillReportGroups.SingleAsync(x => x.Id == 1);
+        var room = await fixture.Db.Rooms.SingleAsync(x => x.Id == Fixture.RoomId);
+        group.Facility = "EBS";
+        room.WarehouseId = (await fixture.Db.Warehouses.SingleAsync(x => x.Code == "EBS")).Id;
+        await fixture.Db.SaveChangesAsync();
+
+        fixture.Inventory.CanonicalName = "Honey Crisp";
+        fixture.Inventory.ProductionType = "Conventional";
+        fixture.Inventory.IsOrganic = false;
+        var originalPreview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+        Assert.True((await fixture.Service.SendAsync(Fixture.SenderEmail,
+            new EndOfDayFillSendForm { GroupId = 1, PreviewToken = originalPreview.PreviewToken!, PhysicalCountConfirmed = true }, default)).Success);
+
+        var original = fixture.Sender.Messages.Single().Message;
+        Assert.Equal("End of Day Fill Report - EBS - August 6, 2026", original.Subject);
+        Assert.DoesNotContain('—', original.Subject);
+        Assert.DoesNotContain("Ã", original.Subject);
+        Assert.DoesNotContain("Â", original.Subject);
+        Assert.Contains("Honey Crisp &#x2014; Conventional — 145 bins", original.HtmlBody);
+        Assert.Contains("Honey Crisp — Conventional — 145 bins", original.TextBody);
+        Assert.DoesNotContain("Honey Crisp &#x2014; Conventional &#x2014; Conventional", original.HtmlBody);
+        Assert.DoesNotContain("Honey Crisp — Conventional — Conventional", original.TextBody);
+        Assert.Contains("Grower 1084", original.HtmlBody);
+        Assert.Contains("Smith Orchards", original.HtmlBody);
+        Assert.Contains("145 bins", original.HtmlBody);
+        Assert.Contains("Grower 1084 — Smith Orchards — 145 bins", original.TextBody);
+
+        fixture.Inventory.ProductionType = "Organic";
+        fixture.Inventory.IsOrganic = true;
+        var revisionPreview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+        Assert.True((await fixture.Service.SendAsync(Fixture.SenderEmail,
+            new EndOfDayFillSendForm { GroupId = 1, PreviewToken = revisionPreview.PreviewToken!, PhysicalCountConfirmed = true }, default)).Success);
+
+        var revision = fixture.Sender.Messages.Last().Message;
+        Assert.Equal("REVISION 1 - End of Day Fill Report - EBS - August 6, 2026", revision.Subject);
+        Assert.DoesNotContain('—', revision.Subject);
+        Assert.DoesNotContain("Ã", revision.Subject);
+        Assert.DoesNotContain("Â", revision.Subject);
+        Assert.Contains("Honey Crisp &#x2014; Organic — 145 bins", revision.HtmlBody);
+        Assert.Contains("Honey Crisp — Organic — 145 bins", revision.TextBody);
+        Assert.DoesNotContain("Honey Crisp &#x2014; Organic &#x2014; Organic", revision.HtmlBody);
+        Assert.DoesNotContain("Honey Crisp — Organic — Organic", revision.TextBody);
+        Assert.Contains("Grower 1084", revision.HtmlBody);
+        Assert.Contains("Smith Orchards", revision.HtmlBody);
+        Assert.Contains("145 bins", revision.HtmlBody);
+        Assert.Contains("Grower 1084 — Smith Orchards — 145 bins", revision.TextBody);
     }
 
     [Fact]
@@ -707,6 +762,8 @@ public sealed class EndOfDayFillTests
         public int Bins { get; set; } = 145;
         public string GrowerNumber { get; set; } = "1084";
         public string CanonicalName { get; set; } = "Gala";
+        public string ProductionType { get; set; } = "Fresh";
+        public bool IsOrganic { get; set; }
         public bool IncludeUnconfiguredRoom { get; set; } = true;
         public IReadOnlyList<int> RequestedRoomIds { get; private set; } = [];
         public Task<IReadOnlyList<RoomLotSummaryViewModel>> GetCurrentLotsAsync(IReadOnlyCollection<int> roomIds, CancellationToken cancellationToken)
@@ -714,7 +771,7 @@ public sealed class EndOfDayFillTests
             RequestedRoomIds = roomIds.Order().ToList();
             IReadOnlyList<RoomLotSummaryViewModel> result =
             [
-                new() { RoomId = Fixture.RoomId, RoomCode = "DH-1", CurrentBins = Bins, GrowerNumber = GrowerNumber, GrowerName = "Smith Orchards", CanonicalVarietyKey = CanonicalName.Length == 0 ? "" : "gala", CanonicalVarietyName = CanonicalName, ProductionType = "Fresh", IsOrganic = false, VarietyHexColor = "#c62828", InventoryKey = "canonical-398", GrowerLotId = 398 },
+                new() { RoomId = Fixture.RoomId, RoomCode = "DH-1", CurrentBins = Bins, GrowerNumber = GrowerNumber, GrowerName = "Smith Orchards", CanonicalVarietyKey = CanonicalName.Length == 0 ? "" : "gala", CanonicalVarietyName = CanonicalName, ProductionType = ProductionType, IsOrganic = IsOrganic, VarietyHexColor = "#c62828", InventoryKey = "canonical-398", GrowerLotId = 398 },
                 new() { RoomId = Fixture.UnconfiguredRoomId, RoomCode = "DH-2", CurrentBins = 999, GrowerNumber = "9999", GrowerName = "Excluded", CanonicalVarietyKey = "fuji", CanonicalVarietyName = "Fuji", ProductionType = "Fresh", IsOrganic = false, InventoryKey = "excluded" }
             ];
             return Task.FromResult<IReadOnlyList<RoomLotSummaryViewModel>>(result.Where(x => roomIds.Contains(x.RoomId) && (IncludeUnconfiguredRoom || x.RoomId != Fixture.UnconfiguredRoomId)).ToList());
