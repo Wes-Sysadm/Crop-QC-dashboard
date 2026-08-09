@@ -101,6 +101,59 @@ public sealed class DeviceCaptureIntegrationTests
     }
 
     [Fact]
+    public void LogitechControls_AreCapabilityDrivenAndStayInSharedCapturePanel()
+    {
+        var panel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_DeviceCapturePanel.cshtml"));
+        var controls = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "js", "device-camera-controls.js"));
+
+        Assert.Contains("Logitech Camera Controls", panel);
+        Assert.Contains("Auto Focus", panel);
+        Assert.Contains("Manual Focus", panel);
+        Assert.Contains("Brightness", panel);
+        Assert.Contains("Contrast", panel);
+        Assert.Contains("Reset Camera Controls", panel);
+        Assert.Contains("~/js/device-camera-controls.js", panel);
+        Assert.Contains("stream.getVideoTracks?.()[0]", panel);
+        Assert.Contains("new cameraControlsApi.CameraControlSession(track)", panel);
+        Assert.Contains("track.getCapabilities()", controls);
+        Assert.Contains("track.getSettings()", controls);
+        Assert.Contains("track.applyConstraints({ advanced: [next] })", controls);
+        Assert.Contains("focusMode", controls);
+        Assert.Contains("focusDistance", controls);
+        Assert.Contains("brightness", controls);
+        Assert.Contains("contrast", controls);
+        Assert.DoesNotContain("style.filter", panel);
+        Assert.DoesNotContain("context.filter", panel);
+    }
+
+    [Fact]
+    public void LogitechControls_PersistPerDeviceAndRemainEnhancementOnly()
+    {
+        var panel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_DeviceCapturePanel.cshtml"));
+        var controls = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "js", "device-camera-controls.js"));
+        var behaviorTests = File.ReadAllText(FindRepositoryFile("tests", "js", "device-camera-controls.test.cjs"));
+
+        Assert.Contains("cropqc.deviceCapture.cameraControls", controls);
+        Assert.Contains("savedControls(storage, deviceId)", panel);
+        Assert.Contains("sanitizeValues(saved, cameraControlCapabilities)", panel);
+        Assert.Contains("clearControls(storage, deviceId)", panel);
+        Assert.Contains("startCamera(\"apple\", { reapplySaved: false })", panel);
+        Assert.Contains("window.setTimeout(", panel);
+        Assert.Contains("150);", panel);
+        Assert.Contains("The previous setting is still in use.", panel);
+        Assert.Contains("The preview remains available.", panel);
+        Assert.Contains("full Logitech-like capabilities", behaviorTests);
+        Assert.Contains("partial and basic cameras", behaviorTests);
+        Assert.Contains("constraint failure preserves the stream", behaviorTests);
+        Assert.Contains("rapid updates are coalesced", behaviorTests);
+
+        Assert.Contains("canvas.toBlob(resolve, \"image/jpeg\", 0.92)", panel);
+        Assert.Contains("form.append(\"PhotoFile\"", panel);
+        Assert.Contains("credentials: \"same-origin\"", panel);
+        Assert.Contains("__RequestVerificationToken", panel);
+    }
+
+    [Fact]
     public void ScaleCapture_UsesBrowserSerialFallbackMessageAndWritesWeightInputs()
     {
         var panel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_DeviceCapturePanel.cshtml"));
