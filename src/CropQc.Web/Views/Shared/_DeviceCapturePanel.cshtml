@@ -63,6 +63,35 @@
                 </select>
             </label>
         </div>
+        <section class="camera-control-panel" data-camera-controls hidden aria-labelledby="@($"{panelId}-camera-controls-heading")">
+            <h3 id="@($"{panelId}-camera-controls-heading")">Logitech Camera Controls</h3>
+            <p class="muted" data-camera-controls-none hidden>Advanced image controls are not supported by this camera/driver.</p>
+            <div class="camera-control-grid">
+                <div class="camera-control-field" data-camera-control="focus" hidden>
+                    <label class="camera-control-toggle">
+                        <input type="checkbox" data-camera-auto-focus />
+                        <span>Auto Focus</span>
+                    </label>
+                    <p class="muted" data-camera-focus-mode></p>
+                    <label class="field" data-camera-manual-focus data-camera-control="focusDistance" hidden>Manual Focus
+                        <input type="range" data-camera-control-input="focusDistance" />
+                        <output data-camera-control-value="focusDistance"></output>
+                    </label>
+                </div>
+                <label class="field camera-control-field" data-camera-control="brightness" hidden>Brightness
+                    <input type="range" data-camera-control-input="brightness" />
+                    <output data-camera-control-value="brightness"></output>
+                </label>
+                <label class="field camera-control-field" data-camera-control="contrast" hidden>Contrast
+                    <input type="range" data-camera-control-input="contrast" />
+                    <output data-camera-control-value="contrast"></output>
+                </label>
+            </div>
+            <div class="button-row">
+                <button type="button" class="secondary-button" data-camera-controls-reset>Reset Camera Controls</button>
+            </div>
+            <p class="muted camera-control-message" data-camera-control-message aria-live="polite"></p>
+        </section>
         <p class="muted">Manual upload and manual weight entry remain available. Device capture is optional.</p>
     </details>
     <div class="button-row device-actions" data-device-actions hidden>
@@ -87,6 +116,7 @@
     <p class="muted device-message" data-device-message>Manual upload and manual weight entry remain available. Device capture is optional.</p>
     <span data-device-antiforgery hidden>@Html.AntiForgeryToken()</span>
 </section>
+<script src="~/js/device-camera-controls.js" asp-append-version="true"></script>
 <script>
     (() => {
         const panel = document.getElementById("@panelId");
@@ -107,12 +137,30 @@
         const settings = panel.querySelector(".device-settings");
         const permissionMessage = panel.querySelector("[data-camera-permission-message]");
         const scaleSelect = panel.querySelector("[data-scale-select]");
+        const cameraControlsApi = window.CropQcCameraControls;
+        const cameraControlsPanel = panel.querySelector("[data-camera-controls]");
+        const cameraControlsNone = panel.querySelector("[data-camera-controls-none]");
+        const cameraControlMessage = panel.querySelector("[data-camera-control-message]");
+        const autoFocusInput = panel.querySelector("[data-camera-auto-focus]");
+        const focusModeMessage = panel.querySelector("[data-camera-focus-mode]");
+        const manualFocusField = panel.querySelector("[data-camera-manual-focus]");
+        const cameraControlInputs = Object.fromEntries(
+            Array.from(panel.querySelectorAll("[data-camera-control-input]"))
+                .map(input => [input.dataset.cameraControlInput, input]));
+        const cameraControlOutputs = Object.fromEntries(
+            Array.from(panel.querySelectorAll("[data-camera-control-value]"))
+                .map(output => [output.dataset.cameraControlValue, output]));
         const cameraSelects = {
             apple: panel.querySelector("[data-camera-select='apple']"),
             truck: panel.querySelector("[data-camera-select='truck']")
         };
         let stream = null;
         let activeRole = null;
+        let activeCameraDeviceId = null;
+        let cameraControlSession = null;
+        let cameraControlCapabilities = {};
+        const cameraControlTimers = {};
+        const cameraControlVersions = {};
         let serialPort = null;
         let serialReader = null;
         let lastWeight = null;
@@ -158,11 +206,160 @@
             message.classList.toggle("warning-text", warning);
         }
 
+        function setCameraControlMessage(messageText, warning = false) {
+            if (!cameraControlMessage) return;
+            cameraControlMessage.textContent = messageText;
+            cameraControlMessage.classList.toggle("warning-text", warning);
+        }
+
+        function hideCameraControls() {
+            if (cameraControlsPanel) cameraControlsPanel.hidden = true;
+            cameraControlSession = null;
+            cameraControlCapabilities = {};
+            activeCameraDeviceId = null;
+            for (const name of ["focusMode", "focusDistance", "brightness", "contrast"]) {
+                window.clearTimeout(cameraControlTimers[name]);
+                cameraControlVersions[name] = (cameraControlVersions[name] || 0) + 1;
+            }
+        }
+
+        function renderRangeControl(name, range, currentValue) {
+            const row = panel.querySelector("[data-camera-control='" + name + "']");
+            const input = cameraControlInputs[name];
+            const output = cameraControlOutputs[name];
+            if (!row || !input || !output) return false;
+            row.hidden = !range;
+            if (!range) return false;
+            input.min = String(range.min);
+            input.max = String(range.max);
+            input.step = String(range.step);
+            const applied = cameraControlsApi.clampToRange(currentValue ?? range.min, range);
+            input.value = String(applied ?? range.min);
+            output.value = input.value;
+            output.textContent = input.value;
+            return true;
+        }
+
+        function renderCameraControls(actualSettings) {
+            if (!cameraControlsPanel || !cameraControlSession || !cameraControlsApi) return;
+            const description = cameraControlsApi.describeCapabilities(cameraControlCapabilities);
+            const focusRow = panel.querySelector("[data-camera-control='focus']");
+            const hasFocus = Boolean(description.autoFocusMode || description.manualFocusSupported);
+            if (focusRow) focusRow.hidden = !hasFocus;
+
+            if (hasFocus && autoFocusInput) {
+                const manual = actualSettings.focusMode === description.manualFocusMode;
+                autoFocusInput.checked = !manual && Boolean(description.autoFocusMode);
+                autoFocusInput.disabled = !description.autoFocusMode || !description.manualFocusSupported;
+                if (focusModeMessage) {
+                    focusModeMessage.textContent = description.manualFocusSupported
+                        ? "Current mode: " + (actualSettings.focusMode || (autoFocusInput.checked ? description.autoFocusMode : description.manualFocusMode))
+                        : "Manual focus is not supported by this camera/driver.";
+                }
+                if (manualFocusField) manualFocusField.hidden = !description.manualFocusSupported;
+                if (description.manualFocusSupported) {
+                    renderRangeControl("focusDistance", description.focusDistance, actualSettings.focusDistance);
+                    cameraControlInputs.focusDistance.disabled = !manual;
+                }
+            }
+
+            const hasBrightness = renderRangeControl("brightness", description.brightness, actualSettings.brightness);
+            const hasContrast = renderRangeControl("contrast", description.contrast, actualSettings.contrast);
+            const anySupported = hasFocus || hasBrightness || hasContrast;
+            cameraControlsNone.hidden = anySupported;
+            cameraControlsPanel.hidden = false;
+        }
+
+        function persistActualCameraControls(actualSettings) {
+            if (!activeCameraDeviceId || !cameraControlsApi || !cameraControlSession) return;
+            const values = cameraControlsApi.settingsForPersistence(actualSettings, cameraControlCapabilities);
+            cameraControlsApi.saveControls(storage, activeCameraDeviceId, values);
+        }
+
+        function friendlyControlError(error, controlName) {
+            const label = controlName === "focusDistance" || controlName === "focusMode"
+                ? "focus"
+                : controlName;
+            if (error?.name === "OverconstrainedError") {
+                return "The camera did not accept that " + label + " setting. The previous setting is still in use.";
+            }
+            if (error?.name === "NotReadableError" || error?.name === "AbortError") {
+                return "The camera is busy or disconnected. Preview and manual upload remain available.";
+            }
+            return "The camera could not apply that " + label + " setting. The previous setting is still in use.";
+        }
+
+        async function applyCameraControl(values, controlName, version) {
+            if (!cameraControlSession) return;
+            try {
+                const actual = await cameraControlSession.apply(values);
+                if (version !== undefined && version !== cameraControlVersions[controlName]) return;
+                renderCameraControls(actual);
+                persistActualCameraControls(actual);
+                setCameraControlMessage("Camera " + (controlName === "focusDistance" ? "focus" : controlName) + " updated.");
+            } catch (error) {
+                if (version !== undefined && version !== cameraControlVersions[controlName]) return;
+                renderCameraControls(cameraControlSession.getSettings());
+                setCameraControlMessage(friendlyControlError(error, controlName), true);
+            }
+        }
+
+        function scheduleCameraControl(name, value) {
+            cameraControlVersions[name] = (cameraControlVersions[name] || 0) + 1;
+            const version = cameraControlVersions[name];
+            window.clearTimeout(cameraControlTimers[name]);
+            cameraControlTimers[name] = window.setTimeout(
+                () => applyCameraControl({ [name]: value }, name, version),
+                150);
+        }
+
+        async function initializeAppleCameraControls(track, deviceId, reapplySaved = true) {
+            if (!cameraControlsApi || !track) {
+                hideCameraControls();
+                return;
+            }
+
+            activeCameraDeviceId = deviceId;
+            cameraControlSession = new cameraControlsApi.CameraControlSession(track);
+            cameraControlCapabilities = cameraControlSession.capabilities;
+            let actual = cameraControlSession.getSettings();
+            const saved = reapplySaved ? cameraControlsApi.savedControls(storage, deviceId) : {};
+            const sanitized = cameraControlsApi.sanitizeValues(saved, cameraControlCapabilities);
+            const description = cameraControlsApi.describeCapabilities(cameraControlCapabilities);
+            if (sanitized.values.focusDistance !== undefined
+                && sanitized.values.focusMode !== description.manualFocusMode) {
+                delete sanitized.values.focusDistance;
+                sanitized.discarded.push("focusDistance");
+            }
+            if (reapplySaved && Object.keys(saved).length === 0 && description.autoFocusMode) {
+                sanitized.values.focusMode = description.autoFocusMode;
+            }
+            if (sanitized.discarded.length > 0) {
+                cameraControlsApi.saveControls(storage, deviceId, sanitized.values);
+            }
+
+            if (Object.keys(sanitized.values).length > 0) {
+                try {
+                    actual = await cameraControlSession.apply(sanitized.values);
+                    persistActualCameraControls(actual);
+                } catch (error) {
+                    cameraControlsApi.clearControls(storage, deviceId);
+                    actual = cameraControlSession.getSettings();
+                    setCameraControlMessage("Saved camera controls were not accepted and were cleared. The preview remains available.", true);
+                }
+            } else {
+                cameraControlsApi.clearControls(storage, deviceId);
+            }
+
+            renderCameraControls(actual);
+        }
+
         function stopCamera() {
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
                 stream = null;
             }
+            hideCameraControls();
             activeRole = null;
             video.srcObject = null;
             video.hidden = true;
@@ -289,7 +486,7 @@
             return cameras;
         }
 
-        async function startCamera(role) {
+        async function startCamera(role, options = {}) {
             if (!navigator.mediaDevices?.getUserMedia) {
                 show("Browser camera API unavailable.", true);
                 return false;
@@ -302,10 +499,7 @@
                 return false;
             }
 
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-                stream = null;
-            }
+            if (stream) stopCamera();
 
             try {
                 stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId } }, audio: false });
@@ -315,6 +509,18 @@
                 activeRole = role;
                 const label = cameraSelects[role]?.options[cameraSelects[role]?.selectedIndex]?.textContent || "Camera";
                 status(role, `${label} connected`);
+                if (role === "apple") {
+                    const track = stream.getVideoTracks?.()[0];
+                    track?.addEventListener?.("ended", () => {
+                        if (stream?.getVideoTracks?.().includes(track)) {
+                            stopCamera();
+                            show("Camera disconnected. Reconnect it in Device Setup or use manual upload.", true);
+                        }
+                    }, { once: true });
+                    await initializeAppleCameraControls(track, deviceId, options.reapplySaved !== false);
+                } else {
+                    hideCameraControls();
+                }
                 show("Camera connected.");
                 return true;
             } catch (error) {
@@ -497,6 +703,44 @@
         panel.querySelector("[data-camera-test]")?.addEventListener("click", async () => {
             await startCamera(cameraSelects.apple?.value ? "apple" : "truck");
         });
+        autoFocusInput?.addEventListener("change", async () => {
+            if (!cameraControlSession) return;
+            const description = cameraControlsApi.describeCapabilities(cameraControlCapabilities);
+            const targetMode = autoFocusInput.checked
+                ? description.autoFocusMode
+                : description.manualFocusMode;
+            if (!targetMode) {
+                renderCameraControls(cameraControlSession.getSettings());
+                return;
+            }
+            const values = { focusMode: targetMode };
+            if (!autoFocusInput.checked && description.manualFocusSupported) {
+                values.focusDistance = Number(cameraControlInputs.focusDistance.value);
+            }
+            cameraControlVersions.focusMode = (cameraControlVersions.focusMode || 0) + 1;
+            await applyCameraControl(values, "focusMode", cameraControlVersions.focusMode);
+        });
+        for (const name of ["focusDistance", "brightness", "contrast"]) {
+            cameraControlInputs[name]?.addEventListener("input", event => {
+                const output = cameraControlOutputs[name];
+                if (output) {
+                    output.value = event.target.value;
+                    output.textContent = event.target.value;
+                }
+                scheduleCameraControl(name, Number(event.target.value));
+            });
+        }
+        panel.querySelector("[data-camera-controls-reset]")?.addEventListener("click", async () => {
+            const deviceId = activeCameraDeviceId || cameraSelects.apple?.value;
+            if (!deviceId || !cameraControlsApi) return;
+            cameraControlsApi.clearControls(storage, deviceId);
+            stopCamera();
+            const restarted = await startCamera("apple", { reapplySaved: false });
+            setCameraControlMessage(restarted
+                ? "Saved camera controls were cleared. The camera restarted without saved advanced constraints."
+                : "Saved camera controls were cleared. Reconnect the camera to refresh its controls.",
+                !restarted);
+        });
         panel.querySelector("[data-device-save]")?.addEventListener("click", () => {
             for (const role of ["apple", "truck"]) {
                 if (cameraSelects[role]?.value) {
@@ -511,7 +755,7 @@
             cameraSelects[role]?.addEventListener("change", async event => {
                 storage.setItem(storageKeys[role], event.target.value);
                 status(role, event.target.options[event.target.selectedIndex]?.textContent || "Selected");
-                if (localCaptureEnabled()) {
+                if (localCaptureEnabled() || (activeRole === role && stream)) {
                     await startCamera(role);
                 }
             });
