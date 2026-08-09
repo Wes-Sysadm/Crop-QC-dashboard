@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Web.Auth;
@@ -15,6 +16,157 @@ namespace CropQc.Api.Tests;
 
 public sealed class RoleUserAdminTests
 {
+    [Fact]
+    public async Task EmptyCustomRoleDeletionCascadesOwnedRowsAndPreservesCompleteAudit()
+    {
+        await using var db = CreateDb();
+        var administrator = AddAdministrator(db);
+        var role = NewRole("Temporary receiving review");
+        foreach (var area in ApplicationAreas.All) role.PageAccesses.Add(Cell(area.Key));
+        role.Permissions.Add(new RolePermission
+        {
+            PermissionKey = "legacy-test",
+            Description = "Legacy role-owned permission"
+        });
+        var unrelated = NewRole("Unrelated role");
+        foreach (var area in ApplicationAreas.All) unrelated.PageAccesses.Add(Cell(area.Key));
+        db.AddRange(role, unrelated);
+        await db.SaveChangesAsync();
+        var roleId = role.Id;
+        var unrelatedId = unrelated.Id;
+        var invalidation = new TrackingAccessService();
+
+        var result = await Service(db, invalidation)
+            .DeleteRoleAsync(roleId, administrator.Email, default);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("Temporary receiving review", result.DeletedRoleName);
+        Assert.Null(result.Error);
+        Assert.False(await db.Roles.AnyAsync(x => x.Id == roleId));
+        Assert.False(await db.RolePageAccesses.AnyAsync(x => x.RoleId == roleId));
+        Assert.False(await db.RolePermissions.AnyAsync(x => x.RoleId == roleId));
+        Assert.True(await db.Roles.AnyAsync(x => x.Id == unrelatedId));
+        Assert.Equal(1, invalidation.Count);
+
+        var audit = Assert.Single(await db.AuditLogs.Where(x =>
+            x.Action == "delete" && x.EntityName == "roles" && x.EntityKey == roleId.ToString()).ToListAsync());
+        Assert.Null(audit.AfterValuesJson);
+        using var snapshot = JsonDocument.Parse(Assert.IsType<string>(audit.BeforeValuesJson));
+        var root = snapshot.RootElement;
+        Assert.Equal(roleId, root.GetProperty("RoleId").GetInt32());
+        Assert.Equal("Temporary receiving review", root.GetProperty("Name").GetString());
+        Assert.Equal(0, root.GetProperty("AssignedUserCount").GetInt32());
+        Assert.Equal(ApplicationAreas.All.Count, root.GetProperty("PermissionMatrix").GetArrayLength());
+        Assert.All(root.GetProperty("PermissionMatrix").EnumerateArray(), cell =>
+            Assert.True(cell.GetProperty("IsPersisted").GetBoolean()));
+        Assert.Single(root.GetProperty("RolePermissions").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task EmptyImportedMigrationRoleCanBeDeleted()
+    {
+        await using var db = CreateDb();
+        var administrator = AddAdministrator(db);
+        var role = NewRole("Imported Access A");
+        role.Description = "Imported from the legacy per-user access matrix during the role-based authorization conversion.";
+        foreach (var area in ApplicationAreas.All) role.PageAccesses.Add(Cell(area.Key));
+        db.Roles.Add(role);
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new TrackingAccessService())
+            .DeleteRoleAsync(role.Id, administrator.Email, default);
+
+        Assert.True(result.Succeeded);
+        Assert.False(await db.Roles.AnyAsync(x => x.Id == role.Id));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AnyAssignedUserPreventsCustomRoleDeletion(bool userIsActive)
+    {
+        await using var db = CreateDb();
+        var administrator = AddAdministrator(db);
+        var role = NewRole("Assigned custom role");
+        foreach (var area in ApplicationAreas.All) role.PageAccesses.Add(Cell(area.Key));
+        var assigned = User("assigned@fruitandland.com");
+        assigned.IsActive = userIsActive;
+        assigned.UserRoles.Add(new UserRole { Role = role });
+        db.AddRange(role, assigned);
+        await db.SaveChangesAsync();
+        var pageAccessCount = role.PageAccesses.Count;
+
+        var result = await Service(db, new TrackingAccessService())
+            .DeleteRoleAsync(role.Id, administrator.Email, default);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Move all users off this role before deleting it.", result.Error);
+        Assert.True(await db.Roles.AnyAsync(x => x.Id == role.Id));
+        Assert.Equal(pageAccessCount, await db.RolePageAccesses.CountAsync(x => x.RoleId == role.Id));
+        Assert.True(await db.UserRoles.AnyAsync(x => x.RoleId == role.Id && x.UserId == assigned.Id));
+        Assert.False(await db.AuditLogs.AnyAsync(x => x.Action == "delete" && x.EntityKey == role.Id.ToString()));
+    }
+
+    [Theory]
+    [InlineData(BuiltInRoleNames.Viewer)]
+    [InlineData(BuiltInRoleNames.QcTech)]
+    [InlineData(BuiltInRoleNames.QcAdmin)]
+    [InlineData(BuiltInRoleNames.Manager)]
+    [InlineData(BuiltInRoleNames.Admin)]
+    public async Task BuiltInRolesCannotBeDeleted(string roleName)
+    {
+        await using var db = CreateDb();
+        var role = await db.Roles.SingleAsync(x => x.Name == roleName);
+        var administrator = AddAdministrator(db);
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new TrackingAccessService())
+            .DeleteRoleAsync(role.Id, administrator.Email, default);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Built-in roles cannot be deleted.", result.Error);
+        Assert.True(await db.Roles.AnyAsync(x => x.Id == role.Id));
+    }
+
+    [Fact]
+    public async Task SystemFlagAndBuiltInNameEachProtectRoleDeletion()
+    {
+        await using var db = CreateDb();
+        var administrator = AddAdministrator(db);
+        var flagged = NewRole("Protected internal role");
+        flagged.IsSystemRole = true;
+        foreach (var area in ApplicationAreas.All) flagged.PageAccesses.Add(Cell(area.Key));
+        var viewer = await db.Roles.SingleAsync(x => x.Name == BuiltInRoleNames.Viewer);
+        viewer.IsSystemRole = false;
+        db.Roles.Add(flagged);
+        await db.SaveChangesAsync();
+
+        var service = Service(db, new TrackingAccessService());
+        Assert.Equal("Built-in roles cannot be deleted.",
+            (await service.DeleteRoleAsync(flagged.Id, administrator.Email, default)).Error);
+        Assert.Equal("Built-in roles cannot be deleted.",
+            (await service.DeleteRoleAsync(viewer.Id, administrator.Email, default)).Error);
+        Assert.True(await db.Roles.AnyAsync(x => x.Id == flagged.Id));
+        Assert.True(await db.Roles.AnyAsync(x => x.Id == viewer.Id));
+    }
+
+    [Fact]
+    public async Task DeletingUnknownRoleFailsSafelyWithoutWrites()
+    {
+        await using var db = CreateDb();
+        var administrator = AddAdministrator(db);
+        await db.SaveChangesAsync();
+        var roleCount = await db.Roles.CountAsync();
+
+        var result = await Service(db, new TrackingAccessService())
+            .DeleteRoleAsync(int.MaxValue, administrator.Email, default);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Role not found.", result.Error);
+        Assert.Equal(roleCount, await db.Roles.CountAsync());
+        Assert.Empty(await db.AuditLogs.ToListAsync());
+    }
+
     [Fact]
     public async Task MissingOrInvalidRoleSelectionDoesNotImplicitlySelectViewer()
     {

@@ -1068,7 +1068,14 @@ public sealed record RoleAdminDetailViewModel(
     bool IsAdmin,
     bool IsImportedMigrationRole,
     IReadOnlyList<string> AssignedUsers,
-    IReadOnlyDictionary<string, PageAccessLevel> Access);
+    IReadOnlyDictionary<string, PageAccessLevel> Access)
+{
+    public bool IsProtectedBuiltInRole =>
+        IsSystemRole || BuiltInRoleNames.All.Contains(Name);
+
+    public bool CanDelete =>
+        !IsProtectedBuiltInRole && AssignedUsers.Count == 0;
+}
 
 public sealed record RoleComparisonDifferenceViewModel(
     string AreaKey,
@@ -1123,6 +1130,19 @@ public sealed class UpdateRoleForm
     public string Name { get; set; } = "";
     public string? Description { get; set; }
     public bool IsActive { get; set; }
+}
+
+public sealed class DeleteRoleForm
+{
+    public int RoleId { get; set; }
+}
+
+public sealed record DeleteRoleResult(string? DeletedRoleName, string? Error)
+{
+    public bool Succeeded => Error is null;
+
+    public static DeleteRoleResult Success(string roleName) => new(roleName, null);
+    public static DeleteRoleResult Failure(string error) => new(null, error);
 }
 
 public sealed class RoleAccessMatrixForm

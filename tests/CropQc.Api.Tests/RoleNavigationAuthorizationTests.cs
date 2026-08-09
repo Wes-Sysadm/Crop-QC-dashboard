@@ -2,6 +2,7 @@ using System.Reflection;
 using CropQc.Web.Controllers;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace CropQc.Api.Tests;
 
@@ -70,6 +71,9 @@ public sealed class RoleNavigationAuthorizationTests
         AssertActionPolicy<AdminController>(nameof(AdminController.UpdateUser), AccessPolicyNames.UsersAdmin);
         AssertActionPolicy<AdminController>(nameof(AdminController.CreateRole), AccessPolicyNames.PermissionMatrixAdmin);
         AssertActionPolicy<AdminController>(nameof(AdminController.UpdateRole), AccessPolicyNames.PermissionMatrixAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.DeleteRole), AccessPolicyNames.PermissionMatrixAdmin);
+        Assert.NotNull(typeof(AdminController).GetMethod(nameof(AdminController.DeleteRole))!
+            .GetCustomAttribute<ValidateAntiForgeryTokenAttribute>());
         AssertActionPolicy<AdminController>(nameof(AdminController.UpdateRoleMatrix), AccessPolicyNames.PermissionMatrixAdmin);
     }
 

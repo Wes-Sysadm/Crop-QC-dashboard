@@ -330,6 +330,80 @@ public sealed class EndOfDayFillAntiforgeryHttpTests
     }
 
     [Fact]
+    public async Task AuthenticatedUserAdministration_DeletesOnlyAnEligibleCustomRole()
+    {
+        await using var factory = new EndOfDayFillWebApplicationFactory();
+        using var client = await factory.CreateAuthenticatedClientAsync();
+        var emptyRoleId = await AddCustomRoleAsync(factory, "Temporary empty role");
+        var assignedRoleId = await AddCustomRoleAsync(factory, "Assigned custom role", assignUser: true);
+        int viewerRoleId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            viewerRoleId = await db.Roles.Where(x => x.Name == BuiltInRoleNames.Viewer).Select(x => x.Id).SingleAsync();
+        }
+
+        var emptyHtml = await GetRequiredHtmlAsync(client, $"/Admin/Users?roleId={emptyRoleId}");
+        var decodedEmptyHtml = WebUtility.HtmlDecode(emptyHtml);
+        Assert.Contains("action=\"/Admin/Users/Roles/Delete\"", emptyHtml);
+        Assert.Contains("Delete Role", emptyHtml);
+        Assert.Contains("Delete role 'Temporary empty role'? This permanently removes the role and its permission matrix.", decodedEmptyHtml);
+        AssertPostFormsHaveTokens(emptyHtml, "/Admin/Users/Roles/Delete", expectedCount: 1);
+
+        var assignedHtml = WebUtility.HtmlDecode(await GetRequiredHtmlAsync(client, $"/Admin/Users?roleId={assignedRoleId}"));
+        var assignedPanel = assignedHtml[assignedHtml.LastIndexOf("<h3>Assigned custom role</h3>", StringComparison.Ordinal)..];
+        Assert.Contains("Move all assigned users to another role before deleting this role.", assignedPanel);
+        Assert.DoesNotContain("/Admin/Users/Roles/Delete", assignedPanel);
+
+        var viewerHtml = await GetRequiredHtmlAsync(client, $"/Admin/Users?roleId={viewerRoleId}");
+        var viewerPanel = viewerHtml[viewerHtml.LastIndexOf("<h3>Viewer</h3>", StringComparison.Ordinal)..];
+        Assert.DoesNotContain("/Admin/Users/Roles/Delete", viewerPanel);
+
+        var response = await client.PostAsync("/Admin/Users/Roles/Delete", new FormUrlEncodedContent(
+        [
+            new("RoleId", emptyRoleId.ToString()),
+            new("__RequestVerificationToken", HiddenValue(emptyHtml, "__RequestVerificationToken"))
+        ]));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/Admin/Users#roles", response.Headers.Location?.OriginalString);
+        var refreshedHtml = WebUtility.HtmlDecode(await GetRequiredHtmlAsync(client, "/Admin/Users"));
+        Assert.Contains("Role 'Temporary empty role' deleted.", refreshedHtml);
+        Assert.DoesNotContain("Temporary empty role", RoleSelector(refreshedHtml));
+        Assert.Single(Regex.Matches(refreshedHtml, Regex.Escape("Temporary empty role")).Cast<Match>());
+        Assert.Contains("Select a role above to view or change its permissions.", refreshedHtml);
+        var oldUrlHtml = await GetRequiredHtmlAsync(client, $"/Admin/Users?roleId={emptyRoleId}");
+        Assert.DoesNotContain("action=\"/Admin/Users/Roles/Matrix\"", oldUrlHtml);
+
+        using var verificationScope = factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+        Assert.False(await verificationDb.Roles.AnyAsync(x => x.Id == emptyRoleId));
+        Assert.False(await verificationDb.RolePageAccesses.AnyAsync(x => x.RoleId == emptyRoleId));
+        Assert.Contains(await verificationDb.AuditLogs.AsNoTracking().ToListAsync(), x =>
+            x.Action == "delete" && x.EntityName == "roles" && x.EntityKey == emptyRoleId.ToString());
+    }
+
+    [Fact]
+    public async Task RoleDeletionPostWithoutAntiforgeryTokenIsRejectedWithoutDeletingRole()
+    {
+        await using var factory = new EndOfDayFillWebApplicationFactory();
+        using var client = await factory.CreateAuthenticatedClientAsync();
+        var roleId = await AddCustomRoleAsync(factory, "Antiforgery protected role");
+        _ = await GetRequiredHtmlAsync(client, $"/Admin/Users?roleId={roleId}");
+
+        var response = await client.PostAsync("/Admin/Users/Roles/Delete", new FormUrlEncodedContent(
+        [
+            new("RoleId", roleId.ToString())
+        ]));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+        Assert.True(await db.Roles.AnyAsync(x => x.Id == roleId));
+        Assert.False(await db.AuditLogs.AnyAsync(x => x.Action == "delete" && x.EntityKey == roleId.ToString()));
+    }
+
+    [Fact]
     public async Task RenderedForm_WithMatchingAntiforgeryToken_SendsOnceAndFinalizesHistory()
     {
         await using var factory = new EndOfDayFillWebApplicationFactory();
@@ -408,6 +482,48 @@ public sealed class EndOfDayFillAntiforgeryHttpTests
         var response = await client.GetAsync(path);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return await response.Content.ReadAsStringAsync();
+    }
+
+    private static async Task<int> AddCustomRoleAsync(
+        EndOfDayFillWebApplicationFactory factory,
+        string name,
+        bool assignUser = false)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+        var role = new Role
+        {
+            Name = name,
+            NormalizedName = BuiltInRoleNames.Normalize(name),
+            Description = "HTTP integration test role",
+            IsActive = true,
+            IsSystemRole = false
+        };
+        foreach (var area in ApplicationAreas.All)
+        {
+            role.PageAccesses.Add(new RolePageAccess
+            {
+                AreaKey = area.Key,
+                AccessLevel = nameof(PageAccessLevel.None),
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
+        }
+        if (assignUser)
+        {
+            var user = new User
+            {
+                Email = $"assigned-{Guid.NewGuid():N}@fruitandland.com",
+                DisplayName = "Assigned Test User",
+                Domain = "fruitandland.com",
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            user.UserRoles.Add(new UserRole { Role = role });
+            db.Users.Add(user);
+        }
+        db.Roles.Add(role);
+        await db.SaveChangesAsync();
+        return role.Id;
     }
 
     private static void AssertPostFormsHaveTokens(string html, string actionPrefix, int expectedCount)

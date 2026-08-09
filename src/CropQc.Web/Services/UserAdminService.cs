@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Data;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Web.Auth;
@@ -17,6 +18,7 @@ public interface IUserAdminService
     Task<string?> UpdateUserEmploymentAsync(UpdateUserEmploymentForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> CreateRoleAsync(CreateRoleForm form, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> UpdateRoleAsync(UpdateRoleForm form, string changedByEmail, CancellationToken cancellationToken);
+    Task<DeleteRoleResult> DeleteRoleAsync(int roleId, string changedByEmail, CancellationToken cancellationToken);
     Task<string?> UpdateRoleMatrixAsync(RoleAccessMatrixForm form, string changedByEmail, CancellationToken cancellationToken);
 }
 
@@ -246,6 +248,62 @@ public sealed class UserAdminService(
         return null;
     }
 
+    public async Task<DeleteRoleResult> DeleteRoleAsync(
+        int roleId,
+        string changedByEmail,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+        var role = await dbContext.Roles
+            .Include(x => x.UserRoles)
+            .Include(x => x.PageAccesses)
+            .Include(x => x.Permissions)
+            .SingleOrDefaultAsync(x => x.Id == roleId, cancellationToken);
+        if (role is null) return DeleteRoleResult.Failure("Role not found.");
+        if (IsProtectedBuiltInRole(role)) return DeleteRoleResult.Failure("Built-in roles cannot be deleted.");
+        if (role.UserRoles.Count != 0) return DeleteRoleResult.Failure("Move all users off this role before deleting it.");
+
+        var before = JsonSerializer.Serialize(new
+        {
+            RoleId = role.Id,
+            role.Name,
+            role.Description,
+            role.IsActive,
+            role.IsSystemRole,
+            role.NormalizedName,
+            AssignedUserCount = 0,
+            PermissionMatrix = ApplicationAreas.All.Select(area =>
+            {
+                var cell = role.PageAccesses.SingleOrDefault(x => x.AreaKey == area.Key);
+                return new
+                {
+                    area.Key,
+                    area.Name,
+                    AccessLevel = cell?.AccessLevel,
+                    IsPersisted = cell is not null,
+                    cell?.UpdatedByUserId,
+                    cell?.UpdatedAt
+                };
+            }).ToList(),
+            RolePermissions = role.Permissions
+                .OrderBy(x => x.PermissionKey)
+                .Select(x => new { x.PermissionKey, x.Description })
+                .ToList()
+        });
+
+        await AddAuditAsync("delete", "roles", role.Id.ToString(), changedByEmail, before, null, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var roleName = role.Name;
+        dbContext.Roles.Remove(role);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await CommitAsync(transaction, cancellationToken);
+        userAccessService.InvalidateAll();
+        return DeleteRoleResult.Success(roleName);
+    }
+
     public async Task<string?> UpdateRoleMatrixAsync(RoleAccessMatrixForm form, string changedByEmail, CancellationToken cancellationToken)
     {
         var role = await dbContext.Roles.Include(x => x.PageAccesses)
@@ -351,6 +409,12 @@ public sealed class UserAdminService(
         !role.IsSystemRole
         && (role.Name.StartsWith(ImportedRolePrefix, StringComparison.OrdinalIgnoreCase)
             || (role.Description?.StartsWith(ImportedRoleDescriptionPrefix, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    private static bool IsProtectedBuiltInRole(Role role) =>
+        role.IsSystemRole
+        || BuiltInRoleNames.All.Contains(role.Name)
+        || BuiltInRoleNames.All.Any(x =>
+            string.Equals(BuiltInRoleNames.Normalize(x), role.NormalizedName, StringComparison.OrdinalIgnoreCase));
 
     private static UserAdminListItem ToUserListItem(User user)
     {
