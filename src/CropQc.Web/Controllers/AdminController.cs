@@ -204,6 +204,25 @@ public sealed class AdminController(
         return RedirectToAction(nameof(Users), null, new { roleId = form.RoleId }, "roles");
     }
 
+    [HttpPost("Users/Roles/Delete")]
+    [Authorize(Policy = AccessPolicyNames.PermissionMatrixAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteRole(DeleteRoleForm form, CancellationToken cancellationToken)
+    {
+        var result = await userAdminService.DeleteRoleAsync(
+            form.RoleId,
+            authorizationService.GetEmail(User) ?? "",
+            cancellationToken);
+        if (!result.Succeeded)
+        {
+            TempData["Error"] = result.Error;
+            return RedirectToAction(nameof(Users), null, new { roleId = form.RoleId }, "roles");
+        }
+
+        TempData["Success"] = $"Role '{result.DeletedRoleName}' deleted.";
+        return RedirectToAction(nameof(Users), null, null, "roles");
+    }
+
     [HttpPost("Users/Roles/Matrix")]
     [Authorize(Policy = AccessPolicyNames.PermissionMatrixAdmin)]
     public async Task<IActionResult> UpdateRoleMatrix(RoleAccessMatrixForm form, CancellationToken cancellationToken)

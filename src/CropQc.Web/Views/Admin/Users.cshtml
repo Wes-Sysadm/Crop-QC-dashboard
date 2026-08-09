@@ -169,6 +169,21 @@
             <button class="secondary-button" type="submit">Save Role</button>
         </form>
 
+        @if (selected.CanDelete)
+        {
+            <form class="toolbar" method="post" action="/Admin/Users/Roles/Delete"
+                  data-confirm-message="Delete role '@selected.Name'? This permanently removes the role and its permission matrix."
+                  onsubmit="return confirm(this.dataset.confirmMessage);">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="RoleId" value="@selected.Id" />
+                <button class="danger-button" type="submit">Delete Role</button>
+            </form>
+        }
+        else if (!selected.IsProtectedBuiltInRole && selected.AssignedUsers.Count > 0)
+        {
+            <p class="notice warning">Move all assigned users to another role before deleting this role.</p>
+        }
+
         <form class="access-user-card" method="post" action="/Admin/Users/Roles/Matrix">
             <input type="hidden" name="RoleId" value="@selected.Id" />
             @foreach (var group in Model.Areas.GroupBy(x => x.Group))
