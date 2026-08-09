@@ -248,7 +248,7 @@ public sealed class DatabaseRegressionDiagnosticsTests
     public void RenderUsesFailClosedLatestSchemaGateBeforeBothWebDeployments()
     {
         var blueprint = File.ReadAllText(FindRepositoryFile("render.yaml"));
-        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260807044836_AddEndOfDayFillReporting";
+        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260807210820_AddRoleBasedUserAccess";
 
         Assert.Equal(2, blueprint.Split(command, StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("dotnet ef database update", blueprint, StringComparison.OrdinalIgnoreCase);
@@ -404,6 +404,46 @@ public sealed class DatabaseRegressionDiagnosticsTests
         Assert.Contains("'bm-1','bm-2','bm-3','bm-4','bm-5','bm-6'", migration);
         Assert.DoesNotContain("lower(btrim(w.\"Code\")) IN ('dh', 'mcdougall')", migration);
         Assert.DoesNotContain("LOWER(LTRIM(RTRIM(w.[Code]))) IN ('dh', 'mcdougall')", migration);
+    }
+
+    [Fact]
+    public void RoleCompatibilityPackage_FingerprintsAndPreservesDeployedEndOfDayFillState()
+    {
+        var preflight = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "preflight-role-based-user-access.sql"));
+        var apply = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "apply-role-based-user-access-schema.sql"));
+        var verify = File.ReadAllText(FindRepositoryFile(
+            "scripts", "postgresql", "verify-role-based-user-access.sql"));
+
+        foreach (var objectName in new[]
+                 {
+                     "EndOfDayFillReportGroups",
+                     "EndOfDayFillReportRecipients",
+                     "EndOfDayFillUserGroupAssignments",
+                     "EndOfDayFillReportSends",
+                     "EndOfDayFillSendReservations"
+                 })
+        {
+            Assert.Contains(objectName, preflight);
+            Assert.Contains(objectName, apply);
+            Assert.Contains(objectName, verify);
+        }
+
+        Assert.Contains("EndOfDayFillReportGroupId", preflight);
+        Assert.Contains("RoomEndOfDayFillAssignmentsAndCapacities", apply);
+        Assert.Contains("_protected_state_after", apply);
+        Assert.Contains("Role conversion changed legacy evidence or protected End-of-Day Fill state", apply);
+        Assert.Contains("preserved_room_assignment_capacity_fingerprint", verify);
+        Assert.Contains("Imported Access A", preflight);
+        Assert.Contains("Imported Access E", apply);
+        Assert.Contains("38d291003ef3287eaf098fc161c4496d", preflight);
+        Assert.Contains("4c094069afe868d0f2be67fd41965528", apply);
+        Assert.Contains("rob@earlbrownandsons.com", verify);
+        Assert.Contains("crop-year-review", verify);
+        Assert.Contains("data-cleanup", verify);
+        Assert.DoesNotContain("UPDATE \"EndOfDayFill", apply, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DELETE FROM \"EndOfDayFill", apply, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

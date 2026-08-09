@@ -1,5 +1,5 @@
 @model MasterDataPageViewModel
-@inject CropQc.Web.Services.IAdminAuthorizationService AdminAuthorization
+@inject CropQc.Web.Services.IUserAccessService UserAccess
 @{
     ViewData["Title"] = Model.Title;
     var links = new[]
@@ -21,6 +21,7 @@
         ? Model.Items.Select(x => x.Cells[0]).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList()
         : new List<string>();
     var importPreview = Model.ImportPreview;
+    var canOpenConfiguration = await UserAccess.HasAccessAsync(User, ApplicationAreas.Configuration, PageAccessLevel.Admin, Context.RequestAborted);
 }
 
 <h1>@Model.Title</h1>
@@ -36,7 +37,7 @@
 }
 @if (Model.CanEdit)
 {
-    @if (AdminAuthorization.IsAdmin(User))
+    @if (canOpenConfiguration)
     {
         <a class="button secondary-button" href="/Admin/Configuration">Configuration</a>
     }

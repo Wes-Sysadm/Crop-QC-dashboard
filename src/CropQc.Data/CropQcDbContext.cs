@@ -13,6 +13,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+    public DbSet<RolePageAccess> RolePageAccesses => Set<RolePageAccess>();
     public DbSet<PasswordPolicy> PasswordPolicies => Set<PasswordPolicy>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<Room> Rooms => Set<Room>();
@@ -905,13 +906,33 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         modelBuilder.Entity<Role>(entity =>
         {
             entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.NormalizedName).HasMaxLength(100).IsRequired();
             entity.Property(x => x.Description).HasMaxLength(500);
-            entity.HasIndex(x => x.Name).IsUnique();
+            entity.HasIndex(x => x.NormalizedName).IsUnique();
         });
 
         modelBuilder.Entity<UserRole>(entity =>
         {
             entity.HasKey(x => new { x.UserId, x.RoleId });
+            entity.HasIndex(x => x.UserId).IsUnique();
+        });
+
+        modelBuilder.Entity<RolePageAccess>(entity =>
+        {
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_RolePageAccesses_AccessLevel",
+                "\"AccessLevel\" IN ('None', 'View', 'Create', 'Admin')"));
+            entity.Property(x => x.AreaKey).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.AccessLevel).HasMaxLength(25).IsRequired();
+            entity.HasIndex(x => new { x.RoleId, x.AreaKey }).IsUnique();
+            entity.HasOne(x => x.Role)
+                .WithMany(x => x.PageAccesses)
+                .HasForeignKey(x => x.RoleId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.UpdatedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.UpdatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<RolePermission>(entity =>
@@ -1781,10 +1802,13 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         });
 
         modelBuilder.Entity<Role>().HasData(
-            new Role { Id = 1, Name = "Admin", Description = "Full dashboard and configuration access.", IsSystemRole = true },
-            new Role { Id = 2, Name = "Manager", Description = "Manage QC receiving workflows and resend summaries.", IsSystemRole = true },
-            new Role { Id = 3, Name = "QC User", Description = "Capture receiving samples and QC readings.", IsSystemRole = true },
-            new Role { Id = 4, Name = "Viewer", Description = "Read-only dashboard access.", IsSystemRole = true });
+            new Role { Id = 1, Name = BuiltInRoleNames.Admin, NormalizedName = "ADMIN", Description = "Full dashboard and configuration access.", IsSystemRole = true, IsActive = true },
+            new Role { Id = 2, Name = BuiltInRoleNames.Manager, NormalizedName = "MANAGER", Description = "Broad operational management without security administration.", IsSystemRole = true, IsActive = true },
+            new Role { Id = 3, Name = BuiltInRoleNames.QcTech, NormalizedName = "QC TECH", Description = "Capture receiving samples and QC readings.", IsSystemRole = true, IsActive = true },
+            new Role { Id = 4, Name = BuiltInRoleNames.Viewer, NormalizedName = "VIEWER", Description = "Read-only operational visibility.", IsSystemRole = true, IsActive = true },
+            new Role { Id = 5, Name = BuiltInRoleNames.QcAdmin, NormalizedName = "QC ADMIN", Description = "QC workflow and QC configuration administration without system security access.", IsSystemRole = true, IsActive = true });
+
+        modelBuilder.Entity<RolePageAccess>().HasData(BuildBuiltInRoleAccessSeed(createdAt));
 
         modelBuilder.Entity<Warehouse>().HasData(
             new Warehouse { Id = 1, Code = "EBS", Name = "EBS", IsActive = true },
@@ -1914,4 +1938,70 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             new FruitSizeConversionThreshold { Id = 29, FruitType = "Pear", SizeCategory = 210, MinimumWeightGrams = 87.0000m, IsActive = true },
             new FruitSizeConversionThreshold { Id = 30, FruitType = "Pear", SizeCategory = 225, MinimumWeightGrams = 81.0000m, IsActive = true });
     }
+
+    private static IReadOnlyList<RolePageAccess> BuildBuiltInRoleAccessSeed(DateTimeOffset updatedAt)
+    {
+        var rows = new List<RolePageAccess>(BuiltInAccessAreaKeys.Length * 5);
+        var roles = new[]
+        {
+            (Id: 1, Name: BuiltInRoleNames.Admin),
+            (Id: 2, Name: BuiltInRoleNames.Manager),
+            (Id: 3, Name: BuiltInRoleNames.QcTech),
+            (Id: 4, Name: BuiltInRoleNames.Viewer),
+            (Id: 5, Name: BuiltInRoleNames.QcAdmin)
+        };
+        var id = 1;
+        foreach (var role in roles)
+        {
+            foreach (var area in BuiltInAccessAreaKeys)
+            {
+                rows.Add(new RolePageAccess
+                {
+                    Id = id++,
+                    RoleId = role.Id,
+                    AreaKey = area,
+                    AccessLevel = BuiltInAccessLevel(role.Name, area),
+                    UpdatedAt = updatedAt
+                });
+            }
+        }
+        return rows;
+    }
+
+    private static string BuiltInAccessLevel(string role, string area)
+    {
+        if (role == BuiltInRoleNames.Admin) return "Admin";
+        var viewer = area is "dashboard" or "daily-qc" or "field-samples" or "qc-reports" or "receipts"
+            or "current-lots" or "rooms" or "inventory" or "grower-lots";
+        if (role == BuiltInRoleNames.Viewer) return viewer ? "View" : "None";
+        if (role == BuiltInRoleNames.QcTech)
+            return area is "daily-qc" or "field-samples" or "receipts" ? "Create" : viewer ? "View" : "None";
+        if (role == BuiltInRoleNames.QcAdmin)
+        {
+            if (area is "daily-qc" or "field-samples" or "qc-reports" or "qc-stations" or "varieties" or "grades"
+                or "defects" or "size-configuration" or "variety-colors" or "orchard-recipients" or "orchard-managers") return "Admin";
+            if (area == "master-data") return "View";
+            return area == "receipts" ? "Create" : viewer ? "View" : "None";
+        }
+        if (role == BuiltInRoleNames.Manager)
+        {
+            if (area == "dashboard") return "View";
+            if (area is "downloads" or "audit-history") return "View";
+            if (area is "users" or "permission-matrix" or "configuration" or "backups" or "backup-history"
+                or "email-configuration" or "data-cleanup" or "crop-year-review" or "historical-inventory-cleanup") return "None";
+            return "Admin";
+        }
+        return "None";
+    }
+
+    private static readonly string[] BuiltInAccessAreaKeys =
+    [
+        "dashboard", "daily-qc", "field-samples", "qc-reports", "receipts", "current-lots", "bins-run",
+        "projection-planner", "projection-outcome", "actual-runs", "packout-results", "historical-inventory-cleanup",
+        "rooms", "room-transactions", "transfers", "true-up", "inventory", "grower-lots", "crop-year-review",
+        "master-data", "users", "permission-matrix", "qc-stations", "downloads", "configuration", "variety-colors",
+        "backups", "orchard-recipients", "orchard-managers", "facilities", "varieties", "grades", "defects",
+        "size-configuration", "email-configuration", "backup-history", "audit-history", "import-tools", "export-tools",
+        "data-cleanup"
+    ];
 }

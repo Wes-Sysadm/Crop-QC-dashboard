@@ -16,16 +16,20 @@ public sealed class GoogleUserProvisioningService(CropQcDbContext dbContext, Cro
     public async Task<ProvisionedUserAccess> ProvisionAllowedUserAsync(string email, string? displayName, string? googleSubjectId, CancellationToken cancellationToken)
     {
         await EnsureUserAccessColumnsAsync(cancellationToken);
-        await EnsureRolesAsync(cancellationToken);
         var normalizedEmail = email.Trim().ToLowerInvariant();
         var domain = CropQc.Web.Auth.GoogleAuthenticationOptions.GetEmailDomain(normalizedEmail) ?? "";
         var now = DateTimeOffset.UtcNow;
         var user = await dbContext.Users
             .Include(x => x.UserRoles).ThenInclude(x => x.Role)
             .SingleOrDefaultAsync(x => x.Email == normalizedEmail, cancellationToken);
+        var isNewUser = user is null;
+        Role? initialRole = null;
 
         if (user is null)
         {
+            var roleName = authOptions.IsBootstrapAdminEmail(normalizedEmail) ? BuiltInRoleNames.Admin : BuiltInRoleNames.Viewer;
+            initialRole = await dbContext.Roles.SingleOrDefaultAsync(x => x.Name == roleName && x.IsActive, cancellationToken)
+                ?? throw new InvalidOperationException($"Required active role '{roleName}' is not configured.");
             user = new User
             {
                 Email = normalizedEmail,
@@ -38,7 +42,7 @@ public sealed class GoogleUserProvisioningService(CropQcDbContext dbContext, Cro
                 UpdatedAt = now
             };
             dbContext.Users.Add(user);
-            await dbContext.SaveChangesAsync(cancellationToken);
+            user.UserRoles.Add(new UserRole { Role = initialRole });
         }
         else
         {
@@ -53,27 +57,22 @@ public sealed class GoogleUserProvisioningService(CropQcDbContext dbContext, Cro
                 throw new UnauthorizedAccessException("Your Crop QC Dashboard user account is inactive.");
             }
 
+            if (user.UserRoles.Count != 1 || !user.UserRoles.Single().Role.IsActive)
+            {
+                logger.LogError("Google login rejected because {Email} has {RoleCount} role assignments or an inactive role; exactly one active role is required.", normalizedEmail, user.UserRoles.Count);
+                throw new UnauthorizedAccessException("Your Crop QC Dashboard account requires exactly one active role. Contact an administrator.");
+            }
+
             user.GoogleSubjectId ??= googleSubjectId;
             user.Domain = string.IsNullOrWhiteSpace(user.Domain) ? domain : user.Domain;
             user.LastLoginAt = now;
             user.UpdatedAt = now;
         }
 
-        var roleName = authOptions.IsBootstrapAdminEmail(normalizedEmail) ? "Admin" : "Viewer";
-        var role = await dbContext.Roles.SingleOrDefaultAsync(x => x.Name == roleName, cancellationToken);
-        if (role is not null && user.UserRoles.All(x => x.RoleId != role.Id))
-        {
-            dbContext.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
-        }
-
         await dbContext.SaveChangesAsync(cancellationToken);
-        var roles = await dbContext.UserRoles.AsNoTracking()
-            .Where(x => x.UserId == user.Id)
-            .Select(x => x.Role.Name)
-            .OrderBy(x => x)
-            .ToListAsync(cancellationToken);
+        var role = isNewUser ? initialRole! : user.UserRoles.Single().Role;
         logger.LogInformation("Google login accepted for {Email}.", normalizedEmail);
-        return new ProvisionedUserAccess(user, roles);
+        return new ProvisionedUserAccess(user, [role.Name]);
     }
 
     private async Task EnsureUserAccessColumnsAsync(CancellationToken cancellationToken)
@@ -99,22 +98,4 @@ public sealed class GoogleUserProvisioningService(CropQcDbContext dbContext, Cro
         }
     }
 
-    private async Task EnsureRolesAsync(CancellationToken cancellationToken)
-    {
-        foreach (var role in new[]
-        {
-            ("Admin", "Full access, user management, master data editing, configuration, and override send."),
-            ("Manager", "Review, resend, and override workflows."),
-            ("QC User", "Create and edit same-day QC data."),
-            ("Viewer", "Read-only dashboard access.")
-        })
-        {
-            if (!await dbContext.Roles.AnyAsync(x => x.Name == role.Item1, cancellationToken))
-            {
-                dbContext.Roles.Add(new Role { Name = role.Item1, Description = role.Item2, IsSystemRole = true });
-            }
-        }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-    }
 }

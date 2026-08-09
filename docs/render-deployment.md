@@ -119,7 +119,6 @@ Set these variables in Render:
 - `Google__Gmail__SendScope=https://www.googleapis.com/auth/gmail.send`
 - `QcStation__ApiBaseUrl=https://crop-qc-dashboard.onrender.com`
 - `Downloads__MasterFolderUrl=<Google Drive folder share link>`
-- `DataCleanup__AllowedEmails=wes@fruitandland.com`
 - `Backups__Enabled=true`
 - `Backups__Provider=GoogleDrive`
 - `Backups__GoogleDriveFolderId=<production Google Drive backup folder id>`
@@ -164,16 +163,17 @@ ASP.NET Core Data Protection keys must also be persisted for those one-week cook
 
 Initial Admin bootstrap is controlled by `Authentication__BootstrapAdminEmails`. The initial bootstrap admin is `wes@fruitandland.com`. After that account logs in, manage users and roles from `/Admin/Users`; the bootstrap setting remains a safety net so the first Admin is not locked out if database roles are empty.
 
-Roles are managed inside the dashboard. `/Admin/Users` also shows a role permission matrix so Admin users can see exactly what each access level is intended to allow or block before changing a user role:
+Roles are managed inside the dashboard. Every user has exactly one active role, and `/Admin/Users` shows one permission matrix per role. Per-user permission overrides are not authoritative:
 
 - Admin: Dashboard, Daily QC, Receipts, Master Data, Users, QC Stations, Downloads, Configuration, Backups, override/send, audit review, and exports.
 - Manager: Dashboard, Daily QC, Receipts, Master Data, and QC Stations; no Users, Downloads, or Configuration access.
-- QC User: Dashboard, Daily QC, and Receipts; no management/admin access.
+- QC Tech: Dashboard and inventory visibility plus Create access for Daily QC, Field Samples, and Receipts; no management/admin access.
+- QC Admin: QC workflow and QC master-data administration without user/security administration.
 - Viewer: Dashboard, Daily QC, and Receipts; no management/admin access.
 
 Management dashboard pages:
 
-- `/Admin/Users` manages user accounts, active status, and roles after Google login creates identity records.
+- `/Admin/Users` manages user accounts, active status, exactly-one-role assignment, custom roles, and role permission matrices after Google login creates identity records.
 - `/Admin/QcStations` manages station enrollment, per-station API keys, key rotation, deactivation, and raw config downloads. Admins and Managers can access this page.
 - `/MasterData` shows edit/add/deactivate controls for Admins and Managers.
 - `/Admin/Configuration` manages safe non-secret runtime configuration values. Do not store OAuth secrets, database connection strings, Gmail secrets, Google Drive secrets, or API keys there.
@@ -286,7 +286,7 @@ CropYear__DefaultEndMonth=7
 CropYear__DefaultEndDay=31
 ```
 
-Admin cleanup is available at `/Admin/DataCleanup` only for Admin users whose email is listed in `DataCleanup__AllowedEmails`. The default and current production value is `wes@fruitandland.com`; Admin role by itself is not enough. Use Preview first, keep Soft cleanup as the normal test-data cleanup mode, and type `DELETE TEST DATA` only after verifying the counts. Hard purge is permanent for selected database records and does not automatically remove Google Drive files.
+Admin cleanup is available at `/Admin/DataCleanup` only when the user's role has Admin in the Data Cleanup matrix cell (or for the documented owner break-glass account). Use Preview first, keep Soft cleanup as the normal test-data cleanup mode, and type `DELETE TEST DATA` only after verifying the counts. Hard purge is permanent for selected database records and does not automatically remove Google Drive files.
 
 The installer binaries are not committed to the repository or deployed into Render. Google Drive sharing permissions are managed in Google Drive and should be limited to company users when possible.
 

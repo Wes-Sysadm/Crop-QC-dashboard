@@ -73,19 +73,14 @@ public sealed class AdminCleanupCropYearTests
     }
 
     [Fact]
-    public void DataCleanup_IsRestrictedToConfiguredAllowedEmails()
+    public void DataCleanup_UsesOnlyTheExplicitPermissionMatrix()
     {
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "AdminController.cs"));
         var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
-        var settings = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "appsettings.json"));
-
-        Assert.Contains("DataCleanup:AllowedEmails", controller);
-        Assert.Contains("wes@fruitandland.com", controller);
-        Assert.Contains("return Forbid();", controller);
-        Assert.Contains("IsDataCleanupAllowed()", controller);
+        Assert.DoesNotContain("DataCleanup:AllowedEmails", controller);
+        Assert.DoesNotContain("IsDataCleanupAllowed", controller);
         Assert.Contains("ApplicationAreas.DataCleanup", layout);
         Assert.Contains("canAccessDataCleanup", layout);
-        Assert.Contains("wes@fruitandland.com", settings);
     }
 
     [Fact]

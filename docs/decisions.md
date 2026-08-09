@@ -22,7 +22,7 @@ QC Summary email sends through the Gmail API with the logged-in user's delegated
 
 ## ADR-0006 - Admin Cleanup And Downloads Boundaries
 
-Admin Data Cleanup is limited to Admin users whose email appears in `DataCleanup__AllowedEmails`; the default is `wes@fruitandland.com`. Admin role by itself is intentionally insufficient for destructive cleanup. Admin Downloads is only a curated Google Drive link surface for shared installer/support files, with `Downloads__MasterFolderUrl` as the preferred master folder link. Station-specific config JSON stays under Admin -> QC Stations.
+Admin Data Cleanup is controlled by the explicit Data Cleanup role-matrix cell. The owner account remains the documented break-glass exception. Admin Downloads is only a curated Google Drive link surface for shared installer/support files, with `Downloads__MasterFolderUrl` as the preferred master folder link. Station-specific config JSON stays under Admin -> QC Stations.
 
 ## ADR-0007 - Dashboard And Layout Clarity
 

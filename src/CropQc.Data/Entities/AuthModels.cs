@@ -90,10 +90,33 @@ public sealed class Role
 {
     public int Id { get; set; }
     public required string Name { get; set; }
+    public required string NormalizedName { get; set; }
     public string? Description { get; set; }
     public bool IsSystemRole { get; set; }
+    public bool IsActive { get; set; } = true;
     public ICollection<UserRole> UserRoles { get; } = new List<UserRole>();
     public ICollection<RolePermission> Permissions { get; } = new List<RolePermission>();
+    public ICollection<RolePageAccess> PageAccesses { get; } = new List<RolePageAccess>();
+}
+
+public static class BuiltInRoleNames
+{
+    public const string Viewer = "Viewer";
+    public const string QcTech = "QC Tech";
+    public const string QcAdmin = "QC Admin";
+    public const string Manager = "Manager";
+    public const string Admin = "Admin";
+
+    public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        Viewer,
+        QcTech,
+        QcAdmin,
+        Manager,
+        Admin
+    };
+
+    public static string Normalize(string name) => name.Trim().ToUpperInvariant();
 }
 
 public sealed class UserRole
@@ -102,6 +125,18 @@ public sealed class UserRole
     public User User { get; set; } = null!;
     public int RoleId { get; set; }
     public Role Role { get; set; } = null!;
+}
+
+public sealed class RolePageAccess
+{
+    public int Id { get; set; }
+    public int RoleId { get; set; }
+    public Role Role { get; set; } = null!;
+    public required string AreaKey { get; set; }
+    public required string AccessLevel { get; set; }
+    public int? UpdatedByUserId { get; set; }
+    public User? UpdatedByUser { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 public sealed class RolePermission

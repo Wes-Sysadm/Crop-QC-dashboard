@@ -552,14 +552,7 @@ sealed class ImportAccessService : IUserAccessService
     public Task<PageAccessLevel> GetAccessLevelAsync(string? email, string areaKey, CancellationToken cancellationToken) =>
         Task.FromResult(areaKey == ApplicationAreas.FieldSamples ? PageAccessLevel.Admin : PageAccessLevel.None);
 
-    public Task<IReadOnlyList<UserAccessMatrixRow>> GetMatrixAsync(CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<UserAccessMatrixRow>>([]);
-
-    public Task EnsureAccessMatrixAsync(CancellationToken cancellationToken) =>
-        Task.CompletedTask;
-
-    public Task<string?> SaveMatrixAsync(UserAccessMatrixForm form, string changedByEmail, CancellationToken cancellationToken) =>
-        Task.FromResult<string?>(null);
+    public void InvalidateAll() { }
 }
 '@ | Set-Content -Path $programPath -Encoding UTF8
 

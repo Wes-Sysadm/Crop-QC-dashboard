@@ -33,8 +33,9 @@ Environment variable `DATABASE_PROVIDER` overrides the configured provider. `Con
 ## Security and Configuration
 
 - `Users` stores dashboard/QC Station users, password hash metadata, active status, and password change timestamp.
-- `Roles` stores Admin, Manager, QC User, and Viewer.
-- `UserRoles` maps users to roles.
+- `Roles` stores the built-in Admin, Manager, QC Tech, QC Admin, and Viewer roles plus custom roles.
+- `UserRoles` assigns exactly one role to each user.
+- `RolePageAccesses` stores the complete role-level area matrix; legacy `UserPageAccesses` rows are retained for historical evidence but are not authorization input.
 - `RolePermissions` supports admin-configurable permissions.
 - `PasswordPolicies` stores configurable password policy settings.
 
@@ -142,7 +143,7 @@ Bin/truck and top-of-truck photos attach to `Receipts`. Hectre, sample before cu
 
 Initial seed data includes:
 
-- Roles: Admin, Manager, QC User, Viewer.
+- Roles: Admin, Manager, QC Tech, QC Admin, Viewer, each with a complete role-level access matrix.
 - Warehouses: EBS, DH, McDougall, WP.
 - Grades: W1, W2, W3, W4, WF, US1, US2, USF.
 - Defects: Bruise, Sunburn, Bitter Pit, Scald, Decay, Puncture, Watercore, Limb Rub, Stem Bowl Crack, Internal Browning, Other.

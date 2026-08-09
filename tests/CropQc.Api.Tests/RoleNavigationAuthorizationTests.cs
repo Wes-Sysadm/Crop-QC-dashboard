@@ -68,7 +68,9 @@ public sealed class RoleNavigationAuthorizationTests
         AssertActionPolicy<AdminController>(nameof(AdminController.DownloadExistingQcStationConfig), AccessPolicyNames.QcStationsAdmin);
         AssertActionPolicy<AdminController>(nameof(AdminController.AddUser), AccessPolicyNames.UsersAdmin);
         AssertActionPolicy<AdminController>(nameof(AdminController.UpdateUser), AccessPolicyNames.UsersAdmin);
-        AssertActionPolicy<AdminController>(nameof(AdminController.UpdateUserMatrix), AccessPolicyNames.PermissionMatrixAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.CreateRole), AccessPolicyNames.PermissionMatrixAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.UpdateRole), AccessPolicyNames.PermissionMatrixAdmin);
+        AssertActionPolicy<AdminController>(nameof(AdminController.UpdateRoleMatrix), AccessPolicyNames.PermissionMatrixAdmin);
     }
 
     [Fact]
@@ -107,9 +109,10 @@ public sealed class RoleNavigationAuthorizationTests
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "UserAccessService.cs"));
 
         Assert.Contains("ApplicationAreas.All", service);
-        Assert.Contains("DefaultForRole", service);
-        Assert.Contains("UserPageAccesses", service);
-        Assert.Contains("user-page-access", service);
+        Assert.Contains("ThenInclude(x => x.PageAccesses)", service);
+        Assert.Contains("assignments.Count != 1", service);
+        Assert.DoesNotContain("dbContext.UserPageAccesses", service);
+        Assert.DoesNotContain("ApplicationAreas.MasterData, out", service);
         Assert.Contains("wes@fruitandland.com", service);
     }
 

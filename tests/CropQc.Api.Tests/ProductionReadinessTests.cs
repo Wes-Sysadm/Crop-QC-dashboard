@@ -264,13 +264,13 @@ public sealed class ProductionReadinessTests
     }
 
     [Fact]
-    public void Data_cleanup_remains_restricted_to_allowed_emails()
+    public void Data_cleanup_uses_the_permission_matrix_without_a_hidden_email_gate()
     {
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "AdminController.cs"));
 
-        Assert.Contains("DataCleanup:AllowedEmails", controller);
-        Assert.Contains("IsDataCleanupAllowed()", controller);
-        Assert.Contains("return Forbid();", controller);
+        Assert.DoesNotContain("DataCleanup:AllowedEmails", controller);
+        Assert.DoesNotContain("IsDataCleanupAllowed", controller);
+        Assert.Contains("AccessPolicyNames.DataCleanupAdmin", controller);
     }
 
     private static string FindRepositoryFile(params string[] parts)

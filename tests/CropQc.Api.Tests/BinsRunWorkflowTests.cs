@@ -1936,22 +1936,37 @@ public sealed class BinsRunWorkflowTests
         return form;
     }
 
-    private static User User(int id, string email, PageAccessLevel binsRunLevel, string employmentFacility = EmploymentFacilities.Ebs) => new()
+    private static User User(int id, string email, PageAccessLevel binsRunLevel, string employmentFacility = EmploymentFacilities.Ebs)
     {
-        Id = id,
-        Email = email,
-        DisplayName = email,
-        Domain = "fruitandland.com",
-        IsActive = true,
-        EmploymentFacility = employmentFacility,
-        CreatedAt = DateTimeOffset.UtcNow,
-        PageAccesses =
+        var role = new Role
         {
-            new UserPageAccess { AreaKey = ApplicationAreas.BinsRun, AccessLevel = binsRunLevel.ToString(), UpdatedAt = DateTimeOffset.UtcNow },
-            new UserPageAccess { AreaKey = ApplicationAreas.RoomTransactions, AccessLevel = binsRunLevel.ToString(), UpdatedAt = DateTimeOffset.UtcNow },
-            new UserPageAccess { AreaKey = ApplicationAreas.Transfers, AccessLevel = binsRunLevel.ToString(), UpdatedAt = DateTimeOffset.UtcNow }
+            Name = $"Bins Run test role {id}",
+            NormalizedName = $"BINS RUN TEST ROLE {id}",
+            IsActive = true
+        };
+        foreach (var area in ApplicationAreas.All)
+        {
+            role.PageAccesses.Add(new RolePageAccess
+            {
+                AreaKey = area.Key,
+                AccessLevel = binsRunLevel.ToString(),
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
         }
-    };
+
+        var user = new User
+        {
+            Id = id,
+            Email = email,
+            DisplayName = email,
+            Domain = "fruitandland.com",
+            IsActive = true,
+            EmploymentFacility = employmentFacility,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        user.UserRoles.Add(new UserRole { User = user, Role = role });
+        return user;
+    }
 
     private static RoomInventoryAdjustment Adjustment(long id, Warehouse warehouse, Room room, FruitProfile fruit, string lot, int bins) => new()
     {

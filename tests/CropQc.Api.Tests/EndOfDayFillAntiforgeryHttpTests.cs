@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
 using CropQc.Data;
@@ -57,6 +59,50 @@ public sealed class EndOfDayFillAntiforgeryHttpTests
     }
 
     [Fact]
+    public async Task RenderedPreview_UsesSharedVarietyIdentityWithoutChangingSnapshotData()
+    {
+        await using var factory = new EndOfDayFillWebApplicationFactory();
+        factory.InventorySource.Lots =
+        [
+            FixedInventorySource.Lot("Honey Crisp", "Conventional", false, 313, "3040", "DL & JJ FARMS - MASON"),
+            FixedInventorySource.Lot("Honey Crisp", "Organic", true, 288, "9418", "MFR - Roloff Premier Organic")
+        ];
+        using var client = await factory.CreateAuthenticatedClientAsync();
+
+        var previewResponse = await client.GetAsync("/EndOfDayFill?groupId=1");
+        var previewHtml = WebUtility.HtmlDecode(await previewResponse.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
+        Assert.Contains("Honey Crisp — Conventional", previewHtml);
+        Assert.Contains("Honey Crisp — Organic", previewHtml);
+        Assert.DoesNotContain("Conventional — Conventional", previewHtml);
+        Assert.DoesNotContain("Organic — Organic", previewHtml);
+        Assert.Contains("313 bins", previewHtml);
+        Assert.Contains("288 bins", previewHtml);
+        Assert.Contains("Grower 3040 — DL & JJ FARMS - MASON — 313 bins", previewHtml);
+        Assert.Contains("Grower 9418 — MFR - Roloff Premier Organic — 288 bins", previewHtml);
+        Assert.Contains("601 / 900 bins", previewHtml);
+
+        var sendResponse = await client.PostAsync("/EndOfDayFill/Send", Form(
+            HiddenValue(previewHtml, "__RequestVerificationToken"),
+            HiddenValue(previewHtml, "PreviewToken")));
+        Assert.Equal(HttpStatusCode.Redirect, sendResponse.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+        var stored = Assert.Single(await db.EndOfDayFillReportSends.AsNoTracking().ToListAsync());
+        Assert.Contains("\"currentBins\":601", stored.SnapshotJson);
+        Assert.Contains("\"productionType\":\"Conventional\"", stored.SnapshotJson);
+        Assert.Contains("\"productionType\":\"Organic\"", stored.SnapshotJson);
+        Assert.Equal(
+            Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(stored.SnapshotJson))),
+            stored.SnapshotHash);
+        var message = Assert.Single(factory.EmailSender.Messages).Message;
+        Assert.Contains("Honey Crisp — Conventional — 313 bins", message.TextBody);
+        Assert.Contains("Honey Crisp — Organic — 288 bins", message.TextBody);
+    }
+
+    [Fact]
     public async Task EveryRenderedEndOfDayFillPostForm_IncludesAnAntiforgeryToken()
     {
         await using var factory = new EndOfDayFillWebApplicationFactory();
@@ -70,6 +116,71 @@ public sealed class EndOfDayFillAntiforgeryHttpTests
 
         var usersHtml = await GetRequiredHtmlAsync(client, "/Admin/Users");
         AssertPostFormsHaveTokens(usersHtml, "/Admin/Users/EndOfDayFillGroups", expectedCount: 1);
+    }
+
+    [Fact]
+    public async Task AuthenticatedUserAdministration_RendersOneImportedRoleMatrixAssignedUsersAndComparison()
+    {
+        await using var factory = new EndOfDayFillWebApplicationFactory();
+        using var client = await factory.CreateAuthenticatedClientAsync();
+        int importedRoleId;
+        int viewerRoleId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            viewerRoleId = await db.Roles.Where(x => x.Name == BuiltInRoleNames.Viewer).Select(x => x.Id).SingleAsync();
+            var imported = new Role
+            {
+                Name = "Imported Access A",
+                NormalizedName = "IMPORTED ACCESS A",
+                Description = "Imported from the legacy per-user access matrix during the role-based authorization conversion. Review and rename or reassign in User Administration.",
+                IsActive = true,
+                IsSystemRole = false
+            };
+            foreach (var area in ApplicationAreas.All)
+            {
+                imported.PageAccesses.Add(new RolePageAccess
+                {
+                    AreaKey = area.Key,
+                    AccessLevel = area.Key == ApplicationAreas.Receipts
+                        ? nameof(PageAccessLevel.Create)
+                        : nameof(PageAccessLevel.None),
+                    UpdatedAt = DateTimeOffset.UtcNow
+                });
+            }
+            foreach (var (email, name) in new[]
+            {
+                ("alexis@wp-packing.com", "Alexis Ledezma"),
+                ("james@fruitandland.com", "James Foreman"),
+                ("jorge@wp-packing.com", "Jorge Ledezma")
+            })
+            {
+                var user = new User
+                {
+                    Email = email,
+                    DisplayName = name,
+                    Domain = email[(email.IndexOf('@') + 1)..],
+                    IsActive = true,
+                    CreatedAt = DateTimeOffset.UtcNow
+                };
+                user.UserRoles.Add(new UserRole { Role = imported });
+                db.Users.Add(user);
+            }
+            await db.SaveChangesAsync();
+            importedRoleId = imported.Id;
+        }
+
+        var response = await client.GetAsync($"/Admin/Users?roleId={importedRoleId}&compareRoleId={viewerRoleId}");
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Migration role — review recommended", html);
+        Assert.Contains("Alexis Ledezma, James Foreman, Jorge Ledezma", html);
+        Assert.Contains("Imported Access A → Viewer", html);
+        Assert.Contains("gain(s)", html);
+        Assert.Contains("loss(es)", html);
+        Assert.Single(Regex.Matches(html, "action=\"/Admin/Users/Roles/Matrix\"").Cast<Match>());
+        Assert.DoesNotContain("Per-user application permissions", html, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -327,30 +438,36 @@ public sealed class EndOfDayFillAntiforgeryHttpTests
     private sealed class FixedInventorySource : IEndOfDayFillInventorySource
     {
         public const int RoomId = 910;
+        public IReadOnlyList<RoomLotSummaryViewModel>? Lots { get; set; }
+
+        public static RoomLotSummaryViewModel Lot(
+            string variety,
+            string productionType,
+            bool isOrganic,
+            int bins,
+            string growerNumber,
+            string growerName) => new()
+            {
+                RoomId = RoomId,
+                RoomCode = "DH-1",
+                CurrentBins = bins,
+                GrowerNumber = growerNumber,
+                GrowerName = growerName,
+                CanonicalVarietyKey = variety.ToLowerInvariant().Replace(" ", "-"),
+                CanonicalVarietyName = variety,
+                ProductionType = productionType,
+                IsOrganic = isOrganic,
+                VarietyHexColor = "#c62828",
+                InventoryKey = $"test-{growerNumber}-{productionType}",
+                GrowerLotId = int.Parse(growerNumber)
+            };
 
         public Task<IReadOnlyList<RoomLotSummaryViewModel>> GetCurrentLotsAsync(
             IReadOnlyCollection<int> roomIds,
             CancellationToken cancellationToken)
         {
             IReadOnlyList<RoomLotSummaryViewModel> lots = roomIds.Contains(RoomId)
-                ?
-                [
-                    new RoomLotSummaryViewModel
-                    {
-                        RoomId = RoomId,
-                        RoomCode = "DH-1",
-                        CurrentBins = 145,
-                        GrowerNumber = "1084",
-                        GrowerName = "Smith Orchards",
-                        CanonicalVarietyKey = "gala",
-                        CanonicalVarietyName = "Gala",
-                        ProductionType = "Fresh",
-                        IsOrganic = false,
-                        VarietyHexColor = "#c62828",
-                        InventoryKey = "canonical-398",
-                        GrowerLotId = 398
-                    }
-                ]
+                ? Lots ?? [Lot("Gala", "Fresh", false, 145, "1084", "Smith Orchards")]
                 : [];
             return Task.FromResult(lots);
         }

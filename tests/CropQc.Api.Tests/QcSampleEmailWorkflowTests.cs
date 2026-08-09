@@ -423,6 +423,15 @@ public sealed class QcSampleEmailWorkflowTests
         IQcEmailRecipientResolver? recipientResolver = null,
         IQcEmailSender? emailSender = null)
     {
+        var roleName = string.Equals(role, "QC User", StringComparison.OrdinalIgnoreCase)
+            ? BuiltInRoleNames.QcTech
+            : role;
+        var user = db.Users.Include(x => x.UserRoles).Single(x => x.Id == 10);
+        db.UserRoles.RemoveRange(user.UserRoles);
+        var assignedRole = db.Roles.Single(x => x.NormalizedName == BuiltInRoleNames.Normalize(roleName));
+        user.UserRoles.Add(new UserRole { User = user, Role = assignedRole });
+        db.SaveChanges();
+
         var httpContext = new DefaultHttpContext
         {
             User = new ClaimsPrincipal(new ClaimsIdentity(
@@ -447,7 +456,8 @@ public sealed class QcSampleEmailWorkflowTests
             new CropYearService(db, configuration),
             new HttpContextAccessor { HttpContext = httpContext },
             configuration,
-            NullLogger<DashboardDataService>.Instance);
+            NullLogger<DashboardDataService>.Instance,
+            new UserAccessService(db, configuration));
     }
 
     private sealed class StableEmailComposer : IQcSummaryEmailComposer

@@ -4,168 +4,225 @@
 }
 
 <h1>User Administration</h1>
-@if (TempData["Error"] is not null)
-{
-    <p class="notice warning">@TempData["Error"]</p>
-}
-@if (TempData["Success"] is not null)
-{
-    <p class="notice success">@TempData["Success"]</p>
-}
+<p class="muted">Every user has exactly one role. Application access comes from that role's permission matrix. Employment, Gmail identity, active status, and End of Day Fill assignments remain user-specific.</p>
+<p class="notice info"><strong>Owner break-glass:</strong> <code>wes@fruitandland.com</code> retains emergency full access independently of the stored role. The assigned role remains visible below for normal administration.</p>
+@if (TempData["Error"] is not null) { <p class="notice warning">@TempData["Error"]</p> }
+@if (TempData["Success"] is not null) { <p class="notice success">@TempData["Success"]</p> }
 
-<section class="panel">
-    <h2>Add User</h2>
+<nav class="toolbar" aria-label="User administration sections">
+    <a class="button" href="#users">Users</a>
+    <a class="button secondary-button" href="#roles">Roles &amp; Permissions</a>
+</nav>
+
+<section class="panel" id="users">
+    <h2>Users</h2>
+    <h3>Add User</h3>
     <form class="toolbar" method="post" action="/Admin/Users/Add">
         <div class="field"><label>Email</label><input name="Email" type="email" required /></div>
         <div class="field"><label>Display Name</label><input name="DisplayName" /></div>
         <div class="field">
             <label>Role</label>
-            <select name="RoleId">
-                @foreach (var role in Model.Roles)
+            <select name="RoleId" required>
+                @foreach (var role in Model.Roles.Where(x => x.IsActive))
                 {
-                    <option value="@role.Id" selected="@(role.Name == "Viewer" ? "selected" : null)">@role.Name - @role.Summary</option>
+                    <option value="@role.Id" selected="@(role.Name == CropQc.Data.Entities.BuiltInRoleNames.Viewer)">@role.Name — @role.Description</option>
                 }
             </select>
         </div>
-        <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked /> Active</label><input type="hidden" name="IsActive" value="false" />
+        <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked /> Active</label>
+        <input type="hidden" name="IsActive" value="false" />
         <button type="submit">Add User</button>
     </form>
-</section>
 
-<section class="panel">
-    <h2>Access Matrix</h2>
-    <p class="muted">Each functional area uses View, Create, or Admin. Create includes normal editing; only Admin permits delete, protected import/export, or configuration. No access removes the area. Master Data Admin is effective Site Admin for every current and future Admin area. Roles are retained as migration metadata. Wes (wes@fruitandland.com) always has emergency Owner/Admin access.</p>
-    <div class="access-matrix">
-        @foreach (var user in Model.AccessMatrix)
-        {
-            <form class="access-user-card" method="post" action="/Admin/Users/Matrix">
-                <input type="hidden" name="UserId" value="@user.Id" />
-                <div class="access-user-header">
-                    <div>
-                        <h3>@user.DisplayName</h3>
-                        <div class="muted">@user.Email</div>
-                        <span class="status">@user.Role</span>
-                    </div>
-                    <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@user.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" />
-                </div>
-                @foreach (var group in Model.Areas.GroupBy(x => x.Group))
-                {
-                    <section class="access-group">
-                        <h4>@group.Key</h4>
-                        <div class="access-grid">
-                            @foreach (var area in group)
-                            {
-                                var current = user.Access.TryGetValue(area.Key, out var level) ? level : PageAccessLevel.None;
-                                <label class="field">
-                                    <span>@area.Name</span>
-                                    <select name="Access[@area.Key]" disabled="@(user.Email.Equals("wes@fruitandland.com", StringComparison.OrdinalIgnoreCase) ? "disabled" : null)">
-                                        @foreach (var option in new[] { PageAccessLevel.None, PageAccessLevel.View, PageAccessLevel.Create, PageAccessLevel.Admin })
+    <div class="user-admin-list">
+        <table class="responsive-admin-table">
+            <thead><tr><th>Display Name</th><th>Email</th><th>Active</th><th>Role</th><th>Employment</th><th>End of Day Fill</th><th>Last Login</th></tr></thead>
+            <tbody>
+            @foreach (var user in Model.Users)
+            {
+                <tr>
+                    <td>
+                        <strong>@user.DisplayName</strong>
+                        @if (user.IsOwner) { <span class="status">Owner break-glass</span> }
+                    </td>
+                    <td>@user.Email</td>
+                    <td>@(user.IsActive ? "Active" : "Inactive")</td>
+                    <td>
+                        <form class="stack-form compact-form" method="post" action="/Admin/Users/Update">
+                            <input type="hidden" name="UserId" value="@user.Id" />
+                            <select name="RoleId" aria-label="Role for @user.DisplayName" required>
+                                @foreach (var role in Model.Roles.Where(x => x.IsActive || x.Id == user.RoleId))
+                                {
+                                    <option value="@role.Id" selected="@(role.Id == user.RoleId)" disabled="@(!role.IsActive && role.Id != user.RoleId)">@role.Name@(!role.IsActive ? " — Inactive" : "")</option>
+                                }
+                            </select>
+                            <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@user.IsActive" /> Active</label>
+                            <input type="hidden" name="IsActive" value="false" />
+                            <button class="secondary-button" type="submit">Save role</button>
+                        </form>
+                        <div class="muted">@user.RoleSummary</div>
+                    </td>
+                    <td>
+                        <details class="employment-card">
+                            <summary><strong>@(user.EmploymentFacility == CropQc.Data.Entities.EmploymentFacilities.Shared ? "Shared / Management" : user.EmploymentFacility)</strong></summary>
+                            <strong>@(user.EmploymentFacility == CropQc.Data.Entities.EmploymentFacilities.Shared ? "Shared / Management" : user.EmploymentFacility)</strong>
+                            <div class="muted">Effective @BusinessTime.FormatPacific(user.EmploymentEffectiveAt, empty: "Not assigned")</div>
+                            <form class="form-grid compact-form" method="post" action="/Admin/Users/Employment">
+                                <input type="hidden" name="UserId" value="@user.Id" />
+                                <label class="field">Assignment
+                                    <select name="EmploymentFacility" required>
+                                        @foreach (var option in Model.EmploymentOptions)
                                         {
-                                            <option value="@option" selected="@(option == current ? "selected" : null)">@option</option>
+                                            <option value="@option" selected="@(option == user.EmploymentFacility)">@(option == CropQc.Data.Entities.EmploymentFacilities.Shared ? "Shared / Management" : option)</option>
                                         }
                                     </select>
                                 </label>
-                            }
-                        </div>
-                    </section>
-                }
-                <button class="secondary-button" type="submit" disabled="@(user.Email.Equals("wes@fruitandland.com", StringComparison.OrdinalIgnoreCase) ? "disabled" : null)">Save Matrix</button>
-            </form>
-        }
+                                <label class="field">Effective date/time
+                                    <input type="text" name="EffectiveAt" placeholder="2026-08-07T08:00:00-07:00" value="@(user.EmploymentEffectiveAt is null ? "" : BusinessTime.ToPacific(user.EmploymentEffectiveAt.Value).ToString("yyyy-MM-ddTHH:mm:sszzz"))" />
+                                </label>
+                                <button class="secondary-button" type="submit">Save Employment</button>
+                            </form>
+                            <details><summary>Employment history (@user.EmploymentHistory.Count)</summary>
+                                <ul>@foreach (var history in user.EmploymentHistory) { <li>@history.PreviousEmploymentFacility → @history.EmploymentFacility, effective @BusinessTime.FormatPacific(history.EffectiveAt), by @history.ChangedBy</li> }</ul>
+                            </details>
+                        </details>
+                    </td>
+                    <td>
+                        <details>
+                            <summary>@(user.EndOfDayFillGroupIds.Count == 0 ? "None" : $"{user.EndOfDayFillGroupIds.Count} report group(s)")</summary>
+                            <form method="post" action="/Admin/Users/EndOfDayFillGroups" class="stack-form compact-form">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="UserId" value="@user.Id" />
+                                @foreach (var group in Model.EndOfDayFillGroups)
+                                {
+                                    <label class="checkbox-field"><input type="checkbox" name="GroupIds" value="@group.Id" checked="@user.EndOfDayFillGroupIds.Contains(group.Id)" /> @group.Name (@group.Facility)</label>
+                                }
+                                <button class="secondary-button" type="submit">Save report groups</button>
+                            </form>
+                        </details>
+                    </td>
+                    <td>@BusinessTime.FormatPacific(user.LastLoginAt, empty: "Never")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
     </div>
 </section>
 
-<h2>Users</h2>
-<div class="user-admin-list">
-    <table class="responsive-admin-table">
-        <thead>
-            <tr>
-                <th>Email</th>
-                <th>Display Name</th>
-                <th>Role</th>
-                <th>Active</th>
-                <th>Last Login</th>
-                <th>Employment</th>
-                <th>End of Day Fill</th>
-                <th>Update</th>
-            </tr>
-        </thead>
-        <tbody>
-        @foreach (var user in Model.Users)
+<section class="panel" id="roles">
+    <h2>Roles &amp; Permissions</h2>
+    <p class="muted">The selected role matrix applies immediately to every assigned user. Missing area rows fail closed as None. Admin is always full access and read-only.</p>
+    <div class="responsive-card-grid">
+        @foreach (var role in Model.Roles)
         {
-            <tr>
-                <td>@user.Email</td>
-                <td>@user.DisplayName</td>
-                <td>
-                    <span class="status">@user.Role</span>
-                    <div class="muted">@user.RoleSummary</div>
-                </td>
-                <td>@(user.IsActive ? "Yes" : "No")</td>
-                <td>@BusinessTime.FormatPacific(user.LastLoginAt, empty: "Never")</td>
-                <td>
-                    <section class="employment-card" aria-label="Employment for @user.DisplayName">
-                        <strong>@(user.EmploymentFacility == CropQc.Data.Entities.EmploymentFacilities.Shared ? "Shared / Management" : user.EmploymentFacility)</strong>
-                        <div class="muted">Effective @BusinessTime.FormatPacific(user.EmploymentEffectiveAt, empty: "Not assigned")</div>
-                        <div class="muted">Changed by @user.EmploymentChangedBy @BusinessTime.FormatPacific(user.EmploymentChangedAt, empty: "")</div>
-                        <form class="form-grid compact-form" method="post" action="/Admin/Users/Employment">
-                            <input type="hidden" name="UserId" value="@user.Id" />
-                            <label class="field">Assignment
-                                <select name="EmploymentFacility" required>
-                                    @foreach (var option in Model.EmploymentOptions)
+            <article class="summary-card">
+                <h3><a href="/Admin/Users?roleId=@role.Id#roles">@role.Name</a></h3>
+                <div>@(role.IsSystemRole ? "System role" : "Custom role") · @(role.IsActive ? "Active" : "Inactive")</div>
+                <div>@role.AssignedActiveUserCount active user(s)</div>
+                @if (role.IsImportedMigrationRole) { <div class="notice warning">Migration role — review recommended</div> }
+                @if (!role.HasCompleteMatrix && !role.IsAdmin) { <div class="notice warning">Missing matrix rows fail closed.</div> }
+                <p class="muted">@role.Description</p>
+                @if (role.AssignedUsers.Count > 0) { <div><strong>Assigned:</strong> @string.Join(", ", role.AssignedUsers)</div> }
+            </article>
+        }
+    </div>
+
+    <details>
+        <summary>Create custom role</summary>
+        <form class="form-grid" method="post" action="/Admin/Users/Roles/Create">
+            <label class="field">Name<input name="Name" required maxlength="100" /></label>
+            <label class="field">Description<textarea name="Description" maxlength="500"></textarea></label>
+            <label class="field">Copy permissions from
+                <select name="CopyFromRoleId"><option value="">None — start with no access</option>
+                    @foreach (var role in Model.Roles) { <option value="@role.Id">@role.Name</option> }
+                </select>
+            </label>
+            <button type="submit">Create Role</button>
+        </form>
+    </details>
+
+    @if (Model.SelectedRole is { } selected)
+    {
+        <hr />
+        <h3>@selected.Name</h3>
+        @if (selected.IsImportedMigrationRole) { <p class="notice warning"><strong>Migration role — review recommended.</strong> This editable custom role preserves imported legacy access until its assigned users are deliberately reassigned.</p> }
+        <p><strong>Assigned users:</strong> @(selected.AssignedUsers.Count == 0 ? "None" : string.Join(", ", selected.AssignedUsers))</p>
+        <form class="toolbar" method="post" action="/Admin/Users/Roles/Update">
+            <input type="hidden" name="RoleId" value="@selected.Id" />
+            <label class="field">Name<input name="Name" value="@selected.Name" maxlength="100" readonly="@selected.IsSystemRole" required /></label>
+            <label class="field">Description<input name="Description" value="@selected.Description" maxlength="500" /></label>
+            <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@selected.IsActive" disabled="@selected.IsSystemRole" /> Active</label>
+            <input type="hidden" name="IsActive" value="@(selected.IsSystemRole ? "true" : "false")" />
+            <button class="secondary-button" type="submit">Save Role</button>
+        </form>
+
+        <form class="access-user-card" method="post" action="/Admin/Users/Roles/Matrix">
+            <input type="hidden" name="RoleId" value="@selected.Id" />
+            @foreach (var group in Model.Areas.GroupBy(x => x.Group))
+            {
+                <section class="access-group">
+                    <h4>@group.Key</h4>
+                    <div class="access-grid">
+                        @foreach (var area in group)
+                        {
+                            var current = selected.Access.TryGetValue(area.Key, out var level) ? level : PageAccessLevel.None;
+                            <label class="field"><span>@area.Name</span>
+                                <select name="Access[@area.Key]" disabled="@selected.IsAdmin">
+                                    @foreach (var option in new[] { PageAccessLevel.None, PageAccessLevel.View, PageAccessLevel.Create, PageAccessLevel.Admin })
                                     {
-                                        <option value="@option" selected="@(option == user.EmploymentFacility)">@(option == CropQc.Data.Entities.EmploymentFacilities.Shared ? "Shared / Management" : option)</option>
+                                        <option value="@option" selected="@(option == current)">@option</option>
                                     }
                                 </select>
                             </label>
-                            <label class="field">Effective date/time (ISO 8601 with offset)
-                                <input type="text" name="EffectiveAt" placeholder="2026-08-03T08:00:00-07:00" value="@(user.EmploymentEffectiveAt is null ? "" : BusinessTime.ToPacific(user.EmploymentEffectiveAt.Value).ToString("yyyy-MM-ddTHH:mm:sszzz"))" />
-                            </label>
-                            <button class="secondary-button" type="submit">Save Employment</button>
-                        </form>
-                        <details>
-                            <summary>Employment audit history (@user.EmploymentHistory.Count)</summary>
-                            @if (user.EmploymentHistory.Count == 0)
-                            {
-                                <p class="muted">No employment changes recorded.</p>
-                            }
-                            else
-                            {
-                                <ul>
-                                    @foreach (var history in user.EmploymentHistory)
-                                    {
-                                        <li>@history.PreviousEmploymentFacility → @history.EmploymentFacility, effective @BusinessTime.FormatPacific(history.EffectiveAt), changed by @history.ChangedBy @BusinessTime.FormatPacific(history.ChangedAt)</li>
-                                    }
-                                </ul>
-                            }
-                        </details>
-                    </section>
-                </td>
-                <td>
-                    <form method="post" action="/Admin/Users/EndOfDayFillGroups" class="stack-form compact-form">
-                        @Html.AntiForgeryToken()
-                        <input type="hidden" name="UserId" value="@user.Id" />
-                        @foreach (var group in Model.EndOfDayFillGroups)
-                        {
-                            <label class="checkbox-field"><input type="checkbox" name="GroupIds" value="@group.Id" checked="@user.EndOfDayFillGroupIds.Contains(group.Id)" /> @group.Name (@group.Facility)</label>
                         }
-                        <button class="secondary-button" type="submit">Save report groups</button>
-                    </form>
-                </td>
-                <td>
-                    <form class="button-row" method="post" action="/Admin/Users/Update">
-                        <input type="hidden" name="UserId" value="@user.Id" />
-                        <select name="RoleId">
-                            @foreach (var role in Model.Roles)
-                            {
-                                <option value="@role.Id" selected="@(role.Name == user.Role ? "selected" : null)">@role.Name - @role.Summary</option>
-                            }
-                        </select>
-                        <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@user.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" />
-                        <button class="secondary-button" type="submit">Save</button>
-                    </form>
-                </td>
-            </tr>
-        }
-        </tbody>
-    </table>
-</div>
+                    </div>
+                </section>
+            }
+            @if (selected.IsAdmin)
+            {
+                <p class="notice info">Admin is permanently full access for every current and future application area.</p>
+            }
+            else
+            {
+                <button type="submit">Save Full Role Matrix</button>
+            }
+        </form>
+
+        <section class="panel">
+            <h4>Compare role</h4>
+            <form class="toolbar" method="get" action="/Admin/Users">
+                <input type="hidden" name="roleId" value="@selected.Id" />
+                <label class="field">Comparison role
+                    <select name="compareRoleId" required>
+                        <option value="">Select a role</option>
+                        @foreach (var role in Model.Roles.Where(x => x.Id != selected.Id))
+                        {
+                            <option value="@role.Id" selected="@(Model.RoleComparison?.ComparedRoleId == role.Id)">@role.Name</option>
+                        }
+                    </select>
+                </label>
+                <button class="secondary-button" type="submit">Show differences</button>
+            </form>
+            @if (Model.RoleComparison is { } comparison)
+            {
+                <p><strong>@comparison.CurrentRoleName → @comparison.ComparedRoleName:</strong> @comparison.AreasGained gain(s), @comparison.AreasLost loss(es), @comparison.UnchangedAreas unchanged.</p>
+                @if (comparison.Differences.Count == 0)
+                {
+                    <p class="notice success">The two matrices are identical.</p>
+                }
+                else
+                {
+                    <table class="responsive-admin-table">
+                        <thead><tr><th>Area</th><th>Current access</th><th>Compared access</th><th>Change</th></tr></thead>
+                        <tbody>
+                        @foreach (var difference in comparison.Differences)
+                        {
+                            <tr><td>@difference.AreaName <span class="muted">(@difference.Group)</span></td><td>@difference.CurrentAccess</td><td>@difference.ComparedAccess</td><td>@difference.Change</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+            }
+        </section>
+    }
+</section>
