@@ -14,8 +14,14 @@ public sealed class RoleNavigationAuthorizationTests
         var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
 
         Assert.Contains("asp-controller=\"Home\" asp-action=\"Index\"", layout);
-        Assert.Contains("asp-controller=\"DailyQc\" asp-action=\"Index\"", layout);
         Assert.Contains("asp-controller=\"Receipts\" asp-action=\"Index\"", layout);
+        Assert.DoesNotContain("asp-controller=\"DailyQc\" asp-action=\"Index\"", layout);
+        Assert.Contains(">Receiving</a>", layout);
+        Assert.Contains(">Runs &amp; Transfers</a>", layout);
+        Assert.Contains("<summary>Rooms</summary>", layout);
+        Assert.Contains("<summary>Growers</summary>", layout);
+        Assert.Contains("Current Room Inventory", layout);
+        Assert.Contains("Inventory Reconciliation", layout);
         Assert.DoesNotContain("facilityQuery", layout);
         Assert.Contains("IUserAccessService UserAccess", layout);
         Assert.Contains("UserAccess.HasAccessAsync", layout);
@@ -31,6 +37,10 @@ public sealed class RoleNavigationAuthorizationTests
         Assert.Contains("href=\"/Admin/Backups\"", layout);
         Assert.Contains("href=\"/Admin/DataCleanup\"", layout);
         Assert.Contains("canAccessDataCleanup", layout);
+        Assert.Contains("Access &amp; Devices", layout);
+        Assert.Contains("Data Maintenance", layout);
+        Assert.DoesNotContain("EBS Historical Cleanup", layout);
+        Assert.DoesNotContain("IAdminAuthorizationService", layout);
     }
 
     [Fact]
@@ -75,6 +85,12 @@ public sealed class RoleNavigationAuthorizationTests
         Assert.NotNull(typeof(AdminController).GetMethod(nameof(AdminController.DeleteRole))!
             .GetCustomAttribute<ValidateAntiForgeryTokenAttribute>());
         AssertActionPolicy<AdminController>(nameof(AdminController.UpdateRoleMatrix), AccessPolicyNames.PermissionMatrixAdmin);
+        AssertActionPolicy<RoomInventoryController>(nameof(RoomInventoryController.DismissDiagnostic), AccessPolicyNames.CurrentLotsAdmin);
+        AssertActionPolicy<RoomInventoryController>(nameof(RoomInventoryController.RestoreDiagnostic), AccessPolicyNames.CurrentLotsAdmin);
+        Assert.NotNull(typeof(RoomInventoryController).GetMethod(nameof(RoomInventoryController.DismissDiagnostic))!
+            .GetCustomAttribute<ValidateAntiForgeryTokenAttribute>());
+        Assert.NotNull(typeof(RoomInventoryController).GetMethod(nameof(RoomInventoryController.RestoreDiagnostic))!
+            .GetCustomAttribute<ValidateAntiForgeryTokenAttribute>());
     }
 
     [Fact]

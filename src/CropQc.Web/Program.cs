@@ -261,6 +261,7 @@ builder.Services.AddScoped<IRoomInventoryLedgerQueryService, RoomInventoryLedger
 builder.Services.AddScoped<IRoomInventoryReconciliationService, RoomInventoryReconciliationService>();
 builder.Services.AddScoped<IEbsInventoryCleanupService, EbsInventoryCleanupService>();
 builder.Services.AddScoped<IInventoryDeductionInvariantService, InventoryDeductionInvariantService>();
+builder.Services.AddScoped<IInventoryDiagnosticAcknowledgmentService, InventoryDiagnosticAcknowledgmentService>();
 builder.Services.AddScoped<IReceiptInventoryOverrideService, ReceiptInventoryOverrideService>();
 builder.Services.AddScoped<IBinsRunService, BinsRunService>();
 builder.Services.AddScoped<IRunReportingService, RunReportingService>();

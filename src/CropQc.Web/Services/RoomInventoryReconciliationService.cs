@@ -1,4 +1,5 @@
 using CropQc.Data;
+using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -15,12 +16,17 @@ public interface IRoomInventoryReconciliationService
 public sealed class RoomInventoryReconciliationService(
     CropQcDbContext dbContext,
     IRoomInventoryLedgerQueryService ledgerQuery,
-    IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null) : IRoomInventoryReconciliationService
+    IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null,
+    IInventoryDiagnosticAcknowledgmentService? inventoryDiagnosticAcknowledgmentService = null) : IRoomInventoryReconciliationService
 {
     private const int MaximumReceiptRows = 5000;
-    private IInventoryDeductionInvariantService InventoryInvariant { get; } =
-        inventoryDeductionInvariantService
-        ?? new InventoryDeductionInvariantService(dbContext, NullLogger<InventoryDeductionInvariantService>.Instance);
+    private IInventoryDiagnosticAcknowledgmentService DiagnosticAcknowledgments { get; } =
+        inventoryDiagnosticAcknowledgmentService
+        ?? new InventoryDiagnosticAcknowledgmentService(
+            dbContext,
+            inventoryDeductionInvariantService
+                ?? new InventoryDeductionInvariantService(dbContext, NullLogger<InventoryDeductionInvariantService>.Instance),
+            new PacificBusinessTimeService(new SystemClock()));
 
     public async Task<RoomInventoryReconciliationPageViewModel> GetPageAsync(
         RoomInventoryReconciliationFilter filter,
@@ -139,9 +145,9 @@ public sealed class RoomInventoryReconciliationService(
             rows = rows.Where(x => x.Warnings.Count > 0).ToList();
         }
 
-        var readiness = await InventoryInvariant.VerifyReadinessAsync(cancellationToken);
-        var negativeAdjustments = await GetNegativeAdjustmentsAsync(filter, readiness, cancellationToken);
-        var globalWarnings = await GetGlobalWarningsAsync(filter, readiness, cancellationToken);
+        var diagnostics = await DiagnosticAcknowledgments.GetOverviewAsync(filter, cancellationToken);
+        var negativeAdjustments = await GetNegativeAdjustmentsAsync(filter, diagnostics, cancellationToken);
+        var globalWarnings = await GetGlobalWarningsAsync(filter, diagnostics, cancellationToken);
         return new RoomInventoryReconciliationPageViewModel
         {
             Filter = filter,
@@ -167,13 +173,14 @@ public sealed class RoomInventoryReconciliationService(
                 .ThenBy(x => x.CanonicalVariety)
                 .ToList(),
             NegativeAdjustments = negativeAdjustments,
-            GlobalWarnings = globalWarnings
+            GlobalWarnings = globalWarnings,
+            InventoryDiagnostics = diagnostics
         };
     }
 
     private async Task<IReadOnlyList<string>> GetGlobalWarningsAsync(
         RoomInventoryReconciliationFilter filter,
-        InventoryDeductionReadinessResult readiness,
+        InventoryDiagnosticOverviewViewModel diagnostics,
         CancellationToken cancellationToken)
     {
         var adjustments = dbContext.RoomInventoryAdjustments.AsNoTracking()
@@ -206,17 +213,17 @@ public sealed class RoomInventoryReconciliationService(
         if (unparentedRunAdjustments > 0) warnings.Add($"{unparentedRunAdjustments} adjustment(s) claim an Actual Run source without an Actual Run parent.");
         if (mismatchedRunEntries > 0) warnings.Add($"{mismatchedRunEntries} Actual Run Bins Run entry/adjustment amount pair(s) do not match.");
         if (duplicateOperationKeys > 0) warnings.Add($"{duplicateOperationKeys} duplicate Actual Run operation key(s) require review.");
-        var blocking = readiness.Issues.Count(x => x.BlocksDeployment);
-        var historical = readiness.Issues.Count(
-            x => x.InvariantVersion < InventoryDeductionInvariantService.CurrentVersion);
+        var blocking = diagnostics.BlockingCount;
+        var historical = diagnostics.HistoricalActiveCount;
         if (blocking > 0) warnings.Add($"{blocking} deduction invariant failure(s) block deployment readiness.");
-        if (historical > 0) warnings.Add($"{historical} historical deduction failure(s) remain read-only and require operational review.");
+        if (historical > 0) warnings.Add($"{historical} active historical deduction failure(s) remain read-only and require operational review.");
+        if (diagnostics.DismissedDiagnostics.Count > 0) warnings.Add($"{diagnostics.DismissedDiagnostics.Count} historical deduction warning acknowledgment(s) are hidden from the active-warning view.");
         return warnings;
     }
 
     private async Task<IReadOnlyList<RoomInventoryNegativeAdjustmentViewModel>> GetNegativeAdjustmentsAsync(
         RoomInventoryReconciliationFilter filter,
-        InventoryDeductionReadinessResult readiness,
+        InventoryDiagnosticOverviewViewModel diagnostics,
         CancellationToken cancellationToken)
     {
         var adjustments = await dbContext.RoomInventoryAdjustments.AsNoTracking()
@@ -246,7 +253,11 @@ public sealed class RoomInventoryReconciliationService(
                 .Where(x => ids.Contains(x.InventoryAdjustmentId))
                 .ToListAsync(cancellationToken);
         var entryLookup = entries.GroupBy(x => x.InventoryAdjustmentId).ToDictionary(x => x.Key, x => x.ToList());
-        var issueLookup = readiness.Issues
+        var activeIssueLookup = diagnostics.ActiveDiagnostics
+            .GroupBy(x => x.AdjustmentId)
+            .ToDictionary(x => x.Key, x => x.ToList());
+        var acknowledgedIssueLookup = diagnostics.DismissedDiagnostics
+            .Where(x => x.StillMatchesCurrentDiagnostic)
             .GroupBy(x => x.AdjustmentId)
             .ToDictionary(x => x.Key, x => x.ToList());
         var baselineRows = await dbContext.RoomInventoryAdjustments.AsNoTracking()
@@ -273,7 +284,9 @@ public sealed class RoomInventoryReconciliationService(
         return adjustments.Select(x =>
         {
             var parents = entryLookup.GetValueOrDefault(x.Id) ?? [];
-            var warnings = (issueLookup.GetValueOrDefault(x.Id) ?? [])
+            var activeDiagnostics = activeIssueLookup.GetValueOrDefault(x.Id) ?? [];
+            var acknowledgedDiagnostics = acknowledgedIssueLookup.GetValueOrDefault(x.Id) ?? [];
+            var warnings = activeDiagnostics
                 .Select(y => $"{y.Code}: {y.Message}")
                 .ToList();
             var namedParentCount = (parents.Count > 0 ? 1 : 0)
@@ -320,11 +333,15 @@ public sealed class RoomInventoryReconciliationService(
                 ActualRunId = x.ActualRunId,
                 CreatedBy = x.CreatedByUser?.DisplayName ?? "Unknown",
                 AdjustmentAt = x.AdjustmentAt,
-                ParentMatches = warnings.Count == 0 && parentType is "Bins Run" or "Transfer" or "Receipt Admin Override",
+                ParentMatches = activeDiagnostics.Count == 0
+                    && acknowledgedDiagnostics.Count == 0
+                    && parentType is "Bins Run" or "Transfer" or "Receipt Admin Override",
                 CurrentlyAffectsInventory = currentlyAffects,
                 InvariantVersion = x.InventoryInvariantVersion,
                 RecordedSource = x.Source ?? "",
-                Warnings = warnings
+                Warnings = warnings,
+                ActiveDiagnostics = activeDiagnostics,
+                AcknowledgedDiagnosticCount = acknowledgedDiagnostics.Count
             };
         }).ToList();
     }

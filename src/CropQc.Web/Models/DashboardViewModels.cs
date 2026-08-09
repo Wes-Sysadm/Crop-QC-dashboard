@@ -343,6 +343,8 @@ public sealed class RoomInventoryImportPageViewModel
     public string CsvTemplateHeader { get; set; } = "";
     public string CsvExample { get; set; } = "";
     public string? CurrentLotWarning { get; set; }
+    public InventoryDiagnosticOverviewViewModel InventoryDiagnostics { get; set; } = new();
+    public bool CanManageInventoryDiagnostics { get; set; }
 }
 
 public sealed class RoomInventoryImportForm
