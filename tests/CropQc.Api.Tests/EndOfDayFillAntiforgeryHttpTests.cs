@@ -184,6 +184,152 @@ public sealed class EndOfDayFillAntiforgeryHttpTests
     }
 
     [Fact]
+    public async Task AuthenticatedUserAdministration_RequiresAnExplicitRoleSelection()
+    {
+        await using var factory = new EndOfDayFillWebApplicationFactory();
+        using var client = await factory.CreateAuthenticatedClientAsync();
+        int viewerRoleId;
+        int inactiveRoleId;
+        IReadOnlyList<string> roleNames;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var inactive = new Role
+            {
+                Name = "Archived Review",
+                NormalizedName = "ARCHIVED REVIEW",
+                Description = "Inactive test role",
+                IsActive = false,
+                IsSystemRole = false
+            };
+            foreach (var area in ApplicationAreas.All)
+            {
+                inactive.PageAccesses.Add(new RolePageAccess
+                {
+                    AreaKey = area.Key,
+                    AccessLevel = nameof(PageAccessLevel.None),
+                    UpdatedAt = DateTimeOffset.UtcNow
+                });
+            }
+            db.Roles.Add(inactive);
+            await db.SaveChangesAsync();
+            viewerRoleId = await db.Roles.Where(x => x.Name == BuiltInRoleNames.Viewer).Select(x => x.Id).SingleAsync();
+            inactiveRoleId = inactive.Id;
+            roleNames = await db.Roles.OrderBy(x => x.Name).Select(x => x.Name).ToListAsync();
+        }
+
+        var response = await client.GetAsync("/Admin/Users");
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        var selector = RoleSelector(html);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Role to view / edit", html);
+        Assert.Contains("action=\"/Admin/Users#roles\"", html);
+        Assert.Contains("Select a role above to view or change its permissions.", html);
+        Assert.DoesNotContain("action=\"/Admin/Users/Roles/Matrix\"", html);
+        Assert.DoesNotMatch($"<option[^>]+value=\"{viewerRoleId}\"[^>]+selected", selector);
+        Assert.Contains($"value=\"{inactiveRoleId}\"", selector);
+        Assert.Matches("Archived Review.{1,10}Inactive", selector);
+        Assert.All(roleNames, roleName => Assert.Contains(roleName, selector));
+
+        var invalidResponse = await client.GetAsync("/Admin/Users?roleId=2147483647");
+        var invalidHtml = WebUtility.HtmlDecode(await invalidResponse.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, invalidResponse.StatusCode);
+        Assert.Contains("Select a role above to view or change its permissions.", invalidHtml);
+        Assert.DoesNotContain("action=\"/Admin/Users/Roles/Matrix\"", invalidHtml);
+    }
+
+    [Fact]
+    public async Task AuthenticatedUserAdministration_RoleSelectorLoadsEachRequestedMatrix()
+    {
+        await using var factory = new EndOfDayFillWebApplicationFactory();
+        using var client = await factory.CreateAuthenticatedClientAsync();
+        List<(int Id, string Name, string ExpectedReceiptsAccess, bool IsAdmin)> roles;
+        int importedRoleId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var imported = new Role
+            {
+                Name = "Imported Access A",
+                NormalizedName = "IMPORTED ACCESS A",
+                Description = "Imported from the legacy per-user access matrix during the role-based authorization conversion. Review and rename or reassign in User Administration.",
+                IsActive = true,
+                IsSystemRole = false
+            };
+            foreach (var area in ApplicationAreas.All)
+            {
+                imported.PageAccesses.Add(new RolePageAccess
+                {
+                    AreaKey = area.Key,
+                    AccessLevel = area.Key == ApplicationAreas.Receipts
+                        ? nameof(PageAccessLevel.Create)
+                        : nameof(PageAccessLevel.None),
+                    UpdatedAt = DateTimeOffset.UtcNow
+                });
+            }
+            var alexis = new User
+            {
+                Email = "alexis@wp-packing.com",
+                DisplayName = "Alexis Ledezma",
+                Domain = "wp-packing.com",
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            alexis.UserRoles.Add(new UserRole { Role = imported });
+            db.Users.Add(alexis);
+            await db.SaveChangesAsync();
+            importedRoleId = imported.Id;
+
+            var names = new[]
+            {
+                BuiltInRoleNames.Viewer,
+                BuiltInRoleNames.QcTech,
+                BuiltInRoleNames.Manager,
+                BuiltInRoleNames.Admin,
+                imported.Name
+            };
+            var roleEntities = await db.Roles
+                .Include(x => x.PageAccesses)
+                .Where(x => names.Contains(x.Name))
+                .OrderBy(x => x.Name)
+                .ToListAsync();
+            roles = roleEntities.Select(x => (
+                    x.Id,
+                    x.Name,
+                    x.Name == BuiltInRoleNames.Admin
+                        ? nameof(PageAccessLevel.Admin)
+                        : x.PageAccesses.Single(a => a.AreaKey == ApplicationAreas.Receipts).AccessLevel,
+                    x.Name == BuiltInRoleNames.Admin))
+                .ToList();
+        }
+
+        foreach (var role in roles)
+        {
+            var response = await client.GetAsync($"/Admin/Users?roleId={role.Id}");
+            var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Matches($"<option[^>]+value=\"{role.Id}\"[^>]+selected", RoleSelector(html));
+            Assert.Contains($"<h3>{role.Name}</h3>", html);
+            var selectedContent = html[(html.IndexOf($"<h3>{role.Name}</h3>", StringComparison.Ordinal))..];
+            Assert.Matches($"<option[^>]+value=\"{role.ExpectedReceiptsAccess}\"[^>]+selected", AccessSelector(selectedContent, ApplicationAreas.Receipts));
+            Assert.Single(Regex.Matches(html, "action=\"/Admin/Users/Roles/Matrix\"").Cast<Match>());
+            if (role.IsAdmin)
+            {
+                Assert.DoesNotContain("Save Full Role Matrix", selectedContent);
+                Assert.Contains("disabled", AccessSelector(selectedContent, ApplicationAreas.Receipts));
+            }
+        }
+
+        var importedResponse = await client.GetAsync($"/Admin/Users?roleId={importedRoleId}");
+        var importedHtml = WebUtility.HtmlDecode(await importedResponse.Content.ReadAsStringAsync());
+        Assert.Contains("Migration role", importedHtml);
+        Assert.Contains("review recommended", importedHtml);
+        Assert.Contains("Assigned users:</strong> Alexis Ledezma", importedHtml);
+    }
+
+    [Fact]
     public async Task RenderedForm_WithMatchingAntiforgeryToken_SendsOnceAndFinalizesHistory()
     {
         await using var factory = new EndOfDayFillWebApplicationFactory();
@@ -275,6 +421,26 @@ public sealed class EndOfDayFillAntiforgeryHttpTests
             .ToList();
         Assert.Equal(expectedCount, forms.Count);
         Assert.All(forms, form => Assert.Contains("name=\"__RequestVerificationToken\"", form, StringComparison.Ordinal));
+    }
+
+    private static string RoleSelector(string html)
+    {
+        var match = Regex.Match(
+            html,
+            "<select[^>]+id=\"role-to-edit\"[^>]*>.*?</select>",
+            RegexOptions.Singleline);
+        Assert.True(match.Success, "The role selector was not rendered.");
+        return match.Value;
+    }
+
+    private static string AccessSelector(string html, string areaKey)
+    {
+        var match = Regex.Match(
+            html,
+            $"<select[^>]+name=\"Access\\[{Regex.Escape(areaKey)}\\]\"[^>]*>.*?</select>",
+            RegexOptions.Singleline);
+        Assert.True(match.Success, $"The {areaKey} access selector was not rendered.");
+        return match.Value;
     }
 
     private static FormUrlEncodedContent Form(string? antiforgeryToken, string previewToken)

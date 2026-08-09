@@ -1,14 +1,61 @@
+using System.Security.Claims;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Web.Auth;
+using CropQc.Web.Controllers;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace CropQc.Api.Tests;
 
 public sealed class RoleUserAdminTests
 {
+    [Fact]
+    public async Task MissingOrInvalidRoleSelectionDoesNotImplicitlySelectViewer()
+    {
+        await using var db = CreateDb();
+        var service = Service(db, new TrackingAccessService());
+
+        var unselected = await service.GetUsersAsync(null, default);
+        var invalid = await service.GetUsersAsync(int.MaxValue, default);
+
+        Assert.Null(unselected.SelectedRole);
+        Assert.Null(unselected.RoleComparison);
+        Assert.Null(invalid.SelectedRole);
+        Assert.Null(invalid.RoleComparison);
+        Assert.Contains(unselected.Roles, x => x.Name == BuiltInRoleNames.Viewer);
+    }
+
+    [Theory]
+    [InlineData(BuiltInRoleNames.Viewer)]
+    [InlineData(BuiltInRoleNames.QcTech)]
+    [InlineData(BuiltInRoleNames.Manager)]
+    [InlineData(BuiltInRoleNames.Admin)]
+    public async Task ExplicitRoleSelectionReturnsExactlyTheRequestedMatrix(string roleName)
+    {
+        await using var db = CreateDb();
+        var role = await db.Roles.Include(x => x.PageAccesses).SingleAsync(x => x.Name == roleName);
+
+        var page = await Service(db, new TrackingAccessService()).GetUsersAsync(role.Id, default);
+
+        var selected = Assert.IsType<RoleAdminDetailViewModel>(page.SelectedRole);
+        Assert.Equal(role.Id, selected.Id);
+        Assert.Equal(role.Name, selected.Name);
+        Assert.Equal(ApplicationAreas.All.Count, selected.Access.Count);
+        foreach (var area in ApplicationAreas.All)
+        {
+            var expected = role.Name == BuiltInRoleNames.Admin
+                ? PageAccessLevel.Admin
+                : UserAccessService.ParseLevel(role.PageAccesses.Single(x => x.AreaKey == area.Key).AccessLevel);
+            Assert.Equal(expected, selected.Access[area.Key]);
+        }
+    }
+
     [Fact]
     public async Task FreshDatabaseContainsTheFiveBuiltInsWithCompleteConservativeMatrices()
     {
@@ -330,6 +377,77 @@ public sealed class RoleUserAdminTests
         Assert.Equal(2, comparison.Differences.Count);
         Assert.Contains(comparison.Differences, x => x.AreaKey == ApplicationAreas.Receipts && x.Change == "Gain");
         Assert.Contains(comparison.Differences, x => x.AreaKey == ApplicationAreas.Transfers && x.Change == "Loss");
+    }
+
+    [Fact]
+    public async Task RoleAndMatrixUpdatesRedirectBackToAndRerenderTheEditedRole()
+    {
+        await using var db = CreateDb();
+        var administrator = AddAdministrator(db);
+        var role = NewRole("Dispatch review");
+        foreach (var area in ApplicationAreas.All) role.PageAccesses.Add(Cell(area.Key));
+        db.Roles.Add(role);
+        await db.SaveChangesAsync();
+        var service = Service(db, new TrackingAccessService());
+        var controller = new AdminController(
+            service,
+            new AdminAuthorizationService(),
+            null!,
+            null!,
+            null!,
+            null!,
+            new ConfigurationBuilder().Build())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        [new Claim(ClaimTypes.Email, administrator.Email)],
+                        "Test"))
+                }
+            }
+        };
+        controller.TempData = new TempDataDictionary(
+            controller.HttpContext,
+            new TestTempDataProvider());
+
+        var roleResult = Assert.IsType<RedirectToActionResult>(await controller.UpdateRole(new UpdateRoleForm
+        {
+            RoleId = role.Id,
+            Name = role.Name,
+            Description = "Updated description",
+            IsActive = true
+        }, default));
+        Assert.Equal(nameof(AdminController.Users), roleResult.ActionName);
+        Assert.Equal(role.Id, roleResult.RouteValues!["roleId"]);
+        Assert.Equal("roles", roleResult.Fragment);
+
+        var matrix = ApplicationAreas.All.ToDictionary(x => x.Key, _ => nameof(PageAccessLevel.None));
+        matrix[ApplicationAreas.Rooms] = nameof(PageAccessLevel.View);
+        var matrixResult = Assert.IsType<RedirectToActionResult>(await controller.UpdateRoleMatrix(new RoleAccessMatrixForm
+        {
+            RoleId = role.Id,
+            Access = matrix
+        }, default));
+        Assert.Equal(nameof(AdminController.Users), matrixResult.ActionName);
+        Assert.Equal(role.Id, matrixResult.RouteValues!["roleId"]);
+        Assert.Equal("roles", matrixResult.Fragment);
+
+        var rerendered = await service.GetUsersAsync(role.Id, default);
+        Assert.Equal(role.Id, rerendered.SelectedRole!.Id);
+        Assert.Equal("Updated description", rerendered.SelectedRole.Description);
+        Assert.Equal(PageAccessLevel.View, rerendered.SelectedRole.Access[ApplicationAreas.Rooms]);
+    }
+
+    private sealed class TestTempDataProvider : ITempDataProvider
+    {
+        public IDictionary<string, object> LoadTempData(HttpContext context) =>
+            new Dictionary<string, object>();
+
+        public void SaveTempData(HttpContext context, IDictionary<string, object> values)
+        {
+        }
     }
 
     private static CropQcDbContext CreateDb()

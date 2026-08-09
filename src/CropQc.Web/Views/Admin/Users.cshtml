@@ -141,6 +141,19 @@
         </form>
     </details>
 
+    <form class="toolbar role-editor-selector" method="get" action="/Admin/Users#roles">
+        <label class="field" for="role-to-edit">Role to view / edit
+            <select id="role-to-edit" name="roleId" required>
+                <option value="">Select a role</option>
+                @foreach (var role in Model.Roles)
+                {
+                    <option value="@role.Id" selected="@(Model.SelectedRole?.Id == role.Id)">@role.Name@(!role.IsActive ? " — Inactive" : "")</option>
+                }
+            </select>
+        </label>
+        <button type="submit">View Role</button>
+    </form>
+
     @if (Model.SelectedRole is { } selected)
     {
         <hr />
@@ -224,5 +237,9 @@
                 }
             }
         </section>
+    }
+    else
+    {
+        <p class="notice info role-selection-message">Select a role above to view or change its permissions.</p>
     }
 </section>

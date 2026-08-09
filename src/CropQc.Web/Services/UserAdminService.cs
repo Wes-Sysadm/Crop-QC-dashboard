@@ -38,9 +38,9 @@ public sealed class UserAdminService(
             .Include(x => x.UserRoles).ThenInclude(x => x.User)
             .OrderBy(x => x.Name)
             .ToListAsync(cancellationToken);
-        var selectedRole = roleEntities.SingleOrDefault(x => x.Id == selectedRoleId)
-            ?? roleEntities.FirstOrDefault(x => x.Name == BuiltInRoleNames.Viewer)
-            ?? roleEntities.FirstOrDefault();
+        var selectedRole = selectedRoleId is null
+            ? null
+            : roleEntities.SingleOrDefault(x => x.Id == selectedRoleId);
         var comparisonRole = roleEntities.SingleOrDefault(x => x.Id == compareRoleId && x.Id != selectedRole?.Id);
         var roles = roleEntities.Select(ToRoleListItem).ToList();
         var users = await dbContext.Users.AsNoTracking()
