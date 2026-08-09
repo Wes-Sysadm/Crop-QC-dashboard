@@ -201,7 +201,7 @@ public sealed class AdminController(
     {
         var error = await userAdminService.UpdateRoleAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Role updated.";
-        return RedirectToAction(nameof(Users), new { roleId = form.RoleId });
+        return RedirectToAction(nameof(Users), null, new { roleId = form.RoleId }, "roles");
     }
 
     [HttpPost("Users/Roles/Matrix")]
@@ -210,7 +210,7 @@ public sealed class AdminController(
     {
         var error = await userAdminService.UpdateRoleMatrixAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Role permission matrix updated.";
-        return RedirectToAction(nameof(Users), new { roleId = form.RoleId });
+        return RedirectToAction(nameof(Users), null, new { roleId = form.RoleId }, "roles");
     }
 
 }
