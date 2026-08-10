@@ -7,6 +7,30 @@ namespace CropQc.Api.Tests;
 public sealed class StoragePresentationTests
 {
     [Fact]
+    public void RoomVarietyIdentity_DeduplicatesProductionTypeAndExplainsUnknownStatus()
+    {
+        Assert.Equal("Organic", new RoomVarietyColorSegmentViewModel { ProductionType = "organic", IsOrganic = true }.IdentityLabel);
+        Assert.Equal("Conventional", new RoomVarietyColorSegmentViewModel { ProductionType = "Conventional", IsOrganic = false }.IdentityLabel);
+        Assert.Equal("Fresh - Organic", new RoomVarietyColorSegmentViewModel { ProductionType = "Fresh", IsOrganic = true }.IdentityLabel);
+        Assert.Equal("Organic status unknown", new RoomVarietyColorSegmentViewModel { IsOrganic = null }.IdentityLabel);
+    }
+
+    [Fact]
+    public void ReceiptVarietyControl_IsCodeFirstSearchableAndQuickAddIsPermissionGated()
+    {
+        var view = ReadRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Index.cshtml");
+        var controller = ReadRepositoryFile("src", "CropQc.Web", "Controllers", "ReceiptsController.cs");
+
+        Assert.Contains("receiptVarietySearch", view);
+        Assert.Contains("item.VarietyCode", view);
+        Assert.Contains("item.ProductionType", view);
+        Assert.Contains("Model.CanQuickAddVariety", view);
+        Assert.Contains("[ValidateAntiForgeryToken]", controller);
+        Assert.Contains("ApplicationAreas.Varieties, PageAccessLevel.Create", controller);
+        Assert.Contains("SaveMasterDataAsync", controller);
+    }
+
+    [Fact]
     public void DedicatedRooms_UsesCardsDominantColorAndAccessibleNavigation()
     {
         var view = ReadRepositoryFile("src", "CropQc.Web", "Views", "Home", "Rooms.cshtml");

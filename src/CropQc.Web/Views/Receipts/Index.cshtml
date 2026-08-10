@@ -108,7 +108,21 @@
     <div class="field"><label>Receipt Type</label><select name="ReceiptType"><option selected="@IsReceiptTypeSelected("Truck receipt")">Truck receipt</option><option selected="@IsReceiptTypeSelected("Door sample")">Door sample</option><option selected="@IsReceiptTypeSelected("Lot sample")">Lot sample</option></select></div>
     <div class="field"><label>Warehouse</label><select id="addWarehouseId" name="WarehouseId" required><option value="">Select</option>@foreach (var item in Model.Warehouses){<option value="@item.Id">@item.Code</option>}</select></div>
     <div class="field"><label>Room</label><select id="addRoomId" name="RoomId" required disabled><option value="">Select warehouse first</option></select></div>
-    <div class="field"><label>Variety</label><select name="FruitProfileId" required><option value="">Select</option>@foreach (var item in Model.FruitProfiles){<option value="@item.Id">@item.VarietyCode - @item.Name</option>}</select></div>
+    <div class="field wide">
+        <label for="receiptVarietySearch">Variety code or name</label>
+        <input id="receiptVarietySearch" type="search" autocomplete="off" placeholder="Type BART, ORBA, or a variety name" />
+        <select id="receiptFruitProfileId" name="FruitProfileId" required>
+            <option value="">Select a variety</option>
+            @foreach (var item in Model.FruitProfiles.OrderBy(x => x.VarietyCode))
+            {
+                var organic = item.IsOrganic ? "Organic" : "Conventional";
+                var identity = string.Equals(item.ProductionType?.Trim(), organic, StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(item.ProductionType)
+                    ? organic : $"{item.ProductionType.Trim()} - {organic}";
+                <option value="@item.Id" data-search="@($"{item.VarietyCode} {item.Name} {item.ProductionType} {organic}".ToLowerInvariant())">@item.VarietyCode - @item.Name - @identity</option>
+            }
+        </select>
+        <small>Search is case-insensitive and active profiles are shown code-first.</small>
+    </div>
     <div class="field wide"><label>Grower Lot</label><select id="addGrowerLotId" name="GrowerLotId"><option value="">Manual entry</option>@foreach (var lot in Model.GrowerLots){<option value="@lot.Id" data-grower="@lot.Grower" data-lot="@lot.LotNumber">@lot.Grower - @lot.LotNumber</option>}</select></div>
     <div class="field"><label>Grower</label><input name="GrowerName" required /></div>
     <div class="field"><label>Lot #</label><input id="addGrowerNumber" name="GrowerNumber" maxlength="50" list="growerLotOptions" required /></div>
@@ -122,6 +136,23 @@
     <label class="checkbox-field"><input type="checkbox" name="ConfirmCropYear" value="true" /> Confirm Crop Year</label><input type="hidden" name="ConfirmCropYear" value="false" />
     <button type="submit" disabled="@(!hasRequiredMasterData)">Add Receipt</button>
 </form>
+
+@if (Model.CanQuickAddVariety)
+{
+    <details class="notice" id="quickAddVarietyPanel">
+        <summary><strong>Add Variety</strong></summary>
+        <form class="toolbar" id="quickAddVarietyForm" method="post" action="/Receipts/Varieties/QuickAdd">
+            @Html.AntiForgeryToken()
+            <div class="field"><label>Variety Code</label><input name="Code" maxlength="50" required /></div>
+            <div class="field"><label>Variety Name</label><input name="Name" maxlength="200" required /></div>
+            <div class="field"><label>Commodity / Fruit Type</label><input name="FruitType" maxlength="100" required /></div>
+            <div class="field"><label>Production Type</label><select name="ProductionType"><option>Conventional</option><option>Organic</option></select></div>
+            <label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked /> Active</label><input type="hidden" name="IsActive" value="false" />
+            <button type="submit">Create and select variety</button>
+            <span id="quickAddVarietyStatus" class="muted" role="status"></span>
+        </form>
+    </details>
+}
 
 @await Html.PartialAsync("_DeviceCapturePanel", new DeviceCapturePanelViewModel(
     Model.DeviceCapture,
@@ -205,6 +236,44 @@
     (() => {
         const rooms = @Html.Raw(roomOptionsJson);
         const growerLots = @Html.Raw(growerLotsJson);
+        const varietySearch = document.getElementById("receiptVarietySearch");
+        const varietySelect = document.getElementById("receiptFruitProfileId");
+        if (varietySearch && varietySelect) {
+            const allOptions = Array.from(varietySelect.options).slice(1);
+            varietySearch.addEventListener("input", () => {
+                const query = varietySearch.value.trim().toLowerCase();
+                for (const option of allOptions) {
+                    option.hidden = query.length > 0 && !option.dataset.search.includes(query);
+                }
+                const matches = allOptions.filter(option => !option.hidden);
+                if (matches.length === 1) varietySelect.value = matches[0].value;
+            });
+        }
+
+        const quickAddForm = document.getElementById("quickAddVarietyForm");
+        if (quickAddForm && varietySelect && varietySearch) {
+            quickAddForm.addEventListener("submit", async event => {
+                event.preventDefault();
+                const status = document.getElementById("quickAddVarietyStatus");
+                status.textContent = "Creating...";
+                const response = await fetch(quickAddForm.action, {
+                    method: "POST",
+                    body: new FormData(quickAddForm),
+                    credentials: "same-origin"
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    status.textContent = result.error || "Variety could not be created.";
+                    return;
+                }
+                const option = new Option(result.label, result.id, true, true);
+                option.dataset.search = result.label.toLowerCase();
+                varietySelect.add(option);
+                varietySearch.value = result.label.split(" - ")[0];
+                status.textContent = result.label + " was created and selected.";
+                quickAddForm.reset();
+            });
+        }
 
         function configureRoomFilter(warehouseSelectId, roomSelectId, emptyText, resetOnWarehouseChange) {
             const warehouseSelect = document.getElementById(warehouseSelectId);

@@ -1230,7 +1230,7 @@ public sealed class DashboardDataService(
                 ReceiptTypeCounts = BuildReceiptTypeCounts(search, receiptTypeCountRows),
                 Warehouses = await dbContext.Warehouses.AsNoTracking().Where(x => facilityWarehouseIds.Contains(x.Id)).OrderBy(x => x.Name).ToListAsync(cancellationToken),
                 Rooms = await dbContext.Rooms.AsNoTracking().Where(x => facilityWarehouseIds.Contains(x.WarehouseId)).OrderBy(x => x.WarehouseId).ThenBy(x => x.SubLocation).ThenBy(x => x.SortOrder).ThenBy(x => x.CropQcRoomName ?? x.Code).ToListAsync(cancellationToken),
-                FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
+                FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.VarietyCode).ToListAsync(cancellationToken),
                 GrowerLots = await dbContext.GrowerLots.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Grower).ThenBy(x => x.LotNumber).ToListAsync(cancellationToken),
                 AvailableCropYears = await cropYearService.GetAvailableCropYearsAsync(cancellationToken),
                 CurrentCropYear = cropYearService.GetCurrentCropYear(BusinessTime.NowPacific),
