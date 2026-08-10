@@ -118,7 +118,7 @@
                 var organic = item.IsOrganic ? "Organic" : "Conventional";
                 var identity = string.Equals(item.ProductionType?.Trim(), organic, StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(item.ProductionType)
                     ? organic : $"{item.ProductionType.Trim()} - {organic}";
-                <option value="@item.Id" data-search="@($"{item.VarietyCode} {item.Name} {item.ProductionType} {organic}".ToLowerInvariant())">@item.VarietyCode - @item.Name - @identity</option>
+                <option value="@item.Id" data-code="@item.VarietyCode.ToLowerInvariant()" data-search="@($"{item.VarietyCode} {item.Name} {item.ProductionType} {organic}".ToLowerInvariant())">@item.VarietyCode - @item.Name - @identity</option>
             }
         </select>
         <small>Search is case-insensitive and active profiles are shown code-first.</small>
@@ -238,15 +238,48 @@
         const growerLots = @Html.Raw(growerLotsJson);
         const varietySearch = document.getElementById("receiptVarietySearch");
         const varietySelect = document.getElementById("receiptFruitProfileId");
+        let receiptVarietyOptions = [];
         if (varietySearch && varietySelect) {
-            const allOptions = Array.from(varietySelect.options).slice(1);
-            varietySearch.addEventListener("input", () => {
-                const query = varietySearch.value.trim().toLowerCase();
-                for (const option of allOptions) {
-                    option.hidden = query.length > 0 && !option.dataset.search.includes(query);
+            receiptVarietyOptions = Array.from(varietySelect.options).slice(1).map(option => ({
+                value: option.value,
+                code: option.dataset.code,
+                search: option.dataset.search,
+                label: option.textContent
+            }));
+            let varietySearchRequest;
+            const renderVarietyOptions = options => {
+                varietySelect.innerHTML = '<option value="">Select a variety</option>';
+                for (const item of options) {
+                    const option = new Option(item.label, item.value);
+                    option.dataset.code = item.code;
+                    option.dataset.search = item.search;
+                    varietySelect.add(option);
                 }
-                const matches = allOptions.filter(option => !option.hidden);
-                if (matches.length === 1) varietySelect.value = matches[0].value;
+            };
+            varietySearch.addEventListener("input", async () => {
+                const query = varietySearch.value.trim();
+                varietySelect.value = "";
+                varietySearchRequest?.abort();
+                if (!query) {
+                    renderVarietyOptions(receiptVarietyOptions);
+                    return;
+                }
+                varietySearchRequest = new AbortController();
+                const response = await fetch("/Receipts/Varieties/Search?query=" + encodeURIComponent(query), {
+                    credentials: "same-origin",
+                    signal: varietySearchRequest.signal
+                }).catch(error => error.name === "AbortError" ? null : Promise.reject(error));
+                if (!response) return;
+                const matches = await response.json();
+                renderVarietyOptions(matches.map(item => ({
+                    value: String(item.id),
+                    code: item.code.toLowerCase(),
+                    search: item.label.toLowerCase(),
+                    label: item.label
+                })));
+                const exact = matches.filter(item => item.exactCode);
+                if (exact.length === 1) varietySelect.value = String(exact[0].id);
+                else if (matches.length === 1) varietySelect.value = String(matches[0].id);
             });
         }
 
@@ -268,7 +301,14 @@
                 }
                 const option = new Option(result.label, result.id, true, true);
                 option.dataset.search = result.label.toLowerCase();
+                option.dataset.code = result.label.split(" - ")[0].toLowerCase();
                 varietySelect.add(option);
+                receiptVarietyOptions.push({
+                    value: String(result.id),
+                    code: option.dataset.code,
+                    search: option.dataset.search,
+                    label: result.label
+                });
                 varietySearch.value = result.label.split(" - ")[0];
                 status.textContent = result.label + " was created and selected.";
                 quickAddForm.reset();

@@ -17,48 +17,7 @@ public sealed class PackoutReconciliationTests
     [Fact]
     public void GrowerSummary_UsesPackTypeAndCountsDetailBoxesExactlyOnce()
     {
-        const string report = """
-            Grower Summary
-            From Date: 7/28/2026 To Date: 7/29/2026
-            Production Line: Main Shift: Day
-            Run #: 1 Lot Code: 0226209001
-            Grower: 1084 - 1084 Lot: LOT:1084
-            Variety: BARTLETT
-            Pack Type: WP Color:
-            Lid Label Grade Pl U Size Box Percent Avg Wt. Low High
-            DSG Wa Fancy 110 18 0.39% lbs
-            DSG Wa Fancy 120 195 4.22% lbs
-            Total: 213 4.61%
-            DSG US No. 1 80 96 2.08% lbs
-            DSG US No. 1 70 36 0.78% lbs
-            DSG US No. 1 120 552 11.96% lbs
-            DSG US No. 1 110 24 0.52% lbs
-            Total: 708 15.34%
-            Pack Type: 9-3 POUCH BAG Color:
-            TARGET US No. 1 2 1/8 923 20.00% lbs
-            Total: 923 20.00%
-            Pack Type: 8-3 POUCH BAG Color:
-            ALDI US No. 1B 2 1/2 1274 27.60% lbs
-            Total: 1274 27.60%
-            Pack Type: WPNS Color:
-            DSG US No. 1 120 25 0.54% lbs
-            DSG US No. 1 100 3 0.06% lbs
-            DSG US No. 1 135 74 1.60% lbs
-            Total: 102 2.21%
-            DSG Wa Fancy 100 175 3.79% lbs
-            DSG Wa Fancy 90 63 1.36% lbs
-            DSG Wa Fancy 80 44 0.95% lbs
-            DSG Wa Fancy 135 248 5.37% lbs
-            DSG Wa Fancy 110 2 0.04% lbs
-            Total: 532 11.53%
-            Pack Type: 12-2 POUCH BAG Color:
-            DSG US No. 1 2 1/8 714 15.47% lbs
-            Total: 714 15.47%
-            DSGX US No. 1 2 1/4 150 3.25% lbs
-            Total: 150 3.25%
-            End of Variety: BARTLETT Total: 4616
-            End of Run #: 1
-            """;
+        var report = GrowerSummaryFixture.Text;
 
         Assert.True(PackoutReportParser.IsGrowerSummary(report));
         var lines = PackoutReportParser.ParseText(report);
@@ -71,7 +30,7 @@ public sealed class PackoutReconciliationTests
         Assert.Equal("12-2 POUCH BAG", lines[16].RawPackCode);
         Assert.Contains("Lid Label: TARGET", lines[6].RawText);
         Assert.Contains("Size: 2 1/8", lines[6].RawText);
-        Assert.All(lines, line => Assert.True(line.RequiresReview));
+        Assert.All(lines, line => Assert.False(line.RequiresReview));
     }
 
     [Fact]
@@ -80,6 +39,71 @@ public sealed class PackoutReconciliationTests
         Assert.False(PackoutReportParser.IsGrowerSummary("Grower Summary Pack Type: WP"));
         Assert.False(PackoutReportParser.IsGrowerSummary("An arbitrary report containing Variety:"));
     }
+
+    [Fact]
+    public void GrowerSummary_ConfiguredPackTypeDoesNotRequireArtificialReview()
+    {
+        var parsed = Assert.Single(PackoutReportParser.ParseText(GrowerSummarySingleLine("WP")));
+        var definition = new PackCodeDefinition
+        {
+            Code = "WP",
+            NormalizedCode = "WP",
+            DisplayName = "Configured WP",
+            ProductCategory = PackoutProductCategories.Packed,
+            NetWeightPounds = 40m,
+            IsActive = true
+        };
+
+        Assert.False(parsed.RequiresReview);
+        Assert.False(PackoutReconciliationService.RequiresLineReview(
+            parsed, definition, definition.ProductCategory, definition.NetWeightPounds));
+    }
+
+    [Fact]
+    public void GrowerSummary_UnconfiguredPackTypeRequiresMappingReviewWithoutFabricatedWeight()
+    {
+        var parsed = Assert.Single(PackoutReportParser.ParseText(GrowerSummarySingleLine("UNKNOWN POUCH")));
+
+        Assert.False(parsed.RequiresReview);
+        Assert.True(PackoutReconciliationService.RequiresLineReview(
+            parsed, null, PackoutProductCategories.Packed, null));
+        Assert.Null(PackoutReportParser.ClassifyPackCode(parsed.RawPackCode).NetWeightPounds);
+    }
+
+    [Fact]
+    public async Task GrowerSummary_ExactSuppliedPdfUsesDirectTextWhenOptedIn()
+    {
+        var path = Environment.GetEnvironmentVariable("CROPQC_REAL_GROWER_SUMMARY_PDF");
+        if (string.IsNullOrWhiteSpace(path)) return;
+        Assert.True(File.Exists(path), $"Configured Grower Summary PDF was not found: {path}");
+        var before = Directory.GetDirectories(Path.GetTempPath(), "cropqc-packout-ocr-*").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var parser = new PackoutReportParser(new PackoutProcessingOptions(), NullLogger<PackoutReportParser>.Instance);
+        var file = new FileInfo(path);
+
+        var result = await parser.ParseAsync(
+            new PackoutUploadFile(file.Name, "application/pdf", file.FullName, file.Length),
+            CancellationToken.None);
+
+        Assert.Equal("PopplerText", result.ParserName);
+        Assert.Equal(18, result.Lines.Count);
+        Assert.Equal(4616m, result.Lines.Sum(x => x.Quantity));
+        Assert.All(result.Lines, line => Assert.False(line.RequiresReview));
+        var after = Directory.GetDirectories(Path.GetTempPath(), "cropqc-packout-ocr-*").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.Empty(after.Except(before));
+    }
+
+    private static string GrowerSummarySingleLine(string packType) => $$"""
+        Grower Summary
+        From Date: 7/28/2026 To Date: 7/29/2026
+        Run #: 1
+        Grower: 1084 - 1084
+        Variety: BARTLETT
+        Pack Type: {{packType}} Color:
+        Lid Label Grade Pl U Size Box Percent Avg Wt. Low High
+        DSG US No. 1 120 25 0.54% lbs
+        End of Variety: BARTLETT Total: 25
+        End of Run #: 1
+        """;
 
     [Fact]
     public async Task DefectStatus_FollowsPresenceOfDefectRecords()

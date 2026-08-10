@@ -242,10 +242,7 @@ public sealed class PackoutReconciliationService(
                     GradeId = definition?.GradeId,
                     ProductCategory = category,
                     Confidence = parsedLine.Confidence,
-                    RequiresReview = parsedLine.RequiresReview
-                        || definition is null && classified.ProductCategory is null
-                        || netWeight is null
-                        || parsedLine.Quantity is < 0m,
+                    RequiresReview = RequiresLineReview(parsedLine, definition, category, netWeight),
                     CreatedAt = now
                 });
             }
@@ -266,6 +263,18 @@ public sealed class PackoutReconciliationService(
         await dbContext.SaveChangesAsync(cancellationToken);
         return (run.Id, null);
     }
+
+    public static bool RequiresLineReview(
+        ParsedPackoutLine parsedLine,
+        PackCodeDefinition? definition,
+        string? productCategory,
+        decimal? netWeightPounds) =>
+        parsedLine.RequiresReview
+        || parsedLine.Quantity is null or <= 0m
+        || definition is null
+        || netWeightPounds is null or <= 0m
+        || string.IsNullOrWhiteSpace(productCategory)
+        || !PackoutProductCategories.All.Contains(productCategory);
 
     public async Task<PackoutRunViewModel?> GetAsync(long id, ClaimsPrincipal principal, CancellationToken cancellationToken)
     {

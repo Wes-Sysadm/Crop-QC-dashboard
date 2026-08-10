@@ -62,6 +62,30 @@ public sealed class ReceiptsController(
         return $"{code} - {name} - {identity}";
     }
 
+    [HttpGet("Varieties/Search")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
+    public async Task<IActionResult> SearchVarieties([FromQuery] string? query, CancellationToken cancellationToken)
+    {
+        var normalized = query?.Trim().ToUpperInvariant() ?? "";
+        if (normalized.Length == 0) return Json(Array.Empty<object>());
+        var profiles = await dbContext.FruitProfiles.AsNoTracking()
+            .Where(x => x.IsActive
+                && (x.VarietyCode.ToUpper().Contains(normalized)
+                    || x.Name.ToUpper().Contains(normalized)))
+            .OrderByDescending(x => x.VarietyCode.ToUpper() == normalized)
+            .ThenBy(x => x.VarietyCode)
+            .Take(25)
+            .Select(x => new { x.Id, x.VarietyCode, x.Name, x.ProductionType, x.IsOrganic })
+            .ToListAsync(cancellationToken);
+        return Json(profiles.Select(x => new
+        {
+            id = x.Id,
+            code = x.VarietyCode,
+            label = FruitProfileIdentity(x.VarietyCode, x.Name, x.ProductionType, x.IsOrganic),
+            exactCode = string.Equals(x.VarietyCode, normalized, StringComparison.OrdinalIgnoreCase)
+        }));
+    }
+
     [HttpGet("Export")]
     [Authorize(Policy = AccessPolicyNames.ExportToolsAdmin)]
     public async Task<IActionResult> Export(CancellationToken cancellationToken)
