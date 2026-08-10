@@ -41,12 +41,13 @@ public sealed class ReceiptsController(
             return Forbid();
         form.Type = "fruit-profiles";
         form.Id = null;
+        form.IsActive = true;
         var error = await adminManagementService.SaveMasterDataAsync(
             form, adminAuthorizationService.GetEmail(User) ?? "", cancellationToken);
         if (error is not null) return BadRequest(new { error });
         var code = form.Code.Trim();
         var profile = await dbContext.FruitProfiles.AsNoTracking()
-            .SingleAsync(x => x.VarietyCode.ToUpper() == code.ToUpper(), cancellationToken);
+            .SingleAsync(x => x.IsActive && x.VarietyCode.ToUpper() == code.ToUpper(), cancellationToken);
         return Json(new
         {
             id = profile.Id,

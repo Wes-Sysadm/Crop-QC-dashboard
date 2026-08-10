@@ -49,6 +49,10 @@ public sealed class ReceiptVarietyHttpIntegrationTests
     {
         await using var factory = new ReceiptVarietyFactory();
         using var owner = await factory.CreateClientAsync(ApplicationAreas.OwnerEmail);
+        var receiptPage = await owner.GetAsync("/Receipts");
+        var receiptHtml = await receiptPage.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, receiptPage.StatusCode);
+        Assert.DoesNotContain("name=\"IsActive\"", receiptHtml);
         var token = await AntiforgeryTokenAsync(owner);
 
         var organicResponse = await owner.PostAsync("/Receipts/Varieties/QuickAdd", QuickAddForm(token, "NEWO", "New Bartlett", "Organic"));
@@ -64,6 +68,7 @@ public sealed class ReceiptVarietyHttpIntegrationTests
             var profile = await db.FruitProfiles.SingleAsync(x => x.Id == created.Id);
             Assert.Equal("Organic", profile.ProductionType);
             Assert.True(profile.IsOrganic);
+            Assert.True(profile.IsActive);
         }
 
         var search = await SearchAsync(owner, "newo");
@@ -87,11 +92,14 @@ public sealed class ReceiptVarietyHttpIntegrationTests
         await using var factory = new ReceiptVarietyFactory();
         using var owner = await factory.CreateClientAsync(ApplicationAreas.OwnerEmail);
         var token = await AntiforgeryTokenAsync(owner);
-        var add = await owner.PostAsync("/Receipts/Varieties/QuickAdd", QuickAddForm(token, "NEWC", "New Conventional", "Conventional"));
+        var add = await owner.PostAsync(
+            "/Receipts/Varieties/QuickAdd",
+            QuickAddForm(token, "NEWC", "New Conventional", "Conventional", isActive: false));
         var created = JsonSerializer.Deserialize<QuickAddResult>(
             await add.Content.ReadAsStringAsync(),
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
         Assert.Contains("NEWC", created.Label);
+        Assert.Equal(created.Id, Assert.Single(await SearchAsync(owner, "newc")).Id);
 
         var receipt = new Dictionary<string, string>
         {
@@ -117,6 +125,7 @@ public sealed class ReceiptVarietyHttpIntegrationTests
         var profile = await db.FruitProfiles.SingleAsync(x => x.Id == created.Id);
         Assert.Equal("Conventional", profile.ProductionType);
         Assert.False(profile.IsOrganic);
+        Assert.True(profile.IsActive);
         Assert.Equal(created.Id, (await db.Receipts.SingleAsync(x => x.CompuTechReceiptId == "HTTP-NEWC-1")).FruitProfileId);
     }
 
@@ -157,7 +166,12 @@ public sealed class ReceiptVarietyHttpIntegrationTests
         return WebUtility.HtmlDecode(match.Groups["token"].Value);
     }
 
-    private static FormUrlEncodedContent QuickAddForm(string? token, string code, string name, string productionType)
+    private static FormUrlEncodedContent QuickAddForm(
+        string? token,
+        string code,
+        string name,
+        string productionType,
+        bool isActive = true)
     {
         var values = new Dictionary<string, string>
         {
@@ -165,7 +179,7 @@ public sealed class ReceiptVarietyHttpIntegrationTests
             ["Name"] = name,
             ["FruitType"] = "Pear",
             ["ProductionType"] = productionType,
-            ["IsActive"] = "true"
+            ["IsActive"] = isActive ? "true" : "false"
         };
         if (token is not null) values["__RequestVerificationToken"] = token;
         return new FormUrlEncodedContent(values);
