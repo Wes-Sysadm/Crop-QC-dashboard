@@ -65,7 +65,6 @@
     <a class="@(activeSection.Equals("TrueUp", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=TrueUp&amp;RoomId=@Model.Filter.RoomId">True Up</a>
     <a class="@(activeSection.Equals("Activity", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Activity&amp;RoomId=@Model.Filter.RoomId">Recent Activity</a>
     <a class="@(activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=RunTotals&amp;ReportFacility=WP&amp;ReportCropYear=@Model.RunReporting.CurrentCropYear">Run Totals</a>
-    <a href="/RunReporting/Growers?CropYear=@Model.RunReporting.CurrentCropYear&amp;Facility=All">Grower &amp; Lot Progress</a>
     @if (Model.RunReporting.CanViewNeedsReview)
     {
         <a class="@(activeSection.Equals("NeedsReview", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=NeedsReview">Needs Review</a>

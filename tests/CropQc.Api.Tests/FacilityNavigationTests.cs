@@ -54,10 +54,13 @@ public sealed class FacilityNavigationTests
         Assert.DoesNotContain("/BinsRun@", layout);
         Assert.Contains("asp-controller=\"BinsRun\" asp-action=\"Index\" asp-route-facility=\"@facilityRouteValue\"", layout);
         Assert.Contains("asp-controller=\"Home\" asp-action=\"Index\" asp-route-facility=\"@facilityRouteValue\"", layout);
-        Assert.Contains("asp-controller=\"DailyQc\" asp-action=\"Index\" asp-route-facility=\"@facilityRouteValue\"", layout);
+        Assert.DoesNotContain("asp-controller=\"DailyQc\" asp-action=\"Index\" asp-route-facility=\"@facilityRouteValue\"", layout);
         Assert.Contains("asp-controller=\"Receipts\" asp-action=\"Index\" asp-route-facility=\"@facilityRouteValue\"", layout);
         Assert.Contains("asp-controller=\"Home\" asp-action=\"Rooms\" asp-route-facility=\"@facilityRouteValue\"", layout);
         Assert.Contains("asp-controller=\"Home\" asp-action=\"CurrentGrowerLots\" asp-route-facility=\"@facilityRouteValue\"", layout);
+        Assert.Contains("<summary>Rooms</summary>", layout);
+        Assert.Contains("<summary>Growers</summary>", layout);
+        Assert.Contains("Current Room Inventory", layout);
         Assert.Contains("string.IsNullOrWhiteSpace(requestedFacility) ? null : activeFacility", layout);
     }
 
@@ -112,6 +115,7 @@ public sealed class FacilityNavigationTests
         Assert.DoesNotContain(">Variety Colors</a>", layout);
         Assert.DoesNotContain(">Orchard QC Recipients</a>", layout);
         Assert.DoesNotContain(">Orchard Manager Import</a>", layout);
+        Assert.DoesNotContain("EBS Historical Cleanup", layout);
         Assert.Contains("Fruit Profiles", masterData);
         Assert.Contains("Variety Codes", masterData);
         Assert.Contains("_MasterDataNavigation", growerLots);

@@ -11,6 +11,19 @@
     <a class="button secondary-button" href="/Admin/RoomInventory">Current Inventory Baseline</a>
 </div>
 
+@if (TempData["Success"] is string success)
+{
+    <p class="notice success">@success</p>
+}
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
+@{
+    ViewData["CanManageInventoryDiagnostics"] = true;
+}
+<partial name="_InventoryDiagnosticOverview" model="Model.InventoryDiagnostics" view-data="ViewData" />
+
 @if (Model.GlobalWarnings.Count > 0)
 {
     <section class="notice warning" aria-label="Global ledger warnings">
@@ -95,7 +108,7 @@
                 <tbody>
                 @foreach (var row in Model.NegativeAdjustments)
                 {
-                    <tr>
+                    <tr id="adjustment-@row.AdjustmentId">
                         <td><strong>#@row.AdjustmentId</strong><br /><span class="muted">v@row.InvariantVersion</span></td>
                         <td>@row.Facility / @row.Room</td>
                         <td>@(row.CropYear?.ToString() ?? "-")</td>
@@ -141,6 +154,10 @@
                                 {
                                     <span class="muted">Recorded source: @row.RecordedSource</span>
                                 }
+                            }
+                            @if (row.AcknowledgedDiagnosticCount > 0)
+                            {
+                                <span class="status review">@row.AcknowledgedDiagnosticCount acknowledged warning(s)</span>
                             }
                         </td>
                     </tr>

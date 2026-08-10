@@ -15,10 +15,14 @@ a:hover { text-decoration: underline; }
 .nav-dropdown summary::-webkit-details-marker { display: none; }
 .nav-dropdown summary::after { content: "▾"; margin-left: 6px; font-size: 11px; }
 .nav-dropdown[open] summary::after { content: "▴"; }
-.nav-dropdown-menu { position: absolute; right: 0; z-index: 20; display: grid; min-width: 210px; margin-top: 8px; padding: 8px; border: 1px solid #9fb2c3; border-radius: 6px; background: white; box-shadow: 0 8px 20px rgba(23, 32, 42, .18); }
+.nav-dropdown-menu { position: absolute; right: 0; z-index: 20; display: grid; min-width: 230px; margin-top: 8px; padding: 8px; border: 1px solid #9fb2c3; border-radius: 6px; background: white; box-shadow: 0 8px 20px rgba(23, 32, 42, .18); }
 .nav-dropdown:not([open]) .nav-dropdown-menu { display: none; }
 .topbar nav .nav-dropdown-menu a { display: block; padding: 8px 10px; border-radius: 4px; color: #16324f; white-space: nowrap; }
 .topbar nav .nav-dropdown-menu a:hover { background: #eaf2f8; text-decoration: none; }
+.nav-dropdown-group { display: grid; gap: 1px; padding: 5px 0; border-top: 1px solid #e2e8ee; }
+.nav-dropdown-group:first-child { padding-top: 0; border-top: 0; }
+.nav-dropdown-group:last-child { padding-bottom: 0; }
+.nav-dropdown-heading { padding: 4px 10px 2px; color: #66717c; font-size: 11px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
 .user-email { color: #d9e7f3; font-size: 13px; font-weight: 600; }
 .logout-form { margin: 0; }
 .link-button { height: auto; min-height: 0; padding: 0; border: 0; background: transparent; color: white; font-weight: 700; }
@@ -134,6 +138,19 @@ tr:last-child td { border-bottom: 0; }
 .grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
 .detail-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 8px 18px; }
 .panel { background: white; border: 1px solid #d9e1e8; border-radius: 6px; padding: 16px; }
+.nested-panel { padding: 12px; background: #f8fafc; }
+.stack-list { display: grid; gap: 12px; }
+.compact-heading { margin-bottom: 12px; }
+.compact-heading h2 { margin-top: 0; }
+.grow-field { flex: 1 1 280px; }
+.diagnostic-action-form { margin: 12px 0 0; padding: 10px; }
+.dismissed-diagnostics { margin-top: 16px; }
+.dismissed-diagnostics > summary { cursor: pointer; font-weight: 800; }
+.dismissed-diagnostics[open] > summary { margin-bottom: 12px; }
+.compact-definition-list { display: grid; grid-template-columns: minmax(110px, auto) 1fr; gap: 5px 12px; }
+.compact-definition-list dt { font-weight: 800; }
+.compact-definition-list dd { margin: 0; overflow-wrap: anywhere; }
+.diagnostic-snapshot { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .responsive-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 14px; }
 .nav-dropdown::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 10px; }
 .nav-dropdown-menu { top: 100%; margin-top: 4px; }

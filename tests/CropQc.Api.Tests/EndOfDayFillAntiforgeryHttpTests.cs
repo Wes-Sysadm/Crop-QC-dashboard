@@ -30,6 +30,67 @@ namespace CropQc.Api.Tests;
 public sealed class EndOfDayFillAntiforgeryHttpTests
 {
     [Fact]
+    public async Task InventoryDiagnosticDismissal_UsesMvcAntiforgeryAndDoesNotChangeLedger()
+    {
+        await using var factory = new EndOfDayFillWebApplicationFactory();
+        using var client = await factory.CreateAuthenticatedClientAsync();
+        var adjustmentId = await factory.SeedHistoricalInventoryDiagnosticAsync();
+
+        var page = await GetRequiredHtmlAsync(client, "/EndOfDayFill?groupId=1");
+        var token = HiddenValue(page, "__RequestVerificationToken");
+        string diagnosticKey;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var diagnostics = scope.ServiceProvider.GetRequiredService<IInventoryDiagnosticAcknowledgmentService>();
+            diagnosticKey = Assert.Single((await diagnostics.GetOverviewAsync(new(), CancellationToken.None)).ActiveDiagnostics)
+                .DiagnosticKey;
+        }
+
+        var missingToken = await client.PostAsync(
+            "/Admin/RoomInventory/Diagnostics/Dismiss",
+            InventoryDiagnosticForm(null, diagnosticKey));
+        Assert.Equal(HttpStatusCode.BadRequest, missingToken.StatusCode);
+        var invalidToken = await client.PostAsync(
+            "/Admin/RoomInventory/Diagnostics/Dismiss",
+            InventoryDiagnosticForm("not-a-valid-antiforgery-token", diagnosticKey));
+        Assert.Equal(HttpStatusCode.BadRequest, invalidToken.StatusCode);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            Assert.Empty(await db.InventoryDiagnosticAcknowledgments.AsNoTracking().ToListAsync());
+            var unchanged = await db.RoomInventoryAdjustments.AsNoTracking().SingleAsync(x => x.Id == adjustmentId);
+            Assert.Equal((-78, 0), (unchanged.ChangeAmount, unchanged.NewBinCount));
+        }
+
+        var accepted = await client.PostAsync(
+            "/Admin/RoomInventory/Diagnostics/Dismiss",
+            InventoryDiagnosticForm(token, diagnosticKey));
+        Assert.Equal(HttpStatusCode.Redirect, accepted.StatusCode);
+        Assert.Equal("/Admin/RoomInventory", accepted.Headers.Location?.OriginalString);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var acknowledgment = await db.InventoryDiagnosticAcknowledgments.AsNoTracking().SingleAsync();
+            Assert.Equal(diagnosticKey, acknowledgment.DiagnosticKey);
+            Assert.True(acknowledgment.IsActive);
+            Assert.Equal(adjustmentId, acknowledgment.RoomInventoryAdjustmentId);
+            Assert.Contains(await db.AuditLogs.AsNoTracking().ToListAsync(), x =>
+                x.Action == "dismiss" && x.EntityKey == diagnosticKey);
+            var unchanged = await db.RoomInventoryAdjustments.AsNoTracking().SingleAsync(x => x.Id == adjustmentId);
+            Assert.Equal((-78, 0), (unchanged.ChangeAmount, unchanged.NewBinCount));
+        }
+
+        var partial = File.ReadAllText(Path.Combine(RepositoryRoot(), "src", "CropQc.Web", "Views", "Shared", "_InventoryDiagnosticOverview.cshtml"));
+        Assert.Contains("Active inventory warnings", partial);
+        Assert.Contains("Dismissed warnings", partial);
+        Assert.Contains("action=\"/Admin/RoomInventory/Diagnostics/Dismiss\"", partial);
+        Assert.Contains("action=\"/Admin/RoomInventory/Diagnostics/Restore\"", partial);
+        Assert.Contains("@Html.AntiForgeryToken()", partial);
+    }
+
+    [Fact]
     public void PersistentDataProtectionKeyRing_AllowsASecondInstanceToUnprotectData()
     {
         var keyDirectory = Directory.CreateDirectory(Path.Combine(
@@ -574,6 +635,21 @@ public sealed class EndOfDayFillAntiforgeryHttpTests
         return new FormUrlEncodedContent(values);
     }
 
+    private static FormUrlEncodedContent InventoryDiagnosticForm(string? antiforgeryToken, string diagnosticKey)
+    {
+        var values = new List<KeyValuePair<string, string>>
+        {
+            new("DiagnosticKey", diagnosticKey),
+            new("Reason", "Reviewed during authenticated HTTP integration testing."),
+            new("ReturnUrl", "/Admin/RoomInventory")
+        };
+        if (antiforgeryToken is not null)
+        {
+            values.Add(new("__RequestVerificationToken", antiforgeryToken));
+        }
+        return new FormUrlEncodedContent(values);
+    }
+
     private static string HiddenValue(string html, string name)
     {
         var match = Regex.Match(
@@ -582,6 +658,16 @@ public sealed class EndOfDayFillAntiforgeryHttpTests
             RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         Assert.True(match.Success, $"The rendered form did not contain {name}.");
         return WebUtility.HtmlDecode(match.Groups["value"].Value);
+    }
+
+    private static string RepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "CropQc.sln")))
+        {
+            directory = directory.Parent;
+        }
+        return directory?.FullName ?? throw new DirectoryNotFoundException("Repository root not found.");
     }
 
     private sealed class EndOfDayFillWebApplicationFactory : WebApplicationFactory<Program>
@@ -687,6 +773,38 @@ public sealed class EndOfDayFillAntiforgeryHttpTests
             });
             await db.SaveChangesAsync();
             return client;
+        }
+
+        public async Task<long> SeedHistoricalInventoryDiagnosticAsync()
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var sender = await db.Users.SingleAsync(x => x.Email == SenderEmail);
+            var room = await db.Rooms.SingleAsync(x => x.Id == FixedInventorySource.RoomId);
+            var fruit = await db.FruitProfiles.OrderBy(x => x.Id).FirstAsync();
+            var adjustment = new RoomInventoryAdjustment
+            {
+                CropYear = 2026,
+                WarehouseId = room.WarehouseId,
+                RoomId = room.Id,
+                FruitProfileId = fruit.Id,
+                GrowerName = "Historical Grower",
+                LotNumber = "1560",
+                VarietyCode = fruit.VarietyCode,
+                InventoryStatus = "Conventional",
+                OldBinCount = 78,
+                ChangeAmount = -78,
+                NewBinCount = 0,
+                AdjustmentType = "Depletion",
+                Source = "Bins sent to line",
+                AdjustmentAt = DateTimeOffset.UtcNow,
+                CreatedAt = DateTimeOffset.UtcNow,
+                CreatedByUserId = sender.Id,
+                InventoryInvariantVersion = 0
+            };
+            db.RoomInventoryAdjustments.Add(adjustment);
+            await db.SaveChangesAsync();
+            return adjustment.Id;
         }
 
         protected override void Dispose(bool disposing)

@@ -142,6 +142,7 @@ public sealed class RoomInventoryAdjustment
     public ActualRun? ActualRun { get; set; }
     public long? ActualRunRevisionId { get; set; }
     public ActualRunRevision? ActualRunRevision { get; set; }
+    public ICollection<InventoryDiagnosticAcknowledgment> DiagnosticAcknowledgments { get; } = new List<InventoryDiagnosticAcknowledgment>();
 }
 
 public sealed class RoomTransfer

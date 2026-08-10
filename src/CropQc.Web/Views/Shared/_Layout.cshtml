@@ -1,7 +1,6 @@
 <!doctype html>
 @using System.Security.Claims
 @using Microsoft.AspNetCore.WebUtilities
-@inject CropQc.Web.Services.IAdminAuthorizationService AdminAuthorization
 @inject CropQc.Web.Services.IUserAccessService UserAccess
 @inject CropQc.Web.Services.IFacilityContextService FacilityContext
 @inject CropQc.Web.Services.IEndOfDayFillService EndOfDayFill
@@ -44,7 +43,6 @@
                 var role = User.FindAll(ClaimTypes.Role).Select(x => x.Value).OrderBy(x => x).FirstOrDefault() ?? "Viewer";
                 var currentEmail = User.FindFirstValue(ClaimTypes.Email) ?? "";
                 var canAccessDashboard = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Dashboard, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
-                var canAccessDailyQc = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.DailyQc, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessFieldSamples = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.FieldSamples, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessReceipts = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Receipts, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessRooms = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Rooms, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
@@ -53,6 +51,7 @@
                 var canAccessUsers = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Users, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
                 var canAccessQcStations = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.QcStations, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAccessMasterData = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.MasterData, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
+                var canAdminMasterData = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.MasterData, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
                 var canAccessCurrentLots = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.CurrentLots, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
                 var canAdminCurrentLots = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.CurrentLots, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
                 var canAccessBinsRun = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.BinsRun, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
@@ -60,16 +59,17 @@
                 var canAccessConfiguration = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Configuration, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
                 var canAccessBackups = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Backups, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
                 var canAccessDataCleanup = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.DataCleanup, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
-                var canAccessHistoricalInventoryCleanup = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.HistoricalInventoryCleanup, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
                 var canAccessEndOfDayFill = await EndOfDayFill.HasActiveAssignmentAsync(currentEmail, Context.RequestAborted);
-                var showAdminMenu = canAccessUsers || canAccessQcStations || canAccessMasterData || canAccessCurrentLots || canAccessDownloads || canAccessConfiguration || canAccessBackups || canAccessDataCleanup || canAccessHistoricalInventoryCleanup;
+                var showRoomsMenu = canAccessRooms || canAccessEndOfDayFill || canAccessCurrentLots || canAdminCurrentLots;
+                var showGrowersMenu = canAccessGrowerLots || canAccessBinsRun;
+                var showAdminAccessDevices = canAccessUsers || canAccessQcStations;
+                var showAdminMasterData = canAccessMasterData || canAdminMasterData;
+                var showAdminSystem = canAccessConfiguration || canAccessDownloads || canAccessBackups;
+                var showAdminDataMaintenance = canAccessCropYearReview || canAccessDataCleanup;
+                var showAdminMenu = showAdminAccessDevices || showAdminMasterData || showAdminSystem || showAdminDataMaintenance;
                 @if (canAccessDashboard)
                 {
                     <a asp-controller="Home" asp-action="Index" asp-route-facility="@facilityRouteValue">Dashboard</a>
-                }
-                @if (canAccessDailyQc)
-                {
-                    <a asp-controller="DailyQc" asp-action="Index" asp-route-facility="@facilityRouteValue">Daily QC</a>
                 }
                 @if (canAccessFieldSamples)
                 {
@@ -77,74 +77,116 @@
                 }
                 @if (canAccessReceipts)
                 {
-                    <a asp-controller="Receipts" asp-action="Index" asp-route-facility="@facilityRouteValue">Receipts</a>
+                    <a asp-controller="Receipts" asp-action="Index" asp-route-facility="@facilityRouteValue">Receiving</a>
                 }
-                @if (canAccessRooms)
+                @if (showRoomsMenu)
                 {
-                    <a asp-controller="Home" asp-action="Rooms" asp-route-facility="@facilityRouteValue">Rooms</a>
-                }
-                @if (canAccessEndOfDayFill)
-                {
-                    <a href="/EndOfDayFill">End of Day Fill</a>
+                    <details class="nav-dropdown">
+                        <summary>Rooms</summary>
+                        <div class="nav-dropdown-menu">
+                            @if (canAccessRooms)
+                            {
+                                <a asp-controller="Home" asp-action="Rooms" asp-route-facility="@facilityRouteValue">Room Overview</a>
+                            }
+                            @if (canAccessEndOfDayFill)
+                            {
+                                <a href="/EndOfDayFill">End of Day Fill</a>
+                            }
+                            @if (canAccessCurrentLots)
+                            {
+                                <a href="/Admin/RoomInventory">Current Room Inventory</a>
+                            }
+                            @if (canAdminCurrentLots)
+                            {
+                                <a href="/Admin/RoomInventory/Reconciliation">Inventory Reconciliation</a>
+                            }
+                        </div>
+                    </details>
                 }
                 @if (canAccessBinsRun)
                 {
-                    <a asp-controller="BinsRun" asp-action="Index" asp-route-facility="@facilityRouteValue">Bins Run &amp; Transfers</a>
-                    <a href="/RunReporting/Growers?Facility=All">Grower &amp; Lot Progress</a>
+                    <a asp-controller="BinsRun" asp-action="Index" asp-route-facility="@facilityRouteValue">Runs &amp; Transfers</a>
                 }
-                @if (canAccessGrowerLots)
+                @if (showGrowersMenu)
                 {
-                    <a asp-controller="Home" asp-action="CurrentGrowerLots" asp-route-facility="@facilityRouteValue">Grower Lots</a>
-                }
-                @if (canAccessCropYearReview)
-                {
-                    <a href="/CropYearReview">Crop Year Review</a>
+                    <details class="nav-dropdown">
+                        <summary>Growers</summary>
+                        <div class="nav-dropdown-menu">
+                            @if (canAccessGrowerLots)
+                            {
+                                <a asp-controller="Home" asp-action="CurrentGrowerLots" asp-route-facility="@facilityRouteValue">Grower Lots</a>
+                            }
+                            @if (canAccessBinsRun)
+                            {
+                                <a href="/RunReporting/Growers?Facility=All">Grower &amp; Lot Progress</a>
+                            }
+                        </div>
+                    </details>
                 }
                 @if (showAdminMenu)
                 {
                     <details class="nav-dropdown">
                         <summary>Admin</summary>
                         <div class="nav-dropdown-menu">
-                            @if (canAccessUsers)
+                            @if (showAdminAccessDevices)
                             {
-                                <a href="/Admin/Users">Users</a>
+                                <div class="nav-dropdown-group">
+                                    <span class="nav-dropdown-heading">Access &amp; Devices</span>
+                                    @if (canAccessUsers)
+                                    {
+                                        <a href="/Admin/Users">Users</a>
+                                    }
+                                    @if (canAccessQcStations)
+                                    {
+                                        <a href="/Admin/QcStations">QC Stations</a>
+                                    }
+                                </div>
                             }
-                            @if (canAccessQcStations)
+                            @if (showAdminMasterData)
                             {
-                                <a href="/Admin/QcStations">QC Stations</a>
+                                <div class="nav-dropdown-group">
+                                    <span class="nav-dropdown-heading">Master Data</span>
+                                    @if (canAccessMasterData)
+                                    {
+                                        <a href="/MasterData">Master Data</a>
+                                    }
+                                    @if (canAdminMasterData)
+                                    {
+                                        <a href="/Admin/CommercialPacks">Commercial Packs</a>
+                                    }
+                                </div>
                             }
-                            @if (canAccessMasterData)
+                            @if (showAdminSystem)
                             {
-                                <a href="/MasterData">Master Data</a>
+                                <div class="nav-dropdown-group">
+                                    <span class="nav-dropdown-heading">System</span>
+                                    @if (canAccessConfiguration)
+                                    {
+                                        <a href="/Admin/Configuration">Configuration</a>
+                                    }
+                                    @if (canAccessDownloads)
+                                    {
+                                        <a href="/Admin/Downloads">Downloads</a>
+                                    }
+                                    @if (canAccessBackups)
+                                    {
+                                        <a href="/Admin/Backups">Backups</a>
+                                    }
+                                </div>
                             }
-                            @if (canAccessCurrentLots)
+                            @if (showAdminDataMaintenance)
                             {
-                                <a href="/Admin/RoomInventory">Current Lots</a>
-                                @if (canAdminCurrentLots)
-                                {
-                                    <a href="/Admin/RoomInventory/Reconciliation">Inventory Reconciliation</a>
-                                }
-                            }
-                            @if (canAccessDownloads)
-                            {
-                                <a href="/Admin/Downloads">Downloads</a>
-                            }
-                            @if (canAccessConfiguration)
-                            {
-                                <a href="/Admin/Configuration">Configuration</a>
-                                <a href="/Admin/CommercialPacks">Commercial Packs</a>
-                            }
-                            @if (canAccessBackups)
-                            {
-                                <a href="/Admin/Backups">Backups</a>
-                            }
-                            @if (canAccessDataCleanup)
-                            {
-                                <a href="/Admin/DataCleanup">Data Cleanup</a>
-                            }
-                            @if (canAccessHistoricalInventoryCleanup)
-                            {
-                                <a href="/Admin/EbsInventoryCleanup">EBS Historical Cleanup</a>
+                                <div class="nav-dropdown-group">
+                                    <span class="nav-dropdown-heading">Data Maintenance</span>
+                                    @if (canAccessCropYearReview)
+                                    {
+                                        <a href="/CropYearReview">Crop Year Review</a>
+                                    }
+                                    @if (canAccessDataCleanup)
+                                    {
+                                        <a href="/Admin/DataCleanup">Data Cleanup</a>
+                                    }
+                                </div>
                             }
                         </div>
                     </details>

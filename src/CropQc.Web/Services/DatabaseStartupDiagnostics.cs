@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260807210820_AddRoleBasedUserAccess";
+    public const string ExpectedSchemaMigration = "20260809151943_AddInventoryDiagnosticAcknowledgments";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -180,7 +180,24 @@ public static class DatabaseStartupDiagnostics
         new("RolePageAccesses.AreaKey", "RolePageAccesses", "AreaKey", RequireNotNullable: true),
         new("RolePageAccesses.AccessLevel", "RolePageAccesses", "AccessLevel", RequireNotNullable: true),
         new("RolePageAccesses.UpdatedByUserId", "RolePageAccesses", "UpdatedByUserId", RequireNullable: true),
-        new("RolePageAccesses.UpdatedAt", "RolePageAccesses", "UpdatedAt", RequireNotNullable: true)
+        new("RolePageAccesses.UpdatedAt", "RolePageAccesses", "UpdatedAt", RequireNotNullable: true),
+        new("InventoryDiagnosticAcknowledgments", "InventoryDiagnosticAcknowledgments", null),
+        new("InventoryDiagnosticAcknowledgments.Id", "InventoryDiagnosticAcknowledgments", "Id", RequireNotNullable: true),
+        new("InventoryDiagnosticAcknowledgments.DiagnosticKey", "InventoryDiagnosticAcknowledgments", "DiagnosticKey", RequireNotNullable: true),
+        new("InventoryDiagnosticAcknowledgments.DiagnosticType", "InventoryDiagnosticAcknowledgments", "DiagnosticType", RequireNotNullable: true),
+        new("InventoryDiagnosticAcknowledgments.DiagnosticCode", "InventoryDiagnosticAcknowledgments", "DiagnosticCode", RequireNotNullable: true),
+        new("InventoryDiagnosticAcknowledgments.DiagnosticMessage", "InventoryDiagnosticAcknowledgments", "DiagnosticMessage", RequireNotNullable: true),
+        new("InventoryDiagnosticAcknowledgments.RoomInventoryAdjustmentId", "InventoryDiagnosticAcknowledgments", "RoomInventoryAdjustmentId", RequireNotNullable: true),
+        new("InventoryDiagnosticAcknowledgments.InvariantVersion", "InventoryDiagnosticAcknowledgments", "InvariantVersion", RequireNotNullable: true),
+        new("InventoryDiagnosticAcknowledgments.Reason", "InventoryDiagnosticAcknowledgments", "Reason", RequireNotNullable: true),
+        new("InventoryDiagnosticAcknowledgments.DiagnosticSnapshotJson", "InventoryDiagnosticAcknowledgments", "DiagnosticSnapshotJson", RequireNotNullable: true),
+        new("InventoryDiagnosticAcknowledgments.DismissedByUserId", "InventoryDiagnosticAcknowledgments", "DismissedByUserId", RequireNullable: true),
+        new("InventoryDiagnosticAcknowledgments.DismissedByEmail", "InventoryDiagnosticAcknowledgments", "DismissedByEmail", RequireNotNullable: true),
+        new("InventoryDiagnosticAcknowledgments.DismissedAt", "InventoryDiagnosticAcknowledgments", "DismissedAt", RequireNotNullable: true),
+        new("InventoryDiagnosticAcknowledgments.IsActive", "InventoryDiagnosticAcknowledgments", "IsActive", RequireNotNullable: true),
+        new("InventoryDiagnosticAcknowledgments.RestoredByUserId", "InventoryDiagnosticAcknowledgments", "RestoredByUserId", RequireNullable: true),
+        new("InventoryDiagnosticAcknowledgments.RestoredByEmail", "InventoryDiagnosticAcknowledgments", "RestoredByEmail", RequireNullable: true),
+        new("InventoryDiagnosticAcknowledgments.RestoredAt", "InventoryDiagnosticAcknowledgments", "RestoredAt", RequireNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
@@ -217,7 +234,12 @@ public static class DatabaseStartupDiagnostics
         new("IX_Roles_NormalizedName", "Roles", "IX_Roles_NormalizedName", RequireUnique: true),
         new("IX_UserRoles_UserId", "UserRoles", "IX_UserRoles_UserId", RequireUnique: true),
         new("IX_RolePageAccesses_RoleId_AreaKey", "RolePageAccesses", "IX_RolePageAccesses_RoleId_AreaKey", RequireUnique: true),
-        new("IX_RolePageAccesses_UpdatedByUserId", "RolePageAccesses", "IX_RolePageAccesses_UpdatedByUserId")
+        new("IX_RolePageAccesses_UpdatedByUserId", "RolePageAccesses", "IX_RolePageAccesses_UpdatedByUserId"),
+        new("IX_InventoryDiagnosticAck_Key", "InventoryDiagnosticAcknowledgments", "IX_InventoryDiagnosticAck_Key", RequireUnique: true),
+        new("IX_InventoryDiagnosticAck_DismissedBy", "InventoryDiagnosticAcknowledgments", "IX_InventoryDiagnosticAck_DismissedBy"),
+        new("IX_InventoryDiagnosticAck_ActiveAdjustment", "InventoryDiagnosticAcknowledgments", "IX_InventoryDiagnosticAck_ActiveAdjustment"),
+        new("IX_InventoryDiagnosticAck_RestoredBy", "InventoryDiagnosticAcknowledgments", "IX_InventoryDiagnosticAck_RestoredBy"),
+        new("IX_InventoryDiagnosticAck_Adjustment", "InventoryDiagnosticAcknowledgments", "IX_InventoryDiagnosticAck_Adjustment")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
@@ -248,7 +270,10 @@ public static class DatabaseStartupDiagnostics
         new("FK_EndOfDayFillReportSends_EndOfDayFillReportGroups_ReportGroupId", "EndOfDayFillReportSends", "FK_EndOfDayFillReportSends_EndOfDayFillReportGroups_ReportGroupId"),
         new("FK_EndOfDayFillSendReservations_EndOfDayFillReportSends_SendAttemptId", "EndOfDayFillSendReservations", "FK_EndOfDayFillSendReservations_EndOfDayFillReportSends_SendAttemptId"),
         new("FK_RolePageAccesses_Roles_RoleId", "RolePageAccesses", "FK_RolePageAccesses_Roles_RoleId"),
-        new("FK_RolePageAccesses_Users_UpdatedByUserId", "RolePageAccesses", "FK_RolePageAccesses_Users_UpdatedByUserId")
+        new("FK_RolePageAccesses_Users_UpdatedByUserId", "RolePageAccesses", "FK_RolePageAccesses_Users_UpdatedByUserId"),
+        new("FK_InventoryDiagnosticAck_Adjustment", "InventoryDiagnosticAcknowledgments", "FK_InventoryDiagnosticAck_Adjustment"),
+        new("FK_InventoryDiagnosticAck_DismissedBy", "InventoryDiagnosticAcknowledgments", "FK_InventoryDiagnosticAck_DismissedBy"),
+        new("FK_InventoryDiagnosticAck_RestoredBy", "InventoryDiagnosticAcknowledgments", "FK_InventoryDiagnosticAck_RestoredBy")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
@@ -263,7 +288,8 @@ public static class DatabaseStartupDiagnostics
         new("PK_EndOfDayFillUserGroupAssignments", "EndOfDayFillUserGroupAssignments", "PK_EndOfDayFillUserGroupAssignments"),
         new("PK_EndOfDayFillReportSends", "EndOfDayFillReportSends", "PK_EndOfDayFillReportSends"),
         new("PK_EndOfDayFillSendReservations", "EndOfDayFillSendReservations", "PK_EndOfDayFillSendReservations"),
-        new("PK_RolePageAccesses", "RolePageAccesses", "PK_RolePageAccesses")
+        new("PK_RolePageAccesses", "RolePageAccesses", "PK_RolePageAccesses"),
+        new("PK_InventoryDiagnosticAcknowledgments", "InventoryDiagnosticAcknowledgments", "PK_InventoryDiagnosticAcknowledgments")
     ];
 
     public static async Task InspectAsync(

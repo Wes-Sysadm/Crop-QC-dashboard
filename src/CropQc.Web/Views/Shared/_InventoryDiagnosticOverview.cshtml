@@ -1,0 +1,108 @@
+@model InventoryDiagnosticOverviewViewModel
+@{
+    var canManage = ViewData["CanManageInventoryDiagnostics"] as bool? == true;
+    var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
+}
+
+<section class="panel inventory-diagnostic-panel" aria-labelledby="inventory-diagnostic-heading">
+    <div class="page-heading compact-heading">
+        <div>
+            <h2 id="inventory-diagnostic-heading">Active inventory warnings</h2>
+            <p class="muted">Acknowledging a historical warning changes only this presentation. It never changes the room ledger, transaction evidence, or deployment readiness result.</p>
+        </div>
+        <a class="button secondary-button" href="/Admin/RoomInventory/Reconciliation">Open full reconciliation</a>
+    </div>
+
+    @if (Model.ActiveDiagnostics.Count == 0)
+    {
+        <p class="status ready">No active inventory deduction diagnostics.</p>
+    }
+    else
+    {
+        <div class="stack-list">
+            @foreach (var diagnostic in Model.ActiveDiagnostics)
+            {
+                <article class="notice @(diagnostic.BlocksDeployment ? "error" : "warning")" id="diagnostic-@diagnostic.DiagnosticKey">
+                    <div>
+                        <strong>@diagnostic.Code — adjustment #@diagnostic.AdjustmentId</strong>
+                        <span class="status @(diagnostic.BlocksDeployment ? "attention" : "review")">
+                            @(diagnostic.BlocksDeployment ? "Blocking" : "Historical / nonblocking")
+                        </span>
+                    </div>
+                    <p>@diagnostic.Message</p>
+                    <p class="muted">
+                        @diagnostic.Facility / @diagnostic.Room · Lot @diagnostic.Lot · @diagnostic.Variety · invariant v@(diagnostic.InvariantVersion) · @BusinessTime.FormatPacific(diagnostic.AdjustmentAt)
+                    </p>
+                    <a href="/Admin/RoomInventory/Reconciliation?WarehouseId=@diagnostic.WarehouseId&RoomId=@diagnostic.RoomId#adjustment-@diagnostic.AdjustmentId">Open adjustment evidence</a>
+                    @if (canManage && diagnostic.CanDismiss)
+                    {
+                        <form method="post"
+                              action="/Admin/RoomInventory/Diagnostics/Dismiss"
+                              class="toolbar diagnostic-action-form"
+                              onsubmit="return confirm('Dismiss @diagnostic.Code for adjustment #@diagnostic.AdjustmentId from the active warning view? This does not alter inventory or readiness checks.');">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="DiagnosticKey" value="@diagnostic.DiagnosticKey" />
+                            <input type="hidden" name="ReturnUrl" value="@returnUrl" />
+                            <label class="field grow-field">Dismissal reason
+                                <input name="Reason" required minlength="@InventoryDiagnosticAcknowledgmentService.MinimumReasonLength" maxlength="500" />
+                            </label>
+                            <button type="submit" class="secondary-button">Dismiss warning</button>
+                        </form>
+                    }
+                    else if (diagnostic.BlocksDeployment)
+                    {
+                        <p class="muted"><strong>This blocking diagnostic cannot be dismissed.</strong> Correct its source evidence before release.</p>
+                    }
+                </article>
+            }
+        </div>
+    }
+
+    <details class="dismissed-diagnostics">
+        <summary>Dismissed warnings (@Model.DismissedDiagnostics.Count)</summary>
+        @if (Model.DismissedDiagnostics.Count == 0)
+        {
+            <p class="muted">No historical warnings have been dismissed.</p>
+        }
+        else
+        {
+            <div class="stack-list">
+                @foreach (var diagnostic in Model.DismissedDiagnostics)
+                {
+                    <article class="panel nested-panel">
+                        <strong>@diagnostic.Code — adjustment #@diagnostic.AdjustmentId</strong>
+                        <p>@diagnostic.Message</p>
+                        <dl class="compact-definition-list">
+                            <dt>Reason</dt>
+                            <dd>@diagnostic.Reason</dd>
+                            <dt>Dismissed by</dt>
+                            <dd>@diagnostic.DismissedByEmail</dd>
+                            <dt>Dismissed at</dt>
+                            <dd>@BusinessTime.FormatPacific(diagnostic.DismissedAt)</dd>
+                            <dt>Current match</dt>
+                            <dd>@(diagnostic.StillMatchesCurrentDiagnostic ? "Still matches this exact diagnostic fingerprint" : "No longer matches current ledger evidence")</dd>
+                        </dl>
+                        <p>
+                            <a href="/Admin/RoomInventory/Reconciliation?WarehouseId=@diagnostic.WarehouseId&RoomId=@diagnostic.RoomId#adjustment-@diagnostic.AdjustmentId">Open original adjustment evidence</a>
+                        </p>
+                        <details>
+                            <summary>Original warning snapshot</summary>
+                            <pre class="diagnostic-snapshot">@diagnostic.DiagnosticSnapshotJson</pre>
+                        </details>
+                        @if (canManage)
+                        {
+                            <form method="post"
+                                  action="/Admin/RoomInventory/Diagnostics/Restore"
+                                  onsubmit="return confirm('Restore @diagnostic.Code for adjustment #@diagnostic.AdjustmentId to the active warning view?');">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="DiagnosticKey" value="@diagnostic.DiagnosticKey" />
+                                <input type="hidden" name="ReturnUrl" value="@returnUrl" />
+                                <button type="submit" class="secondary-button">Restore warning</button>
+                            </form>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </details>
+</section>

@@ -9,6 +9,7 @@ namespace CropQc.Web.Controllers;
 public sealed class RoomInventoryController(
     IRoomInventoryImportService roomInventoryImportService,
     IRoomInventoryReconciliationService reconciliationService,
+    IInventoryDiagnosticAcknowledgmentService inventoryDiagnosticAcknowledgmentService,
     IAdminAuthorizationService authorizationService,
     IUserAccessService userAccessService,
     ILogger<RoomInventoryController> logger) : Controller
@@ -19,7 +20,9 @@ public sealed class RoomInventoryController(
     {
         try
         {
-            return View(await roomInventoryImportService.GetPageAsync(filter, cancellationToken));
+            var model = await roomInventoryImportService.GetPageAsync(filter, cancellationToken);
+            await PopulateInventoryDiagnosticsAsync(model, cancellationToken);
+            return View(model);
         }
         catch (Exception ex)
         {
@@ -33,6 +36,51 @@ public sealed class RoomInventoryController(
         [FromQuery] RoomInventoryReconciliationFilter filter,
         CancellationToken cancellationToken) =>
         View(await reconciliationService.GetPageAsync(filter, cancellationToken));
+
+    [HttpPost("Diagnostics/Dismiss")]
+    [Authorize(Policy = AccessPolicyNames.CurrentLotsAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DismissDiagnostic(
+        InventoryDiagnosticDismissForm form,
+        CancellationToken cancellationToken)
+    {
+        var result = await inventoryDiagnosticAcknowledgmentService.DismissAsync(
+            form.DiagnosticKey,
+            form.Reason,
+            authorizationService.GetEmail(User) ?? "",
+            cancellationToken);
+        if (!result.Succeeded)
+        {
+            TempData["Error"] = result.Error;
+        }
+        else
+        {
+            TempData["Success"] = $"{result.DiagnosticLabel} dismissed from the active warning view. The ledger and readiness result were not changed.";
+        }
+        return RedirectToDiagnosticReturnUrl(form.ReturnUrl);
+    }
+
+    [HttpPost("Diagnostics/Restore")]
+    [Authorize(Policy = AccessPolicyNames.CurrentLotsAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RestoreDiagnostic(
+        InventoryDiagnosticRestoreForm form,
+        CancellationToken cancellationToken)
+    {
+        var result = await inventoryDiagnosticAcknowledgmentService.RestoreAsync(
+            form.DiagnosticKey,
+            authorizationService.GetEmail(User) ?? "",
+            cancellationToken);
+        if (!result.Succeeded)
+        {
+            TempData["Error"] = result.Error;
+        }
+        else
+        {
+            TempData["Success"] = $"{result.DiagnosticLabel} restored to the active warning view.";
+        }
+        return RedirectToDiagnosticReturnUrl(form.ReturnUrl);
+    }
 
     [HttpGet("Template")]
     [Authorize(Policy = AccessPolicyNames.CurrentLotsView)]
@@ -52,6 +100,7 @@ public sealed class RoomInventoryController(
         {
             var preview = await roomInventoryImportService.PreviewAsync(form, cancellationToken);
             var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
+            await PopulateInventoryDiagnosticsAsync(model, cancellationToken);
             model.ImportPreview = preview;
             return View("Index", model);
         }
@@ -75,6 +124,7 @@ public sealed class RoomInventoryController(
         {
             var preview = await roomInventoryImportService.PreviewAsync(form, cancellationToken);
             var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
+            await PopulateInventoryDiagnosticsAsync(model, cancellationToken);
             model.ImportPreview = preview;
             return View("Index", model);
         }
@@ -101,6 +151,7 @@ public sealed class RoomInventoryController(
             {
                 TempData["Error"] = error;
                 var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
+                await PopulateInventoryDiagnosticsAsync(model, cancellationToken);
                 model.ImportPreview = preview;
                 return View("Index", model);
             }
@@ -120,6 +171,7 @@ public sealed class RoomInventoryController(
         logger.LogError(exception, "Current Inventory Baseline import {Stage} failed. Reference {ReferenceId}.", stage, referenceId);
         TempData["Error"] = $"Current Inventory Baseline import failed during {stage}. Reference {referenceId}. The full exception was logged for troubleshooting.";
         var model = await roomInventoryImportService.GetPageAsync(form, cancellationToken);
+        await PopulateInventoryDiagnosticsAsync(model, cancellationToken);
         model.ImportPreview = RoomInventoryImportService.ServerFailurePreview(referenceId, "The full server error was logged without exposing secrets.");
         return View("Index", model);
     }
@@ -148,4 +200,22 @@ public sealed class RoomInventoryController(
 
     private async Task<bool> CanApplyEbsCorrectionSeedAsync(CancellationToken cancellationToken) =>
         await userAccessService.HasAccessAsync(User, ApplicationAreas.CurrentLots, PageAccessLevel.Admin, cancellationToken);
+
+    private async Task PopulateInventoryDiagnosticsAsync(
+        RoomInventoryImportPageViewModel model,
+        CancellationToken cancellationToken)
+    {
+        model.InventoryDiagnostics = await inventoryDiagnosticAcknowledgmentService.GetOverviewAsync(
+            new RoomInventoryReconciliationFilter(),
+            cancellationToken);
+        model.CanManageInventoryDiagnostics = await CanApplyEbsCorrectionSeedAsync(cancellationToken);
+    }
+
+    private IActionResult RedirectToDiagnosticReturnUrl(string? returnUrl)
+    {
+        var target = !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)
+            ? returnUrl
+            : "/Admin/RoomInventory/Reconciliation";
+        return Redirect(target);
+    }
 }

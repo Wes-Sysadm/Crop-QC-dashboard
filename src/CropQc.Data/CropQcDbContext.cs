@@ -42,6 +42,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<ReceiptInventoryOverride> ReceiptInventoryOverrides => Set<ReceiptInventoryOverride>();
     public DbSet<RoomDepletion> RoomDepletions => Set<RoomDepletion>();
     public DbSet<RoomInventoryAdjustment> RoomInventoryAdjustments => Set<RoomInventoryAdjustment>();
+    public DbSet<InventoryDiagnosticAcknowledgment> InventoryDiagnosticAcknowledgments => Set<InventoryDiagnosticAcknowledgment>();
     public DbSet<RoomTransfer> RoomTransfers => Set<RoomTransfer>();
     public DbSet<BinsRunEntry> BinsRunEntries => Set<BinsRunEntry>();
     public DbSet<ActualRun> ActualRuns => Set<ActualRun>();
@@ -1770,6 +1771,44 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.SourceApplication).HasMaxLength(100);
             entity.HasIndex(x => new { x.EntityName, x.EntityKey });
             entity.HasIndex(x => x.CreatedAt);
+        });
+
+        modelBuilder.Entity<InventoryDiagnosticAcknowledgment>(entity =>
+        {
+            entity.Property(x => x.DiagnosticKey).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.DiagnosticType).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.DiagnosticCode).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.DiagnosticMessage).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.DiagnosticSnapshotJson).HasMaxLength(4000).IsRequired();
+            entity.Property(x => x.DismissedByEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.RestoredByEmail).HasMaxLength(320);
+            entity.HasIndex(x => x.DiagnosticKey)
+                .HasDatabaseName("IX_InventoryDiagnosticAck_Key")
+                .IsUnique();
+            entity.HasIndex(x => new { x.IsActive, x.RoomInventoryAdjustmentId })
+                .HasDatabaseName("IX_InventoryDiagnosticAck_ActiveAdjustment");
+            entity.HasIndex(x => x.RoomInventoryAdjustmentId)
+                .HasDatabaseName("IX_InventoryDiagnosticAck_Adjustment");
+            entity.HasIndex(x => x.DismissedByUserId)
+                .HasDatabaseName("IX_InventoryDiagnosticAck_DismissedBy");
+            entity.HasIndex(x => x.RestoredByUserId)
+                .HasDatabaseName("IX_InventoryDiagnosticAck_RestoredBy");
+            entity.HasOne(x => x.RoomInventoryAdjustment)
+                .WithMany(x => x.DiagnosticAcknowledgments)
+                .HasForeignKey(x => x.RoomInventoryAdjustmentId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_InventoryDiagnosticAck_Adjustment");
+            entity.HasOne(x => x.DismissedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.DismissedByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("FK_InventoryDiagnosticAck_DismissedBy");
+            entity.HasOne(x => x.RestoredByUser)
+                .WithMany()
+                .HasForeignKey(x => x.RestoredByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("FK_InventoryDiagnosticAck_RestoredBy");
         });
     }
 

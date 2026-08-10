@@ -308,7 +308,7 @@ public sealed class RoomSummaryDepletionTests
         var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
         var binsRun = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
 
-        Assert.Contains("<a asp-controller=\"Home\" asp-action=\"Rooms\" asp-route-facility=\"@facilityRouteValue\">Rooms</a>", layout);
+        Assert.Contains("<a asp-controller=\"Home\" asp-action=\"Rooms\" asp-route-facility=\"@facilityRouteValue\">Room Overview</a>", layout);
         Assert.Contains("[HttpGet(\"/Rooms\")]", controller);
         Assert.Contains("[HttpGet(\"/Rooms/{roomId:int}\")]", controller);
         Assert.Contains("RoomsPageViewModel", model);
@@ -601,7 +601,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("InventoryStatus", model);
         Assert.Contains("Current inventory baseline; no receipt history yet.", partial);
         Assert.Contains("/Admin/RoomInventory", layout);
-        Assert.Contains("Current Lots", layout);
+        Assert.Contains("Current Room Inventory", layout);
     }
 
     [Fact]

@@ -155,7 +155,7 @@ public sealed class StoragePresentationTests
         Assert.Contains("HistoricalInventoryCleanupAdmin", controller);
         Assert.Contains("[HttpGet(\"\")]", controller);
         Assert.DoesNotContain("[HttpPost", controller);
-        Assert.Contains("EBS Historical Cleanup", layout);
+        Assert.DoesNotContain("EBS Historical Cleanup", layout);
         Assert.Contains("Historical, read-only review", view);
         Assert.DoesNotContain("<form", view, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Apply cleanup", view, StringComparison.OrdinalIgnoreCase);
