@@ -104,6 +104,7 @@ public static class July28ActualRunExpectationBackfillConstants
     public const string ApplyAuthorizationToken = "APPLY_REVIEWED_JULY_28_ACTUAL_RUN_EXPECTATION_BACKFILL";
     public const string AuditEntityName = "July28ActualRunExpectationBackfill";
     public const string AuditEntityKey = "actual-run-1-revision-1-expectation";
+    public const string HistoricalReconstructionPackageIdentifier = "July28ActualRunExpectationBackfill:2026-07-28";
     public const string HistoricalOperatorEmail = "alexis@wp-packing.com";
     public const long VerifiedRestoreBackupRunId = 62;
     public const string VerifiedRestorePackageSha256 = "af54589c20c5921681a00f9e01cad801907673fc4bc6f42bfb6d8b81e03603ba";
@@ -321,12 +322,13 @@ public sealed class July28ActualRunExpectationBackfillService(
                 .OrderBy(x => x.Id)
                 .ToListAsync(cancellationToken);
             var now = businessTime.UtcNow;
-            var expectation = await runExpectationService.CreateFrozenAsync(
+            var expectation = await runExpectationService.CreateHistoricalReconstructionAsync(
                 run,
                 revision,
                 entries,
                 correctionAdmin.Id,
                 now,
+                July28ActualRunExpectationBackfillConstants.HistoricalReconstructionPackageIdentifier,
                 cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -362,7 +364,7 @@ public sealed class July28ActualRunExpectationBackfillService(
                     HistoricalOperator = July28ActualRunExpectationBackfillConstants.HistoricalOperatorEmail,
                     CorrectionAdministrator = correctionAdmin.Email,
                     Reason = request.Reason.Trim(),
-                    Semantics = "Historical frozen-expectation backfill calculated at execution time using current authoritative calculation code."
+                    Semantics = "Historical reconstruction calculated at execution time using current authoritative calculation code and current configuration, with QC evidence bounded by the physical RunAt."
                 }, JsonOptions),
                 SourceApplication = "CropQc.Web reviewed July 28 expectation backfill command",
                 CreatedAt = now
@@ -389,7 +391,7 @@ public sealed class July28ActualRunExpectationBackfillService(
                 expectation.CalculatedAt,
                 backup!.Id,
                 correctionAdmin.Email);
-            return new(true, true, false, "The exact reviewed historical frozen-expectation backfill completed successfully.", expectation.Id, expectation.Sources.Count, postflight);
+            return new(true, true, false, "The exact reviewed historical expectation reconstruction completed successfully.", expectation.Id, expectation.Sources.Count, postflight);
         }
         catch (Exception exception)
         {
@@ -561,6 +563,14 @@ public sealed class July28ActualRunExpectationBackfillService(
         {
             issues.Add("The existing Run Expectation does not match the reviewed historical backfill structure.");
         }
+        if (!RunExpectationMetadata.TryGetHistoricalReconstruction(expectation.ConfigurationSnapshotJson, out var metadata)
+            || metadata!.PhysicalRunAt != HistoricalRunAt
+            || metadata.QcEvidenceCutoff != HistoricalRunAt
+            || metadata.ReconstructedAt != expectation.CalculatedAt
+            || metadata.CorrectionPackageIdentifier != July28ActualRunExpectationBackfillConstants.HistoricalReconstructionPackageIdentifier)
+        {
+            issues.Add("The existing Run Expectation is missing its exact historical reconstruction metadata.");
+        }
         if (expectation.Sources.Count != 1)
         {
             issues.Add("The existing Run Expectation must have exactly one source.");
@@ -580,6 +590,7 @@ public sealed class July28ActualRunExpectationBackfillService(
                 || source.VarietySnapshot != "Bartlett"
                 || source.ProductionTypeSnapshot != "Conventional"
                 || source.IsOrganicSnapshot
+                || source.QcSampleTakenAtSnapshot > HistoricalRunAt
                 || source.BinsContributed != 184
                 || source.ContributionPercent != 100m)
             {

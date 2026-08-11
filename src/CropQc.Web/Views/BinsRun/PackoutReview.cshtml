@@ -36,12 +36,16 @@
 
 <section class="panel">
     <h2>Status: @Model.Status</h2>
+    @if (Model.IsHistoricalReconstruction)
+    {
+        <p class="notice warning" role="alert">This comparison uses a benchmark reconstructed after the physical run from configuration available at reconstruction time. It is not a pre-run projection, so the displayed score is a reconstructed benchmark score rather than projection accuracy.</p>
+    }
     <div class="room-summary-metrics">
         <div class="metric-card"><span class="metric-label">Packing run</span><strong>@Model.PackingDate.ToString("MMM d, yyyy")</strong><span>@Model.Facility · Run @Model.RunNumber</span></div>
         <div class="metric-card"><span class="metric-label">Dumped</span><strong>@Model.DumpedBins.ToString("0.##") bins</strong><span>@Model.DumpedPounds.ToString("0.##") lb</span></div>
         <div class="metric-card"><span class="metric-label">Packed product</span><strong>@Model.PackedProductPounds.ToString("0.##") lb</strong><span>@(Model.ActualPackoutPercent?.ToString("0.##") ?? "—")% packout</span></div>
         <div class="metric-card"><span class="metric-label">Secondary output</span><strong>@((Model.JuicePounds + Model.PeelerSlicerPounds + Model.WastePounds).ToString("0.##")) lb</strong><span>Juice @Model.JuicePounds.ToString("0.##") · Peeler/Slicer @Model.PeelerSlicerPounds.ToString("0.##") · Waste @Model.WastePounds.ToString("0.##")</span></div>
-        <div class="metric-card"><span class="metric-label">Projection accuracy</span><strong>@(Model.OverallAccuracyScore?.ToString("0.##") ?? "—")%</strong><span>Weighted size, grade, packout, and secondary outputs</span></div>
+        <div class="metric-card"><span class="metric-label">@(Model.IsHistoricalReconstruction ? "Reconstructed benchmark score" : "Projection accuracy")</span><strong>@(Model.OverallAccuracyScore?.ToString("0.##") ?? "—")%</strong><span>Weighted size, grade, packout, and secondary outputs</span></div>
     </div>
     @if (Model.HasReconciliationWarning)
     {

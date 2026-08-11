@@ -34,7 +34,7 @@ public sealed class ActualRunDetailHttpIntegrationTests
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
-            actualRunId = await SeedPackoutActualRunAsync(db);
+            actualRunId = await SeedPackoutActualRunAsync(db, historicalReconstruction: true);
             adjustmentCountBefore = await db.RoomInventoryAdjustments.CountAsync();
             adjustmentQuantityBefore = await db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount);
         }
@@ -44,6 +44,9 @@ public sealed class ActualRunDetailHttpIntegrationTests
         var detail = await client.GetAsync($"/BinsRun/ActualRuns/{actualRunId}");
         Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
         var detailHtml = await detail.Content.ReadAsStringAsync();
+        Assert.Contains("Historical Reconstructed Benchmark", detailHtml, StringComparison.Ordinal);
+        Assert.Contains("This benchmark was reconstructed after the physical run", detailHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("No eligible size observations were available when this expectation was frozen", detailHtml, StringComparison.Ordinal);
         var tokenMatch = Regex.Match(detailHtml, "name=\"__RequestVerificationToken\"[^>]*value=\"(?<token>[^\"]+)\"");
         Assert.True(tokenMatch.Success, "Actual Run detail did not render an antiforgery token for Packout upload.");
         var token = WebUtility.HtmlDecode(tokenMatch.Groups["token"].Value);
@@ -53,6 +56,11 @@ public sealed class ActualRunDetailHttpIntegrationTests
         Assert.Equal(HttpStatusCode.Redirect, firstResponse.StatusCode);
         var reviewLocation = firstResponse.Headers.Location?.OriginalString;
         Assert.Matches("^/BinsRun/Packout/[0-9]+$", reviewLocation ?? "");
+        var reviewResponse = await client.GetAsync(reviewLocation);
+        Assert.Equal(HttpStatusCode.OK, reviewResponse.StatusCode);
+        var reviewHtml = await reviewResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Reconstructed benchmark score", reviewHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain(">Projection accuracy<", reviewHtml, StringComparison.Ordinal);
 
         using (var scope = factory.Services.CreateScope())
         {
@@ -189,7 +197,7 @@ public sealed class ActualRunDetailHttpIntegrationTests
         return content;
     }
 
-    private static async Task<long> SeedPackoutActualRunAsync(CropQcDbContext db)
+    private static async Task<long> SeedPackoutActualRunAsync(CropQcDbContext db, bool historicalReconstruction = false)
     {
         var now = DateTimeOffset.Parse("2026-07-28T16:00:00Z");
         var user = new User
@@ -294,6 +302,14 @@ public sealed class ActualRunDetailHttpIntegrationTests
             CalculationVersion = RunExpectationCalculationVersions.Current,
             CalculatedAt = now
         };
+        if (historicalReconstruction)
+        {
+            RunExpectationMetadata.MarkHistoricalReconstruction(
+                expectation,
+                now.AddDays(11),
+                actualRun.RunAt,
+                "http-test-reconstruction");
+        }
         expectation.Sources.Add(new RunExpectationSource
         {
             Id = 9651,

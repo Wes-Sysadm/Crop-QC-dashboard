@@ -45,9 +45,20 @@ public sealed class PackoutFeedbackWorkbookService(
 
     private static IEnumerable<IReadOnlyList<string?>> Rows(PackoutRun run)
     {
+        var isHistoricalReconstruction = RunExpectationMetadata.TryGetHistoricalReconstruction(
+            run.RunExpectation?.ConfigurationSnapshotJson,
+            out var reconstruction);
         yield return new string?[] { "Crop QC Packout Feedback" };
         yield return new string?[] { "Actual Run", run.ActualRunId?.ToString(CultureInfo.InvariantCulture) ?? "Legacy" };
         yield return new string?[] { "Run Expectation", run.RunExpectationId?.ToString(CultureInfo.InvariantCulture) ?? "Legacy projection snapshot" };
+        yield return new string?[] { "Expectation basis", isHistoricalReconstruction ? "Historical reconstructed benchmark" : "Original run expectation" };
+        if (isHistoricalReconstruction)
+        {
+            yield return new string?[] { "Reconstruction notice", "Reconstructed after the physical run using configuration available at reconstruction time; not an original pre-run forecast." };
+            yield return new string?[] { "Physical run at", reconstruction!.PhysicalRunAt.ToString("O", CultureInfo.InvariantCulture) };
+            yield return new string?[] { "QC evidence cutoff", reconstruction.QcEvidenceCutoff.ToString("O", CultureInfo.InvariantCulture) };
+            yield return new string?[] { "Reconstructed at", reconstruction.ReconstructedAt.ToString("O", CultureInfo.InvariantCulture) };
+        }
         yield return new string?[] { "Facility", run.FacilitySnapshot };
         yield return new string?[] { "Packing date", run.PackingDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) };
         yield return new string?[] { "Run number", run.RunNumber.ToString(CultureInfo.InvariantCulture) };
@@ -63,12 +74,12 @@ public sealed class PackoutFeedbackWorkbookService(
         yield return new string?[] { "Juice pounds", Format(run.JuicePounds) };
         yield return new string?[] { "Peeler/Slicer pounds", Format(run.PeelerSlicerPounds) };
         yield return new string?[] { "Waste pounds", Format(run.WastePounds) };
-        yield return new string?[] { "Overall accuracy score", Format(run.OverallAccuracyScore) };
+        yield return new string?[] { isHistoricalReconstruction ? "Overall reconstructed benchmark score" : "Overall accuracy score", Format(run.OverallAccuracyScore) };
         yield return new string?[] { "Reconciliation difference pounds", Format(run.ReconciliationDifferencePounds) };
         yield return new string?[] { "Reconciliation warning", run.HasReconciliationWarning ? "Yes - exceeds 10% of dumped pounds" : "No" };
         yield return new string?[] { "Calculation version", run.CalculationVersion };
         yield return Array.Empty<string?>();
-        yield return new string?[] { "Run Expectation source snapshots" };
+        yield return new string?[] { isHistoricalReconstruction ? "Historical reconstruction source snapshots" : "Run Expectation source snapshots" };
         yield return new string?[] { "Source ID", "Grower", "Lot", "Room", "Variety", "Bins contributed", "Contribution %", "QC fruit", "Confidence %", "Bins Run ID", "QC sample ID" };
         if (run.RunExpectation is not null)
         {
@@ -111,7 +122,7 @@ public sealed class PackoutFeedbackWorkbookService(
             }
         }
         yield return Array.Empty<string?>();
-        yield return new string?[] { "Accuracy components" };
+        yield return new string?[] { isHistoricalReconstruction ? "Reconstructed benchmark components" : "Accuracy components" };
         yield return new string?[] { "Size", Format(run.SizeAccuracyScore) };
         yield return new string?[] { "Grade", Format(run.GradeAccuracyScore) };
         yield return new string?[] { "Packout", Format(run.PackoutAccuracyScore) };

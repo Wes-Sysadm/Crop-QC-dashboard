@@ -1,6 +1,6 @@
-# July 28, 2026 Actual Run #1 frozen-expectation backfill
+# July 28, 2026 Actual Run #1 historical expectation reconstruction
 
-This operation is limited to the reviewed existing July 28, 2026 WP Actual Run #1 and current revision #1. It is not an Actual Run conversion and does not create or change inventory movement. It adds only the missing frozen `RunExpectation`, its source rows, and one correction audit.
+This operation is limited to the reviewed existing July 28, 2026 WP Actual Run #1 and current revision #1. It is not an Actual Run conversion and does not create or change inventory movement. It adds only the missing historically reconstructed `RunExpectation`, its source rows, and one correction audit.
 
 The command is a dry run unless `--apply` is supplied. Any preflight issue is a hard stop. Do not change the reviewed constants or weaken a refusal during operations.
 
@@ -61,7 +61,13 @@ Package: `cropqc-production-predeployment-20260811-035656.zip`, 1,889,970 bytes.
 
 ## Timestamp and audit semantics
 
-`IRunExpectationService.CreateFrozenAsync` performs the calculation using current authoritative code and configuration. `RunAtSnapshot` remains the historical run time. `CalculatedAt`, audit `CreatedAt`, and the expectation creator truthfully record the backfill execution time and correction administrator. The audit separately preserves Alexis as the historical operator. No timestamp is falsified to July 28.
+`IRunExpectationService.CreateHistoricalReconstructionAsync` performs the calculation using current authoritative code and configuration. `RunAtSnapshot` remains the historical run time. `CalculatedAt`, `ReconstructedAt`, audit `CreatedAt`, and the expectation creator truthfully record the backfill execution time and correction administrator. The audit separately preserves Alexis as the historical operator. No timestamp is falsified to July 28.
+
+The durable marker in `ConfigurationSnapshotJson` records `ExpectationBasis=HistoricalReconstruction`, `PhysicalRunAt=2026-07-29T00:31:00Z`, `QcEvidenceCutoff=PhysicalRunAt`, `ConfigurationBasis=CurrentConfigurationAtReconstruction`, and package identifier `July28ActualRunExpectationBackfill:2026-07-28`. The UI, workbook, and final email derive reconstructed-benchmark wording from this marker; no run ID is hard-coded into presentation logic.
+
+Run-62 contains exact eligible QC evidence before the physical run. For Room 4 / crop 2026 / profile 17 / lot 1084, sample `123` at `2026-07-28T23:50:35.035842Z` with 20 readings is the latest sample at or before `2026-07-29T00:31:00Z`. Sample `140` on receipt 122 was taken later on July 30 and is excluded, as are all other post-run samples.
+
+The same four database-backed calculation settings listed in the July 27 runbook were created July 24 and have `UpdatedAt=NULL`, so their values (880, 920, 85%, and 10) are proven unchanged across both physical runs. The result is still labeled a historical reconstruction because no contemporaneous calculated expectation was persisted.
 
 ## Permitted writes
 

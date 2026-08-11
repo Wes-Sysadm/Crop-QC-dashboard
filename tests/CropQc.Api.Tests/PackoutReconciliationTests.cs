@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Security.Claims;
 using System.Text;
+using System.IO.Compression;
 
 namespace CropQc.Api.Tests;
 
@@ -420,6 +421,11 @@ public sealed class PackoutReconciliationTests
             CalculationVersion = RunExpectationCalculationVersions.Current,
             CalculatedAt = now
         };
+        RunExpectationMetadata.MarkHistoricalReconstruction(
+            expectation,
+            now.AddDays(11),
+            actualRun.RunAt,
+            "packout-test-reconstruction");
         expectation.Sources.Add(new RunExpectationSource
         {
             Id = 9204,
@@ -499,6 +505,7 @@ public sealed class PackoutReconciliationTests
         Assert.Null(upload.Error);
         var review = await service.GetAsync(upload.Id!.Value, principal, CancellationToken.None);
         Assert.NotNull(review);
+        Assert.True(review.IsHistoricalReconstruction);
         Assert.Single(review.Sources);
         Assert.Single(review.Lines);
         Assert.True(review.Lines[0].RequiresReview);
@@ -530,6 +537,20 @@ public sealed class PackoutReconciliationTests
         Assert.Null(finalized.Error);
         Assert.NotNull(finalized.Workbook);
         Assert.Single(emailSender.Messages);
+        var message = Assert.Single(emailSender.Messages);
+        Assert.Contains("This benchmark was reconstructed after the physical run", message.TextBody, StringComparison.Ordinal);
+        Assert.Contains("Reconstructed benchmark components", message.TextBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("Packout: projected", message.TextBody, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Overall reconstructed benchmark score", message.HtmlBody, StringComparison.Ordinal);
+        using (var workbookStream = new MemoryStream(finalized.Workbook))
+        using (var archive = new ZipArchive(workbookStream, ZipArchiveMode.Read))
+        using (var reader = new StreamReader(archive.GetEntry("xl/worksheets/sheet1.xml")!.Open()))
+        {
+            var worksheet = reader.ReadToEnd();
+            Assert.Contains("Historical reconstructed benchmark", worksheet, StringComparison.Ordinal);
+            Assert.Contains("Overall reconstructed benchmark score", worksheet, StringComparison.Ordinal);
+            Assert.Contains("Reconstructed benchmark components", worksheet, StringComparison.Ordinal);
+        }
         Assert.Equal(PackoutRunStatuses.Finalized, (await db.PackoutRuns.SingleAsync()).Status);
         Assert.Single(await db.PackoutSourceAllocations.ToListAsync());
         Assert.Equal(inventoryCountBefore, await db.RoomInventoryAdjustments.CountAsync());

@@ -59,6 +59,12 @@ public sealed class RunExpectationViewModel
         new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
     public string CalculationVersion { get; set; } = "";
     public DateTimeOffset CalculatedAt { get; set; }
+    public bool IsHistoricalReconstruction { get; set; }
+    public DateTimeOffset? ReconstructedAt { get; set; }
+    public DateTimeOffset? PhysicalRunAt { get; set; }
+    public DateTimeOffset? QcEvidenceCutoff { get; set; }
+    public string? ConfigurationBasis { get; set; }
+    public string? CorrectionPackageIdentifier { get; set; }
 }
 
 public sealed class ActualRunPackoutViewModel

@@ -268,6 +268,7 @@ public sealed class PackoutReconciliationService(
         var hasEditAccess = await CanEditAsync(principal, cancellationToken);
         var canEdit = hasEditAccess && run.Status != PackoutRunStatuses.Finalized;
         var canAdmin = await accessService.HasAccessAsync(principal, ApplicationAreas.PackoutResults, PageAccessLevel.Admin, cancellationToken);
+        RunExpectationMetadata.TryGetHistoricalReconstruction(run.RunExpectation?.ConfigurationSnapshotJson, out var reconstruction);
         return new PackoutRunViewModel
         {
             Id = run.Id,
@@ -298,6 +299,9 @@ public sealed class PackoutReconciliationService(
             SupplementalWasteBins = run.PoundsPerBin <= 0m ? 0m : (run.SupplementalWastePounds ?? 0m) / run.PoundsPerBin,
             ActualPackoutPercent = run.ActualPackoutPercent,
             OverallAccuracyScore = run.OverallAccuracyScore,
+            IsHistoricalReconstruction = reconstruction is not null,
+            PhysicalRunAt = reconstruction?.PhysicalRunAt,
+            ReconstructedAt = reconstruction?.ReconstructedAt,
             ReconciliationDifferencePounds = run.ReconciliationDifferencePounds,
             HasReconciliationWarning = run.HasReconciliationWarning,
             ConcurrencyVersion = run.ConcurrencyVersion,
@@ -1092,6 +1096,14 @@ public sealed class PackoutReconciliationService(
     private (string Text, string Html) BuildEmailBodies(PackoutRun run)
     {
         var title = run.ReopenedAt is null ? "Final Packout Result" : "Updated Packout Result";
+        var isHistoricalReconstruction = RunExpectationMetadata.TryGetHistoricalReconstruction(
+            run.RunExpectation?.ConfigurationSnapshotJson,
+            out _);
+        var comparisonLabel = isHistoricalReconstruction ? "Reconstructed benchmark" : "Projected";
+        var componentLabel = isHistoricalReconstruction ? "Reconstructed benchmark components" : "Accuracy";
+        var overallLabel = isHistoricalReconstruction ? "Overall reconstructed benchmark score" : "Official overall score";
+        var evidenceLabel = isHistoricalReconstruction ? "historical reconstruction evidence" : "projection evidence";
+        const string reconstructionNotice = "This benchmark was reconstructed after the physical run using configuration available at reconstruction time. It is not an original pre-run forecast.";
         var production = run.IsOrganicSnapshot ? "Organic" : "Conventional";
         var siteBase = configuration["PublicBaseUrl"] ?? configuration["QcStation:ApiBaseUrl"];
         var analysisUrl = Uri.TryCreate(siteBase?.TrimEnd('/'), UriKind.Absolute, out var baseUri)
@@ -1109,7 +1121,7 @@ public sealed class PackoutReconciliationService(
                 .ToList()
             ?? [];
         var oddity = run.HasReconciliationWarning
-            ? $"Oddity: packed plus secondary output differs from dumped weight by {run.ReconciliationDifferencePounds:0.##} lb (more than 10%). This does not reduce the accuracy score."
+            ? $"Oddity: packed plus secondary output differs from dumped weight by {run.ReconciliationDifferencePounds:0.##} lb (more than 10%). This does not reduce the {(isHistoricalReconstruction ? "benchmark" : "accuracy")} score."
             : $"Weight reconciliation difference: {run.ReconciliationDifferencePounds:0.##} lb.";
 
         var text = new StringBuilder()
@@ -1119,31 +1131,33 @@ public sealed class PackoutReconciliationService(
             .AppendLine($"Variety: {run.VarietySnapshot} ({production})")
             .AppendLine($"Grower lots / rooms: {string.Join("; ", sources)}")
             .AppendLine($"Dumped: {run.DumpedBins:0.##} bins / {run.DumpedPounds:0.##} lb")
-            .AppendLine($"Packout: projected {ProjectedPackout(run):0.##}% / actual {run.ActualPackoutPercent:0.##}%")
+            .Append(isHistoricalReconstruction ? $"Historical reconstruction: {reconstructionNotice}{Environment.NewLine}" : "")
+            .AppendLine($"Packout: {comparisonLabel.ToLowerInvariant()} {ProjectedPackout(run):0.##}% / actual {run.ActualPackoutPercent:0.##}%")
             .AppendLine($"Secondary outputs: Juice {run.ActualJuicePercent:0.##}%; Peeler/Slicer {run.ActualPeelerSlicerPercent:0.##}%; Waste {run.ActualWastePercent:0.##}%")
-            .AppendLine($"Accuracy: Size {run.SizeAccuracyScore:0.##}%; Grade {run.GradeAccuracyScore:0.##}%; Packout {run.PackoutAccuracyScore:0.##}%; Juice {run.JuiceAccuracyScore:0.##}%; Peeler/Slicer {run.PeelerSlicerAccuracyScore:0.##}%; Waste {run.WasteAccuracyScore:0.##}%; Overall {run.OverallAccuracyScore:0.##}%")
+            .AppendLine($"{componentLabel}: Size {run.SizeAccuracyScore:0.##}%; Grade {run.GradeAccuracyScore:0.##}%; Packout {run.PackoutAccuracyScore:0.##}%; Juice {run.JuiceAccuracyScore:0.##}%; Peeler/Slicer {run.PeelerSlicerAccuracyScore:0.##}%; Waste {run.WasteAccuracyScore:0.##}%; Overall {run.OverallAccuracyScore:0.##}%")
             .AppendLine($"QC total-defect context: {WeightedProjectionDefectPercentage(run):0.##}% of represented fruit. This is factual context, not a causal conclusion.")
             .AppendLine(oddity);
         if (analysisUrl is not null) text.AppendLine($"Full analysis: {analysisUrl}");
-        text.AppendLine("The attached single-sheet workbook contains projection evidence, parsed and corrected lines, mappings, score inputs, and audit identifiers.");
+        text.AppendLine($"The attached single-sheet workbook contains {evidenceLabel}, parsed and corrected lines, mappings, score inputs, and audit identifiers.");
 
         static string H(string? value) => System.Net.WebUtility.HtmlEncode(value ?? "");
         var htmlSources = string.Join("", sources.Select(x => $"<li>{H(x)}</li>"));
         var html = $"""
             <h2>{H(title)}</h2>
             <p><strong>{H(run.FacilitySnapshot)}</strong> · {run.PackingDate:yyyy-MM-dd} · Run {run.RunNumber} · {H(run.VarietySnapshot)} · {production}</p>
+            {(isHistoricalReconstruction ? $"<p><strong>Historical reconstruction:</strong> {H(reconstructionNotice)}</p>" : "")}
             <h3>Grower lots and rooms</h3><ul>{htmlSources}</ul>
             <table>
               <tr><th align="left">Dumped</th><td>{run.DumpedBins:0.##} bins / {run.DumpedPounds:0.##} lb</td></tr>
-              <tr><th align="left">Packout</th><td>Projected {ProjectedPackout(run):0.##}% / Actual {run.ActualPackoutPercent:0.##}%</td></tr>
+              <tr><th align="left">Packout</th><td>{H(comparisonLabel)} {ProjectedPackout(run):0.##}% / Actual {run.ActualPackoutPercent:0.##}%</td></tr>
               <tr><th align="left">Secondary output</th><td>Juice {run.ActualJuicePercent:0.##}% · Peeler/Slicer {run.ActualPeelerSlicerPercent:0.##}% · Waste {run.ActualWastePercent:0.##}%</td></tr>
-              <tr><th align="left">Component accuracy</th><td>Size {run.SizeAccuracyScore:0.##}% · Grade {run.GradeAccuracyScore:0.##}% · Packout {run.PackoutAccuracyScore:0.##}% · Juice {run.JuiceAccuracyScore:0.##}% · Peeler/Slicer {run.PeelerSlicerAccuracyScore:0.##}% · Waste {run.WasteAccuracyScore:0.##}%</td></tr>
-              <tr><th align="left">Official overall score</th><td><strong>{run.OverallAccuracyScore:0.##}%</strong></td></tr>
+              <tr><th align="left">{H(componentLabel)}</th><td>Size {run.SizeAccuracyScore:0.##}% · Grade {run.GradeAccuracyScore:0.##}% · Packout {run.PackoutAccuracyScore:0.##}% · Juice {run.JuiceAccuracyScore:0.##}% · Peeler/Slicer {run.PeelerSlicerAccuracyScore:0.##}% · Waste {run.WasteAccuracyScore:0.##}%</td></tr>
+              <tr><th align="left">{H(overallLabel)}</th><td><strong>{run.OverallAccuracyScore:0.##}%</strong></td></tr>
               <tr><th align="left">QC defect context</th><td>{WeightedProjectionDefectPercentage(run):0.##}% of represented fruit. Possible factual context only; no causal conclusion is claimed.</td></tr>
             </table>
             <p>{H(oddity)}</p>
             {(analysisUrl is null ? "" : $"<p><a href=\"{H(analysisUrl)}\">Open the full site analysis</a></p>")}
-            <p>The attached single-sheet workbook contains projection evidence, parsed and corrected lines, mappings, score inputs, and audit identifiers.</p>
+            <p>The attached single-sheet workbook contains {H(evidenceLabel)}, parsed and corrected lines, mappings, score inputs, and audit identifiers.</p>
             """;
         return (text.ToString(), html);
     }

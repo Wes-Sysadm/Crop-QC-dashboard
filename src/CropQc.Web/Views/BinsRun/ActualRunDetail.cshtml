@@ -66,7 +66,7 @@
 </section>
 
 <section class="panel">
-    <h2>Run Expectation</h2>
+    <h2>@(Model.CurrentExpectation?.IsHistoricalReconstruction == true ? "Historical Reconstructed Benchmark" : "Run Expectation")</h2>
     @if (!Model.OptionalDetailAvailable)
     {
         <p class="warning">Run Expectation data is unavailable until the required database update is completed. The Actual Run summary and source contribution above remain available.</p>
@@ -78,24 +78,31 @@
     else
     {
         var expectation = Model.CurrentExpectation;
+        @if (expectation.IsHistoricalReconstruction)
+        {
+            <p class="notice warning" role="alert">
+                This benchmark was reconstructed after the physical run using configuration available at reconstruction time. It is not an original pre-run forecast.
+                QC evidence was limited to samples taken on or before @(expectation.QcEvidenceCutoff?.ToString("g") ?? "the physical run time").
+            </p>
+        }
         <dl class="summary-grid">
-            <div><dt>Expected packout</dt><dd>@expectation.ExpectedPackoutPercent.ToString("0.##")%</dd></div>
-            <div><dt>Expected packed pounds</dt><dd>@expectation.ExpectedPackedPounds.ToString("0.##") lb</dd></div>
-            <div><dt>Expected whole 40-lb boxes</dt><dd>@expectation.ExpectedWholeBoxes</dd></div>
-            <div><dt>Expected cull</dt><dd>@expectation.ExpectedCullPounds.ToString("0.##") lb</dd></div>
-            <div><dt>Expected juice</dt><dd>@expectation.ExpectedJuicePounds.ToString("0.##") lb</dd></div>
-            <div><dt>Expected peeler</dt><dd>@expectation.ExpectedPeelerPounds.ToString("0.##") lb</dd></div>
-            <div><dt>Expected waste</dt><dd>@expectation.ExpectedWastePounds.ToString("0.##") lb</dd></div>
+            <div><dt>@(expectation.IsHistoricalReconstruction ? "Reconstructed benchmark packout" : "Expected packout")</dt><dd>@expectation.ExpectedPackoutPercent.ToString("0.##")%</dd></div>
+            <div><dt>@(expectation.IsHistoricalReconstruction ? "Reconstructed benchmark packed pounds" : "Expected packed pounds")</dt><dd>@expectation.ExpectedPackedPounds.ToString("0.##") lb</dd></div>
+            <div><dt>@(expectation.IsHistoricalReconstruction ? "Reconstructed benchmark whole 40-lb boxes" : "Expected whole 40-lb boxes")</dt><dd>@expectation.ExpectedWholeBoxes</dd></div>
+            <div><dt>@(expectation.IsHistoricalReconstruction ? "Reconstructed benchmark cull" : "Expected cull")</dt><dd>@expectation.ExpectedCullPounds.ToString("0.##") lb</dd></div>
+            <div><dt>@(expectation.IsHistoricalReconstruction ? "Reconstructed benchmark juice" : "Expected juice")</dt><dd>@expectation.ExpectedJuicePounds.ToString("0.##") lb</dd></div>
+            <div><dt>@(expectation.IsHistoricalReconstruction ? "Reconstructed benchmark peeler" : "Expected peeler")</dt><dd>@expectation.ExpectedPeelerPounds.ToString("0.##") lb</dd></div>
+            <div><dt>@(expectation.IsHistoricalReconstruction ? "Reconstructed benchmark waste" : "Expected waste")</dt><dd>@expectation.ExpectedWastePounds.ToString("0.##") lb</dd></div>
             <div><dt>Confidence</dt><dd>@expectation.ConfidencePercent.ToString("0.##")%</dd></div>
-            <div><dt>Calculated</dt><dd>@expectation.CalculatedAt.ToString("g")</dd></div>
+            <div><dt>@(expectation.IsHistoricalReconstruction ? "Reconstructed" : "Calculated")</dt><dd>@expectation.CalculatedAt.ToString("g")</dd></div>
             <div><dt>Calculation version</dt><dd>@expectation.CalculationVersion</dd></div>
         </dl>
         <div class="grid two-column-grid">
             <div>
-                <h3>Expected size distribution</h3>
+                <h3>@(expectation.IsHistoricalReconstruction ? "Reconstructed benchmark size distribution" : "Expected size distribution")</h3>
                 @if (expectation.SizeDistribution.Count == 0)
                 {
-                    <p class="muted">No eligible size observations were available when this expectation was frozen.</p>
+                    <p class="muted">@(expectation.IsHistoricalReconstruction ? "No eligible size observations existed at the physical-run QC cutoff." : "No eligible size observations were available when this expectation was frozen.")</p>
                 }
                 else
                 {
@@ -111,10 +118,10 @@
                 }
             </div>
             <div>
-                <h3>Expected grade distribution</h3>
+                <h3>@(expectation.IsHistoricalReconstruction ? "Reconstructed benchmark grade distribution" : "Expected grade distribution")</h3>
                 @if (expectation.GradeDistribution.Count == 0)
                 {
-                    <p class="muted">No eligible grade observations were available when this expectation was frozen.</p>
+                    <p class="muted">@(expectation.IsHistoricalReconstruction ? "No eligible grade observations existed at the physical-run QC cutoff." : "No eligible grade observations were available when this expectation was frozen.")</p>
                 }
                 else
                 {
@@ -189,16 +196,16 @@
 @if (Model.Packout is not null && Model.CurrentExpectation is not null)
 {
     <section class="panel">
-        <h2>Expected vs. Actual</h2>
+        <h2>@(Model.CurrentExpectation.IsHistoricalReconstruction ? "Reconstructed Benchmark vs. Actual" : "Expected vs. Actual")</h2>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Measure</th><th>Expected</th><th>Actual</th><th>Variance</th></tr></thead>
+                <thead><tr><th>Measure</th><th>@(Model.CurrentExpectation.IsHistoricalReconstruction ? "Reconstructed benchmark" : "Expected")</th><th>Actual</th><th>Variance</th></tr></thead>
                 <tbody>
                     <tr><td>Packout</td><td>@Model.CurrentExpectation.ExpectedPackoutPercent.ToString("0.##")%</td><td>@(Model.Packout.ActualPackoutPercent?.ToString("0.##") ?? "—")%</td><td>@(Model.Packout.PackoutVariancePercent?.ToString("+0.##;-0.##;0") ?? "—") points</td></tr>
                     <tr><td>Packed pounds</td><td>@Model.CurrentExpectation.ExpectedPackedPounds.ToString("0.##")</td><td>@Model.Packout.PackedPounds.ToString("0.##")</td><td>@((Model.Packout.PackedPounds - Model.CurrentExpectation.ExpectedPackedPounds).ToString("+0.##;-0.##;0"))</td></tr>
-                    <tr><td>Size distribution accuracy</td><td>Frozen expectation</td><td>@(Model.Packout.SizeAccuracyPercent?.ToString("0.##") ?? "Not calculated")%</td><td>Accuracy score</td></tr>
-                    <tr><td>Grade distribution accuracy</td><td>Frozen expectation</td><td>@(Model.Packout.GradeAccuracyPercent?.ToString("0.##") ?? "Not calculated")%</td><td>Accuracy score</td></tr>
-                    <tr><td>Accuracy</td><td>—</td><td>@(Model.Packout.AccuracyPercent?.ToString("0.##") ?? "Not calculated")%</td><td>—</td></tr>
+                    <tr><td>@(Model.CurrentExpectation.IsHistoricalReconstruction ? "Size benchmark score" : "Size distribution accuracy")</td><td>@(Model.CurrentExpectation.IsHistoricalReconstruction ? "Reconstructed benchmark" : "Frozen expectation")</td><td>@(Model.Packout.SizeAccuracyPercent?.ToString("0.##") ?? "Not calculated")%</td><td>@(Model.CurrentExpectation.IsHistoricalReconstruction ? "Benchmark score" : "Accuracy score")</td></tr>
+                    <tr><td>@(Model.CurrentExpectation.IsHistoricalReconstruction ? "Grade benchmark score" : "Grade distribution accuracy")</td><td>@(Model.CurrentExpectation.IsHistoricalReconstruction ? "Reconstructed benchmark" : "Frozen expectation")</td><td>@(Model.Packout.GradeAccuracyPercent?.ToString("0.##") ?? "Not calculated")%</td><td>@(Model.CurrentExpectation.IsHistoricalReconstruction ? "Benchmark score" : "Accuracy score")</td></tr>
+                    <tr><td>@(Model.CurrentExpectation.IsHistoricalReconstruction ? "Reconstructed benchmark score" : "Accuracy")</td><td>—</td><td>@(Model.Packout.AccuracyPercent?.ToString("0.##") ?? "Not calculated")%</td><td>—</td></tr>
                 </tbody>
             </table>
         </div>

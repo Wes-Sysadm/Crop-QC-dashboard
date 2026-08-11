@@ -41,8 +41,14 @@ public sealed class July28ActualRunExpectationBackfillTests
         Assert.Equal(1, expectation.CreatedByUserId);
         var source = Assert.Single(expectation.Sources);
         Assert.Equal(31, source.BinsRunEntryId);
+        Assert.Equal(2026, source.CropYearSnapshot);
+        Assert.Equal(17, source.FruitProfileId);
+        Assert.Null(source.QcSampleTakenAtSnapshot);
         Assert.Equal(184, source.BinsContributed);
         Assert.Equal(100m, source.ContributionPercent);
+        Assert.True(RunExpectationMetadata.TryGetHistoricalReconstruction(expectation.ConfigurationSnapshotJson, out var reconstruction));
+        Assert.Equal(expectation.RunAtSnapshot, reconstruction!.QcEvidenceCutoff);
+        Assert.Equal(July28ActualRunExpectationBackfillConstants.HistoricalReconstructionPackageIdentifier, reconstruction.CorrectionPackageIdentifier);
         Assert.Equal(adjustmentCount, await fixture.Db.RoomInventoryAdjustments.CountAsync());
         Assert.Equal(adjustmentQuantity, await fixture.Db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount));
         Assert.Equal(entryCount, await fixture.Db.BinsRunEntries.CountAsync());
@@ -51,7 +57,7 @@ public sealed class July28ActualRunExpectationBackfillTests
         Assert.Equal(before.Integrity, first.Preflight.Integrity);
         var audit = await fixture.Db.AuditLogs.SingleAsync(x => x.EntityName == July28ActualRunExpectationBackfillConstants.AuditEntityName);
         Assert.Equal(1, audit.UserId);
-        Assert.Contains("Historical frozen-expectation backfill", audit.AfterValuesJson, StringComparison.Ordinal);
+        Assert.Contains("Historical reconstruction calculated", audit.AfterValuesJson, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -182,7 +188,7 @@ public sealed class July28ActualRunExpectationBackfillTests
         62,
         null,
         "wes@fruitandland.com",
-        "Backfill the missing historical frozen expectation for reviewed Actual Run #1 without inventory movement.",
+        "Reconstruct the missing historical expectation for reviewed Actual Run #1 without inventory movement.",
         preflight.TargetFingerprint,
         preflight.ProtectedFingerprint,
         July28ActualRunExpectationBackfillConstants.ApplyAuthorizationToken);
@@ -531,9 +537,9 @@ public sealed class July28ActualRunExpectationBackfillTests
                     RoomId = entry.RoomId,
                     FacilitySnapshot = EmploymentFacilities.Wp,
                     RoomSnapshot = "Room 4",
-                    CropYearSnapshot = entry.CropYear,
+                    CropYearSnapshot = entry.ReportingCropYearSnapshot ?? entry.CropYear,
                     GrowerLotId = entry.GrowerLotId,
-                    FruitProfileId = entry.FruitProfileId,
+                    FruitProfileId = entry.ReportingFruitProfileIdSnapshot ?? entry.FruitProfileId,
                     GrowerSnapshot = entry.GrowerName,
                     LotSnapshot = entry.LotNumber,
                     VarietySnapshot = "Bartlett",

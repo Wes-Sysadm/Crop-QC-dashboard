@@ -1,6 +1,6 @@
 # July 27, 2026 Actual Run historical normalization
 
-This package is limited to the reviewed July 27, 2026 WP Bartlett Bins Run evidence. It does not create, delete, reverse, or recalculate inventory movements. It links the existing Bins Run entries and their existing depletion adjustments to one historical Actual Run, creates revision 1 and its frozen Run Expectation/sources, and writes one correction audit.
+This package is limited to the reviewed July 27, 2026 WP Bartlett Bins Run evidence. It does not create, delete, reverse, or recalculate inventory movements. It links the existing Bins Run entries and their existing depletion adjustments to one historical Actual Run, creates revision 1 and a historical reconstructed benchmark with source snapshots, and writes one correction audit.
 
 The command is a dry run unless `--apply` is supplied. Any preflight issue is a hard stop. Do not change the constants or weaken a refusal during operations.
 
@@ -38,7 +38,17 @@ Require all of the following before considering apply:
 - recorded `targetFingerprint` and `protectedFingerprint`
 - recorded reporting baseline for All, WP, EBS, and the grower/variety/lot grouping hash
 
-`AlreadyApplied` is acceptable only when the result identifies the one deterministic Actual Run, revision, frozen expectation, three expectation sources, three linked entries, three linked existing adjustments, and one audit marker. Do not apply again.
+`AlreadyApplied` is acceptable only when the result identifies the one deterministic Actual Run, revision, historical reconstructed benchmark, three expectation sources, three linked entries, three linked existing adjustments, one reconstruction marker, and one audit marker. Do not apply again.
+
+## Historical reconstruction semantics and run-62 evidence
+
+This package does not claim that an expectation was calculated before the run. The existing `ConfigurationSnapshotJson` stores a durable `ExpectationBasis=HistoricalReconstruction` marker, the true reconstruction time, the physical `RunAt`, `QcEvidenceCutoff=PhysicalRunAt`, `ConfigurationBasis=CurrentConfigurationAtReconstruction`, and package identifier `July27ActualRunNormalization:2026-07-27`. No schema change is required. Normal contemporaneous Run Expectations do not receive this marker.
+
+Source identity is taken from the authoritative reporting snapshots when present. Entries 28–30 therefore retain crop year `2026`, reporting `FruitProfileId=17`, Bartlett, Conventional, and not organic even where an older physical field is null or less authoritative.
+
+The run-62 restore proves these calculation-setting rows existed before the physical run and have never been updated: Apple pounds/bin `880` (created `2026-07-24T14:41:43.724639Z`), Pear pounds/bin `920` (`2026-07-24T14:41:43.735571Z`), default expected packout `85%` (`2026-07-24T14:41:43.738740Z`), and minimum distribution fruit `10` (`2026-07-24T14:41:43.739289Z`). Each has `UpdatedAt=NULL`; no RunProjection-setting update audit exists. The current calculation also snapshots the code constants 40 lb/box and cull shares 35% peeler, 35% juice, and 30% waste. Thus the database-backed configured inputs are historically reconstructable for this run, but the calculation itself is truthfully a later reconstruction with current reviewed code, not an original pre-run forecast.
+
+QC evidence is bounded in the database query before materialization by `QcSample.SampleTakenAt <= 2026-07-28T05:11:00Z`. For the exact Room 4 / crop 2026 / profile 17 / lot 1084 identity, sample `108` at `2026-07-27T22:25:51.056545Z` with 20 readings is the latest eligible evidence and is selected for each of the three sources. Later samples are excluded.
 
 ## Apply on an authorized database
 
@@ -62,7 +72,7 @@ The apply transaction performs only these writes:
 2. creates one current create revision with the deterministic operation key;
 3. changes entries 28–30 from unlinked `Legacy` reporting rows to linked `Depletion` rows without changing their quantities or operational snapshots;
 4. links existing depletion adjustments 89–91 to that revision without changing their quantities, timestamps, or inventory fields;
-5. creates one frozen 184-bin Run Expectation and exactly three sources for entries 28–30;
+5. creates one historical reconstructed 184-bin benchmark and exactly three sources for entries 28–30, with the durable marker and physical-run QC cutoff;
 6. creates one audit marker whose user is the correction administrator and whose before/after data separately identifies Alexis as the historical operator.
 
 It does not create a RoomInventoryAdjustment or BinsRunEntry, alter `__EFMigrationsHistory`, link a projection, create packout rows, or change a receipt/QC record.
@@ -80,7 +90,11 @@ Compare the before/after output:
 - entry quantities remain 64, 62, and 58;
 - adjustment changes remain -64, -62, and -58;
 - exactly one Actual Run, one revision, one expectation, three expectation sources, and one correction audit were added;
+- all three source snapshots are crop year 2026 / fruit profile 17 and use only QC sample 108 at or before the physical `RunAt`;
+- the persisted reconstruction marker matches the July 27 package, and the Actual Run page labels it as a reconstructed benchmark rather than a frozen pre-run expectation;
 - no PackoutRun was added;
 - inventory readiness is unchanged.
 
 If the command fails, it rolls the transaction back. Confirm the target remains `Ready` with no partial Actual Run, revision, expectation, linkage, or audit before investigating. Never repair a partial/conflicting state manually.
+
+For the mandatory combined run-62 rehearsal, start from one brand-new restore, capture the baseline, dry-run/apply July 27 first, then obtain a fresh July 28 dry-run from that post-July-27 state and apply July 28. Prove the two physical runs, revisions, expectations, source sets, and package markers remain distinct. Rerun both commands and require `AlreadyApplied`. Expectation ID `13` seen in earlier isolated rehearsals was reused only because those rehearsals used separate databases whose sequences began from the same run-62 state; it never represented one shared expectation across the two historical days.

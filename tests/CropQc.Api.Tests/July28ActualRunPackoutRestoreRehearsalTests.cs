@@ -44,9 +44,20 @@ public sealed class July28ActualRunPackoutRestoreRehearsalTests(ITestOutputHelpe
             var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
             Assert.Equal(0, await db.PackCodeDefinitions.CountAsync());
             Assert.Equal(0, await db.PackoutRuns.CountAsync(x => x.ActualRunId == 1));
-            var expectation = await db.RunExpectations.Include(x => x.Sources).SingleAsync(x => x.ActualRunId == 1);
-            Assert.Equal(184, expectation.TotalBins);
-            Assert.Equal(31, Assert.Single(expectation.Sources).BinsRunEntryId);
+            var reconstructed = await db.RunExpectations.Include(x => x.Sources)
+                .Where(x => x.ActualRunId == 1 || x.RunAtSnapshot == DateTimeOffset.Parse("2026-07-28T05:11:00Z"))
+                .ToListAsync();
+            Assert.Equal(2, reconstructed.Count);
+            var july27 = reconstructed.Single(x => x.ActualRunId != 1);
+            var july28 = reconstructed.Single(x => x.ActualRunId == 1);
+            Assert.NotEqual(july27.Id, july28.Id);
+            Assert.Equal(184, july27.TotalBins);
+            Assert.Equal(new long[] { 28, 29, 30 }, july27.Sources.OrderBy(x => x.BinsRunEntryId).Select(x => x.BinsRunEntryId));
+            Assert.Equal(184, july28.TotalBins);
+            Assert.Equal(31, Assert.Single(july28.Sources).BinsRunEntryId);
+            Assert.True(RunExpectationMetadata.TryGetHistoricalReconstruction(july27.ConfigurationSnapshotJson, out var july27Marker));
+            Assert.True(RunExpectationMetadata.TryGetHistoricalReconstruction(july28.ConfigurationSnapshotJson, out var july28Marker));
+            Assert.NotEqual(july27Marker!.CorrectionPackageIdentifier, july28Marker!.CorrectionPackageIdentifier);
             adjustmentCount = await db.RoomInventoryAdjustments.CountAsync();
             adjustmentQuantity = await db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount);
             entryCount = await db.BinsRunEntries.CountAsync();
@@ -61,6 +72,8 @@ public sealed class July28ActualRunPackoutRestoreRehearsalTests(ITestOutputHelpe
         Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
         var detailHtml = await detail.Content.ReadAsStringAsync();
         Assert.DoesNotContain("does not have a frozen Run Expectation", detailHtml, StringComparison.Ordinal);
+        Assert.Contains("Historical Reconstructed Benchmark", detailHtml, StringComparison.Ordinal);
+        Assert.Contains("This benchmark was reconstructed after the physical run", detailHtml, StringComparison.Ordinal);
         var tokenMatch = Regex.Match(detailHtml, "name=\"__RequestVerificationToken\"[^>]*value=\"(?<token>[^\"]+)\"");
         Assert.True(tokenMatch.Success, "Actual Run detail did not render an antiforgery token for Packout upload.");
         var token = WebUtility.HtmlDecode(tokenMatch.Groups["token"].Value);
@@ -79,12 +92,18 @@ public sealed class July28ActualRunPackoutRestoreRehearsalTests(ITestOutputHelpe
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         var reviewLocation = response.Headers.Location?.OriginalString;
         Assert.Matches("^/BinsRun/Packout/[0-9]+$", reviewLocation ?? "");
+        var reviewResponse = await client.GetAsync(reviewLocation);
+        Assert.Equal(HttpStatusCode.OK, reviewResponse.StatusCode);
+        var reviewHtml = await reviewResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Reconstructed benchmark score", reviewHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain(">Projection accuracy<", reviewHtml, StringComparison.Ordinal);
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
             var packout = await db.PackoutRuns.Include(x => x.Sources).Include(x => x.Lines)
                 .SingleAsync(x => x.ActualRunId == 1);
             Assert.Equal(PackoutRunStatuses.Review, packout.Status);
+            Assert.Equal(2026, packout.CropYearSnapshot);
             Assert.Equal(18, packout.Lines.Count);
             Assert.Equal(4616m, packout.Lines.Sum(x => x.Quantity));
             Assert.Equal("PopplerText", Assert.Single(packout.Sources).ParserName);

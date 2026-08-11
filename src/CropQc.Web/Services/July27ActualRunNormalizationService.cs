@@ -85,6 +85,7 @@ public static class July27ActualRunNormalizationConstants
     public const string RevisionOperationKey = "historical-actualrun-20260727-wp-bart-1084-28-29-30";
     public const string AuditEntityName = "July27ActualRunNormalization";
     public const string AuditEntityKey = RevisionOperationKey;
+    public const string HistoricalReconstructionPackageIdentifier = "July27ActualRunNormalization:2026-07-27";
     public const string HistoricalOperatorEmail = "alexis@wp-packing.com";
     public const long VerifiedRestoreBackupRunId = 62;
     public const string VerifiedRestorePackageSha256 = "af54589c20c5921681a00f9e01cad801907673fc4bc6f42bfb6d8b81e03603ba";
@@ -391,12 +392,13 @@ public sealed class July27ActualRunNormalizationService(
             }
             await dbContext.SaveChangesAsync(cancellationToken);
 
-            var expectation = await runExpectationService.CreateFrozenAsync(
+            var expectation = await runExpectationService.CreateHistoricalReconstructionAsync(
                 actualRun,
                 revision,
                 entries,
                 correctionAdmin.Id,
                 now,
+                July27ActualRunNormalizationConstants.HistoricalReconstructionPackageIdentifier,
                 cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -590,6 +592,14 @@ public sealed class July27ActualRunNormalizationService(
         {
             issues.Add("The deterministic revision is missing its exact frozen 184-bin Run Expectation.");
         }
+        else if (!RunExpectationMetadata.TryGetHistoricalReconstruction(expectation.ConfigurationSnapshotJson, out var metadata)
+            || metadata!.PhysicalRunAt != HistoricalRunAt
+            || metadata.QcEvidenceCutoff != HistoricalRunAt
+            || metadata.ReconstructedAt != expectation.CalculatedAt
+            || metadata.CorrectionPackageIdentifier != July27ActualRunNormalizationConstants.HistoricalReconstructionPackageIdentifier)
+        {
+            issues.Add("The deterministic Run Expectation is missing its exact historical reconstruction metadata.");
+        }
         if (entries.Count != 3 || entries.Any(x => x.ActualRunId != run.Id || x.ActualRunRevisionId != revision.Id || x.TransactionType != ActualRunTransactionTypes.Depletion))
         {
             issues.Add("The deterministic Actual Run does not own exactly the three reviewed depletion entries.");
@@ -605,9 +615,15 @@ public sealed class July27ActualRunNormalizationService(
         if (expectation is not null
             && (expectationSources.Count != 3
                 || expectationSources.Any(x => x.RunExpectationId != expectation.Id)
-                || !expectationSources.Select(x => x.BinsRunEntryId).OrderBy(x => x).SequenceEqual(TargetEntryIds)))
+                || !expectationSources.Select(x => x.BinsRunEntryId).OrderBy(x => x).SequenceEqual(TargetEntryIds)
+                || expectationSources.Any(x => x.CropYearSnapshot != 2026
+                    || x.FruitProfileId != 17
+                    || x.VarietySnapshot != "Bartlett"
+                    || x.ProductionTypeSnapshot != "Conventional"
+                    || x.IsOrganicSnapshot
+                    || x.QcSampleTakenAtSnapshot > HistoricalRunAt)))
         {
-            issues.Add("The frozen expectation sources are not exactly entries 28, 29, and 30.");
+            issues.Add("The reconstructed benchmark sources are not exactly entries 28, 29, and 30.");
         }
     }
 

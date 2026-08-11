@@ -37,6 +37,15 @@ public sealed class July27ActualRunNormalizationTests
         var expectation = Assert.Single(await fixture.Db.RunExpectations.Include(x => x.Sources).ToListAsync());
         Assert.Equal(184, expectation.TotalBins);
         Assert.Equal([28L, 29L, 30L], expectation.Sources.OrderBy(x => x.BinsRunEntryId).Select(x => x.BinsRunEntryId));
+        Assert.All(expectation.Sources, source =>
+        {
+            Assert.Equal(2026, source.CropYearSnapshot);
+            Assert.Equal(17, source.FruitProfileId);
+            Assert.Null(source.QcSampleTakenAtSnapshot);
+        });
+        Assert.True(RunExpectationMetadata.TryGetHistoricalReconstruction(expectation.ConfigurationSnapshotJson, out var reconstruction));
+        Assert.Equal(expectation.RunAtSnapshot, reconstruction!.QcEvidenceCutoff);
+        Assert.Equal(July27ActualRunNormalizationConstants.HistoricalReconstructionPackageIdentifier, reconstruction.CorrectionPackageIdentifier);
         Assert.Equal(1, expectation.CreatedByUserId);
         var run = await fixture.Db.ActualRuns.SingleAsync();
         Assert.Equal(8, run.CreatedByUserId);
@@ -266,7 +275,7 @@ public sealed class July27ActualRunNormalizationTests
                     Db.ActualRunRevisions.Add(unexpected.Revision);
                     await Db.SaveChangesAsync();
                     var expectation = TestExpectationService.Expectation(unexpected.Run, unexpected.Revision, 8);
-                    expectation.Sources.Add(TestExpectationService.Source(28));
+                    expectation.Sources.Add(TestExpectationService.Source((await Db.BinsRunEntries.FindAsync(28L))!));
                     Db.RunExpectations.Add(expectation);
                     break;
                 case "operator":
@@ -452,7 +461,7 @@ public sealed class July27ActualRunNormalizationTests
         public Task<RunExpectation> CreateFrozenAsync(ActualRun run, ActualRunRevision revision, IReadOnlyList<BinsRunEntry> entries, int userId, DateTimeOffset calculatedAt, CancellationToken cancellationToken)
         {
             var expectation = Expectation(run, revision, userId);
-            foreach (var entry in entries) expectation.Sources.Add(Source(entry.Id, entry.BinsRun));
+            foreach (var entry in entries) expectation.Sources.Add(Source(entry));
             db.RunExpectations.Add(expectation);
             return Task.FromResult(expectation);
         }
@@ -476,18 +485,20 @@ public sealed class July27ActualRunNormalizationTests
             CreatedByUserId = userId
         };
 
-        public static RunExpectationSource Source(long entryId, int bins = 1) => new()
+        public static RunExpectationSource Source(BinsRunEntry entry) => new()
         {
-            BinsRunEntryId = entryId,
+            BinsRunEntryId = entry.Id,
             WarehouseId = 4,
             RoomId = 1,
             FacilitySnapshot = EmploymentFacilities.Wp,
             RoomSnapshot = "Room 4",
-            GrowerSnapshot = "WP",
-            LotSnapshot = "1084",
+            CropYearSnapshot = entry.ReportingCropYearSnapshot ?? entry.CropYear,
+            FruitProfileId = entry.ReportingFruitProfileIdSnapshot ?? entry.FruitProfileId,
+            GrowerSnapshot = entry.GrowerName,
+            LotSnapshot = entry.LotNumber,
             VarietySnapshot = "Bartlett",
             ProductionTypeSnapshot = "Conventional",
-            BinsContributed = bins,
+            BinsContributed = entry.BinsRun,
             QcMeasurementSnapshotJson = "{}",
             SizeDistributionSnapshotJson = "{}",
             GradeDistributionSnapshotJson = "{}"
