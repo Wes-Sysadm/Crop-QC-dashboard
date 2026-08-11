@@ -301,6 +301,7 @@ public sealed class PackoutReconciliationTests
                 "The configured disposable PostgreSQL packout database must start empty.");
         }
         var now = DateTimeOffset.Parse("2026-07-31T16:00:00Z");
+        var physicalRunAt = DateTimeOffset.Parse("2026-07-28T05:11:00Z");
         var user = new User
         {
             Email = ApplicationAreas.OwnerEmail,
@@ -327,10 +328,10 @@ public sealed class PackoutReconciliationTests
         };
         var actualRun = new ActualRun
         {
-            Id = 9200,
+            Id = 16,
             Status = ActualRunStatuses.Active,
             CurrentRevisionNumber = 1,
-            RunAt = now,
+            RunAt = physicalRunAt,
             CreatedAt = now
         };
         var revision = new ActualRunRevision
@@ -371,7 +372,7 @@ public sealed class PackoutReconciliationTests
         };
         var binsRun = new BinsRunEntry
         {
-            Id = 9202,
+            Id = 28,
             ActualRunId = actualRun.Id,
             ActualRun = actualRun,
             ActualRunRevisionId = revision.Id,
@@ -382,7 +383,8 @@ public sealed class PackoutReconciliationTests
             Warehouse = warehouse,
             RoomId = room.Id,
             Room = room,
-            CropYear = 2026,
+            CropYear = null,
+            ReportingCropYearSnapshot = 2026,
             GrowerName = "Test Grower",
             LotNumber = "1084",
             VarietyCode = "Bartlett",
@@ -403,7 +405,7 @@ public sealed class PackoutReconciliationTests
             RevisionNumber = 1,
             FacilityWarehouseId = warehouse.Id,
             FacilitySnapshot = "WP",
-            RunAtSnapshot = now,
+            RunAtSnapshot = physicalRunAt,
             TotalBins = 10,
             GrossPounds = 9200m,
             ExpectedPackoutPercent = 80m,
@@ -425,7 +427,7 @@ public sealed class PackoutReconciliationTests
             expectation,
             now.AddDays(11),
             actualRun.RunAt,
-            "packout-test-reconstruction");
+            July27ActualRunNormalizationConstants.HistoricalReconstructionPackageIdentifier);
         expectation.Sources.Add(new RunExpectationSource
         {
             Id = 9204,
@@ -506,6 +508,7 @@ public sealed class PackoutReconciliationTests
         var review = await service.GetAsync(upload.Id!.Value, principal, CancellationToken.None);
         Assert.NotNull(review);
         Assert.True(review.IsHistoricalReconstruction);
+        Assert.Equal(2026, review.CropYear);
         Assert.Single(review.Sources);
         Assert.Single(review.Lines);
         Assert.True(review.Lines[0].RequiresReview);
@@ -551,7 +554,9 @@ public sealed class PackoutReconciliationTests
             Assert.Contains("Overall reconstructed benchmark score", worksheet, StringComparison.Ordinal);
             Assert.Contains("Reconstructed benchmark components", worksheet, StringComparison.Ordinal);
         }
-        Assert.Equal(PackoutRunStatuses.Finalized, (await db.PackoutRuns.SingleAsync()).Status);
+        var persistedPackout = await db.PackoutRuns.SingleAsync();
+        Assert.Equal(PackoutRunStatuses.Finalized, persistedPackout.Status);
+        Assert.Equal(2026, persistedPackout.CropYearSnapshot);
         Assert.Single(await db.PackoutSourceAllocations.ToListAsync());
         Assert.Equal(inventoryCountBefore, await db.RoomInventoryAdjustments.CountAsync());
     }
