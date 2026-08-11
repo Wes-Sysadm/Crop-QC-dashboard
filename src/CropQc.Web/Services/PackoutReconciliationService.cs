@@ -205,26 +205,6 @@ public sealed class PackoutReconciliationService(
             {
                 var classified = PackoutReportParser.ClassifyPackCode(parsedLine.RawPackCode);
                 var definition = definitions.SingleOrDefault(x => x.NormalizedCode == classified.NormalizedCode);
-                if (definition is null
-                    && classified.NormalizedCode.Length > 0
-                    && classified.ProductCategory is null)
-                {
-                    definition = new PackCodeDefinition
-                    {
-                        Code = parsedLine.RawPackCode?.Trim() ?? classified.NormalizedCode,
-                        NormalizedCode = classified.NormalizedCode,
-                        DisplayName = parsedLine.RawPackCode?.Trim() ?? classified.NormalizedCode,
-                        ProductCategory = PackoutProductCategories.Packed,
-                        NetWeightPounds = null,
-                        IsActive = true,
-                        CreatedAt = now,
-                        CreatedByUserId = userId,
-                        UpdatedAt = now,
-                        UpdatedByUserId = userId
-                    };
-                    definitions.Add(definition);
-                    dbContext.PackCodeDefinitions.Add(definition);
-                }
                 var category = definition?.ProductCategory ?? classified.ProductCategory;
                 var netWeight = definition?.NetWeightPounds ?? classified.NetWeightPounds;
                 run.Lines.Add(new PackoutReportLine

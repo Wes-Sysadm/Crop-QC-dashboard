@@ -61,6 +61,13 @@ public sealed class ActualRunDetailHttpIntegrationTests
             Assert.Equal(18, run.Lines.Count);
             Assert.Equal(4616m, run.Lines.Sum(x => x.Quantity));
             Assert.Equal("DelimitedText", Assert.Single(run.Sources).ParserName);
+            Assert.Equal(18, run.Lines.Count(x => x.RequiresReview));
+            Assert.All(run.Lines, line =>
+            {
+                Assert.Null(line.PackCodeDefinitionId);
+                Assert.Null(line.NetWeightPounds);
+            });
+            Assert.Equal(0, await db.PackCodeDefinitions.CountAsync());
             Assert.Equal(adjustmentCountBefore, await db.RoomInventoryAdjustments.CountAsync());
             Assert.Equal(adjustmentQuantityBefore, await db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount));
         }
