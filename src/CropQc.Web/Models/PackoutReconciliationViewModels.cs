@@ -103,6 +103,9 @@ public sealed class PackoutRunViewModel
     public decimal SupplementalWasteBins { get; set; }
     public decimal? ActualPackoutPercent { get; set; }
     public decimal? OverallAccuracyScore { get; set; }
+    public bool IsHistoricalReconstruction { get; set; }
+    public DateTimeOffset? PhysicalRunAt { get; set; }
+    public DateTimeOffset? ReconstructedAt { get; set; }
     public decimal ReconciliationDifferencePounds { get; set; }
     public bool HasReconciliationWarning { get; set; }
     public long ConcurrencyVersion { get; set; }

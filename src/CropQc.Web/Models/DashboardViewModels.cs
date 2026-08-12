@@ -95,7 +95,11 @@ public sealed class RoomVarietyColorSegmentViewModel
     public string VarietyName { get; set; } = "";
     public string ProductionType { get; set; } = "";
     public bool? IsOrganic { get; set; }
-    public string OrganicLabel => IsOrganic switch { true => "Organic", false => "Conventional", _ => "Organic status unavailable" };
+    public string OrganicLabel => IsOrganic switch { true => "Organic", false => "Conventional", _ => "Organic status unknown" };
+    public string IdentityLabel => string.Equals(ProductionType?.Trim(), OrganicLabel, StringComparison.OrdinalIgnoreCase)
+        || string.IsNullOrWhiteSpace(ProductionType)
+            ? OrganicLabel
+            : $"{ProductionType.Trim()} - {OrganicLabel}";
     public int CurrentBins { get; set; }
     public decimal Percent { get; set; }
     public string HexColor { get; set; } = "#607D8B";
@@ -1167,6 +1171,7 @@ public sealed class ReceiptListViewModel
     public int CurrentCropYear { get; set; }
     public string CropYearHelpText { get; set; } = "";
     public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
+    public bool CanQuickAddVariety { get; set; }
 }
 
 public sealed class ReceiptSearchForm

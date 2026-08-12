@@ -290,6 +290,8 @@ builder.Services.AddScoped<IFieldSampleReportService, FieldSampleReportService>(
 builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddScoped<IBackupNotificationService, BackupNotificationService>();
 builder.Services.AddScoped<IReceiptPurgeService, ReceiptPurgeService>();
+builder.Services.AddScoped<IJuly27ActualRunNormalizationService, July27ActualRunNormalizationService>();
+builder.Services.AddScoped<IJuly28ActualRunExpectationBackfillService, July28ActualRunExpectationBackfillService>();
 builder.Services.AddHostedService<EbsDailyBinsEmailHostedService>();
 builder.Services.AddHostedService<BackupNotificationHostedService>();
 builder.Services.AddHostedService<RuntimeMemoryTelemetryHostedService>();
@@ -340,6 +342,84 @@ if (schemaVerificationCommand is not null)
 if (args.Contains("--verify-inventory-deductions", StringComparer.OrdinalIgnoreCase))
 {
     Environment.ExitCode = await VerifyInventoryDeductionReadinessAsync(app.Services) ? 0 : 1;
+    return;
+}
+
+if (args.Contains(July27ActualRunNormalizationConstants.CommandName, StringComparer.OrdinalIgnoreCase))
+{
+    static string? NormalizationCommandValue(string[] commandArgs, string key) =>
+        commandArgs.FirstOrDefault(x => x.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase)) is { } item
+            ? item[(item.IndexOf('=') + 1)..]
+            : null;
+
+    var apply = args.Contains("--apply", StringComparer.OrdinalIgnoreCase);
+    var confirmProduction = args.Contains("--confirm-production", StringComparer.OrdinalIgnoreCase);
+    var confirmDisposableRestore = args.Contains("--confirm-disposable-restore", StringComparer.OrdinalIgnoreCase);
+    var backupRunId = long.TryParse(NormalizationCommandValue(args, "--backup-run-id"), out var parsedBackupRunId)
+        ? parsedBackupRunId
+        : (long?)null;
+    using var normalizationScope = app.Services.CreateScope();
+    var normalizationService = normalizationScope.ServiceProvider.GetRequiredService<IJuly27ActualRunNormalizationService>();
+    var normalizationResult = await normalizationService.RunAsync(
+        new July27ActualRunNormalizationRequest(
+            apply,
+            confirmProduction,
+            confirmDisposableRestore,
+            backupRunId,
+            NormalizationCommandValue(args, "--verified-backup-package-sha256"),
+            NormalizationCommandValue(args, "--requested-by") ?? "command",
+            NormalizationCommandValue(args, "--reason") ?? "",
+            NormalizationCommandValue(args, "--expected-target-fingerprint"),
+            NormalizationCommandValue(args, "--expected-protected-fingerprint"),
+            NormalizationCommandValue(args, "--authorization-token")),
+        CancellationToken.None);
+    var normalizationLogger = normalizationScope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("July27ActualRunNormalizationCommand");
+    var safeReport = System.Text.Json.JsonSerializer.Serialize(
+        normalizationResult,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
+    if (normalizationResult.Success) normalizationLogger.LogInformation("{NormalizationReport}", safeReport);
+    else normalizationLogger.LogError("{NormalizationReport}", safeReport);
+    Environment.ExitCode = normalizationResult.Success ? 0 : 1;
+    return;
+}
+
+if (args.Contains(July28ActualRunExpectationBackfillConstants.CommandName, StringComparer.OrdinalIgnoreCase))
+{
+    static string? ExpectationBackfillCommandValue(string[] commandArgs, string key) =>
+        commandArgs.FirstOrDefault(x => x.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase)) is { } item
+            ? item[(item.IndexOf('=') + 1)..]
+            : null;
+
+    var apply = args.Contains("--apply", StringComparer.OrdinalIgnoreCase);
+    var confirmProduction = args.Contains("--confirm-production", StringComparer.OrdinalIgnoreCase);
+    var confirmDisposableRestore = args.Contains("--confirm-disposable-restore", StringComparer.OrdinalIgnoreCase);
+    var backupRunId = long.TryParse(ExpectationBackfillCommandValue(args, "--backup-run-id"), out var parsedBackupRunId)
+        ? parsedBackupRunId
+        : (long?)null;
+    using var expectationBackfillScope = app.Services.CreateScope();
+    var expectationBackfillService = expectationBackfillScope.ServiceProvider.GetRequiredService<IJuly28ActualRunExpectationBackfillService>();
+    var expectationBackfillResult = await expectationBackfillService.RunAsync(
+        new July28ActualRunExpectationBackfillRequest(
+            apply,
+            confirmProduction,
+            confirmDisposableRestore,
+            backupRunId,
+            ExpectationBackfillCommandValue(args, "--verified-backup-package-sha256"),
+            ExpectationBackfillCommandValue(args, "--requested-by") ?? "command",
+            ExpectationBackfillCommandValue(args, "--reason") ?? "",
+            ExpectationBackfillCommandValue(args, "--expected-target-fingerprint"),
+            ExpectationBackfillCommandValue(args, "--expected-protected-fingerprint"),
+            ExpectationBackfillCommandValue(args, "--authorization-token")),
+        CancellationToken.None);
+    var expectationBackfillLogger = expectationBackfillScope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("July28ActualRunExpectationBackfillCommand");
+    var safeReport = System.Text.Json.JsonSerializer.Serialize(
+        expectationBackfillResult,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
+    if (expectationBackfillResult.Success) expectationBackfillLogger.LogInformation("{ExpectationBackfillReport}", safeReport);
+    else expectationBackfillLogger.LogError("{ExpectationBackfillReport}", safeReport);
+    Environment.ExitCode = expectationBackfillResult.Success ? 0 : 1;
     return;
 }
 

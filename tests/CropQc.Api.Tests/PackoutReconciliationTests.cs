@@ -9,11 +9,103 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Security.Claims;
 using System.Text;
+using System.IO.Compression;
 
 namespace CropQc.Api.Tests;
 
 public sealed class PackoutReconciliationTests
 {
+    [Fact]
+    public void GrowerSummary_UsesPackTypeAndCountsDetailBoxesExactlyOnce()
+    {
+        var report = GrowerSummaryFixture.Text;
+
+        Assert.True(PackoutReportParser.IsGrowerSummary(report));
+        var lines = PackoutReportParser.ParseText(report);
+        Assert.Equal(18, lines.Count);
+        Assert.Equal(4616m, lines.Sum(x => x.Quantity));
+        Assert.Equal("WP", lines[0].RawPackCode);
+        Assert.Equal("9-3 POUCH BAG", lines[6].RawPackCode);
+        Assert.Equal("8-3 POUCH BAG", lines[7].RawPackCode);
+        Assert.Equal("WPNS", lines[8].RawPackCode);
+        Assert.Equal("12-2 POUCH BAG", lines[16].RawPackCode);
+        Assert.Contains("Lid Label: TARGET", lines[6].RawText);
+        Assert.Contains("Size: 2 1/8", lines[6].RawText);
+        Assert.All(lines, line => Assert.False(line.RequiresReview));
+    }
+
+    [Fact]
+    public void GrowerSummaryDetection_RequiresStrongMarkerSet()
+    {
+        Assert.False(PackoutReportParser.IsGrowerSummary("Grower Summary Pack Type: WP"));
+        Assert.False(PackoutReportParser.IsGrowerSummary("An arbitrary report containing Variety:"));
+    }
+
+    [Fact]
+    public void GrowerSummary_ConfiguredPackTypeDoesNotRequireArtificialReview()
+    {
+        var parsed = Assert.Single(PackoutReportParser.ParseText(GrowerSummarySingleLine("WP")));
+        var definition = new PackCodeDefinition
+        {
+            Code = "WP",
+            NormalizedCode = "WP",
+            DisplayName = "Configured WP",
+            ProductCategory = PackoutProductCategories.Packed,
+            NetWeightPounds = 40m,
+            IsActive = true
+        };
+
+        Assert.False(parsed.RequiresReview);
+        Assert.False(PackoutReconciliationService.RequiresLineReview(
+            parsed, definition, definition.ProductCategory, definition.NetWeightPounds));
+    }
+
+    [Fact]
+    public void GrowerSummary_UnconfiguredPackTypeRequiresMappingReviewWithoutFabricatedWeight()
+    {
+        var parsed = Assert.Single(PackoutReportParser.ParseText(GrowerSummarySingleLine("UNKNOWN POUCH")));
+
+        Assert.False(parsed.RequiresReview);
+        Assert.True(PackoutReconciliationService.RequiresLineReview(
+            parsed, null, PackoutProductCategories.Packed, null));
+        Assert.Null(PackoutReportParser.ClassifyPackCode(parsed.RawPackCode).NetWeightPounds);
+    }
+
+    [Fact]
+    public async Task GrowerSummary_ExactSuppliedPdfUsesDirectTextWhenOptedIn()
+    {
+        var path = Environment.GetEnvironmentVariable("CROPQC_REAL_GROWER_SUMMARY_PDF");
+        if (string.IsNullOrWhiteSpace(path)) return;
+        Assert.True(File.Exists(path), $"Configured Grower Summary PDF was not found: {path}");
+        var before = Directory.GetDirectories(Path.GetTempPath(), "cropqc-packout-ocr-*").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var parser = new PackoutReportParser(new PackoutProcessingOptions(), NullLogger<PackoutReportParser>.Instance);
+        var file = new FileInfo(path);
+
+        var result = await parser.ParseAsync(
+            new PackoutUploadFile(file.Name, "application/pdf", file.FullName, file.Length),
+            CancellationToken.None);
+
+        Assert.Equal("PopplerText", result.ParserName);
+        Assert.Equal(18, result.Lines.Count);
+        Assert.Equal(4616m, result.Lines.Sum(x => x.Quantity));
+        Assert.All(result.Lines, line => Assert.False(line.RequiresReview));
+        var after = Directory.GetDirectories(Path.GetTempPath(), "cropqc-packout-ocr-*").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.Empty(after.Except(before));
+    }
+
+    private static string GrowerSummarySingleLine(string packType) => $$"""
+        Grower Summary
+        From Date: 7/28/2026 To Date: 7/29/2026
+        Run #: 1
+        Grower: 1084 - 1084
+        Variety: BARTLETT
+        Pack Type: {{packType}} Color:
+        Lid Label Grade Pl U Size Box Percent Avg Wt. Low High
+        DSG US No. 1 120 25 0.54% lbs
+        End of Variety: BARTLETT Total: 25
+        End of Run #: 1
+        """;
+
     [Fact]
     public async Task DefectStatus_FollowsPresenceOfDefectRecords()
     {
@@ -209,6 +301,7 @@ public sealed class PackoutReconciliationTests
                 "The configured disposable PostgreSQL packout database must start empty.");
         }
         var now = DateTimeOffset.Parse("2026-07-31T16:00:00Z");
+        var physicalRunAt = DateTimeOffset.Parse("2026-07-28T05:11:00Z");
         var user = new User
         {
             Email = ApplicationAreas.OwnerEmail,
@@ -235,10 +328,10 @@ public sealed class PackoutReconciliationTests
         };
         var actualRun = new ActualRun
         {
-            Id = 9200,
+            Id = 16,
             Status = ActualRunStatuses.Active,
             CurrentRevisionNumber = 1,
-            RunAt = now,
+            RunAt = physicalRunAt,
             CreatedAt = now
         };
         var revision = new ActualRunRevision
@@ -279,7 +372,7 @@ public sealed class PackoutReconciliationTests
         };
         var binsRun = new BinsRunEntry
         {
-            Id = 9202,
+            Id = 28,
             ActualRunId = actualRun.Id,
             ActualRun = actualRun,
             ActualRunRevisionId = revision.Id,
@@ -290,7 +383,8 @@ public sealed class PackoutReconciliationTests
             Warehouse = warehouse,
             RoomId = room.Id,
             Room = room,
-            CropYear = 2026,
+            CropYear = null,
+            ReportingCropYearSnapshot = 2026,
             GrowerName = "Test Grower",
             LotNumber = "1084",
             VarietyCode = "Bartlett",
@@ -311,7 +405,7 @@ public sealed class PackoutReconciliationTests
             RevisionNumber = 1,
             FacilityWarehouseId = warehouse.Id,
             FacilitySnapshot = "WP",
-            RunAtSnapshot = now,
+            RunAtSnapshot = physicalRunAt,
             TotalBins = 10,
             GrossPounds = 9200m,
             ExpectedPackoutPercent = 80m,
@@ -329,6 +423,11 @@ public sealed class PackoutReconciliationTests
             CalculationVersion = RunExpectationCalculationVersions.Current,
             CalculatedAt = now
         };
+        RunExpectationMetadata.MarkHistoricalReconstruction(
+            expectation,
+            now.AddDays(11),
+            actualRun.RunAt,
+            July27ActualRunNormalizationConstants.HistoricalReconstructionPackageIdentifier);
         expectation.Sources.Add(new RunExpectationSource
         {
             Id = 9204,
@@ -408,6 +507,8 @@ public sealed class PackoutReconciliationTests
         Assert.Null(upload.Error);
         var review = await service.GetAsync(upload.Id!.Value, principal, CancellationToken.None);
         Assert.NotNull(review);
+        Assert.True(review.IsHistoricalReconstruction);
+        Assert.Equal(2026, review.CropYear);
         Assert.Single(review.Sources);
         Assert.Single(review.Lines);
         Assert.True(review.Lines[0].RequiresReview);
@@ -439,7 +540,23 @@ public sealed class PackoutReconciliationTests
         Assert.Null(finalized.Error);
         Assert.NotNull(finalized.Workbook);
         Assert.Single(emailSender.Messages);
-        Assert.Equal(PackoutRunStatuses.Finalized, (await db.PackoutRuns.SingleAsync()).Status);
+        var message = Assert.Single(emailSender.Messages);
+        Assert.Contains("This benchmark was reconstructed after the physical run", message.TextBody, StringComparison.Ordinal);
+        Assert.Contains("Reconstructed benchmark components", message.TextBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("Packout: projected", message.TextBody, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Overall reconstructed benchmark score", message.HtmlBody, StringComparison.Ordinal);
+        using (var workbookStream = new MemoryStream(finalized.Workbook))
+        using (var archive = new ZipArchive(workbookStream, ZipArchiveMode.Read))
+        using (var reader = new StreamReader(archive.GetEntry("xl/worksheets/sheet1.xml")!.Open()))
+        {
+            var worksheet = reader.ReadToEnd();
+            Assert.Contains("Historical reconstructed benchmark", worksheet, StringComparison.Ordinal);
+            Assert.Contains("Overall reconstructed benchmark score", worksheet, StringComparison.Ordinal);
+            Assert.Contains("Reconstructed benchmark components", worksheet, StringComparison.Ordinal);
+        }
+        var persistedPackout = await db.PackoutRuns.SingleAsync();
+        Assert.Equal(PackoutRunStatuses.Finalized, persistedPackout.Status);
+        Assert.Equal(2026, persistedPackout.CropYearSnapshot);
         Assert.Single(await db.PackoutSourceAllocations.ToListAsync());
         Assert.Equal(inventoryCountBefore, await db.RoomInventoryAdjustments.CountAsync());
     }

@@ -1309,7 +1309,8 @@ public sealed class AdminManagementService(
         if (Blank(form.Code) || Blank(form.Name) || Blank(form.FruitType) || Blank(form.ProductionType)) return "Variety code, name, commodity, and production type are required.";
         if (!IsValidProductionType(form.ProductionType)) return "Production type must be Conventional or Organic.";
         if (!form.ResetVarietyColor && !Blank(form.VarietyHexColor) && !VarietyColorService.IsValidHexColor(VarietyColorService.NormalizeHex(form.VarietyHexColor))) return "Enter a valid hex color such as #2F80ED.";
-        if (await dbContext.FruitProfiles.AnyAsync(x => x.VarietyCode == form.Code.Trim() && x.Id != (form.Id ?? 0), ct)) return "Variety code must be unique.";
+        var normalizedCode = form.Code.Trim().ToUpper();
+        if (await dbContext.FruitProfiles.AnyAsync(x => x.VarietyCode.ToUpper() == normalizedCode && x.Id != (form.Id ?? 0), ct)) return "Variety code must be unique.";
         var entity = form.Id is null ? new FruitProfile { VarietyCode = "", Name = "", FruitType = "", ProductionType = "" } : await dbContext.FruitProfiles.FindAsync([form.Id.Value], ct);
         if (entity is null) return "Fruit profile not found.";
         var action = form.Id is null ? "create" : "update";

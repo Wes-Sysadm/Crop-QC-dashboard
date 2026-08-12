@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Web.Models;
@@ -15,6 +16,124 @@ public interface IRunExpectationService
         int userId,
         DateTimeOffset calculatedAt,
         CancellationToken cancellationToken);
+
+    async Task<RunExpectation> CreateHistoricalReconstructionAsync(
+        ActualRun actualRun,
+        ActualRunRevision revision,
+        IReadOnlyList<BinsRunEntry> activeEntries,
+        int userId,
+        DateTimeOffset reconstructedAt,
+        string correctionPackageIdentifier,
+        CancellationToken cancellationToken)
+    {
+        var persistedReconstructedAt = RunExpectationMetadata.NormalizeDatabasePrecision(reconstructedAt);
+        var expectation = await CreateFrozenAsync(
+            actualRun,
+            revision,
+            activeEntries,
+            userId,
+            persistedReconstructedAt,
+            cancellationToken);
+        RunExpectationMetadata.MarkHistoricalReconstruction(
+            expectation,
+            persistedReconstructedAt,
+            actualRun.RunAt,
+            correctionPackageIdentifier);
+        return expectation;
+    }
+}
+
+public sealed record HistoricalRunExpectationMetadata(
+    string ExpectationBasis,
+    DateTimeOffset ReconstructedAt,
+    DateTimeOffset PhysicalRunAt,
+    DateTimeOffset QcEvidenceCutoff,
+    string ConfigurationBasis,
+    string CorrectionPackageIdentifier);
+
+public static class RunExpectationMetadata
+{
+    public const string HistoricalReconstructionBasis = "HistoricalReconstruction";
+    public const string CurrentConfigurationAtReconstructionBasis = "CurrentConfigurationAtReconstruction";
+
+    public static DateTimeOffset NormalizeDatabasePrecision(DateTimeOffset value) =>
+        new(value.Ticks - value.Ticks % TimeSpan.TicksPerMicrosecond, value.Offset);
+
+    public static void MarkHistoricalReconstruction(
+        RunExpectation expectation,
+        DateTimeOffset reconstructedAt,
+        DateTimeOffset physicalRunAt,
+        string correctionPackageIdentifier)
+    {
+        if (string.IsNullOrWhiteSpace(correctionPackageIdentifier))
+        {
+            throw new ArgumentException("A correction package identifier is required.", nameof(correctionPackageIdentifier));
+        }
+
+        var snapshot = JsonNode.Parse(expectation.ConfigurationSnapshotJson) as JsonObject
+            ?? throw new InvalidOperationException("The Run Expectation configuration snapshot must be a JSON object.");
+        snapshot[nameof(HistoricalRunExpectationMetadata.ExpectationBasis)] = HistoricalReconstructionBasis;
+        reconstructedAt = NormalizeDatabasePrecision(reconstructedAt);
+        physicalRunAt = NormalizeDatabasePrecision(physicalRunAt);
+        snapshot[nameof(HistoricalRunExpectationMetadata.ReconstructedAt)] = reconstructedAt;
+        snapshot[nameof(HistoricalRunExpectationMetadata.PhysicalRunAt)] = physicalRunAt;
+        snapshot[nameof(HistoricalRunExpectationMetadata.QcEvidenceCutoff)] = physicalRunAt;
+        snapshot[nameof(HistoricalRunExpectationMetadata.ConfigurationBasis)] = CurrentConfigurationAtReconstructionBasis;
+        snapshot[nameof(HistoricalRunExpectationMetadata.CorrectionPackageIdentifier)] = correctionPackageIdentifier;
+        expectation.ConfigurationSnapshotJson = snapshot.ToJsonString();
+    }
+
+    public static bool TryGetHistoricalReconstruction(
+        string? configurationSnapshotJson,
+        out HistoricalRunExpectationMetadata? metadata)
+    {
+        metadata = null;
+        if (string.IsNullOrWhiteSpace(configurationSnapshotJson)) return false;
+        try
+        {
+            var snapshot = JsonNode.Parse(configurationSnapshotJson) as JsonObject;
+            if (snapshot?[nameof(HistoricalRunExpectationMetadata.ExpectationBasis)]?.GetValue<string>()
+                != HistoricalReconstructionBasis)
+            {
+                return false;
+            }
+
+            var reconstructedAt = snapshot[nameof(HistoricalRunExpectationMetadata.ReconstructedAt)]?.GetValue<DateTimeOffset>();
+            var physicalRunAt = snapshot[nameof(HistoricalRunExpectationMetadata.PhysicalRunAt)]?.GetValue<DateTimeOffset>();
+            var qcEvidenceCutoff = snapshot[nameof(HistoricalRunExpectationMetadata.QcEvidenceCutoff)]?.GetValue<DateTimeOffset>();
+            var configurationBasis = snapshot[nameof(HistoricalRunExpectationMetadata.ConfigurationBasis)]?.GetValue<string>();
+            var packageIdentifier = snapshot[nameof(HistoricalRunExpectationMetadata.CorrectionPackageIdentifier)]?.GetValue<string>();
+            if (reconstructedAt is null
+                || physicalRunAt is null
+                || qcEvidenceCutoff is null
+                || configurationBasis != CurrentConfigurationAtReconstructionBasis
+                || string.IsNullOrWhiteSpace(packageIdentifier))
+            {
+                return false;
+            }
+
+            metadata = new(
+                HistoricalReconstructionBasis,
+                reconstructedAt.Value,
+                physicalRunAt.Value,
+                qcEvidenceCutoff.Value,
+                configurationBasis,
+                packageIdentifier);
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
 }
 
 public sealed class RunExpectationService(
@@ -47,8 +166,18 @@ public sealed class RunExpectationService(
         }
 
         var roomIds = activeEntries.Select(x => x.RoomId).Distinct().ToList();
-        var fruitProfileIds = activeEntries.Where(x => x.FruitProfileId != null).Select(x => x.FruitProfileId!.Value).Distinct().ToList();
-        var cropYears = activeEntries.Where(x => x.CropYear != null).Select(x => x.CropYear!.Value).Distinct().ToList();
+        var fruitProfileIds = activeEntries
+            .Select(x => x.ReportingFruitProfileIdSnapshot ?? x.FruitProfileId)
+            .Where(x => x != null)
+            .Select(x => x!.Value)
+            .Distinct()
+            .ToList();
+        var cropYears = activeEntries
+            .Select(x => x.ReportingCropYearSnapshot ?? x.CropYear)
+            .Where(x => x != null)
+            .Select(x => x!.Value)
+            .Distinct()
+            .ToList();
         var lotNumbers = activeEntries.Select(x => x.LotNumber).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var warehouse = await dbContext.Warehouses.AsNoTracking()
             .Where(x => x.Id == warehouseIds[0])
@@ -67,6 +196,7 @@ public sealed class RunExpectationService(
         // Filter before materialization and cap the candidate set. The final lot match is exact and never fuzzy.
         var candidateSamples = await dbContext.QcSamples.AsNoTracking()
             .Where(x => !x.IsDeleted
+                && x.SampleTakenAt <= actualRun.RunAt
                 && x.ReceiptId != null
                 && roomIds.Contains(x.Receipt!.RoomId)
                 && fruitProfileIds.Contains(x.Receipt.FruitProfileId)
@@ -143,13 +273,15 @@ public sealed class RunExpectationService(
         var gradePounds = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in activeEntries.OrderBy(x => x.RoomId).ThenBy(x => x.LotNumber).ThenBy(x => x.Id))
         {
-            var profile = entry.FruitProfileId is int profileId && profiles.TryGetValue(profileId, out var resolvedProfile)
+            var reportingFruitProfileId = entry.ReportingFruitProfileIdSnapshot ?? entry.FruitProfileId;
+            var reportingCropYear = entry.ReportingCropYearSnapshot ?? entry.CropYear;
+            var profile = reportingFruitProfileId is int profileId && profiles.TryGetValue(profileId, out var resolvedProfile)
                 ? resolvedProfile
                 : null;
             var sample = candidateSamples.FirstOrDefault(x =>
                 x.RoomId == entry.RoomId
-                && x.FruitProfileId == entry.FruitProfileId
-                && x.CropYear == entry.CropYear
+                && x.FruitProfileId == reportingFruitProfileId
+                && x.CropYear == reportingCropYear
                 && string.Equals(x.LotNumber, entry.LotNumber, StringComparison.OrdinalIgnoreCase));
             var readings = sample?.Readings ?? [];
             var calculation = RunProjectionCalculationService.Calculate(
@@ -185,14 +317,14 @@ public sealed class RunExpectationService(
                 RoomId = entry.RoomId,
                 FacilitySnapshot = warehouse.Code,
                 RoomSnapshot = rooms.GetValueOrDefault(entry.RoomId) ?? entry.RoomId.ToString(),
-                CropYearSnapshot = entry.CropYear,
+                CropYearSnapshot = reportingCropYear,
                 GrowerLotId = entry.GrowerLotId,
-                FruitProfileId = entry.FruitProfileId,
+                FruitProfileId = reportingFruitProfileId,
                 GrowerSnapshot = entry.GrowerName,
                 LotSnapshot = entry.LotNumber,
-                VarietySnapshot = profile?.Name ?? entry.VarietyCode ?? "",
-                ProductionTypeSnapshot = profile?.ProductionType ?? entry.InventoryStatus ?? "",
-                IsOrganicSnapshot = profile?.IsOrganic ?? false,
+                VarietySnapshot = profile?.Name ?? entry.ReportingVarietyCodeSnapshot ?? entry.VarietyCode ?? "",
+                ProductionTypeSnapshot = entry.ProductionTypeSnapshot ?? profile?.ProductionType ?? entry.InventoryStatus ?? "",
+                IsOrganicSnapshot = entry.IsOrganicSnapshot ?? profile?.IsOrganic ?? false,
                 BinsContributed = entry.BinsRun,
                 ContributionPercent = contribution,
                 QcSampleId = sample?.Id,

@@ -42,7 +42,7 @@ public interface IPackoutReportParser
 
 public sealed partial class PackoutReportParser : IPackoutReportParser
 {
-    public const string ParserVersion = "1.1";
+    public const string ParserVersion = "1.2";
     private static readonly string[] AllowedExtensions = [".pdf", ".xlsx", ".xls", ".csv", ".txt", ".jpg", ".jpeg", ".png", ".tif", ".tiff"];
     private readonly PackoutProcessingOptions options;
     private readonly ILogger<PackoutReportParser> logger;
@@ -93,7 +93,15 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
             lines = ReadXls(file.TemporaryPath);
             parserName = "ExcelDataReader";
         }
-        else if (extension is ".csv" or ".txt")
+        else if (extension == ".txt")
+        {
+            var text = await File.ReadAllTextAsync(file.TemporaryPath, cancellationToken);
+            lines = IsGrowerSummary(text)
+                ? ParseText(text, options.MaximumParsedRows)
+                : await ReadDelimitedAsync(file.TemporaryPath, cancellationToken);
+            parserName = "DelimitedText";
+        }
+        else if (extension == ".csv")
         {
             lines = await ReadDelimitedAsync(file.TemporaryPath, cancellationToken);
             parserName = "DelimitedText";
@@ -122,9 +130,11 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
                 }
             }
 
-            var text = await ExtractWithPortableOcrAsync(file.TemporaryPath, extension, pageCount, cancellationToken);
-            lines = ParseText(text, options.MaximumParsedRows);
-            parserName = extension == ".pdf" ? "Poppler+Tesseract" : "Tesseract";
+            var extracted = await ExtractWithPortableOcrAsync(file.TemporaryPath, extension, pageCount, cancellationToken);
+            lines = ParseText(extracted.Text, options.MaximumParsedRows);
+            parserName = extension == ".pdf"
+                ? extracted.UsedOcr ? "Poppler+Tesseract" : "PopplerText"
+                : "Tesseract";
         }
 
         var confidence = lines.Count == 0 ? 0m : decimal.Round(lines.Average(x => x.Confidence), 5);
@@ -165,6 +175,7 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
     public static IReadOnlyList<ParsedPackoutLine> ParseText(string text, int maximumRows = 25_000)
     {
         if (string.IsNullOrWhiteSpace(text)) return [];
+        if (IsGrowerSummary(text)) return ParseGrowerSummary(text, maximumRows);
         using var reader = new StringReader(text);
         var results = new List<ParsedPackoutLine>();
         var lineNumber = 0;
@@ -177,6 +188,58 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
             {
                 throw new InvalidOperationException($"A report may contain at most {maximumRows:N0} parsed rows.");
             }
+        }
+        return results;
+    }
+
+    public static bool IsGrowerSummary(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var markers = new[]
+        {
+            "Grower Summary", "From Date:", "To Date:", "Run #:", "Grower:",
+            "Variety:", "Pack Type:", "Lid Label", "End of Variety", "End of Run"
+        };
+        return markers.Count(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase)) >= 7
+            && text.Contains("Grower Summary", StringComparison.OrdinalIgnoreCase)
+            && text.Contains("Pack Type:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<ParsedPackoutLine> ParseGrowerSummary(string text, int maximumRows)
+    {
+        using var reader = new StringReader(text);
+        var results = new List<ParsedPackoutLine>();
+        string? packType = null;
+        var lineNumber = 0;
+        while (reader.ReadLine() is { } sourceLine)
+        {
+            lineNumber++;
+            var raw = CollapseWhitespace(sourceLine);
+            var section = Regex.Match(raw, @"^Pack Type:\s*(?<pack>.+?)\s+Color:\s*$", RegexOptions.IgnoreCase);
+            if (section.Success)
+            {
+                packType = section.Groups["pack"].Value.Trim();
+                continue;
+            }
+            if (packType is null || raw.StartsWith("Total:", StringComparison.OrdinalIgnoreCase)
+                || raw.StartsWith("End of ", StringComparison.OrdinalIgnoreCase)
+                || raw.StartsWith("Lid Label", StringComparison.OrdinalIgnoreCase)) continue;
+
+            var detail = Regex.Match(raw,
+                @"^(?<lid>[A-Z0-9-]+)\s+(?<grade>Wa Fancy|US No\.\s*1B?|[^\d]+?)\s+(?<size>\d+(?:\s+\d+/\d+)?)\s+(?<boxes>[\d,]+)\s+(?<percent>\d+(?:\.\d+)?%)\s+lbs$",
+                RegexOptions.IgnoreCase);
+            if (!detail.Success) continue;
+            var boxes = ParseDecimal(detail.Groups["boxes"].Value);
+            if (boxes is null) continue;
+            results.Add(new(
+                lineNumber,
+                $"Pack Type: {packType} | Lid Label: {detail.Groups["lid"].Value} | Grade: {detail.Groups["grade"].Value.Trim()} | Size: {detail.Groups["size"].Value} | Box: {boxes:0} | Source: {raw}",
+                packType,
+                boxes,
+                0.98m,
+                false));
+            if (results.Count > maximumRows)
+                throw new InvalidOperationException($"A report may contain at most {maximumRows:N0} parsed rows.");
         }
         return results;
     }
@@ -269,7 +332,7 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
         return results;
     }
 
-    private async Task<string> ExtractWithPortableOcrAsync(
+    private async Task<ExtractedText> ExtractWithPortableOcrAsync(
         string input,
         string extension,
         int? pageCount,
@@ -286,7 +349,7 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
                 if (direct.ExitCode == 0 && File.Exists(directTextPath))
                 {
                     var directText = await File.ReadAllTextAsync(directTextPath, cancellationToken);
-                    if (directText.Count(char.IsLetterOrDigit) >= 40) return directText;
+                    if (directText.Count(char.IsLetterOrDigit) >= 40) return new(directText, false);
                 }
 
                 var output = new StringBuilder();
@@ -320,10 +383,10 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
                         TryDeleteFile(image);
                     }
                 }
-                return output.ToString();
+                return new(output.ToString(), true);
             }
 
-            return (await RunProcessAsync("tesseract", [input, "stdout", "--psm", "6"], cancellationToken)).StandardOutput;
+            return new((await RunProcessAsync("tesseract", [input, "stdout", "--psm", "6"], cancellationToken)).StandardOutput, true);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -337,6 +400,8 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
             catch (UnauthorizedAccessException exception) { logger.LogWarning(exception, "Temporary packout OCR files could not be removed immediately."); }
         }
     }
+
+    private sealed record ExtractedText(string Text, bool UsedOcr);
 
     private async Task<int> GetPdfPageCountAsync(string path, CancellationToken cancellationToken)
     {

@@ -386,29 +386,40 @@ public sealed class BinsRunService(
                     x.ConfidencePercent,
                     x.SizeDistributionSnapshotJson,
                     x.GradeDistributionSnapshotJson,
+                    x.ConfigurationSnapshotJson,
                     x.CalculationVersion,
                     x.CalculatedAt
                 })
                 .ToListAsync(cancellationToken);
             run.Expectations = expectationRows
-                .Select(x => new RunExpectationViewModel
+                .Select(x =>
                 {
-                    Id = x.Id,
-                    RevisionNumber = x.RevisionNumber,
-                    TotalBins = x.TotalBins,
-                    GrossPounds = x.GrossPounds,
-                    ExpectedPackoutPercent = x.ExpectedPackoutPercent,
-                    ExpectedPackedPounds = x.ExpectedPackedPounds,
-                    ExpectedWholeBoxes = x.ExpectedWholeBoxes,
-                    ExpectedCullPounds = x.ExpectedCullPounds,
-                    ExpectedJuicePounds = x.ExpectedJuicePounds,
-                    ExpectedPeelerPounds = x.ExpectedPeelerPounds,
-                    ExpectedWastePounds = x.ExpectedWastePounds,
-                    ConfidencePercent = x.ConfidencePercent,
-                    SizeDistribution = DeserializeDistribution(x.SizeDistributionSnapshotJson),
-                    GradeDistribution = DeserializeDistribution(x.GradeDistributionSnapshotJson),
-                    CalculationVersion = x.CalculationVersion,
-                    CalculatedAt = x.CalculatedAt
+                    RunExpectationMetadata.TryGetHistoricalReconstruction(x.ConfigurationSnapshotJson, out var reconstruction);
+                    return new RunExpectationViewModel
+                    {
+                        Id = x.Id,
+                        RevisionNumber = x.RevisionNumber,
+                        TotalBins = x.TotalBins,
+                        GrossPounds = x.GrossPounds,
+                        ExpectedPackoutPercent = x.ExpectedPackoutPercent,
+                        ExpectedPackedPounds = x.ExpectedPackedPounds,
+                        ExpectedWholeBoxes = x.ExpectedWholeBoxes,
+                        ExpectedCullPounds = x.ExpectedCullPounds,
+                        ExpectedJuicePounds = x.ExpectedJuicePounds,
+                        ExpectedPeelerPounds = x.ExpectedPeelerPounds,
+                        ExpectedWastePounds = x.ExpectedWastePounds,
+                        ConfidencePercent = x.ConfidencePercent,
+                        SizeDistribution = DeserializeDistribution(x.SizeDistributionSnapshotJson),
+                        GradeDistribution = DeserializeDistribution(x.GradeDistributionSnapshotJson),
+                        CalculationVersion = x.CalculationVersion,
+                        CalculatedAt = x.CalculatedAt,
+                        IsHistoricalReconstruction = reconstruction is not null,
+                        ReconstructedAt = reconstruction?.ReconstructedAt,
+                        PhysicalRunAt = reconstruction?.PhysicalRunAt,
+                        QcEvidenceCutoff = reconstruction?.QcEvidenceCutoff,
+                        ConfigurationBasis = reconstruction?.ConfigurationBasis,
+                        CorrectionPackageIdentifier = reconstruction?.CorrectionPackageIdentifier
+                    };
                 })
                 .ToList();
             run.CurrentExpectation = run.Expectations.SingleOrDefault(x => x.RevisionNumber == run.RevisionNumber);

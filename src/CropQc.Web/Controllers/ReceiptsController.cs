@@ -1,6 +1,8 @@
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using CropQc.Shared.Storage;
+using CropQc.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -13,14 +15,77 @@ public sealed class ReceiptsController(
     IReceiptPurgeService receiptPurgeService,
     IReceiptInventoryOverrideService receiptInventoryOverrideService,
     IUserAccessService userAccessService,
+    IAdminManagementService adminManagementService,
+    IAdminAuthorizationService adminAuthorizationService,
+    CropQcDbContext dbContext,
     IReceivingExportService exportService,
     FileStorageOptions fileStorageOptions,
     ILogger<ReceiptsController> logger) : Controller
 {
     [HttpGet("")]
     [Authorize(Policy = AccessPolicyNames.ReceiptsView)]
-    public async Task<IActionResult> Index([FromQuery] ReceiptSearchForm search, CancellationToken cancellationToken) =>
-        View(await dataService.SearchReceiptsAsync(search, cancellationToken));
+    public async Task<IActionResult> Index([FromQuery] ReceiptSearchForm search, CancellationToken cancellationToken)
+    {
+        var model = await dataService.SearchReceiptsAsync(search, cancellationToken);
+        model.CanQuickAddVariety = await userAccessService.HasAccessAsync(
+            User, ApplicationAreas.Varieties, PageAccessLevel.Create, cancellationToken);
+        return View(model);
+    }
+
+    [HttpPost("Varieties/QuickAdd")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> QuickAddVariety(MasterDataEditForm form, CancellationToken cancellationToken)
+    {
+        if (!await userAccessService.HasAccessAsync(User, ApplicationAreas.Varieties, PageAccessLevel.Create, cancellationToken))
+            return Forbid();
+        form.Type = "fruit-profiles";
+        form.Id = null;
+        form.IsActive = true;
+        var error = await adminManagementService.SaveMasterDataAsync(
+            form, adminAuthorizationService.GetEmail(User) ?? "", cancellationToken);
+        if (error is not null) return BadRequest(new { error });
+        var code = form.Code.Trim();
+        var profile = await dbContext.FruitProfiles.AsNoTracking()
+            .SingleAsync(x => x.IsActive && x.VarietyCode.ToUpper() == code.ToUpper(), cancellationToken);
+        return Json(new
+        {
+            id = profile.Id,
+            label = FruitProfileIdentity(profile.VarietyCode, profile.Name, profile.ProductionType, profile.IsOrganic)
+        });
+    }
+
+    private static string FruitProfileIdentity(string code, string name, string productionType, bool isOrganic)
+    {
+        var organic = isOrganic ? "Organic" : "Conventional";
+        var identity = string.Equals(productionType?.Trim(), organic, StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(productionType) ? organic : $"{productionType.Trim()} - {organic}";
+        return $"{code} - {name} - {identity}";
+    }
+
+    [HttpGet("Varieties/Search")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
+    public async Task<IActionResult> SearchVarieties([FromQuery] string? query, CancellationToken cancellationToken)
+    {
+        var normalized = query?.Trim().ToUpperInvariant() ?? "";
+        if (normalized.Length == 0) return Json(Array.Empty<object>());
+        var profiles = await dbContext.FruitProfiles.AsNoTracking()
+            .Where(x => x.IsActive
+                && (x.VarietyCode.ToUpper().Contains(normalized)
+                    || x.Name.ToUpper().Contains(normalized)))
+            .OrderByDescending(x => x.VarietyCode.ToUpper() == normalized)
+            .ThenBy(x => x.VarietyCode)
+            .Take(25)
+            .Select(x => new { x.Id, x.VarietyCode, x.Name, x.ProductionType, x.IsOrganic })
+            .ToListAsync(cancellationToken);
+        return Json(profiles.Select(x => new
+        {
+            id = x.Id,
+            code = x.VarietyCode,
+            label = FruitProfileIdentity(x.VarietyCode, x.Name, x.ProductionType, x.IsOrganic),
+            exactCode = string.Equals(x.VarietyCode, normalized, StringComparison.OrdinalIgnoreCase)
+        }));
+    }
 
     [HttpGet("Export")]
     [Authorize(Policy = AccessPolicyNames.ExportToolsAdmin)]
