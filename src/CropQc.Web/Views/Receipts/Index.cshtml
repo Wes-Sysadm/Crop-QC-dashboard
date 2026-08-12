@@ -3,11 +3,16 @@
 @inject IUserAccessService UserAccess
 @{
     ViewData["Title"] = "Receipts";
-    var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, code = x.CropQcRoomName ?? x.DisplayName ?? x.Code, name = x.DisplayName ?? x.Name, subLocation = x.SubLocation ?? "", compuTech = x.CompuTechRoomCode ?? "" }));
+    var warehouseCodes = Model.Warehouses.ToDictionary(x => x.Id, x => x.Code);
+    var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, warehouseCode = warehouseCodes.GetValueOrDefault(x.WarehouseId, ""), code = x.CropQcRoomName ?? x.DisplayName ?? x.Code, name = x.DisplayName ?? x.Name, subLocation = x.SubLocation ?? "", compuTech = x.CompuTechRoomCode ?? "" }));
     var growerLotsJson = JsonSerializer.Serialize(Model.GrowerLots.Select(x => new { id = x.Id, grower = x.Grower, lot = x.LotNumber, label = $"{x.Grower} - {x.LotNumber}" }));
     var hasRequiredMasterData = Model.Warehouses.Count > 0 && Model.Rooms.Count > 0 && Model.FruitProfiles.Count > 0;
     var canEditReceipts = await UserAccess.HasAccessAsync(User, ApplicationAreas.Receipts, PageAccessLevel.Edit, Context.RequestAborted);
     var canAdminReceipts = await UserAccess.HasAccessAsync(User, ApplicationAreas.Receipts, PageAccessLevel.Admin, Context.RequestAborted);
+    var clearFilterUrl = $"/Receipts?Facility={Uri.EscapeDataString(Model.Search.Facility)}";
+    if (!string.IsNullOrWhiteSpace(Model.Search.DateFilter)) clearFilterUrl += $"&DateFilter={Uri.EscapeDataString(Model.Search.DateFilter)}";
+    if (!string.IsNullOrWhiteSpace(Model.Search.SampleType)) clearFilterUrl += $"&SampleType={Uri.EscapeDataString(Model.Search.SampleType)}";
+    if (!string.IsNullOrWhiteSpace(Model.Search.ReceiptType)) clearFilterUrl += $"&ReceiptType={Uri.EscapeDataString(Model.Search.ReceiptType)}";
 }
 
 <h1>Receipts</h1>
@@ -50,6 +55,32 @@
         </div>
     }
     <div class="field">
+        <label>Variety</label>
+        <select name="FruitProfileId">
+            <option value="">All varieties</option>
+            @foreach (var item in Model.FruitProfiles)
+            {
+                <option value="@item.Id" selected="@(Model.Search.FruitProfileId == item.Id ? "selected" : null)">@FruitProfileIdentity(item.VarietyCode, item.Name, item.ProductionType, item.IsOrganic)</option>
+            }
+        </select>
+    </div>
+    <div class="field">
+        <label>Warehouse</label>
+        <select id="searchWarehouseId" name="WarehouseId">
+            <option value="">All warehouses</option>
+            @foreach (var item in Model.Warehouses)
+            {
+                <option value="@item.Id" selected="@(Model.Search.WarehouseId == item.Id ? "selected" : null)">@item.Code</option>
+            }
+        </select>
+    </div>
+    <div class="field">
+        <label>Room</label>
+        <select id="searchRoomId" name="RoomId" data-selected-room-id="@Model.Search.RoomId">
+            <option value="">All rooms</option>
+        </select>
+    </div>
+    <div class="field">
         <label>Crop Year</label>
         <select name="CropYear">
             @foreach (var year in Model.AvailableCropYears)
@@ -65,23 +96,8 @@
     <div class="field"><label>Receipt ID</label><input name="ReceiptId" value="@Model.Search.ReceiptId" /></div>
     <div class="field"><label>Grower</label><input name="Grower" value="@Model.Search.Grower" /></div>
     <div class="field"><label>Lot</label><input name="Lot" value="@Model.Search.Lot" /></div>
-    <div class="field">
-        <label>Warehouse</label>
-        <select id="searchWarehouseId" name="WarehouseId">
-            <option value="">All</option>
-            @foreach (var item in Model.Warehouses)
-            {
-                <option value="@item.Id" selected="@(Model.Search.WarehouseId == item.Id ? "selected" : null)">@item.Code</option>
-            }
-        </select>
-    </div>
-    <div class="field">
-        <label>Room</label>
-        <select id="searchRoomId" name="RoomId" data-selected-room-id="@Model.Search.RoomId">
-            <option value="">All</option>
-        </select>
-    </div>
     <button type="submit">Search</button>
+    <a class="button secondary-button" href="@clearFilterUrl">Clear filters</a>
     <a class="button secondary-button" href="/Receipts/Export">Export Receiving Data to Excel</a>
 </form>
 <p class="muted">@Model.CropYearHelpText</p>
@@ -116,9 +132,7 @@
             @foreach (var item in Model.FruitProfiles.OrderBy(x => x.VarietyCode))
             {
                 var organic = item.IsOrganic ? "Organic" : "Conventional";
-                var identity = string.Equals(item.ProductionType?.Trim(), organic, StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(item.ProductionType)
-                    ? organic : $"{item.ProductionType.Trim()} - {organic}";
-                <option value="@item.Id" data-code="@item.VarietyCode.ToLowerInvariant()" data-search="@($"{item.VarietyCode} {item.Name} {item.ProductionType} {organic}".ToLowerInvariant())">@item.VarietyCode - @item.Name - @identity</option>
+                <option value="@item.Id" data-code="@item.VarietyCode.ToLowerInvariant()" data-search="@($"{item.VarietyCode} {item.Name} {item.ProductionType} {organic}".ToLowerInvariant())">@FruitProfileIdentity(item.VarietyCode, item.Name, item.ProductionType, item.IsOrganic)</option>
             }
         </select>
         <small>Search is case-insensitive and active profiles are shown code-first.</small>
@@ -206,6 +220,14 @@
         string.IsNullOrWhiteSpace(productionType) || string.Equals(productionType, organicLabel, StringComparison.OrdinalIgnoreCase)
             ? organicLabel
             : $"{productionType} · {organicLabel}";
+
+    private static string FruitProfileIdentity(string code, string name, string? productionType, bool isOrganic)
+    {
+        var organic = isOrganic ? "Organic" : "Conventional";
+        var identity = string.Equals(productionType?.Trim(), organic, StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(productionType) ? organic : $"{productionType.Trim()} - {organic}";
+        return $"{code} - {name} - {identity}";
+    }
 
     private bool IsReceiptTypeSelected(string receiptType)
     {
@@ -314,7 +336,7 @@
             });
         }
 
-        function configureRoomFilter(warehouseSelectId, roomSelectId, emptyText, resetOnWarehouseChange) {
+        function configureRoomFilter(warehouseSelectId, roomSelectId, emptyText, allowAllWarehouses) {
             const warehouseSelect = document.getElementById(warehouseSelectId);
             const roomSelect = document.getElementById(roomSelectId);
             if (!warehouseSelect || !roomSelect) {
@@ -322,28 +344,31 @@
             }
 
             function populateRoomOptions(keepSelection) {
+                const hasWarehouse = warehouseSelect.value !== "";
                 const warehouseId = Number(warehouseSelect.value);
-                const selectedRoomId = keepSelection ? roomSelect.dataset.selectedRoomId : "";
+                const selectedRoomId = keepSelection ? (roomSelect.value || roomSelect.dataset.selectedRoomId) : "";
                 roomSelect.innerHTML = "";
 
                 const defaultOption = document.createElement("option");
                 defaultOption.value = "";
-                defaultOption.textContent = warehouseId ? emptyText : "Select warehouse first";
+                defaultOption.textContent = hasWarehouse ? emptyText : (allowAllWarehouses ? "All rooms" : "Select warehouse first");
                 roomSelect.appendChild(defaultOption);
 
-                if (!warehouseId) {
+                if (!hasWarehouse && !allowAllWarehouses) {
                     roomSelect.value = "";
                     roomSelect.disabled = true;
                     roomSelect.dataset.selectedRoomId = "";
                     return;
                 }
 
-                for (const room of rooms.filter(item => item.warehouseId === warehouseId)) {
+                const availableRooms = hasWarehouse ? rooms.filter(item => item.warehouseId === warehouseId) : rooms;
+                for (const room of availableRooms) {
                     const option = document.createElement("option");
                     option.value = room.id;
                     const prefix = room.subLocation ? `${room.subLocation} — ` : "";
                     const legacy = room.compuTech ? ` (Compu-Tech: ${room.compuTech})` : "";
-                    option.textContent = `${prefix}${room.code}${legacy}`;
+                    const warehousePrefix = hasWarehouse || !room.warehouseCode ? "" : `${room.warehouseCode} — `;
+                    option.textContent = `${warehousePrefix}${prefix}${room.code}${legacy}`;
                     if (selectedRoomId && Number(selectedRoomId) === room.id) {
                         option.selected = true;
                     }
@@ -361,16 +386,13 @@
 
             populateRoomOptions(true);
             warehouseSelect.addEventListener("change", () => {
-                if (resetOnWarehouseChange) {
-                    roomSelect.dataset.selectedRoomId = "";
-                }
-
-                populateRoomOptions(false);
+                roomSelect.dataset.selectedRoomId = roomSelect.value;
+                populateRoomOptions(allowAllWarehouses);
             });
         }
 
-        configureRoomFilter("searchWarehouseId", "searchRoomId", "All", true);
-        configureRoomFilter("addWarehouseId", "addRoomId", "Select", true);
+        configureRoomFilter("searchWarehouseId", "searchRoomId", "All rooms", true);
+        configureRoomFilter("addWarehouseId", "addRoomId", "Select", false);
         const growerLotSelect = document.getElementById("addGrowerLotId");
         const growerLotWarning = document.getElementById("growerLotWarning");
         const growerNumberInput = document.getElementById("addGrowerNumber");

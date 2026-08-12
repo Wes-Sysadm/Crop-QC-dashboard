@@ -147,6 +147,161 @@ public sealed class ReceiptVarietyHttpIntegrationTests
         Assert.Contains("Bartlett - Organic status unknown - 4 bins", html);
     }
 
+    [Fact]
+    public async Task ReceiptResults_ExposeExactVarietyAndFacilityScopedWarehouseRoomOptions()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_TEST_RECEIVING_FILTERS_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        await using var factory = new ReceivingFilterPostgreSqlFactory(connectionString);
+        using var owner = await factory.CreateClientAsync();
+
+        var all = await ReceiptPageAsync(owner, "?Facility=All&AllCropYears=true");
+        Assert.Contains("All varieties", all);
+        Assert.Contains("All warehouses", all);
+        Assert.Contains("All rooms", all);
+        Assert.Contains("GALC - Gala - Conventional", all);
+        Assert.Contains("GALO - Gala - Organic", all);
+        Assert.Contains("FILTER-WP-GALA-C", all);
+        Assert.Contains("FILTER-WP-GALA-O", all);
+        Assert.Contains("FILTER-WP-FUJI", all);
+
+        var ebs = await ReceiptPageAsync(owner, "?Facility=EBS&AllCropYears=true");
+        Assert.Contains(ReceivingFilterPostgreSqlFactory.EbsRoomCode, ebs);
+        Assert.DoesNotContain(ReceivingFilterPostgreSqlFactory.WpRoomOneCode, ebs);
+        Assert.DoesNotContain(ReceivingFilterPostgreSqlFactory.WpRoomTwoCode, ebs);
+        Assert.Contains("FILTER-EBS-GALA-C", ebs);
+        Assert.DoesNotContain("FILTER-WP-GALA-C", ebs);
+
+        var wp = await ReceiptPageAsync(owner, "?Facility=WP&AllCropYears=true");
+        Assert.Contains(ReceivingFilterPostgreSqlFactory.WpRoomOneCode, wp);
+        Assert.Contains(ReceivingFilterPostgreSqlFactory.WpRoomTwoCode, wp);
+        Assert.DoesNotContain(ReceivingFilterPostgreSqlFactory.EbsRoomCode, wp);
+    }
+
+    [Fact]
+    public async Task ReceiptResults_FilterExactOrganicIdentityAndCombineDatabasePredicates()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_TEST_RECEIVING_FILTERS_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        await using var factory = new ReceivingFilterPostgreSqlFactory(connectionString);
+        using var owner = await factory.CreateClientAsync();
+
+        var conventional = await ReceiptPageAsync(owner,
+            $"?Facility=All&AllCropYears=true&FruitProfileId={ReceivingFilterPostgreSqlFactory.GalaConventionalId}");
+        Assert.Contains("FILTER-WP-GALA-C", conventional);
+        Assert.Contains("FILTER-EBS-GALA-C", conventional);
+        Assert.DoesNotContain("FILTER-WP-GALA-O", conventional);
+        Assert.DoesNotContain("FILTER-EBS-GALA-O", conventional);
+
+        var organic = await ReceiptPageAsync(owner,
+            $"?Facility=All&AllCropYears=true&FruitProfileId={ReceivingFilterPostgreSqlFactory.GalaOrganicId}");
+        Assert.Contains("FILTER-WP-GALA-O", organic);
+        Assert.Contains("FILTER-EBS-GALA-O", organic);
+        Assert.DoesNotContain("FILTER-WP-GALA-C", organic);
+        Assert.DoesNotContain("FILTER-EBS-GALA-C", organic);
+
+        var combined = await ReceiptPageAsync(owner,
+            $"?Facility=WP&AllCropYears=true&FruitProfileId={ReceivingFilterPostgreSqlFactory.GalaConventionalId}&WarehouseId={ReceivingFilterPostgreSqlFactory.WpWarehouseId}&RoomId={ReceivingFilterPostgreSqlFactory.WpRoomOneId}&Grower=9040&Lot=FILTER-C");
+        Assert.Contains("FILTER-WP-GALA-C", combined);
+        Assert.DoesNotContain("FILTER-WP-GALA-O", combined);
+        Assert.DoesNotContain("FILTER-EBS-GALA-C", combined);
+        Assert.Contains($"value=\"{ReceivingFilterPostgreSqlFactory.GalaConventionalId}\" selected=\"selected\"", combined);
+        Assert.Contains($"value=\"{ReceivingFilterPostgreSqlFactory.WpWarehouseId}\" selected=\"selected\"", combined);
+        Assert.Contains($"data-selected-room-id=\"{ReceivingFilterPostgreSqlFactory.WpRoomOneId}\"", combined);
+        Assert.Contains("value=\"9040\"", combined);
+        Assert.Contains("value=\"FILTER-C\"", combined);
+
+        var invalidProfile = await ReceiptPageAsync(owner, "?Facility=All&AllCropYears=true&FruitProfileId=2147483000");
+        Assert.DoesNotContain("FILTER-WP-GALA-C", invalidProfile);
+        Assert.DoesNotContain("FILTER-WP-GALA-O", invalidProfile);
+    }
+
+    [Fact]
+    public async Task ReceiptResults_SupportWarehouseOnlyRoomOnlyAndClearIncompatibleRoom()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_TEST_RECEIVING_FILTERS_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        await using var factory = new ReceivingFilterPostgreSqlFactory(connectionString);
+        using var owner = await factory.CreateClientAsync();
+
+        var warehouseOnly = await ReceiptPageAsync(owner,
+            $"?Facility=All&AllCropYears=true&WarehouseId={ReceivingFilterPostgreSqlFactory.WpWarehouseId}");
+        Assert.Contains("FILTER-WP-GALA-C", warehouseOnly);
+        Assert.Contains("FILTER-WP-FUJI", warehouseOnly);
+        Assert.DoesNotContain("FILTER-EBS-GALA-C", warehouseOnly);
+
+        var roomOnly = await ReceiptPageAsync(owner,
+            $"?Facility=All&AllCropYears=true&RoomId={ReceivingFilterPostgreSqlFactory.WpRoomOneId}");
+        Assert.Contains("FILTER-WP-GALA-C", roomOnly);
+        Assert.Contains("FILTER-WP-GALA-O", roomOnly);
+        Assert.DoesNotContain("FILTER-WP-FUJI", roomOnly);
+        Assert.Contains($"data-selected-room-id=\"{ReceivingFilterPostgreSqlFactory.WpRoomOneId}\"", roomOnly);
+
+        var warehouseRoom = await ReceiptPageAsync(owner,
+            $"?Facility=All&AllCropYears=true&WarehouseId={ReceivingFilterPostgreSqlFactory.WpWarehouseId}&RoomId={ReceivingFilterPostgreSqlFactory.WpRoomTwoId}");
+        Assert.Contains("FILTER-WP-FUJI", warehouseRoom);
+        Assert.DoesNotContain("FILTER-WP-GALA-C", warehouseRoom);
+
+        var incompatible = await ReceiptPageAsync(owner,
+            $"?Facility=All&AllCropYears=true&WarehouseId={ReceivingFilterPostgreSqlFactory.WpWarehouseId}&RoomId={ReceivingFilterPostgreSqlFactory.EbsRoomId}");
+        Assert.Contains("FILTER-WP-GALA-C", incompatible);
+        Assert.Contains("FILTER-WP-FUJI", incompatible);
+        Assert.DoesNotContain($"data-selected-room-id=\"{ReceivingFilterPostgreSqlFactory.EbsRoomId}\"", incompatible);
+
+        var wrongFacility = await ReceiptPageAsync(owner,
+            $"?Facility=EBS&AllCropYears=true&RoomId={ReceivingFilterPostgreSqlFactory.WpRoomOneId}");
+        Assert.Contains("FILTER-EBS-GALA-C", wrongFacility);
+        Assert.DoesNotContain($"data-selected-room-id=\"{ReceivingFilterPostgreSqlFactory.WpRoomOneId}\"", wrongFacility);
+    }
+
+    [Fact]
+    public async Task ReceiptTypeTabsAndClearLink_PreserveIntentionalContextFilters()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_TEST_RECEIVING_FILTERS_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        await using var factory = new ReceivingFilterPostgreSqlFactory(connectionString);
+        using var owner = await factory.CreateClientAsync();
+        var html = WebUtility.HtmlDecode(await ReceiptPageAsync(owner,
+            $"?Facility=WP&CropYear=2026&FruitProfileId={ReceivingFilterPostgreSqlFactory.GalaConventionalId}&WarehouseId={ReceivingFilterPostgreSqlFactory.WpWarehouseId}&RoomId={ReceivingFilterPostgreSqlFactory.WpRoomOneId}&Grower=9040&Lot=FILTER-C&DateFilter=today&SampleType=Receiving%20Sample"));
+
+        Assert.Contains("name=\"DateFilter\" value=\"today\"", html);
+        Assert.Contains("name=\"SampleType\" value=\"Receiving Sample\"", html);
+        Assert.Contains("FILTER-WP-GALA-C", html);
+        Assert.DoesNotContain("FILTER-WP-GALA-O", html);
+        Assert.Contains($"FruitProfileId={ReceivingFilterPostgreSqlFactory.GalaConventionalId}", html);
+        Assert.Contains($"WarehouseId={ReceivingFilterPostgreSqlFactory.WpWarehouseId}", html);
+        Assert.Contains($"RoomId={ReceivingFilterPostgreSqlFactory.WpRoomOneId}", html);
+        Assert.Contains("ReceiptType=Door%20sample", html);
+        Assert.Contains("Clear filters", html);
+        Assert.Contains("/Receipts?Facility=WP&DateFilter=today&SampleType=Receiving%20Sample", html);
+    }
+
+    [Fact]
+    public async Task ReceiptFiltering_PerformsNoReceiptOrInventoryWrites()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_TEST_RECEIVING_FILTERS_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        await using var factory = new ReceivingFilterPostgreSqlFactory(connectionString);
+        using var owner = await factory.CreateClientAsync();
+        var before = factory.DataCounts();
+
+        await ReceiptPageAsync(owner, $"?Facility=All&AllCropYears=true&FruitProfileId={ReceivingFilterPostgreSqlFactory.GalaOrganicId}");
+        await ReceiptPageAsync(owner, $"?Facility=All&AllCropYears=true&RoomId={ReceivingFilterPostgreSqlFactory.WpRoomOneId}");
+        await ReceiptPageAsync(owner, $"?Facility=WP&AllCropYears=true&WarehouseId={ReceivingFilterPostgreSqlFactory.WpWarehouseId}&RoomId={ReceivingFilterPostgreSqlFactory.WpRoomOneId}&Grower=9040");
+
+        Assert.Equal(before, factory.DataCounts());
+    }
+
+    private static async Task<string> ReceiptPageAsync(HttpClient client, string query)
+    {
+        var response = await client.GetAsync("/Receipts" + query);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.DoesNotContain("could not be translated", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Npgsql", html, StringComparison.OrdinalIgnoreCase);
+        return html;
+    }
+
     private static async Task<List<SearchResult>> SearchAsync(HttpClient client, string query)
     {
         var response = await client.GetAsync("/Receipts/Varieties/Search?query=" + Uri.EscapeDataString(query));
@@ -187,6 +342,144 @@ public sealed class ReceiptVarietyHttpIntegrationTests
 
     private sealed record SearchResult(int Id, string Code, string Label, bool ExactCode);
     private sealed record QuickAddResult(int Id, string Label);
+
+    private sealed class ReceivingFilterPostgreSqlFactory(string connectionString) : WebApplicationFactory<Program>
+    {
+        public static int WpWarehouseId { get; private set; }
+        public static int EbsWarehouseId { get; private set; }
+        public const int WpRoomOneId = 8810;
+        public const int WpRoomTwoId = 8811;
+        public const int EbsRoomId = 8812;
+        public const int GalaConventionalId = 8820;
+        public const int GalaOrganicId = 8821;
+        public const string WpRoomOneCode = "WP-FILTER-ONE";
+        public const string WpRoomTwoCode = "WP-FILTER-TWO";
+        public const string EbsRoomCode = "EBS-FILTER-ONE";
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connectionString);
+            builder.UseEnvironment("Development");
+            builder.ConfigureAppConfiguration((_, configuration) =>
+                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Database:Provider"] = "PostgreSql",
+                    ["ConnectionStrings:CropQc"] = connectionString,
+                    ["Database:EnsureCreatedOnStartup"] = "false",
+                    ["Database:SeedMasterDataOnStartup"] = "false",
+                    ["Backups:Enabled"] = "false",
+                    ["EbsDailyBinsEmail:Enabled"] = "false",
+                    ["Email:Provider"] = "None",
+                    ["DataProtection:PersistKeysToFileSystem"] = "false"
+                }));
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IHostedService>();
+                services.AddDataProtection().UseEphemeralDataProtectionProvider();
+                services.AddAuthentication(options =>
+                    {
+                        options.DefaultAuthenticateScheme = HeaderAuthenticationHandler.SchemeName;
+                        options.DefaultChallengeScheme = HeaderAuthenticationHandler.SchemeName;
+                    })
+                    .AddScheme<AuthenticationSchemeOptions, HeaderAuthenticationHandler>(
+                        HeaderAuthenticationHandler.SchemeName, _ => { });
+            });
+        }
+
+        public async Task<HttpClient> CreateClientAsync()
+        {
+            var client = CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(HeaderAuthenticationHandler.SchemeName);
+            client.DefaultRequestHeaders.Add("X-Test-Email", ApplicationAreas.OwnerEmail);
+
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            await db.Database.EnsureDeletedAsync();
+            Assert.True(await db.Database.EnsureCreatedAsync(), "The configured Receiving filter PostgreSQL database must start empty.");
+
+            var wp = await db.Warehouses.SingleAsync(x => x.Code == "WP");
+            var ebs = await db.Warehouses.SingleAsync(x => x.Code == "EBS");
+            WpWarehouseId = wp.Id;
+            EbsWarehouseId = ebs.Id;
+            var wpRoomOne = new Room { Id = WpRoomOneId, WarehouseId = wp.Id, Warehouse = wp, Code = WpRoomOneCode, Name = "WP Filter Room One", CapacityBins = 1000, IsActive = true };
+            var wpRoomTwo = new Room { Id = WpRoomTwoId, WarehouseId = wp.Id, Warehouse = wp, Code = WpRoomTwoCode, Name = "WP Filter Room Two", CapacityBins = 1000, IsActive = true };
+            var ebsRoom = new Room { Id = EbsRoomId, WarehouseId = ebs.Id, Warehouse = ebs, Code = EbsRoomCode, Name = "EBS Filter Room One", CapacityBins = 1000, IsActive = true };
+            var conventional = new FruitProfile { Id = GalaConventionalId, VarietyCode = "GALC", Name = "Gala", FruitType = "Apple", ProductionType = "Conventional", IsOrganic = false, IsActive = true };
+            var organic = new FruitProfile { Id = GalaOrganicId, VarietyCode = "GALO", Name = "Gala", FruitType = "Apple", ProductionType = "Organic", IsOrganic = true, IsActive = true };
+            var fuji = new FruitProfile { Id = 8822, VarietyCode = "FUJF", Name = "Fuji", FruitType = "Apple", ProductionType = "Conventional", IsOrganic = false, IsActive = true };
+            var receivingSampleType = await db.SampleTypes.SingleAsync(x => x.Name == "Receiving Sample");
+            var wpConventional = FilterReceipt(8840, "FILTER-WP-GALA-C", wp, wpRoomOne, conventional, "FILTER-C", "Truck receipt");
+            var wpOrganic = FilterReceipt(8841, "FILTER-WP-GALA-O", wp, wpRoomOne, organic, "FILTER-O", "Truck receipt");
+            var wpFuji = FilterReceipt(8842, "FILTER-WP-FUJI", wp, wpRoomTwo, fuji, "FILTER-F", "Lot sample");
+            var ebsConventional = FilterReceipt(8843, "FILTER-EBS-GALA-C", ebs, ebsRoom, conventional, "FILTER-C", "Truck receipt");
+            var ebsOrganic = FilterReceipt(8844, "FILTER-EBS-GALA-O", ebs, ebsRoom, organic, "FILTER-O", "Door sample");
+
+            db.AddRange(
+                wpRoomOne,
+                wpRoomTwo,
+                ebsRoom,
+                conventional,
+                organic,
+                fuji,
+                wpConventional,
+                wpOrganic,
+                wpFuji,
+                ebsConventional,
+                ebsOrganic,
+                new QcSample
+                {
+                    Id = 8850,
+                    ReceiptId = wpConventional.Id,
+                    Receipt = wpConventional,
+                    SampleTypeId = receivingSampleType.Id,
+                    SampleType = receivingSampleType,
+                    Status = "Complete",
+                    StarchStatus = "Complete",
+                    PhotoStatus = "Complete",
+                    EmailStatus = "Not Sent",
+                    SampleTakenAt = DateTimeOffset.UtcNow,
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+            await db.SaveChangesAsync();
+            return client;
+        }
+
+        public (int Receipts, int Adjustments, int AuditLogs) DataCounts()
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            return (db.Receipts.Count(), db.RoomInventoryAdjustments.Count(), db.AuditLogs.Count());
+        }
+
+        private static Receipt FilterReceipt(
+            long id,
+            string receiptId,
+            Warehouse warehouse,
+            Room room,
+            FruitProfile profile,
+            string lot,
+            string receiptType) => new()
+            {
+                Id = id,
+                CropYear = 2026,
+                ReceivedAt = DateTimeOffset.UtcNow,
+                CompuTechReceiptId = receiptId,
+                ReceiptType = receiptType,
+                WarehouseId = warehouse.Id,
+                Warehouse = warehouse,
+                RoomId = room.Id,
+                Room = room,
+                FruitProfileId = profile.Id,
+                FruitProfile = profile,
+                GrowerName = "Filter Grower 9040",
+                GrowerNumber = "9040",
+                LotCode = lot,
+                BinCount = 10,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                ConcurrencyVersion = 1
+            };
+    }
 
     private sealed class ReceiptVarietyFactory : WebApplicationFactory<Program>
     {
@@ -423,6 +716,7 @@ public sealed class ReceiptVarietyHttpIntegrationTests
                 DateTimeOffset.Parse("2026-08-01T17:00:00Z"),
                 9000 + currentBins,
                 "HTTP dashboard rendering test");
+
     }
 
     private sealed class FixedLedgerQuery(IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots) : IRoomInventoryLedgerQueryService
