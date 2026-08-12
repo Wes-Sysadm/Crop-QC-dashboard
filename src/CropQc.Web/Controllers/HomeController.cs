@@ -6,7 +6,9 @@ using System.Security.Claims;
 
 namespace CropQc.Web.Controllers;
 
-public sealed class HomeController(IDashboardDataService dataService) : Controller
+public sealed class HomeController(
+    IDashboardDataService dataService,
+    IRoomInventoryLossService roomInventoryLossService) : Controller
 {
     [Authorize(Policy = AccessPolicyNames.DashboardView)]
     public async Task<IActionResult> Index([FromQuery] RoomSummaryFilterForm roomSummaryFilter, CancellationToken cancellationToken) =>
@@ -100,6 +102,35 @@ public sealed class HomeController(IDashboardDataService dataService) : Controll
         var error = await dataService.CreateRoomTransferAsync(form, cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Room transfer recorded.";
         return Redirect($"/BinsRun?RoomId={roomId}&Section=Transfer&SourceKey={Uri.EscapeDataString(form.SourceLotKey ?? "")}");
+    }
+
+    [HttpPost("/Rooms/{roomId:int}/DroppedBins")]
+    [Authorize(Policy = AccessPolicyNames.RoomTransactionsEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> MarkBinsDropped(
+        int roomId,
+        RoomInventoryLossForm form,
+        CancellationToken cancellationToken)
+    {
+        form.RoomId = roomId;
+        var error = await roomInventoryLossService.CreateAsync(form, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Dropped bins recorded. The receipt quantity was not changed.";
+        return RedirectToAction(nameof(Room), new { roomId });
+    }
+
+    [HttpPost("/Rooms/{roomId:int}/DroppedBins/{lossId:long}/Reverse")]
+    [Authorize(Policy = AccessPolicyNames.RoomTransactionsAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReverseDroppedBins(
+        int roomId,
+        long lossId,
+        ReverseRoomInventoryLossForm form,
+        CancellationToken cancellationToken)
+    {
+        form.Id = lossId;
+        var error = await roomInventoryLossService.ReverseAsync(form, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Dropped bins restored through an auditable reversal.";
+        return RedirectToAction(nameof(Room), new { roomId });
     }
 
     [HttpGet("/AccessDenied")]

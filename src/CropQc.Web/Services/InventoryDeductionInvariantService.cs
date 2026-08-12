@@ -62,7 +62,7 @@ public sealed class InventoryDeductionInvariantService(
             blocking.AdjustmentId,
             blocking.InvariantVersion);
         throw new InventoryDeductionInvariantException(
-            $"Inventory was not changed because its required Bins Run, Transfer, or Receipt Admin Override relationship is invalid ({blocking.Code}).");
+            $"Inventory was not changed because its required Bins Run, Transfer, Receipt Admin Override, or Room Inventory Loss relationship is invalid ({blocking.Code}).");
     }
 
     public async Task<InventoryDeductionReadinessResult> VerifyReadinessAsync(CancellationToken cancellationToken)
@@ -141,6 +141,22 @@ public sealed class InventoryDeductionInvariantService(
             .Select(x => x.Entity)
             .ToList();
 
+        var lossIds = adjustments
+            .Where(x => x.RoomInventoryLossId is not null)
+            .Select(x => x.RoomInventoryLossId!.Value)
+            .Distinct()
+            .ToList();
+        var persistedLosses = lossIds.Count == 0
+            ? []
+            : await dbContext.RoomInventoryLosses.AsNoTracking()
+                .Include(x => x.InventoryAdjustments)
+                .Where(x => lossIds.Contains(x.Id))
+                .ToListAsync(cancellationToken);
+        var trackedLosses = dbContext.ChangeTracker.Entries<RoomInventoryLoss>()
+            .Where(x => x.State != EntityState.Deleted)
+            .Select(x => x.Entity)
+            .ToList();
+
         foreach (var adjustment in adjustments)
         {
             var binsParents = entryLookup
@@ -153,12 +169,15 @@ public sealed class InventoryDeductionInvariantService(
             var receiptOverride = adjustment.ReceiptInventoryOverride
                 ?? trackedOverrides.SingleOrDefault(x => adjustment.ReceiptInventoryOverrideId == x.Id || ReferenceEquals(x, adjustment.ReceiptInventoryOverride))
                 ?? persistedOverrides.SingleOrDefault(x => x.Id == adjustment.ReceiptInventoryOverrideId);
-            var parentCount = binsParents.Count + (transfer is null ? 0 : 1) + (receiptOverride is null ? 0 : 1);
+            var loss = adjustment.RoomInventoryLoss
+                ?? trackedLosses.SingleOrDefault(x => adjustment.RoomInventoryLossId == x.Id || ReferenceEquals(x, adjustment.RoomInventoryLoss))
+                ?? persistedLosses.SingleOrDefault(x => x.Id == adjustment.RoomInventoryLossId);
+            var parentCount = binsParents.Count + (transfer is null ? 0 : 1) + (receiptOverride is null ? 0 : 1) + (loss is null ? 0 : 1);
             var blocks = adjustment.InventoryInvariantVersion >= CurrentVersion;
 
             if (adjustment.ChangeAmount < 0 && parentCount == 0)
             {
-                Add("NoParent", "Negative adjustment has no persisted Bins Run, Transfer, or Receipt Admin Override parent.");
+                Add("NoParent", "Negative adjustment has no persisted Bins Run, Transfer, Receipt Admin Override, or Room Inventory Loss parent.");
                 continue;
             }
             if (parentCount > 1)
@@ -192,6 +211,18 @@ public sealed class InventoryDeductionInvariantService(
                     .DistinctBy(x => x.Id == 0 ? RuntimeHelpers.GetHashCode(x) : x.Id)
                     .ToList();
                 ValidateReceiptOverride(adjustment, receiptOverride, overrideAdjustments, Add);
+            }
+            else if (loss is not null)
+            {
+                var lossAdjustments = loss.InventoryAdjustments
+                    .Concat(dbContext.ChangeTracker.Entries<RoomInventoryAdjustment>()
+                        .Where(x => x.State != EntityState.Deleted
+                            && (ReferenceEquals(x.Entity.RoomInventoryLoss, loss)
+                                || x.Entity.RoomInventoryLossId == loss.Id))
+                        .Select(x => x.Entity))
+                    .DistinctBy(x => x.Id == 0 ? RuntimeHelpers.GetHashCode(x) : x.Id)
+                    .ToList();
+                ValidateRoomInventoryLoss(adjustment, loss, lossAdjustments, Add);
             }
 
             void Add(string code, string message)
@@ -297,6 +328,72 @@ public sealed class InventoryDeductionInvariantService(
         if (adjustment.RoomTransferId is null && adjustment.RoomTransfer is null)
         {
             add("MissingTransferLink", "Transfer adjustment is not linked by a persisted transfer ID.");
+        }
+    }
+
+    private static void ValidateRoomInventoryLoss(
+        RoomInventoryAdjustment adjustment,
+        RoomInventoryLoss loss,
+        IReadOnlyCollection<RoomInventoryAdjustment> operationAdjustments,
+        Action<string, string> add)
+    {
+        if (!string.Equals(loss.LossType, RoomInventoryLossTypes.Dropped, StringComparison.Ordinal)
+            || loss.BinCount <= 0
+            || string.IsNullOrWhiteSpace(loss.OperationKey)
+            || string.IsNullOrWhiteSpace(loss.Reason))
+        {
+            add("InvalidRoomInventoryLoss", "Room Inventory Loss is incomplete or uses an unsupported loss type.");
+        }
+
+        var dropped = operationAdjustments
+            .Where(x => string.Equals(x.AdjustmentType, RoomInventoryLossAdjustmentTypes.DroppedBins, StringComparison.Ordinal))
+            .ToList();
+        var restored = operationAdjustments
+            .Where(x => string.Equals(x.AdjustmentType, RoomInventoryLossAdjustmentTypes.DroppedBinsReversal, StringComparison.Ordinal))
+            .ToList();
+        if (dropped.Count != 1 || dropped[0].ChangeAmount != -loss.BinCount)
+        {
+            add("RoomInventoryLossAmountMismatch", "Room Inventory Loss must have exactly one DroppedBins adjustment equal to the persisted loss quantity.");
+        }
+        if ((!loss.IsReversed && restored.Count != 0)
+            || (loss.IsReversed && (restored.Count != 1 || restored[0].ChangeAmount != loss.BinCount)))
+        {
+            add("RoomInventoryLossReversalMismatch", "Room Inventory Loss reversal state and positive ledger adjustment do not match.");
+        }
+        if (operationAdjustments.Count != dropped.Count + restored.Count)
+        {
+            add("RoomInventoryLossAdjustmentTypeMismatch", "Room Inventory Loss contains an unsupported adjustment type.");
+        }
+        foreach (var side in operationAdjustments)
+        {
+            if (side.WarehouseId != loss.WarehouseId
+                || side.RoomId != loss.RoomId
+                || side.ReceiptId != loss.ReceiptId
+                || side.CropYear != loss.CropYear
+                || side.GrowerLotId != loss.GrowerLotId
+                || side.FruitProfileId != loss.FruitProfileId
+                || !Same(side.GrowerName, loss.GrowerName)
+                || !Same(side.LotNumber, loss.LotNumber)
+                || !Same(side.VarietyCode, loss.VarietyCode)
+                || !Same(side.InventoryStatus, loss.InventoryStatus))
+            {
+                add("RoomInventoryLossIdentityMismatch", "Room Inventory Loss adjustment inventory identity does not match its persisted parent.");
+                break;
+            }
+            if (side.OldBinCount is null || side.NewBinCount != side.OldBinCount + side.ChangeAmount)
+            {
+                add("RoomInventoryLossBalanceMismatch", "Room Inventory Loss before/after balance does not reconcile with its quantity.");
+                break;
+            }
+            if (side.RoomTransferId is not null || side.ReceiptInventoryOverrideId is not null)
+            {
+                add("MultipleParents", "Room Inventory Loss adjustment also references another operational parent.");
+                break;
+            }
+        }
+        if (adjustment.RoomInventoryLossId is null && adjustment.RoomInventoryLoss is null)
+        {
+            add("MissingRoomInventoryLossLink", "Dropped-bin adjustment is not linked by a persisted Room Inventory Loss ID.");
         }
     }
 

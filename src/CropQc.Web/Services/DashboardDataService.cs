@@ -97,7 +97,8 @@ public sealed class DashboardDataService(
     IFacilityContextService? facilityContextService = null,
     IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null,
     IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null,
-    IVarietyColorService? varietyColorService = null) : IDashboardDataService
+    IVarietyColorService? varietyColorService = null,
+    IRoomInventoryLossService? roomInventoryLossService = null) : IDashboardDataService
 {
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
     private const int MaximumLotEvidenceLinks = 8;
@@ -110,6 +111,7 @@ public sealed class DashboardDataService(
     private IInventoryDeductionInvariantService InventoryInvariant { get; } =
         inventoryDeductionInvariantService
         ?? new InventoryDeductionInvariantService(dbContext, NullLogger<InventoryDeductionInvariantService>.Instance);
+    private IRoomInventoryLossService? RoomInventoryLosses { get; } = roomInventoryLossService;
 
     public async Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
     {
@@ -435,6 +437,9 @@ public sealed class DashboardDataService(
             await DecorateCurrentRoomLotsAsync(activeLots, sampleDistributions, cancellationToken);
             var currentGrowers = BuildRoomGrowerSummaries(activeLots);
             var canManage = await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
+            var inventoryLossData = RoomInventoryLosses is null
+                ? new RoomInventoryLossPageData([], [], false, false)
+                : await RoomInventoryLosses.GetRoomDataAsync(roomId, cancellationToken);
 
             return new RoomDetailViewModel
             {
@@ -459,7 +464,12 @@ public sealed class DashboardDataService(
                 DepletionForm = new RoomDepletionForm { RoomId = roomId, DepletedAt = BusinessTime.NowPacific },
                 TrueUpForm = new RoomInventoryTrueUpForm { RoomId = roomId, AdjustmentAt = BusinessTime.NowPacific },
                 TransferForm = new RoomTransferForm { FromRoomId = roomId, TransferAt = BusinessTime.NowPacific },
-                CanManageDepletions = canManage
+                CanManageDepletions = canManage,
+                InventoryLossOptions = inventoryLossData.Options,
+                InventoryLosses = inventoryLossData.History,
+                InventoryLossForm = new RoomInventoryLossForm { RoomId = roomId, OccurredAt = BusinessTime.NowPacific },
+                CanRecordInventoryLoss = inventoryLossData.CanRecord,
+                CanReverseInventoryLoss = inventoryLossData.CanReverse
             };
         }
         catch (Exception ex)
@@ -1409,6 +1419,17 @@ public sealed class DashboardDataService(
                     x.NegativeInventoryAcknowledged,
                     x.InventoryAdjustments.Count))
                 .ToListAsync(cancellationToken);
+            IReadOnlyList<RoomInventoryLossHistoryViewModel> inventoryLosses = RoomInventoryLosses is null
+                ? []
+                : await RoomInventoryLosses.GetReceiptHistoryAsync(id, cancellationToken);
+            var receiptLot = !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber : receipt.LotCode;
+            var receiptSnapshots = await RoomInventoryLedger.GetSnapshotsAsync(receipt.WarehouseId, [receipt.RoomId], receipt.FruitProfileId, cancellationToken);
+            var currentPackableBins = receiptSnapshots
+                .Where(x => x.CropYear == receipt.CropYear
+                    && x.GrowerLotId == receipt.GrowerLotId
+                    && string.Equals(x.Lot, receiptLot, StringComparison.OrdinalIgnoreCase))
+                .Select(x => (int?)x.CurrentBins)
+                .SingleOrDefault();
             return new ReceiptDetailViewModel
             {
                 Receipt = ReceiptListItem(receipt),
@@ -1418,6 +1439,8 @@ public sealed class DashboardDataService(
                 CanDeleteSamples = await HasAccessAsync(ApplicationAreas.DailyQc, PageAccessLevel.Admin, cancellationToken),
                 DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
                 InventoryOverrides = inventoryOverrides,
+                InventoryLosses = inventoryLosses,
+                CurrentPackableBins = currentPackableBins,
                 AddPhotoForm = new AddPhotoMetadataForm
                 {
                     ReceiptId = receipt.Id,

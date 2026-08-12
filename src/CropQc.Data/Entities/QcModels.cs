@@ -36,6 +36,7 @@ public sealed class Receipt
     public ICollection<RoomDepletion> RoomDepletions { get; } = new List<RoomDepletion>();
     public ICollection<RoomInventoryAdjustment> RoomInventoryAdjustments { get; } = new List<RoomInventoryAdjustment>();
     public ICollection<ReceiptInventoryOverride> InventoryOverrides { get; } = new List<ReceiptInventoryOverride>();
+    public ICollection<RoomInventoryLoss> InventoryLosses { get; } = new List<RoomInventoryLoss>();
 }
 
 public static class ReceiptInventoryOverrideActionTypes
@@ -138,11 +139,54 @@ public sealed class RoomInventoryAdjustment
     public RoomTransfer? RoomTransfer { get; set; }
     public Guid? ReceiptInventoryOverrideId { get; set; }
     public ReceiptInventoryOverride? ReceiptInventoryOverride { get; set; }
+    public long? RoomInventoryLossId { get; set; }
+    public RoomInventoryLoss? RoomInventoryLoss { get; set; }
     public long? ActualRunId { get; set; }
     public ActualRun? ActualRun { get; set; }
     public long? ActualRunRevisionId { get; set; }
     public ActualRunRevision? ActualRunRevision { get; set; }
     public ICollection<InventoryDiagnosticAcknowledgment> DiagnosticAcknowledgments { get; } = new List<InventoryDiagnosticAcknowledgment>();
+}
+
+public static class RoomInventoryLossTypes
+{
+    public const string Dropped = "Dropped";
+}
+
+public sealed class RoomInventoryLoss
+{
+    public long Id { get; set; }
+    public required string OperationKey { get; set; }
+    public int WarehouseId { get; set; }
+    public Warehouse Warehouse { get; set; } = null!;
+    public int RoomId { get; set; }
+    public Room Room { get; set; } = null!;
+    public long? ReceiptId { get; set; }
+    public Receipt? Receipt { get; set; }
+    public int? CropYear { get; set; }
+    public int? GrowerLotId { get; set; }
+    public int? FruitProfileId { get; set; }
+    public FruitProfile? FruitProfile { get; set; }
+    public required string GrowerName { get; set; }
+    public string? GrowerNumber { get; set; }
+    public required string LotNumber { get; set; }
+    public string? PoolStart { get; set; }
+    public required string VarietyCode { get; set; }
+    public string? InventoryStatus { get; set; }
+    public required string LossType { get; set; }
+    public int BinCount { get; set; }
+    public required string Reason { get; set; }
+    public string? Notes { get; set; }
+    public DateTimeOffset? OccurredAt { get; set; }
+    public int CreatedByUserId { get; set; }
+    public User CreatedByUser { get; set; } = null!;
+    public DateTimeOffset CreatedAt { get; set; }
+    public bool IsReversed { get; set; }
+    public DateTimeOffset? ReversedAt { get; set; }
+    public int? ReversedByUserId { get; set; }
+    public User? ReversedByUser { get; set; }
+    public string? ReverseReason { get; set; }
+    public ICollection<RoomInventoryAdjustment> InventoryAdjustments { get; } = new List<RoomInventoryAdjustment>();
 }
 
 public sealed class RoomTransfer

@@ -151,6 +151,101 @@
     }
 </section>
 
+@if (Model.CanRecordInventoryLoss && Model.Summary is not null)
+{
+    <section class="panel">
+        <h2>Mark bins dropped</h2>
+        <p class="muted">Record bins that were legitimately received but later became unavailable for packing. This does not change the receipt or create a run, transfer, or true-up.</p>
+        @if (Model.InventoryLossOptions.Count == 0)
+        {
+            <p class="muted">No packable inventory identity is currently available in this room.</p>
+        }
+        else
+        {
+            <form class="form-grid" method="post" action="/Rooms/@Model.Summary.RoomId/DroppedBins" id="dropped-bins-form">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="OperationKey" value="@Model.InventoryLossForm.OperationKey" />
+                <input type="hidden" name="ExpectedCurrentBins" id="dropped-expected-current" value="0" />
+                <label class="field wide">Exact current inventory identity
+                    <select name="InventoryAdjustmentId" id="dropped-inventory-identity" required>
+                        <option value="">Select current inventory</option>
+                        @foreach (var option in Model.InventoryLossOptions)
+                        {
+                            <option value="@option.InventoryAdjustmentId"
+                                    data-facility="@option.Facility"
+                                    data-room="@option.Room"
+                                    data-grower="@option.Grower"
+                                    data-lot="@option.Lot"
+                                    data-variety="@option.Variety"
+                                    data-production="@option.ProductionType"
+                                    data-organic="@(option.IsOrganic == true ? "Organic" : option.IsOrganic == false ? "Conventional" : "Organic status unavailable")"
+                                    data-current="@option.CurrentBins">@option.Label</option>
+                        }
+                    </select>
+                </label>
+                <div class="subpanel wide" id="dropped-identity-summary" hidden>
+                    <dl class="summary-list">
+                        <dt>Facility</dt><dd data-loss-field="facility"></dd>
+                        <dt>Room</dt><dd data-loss-field="room"></dd>
+                        <dt>Grower</dt><dd data-loss-field="grower"></dd>
+                        <dt>Lot</dt><dd data-loss-field="lot"></dd>
+                        <dt>Variety</dt><dd data-loss-field="variety"></dd>
+                        <dt>Organic / Conventional</dt><dd data-loss-field="organic"></dd>
+                        <dt>Current packable bins</dt><dd data-loss-field="current"></dd>
+                    </dl>
+                </div>
+                <label class="field">Bins dropped
+                    <input type="number" min="1" name="BinCount" id="dropped-bin-count" required />
+                </label>
+                <label class="field">Loss time
+                    <input type="datetime-local" name="OccurredAt" value="@BusinessTime.FormatPacificInput(Model.InventoryLossForm.OccurredAt ?? BusinessTime.UtcNow)" />
+                    <small>For real-time entries, use now. Leave blank when the exact historical occurrence time is genuinely unknown.</small>
+                </label>
+                <label class="field wide">Optional notes
+                    <textarea name="Notes" maxlength="1000"></textarea>
+                </label>
+                <button type="submit">Mark bins dropped</button>
+            </form>
+        }
+    </section>
+}
+
+@if (Model.InventoryLosses.Count > 0)
+{
+    <section class="panel">
+        <h2>Dropped Bin History</h2>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Status</th><th>Quantity</th><th>Identity</th><th>Occurred / recorded</th><th>User</th><th>Reason / notes</th><th>Action</th></tr></thead>
+                <tbody>
+                @foreach (var loss in Model.InventoryLosses)
+                {
+                    <tr>
+                        <td><span class="status @(loss.IsReversed ? "pending" : "review")">@(loss.IsReversed ? "Restored" : "Dropped")</span></td>
+                        <td>@loss.BinCount</td>
+                        <td>@loss.Facility / @loss.Room<br />@loss.Grower / @loss.Lot / @loss.Variety / @(loss.IsOrganic == true ? "Organic" : loss.IsOrganic == false ? "Conventional" : loss.ProductionType)<br />@if (loss.ReceiptId is not null) { <a href="/Receipts/@loss.ReceiptId">Receipt @loss.ReceiptReference</a> }</td>
+                        <td>@BusinessTime.FormatPacific(loss.OccurredAt, empty: "Exact occurrence time unavailable")<br /><span class="muted">Recorded @BusinessTime.FormatPacific(loss.CreatedAt)</span></td>
+                        <td>@loss.CreatedBy@if (loss.IsReversed) { <br /><span class="muted">Restored by @(loss.ReversedBy ?? "Unknown")</span> }</td>
+                        <td>@loss.Reason@if (!string.IsNullOrWhiteSpace(loss.Notes)) { <br /><span class="muted">@loss.Notes</span> }@if (loss.IsReversed) { <br /><strong>Reversal:</strong> @loss.ReverseReason }</td>
+                        <td>
+                            @if (Model.CanReverseInventoryLoss && !loss.IsReversed)
+                            {
+                                <form method="post" action="/Rooms/@Model.Summary!.RoomId/DroppedBins/@loss.Id/Reverse" class="stack-form">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="OperationKey" value="@(Guid.NewGuid().ToString("N"))" />
+                                    <label>Reversal reason <input name="Reason" required maxlength="1000" /></label>
+                                    <button type="submit" class="secondary-button">Restore / Reverse Dropped Bins</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
 @if (Model.CanManageDepletions && Model.Summary is not null)
 {
     <section class="panel">
@@ -334,6 +429,44 @@
         </div>
     }
 </section>
+
+<script>
+(() => {
+    const form = document.getElementById('dropped-bins-form');
+    if (!form) return;
+    const select = document.getElementById('dropped-inventory-identity');
+    const expected = document.getElementById('dropped-expected-current');
+    const count = document.getElementById('dropped-bin-count');
+    const summary = document.getElementById('dropped-identity-summary');
+    const refresh = () => {
+        const option = select.options[select.selectedIndex];
+        const current = option?.dataset.current ?? '';
+        expected.value = current;
+        summary.hidden = !current;
+        for (const field of summary.querySelectorAll('[data-loss-field]')) {
+            field.textContent = field.dataset.lossField === 'current'
+                ? current
+                : option?.dataset[field.dataset.lossField] ?? '';
+        }
+        count.max = current;
+    };
+    select.addEventListener('change', refresh);
+    form.addEventListener('submit', event => {
+        refresh();
+        const dropped = Number.parseInt(count.value, 10);
+        const current = Number.parseInt(expected.value, 10);
+        if (!Number.isInteger(dropped) || dropped <= 0 || !Number.isInteger(current) || dropped > current) {
+            event.preventDefault();
+            window.alert(`Bins dropped must be between 1 and the current packable balance (${Number.isInteger(current) ? current : 0}).`);
+            return;
+        }
+        const remaining = current - dropped;
+        if (!window.confirm(`Mark ${dropped} bins as dropped?\n\nThe original receipt quantity will remain unchanged.\n\nCurrent packable inventory will change from ${current} bins to ${remaining} bins.`)) {
+            event.preventDefault();
+        }
+    });
+})();
+</script>
 
 @functions {
     private static string IdentityLabel(string? productionType, string organicLabel) =>

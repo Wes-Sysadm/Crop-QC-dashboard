@@ -101,6 +101,8 @@ public sealed class RoomInventoryReconciliationService(
                 TransferInBins = snapshot.TransferInBins,
                 TransferOutBins = snapshot.TransferOutBins,
                 TrueUpBins = snapshot.TrueUpBins,
+                DroppedBins = snapshot.DroppedBins,
+                DroppedBinsRestored = snapshot.DroppedBinsRestored,
                 OtherAdjustmentBins = snapshot.OtherAdjustmentBins,
                 LedgerBalance = snapshot.CurrentBins,
                 TransactionCount = snapshot.TransactionCount,
@@ -226,7 +228,7 @@ public sealed class RoomInventoryReconciliationService(
         InventoryDiagnosticOverviewViewModel diagnostics,
         CancellationToken cancellationToken)
     {
-        var adjustments = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+        var adjustmentQuery = dbContext.RoomInventoryAdjustments.AsNoTracking()
             .Include(x => x.Warehouse)
             .Include(x => x.Room)
             .Include(x => x.Receipt)
@@ -235,17 +237,25 @@ public sealed class RoomInventoryReconciliationService(
             .Include(x => x.CreatedByUser)
             .Include(x => x.RoomTransfer)
             .Include(x => x.ReceiptInventoryOverride)
+            .Include(x => x.RoomInventoryLoss)
             .Where(x => x.ChangeAmount < 0)
             .Where(x => filter.WarehouseId == null || x.WarehouseId == filter.WarehouseId)
             .Where(x => filter.RoomId == null || x.RoomId == filter.RoomId)
             .Where(x => string.IsNullOrWhiteSpace(filter.Lot) || x.LotNumber.Contains(filter.Lot))
             .Where(x => string.IsNullOrWhiteSpace(filter.Variety)
                 || (x.VarietyCode != null && x.VarietyCode.Contains(filter.Variety))
-                || (x.FruitProfile != null && x.FruitProfile.VarietyCode.Contains(filter.Variety)))
-            .OrderByDescending(x => x.AdjustmentAt)
-            .ThenByDescending(x => x.Id)
-            .Take(MaximumReceiptRows)
-            .ToListAsync(cancellationToken);
+                || (x.FruitProfile != null && x.FruitProfile.VarietyCode.Contains(filter.Variety)));
+        var adjustments = (dbContext.Database.ProviderName ?? "").Contains("Sqlite", StringComparison.OrdinalIgnoreCase)
+            ? (await adjustmentQuery.ToListAsync(cancellationToken))
+                .OrderByDescending(x => x.AdjustmentAt)
+                .ThenByDescending(x => x.Id)
+                .Take(MaximumReceiptRows)
+                .ToList()
+            : await adjustmentQuery
+                .OrderByDescending(x => x.AdjustmentAt)
+                .ThenByDescending(x => x.Id)
+                .Take(MaximumReceiptRows)
+                .ToListAsync(cancellationToken);
         var ids = adjustments.Select(x => x.Id).ToList();
         var entries = ids.Count == 0
             ? []
@@ -291,7 +301,8 @@ public sealed class RoomInventoryReconciliationService(
                 .ToList();
             var namedParentCount = (parents.Count > 0 ? 1 : 0)
                 + (x.RoomTransfer is not null ? 1 : 0)
-                + (x.ReceiptInventoryOverride is not null ? 1 : 0);
+                + (x.ReceiptInventoryOverride is not null ? 1 : 0)
+                + (x.RoomInventoryLoss is not null ? 1 : 0);
             var parentType = namedParentCount > 1
                 ? "Multiple"
                 : parents.Count > 0
@@ -302,8 +313,12 @@ public sealed class RoomInventoryReconciliationService(
                             ? "Missing Transfer"
                             : x.ReceiptInventoryOverride is not null
                                 ? "Receipt Admin Override"
-                                : x.ReceiptInventoryOverrideId is not null
+                            : x.ReceiptInventoryOverrideId is not null
                                     ? "Missing Receipt Admin Override"
+                                    : x.RoomInventoryLoss is not null
+                                        ? "Room Inventory Loss"
+                                        : x.RoomInventoryLossId is not null
+                                            ? "Missing Room Inventory Loss"
                                     : "None";
             var profile = x.FruitProfile ?? x.Receipt?.FruitProfile;
             var baselineKey = BaselineKey(
@@ -330,12 +345,13 @@ public sealed class RoomInventoryReconciliationService(
                 BinsRunId = parents.Count == 1 ? parents[0].Id : null,
                 TransferId = x.RoomTransferId,
                 ReceiptInventoryOverrideId = x.ReceiptInventoryOverrideId,
+                RoomInventoryLossId = x.RoomInventoryLossId,
                 ActualRunId = x.ActualRunId,
                 CreatedBy = x.CreatedByUser?.DisplayName ?? "Unknown",
                 AdjustmentAt = x.AdjustmentAt,
                 ParentMatches = activeDiagnostics.Count == 0
                     && acknowledgedDiagnostics.Count == 0
-                    && parentType is "Bins Run" or "Transfer" or "Receipt Admin Override",
+                    && parentType is "Bins Run" or "Transfer" or "Receipt Admin Override" or "Room Inventory Loss",
                 CurrentlyAffectsInventory = currentlyAffects,
                 InvariantVersion = x.InventoryInvariantVersion,
                 RecordedSource = x.Source ?? "",

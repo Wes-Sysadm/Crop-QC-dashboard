@@ -80,7 +80,7 @@
 
 <section class="panel">
     <h2>Negative adjustment parent evidence</h2>
-    <p class="muted">Every new-format deduction must have exactly one persisted Bins Run, Transfer, or Receipt Admin Override parent. Historical warnings are shown without changing their records.</p>
+    <p class="muted">Every new-format deduction must have exactly one persisted Bins Run, Transfer, Receipt Admin Override, or Room Inventory Loss parent. Historical warnings are shown without changing their records.</p>
     @if (Model.NegativeAdjustments.Count == 0)
     {
         <p class="muted">No negative room-ledger adjustments match the selected filters.</p>
@@ -129,6 +129,10 @@
                             @if (row.ReceiptInventoryOverrideId is not null)
                             {
                                 <br /><span>Receipt Admin Override @row.ReceiptInventoryOverrideId</span>
+                            }
+                            @if (row.RoomInventoryLossId is not null)
+                            {
+                                <br /><span>Room Inventory Loss #@row.RoomInventoryLossId</span>
                             }
                         </td>
                         <td>@(row.ActualRunId is null ? "-" : $"#{row.ActualRunId}")</td>
@@ -195,6 +199,7 @@
                     <th class="numeric-cell">Actual Run Reversed</th>
                     <th class="numeric-cell">Transfer In / Out</th>
                     <th class="numeric-cell">True Up</th>
+                    <th class="numeric-cell">Dropped / Restored</th>
                     <th class="numeric-cell">Other</th>
                     <th class="numeric-cell">Ledger Balance</th>
                     <th>Transactions</th>
@@ -222,6 +227,7 @@
                         <td class="numeric-cell">@row.ActualRunReversalBins</td>
                         <td class="numeric-cell">@row.TransferInBins / @row.TransferOutBins</td>
                         <td class="numeric-cell">@row.TrueUpBins</td>
+                        <td class="numeric-cell">@row.DroppedBins / @row.DroppedBinsRestored</td>
                         <td class="numeric-cell">@row.OtherAdjustmentBins</td>
                         <td class="numeric-cell"><strong>@row.LedgerBalance</strong></td>
                         <td>
