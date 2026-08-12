@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Time;
@@ -19,6 +20,7 @@ public sealed class Tr108859MalformedCorrectionTests
         await using var fixture = await Fixture.CreateAsync();
         var correction = fixture.CorrectionService();
         var preflight = await correction.PreflightAsync(CancellationToken.None);
+        var originalAuditBefore = await fixture.Db.AuditLogs.AsNoTracking().SingleAsync(x => x.Id == 23057);
 
         Assert.Equal("Ready", preflight.State);
         Assert.Equal(Tr108859DroppedBinsCorrectionConstants.MalformedTrueUpCase, preflight.Evidence!.CorrectionCase);
@@ -63,9 +65,72 @@ public sealed class Tr108859MalformedCorrectionTests
         Assert.Equal(Tr108859DroppedBinsCorrectionConstants.HistoricalNotes, loss.Notes);
         Assert.Equal(28, (await fixture.Db.Receipts.FindAsync(208L))!.BinCount);
         Assert.Equal(8, await fixture.Db.RoomInventoryAdjustments.CountAsync());
-        Assert.NotNull(await fixture.Db.AuditLogs.FindAsync(23057L));
-        Assert.Single(await fixture.Db.AuditLogs.Where(x => x.Action == "NormalizeMalformedManualTrueUp").ToListAsync());
+        var originalAuditAfter = await fixture.Db.AuditLogs.AsNoTracking().SingleAsync(x => x.Id == 23057);
+        Assert.Equal(originalAuditBefore.Action, originalAuditAfter.Action);
+        Assert.Equal(originalAuditBefore.EntityName, originalAuditAfter.EntityName);
+        Assert.Equal(originalAuditBefore.EntityKey, originalAuditAfter.EntityKey);
+        Assert.Equal(originalAuditBefore.UserId, originalAuditAfter.UserId);
+        Assert.Equal(originalAuditBefore.BeforeValuesJson, originalAuditAfter.BeforeValuesJson);
+        Assert.Equal(originalAuditBefore.AfterValuesJson, originalAuditAfter.AfterValuesJson);
+        Assert.Equal(originalAuditBefore.SourceApplication, originalAuditAfter.SourceApplication);
+        Assert.Equal(originalAuditBefore.CreatedAt, originalAuditAfter.CreatedAt);
+        var correctionAudit = Assert.Single(await fixture.Db.AuditLogs.Where(x => x.Action == "NormalizeMalformedManualTrueUp").ToListAsync());
+        var auditEvidence = JsonSerializer.Deserialize<RoomInventoryLossNormalizationAuditEvidence>(
+            correctionAudit.AfterValuesJson!, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.NotNull(auditEvidence);
+        Assert.Equal("TR108859", auditEvidence.ReceiptReference);
+        Assert.Equal(208, auditEvidence.ReceiptId);
+        Assert.Equal(28, auditEvidence.ReceivedBins);
+        Assert.Equal(2, auditEvidence.DroppedBins);
+        Assert.Equal(248, auditEvidence.CanonicalBalanceBeforeAdjustment);
+        Assert.Equal(246, auditEvidence.CorrectedCurrentPackableBins);
+        Assert.Equal(280, auditEvidence.MalformedAdjustmentId);
+        Assert.Equal("ManualTrueUp", auditEvidence.OriginalAdjustmentType);
+        Assert.Equal(28, auditEvidence.OriginalOldBinCount);
+        Assert.Equal(218, auditEvidence.OriginalChangeAmount);
+        Assert.Equal(246, auditEvidence.OriginalNewBinCount);
+        Assert.Equal(RoomInventoryLossAdjustmentTypes.DroppedBins, auditEvidence.CorrectedAdjustmentType);
+        Assert.Equal(248, auditEvidence.CorrectedOldBinCount);
+        Assert.Equal(-2, auditEvidence.CorrectedChangeAmount);
+        Assert.Equal(246, auditEvidence.CorrectedNewBinCount);
+        Assert.Equal(Tr108859DroppedBinsCorrectionConstants.CorrectionRootCause, auditEvidence.RootCause);
+        Assert.Contains("receipt-local 28-bin balance", auditEvidence.RootCause);
+        Assert.Contains("248-bin canonical aggregate inventory identity", auditEvidence.RootCause);
+        Assert.Equal(Tr108859DroppedBinsCorrectionConstants.CorrectionBusinessEvent, auditEvidence.BusinessEvent);
+        Assert.True(auditEvidence.ReceiptQuantityWasNotChanged);
+        Assert.True(auditEvidence.OriginalAuditWasRetained);
         await fixture.Invariant.ValidateBeforeCommitAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Applied_state_with_incomplete_correction_audit_fails_closed()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var correction = fixture.CorrectionService();
+        var preflight = await correction.PreflightAsync(CancellationToken.None);
+        var applied = await correction.RunAsync(fixture.Request(preflight), CancellationToken.None);
+        Assert.True(applied.Applied);
+
+        var audit = await fixture.Db.AuditLogs.SingleAsync(x => x.Action == "NormalizeMalformedManualTrueUp");
+        audit.AfterValuesJson = JsonSerializer.Serialize(new
+        {
+            receiptReference = "TR108859",
+            receiptId = 208,
+            receivedBins = 28,
+            droppedBins = 2
+        });
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        var result = await correction.RunAsync(fixture.Request(applied.Preflight), CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.False(result.AlreadyApplied);
+        Assert.Equal("Refused", result.Preflight.State);
+        Assert.Contains(result.Preflight.Issues, x => x.Contains("correction audit", StringComparison.OrdinalIgnoreCase));
+        Assert.Single(await fixture.Db.RoomInventoryLosses.ToListAsync());
+        Assert.Single(await fixture.Db.AuditLogs.Where(x => x.Action == "NormalizeMalformedManualTrueUp").ToListAsync());
+        Assert.Equal(RoomInventoryLossAdjustmentTypes.DroppedBins, (await fixture.Db.RoomInventoryAdjustments.FindAsync(280L))!.AdjustmentType);
     }
 
     [Theory]

@@ -312,6 +312,130 @@ public sealed class RoomInventoryLossTests
         Assert.Contains("Dropped / Restored", reconciliation);
     }
 
+    [Fact]
+    public async Task PostgreSql_room_and_receipt_history_filter_entities_before_projection_when_configured()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_TEST_ROOM_INVENTORY_LOSS_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connectionString);
+        var optionsBuilder = new DbContextOptionsBuilder<CropQcDbContext>();
+        CropQcDatabase.Configure(optionsBuilder, DatabaseProviders.PostgreSql, connectionString);
+        await using var db = new CropQcDbContext(optionsBuilder.Options);
+        Assert.True(await db.Database.EnsureCreatedAsync(), "The configured disposable PostgreSQL history database must start empty.");
+        try
+        {
+            var warehouse = new Warehouse { Id = 98801, Code = "PGHIST-EBS", Name = "PostgreSQL History EBS" };
+            var room = new Room { Id = 17, Warehouse = warehouse, WarehouseId = warehouse.Id, Code = "EVANS-7", Name = "EVANS-7" };
+            var fruit = new FruitProfile
+            {
+                Id = 98802,
+                Name = "Gala",
+                VarietyCode = "PGHIST-GALA",
+                FruitType = "Apple",
+                ProductionType = "Conventional"
+            };
+            var admin = new User
+            {
+                Id = 98803,
+                Email = ApplicationAreas.OwnerEmail,
+                DisplayName = "PostgreSQL History Admin",
+                Domain = "fruitandland.com",
+                CreatedAt = Now
+            };
+            var receipt = new Receipt
+            {
+                Id = 208,
+                CropYear = 2026,
+                ReceivedAt = Now.AddDays(-2),
+                CompuTechReceiptId = "TR108859",
+                Warehouse = warehouse,
+                WarehouseId = warehouse.Id,
+                Room = room,
+                RoomId = room.Id,
+                FruitProfile = fruit,
+                FruitProfileId = fruit.Id,
+                GrowerNumber = "9040",
+                GrowerName = "DL & JJ FARMS - CLARENCE",
+                LotCode = "9040",
+                BinCount = 28,
+                CreatedAt = Now.AddDays(-2),
+                UpdatedAt = Now.AddDays(-2)
+            };
+            db.AddRange(warehouse, room, fruit, admin, receipt);
+            db.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
+            {
+                Id = 98804,
+                Receipt = receipt,
+                ReceiptId = receipt.Id,
+                WarehouseId = warehouse.Id,
+                RoomId = room.Id,
+                CropYear = 2026,
+                FruitProfileId = fruit.Id,
+                GrowerName = receipt.GrowerName,
+                LotNumber = "9040",
+                VarietyCode = "PGHIST-GALA",
+                InventoryStatus = "Conventional",
+                ChangeAmount = 28,
+                NewBinCount = 28,
+                AdjustmentType = "ReceiptAdd",
+                Source = "Receiving inventory added",
+                Reason = "Receiving inventory added",
+                AdjustmentAt = receipt.ReceivedAt,
+                CreatedAt = receipt.CreatedAt,
+                CreatedByUserId = admin.Id
+            });
+            await db.SaveChangesAsync();
+            db.ChangeTracker.Clear();
+
+            var ledger = new TestLedgerQueryService(db);
+            var invariant = new InventoryDeductionInvariantService(db, NullLogger<InventoryDeductionInvariantService>.Instance);
+            var accessor = new FixedHttpContextAccessor(new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, ApplicationAreas.OwnerEmail)], "PostgreSqlTest"))
+            });
+            var service = new RoomInventoryLossService(
+                db,
+                ledger,
+                invariant,
+                new UserAccessService(db, new ConfigurationBuilder().Build()),
+                accessor,
+                new PacificBusinessTimeService(new FixedClock(Now)),
+                NullLogger<RoomInventoryLossService>.Instance);
+            var created = await service.CreateReviewedCorrectionAsync(new(
+                "postgres-history-loss",
+                room.Id,
+                98804,
+                28,
+                2,
+                null,
+                "Two bins were dropped after receiving.",
+                "PostgreSQL translation regression",
+                receipt.Id,
+                "PostgreSQL history regression"), admin.Id, CancellationToken.None);
+            Assert.True(created.Success, created.Error);
+
+            var receiptHistory = await service.GetReceiptHistoryAsync(208, CancellationToken.None);
+            var receiptLoss = Assert.Single(receiptHistory);
+            Assert.Equal("TR108859", receiptLoss.ReceiptReference);
+            Assert.Equal(2, receiptLoss.BinCount);
+            Assert.Equal(RoomInventoryLossTypes.Dropped, receiptLoss.LossType);
+            Assert.False(receiptLoss.IsReversed);
+
+            var roomData = await service.GetRoomDataAsync(17, CancellationToken.None);
+            var roomLoss = Assert.Single(roomData.History);
+            Assert.Equal(receiptLoss.Id, roomLoss.Id);
+            Assert.Equal("TR108859", roomLoss.ReceiptReference);
+            Assert.Equal(2, roomLoss.BinCount);
+            Assert.Equal(RoomInventoryLossTypes.Dropped, roomLoss.LossType);
+            Assert.False(roomLoss.IsReversed);
+        }
+        finally
+        {
+            await db.Database.EnsureDeletedAsync();
+        }
+    }
+
     private static string FindRepositoryFile(params string[] segments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

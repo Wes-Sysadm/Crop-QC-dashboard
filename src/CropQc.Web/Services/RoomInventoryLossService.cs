@@ -53,7 +53,44 @@ public sealed record RoomInventoryLossNormalizationRequest(
     long RequiredReceiptId,
     string Reason,
     string? Notes,
-    string AuditSource);
+    string AuditSource,
+    RoomInventoryLossNormalizationAuditContext AuditContext);
+
+public sealed record RoomInventoryLossNormalizationAuditContext(
+    string ReceiptReference,
+    long ReceiptId,
+    int ReceivedBins,
+    int DroppedBins,
+    int CanonicalBalanceBeforeAdjustment,
+    int CorrectedCurrentPackableBins,
+    long MalformedAdjustmentId,
+    string RootCause,
+    string BusinessEvent);
+
+public sealed record RoomInventoryLossNormalizationAuditEvidence(
+    string ReceiptReference,
+    long ReceiptId,
+    int ReceivedBins,
+    int DroppedBins,
+    int CanonicalBalanceBeforeAdjustment,
+    int CorrectedCurrentPackableBins,
+    long MalformedAdjustmentId,
+    string OriginalAdjustmentType,
+    int? OriginalOldBinCount,
+    int OriginalChangeAmount,
+    int OriginalNewBinCount,
+    string CorrectedAdjustmentType,
+    int CorrectedOldBinCount,
+    int CorrectedChangeAmount,
+    int CorrectedNewBinCount,
+    long LossParentId,
+    string LossOperationKey,
+    string RootCause,
+    string BusinessEvent,
+    bool ReceiptQuantityWasNotChanged,
+    bool OriginalAuditWasRetained,
+    DateTimeOffset CorrectedAt,
+    string CorrectedBy);
 
 public sealed record RoomInventoryLossWriteResult(
     bool Success,
@@ -104,13 +141,18 @@ public sealed class RoomInventoryLossService(
             && await userAccessService.HasAccessAsync(principal, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
         var canReverse = principal is not null
             && await userAccessService.HasAccessAsync(principal, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken);
-        return new(options, await GetHistoryQuery().Where(x => x.RoomId == roomId).ToListAsync(cancellationToken), canRecord, canReverse);
+        var history = await ProjectHistory(
+                dbContext.RoomInventoryLosses.AsNoTracking().Where(x => x.RoomId == roomId))
+            .ToListAsync(cancellationToken);
+        return new(options, history, canRecord, canReverse);
     }
 
     public async Task<IReadOnlyList<RoomInventoryLossHistoryViewModel>> GetReceiptHistoryAsync(
         long receiptId,
         CancellationToken cancellationToken) =>
-        await GetHistoryQuery().Where(x => x.ReceiptId == receiptId).ToListAsync(cancellationToken);
+        await ProjectHistory(
+                dbContext.RoomInventoryLosses.AsNoTracking().Where(x => x.ReceiptId == receiptId))
+            .ToListAsync(cancellationToken);
 
     public async Task<string?> CreateAsync(RoomInventoryLossForm form, CancellationToken cancellationToken)
     {
@@ -166,6 +208,15 @@ public sealed class RoomInventoryLossService(
         if (request.CanonicalBalanceBeforeAdjustment < request.BinCount)
             return Failed("The reviewed canonical balance cannot cover the dropped-bin quantity.");
         if (string.IsNullOrWhiteSpace(request.Reason)) return Failed("A dropped-bin reason is required.");
+        if (request.AuditContext.ReceiptId != request.RequiredReceiptId
+            || request.AuditContext.DroppedBins != request.BinCount
+            || request.AuditContext.CanonicalBalanceBeforeAdjustment != request.CanonicalBalanceBeforeAdjustment
+            || request.AuditContext.CorrectedCurrentPackableBins != request.CanonicalBalanceBeforeAdjustment - request.BinCount
+            || request.AuditContext.MalformedAdjustmentId != request.ExistingAdjustmentId
+            || string.IsNullOrWhiteSpace(request.AuditContext.ReceiptReference)
+            || string.IsNullOrWhiteSpace(request.AuditContext.RootCause)
+            || string.IsNullOrWhiteSpace(request.AuditContext.BusinessEvent))
+            return Failed("The reviewed normalization audit context is incomplete or contradicts the correction request.");
 
         var actor = await dbContext.Users.SingleOrDefaultAsync(x => x.Id == actorUserId && x.IsActive, cancellationToken);
         if (actor is null) return Failed("The active correction administrator could not be resolved.");
@@ -212,6 +263,14 @@ public sealed class RoomInventoryLossService(
             {
                 return Failed("The reviewed malformed Manual True Up shape no longer matches; no correction was recorded.");
             }
+
+            var auditReceiptMatches = await dbContext.Receipts.AsNoTracking().AnyAsync(x =>
+                x.Id == request.RequiredReceiptId
+                && x.CompuTechReceiptId == request.AuditContext.ReceiptReference
+                && x.BinCount == request.AuditContext.ReceivedBins,
+                cancellationToken);
+            if (!auditReceiptMatches)
+                return Failed("The reviewed normalization audit context contradicts the persisted receipt evidence.");
 
             var snapshots = await ledgerQuery.GetSnapshotsAsync(adjustment.WarehouseId, [adjustment.RoomId], adjustment.FruitProfileId, cancellationToken);
             var snapshot = snapshots.SingleOrDefault(x => x.LatestAdjustmentId == adjustment.Id);
@@ -283,29 +342,30 @@ public sealed class RoomInventoryLossService(
                 EntityName = nameof(RoomInventoryAdjustment),
                 EntityKey = adjustment.Id.ToString(),
                 BeforeValuesJson = JsonSerializer.Serialize(original, JsonOptions),
-                AfterValuesJson = JsonSerializer.Serialize(new
-                {
-                    adjustment.Id,
-                    adjustment.ReceiptId,
+                AfterValuesJson = JsonSerializer.Serialize(new RoomInventoryLossNormalizationAuditEvidence(
+                    request.AuditContext.ReceiptReference,
+                    request.AuditContext.ReceiptId,
+                    request.AuditContext.ReceivedBins,
+                    request.AuditContext.DroppedBins,
+                    request.AuditContext.CanonicalBalanceBeforeAdjustment,
+                    request.AuditContext.CorrectedCurrentPackableBins,
+                    request.AuditContext.MalformedAdjustmentId,
+                    original.AdjustmentType,
+                    original.OldBinCount,
+                    original.ChangeAmount,
+                    original.NewBinCount,
                     adjustment.AdjustmentType,
-                    adjustment.OldBinCount,
+                    adjustment.OldBinCount!.Value,
                     adjustment.ChangeAmount,
                     adjustment.NewBinCount,
-                    adjustment.Source,
-                    adjustment.Reason,
-                    adjustment.Notes,
-                    adjustment.AdjustmentAt,
-                    adjustment.CreatedAt,
-                    adjustment.CreatedByUserId,
-                    adjustment.InventoryInvariantVersion,
-                    adjustment.InventoryOperationKey,
-                    adjustment.RoomInventoryLossId,
-                    LossOperationKey = loss.OperationKey,
-                    ReceiptQuantityWasNotChanged = true,
-                    OriginalAuditWasRetained = true,
-                    CorrectedAt = now,
-                    CorrectedBy = actor.Email
-                }, JsonOptions),
+                    loss.Id,
+                    loss.OperationKey,
+                    request.AuditContext.RootCause,
+                    request.AuditContext.BusinessEvent,
+                    true,
+                    true,
+                    now,
+                    actor.Email), JsonOptions),
                 SourceApplication = request.AuditSource,
                 CreatedAt = now
             });
@@ -632,9 +692,8 @@ public sealed class RoomInventoryLossService(
         return adjustment;
     }
 
-    private IQueryable<RoomInventoryLossHistoryViewModel> GetHistoryQuery() =>
-        dbContext.RoomInventoryLosses.AsNoTracking()
-            .OrderByDescending(x => x.CreatedAt)
+    private static IQueryable<RoomInventoryLossHistoryViewModel> ProjectHistory(IQueryable<RoomInventoryLoss> query) =>
+        query.OrderByDescending(x => x.CreatedAt)
             .ThenByDescending(x => x.Id)
             .Select(x => new RoomInventoryLossHistoryViewModel(
                 x.Id,

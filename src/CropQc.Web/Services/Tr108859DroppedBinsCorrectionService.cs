@@ -21,6 +21,8 @@ public static class Tr108859DroppedBinsCorrectionConstants
     public const string NormalizedLossReason = "Two bins were dropped after receiving.";
     public const string HistoricalNotes = "Bin Wall on bottom bin fell out causing top 2 bins to fall forward to the ground.";
     public const string CorrectionAuditSource = "CropQc.Web reviewed TR108859 dropped-bin correction command";
+    public const string CorrectionRootCause = "The original Manual True Up calculated its delta from TR108859's receipt-local 28-bin balance instead of the 248-bin canonical aggregate inventory identity.";
+    public const string CorrectionBusinessEvent = "TR108859 received 28 bins. Two bins were subsequently dropped and became unavailable for packing.";
 }
 
 public sealed record Tr108859DroppedBinsCorrectionRequest(
@@ -105,6 +107,7 @@ public sealed class Tr108859DroppedBinsCorrectionService(
     private static readonly DateTimeOffset TargetAdjustmentAt = DateTimeOffset.Parse("2026-08-11T22:23:00Z");
     private static readonly DateTimeOffset TargetCreatedAt = DateTimeOffset.Parse("2026-08-11T22:25:24.118888Z");
     private static readonly DateTimeOffset OriginalAuditCreatedAt = DateTimeOffset.Parse("2026-08-11T22:25:24.120349Z");
+    private static readonly JsonSerializerOptions AuditJsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly IReadOnlyDictionary<long, (string Reference, int Bins, DateTimeOffset ReceivedAt, long AdjustmentId)> ExpectedReceipts =
         new Dictionary<long, (string, int, DateTimeOffset, long)>
         {
@@ -267,7 +270,17 @@ public sealed class Tr108859DroppedBinsCorrectionService(
                     evidence.ReceiptId,
                     Tr108859DroppedBinsCorrectionConstants.NormalizedLossReason,
                     Tr108859DroppedBinsCorrectionConstants.HistoricalNotes,
-                    Tr108859DroppedBinsCorrectionConstants.CorrectionAuditSource), admin.Id, cancellationToken);
+                    Tr108859DroppedBinsCorrectionConstants.CorrectionAuditSource,
+                    new(
+                        ReceiptReference,
+                        evidence.ReceiptId,
+                        28,
+                        2,
+                        248,
+                        246,
+                        TargetAdjustmentId,
+                        Tr108859DroppedBinsCorrectionConstants.CorrectionRootCause,
+                        Tr108859DroppedBinsCorrectionConstants.CorrectionBusinessEvent)), admin.Id, cancellationToken);
             }
             else
             {
@@ -421,8 +434,10 @@ public sealed class Tr108859DroppedBinsCorrectionService(
             var correctionAudits = await dbContext.AuditLogs.AsNoTracking()
                 .Where(x => x.Action == "NormalizeMalformedManualTrueUp" && x.EntityName == nameof(RoomInventoryAdjustment) && x.EntityKey == "280")
                 .ToListAsync(cancellationToken);
-            if (correctionAudits.Count != 1 || correctionAudits[0].SourceApplication != Tr108859DroppedBinsCorrectionConstants.CorrectionAuditSource)
-                issues.Add("The reviewed operation exists but its immutable correction audit is missing or duplicated.");
+            if (correctionAudits.Count != 1
+                || correctionAudits[0].SourceApplication != Tr108859DroppedBinsCorrectionConstants.CorrectionAuditSource
+                || !HasExactCorrectionAuditEvidence(correctionAudits[0].AfterValuesJson, existingLoss.Id))
+                issues.Add("The reviewed operation exists but its immutable correction audit is missing, duplicated, or does not match the exact reviewed semantics.");
         }
 
         return new(identityRows.Count, identityReceipts.Count, receiptAddBins, balanceBefore, later,
@@ -514,6 +529,44 @@ public sealed class Tr108859DroppedBinsCorrectionService(
         && row.ActualRunId is null && row.ActualRunRevisionId is null;
 
     private static string Sha256(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    private static bool HasExactCorrectionAuditEvidence(string? json, long lossId)
+    {
+        try
+        {
+            var evidence = string.IsNullOrWhiteSpace(json)
+                ? null
+                : JsonSerializer.Deserialize<RoomInventoryLossNormalizationAuditEvidence>(json, AuditJsonOptions);
+            return evidence is not null
+                && evidence.ReceiptReference == ReceiptReference
+                && evidence.ReceiptId == 208
+                && evidence.ReceivedBins == 28
+                && evidence.DroppedBins == 2
+                && evidence.CanonicalBalanceBeforeAdjustment == 248
+                && evidence.CorrectedCurrentPackableBins == 246
+                && evidence.MalformedAdjustmentId == TargetAdjustmentId
+                && evidence.OriginalAdjustmentType == "ManualTrueUp"
+                && evidence.OriginalOldBinCount == 28
+                && evidence.OriginalChangeAmount == 218
+                && evidence.OriginalNewBinCount == 246
+                && evidence.CorrectedAdjustmentType == RoomInventoryLossAdjustmentTypes.DroppedBins
+                && evidence.CorrectedOldBinCount == 248
+                && evidence.CorrectedChangeAmount == -2
+                && evidence.CorrectedNewBinCount == 246
+                && evidence.LossParentId == lossId
+                && evidence.LossOperationKey == Tr108859DroppedBinsCorrectionConstants.OperationKey
+                && evidence.RootCause == Tr108859DroppedBinsCorrectionConstants.CorrectionRootCause
+                && evidence.BusinessEvent == Tr108859DroppedBinsCorrectionConstants.CorrectionBusinessEvent
+                && evidence.ReceiptQuantityWasNotChanged
+                && evidence.OriginalAuditWasRetained
+                && !string.IsNullOrWhiteSpace(evidence.CorrectedBy);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     private static Tr108859DroppedBinsCorrectionResult Failed(string message, Tr108859DroppedBinsCorrectionPreflight preflight) => new(false, false, false, message, preflight);
 
     private sealed record MalformedEvidence(
