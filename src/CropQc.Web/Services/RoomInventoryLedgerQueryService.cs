@@ -168,6 +168,8 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 TransferInBins = x.Sum(y => y.AdjustmentType == "TransferIn" && y.ChangeAmount > 0 ? y.ChangeAmount : 0),
                 TransferOutBins = x.Sum(y => y.AdjustmentType == "TransferOut" && y.ChangeAmount < 0 ? -y.ChangeAmount : 0),
                 TrueUpBins = x.Sum(y => y.AdjustmentType == "ManualTrueUp" ? y.ChangeAmount : 0),
+                DroppedBins = x.Sum(y => y.AdjustmentType == RoomInventoryLossAdjustmentTypes.DroppedBins && y.ChangeAmount < 0 ? -y.ChangeAmount : 0),
+                DroppedBinsRestored = x.Sum(y => y.AdjustmentType == RoomInventoryLossAdjustmentTypes.DroppedBinsReversal && y.ChangeAmount > 0 ? y.ChangeAmount : 0),
                 TransactionCount = x.Count(),
                 FirstTransactionAt = x.Min(y => y.AdjustmentAt),
                 LastTransactionAt = x.Max(y => y.AdjustmentAt),
@@ -224,6 +226,8 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                     TransferInBins = x.Sum(y => y.TransferInBins),
                     TransferOutBins = x.Sum(y => y.TransferOutBins),
                     TrueUpBins = x.Sum(y => y.TrueUpBins),
+                    DroppedBins = x.Sum(y => y.DroppedBins),
+                    DroppedBinsRestored = x.Sum(y => y.DroppedBinsRestored),
                     TransactionCount = x.Sum(y => y.TransactionCount),
                     FirstTransactionAt = x.Min(y => y.FirstTransactionAt),
                     LastTransactionAt = x.Max(y => y.LastTransactionAt),
@@ -286,7 +290,9 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 + x.LegacyBinsRunDepletionBins
                 - x.TransferInBins
                 + x.TransferOutBins
-                - x.TrueUpBins;
+                - x.TrueUpBins
+                + x.DroppedBins
+                - x.DroppedBinsRestored;
             return new RoomInventoryLedgerSnapshot(
                 x.WarehouseId,
                 latest.Facility,
@@ -321,7 +327,9 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 x.FirstTransactionAt,
                 x.LastTransactionAt,
                 x.LatestAdjustmentId,
-                latest.SourceReference);
+                latest.SourceReference,
+                x.DroppedBins,
+                x.DroppedBinsRestored);
         }).ToList();
     }
 
@@ -362,6 +370,8 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
         public int TransferInBins { get; init; }
         public int TransferOutBins { get; init; }
         public int TrueUpBins { get; init; }
+        public int DroppedBins { get; init; }
+        public int DroppedBinsRestored { get; init; }
         public int TransactionCount { get; init; }
         public DateTimeOffset FirstTransactionAt { get; init; }
         public DateTimeOffset LastTransactionAt { get; init; }
@@ -403,4 +413,6 @@ public sealed record RoomInventoryLedgerSnapshot(
     DateTimeOffset FirstTransactionAt,
     DateTimeOffset LastTransactionAt,
     long LatestAdjustmentId,
-    string SourceReference = "");
+    string SourceReference = "",
+    int DroppedBins = 0,
+    int DroppedBinsRestored = 0);

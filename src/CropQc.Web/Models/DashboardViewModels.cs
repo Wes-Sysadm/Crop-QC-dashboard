@@ -126,6 +126,11 @@ public sealed class RoomDetailViewModel
     public RoomInventoryTrueUpForm TrueUpForm { get; set; } = new();
     public RoomTransferForm TransferForm { get; set; } = new();
     public bool CanManageDepletions { get; set; }
+    public IReadOnlyList<RoomInventoryLossOptionViewModel> InventoryLossOptions { get; set; } = [];
+    public IReadOnlyList<RoomInventoryLossHistoryViewModel> InventoryLosses { get; set; } = [];
+    public RoomInventoryLossForm InventoryLossForm { get; set; } = new();
+    public bool CanRecordInventoryLoss { get; set; }
+    public bool CanReverseInventoryLoss { get; set; }
 }
 
 public sealed class RoomGrowerSummaryViewModel
@@ -335,6 +340,60 @@ public sealed class ReverseRoomTransferForm
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public string Reason { get; set; } = "";
 }
+
+public sealed class RoomInventoryLossForm
+{
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public int RoomId { get; set; }
+    public long InventoryAdjustmentId { get; set; }
+    public int ExpectedCurrentBins { get; set; }
+    public int BinCount { get; set; }
+    public DateTimeOffset? OccurredAt { get; set; } = DateTimeOffset.UtcNow;
+    public string? Notes { get; set; }
+}
+
+public sealed class ReverseRoomInventoryLossForm
+{
+    public long Id { get; set; }
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public string Reason { get; set; } = "";
+}
+
+public sealed record RoomInventoryLossOptionViewModel(
+    long InventoryAdjustmentId,
+    string Label,
+    string Facility,
+    string Room,
+    string Grower,
+    string Lot,
+    string Variety,
+    string ProductionType,
+    bool? IsOrganic,
+    int CurrentBins);
+
+public sealed record RoomInventoryLossHistoryViewModel(
+    long Id,
+    int RoomId,
+    long? ReceiptId,
+    string ReceiptReference,
+    string LossType,
+    int BinCount,
+    string Facility,
+    string Room,
+    string Grower,
+    string Lot,
+    string Variety,
+    string ProductionType,
+    bool? IsOrganic,
+    DateTimeOffset? OccurredAt,
+    DateTimeOffset CreatedAt,
+    string CreatedBy,
+    string Reason,
+    string? Notes,
+    bool IsReversed,
+    DateTimeOffset? ReversedAt,
+    string? ReversedBy,
+    string? ReverseReason);
 
 public sealed class RoomInventoryImportPageViewModel
 {
@@ -1529,6 +1588,9 @@ public sealed class ReceiptDetailViewModel
     public bool CanDeleteSamples { get; set; }
     public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
     public IReadOnlyList<ReceiptInventoryOverrideHistoryViewModel> InventoryOverrides { get; set; } = [];
+    public IReadOnlyList<RoomInventoryLossHistoryViewModel> InventoryLosses { get; set; } = [];
+    public int ActiveDroppedBins => InventoryLosses.Where(x => !x.IsReversed).Sum(x => x.BinCount);
+    public int? CurrentPackableBins { get; set; }
 }
 
 public sealed record ReceiptInventoryOverrideHistoryViewModel(

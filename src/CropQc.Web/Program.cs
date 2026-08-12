@@ -259,6 +259,8 @@ builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportService>();
 builder.Services.AddScoped<IRoomInventoryLedgerQueryService, RoomInventoryLedgerQueryService>();
 builder.Services.AddScoped<IRoomInventoryReconciliationService, RoomInventoryReconciliationService>();
+builder.Services.AddScoped<IRoomInventoryLossService, RoomInventoryLossService>();
+builder.Services.AddScoped<ITr108859DroppedBinsCorrectionService, Tr108859DroppedBinsCorrectionService>();
 builder.Services.AddScoped<IEbsInventoryCleanupService, EbsInventoryCleanupService>();
 builder.Services.AddScoped<IInventoryDeductionInvariantService, InventoryDeductionInvariantService>();
 builder.Services.AddScoped<IInventoryDiagnosticAcknowledgmentService, InventoryDiagnosticAcknowledgmentService>();
@@ -342,6 +344,32 @@ if (schemaVerificationCommand is not null)
 if (args.Contains("--verify-inventory-deductions", StringComparer.OrdinalIgnoreCase))
 {
     Environment.ExitCode = await VerifyInventoryDeductionReadinessAsync(app.Services) ? 0 : 1;
+    return;
+}
+
+if (args.Contains(Tr108859DroppedBinsCorrectionConstants.CommandName, StringComparer.OrdinalIgnoreCase))
+{
+    static string? Tr108859CommandValue(string[] commandArgs, string key) =>
+        commandArgs.FirstOrDefault(x => x.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase)) is { } item
+            ? item[(item.IndexOf('=') + 1)..]
+            : null;
+    var backupRunId = long.TryParse(Tr108859CommandValue(args, "--backup-run-id"), out var parsedBackupRunId) ? parsedBackupRunId : (long?)null;
+    using var correctionScope = app.Services.CreateScope();
+    var correction = await correctionScope.ServiceProvider.GetRequiredService<ITr108859DroppedBinsCorrectionService>().RunAsync(new(
+        args.Contains("--apply", StringComparer.OrdinalIgnoreCase),
+        args.Contains("--confirm-production", StringComparer.OrdinalIgnoreCase),
+        args.Contains("--confirm-disposable-restore", StringComparer.OrdinalIgnoreCase),
+        backupRunId,
+        Tr108859CommandValue(args, "--verified-backup-package-sha256"),
+        Tr108859CommandValue(args, "--requested-by") ?? "command",
+        Tr108859CommandValue(args, "--reason") ?? "",
+        Tr108859CommandValue(args, "--expected-target-fingerprint"),
+        Tr108859CommandValue(args, "--expected-protected-fingerprint"),
+        Tr108859CommandValue(args, "--authorization-token")), CancellationToken.None);
+    var report = System.Text.Json.JsonSerializer.Serialize(correction, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
+    var commandLogger = correctionScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Tr108859DroppedBinsCorrectionCommand");
+    if (correction.Success) commandLogger.LogInformation("{CorrectionReport}", report); else commandLogger.LogError("{CorrectionReport}", report);
+    Environment.ExitCode = correction.Success ? 0 : 1;
     return;
 }
 

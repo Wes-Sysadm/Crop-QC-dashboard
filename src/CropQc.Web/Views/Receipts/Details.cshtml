@@ -31,6 +31,11 @@
     <section class="panel">
         <h2>@Model.Receipt.CompuTechReceiptId</h2>
         <p>@Model.Receipt.CropYear | @BusinessTime.FormatPacific(Model.Receipt.ReceivedAt) | @Model.Receipt.ReceiptType | @Model.Receipt.Warehouse / @Model.Receipt.Room | Lot # @(string.IsNullOrWhiteSpace(Model.Receipt.GrowerNumber) ? "-" : Model.Receipt.GrowerNumber) | @Model.Receipt.GrowerName | @Model.Receipt.VarietyCode | @Model.Receipt.BinCount bins</p>
+        <div class="metric-grid">
+            <div><strong>@Model.Receipt.BinCount</strong><span>Received bins</span></div>
+            <div><strong>@Model.ActiveDroppedBins</strong><span>Dropped after receiving</span></div>
+            <div><strong>@(Model.CurrentPackableBins?.ToString() ?? "-")</strong><span>Current packable inventory</span></div>
+        </div>
         <div class="action-bar">
             <a class="button secondary-button" href="/Dashboard/Rooms/@Model.Receipt.RoomId">View Room Summary</a>
             @if (canEditReceipt)
@@ -81,6 +86,26 @@
             }
             </tbody></table>
             <a class="button secondary-button" href="/Admin/RoomInventory/Reconciliation">Open Inventory Reconciliation</a>
+        </section>
+    }
+
+    @if (Model.InventoryLosses.Count > 0)
+    {
+        <section class="panel">
+            <h2>Dropped Bin History</h2>
+            <table class="data-table"><thead><tr><th>Status</th><th>Bins</th><th>Room</th><th>Occurred / recorded</th><th>User</th><th>Reason / notes</th></tr></thead><tbody>
+            @foreach (var item in Model.InventoryLosses)
+            {
+                <tr>
+                    <td>@(item.IsReversed ? "Restored" : "Dropped")</td>
+                    <td>@item.BinCount</td>
+                    <td>@item.Facility / @item.Room</td>
+                    <td>@BusinessTime.FormatPacific(item.OccurredAt, empty: "Exact occurrence time unavailable")<br /><span class="muted">Recorded @BusinessTime.FormatPacific(item.CreatedAt)</span></td>
+                    <td>@item.CreatedBy@if (item.IsReversed) { <br /><span class="muted">Restored by @(item.ReversedBy ?? "Unknown")</span> }</td>
+                    <td>@item.Reason@if (!string.IsNullOrWhiteSpace(item.Notes)) { <br /><span class="muted">@item.Notes</span> }@if (item.IsReversed) { <br /><strong>Reversal:</strong> @item.ReverseReason }</td>
+                </tr>
+            }
+            </tbody></table>
         </section>
     }
 

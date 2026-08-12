@@ -39,6 +39,7 @@ public sealed class RoomInventoryNegativeAdjustmentViewModel
     public long? BinsRunId { get; set; }
     public long? TransferId { get; set; }
     public Guid? ReceiptInventoryOverrideId { get; set; }
+    public long? RoomInventoryLossId { get; set; }
     public long? ActualRunId { get; set; }
     public string CreatedBy { get; set; } = "";
     public DateTimeOffset AdjustmentAt { get; set; }
@@ -124,6 +125,8 @@ public sealed class RoomInventoryReconciliationRowViewModel
     public int TransferInBins { get; set; }
     public int TransferOutBins { get; set; }
     public int TrueUpBins { get; set; }
+    public int DroppedBins { get; set; }
+    public int DroppedBinsRestored { get; set; }
     public int OtherAdjustmentBins { get; set; }
     public int LedgerBalance { get; set; }
     public int TransactionCount { get; set; }

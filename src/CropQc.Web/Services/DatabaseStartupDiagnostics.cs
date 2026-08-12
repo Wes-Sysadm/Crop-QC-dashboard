@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260809151943_AddInventoryDiagnosticAcknowledgments";
+    public const string ExpectedSchemaMigration = "20260812061125_AddRoomInventoryLosses";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -197,7 +197,34 @@ public static class DatabaseStartupDiagnostics
         new("InventoryDiagnosticAcknowledgments.IsActive", "InventoryDiagnosticAcknowledgments", "IsActive", RequireNotNullable: true),
         new("InventoryDiagnosticAcknowledgments.RestoredByUserId", "InventoryDiagnosticAcknowledgments", "RestoredByUserId", RequireNullable: true),
         new("InventoryDiagnosticAcknowledgments.RestoredByEmail", "InventoryDiagnosticAcknowledgments", "RestoredByEmail", RequireNullable: true),
-        new("InventoryDiagnosticAcknowledgments.RestoredAt", "InventoryDiagnosticAcknowledgments", "RestoredAt", RequireNullable: true)
+        new("InventoryDiagnosticAcknowledgments.RestoredAt", "InventoryDiagnosticAcknowledgments", "RestoredAt", RequireNullable: true),
+        new("RoomInventoryAdjustments.RoomInventoryLossId", "RoomInventoryAdjustments", "RoomInventoryLossId", RequireNullable: true),
+        new("RoomInventoryLosses", "RoomInventoryLosses", null),
+        new("RoomInventoryLosses.Id", "RoomInventoryLosses", "Id", RequireNotNullable: true),
+        new("RoomInventoryLosses.OperationKey", "RoomInventoryLosses", "OperationKey", RequireNotNullable: true),
+        new("RoomInventoryLosses.WarehouseId", "RoomInventoryLosses", "WarehouseId", RequireNotNullable: true),
+        new("RoomInventoryLosses.RoomId", "RoomInventoryLosses", "RoomId", RequireNotNullable: true),
+        new("RoomInventoryLosses.ReceiptId", "RoomInventoryLosses", "ReceiptId", RequireNullable: true),
+        new("RoomInventoryLosses.CropYear", "RoomInventoryLosses", "CropYear", RequireNullable: true),
+        new("RoomInventoryLosses.GrowerLotId", "RoomInventoryLosses", "GrowerLotId", RequireNullable: true),
+        new("RoomInventoryLosses.FruitProfileId", "RoomInventoryLosses", "FruitProfileId", RequireNullable: true),
+        new("RoomInventoryLosses.GrowerName", "RoomInventoryLosses", "GrowerName", RequireNotNullable: true),
+        new("RoomInventoryLosses.GrowerNumber", "RoomInventoryLosses", "GrowerNumber", RequireNullable: true),
+        new("RoomInventoryLosses.LotNumber", "RoomInventoryLosses", "LotNumber", RequireNotNullable: true),
+        new("RoomInventoryLosses.PoolStart", "RoomInventoryLosses", "PoolStart", RequireNullable: true),
+        new("RoomInventoryLosses.VarietyCode", "RoomInventoryLosses", "VarietyCode", RequireNotNullable: true),
+        new("RoomInventoryLosses.InventoryStatus", "RoomInventoryLosses", "InventoryStatus", RequireNullable: true),
+        new("RoomInventoryLosses.LossType", "RoomInventoryLosses", "LossType", RequireNotNullable: true),
+        new("RoomInventoryLosses.BinCount", "RoomInventoryLosses", "BinCount", RequireNotNullable: true),
+        new("RoomInventoryLosses.Reason", "RoomInventoryLosses", "Reason", RequireNotNullable: true),
+        new("RoomInventoryLosses.Notes", "RoomInventoryLosses", "Notes", RequireNullable: true),
+        new("RoomInventoryLosses.OccurredAt", "RoomInventoryLosses", "OccurredAt", RequireNullable: true),
+        new("RoomInventoryLosses.CreatedByUserId", "RoomInventoryLosses", "CreatedByUserId", RequireNotNullable: true),
+        new("RoomInventoryLosses.CreatedAt", "RoomInventoryLosses", "CreatedAt", RequireNotNullable: true),
+        new("RoomInventoryLosses.IsReversed", "RoomInventoryLosses", "IsReversed", RequireNotNullable: true),
+        new("RoomInventoryLosses.ReversedAt", "RoomInventoryLosses", "ReversedAt", RequireNullable: true),
+        new("RoomInventoryLosses.ReversedByUserId", "RoomInventoryLosses", "ReversedByUserId", RequireNullable: true),
+        new("RoomInventoryLosses.ReverseReason", "RoomInventoryLosses", "ReverseReason", RequireNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
@@ -239,7 +266,16 @@ public static class DatabaseStartupDiagnostics
         new("IX_InventoryDiagnosticAck_DismissedBy", "InventoryDiagnosticAcknowledgments", "IX_InventoryDiagnosticAck_DismissedBy"),
         new("IX_InventoryDiagnosticAck_ActiveAdjustment", "InventoryDiagnosticAcknowledgments", "IX_InventoryDiagnosticAck_ActiveAdjustment"),
         new("IX_InventoryDiagnosticAck_RestoredBy", "InventoryDiagnosticAcknowledgments", "IX_InventoryDiagnosticAck_RestoredBy"),
-        new("IX_InventoryDiagnosticAck_Adjustment", "InventoryDiagnosticAcknowledgments", "IX_InventoryDiagnosticAck_Adjustment")
+        new("IX_InventoryDiagnosticAck_Adjustment", "InventoryDiagnosticAcknowledgments", "IX_InventoryDiagnosticAck_Adjustment"),
+        new("IX_RoomInventoryAdjustments_RoomInventoryLossId", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_RoomInventoryLossId"),
+        new("IX_RoomInventoryAdjustments_RoomInventoryLossId_AdjustmentType", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_RoomInventoryLossId_AdjustmentType", RequireUnique: true),
+        new("IX_RoomInventoryLosses_CreatedByUserId", "RoomInventoryLosses", "IX_RoomInventoryLosses_CreatedByUserId"),
+        new("IX_RoomInventoryLosses_FruitProfileId", "RoomInventoryLosses", "IX_RoomInventoryLosses_FruitProfileId"),
+        new("IX_RoomInventoryLosses_OperationKey", "RoomInventoryLosses", "IX_RoomInventoryLosses_OperationKey", RequireUnique: true),
+        new("IX_RoomInventoryLosses_ReceiptId_CreatedAt", "RoomInventoryLosses", "IX_RoomInventoryLosses_ReceiptId_CreatedAt"),
+        new("IX_RoomInventoryLosses_ReversedByUserId", "RoomInventoryLosses", "IX_RoomInventoryLosses_ReversedByUserId"),
+        new("IX_RoomInventoryLosses_RoomId_CreatedAt", "RoomInventoryLosses", "IX_RoomInventoryLosses_RoomId_CreatedAt"),
+        new("IX_RoomInventoryLosses_WarehouseId", "RoomInventoryLosses", "IX_RoomInventoryLosses_WarehouseId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
@@ -273,7 +309,14 @@ public static class DatabaseStartupDiagnostics
         new("FK_RolePageAccesses_Users_UpdatedByUserId", "RolePageAccesses", "FK_RolePageAccesses_Users_UpdatedByUserId"),
         new("FK_InventoryDiagnosticAck_Adjustment", "InventoryDiagnosticAcknowledgments", "FK_InventoryDiagnosticAck_Adjustment"),
         new("FK_InventoryDiagnosticAck_DismissedBy", "InventoryDiagnosticAcknowledgments", "FK_InventoryDiagnosticAck_DismissedBy"),
-        new("FK_InventoryDiagnosticAck_RestoredBy", "InventoryDiagnosticAcknowledgments", "FK_InventoryDiagnosticAck_RestoredBy")
+        new("FK_InventoryDiagnosticAck_RestoredBy", "InventoryDiagnosticAcknowledgments", "FK_InventoryDiagnosticAck_RestoredBy"),
+        new("FK_RoomInventoryAdjustments_RoomInventoryLosses_RoomInventoryLossId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_RoomInventoryLosses_RoomInventoryLossId"),
+        new("FK_RoomInventoryLosses_FruitProfiles_FruitProfileId", "RoomInventoryLosses", "FK_RoomInventoryLosses_FruitProfiles_FruitProfileId"),
+        new("FK_RoomInventoryLosses_Receipts_ReceiptId", "RoomInventoryLosses", "FK_RoomInventoryLosses_Receipts_ReceiptId"),
+        new("FK_RoomInventoryLosses_Rooms_RoomId", "RoomInventoryLosses", "FK_RoomInventoryLosses_Rooms_RoomId"),
+        new("FK_RoomInventoryLosses_Users_CreatedByUserId", "RoomInventoryLosses", "FK_RoomInventoryLosses_Users_CreatedByUserId"),
+        new("FK_RoomInventoryLosses_Users_ReversedByUserId", "RoomInventoryLosses", "FK_RoomInventoryLosses_Users_ReversedByUserId"),
+        new("FK_RoomInventoryLosses_Warehouses_WarehouseId", "RoomInventoryLosses", "FK_RoomInventoryLosses_Warehouses_WarehouseId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
@@ -289,7 +332,8 @@ public static class DatabaseStartupDiagnostics
         new("PK_EndOfDayFillReportSends", "EndOfDayFillReportSends", "PK_EndOfDayFillReportSends"),
         new("PK_EndOfDayFillSendReservations", "EndOfDayFillSendReservations", "PK_EndOfDayFillSendReservations"),
         new("PK_RolePageAccesses", "RolePageAccesses", "PK_RolePageAccesses"),
-        new("PK_InventoryDiagnosticAcknowledgments", "InventoryDiagnosticAcknowledgments", "PK_InventoryDiagnosticAcknowledgments")
+        new("PK_InventoryDiagnosticAcknowledgments", "InventoryDiagnosticAcknowledgments", "PK_InventoryDiagnosticAcknowledgments"),
+        new("PK_RoomInventoryLosses", "RoomInventoryLosses", "PK_RoomInventoryLosses")
     ];
 
     public static async Task InspectAsync(
