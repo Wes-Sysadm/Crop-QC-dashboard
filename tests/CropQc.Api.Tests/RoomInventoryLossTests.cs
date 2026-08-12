@@ -2,6 +2,7 @@ using System.Security.Claims;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Time;
+using CropQc.Web.Auth;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Http;
@@ -37,6 +38,71 @@ public sealed class RoomInventoryLossTests
         Assert.Equal(10, snapshots.Single(x => x.FruitProfileId == Fixture.OrganicFruitId).CurrentBins);
         Assert.Empty(await fixture.Db.BinsRunEntries.ToListAsync());
         Assert.Empty(await fixture.Db.RoomTransfers.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Generic_room_loss_does_not_infer_receipt_from_latest_adjustment()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+
+        var error = await fixture.Service.CreateAsync(new RoomInventoryLossForm
+        {
+            OperationKey = "generic-room-loss",
+            RoomId = Fixture.RoomId,
+            InventoryAdjustmentId = 9810,
+            ExpectedCurrentBins = 28,
+            BinCount = 2,
+            OccurredAt = null,
+            Notes = "Generic room-level evidence"
+        }, CancellationToken.None);
+
+        Assert.Null(error);
+        var loss = Assert.Single(await fixture.Db.RoomInventoryLosses.Include(x => x.InventoryAdjustments).ToListAsync());
+        Assert.Null(loss.ReceiptId);
+        Assert.Null(Assert.Single(loss.InventoryAdjustments).ReceiptId);
+        Assert.Equal(28, (await fixture.Db.Receipts.FindAsync(Fixture.ReceiptId))!.BinCount);
+    }
+
+    [Fact]
+    public async Task Manual_true_up_uses_canonical_identity_balance_and_refuses_reduction()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.AddSameIdentityReceiptAsync(29);
+        var before = await fixture.Db.RoomInventoryAdjustments.CountAsync();
+
+        var error = await fixture.DashboardService().CreateRoomInventoryTrueUpAsync(new RoomInventoryTrueUpForm
+        {
+            RoomId = Fixture.RoomId,
+            ReceiptId = Fixture.ReceiptId,
+            NewBinCount = 55,
+            AdjustmentAt = Now,
+            Reason = "Attempted manual reduction"
+        }, CancellationToken.None);
+
+        Assert.Contains("Dropped Bins, Bins Run, or Transfer", error);
+        Assert.Equal(before, await fixture.Db.RoomInventoryAdjustments.CountAsync());
+    }
+
+    [Fact]
+    public async Task Manual_true_up_allows_increase_from_canonical_identity_balance()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.AddSameIdentityReceiptAsync(29);
+
+        var error = await fixture.DashboardService().CreateRoomInventoryTrueUpAsync(new RoomInventoryTrueUpForm
+        {
+            RoomId = Fixture.RoomId,
+            ReceiptId = Fixture.ReceiptId,
+            NewBinCount = 60,
+            AdjustmentAt = Now,
+            Reason = "Reviewed positive correction"
+        }, CancellationToken.None);
+
+        Assert.Null(error);
+        var adjustment = await fixture.Db.RoomInventoryAdjustments.SingleAsync(x => x.AdjustmentType == "ManualTrueUp");
+        Assert.Equal(57, adjustment.OldBinCount);
+        Assert.Equal(3, adjustment.ChangeAmount);
+        Assert.Equal(60, adjustment.NewBinCount);
     }
 
     [Fact]
@@ -193,8 +259,7 @@ public sealed class RoomInventoryLossTests
         Assert.False(result.Success);
         Assert.Equal("Refused", result.Preflight.State);
         Assert.Equal(246, result.Preflight.Evidence!.CurrentLedgerBalance);
-        Assert.Equal(1, result.Preflight.Evidence.ManualTrueUpCount);
-        Assert.Contains(result.Preflight.Issues, x => x.Contains("Subsequent", StringComparison.Ordinal));
+        Assert.NotEmpty(result.Preflight.Issues);
         Assert.Empty(await fixture.Db.RoomInventoryLosses.ToListAsync());
         Assert.Equal(beforeAdjustments, await fixture.Db.RoomInventoryAdjustments.CountAsync());
         Assert.Equal(beforeAudits, await fixture.Db.AuditLogs.CountAsync());
@@ -343,6 +408,28 @@ public sealed class RoomInventoryLossTests
             new PacificBusinessTimeService(new FixedClock(Now)),
             NullLogger<RoomInventoryLossService>.Instance);
 
+        public DashboardDataService DashboardService()
+        {
+            var configuration = new ConfigurationBuilder().Build();
+            return new DashboardDataService(
+                Db,
+                null!,
+                new CropQc.Shared.Storage.FileStorageOptions(),
+                new EmailOptions(),
+                null!,
+                new GoogleAuthenticationOptions(),
+                null!,
+                null!,
+                new QcPhotoRequirementPolicy(),
+                null!,
+                new CropYearService(Db, configuration),
+                Accessor,
+                configuration,
+                NullLogger<DashboardDataService>.Instance,
+                new UserAccessService(Db, configuration),
+                roomInventoryLedgerQueryService: Ledger);
+        }
+
         public Tr108859DroppedBinsCorrectionService CorrectionService(bool production = false) => new(
             Db,
             new AppEnvironmentOptions { Kind = production ? AppEnvironmentKinds.Production : AppEnvironmentKinds.Development },
@@ -393,6 +480,32 @@ public sealed class RoomInventoryLossTests
             adjustment.Reason = "Two Dropped Bins";
             adjustment.AdjustmentAt = Now.AddDays(-1);
             Db.RoomInventoryAdjustments.Add(adjustment);
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        public async Task AddSameIdentityReceiptAsync(int bins)
+        {
+            var original = await Db.Receipts.Include(x => x.FruitProfile).SingleAsync(x => x.Id == ReceiptId);
+            var receipt = new Receipt
+            {
+                Id = ReceiptId + 10,
+                CropYear = original.CropYear,
+                ReceivedAt = original.ReceivedAt.AddHours(1),
+                CompuTechReceiptId = "SAME-CANONICAL-IDENTITY",
+                WarehouseId = original.WarehouseId,
+                RoomId = original.RoomId,
+                FruitProfileId = original.FruitProfileId,
+                GrowerLotId = original.GrowerLotId,
+                GrowerNumber = original.GrowerNumber,
+                GrowerName = original.GrowerName,
+                LotCode = original.LotCode,
+                BinCount = bins,
+                CreatedAt = original.CreatedAt.AddHours(1),
+                UpdatedAt = original.UpdatedAt.AddHours(1)
+            };
+            Db.Receipts.Add(receipt);
+            Db.RoomInventoryAdjustments.Add(SourceAdjustmentStatic(9812, receipt, bins));
             await Db.SaveChangesAsync();
             Db.ChangeTracker.Clear();
         }

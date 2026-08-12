@@ -763,8 +763,28 @@ public sealed class DashboardDataService(
             return "Current lot was not found for this room.";
         }
 
+        var snapshots = await RoomInventoryLedger.GetSnapshotsAsync(
+            receipt.WarehouseId,
+            [receipt.RoomId],
+            receipt.FruitProfileId,
+            cancellationToken);
+        var receiptLot = string.IsNullOrWhiteSpace(receipt.GrowerNumber)
+            ? receipt.LotCode
+            : receipt.GrowerNumber;
+        var matchingSnapshots = snapshots.Where(x =>
+            x.CropYear == receipt.CropYear
+            && x.GrowerLotId == receipt.GrowerLotId
+            && x.FruitProfileId == receipt.FruitProfileId
+            && string.Equals(x.Lot, receiptLot, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(x.Variety, receipt.FruitProfile.VarietyCode, StringComparison.OrdinalIgnoreCase)
+            && x.IsOrganic == receipt.FruitProfile.IsOrganic).ToList();
+        if (matchingSnapshots.Count != 1)
+        {
+            return "The exact room inventory identity could not be resolved uniquely. Refresh the room before retrying.";
+        }
+
         var currentUser = await GetCurrentUserAsync(cancellationToken);
-        var oldCount = await GetCurrentBinsForReceiptAsync(receipt.Id, cancellationToken);
+        var oldCount = matchingSnapshots[0].CurrentBins;
         var delta = form.NewBinCount - oldCount;
         if (delta < 0)
         {
@@ -774,7 +794,7 @@ public sealed class DashboardDataService(
                 currentUser,
                 $"Rejected requested reduction from {oldCount} to {form.NewBinCount}.",
                 cancellationToken);
-            return "Inventory leaving a room must be recorded through Bins Run or Transfer. The true-up was not saved.";
+            return "Inventory reductions must be recorded through Dropped Bins, Bins Run, or Transfer. The true-up was not saved.";
         }
         AddRoomInventoryAdjustment(
             receipt,

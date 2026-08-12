@@ -20,6 +20,10 @@ public interface IRoomInventoryLossService
         RoomInventoryLossCreateRequest request,
         int actorUserId,
         CancellationToken cancellationToken);
+    Task<RoomInventoryLossWriteResult> NormalizeReviewedMalformedAdjustmentAsync(
+        RoomInventoryLossNormalizationRequest request,
+        int actorUserId,
+        CancellationToken cancellationToken);
 }
 
 public sealed record RoomInventoryLossPageData(
@@ -38,6 +42,17 @@ public sealed record RoomInventoryLossCreateRequest(
     string Reason,
     string? Notes,
     long? RequiredReceiptId,
+    string AuditSource);
+
+public sealed record RoomInventoryLossNormalizationRequest(
+    string OperationKey,
+    long ExistingAdjustmentId,
+    int ExpectedPersistedCurrentBins,
+    int CanonicalBalanceBeforeAdjustment,
+    int BinCount,
+    long RequiredReceiptId,
+    string Reason,
+    string? Notes,
     string AuditSource);
 
 public sealed record RoomInventoryLossWriteResult(
@@ -138,6 +153,176 @@ public sealed class RoomInventoryLossService(
         return actor is null
             ? new(false, false, null, "The active correction administrator could not be resolved.")
             : await CreateCoreAsync(request, actor, cancellationToken);
+    }
+
+    public async Task<RoomInventoryLossWriteResult> NormalizeReviewedMalformedAdjustmentAsync(
+        RoomInventoryLossNormalizationRequest request,
+        int actorUserId,
+        CancellationToken cancellationToken)
+    {
+        var operationKey = NormalizeOperationKey(request.OperationKey);
+        if (operationKey is null) return Failed("A valid operation key is required.");
+        if (request.BinCount <= 0) return Failed("Bins dropped must be greater than zero.");
+        if (request.CanonicalBalanceBeforeAdjustment < request.BinCount)
+            return Failed("The reviewed canonical balance cannot cover the dropped-bin quantity.");
+        if (string.IsNullOrWhiteSpace(request.Reason)) return Failed("A dropped-bin reason is required.");
+
+        var actor = await dbContext.Users.SingleOrDefaultAsync(x => x.Id == actorUserId && x.IsActive, cancellationToken);
+        if (actor is null) return Failed("The active correction administrator could not be resolved.");
+
+        var ownsTransaction = dbContext.Database.CurrentTransaction is null;
+        await using var transaction = ownsTransaction ? await BeginTransactionIfNeededAsync(cancellationToken) : null;
+        try
+        {
+            var existingLoss = await dbContext.RoomInventoryLosses.AsNoTracking()
+                .Include(x => x.InventoryAdjustments)
+                .SingleOrDefaultAsync(x => x.OperationKey == operationKey, cancellationToken);
+            if (existingLoss is not null)
+            {
+                var existingAdjustment = existingLoss.InventoryAdjustments.SingleOrDefault();
+                return existingLoss.ReceiptId == request.RequiredReceiptId
+                    && existingLoss.BinCount == request.BinCount
+                    && existingLoss.LossType == RoomInventoryLossTypes.Dropped
+                    && !existingLoss.IsReversed
+                    && existingAdjustment?.Id == request.ExistingAdjustmentId
+                    && existingAdjustment.AdjustmentType == RoomInventoryLossAdjustmentTypes.DroppedBins
+                    && existingAdjustment.OldBinCount == request.CanonicalBalanceBeforeAdjustment
+                    && existingAdjustment.ChangeAmount == -request.BinCount
+                    && existingAdjustment.NewBinCount == request.CanonicalBalanceBeforeAdjustment - request.BinCount
+                    ? new(true, true, existingLoss.Id, null)
+                    : Failed("The operation key already belongs to a different room inventory loss.");
+            }
+
+            var adjustment = await dbContext.RoomInventoryAdjustments
+                .SingleOrDefaultAsync(x => x.Id == request.ExistingAdjustmentId, cancellationToken);
+            if (adjustment is null) return Failed("The reviewed malformed adjustment no longer exists.");
+            if (adjustment.ReceiptId != request.RequiredReceiptId
+                || adjustment.AdjustmentType != "ManualTrueUp"
+                || adjustment.OldBinCount != 28
+                || adjustment.ChangeAmount != 218
+                || adjustment.NewBinCount != 246
+                || adjustment.InventoryInvariantVersion != 0
+                || !string.IsNullOrWhiteSpace(adjustment.InventoryOperationKey)
+                || adjustment.RoomDepletionId is not null
+                || adjustment.RoomTransferId is not null
+                || adjustment.ReceiptInventoryOverrideId is not null
+                || adjustment.ActualRunId is not null
+                || adjustment.ActualRunRevisionId is not null
+                || adjustment.RoomInventoryLossId is not null)
+            {
+                return Failed("The reviewed malformed Manual True Up shape no longer matches; no correction was recorded.");
+            }
+
+            var snapshots = await ledgerQuery.GetSnapshotsAsync(adjustment.WarehouseId, [adjustment.RoomId], adjustment.FruitProfileId, cancellationToken);
+            var snapshot = snapshots.SingleOrDefault(x => x.LatestAdjustmentId == adjustment.Id);
+            if (snapshot is null || snapshot.CurrentBins != request.ExpectedPersistedCurrentBins)
+                return Failed("The exact reviewed inventory identity changed; no correction was recorded.");
+
+            var original = new
+            {
+                adjustment.Id,
+                adjustment.ReceiptId,
+                adjustment.AdjustmentType,
+                adjustment.OldBinCount,
+                adjustment.ChangeAmount,
+                adjustment.NewBinCount,
+                adjustment.Source,
+                adjustment.Reason,
+                adjustment.Notes,
+                adjustment.AdjustmentAt,
+                adjustment.CreatedAt,
+                adjustment.CreatedByUserId,
+                adjustment.InventoryInvariantVersion,
+                adjustment.InventoryOperationKey,
+                adjustment.RoomInventoryLossId
+            };
+            var now = businessTime.UtcNow;
+            var loss = new RoomInventoryLoss
+            {
+                OperationKey = operationKey,
+                WarehouseId = adjustment.WarehouseId,
+                RoomId = adjustment.RoomId,
+                ReceiptId = request.RequiredReceiptId,
+                CropYear = adjustment.CropYear,
+                GrowerLotId = adjustment.GrowerLotId,
+                FruitProfileId = adjustment.FruitProfileId,
+                GrowerName = adjustment.GrowerName,
+                GrowerNumber = Normalize(snapshot.GrowerNumber),
+                LotNumber = adjustment.LotNumber,
+                PoolStart = Normalize(adjustment.PoolStart),
+                VarietyCode = adjustment.VarietyCode ?? snapshot.Variety,
+                InventoryStatus = Normalize(adjustment.InventoryStatus),
+                LossType = RoomInventoryLossTypes.Dropped,
+                BinCount = request.BinCount,
+                Reason = request.Reason.Trim(),
+                Notes = Normalize(request.Notes) ?? Normalize(adjustment.Notes),
+                OccurredAt = null,
+                CreatedByUserId = actor.Id,
+                CreatedAt = now
+            };
+            dbContext.RoomInventoryLosses.Add(loss);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            adjustment.AdjustmentType = RoomInventoryLossAdjustmentTypes.DroppedBins;
+            adjustment.OldBinCount = request.CanonicalBalanceBeforeAdjustment;
+            adjustment.ChangeAmount = -request.BinCount;
+            adjustment.NewBinCount = request.CanonicalBalanceBeforeAdjustment - request.BinCount;
+            adjustment.Source = "Room Inventory Loss";
+            adjustment.Reason = loss.Reason;
+            adjustment.Notes = loss.Notes;
+            adjustment.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
+            adjustment.InventoryOperationKey = $"room-inventory-loss:{operationKey}:dropped";
+            adjustment.RoomInventoryLossId = loss.Id;
+            adjustment.RoomInventoryLoss = loss;
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            dbContext.AuditLogs.Add(new AuditLog
+            {
+                UserId = actor.Id,
+                Action = "NormalizeMalformedManualTrueUp",
+                EntityName = nameof(RoomInventoryAdjustment),
+                EntityKey = adjustment.Id.ToString(),
+                BeforeValuesJson = JsonSerializer.Serialize(original, JsonOptions),
+                AfterValuesJson = JsonSerializer.Serialize(new
+                {
+                    adjustment.Id,
+                    adjustment.ReceiptId,
+                    adjustment.AdjustmentType,
+                    adjustment.OldBinCount,
+                    adjustment.ChangeAmount,
+                    adjustment.NewBinCount,
+                    adjustment.Source,
+                    adjustment.Reason,
+                    adjustment.Notes,
+                    adjustment.AdjustmentAt,
+                    adjustment.CreatedAt,
+                    adjustment.CreatedByUserId,
+                    adjustment.InventoryInvariantVersion,
+                    adjustment.InventoryOperationKey,
+                    adjustment.RoomInventoryLossId,
+                    LossOperationKey = loss.OperationKey,
+                    ReceiptQuantityWasNotChanged = true,
+                    OriginalAuditWasRetained = true,
+                    CorrectedAt = now,
+                    CorrectedBy = actor.Email
+                }, JsonOptions),
+                SourceApplication = request.AuditSource,
+                CreatedAt = now
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await inventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+            return new(true, false, loss.Id, null);
+        }
+        catch (Exception exception)
+        {
+            if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+            logger.LogError(exception, "Reviewed malformed dropped-bin normalization failed and was rolled back. OperationKey={OperationKey}", operationKey);
+            if (!ownsTransaction) throw;
+            return Failed("Reviewed malformed dropped-bin normalization failed and was rolled back. Review restricted logs.");
+        }
+
+        static RoomInventoryLossWriteResult Failed(string error) => new(false, false, null, error);
     }
 
     public async Task<string?> ReverseAsync(ReverseRoomInventoryLossForm form, CancellationToken cancellationToken)
@@ -304,7 +489,10 @@ public sealed class RoomInventoryLossService(
             }
 
             var now = businessTime.UtcNow;
-            var receiptId = request.RequiredReceiptId ?? latestAdjustment.ReceiptId;
+            // A room-level loss belongs to the canonical ledger identity, not to whichever
+            // receipt happened to contribute the latest adjustment. Only reviewed workflows
+            // with authoritative receipt evidence may attach a receipt.
+            var receiptId = request.RequiredReceiptId;
             var loss = new RoomInventoryLoss
             {
                 OperationKey = operationKey,
