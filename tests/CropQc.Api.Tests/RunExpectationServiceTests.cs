@@ -11,7 +11,7 @@ public sealed class RunExpectationServiceTests
     private static readonly DateTimeOffset RunAt = DateTimeOffset.Parse("2026-07-29T00:31:00Z");
 
     [Fact]
-    public async Task Historical_reconstruction_uses_reporting_identity_and_latest_qc_not_after_physical_run()
+    public async Task Destination_room_expectation_uses_source_receipt_qc_not_after_physical_run()
     {
         await using var fixture = await Fixture.CreateAsync(includePreRunSamples: true);
 
@@ -32,6 +32,8 @@ public sealed class RunExpectationServiceTests
         Assert.False(source.IsOrganicSnapshot);
         Assert.Equal(11, source.QcSampleId);
         Assert.Equal(RunAt.AddMinutes(-1), source.QcSampleTakenAtSnapshot);
+        Assert.Equal(2, source.RoomId);
+        Assert.Equal("2", source.RoomSnapshot);
         Assert.NotEqual(12, source.QcSampleId);
         Assert.True(RunExpectationMetadata.TryGetHistoricalReconstruction(expectation.ConfigurationSnapshotJson, out var metadata));
         Assert.Equal(RunAt, metadata!.PhysicalRunAt);
@@ -85,7 +87,8 @@ public sealed class RunExpectationServiceTests
                 .Options;
             var db = new CropQcDbContext(options);
             var warehouse = new Warehouse { Id = 4, Code = "WP", Name = "Windy Point" };
-            var room = new Room { Id = 1, WarehouseId = 4, Warehouse = warehouse, Code = "1", Name = "Room 1" };
+            var sourceRoom = new Room { Id = 1, WarehouseId = 4, Warehouse = warehouse, Code = "1", Name = "Source Room" };
+            var destinationRoom = new Room { Id = 2, WarehouseId = 4, Warehouse = warehouse, Code = "2", Name = "Destination Room" };
             var reportingProfile = new FruitProfile
             {
                 Id = 17,
@@ -114,9 +117,10 @@ public sealed class RunExpectationServiceTests
                 WarehouseId = 4,
                 Warehouse = warehouse,
                 RoomId = 1,
-                Room = room,
+                Room = sourceRoom,
                 FruitProfileId = 17,
                 FruitProfile = reportingProfile,
+                GrowerLotId = 44,
                 GrowerNumber = "1084",
                 GrowerName = "WP Orchard Conventional",
                 LotCode = "1084"
@@ -127,7 +131,7 @@ public sealed class RunExpectationServiceTests
                 receipt.Samples.Add(Sample(11, receipt, sampleType, RunAt.AddMinutes(-1), 80));
             }
             receipt.Samples.Add(Sample(12, receipt, sampleType, RunAt.AddMinutes(1), 90));
-            db.AddRange(warehouse, room, reportingProfile, physicalProfile, sampleType, receipt);
+            db.AddRange(warehouse, sourceRoom, destinationRoom, reportingProfile, physicalProfile, sampleType, receipt);
             await db.SaveChangesAsync();
 
             var run = new ActualRun { Id = 1, Status = ActualRunStatuses.Active, CurrentRevisionNumber = 1, RunAt = RunAt };
@@ -144,9 +148,10 @@ public sealed class RunExpectationServiceTests
             {
                 Id = 31,
                 WarehouseId = 4,
-                RoomId = 1,
+                RoomId = 2,
                 CropYear = null,
                 FruitProfileId = 18,
+                GrowerLotId = 44,
                 ReportingCropYearSnapshot = 2026,
                 ReportingFruitProfileIdSnapshot = 17,
                 ReportingVarietyCodeSnapshot = "BART",

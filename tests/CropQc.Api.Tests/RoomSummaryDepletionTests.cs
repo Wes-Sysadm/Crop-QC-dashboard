@@ -73,9 +73,10 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("QcRepresentedBins", model);
         Assert.Contains("QcMissingBins", model);
         Assert.Contains("MajorWeakLotIndicator", model);
-        Assert.Contains("BuildDashboardLatestSampleByLotAsync", service);
-        Assert.Contains("dbContext.QcSamples.AsNoTracking()", service);
-        Assert.Contains("CurrentDashboardLotKey", service);
+        Assert.Contains("LoadDashboardQcSampleHeadersAsync", service);
+        Assert.Contains("CanonicalQcFruitIdentity.FilterReceiptSamples", service);
+        Assert.Contains("BuildDashboardLatestSampleByLot", service);
+        Assert.Contains("ResolveLatestUnambiguous", service);
         Assert.Contains("Needs attention", service);
         Assert.Contains("Needs review", service);
         Assert.Contains("Watch", service);

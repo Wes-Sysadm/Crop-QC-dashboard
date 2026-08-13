@@ -433,7 +433,7 @@ public sealed class DashboardDataService(
             var inventoryAdjustments = await BuildRoomInventoryAdjustmentHistoryAsync(roomId, cancellationToken);
             var linkedReceipts = await BuildRoomLinkedReceiptsAsync(roomId, cancellationToken);
             var transferDestinations = await BuildRoomTransferDestinationsAsync(roomId, cancellationToken);
-            var sampleDistributions = await BuildRoomProjectionSampleDataAsync(roomId, cancellationToken);
+            var sampleDistributions = await BuildRoomProjectionSampleDataAsync(activeLots, cancellationToken);
             await DecorateCurrentRoomLotsAsync(activeLots, sampleDistributions, cancellationToken);
             var currentGrowers = BuildRoomGrowerSummaries(activeLots);
             var canManage = await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
@@ -506,7 +506,7 @@ public sealed class DashboardDataService(
             lots = selectedKeys.Select(x => byKey[x]).ToList();
         }
 
-        var sampleDistributions = await BuildRoomProjectionSampleDataAsync(roomId, cancellationToken);
+        var sampleDistributions = await BuildRoomProjectionSampleDataAsync(activeLots, cancellationToken);
         return BuildRoomProjection(lots, sampleDistributions, isSelection);
     }
 
@@ -877,7 +877,12 @@ public sealed class DashboardDataService(
             .AsNoTracking()
             .Where(x => sourceLot.FruitProfileId.HasValue
                 ? x.Id == sourceLot.FruitProfileId.Value
-                : x.VarietyCode == sourceLot.VarietyCode)
+                : !string.IsNullOrWhiteSpace(sourceLot.VarietyCode)
+                    && !string.IsNullOrWhiteSpace(sourceLot.ProductionType)
+                    && sourceLot.IsOrganic.HasValue
+                    && x.VarietyCode == sourceLot.VarietyCode
+                    && x.ProductionType == sourceLot.ProductionType
+                    && x.IsOrganic == sourceLot.IsOrganic.Value)
             .OrderByDescending(x => x.IsActive)
             .ThenBy(x => x.Id)
             .FirstOrDefaultAsync(cancellationToken);
@@ -896,7 +901,7 @@ public sealed class DashboardDataService(
             DestinationWarehouseId = toRoom.WarehouseId,
             DestinationRoomId = toRoom.Id,
             CropYear = sourceLot.CropYear,
-            GrowerLotId = sourceReceipt?.GrowerLotId,
+            GrowerLotId = sourceLot.GrowerLotId ?? sourceReceipt?.GrowerLotId,
             FruitProfileId = sourceLot.FruitProfileId ?? fruitProfile?.Id ?? sourceReceipt?.FruitProfileId,
             GrowerName = sourceLot.GrowerName,
             LotNumber = sourceLot.LotCode,
@@ -934,8 +939,8 @@ public sealed class DashboardDataService(
                 receiptId: null,
                 warehouseId: fromRoom.WarehouseId,
                 roomId: fromRoom.Id,
-                growerLotId: null,
-                fruitProfileId: fruitProfile?.Id,
+                growerLotId: sourceLot.GrowerLotId,
+                fruitProfileId: sourceLot.FruitProfileId ?? fruitProfile?.Id,
                 growerName: sourceLot.GrowerName,
                 lotNumber: sourceLot.LotCode,
                 varietyCode: sourceLot.VarietyCode,
@@ -953,8 +958,8 @@ public sealed class DashboardDataService(
             receiptId: sourceLot.ReceiptId,
             warehouseId: toRoom.WarehouseId,
             roomId: toRoom.Id,
-            growerLotId: sourceReceipt?.GrowerLotId,
-            fruitProfileId: fruitProfile?.Id ?? sourceReceipt?.FruitProfileId,
+            growerLotId: sourceLot.GrowerLotId ?? sourceReceipt?.GrowerLotId,
+            fruitProfileId: sourceLot.FruitProfileId ?? fruitProfile?.Id ?? sourceReceipt?.FruitProfileId,
             growerName: sourceLot.GrowerName,
             lotNumber: sourceLot.LotCode,
             varietyCode: sourceLot.VarietyCode,
@@ -3022,12 +3027,15 @@ public sealed class DashboardDataService(
         var latestActivityByRoom = await BuildLatestRoomActivityByRoomAsync(cancellationToken);
         var colorLots = lots.Where(x => x.CurrentBins > 0).Select(ToDashboardInventorySnapshot).ToList();
         var colorMap = await ResolveDashboardVarietyColorsAsync(colorLots, cancellationToken);
-        var latestSamplesByLot = roomId is null
-            ? new Dictionary<string, DashboardSampleMarker>(StringComparer.OrdinalIgnoreCase)
-            : await BuildDashboardLatestSampleByLotAsync(colorLots, cancellationToken);
+        var dashboardQcTargets = colorLots.Select(x => x.QcIdentity).Where(x => x is not null).Select(x => x!).DistinctBy(x => x.LookupKey).ToList();
+        var dashboardQcHeaders = roomId is null
+            ? []
+            : await LoadDashboardQcSampleHeadersAsync(dashboardQcTargets, cancellationToken);
+        var dashboardQcHeadersByIdentity = IndexDashboardQcSampleHeaders(dashboardQcHeaders);
+        var latestSamplesByLot = BuildDashboardLatestSampleByLot(dashboardQcTargets, dashboardQcHeaders, dashboardQcHeadersByIdentity);
         var roomQcSummaries = roomId is null
             ? new Dictionary<int, RoomQcSummary>()
-            : await BuildDashboardRoomQcSummariesAsync(colorLots, cancellationToken);
+            : await BuildDashboardRoomQcSummariesAsync(colorLots, dashboardQcTargets, dashboardQcHeaders, dashboardQcHeadersByIdentity, cancellationToken);
         var currentLotsByRoom = lots
             .Where(x => x.CurrentBins > 0)
             .GroupBy(x => x.RoomId)
@@ -3041,10 +3049,10 @@ public sealed class DashboardDataService(
             var colorCurrentBins = roomColorLots.Sum(x => x.CurrentBins);
             var qcSummary = roomQcSummaries.GetValueOrDefault(room.Id) ?? RoomQcSummary.Empty(colorCurrentBins);
             var representedBins = roomColorLots
-                .Where(x => latestSamplesByLot.ContainsKey(CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety)))
+                .Where(x => latestSamplesByLot.ContainsKey(x.QcIdentityKey))
                 .Sum(x => x.CurrentBins);
             var latestSampleDate = roomColorLots
-                .Select(x => latestSamplesByLot.GetValueOrDefault(CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety))?.SampleTakenAt)
+                .Select(x => latestSamplesByLot.GetValueOrDefault(x.QcIdentityKey)?.SampleTakenAt)
                 .Where(x => x is not null)
                 .DefaultIfEmpty()
                 .Max();
@@ -3140,8 +3148,11 @@ public sealed class DashboardDataService(
 
         var includedRoomIds = rooms.Select(x => x.Id).ToHashSet();
         occupiedLots = occupiedLots.Where(x => includedRoomIds.Contains(x.RoomId)).ToList();
-        var latestSamplesByLot = await BuildDashboardLatestSampleByLotAsync(occupiedLots, cancellationToken);
-        var roomQcSummaries = await BuildDashboardRoomQcSummariesAsync(occupiedLots, cancellationToken);
+        var dashboardQcTargets = occupiedLots.Select(x => x.QcIdentity).Where(x => x is not null).Select(x => x!).DistinctBy(x => x.LookupKey).ToList();
+        var dashboardQcHeaders = await LoadDashboardQcSampleHeadersAsync(dashboardQcTargets, cancellationToken);
+        var dashboardQcHeadersByIdentity = IndexDashboardQcSampleHeaders(dashboardQcHeaders);
+        var latestSamplesByLot = BuildDashboardLatestSampleByLot(dashboardQcTargets, dashboardQcHeaders, dashboardQcHeadersByIdentity);
+        var roomQcSummaries = await BuildDashboardRoomQcSummariesAsync(occupiedLots, dashboardQcTargets, dashboardQcHeaders, dashboardQcHeadersByIdentity, cancellationToken);
         var colorMap = await ResolveDashboardVarietyColorsAsync(occupiedLots, cancellationToken);
         var today = BusinessTime.NowPacific;
 
@@ -3150,15 +3161,15 @@ public sealed class DashboardDataService(
                 var roomLots = occupiedLots.Where(x => x.RoomId == room.Id).ToList();
                 var currentBins = roomLots.Sum(x => x.CurrentBins);
                 var representedBins = roomLots
-                    .Where(x => latestSamplesByLot.ContainsKey(CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety)))
+                    .Where(x => latestSamplesByLot.ContainsKey(x.QcIdentityKey))
                     .Sum(x => x.CurrentBins);
                 var latestSampleDate = roomLots
-                    .Select(x => latestSamplesByLot.GetValueOrDefault(CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety))?.SampleTakenAt)
+                    .Select(x => latestSamplesByLot.GetValueOrDefault(x.QcIdentityKey)?.SampleTakenAt)
                     .Where(x => x is not null)
                     .DefaultIfEmpty()
                     .Max();
                 var staleLots = roomLots
-                    .Where(x => latestSamplesByLot.TryGetValue(CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety), out var sample)
+                    .Where(x => latestSamplesByLot.TryGetValue(x.QcIdentityKey, out var sample)
                         && (today - sample.SampleTakenAt).TotalDays >= 14)
                     .ToList();
                 var statusLots = roomLots
@@ -3248,6 +3259,8 @@ public sealed class DashboardDataService(
                 var variety = VarietyColorService.NormalizeIdentity(x.VarietyName, x.Variety);
                 return new DashboardInventorySnapshot(
                     x.RoomId,
+                    x.CropYear,
+                    x.FruitProfileId,
                     x.Facility,
                     FacilityCode(x.Facility, x.Facility),
                     x.LocationGroup,
@@ -3268,71 +3281,104 @@ public sealed class DashboardDataService(
             .ToList();
     }
 
-    private async Task<IReadOnlyDictionary<string, DashboardSampleMarker>> BuildDashboardLatestSampleByLotAsync(
-        IReadOnlyList<DashboardInventorySnapshot> currentLots,
+    private async Task<IReadOnlyList<DashboardQcSampleHeader>> LoadDashboardQcSampleHeadersAsync(
+        IReadOnlyList<CanonicalQcFruitIdentity> targets,
         CancellationToken cancellationToken)
     {
-        var roomIds = currentLots.Select(x => x.RoomId).Distinct().ToList();
-        if (roomIds.Count == 0)
+        if (targets.Count == 0)
         {
-            return new Dictionary<string, DashboardSampleMarker>(StringComparer.OrdinalIgnoreCase);
+            return [];
         }
 
-        var sampleRows = await dbContext.QcSamples.AsNoTracking()
-            .Where(x => !x.IsDeleted && roomIds.Contains(x.Receipt.RoomId))
-            .Select(x => new
-            {
+        var candidateQuery = CanonicalQcFruitIdentity.FilterReceiptSamples(
+                dbContext.QcSamples.AsNoTracking(),
+                targets);
+        return await CanonicalQcFruitIdentity.OrderCandidates(
+                candidateQuery,
+                dbContext.Database.ProviderName)
+            .Select(x => new DashboardQcSampleHeader(
+                x.Id,
+                x.Receipt!.GrowerLotId,
+                x.Receipt.GrowerNumber ?? x.Receipt.LotCode,
+                x.Receipt.LotCode,
+                x.Receipt.FruitProfileId,
+                x.Receipt.CropYear,
+                x.Receipt.FruitProfile.VarietyCode,
+                x.Receipt.FruitProfile.ProductionType,
+                x.Receipt.FruitProfile.IsOrganic,
                 x.SampleTakenAt,
-                RoomId = x.Receipt.RoomId,
-                Lot = x.Receipt.GrowerNumber ?? x.Receipt.LotCode,
-                Variety = x.Receipt.FruitProfile.VarietyCode,
-                SampleType = x.SampleType.Name
-            })
+                x.SampleType.Name))
+            .Take(CanonicalQcFruitIdentity.CandidateLimit(targets.Count))
             .ToListAsync(cancellationToken);
-
-        return sampleRows
-            .GroupBy(x => CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                x => x.Key,
-                x =>
-                {
-                    var latest = x.OrderByDescending(y => y.SampleTakenAt).First();
-                    return new DashboardSampleMarker(latest.SampleTakenAt, latest.SampleType);
-                },
-                StringComparer.OrdinalIgnoreCase);
     }
+
+    private static IReadOnlyDictionary<string, DashboardSampleMarker> BuildDashboardLatestSampleByLot(
+        IReadOnlyList<CanonicalQcFruitIdentity> targets,
+        IReadOnlyList<DashboardQcSampleHeader> sampleRows,
+        IReadOnlyDictionary<string, IReadOnlyList<DashboardQcSampleHeader>> sampleRowsByIdentity)
+    {
+        var result = new Dictionary<string, DashboardSampleMarker>(StringComparer.OrdinalIgnoreCase);
+        foreach (var target in targets)
+        {
+            var candidates = sampleRowsByIdentity.GetValueOrDefault(target.LookupKey) ?? sampleRows;
+            var latest = CanonicalQcFruitIdentity.ResolveLatestUnambiguous(
+                target,
+                candidates,
+                x => x.Identity,
+                x => x.SampleTakenAt,
+                x => x.Id);
+            if (latest is not null)
+            {
+                result[target.LookupKey] = new DashboardSampleMarker(latest.SampleTakenAt, latest.SampleType);
+            }
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<DashboardQcSampleHeader>> IndexDashboardQcSampleHeaders(
+        IReadOnlyList<DashboardQcSampleHeader> headers) =>
+        headers
+            .Where(x => x.Identity is not null)
+            .GroupBy(x => x.Identity!.LookupKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => (IReadOnlyList<DashboardQcSampleHeader>)x.ToList(), StringComparer.OrdinalIgnoreCase);
 
     private async Task<IReadOnlyDictionary<int, RoomQcSummary>> BuildDashboardRoomQcSummariesAsync(
         IReadOnlyList<DashboardInventorySnapshot> currentLots,
+        IReadOnlyList<CanonicalQcFruitIdentity> targets,
+        IReadOnlyList<DashboardQcSampleHeader> candidateHeaders,
+        IReadOnlyDictionary<string, IReadOnlyList<DashboardQcSampleHeader>> candidateHeadersByIdentity,
         CancellationToken cancellationToken)
     {
         var occupiedLots = currentLots.Where(x => x.CurrentBins > 0).ToList();
-        var roomIds = occupiedLots.Select(x => x.RoomId).Distinct().ToList();
-        if (roomIds.Count == 0)
+        if (targets.Count == 0)
         {
             return new Dictionary<int, RoomQcSummary>();
         }
 
         var sampleTypes = new[] { "Receiving Sample", "Door Sample", "Lot Sample" };
+        var sampleHeaders = candidateHeaders.Where(x => sampleTypes.Contains(x.SampleType)).ToList();
+        var sampleIds = sampleHeaders.Select(x => x.Id).ToList();
         var measurements = await dbContext.QcFruitReadings.AsNoTracking()
-            .Where(row => !row.QcSample.IsDeleted
-                && roomIds.Contains(row.QcSample.Receipt.RoomId)
-                && sampleTypes.Contains(row.QcSample.SampleType.Name))
+            .Where(row => sampleIds.Contains(row.QcSampleId))
             .Select(row => new DashboardQcMeasurement(
                 row.QcSampleId,
                 row.QcSample.SampleTakenAt,
                 row.QcSample.SampleType.Name,
-                row.QcSample.Receipt.RoomId,
-                row.QcSample.Receipt.GrowerNumber ?? row.QcSample.Receipt.LotCode,
-                row.QcSample.Receipt.FruitProfile.VarietyCode,
                 row.Pressure1Lbs,
                 row.Pressure2Lbs,
                 row.StarchScaleValue == null ? null : row.StarchScaleValue.Value))
             .ToListAsync(cancellationToken);
-
-        var measurementsByLot = measurements
-            .GroupBy(x => CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
+        var measurementsBySample = measurements.GroupBy(x => x.SampleId).ToDictionary(x => x.Key, x => x.ToList());
+        var measurementsByLot = new Dictionary<string, List<DashboardQcMeasurement>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var target in targets)
+        {
+            var candidates = candidateHeadersByIdentity.GetValueOrDefault(target.LookupKey) ?? sampleHeaders;
+            var matchingHeaders = CanonicalQcFruitIdentity.ResolveUnambiguous(target, candidates, x => x.Identity);
+            measurementsByLot[target.LookupKey] = matchingHeaders
+                .SelectMany(header => measurementsBySample.GetValueOrDefault(header.Id, []))
+                .ToList();
+        }
 
         return occupiedLots
             .GroupBy(x => x.RoomId)
@@ -3361,7 +3407,7 @@ public sealed class DashboardDataService(
 
         foreach (var lot in roomLots)
         {
-            if (!measurementsByLot.TryGetValue(CurrentDashboardLotKey(lot.RoomId, lot.Lot, lot.Variety), out var lotRows))
+            if (!measurementsByLot.TryGetValue(lot.QcIdentityKey, out var lotRows))
             {
                 continue;
             }
@@ -3886,11 +3932,34 @@ public sealed class DashboardDataService(
         var latestAdjustmentByReceipt = receiptAdjustments
             .GroupBy(x => x.ReceiptId!.Value)
             .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.AdjustmentAt).ThenByDescending(y => y.Id).First());
-        var samples = await LoadRoomConditionSamplesAsync(receiptIds, cancellationToken);
+        var startingInventoryLotSummaries = await BuildAdjustmentOnlyLotSummariesAsync(
+            roomId,
+            cancellationToken,
+            allowedRoomIds,
+            cropYear,
+            varietyFilter);
+        var qcTargets = receipts
+            .Select(CanonicalQcFruitIdentity.FromReceipt)
+            .Concat(startingInventoryLotSummaries.Select(RoomLotQcIdentity))
+            .Where(x => x is not null)
+            .Select(x => x!)
+            .DistinctBy(x => x.LookupKey)
+            .ToList();
+        var samples = await LoadRoomConditionSamplesAsync(qcTargets, cancellationToken);
         var samplesByReceipt = samples.GroupBy(x => x.ReceiptId).ToDictionary(x => x.Key, x => x.ToList());
-        var conditionSamplesByLot = samples
-            .GroupBy(x => QcConditionLotKey(x.RoomId, x.GrowerNumber, x.LotCode, x.VarietyCode), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.SampleTakenAt).ThenByDescending(y => y.Id).ToList(), StringComparer.OrdinalIgnoreCase);
+        var samplesByIdentity = samples
+            .Where(x => x.Identity is not null)
+            .GroupBy(x => x.Identity!.LookupKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => (IReadOnlyList<RoomConditionSample>)x.ToList(), StringComparer.OrdinalIgnoreCase);
+        var conditionSamplesByLot = new Dictionary<string, List<RoomConditionSample>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var target in qcTargets)
+        {
+            var candidates = samplesByIdentity.GetValueOrDefault(target.LookupKey) ?? samples;
+            conditionSamplesByLot[target.LookupKey] = CanonicalQcFruitIdentity.ResolveUnambiguous(target, candidates, x => x.Identity)
+                .OrderByDescending(x => x.SampleTakenAt)
+                .ThenByDescending(x => x.Id)
+                .ToList();
+        }
 
         var roomCorrectionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
         var receiptLotSummaries = receipts
@@ -3959,12 +4028,6 @@ public sealed class DashboardDataService(
             };
         }).ToList();
 
-        var startingInventoryLotSummaries = await BuildAdjustmentOnlyLotSummariesAsync(
-            roomId,
-            cancellationToken,
-            allowedRoomIds,
-            cropYear,
-            varietyFilter);
         var lotSummaries = receiptLotSummaries.Concat(startingInventoryLotSummaries).ToList();
         ApplyQcConditionData(lotSummaries, conditionSamplesByLot);
         var ledgerSnapshots = await RoomInventoryLedger.GetSnapshotsAsync(
@@ -4283,7 +4346,7 @@ public sealed class DashboardDataService(
     {
         foreach (var lot in lotSummaries)
         {
-            if (!conditionSamplesByLot.TryGetValue(QcConditionLotKey(lot.RoomId, lot.GrowerNumber, lot.LotCode, lot.VarietyCode), out var lotSamples)
+            if (!conditionSamplesByLot.TryGetValue(QcConditionLotKey(lot), out var lotSamples)
                 || lotSamples.Count == 0)
             {
                 continue;
@@ -4302,10 +4365,21 @@ public sealed class DashboardDataService(
             lot.SampleCount = lotSamples.Count;
             lot.EnteredFruitCount = lotSamples.SelectMany(x => x.FruitRows).Count(HasEnteredFruitData);
             lot.ReviewFlags = BuildRoomReviewFlags(pressures, starch, lotSamples.SelectMany(x => x.FruitRows).ToList(), lot.MonthOverMonthPressureChangeLbs);
-            lot.Samples = lotSamples
+            var resolvedSampleEvidence = lotSamples
                 .Select(x => new RoomSampleLinkViewModel(x.Id, x.SampleSequenceNumber <= 1 ? x.DisplayReceiptId : $"{x.DisplayReceiptId}({x.SampleSequenceNumber})", x.SampleType))
                 .ToList();
-            lot.SampleEvidenceCount = lot.Samples.Count;
+            lot.Samples = resolvedSampleEvidence.Take(MaximumLotEvidenceLinks).ToList();
+            lot.SampleEvidenceCount = resolvedSampleEvidence.Count;
+            var resolvedReceiptEvidence = lot.ReceiptEvidence.Concat(lotSamples
+                    .GroupBy(x => x.ReceiptId)
+                    .Select(x => new RoomReceiptEvidenceLinkViewModel(x.Key, x.First().DisplayReceiptId)))
+                .GroupBy(x => x.ReceiptId)
+                .Select(x => x.First())
+                .OrderBy(x => x.DisplayReceiptId, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.ReceiptId)
+                .ToList();
+            lot.ReceiptEvidence = resolvedReceiptEvidence.Take(MaximumLotEvidenceLinks).ToList();
+            lot.ReceiptEvidenceCount = resolvedReceiptEvidence.Count;
         }
     }
 
@@ -4337,27 +4411,37 @@ public sealed class DashboardDataService(
     }
 
     private async Task<IReadOnlyList<RoomConditionSample>> LoadRoomConditionSamplesAsync(
-        IReadOnlyList<long> receiptIds,
+        IReadOnlyList<CanonicalQcFruitIdentity> targets,
         CancellationToken cancellationToken)
     {
-        if (receiptIds.Count == 0)
+        if (targets.Count == 0)
         {
             return [];
         }
 
-        var headers = await dbContext.QcSamples.AsNoTracking()
-            .Where(x => !x.IsDeleted && x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))
+        var candidateQuery = CanonicalQcFruitIdentity.FilterReceiptSamples(
+                dbContext.QcSamples.AsNoTracking(),
+                targets);
+        var headers = await CanonicalQcFruitIdentity.OrderCandidates(
+                candidateQuery,
+                dbContext.Database.ProviderName)
             .Select(x => new RoomConditionSampleHeader(
                 x.Id,
                 x.ReceiptId!.Value,
                 x.Receipt!.RoomId,
-                x.Receipt.GrowerNumber ?? "",
+                x.Receipt.CropYear,
+                x.Receipt.GrowerLotId,
+                x.Receipt.FruitProfileId,
+                x.Receipt.GrowerNumber ?? x.Receipt.LotCode,
                 x.Receipt.LotCode,
                 x.Receipt.FruitProfile.VarietyCode,
+                x.Receipt.FruitProfile.ProductionType,
+                x.Receipt.FruitProfile.IsOrganic,
                 x.Receipt.CompuTechReceiptId,
                 x.SampleSequenceNumber,
                 x.SampleType.Name,
                 x.SampleTakenAt))
+            .Take(CanonicalQcFruitIdentity.CandidateLimit(targets.Count))
             .ToListAsync(cancellationToken);
         var sampleIds = headers.Select(x => x.Id).ToList();
         if (sampleIds.Count == 0)
@@ -4408,9 +4492,14 @@ public sealed class DashboardDataService(
                 header.Id,
                 header.ReceiptId,
                 header.RoomId,
+                header.CropYear,
+                header.GrowerLotId,
+                header.FruitProfileId,
                 header.GrowerNumber,
                 header.LotCode,
                 header.VarietyCode,
+                header.ProductionType,
+                header.IsOrganic,
                 header.DisplayReceiptId,
                 header.SampleSequenceNumber,
                 header.SampleType,
@@ -4426,6 +4515,8 @@ public sealed class DashboardDataService(
             lot.VarietyCode);
         return new DashboardInventorySnapshot(
             lot.RoomId,
+            lot.CropYear,
+            lot.FruitProfileId,
             lot.Warehouse,
             lot.Facility,
             lot.LocationGroup,
@@ -4568,7 +4659,7 @@ public sealed class DashboardDataService(
             lot.CanonicalVarietyKey = identity.Key;
             lot.CanonicalVarietyName = identity.Name;
             lot.VarietyHexColor = colors.GetValueOrDefault(identity.Key)?.HexColor ?? VarietyColorService.FallbackColor(identity.Key);
-            if (sampleDistributions.TryGetValue(QcConditionLotKey(lot.RoomId, lot.GrowerNumber, lot.LotCode, lot.VarietyCode), out var distribution))
+            if (sampleDistributions.TryGetValue(QcConditionLotKey(lot), out var distribution))
             {
                 lot.GradeSummary = distribution.GradePercentages.Count == 0
                     ? "Unavailable"
@@ -4699,18 +4790,42 @@ public sealed class DashboardDataService(
             .OrderBy(x => x.GrowerNumber, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-    private async Task<IReadOnlyDictionary<string, RoomLotProjectionDistribution>> BuildRoomProjectionSampleDataAsync(int roomId, CancellationToken cancellationToken)
+    private async Task<IReadOnlyDictionary<string, RoomLotProjectionDistribution>> BuildRoomProjectionSampleDataAsync(
+        IReadOnlyList<RoomLotSummaryViewModel> lots,
+        CancellationToken cancellationToken)
     {
-        var samples = await QuerySamples()
-            .Where(x => x.Receipt.RoomId == roomId)
-            .ToListAsync(cancellationToken);
+        var targets = lots.Select(RoomLotQcIdentity).Where(x => x is not null).Select(x => x!).DistinctBy(x => x.LookupKey).ToList();
+        if (targets.Count == 0)
+        {
+            return new Dictionary<string, RoomLotProjectionDistribution>(StringComparer.OrdinalIgnoreCase);
+        }
 
-        return samples
-            .GroupBy(x => QcConditionLotKey(x.Receipt), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                x => x.Key,
-                x => BuildRoomLotProjectionDistribution(x.OrderByDescending(y => y.SampleTakenAt).ThenByDescending(y => y.Id).First()),
-                StringComparer.OrdinalIgnoreCase);
+        var candidateQuery = CanonicalQcFruitIdentity.FilterReceiptSamples(QuerySamples(), targets);
+        var samples = await CanonicalQcFruitIdentity.OrderCandidates(
+                candidateQuery,
+                dbContext.Database.ProviderName)
+            .Take(CanonicalQcFruitIdentity.CandidateLimit(targets.Count))
+            .ToListAsync(cancellationToken);
+        var sampleIdentities = samples.ToDictionary(
+            x => x.Id,
+            x => CanonicalQcFruitIdentity.FromReceipt(x.Receipt));
+
+        var result = new Dictionary<string, RoomLotProjectionDistribution>(StringComparer.OrdinalIgnoreCase);
+        foreach (var target in targets)
+        {
+            var latest = CanonicalQcFruitIdentity.ResolveLatestUnambiguous(
+                    target,
+                    samples,
+                    sample => sampleIdentities[sample.Id],
+                    sample => sample.SampleTakenAt,
+                    sample => sample.Id);
+            if (latest is not null)
+            {
+                result[target.LookupKey] = BuildRoomLotProjectionDistribution(latest);
+            }
+        }
+
+        return result;
     }
 
     private static RoomLotProjectionDistribution BuildRoomLotProjectionDistribution(QcSample sample)
@@ -6453,19 +6568,27 @@ public sealed class DashboardDataService(
             : $"A:{lot.InventoryAdjustmentId}:{RoomProjectionLotKey(lot)}";
 
     private static string RoomProjectionLotKey(RoomLotSummaryViewModel lot) =>
-        QcConditionLotKey(lot.RoomId, lot.GrowerNumber, lot.LotCode, lot.VarietyCode);
+        QcConditionLotKey(lot);
 
     private static string ReceiptLotNumber(Receipt receipt) =>
         !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode;
 
     private static string QcConditionLotKey(Receipt receipt) =>
-        QcConditionLotKey(receipt.RoomId, ReceiptLotNumber(receipt), receipt.LotCode, receipt.FruitProfile.VarietyCode);
+        CanonicalQcFruitIdentity.FromReceipt(receipt)?.LookupKey ?? $"UNRESOLVED:RECEIPT:{receipt.Id}";
 
-    private static string QcConditionLotKey(int roomId, string growerNumber, string lotCode, string varietyCode)
-    {
-        var lot = !string.IsNullOrWhiteSpace(growerNumber) ? growerNumber : lotCode;
-        return $"{roomId}|{lot.Trim().ToUpperInvariant()}|{(varietyCode ?? "").Trim().ToUpperInvariant()}";
-    }
+    private static string QcConditionLotKey(RoomLotSummaryViewModel lot) =>
+        RoomLotQcIdentity(lot)?.LookupKey ?? $"UNRESOLVED:LOT:{lot.InventoryKey}";
+
+    private static CanonicalQcFruitIdentity? RoomLotQcIdentity(RoomLotSummaryViewModel lot) =>
+        CanonicalQcFruitIdentity.Create(
+            lot.CropYear,
+            lot.GrowerLotId,
+            string.IsNullOrWhiteSpace(lot.GrowerNumber) ? lot.LotCode : lot.GrowerNumber,
+            lot.LotCode,
+            lot.FruitProfileId,
+            lot.VarietyCode,
+            lot.ProductionType,
+            lot.IsOrganic);
 
     private static IReadOnlyDictionary<string, decimal> Percentages(IReadOnlyDictionary<string, int> counts)
     {
@@ -6765,6 +6888,8 @@ public sealed class DashboardDataService(
 
     private sealed record DashboardInventorySnapshot(
         int RoomId,
+        int? CropYear,
+        int? FruitProfileId,
         string Warehouse,
         string Facility,
         string LocationGroup,
@@ -6780,19 +6905,54 @@ public sealed class DashboardDataService(
         bool? IsOrganic,
         string InventoryStatus,
         int CurrentBins,
-        DateTimeOffset? ReceiptDate);
+        DateTimeOffset? ReceiptDate)
+    {
+        public CanonicalQcFruitIdentity? QcIdentity { get; } = CanonicalQcFruitIdentity.Create(
+            CropYear,
+            GrowerLotId,
+            GrowerNumber.Length == 0 ? Lot : GrowerNumber,
+            Lot,
+            FruitProfileId,
+            Variety,
+            ProductionType,
+            IsOrganic);
+
+        public string QcIdentityKey => QcIdentity?.LookupKey
+            ?? $"UNRESOLVED:{RoomId}:{GrowerNumber}:{Lot}:{Variety}";
+    }
 
 
     private sealed record DashboardQcMeasurement(
         long SampleId,
         DateTimeOffset SampleTakenAt,
         string SampleType,
-        int RoomId,
-        string Lot,
-        string Variety,
         decimal? Pressure1Lbs,
         decimal? Pressure2Lbs,
         decimal? Starch);
+
+    private sealed record DashboardQcSampleHeader(
+        long Id,
+        int? GrowerLotId,
+        string GrowerNumber,
+        string LotNumber,
+        int FruitProfileId,
+        int CropYear,
+        string VarietyCode,
+        string ProductionType,
+        bool IsOrganic,
+        DateTimeOffset SampleTakenAt,
+        string SampleType)
+    {
+        public CanonicalQcFruitIdentity? Identity { get; } = CanonicalQcFruitIdentity.Create(
+            CropYear,
+            GrowerLotId,
+            GrowerNumber,
+            LotNumber,
+            FruitProfileId,
+            VarietyCode,
+            ProductionType,
+            IsOrganic);
+    }
 
     private sealed record DashboardSampleSummaryRow(
         long Id,
@@ -6871,13 +7031,29 @@ public sealed class DashboardDataService(
         long Id,
         long ReceiptId,
         int RoomId,
+        int CropYear,
+        int? GrowerLotId,
+        int FruitProfileId,
         string GrowerNumber,
         string LotCode,
         string VarietyCode,
+        string ProductionType,
+        bool IsOrganic,
         string DisplayReceiptId,
         int SampleSequenceNumber,
         string SampleType,
-        DateTimeOffset SampleTakenAt);
+        DateTimeOffset SampleTakenAt)
+    {
+        public CanonicalQcFruitIdentity? Identity { get; } = CanonicalQcFruitIdentity.Create(
+            CropYear,
+            GrowerLotId,
+            GrowerNumber,
+            LotCode,
+            FruitProfileId,
+            VarietyCode,
+            ProductionType,
+            IsOrganic);
+    }
 
     private sealed record RoomConditionFruitRowData(
         long Id,
@@ -6906,14 +7082,30 @@ public sealed class DashboardDataService(
         long Id,
         long ReceiptId,
         int RoomId,
+        int CropYear,
+        int? GrowerLotId,
+        int FruitProfileId,
         string GrowerNumber,
         string LotCode,
         string VarietyCode,
+        string ProductionType,
+        bool IsOrganic,
         string DisplayReceiptId,
         int SampleSequenceNumber,
         string SampleType,
         DateTimeOffset SampleTakenAt,
-        IReadOnlyList<RoomConditionFruitRow> FruitRows);
+        IReadOnlyList<RoomConditionFruitRow> FruitRows)
+    {
+        public CanonicalQcFruitIdentity? Identity { get; } = CanonicalQcFruitIdentity.Create(
+            CropYear,
+            GrowerLotId,
+            GrowerNumber,
+            LotCode,
+            FruitProfileId,
+            VarietyCode,
+            ProductionType,
+            IsOrganic);
+    }
 
     private sealed record DashboardRoomAttention(
         string Category,

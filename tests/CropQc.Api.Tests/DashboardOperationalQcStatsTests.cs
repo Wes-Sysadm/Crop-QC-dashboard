@@ -30,7 +30,8 @@ public sealed class DashboardOperationalQcStatsTests
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
 
         Assert.Contains("BuildDashboardRoomQcSummariesAsync", service);
-        Assert.Contains("row.QcSample.SampleType.Name", service);
+        Assert.Contains("header.SampleType", service);
+        Assert.Contains("CanonicalQcFruitIdentity", service);
         Assert.Contains("\"Receiving Sample\"", service);
         Assert.Contains("\"Door Sample\"", service);
         Assert.Contains("\"Lot Sample\"", service);
