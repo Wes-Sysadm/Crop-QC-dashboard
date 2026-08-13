@@ -1185,11 +1185,16 @@ public sealed class DashboardDataService(
                 search.WarehouseId = null;
                 search.RoomId = null;
             }
-            if (search.WarehouseId is not null && search.RoomId is not null)
+            if (search.RoomId is int requestedRoomId)
             {
-                var roomMatchesWarehouse = await dbContext.Rooms.AsNoTracking()
-                    .AnyAsync(x => x.Id == search.RoomId && x.WarehouseId == search.WarehouseId, cancellationToken);
-                if (!roomMatchesWarehouse)
+                var requestedRoom = await dbContext.Rooms.AsNoTracking()
+                    .Where(x => x.Id == requestedRoomId)
+                    .Select(x => new { x.WarehouseId })
+                    .SingleOrDefaultAsync(cancellationToken);
+                if (requestedRoom is not null
+                    && (!facilityWarehouseIds.Contains(requestedRoom.WarehouseId)
+                        || (search.WarehouseId is int selectedWarehouseId
+                            && requestedRoom.WarehouseId != selectedWarehouseId)))
                 {
                     search.RoomId = null;
                 }
@@ -1260,7 +1265,13 @@ public sealed class DashboardDataService(
                 ReceiptTypeCounts = BuildReceiptTypeCounts(search, receiptTypeCountRows),
                 Warehouses = await dbContext.Warehouses.AsNoTracking().Where(x => facilityWarehouseIds.Contains(x.Id)).OrderBy(x => x.Name).ToListAsync(cancellationToken),
                 Rooms = await dbContext.Rooms.AsNoTracking().Where(x => facilityWarehouseIds.Contains(x.WarehouseId)).OrderBy(x => x.WarehouseId).ThenBy(x => x.SubLocation).ThenBy(x => x.SortOrder).ThenBy(x => x.CropQcRoomName ?? x.Code).ToListAsync(cancellationToken),
-                FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.VarietyCode).ToListAsync(cancellationToken),
+                FruitProfiles = await dbContext.FruitProfiles.AsNoTracking()
+                    .Where(x => x.IsActive)
+                    .OrderBy(x => x.VarietyCode)
+                    .ThenBy(x => x.Name)
+                    .ThenBy(x => x.ProductionType)
+                    .ThenBy(x => x.IsOrganic)
+                    .ToListAsync(cancellationToken),
                 GrowerLots = await dbContext.GrowerLots.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Grower).ThenBy(x => x.LotNumber).ToListAsync(cancellationToken),
                 AvailableCropYears = await cropYearService.GetAvailableCropYearsAsync(cancellationToken),
                 CurrentCropYear = cropYearService.GetCurrentCropYear(BusinessTime.NowPacific),
