@@ -21,7 +21,8 @@ public sealed class RoomInventoryImportService(
     CropQcDbContext dbContext,
     IWebHostEnvironment environment,
     ICropYearService cropYearService,
-    IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null) : IRoomInventoryImportService
+    IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null,
+    ICanonicalGrowerService? canonicalGrowerService = null) : IRoomInventoryImportService
 {
     public const string BuiltInEbsSeedFileName = "ebs-starting-room-inventory.csv";
     public const string StartingInventoryAdjustmentType = "StartingInventoryImport";
@@ -457,6 +458,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
 
     private async Task<(IReadOnlyList<RoomInventoryCurrentLotViewModel> Lots, IReadOnlyList<CurrentInventorySourceRowViewModel> Breakdown)> GetCurrentLotsAsync(RoomInventoryImportForm filter, CancellationToken cancellationToken)
     {
+        var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
         var adjustments = await dbContext.RoomInventoryAdjustments.AsNoTracking()
             .Include(x => x.Warehouse)
             .Include(x => x.Room)
@@ -485,6 +487,10 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
             .ThenBy(x => x.Id)
             .Select(x => CurrentLotBreakdownRow(x, includedIds))
             .ToList();
+        foreach (var item in breakdown)
+        {
+            item.Grower = growerResolver.DisplayName(item.Grower, item.Lot);
+        }
         var invalidBaselineKeys = adjustments
             .Where(x => CurrentLotInvalidReason(x) is not null)
             .Select(x => CurrentLedgerKey(x.RoomId, x.CropYear, x.LotNumber, x.FruitProfile?.VarietyCode ?? x.VarietyCode ?? "", x.FruitProfileId))
@@ -512,7 +518,8 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
                     CompuTechRoomCode = room.CompuTechRoomCode ?? "",
                     RoomCode = x.Room,
                     MasterRoomCode = room.Code,
-                    Grower = x.Grower,
+                    Grower = growerResolver.DisplayName(x.Grower, x.GrowerNumber ?? x.Lot),
+                    GrowerNumber = x.GrowerNumber ?? "",
                     LotNumber = x.Lot,
                     PoolStart = x.PoolStart ?? "",
                     Variety = x.Variety,
@@ -548,7 +555,10 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
 
         if (!string.IsNullOrWhiteSpace(filter.Grower))
         {
-            latest = latest.Where(x => ContainsIgnoreCase(x.Grower, filter.Grower)).ToList();
+            var matchingNumbers = growerResolver.MatchingGrowerNumbers(filter.Grower);
+            latest = latest.Where(x => ContainsIgnoreCase(x.Grower, filter.Grower)
+                || matchingNumbers.Contains(CanonicalGrowerService.NormalizeGrowerNumber(x.GrowerNumber))
+                || matchingNumbers.Contains(CanonicalGrowerService.NormalizeGrowerNumber(x.LotNumber))).ToList();
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Variety))

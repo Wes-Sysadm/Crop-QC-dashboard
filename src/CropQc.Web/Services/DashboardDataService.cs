@@ -1177,6 +1177,7 @@ public sealed class DashboardDataService(
     {
         try
         {
+            var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
             search.Facility = FacilityContext.Normalize(search.Facility);
             var facilityWarehouseIds = await FacilityContext.GetWarehouseIdsAsync(search.Facility, cancellationToken);
             search.CropYear ??= cropYearService.GetCurrentCropYear(BusinessTime.NowPacific);
@@ -1215,7 +1216,13 @@ public sealed class DashboardDataService(
             }
 
             if (!string.IsNullOrWhiteSpace(search.ReceiptId)) query = query.Where(x => x.CompuTechReceiptId.Contains(search.ReceiptId));
-            if (!string.IsNullOrWhiteSpace(search.Grower)) query = query.Where(x => x.GrowerName.Contains(search.Grower));
+            if (!string.IsNullOrWhiteSpace(search.Grower))
+            {
+                var growerSearch = search.Grower.Trim();
+                var matchingNumbers = growerResolver.MatchingGrowerNumbers(growerSearch);
+                query = query.Where(x => x.GrowerName.Contains(growerSearch)
+                    || matchingNumbers.Contains(x.GrowerNumber ?? x.LotCode));
+            }
             if (!string.IsNullOrWhiteSpace(search.Lot)) query = query.Where(x => x.LotCode.Contains(search.Lot));
             if (search.WarehouseId is not null) query = query.Where(x => x.WarehouseId == search.WarehouseId);
             if (search.RoomId is not null) query = query.Where(x => x.RoomId == search.RoomId);
@@ -1261,7 +1268,7 @@ public sealed class DashboardDataService(
             return new ReceiptListViewModel
             {
                 Search = search,
-                Receipts = receipts.Select(receipt => ReceiptListItem(receipt, sampleSummaries.GetValueOrDefault(receipt.Id), receiptColors)).ToList(),
+                Receipts = receipts.Select(receipt => ReceiptListItem(receipt, sampleSummaries.GetValueOrDefault(receipt.Id), receiptColors, growerResolver)).ToList(),
                 ReceiptTypeCounts = BuildReceiptTypeCounts(search, receiptTypeCountRows),
                 Warehouses = await dbContext.Warehouses.AsNoTracking().Where(x => facilityWarehouseIds.Contains(x.Id)).OrderBy(x => x.Name).ToListAsync(cancellationToken),
                 Rooms = await dbContext.Rooms.AsNoTracking().Where(x => facilityWarehouseIds.Contains(x.WarehouseId)).OrderBy(x => x.WarehouseId).ThenBy(x => x.SubLocation).ThenBy(x => x.SortOrder).ThenBy(x => x.CropQcRoomName ?? x.Code).ToListAsync(cancellationToken),
@@ -1326,8 +1333,10 @@ public sealed class DashboardDataService(
             }
         }
 
-        var growerName = growerLot?.Grower ?? form.GrowerName.Trim();
         var lotNumber = growerLot?.LotNumber ?? form.GrowerNumber.Trim();
+        var suppliedGrowerName = growerLot?.Grower ?? form.GrowerName.Trim();
+        var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
+        var growerName = growerResolver.DisplayName(suppliedGrowerName, lotNumber);
         var now = DateTimeOffset.UtcNow;
         var receipt = new Receipt
         {
@@ -1430,6 +1439,7 @@ public sealed class DashboardDataService(
             {
                 return new ReceiptDetailViewModel { DataWarning = "Receipt not found." };
             }
+            var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
 
             var samples = await QuerySamples().Where(x => x.ReceiptId == id).OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleSequenceNumber).ToListAsync(cancellationToken);
             var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.ReceiptId == id && !x.IsDeleted).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
@@ -1463,7 +1473,7 @@ public sealed class DashboardDataService(
                 .SingleOrDefault();
             return new ReceiptDetailViewModel
             {
-                Receipt = ReceiptListItem(receipt),
+                Receipt = ReceiptListItem(receipt, growerResolver: growerResolver),
                 Samples = await EnrichSamplesAsync(samples, cancellationToken),
                 SampleTypes = await GetReceiptSampleTypesAsync(cancellationToken),
                 PhotoGroups = GroupPhotos(photos, canDelete: false),
@@ -1498,6 +1508,7 @@ public sealed class DashboardDataService(
             }
 
             var model = await BuildReceiptEditPageAsync(cancellationToken);
+            var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
             model.Form = new UpdateReceiptForm
             {
                 Id = receipt.Id,
@@ -1510,7 +1521,7 @@ public sealed class DashboardDataService(
                 FruitProfileId = receipt.FruitProfileId,
                 GrowerLotId = receipt.GrowerLotId,
                 GrowerNumber = receipt.GrowerNumber ?? "",
-                GrowerName = receipt.GrowerName,
+                GrowerName = growerResolver.DisplayName(receipt.GrowerName, receipt.GrowerNumber ?? receipt.LotCode),
                 LotCode = receipt.LotCode,
                 BinCount = receipt.BinCount,
                 ConfirmCropYear = true
@@ -1562,8 +1573,10 @@ public sealed class DashboardDataService(
         });
         var wasInventory = IsInventoryReceiptType(receipt.ReceiptType);
         var currentBins = wasInventory ? await GetCurrentBinsForReceiptAsync(receipt.Id, cancellationToken) : 0;
-        var growerName = growerLot?.Grower ?? form.GrowerName.Trim();
         var lotNumber = growerLot?.LotNumber ?? form.GrowerNumber.Trim();
+        var suppliedGrowerName = growerLot?.Grower ?? form.GrowerName.Trim();
+        var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
+        var growerName = growerResolver.DisplayName(suppliedGrowerName, lotNumber);
         var hasInventoryHistory = wasInventory && await dbContext.RoomInventoryAdjustments.AsNoTracking()
             .AnyAsync(x => x.ReceiptId == receipt.Id, cancellationToken);
         var hasPriorInventoryOverride = hasInventoryHistory && await dbContext.ReceiptInventoryOverrides.AsNoTracking()
@@ -3966,6 +3979,11 @@ public sealed class DashboardDataService(
             cropYear,
             varietyFilter);
         var lotSummaries = receiptLotSummaries.Concat(startingInventoryLotSummaries).ToList();
+        var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
+        foreach (var lot in lotSummaries)
+        {
+            lot.GrowerName = growerResolver.DisplayName(lot.GrowerName, lot.GrowerNumber.Length > 0 ? lot.GrowerNumber : lot.LotCode);
+        }
         ApplyQcConditionData(lotSummaries, conditionSamplesByLot);
         var ledgerSnapshots = await RoomInventoryLedger.GetSnapshotsAsync(
             null,
@@ -6303,7 +6321,8 @@ public sealed class DashboardDataService(
     private static ReceiptListItemViewModel ReceiptListItem(
         Receipt receipt,
         ReceiptSampleSummary? sampleSummary = null,
-        IReadOnlyDictionary<string, VarietyColorResolved>? colors = null)
+        IReadOnlyDictionary<string, VarietyColorResolved>? colors = null,
+        CanonicalGrowerResolutionSet? growerResolver = null)
     {
         var identity = VarietyColorService.IdentityFromProfile(receipt.FruitProfile);
         var resolved = colors?.GetValueOrDefault(identity.Key);
@@ -6329,7 +6348,7 @@ public sealed class DashboardDataService(
         receipt.Room.Code,
         receipt.GrowerNumber ?? "",
         receipt.PoolStart ?? "",
-        receipt.GrowerName,
+        growerResolver?.DisplayName(receipt.GrowerName, receipt.GrowerNumber ?? receipt.LotCode) ?? receipt.GrowerName,
         receipt.LotCode,
         receipt.FruitProfile.VarietyCode,
         receipt.BinCount,

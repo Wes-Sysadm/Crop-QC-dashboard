@@ -109,6 +109,7 @@ public sealed class RoomInventoryLossService(
     IRoomInventoryLedgerQueryService ledgerQuery,
     IInventoryDeductionInvariantService inventoryInvariant,
     IUserAccessService userAccessService,
+    ICanonicalGrowerService canonicalGrowerService,
     IHttpContextAccessor httpContextAccessor,
     IBusinessTimeService businessTime,
     ILogger<RoomInventoryLossService> logger) : IRoomInventoryLossService
@@ -118,6 +119,7 @@ public sealed class RoomInventoryLossService(
     public async Task<RoomInventoryLossPageData> GetRoomDataAsync(int roomId, CancellationToken cancellationToken)
     {
         var snapshots = await ledgerQuery.GetSnapshotsAsync(null, [roomId], cancellationToken);
+        var growerResolver = await canonicalGrowerService.LoadResolutionSetAsync(cancellationToken);
         var options = snapshots
             .Where(x => x.CurrentBins > 0)
             .OrderBy(x => x.GrowerNumber ?? x.Grower)
@@ -126,10 +128,10 @@ public sealed class RoomInventoryLossService(
             .ThenBy(x => x.Variety)
             .Select(x => new RoomInventoryLossOptionViewModel(
                 x.LatestAdjustmentId,
-                $"{x.GrowerNumber ?? x.Grower} / {x.Lot} / {x.VarietyName} / {OrganicLabel(x)} ({x.CurrentBins} packable bins)",
+                $"{growerResolver.DisplayName(x.Grower, x.GrowerNumber)} / {x.GrowerNumber ?? x.Lot} / {x.VarietyName} / {OrganicLabel(x)} ({x.CurrentBins} packable bins)",
                 x.Facility,
                 x.Room,
-                x.Grower,
+                growerResolver.DisplayName(x.Grower, x.GrowerNumber),
                 x.Lot,
                 x.VarietyName,
                 x.ProductionType,
@@ -141,18 +143,23 @@ public sealed class RoomInventoryLossService(
             && await userAccessService.HasAccessAsync(principal, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
         var canReverse = principal is not null
             && await userAccessService.HasAccessAsync(principal, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken);
-        var history = await ProjectHistory(
-                dbContext.RoomInventoryLosses.AsNoTracking().Where(x => x.RoomId == roomId))
-            .ToListAsync(cancellationToken);
+        var history = await ProjectHistoryAsync(
+            dbContext.RoomInventoryLosses.AsNoTracking().Where(x => x.RoomId == roomId),
+            growerResolver,
+            cancellationToken);
         return new(options, history, canRecord, canReverse);
     }
 
     public async Task<IReadOnlyList<RoomInventoryLossHistoryViewModel>> GetReceiptHistoryAsync(
         long receiptId,
-        CancellationToken cancellationToken) =>
-        await ProjectHistory(
-                dbContext.RoomInventoryLosses.AsNoTracking().Where(x => x.ReceiptId == receiptId))
-            .ToListAsync(cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        var growerResolver = await canonicalGrowerService.LoadResolutionSetAsync(cancellationToken);
+        return await ProjectHistoryAsync(
+            dbContext.RoomInventoryLosses.AsNoTracking().Where(x => x.ReceiptId == receiptId),
+            growerResolver,
+            cancellationToken);
+    }
 
     public async Task<string?> CreateAsync(RoomInventoryLossForm form, CancellationToken cancellationToken)
     {
@@ -692,32 +699,64 @@ public sealed class RoomInventoryLossService(
         return adjustment;
     }
 
-    private static IQueryable<RoomInventoryLossHistoryViewModel> ProjectHistory(IQueryable<RoomInventoryLoss> query) =>
-        query.OrderByDescending(x => x.CreatedAt)
+    private static async Task<IReadOnlyList<RoomInventoryLossHistoryViewModel>> ProjectHistoryAsync(
+        IQueryable<RoomInventoryLoss> query,
+        CanonicalGrowerResolutionSet growerResolver,
+        CancellationToken cancellationToken)
+    {
+        var rows = await query.OrderByDescending(x => x.CreatedAt)
             .ThenByDescending(x => x.Id)
-            .Select(x => new RoomInventoryLossHistoryViewModel(
+            .Select(x => new
+            {
                 x.Id,
                 x.RoomId,
                 x.ReceiptId,
-                x.Receipt == null ? "" : x.Receipt.CompuTechReceiptId,
+                ReceiptReference = x.Receipt == null ? "" : x.Receipt.CompuTechReceiptId,
                 x.LossType,
                 x.BinCount,
-                x.Warehouse.Code,
-                x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
+                Facility = x.Warehouse.Code,
+                Room = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
                 x.GrowerName,
+                GrowerNumber = x.GrowerNumber ?? (x.Receipt == null ? null : x.Receipt.GrowerNumber),
                 x.LotNumber,
-                x.FruitProfile == null ? x.VarietyCode : x.FruitProfile.Name,
-                x.FruitProfile == null ? "" : x.FruitProfile.ProductionType,
-                x.FruitProfile == null ? null : (bool?)x.FruitProfile.IsOrganic,
+                Variety = x.FruitProfile == null ? x.VarietyCode : x.FruitProfile.Name,
+                ProductionType = x.FruitProfile == null ? "" : x.FruitProfile.ProductionType,
+                IsOrganic = x.FruitProfile == null ? null : (bool?)x.FruitProfile.IsOrganic,
                 x.OccurredAt,
                 x.CreatedAt,
-                x.CreatedByUser.DisplayName,
+                CreatedBy = x.CreatedByUser.DisplayName,
                 x.Reason,
                 x.Notes,
                 x.IsReversed,
                 x.ReversedAt,
-                x.ReversedByUser == null ? null : x.ReversedByUser.DisplayName,
-                x.ReverseReason));
+                ReversedBy = x.ReversedByUser == null ? null : x.ReversedByUser.DisplayName,
+                x.ReverseReason
+            })
+            .ToListAsync(cancellationToken);
+        return rows.Select(x => new RoomInventoryLossHistoryViewModel(
+            x.Id,
+            x.RoomId,
+            x.ReceiptId,
+            x.ReceiptReference,
+            x.LossType,
+            x.BinCount,
+            x.Facility,
+            x.Room,
+            growerResolver.DisplayName(x.GrowerName, x.GrowerNumber ?? x.LotNumber),
+            x.LotNumber,
+            x.Variety,
+            x.ProductionType,
+            x.IsOrganic,
+            x.OccurredAt,
+            x.CreatedAt,
+            x.CreatedBy,
+            x.Reason,
+            x.Notes,
+            x.IsReversed,
+            x.ReversedAt,
+            x.ReversedBy,
+            x.ReverseReason)).ToList();
+    }
 
     private async Task<User?> GetCurrentUserAsync(CancellationToken cancellationToken)
     {

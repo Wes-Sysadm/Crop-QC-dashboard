@@ -285,6 +285,8 @@ builder.Services.AddScoped<ICropYearService, CropYearService>();
 builder.Services.AddScoped<IDataCleanupService, DataCleanupService>();
 builder.Services.AddScoped<IVarietyColorService, VarietyColorService>();
 builder.Services.AddScoped<ICanonicalGrowerService, CanonicalGrowerService>();
+builder.Services.AddSingleton<IReviewedGrowerMasterSource, ReviewedGrowerMasterSource>();
+builder.Services.AddScoped<IReviewedGrowerMasterSyncService, ReviewedGrowerMasterSyncService>();
 builder.Services.AddScoped<IFieldSampleService, FieldSampleService>();
 builder.Services.AddScoped<IFieldSampleTrendService, FieldSampleTrendService>();
 builder.Services.AddScoped<IFieldSampleDeletionService, FieldSampleDeletionService>();
@@ -344,6 +346,34 @@ if (schemaVerificationCommand is not null)
 if (args.Contains("--verify-inventory-deductions", StringComparer.OrdinalIgnoreCase))
 {
     Environment.ExitCode = await VerifyInventoryDeductionReadinessAsync(app.Services) ? 0 : 1;
+    return;
+}
+
+if (args.Contains(ReviewedGrowerMasterSyncConstants.CommandName, StringComparer.OrdinalIgnoreCase))
+{
+    static string? ReviewedGrowerCommandValue(string[] commandArgs, string key) =>
+        commandArgs.FirstOrDefault(x => x.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase)) is { } item
+            ? item[(item.IndexOf('=') + 1)..]
+            : null;
+    var backupRunId = long.TryParse(ReviewedGrowerCommandValue(args, "--backup-run-id"), out var parsedBackupRunId)
+        ? parsedBackupRunId
+        : (long?)null;
+    using var syncScope = app.Services.CreateScope();
+    var result = await syncScope.ServiceProvider.GetRequiredService<IReviewedGrowerMasterSyncService>().RunAsync(new(
+        args.Contains("--apply", StringComparer.OrdinalIgnoreCase),
+        args.Contains("--confirm-production", StringComparer.OrdinalIgnoreCase),
+        args.Contains("--confirm-disposable-restore", StringComparer.OrdinalIgnoreCase),
+        backupRunId,
+        ReviewedGrowerCommandValue(args, "--verified-backup-package-sha256"),
+        ReviewedGrowerCommandValue(args, "--requested-by") ?? "command",
+        ReviewedGrowerCommandValue(args, "--reason") ?? "",
+        ReviewedGrowerCommandValue(args, "--expected-target-fingerprint"),
+        ReviewedGrowerCommandValue(args, "--expected-protected-fingerprint"),
+        ReviewedGrowerCommandValue(args, "--authorization-token")), CancellationToken.None);
+    var report = System.Text.Json.JsonSerializer.Serialize(result, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
+    var syncLogger = syncScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("ReviewedGrowerMasterSyncCommand");
+    if (result.Success) syncLogger.LogInformation("{GrowerSyncReport}", report); else syncLogger.LogError("{GrowerSyncReport}", report);
+    Environment.ExitCode = result.Success ? 0 : 1;
     return;
 }
 

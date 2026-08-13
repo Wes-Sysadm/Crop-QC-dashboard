@@ -14,7 +14,7 @@ public interface ICanonicalGrowerService
 public sealed record CanonicalGrowerIdentity(string Key, string DisplayName, bool IsMapped, int? CanonicalGrowerId);
 
 public sealed class CanonicalGrowerResolutionSet(
-    IReadOnlyDictionary<string, CanonicalGrowerIdentity> aliases,
+    IReadOnlyDictionary<string, IReadOnlyList<CanonicalGrowerIdentity>> aliases,
     IReadOnlyDictionary<string, IReadOnlyList<CanonicalGrowerIdentity>> numbers)
 {
     public CanonicalGrowerIdentity Resolve(string? growerName, string? growerNumber)
@@ -28,12 +28,17 @@ public sealed class CanonicalGrowerResolutionSet(
         }
 
         var aliasKey = CanonicalGrowerService.NormalizeGrowerKey(growerName);
-        if (aliasKey.Length > 0 && aliases.TryGetValue(aliasKey, out var aliasMatch))
+        if (aliasKey.Length > 0
+            && aliases.TryGetValue(aliasKey, out var aliasMatches)
+            && aliasMatches.Count == 1)
         {
-            return aliasMatch;
+            return aliasMatches[0];
         }
 
-        if (CanonicalGrowerService.TryGetKnownCanonicalAlias(growerName, out var known))
+        if (numberKey.Length == 0
+            && aliasKey.Length > 0
+            && !aliases.ContainsKey(aliasKey)
+            && CanonicalGrowerService.TryGetKnownCanonicalAlias(growerName, out var known))
         {
             return new CanonicalGrowerIdentity(
                 CanonicalGrowerService.NormalizeGrowerKey(known.CanonicalName),
@@ -49,6 +54,26 @@ public sealed class CanonicalGrowerResolutionSet(
             $"{fallbackName} (Grower mapping needed)",
             false,
             null);
+    }
+
+    public string DisplayName(string? growerName, string? growerNumber)
+    {
+        var resolved = Resolve(growerName, growerNumber);
+        return resolved.IsMapped
+            ? resolved.DisplayName
+            : growerName?.Trim() ?? "";
+    }
+
+    public IReadOnlyList<string> MatchingGrowerNumbers(string? growerName)
+    {
+        var aliasKey = CanonicalGrowerService.NormalizeGrowerKey(growerName);
+        if (aliasKey.Length == 0 || !aliases.TryGetValue(aliasKey, out var matches)) return [];
+        var identityKeys = matches.Select(x => x.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return numbers
+            .Where(x => x.Value.Any(identity => identityKeys.Contains(identity.Key)))
+            .Select(x => x.Key)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 }
 
@@ -72,28 +97,43 @@ public sealed partial class CanonicalGrowerService(CropQcDbContext dbContext) : 
             .Where(x => x.IsActive && x.MergedIntoCanonicalGrowerId == null)
             .ToListAsync(cancellationToken);
 
-        var aliasMap = new Dictionary<string, CanonicalGrowerIdentity>(StringComparer.OrdinalIgnoreCase);
+        var aliasCandidates = new List<(string Key, CanonicalGrowerIdentity Identity)>();
         foreach (var grower in growers)
         {
             var identity = IdentityFromGrower(grower);
-            aliasMap[NormalizeGrowerKey(grower.DisplayName)] = identity;
+            aliasCandidates.Add((NormalizeGrowerKey(grower.DisplayName), identity));
             foreach (var alias in grower.Aliases.Where(x => x.IsActive))
             {
-                aliasMap[NormalizeGrowerKey(alias.AliasName)] = identity;
-                aliasMap[alias.NormalizedAliasKey] = identity;
+                aliasCandidates.Add((NormalizeGrowerKey(alias.AliasName), identity));
+                aliasCandidates.Add((alias.NormalizedAliasKey, identity));
             }
         }
 
         foreach (var alias in KnownAliases.OrderBy(x => x.Priority))
         {
             var canonicalKey = NormalizeGrowerKey(alias.CanonicalName);
-            if (!aliasMap.TryGetValue(canonicalKey, out var identity))
+            var identity = aliasCandidates
+                .Where(x => x.Key.Equals(canonicalKey, StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.Identity)
+                .DistinctBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+                .SingleOrDefault();
+            if (identity is null)
             {
                 identity = new CanonicalGrowerIdentity(canonicalKey, alias.CanonicalName, true, null);
             }
 
-            aliasMap[NormalizeGrowerKey(alias.Alias)] = identity;
+            aliasCandidates.Add((NormalizeGrowerKey(alias.Alias), identity));
         }
+
+        var aliasMap = aliasCandidates
+            .Where(x => x.Key.Length > 0)
+            .GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                x => x.Key,
+                x => (IReadOnlyList<CanonicalGrowerIdentity>)x.Select(y => y.Identity)
+                    .DistinctBy(y => y.Key, StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                StringComparer.OrdinalIgnoreCase);
 
         var numberMap = growers
             .SelectMany(grower =>

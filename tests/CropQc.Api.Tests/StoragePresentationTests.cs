@@ -128,7 +128,7 @@ public sealed class StoragePresentationTests
         var view = ReadRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Index.cshtml");
 
         Assert.Contains("GetResolvedColorsReadOnlyAsync(receiptVarietyKeys", service);
-        Assert.Contains("ReceiptListItem(receipt, sampleSummaries.GetValueOrDefault(receipt.Id), receiptColors)", service);
+        Assert.Contains("ReceiptListItem(receipt, sampleSummaries.GetValueOrDefault(receipt.Id), receiptColors, growerResolver)", service);
         Assert.Contains("receipt-card-colored", view);
         Assert.Contains("BuildVarietyBandBackground", view);
         Assert.Contains("OrganicLabel", view);
