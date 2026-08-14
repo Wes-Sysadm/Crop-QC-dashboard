@@ -259,7 +259,7 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
         await SeedVerifiedEbsInventoryAsync(db);
         var warehouse = await db.Warehouses.FirstAsync(x => x.Code == "EBS");
         var room = await db.Rooms.FirstAsync(x => x.Code == "EVANCA12");
-        var fuji = await db.FruitProfiles.FirstAsync(x => x.VarietyCode == "FUJI");
+        var fuji = await db.FruitProfiles.SingleAsync(x => x.Id == 902);
         var lotSample = await db.SampleTypes.FirstAsync(x => x.Name == "Lot Sample");
         var doorSample = await db.SampleTypes.FirstAsync(x => x.Name == "Door Sample");
         var firstAt = DateTimeOffset.Parse("2026-06-18T10:00:00-07:00");
