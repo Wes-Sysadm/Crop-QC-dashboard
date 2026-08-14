@@ -52,7 +52,8 @@ public sealed class DashboardOperationalQcStatsTests
         var method = service[start..end];
 
         Assert.Contains("dbContext.QcFruitReadings.AsNoTracking()", service);
-        Assert.Contains("new DashboardQcMeasurement", service);
+        Assert.Contains("new DashboardQcSampleAggregate", service);
+        Assert.Contains(".GroupBy(row => row.QcSampleId)", service);
         Assert.DoesNotContain(".Include(", method);
     }
 
@@ -71,7 +72,8 @@ public sealed class DashboardOperationalQcStatsTests
         Assert.DoesNotContain("QuerySamples()", homeMethod);
         Assert.Contains("dbContext.QcSamples.AsNoTracking()", compactMethod);
         Assert.Contains("new DashboardSampleSummaryRow", compactMethod);
-        Assert.Contains("new DashboardSampleFruitRow", compactMethod);
+        Assert.Contains("new DashboardSampleFruitAggregate", compactMethod);
+        Assert.Contains(".GroupBy(x => x.QcSampleId)", compactMethod);
         Assert.DoesNotContain(".Include(", compactMethod);
     }
 

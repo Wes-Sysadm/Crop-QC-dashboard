@@ -284,6 +284,7 @@ builder.Services.AddScoped<IQcStationAdminService, QcStationAdminService>();
 builder.Services.AddScoped<ICropYearService, CropYearService>();
 builder.Services.AddScoped<IDataCleanupService, DataCleanupService>();
 builder.Services.AddScoped<IVarietyColorService, VarietyColorService>();
+builder.Services.AddSingleton<CanonicalGrowerResolutionCache>();
 builder.Services.AddScoped<ICanonicalGrowerService, CanonicalGrowerService>();
 builder.Services.AddSingleton<IReviewedGrowerMasterSource, ReviewedGrowerMasterSource>();
 builder.Services.AddScoped<IReviewedGrowerMasterSyncService, ReviewedGrowerMasterSyncService>();

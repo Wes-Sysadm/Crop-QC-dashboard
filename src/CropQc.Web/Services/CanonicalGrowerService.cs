@@ -9,6 +9,7 @@ public interface ICanonicalGrowerService
 {
     Task<CanonicalGrowerResolutionSet> LoadResolutionSetAsync(CancellationToken cancellationToken);
     Task EnsureSeedMappingsAsync(CancellationToken cancellationToken);
+    void InvalidateResolutionSet();
 }
 
 public sealed record CanonicalGrowerIdentity(string Key, string DisplayName, bool IsMapped, int? CanonicalGrowerId);
@@ -77,7 +78,66 @@ public sealed class CanonicalGrowerResolutionSet(
     }
 }
 
-public sealed partial class CanonicalGrowerService(CropQcDbContext dbContext) : ICanonicalGrowerService
+public sealed class CanonicalGrowerResolutionCache
+{
+    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
+    private readonly SemaphoreSlim gate = new(1, 1);
+    private CanonicalGrowerResolutionSet? value;
+    private DateTimeOffset expiresAtUtc;
+    private long generation;
+    private long valueGeneration;
+
+    public async Task<CanonicalGrowerResolutionSet> GetOrCreateAsync(
+        Func<CancellationToken, Task<CanonicalGrowerResolutionSet>> factory,
+        CancellationToken cancellationToken)
+    {
+        var cached = Volatile.Read(ref value);
+        var currentGeneration = Volatile.Read(ref generation);
+        if (cached is not null
+            && Volatile.Read(ref valueGeneration) == currentGeneration
+            && DateTimeOffset.UtcNow < expiresAtUtc)
+        {
+            return cached;
+        }
+
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            cached = value;
+            currentGeneration = Volatile.Read(ref generation);
+            if (cached is not null
+                && Volatile.Read(ref valueGeneration) == currentGeneration
+                && DateTimeOffset.UtcNow < expiresAtUtc)
+            {
+                return cached;
+            }
+
+            cached = await factory(cancellationToken);
+            if (Volatile.Read(ref generation) == currentGeneration)
+            {
+                expiresAtUtc = DateTimeOffset.UtcNow.Add(Lifetime);
+                Volatile.Write(ref valueGeneration, currentGeneration);
+                Volatile.Write(ref value, cached);
+            }
+            return cached;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public void Invalidate()
+    {
+        Interlocked.Increment(ref generation);
+        Volatile.Write(ref value, null);
+        expiresAtUtc = default;
+    }
+}
+
+public sealed partial class CanonicalGrowerService(
+    CropQcDbContext dbContext,
+    CanonicalGrowerResolutionCache? resolutionCache = null) : ICanonicalGrowerService
 {
     private static readonly IReadOnlyList<KnownGrowerAlias> KnownAliases =
     [
@@ -90,7 +150,23 @@ public sealed partial class CanonicalGrowerService(CropQcDbContext dbContext) : 
 
     public async Task<CanonicalGrowerResolutionSet> LoadResolutionSetAsync(CancellationToken cancellationToken)
     {
-        await EnsureSeedMappingsAsync(cancellationToken);
+        if (resolutionCache is null)
+        {
+            await EnsureSeedMappingsAsync(cancellationToken);
+            return await BuildResolutionSetAsync(cancellationToken);
+        }
+
+        return await resolutionCache.GetOrCreateAsync(async ct =>
+        {
+            await EnsureSeedMappingsAsync(ct);
+            return await BuildResolutionSetAsync(ct);
+        }, cancellationToken);
+    }
+
+    public void InvalidateResolutionSet() => resolutionCache?.Invalidate();
+
+    private async Task<CanonicalGrowerResolutionSet> BuildResolutionSetAsync(CancellationToken cancellationToken)
+    {
         var growers = await dbContext.CanonicalGrowers.AsNoTracking()
             .Include(x => x.Aliases)
             .Include(x => x.GrowerNumbers)
@@ -196,7 +272,10 @@ public sealed partial class CanonicalGrowerService(CropQcDbContext dbContext) : 
             }
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        if (await dbContext.SaveChangesAsync(cancellationToken) > 0)
+        {
+            InvalidateResolutionSet();
+        }
     }
 
     public static bool TryGetKnownCanonicalAlias(string? value, out KnownGrowerAlias alias)

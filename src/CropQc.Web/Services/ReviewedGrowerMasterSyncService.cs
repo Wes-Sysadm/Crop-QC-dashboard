@@ -91,7 +91,8 @@ public sealed class ReviewedGrowerMasterSyncService(
     CropQcDbContext dbContext,
     IReviewedGrowerMasterSource source,
     AppEnvironmentOptions appEnvironment,
-    ILogger<ReviewedGrowerMasterSyncService> logger) : IReviewedGrowerMasterSyncService
+    ILogger<ReviewedGrowerMasterSyncService> logger,
+    CanonicalGrowerResolutionCache? resolutionCache = null) : IReviewedGrowerMasterSyncService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -459,6 +460,7 @@ public sealed class ReviewedGrowerMasterSyncService(
             var postflight = await PreflightAsync(cancellationToken);
             if (postflight.State != "AlreadyApplied") throw new InvalidOperationException("Post-apply verification did not recognize the exact reviewed state.");
             await transaction.CommitAsync(cancellationToken);
+            resolutionCache?.Invalidate();
             logger.LogWarning("Reviewed grower master applied by {Admin}; {Growers} growers and {Numbers} number mappings created.", admin.Email, growersCreated, numbersCreated);
             return new(true, true, false, "The reviewed grower master sync completed successfully.", growersCreated, growersUpdated, numbersCreated, aliasesCreated, postflight);
         }

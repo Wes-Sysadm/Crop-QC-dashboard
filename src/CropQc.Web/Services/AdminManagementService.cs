@@ -141,6 +141,10 @@ public sealed class AdminManagementService(
         entity.GetType().GetProperty("IsActive")?.SetValue(entity, false);
         await AddAuditAsync("deactivate", type, id.ToString(), changedByEmail, before, JsonSerializer.Serialize(entity), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (type == "canonical-growers")
+        {
+            canonicalGrowerService?.InvalidateResolutionSet();
+        }
         return null;
     }
 
@@ -294,6 +298,7 @@ public sealed class AdminManagementService(
             MappingMode = form.MappingMode
         }), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        growerService.InvalidateResolutionSet();
         return null;
     }
 
@@ -846,6 +851,7 @@ public sealed class AdminManagementService(
             entity.IsActive
         }), ct);
         await dbContext.SaveChangesAsync(ct);
+        (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).InvalidateResolutionSet();
         return null;
     }
 

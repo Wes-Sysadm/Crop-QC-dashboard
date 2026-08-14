@@ -204,10 +204,23 @@ public sealed class DashboardDataService(
         normalizedRoomFilter.RoomStatus = string.IsNullOrWhiteSpace(roomSummaryFilter?.RoomStatus) ? "All" : normalizedRoomFilter.RoomStatus;
         try
         {
+            IReadOnlyList<RoomSummaryItemViewModel> rooms;
+            if (normalizedRoomFilter.RoomStatus.Equals("WithFruit", StringComparison.OrdinalIgnoreCase))
+            {
+                var currentLots = (await BuildDashboardCurrentInventorySnapshotsAsync(null, cancellationToken))
+                    .Where(x => x.CurrentBins > 0 && FacilityContext.Matches(x.Facility, x.Facility, normalizedRoomFilter.Facility))
+                    .ToList();
+                rooms = await BuildDashboardRoomSummariesAsync(currentLots, normalizedRoomFilter, cancellationToken);
+            }
+            else
+            {
+                rooms = await BuildRoomSummariesAsync(cancellationToken, roomSummaryFilter: normalizedRoomFilter);
+            }
+
             return new RoomsPageViewModel
             {
                 Filter = normalizedRoomFilter,
-                Rooms = await BuildRoomSummariesAsync(cancellationToken, roomSummaryFilter: normalizedRoomFilter)
+                Rooms = rooms
             };
         }
         catch (Exception ex)
@@ -3265,6 +3278,23 @@ public sealed class DashboardDataService(
             null,
             roomId is null ? null : [roomId.Value],
             cancellationToken);
+        var conflictingGroups = ledgerRows
+            .GroupBy(
+                x => LedgerLotKey(x.RoomId, x.CropYear, x.Lot, x.Variety, x.FruitProfileId),
+                StringComparer.OrdinalIgnoreCase)
+            .Where(x => !CanReconcileDashboardLedgerSnapshots(x))
+            .ToList();
+        if (conflictingGroups.Count > 0)
+        {
+            var sample = conflictingGroups
+                .Take(5)
+                .Select(x => $"{x.Key} [{DashboardLedgerIdentitySummary(x)}]");
+            var suffix = conflictingGroups.Count > 5 ? $"; plus {conflictingGroups.Count - 5} more" : "";
+            throw new InvalidOperationException(
+                $"Room inventory ledger contains {conflictingGroups.Count} conflicting dashboard key(s): {string.Join("; ", sample)}{suffix}. "
+                + "The conflicting quantities were not selected or discarded.");
+        }
+
         return ledgerRows
             .Where(x => x.CurrentBins > 0)
             .Select(x =>
@@ -3372,37 +3402,73 @@ public sealed class DashboardDataService(
         var sampleTypes = new[] { "Receiving Sample", "Door Sample", "Lot Sample" };
         var sampleHeaders = candidateHeaders.Where(x => sampleTypes.Contains(x.SampleType)).ToList();
         var sampleIds = sampleHeaders.Select(x => x.Id).ToList();
-        var measurements = await dbContext.QcFruitReadings.AsNoTracking()
+        var aggregates = await dbContext.QcFruitReadings.AsNoTracking()
             .Where(row => sampleIds.Contains(row.QcSampleId))
-            .Select(row => new DashboardQcMeasurement(
-                row.QcSampleId,
-                row.QcSample.SampleTakenAt,
-                row.QcSample.SampleType.Name,
-                row.Pressure1Lbs,
-                row.Pressure2Lbs,
-                row.StarchScaleValue == null ? null : row.StarchScaleValue.Value))
+            .GroupBy(row => row.QcSampleId)
+            .Select(group => new DashboardQcSampleAggregate(
+                group.Key,
+                group.Average(row => row.Pressure1Lbs != null && row.Pressure2Lbs != null
+                    ? (row.Pressure1Lbs + row.Pressure2Lbs) / 2m
+                    : row.Pressure1Lbs ?? row.Pressure2Lbs),
+                group.Average(row => row.StarchScaleValue == null ? (decimal?)null : row.StarchScaleValue.Value)))
             .ToListAsync(cancellationToken);
-        var measurementsBySample = measurements.GroupBy(x => x.SampleId).ToDictionary(x => x.Key, x => x.ToList());
-        var measurementsByLot = new Dictionary<string, List<DashboardQcMeasurement>>(StringComparer.OrdinalIgnoreCase);
+        var aggregatesBySample = aggregates.ToDictionary(x => x.SampleId);
+        var samplesByLot = new Dictionary<string, List<DashboardQcSample>>(StringComparer.OrdinalIgnoreCase);
         foreach (var target in targets)
         {
             var candidates = candidateHeadersByIdentity.GetValueOrDefault(target.LookupKey) ?? sampleHeaders;
             var matchingHeaders = CanonicalQcFruitIdentity.ResolveUnambiguous(target, candidates, x => x.Identity);
-            measurementsByLot[target.LookupKey] = matchingHeaders
-                .SelectMany(header => measurementsBySample.GetValueOrDefault(header.Id, []))
+            samplesByLot[target.LookupKey] = matchingHeaders
+                .Select(header =>
+                {
+                    aggregatesBySample.TryGetValue(header.Id, out var aggregate);
+                    return new DashboardQcSample(
+                        header.Id,
+                        header.SampleTakenAt,
+                        header.SampleType,
+                        RoundOrNull(aggregate?.AveragePressureLbs),
+                        RoundOrNull(aggregate?.AverageStarch));
+                })
                 .ToList();
         }
+
+        var latestPressureSampleIds = samplesByLot.Values
+            .Select(samples => samples
+                .OrderByDescending(x => x.SampleTakenAt)
+                .ThenByDescending(x => x.SampleId)
+                .FirstOrDefault(x => x.AveragePressureLbs is not null)?.SampleId)
+            .Where(x => x is not null)
+            .Select(x => x!.Value)
+            .Distinct()
+            .ToList();
+        var latestPressureRows = await dbContext.QcFruitReadings.AsNoTracking()
+            .Where(row => latestPressureSampleIds.Contains(row.QcSampleId)
+                && (row.Pressure1Lbs != null || row.Pressure2Lbs != null))
+            .Select(row => new
+            {
+                row.QcSampleId,
+                Pressure = row.Pressure1Lbs != null && row.Pressure2Lbs != null
+                    ? (row.Pressure1Lbs + row.Pressure2Lbs) / 2m
+                    : row.Pressure1Lbs ?? row.Pressure2Lbs
+            })
+            .ToListAsync(cancellationToken);
+        var latestPressureBySample = latestPressureRows
+            .GroupBy(x => x.QcSampleId)
+            .ToDictionary(
+                x => x.Key,
+                x => (IReadOnlyList<decimal>)x.Where(y => y.Pressure is not null).Select(y => y.Pressure!.Value).ToList());
 
         return occupiedLots
             .GroupBy(x => x.RoomId)
             .ToDictionary(
                 x => x.Key,
-                x => BuildRoomQcSummary(x.ToList(), measurementsByLot));
+                x => BuildRoomQcSummary(x.ToList(), samplesByLot, latestPressureBySample));
     }
 
     private static RoomQcSummary BuildRoomQcSummary(
         IReadOnlyList<DashboardInventorySnapshot> roomLots,
-        IReadOnlyDictionary<string, List<DashboardQcMeasurement>> measurementsByLot)
+        IReadOnlyDictionary<string, List<DashboardQcSample>> samplesByLot,
+        IReadOnlyDictionary<long, IReadOnlyList<decimal>> latestPressureBySample)
     {
         var totalBins = roomLots.Sum(x => x.CurrentBins);
         var receivingStarch = new List<(decimal Value, decimal Weight)>();
@@ -3420,14 +3486,12 @@ public sealed class DashboardDataService(
 
         foreach (var lot in roomLots)
         {
-            if (!measurementsByLot.TryGetValue(lot.QcIdentityKey, out var lotRows))
+            if (!samplesByLot.TryGetValue(lot.QcIdentityKey, out var samples))
             {
                 continue;
             }
 
-            var samples = lotRows
-                .GroupBy(x => x.SampleId)
-                .Select(x => DashboardQcSample.FromMeasurements(x.ToList()))
+            samples = samples
                 .OrderByDescending(x => x.SampleTakenAt)
                 .ThenByDescending(x => x.SampleId)
                 .ToList();
@@ -3456,7 +3520,7 @@ public sealed class DashboardDataService(
                     ? latestPressureSample.SampleTakenAt
                     : latestPressureDate;
 
-                var readings = latestPressureSample.PressureReadings;
+                var readings = latestPressureBySample.GetValueOrDefault(latestPressureSample.SampleId) ?? [];
                 if (readings.Count >= 2)
                 {
                     var perReadingWeight = lot.CurrentBins / (decimal)readings.Count;
@@ -3651,22 +3715,30 @@ public sealed class DashboardDataService(
 
         var sampleIds = samples.Select(x => x.Id).ToList();
         var receiptIds = samples.Select(x => x.ReceiptId).Distinct().ToList();
-        var fruitRows = await dbContext.QcFruitReadings.AsNoTracking()
+        var fruitAggregates = await dbContext.QcFruitReadings.AsNoTracking()
             .Where(x => sampleIds.Contains(x.QcSampleId))
-            .Select(x => new DashboardSampleFruitRow(
-                x.QcSampleId,
-                x.Pressure1Lbs,
-                x.Pressure2Lbs,
-                x.WeightGrams,
-                x.GradeId,
-                x.StarchScaleValueId,
-                x.StarchScaleValue == null ? null : x.StarchScaleValue.Value,
-                x.IsCompleted,
-                x.Defects.Any()))
+            .GroupBy(x => x.QcSampleId)
+            .Select(group => new DashboardSampleFruitAggregate(
+                group.Key,
+                group.Count(x => x.IsCompleted),
+                group.Count(x => x.IsCompleted && (x.Pressure1Lbs == null || x.Pressure2Lbs == null || x.WeightGrams == null || x.GradeId == null)),
+                group.Count(x => x.IsCompleted && (x.Pressure1Lbs == null || x.Pressure2Lbs == null)),
+                group.Count(x => x.IsCompleted && x.WeightGrams == null),
+                group.Count(x => x.IsCompleted && x.GradeId == null),
+                group.Count(x => x.IsCompleted && x.StarchScaleValueId == null),
+                group.Count(x => x.IsCompleted && x.Defects.Any()),
+                group.Average(x => x.Pressure1Lbs != null && x.Pressure2Lbs != null
+                    ? (x.Pressure1Lbs + x.Pressure2Lbs) / 2m
+                    : x.Pressure1Lbs ?? x.Pressure2Lbs),
+                group.Min(x => x.Pressure1Lbs != null && x.Pressure2Lbs != null
+                    ? (x.Pressure1Lbs + x.Pressure2Lbs) / 2m
+                    : x.Pressure1Lbs ?? x.Pressure2Lbs),
+                group.Max(x => x.Pressure1Lbs != null && x.Pressure2Lbs != null
+                    ? (x.Pressure1Lbs + x.Pressure2Lbs) / 2m
+                    : x.Pressure1Lbs ?? x.Pressure2Lbs),
+                group.Average(x => x.StarchScaleValue == null ? (decimal?)null : x.StarchScaleValue.Value)))
             .ToListAsync(cancellationToken);
-        var rowsBySample = fruitRows
-            .GroupBy(x => x.SampleId)
-            .ToDictionary(x => x.Key, x => x.ToList());
+        var aggregateBySample = fruitAggregates.ToDictionary(x => x.SampleId);
 
         var photos = await dbContext.QcPhotos.AsNoTracking()
             .Where(x => !x.IsDeleted
@@ -3708,19 +3780,13 @@ public sealed class DashboardDataService(
 
         return samples.Select(sample =>
             {
-                rowsBySample.TryGetValue(sample.Id, out var rows);
-                rows ??= [];
+                var aggregate = aggregateBySample.GetValueOrDefault(sample.Id) ?? DashboardSampleFruitAggregate.Empty(sample.Id);
                 receiptPhotosByReceipt.TryGetValue(sample.ReceiptId, out var receiptPhotoTypes);
                 receiptPhotoTypes ??= [];
                 samplePhotosBySample.TryGetValue(sample.Id, out var samplePhotoTypes);
                 samplePhotoTypes ??= [];
                 sentBySample.TryGetValue(sample.Id, out var sentInfo);
-                var readiness = BuildCompactReadiness(sample.SampleType, sample.FruitType, rows, receiptPhotoTypes, samplePhotoTypes);
-                var averagePressure = AverageOrNull(rows
-                    .Select(x => AverageFlexible(x.Pressure1Lbs, x.Pressure2Lbs))
-                    .Where(x => x is not null)
-                    .Select(x => x!.Value)
-                    .ToList());
+                var readiness = BuildDashboardReadiness(sample.SampleType, sample.FruitType, aggregate, receiptPhotoTypes, samplePhotoTypes);
 
                 return new SampleListItemViewModel
                 {
@@ -3742,14 +3808,71 @@ public sealed class DashboardDataService(
                     ActualSampleSize = sample.ActualSampleSize,
                     IsReady = readiness.IsReady,
                     MissingItems = readiness.MissingItems,
-                    ReviewReasons = BuildCompactReviewReasons(sample.Status, rows, averagePressure),
+                    ReviewReasons = BuildDashboardReviewReasons(sample.Status, aggregate),
                     Checklist = readiness.Checklist,
                     CompletedFruitCount = readiness.CompletedFruitCount,
-                    AveragePressureLbs = averagePressure,
+                    AveragePressureLbs = aggregate.AveragePressureLbs,
                     IsDeleted = sample.IsDeleted
                 };
             })
             .ToList();
+    }
+
+    private ReadinessViewModel BuildDashboardReadiness(
+        string sampleTypeName,
+        string? fruitType,
+        DashboardSampleFruitAggregate aggregate,
+        IReadOnlyList<string> receiptPhotos,
+        IReadOnlyList<string> samplePhotos)
+    {
+        var missing = new List<string>();
+        var starchRequired = IsStarchRequiredForEmail(sampleTypeName, fruitType);
+        if (aggregate.CompletedRows == 0) missing.Add("At least one completed fruit row is required.");
+        if (aggregate.InvalidRows > 0) missing.Add("All completed fruit rows require Pressure 1, Pressure 2, weight, and grade.");
+        if (starchRequired && aggregate.StarchMissingRows > 0) missing.Add("Starch is required for all completed fruit rows.");
+        var requiredPhotoChecklist = photoRequirementPolicy.BuildChecklist(sampleTypeName, receiptPhotos, samplePhotos, fruitType);
+        missing.AddRange(photoRequirementPolicy.MissingRequiredPhotos(sampleTypeName, receiptPhotos, samplePhotos, fruitType));
+
+        return new ReadinessViewModel
+        {
+            IsReady = missing.Count == 0,
+            MissingItems = missing,
+            Checklist = [],
+            CompletedFruitCount = aggregate.CompletedRows,
+            StarchMissingCount = aggregate.StarchMissingRows,
+            HasBinTruck = receiptPhotos.Contains("BinTruck"),
+            HasSampleBeforeCutting = samplePhotos.Contains("SampleBeforeCutting"),
+            HasCutFruit = samplePhotos.Contains("CutFruit"),
+            HasFruitAfterStarch = samplePhotos.Contains("FruitAfterStarch"),
+            RequiredPhotoChecklist = requiredPhotoChecklist
+        };
+    }
+
+    private IReadOnlyList<string> BuildDashboardReviewReasons(string status, DashboardSampleFruitAggregate aggregate)
+    {
+        var reasons = new List<string>();
+        if (status.Contains("Needs Review", StringComparison.OrdinalIgnoreCase))
+        {
+            reasons.Add("Sample is explicitly marked Needs Review.");
+        }
+
+        AddThresholdReason(reasons, aggregate.AveragePressureLbs, "DashboardReview:LowPressureLbs", value => aggregate.AveragePressureLbs < value, value => $"Average pressure {aggregate.AveragePressureLbs:0.##} lbs is below configured low threshold {value:0.##} lbs.");
+        AddThresholdReason(reasons, aggregate.AveragePressureLbs, "DashboardReview:HighPressureLbs", value => aggregate.AveragePressureLbs > value, value => $"Average pressure {aggregate.AveragePressureLbs:0.##} lbs is above configured high threshold {value:0.##} lbs.");
+        AddThresholdReason(reasons, aggregate.AverageStarch, "DashboardReview:HighStarch", value => aggregate.AverageStarch > value, value => $"Average starch {aggregate.AverageStarch:0.##} is above configured threshold {value:0.##}.");
+
+        if (aggregate.CompletedRows > 0)
+        {
+            var defectPercent = decimal.Round(aggregate.CompletedDefectRows * 100m / aggregate.CompletedRows, 2);
+            AddThresholdReason(reasons, defectPercent, "DashboardReview:HighDefectPercent", value => defectPercent > value, value => $"Defects are present on {defectPercent:0.##}% of completed fruit, above configured threshold {value:0.##}%.");
+        }
+
+        if (aggregate.MinimumPressureLbs is decimal minimum && aggregate.MaximumPressureLbs is decimal maximum)
+        {
+            var variance = decimal.Round(maximum - minimum, 2);
+            AddThresholdReason(reasons, variance, "DashboardReview:HighPressureVarianceLbs", value => variance > value, value => $"Pressure variance {variance:0.##} lbs is above configured threshold {value:0.##} lbs.");
+        }
+
+        return reasons;
     }
 
     private ReadinessViewModel BuildCompactReadiness(
@@ -7000,13 +7123,10 @@ public sealed class DashboardDataService(
     }
 
 
-    private sealed record DashboardQcMeasurement(
+    private sealed record DashboardQcSampleAggregate(
         long SampleId,
-        DateTimeOffset SampleTakenAt,
-        string SampleType,
-        decimal? Pressure1Lbs,
-        decimal? Pressure2Lbs,
-        decimal? Starch);
+        decimal? AveragePressureLbs,
+        decimal? AverageStarch);
 
     private sealed record DashboardQcSampleHeader(
         long Id,
@@ -7061,24 +7181,30 @@ public sealed class DashboardDataService(
         bool IsCompleted,
         bool HasDefects);
 
+    private sealed record DashboardSampleFruitAggregate(
+        long SampleId,
+        int CompletedRows,
+        int InvalidRows,
+        int PressureMissingRows,
+        int WeightMissingRows,
+        int GradeMissingRows,
+        int StarchMissingRows,
+        int CompletedDefectRows,
+        decimal? AveragePressureLbs,
+        decimal? MinimumPressureLbs,
+        decimal? MaximumPressureLbs,
+        decimal? AverageStarch)
+    {
+        public static DashboardSampleFruitAggregate Empty(long sampleId) =>
+            new(sampleId, 0, 0, 0, 0, 0, 0, 0, null, null, null, null);
+    }
+
     private sealed record DashboardQcSample(
         long SampleId,
         DateTimeOffset SampleTakenAt,
         string SampleType,
-        IReadOnlyList<decimal> PressureReadings,
-        IReadOnlyList<decimal> StarchValues)
-    {
-        public decimal? AveragePressureLbs => RoundOrNull(WeightedStatistics.WeightedMean(PressureReadings.Select(x => (x, 1m))));
-        public decimal? AverageStarch => RoundOrNull(WeightedStatistics.WeightedMean(StarchValues.Select(x => (x, 1m))));
-
-        public static DashboardQcSample FromMeasurements(IReadOnlyList<DashboardQcMeasurement> rows) =>
-            new(
-                rows[0].SampleId,
-                rows[0].SampleTakenAt,
-                rows[0].SampleType,
-                rows.Select(x => AverageFlexible(x.Pressure1Lbs, x.Pressure2Lbs)).Where(x => x is not null).Select(x => x!.Value).ToList(),
-                rows.Where(x => x.Starch is not null).Select(x => x.Starch!.Value).ToList());
-    }
+        decimal? AveragePressureLbs,
+        decimal? AverageStarch);
 
     private sealed record RoomQcSummary(
         int TotalBins,
