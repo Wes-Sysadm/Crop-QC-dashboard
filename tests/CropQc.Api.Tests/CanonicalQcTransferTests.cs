@@ -117,6 +117,90 @@ public sealed class CanonicalQcTransferTests
     }
 
     [Fact]
+    public async Task AuthoritativeGrowerName_FollowsChainedTransferWithoutChangingGrowerNumbersOrQcOwnership()
+    {
+        await using var db = CreateDbContext();
+        await SeedTransferFruitAsync(db, "1080", "WP ORCHARD", "TR-QC-1080");
+        AddMappedGrower(db, "1080", "WINDY POINT", "WP ORCHARD", "WP ORCHARD ORG");
+        await db.SaveChangesAsync();
+
+        var manager = Principal("manager@fruitandland.com");
+        var dashboard = Dashboard(db, manager);
+        var beforeEvidence = await EvidenceCountsAsync(db);
+
+        var sourceRoom = await dashboard.GetRoomDetailAsync(99101, CancellationToken.None);
+        var sourceLot = Assert.Single(sourceRoom.CurrentLots);
+        Assert.Equal("WINDY POINT", sourceLot.GrowerName);
+        Assert.Equal("1080", sourceLot.GrowerNumber);
+        var sourceOption = sourceRoom.TransferLotOptions.Single(x => x.Label.Contains("1080", StringComparison.Ordinal));
+
+        Assert.Null(await dashboard.CreateRoomTransferAsync(new RoomTransferForm
+        {
+            OperationKey = "authoritative-name-a-to-b",
+            FromRoomId = 99101,
+            ToRoomId = 99102,
+            SourceLotKey = sourceOption.LotKey,
+            BinCount = 40,
+            TransferAt = DateTimeOffset.Parse("2026-08-02T12:00:00Z"),
+            Reason = "Authoritative-name and QC identity regression A to B"
+        }, CancellationToken.None));
+
+        var roomB = await dashboard.GetRoomDetailAsync(99102, CancellationToken.None);
+        var roomBOption = roomB.TransferLotOptions.Single(x => x.Label.Contains("1080", StringComparison.Ordinal));
+        Assert.Null(await dashboard.CreateRoomTransferAsync(new RoomTransferForm
+        {
+            OperationKey = "authoritative-name-b-to-c",
+            FromRoomId = 99102,
+            ToRoomId = 99103,
+            SourceLotKey = roomBOption.LotKey,
+            BinCount = 40,
+            TransferAt = DateTimeOffset.Parse("2026-08-03T12:00:00Z"),
+            Reason = "Authoritative-name and QC identity regression B to C"
+        }, CancellationToken.None));
+
+        var roomC = await dashboard.GetRoomDetailAsync(99103, CancellationToken.None);
+        var movedLot = Assert.Single(roomC.CurrentLots);
+        Assert.Equal("WINDY POINT", movedLot.GrowerName);
+        Assert.Equal("1080", movedLot.GrowerNumber);
+        Assert.Equal(40, movedLot.CurrentBins);
+        Assert.Equal(12m, movedLot.AveragePressureLbs);
+        Assert.Equal(3m, movedLot.AverageStarch);
+        Assert.Contains(movedLot.Samples, x => x.SampleId == 990501 && x.DisplayReceiptId == "TR-QC-1080");
+        Assert.Contains(movedLot.ReceiptEvidence, x => x.ReceiptId == 990401 && x.DisplayReceiptId == "TR-QC-1080");
+
+        var binsRun = await BinsRun(db).GetPageAsync(
+            new BinsRunFilterForm { RoomId = 99103 },
+            manager,
+            CancellationToken.None);
+        var runOption = Assert.Single(binsRun.AvailableInventory);
+        Assert.Equal("WINDY POINT", runOption.Grower);
+        Assert.Equal("1080", runOption.Lot);
+        Assert.Equal(40, runOption.CurrentBins);
+        Assert.DoesNotContain("No grade data", runOption.GradeSummary);
+
+        Assert.Equal(beforeEvidence, await EvidenceCountsAsync(db));
+        Assert.Equal(100, (await BinsRun(db).GetPageAsync(
+            new BinsRunFilterForm { RoomIds = [99101, 99102, 99103] },
+            manager,
+            CancellationToken.None)).AvailableInventory.Sum(x => x.CurrentBins));
+
+        var receipt = await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == 990401);
+        Assert.Equal("WP ORCHARD", receipt.GrowerName);
+        Assert.Equal("1080", receipt.GrowerNumber);
+        Assert.Equal("1080", receipt.LotCode);
+        Assert.Equal(99101, receipt.RoomId);
+        var growerLot = await db.GrowerLots.AsNoTracking().SingleAsync(x => x.Id == 990077);
+        Assert.Equal("WP ORCHARD", growerLot.Grower);
+        Assert.Equal("1080", growerLot.LotNumber);
+        var originalAdjustment = await db.RoomInventoryAdjustments.AsNoTracking().SingleAsync(x => x.Id == 990801);
+        Assert.Equal("WP ORCHARD", originalAdjustment.GrowerName);
+        Assert.Equal("1080", originalAdjustment.LotNumber);
+        Assert.All(await db.RoomTransfers.AsNoTracking().ToListAsync(), x => Assert.Equal("1080", x.LotNumber));
+        Assert.All(await db.RoomInventoryAdjustments.AsNoTracking().Where(x => x.RoomTransferId != null).ToListAsync(), x => Assert.Equal("1080", x.LotNumber));
+        Assert.Equal(99101, await db.QcSamples.AsNoTracking().Where(x => x.Id == 990501).Select(x => x.Receipt!.RoomId).SingleAsync());
+    }
+
+    [Fact]
     public async Task PostgreSql_CanonicalQcQueriesFollowTransfer_WhenConfigured()
     {
         var connectionString = Environment.GetEnvironmentVariable("CROPQC_TEST_CANONICAL_QC_POSTGRES");
@@ -324,7 +408,11 @@ public sealed class CanonicalQcTransferTests
             .UseInMemoryDatabase($"canonical-qc-transfer-{Guid.NewGuid():N}")
             .Options);
 
-    private static async Task SeedTransferFruitAsync(CropQcDbContext db)
+    private static async Task SeedTransferFruitAsync(
+        CropQcDbContext db,
+        string growerNumber = "9040",
+        string growerName = "Grower 9040",
+        string displayReceiptId = "TR-QC-9040")
     {
         var warehouse = new Warehouse { Id = 9910, Code = "QC-EBS", Name = "QC Earl Brown", IsActive = true };
         var rooms = new[]
@@ -336,8 +424,8 @@ public sealed class CanonicalQcTransferTests
         var growerLot = new GrowerLot
         {
             Id = 990077,
-            Grower = "Grower 9040",
-            LotNumber = "9040",
+            Grower = growerName,
+            LotNumber = growerNumber,
             IsActive = true,
             CreatedAt = DateTimeOffset.Parse("2026-08-01T00:00:00Z"),
             UpdatedAt = DateTimeOffset.Parse("2026-08-01T00:00:00Z")
@@ -357,15 +445,15 @@ public sealed class CanonicalQcTransferTests
             Id = 990401,
             CropYear = 2026,
             ReceivedAt = DateTimeOffset.Parse("2026-08-01T08:00:00Z"),
-            CompuTechReceiptId = "TR-QC-9040",
+            CompuTechReceiptId = displayReceiptId,
             ReceiptType = "Truck receipt",
             Warehouse = warehouse,
             Room = rooms[0],
             FruitProfile = profile,
             GrowerLot = growerLot,
-            GrowerName = "Grower 9040",
-            GrowerNumber = "9040",
-            LotCode = "9040",
+            GrowerName = growerName,
+            GrowerNumber = growerNumber,
+            LotCode = growerNumber,
             BinCount = 100,
             CreatedAt = DateTimeOffset.Parse("2026-08-01T08:00:00Z"),
             UpdatedAt = DateTimeOffset.Parse("2026-08-01T08:00:00Z")
@@ -445,6 +533,51 @@ public sealed class CanonicalQcTransferTests
             User(1, "manager@fruitandland.com", PageAccessLevel.Edit),
             User(2, "admin@fruitandland.com", PageAccessLevel.Admin));
         await db.SaveChangesAsync();
+    }
+
+    private static void AddMappedGrower(
+        CropQcDbContext db,
+        string number,
+        string name,
+        params string[] aliases)
+    {
+        var now = DateTimeOffset.Parse("2026-08-01T00:00:00Z");
+        var grower = new CanonicalGrower
+        {
+            DisplayName = name,
+            NormalizedKey = $"REVIEWED_GROWER_NUMBER_{number}",
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        grower.GrowerNumbers.Add(new CanonicalGrowerNumber
+        {
+            GrowerNumber = number,
+            NormalizedGrowerNumber = number,
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        grower.Aliases.Add(new CanonicalGrowerAlias
+        {
+            AliasName = name,
+            NormalizedAliasKey = CanonicalGrowerService.NormalizeGrowerKey(name),
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        foreach (var alias in aliases)
+        {
+            grower.Aliases.Add(new CanonicalGrowerAlias
+            {
+                AliasName = alias,
+                NormalizedAliasKey = CanonicalGrowerService.NormalizeGrowerKey(alias),
+                IsActive = true,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
+        db.CanonicalGrowers.Add(grower);
     }
 
     private static async Task<(int Samples, int Readings, int Photos)> EvidenceCountsAsync(CropQcDbContext db) =>

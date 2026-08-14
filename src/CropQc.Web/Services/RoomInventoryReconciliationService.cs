@@ -17,7 +17,8 @@ public sealed class RoomInventoryReconciliationService(
     CropQcDbContext dbContext,
     IRoomInventoryLedgerQueryService ledgerQuery,
     IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null,
-    IInventoryDiagnosticAcknowledgmentService? inventoryDiagnosticAcknowledgmentService = null) : IRoomInventoryReconciliationService
+    IInventoryDiagnosticAcknowledgmentService? inventoryDiagnosticAcknowledgmentService = null,
+    ICanonicalGrowerService? canonicalGrowerService = null) : IRoomInventoryReconciliationService
 {
     private const int MaximumReceiptRows = 5000;
     private IInventoryDiagnosticAcknowledgmentService DiagnosticAcknowledgments { get; } =
@@ -32,6 +33,7 @@ public sealed class RoomInventoryReconciliationService(
         RoomInventoryReconciliationFilter filter,
         CancellationToken cancellationToken)
     {
+        var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
         var roomIds = filter.RoomId is null ? null : new[] { filter.RoomId.Value };
         var snapshots = await ledgerQuery.GetSnapshotsAsync(filter.WarehouseId, roomIds, cancellationToken);
 
@@ -61,6 +63,7 @@ public sealed class RoomInventoryReconciliationService(
         {
             throw new InvalidOperationException($"Inventory reconciliation exceeds the safe limit of {MaximumReceiptRows} receipt rows. Filter by facility or room.");
         }
+        receipts = receipts.Select(x => x with { Grower = growerResolver.DisplayName(x.Grower, x.Lot) }).ToList();
 
         var receiptEvidence = receipts
             .GroupBy(x => Key(x.RoomId, x.CropYear, x.Lot, x.Variety, x.FruitProfileId), StringComparer.OrdinalIgnoreCase)
@@ -86,7 +89,7 @@ public sealed class RoomInventoryReconciliationService(
                 RoomId = snapshot.RoomId,
                 Room = snapshot.Room,
                 CropYear = snapshot.CropYear,
-                Grower = snapshot.Grower,
+                Grower = growerResolver.DisplayName(snapshot.Grower, snapshot.GrowerNumber ?? snapshot.Lot),
                 Lot = snapshot.Lot,
                 StoredVariety = snapshot.StoredVarietyCode,
                 CanonicalVariety = snapshot.Variety,
@@ -148,7 +151,7 @@ public sealed class RoomInventoryReconciliationService(
         }
 
         var diagnostics = await DiagnosticAcknowledgments.GetOverviewAsync(filter, cancellationToken);
-        var negativeAdjustments = await GetNegativeAdjustmentsAsync(filter, diagnostics, cancellationToken);
+        var negativeAdjustments = await GetNegativeAdjustmentsAsync(filter, diagnostics, growerResolver, cancellationToken);
         var globalWarnings = await GetGlobalWarningsAsync(filter, diagnostics, cancellationToken);
         return new RoomInventoryReconciliationPageViewModel
         {
@@ -226,6 +229,7 @@ public sealed class RoomInventoryReconciliationService(
     private async Task<IReadOnlyList<RoomInventoryNegativeAdjustmentViewModel>> GetNegativeAdjustmentsAsync(
         RoomInventoryReconciliationFilter filter,
         InventoryDiagnosticOverviewViewModel diagnostics,
+        CanonicalGrowerResolutionSet growerResolver,
         CancellationToken cancellationToken)
     {
         var adjustmentQuery = dbContext.RoomInventoryAdjustments.AsNoTracking()
@@ -335,7 +339,7 @@ public sealed class RoomInventoryReconciliationService(
                 Facility = x.Warehouse.Code,
                 Room = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
                 CropYear = x.CropYear ?? x.Receipt?.CropYear,
-                Grower = x.GrowerName,
+                Grower = growerResolver.DisplayName(x.GrowerName, x.Receipt?.GrowerNumber ?? x.LotNumber),
                 Lot = x.LotNumber,
                 Variety = profile?.VarietyCode ?? x.VarietyCode ?? "",
                 ProductionType = profile?.ProductionType ?? "",

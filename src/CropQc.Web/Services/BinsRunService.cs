@@ -34,7 +34,8 @@ public sealed class BinsRunService(
     IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null,
     IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null,
     IRunExpectationService? runExpectationService = null,
-    IConfiguration? configuration = null) : IBinsRunService
+    IConfiguration? configuration = null,
+    ICanonicalGrowerService? canonicalGrowerService = null) : IBinsRunService
 {
     public const string AdjustmentType = "BinsRun";
     public const string ReversalAdjustmentType = "BinsRunReversal";
@@ -138,13 +139,18 @@ public sealed class BinsRunService(
         filter.SelectionMode = selectionByVariety ? ActualRunSelectionModes.ByVariety : ActualRunSelectionModes.ByRoom;
         var actualSelectionReady = filter.WarehouseId is not null
             && (selectionByVariety ? filter.FruitProfileId is not null : selectedRoomIds.Count > 0);
-        var snapshots = isActualSection && !actualSelectionReady
+        IReadOnlyList<InventorySnapshot> snapshots = isActualSection && !actualSelectionReady
             ? []
             : await GetCurrentInventorySnapshotsForRoomsAsync(
                 filter.WarehouseId,
                 selectionByVariety || selectedRoomIds.Count == 0 ? null : selectedRoomIds,
                 selectionByVariety ? filter.FruitProfileId : null,
                 cancellationToken);
+        var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
+        snapshots = snapshots.Select(x => x with
+        {
+            Grower = growerResolver.DisplayName(x.Grower, x.GrowerNumber ?? x.Lot)
+        }).ToList();
         var currentSnapshots = isActualSection
             ? snapshots.Where(x => x.CurrentBins > 0 || editInventoryRows.Any(y =>
                 y.WarehouseId == x.WarehouseId
@@ -237,6 +243,36 @@ public sealed class BinsRunService(
                                 : "The selected rooms have no positive current inventory."
                             : null;
 
+        var history = await historyQuery
+            .OrderByDescending(x => x.RunAt)
+            .ThenByDescending(x => x.Id)
+            .Take(100)
+            .Select(x => new BinsRunHistoryItemViewModel
+            {
+                Id = x.Id,
+                InventoryKey = x.ReceiptId != null ? "R:" + x.ReceiptId.Value : $"A:{x.InventoryAdjustmentId}",
+                WarehouseId = x.WarehouseId,
+                RoomId = x.RoomId,
+                Room = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
+                GrowerName = x.GrowerName,
+                GrowerNumber = x.GrowerNumberSnapshot ?? x.LotNumber,
+                Variety = x.VarietyCode ?? "",
+                Lot = x.LotNumber,
+                PreviousAvailableBins = x.PreviousAvailableBins,
+                BinsRun = x.BinsRun,
+                NewAvailableBins = x.NewAvailableBins,
+                RunAt = x.RunAt,
+                CreatedBy = x.CreatedByUser == null ? "" : x.CreatedByUser.DisplayName,
+                IsReversed = x.IsReversed,
+                ReverseReason = x.ReverseReason,
+                Notes = x.Notes
+            })
+            .ToListAsync(cancellationToken);
+        foreach (var item in history)
+        {
+            item.Inventory = $"{growerResolver.DisplayName(item.GrowerName, item.GrowerNumber)} - {item.Variety} - {item.Lot}";
+        }
+
         return new BinsRunPageViewModel
         {
             Filter = filter,
@@ -263,30 +299,7 @@ public sealed class BinsRunService(
             RoomSummary = roomSummary,
             AvailableInventory = options,
             InventorySelectionMessage = inventorySelectionMessage,
-            History = await historyQuery
-                .OrderByDescending(x => x.RunAt)
-                .ThenByDescending(x => x.Id)
-                .Take(100)
-                .Select(x => new BinsRunHistoryItemViewModel
-                {
-                    Id = x.Id,
-                    InventoryKey = x.ReceiptId != null
-                        ? "R:" + x.ReceiptId.Value
-                        : $"A:{x.InventoryAdjustmentId}",
-                    WarehouseId = x.WarehouseId,
-                    RoomId = x.RoomId,
-                    Room = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
-                    Inventory = x.GrowerName + " - " + x.VarietyCode + " - " + x.LotNumber,
-                    PreviousAvailableBins = x.PreviousAvailableBins,
-                    BinsRun = x.BinsRun,
-                    NewAvailableBins = x.NewAvailableBins,
-                    RunAt = x.RunAt,
-                    CreatedBy = x.CreatedByUser == null ? "" : x.CreatedByUser.DisplayName,
-                    IsReversed = x.IsReversed,
-                    ReverseReason = x.ReverseReason,
-                    Notes = x.Notes
-                })
-                .ToListAsync(cancellationToken),
+            History = history,
             ActualRuns = actualRuns,
             PendingOverrideRequests = canAdmin
                 ? await GetPendingOverrideRequestsAsync(filter, cancellationToken)
@@ -327,6 +340,7 @@ public sealed class BinsRunService(
             })
             .SingleOrDefaultAsync(cancellationToken);
         if (run is null) return null;
+        var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
 
         var contributionRows = await dbContext.BinsRunEntries.AsNoTracking()
             .Where(x => x.ActualRunId == id
@@ -342,6 +356,7 @@ public sealed class BinsRunService(
                 Facility = x.Warehouse.Code,
                 Room = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
                 Grower = x.GrowerName,
+                GrowerNumber = x.GrowerNumberSnapshot ?? x.LotNumber,
                 Lot = x.LotNumber,
                 Variety = x.VarietyCode ?? "",
                 ProductionType = x.FruitProfile == null ? (x.InventoryStatus ?? "") : x.FruitProfile.ProductionType,
@@ -355,7 +370,7 @@ public sealed class BinsRunService(
         run.Contributions = contributionRows.Select(x => new ActualRunContributionViewModel(
             x.Id,
             x.Room,
-            x.Grower,
+            growerResolver.DisplayName(x.Grower, x.GrowerNumber),
             x.Lot,
             x.Variety,
             x.ProductionType,
@@ -2067,6 +2082,7 @@ public sealed class BinsRunService(
         }
 
         var runIds = runs.Select(x => x.Id).ToList();
+        var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
         var lineRows = await dbContext.BinsRunEntries.AsNoTracking()
             .Where(x => x.ActualRunId != null && runIds.Contains(x.ActualRunId.Value))
             .OrderBy(x => x.ActualRunRevisionId)
@@ -2083,6 +2099,7 @@ public sealed class BinsRunService(
                 x.TransactionType,
                 Room = x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
                 Grower = x.GrowerName,
+                GrowerNumber = x.GrowerNumberSnapshot ?? x.LotNumber,
                 Lot = x.LotNumber,
                 Variety = x.VarietyCode ?? "",
                 x.PreviousAvailableBins,
@@ -2106,7 +2123,8 @@ public sealed class BinsRunService(
                 FruitProfileId = x.FruitProfileId,
                 TransactionType = x.TransactionType,
                 Room = x.Room,
-                Grower = x.Grower,
+                Grower = growerResolver.DisplayName(x.Grower, x.GrowerNumber),
+                GrowerNumber = x.GrowerNumber,
                 Lot = x.Lot,
                 Variety = x.Variety,
                 PreviousAvailableBins = x.PreviousAvailableBins,

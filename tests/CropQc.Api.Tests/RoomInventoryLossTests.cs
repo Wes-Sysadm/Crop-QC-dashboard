@@ -399,6 +399,7 @@ public sealed class RoomInventoryLossTests
                 ledger,
                 invariant,
                 new UserAccessService(db, new ConfigurationBuilder().Build()),
+                new CanonicalGrowerService(db),
                 accessor,
                 new PacificBusinessTimeService(new FixedClock(Now)),
                 NullLogger<RoomInventoryLossService>.Instance);
@@ -528,6 +529,7 @@ public sealed class RoomInventoryLossTests
         public RoomInventoryLossService ServiceWithInvariant(IInventoryDeductionInvariantService invariant) => new(
             Db, Ledger, invariant,
             new UserAccessService(Db, new ConfigurationBuilder().Build()),
+            new CanonicalGrowerService(Db),
             Accessor,
             new PacificBusinessTimeService(new FixedClock(Now)),
             NullLogger<RoomInventoryLossService>.Instance);

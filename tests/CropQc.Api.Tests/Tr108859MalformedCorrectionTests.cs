@@ -390,6 +390,7 @@ public sealed class Tr108859MalformedCorrectionTests
                 Ledger,
                 invariant ?? Invariant,
                 new UserAccessService(Db, configuration),
+                new CanonicalGrowerService(Db),
                 accessor,
                 new PacificBusinessTimeService(new FixedClock(Now)),
                 NullLogger<RoomInventoryLossService>.Instance);

@@ -25,6 +25,7 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
         }
 
         var now = DateTimeOffset.UtcNow;
+        var growerName = await ResolveAuthoritativeNameAsync(request.GrowerName, request.LotCode, cancellationToken);
         var receipt = new Receipt
         {
             CropYear = request.CropYear,
@@ -33,7 +34,7 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
             WarehouseId = request.WarehouseId,
             RoomId = request.RoomId,
             FruitProfileId = request.FruitProfileId,
-            GrowerName = request.GrowerName.Trim(),
+            GrowerName = growerName,
             LotCode = request.LotCode.Trim(),
             BinCount = request.BinCount,
             CreatedAt = now,
@@ -46,21 +47,56 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
         return (ToDto(receipt), null);
     }
 
-    public async Task<ReceiptDto?> GetAsync(long id, CancellationToken cancellationToken) =>
-        await dbContext.Receipts.AsNoTracking().Where(x => x.Id == id && !x.IsDeleted).Select(x => ToDto(x)).SingleOrDefaultAsync(cancellationToken);
+    public async Task<ReceiptDto?> GetAsync(long id, CancellationToken cancellationToken)
+    {
+        var receipt = await dbContext.Receipts.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
+        if (receipt is null) return null;
+        receipt.GrowerName = await ResolveAuthoritativeNameAsync(receipt.GrowerName, receipt.GrowerNumber ?? receipt.LotCode, cancellationToken);
+        return ToDto(receipt);
+    }
 
     public async Task<IReadOnlyList<ReceiptDto>> SearchAsync(ReceiptSearchRequest request, CancellationToken cancellationToken)
     {
         var query = dbContext.Receipts.AsNoTracking().Where(x => !x.IsDeleted);
         if (request.CropYear is not null) query = query.Where(x => x.CropYear == request.CropYear);
         if (!string.IsNullOrWhiteSpace(request.ReceiptId)) query = query.Where(x => x.CompuTechReceiptId.Contains(request.ReceiptId));
-        if (!string.IsNullOrWhiteSpace(request.Grower)) query = query.Where(x => x.GrowerName.Contains(request.Grower));
+        if (!string.IsNullOrWhiteSpace(request.Grower))
+        {
+            var growerSearch = request.Grower.Trim();
+            var matchingNumbers = await dbContext.CanonicalGrowerNumbers.AsNoTracking()
+                .Where(x => x.IsActive && x.CanonicalGrower.IsActive
+                    && x.CanonicalGrower.MergedIntoCanonicalGrowerId == null
+                    && (x.CanonicalGrower.DisplayName.Contains(growerSearch)
+                        || x.CanonicalGrower.Aliases.Any(alias => alias.IsActive && alias.AliasName.Contains(growerSearch))))
+                .Select(x => x.GrowerNumber)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            query = query.Where(x => x.GrowerName.Contains(growerSearch)
+                || matchingNumbers.Contains(x.GrowerNumber ?? x.LotCode));
+        }
         if (!string.IsNullOrWhiteSpace(request.Lot)) query = query.Where(x => x.LotCode.Contains(request.Lot));
         if (request.WarehouseId is not null) query = query.Where(x => x.WarehouseId == request.WarehouseId);
         if (request.RoomId is not null) query = query.Where(x => x.RoomId == request.RoomId);
         if (request.FruitProfileId is not null) query = query.Where(x => x.FruitProfileId == request.FruitProfileId);
 
-        return await query.OrderByDescending(x => x.ReceivedAt).Take(200).Select(x => ToDto(x)).ToListAsync(cancellationToken);
+        var receipts = await query.OrderByDescending(x => x.ReceivedAt).Take(200).ToListAsync(cancellationToken);
+        var numberKeys = receipts.Select(x => NormalizeGrowerNumber(x.GrowerNumber ?? x.LotCode)).Where(x => x.Length > 0).Distinct().ToList();
+        var names = await dbContext.CanonicalGrowerNumbers.AsNoTracking()
+            .Where(x => x.IsActive && numberKeys.Contains(x.NormalizedGrowerNumber)
+                && x.CanonicalGrower.IsActive && x.CanonicalGrower.MergedIntoCanonicalGrowerId == null)
+            .Select(x => new { x.NormalizedGrowerNumber, x.CanonicalGrower.DisplayName })
+            .ToListAsync(cancellationToken);
+        var uniqueNames = names.GroupBy(x => x.NormalizedGrowerNumber, StringComparer.OrdinalIgnoreCase)
+            .Where(x => x.Select(y => y.DisplayName).Distinct(StringComparer.Ordinal).Count() == 1)
+            .ToDictionary(x => x.Key, x => x.First().DisplayName, StringComparer.OrdinalIgnoreCase);
+        foreach (var receipt in receipts)
+        {
+            if (uniqueNames.TryGetValue(NormalizeGrowerNumber(receipt.GrowerNumber ?? receipt.LotCode), out var authoritativeName))
+            {
+                receipt.GrowerName = authoritativeName;
+            }
+        }
+        return receipts.Select(ToDto).ToList();
     }
 
     public async Task<(ReceiptDto? Receipt, string? Error)> UpdateSameDayAsync(long id, UpdateReceiptRequest request, CancellationToken cancellationToken)
@@ -92,7 +128,7 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
         receipt.WarehouseId = request.WarehouseId;
         receipt.RoomId = request.RoomId;
         receipt.FruitProfileId = request.FruitProfileId;
-        receipt.GrowerName = request.GrowerName.Trim();
+        receipt.GrowerName = await ResolveAuthoritativeNameAsync(request.GrowerName, request.LotCode, cancellationToken);
         receipt.LotCode = request.LotCode.Trim();
         receipt.BinCount = request.BinCount;
         receipt.UpdatedAt = DateTimeOffset.UtcNow;
@@ -143,6 +179,25 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
         if (request.BinCount <= 0) return "BinCount is required.";
         return null;
     }
+
+    private async Task<string> ResolveAuthoritativeNameAsync(string suppliedName, string? growerNumber, CancellationToken cancellationToken)
+    {
+        var numberKey = NormalizeGrowerNumber(growerNumber);
+        if (numberKey.Length == 0) return suppliedName.Trim();
+        var matches = await dbContext.CanonicalGrowerNumbers.AsNoTracking()
+            .Where(x => x.IsActive && x.NormalizedGrowerNumber == numberKey
+                && x.CanonicalGrower.IsActive && x.CanonicalGrower.MergedIntoCanonicalGrowerId == null)
+            .Select(x => x.CanonicalGrower.DisplayName)
+            .Distinct()
+            .Take(2)
+            .ToListAsync(cancellationToken);
+        return matches.Count == 1 ? matches[0] : suppliedName.Trim();
+    }
+
+    private static string NormalizeGrowerNumber(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? ""
+            : new string(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 
     public static ReceiptDto ToDto(Receipt receipt) => new(
         receipt.Id,

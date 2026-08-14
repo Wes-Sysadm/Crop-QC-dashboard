@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <Content Update="Data\Seed\ebs-starting-room-inventory.csv" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Data\ReviewedGrowers\authoritative-growers-2026.csv" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

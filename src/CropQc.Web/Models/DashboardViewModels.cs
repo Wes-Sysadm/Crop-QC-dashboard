@@ -494,6 +494,7 @@ public sealed class RoomInventoryCurrentLotViewModel
     public string RoomCode { get; set; } = "";
     public string MasterRoomCode { get; set; } = "";
     public string Grower { get; set; } = "";
+    public string GrowerNumber { get; set; } = "";
     public string LotNumber { get; set; } = "";
     public string PoolStart { get; set; } = "";
     public string Variety { get; set; } = "";
@@ -690,6 +691,7 @@ public sealed class ActualRunHistoryLineViewModel
     public string TransactionType { get; set; } = "";
     public string Room { get; set; } = "";
     public string Grower { get; set; } = "";
+    public string GrowerNumber { get; set; } = "";
     public string Lot { get; set; } = "";
     public string Variety { get; set; } = "";
     public int PreviousAvailableBins { get; set; }
@@ -765,6 +767,10 @@ public sealed class BinsRunHistoryItemViewModel
     public int RoomId { get; set; }
     public string Room { get; set; } = "";
     public string Inventory { get; set; } = "";
+    public string GrowerName { get; set; } = "";
+    public string GrowerNumber { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public string Lot { get; set; } = "";
     public int PreviousAvailableBins { get; set; }
     public int BinsRun { get; set; }
     public int NewAvailableBins { get; set; }

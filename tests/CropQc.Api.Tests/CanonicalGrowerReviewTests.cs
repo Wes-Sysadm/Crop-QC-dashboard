@@ -147,7 +147,11 @@ public sealed class CanonicalGrowerReviewTests
         };
         db.CanonicalGrowers.Add(canonical);
         await db.SaveChangesAsync();
-        var service = new AdminManagementService(db, new VarietyColorService(db), new CanonicalGrowerService(db));
+        var resolutionCache = new CanonicalGrowerResolutionCache();
+        var canonicalService = new CanonicalGrowerService(db, resolutionCache);
+        var beforeMapping = await canonicalService.LoadResolutionSetAsync(CancellationToken.None);
+        Assert.False(beforeMapping.Resolve("DENNIS BURKS - PESCIALLO", "9490").IsMapped);
+        var service = new AdminManagementService(db, new VarietyColorService(db), canonicalService);
 
         var error = await service.SaveGrowerMappingAsync(new GrowerMappingForm
         {
@@ -165,6 +169,8 @@ public sealed class CanonicalGrowerReviewTests
         Assert.Contains(saved.Aliases, x => x.AliasName == "DENNIS BURKS - PESCIALLO");
         Assert.Contains(saved.GrowerNumbers, x => x.GrowerNumber == "9490");
         Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.EntityName == "canonical-grower-mapping" && x.Action == "map-grower-source");
+        var afterMapping = await canonicalService.LoadResolutionSetAsync(CancellationToken.None);
+        Assert.Equal("Dennis Burks", afterMapping.Resolve("DENNIS BURKS - PESCIALLO", "9490").DisplayName);
     }
 
     [Fact]
