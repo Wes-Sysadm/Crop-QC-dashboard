@@ -3947,19 +3947,7 @@ public sealed class DashboardDataService(
             .ToList();
         var samples = await LoadRoomConditionSamplesAsync(qcTargets, cancellationToken);
         var samplesByReceipt = samples.GroupBy(x => x.ReceiptId).ToDictionary(x => x.Key, x => x.ToList());
-        var samplesByIdentity = samples
-            .Where(x => x.Identity is not null)
-            .GroupBy(x => x.Identity!.LookupKey, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(x => x.Key, x => (IReadOnlyList<RoomConditionSample>)x.ToList(), StringComparer.OrdinalIgnoreCase);
-        var conditionSamplesByLot = new Dictionary<string, List<RoomConditionSample>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var target in qcTargets)
-        {
-            var candidates = samplesByIdentity.GetValueOrDefault(target.LookupKey) ?? samples;
-            conditionSamplesByLot[target.LookupKey] = CanonicalQcFruitIdentity.ResolveUnambiguous(target, candidates, x => x.Identity)
-                .OrderByDescending(x => x.SampleTakenAt)
-                .ThenByDescending(x => x.Id)
-                .ToList();
-        }
+        var conditionDataByLot = BuildRoomConditionDataByLot(qcTargets, samples);
 
         var roomCorrectionCutoffs = await BuildCurrentBalanceCorrectionCutoffsAsync(roomId, cancellationToken);
         var receiptLotSummaries = receipts
@@ -3976,9 +3964,11 @@ public sealed class DashboardDataService(
             var currentBins = latestAdjustment is not null
                 ? Math.Max(0, latestAdjustment.NewBinCount)
                 : Math.Max(0, receipt.BinCount - depleted);
+            var hasSharedConditionData = conditionDataByLot.ContainsKey(QcConditionLotKey(receipt));
             var lotSamples = samplesByReceipt.GetValueOrDefault(receipt.Id, []);
-            var pressures = PressureValues(lotSamples).ToList();
-            var starch = StarchValues(lotSamples).ToList();
+            IReadOnlyList<RoomConditionSample> effectiveLotSamples = hasSharedConditionData ? [] : lotSamples;
+            var pressures = effectiveLotSamples.Count == 0 ? [] : PressureValues(effectiveLotSamples).ToList();
+            var starch = effectiveLotSamples.Count == 0 ? [] : StarchValues(effectiveLotSamples).ToList();
             return new RoomLotSummaryViewModel
             {
                 InventoryKey = $"R:{receipt.Id}",
@@ -4010,26 +4000,36 @@ public sealed class DashboardDataService(
                 CurrentBins = currentBins,
                 AveragePressureLbs = AverageOrNull(pressures),
                 PressureStdDevLbs = StandardDeviationOrNull(pressures),
-                MonthOverMonthPressureChangeLbs = MonthPressureChange(receipt.RoomId, currentMonth: true, lotSamples),
+                MonthOverMonthPressureChangeLbs = effectiveLotSamples.Count == 0
+                    ? null
+                    : MonthPressureChange(receipt.RoomId, currentMonth: true, effectiveLotSamples),
                 AverageStarch = AverageOrNull(starch),
-                DefectSummary = SummarizeDefects(lotSamples),
-                LastSampleDate = lotSamples.Count == 0 ? null : lotSamples.Max(x => x.SampleTakenAt),
-                SampleCount = lotSamples.Count,
-                EnteredFruitCount = lotSamples.SelectMany(x => x.FruitRows).Count(HasEnteredFruitData),
+                DefectSummary = effectiveLotSamples.Count == 0 ? "None" : SummarizeDefects(effectiveLotSamples),
+                LastSampleDate = effectiveLotSamples.Count == 0 ? null : effectiveLotSamples.Max(x => x.SampleTakenAt),
+                SampleCount = effectiveLotSamples.Count,
+                EnteredFruitCount = effectiveLotSamples.SelectMany(x => x.FruitRows).Count(HasEnteredFruitData),
                 DepletionStatus = currentBins > 0 ? "Current" : depleted > 0 ? "Depleted" : "No bins",
-                ReviewFlags = BuildRoomReviewFlags(pressures, starch, lotSamples.SelectMany(x => x.FruitRows).ToList(), MonthPressureChange(receipt.RoomId, currentMonth: true, lotSamples)),
+                ReviewFlags = effectiveLotSamples.Count == 0
+                    ? []
+                    : BuildRoomReviewFlags(
+                        pressures,
+                        starch,
+                        effectiveLotSamples.SelectMany(x => x.FruitRows).ToList(),
+                        MonthPressureChange(receipt.RoomId, currentMonth: true, effectiveLotSamples)),
                 ReceiptEvidence = [new RoomReceiptEvidenceLinkViewModel(receipt.Id, receipt.CompuTechReceiptId)],
                 ReceiptEvidenceCount = 1,
-                Samples = lotSamples
-                    .OrderByDescending(x => x.SampleTakenAt)
-                    .Select(x => new RoomSampleLinkViewModel(x.Id, x.SampleSequenceNumber <= 1 ? receipt.CompuTechReceiptId : $"{receipt.CompuTechReceiptId}({x.SampleSequenceNumber})", x.SampleType))
-                    .ToList(),
-                SampleEvidenceCount = lotSamples.Count
+                Samples = effectiveLotSamples.Count == 0
+                    ? []
+                    : effectiveLotSamples
+                        .OrderByDescending(x => x.SampleTakenAt)
+                        .Select(x => new RoomSampleLinkViewModel(x.Id, x.SampleSequenceNumber <= 1 ? receipt.CompuTechReceiptId : $"{receipt.CompuTechReceiptId}({x.SampleSequenceNumber})", x.SampleType))
+                        .ToList(),
+                SampleEvidenceCount = effectiveLotSamples.Count
             };
         }).ToList();
 
         var lotSummaries = receiptLotSummaries.Concat(startingInventoryLotSummaries).ToList();
-        ApplyQcConditionData(lotSummaries, conditionSamplesByLot);
+        ApplyQcConditionData(lotSummaries, conditionDataByLot);
         var ledgerSnapshots = await RoomInventoryLedger.GetSnapshotsAsync(
             null,
             allowedRoomIds ?? (roomId is null ? null : [roomId.Value]),
@@ -4340,46 +4340,105 @@ public sealed class DashboardDataService(
     private static string LedgerLotKey(int roomId, int? cropYear, string lot, string variety, int? fruitProfileId) =>
         $"{roomId}|{cropYear?.ToString(CultureInfo.InvariantCulture) ?? "-"}|{lot.Trim().ToUpperInvariant()}|{variety.Trim().ToUpperInvariant()}|{fruitProfileId?.ToString(CultureInfo.InvariantCulture) ?? "-"}";
 
-    private void ApplyQcConditionData(
-        IReadOnlyList<RoomLotSummaryViewModel> lotSummaries,
-        IReadOnlyDictionary<string, List<RoomConditionSample>> conditionSamplesByLot)
+    private IReadOnlyDictionary<string, RoomConditionData> BuildRoomConditionDataByLot(
+        IReadOnlyList<CanonicalQcFruitIdentity> targets,
+        IReadOnlyList<RoomConditionSample> samples)
     {
-        foreach (var lot in lotSummaries)
+        var samplesByIdentity = samples
+            .Where(x => x.Identity is not null)
+            .GroupBy(x => x.Identity!.LookupKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                x => x.Key,
+                x => (IReadOnlyList<RoomConditionSample>)x.ToList(),
+                StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, RoomConditionData>(StringComparer.OrdinalIgnoreCase);
+        foreach (var target in targets)
         {
-            if (!conditionSamplesByLot.TryGetValue(QcConditionLotKey(lot), out var lotSamples)
-                || lotSamples.Count == 0)
+            var resolved = (samplesByIdentity.TryGetValue(target.LookupKey, out var exact)
+                ? exact
+                : CanonicalQcFruitIdentity.ResolveUnambiguous(target, samples, x => x.Identity))
+                .OrderByDescending(x => x.SampleTakenAt)
+                .ThenByDescending(x => x.Id)
+                .ToList();
+            if (resolved.Count == 0)
             {
                 continue;
             }
 
-            var pressures = PressureValues(lotSamples).ToList();
-            var starch = StarchValues(lotSamples).ToList();
-            var latest = lotSamples[0];
-            lot.AveragePressureLbs = AverageOrNull(PressureValues([latest]).ToList()) ?? AverageOrNull(pressures);
-            lot.PressureStdDevLbs = StandardDeviationOrNull(PressureValues([latest]).ToList()) ?? StandardDeviationOrNull(pressures);
-            lot.MonthOverMonthPressureChangeLbs = MonthPressureChange(lot.RoomId, currentMonth: true, lotSamples);
-            lot.AverageStarch = AverageOrNull(StarchValues([latest]).ToList()) ?? AverageOrNull(starch);
-            lot.DefectSummary = SummarizeDefects(lotSamples);
-            lot.LastSampleDate = latest.SampleTakenAt;
-            lot.LatestQcSource = latest.SampleType;
-            lot.SampleCount = lotSamples.Count;
-            lot.EnteredFruitCount = lotSamples.SelectMany(x => x.FruitRows).Count(HasEnteredFruitData);
-            lot.ReviewFlags = BuildRoomReviewFlags(pressures, starch, lotSamples.SelectMany(x => x.FruitRows).ToList(), lot.MonthOverMonthPressureChangeLbs);
-            var resolvedSampleEvidence = lotSamples
+            var latest = resolved[0];
+            var pressures = PressureValues(resolved).ToList();
+            var starch = StarchValues(resolved).ToList();
+            var fruitRows = resolved.SelectMany(x => x.FruitRows).ToList();
+            var monthPressureChange = MonthPressureChange(0, currentMonth: true, resolved);
+            var sampleEvidence = resolved
                 .Select(x => new RoomSampleLinkViewModel(x.Id, x.SampleSequenceNumber <= 1 ? x.DisplayReceiptId : $"{x.DisplayReceiptId}({x.SampleSequenceNumber})", x.SampleType))
                 .ToList();
-            lot.Samples = resolvedSampleEvidence.Take(MaximumLotEvidenceLinks).ToList();
-            lot.SampleEvidenceCount = resolvedSampleEvidence.Count;
-            var resolvedReceiptEvidence = lot.ReceiptEvidence.Concat(lotSamples
-                    .GroupBy(x => x.ReceiptId)
-                    .Select(x => new RoomReceiptEvidenceLinkViewModel(x.Key, x.First().DisplayReceiptId)))
+            var receiptEvidence = resolved
+                .GroupBy(x => x.ReceiptId)
+                .Select(x => new RoomReceiptEvidenceLinkViewModel(x.Key, x.First().DisplayReceiptId))
+                .OrderBy(x => x.DisplayReceiptId, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.ReceiptId)
+                .ToList();
+            result[target.LookupKey] = new RoomConditionData(
+                AverageOrNull(PressureValues([latest]).ToList()) ?? AverageOrNull(pressures),
+                StandardDeviationOrNull(PressureValues([latest]).ToList()) ?? StandardDeviationOrNull(pressures),
+                monthPressureChange,
+                AverageOrNull(StarchValues([latest]).ToList()) ?? AverageOrNull(starch),
+                SummarizeDefects(resolved),
+                latest.SampleTakenAt,
+                latest.SampleType,
+                resolved.Count,
+                fruitRows.Count(HasEnteredFruitData),
+                BuildRoomReviewFlags(pressures, starch, fruitRows, monthPressureChange),
+                sampleEvidence.Take(MaximumLotEvidenceLinks).ToList(),
+                sampleEvidence.Count,
+                receiptEvidence.Take(MaximumLotEvidenceLinks).ToList(),
+                receiptEvidence.Count,
+                receiptEvidence.Select(x => x.ReceiptId).ToHashSet());
+        }
+
+        return result;
+    }
+
+    private static void ApplyQcConditionData(
+        IReadOnlyList<RoomLotSummaryViewModel> lotSummaries,
+        IReadOnlyDictionary<string, RoomConditionData> conditionDataByLot)
+    {
+        foreach (var lot in lotSummaries)
+        {
+            if (!conditionDataByLot.TryGetValue(QcConditionLotKey(lot), out var data))
+            {
+                continue;
+            }
+
+            lot.AveragePressureLbs = data.AveragePressureLbs;
+            lot.PressureStdDevLbs = data.PressureStdDevLbs;
+            lot.MonthOverMonthPressureChangeLbs = data.MonthOverMonthPressureChangeLbs;
+            lot.AverageStarch = data.AverageStarch;
+            lot.DefectSummary = data.DefectSummary;
+            lot.LastSampleDate = data.LastSampleDate;
+            lot.LatestQcSource = data.LatestQcSource;
+            lot.SampleCount = data.SampleCount;
+            lot.EnteredFruitCount = data.EnteredFruitCount;
+            lot.ReviewFlags = data.ReviewFlags;
+            lot.Samples = data.SampleEvidence;
+            lot.SampleEvidenceCount = data.SampleEvidenceCount;
+            if (lot.ReceiptEvidence.Count == 0
+                || lot.ReceiptEvidence.All(x => data.ReceiptIds.Contains(x.ReceiptId)))
+            {
+                lot.ReceiptEvidence = data.ReceiptEvidence;
+                lot.ReceiptEvidenceCount = data.ReceiptEvidenceCount;
+                continue;
+            }
+
+            var receiptEvidence = lot.ReceiptEvidence.Concat(data.ReceiptEvidence)
                 .GroupBy(x => x.ReceiptId)
                 .Select(x => x.First())
                 .OrderBy(x => x.DisplayReceiptId, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(x => x.ReceiptId)
                 .ToList();
-            lot.ReceiptEvidence = resolvedReceiptEvidence.Take(MaximumLotEvidenceLinks).ToList();
-            lot.ReceiptEvidenceCount = resolvedReceiptEvidence.Count;
+            lot.ReceiptEvidence = receiptEvidence.Take(MaximumLotEvidenceLinks).ToList();
+            lot.ReceiptEvidenceCount = receiptEvidence.Count;
         }
     }
 
@@ -7106,6 +7165,23 @@ public sealed class DashboardDataService(
             ProductionType,
             IsOrganic);
     }
+
+    private sealed record RoomConditionData(
+        decimal? AveragePressureLbs,
+        decimal? PressureStdDevLbs,
+        decimal? MonthOverMonthPressureChangeLbs,
+        decimal? AverageStarch,
+        string DefectSummary,
+        DateTimeOffset LastSampleDate,
+        string LatestQcSource,
+        int SampleCount,
+        int EnteredFruitCount,
+        IReadOnlyList<string> ReviewFlags,
+        IReadOnlyList<RoomSampleLinkViewModel> SampleEvidence,
+        int SampleEvidenceCount,
+        IReadOnlyList<RoomReceiptEvidenceLinkViewModel> ReceiptEvidence,
+        int ReceiptEvidenceCount,
+        IReadOnlySet<long> ReceiptIds);
 
     private sealed record DashboardRoomAttention(
         string Category,
