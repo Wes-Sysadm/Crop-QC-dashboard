@@ -22,14 +22,53 @@ namespace CropQc.Api.Tests;
 public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
 {
     [Fact]
-    public async Task Authenticated_run67_routes_render_authoritative_names_without_operational_writes_when_configured()
+    public async Task Authenticated_run69_routes_render_authoritative_names_without_operational_writes_when_configured()
     {
-        var connectionString = Environment.GetEnvironmentVariable("CROPQC_RUN67_GROWER_HTTP_POSTGRES");
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_RUN69_GROWER_HTTP_POSTGRES");
         if (string.IsNullOrWhiteSpace(connectionString)) return;
 
         ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connectionString);
         await using var factory = new RestoreWebApplicationFactory(connectionString);
         var before = await CaptureProtectedTotalsAsync(factory.Services);
+        long receipt1080Id;
+        long receipt9392Id;
+        long actualRun1080Id;
+        int room1080Id;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            receipt1080Id = await db.Receipts.AsNoTracking()
+                .Where(x => x.GrowerNumber == "1080")
+                .OrderByDescending(x => x.ReceivedAt)
+                .Select(x => x.Id)
+                .FirstAsync();
+            receipt9392Id = await db.Receipts.AsNoTracking()
+                .Where(x => x.GrowerNumber == "9392")
+                .OrderByDescending(x => x.ReceivedAt)
+                .Select(x => x.Id)
+                .FirstAsync();
+            actualRun1080Id = await db.BinsRunEntries.AsNoTracking()
+                .Where(x => x.ActualRunId != null && (x.GrowerNumberSnapshot == "1080" || x.LotNumber == "1080"))
+                .OrderByDescending(x => x.RunAt)
+                .Select(x => x.ActualRunId!.Value)
+                .FirstAsync();
+            var roomIds = await db.Rooms.AsNoTracking().Select(x => x.Id).ToListAsync();
+            var lots = await scope.ServiceProvider.GetRequiredService<IDashboardDataService>()
+                .GetAuthoritativeCurrentRoomLotsAsync(roomIds, CancellationToken.None);
+            var current1080 = lots.First(x => x.GrowerNumber == "1080" && x.CurrentBins > 0);
+            room1080Id = current1080.RoomId;
+            Assert.Equal("WINDY POINT", current1080.GrowerName);
+            Assert.Equal("1080", current1080.GrowerNumber);
+
+            var resolver = await scope.ServiceProvider.GetRequiredService<ICanonicalGrowerService>()
+                .LoadResolutionSetAsync(CancellationToken.None);
+            Assert.Equal("MFR - FUJI ORCH-BLK E", resolver.DisplayName("MFR - FUJI BLK E", "1050"));
+            Assert.Equal("WINDY POINT", resolver.DisplayName("WP ORCHARD", "1080"));
+            Assert.Equal("WP Orchard - EP Non-Chilean", resolver.DisplayName("WP ORCHARD", "1082"));
+            Assert.Equal("Baldwin Pears", resolver.DisplayName("BALDWIN PEAR", "1530"));
+            Assert.Equal("MFR - HOOKER PL CONV", resolver.DisplayName("MFR - HOOKER PL CONV", "9392"));
+            Assert.False(await db.CanonicalGrowerNumbers.AsNoTracking().AnyAsync(x => x.GrowerNumber == "9392"));
+        }
 
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -49,7 +88,11 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
             ["/Admin/RoomInventory/Reconciliation"] = "Inventory Reconciliation",
             ["/BinsRun"] = "Runs &amp; Transfers",
             ["/EndOfDayFill"] = "End of Day Fill",
-            ["/RunReporting/Growers"] = "Grower &amp; Lot Progress"
+            ["/RunReporting/Growers"] = "Grower &amp; Lot Progress",
+            [$"/Receipts/{receipt1080Id}"] = "WINDY POINT",
+            [$"/Receipts/{receipt1080Id}/Edit"] = "WINDY POINT",
+            [$"/Rooms/{room1080Id}"] = "WINDY POINT",
+            [$"/BinsRun/ActualRuns/{actualRun1080Id}"] = "WINDY POINT"
         };
         foreach (var page in pages)
         {
@@ -86,7 +129,21 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
         Assert.Contains("WINDY POINT", receipt1080, StringComparison.Ordinal);
         AssertNoDatabaseTranslationFailure(receipt1080);
 
+        var runReporting1080 = await GetOkAsync(client, "/RunReporting/Growers?GrowerNumber=1080");
+        Assert.Contains("WINDY POINT", runReporting1080, StringComparison.Ordinal);
+        Assert.Contains("1080", runReporting1080, StringComparison.Ordinal);
+        AssertNoDatabaseTranslationFailure(runReporting1080);
+
+        var receipt9392 = await GetOkAsync(client, $"/Receipts/{receipt9392Id}");
+        Assert.Contains("MFR - HOOKER PL CONV", receipt9392, StringComparison.Ordinal);
+        AssertNoDatabaseTranslationFailure(receipt9392);
+
         Assert.Equal(before, await CaptureProtectedTotalsAsync(factory.Services));
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            Assert.False(await db.CanonicalGrowerNumbers.AsNoTracking().AnyAsync(x => x.GrowerNumber == "9392"));
+        }
     }
 
     private static async Task<string> GetOkAsync(HttpClient client, string path)
@@ -162,14 +219,14 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
                     ["Email:Provider"] = "None",
                     ["Logging:LogLevel:Default"] = "Warning",
                     ["Logging:LogLevel:Microsoft"] = "Error",
-                    ["RENDER_EXTERNAL_HOSTNAME"] = "run67-reviewed-grower-rehearsal.local"
+                    ["RENDER_EXTERNAL_HOSTNAME"] = "run69-reviewed-grower-rehearsal.local"
                 });
             });
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<IHostedService>();
                 services.RemoveAll<IDataProtectionProvider>();
-                services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+                services.AddDataProtection().UseEphemeralDataProtectionProvider();
                 services
                     .AddAuthentication(options =>
                     {
@@ -189,7 +246,7 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
         UrlEncoder encoder)
         : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
     {
-        public const string SchemeName = "Run67ReviewedGrowerRehearsal";
+        public const string SchemeName = "Run69ReviewedGrowerRehearsal";
 
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {

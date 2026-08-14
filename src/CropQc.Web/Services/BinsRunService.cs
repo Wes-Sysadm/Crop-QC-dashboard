@@ -1761,7 +1761,7 @@ public sealed class BinsRunService(
             .ThenBy(x => x.Lot)
             .Select(x =>
             {
-                sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var distribution);
+                sampleData.TryGetValue(QcIdentityKey(x), out var distribution);
                 return new BinsRunInventoryOptionViewModel(
                 x.InventoryKey,
                 x.ReceiptId,
@@ -1823,26 +1823,49 @@ public sealed class BinsRunService(
 
     private async Task<IReadOnlyDictionary<string, LotSampleDistribution>> GetLatestSampleDataByLotAsync(IReadOnlyList<InventorySnapshot> currentSnapshots, CancellationToken cancellationToken)
     {
-        if (currentSnapshots.Count == 0)
+        var targets = currentSnapshots
+            .Select(QcIdentity)
+            .Where(x => x is not null)
+            .Select(x => x!)
+            .DistinctBy(x => x.LookupKey)
+            .ToList();
+        if (targets.Count == 0)
         {
             return new Dictionary<string, LotSampleDistribution>(StringComparer.OrdinalIgnoreCase);
         }
 
-        var roomIds = currentSnapshots.Select(x => x.RoomId).Distinct().ToList();
-        var samples = await dbContext.QcSamples.AsNoTracking()
+        var candidateQuery = CanonicalQcFruitIdentity.FilterReceiptSamples(
+                dbContext.QcSamples.AsNoTracking(),
+                targets);
+        var samples = await CanonicalQcFruitIdentity.OrderCandidates(
+                candidateQuery,
+                dbContext.Database.ProviderName)
             .Include(x => x.Receipt)
                 .ThenInclude(x => x.FruitProfile)
             .Include(x => x.FruitReadings)
                 .ThenInclude(x => x.Grade)
-            .Where(x => !x.IsDeleted && roomIds.Contains(x.Receipt.RoomId))
+            .Take(CanonicalQcFruitIdentity.CandidateLimit(targets.Count))
             .ToListAsync(cancellationToken);
+        var sampleIdentities = samples.ToDictionary(
+            x => x.Id,
+            x => CanonicalQcFruitIdentity.FromReceipt(x.Receipt!));
 
-        return samples
-            .GroupBy(x => CurrentStorageLotKey(x.Receipt.RoomId, ReceiptLotNumber(x.Receipt), x.Receipt.FruitProfile.VarietyCode), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                x => x.Key,
-                x => BuildLotSampleDistribution(x.OrderByDescending(y => y.SampleTakenAt).ThenByDescending(y => y.Id).First()),
-                StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, LotSampleDistribution>(StringComparer.OrdinalIgnoreCase);
+        foreach (var target in targets)
+        {
+            var latest = CanonicalQcFruitIdentity.ResolveLatestUnambiguous(
+                target,
+                samples,
+                sample => sampleIdentities[sample.Id],
+                sample => sample.SampleTakenAt,
+                sample => sample.Id);
+            if (latest is not null)
+            {
+                result[target.LookupKey] = BuildLotSampleDistribution(latest);
+            }
+        }
+
+        return result;
     }
 
     private static LotSampleDistribution BuildLotSampleDistribution(QcSample sample)
@@ -1874,7 +1897,7 @@ public sealed class BinsRunService(
         return ProjectionDistributionMath.CombineWeightedSizePercentages(
             roomLots,
             sizeData,
-            lot => CurrentStorageLotKey(lot.RoomId, lot.Lot, lot.Variety),
+            QcIdentityKey,
             lot => lot.CurrentBins);
     }
 
@@ -1885,10 +1908,10 @@ public sealed class BinsRunService(
     {
         var availableBins = lots.Sum(x => x.CurrentBins);
         var sizeRepresentedBins = lots
-            .Where(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.SizeDistribution.Percentages.Count > 0)
+            .Where(x => sampleData.TryGetValue(QcIdentityKey(x), out var data) && data.SizeDistribution.Percentages.Count > 0)
             .Sum(x => x.CurrentBins);
         var gradeRepresentedBins = lots
-            .Where(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.GradePercentages.Count > 0)
+            .Where(x => sampleData.TryGetValue(QcIdentityKey(x), out var data) && data.GradePercentages.Count > 0)
             .Sum(x => x.CurrentBins);
 
         return new BinsRunProjectionViewModel
@@ -1901,15 +1924,15 @@ public sealed class BinsRunService(
             AvailableBins = availableBins,
             SizeDistribution = BuildWeightedSizeDistribution(lots, sampleData),
             GradeSummary = BuildWeightedGradeSummary(lots, sampleData),
-            SizeDataLotCount = lots.Count(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.SizeDistribution.Percentages.Count > 0),
-            GradeDataLotCount = lots.Count(x => sampleData.TryGetValue(CurrentStorageLotKey(x.RoomId, x.Lot, x.Variety), out var data) && data.GradePercentages.Count > 0),
+            SizeDataLotCount = lots.Count(x => sampleData.TryGetValue(QcIdentityKey(x), out var data) && data.SizeDistribution.Percentages.Count > 0),
+            GradeDataLotCount = lots.Count(x => sampleData.TryGetValue(QcIdentityKey(x), out var data) && data.GradePercentages.Count > 0),
             SizeRepresentedBins = sizeRepresentedBins,
             SizeMissingBins = Math.Max(0, availableBins - sizeRepresentedBins),
             SizeCoveragePercent = availableBins <= 0 ? 0m : decimal.Round(sizeRepresentedBins / (decimal)availableBins * 100m, 1),
             SizeUnclassifiedPercent = ProjectionDistributionMath.CombineWeightedUnclassifiedPercent(
                 lots,
                 sampleData.ToDictionary(x => x.Key, x => x.Value.SizeDistribution, StringComparer.OrdinalIgnoreCase),
-                lot => CurrentStorageLotKey(lot.RoomId, lot.Lot, lot.Variety),
+                QcIdentityKey,
                 lot => lot.CurrentBins),
             GradeRepresentedBins = gradeRepresentedBins,
             GradeMissingBins = Math.Max(0, availableBins - gradeRepresentedBins)
@@ -1923,7 +1946,7 @@ public sealed class BinsRunService(
         var estimatedBinsByGrade = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         foreach (var lot in roomLots)
         {
-            if (!sampleData.TryGetValue(CurrentStorageLotKey(lot.RoomId, lot.Lot, lot.Variety), out var data))
+            if (!sampleData.TryGetValue(QcIdentityKey(lot), out var data))
             {
                 continue;
             }
@@ -2660,6 +2683,20 @@ public sealed class BinsRunService(
 
     private static string CurrentStorageLotKey(int roomId, string lot, string variety) =>
         RoomInventoryImportService.CurrentStorageLotKey(roomId, lot, variety);
+
+    private static CanonicalQcFruitIdentity? QcIdentity(InventorySnapshot snapshot) =>
+        CanonicalQcFruitIdentity.Create(
+            snapshot.CropYear,
+            snapshot.GrowerLotId,
+            snapshot.GrowerNumber ?? snapshot.Lot,
+            snapshot.Lot,
+            snapshot.FruitProfileId,
+            snapshot.Variety,
+            snapshot.ProductionType,
+            snapshot.IsOrganic);
+
+    private static string QcIdentityKey(InventorySnapshot snapshot) =>
+        QcIdentity(snapshot)?.LookupKey ?? $"UNRESOLVED:{snapshot.InventoryKey}";
 
     private static string ReceiptLotNumber(Receipt receipt) =>
         !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode;

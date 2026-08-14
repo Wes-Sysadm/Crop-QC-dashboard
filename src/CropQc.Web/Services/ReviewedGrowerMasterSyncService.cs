@@ -83,8 +83,8 @@ public static class ReviewedGrowerMasterSyncConstants
     public const string ApplyAuthorizationToken = "APPLY_REVIEWED_GROWER_MASTER_2026_08_13";
     public const string AuditEntityName = "ReviewedGrowerMasterSync";
     public const string AuditEntityKey = ReviewedGrowerMasterConstants.AssetSha256;
-    public const long VerifiedRestoreBackupRunId = 67;
-    public const string VerifiedRestorePackageSha256 = "d3fb4abc3d7a2cc9d6f27186d6898a2013b8cfc6292393cbbe21e2adc13e7c56";
+    public const long VerifiedRestoreBackupRunId = 69;
+    public const string VerifiedRestorePackageSha256 = "581c9029873df923a5df6d6915762e057ff2d901f39f49a314abe30621364dc2";
 }
 
 public sealed class ReviewedGrowerMasterSyncService(
@@ -428,7 +428,7 @@ public sealed class ReviewedGrowerMasterSyncService(
                     preflight.TargetFingerprint,
                     preflight.ProtectedFingerprint,
                     BackupRunId = backup!.Id,
-                    BackupVerification = databaseVerified ? "DatabaseRecord" : "VerifiedRun67PackageAttestation",
+                    BackupVerification = databaseVerified ? "DatabaseRecord" : "VerifiedDisposableRestorePackageAttestation",
                     request.VerifiedBackupPackageSha256,
                     preflight.ChangedNames,
                     preflight.InactiveRows,
@@ -496,8 +496,12 @@ public sealed class ReviewedGrowerMasterSyncService(
             BinsRuns = await dbContext.BinsRunEntries.AsNoTracking().OrderBy(x => x.Id).Select(x => new { x.Id, x.ReceiptId, x.InventoryAdjustmentId, x.GrowerName, x.GrowerNumberSnapshot, x.LotNumber, x.BinsRun, x.PreviousAvailableBins, x.NewAvailableBins, x.ActualRunId, x.IsReversed }).ToListAsync(cancellationToken),
             ActualRuns = await dbContext.ActualRuns.AsNoTracking().OrderBy(x => x.Id).Select(x => new { x.Id, x.Status, x.CurrentRevisionNumber, x.RunAt }).ToListAsync(cancellationToken),
             ActualRunRevisions = await dbContext.ActualRunRevisions.AsNoTracking().OrderBy(x => x.Id).Select(x => new { x.Id, x.ActualRunId, x.RevisionNumber, x.OperationType, x.OperationKey, x.IsCurrent }).ToListAsync(cancellationToken),
+            RunExpectations = await dbContext.RunExpectations.AsNoTracking().OrderBy(x => x.Id).Select(x => new { x.Id, x.ActualRunId, x.ActualRunRevisionId, x.RevisionNumber, x.TotalBins, x.GrossPounds, x.ExpectedPackoutPercent, x.ExpectedPackedPounds, x.ExpectedWholeBoxes, x.ExpectedCullPounds, x.ExpectedJuicePounds, x.ExpectedPeelerPounds, x.ExpectedWastePounds, x.ConfidencePercent, x.SizeDistributionSnapshotJson, x.GradeDistributionSnapshotJson, x.ConfigurationSnapshotJson, x.CalculationVersion, x.CalculatedAt }).ToListAsync(cancellationToken),
+            RunExpectationSources = await dbContext.RunExpectationSources.AsNoTracking().OrderBy(x => x.Id).Select(x => new { x.Id, x.RunExpectationId, x.BinsRunEntryId, x.WarehouseId, x.RoomId, x.FacilitySnapshot, x.RoomSnapshot, x.CropYearSnapshot, x.GrowerLotId, x.FruitProfileId, x.GrowerSnapshot, x.LotSnapshot, x.VarietySnapshot, x.ProductionTypeSnapshot, x.IsOrganicSnapshot, x.BinsContributed, x.ContributionPercent, x.QcSampleId, x.QcSampleTakenAtSnapshot, x.QcFruitCountSnapshot, x.QcMeasurementSnapshotJson, x.SizeDistributionSnapshotJson, x.GradeDistributionSnapshotJson, x.GrossPounds, x.ExpectedPackedPounds, x.ExpectedWholeBoxes, x.ExpectedCullPounds, x.ConfidencePercent, x.WarningSnapshot }).ToListAsync(cancellationToken),
             GrowerLots = await dbContext.GrowerLots.AsNoTracking().OrderBy(x => x.Id).Select(x => new { x.Id, x.Grower, x.LotNumber, x.PoolStart, x.IsActive }).ToListAsync(cancellationToken),
-            QcSamples = await dbContext.QcSamples.AsNoTracking().OrderBy(x => x.Id).Select(x => new { x.Id, x.ReceiptId, x.Status, x.FieldSampleGrowerName, x.FieldSampleGrowerNumber, x.IsDeleted }).ToListAsync(cancellationToken),
+            QcSamples = await dbContext.QcSamples.AsNoTracking().OrderBy(x => x.Id).Select(x => new { x.Id, x.ReceiptId, x.SampleTypeId, x.SampleSequenceNumber, x.Status, x.FieldSampleGrowerName, x.FieldSampleGrowerNumber, x.SampleTakenAt, x.CreatedAt, x.UpdatedAt, x.IsDeleted }).ToListAsync(cancellationToken),
+            QcFruitReadings = await dbContext.QcFruitReadings.AsNoTracking().OrderBy(x => x.Id).Select(x => new { x.Id, x.QcSampleId, x.RowNumber, x.Pressure1Lbs, x.Pressure2Lbs, x.WeightGrams, x.GradeId, x.StarchScaleValueId, x.SizeCategory, x.SizeStatus, x.DefectsInspected, x.FieldVersion, x.IsCompleted, x.CreatedAt, x.UpdatedAt }).ToListAsync(cancellationToken),
+            QcPhotos = await dbContext.QcPhotos.AsNoTracking().OrderBy(x => x.Id).Select(x => new { x.Id, x.ReceiptId, x.QcSampleId, x.PhotoType, x.PhotoSource, x.FileName, x.ContentType, x.FileSizeBytes, x.StorageProvider, x.DriveId, x.FileId, x.FolderId, x.SharePointDriveId, x.SharePointItemId, x.CapturedAt, x.UploadedAt, x.IsDeleted }).ToListAsync(cancellationToken),
             Users = await dbContext.Users.AsNoTracking().OrderBy(x => x.Id).Select(x => new { x.Id, x.Email, x.DisplayName, x.IsActive, x.EmploymentFacility }).ToListAsync(cancellationToken),
             Roles = await dbContext.Roles.AsNoTracking().OrderBy(x => x.Id).Select(x => new { x.Id, x.Name, x.NormalizedName, x.IsActive }).ToListAsync(cancellationToken),
             UserRoles = await dbContext.UserRoles.AsNoTracking().OrderBy(x => x.UserId).ThenBy(x => x.RoleId).Select(x => new { x.UserId, x.RoleId }).ToListAsync(cancellationToken),

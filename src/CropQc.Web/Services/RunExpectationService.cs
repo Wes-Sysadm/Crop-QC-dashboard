@@ -166,19 +166,18 @@ public sealed class RunExpectationService(
         }
 
         var roomIds = activeEntries.Select(x => x.RoomId).Distinct().ToList();
+        var qcTargets = activeEntries
+            .Select(QcIdentity)
+            .Where(x => x is not null)
+            .Select(x => x!)
+            .DistinctBy(x => x.LookupKey)
+            .ToList();
         var fruitProfileIds = activeEntries
             .Select(x => x.ReportingFruitProfileIdSnapshot ?? x.FruitProfileId)
             .Where(x => x != null)
             .Select(x => x!.Value)
             .Distinct()
             .ToList();
-        var cropYears = activeEntries
-            .Select(x => x.ReportingCropYearSnapshot ?? x.CropYear)
-            .Where(x => x != null)
-            .Select(x => x!.Value)
-            .Distinct()
-            .ToList();
-        var lotNumbers = activeEntries.Select(x => x.LotNumber).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var warehouse = await dbContext.Warehouses.AsNoTracking()
             .Where(x => x.Id == warehouseIds[0])
             .Select(x => new { x.Id, x.Code })
@@ -194,22 +193,23 @@ public sealed class RunExpectationService(
             .ToDictionaryAsync(x => x.Id, cancellationToken);
 
         // Filter before materialization and cap the candidate set. The final lot match is exact and never fuzzy.
-        var candidateSamples = await dbContext.QcSamples.AsNoTracking()
-            .Where(x => !x.IsDeleted
-                && x.SampleTakenAt <= actualRun.RunAt
-                && x.ReceiptId != null
-                && roomIds.Contains(x.Receipt!.RoomId)
-                && fruitProfileIds.Contains(x.Receipt.FruitProfileId)
-                && cropYears.Contains(x.Receipt.CropYear)
-                && lotNumbers.Contains(x.Receipt.GrowerNumber ?? x.Receipt.LotCode))
-            .OrderByDescending(x => x.SampleTakenAt)
-            .ThenByDescending(x => x.Id)
+        var candidateSampleQuery = CanonicalQcFruitIdentity.FilterReceiptSamples(
+                dbContext.QcSamples.AsNoTracking(),
+                qcTargets,
+                actualRun.RunAt);
+        var candidateSamples = await CanonicalQcFruitIdentity.OrderCandidates(
+                candidateSampleQuery,
+                dbContext.Database.ProviderName)
             .Select(x => new ExpectationQcCandidate(
                 x.Id,
-                x.Receipt!.RoomId,
+                x.Receipt!.GrowerLotId,
+                x.Receipt.LotCode,
+                x.Receipt.GrowerNumber ?? x.Receipt.LotCode,
                 x.Receipt.FruitProfileId,
                 x.Receipt.CropYear,
-                x.Receipt.GrowerNumber ?? x.Receipt.LotCode,
+                x.Receipt.FruitProfile.VarietyCode,
+                x.Receipt.FruitProfile.ProductionType,
+                x.Receipt.FruitProfile.IsOrganic,
                 x.SampleTakenAt,
                 x.SampleType.Name,
                 x.FruitReadings
@@ -222,7 +222,7 @@ public sealed class RunExpectationService(
                         y.Pressure1Lbs,
                         y.Pressure2Lbs))
                     .ToList()))
-            .Take(Math.Clamp(activeEntries.Count * 10, 500, 2000))
+            .Take(CanonicalQcFruitIdentity.CandidateLimit(qcTargets.Count))
             .ToListAsync(cancellationToken);
 
         var settingKeys = new[]
@@ -278,11 +278,15 @@ public sealed class RunExpectationService(
             var profile = reportingFruitProfileId is int profileId && profiles.TryGetValue(profileId, out var resolvedProfile)
                 ? resolvedProfile
                 : null;
-            var sample = candidateSamples.FirstOrDefault(x =>
-                x.RoomId == entry.RoomId
-                && x.FruitProfileId == reportingFruitProfileId
-                && x.CropYear == reportingCropYear
-                && string.Equals(x.LotNumber, entry.LotNumber, StringComparison.OrdinalIgnoreCase));
+            var targetIdentity = QcIdentity(entry);
+            var sample = targetIdentity is null
+                ? null
+                : CanonicalQcFruitIdentity.ResolveLatestUnambiguous(
+                        targetIdentity,
+                        candidateSamples,
+                        x => x.Identity,
+                        x => x.SampleTakenAt,
+                        x => x.Id);
             var readings = sample?.Readings ?? [];
             var calculation = RunProjectionCalculationService.Calculate(
                 profile?.FruitType,
@@ -390,15 +394,41 @@ public sealed class RunExpectationService(
     private static int ReadPositiveInt(IReadOnlyDictionary<string, string> values, string key, int fallback) =>
         values.TryGetValue(key, out var value) && int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
 
+    private static CanonicalQcFruitIdentity? QcIdentity(BinsRunEntry entry) =>
+        CanonicalQcFruitIdentity.Create(
+            entry.ReportingCropYearSnapshot ?? entry.CropYear,
+            entry.GrowerLotId,
+            entry.GrowerNumberSnapshot ?? entry.LotNumber,
+            entry.LotNumber,
+            entry.ReportingFruitProfileIdSnapshot ?? entry.FruitProfileId,
+            entry.ReportingVarietyCodeSnapshot ?? entry.VarietyCode,
+            entry.ProductionTypeSnapshot ?? entry.InventoryStatus,
+            entry.IsOrganicSnapshot);
+
     private sealed record ExpectationQcCandidate(
         long Id,
-        int RoomId,
+        int? GrowerLotId,
+        string GrowerNumber,
+        string LotNumber,
         int FruitProfileId,
         int CropYear,
-        string LotNumber,
+        string VarietyCode,
+        string ProductionType,
+        bool IsOrganic,
         DateTimeOffset SampleTakenAt,
         string SampleType,
-        IReadOnlyList<ExpectationReading> Readings);
+        IReadOnlyList<ExpectationReading> Readings)
+    {
+        public CanonicalQcFruitIdentity? Identity { get; } = CanonicalQcFruitIdentity.Create(
+            CropYear,
+            GrowerLotId,
+            GrowerNumber,
+            LotNumber,
+            FruitProfileId,
+            VarietyCode,
+            ProductionType,
+            IsOrganic);
+    }
 
     private sealed record ExpectationReading(
         int RowNumber,

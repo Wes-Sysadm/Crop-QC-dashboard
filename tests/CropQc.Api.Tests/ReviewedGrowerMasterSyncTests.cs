@@ -33,6 +33,7 @@ public sealed class ReviewedGrowerMasterSyncTests
     [InlineData("1050", "MFR - FUJI ORCH-BLK E", "FE")]
     [InlineData("1080", "WINDY POINT", "WP")]
     [InlineData("1082", "WP Orchard - EP Non-Chilean", "WN")]
+    [InlineData("1530", "Baldwin Pears", "BA")]
     [InlineData("9660", "MFR - SONBAY", "SO")]
     public async Task ReviewedSource_ContainsExpectedAuthoritativeNames(string number, string name, string pool)
     {
