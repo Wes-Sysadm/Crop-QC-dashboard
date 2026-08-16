@@ -23,7 +23,7 @@ public interface IDashboardDataService
     Task<CropYearReviewPageViewModel> GetCropYearReviewAsync(CropYearReviewFilterForm filter, CancellationToken cancellationToken);
     Task<MasterDataPageViewModel> GetMasterDataPageAsync(string type, CancellationToken cancellationToken);
     Task<ReceiptListViewModel> SearchReceiptsAsync(ReceiptSearchForm search, CancellationToken cancellationToken);
-    Task<string?> CreateReceiptAsync(CreateReceiptForm form, CancellationToken cancellationToken);
+    Task<CreateReceiptResult> CreateReceiptAsync(CreateReceiptForm form, CancellationToken cancellationToken);
     Task<ReceiptDetailViewModel> GetReceiptDetailAsync(long id, CancellationToken cancellationToken);
     Task<EditReceiptPageViewModel> GetReceiptEditAsync(long id, CancellationToken cancellationToken);
     Task<string?> UpdateReceiptAsync(UpdateReceiptForm form, CancellationToken cancellationToken);
@@ -44,6 +44,7 @@ public interface IDashboardDataService
     Task<string?> LogOverrideSendAsync(OverrideSendForm form, CancellationToken cancellationToken);
     Task<string?> AddPhotoMetadataAsync(AddPhotoMetadataForm form, CancellationToken cancellationToken);
     Task<string?> AddSamplePhotoMetadataAsync(long sampleId, AddPhotoMetadataForm form, CancellationToken cancellationToken);
+    Task<string?> RemoveReceiptPhotoAsync(long receiptId, long photoId, CancellationToken cancellationToken);
     Task<string?> RemoveSamplePhotoAsync(long sampleId, long photoId, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, string? facility, CancellationToken cancellationToken);
@@ -1310,35 +1311,35 @@ public sealed class DashboardDataService(
         }
     }
 
-    public async Task<string?> CreateReceiptAsync(CreateReceiptForm form, CancellationToken cancellationToken)
+    public async Task<CreateReceiptResult> CreateReceiptAsync(CreateReceiptForm form, CancellationToken cancellationToken)
     {
         var receiptType = NormalizeReceiptType(form.ReceiptType);
         if (string.IsNullOrWhiteSpace(form.CompuTechReceiptId) || (form.GrowerLotId is null && (string.IsNullOrWhiteSpace(form.GrowerName) || string.IsNullOrWhiteSpace(form.GrowerNumber))) || (IsInventoryReceiptType(receiptType) && form.BinCount <= 0))
         {
-            return "Receipt ID, grower, Lot #, receipt type, and bin count for truck receipts are required.";
+            return new(null, null, "Receipt ID, grower, Lot #, receipt type, and bin count for truck receipts are required.");
         }
 
         var room = await dbContext.Rooms.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.RoomId, cancellationToken);
         if (room is null)
         {
-            return "Selected room was not found.";
+            return new(null, null, "Selected room was not found.");
         }
 
         if (room.WarehouseId != form.WarehouseId)
         {
-            return "Selected room does not belong to the selected warehouse.";
+            return new(null, null, "Selected room does not belong to the selected warehouse.");
         }
 
         var fruitProfile = await dbContext.FruitProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.FruitProfileId, cancellationToken);
         if (fruitProfile is null)
         {
-            return "Selected variety was not found.";
+            return new(null, null, "Selected variety was not found.");
         }
 
         if (cropYearService.RequiresConfirmation(form.ReceivedAt, form.CropYear) && !form.ConfirmCropYear)
         {
             var candidates = string.Join(", ", cropYearService.GetCandidateCropYears(form.ReceivedAt));
-            return $"Confirm Crop Year before saving. Suggested crop year option(s) for this received date: {candidates}.";
+            return new(null, null, $"Confirm Crop Year before saving. Suggested crop year option(s) for this received date: {candidates}.");
         }
 
         GrowerLot? growerLot = null;
@@ -1347,7 +1348,7 @@ public sealed class DashboardDataService(
             growerLot = await dbContext.GrowerLots.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.GrowerLotId && x.IsActive, cancellationToken);
             if (growerLot is null)
             {
-                return "Selected grower lot was not found or is inactive.";
+                return new(null, null, "Selected grower lot was not found or is inactive.");
             }
         }
 
@@ -1379,7 +1380,7 @@ public sealed class DashboardDataService(
         await dbContext.SaveChangesAsync(cancellationToken);
         if (!IsInventoryReceiptType(receiptType))
         {
-            return null;
+            return new(receipt.Id, receipt.CompuTechReceiptId, null);
         }
 
         var currentUser = await GetCurrentUserAsync(cancellationToken);
@@ -1396,7 +1397,7 @@ public sealed class DashboardDataService(
             roomDepletionId: null);
         await AddAuditAsync("BinCountChange", nameof(RoomInventoryAdjustment), receipt.CompuTechReceiptId, currentUser?.Email ?? "unknown", null, $"ReceiptAdd {receipt.BinCount} bins in room {room.Code}.", cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return null;
+        return new(receipt.Id, receipt.CompuTechReceiptId, null);
     }
 
     private async Task<string?> ValidateReceiptFormAsync(CreateReceiptForm form, string receiptType, CancellationToken cancellationToken)
@@ -1494,7 +1495,10 @@ public sealed class DashboardDataService(
                 Receipt = ReceiptListItem(receipt, growerResolver: growerResolver),
                 Samples = await EnrichSamplesAsync(samples, cancellationToken),
                 SampleTypes = await GetReceiptSampleTypesAsync(cancellationToken),
-                PhotoGroups = GroupPhotos(photos, canDelete: false),
+                PhotoGroups = GroupPhotos(
+                    photos,
+                    await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken),
+                    deleteFromReceiptId: receipt.Id),
                 CanDeleteSamples = await HasAccessAsync(ApplicationAreas.DailyQc, PageAccessLevel.Admin, cancellationToken),
                 DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
                 InventoryOverrides = inventoryOverrides,
@@ -2865,6 +2869,67 @@ public sealed class DashboardDataService(
                 await MarkSampleNeedsResendIfSentAsync(sample, "photo-removed", changedBy, before, cancellationToken);
                 await RefreshSampleStatusesAsync(sample, cancellationToken);
             }
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
+    public async Task<string?> RemoveReceiptPhotoAsync(long receiptId, long photoId, CancellationToken cancellationToken)
+    {
+        if (!await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken))
+        {
+            return "You do not have permission to remove receipt photos.";
+        }
+
+        var receiptExists = await dbContext.Receipts
+            .AsNoTracking()
+            .AnyAsync(x => x.Id == receiptId && !x.IsDeleted, cancellationToken);
+        if (!receiptExists)
+        {
+            return "Receipt not found.";
+        }
+
+        var photo = await dbContext.QcPhotos
+            .SingleOrDefaultAsync(x => x.Id == photoId && x.ReceiptId == receiptId && x.QcSampleId == null && !x.IsDeleted, cancellationToken);
+        if (photo is null)
+        {
+            return "Receipt photo was not found.";
+        }
+
+        var changedBy = GetCurrentUserEmail() ?? "unknown";
+        var before = JsonSerializer.Serialize(new
+        {
+            photo.Id,
+            photo.ReceiptId,
+            photo.QcSampleId,
+            photo.PhotoType,
+            photo.FileName,
+            photo.FileId,
+            photo.WebUrl
+        });
+
+        photo.IsDeleted = true;
+        photo.DeletedAt = DateTimeOffset.UtcNow;
+        photo.DeletedByUserId = await GetCurrentUserIdAsync(cancellationToken);
+        photo.DeleteReason = "Removed from receipt detail";
+
+        await AddAuditAsync(
+            "remove-photo",
+            nameof(QcPhoto),
+            photo.Id.ToString(),
+            changedBy,
+            before,
+            JsonSerializer.Serialize(new { photo.Id, photo.IsDeleted, photo.DeletedAt, photo.PhotoType, photo.FileId }),
+            cancellationToken);
+
+        var receiptSamples = await dbContext.QcSamples
+            .Where(x => x.ReceiptId == receiptId && !x.IsDeleted)
+            .ToListAsync(cancellationToken);
+        foreach (var receiptSample in receiptSamples)
+        {
+            await MarkSampleNeedsResendIfSentAsync(receiptSample, "photo-removed", changedBy, before, cancellationToken);
+            await RefreshSampleStatusesAsync(receiptSample, cancellationToken);
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -6865,11 +6930,28 @@ public sealed class DashboardDataService(
     private static bool IsInventoryReceiptType(string receiptType) =>
         NormalizeReceiptType(receiptType).Equals("Truck receipt", StringComparison.OrdinalIgnoreCase);
 
-    private static IReadOnlyList<PhotoGroupViewModel> GroupPhotos(IReadOnlyList<QcPhoto> photos, bool canDelete, long? deleteFromSampleId = null) =>
+    private static IReadOnlyList<PhotoGroupViewModel> GroupPhotos(
+        IReadOnlyList<QcPhoto> photos,
+        bool canDelete,
+        long? deleteFromSampleId = null,
+        long? deleteFromReceiptId = null) =>
         photos.Where(x => !x.IsDeleted)
             .GroupBy(x => QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType))
             .OrderBy(x => x.Key)
-            .Select(x => new PhotoGroupViewModel(x.Key, x.Select(photo => new PhotoMetadataViewModel(photo.Id, photo.QcSampleId, deleteFromSampleId, QcPhotoRequirementPolicy.NormalizePhotoType(photo.PhotoType), photo.PhotoSource, photo.FileName, photo.ContentType, photo.FileSizeBytes, photo.WebUrl, photo.CapturedAt, canDelete)).ToList()))
+            .Select(x => new PhotoGroupViewModel(x.Key, x.Select(photo => new PhotoMetadataViewModel(
+                photo.Id,
+                photo.QcSampleId,
+                deleteFromSampleId,
+                QcPhotoRequirementPolicy.NormalizePhotoType(photo.PhotoType),
+                photo.PhotoSource,
+                photo.FileName,
+                photo.ContentType,
+                photo.FileSizeBytes,
+                photo.WebUrl,
+                photo.CapturedAt,
+                canDelete,
+                deleteFromReceiptId is long receiptId ? $"/Receipts/{receiptId}/photos/{photo.Id}/remove" : null,
+                photo.WebUrl is not null && photo.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))).ToList()))
             .ToList();
 
     private async Task<FileStorageReference> SavePhotoFileOrPlaceholderAsync(AddPhotoMetadataForm form, FileStorageTargetContext context, CancellationToken cancellationToken)

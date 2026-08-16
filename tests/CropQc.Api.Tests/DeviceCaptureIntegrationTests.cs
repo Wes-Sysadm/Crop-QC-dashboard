@@ -21,7 +21,7 @@ public sealed class DeviceCaptureIntegrationTests
     }
 
     [Fact]
-    public void NewReceiptPage_ShowsDeviceCapturePanelAndSaveFirstGuidance()
+    public void NewReceiptPage_StagesOptionalReceiptPhotosBeforeSave()
     {
         var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
@@ -30,7 +30,10 @@ public sealed class DeviceCaptureIntegrationTests
         Assert.Contains("public DeviceCaptureSettingsViewModel DeviceCapture", model);
         Assert.Contains("DeviceCapture = await GetDeviceCaptureSettingsAsync", service);
         Assert.Contains("Html.PartialAsync(\"_DeviceCapturePanel\"", receiptIndexView);
-        Assert.Contains("Save the receipt first to attach photos.", receiptIndexView);
+        Assert.Contains("_StagedReceiptPhotos", receiptIndexView);
+        Assert.Contains("StageReceiptPhotos: true", receiptIndexView);
+        Assert.Contains("enctype=\"multipart/form-data\"", receiptIndexView);
+        Assert.Contains("data-receipt-submit", receiptIndexView);
     }
 
     [Fact]
@@ -151,6 +154,41 @@ public sealed class DeviceCaptureIntegrationTests
         Assert.Contains("form.append(\"PhotoFile\"", panel);
         Assert.Contains("credentials: \"same-origin\"", panel);
         Assert.Contains("__RequestVerificationToken", panel);
+    }
+
+    [Fact]
+    public void UnsavedReceiptCameraCapture_StagesTruckStillImagesWithoutServerUpload()
+    {
+        var panel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_DeviceCapturePanel.cshtml"));
+        var staging = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "js", "staged-receipt-photos.js"));
+        var partial = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_StagedReceiptPhotos.cshtml"));
+
+        Assert.Contains("data-stage-receipt-photos", panel);
+        Assert.Contains("photoType === \"BinTruck\" || photoType === \"TopOfTruck\"", panel);
+        Assert.Contains("cropqc:stage-receipt-photo", panel);
+        Assert.Contains("detail: { file, photoType, photoSource }", panel);
+        Assert.Contains("Receipt Photos (Optional)", partial);
+        Assert.Contains("No receipt photos selected.", partial);
+        Assert.Contains("URL.createObjectURL(file)", staging);
+        Assert.Contains("URL.revokeObjectURL(item.previewUrl)", staging);
+        Assert.Contains("Remove staged photo", staging);
+        Assert.Contains("stagedPhotos[${index}].PhotoFile", staging);
+        Assert.Contains("if (submitting)", staging);
+        Assert.DoesNotContain("localStorage", staging, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("base64", staging, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void StagedReceiptPhotoClient_RejectsUnsupportedAndOversizedFiles()
+    {
+        var staging = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "js", "staged-receipt-photos.js"));
+
+        Assert.Contains("15 * 1024 * 1024", staging);
+        Assert.Contains("image/jpeg", staging);
+        Assert.Contains("image/png", staging);
+        Assert.Contains("image/webp", staging);
+        Assert.Contains("allowedExtensions", staging);
+        Assert.Contains("return false", staging);
     }
 
     [Fact]

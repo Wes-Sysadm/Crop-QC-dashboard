@@ -431,7 +431,10 @@ public sealed class QcSummaryEmailComposerTests
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "SamplesController.cs"));
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
 
-        Assert.Contains("Remove Photo", photoGroups);
+        Assert.Contains("aria-label=\"Remove photo\"", photoGroups);
+        Assert.Contains("title=\"Remove photo\"", photoGroups);
+        Assert.Contains("Remove this receipt photo?", photoGroups);
+        Assert.Contains("Remove this photo from the sample?", photoGroups);
         Assert.Contains("RemoveSamplePhotoAsync", controller);
         Assert.Contains("IsDeleted = true", service);
         Assert.Contains("remove-photo", service);

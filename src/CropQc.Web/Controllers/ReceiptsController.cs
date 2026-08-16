@@ -98,15 +98,60 @@ public sealed class ReceiptsController(
 
     [HttpPost("Create")]
     [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
-    public async Task<IActionResult> Create(CreateReceiptForm form, CancellationToken cancellationToken)
+    public async Task<IActionResult> Create(
+        CreateReceiptForm form,
+        List<StagedReceiptPhotoForm> stagedPhotos,
+        CancellationToken cancellationToken)
     {
-        var error = await dataService.CreateReceiptAsync(form, cancellationToken);
-        if (error is not null)
+        var result = await dataService.CreateReceiptAsync(form, cancellationToken);
+        if (!result.Succeeded)
         {
-            TempData["Error"] = error;
+            TempData["Error"] = result.Error;
+            return RedirectToAction(nameof(Index));
         }
 
-        return RedirectToAction(nameof(Index));
+        if (stagedPhotos.Count == 0)
+        {
+            return RedirectToAction(nameof(Index));
+        }
+
+        var failures = 0;
+        foreach (var stagedPhoto in stagedPhotos)
+        {
+            if (stagedPhoto.PhotoFile is null
+                || !IsAllowedPhotoType(stagedPhoto.PhotoType, "BinTruck", "TopOfTruck", "Other"))
+            {
+                failures++;
+                continue;
+            }
+
+            var photoForm = new AddPhotoMetadataForm
+            {
+                ReceiptId = result.ReceiptId,
+                QcSampleId = null,
+                PhotoFile = stagedPhoto.PhotoFile,
+                PhotoType = stagedPhoto.PhotoType,
+                PhotoSource = string.IsNullOrWhiteSpace(stagedPhoto.PhotoSource) ? "Upload File" : stagedPhoto.PhotoSource,
+                FileName = stagedPhoto.PhotoFile.FileName,
+                ContentType = stagedPhoto.PhotoFile.ContentType,
+                FileSizeBytes = stagedPhoto.PhotoFile.Length
+            };
+            if (await dataService.AddPhotoMetadataAsync(photoForm, cancellationToken) is not null)
+            {
+                failures++;
+            }
+        }
+
+        if (failures > 0)
+        {
+            TempData["Warning"] = $"Receipt {result.ReceiptNumber} was saved, but {failures} of {stagedPhotos.Count} photos could not be uploaded. You can add the missing photo from Receipt Photos.";
+        }
+        else
+        {
+            TempData["Success"] = $"Receipt {result.ReceiptNumber} and {stagedPhotos.Count} photo{(stagedPhotos.Count == 1 ? "" : "s")} saved.";
+        }
+
+        return RedirectToAction(nameof(Details), new { id = result.ReceiptId });
     }
 
     [HttpGet("{id:long}")]
@@ -241,6 +286,15 @@ public sealed class ReceiptsController(
             ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
             : "Only truck, top-of-truck, or other photos can be added from the receipt detail page.";
         TempData[error is null ? "Success" : "Error"] = error ?? "Photo uploaded successfully.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost("{id:long}/photos/{photoId:long}/remove")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
+    public async Task<IActionResult> RemovePhoto(long id, long photoId, CancellationToken cancellationToken)
+    {
+        var error = await dataService.RemoveReceiptPhotoAsync(id, photoId, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Receipt photo removed.";
         return RedirectToAction(nameof(Details), new { id });
     }
 

@@ -1297,6 +1297,18 @@ public class CreateReceiptForm
     public int BinCount { get; set; }
 }
 
+public sealed class StagedReceiptPhotoForm
+{
+    public IFormFile? PhotoFile { get; set; }
+    public string PhotoType { get; set; } = "";
+    public string PhotoSource { get; set; } = "Upload File";
+}
+
+public sealed record CreateReceiptResult(long? ReceiptId, string? ReceiptNumber, string? Error)
+{
+    public bool Succeeded => ReceiptId is not null && Error is null;
+}
+
 public sealed class EditReceiptPageViewModel
 {
     public string? DataWarning { get; set; }
@@ -1722,6 +1734,7 @@ public sealed record DeviceCapturePanelViewModel(
     bool ShowTruckPhotos = false,
     bool ShowApplePhotos = false,
     bool ShowScale = false,
+    bool StageReceiptPhotos = false,
     string? RequiresSavedTargetMessage = null,
     string FruitCameraLabel = "Apple camera",
     string WholeSampleLabel = "Whole Apple Sample",

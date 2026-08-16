@@ -4,14 +4,17 @@
     var hasPhotoAction = !string.IsNullOrWhiteSpace(Model.ReceiptPhotoAction)
         || !string.IsNullOrWhiteSpace(Model.SamplePhotoAction)
         || !string.IsNullOrWhiteSpace(Model.StarchPhotoAction);
+    var canStageReceiptPhotos = Model.StageReceiptPhotos && Model.ShowTruckPhotos;
+    var hasPhotoTarget = hasPhotoAction || canStageReceiptPhotos;
     var saveFirstMessage = Model.RequiresSavedTargetMessage
-        ?? (!hasPhotoAction && (Model.ShowTruckPhotos || Model.ShowApplePhotos) ? "Save the receipt first to attach photos." : null);
+        ?? (!hasPhotoTarget && (Model.ShowTruckPhotos || Model.ShowApplePhotos) ? "Save the receipt first to attach photos." : null);
 }
 <section class="panel device-capture-panel"
          id="@panelId"
          data-receipt-photo-action="@Model.ReceiptPhotoAction"
          data-sample-photo-action="@Model.SamplePhotoAction"
          data-starch-photo-action="@Model.StarchPhotoAction"
+         data-stage-receipt-photos="@Model.StageReceiptPhotos.ToString().ToLowerInvariant()"
          data-global-enabled="@Model.Settings.Enabled.ToString().ToLowerInvariant()"
          data-brio-enabled="@Model.Settings.BrioEnabled.ToString().ToLowerInvariant()"
          data-obsbot-enabled="@Model.Settings.ObsbotEnabled.ToString().ToLowerInvariant()"
@@ -97,8 +100,8 @@
     <div class="button-row device-actions" data-device-actions hidden>
         @if (Model.ShowTruckPhotos)
         {
-            <button type="button" data-capture-photo="BinTruck" data-camera-role="truck" disabled="@(!hasPhotoAction)">Capture Truck Photo</button>
-            <button type="button" class="secondary-button" data-capture-photo="TopOfTruck" data-camera-role="truck" disabled="@(!hasPhotoAction)">Capture Top of Truck</button>
+            <button type="button" data-capture-photo="BinTruck" data-camera-role="truck" disabled="@(!hasPhotoAction && !canStageReceiptPhotos)">Capture Truck Photo</button>
+            <button type="button" class="secondary-button" data-capture-photo="TopOfTruck" data-camera-role="truck" disabled="@(!hasPhotoAction && !canStageReceiptPhotos)">Capture Top of Truck</button>
         }
         @if (Model.ShowApplePhotos)
         {
@@ -161,6 +164,7 @@
         let cameraControlCapabilities = {};
         const cameraControlTimers = {};
         const cameraControlVersions = {};
+        const stageReceiptPhotos = panel.dataset.stageReceiptPhotos === "true";
         let serialPort = null;
         let serialReader = null;
         let lastWeight = null;
@@ -532,7 +536,10 @@
 
         async function capturePhoto(photoType, role) {
             const action = actionFor(photoType);
-            if (!action) {
+            const shouldStage = !action
+                && stageReceiptPhotos
+                && (photoType === "BinTruck" || photoType === "TopOfTruck");
+            if (!action && !shouldStage) {
                 show("Save the receipt first to attach photos.", true);
                 return;
             }
@@ -558,10 +565,20 @@
 
             const safeType = photoType.replace(/[^A-Za-z0-9_-]/g, "");
             const fileName = `${safeType}_${new Date().toISOString().replace(/[:.]/g, "-")}.jpg`;
+            const photoSource = role === "truck" ? "OBSBOT Tiny 2 Lite" : "Logitech Brio 4K";
+            const file = new File([blob], fileName, { type: "image/jpeg" });
+            if (shouldStage) {
+                window.dispatchEvent(new CustomEvent("cropqc:stage-receipt-photo", {
+                    detail: { file, photoType, photoSource }
+                }));
+                status("last-photo", `${friendlyPhotoType(photoType)} staged`);
+                show(`${friendlyPhotoType(photoType)} staged. Review the thumbnail before saving the receipt.`);
+                return;
+            }
             const form = new FormData();
             form.append("PhotoType", photoType);
-            form.append("PhotoSource", role === "truck" ? "OBSBOT Tiny 2 Lite" : "Logitech Brio 4K");
-            form.append("PhotoFile", new File([blob], fileName, { type: "image/jpeg" }));
+            form.append("PhotoSource", photoSource);
+            form.append("PhotoFile", file);
             form.append("FileName", fileName);
             form.append("ContentType", "image/jpeg");
             form.append("FileSizeBytes", String(blob.size));

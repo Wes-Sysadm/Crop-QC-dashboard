@@ -1,0 +1,25 @@
+<section class="staged-receipt-photos field wide" data-staged-receipt-photos>
+    <div class="staged-receipt-photo-heading">
+        <div>
+            <h3>Receipt Photos (Optional)</h3>
+            <p class="muted">Review optional truck, top-of-truck, or other photos before saving the receipt.</p>
+        </div>
+        <label class="field">Photo type
+            <select data-staged-photo-type>
+                <option value="BinTruck">Truck photo</option>
+                <option value="TopOfTruck">Top of truck</option>
+                <option value="Other">Other</option>
+            </select>
+        </label>
+    </div>
+    <div class="staged-receipt-photo-drop-zone" data-staged-photo-drop-zone>
+        <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple hidden data-staged-photo-picker />
+        <button type="button" class="secondary-button" data-staged-photo-browse>Choose receipt photos</button>
+        <span>or drop JPG, PNG, or WEBP images here (15 MB maximum each)</span>
+    </div>
+    <p class="muted" data-staged-photo-empty>No receipt photos selected.</p>
+    <div class="staged-receipt-photo-grid" data-staged-photo-list aria-live="polite"></div>
+    <div data-staged-photo-fields hidden></div>
+    <p class="notice warning" data-staged-photo-message role="alert" hidden></p>
+</section>
+<script src="~/js/staged-receipt-photos.js" asp-append-version="true"></script>
