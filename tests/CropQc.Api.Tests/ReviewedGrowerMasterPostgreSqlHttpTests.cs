@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using CropQc.Data;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
@@ -21,6 +23,80 @@ namespace CropQc.Api.Tests;
 
 public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
 {
+    [Fact]
+    public async Task Authenticated_EbsAndWpEndOfDayFillPreviews_ReconcileSummaryAndDetailWithoutWrites_WhenConfigured()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_REVIEWED_GROWER_V2_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connectionString);
+        await using var factory = new RestoreWebApplicationFactory(connectionString);
+        var before = await CaptureProtectedTotalsAsync(factory.Services);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            HandleCookies = true
+        });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthenticationHandler.SchemeName);
+        var evidence = new List<EndOfDayFillEvidence>();
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var service = scope.ServiceProvider.GetRequiredService<IEndOfDayFillService>();
+            var resolver = await scope.ServiceProvider.GetRequiredService<ICanonicalGrowerService>()
+                .LoadResolutionSetAsync(CancellationToken.None);
+            var groups = await db.EndOfDayFillReportGroups.AsNoTracking()
+                .Where(x => x.IsActive && (x.Facility == "EBS" || x.Facility == "WP"))
+                .OrderBy(x => x.Facility)
+                .ToListAsync();
+
+            Assert.Equal(["EBS", "WP"], groups.Select(x => x.Facility).Distinct().Order());
+            foreach (var group in groups.GroupBy(x => x.Facility).Select(x => x.First()))
+            {
+                var preview = await service.GetPreviewAsync(ApplicationAreas.OwnerEmail, group.Id, CancellationToken.None);
+                Assert.NotEmpty(preview.Rooms);
+                Assert.DoesNotContain(preview.Issues, x => x.Code == "inventory-conflict");
+                Assert.Equal(preview.RoomSummary.TotalCurrentBins, preview.Rooms.Sum(x => x.CurrentBins));
+                Assert.Equal(preview.RoomSummary.TotalCapacityBins, preview.Rooms.Sum(x => x.CapacityBins));
+                Assert.Equal(
+                    decimal.Round(preview.RoomSummary.TotalCurrentBins * 100m / preview.RoomSummary.TotalCapacityBins, 1),
+                    preview.RoomSummary.TotalPercentFull);
+                Assert.Equal(
+                    preview.RoomSummary.TotalCurrentBins,
+                    preview.Rooms.Sum(x => x.Varieties.Sum(v => v.Growers.Sum(g => g.Bins))));
+                Assert.All(preview.Rooms.SelectMany(x => x.Varieties).SelectMany(x => x.Growers), grower =>
+                    Assert.Equal(resolver.DisplayName(grower.GrowerName, grower.GrowerNumber), grower.GrowerName));
+
+                var response = await client.GetAsync($"/EndOfDayFill?groupId={group.Id}");
+                var body = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                AssertNoDatabaseTranslationFailure(body);
+                AssertRenderedSummaryMatchesPreview(body, preview);
+                evidence.Add(new(
+                    group.Name,
+                    group.Facility,
+                    preview.Rooms.Select(x => new EndOfDayFillRoomEvidence(
+                        x.RoomCode,
+                        x.CurrentBins,
+                        x.CapacityBins,
+                        x.PercentFull,
+                        x.Varieties.Sum(v => v.Growers.Sum(g => g.Bins)))).ToList(),
+                    preview.RoomSummary.TotalCurrentBins,
+                    preview.RoomSummary.TotalCapacityBins,
+                    preview.RoomSummary.TotalPercentFull));
+            }
+        }
+
+        Assert.Equal(before, await CaptureProtectedTotalsAsync(factory.Services));
+        var evidencePath = Environment.GetEnvironmentVariable("CROPQC_EOD_SUMMARY_EVIDENCE");
+        if (!string.IsNullOrWhiteSpace(evidencePath))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(evidencePath)!);
+            await File.WriteAllTextAsync(evidencePath, JsonSerializer.Serialize(evidence, new JsonSerializerOptions { WriteIndented = true }));
+        }
+    }
+
     [Fact]
     public async Task Authenticated_post_v2_restore_routes_render_latest_names_and_preserve_transferred_qc_when_configured()
     {
@@ -174,6 +250,34 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
         Assert.DoesNotContain("HTTP 500", body, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static void AssertRenderedSummaryMatchesPreview(string body, EndOfDayFillPreviewViewModel preview)
+    {
+        var summaryIndex = body.IndexOf("Room Summary", StringComparison.Ordinal);
+        var detailIndex = body.IndexOf("Detailed Room Breakdown", StringComparison.Ordinal);
+        Assert.True(summaryIndex >= 0 && summaryIndex < detailIndex);
+
+        var summary = Regex.Match(
+            body,
+            "<section class=\"panel end-of-day-fill-summary\">(?<content>.*?)</section>",
+            RegexOptions.Singleline).Groups["content"].Value;
+        Assert.NotEmpty(summary);
+        var bodyRows = Regex.Match(summary, "<tbody>(?<content>.*?)</tbody>", RegexOptions.Singleline)
+            .Groups["content"].Value;
+        Assert.Equal(preview.Rooms.Count, Regex.Matches(bodyRows, "<tr>").Count);
+
+        foreach (var room in preview.Rooms)
+        {
+            Assert.Matches(
+                $"<tr>\\s*<td>{Regex.Escape(room.RoomCode)}</td>\\s*<td class=\"numeric-cell\">{Regex.Escape(room.CurrentBins.ToString("N0"))}</td>\\s*<td class=\"numeric-cell\">{Regex.Escape(room.CapacityBins.ToString("N0"))}</td>\\s*<td class=\"numeric-cell\">{Regex.Escape(room.PercentFull.ToString("N1"))}%</td>\\s*</tr>",
+                bodyRows);
+            Assert.Contains($"{room.CurrentBins:N0} / {room.CapacityBins:N0} bins — {room.PercentFull:N1}% full", body);
+        }
+
+        Assert.Matches(
+            $"<th>Total</th>\\s*<th class=\"numeric-cell\">{Regex.Escape(preview.RoomSummary.TotalCurrentBins.ToString("N0"))}</th>\\s*<th class=\"numeric-cell\">{Regex.Escape(preview.RoomSummary.TotalCapacityBins.ToString("N0"))}</th>\\s*<th class=\"numeric-cell\">{Regex.Escape(preview.RoomSummary.TotalPercentFull.ToString("N1"))}%</th>",
+            summary);
+    }
+
     private static async Task<ProtectedTotals> CaptureProtectedTotalsAsync(IServiceProvider services)
     {
         using var scope = services.CreateScope();
@@ -222,6 +326,21 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
         int QcPhotos,
         int AuditLogs,
         int EndOfDaySends);
+
+    private sealed record EndOfDayFillEvidence(
+        string Group,
+        string Facility,
+        IReadOnlyList<EndOfDayFillRoomEvidence> Rooms,
+        int TotalCurrentBins,
+        int TotalCapacityBins,
+        decimal TotalPercentFull);
+
+    private sealed record EndOfDayFillRoomEvidence(
+        string Room,
+        int CurrentBins,
+        int CapacityBins,
+        decimal PercentFull,
+        int DetailedBins);
 
     private sealed class RestoreWebApplicationFactory(string connectionString) : WebApplicationFactory<Program>
     {

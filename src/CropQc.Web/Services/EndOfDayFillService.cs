@@ -569,6 +569,29 @@ public sealed class EndOfDayFillService(
         var text = new StringBuilder("End of Day Fill Report\n");
         if (revision > 0) text.AppendLine($"REVISION {revision}");
         text.AppendLine($"{snapshot.GroupName} — {snapshot.Facility}").AppendLine($"End of Day Fill Report as of {date} — {time} Pacific").AppendLine();
+        var summary = new EndOfDayFillRoomSummaryViewModel(snapshot.Rooms);
+        html.Append("<h2>Room Summary</h2><table style=\"border-collapse:collapse;width:100%;max-width:560px\"><thead><tr>")
+            .Append("<th style=\"border:1px solid #bbb;padding:8px;text-align:left\">Room</th>")
+            .Append("<th style=\"border:1px solid #bbb;padding:8px;text-align:right\">Current Bins</th>")
+            .Append("<th style=\"border:1px solid #bbb;padding:8px;text-align:right\">Capacity</th>")
+            .Append("<th style=\"border:1px solid #bbb;padding:8px;text-align:right\">Full</th></tr></thead><tbody>");
+        text.AppendLine("Room Summary").AppendLine("Room | Current Bins | Capacity | Full");
+        foreach (var room in summary.Rooms)
+        {
+            html.Append($"<tr><td style=\"border:1px solid #bbb;padding:8px\">{encoder.Encode(room.RoomCode)}</td>")
+                .Append($"<td style=\"border:1px solid #bbb;padding:8px;text-align:right\">{room.CurrentBins:N0}</td>")
+                .Append($"<td style=\"border:1px solid #bbb;padding:8px;text-align:right\">{room.CapacityBins:N0}</td>")
+                .Append($"<td style=\"border:1px solid #bbb;padding:8px;text-align:right\">{room.PercentFull:N1}%</td></tr>");
+            text.AppendLine($"{room.RoomCode} | {room.CurrentBins:N0} | {room.CapacityBins:N0} | {room.PercentFull:N1}%");
+        }
+        html.Append($"</tbody><tfoot><tr><th style=\"border:1px solid #bbb;padding:8px;text-align:left\">Total</th>")
+            .Append($"<th style=\"border:1px solid #bbb;padding:8px;text-align:right\">{summary.TotalCurrentBins:N0}</th>")
+            .Append($"<th style=\"border:1px solid #bbb;padding:8px;text-align:right\">{summary.TotalCapacityBins:N0}</th>")
+            .Append($"<th style=\"border:1px solid #bbb;padding:8px;text-align:right\">{summary.TotalPercentFull:N1}%</th></tr></tfoot></table>")
+            .Append("<h2>Detailed Room Breakdown</h2>");
+        text.AppendLine($"Total | {summary.TotalCurrentBins:N0} | {summary.TotalCapacityBins:N0} | {summary.TotalPercentFull:N1}%")
+            .AppendLine()
+            .AppendLine("Detailed Room Breakdown");
         foreach (var room in snapshot.Rooms)
         {
             html.Append($"<section style=\"border:1px solid #bbb;border-radius:8px;padding:12px;margin:12px 0\"><h2 style=\"margin:0\">{encoder.Encode(room.RoomCode)} — {encoder.Encode(room.RoomName)}</h2><p><strong>{room.CurrentBins:N0} / {room.CapacityBins:N0} bins — {room.PercentFull:N1}% full</strong></p>");

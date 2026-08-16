@@ -66,6 +66,38 @@
     }
     else
     {
+        var summary = Model.RoomSummary;
+        <section class="panel end-of-day-fill-summary">
+            <h2>Room Summary</h2>
+            <div class="table-wrap contained-table">
+                <table>
+                    <thead>
+                        <tr><th>Room</th><th class="numeric-cell">Current Bins</th><th class="numeric-cell">Capacity</th><th class="numeric-cell">Full</th></tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var room in summary.Rooms)
+                    {
+                        <tr>
+                            <td>@room.RoomCode</td>
+                            <td class="numeric-cell">@room.CurrentBins.ToString("N0")</td>
+                            <td class="numeric-cell">@room.CapacityBins.ToString("N0")</td>
+                            <td class="numeric-cell">@room.PercentFull.ToString("N1")%</td>
+                        </tr>
+                    }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Total</th>
+                            <th class="numeric-cell">@summary.TotalCurrentBins.ToString("N0")</th>
+                            <th class="numeric-cell">@summary.TotalCapacityBins.ToString("N0")</th>
+                            <th class="numeric-cell">@summary.TotalPercentFull.ToString("N1")%</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </section>
+
+        <h2>Detailed Room Breakdown</h2>
         <div class="end-of-day-fill-grid">
         @foreach (var room in Model.Rooms)
         {

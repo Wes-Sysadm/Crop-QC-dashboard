@@ -32,6 +32,54 @@ public sealed class EndOfDayFillTests
     }
 
     [Fact]
+    public async Task RoomSummary_UsesIncludedRoomOrder_ReconcilesTotals_AndUsesCombinedCapacityPercentage()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var warehouse = await fixture.Db.Warehouses.SingleAsync(x => x.Code == "WP");
+        var existingRoom = await fixture.Db.Rooms.SingleAsync(x => x.Id == Fixture.RoomId);
+        existingRoom.SortOrder = 20;
+        fixture.Db.Rooms.AddRange(
+            new Room { Id = 912, WarehouseId = warehouse.Id, Code = "A-ROOM", Name = "First room", CapacityBins = 200, SortOrder = 10, IsActive = true, EndOfDayFillReportGroupId = 1 },
+            new Room { Id = 913, WarehouseId = warehouse.Id, Code = "Z-ROOM", Name = "Last room", CapacityBins = 100, SortOrder = 30, IsActive = true, EndOfDayFillReportGroupId = 1 },
+            new Room { Id = 914, WarehouseId = warehouse.Id, Code = "EMPTY", Name = "Empty room", CapacityBins = 500, SortOrder = 5, IsActive = true, EndOfDayFillReportGroupId = 1 });
+        await fixture.Db.SaveChangesAsync();
+        fixture.Inventory.Lots =
+        [
+            Lot(913, "Z-ROOM", 55, "9418", "MFR - Roloff Premier Organic", "Honey Crisp", "Organic", true),
+            Lot(Fixture.RoomId, "DH-1", 45, "1084", "WP ORCHARD CONV", "Gala", "Conventional", false),
+            Lot(912, "A-ROOM", 100, "3040", "DL & JJ FARMS - MASON", "Fuji", "Conventional", false),
+            Lot(914, "EMPTY", 0, "9999", "Empty", "Gala", "Conventional", false)
+        ];
+        var sendsBefore = await fixture.Db.EndOfDayFillReportSends.CountAsync();
+        var auditsBefore = await fixture.Db.AuditLogs.CountAsync();
+
+        var preview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+
+        Assert.Equal(["A-ROOM", "DH-1", "Z-ROOM"], preview.Rooms.Select(x => x.RoomCode));
+        Assert.Same(preview.Rooms, preview.RoomSummary.Rooms);
+        Assert.Equal(200, preview.RoomSummary.TotalCurrentBins);
+        Assert.Equal(1200, preview.RoomSummary.TotalCapacityBins);
+        Assert.Equal(16.7m, preview.RoomSummary.TotalPercentFull);
+        Assert.NotEqual(decimal.Round(preview.Rooms.Average(x => x.PercentFull), 1), preview.RoomSummary.TotalPercentFull);
+        Assert.DoesNotContain(preview.Rooms, x => x.RoomCode == "EMPTY");
+        Assert.Equal(preview.RoomSummary.TotalCurrentBins, preview.Rooms.Sum(x => x.Varieties.Sum(v => v.Growers.Sum(g => g.Bins))));
+        Assert.Equal(sendsBefore, await fixture.Db.EndOfDayFillReportSends.CountAsync());
+        Assert.Equal(auditsBefore, await fixture.Db.AuditLogs.CountAsync());
+        Assert.DoesNotContain(fixture.Db.ChangeTracker.Entries(), x => x.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
+
+        var sent = await fixture.Service.SendAsync(Fixture.SenderEmail,
+            new EndOfDayFillSendForm { GroupId = 1, PreviewToken = preview.PreviewToken!, PhysicalCountConfirmed = true }, default);
+        Assert.True(sent.Success);
+        var message = Assert.Single(fixture.Sender.Messages).Message;
+        Assert.True(message.HtmlBody.IndexOf("Room Summary", StringComparison.Ordinal) < message.HtmlBody.IndexOf("Detailed Room Breakdown", StringComparison.Ordinal));
+        Assert.True(message.TextBody.IndexOf("Room Summary", StringComparison.Ordinal) < message.TextBody.IndexOf("Detailed Room Breakdown", StringComparison.Ordinal));
+        Assert.Contains("Total | 200 | 1,200 | 16.7%", message.TextBody);
+        Assert.True(message.TextBody.IndexOf("A-ROOM | 100 | 200 | 50.0%", StringComparison.Ordinal) < message.TextBody.IndexOf("DH-1 | 45 | 900 | 5.0%", StringComparison.Ordinal));
+        Assert.True(message.TextBody.IndexOf("DH-1 | 45 | 900 | 5.0%", StringComparison.Ordinal) < message.TextBody.IndexOf("Z-ROOM | 55 | 100 | 55.0%", StringComparison.Ordinal));
+        Assert.Contains("Grower 1084 — WP ORCHARD CONV — 45 bins", message.TextBody);
+    }
+
+    [Fact]
     public async Task Send_RequiresConfirmation_AndRejectsAStalePreview()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -69,6 +117,9 @@ public sealed class EndOfDayFillTests
         Assert.DoesNotContain("Ã", message.Message.Subject);
         Assert.DoesNotContain("Â", message.Message.Subject);
         Assert.Contains("End of Day Fill Report as of August 6, 2026 — 9:22 PM Pacific", message.Message.HtmlBody);
+        Assert.Contains("Room Summary", message.Message.HtmlBody);
+        Assert.Contains("Detailed Room Breakdown", message.Message.HtmlBody);
+        Assert.Contains("Total | 145 | 900 | 16.1%", message.Message.TextBody);
         Assert.Contains("Grower 1084 — Smith Orchards — 145 bins", message.Message.TextBody);
         Assert.DoesNotContain("pressure", message.Message.TextBody, StringComparison.OrdinalIgnoreCase);
 
@@ -765,11 +816,12 @@ public sealed class EndOfDayFillTests
         public string ProductionType { get; set; } = "Fresh";
         public bool IsOrganic { get; set; }
         public bool IncludeUnconfiguredRoom { get; set; } = true;
+        public IReadOnlyList<RoomLotSummaryViewModel>? Lots { get; set; }
         public IReadOnlyList<int> RequestedRoomIds { get; private set; } = [];
         public Task<IReadOnlyList<RoomLotSummaryViewModel>> GetCurrentLotsAsync(IReadOnlyCollection<int> roomIds, CancellationToken cancellationToken)
         {
             RequestedRoomIds = roomIds.Order().ToList();
-            IReadOnlyList<RoomLotSummaryViewModel> result =
+            IReadOnlyList<RoomLotSummaryViewModel> result = Lots ??
             [
                 new() { RoomId = Fixture.RoomId, RoomCode = "DH-1", CurrentBins = Bins, GrowerNumber = GrowerNumber, GrowerName = "Smith Orchards", CanonicalVarietyKey = CanonicalName.Length == 0 ? "" : "gala", CanonicalVarietyName = CanonicalName, ProductionType = ProductionType, IsOrganic = IsOrganic, VarietyHexColor = "#c62828", InventoryKey = "canonical-398", GrowerLotId = 398 },
                 new() { RoomId = Fixture.UnconfiguredRoomId, RoomCode = "DH-2", CurrentBins = 999, GrowerNumber = "9999", GrowerName = "Excluded", CanonicalVarietyKey = "fuji", CanonicalVarietyName = "Fuji", ProductionType = "Fresh", IsOrganic = false, InventoryKey = "excluded" }
@@ -777,6 +829,30 @@ public sealed class EndOfDayFillTests
             return Task.FromResult<IReadOnlyList<RoomLotSummaryViewModel>>(result.Where(x => roomIds.Contains(x.RoomId) && (IncludeUnconfiguredRoom || x.RoomId != Fixture.UnconfiguredRoomId)).ToList());
         }
     }
+
+    private static RoomLotSummaryViewModel Lot(
+        int roomId,
+        string roomCode,
+        int bins,
+        string growerNumber,
+        string growerName,
+        string variety,
+        string productionType,
+        bool isOrganic) => new()
+        {
+            RoomId = roomId,
+            RoomCode = roomCode,
+            CurrentBins = bins,
+            GrowerNumber = growerNumber,
+            GrowerName = growerName,
+            CanonicalVarietyKey = variety.ToLowerInvariant().Replace(" ", "-"),
+            CanonicalVarietyName = variety,
+            ProductionType = productionType,
+            IsOrganic = isOrganic,
+            VarietyHexColor = "#c62828",
+            InventoryKey = $"summary-{roomId}-{growerNumber}-{productionType}",
+            GrowerLotId = roomId
+        };
 
     private sealed class FakeEmailSender : IQcEmailSender
     {
