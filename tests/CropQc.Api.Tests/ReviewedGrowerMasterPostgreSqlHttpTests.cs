@@ -22,9 +22,9 @@ namespace CropQc.Api.Tests;
 public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
 {
     [Fact]
-    public async Task Authenticated_run69_routes_render_authoritative_names_without_operational_writes_when_configured()
+    public async Task Authenticated_post_v2_restore_routes_render_latest_names_and_preserve_transferred_qc_when_configured()
     {
-        var connectionString = Environment.GetEnvironmentVariable("CROPQC_RUN69_GROWER_HTTP_POSTGRES");
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_REVIEWED_GROWER_V2_POSTGRES");
         if (string.IsNullOrWhiteSpace(connectionString)) return;
 
         ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connectionString);
@@ -57,17 +57,24 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
                 .GetAuthoritativeCurrentRoomLotsAsync(roomIds, CancellationToken.None);
             var current1080 = lots.First(x => x.GrowerNumber == "1080" && x.CurrentBins > 0);
             room1080Id = current1080.RoomId;
-            Assert.Equal("WINDY POINT", current1080.GrowerName);
+            Assert.Equal("WP ORCHARD ORG CHIL", current1080.GrowerName);
             Assert.Equal("1080", current1080.GrowerNumber);
 
             var resolver = await scope.ServiceProvider.GetRequiredService<ICanonicalGrowerService>()
                 .LoadResolutionSetAsync(CancellationToken.None);
-            Assert.Equal("MFR - FUJI ORCH-BLK E", resolver.DisplayName("MFR - FUJI BLK E", "1050"));
-            Assert.Equal("WINDY POINT", resolver.DisplayName("WP ORCHARD", "1080"));
-            Assert.Equal("WP Orchard - EP Non-Chilean", resolver.DisplayName("WP ORCHARD", "1082"));
-            Assert.Equal("Baldwin Pears", resolver.DisplayName("BALDWIN PEAR", "1530"));
+            Assert.Equal("MFR - FUJI BLK E ORG", resolver.DisplayName("MFR - FUJI BLK E", "1050"));
+            Assert.Equal("WP ORCHARD ORG CHIL", resolver.DisplayName("WINDY POINT", "1080"));
+            Assert.Equal("EAST POINT ORG", resolver.DisplayName("WP ORCHARD", "1082"));
+            Assert.Equal("WP ORCHARD CONV", resolver.DisplayName("WP ORCHARD", "1084"));
+            Assert.Equal("Baldwin Pears ORG", resolver.DisplayName("BALDWIN PEAR", "1530"));
             Assert.Equal("MFR - HOOKER PL CONV", resolver.DisplayName("MFR - HOOKER PL CONV", "9392"));
-            Assert.False(await db.CanonicalGrowerNumbers.AsNoTracking().AnyAsync(x => x.GrowerNumber == "9392"));
+            Assert.True(await db.CanonicalGrowerNumbers.AsNoTracking().AnyAsync(x => x.GrowerNumber == "9392" && x.IsActive));
+            var tr108869 = await db.Receipts.AsNoTracking().SingleAsync(x => x.CompuTechReceiptId == "TR108869");
+            Assert.Equal(243, tr108869.Id);
+            Assert.Equal("9392", tr108869.GrowerNumber);
+            var sample263 = await db.QcSamples.AsNoTracking().SingleAsync(x => x.Id == 263);
+            Assert.Equal(243, sample263.ReceiptId);
+            Assert.True(await db.RoomTransfers.AsNoTracking().AnyAsync(x => x.LotNumber == "9392"));
         }
 
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -89,10 +96,10 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
             ["/BinsRun"] = "Runs &amp; Transfers",
             ["/EndOfDayFill"] = "End of Day Fill",
             ["/RunReporting/Growers"] = "Grower &amp; Lot Progress",
-            [$"/Receipts/{receipt1080Id}"] = "WINDY POINT",
-            [$"/Receipts/{receipt1080Id}/Edit"] = "WINDY POINT",
-            [$"/Rooms/{room1080Id}"] = "WINDY POINT",
-            [$"/BinsRun/ActualRuns/{actualRun1080Id}"] = "WINDY POINT"
+            [$"/Receipts/{receipt1080Id}"] = "WP ORCHARD ORG CHIL",
+            [$"/Receipts/{receipt1080Id}/Edit"] = "WP ORCHARD ORG CHIL",
+            [$"/Rooms/{room1080Id}"] = "WP ORCHARD ORG CHIL",
+            [$"/BinsRun/ActualRuns/{actualRun1080Id}"] = "WP ORCHARD ORG CHIL"
         };
         foreach (var page in pages)
         {
@@ -103,34 +110,38 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
             AssertNoDatabaseTranslationFailure(body);
         }
 
-        var receiving = await GetOkAsync(client, "/Receipts?Grower=WP%20ORCHARD");
-        Assert.Contains("WINDY POINT", receiving, StringComparison.Ordinal);
-        Assert.Contains("WP Orchard - EP Non-Chilean", receiving, StringComparison.Ordinal);
-        Assert.DoesNotContain("Grower mapping needed", receiving, StringComparison.OrdinalIgnoreCase);
+        var receiving1080 = await GetOkAsync(client, "/Receipts?Grower=WINDY%20POINT");
+        Assert.Contains("WP ORCHARD ORG CHIL", receiving1080, StringComparison.Ordinal);
+        Assert.DoesNotContain("Grower mapping needed", receiving1080, StringComparison.OrdinalIgnoreCase);
+
+        const string prior1082Name = "WP Orchard - EP Non-Chilean";
+        var receiving1082 = await GetOkAsync(client, "/Receipts?Grower=WP%20Orchard%20-%20EP%20Non-Chilean");
+        Assert.Contains("EAST POINT ORG", receiving1082, StringComparison.Ordinal);
+        Assert.DoesNotContain("Grower mapping needed", receiving1082, StringComparison.OrdinalIgnoreCase);
 
         using (var scope = factory.Services.CreateScope())
         {
             var inventoryService = scope.ServiceProvider.GetRequiredService<IRoomInventoryImportService>();
             var inventoryModel = await inventoryService.GetPageAsync(
-                new RoomInventoryImportForm { Grower = "WP ORCHARD" },
+                new RoomInventoryImportForm { Grower = prior1082Name },
                 CancellationToken.None);
             var inventoryEvidence = string.Join(" | ", inventoryModel.CurrentLots.Select(
                 x => $"{x.GrowerNumber}:{x.Grower}:{x.LotNumber}:{x.CurrentBins}"));
             Assert.True(
-                inventoryModel.CurrentLots.Any(x => x.Grower == "WP Orchard - EP Non-Chilean"),
+                inventoryModel.CurrentLots.Any(x => x.Grower == "EAST POINT ORG"),
                 inventoryEvidence);
         }
 
-        var inventory = await GetOkAsync(client, "/Admin/RoomInventory?Grower=WP%20ORCHARD");
-        Assert.Contains("WP Orchard - EP Non-Chilean", inventory, StringComparison.Ordinal);
+        var inventory = await GetOkAsync(client, "/Admin/RoomInventory?Grower=WP%20Orchard%20-%20EP%20Non-Chilean");
+        Assert.Contains("EAST POINT ORG", inventory, StringComparison.Ordinal);
         AssertNoDatabaseTranslationFailure(inventory);
 
         var receipt1080 = await GetOkAsync(client, "/Receipts?Grower=1080");
-        Assert.Contains("WINDY POINT", receipt1080, StringComparison.Ordinal);
+        Assert.Contains("WP ORCHARD ORG CHIL", receipt1080, StringComparison.Ordinal);
         AssertNoDatabaseTranslationFailure(receipt1080);
 
         var runReporting1080 = await GetOkAsync(client, "/RunReporting/Growers?GrowerNumber=1080");
-        Assert.Contains("WINDY POINT", runReporting1080, StringComparison.Ordinal);
+        Assert.Contains("WP ORCHARD ORG CHIL", runReporting1080, StringComparison.Ordinal);
         Assert.Contains("1080", runReporting1080, StringComparison.Ordinal);
         AssertNoDatabaseTranslationFailure(runReporting1080);
 
@@ -142,7 +153,8 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
-            Assert.False(await db.CanonicalGrowerNumbers.AsNoTracking().AnyAsync(x => x.GrowerNumber == "9392"));
+            Assert.True(await db.CanonicalGrowerNumbers.AsNoTracking().AnyAsync(x => x.GrowerNumber == "9392" && x.IsActive));
+            Assert.Equal(243, await db.QcSamples.AsNoTracking().Where(x => x.Id == 263).Select(x => x.ReceiptId).SingleAsync());
         }
     }
 
@@ -179,7 +191,12 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
             await db.BinsRunEntries.SumAsync(x => (long)x.BinsRun),
             await db.ActualRuns.CountAsync(),
             await db.ActualRunRevisions.CountAsync(),
+            await db.RunExpectations.CountAsync(),
+            await db.RunExpectationSources.CountAsync(),
+            await db.GrowerLots.CountAsync(),
             await db.QcSamples.CountAsync(),
+            await db.QcFruitReadings.CountAsync(),
+            await db.QcPhotos.CountAsync(),
             await db.AuditLogs.CountAsync(),
             await db.EndOfDayFillReportSends.CountAsync());
     }
@@ -197,7 +214,12 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
         long BinsRunBins,
         int ActualRuns,
         int ActualRunRevisions,
+        int RunExpectations,
+        int RunExpectationSources,
+        int GrowerLots,
         int QcSamples,
+        int QcFruitReadings,
+        int QcPhotos,
         int AuditLogs,
         int EndOfDaySends);
 
@@ -219,7 +241,7 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
                     ["Email:Provider"] = "None",
                     ["Logging:LogLevel:Default"] = "Warning",
                     ["Logging:LogLevel:Microsoft"] = "Error",
-                    ["RENDER_EXTERNAL_HOSTNAME"] = "run69-reviewed-grower-rehearsal.local"
+                    ["RENDER_EXTERNAL_HOSTNAME"] = "reviewed-grower-v2-rehearsal.local"
                 });
             });
             builder.ConfigureServices(services =>
@@ -246,7 +268,7 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
         UrlEncoder encoder)
         : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
     {
-        public const string SchemeName = "Run69ReviewedGrowerRehearsal";
+        public const string SchemeName = "ReviewedGrowerV2Rehearsal";
 
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {

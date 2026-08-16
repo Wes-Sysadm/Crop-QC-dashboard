@@ -43,18 +43,50 @@ public sealed record ReviewedInactiveGrower(
     string GrowerNumber,
     string? RedirectToGrowerNumber,
     bool HasProductionEvidence,
+    bool HasActiveCanonicalMapping,
+    string Disposition);
+
+public sealed record ReviewedGrowerAliasDecision(
+    string AliasName,
+    string NormalizedAliasKey,
+    IReadOnlyList<string> GrowerNumbers,
+    string? SelectedGrowerNumber,
+    string Disposition);
+
+public sealed record ReviewedGrowerPoolDifference(
+    string GrowerNumber,
+    string PreviousPool,
+    string CurrentPool,
     string Disposition);
 
 public sealed record ReviewedGrowerMasterSyncPreflight(
     string State,
     DateTimeOffset GeneratedAtUtc,
     string WorkbookFileName,
+    string SourceVersion,
     long WorkbookSizeBytes,
     string WorkbookSha256,
     string AssetSha256,
     int ReviewedRowCount,
     int ActiveRowCount,
     int InactiveRowCount,
+    string? PreviousAppliedSourceVersion,
+    string? PreviousAppliedWorkbookSha256,
+    string? PreviousAppliedAssetSha256,
+    int ExistingCanonicalGrowerCount,
+    int ExistingNumberMappingCount,
+    int ExistingAliasCount,
+    int CanonicalGrowersToCreate,
+    int CanonicalGrowersToUpdate,
+    int NumberMappingsToCreate,
+    int NumberMappingsToUpdate,
+    IReadOnlyList<string> ActiveToInactiveNumberMappings,
+    int AliasesToAdd,
+    int AliasesToReactivate,
+    int AliasesToUpdate,
+    int AliasesToDeactivate,
+    IReadOnlyList<ReviewedGrowerAliasDecision> AliasDecisions,
+    IReadOnlyList<ReviewedGrowerPoolDifference> PoolOnlyDifferences,
     int ExactNameMatchCount,
     int ChangedNameCount,
     int NeverReceivedCount,
@@ -74,17 +106,22 @@ public sealed record ReviewedGrowerMasterSyncResult(
     int CanonicalGrowersCreated,
     int CanonicalGrowersUpdated,
     int NumberMappingsCreated,
+    int NumberMappingsUpdated,
+    int NumberMappingsDeactivated,
     int AliasesCreated,
+    int AliasesReactivated,
+    int AliasesUpdated,
+    int AliasesDeactivated,
     ReviewedGrowerMasterSyncPreflight Preflight);
 
 public static class ReviewedGrowerMasterSyncConstants
 {
     public const string CommandName = "--sync-reviewed-grower-master";
-    public const string ApplyAuthorizationToken = "APPLY_REVIEWED_GROWER_MASTER_2026_08_13";
+    public const string ApplyAuthorizationToken = "APPLY_REVIEWED_GROWER_MASTER_V2_2026_08_15";
     public const string AuditEntityName = "ReviewedGrowerMasterSync";
     public const string AuditEntityKey = ReviewedGrowerMasterConstants.AssetSha256;
-    public const long VerifiedRestoreBackupRunId = 69;
-    public const string VerifiedRestorePackageSha256 = "581c9029873df923a5df6d6915762e057ff2d901f39f49a314abe30621364dc2";
+    public const long VerifiedRestoreBackupRunId = 72;
+    public const string VerifiedRestorePackageSha256 = "637cc27a6489b9f4a0592f718ce5053b7b09d97fb1097c9fa40e7719d12c5ab0";
 }
 
 public sealed class ReviewedGrowerMasterSyncService(
@@ -100,7 +137,7 @@ public sealed class ReviewedGrowerMasterSyncService(
     {
         var master = await source.LoadAsync(cancellationToken);
         var activeRows = master.Rows.Where(x => x.IsActive).ToList();
-        var activeNumbers = activeRows.Select(x => x.GrowerNumber).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var inactiveRows = master.Rows.Where(x => !x.IsActive).ToList();
         var allNumbers = master.Rows.Select(x => x.GrowerNumber).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var issues = new List<string>();
 
@@ -114,7 +151,7 @@ public sealed class ReviewedGrowerMasterSyncService(
             .GroupBy(x => CanonicalGrowerService.NormalizeGrowerNumber(x.Number.GrowerNumber), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
 
-        foreach (var row in activeRows)
+        foreach (var row in master.Rows)
         {
             var owners = numberOwners.GetValueOrDefault(row.GrowerNumber) ?? [];
             if (owners.Count > 1)
@@ -124,7 +161,7 @@ public sealed class ReviewedGrowerMasterSyncService(
             if (owners.Count == 1)
             {
                 var reviewedOwnedNumbers = owners[0].Grower.GrowerNumbers
-                    .Where(x => x.IsActive && activeNumbers.Contains(CanonicalGrowerService.NormalizeGrowerNumber(x.GrowerNumber)))
+                    .Where(x => allNumbers.Contains(CanonicalGrowerService.NormalizeGrowerNumber(x.GrowerNumber)))
                     .Select(x => CanonicalGrowerService.NormalizeGrowerNumber(x.GrowerNumber))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList();
@@ -164,18 +201,18 @@ public sealed class ReviewedGrowerMasterSyncService(
             .Where(x => x.Length > 0)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var inactive = master.Rows.Where(x => !x.IsActive).Select(row =>
+        var inactive = inactiveRows.Select(row =>
         {
             var hasEvidence = evidenceNumbers.Contains(row.GrowerNumber);
-            if (hasEvidence)
-            {
-                issues.Add($"Inactive grower number {row.GrowerNumber} has production evidence and requires separate manual review.");
-            }
+            var owner = (numberOwners.GetValueOrDefault(row.GrowerNumber) ?? []).SingleOrDefault();
+            var activeMapping = owner?.Number.IsActive == true;
             var disposition = row.RedirectToGrowerNumber is null
-                ? "Skipped; historical identity is preserved and no literal INACTIVE name is created."
+                ? activeMapping
+                    ? "Deactivate the canonical number for new selection; preserve its current historical display name and every operational row."
+                    : "Keep inactive; preserve historical identity and never create a literal INACTIVE display name."
                 : "Redirect skipped; production evidence does not prove redirect semantics."
                     + " Historical identity is preserved.";
-            return new ReviewedInactiveGrower(row.GrowerNumber, row.RedirectToGrowerNumber, hasEvidence, disposition);
+            return new ReviewedInactiveGrower(row.GrowerNumber, row.RedirectToGrowerNumber, hasEvidence, activeMapping, disposition);
         }).ToList();
 
         var changedNames = new List<ReviewedGrowerMasterChange>();
@@ -220,26 +257,84 @@ public sealed class ReviewedGrowerMasterSyncService(
             }
         }
 
+        var observedNames = receipts.Select(x => (Number(x.Number), x.GrowerName))
+            .Concat(adjustments.Select(x => (Number(x.Number), x.GrowerName)))
+            .Concat(transfers.Select(x => (Number(x.Number), x.GrowerName)))
+            .Concat(losses.Select(x => (Number(x.Number), x.GrowerName)))
+            .Concat(binsRuns.Select(x => (Number(x.Number), x.GrowerName)))
+            .Concat(fieldSamples.Select(x => (Number(x.Number), x.Name ?? "")))
+            .Where(x => x.Item1.Length > 0 && !string.IsNullOrWhiteSpace(x.Item2))
+            .GroupBy(x => x.Item1, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                x => x.Key,
+                x => (IReadOnlyList<string>)x.Select(y => y.Item2.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                StringComparer.OrdinalIgnoreCase);
+        var aliasPlan = BuildAliasPlan(master.Rows, canonicalGrowers, observedNames);
+
         var productionNumbersNotInWorkbook = evidenceNumbers.Where(x => !allNumbers.Contains(x)).OrderBy(x => x).ToList();
-        var auditExists = await dbContext.AuditLogs.AsNoTracking().AnyAsync(
+        var currentAuditExists = await dbContext.AuditLogs.AsNoTracking().AnyAsync(
             x => x.EntityName == ReviewedGrowerMasterSyncConstants.AuditEntityName
                 && x.EntityKey == ReviewedGrowerMasterSyncConstants.AuditEntityKey,
             cancellationToken);
-        var complete = activeRows.All(row =>
+        var previousAuditExists = await dbContext.AuditLogs.AsNoTracking().AnyAsync(
+            x => x.EntityName == ReviewedGrowerMasterSyncConstants.AuditEntityName
+                && x.EntityKey == ReviewedGrowerMasterConstants.PreviousAssetSha256,
+            cancellationToken);
+
+        var canonicalGrowersToCreate = activeRows.Count(row => (numberOwners.GetValueOrDefault(row.GrowerNumber) ?? []).Count == 0);
+        var canonicalGrowersToUpdate = activeRows.Count(row =>
+        {
+            var owner = (numberOwners.GetValueOrDefault(row.GrowerNumber) ?? []).SingleOrDefault();
+            return owner is not null
+                && (!owner.Grower.DisplayName.Equals(row.GrowerName, StringComparison.Ordinal)
+                    || !owner.Grower.NormalizedKey.Equals(CanonicalKey(row.GrowerNumber), StringComparison.Ordinal)
+                    || !owner.Grower.IsActive
+                    || owner.Grower.MergedIntoCanonicalGrowerId is not null);
+        }) + inactive.Count(x => x.HasActiveCanonicalMapping);
+        var numberMappingsToCreate = canonicalGrowersToCreate;
+        var numberMappingsToUpdate = activeRows.Count(row =>
+        {
+            var owner = (numberOwners.GetValueOrDefault(row.GrowerNumber) ?? []).SingleOrDefault();
+            return owner is not null
+                && (!owner.Number.GrowerNumber.Equals(row.GrowerNumber, StringComparison.Ordinal)
+                    || !owner.Number.NormalizedGrowerNumber.Equals(row.GrowerNumber, StringComparison.Ordinal)
+                    || !owner.Number.IsActive
+                    || !string.Equals(owner.Number.SourceSystem, ReviewedGrowerMasterConstants.SourceSystem, StringComparison.Ordinal));
+        });
+        var activeToInactive = inactive.Where(x => x.HasActiveCanonicalMapping).Select(x => x.GrowerNumber).OrderBy(x => x, StringComparer.Ordinal).ToList();
+
+        var completeActive = activeRows.All(row =>
         {
             var owners = numberOwners.GetValueOrDefault(row.GrowerNumber) ?? [];
             return owners.Count == 1
                 && owners[0].Number.IsActive
+                && string.Equals(owners[0].Number.SourceSystem, ReviewedGrowerMasterConstants.SourceSystem, StringComparison.Ordinal)
                 && owners[0].Grower.IsActive
                 && owners[0].Grower.MergedIntoCanonicalGrowerId is null
                 && owners[0].Grower.DisplayName.Equals(row.GrowerName, StringComparison.Ordinal)
                 && owners[0].Grower.NormalizedKey.Equals(CanonicalKey(row.GrowerNumber), StringComparison.Ordinal);
-        }) && auditExists;
+        });
+        var completeInactive = inactiveRows.All(row =>
+        {
+            var owners = numberOwners.GetValueOrDefault(row.GrowerNumber) ?? [];
+            if (owners.Count == 0) return true;
+            if (owners.Count != 1) return false;
+            var shouldBeActive = owners[0].Grower.GrowerNumbers.Any(x => x != owners[0].Number && x.IsActive);
+            return !owners[0].Number.IsActive
+                && string.Equals(owners[0].Number.SourceSystem, ReviewedGrowerMasterConstants.SourceSystem, StringComparison.Ordinal)
+                && owners[0].Grower.IsActive == shouldBeActive;
+        });
+        var completeAliases = aliasPlan.AliasesToAdd == 0
+            && aliasPlan.AliasesToReactivate == 0
+            && aliasPlan.AliasesToUpdate == 0
+            && aliasPlan.AliasesToDeactivate == 0;
+        var complete = completeActive && completeInactive && completeAliases && currentAuditExists;
 
         var targetFingerprint = Sha256(JsonSerializer.Serialize(new
         {
             master.WorkbookSha256,
             master.AssetSha256,
+            ReviewedGrowerMasterConstants.SourceVersion,
             Rows = master.Rows,
             Canonical = canonicalGrowers.OrderBy(x => x.Id).Select(x => new
             {
@@ -251,19 +346,39 @@ public sealed class ReviewedGrowerMasterSyncService(
                 Numbers = x.GrowerNumbers.OrderBy(y => y.Id).Select(y => new { y.Id, y.GrowerNumber, y.NormalizedGrowerNumber, y.IsActive, y.SourceSystem }),
                 Aliases = x.Aliases.OrderBy(y => y.Id).Select(y => new { y.Id, y.AliasName, y.NormalizedAliasKey, y.IsActive, y.SourceSystem })
             }),
-            Evidence = changedNames
+            Evidence = changedNames,
+            AliasPlan = aliasPlan.Decisions,
+            ActiveToInactive = activeToInactive
         }));
         var protectedFingerprint = await CaptureProtectedFingerprintAsync(cancellationToken);
         return new(
             issues.Count > 0 ? "Refused" : complete ? "AlreadyApplied" : "Ready",
             DateTimeOffset.UtcNow,
             master.WorkbookFileName,
+            ReviewedGrowerMasterConstants.SourceVersion,
             master.WorkbookSizeBytes,
             master.WorkbookSha256,
             master.AssetSha256,
             master.Rows.Count,
             activeRows.Count,
             inactive.Count,
+            previousAuditExists ? ReviewedGrowerMasterConstants.PreviousSourceVersion : null,
+            previousAuditExists ? ReviewedGrowerMasterConstants.PreviousWorkbookSha256 : null,
+            previousAuditExists ? ReviewedGrowerMasterConstants.PreviousAssetSha256 : null,
+            canonicalGrowers.Count,
+            canonicalGrowers.Sum(x => x.GrowerNumbers.Count),
+            canonicalGrowers.Sum(x => x.Aliases.Count),
+            canonicalGrowersToCreate,
+            canonicalGrowersToUpdate,
+            numberMappingsToCreate,
+            numberMappingsToUpdate,
+            activeToInactive,
+            aliasPlan.AliasesToAdd,
+            aliasPlan.AliasesToReactivate,
+            aliasPlan.AliasesToUpdate,
+            aliasPlan.AliasesToDeactivate,
+            aliasPlan.Decisions,
+            [new("3805", "S2", "2S", "Informational source difference only; operational PoolStart values are protected and are not written.")],
             exactMatchCount,
             changedNames.Count,
             neverReceivedCount,
@@ -280,8 +395,8 @@ public sealed class ReviewedGrowerMasterSyncService(
     {
         var preflight = await PreflightAsync(cancellationToken);
         if (preflight.State == "Refused") return Failed("Preflight refused the reviewed grower sync; no data was changed.", preflight);
-        if (preflight.State == "AlreadyApplied") return new(true, false, true, "The exact reviewed grower master is already applied; zero writes were made.", 0, 0, 0, 0, preflight);
-        if (!request.Apply) return new(true, false, false, "Dry-run passed. No data was changed.", 0, 0, 0, 0, preflight);
+        if (preflight.State == "AlreadyApplied") return new(true, false, true, "The exact reviewed grower master is already applied; zero writes were made.", 0, 0, 0, 0, 0, 0, 0, 0, 0, preflight);
+        if (!request.Apply) return new(true, false, false, "Dry-run passed. No data was changed.", 0, 0, 0, 0, 0, 0, 0, 0, 0, preflight);
         if (!string.Equals(request.AuthorizationToken, ReviewedGrowerMasterSyncConstants.ApplyAuthorizationToken, StringComparison.Ordinal)) return Failed("Apply requires the exact reviewed authorization token.", preflight);
         if (appEnvironment.IsProduction && !request.ConfirmProduction) return Failed("Production apply requires --confirm-production.", preflight);
         if (!appEnvironment.IsProduction && !request.ConfirmDisposableRestore) return Failed("Non-production rehearsal requires --confirm-disposable-restore.", preflight);
@@ -329,12 +444,38 @@ public sealed class ReviewedGrowerMasterSyncService(
                 .Include(x => x.Aliases)
                 .AsSplitQuery()
                 .ToListAsync(cancellationToken);
-            var observedNames = await LoadObservedNamesAsync(cancellationToken);
             var now = DateTimeOffset.UtcNow;
             var growersCreated = 0;
             var growersUpdated = 0;
             var numbersCreated = 0;
+            var numbersUpdated = 0;
+            var numbersDeactivated = 0;
             var aliasesCreated = 0;
+            var aliasesReactivated = 0;
+            var aliasesUpdated = 0;
+            var aliasesDeactivated = 0;
+
+            foreach (var row in master.Rows.Where(x => !x.IsActive))
+            {
+                var number = row.GrowerNumber;
+                var owner = allGrowers.SingleOrDefault(x => x.GrowerNumbers.Any(y => CanonicalGrowerService.NormalizeGrowerNumber(y.GrowerNumber) == number));
+                if (owner is null) continue;
+                var numberMapping = owner.GrowerNumbers.Single(x => CanonicalGrowerService.NormalizeGrowerNumber(x.GrowerNumber) == number);
+                if (numberMapping.IsActive) numbersDeactivated++;
+                numberMapping.GrowerNumber = number;
+                numberMapping.NormalizedGrowerNumber = number;
+                numberMapping.SourceSystem = ReviewedGrowerMasterConstants.SourceSystem;
+                numberMapping.IsActive = false;
+                numberMapping.UpdatedAt = now;
+                var shouldBeActive = owner.GrowerNumbers.Any(x => x != numberMapping && x.IsActive);
+                if (owner.IsActive != shouldBeActive)
+                {
+                    owner.IsActive = shouldBeActive;
+                    owner.UpdatedAt = now;
+                    growersUpdated++;
+                }
+            }
+
             foreach (var row in master.Rows.Where(x => x.IsActive))
             {
                 var number = row.GrowerNumber;
@@ -385,37 +526,72 @@ public sealed class ReviewedGrowerMasterSyncService(
                 }
                 else
                 {
+                    var mappingChanged = !numberMapping.GrowerNumber.Equals(number, StringComparison.Ordinal)
+                        || !numberMapping.NormalizedGrowerNumber.Equals(number, StringComparison.Ordinal)
+                        || !string.Equals(numberMapping.SourceSystem, ReviewedGrowerMasterConstants.SourceSystem, StringComparison.Ordinal)
+                        || !numberMapping.IsActive;
                     numberMapping.GrowerNumber = number;
                     numberMapping.NormalizedGrowerNumber = number;
                     numberMapping.SourceSystem = ReviewedGrowerMasterConstants.SourceSystem;
                     numberMapping.IsActive = true;
                     numberMapping.UpdatedAt = now;
+                    if (mappingChanged) numbersUpdated++;
                 }
+            }
 
-                var aliases = new[] { row.GrowerName }.Concat(observedNames.GetValueOrDefault(number) ?? []).Distinct(StringComparer.OrdinalIgnoreCase);
-                foreach (var aliasName in aliases)
+            var acceptedAliases = preflight.AliasDecisions
+            .Where(x => x.SelectedGrowerNumber is not null)
+            .ToDictionary(x => x.NormalizedAliasKey, x => x, StringComparer.OrdinalIgnoreCase);
+            var masterNumbers = master.Rows.Select(x => x.GrowerNumber).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var inactiveNumbers = master.Rows.Where(x => !x.IsActive).Select(x => x.GrowerNumber).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var owner in allGrowers)
+            {
+                var reviewedNumbers = owner.GrowerNumbers
+                    .Select(x => CanonicalGrowerService.NormalizeGrowerNumber(x.GrowerNumber))
+                    .Where(masterNumbers.Contains)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (reviewedNumbers.Count != 1) continue;
+                var number = reviewedNumbers[0];
+                foreach (var alias in owner.Aliases.Where(x => x.IsActive && IsReviewedAlias(x)))
                 {
-                    var key = CanonicalGrowerService.NormalizeGrowerKey(aliasName);
-                    var alias = owner.Aliases.SingleOrDefault(x => x.NormalizedAliasKey == key);
-                    if (alias is null)
+                    if (inactiveNumbers.Contains(number)
+                        || !acceptedAliases.TryGetValue(alias.NormalizedAliasKey, out var accepted)
+                        || !accepted.SelectedGrowerNumber!.Equals(number, StringComparison.OrdinalIgnoreCase))
                     {
-                        owner.Aliases.Add(new CanonicalGrowerAlias
-                        {
-                            AliasName = aliasName,
-                            NormalizedAliasKey = key,
-                            SourceSystem = ReviewedGrowerMasterConstants.SourceSystem,
-                            IsActive = true,
-                            CreatedAt = now,
-                            UpdatedAt = now
-                        });
-                        aliasesCreated++;
-                    }
-                    else
-                    {
-                        alias.IsActive = true;
+                        alias.IsActive = false;
                         alias.UpdatedAt = now;
+                        aliasesDeactivated++;
                     }
                 }
+            }
+
+            foreach (var decision in acceptedAliases.Values)
+            {
+                var number = decision.SelectedGrowerNumber!;
+                var owner = allGrowers.Single(x => x.GrowerNumbers.Any(y => CanonicalGrowerService.NormalizeGrowerNumber(y.GrowerNumber) == number));
+                var alias = owner.Aliases.SingleOrDefault(x => x.NormalizedAliasKey == decision.NormalizedAliasKey);
+                if (alias is null)
+                {
+                    owner.Aliases.Add(new CanonicalGrowerAlias
+                    {
+                        AliasName = decision.AliasName,
+                        NormalizedAliasKey = decision.NormalizedAliasKey,
+                        SourceSystem = ReviewedGrowerMasterConstants.SourceSystem,
+                        IsActive = true,
+                        CreatedAt = now,
+                        UpdatedAt = now
+                    });
+                    aliasesCreated++;
+                    continue;
+                }
+                if (!alias.IsActive) aliasesReactivated++;
+                else if (!alias.AliasName.Equals(decision.AliasName, StringComparison.Ordinal)
+                    || !string.Equals(alias.SourceSystem, ReviewedGrowerMasterConstants.SourceSystem, StringComparison.Ordinal)) aliasesUpdated++;
+                alias.AliasName = decision.AliasName;
+                alias.SourceSystem = ReviewedGrowerMasterConstants.SourceSystem;
+                alias.IsActive = true;
+                alias.UpdatedAt = now;
             }
 
             dbContext.AuditLogs.Add(new AuditLog
@@ -431,24 +607,38 @@ public sealed class ReviewedGrowerMasterSyncService(
                     BackupRunId = backup!.Id,
                     BackupVerification = databaseVerified ? "DatabaseRecord" : "VerifiedDisposableRestorePackageAttestation",
                     request.VerifiedBackupPackageSha256,
+                    PreviousSourceVersion = preflight.PreviousAppliedSourceVersion,
+                    PreviousWorkbookSha256 = preflight.PreviousAppliedWorkbookSha256,
+                    PreviousAssetSha256 = preflight.PreviousAppliedAssetSha256,
                     preflight.ChangedNames,
                     preflight.InactiveRows,
-                    preflight.ProductionNumbersNotInWorkbook
+                    preflight.ProductionNumbersNotInWorkbook,
+                    preflight.AliasDecisions,
+                    preflight.PoolOnlyDifferences
                 }, JsonOptions),
                 AfterValuesJson = JsonSerializer.Serialize(new
                 {
                     Workbook = ReviewedGrowerMasterConstants.WorkbookFileName,
+                    ReviewedGrowerMasterConstants.SourceVersion,
                     ReviewedGrowerMasterConstants.WorkbookSha256,
                     ReviewedGrowerMasterConstants.AssetSha256,
+                    ReviewedRows = ReviewedGrowerMasterConstants.ExpectedRowCount,
                     ActiveMappings = ReviewedGrowerMasterConstants.ExpectedActiveCount,
+                    InactiveRows = ReviewedGrowerMasterConstants.ExpectedInactiveCount,
                     growersCreated,
                     growersUpdated,
                     numbersCreated,
+                    numbersUpdated,
+                    numbersDeactivated,
                     aliasesCreated,
+                    aliasesReactivated,
+                    aliasesUpdated,
+                    aliasesDeactivated,
                     RequestedBy = admin.Email,
                     Reason = request.Reason.Trim(),
                     HistoricalOperationalRowsChanged = 0,
-                    InactiveRowsChanged = 0
+                    InactiveRowsChanged = numbersDeactivated,
+                    OperationalPoolStartRowsChanged = 0
                 }, JsonOptions),
                 SourceApplication = "CropQc.Web reviewed grower master command",
                 CreatedAt = now
@@ -458,11 +648,12 @@ public sealed class ReviewedGrowerMasterSyncService(
             var protectedAfter = await CaptureProtectedFingerprintAsync(cancellationToken);
             if (protectedAfter != preflight.ProtectedFingerprint) throw new InvalidOperationException("Protected operational data changed during the sync.");
             var postflight = await PreflightAsync(cancellationToken);
-            if (postflight.State != "AlreadyApplied") throw new InvalidOperationException("Post-apply verification did not recognize the exact reviewed state.");
+            if (postflight.State != "AlreadyApplied")
+                throw new InvalidOperationException($"Post-apply verification did not recognize the exact reviewed state: state={postflight.State}; growers-create={postflight.CanonicalGrowersToCreate}; growers-update={postflight.CanonicalGrowersToUpdate}; numbers-create={postflight.NumberMappingsToCreate}; numbers-update={postflight.NumberMappingsToUpdate}; inactive={postflight.ActiveToInactiveNumberMappings.Count}; aliases-add={postflight.AliasesToAdd}; aliases-reactivate={postflight.AliasesToReactivate}; aliases-update={postflight.AliasesToUpdate}; aliases-deactivate={postflight.AliasesToDeactivate}.");
             await transaction.CommitAsync(cancellationToken);
             resolutionCache?.Invalidate();
-            logger.LogWarning("Reviewed grower master applied by {Admin}; {Growers} growers and {Numbers} number mappings created.", admin.Email, growersCreated, numbersCreated);
-            return new(true, true, false, "The reviewed grower master sync completed successfully.", growersCreated, growersUpdated, numbersCreated, aliasesCreated, postflight);
+            logger.LogWarning("Reviewed grower master v2 applied by {Admin}; {Growers} growers created, {Updated} updated, and {Numbers} number mappings created.", admin.Email, growersCreated, growersUpdated, numbersCreated);
+            return new(true, true, false, "The reviewed grower master sync completed successfully.", growersCreated, growersUpdated, numbersCreated, numbersUpdated, numbersDeactivated, aliasesCreated, aliasesReactivated, aliasesUpdated, aliasesDeactivated, postflight);
         }
         catch (Exception exception)
         {
@@ -473,18 +664,148 @@ public sealed class ReviewedGrowerMasterSyncService(
         }
     }
 
-    private async Task<Dictionary<string, IReadOnlyList<string>>> LoadObservedNamesAsync(CancellationToken cancellationToken)
+    private sealed record AliasPlan(
+        IReadOnlyList<ReviewedGrowerAliasDecision> Decisions,
+        int AliasesToAdd,
+        int AliasesToReactivate,
+        int AliasesToUpdate,
+        int AliasesToDeactivate);
+
+    private static AliasPlan BuildAliasPlan(
+        IReadOnlyList<ReviewedGrowerMasterRow> rows,
+        IReadOnlyList<CanonicalGrower> canonicalGrowers,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> observedNames)
     {
-        var evidence = new List<(string Number, string Name)>();
-        evidence.AddRange((await dbContext.Receipts.AsNoTracking().Select(x => new { Number = x.GrowerNumber ?? x.LotCode, x.GrowerName }).ToListAsync(cancellationToken)).Select(x => (x.Number, x.GrowerName)));
-        evidence.AddRange((await dbContext.RoomInventoryAdjustments.AsNoTracking().Select(x => new { Number = x.LotNumber, x.GrowerName }).ToListAsync(cancellationToken)).Select(x => (x.Number, x.GrowerName)));
-        evidence.AddRange((await dbContext.RoomTransfers.AsNoTracking().Select(x => new { Number = x.LotNumber, x.GrowerName }).ToListAsync(cancellationToken)).Select(x => (x.Number, x.GrowerName)));
-        evidence.AddRange((await dbContext.RoomInventoryLosses.AsNoTracking().Select(x => new { Number = x.GrowerNumber ?? x.LotNumber, x.GrowerName }).ToListAsync(cancellationToken)).Select(x => (x.Number, x.GrowerName)));
-        evidence.AddRange((await dbContext.BinsRunEntries.AsNoTracking().Select(x => new { Number = x.GrowerNumberSnapshot ?? x.LotNumber, x.GrowerName }).ToListAsync(cancellationToken)).Select(x => (x.Number, x.GrowerName)));
-        return evidence.Where(x => !string.IsNullOrWhiteSpace(x.Name))
-            .GroupBy(x => CanonicalGrowerService.NormalizeGrowerNumber(x.Number), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(x => x.Key, x => (IReadOnlyList<string>)x.Select(y => y.Name.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList(), StringComparer.OrdinalIgnoreCase);
+        var activeRows = rows.Where(x => x.IsActive).ToList();
+        var allNumbers = rows.Select(x => x.GrowerNumber).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var ownerByNumber = canonicalGrowers
+            .SelectMany(grower => grower.GrowerNumbers.Select(number => new { Grower = grower, Number = CanonicalGrowerService.NormalizeGrowerNumber(number.GrowerNumber) }))
+            .Where(x => allNumbers.Contains(x.Number))
+            .GroupBy(x => x.Number, StringComparer.OrdinalIgnoreCase)
+            .Where(x => x.Count() == 1)
+            .ToDictionary(x => x.Key, x => x.Single().Grower, StringComparer.OrdinalIgnoreCase);
+
+        var reviewedNumbersByOwnerId = canonicalGrowers.ToDictionary(grower => grower.Id, grower =>
+        {
+            return grower.GrowerNumbers
+                .Select(x => CanonicalGrowerService.NormalizeGrowerNumber(x.GrowerNumber))
+                .Where(allNumbers.Contains)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        });
+        var keyOwners = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        static void AddOwner(Dictionary<string, HashSet<string>> map, string aliasName, string ownerToken)
+        {
+            var key = CanonicalGrowerService.NormalizeGrowerKey(aliasName);
+            if (key.Length == 0) return;
+            if (!map.TryGetValue(key, out var owners)) map[key] = owners = new(StringComparer.OrdinalIgnoreCase);
+            owners.Add(ownerToken);
+        }
+        foreach (var grower in canonicalGrowers.Where(x => x.IsActive && x.MergedIntoCanonicalGrowerId is null))
+        {
+            if (reviewedNumbersByOwnerId[grower.Id].Count > 0) continue;
+            var ownerToken = $"canonical:{grower.Id}";
+            AddOwner(keyOwners, grower.DisplayName, ownerToken);
+            foreach (var alias in grower.Aliases.Where(x => x.IsActive)) AddOwner(keyOwners, alias.AliasName, ownerToken);
+        }
+
+        var candidates = new List<(string Number, string AliasName, string Key, bool IsAuthoritative)>();
+        foreach (var row in activeRows)
+        {
+            var names = new List<(string Name, bool IsAuthoritative)> { (row.GrowerName, true) };
+            if (ownerByNumber.TryGetValue(row.GrowerNumber, out var owner))
+            {
+                names.Add((owner.DisplayName, false));
+                names.AddRange(owner.Aliases.Where(IsReviewedAlias).Select(x => (x.AliasName, false)));
+            }
+            names.AddRange((observedNames.GetValueOrDefault(row.GrowerNumber) ?? []).Select(x => (x, false)));
+            foreach (var candidate in names.Where(x => !string.IsNullOrWhiteSpace(x.Name)))
+            {
+                var key = CanonicalGrowerService.NormalizeGrowerKey(candidate.Name);
+                var existing = candidates.SingleOrDefault(x => x.Number == row.GrowerNumber && x.Key == key);
+                if (key.Length == 0 || (existing != default && (existing.IsAuthoritative || !candidate.IsAuthoritative))) continue;
+                candidates.RemoveAll(x => x.Number == row.GrowerNumber && x.Key == key && !x.IsAuthoritative && candidate.IsAuthoritative);
+                candidates.Add((row.GrowerNumber, candidate.Name.Trim(), key, candidate.IsAuthoritative));
+                AddOwner(keyOwners, candidate.Name, row.GrowerNumber);
+            }
+        }
+
+        var decisions = candidates
+            .GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var ownerTokens = keyOwners[group.Key].OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+                var candidateNumbers = group.Select(x => x.Number).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var authoritativeNumbers = group.Where(x => x.IsAuthoritative).Select(x => x.Number).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var externalConflict = ownerTokens.Any(x => x.StartsWith("canonical:", StringComparison.Ordinal));
+                string? selectedNumber = null;
+                string disposition;
+                if (authoritativeNumbers.Count == 1 && !externalConflict)
+                {
+                    selectedNumber = authoritativeNumbers[0];
+                    disposition = candidateNumbers.Count == 1 ? "AddOrRetainUnambiguous" : "AddAuthoritativeSkipHistoricalConflict";
+                }
+                else if (authoritativeNumbers.Count == 0 && candidateNumbers.Count == 1 && !externalConflict)
+                {
+                    selectedNumber = candidateNumbers[0];
+                    disposition = "AddOrRetainUnambiguousHistorical";
+                }
+                else disposition = "SkippedAmbiguous";
+                var selected = selectedNumber is null
+                    ? group.First()
+                    : group.First(x => x.Number == selectedNumber && (x.IsAuthoritative || authoritativeNumbers.Count == 0));
+                return new ReviewedGrowerAliasDecision(
+                    selected.AliasName,
+                    group.Key,
+                    ownerTokens,
+                    selectedNumber,
+                    disposition);
+            })
+            .OrderBy(x => x.NormalizedAliasKey, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var acceptedByKey = decisions
+            .Where(x => x.SelectedGrowerNumber is not null)
+            .ToDictionary(x => x.NormalizedAliasKey, x => x.SelectedGrowerNumber!, StringComparer.OrdinalIgnoreCase);
+
+        var toAdd = 0;
+        var toReactivate = 0;
+        var toUpdate = 0;
+        foreach (var decision in decisions.Where(x => x.SelectedGrowerNumber is not null))
+        {
+            if (!ownerByNumber.TryGetValue(decision.SelectedGrowerNumber!, out var owner))
+            {
+                toAdd++;
+                continue;
+            }
+            var alias = owner.Aliases.SingleOrDefault(x => x.NormalizedAliasKey == decision.NormalizedAliasKey);
+            if (alias is null) toAdd++;
+            else if (!alias.IsActive) toReactivate++;
+            else if (!string.Equals(alias.SourceSystem, ReviewedGrowerMasterConstants.SourceSystem, StringComparison.Ordinal)
+                || !alias.AliasName.Equals(decision.AliasName, StringComparison.Ordinal)) toUpdate++;
+        }
+
+        var inactiveNumbers = rows.Where(x => !x.IsActive).Select(x => x.GrowerNumber).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var toDeactivate = canonicalGrowers.Sum(grower =>
+        {
+            var reviewedNumbers = grower.GrowerNumbers
+                .Select(x => CanonicalGrowerService.NormalizeGrowerNumber(x.GrowerNumber))
+                .Where(allNumbers.Contains)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (reviewedNumbers.Count != 1) return 0;
+            var number = reviewedNumbers[0];
+            return grower.Aliases.Count(alias => alias.IsActive
+                && IsReviewedAlias(alias)
+                && (inactiveNumbers.Contains(number)
+                    || !acceptedByKey.TryGetValue(alias.NormalizedAliasKey, out var acceptedNumber)
+                    || !acceptedNumber.Equals(number, StringComparison.OrdinalIgnoreCase)));
+        });
+        return new(decisions, toAdd, toReactivate, toUpdate, toDeactivate);
     }
+
+    private static bool IsReviewedAlias(CanonicalGrowerAlias alias) =>
+        string.Equals(alias.SourceSystem, ReviewedGrowerMasterConstants.SourceSystem, StringComparison.Ordinal)
+        || string.Equals(alias.SourceSystem, ReviewedGrowerMasterConstants.PreviousSourceSystem, StringComparison.Ordinal);
 
     private async Task<string> CaptureProtectedFingerprintAsync(CancellationToken cancellationToken)
     {
@@ -518,5 +839,6 @@ public sealed class ReviewedGrowerMasterSyncService(
 
     private static string CanonicalKey(string growerNumber) => $"REVIEWED_GROWER_NUMBER_{growerNumber}";
     private static string Sha256(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
-    private static ReviewedGrowerMasterSyncResult Failed(string message, ReviewedGrowerMasterSyncPreflight preflight) => new(false, false, false, message, 0, 0, 0, 0, preflight);
+    private static ReviewedGrowerMasterSyncResult Failed(string message, ReviewedGrowerMasterSyncPreflight preflight) =>
+        new(false, false, false, message, 0, 0, 0, 0, 0, 0, 0, 0, 0, preflight);
 }

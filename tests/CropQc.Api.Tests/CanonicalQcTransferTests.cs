@@ -121,7 +121,7 @@ public sealed class CanonicalQcTransferTests
     {
         await using var db = CreateDbContext();
         await SeedTransferFruitAsync(db, "1080", "WP ORCHARD", "TR-QC-1080");
-        AddMappedGrower(db, "1080", "WINDY POINT", "WP ORCHARD", "WP ORCHARD ORG");
+        AddMappedGrower(db, "1080", "WP ORCHARD ORG CHIL", "WINDY POINT", "WP ORCHARD");
         await db.SaveChangesAsync();
 
         var manager = Principal("manager@fruitandland.com");
@@ -130,7 +130,7 @@ public sealed class CanonicalQcTransferTests
 
         var sourceRoom = await dashboard.GetRoomDetailAsync(99101, CancellationToken.None);
         var sourceLot = Assert.Single(sourceRoom.CurrentLots);
-        Assert.Equal("WINDY POINT", sourceLot.GrowerName);
+        Assert.Equal("WP ORCHARD ORG CHIL", sourceLot.GrowerName);
         Assert.Equal("1080", sourceLot.GrowerNumber);
         var sourceOption = sourceRoom.TransferLotOptions.Single(x => x.Label.Contains("1080", StringComparison.Ordinal));
 
@@ -160,7 +160,7 @@ public sealed class CanonicalQcTransferTests
 
         var roomC = await dashboard.GetRoomDetailAsync(99103, CancellationToken.None);
         var movedLot = Assert.Single(roomC.CurrentLots);
-        Assert.Equal("WINDY POINT", movedLot.GrowerName);
+        Assert.Equal("WP ORCHARD ORG CHIL", movedLot.GrowerName);
         Assert.Equal("1080", movedLot.GrowerNumber);
         Assert.Equal(40, movedLot.CurrentBins);
         Assert.Equal(12m, movedLot.AveragePressureLbs);
@@ -173,7 +173,7 @@ public sealed class CanonicalQcTransferTests
             manager,
             CancellationToken.None);
         var runOption = Assert.Single(binsRun.AvailableInventory);
-        Assert.Equal("WINDY POINT", runOption.Grower);
+        Assert.Equal("WP ORCHARD ORG CHIL", runOption.Grower);
         Assert.Equal("1080", runOption.Lot);
         Assert.Equal(40, runOption.CurrentBins);
         Assert.DoesNotContain("No grade data", runOption.GradeSummary);

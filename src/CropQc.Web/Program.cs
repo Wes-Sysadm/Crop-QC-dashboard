@@ -373,7 +373,25 @@ if (args.Contains(ReviewedGrowerMasterSyncConstants.CommandName, StringComparer.
         ReviewedGrowerCommandValue(args, "--authorization-token")), CancellationToken.None);
     var report = System.Text.Json.JsonSerializer.Serialize(result, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
     var syncLogger = syncScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("ReviewedGrowerMasterSyncCommand");
-    if (result.Success) syncLogger.LogInformation("{GrowerSyncReport}", report); else syncLogger.LogError("{GrowerSyncReport}", report);
+    Console.Out.WriteLine(report);
+    if (result.Success)
+    {
+        syncLogger.LogInformation(
+            "Reviewed grower master sync completed. State: {State}; applied: {Applied}; already applied: {AlreadyApplied}; source: {SourceVersion}; rows: {ReviewedRows}",
+            result.Preflight.State,
+            result.Applied,
+            result.AlreadyApplied,
+            result.Preflight.SourceVersion,
+            result.Preflight.ReviewedRowCount);
+    }
+    else
+    {
+        syncLogger.LogError(
+            "Reviewed grower master sync failed. State: {State}; source: {SourceVersion}; message: {Message}",
+            result.Preflight.State,
+            result.Preflight.SourceVersion,
+            result.Message);
+    }
     Environment.ExitCode = result.Success ? 0 : 1;
     return;
 }

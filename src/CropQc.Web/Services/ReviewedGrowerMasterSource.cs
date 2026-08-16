@@ -24,14 +24,27 @@ public sealed record ReviewedGrowerMaster(
 
 public static class ReviewedGrowerMasterConstants
 {
-    public const string SourceSystem = "Reviewed grower master pool.xlsx 2026-08-13";
-    public const string WorkbookFileName = "pool.xlsx";
-    public const long WorkbookSizeBytes = 31_013;
-    public const string WorkbookSha256 = "dc34005faca9dc241977c4680d9d52b7dc6682efff5246591ff43ff303fd4e6b";
-    public const string AssetSha256 = "e49848f40bff96ef256ab5bf51a9ee9cb1c9aa6f88c1b1b4dc51ec712157afb2";
-    public const int ExpectedRowCount = 405;
-    public const int ExpectedActiveCount = 389;
-    public const int ExpectedInactiveCount = 16;
+    public const string SourceVersion = "reviewed-grower-master-v2-2026-08-15";
+    public const string SourceSystem = "Reviewed grower master pool(2).xlsx 2026-08-15";
+    public const string WorkbookFileName = "pool(2).xlsx";
+    public const string WorkbookSheetName = "Sheet1";
+    public const string WorkbookRange = "A1:C670";
+    public const string WorkbookHeader = "#,Grower,POOL Starts";
+    public const long WorkbookSizeBytes = 40_009;
+    public const string WorkbookSha256 = "13fa493a1dae9573a693cb9e43baeaa04fd51e583abedab1e0338144566ef409";
+    public const string AssetSha256 = "39d89f8a07aa60a0b23b3f54012345818687b3f20f9152898476f1ef78fd7ff9";
+    public const int ExpectedRowCount = 669;
+    public const int ExpectedActiveCount = 643;
+    public const int ExpectedInactiveCount = 26;
+
+    public const string PreviousSourceVersion = "reviewed-grower-master-v1-2026-08-13";
+    public const string PreviousSourceSystem = "Reviewed grower master pool.xlsx 2026-08-13";
+    public const string PreviousWorkbookFileName = "pool.xlsx";
+    public const string PreviousWorkbookSha256 = "dc34005faca9dc241977c4680d9d52b7dc6682efff5246591ff43ff303fd4e6b";
+    public const string PreviousAssetSha256 = "e49848f40bff96ef256ab5bf51a9ee9cb1c9aa6f88c1b1b4dc51ec712157afb2";
+    public const int PreviousExpectedRowCount = 405;
+    public const int PreviousExpectedActiveCount = 389;
+    public const int PreviousExpectedInactiveCount = 16;
 }
 
 public sealed class ReviewedGrowerMasterSource(IHostEnvironment environment) : IReviewedGrowerMasterSource

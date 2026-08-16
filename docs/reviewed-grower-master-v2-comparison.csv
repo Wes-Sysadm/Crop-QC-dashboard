@@ -1,0 +1,670 @@
+GrowerNumber,PreviousWorkbookName,PreviousPool,PreviousStatus,CurrentWorkbookName,CurrentPoolStarts,CurrentStatus,Category,OldAliasDisposition,PoolDisposition
+1010,MFR - FUJI ORCH-BLK A,FA,Active,MFR - FUJI BLK A ORG,FA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1011,,,Absent,MFR-FUJI BLK A ORG CHIL,F6,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1012,,,Absent,MFR - FUJI BLK A CONV,F7,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1020,MFR - FUJI ORCH-BLK B,FB,Active,MFR - FUJI BLK B ORG,FB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1021,,,Absent,MFR-FUJI BLK B ORG CHIL,F8,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1022,,,Absent,MFR - FUJI BLK B CONV,F9,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1030,MFR - FUJI ORCH-BLK C,FG,Active,MFR - FUJI BLK C ORG,FG,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1031,MFR - FUJI ORCH-BLK C- trans block,FT,Active,MFR-FUJI BLK OC ORG,FT,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1032,,,Absent,MFR-FUJI BLK C ORG CHIL,IW,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1033,,,Absent,MFR - FUJI BLK C CONV,1F,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1034,,,Absent,MFR-FUJI BK OC ORG CHIL,H8,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1035,,,Absent,MFR - FUJI BLK OC CONV,8F,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1040,MFR - FUJI ORCH-BLK D,FD,Active,MFR - FUJI BLK D ORG,FD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1041,,,Absent,MFR-FUJI BLK D ORG CHIL,2F,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1042,,,Absent,MFR - FUJI BLK D CONV,3F,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1050,MFR - FUJI ORCH-BLK E,FE,Active,MFR - FUJI BLK E ORG,FE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1051,,,Absent,MFR-FUJI BLK E ORG CHIL,4F,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1052,,,Absent,MFR - FUJI BLK E CONV,5F,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1060,INACTIVE,,Inactive,INACTIVE - PHOENIX,,Inactive,Still inactive,Not applicable,
+1061,INACTIVE 2400,,Inactive,INACTIVE - PHOENIX 2400,,Inactive,Still inactive,Not applicable,
+1062,INACTIVE 3900,,Inactive,INACTIVE - PHOENIX 3900,,Inactive,Still inactive,Not applicable,
+1063,INACTIVE 3900,,Inactive,INACTIVE - PHOENIX 3900,,Inactive,Still inactive,Not applicable,
+1070,MFR - FUJI ORCH-BLK F,FF,Active,MFR - FUJI BLK F ORG,FF,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1071,,,Absent,MFR-FUJI BLK F ORG CHIL,6F,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1072,,,Absent,MFR - FUJI BLK F CONV,7F,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1080,WINDY POINT,WP,Active,WP ORCHARD ORG CHIL,WP,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1081,WP Orchard - EAST POINT,WS,Active,EAST POINT ORG CHIL,WS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1082,WP Orchard - EP Non-Chilean,WN,Active,EAST POINT ORG,WN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1083,,,Absent,EAST POINT CONV,EP,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1084,,,Absent,WP ORCHARD CONV,WQ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1085,WP ORCHARD -NON CHILEAN,WC,Active,WP ORCHARD ORG,WC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1090,VANTAGE ORCHARDS,VA,Active,VANTAGE ORCH ORG CHIL,VA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1091,,,Absent,VANTAGE ORCHARDS CONV,VZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1095,VANTAGE ORCHARDS NON-CHILEAN,VC,Active,VANTAGE ORCHARDS ORG,VC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1100,INACTIVE,,Inactive,INACTIVE - WPO,,Inactive,Still inactive,Not applicable,
+1110,FRENCHMAN ORCHARD,FR,Active,FRENCHMAN ORCH ORG CHIL,FR,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1112,,,Absent,FRENCHMAN ORCH CONV,F3,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1115,FRENCHMAN ORCHARD NON-CHILEAN,F1,Active,FRENCHMAN ORCH ORG,F1,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1120,ALL THAT JAZZ NON-CHILEAN,AJ,Active,ALL THAT JAZZ ORG,AJ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1121,,,Absent,ALL THAT JAZZ CONV,A7,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1125,ALL THAT JAZZ NON-CANADA,AT,Active,ALL THAT JAZZ ORG CHIL,AT,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1127,OMAK AIRPORT-STAYMAN,AS,Active,CHELAN STAYMAN ORG,AS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1128,,,Absent,CHELAN STAYMAN ORG CHIL,C5,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1129,,,Absent,CHELAN STAYMAN CONV,C6,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1130,OTHELLOS EDGE NON-CHILEAN,OE,Active,OTHELLOS EDGE ORG,OE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1131,,,Absent,OTHELLOS EDGE ORG CHIL,O2,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1132,,,Absent,OTHELLOS EDGE CONV,O3,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1140,9 MILE ORCHARD,9M,Active,9 MILE ORCHARD ORG CHIL,9M,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1141,,,Absent,9 MILE ORCHARD CONV,9O,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1145,9 MILE ORCHARD NON-CHILEAN,9C,Active,9 MILE ORCHARD ORG,9C,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1150,COYOTE,CO,Active,COYOTE ORG,CO,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1151,,,Absent,COYOTE ORG CHIL,CU,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1152,,,Absent,COYOTE CONV,CI,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1160,MEADOW LAKE ORCHARDS,ML,Active,MEADOW LAKE ORG,ML,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1161,,,Absent,MEADOW LAKE ORG CHIL,MV,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1162,,,Absent,MEADOW LAKE CONV,MX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1165,Davis Orchards - Rembolt Fuji,DR,Active,DAVIS ORCHARD -REMBOLT,DR,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1166,Davis Orchards - P4 Fuji,P4,Active,DAVIS ORCHARD -P4,P4,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1167,Davis Orchards - Hurley Fuji,HF,Active,DAVIS ORCHARD -HURLEY,HF,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1168,Davis Orchards - Bob Fuji,BD,Active,DAVIS ORCHARD -BOB,BD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1169,Davis Orchards - Tootie Fuji,TF,Active,DAVIS ORCHARD -TOOTIE,TF,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1170,Davis Orchads - Todd Humbert,TH,Active,DAVIS ORCHARD -HUMBERT,TH,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1175,Davis orchards -FIRESTORM,FI,Active,DAVIS ORCHARD-FIRESTORM,FI,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1180,Davis Orchards - toddbenito,TD,Active,DAVIS ORCHARD -BENITOS,TD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1185,Davis Orchards - ToddFujis,DV,Active,DAVIS ORCHARD -TODD,DV,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1190,ADAMS COUNTY APPLES NON-CHILEAN,AC,Active,ADAMS COUNTY APP ORG,AC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1191,,,Absent,ADAMS COUNTY A ORG CHIL,A5,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1192,,,Absent,ADAMS COUNTY APP CONV,A6,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1200,INACTIVE,,Inactive,INACTIVE - ATJ,,Inactive,Still inactive,Not applicable,
+1210,Davis Orchards - LeforeGS,LG,Active,DAVIS ORCHARD - LEFORE,LG,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1220,INACTIVE,,Inactive,INACTIVE - Crown-18,,Inactive,Still inactive,Not applicable,
+1230,SIMMONS,SI,Active,SIMMONS ORG,SI,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1232,,,Absent,SIMMONS CONV,IA,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1235,Simmons - Chilean,SX,Active,SIMMONS ORG CHIL,SX,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1240,Panorama,PA,Active,Panorama ORG,PA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1241,,,Absent,Panorama ORG CHIL,PZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1242,,,Absent,Panorama CONV,PV,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1250,INACTIVE,,Inactive,INACTIVE - LSI-EBS,,Inactive,Still inactive,Not applicable,
+1260,LC Orchard LLC NON-CHILEAN,LC,Active,LC Orchard ORG,LC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1261,,,Absent,LC Orchard ORG CHIL,LV,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1262,,,Absent,LC Orchard CONV,LX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1270,HIGHLAND HARVEST,HH,Active,HIGHLAND HARV ORG CHIL,HH,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1272,,,Absent,HIGHLAND HARVEST CONV,H4,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1275,HIGHLAND HARVEST NON-CHILEAN,H3,Active,HIGHLAND HARVEST ORG,H3,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1280,INACTIVE,,Inactive,INACTIVE - ELK ORCH-EBS,,Inactive,Still inactive,Not applicable,
+1290,OK ORCHARD,OK,Active,OK ORCHARD ORG CHIL,OK,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1292,,,Absent,OK ORCHARD CONV,OZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1295,OK ORCHARD-NON-CHILEAN,OG,Active,OK ORCHARD ORG,OG,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1300,INACTIVE,,Inactive,INACTIVE - JJ Orchard,,Inactive,Still inactive,Not applicable,
+1310,MP - CHILLIWIST,MC,Active,CHILLIWIST ORG,MC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1311,,,Absent,CHILLIWIST ORG CHIL,C7,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1312,,,Absent,CHILLIWIST CONV,C8,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1320,JJ Tonasket,JJ,Active,JJ - TONASKET ORG,JJ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1321,,,Absent,JJ - TONASKET ORG CHIL,JU,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1322,,,Absent,JJ - TONASKET CONV,JH,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1325,JJ ORCHARD - DJT,DJ,Active,JJ - DJT ORG,DJ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1326,,,Absent,JJ - DJT ORG CHIL,D5,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1327,,,Absent,JJ - DJT CONV,D6,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1330,FFL-Sweetheart,FS,Active,FFL-SWEETHEART ORG CHIL,FS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1332,,,Absent,FFL-SWEETHEART CONV,FY,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1335,FFL-SWEETHEART NON-CHILEAN,FU,Active,FFL-SWEETHEART ORG,FU,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1340,FFL-Cherry Hill,FC,Active,FFL-Cherry Hill ORG,FC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1341,,,Absent,FFL-CHERRY H ORG CHIL,FZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1342,,,Absent,FFL-Cherry Hill CONV,FX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1350,FFL-Organic,FO,Active,FFL-ORGANIC ORG CHIL,FO,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1352,,,Absent,FFL-ORGANIC CONV,FL,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1355,FFL-ORGANIC NON-CHILEAN,FP,Active,FFL-ORGANIC ORG,FP,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1360,Elk-Riverside,ER,Active,Elk-Riverside ORG,ER,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1361,,,Absent,Elk-Riverside ORG CHIL,EQ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1362,,,Absent,Elk-Riverside CONV,EY,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1370,Top Pear,TP,Active,TOP PEAR ORG,TP,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1371,,,Absent,TOP PEAR ORG CHIL,TL,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1372,,,Absent,TOP PEAR CONV,TK,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1380,Radar Hill Apples,RH,Active,Radar Hill Apple ORG,RH,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1381,,,Absent,Radar Hill App ORG CHIL,3R,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1382,,,Absent,Radar Hill Apple CONV,4R,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1385,Radar Hill Apples-A Glory Block,RG,Active,Radar Hill-ATGL ORG,RG,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1386,,,Absent,Radar Hill-ATG ORG CHIL,5R,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1387,,,Absent,Radar Hill-ATGL CONV,6R,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1390,Duck Lake,DL,Active,Duck Lake ORG,DL,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1391,,,Absent,Duck Lake ORG CHIL,D3,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1392,,,Absent,Duck Lake CONV,D4,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1400,INACTIVE,,Inactive,INACTIVE-MP Chilliwist,,Inactive,Still inactive,Not applicable,
+1410,,,Absent,GRIFFITH ORG CHIL,1G,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1411,,,Absent,GRIFFITH ORG,2G,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1412,,,Absent,GRIFFITH CONV,3G,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1420,,,Absent,BB1 CONV,1E,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1421,,,Absent,BB1 ORG,1C,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1422,,,Absent,BB1 ORG CHIL,1H,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1430,,,Absent,BB2 CONV,2E,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1431,,,Absent,BB2 ORG,2C,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1432,,,Absent,BB2 ORG CHIL,2H,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1440,,,Absent,BB3 CONV,3E,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1441,,,Absent,BB3 ORG,3C,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1442,,,Absent,BB3 ORG CHIL,3D,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1450,,,Absent,BB5 CONV,5E,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1451,,,Absent,BB5 ORG,5C,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1452,,,Absent,BB5 ORG CHIL,5D,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1500,INACTIVE,,Inactive,INACTIVE-OK Orchard,,Inactive,Still inactive,Not applicable,
+1510,Porky Pears,PP,Active,Porky Pears ORG,PP,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1511,,,Absent,Porky Pears ORG CHIL,PF,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1512,,,Absent,Porky Pears CONV,PD,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1520,MP - HENDRICKSON,MH,Active,HENDRICKSON ORG,MH,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1521,,,Absent,HENDRICKSON ORG CHIL,HA,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1522,,,Absent,HENDRICKSON CONV,HS,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1530,Baldwin Pears,BA,Active,Baldwin Pears ORG,BA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1531,,,Absent,Baldwin Pears ORG CHIL,B8,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1532,,,Absent,Baldwin Pears CONV,B9,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1537,,,Absent,OMAK AIR-B BAW CONV,OJ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1538,,,Absent,OMAK AIR-B BAW ORG CHIL,OH,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1539,,,Absent,OMAK AIR-A BAW CONV,OX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1540,Cook Orchard,CK,Active,Cook Orchard ORG CHIL,CK,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1542,,,Absent,Cook Orchard CONV,CT,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1543,,,Absent,OMAK AIR-A BAW ORG CHIL,OM,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1545,COOK ORCHARD NON-CHILEAN,C1,Active,COOK ORCH ORG,C1,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1546,,,Absent,OMAK AIR-BLK D CONV,OU,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1547,,,Absent,OMAK AIR-BLK D ORG CHIL,OI,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1548,,,Absent,OMAK AIR-BLK C CONV,OR,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1549,,,Absent,OMAK AIR-BLK C ORG CHIL,OY,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1550,Omak Airport Orchard,OA,Active,OMAK Airport ORG CHIL - DONT USE,OA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1551,OMAK AIRPORT-THESIS,OT,Active,OMAK AIRPORT-THESIS ORG,OT,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1552,OMAK AIRPORT-BLOCK C,OC,Active,OMAK AIRPORT-BLK C ORG,OC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1553,OMAK AIRPORT-BLOCK D,OD,Active,OMAK AIRPORT-BLK D ORG,OD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1554,OMAK AIRPORT-ABOVE BIDE-A-WEE,OV,Active,OMAK AIR-A BAW ORG,OV,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1555,OMAK AIRPORT-BELOW BIDE-A-WEE,OL,Active,OMAK AIR-B BAW ORG,OL,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1556,OMAK AIRPORT NON-CHILEAN,ON,Active,Omak Airport Orch ORG - DONT USE,ON,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1557,,,Absent,Omak Airport Orch CONV - DONT USE,OO,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1558,,,Absent,OMAK A-THESIS ORG CHIL,O1,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1559,,,Absent,OMAK AIR-THESIS CONV,OP,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1560,GA Orchard,AG,Active,GA Orchard ORG CHIL,AG,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1561,GA ORCHARD NON-CHILEANS,AN,Active,GA Orchard ORG,AN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1565,GA Orchard-Special,AF,Active,GA Orchard CONV,AF,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1570,Gronk Orchard NON-CHILEAN,NK,Active,GRONK ORCHARD ORG,NK,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1572,,,Absent,GRONK ORCHARD CONV,NZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1575,Gronk Orchard CHILEAN,NN,Active,GRONK ORCHARD ORG CHIL,NN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1580,,,Absent,PK KANE ORCH CONV,P5,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1581,,,Absent,PK KANE ORCH ORG,P6,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1582,,,Absent,PK KANE ORCH ORG CHIL,P7,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1600,Pine Creek,PI,Active,Pine Creek ORG CHIL,PI,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1602,,,Absent,Pine Creek CONV,PJ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+1700,BRAYS,BR,Active,BRAYS ORG CHIL,BR,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1725,BRAYS NON-CHILEAN,B6,Active,BRAYS ORG,B6,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1750,Brays-Pink Lady,B5,Active,BRAYS CONV,B5,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+1800,leave open due to WP history,,Active,INACTIVE-Simmons-WPP,,Inactive,Newly inactive number,Skip ambiguous old alias,
+1900,leave open due to WP history,,Active,INACTIVE-Highland-WPP,,Inactive,Newly inactive number,Skip ambiguous old alias,
+2000,4 PAC,4P,Active,4 PAC ORG CHIL,4P,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2001,,,Absent,4 PAC ORG,4O,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+2002,,,Absent,4 PAC CONV,4C,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+2100,leave open due to WP history,,Active,INACTIVE-ACA-WPP,,Inactive,Newly inactive number,Skip ambiguous old alias,
+2200,Crown,CR,Active,Crown ORG,CR,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2230,Crown-Fungicide,CC,Active,Crown CONV,CC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2240,Crown-D&F,CL,Active,CROWN-NOT IN USE,CL,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2250,Crown-Drench,CW,Active,CROWN-NOT IN USE,CW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2260,Crown-Chilean,CX,Active,Crown ORG CHIL,CX,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2300,leave open due to WP history,,Active,INACTIVE-VANTAGE-WPP,,Inactive,Newly inactive number,Skip ambiguous old alias,
+2350,,,Absent,WHITESTONE PEARS CONV,W5,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+2400,PHOENIX ORCHARDS Block A &E,PH,Active,PHOENIX A & E ORG,PH,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2401,,,Absent,PHOENIX A & E ORG CHIL,PL,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+2402,,,Absent,PHOENIX A & E CONV,PK,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+2500,leave open due to WP history,,Active,INACTIVE-FRENCHMAN-WPP,,Inactive,Newly inactive number,Skip ambiguous old alias,
+2600,Turtle Rock,TR,Active,Turtle Rock ORG,TR,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2601,,,Absent,Turtle Rock ORG CHIL,TJ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+2602,,,Absent,Turtle Rock CONV,TG,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+2700,LSI,LS,Active,LSI ORG CHIL,LS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2710,LSI NON-CHILEAN,L3,Active,LSI ORG,L3,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2720,LSI-ROBISON BLOCK,L4,Active,LSI-ROBISON ORG CHIL,L4,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2721,,,Absent,LSI-ROBISON ORG,LF,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+2722,,,Absent,LSI-ROBISON CONV,LH,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+2750,LSI-PINK LADY,LP,Active,LSI CONV,LP,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2800,Bella Vista,BV,Active,BELLA VISTA ORG,BV,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2822,,,Absent,BELLA VISTA CONV,1B,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+2825,Bella Vista - Chilean,B7,Active,BELLA VISTA ORG CHIL,B7,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2900,Loomis,LO,Active,LOOMIS ORG CHIL,LO,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+2902,,,Absent,LOOMIS CONV,LD,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+2910,LOOMIS NON-CHILEAN,L1,Active,LOOMIS ORG,L1,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3000,INACTIVE,,Inactive,INACTIVE-LC Orchard,,Inactive,Still inactive,Not applicable,
+3010,PREMIERE PARTNERS IV,IV,Active,PREMIERE PARTNERS IV,IV,Active,Unchanged number/name/status,Not applicable,
+3020,ROLLOFF FARMS-VA EASTSIDE,RV,Active,ROLLOFF F-VA ESIDE CONV,RV,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3030,MFR - ZERBA PL,BW,Active,MFR - ZERBA PL ORG,BW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3031,,,Absent,MFR - ZERBA PL ORG CHIL,H7,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3032,,,Absent,MFR - ZERBA PL CONV,EV,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3040,DL & JJ FARMS - MASON,MS,Active,DL & JJ - MASON CONV,MS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3050,ROLOFF FARMS - JERRI,JE,Active,ROLOFF FARMS-JERRI CONV,JE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3060,ROLOFF FARMS - MILTA,MI,Active,ROLOFF FARMS-MILTA CONV,MI,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3070,Morris Orchards,CA,Active,Morris Orchards,CA,Active,Unchanged number/name/status,Not applicable,
+3080,MASON PLACE-MALCOM MILLAR,MM,Active,MASON PLACE-MILLAR CONV,MM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3090,BULLOCK FARMS,SP,Active,BULLOCK FARMS CONV,SP,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3100,EMPEY ORCHARDS,EM,Active,EMPEY ORCHARDS CONV,EM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3110,Rodighiero Orchard -Bradshaw,SB,Active,Rodighiero-Bradsh CONV,SB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3120,SAM'S APPLES - WAREHOUSE,SW,Active,SAMS APPLES-WHSE ORG,SW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3121,,,Absent,SAMS APPLES-WS ORG CHIL,IG,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3122,,,Absent,SAMS APPLES-WHSE CONV,HP,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3130,SAMS APPLES - DANS,SD,Active,SAMS APPLES-DANS ORG,SD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3131,,,Absent,SAMS APPLE-DAN ORG CHIL,HU,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3132,,,Absent,SAMS APPLES-DANS CONV,IH,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3140,DL & JJ FARMS - MARLIN,DM,Active,DL & JJ - MARLIN CONV,DM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3150,MFR - DAN SAMS & BROWN,DS,Active,MFR - SAMS & BRN ORG,DS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3151,,,Absent,MFR-SAMS & BRN ORG CHIL,1D,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3152,,,Absent,MFR - SAMS & BRN CONV,2D,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3160,MFR - L&E WALISER PL,LW,Active,MFR-L&E WALISER ORG,LW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3161,,,Absent,MFR-L&E WALISR ORG CHIL,G7,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3162,,,Absent,MFR-L&E WALISER CONV,A8,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3170,MASON & BROWN,MN,Active,MASON & BROWN CONV,MN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3180,MFR - WILMONT PL,EW,Active,MFR - WILMONT PL ORG,EW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3181,,,Absent,MFR-WILMONT PL ORG CHIL,EX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3182,,,Absent,MFR - WILMONT PL CONV,AK,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3190,MFR - M&D FARMS CARTER SHOP,MA,Active,MFR-M&D CARTER S ORG,MA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3191,,,Absent,MFR-M&D CART S ORG CHIL,A9,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3192,,,Absent,MFR-M&D CARTER S CONV,ET,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3200,BENCH ORCHARD NON-CHILEAN,BE,Active,BENCH ORCHARD ORG,BE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3201,,,Absent,BENCH ORCHARD ORG CHIL,2B,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3202,,,Absent,BENCH ORCHARD CONV,3B,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3210,BULLOCK & STEWART,BL,Active,BULLOCK & STEWART CONV,BL,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3220,BULLOCK & TEN EYCK,TE,Active,BULLOCK & TEN EYCK CONV,TE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3230,BULLOCK & SMITH,SM,Active,BULLOCK & SMITH CONV,SM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3240,MFR - J WAL. ORCH INC - WALISER DAVIS,JA,Active,MFR-JW-WALISR DAVIS ORG,JA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3241,,,Absent,MFR-JW-WALSR D ORG CHIL,IX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3242,,,Absent,MFR-JW-WALISER DVS CONV,EA,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3250,BULLOCK RANCHES - BAKER,BM,Active,BULLOCK R - BAKER CONV,BM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3260,Rodighiero Orch - Home50,SH,Active,Rodighiero-Home50 CONV,SH,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3270,BULLOCK FARMS - HOME,BQ,Active,BULLOCK - HOME CONV,BQ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3280,BULLOCK FARMS - NFORK,BY,Active,BULLOCK - NFORK CONV,BY,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3290,MFR - J L WAL FM LLC -TOWN,JF,Active,MFR - JWAL -TOWN ORG,JF,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3291,,,Absent,MFR-JWAL-TOWN ORG CHIL,TZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3292,,,Absent,MFR - JWAL -TOWN CONV,TX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3300,MFR - J WAL ORCH INC -DANIELSON,JD,Active,MFR - JW-DANIELS ORG,JD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3301,,,Absent,MFR-JW-DANIELS ORG CHIL,TN,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3302,,,Absent,MFR - JW-DANIELS CONV,TM,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3310,MFR - J WAL ORCH INC -BOLLINGER,JO,Active,MFR - JW-BOLLING ORG,JO,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3311,,,Absent,MFR-JW-BOLLING ORG CHIL,TC,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3312,,,Absent,MFR - JW-BOLLING CONV,TV,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3320,ROLOFF FARMS - PENA,RP,Active,ROLOFF FARMS-PENA CONV,RP,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3330,"FRESH 2-U, INC",2U,Active,"FRESH 2-U, INC CONV",2U,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3340,Leave Open for EBS Use,F2,Active,INACTIVE-FRESH 2-U-EBS,F2,Inactive,Newly inactive number,Skip ambiguous old alias,
+3350,GIGUIERE-RODIGHIERO,G1,Active,GIGUIERE-RODIGHIER CONV,G1,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3360,RODIGHIERO - LINDA LARSON,LL,Active,RODIGHIERO-LLARSON CONV,LL,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3365,LINDA KRUGER-RODIGHIERO,L2,Active,KRUGER-RODIGHIERO CONV,L2,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3370,RODIGHIERO - JAMES LARSON,JL,Active,RODIGHIERO-LARSON CONV,JL,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3380,RODIGHIERO - STOLZ,SZ,Active,RODIGHIERO - STOLZ CONV,SZ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3390,RODIGHIERO - VONDERAHE,VO,Active,RODIGHIERO-VONDERA CONV,VO,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3400,MARCEL STOLZ - RODIGHIERO,MT,Active,M STOLZ-RODIGHIERO CONV,MT,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3410,ROLOFF FARMS - BRESTER,RA,Active,ROLOFF - BRESTER CONV,RA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3420,ROLOFF FARMS - IZZY,RZ,Active,ROLOFF FARMS-IZZY CONV,RZ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3430,ROLOFF FARMS - PRIB,RJ,Active,ROLOFF FARMS-PRIB CONV,RJ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3440,ROLOFF FARMS - RED,RR,Active,ROLOFF FARMS-RED CONV,RR,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3450,ROLOFF FARMS - REDF,RK,Active,ROLOFF FARMS-REDF CONV,RK,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3460,ROLOFF FARMS - WHITE,RW,Active,ROLOFF FARMS-WHITE CONV,RW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3470,KUULEI ORCHARDS - ME,KM,Active,KUULEI ORCHARDS-ME CONV,KM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3480,KUULEI ORCHARDS - JACOB,KJ,Active,KUULEI ORCH-JACOB CONV,KJ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3490,KUULEI ORCHARDS - SHORE,KS,Active,KUULEI ORCH-SHORE CONV,KS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3500,WGM ROLOFF/SNOW,WG,Active,INACTIVE-FENCHMAN-WPP,WG,Inactive,Newly inactive number,Retain old name only when production preflight confirms it remains unambiguous,
+3510,DIDION FARMS,DI,Active,DIDION FARMS CONV,DI,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3520,DAVE MORRIS,DA,Active,DAVE MORRIS CONV,DA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3530,RICK HANEY,RY,Active,RICK HANEY CONV,RY,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3540,Leave Open for EBS Use,HO,Active,INACTIVE-HANEY-EBS,HO,Inactive,Newly inactive number,Skip ambiguous old alias,
+3550,BULLOCK BAKER - HARRIS,HY,Active,BULLOCK BAK-HARRIS CONV,HY,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3560,LANCE BULLOCK,LB,Active,LANCE BULLOCK CONV,LB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3570,Sam's Apples History,SE,Active,INACTIVE-SAMS APPLES,SE,Inactive,Newly inactive number,Retain old name only when production preflight confirms it remains unambiguous,
+3580,Malcolm Millar,ME,Active,Malcolm Millar CONV,ME,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3590,RODIGHIERO ORCHARDS - HANSON,RX,Active,RODIGHIERO-HANSON CONV,RX,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3600,ELK ORCHARDS,EK,Active,ELK ORCHARDS ORG CHIL,EK,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3602,,,Absent,ELK ORCHARDS CONV,E2,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3605,ELK ORCHARDS NON-CHILEAN,E1,Active,ELK ORCHARDS ORG,E1,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3610,RODIGHIERO ORCHARDS - JONES,RQ,Active,RODIGHIERO - JONES CONV,RQ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3615,RODIGHIERO ORCHARDS - LEINBACH,R5,Active,RODIGHIERO-LEINBA CONV,R5,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3620,RODIGHIERO ORCHARDS - SMILTH,RT,Active,RODIGHIERO-SMILTH CONV,RT,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3630,RODIGHIERO ORCHARDS - LARSON,RU,Active,RODIGHIERO-LARSON CONV,RU,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3640,RODIGHIERO ORCHARDS - TRUJILO,RM,Active,RODIGHIERO-TRUJILO CONV,RM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3650,RODIGHIERO ORCHARDS - ROBERTSON,R1,Active,RODIGHIERO-ROBERT CONV,R1,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3660,RODIGHIERO ORCHARDS - C ROBERTSON,R2,Active,RODIGHIERO-C ROBE CONV,R2,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3670,ROLOFF FARMS - STOLZ,RS,Active,ROLOFF FARMS-STOLZ CONV,RS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3680,RODIGHIERO ORCHARDS - MARLIN,R3,Active,RODIGHIERO-MARLIN CONV,R3,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3690,ROLOFF FARMS - HOME,R4,Active,ROLOFF FARMS-HOME CONV,R4,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3700,Sam's Apples Burlingame,SQ,Active,Sams A Burlingame ORG,SQ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3701,,,Absent,Sams A Burling ORG CHIL,IS,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3702,,,Absent,Sams A Burlingame CONV,IL,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3710,Rodighiero Orchards - Across,SA,Active,Rodighiero - Across ORG,SA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3711,,,Absent,Rodighiero-Acr ORG CHIL,IM,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3712,,,Absent,Rodighiero-Across CONV,IN,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3720,KUULEI ORCHARDS - MILLAR,KL,Active,KUULEI - MILLAR CONV,KL,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3730,Sam's Apples Addington,AD,Active,Sams A Addington ORG,AD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3735,Davis Orchard - Davis,DD,Active,Davis Orc - Davis CONV,DD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3740,Bullock Farms - Harvey,B1,Active,Bullock F - Harvey CONV,B1,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3745,Davis Orchard - Crimson,DC,Active,Davis Orch-Crimson CONV,DC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3750,Roloff Farms,RF,Active,Roloff Farms CONV,RF,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3755,Davis Orchards - Mack,DK,Active,Davis Orch-Mack CONV,DK,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3760,Kuulei Orchards,KI,Active,Kuulei Orchards CONV,KI,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3765,Davis Orchards - Nash,DN,Active,Davis Orch-Nash CONV,DN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3770,Davis Orchards - P2,P2,Active,Davis Orchards-P2 CONV,P2,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3775,Davis Orchards - A Honeys,AH,Active,Davis Orch-A Honey CONV,AH,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3780,Davis Orchards - P3,P3,Active,Davis Orchards-P3 CONV,P3,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3785,Davis Orchard - Best,B2,Active,Davis Orchard-Best CONV,B2,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3790,Davis Orchard - Hermans,HE,Active,Davis Orch-Hermans CONV,HE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3795,Davis Orchard - Hohns,HN,Active,Davis Orch-Hohns CONV,HN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3800,FFL- SUNDOWN NON-CHILEAN,SU,Active,FFL-SUNDOWN ORG,SU,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3802,,,Absent,FFL- SUNDOWN CONV,1S,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3805,FFL- SUNDOWN NON-CANADA,S2,Active,FFL-SUNDOWN ORG CHIL,2S,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,Informational only; no operational PoolStart write
+3900,Phoenix No Chilean,PX,Active,PHOENIX ORG,PX,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+3901,,,Absent,PHOENIX ORG CHIL,PN,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+3902,,,Absent,PHOENIX CONV,PM,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4000,C&J,CJ,Active,C&J ORG,CJ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+4001,,,Absent,C&J ORG CHIL,C3,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4002,,,Absent,C&J CONV,C4,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4100,Conconully Pears,CP,Active,Conconully Pears ORG,CP,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+4101,,,Absent,Conconully Prs ORG CHIL,C9,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4102,,,Absent,Conconully Pears CONV,CQ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4150,Conconully Pears-Derosario,C2,Active,Derosario ORG,C2,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+4151,,,Absent,Derosario ORG CHIL,DX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4152,,,Absent,Derosario CONV,D2,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4200,Milepost-Groff,MG,Active,Milepost-Groff ORG,MG,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+4201,,,Absent,Milepost-Groff ORG CHIL,E8,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4202,,,Absent,Milepost-Groff CONV,E9,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4300,FFL-Keystone NON CHILEAN,FK,Active,FFL-Keystone ORG,FK,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+4301,,,Absent,FFL-Keystone ORG CHIL,FN,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4302,,,Absent,FFL-Keystone CONV,FJ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4400,FFL-Riverside,FV,Active,FFL-Riverside ORG CHIL,FV,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+4402,,,Absent,FFL-Riverside CONV,FQ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4410,FFL-RIVERSIDE NON-CHILEAN,FW,Active,FFL-Riverside ORG,FW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+4500,Sun Valley Pears,SV,Active,Sun Valley Pears ORG,SV,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+4501,,,Absent,Sun Valley Prs ORG CHIL,H5,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4502,,,Absent,Sun Valley Pears CONV,H6,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4600,Pine Creek No Chilean,PC,Active,Pine Creek ORG,PC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+4700,Ridpath,RI,Active,Ridpath ORG,RI,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+4701,,,Absent,Ridpath ORG CHIL,9R,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4702,,,Absent,Ridpath CONV,IT,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4800,INACTIVE,,Inactive,INACTIVE - 9MILE,,Inactive,Still inactive,Not applicable,
+4900,Reyna,RE,Active,Reyna ORG,RE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+4901,,,Absent,Reyna ORG CHIL,7R,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+4902,,,Absent,Reyna CONV,8R,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+5000,Academy,AO,Active,Academy ORG CHIL,AO,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5001,,,Absent,Academy ORG,A3,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+5002,,,Absent,Academy CONV,A4,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+5460,CASCADE HOLDINGS-BERRY ORCHARD,CG,Active,CASCADE HOLD-BERRY CONV,CG,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5470,P&G STATE - 40,PG,Active,P&G STATE - 40 CONV,PG,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5480,SAND TIMBER,TI,Active,SAND TIMBER CONV,TI,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5490,MARCELLAY,G2,Active,MARCELLAY CONV,G2,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5500,CVO,CV,Active,CVO CONV,CV,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5510,Buckhorn West,B3,Active,Buckhorn West CONV,B3,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5520,Buckhorn HT 100,H1,Active,Buckhorn HT 100 CONV,H1,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5530,Buckhorn HT 24,H2,Active,Buckhorn HT 24 CONV,H2,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5540,JBM Mitchell,JM,Active,JBM Mitchell CONV,JM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5550,HMJD,MJ,Active,HMJD CONV,MJ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5560,Pioneer Ranch-Baby K,GR,Active,PIONEER R-BABY K CONV,GR,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5570,Maverick-Brock,GM,Active,Maverick-Brock CONV,GM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5580,Knapp-Knapp North,GK,Active,Knapp-Knapp North CONV,GK,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5590,Knapp-Above Knapp North,GA,Active,KNAPP-A KNAPP NORT CONV,GA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5600,Cascade Holdings - Bluebird,GC,Active,Cascade Hold-Blue CONV,GC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5610,CWAC-Graevell,GG,Active,CWAC-Graevell CONV,GG,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5620,Buckhorn-Hilltop West,GH,Active,Buckhorn-HT West CONV,GH,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5630,Buckhorn-Hilltop 100,GT,Active,Buckhorn-HT 100 CONV,GT,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5640,P&G-NGPBP,GN,Active,P&G-NGPBP CONV,GN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5650,Wick - Ophir Grade,GW,Active,GEB WICK-OPHIR GRD CONV,GW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5660,Above Bridgeport New,GF,Active,Above Bridgep New CONV,GF,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5670,Cascade Holding-Crossland,GL,Active,CASCADE HOLD-CRSSL CONV,GL,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5680,Snyder Flats - General,GD,Active,SNYDER FLATS-G CONV,GD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5690,P&G-Deeded - D. Mckie,GI,Active,P&G-D. MCKIE CONV,GI,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5700,P&G-Deeded - Birdcage,GJ,Active,P&G-DEED-BIRDCG CONV,GJ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5710,Big Granny,GO,Active,Big Granny CONV,GO,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5720,Airport/Fert Tank,GQ,Active,AIRPORT/FER TANK CONV,GQ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5730,Horace Smith,GS,Active,Horace Smith CONV,GS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5740,Mckie Area,GU,Active,Mckie Area CONV,GU,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5750,Mac & Cass-Gamble,GV,Active,MAC&CASS-GAMBLE CONV,GV,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5760,P&G-Deeded - 80,GX,Active,GEB P&G-DEEDED-80 CONV,GX,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5770,Sand Dunes,GY,Active,Sand Dunes CONV,GY,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5780,The John's Farm - TJF Lower,JT,Active,TJF LOWER CONV,JT,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5790,Bisbee Area,GZ,Active,BISBEE AREA CONV,GZ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5800,JN,BU,Active,JN CONV,BU,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5810,CH - South Deer Farm,CD,Active,S. DEER CONV,CD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5820,Brwstr Hghts Pckg - Crazy-North Tradup,BC,Active,BHP-CRAZY-N TUP CONV,BC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5830,Repo - Deer Farm,RD,Active,REPO-DEER FARM CONV,RD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5840,Escure Estate,EE,Active,CSD QUINCY-ESCURE CONV,EE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5850,Shaun's Lease,SL,Active,CSDQUINCY-SHAUNS L CONV,SL,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5860,HINGER,WK,Active,HINGER CONV,WK,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5870,Robinson Lease,VE,Active,ROBINSON LEASE CONV,VE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5880,WAKEFIELD,HI,Active,WAKEFIELD CONV,HI,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5890,GRENOVELD,RL,Active,GRENOVELD CONV,RL,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5900,Heath & Beacon,HB,Active,HEATH & BEACON CONV,HB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5910,COMSAT - FLAT 40,CF,Active,COMSAT - FLAT 40 CONV,CF,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5920,COMSAT - ROLLING HILLS,CM,Active,COMSAT-ROLLING H CONV,CM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5930,COMSAT - NORTH COMSAT,CN,Active,COMSAT-N COMSAT CONV,CN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5940,COMSAT-SOUTH COMSAT,CS,Active,COMSAT-S COMSAT CONV,CS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5950,CRAZY - BELOW ROAD,CZ,Active,CRAZY - BELOW ROAD CONV,CZ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5960,CRAZY - OLD FILL,CY,Active,CRAZY - OLD FILL CONV,CY,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5970,CRAZY - SOUTH LAGOON,LN,Active,CRAZY-SOUTH LAGOON CONV,LN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+5980,CRAZY - EAST LAGOON,EN,Active,CRAZY-EAST LAGOON CONV,EN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6000,Leave Open for WP Use,,Active,INACTIVE-WPP POOL,,Inactive,Newly inactive number,Retain old name only when production preflight confirms it remains unambiguous,
+6100,McDonald Farm,MF,Active,MCDONALD RANCH CONV,MF,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6110,Valley View Farm,VV,Active,VALLEY VIEW FARM CONV,VV,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6120,Schneider Orchard,SN,Active,SCHNEIDER ORCHARD CONV,SN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6130,Gallardo's Orchard,GE,Active,GAUDENCIO GALLARDO CONV,GE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6140,Dion Farms,DF,Active,ADAM DION CONV,DF,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6150,Rafael Calderas,RC,Active,RAFAEL CALDERA CONV,RC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6160,Alfredo Orchard,AL,Active,ALFREDO ORCHARD CONV,AL,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6170,Ochoa Farms,OF,Active,OCHOA FARMS CONV,OF,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6180,Miguel & Julie Alvarez Orchard,AV,Active,M & J Alvarez CONV,AV,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6190,D&A Zuniga Orchards,ZD,Active,D&A ZUNIGA ORCH CONV,ZD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6200,Barajas-Pimentel Orchards,PO,Active,BARAJAS-PIMENTEL CONV,PO,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6210,Strand Apples-Hayes Ranch,S1,Active,STRAND A-HAYES R CONV,S1,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6215,Strand Apples-Tuttle RBM,S8,Active,STRAND A-TUTTLE RB CONV,S8,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6220,Strand Apples-Reprieve,S6,Active,STRAND A-REPRIEVE CONV,S6,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6225,Strand Apples-Strauss Lease,S9,Active,STRAND A-STRAUSS L CONV,S9,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6230,Strand Apples-Lazy H,S3,Active,STRAND A-LAZY H CONV,S3,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6235,STRAND APPLES-LINSE BO,A1,Active,STRAND A-LINSE BO CONV,A1,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6240,Strand Apples-3M,S4,Active,STRAND APPLES-3M CONV,S4,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6245,Strand Apples-Strain SBL,A2,Active,STRAND A-STRAIN SB CONV,A2,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6250,Strand Apples-Ellingson,S5,Active,STRAND A-ELLINGSON CONV,S5,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6255,,,Absent,STRAND A-WILBUR CONV,9S,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+6260,Fuller Orchards,D1,Active,FULLER ORCHARDS CONV,D1,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6265,,,Absent,B&D ORGANICS-FULLER ORG,Z1,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+6270,Strand Apples-Harrison,S7,Active,STRAND A-HARRISON CONV,S7,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6280,Martin Casto Riverside Orchard,M2,Active,M CASTO RIVERSIDE CONV,M2,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+6290,,,Absent,McCORMICK CONV,M3,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+6666,INACTIVE,,Inactive,INACTIVE,,Inactive,Still inactive,Not applicable,
+8888,E BROWN & SONS - COSOLD,EC,Active,E BROWN & SONS - COSOLD,EC,Active,Unchanged number/name/status,Not applicable,
+8999,EBS HOUSE LOT,EH,Active,EBS HOUSE LOT,EH,Active,Unchanged number/name/status,Not applicable,
+9010,KUULEI ORCHARD,SK,Active,KUULEI ORCHARD CONV,SK,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9020,ROLOFF FARMS - GRANDAD,SG,Active,ROLOFF F-GRANDAD CONV,SG,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9030,ROLOFF FARMS - WEIS,R6,Active,ROLOFF FARMS-WEIS CONV,R6,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9040,DL & JJ FARMS - CLARENCE,DQ,Active,DL & JJ - CLARENCE CONV,DQ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9050,DL & JJ FARMS - SUNNY,DW,Active,DL & JJ FRM-SUNNY CONV,DW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9060,RODIGHIERO ORCHARDS,R7,Active,RODIGHIERO ORCH CONV,R7,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9070,RODIGHIERO ORCHARDS - KELLY PLACE,R8,Active,RODIGHIERO-KELLY P CONV,R8,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9080,MFR - M&D FARMS-CHUCKHOLE,MD,Active,MFR-M&D-CHUCKHOLE ORG,MD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9081,,,Absent,MFR-MD-CHUCKHO ORG CHIL,EU,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9090,A WIES FARMS,AW,Active,A WIES FARMS CONV,AW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9092,,,Absent,MFR-M&D-CHUCKHOLE CONV,HK,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9100,DL & JJ FARMS - HOME,DE,Active,DL & JJ FARMS-HOME CONV,DE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9110,RIVER ROCK GROWERS,R9,Active,RIVER ROCK GRWRS CONV,R9,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9120,DANA DIBBLE,DT,Active,DANA DIBBLE CONV,DT,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9130,MFR - FUJI ORCHARDS,FH,Active,MFR - FUJI ORCH ORG,FH,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9131,,,Absent,MFR-FUJI ORCH ORG CHIL,9F,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9132,,,Absent,MFR - FUJI ORCH CONV,IE,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9140,"EMPEY ORCHARDS, INC.",EO,Active,EMPEY ORCHARDS CONV,EO,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9150,LAZY E ORCHARD,LZ,Active,LAZY E ORCHARD CONV,LZ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9160,SAMS APPLES - WILSON,LQ,Active,SAMS A - WILSON ORG,LQ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9161,,,Absent,SAMS A-WILSON ORG CHIL,HQ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9162,,,Absent,SAMS A - WILSON CONV,HW,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9170,KENT MCKAY,KE,Active,KENT MCKAY CONV,KE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9180,MFR - GIBBONS/SAMS PL,GB,Active,MFR-GIBBONS/SAM ORG,GB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9181,,,Absent,MFR-GIBBON/SAM ORG CHIL,AP,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9182,,,Absent,MFR-GIBBONS/SAM CONV,ED,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9190,Sam's Apples Timmons,ST,Active,Sams A-Timmons ORG,ST,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9191,,,Absent,Sams A-Timmons ORG CHIL,IF,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9192,,,Absent,Sams A-Timmons CONV,ID,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9200,DL & JJ FARMS,DY,Active,DL & JJ KLEIN CONV,DY,Active,"Same number, new current name",Skip ambiguous old alias,
+9201,,,Absent,DL & JJ KLEIN ORG,Z2,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9202,,,Absent,DL & JJ KLEIN ORG CHIL,Z3,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9210,NW COUNTRY MERCANTILE,NW,Active,NW CNTRY MERC CONV,NW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9220,DL & JJ FARMS - FRY,DU,Active,DL & JJ FRY CONV,DU,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9221,,,Absent,DL & JJ FRY ORG,Z4,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9222,,,Absent,DL & JJ FRY ORG CHIL,Z5,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9230,SAM LEFORE FARMS - STILES,SF,Active,LEFORE F-STILES CONV,SF,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9240,JACK GREEN,JC,Active,JACK GREEN CONV,JC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9250,ROLOFF FAMRS - GREEN,OQ,Active,ROLOFF FAMRS-GREEN CONV,OQ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9260,ROLOFF FARMS - HOLADAY,OW,Active,ROLOFF F - HOLADAY CONV,OW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9270,DL & JJ FARMS - WONDRA,WD,Active,DL & JJ - WONDRA CONV,WD,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9275,DL & JJ FARMS - HURLY,DH,Active,DL & JJ - HURLY CONV,DH,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9280,DL & JJ FARMS - GIBBON,WB,Active,DL & JJ - GIBBON CONV,WB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9285,DL & JJ FARMS - GRANT,DG,Active,DL & JJ - GRANT CONV,DG,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9290,DL & JJ FARMS - TRUMBULL,WT,Active,DL & JJ - TRUMBULL CONV,WT,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9300,DL & JJ FARMS - BRINKER,WR,Active,DL & JJ - BRINKER CONV,WR,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9310,MFR - BEVERLY SAMS HOME PLACE,BS,Active,MFR - B SAMS HOME ORG,BS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9311,,,Absent,MFR-SAMS HOME ORG CHIL,EB,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9312,,,Absent,MFR - B SAMS HOME CONV,4B,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9320,ROLOFF FARMS - VALE,VL,Active,ROLOFF FARMS-VALE CONV,VL,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9330,W&H - L&E FLP,LE,Active,W&H - L&E FLP ORG,LE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9331,W&H L&E AZTEC,LA,Active,W&H L&E AZTEC ORG,LA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9332,,,Absent,W&H - L&E FLP ORG CHIL,WY,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9333,,,Absent,W&H - L&E FLP CONV,WU,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9334,,,Absent,W&H L&E AZTEC ORG CHIL,WL,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9335,,,Absent,W&H L&E AZTEC CONV,WJ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9340,MFR - RUIZ/SLUSARENKO,BK,Active,MFR-RUIZ/SLUSARE ORG,BK,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9341,,,Absent,MFR-RUIZ/SLUSA ORG CHIL,E4,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9342,,,Absent,MFR-RUIZ/SLUSARE CONV,E5,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9350,ROLOFF FARMS - NAGLE,RN,Active,ROLOFF FARM-NAGLE CONV,RN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9360,MFR - GARY PETERSON,GP,Active,MFR - G PETERSON ORG,GP,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9361,,,Absent,MFR-G PETERSON ORG CHIL,G3,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9362,,,Absent,MFR - G PETERSON CONV,G4,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9370,MFR - POTTER/BRADFIELD,BT,Active,MFR-POTTER/BRADF ORG,BT,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9371,,,Absent,MFR-POTTR/BRAD ORG CHIL,EI,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9372,,,Absent,MFR-POTTER/BRADF CONV,HJ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9380,ROLOFF FARMS - GERRI,RO,Active,ROLOFF FARM-GERRI CONV,RO,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9390,MFR - HOOKER PL,BO,Active,MFR - HOOKER PL ORG,BO,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9391,,,Absent,MFR-HOOKER PL ORG CHIL,HZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9392,,,Absent,MFR - HOOKER PL CONV,HX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9395,MFR-TRUMBULL WILDFIRE,TW,Active,MFR-TRUMBULL WF ORG,TW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9396,,,Absent,MFR-TRUMBULL W ORG CHIL,E6,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9397,,,Absent,MFR-TRUMBULL WF CONV,E7,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9400,MFR - STEPHENS PL,BP,Active,MFR - STEPHENS ORG,BP,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9401,,,Absent,MFR - STEPHENS ORG CHIL,AZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9402,,,Absent,MFR - STEPHENS CONV,AX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9405,SAMS APPLES,PS,Active,SAMS APPLES ORG,PS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9406,SAM'S APPLES,P9,Active,SAMS APPLES ORG CHIL,P9,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9407,,,Absent,SAMS APPLES CONV,IJ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9410,MFR - FEIGNER PL/FUJI - West,BF,Active,MFR-FEIGN/FUJI-W ORG,BF,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9411,MFR - FEIGNER PL/FUJI - EAST,BI,Active,MFR-FEIGN/FUJI-E ORG,BI,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9412,,,Absent,MFR-FEI/FUJI-W ORG CHIL,AI,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9413,,,Absent,MFR-FEIGN/FUJI-W CONV,EF,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9414,,,Absent,MFR-FEI/FUJI-E ORG CHIL,AY,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9415,MFR - Roloff Premier,PR,Active,MFR -Roloff Prem ORG,PR,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9416,,,Absent,MFR-FEIGN/FUJI-E CONV,AU,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9417,,,Absent,MFR-Roloff Prm ORG CHIL,EJ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9418,,,Absent,MFR -Roloff Prem CONV,IZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9420,MFR - RUIZ PLACE,BZ,Active,MFR - RUIZ PLACE ORG,BZ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9421,,,Absent,MFR-RUIZ PLACE ORG CHIL,ZX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9422,,,Absent,MFR - RUIZ PLACE CONV,ZZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9430,MFR - BIXBY PL,BX,Active,MFR - BIXBY PL ORG,BX,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9431,,,Absent,MFR - BIXBY PL ORG CHIL,7B,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9432,,,Absent,MFR - BIXBY PL CONV,8B,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9440,MFR - FEIGNER/REDS,BG,Active,MFR - FEIGNR/RED ORG,BG,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9441,,,Absent,MFR-FEIGNR/RED ORG CHIL,F4,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9442,,,Absent,MFR - FEIGNR/RED CONV,F5,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9450,MFR - REESE HWY BLK 1,BN,Active,MFR-REESE HWY 1 ORG,BN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9451,MFR - REESE HWY BLK 2,B4,Active,MFR-REESE HWY 2 ORG,B4,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9452,,,Absent,MFR-REESE H 1 ORG CHIL,HG,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9453,,,Absent,MFR-REESE HWY 1 CONV,IB,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9454,,,Absent,MFR-REESE H 2 ORG CHIL,HD,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9455,MFR - Leibbrand,LR,Active,MFR - Leibbrand ORG,LR,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9456,,,Absent,MFR-REESE HWY 2 CONV,E3,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9457,,,Absent,MFR-Leibbrand ORG CHIL,LJ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9458,,,Absent,MFR - Leibbrand CONV,LK,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9460,Sam's Apples Crockett,SC,Active,Sams A-Crockett ORG,SC,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9461,,,Absent,Sams A-Crocket ORG CHIL,IK,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9462,,,Absent,Sams A-Crockett CONV,HT,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9470,MFR - SASSER,SS,Active,MFR - SASSER ORG,SS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9471,,,Absent,MFR - SASSER ORG CHIL,SJ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9472,,,Absent,MFR - SASSER CONV,SY,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9480,W&H - JOHN G PESCIALLO,JP,Active,W&H-JG PESCIALLO ORG,JP,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9481,,,Absent,W&H-PESCIALLO ORG CHIL,WH,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9482,,,Absent,W&H-JG PESCIALLO CONV,WF,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9490,DENNIS BURKS - PESCIALLO,DP,Active,D BURKS-PESCIALLO CONV,DP,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9500,W&H - PESCIALLO 20A,PB,Active,W&H-PESCLLO 20A ORG,PB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9501,,,Absent,W&H-PESCLLO 20 ORG CHIL,W2,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9502,,,Absent,W&H-PESCLLO 20A CONV,W3,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9510,MFR - TASH & BROWN,TB,Active,MFR - TASH & BRN ORG,TB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9511,,,Absent,MFR-TASH & BRN ORG CHIL,EZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9512,,,Absent,MFR - TASH & BRN CONV,AM,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9520,W&H - MCCLELLAN FLLC - DRIP,MR,Active,W&H-MCCLELLAN-DRIP ORG,MR,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9521,,,Absent,W&H-MCCL-DRIP ORG CHIL,WA,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9522,,,Absent,W&H-MCCLELLAN-DRIP CONV,WI,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9530,W&H - MCCLELLAN FLLC YOUNG,MB,Active,W&H - MCCLELL-YOUNG ORG,MB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9531,,,Absent,W&H-MCCL-YOUNG ORG CHIL,W1,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9532,,,Absent,W&H-MCCLELL-YOUNG CONV,WO,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9540,MFR - L&E JOHNSON,LI,Active,MFR-L&E JOHNSON ORG,LI,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9541,,,Absent,MFR-L&E JOHNSN ORG CHIL,IC,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9542,,,Absent,MFR-L&E JOHNSON CONV,HL,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9550,MFR - BROWN HOME PL,BH,Active,MFR - BROWN HOME ORG,BH,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9551,,,Absent,MFR-BROWN HOME ORG CHIL,9B,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9552,,,Absent,MFR - BROWN HOME CONV,IQ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9560,MFR - DOUGHERTY,DO,Active,MFR - DOUGHERTY ORG,DO,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9561,,,Absent,MFR-DOUGHERTY ORG CHIL,D7,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9562,,,Absent,MFR - DOUGHERTY CONV,D8,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9570,MFR - NORRIS,NB,Active,MFR - NORRIS ORG,NB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9571,,,Absent,MFR - NORRIS ORG CHIL,NX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9572,,,Absent,MFR - NORRIS CONV,NC,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9580,KUULEI ORCHARDS - M1,M1,Active,KUULEI ORCH-M1 CONV,M1,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9590,TURBYNE & BROWN,TU,Active,TURBYNE & BROWN CONV,TU,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9600,MFR - AICHELE,AB,Active,MFR - AICHELE ORG,AB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9601,,,Absent,MFR - AICHELE ORG CHIL,AA,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9602,,,Absent,MFR - AICHELE CONV,AE,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9610,NARRY & BROWN,NA,Active,NARRY & BROWN CONV,NA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9620,MFR - MURPHY PL,MU,Active,MFR - MURPHY PL ORG,MU,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9621,,,Absent,MFR-MURPHY PL ORG CHIL,MZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9622,,,Absent,MFR - MURPHY PL CONV,MQ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9630,CAMPBELL & BROWN,CB,Active,CAMPBELL & BROWN CONV,CB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9636,INACTIVE,,Inactive,INACTIVE-EBS,,Inactive,Still inactive,Not applicable,
+9640,DL & JJ FARMS,JQ,Active,DL & JJ F PHILLIPS CONV,JQ,Active,"Same number, new current name",Skip ambiguous old alias,
+9650,MFR - KEN ARNZEN,KA,Active,MFR - KEN ARNZEN ORG,KA,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9651,,,Absent,MFR-KEN ARNZEN ORG CHIL,KZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9652,,,Absent,MFR - KEN ARNZEN CONV,KX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9660,MFR - SONBAY,SO,Active,MFR - SONBAY ORG,SO,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9661,,,Absent,MFR - SONBAY ORG CHIL,S2,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9662,,,Absent,MFR - SONBAY CONV,IR,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9670,W&H - J L WAL FM LLC -BARRETT,JW,Active,W&H - JLW-BARRETT ORG,JW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9671,,,Absent,W&H-JW-BARRETT ORG CHIL,WE,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9672,,,Absent,W&H - JLW-BARRETT CONV,WW,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9680,MFR - JWO INC -WINESAP,JI,Active,MFR - JWO-WINESAP ORG,JI,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9681,,,Absent,MFR-JWO-WINES ORG CHIL,ES,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9682,,,Absent,MFR - JWO-WINESAP CONV,J2,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9690,MFR - J JACKSON HOME,JB,Active,MFR -J JACK HOME ORG,JB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9691,,,Absent,MFR-JACK HOME ORG CHIL,H9,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9692,,,Absent,MFR -J JACK HOME CONV,EL,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9700,MFR - JWO INC - STEVENS,JN,Active,MFR - JWO-STEVENS ORG,JN,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9701,,,Absent,MFR-JWO-STEVEN ORG CHIL,HV,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9702,,,Absent,MFR - JWO-STEVENS CONV,J1,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9710,KUULEI ORCHARDS - BRINKER,KB,Active,KUULEI ORC-BRINKER CONV,KB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9720,MFR - DON SLUSARENKO,DB,Active,MFR-D SLUSARENKO ORG,DB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9721,,,Absent,MFR-SLUSARENKO ORG CHIL,AR,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9722,,,Absent,MFR-D SLUSARENKO CONV,EG,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9730,DL & JJ FARMS - KLEPPER,JK,Active,DL & JJ F-KLEPPER CONV,JK,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9740,MORRIS ORCHARD,MO,Active,MORRIS ORCHARD CONV,MO,Active,"Same number, new current name",Skip ambiguous old alias,
+9750,MFR - REESE-YELLOWJACK,BJ,Active,MFR - REESE-YJACK ORG,BJ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9751,,,Absent,MFR-REESE-YJAK ORG CHIL,AQ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9752,,,Absent,MFR - REESE-YJACK CONV,YA,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9760,MORRIS ORCHARDS - WIES,MW,Active,MORRIS ORCH-WIES CONV,MW,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9770,ROLOFF FARMS - UMAPINE,UM,Active,ROLOFF - UMAPINE CONV,UM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9780,MORRIS ORCHARDS - CHINN,CH,Active,MORRIS ORCH-CHINN CONV,CH,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9790,MORISS ORCHARDS - CARPER,CE,Active,MORISS ORCH-CARPER CONV,CE,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9800,MORRIS ORCHARDS - HUMBERT,HM,Active,MORRIS O-HUMBERT CONV,HM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9810,ROLOFF FARMS - MERLIN,MY,Active,ROLOFF - MERLIN CONV,MY,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9820,MFR - SHELTON PL,JS,Active,MFR - SHELTON PL ORG,JS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9821,,,Absent,MFR-SHELTON PL ORG CHIL,JZ,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9822,,,Absent,MFR - SHELTON PL CONV,JX,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9830,MORRIS ORCHARD,MP,Active,MORRIS ORCHARD CONV,MP,Active,"Same number, new current name",Skip ambiguous old alias,
+9840,ROLOFF FARM,FM,Active,ROLOFF FARM CONV,FM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9850,MFR - GIBBONS,JG,Active,MFR - GIBBONS ORG,JG,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9851,,,Absent,MFR - GIBBONS ORG CHIL,G5,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9852,,,Absent,MFR - GIBBONS CONV,G6,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9860,MALCOLM MILLAR - DAD,MK,Active,MALCOLM MILLAR-DAD CONV,MK,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9870,MFR - ROTHROCK,RB,Active,MFR - ROTHROCK ORG,RB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9871,,,Absent,MFR - ROTHROCK ORG CHIL,1R,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9872,,,Absent,MFR - ROTHROCK CONV,2R,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9880,MFR - DUFF 2019 AMBR,D9,Active,MFR-DUFF 2019 AMBR CONV,D9,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9890,DON ARNZEN,DZ,Active,DON ARNZEN CONV,DZ,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9900,BULLOCK FARMS - MACKEY,LM,Active,BULLOCK - MACKEY CONV,LM,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9910,MALCOLM MILLAR - 6ACRE,6A,Active,M MILLAR - 6 ACRE CONV,6A,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9920,JACK RUTHVEN,JR,Active,JACK RUTHVEN CONV,JR,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9930,MFR - BAKER,BB,Active,MFR - BAKER ORG,BB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9931,,,Absent,MFR - BAKER ORG CHIL,5B,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9932,,,Absent,MFR - BAKER CONV,6B,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9940,DL & JJ FARMS -,JY,Active,DL & JJ FARMS HILL CONV,JY,Active,"Same number, new current name",Skip ambiguous old alias,
+9950,HARSHFIELD FARMS,HR,Active,HARSHFIELD FARMS CONV,HR,Active,"Same number, new current name",Skip ambiguous old alias,
+9960,HARSHFIELD FARMS,HC,Active,HARSHFIELD FARMS CONV,HC,Active,"Same number, new current name",Skip ambiguous old alias,
+9970,ROLOFF FARMS - BASCOM,OB,Active,ROLOFF - BASCOM CONV,OB,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9980,MFR-ROLOFF PREMIER 2019,OS,Active,MFR-RFF PREMR 2019 CONV,OS,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9990,Rodighiero Orch - Brumbach,SR,Active,Rodighiero-Brumbac CONV,SR,Active,"Same number, new current name",Retain old name only when production preflight confirms it remains unambiguous,
+9997,,,Absent,Leave Open for EBS Use,,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9998,,,Absent,Leave Open for EBS Use,,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
+9999,,,Absent,Leave Open for EBS Use,,Active,Newly reviewed active number,Not applicable,Informational only; no operational PoolStart write
