@@ -44,8 +44,13 @@
                             @if (photo.CanDelete && (!string.IsNullOrWhiteSpace(photo.DeleteAction) || photo.DeleteFromSampleId is long))
                             {
                                 var deleteAction = photo.DeleteAction ?? $"/Samples/{photo.DeleteFromSampleId}/photos/{photo.Id}/remove";
-                                <form class="inline-form" method="post" action="@deleteAction" data-requires-autosave onsubmit="return confirm('Remove this photo from the sample?');">
-                                    <button type="submit" class="link-button danger-link">Remove Photo</button>
+                                var confirmation = deleteAction.StartsWith("/Receipts/", StringComparison.OrdinalIgnoreCase)
+                                    ? "Remove this receipt photo?"
+                                    : "Remove this photo from the sample?";
+                                <form class="inline-form" method="post" action="@deleteAction" data-requires-autosave onsubmit="return confirm('@confirmation');">
+                                    <button type="submit" class="icon-button danger-icon-button" aria-label="Remove photo" title="Remove photo">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3h6l1 2h4v2h-1l-1 14H6L5 7H4V5h4l1-2zm-1.99 4 1 12h7.98l1-12H7.01zM10 9h2v8h-2V9zm4 0h2v8h-2V9z" /></svg>
+                                    </button>
                                 </form>
                             }
                             else

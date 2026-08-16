@@ -117,7 +117,8 @@
 @if (canEditReceipts)
 {
 <h2>Add Receipt</h2>
-<form class="toolbar" method="post" action="/Receipts/Create">
+<form class="toolbar" id="addReceiptForm" method="post" action="/Receipts/Create" enctype="multipart/form-data" data-add-receipt-form>
+    @Html.AntiForgeryToken()
     <div class="field"><label>Crop Year</label><input name="CropYear" value="@Model.CurrentCropYear" required /></div>
     <div class="field"><label>Received At (Pacific)</label><input name="ReceivedAt" type="datetime-local" value="@BusinessTime.FormatPacificInput(BusinessTime.UtcNow)" required /></div>
     <div class="field"><label>Receipt ID</label><input name="CompuTechReceiptId" required /></div>
@@ -148,7 +149,8 @@
     </datalist>
     <div class="field"><label>Bin Count</label><input name="BinCount" type="number" min="0" required /></div>
     <label class="checkbox-field"><input type="checkbox" name="ConfirmCropYear" value="true" /> Confirm Crop Year</label><input type="hidden" name="ConfirmCropYear" value="false" />
-    <button type="submit" disabled="@(!hasRequiredMasterData)">Add Receipt</button>
+    @await Html.PartialAsync("_StagedReceiptPhotos")
+    <button type="submit" data-receipt-submit disabled="@(!hasRequiredMasterData)">Add Receipt</button>
 </form>
 
 @if (Model.CanQuickAddVariety)
@@ -172,7 +174,8 @@
     ShowTruckPhotos: true,
     ShowApplePhotos: true,
     ShowScale: true,
-    RequiresSavedTargetMessage: "Save the receipt first to attach photos."))
+    StageReceiptPhotos: true,
+    RequiresSavedTargetMessage: "Truck and top-of-truck photos can be staged before saving. Save the receipt before attaching sample photos."))
 }
 <p class="muted">If the received date falls in an overlap window, confirm the crop year before saving.</p>
 <p id="growerLotWarning" class="notice warning" hidden>Lot # not found in Master Data. Add it under Master Data &rarr; Grower Lots or continue as manual entry.</p>
