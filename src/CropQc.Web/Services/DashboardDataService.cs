@@ -269,8 +269,11 @@ public sealed class DashboardDataService(
                     scopedRoomIds,
                     filter.CropYear,
                     canonicalVarietyFilter);
-            var currentLots = reconciledLots
+            var currentCandidates = reconciledLots
                 .Where(x => x.CurrentBins > 0)
+                .ToList();
+            await DecorateReceiptProvenanceAsync(currentCandidates, cancellationToken);
+            var currentLots = currentCandidates
                 .Where(x => CurrentLotMatchesFilter(x, filter, canonicalVarietyFilter))
                 .ToList();
 
@@ -449,6 +452,7 @@ public sealed class DashboardDataService(
             var transferDestinations = await BuildRoomTransferDestinationsAsync(roomId, cancellationToken);
             var sampleDistributions = await BuildRoomProjectionSampleDataAsync(activeLots, cancellationToken);
             await DecorateCurrentRoomLotsAsync(activeLots, sampleDistributions, cancellationToken);
+            var likelySourceReceipts = await DecorateReceiptProvenanceAsync(activeLots, cancellationToken);
             var currentGrowers = BuildRoomGrowerSummaries(activeLots);
             var canManage = await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
             var inventoryLossData = RoomInventoryLosses is null
@@ -464,6 +468,7 @@ public sealed class DashboardDataService(
                 Depletions = depletions,
                 InventoryAdjustments = inventoryAdjustments,
                 LinkedReceipts = linkedReceipts,
+                LikelySourceReceipts = likelySourceReceipts,
                 BaselineProjection = BuildRoomProjection(activeLots, sampleDistributions, isSelection: false),
                 ProjectionLots = BuildRoomProjectionLots(activeLots, sampleDistributions, BusinessTime.NowPacific),
                 SampleTimeline = await BuildRoomSampleTimelineAsync(roomId, cancellationToken),
@@ -4940,6 +4945,165 @@ public sealed class DashboardDataService(
         }
     }
 
+    private async Task<IReadOnlyList<RoomReceiptEvidenceLinkViewModel>> DecorateReceiptProvenanceAsync(
+        IReadOnlyList<RoomLotSummaryViewModel> lots,
+        CancellationToken cancellationToken)
+    {
+        var targetGroups = lots
+            .Where(x => x.CurrentBins > 0)
+            .Select(x => new { Lot = x, Identity = RoomLotQcIdentity(x) })
+            .Where(x => x.Identity is not null)
+            .GroupBy(
+                x => $"{x.Lot.RoomId}|{x.Identity!.LookupKey}",
+                StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (targetGroups.Count == 0)
+        {
+            return [];
+        }
+
+        if (targetGroups.Count > RoomReceiptProvenanceResolver.MaximumTargets)
+        {
+            throw new InvalidOperationException(
+                $"Receipt provenance current fruit identities exceed the safe limit of {RoomReceiptProvenanceResolver.MaximumTargets}. Narrow the facility or room filter.");
+        }
+
+        var targets = targetGroups
+            .Select(x => new ReceiptProvenanceTarget(
+                x.Key,
+                x.First().Lot.RoomId,
+                x.Sum(y => y.Lot.CurrentBins),
+                x.First().Identity!))
+            .ToList();
+        var identities = targets.Select(x => x.Identity).ToList();
+        var cropYears = identities.Select(x => x.CropYear).Distinct().ToList();
+        var growerLotIds = identities.Where(x => x.GrowerLotId is not null).Select(x => x.GrowerLotId!.Value).Distinct().ToList();
+        var growerNumbers = identities.Select(x => x.GrowerNumber).Where(x => x.Length > 0).Distinct().ToList();
+        var lotNumbers = identities.Select(x => x.LotNumber).Where(x => x.Length > 0).Distinct().ToList();
+        var fruitProfileIds = identities.Where(x => x.FruitProfileId is not null).Select(x => x.FruitProfileId!.Value).Distinct().ToList();
+        var varietyCodes = identities.Select(x => x.VarietyCode).Where(x => x.Length > 0).Distinct().ToList();
+        var hasGrowerLotIds = growerLotIds.Count > 0;
+        var hasLegacyLotIdentity = growerNumbers.Count > 0 && lotNumbers.Count > 0;
+        var hasFruitProfileIds = fruitProfileIds.Count > 0;
+        var hasLegacyProfileIdentity = varietyCodes.Count > 0;
+
+        var receipts = await dbContext.Receipts.AsNoTracking()
+            .Include(x => x.Room)
+                .ThenInclude(x => x.Warehouse)
+            .Include(x => x.FruitProfile)
+            .Where(x => !x.IsDeleted
+                && cropYears.Contains(x.CropYear)
+                && ((hasGrowerLotIds && x.GrowerLotId != null && growerLotIds.Contains(x.GrowerLotId.Value))
+                    || (hasLegacyLotIdentity
+                        && growerNumbers.Contains((x.GrowerNumber ?? x.LotCode).Trim().ToUpper())
+                        && lotNumbers.Contains(x.LotCode.Trim().ToUpper())))
+                && ((hasFruitProfileIds && fruitProfileIds.Contains(x.FruitProfileId))
+                    || (hasLegacyProfileIdentity && varietyCodes.Contains(x.FruitProfile.VarietyCode.Trim().ToUpper()))))
+            .OrderByDescending(x => x.ReceivedAt)
+            .ThenByDescending(x => x.Id)
+            .Take(RoomReceiptProvenanceResolver.MaximumReceiptCandidates + 1)
+            .ToListAsync(cancellationToken);
+        if (receipts.Count > RoomReceiptProvenanceResolver.MaximumReceiptCandidates)
+        {
+            throw new InvalidOperationException(
+                $"Receipt provenance receipt candidates exceed the safe limit of {RoomReceiptProvenanceResolver.MaximumReceiptCandidates}. Narrow the facility or room filter.");
+        }
+
+        var transfers = await dbContext.RoomTransfers.AsNoTracking()
+            .Include(x => x.FruitProfile)
+            .Where(x => x.CropYear != null
+                && cropYears.Contains(x.CropYear.Value)
+                && ((hasGrowerLotIds && x.GrowerLotId != null && growerLotIds.Contains(x.GrowerLotId.Value))
+                    || (hasLegacyLotIdentity && lotNumbers.Contains(x.LotNumber.Trim().ToUpper())))
+                && ((hasFruitProfileIds && x.FruitProfileId != null && fruitProfileIds.Contains(x.FruitProfileId.Value))
+                    || (hasLegacyProfileIdentity && x.VarietyCode != null && varietyCodes.Contains(x.VarietyCode.Trim().ToUpper()))))
+            .OrderBy(x => x.TransferredAt)
+            .ThenBy(x => x.Id)
+            .Take(RoomReceiptProvenanceResolver.MaximumTransferCandidates + 1)
+            .ToListAsync(cancellationToken);
+        if (transfers.Count > RoomReceiptProvenanceResolver.MaximumTransferCandidates)
+        {
+            throw new InvalidOperationException(
+                $"Receipt provenance transfer candidates exceed the safe limit of {RoomReceiptProvenanceResolver.MaximumTransferCandidates}. Narrow the facility or room filter.");
+        }
+
+        var receiptCandidates = receipts
+            .Select(x => new { Receipt = x, Identity = CanonicalQcFruitIdentity.FromReceipt(x) })
+            .Where(x => x.Identity is not null)
+            .Select(x => new ReceiptProvenanceCandidate(
+                x.Receipt.Id,
+                x.Receipt.CompuTechReceiptId,
+                x.Receipt.RoomId,
+                x.Receipt.Room.Warehouse.Code,
+                x.Receipt.Room.CropQcRoomName ?? x.Receipt.Room.DisplayName ?? x.Receipt.Room.Code,
+                x.Receipt.BinCount,
+                x.Receipt.ReceivedAt,
+                CanonicalQcFruitIdentity.Normalize(x.Receipt.GrowerNumber ?? x.Receipt.LotCode),
+                x.Receipt.GrowerName,
+                x.Identity!))
+            .ToList();
+        var transferCandidates = transfers
+            .Select(x => new
+            {
+                Transfer = x,
+                Identity = CanonicalQcFruitIdentity.Create(
+                    x.CropYear,
+                    x.GrowerLotId,
+                    x.LotNumber,
+                    x.LotNumber,
+                    x.FruitProfileId,
+                    x.VarietyCode,
+                    x.FruitProfile?.ProductionType,
+                    x.FruitProfile?.IsOrganic)
+            })
+            .Where(x => x.Identity is not null)
+            .Select(x => new TransferProvenanceCandidate(
+                x.Transfer.Id,
+                x.Transfer.SourceRoomId,
+                x.Transfer.DestinationRoomId,
+                x.Transfer.TransferredAt,
+                x.Transfer.IsReversed,
+                x.Identity!))
+            .ToList();
+        var resolved = RoomReceiptProvenanceResolver.Resolve(targets, receiptCandidates, transferCandidates);
+        var roomWideLinks = new List<RoomReceiptEvidenceLinkViewModel>();
+
+        foreach (var group in targetGroups)
+        {
+            var representative = group.First().Lot;
+            var links = resolved.GetValueOrDefault(group.Key, [])
+                .Select(x => new RoomReceiptEvidenceLinkViewModel(
+                    x.Receipt.Id,
+                    x.Receipt.DisplayReceiptId,
+                    x.EvidenceType,
+                    string.IsNullOrWhiteSpace(representative.GrowerNumber) ? x.Receipt.GrowerNumber : representative.GrowerNumber,
+                    representative.GrowerName,
+                    x.Receipt.ReceivedAt,
+                    x.Receipt.OriginalWarehouse,
+                    x.Receipt.OriginalRoom,
+                    x.Receipt.OriginalBins,
+                    x.TransferPathIds))
+                .ToList();
+            roomWideLinks.AddRange(links);
+            foreach (var lot in group.Select(x => x.Lot))
+            {
+                lot.ReceiptEvidence = links.Take(MaximumLotEvidenceLinks).ToList();
+                lot.ReceiptEvidenceCount = links.Count;
+            }
+        }
+
+        return roomWideLinks
+            .GroupBy(x => x.ReceiptId)
+            .Select(x => x
+                .OrderBy(y => RoomReceiptProvenanceResolver.EvidenceRank(y.EvidenceType))
+                .ThenByDescending(y => y.ReceivedAt)
+                .First())
+            .OrderBy(x => RoomReceiptProvenanceResolver.EvidenceRank(x.EvidenceType))
+            .ThenByDescending(x => x.ReceivedAt)
+            .ThenBy(x => x.DisplayReceiptId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private static IReadOnlyList<RoomGrowerSummaryViewModel> BuildRoomGrowerSummaries(IReadOnlyList<RoomLotSummaryViewModel> lots) =>
         lots
             .GroupBy(
@@ -5021,7 +5185,9 @@ public sealed class DashboardDataService(
         LastQcSampleAt = lot.LastSampleDate,
         LatestQcSource = lot.LatestQcSource,
         LatestAveragePressure = lot.AveragePressureLbs,
-        LatestStarch = lot.AverageStarch
+        LatestStarch = lot.AverageStarch,
+        ReceiptEvidence = lot.ReceiptEvidence,
+        ReceiptEvidenceCount = lot.ReceiptEvidenceCount
     };
 
     private static IReadOnlyList<CurrentStorageGrowerViewModel> BuildCurrentStorageGrowers(IReadOnlyList<RoomLotSummaryViewModel> lots) =>

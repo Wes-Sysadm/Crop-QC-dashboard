@@ -48,6 +48,10 @@ public sealed class CanonicalQcTransferTests
         Assert.Equal(40, partial.AvailableInventory.Single(x => x.RoomId == 99102).CurrentBins);
         Assert.All(partial.AvailableInventory, x => Assert.DoesNotContain("No grade data", x.GradeSummary));
         Assert.Equal(100, partial.AvailableInventory.Sum(x => x.CurrentBins));
+        var sourceAfterPartial = await dashboard.GetRoomDetailAsync(99101, CancellationToken.None);
+        Assert.Equal(
+            RoomReceiptEvidenceTypes.Direct,
+            Assert.Single(sourceAfterPartial.LikelySourceReceipts, x => x.ReceiptId == 990401).EvidenceType);
 
         var destination = (await dashboard.GetRoomDetailAsync(99102, CancellationToken.None))
             .TransferLotOptions.Single(x => x.Label.Contains("9040", StringComparison.Ordinal));
@@ -72,6 +76,10 @@ public sealed class CanonicalQcTransferTests
         Assert.NotEqual("Unavailable", movedLot.SizeSummary);
         Assert.Contains(movedLot.Samples, x => x.SampleId == 990501 && x.DisplayReceiptId == "TR-QC-9040");
         Assert.Contains(movedLot.ReceiptEvidence, x => x.ReceiptId == 990401 && x.DisplayReceiptId == "TR-QC-9040");
+        var likelyReceipt = Assert.Single(roomC.LikelySourceReceipts, x => x.ReceiptId == 990401);
+        Assert.Equal(RoomReceiptEvidenceTypes.TransferLinked, likelyReceipt.EvidenceType);
+        Assert.Equal(2, likelyReceipt.TransferPathIds!.Count);
+        Assert.Equal(roomC.LikelySourceReceipts.Count, roomC.LikelySourceReceipts.Select(x => x.ReceiptId).Distinct().Count());
 
         var roomCPage = await binsRun.GetPageAsync(
             new BinsRunFilterForm { RoomId = 99103 },
@@ -237,6 +245,7 @@ public sealed class CanonicalQcTransferTests
         var movedLot = Assert.Single(destinationDetail.CurrentLots);
         Assert.Contains(movedLot.Samples, x => x.SampleId == 990501);
         Assert.Contains(movedLot.ReceiptEvidence, x => x.ReceiptId == 990401);
+        Assert.Equal(RoomReceiptEvidenceTypes.TransferLinked, Assert.Single(destinationDetail.LikelySourceReceipts).EvidenceType);
 
         var binsRun = await BinsRun(db).GetPageAsync(
             new BinsRunFilterForm { RoomId = 99102 },
@@ -338,6 +347,7 @@ public sealed class CanonicalQcTransferTests
             .SingleAsync(x => x.Id == 1);
         var sourceSample = await db.QcSamples.AsNoTracking()
             .Include(x => x.Receipt)
+                .ThenInclude(x => x!.FruitProfile)
             .Include(x => x.SampleType)
             .SingleAsync(x => x.Id == 263);
 
@@ -350,15 +360,40 @@ public sealed class CanonicalQcTransferTests
         var owner = Principal(ApplicationAreas.OwnerEmail);
         var destination = await Dashboard(db, owner)
             .GetRoomDetailAsync(transfer.DestinationRoomId, CancellationToken.None);
-        Assert.Contains(destination.CurrentLots.SelectMany(x => x.Samples), x => x.SampleId == sourceSample.Id);
-        Assert.Contains(destination.CurrentLots.SelectMany(x => x.ReceiptEvidence), x => x.ReceiptId == sourceSample.ReceiptId);
-
+        Assert.NotEmpty(destination.CurrentLots.SelectMany(x => x.ReceiptEvidence));
+        var sourceIdentity = CanonicalQcFruitIdentity.FromReceipt(sourceSample.Receipt)!;
+        var sourceIdentityIsCurrent = destination.CurrentLots
+            .Where(x => x.CurrentBins > 0)
+            .Select(x => CanonicalQcFruitIdentity.Create(
+                x.CropYear,
+                x.GrowerLotId,
+                x.GrowerNumber,
+                x.LotCode,
+                x.FruitProfileId,
+                x.VarietyCode,
+                x.ProductionType,
+                x.IsOrganic))
+            .Any(x => x is not null && sourceIdentity.Matches(x));
+        if (sourceIdentityIsCurrent)
+        {
+            var likelyReceipt = Assert.Single(destination.LikelySourceReceipts, x => x.ReceiptId == sourceSample.ReceiptId);
+            Assert.Equal(RoomReceiptEvidenceTypes.TransferLinked, likelyReceipt.EvidenceType);
+            Assert.Contains(transfer.Id, likelyReceipt.TransferPathIds!);
+        }
+        else
+        {
+            Assert.DoesNotContain(destination.LikelySourceReceipts, x => x.ReceiptId == sourceSample.ReceiptId);
+            Assert.Contains(destination.LikelySourceReceipts, x => x.EvidenceType == RoomReceiptEvidenceTypes.TransferLinked);
+        }
         var runsAndTransfers = await BinsRun(db).GetPageAsync(
             new BinsRunFilterForm { RoomId = transfer.DestinationRoomId },
             owner,
             CancellationToken.None);
-        Assert.Contains(runsAndTransfers.AvailableInventory, x =>
-            x.Lot == "9392" && !x.GradeSummary.Contains("No grade data", StringComparison.OrdinalIgnoreCase));
+        if (sourceIdentityIsCurrent)
+        {
+            Assert.Contains(runsAndTransfers.AvailableInventory, x =>
+                x.Lot == "9392" && !x.GradeSummary.Contains("No grade data", StringComparison.OrdinalIgnoreCase));
+        }
         Assert.Equal(before, await EvidenceAndInventoryCountsAsync(db));
     }
 

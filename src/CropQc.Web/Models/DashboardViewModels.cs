@@ -116,6 +116,7 @@ public sealed class RoomDetailViewModel
     public IReadOnlyList<RoomDepletionListItemViewModel> Depletions { get; set; } = [];
     public IReadOnlyList<RoomInventoryAdjustmentListItemViewModel> InventoryAdjustments { get; set; } = [];
     public IReadOnlyList<ReceiptListItemViewModel> LinkedReceipts { get; set; } = [];
+    public IReadOnlyList<RoomReceiptEvidenceLinkViewModel> LikelySourceReceipts { get; set; } = [];
     public BinsRunProjectionViewModel BaselineProjection { get; set; } = new();
     public IReadOnlyList<RoomProjectionLotViewModel> ProjectionLots { get; set; } = [];
     public IReadOnlyList<RoomSampleTimelineItemViewModel> SampleTimeline { get; set; } = [];
@@ -264,7 +265,24 @@ public sealed class RoomLotSummaryViewModel
 public sealed record RoomReceiptOptionViewModel(long ReceiptId, string Label, int CurrentBins);
 public sealed record RoomInventoryLotOptionViewModel(string LotKey, string Label, int CurrentBins);
 public sealed record RoomTransferDestinationViewModel(int RoomId, string Label);
-public sealed record RoomReceiptEvidenceLinkViewModel(long ReceiptId, string DisplayReceiptId);
+public static class RoomReceiptEvidenceTypes
+{
+    public const string Direct = "Direct";
+    public const string TransferLinked = "Transfer-linked";
+    public const string PossibleSource = "Possible source";
+}
+
+public sealed record RoomReceiptEvidenceLinkViewModel(
+    long ReceiptId,
+    string DisplayReceiptId,
+    string EvidenceType = RoomReceiptEvidenceTypes.Direct,
+    string GrowerNumber = "",
+    string GrowerName = "",
+    DateTimeOffset? ReceivedAt = null,
+    string OriginalWarehouse = "",
+    string OriginalRoom = "",
+    int OriginalBins = 0,
+    IReadOnlyList<long>? TransferPathIds = null);
 public sealed record RoomSampleLinkViewModel(long SampleId, string DisplayReceiptId, string SampleType);
 
 public sealed class RoomInventoryAdjustmentListItemViewModel
@@ -1528,6 +1546,8 @@ public sealed class CurrentGrowerLotViewModel
     public string LatestQcSource { get; set; } = "";
     public decimal? LatestAveragePressure { get; set; }
     public decimal? LatestStarch { get; set; }
+    public IReadOnlyList<RoomReceiptEvidenceLinkViewModel> ReceiptEvidence { get; set; } = [];
+    public int ReceiptEvidenceCount { get; set; }
 }
 
 public sealed class CropYearReviewPageViewModel
