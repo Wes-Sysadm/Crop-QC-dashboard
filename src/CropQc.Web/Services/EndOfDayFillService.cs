@@ -51,11 +51,13 @@ public sealed class EndOfDayFillService(
     IBusinessTimeService businessTime,
     IDataProtectionProvider dataProtectionProvider,
     IFacilityContextService facilityContext,
-    ILogger<EndOfDayFillService> logger) : IEndOfDayFillService
+    ILogger<EndOfDayFillService> logger,
+    IEndOfDayFillWarehouseLabelResolver? warehouseLabelResolver = null) : IEndOfDayFillService
 {
     private const string TokenPurpose = "CropQc.EndOfDayFill.Preview.v1";
     private static readonly JsonSerializerOptions SnapshotJsonOptions = new(JsonSerializerDefaults.Web);
     private readonly IDataProtector protector = dataProtectionProvider.CreateProtector(TokenPurpose);
+    private readonly IEndOfDayFillWarehouseLabelResolver warehouseLabels = warehouseLabelResolver ?? new EndOfDayFillWarehouseLabelResolver();
 
     public async Task<bool> HasActiveAssignmentAsync(string? email, CancellationToken cancellationToken)
     {
@@ -84,8 +86,15 @@ public sealed class EndOfDayFillService(
 
         var groups = user.UserAssignments
             .Where(x => x.ReportGroup.IsActive)
-            .Select(x => new EndOfDayFillGroupOption(x.ReportGroupId, x.ReportGroup.Name, x.ReportGroup.Facility))
-            .OrderBy(x => x.Name)
+            .Select(x => new EndOfDayFillGroupOption(
+                x.ReportGroupId,
+                x.ReportGroup.Name,
+                x.ReportGroup.Facility,
+                true,
+                false,
+                x.ReportGroup.WarehouseId,
+                warehouseLabels.Resolve(x.ReportGroup.WarehouseId, x.ReportGroup.Warehouse.Code, x.ReportGroup.Warehouse.Name)))
+            .OrderByDescending(x => x.WarehouseId)
             .ToList();
         var selectedId = groupId ?? (groups.Count == 1 ? groups[0].Id : (int?)null);
         if (selectedId is null)
@@ -432,12 +441,14 @@ public sealed class EndOfDayFillService(
             .Include(x => x.GoogleCredentials)
             .Include(x => x.UserAssignments)
             .ThenInclude(x => x.ReportGroup)
+            .ThenInclude(x => x.Warehouse)
             .SingleOrDefaultAsync(x => x.IsActive && x.Email.ToLower() == normalized, cancellationToken);
     }
 
     private async Task<SnapshotBuild> BuildSnapshotAsync(User user, int groupId, CancellationToken cancellationToken)
     {
         var group = await dbContext.EndOfDayFillReportGroups.AsNoTracking()
+            .Include(x => x.Warehouse)
             .Include(x => x.Rooms).ThenInclude(x => x.Warehouse)
             .SingleOrDefaultAsync(x => x.Id == groupId, cancellationToken);
         var recipients = await dbContext.EndOfDayFillReportRecipients.AsNoTracking()
@@ -451,12 +462,16 @@ public sealed class EndOfDayFillService(
             issues.Add(new("inactive-group", "The selected report group is missing or inactive."));
             return new(new EndOfDayFillPreviewViewModel { SelectedGroupId = groupId, Issues = issues }, null);
         }
+        var warehouseLabel = warehouseLabels.Resolve(group.WarehouseId, group.Warehouse.Code, group.Warehouse.Name);
+        var operatingFacility = facilityContext.GetOperatingCompanyFacility(group.Warehouse.Code, group.Warehouse.Name);
+        if (!operatingFacility.Equals(group.Facility, StringComparison.OrdinalIgnoreCase))
+            issues.Add(new("warehouse-facility", $"The {warehouseLabel} report operating facility does not match its warehouse configuration."));
         if (group.Rooms.Count == 0) issues.Add(new("no-rooms", "Assign at least one room to this report group in Master Data."));
         foreach (var room in group.Rooms)
         {
-            if (!facilityContext.GetOperatingCompanyFacility(room.Warehouse.Code, room.Warehouse.Name).Equals(group.Facility, StringComparison.OrdinalIgnoreCase))
+            if (room.WarehouseId != group.WarehouseId)
             {
-                issues.Add(new("cross-facility-room", $"Room {room.Code} does not belong to {group.Facility}.", room.Id));
+                issues.Add(new("cross-warehouse-room", $"Room {room.Code} does not belong to the {warehouseLabel} warehouse.", room.Id));
             }
         }
         if (recipients.Count == 0) issues.Add(new("no-recipients", "Add at least one active report recipient in Master Data."));
@@ -468,7 +483,7 @@ public sealed class EndOfDayFillService(
         if (!gmailReady) issues.Add(new("gmail", "Gmail permission is required. Reconnect Google/Gmail before sending."));
 
         IReadOnlyList<RoomLotSummaryViewModel> lots = [];
-        if (group.Rooms.Count > 0 && issues.All(x => x.Code != "cross-facility-room"))
+        if (group.Rooms.Count > 0 && issues.All(x => x.Code != "cross-warehouse-room"))
         {
             try
             {
@@ -534,6 +549,10 @@ public sealed class EndOfDayFillService(
             SelectedGroupId = group.Id,
             GroupName = group.Name,
             Facility = group.Facility,
+            WarehouseId = group.WarehouseId,
+            WarehouseLabel = warehouseLabel,
+            WarehouseCode = group.Warehouse.Code,
+            WarehouseName = group.Warehouse.Name,
             Recipients = recipients,
             Rooms = rooms,
             Issues = issues,
@@ -544,6 +563,8 @@ public sealed class EndOfDayFillService(
         var normalized = new NormalizedSnapshot(
             group.Id,
             group.Name.Trim(),
+            group.WarehouseId,
+            warehouseLabel,
             group.Facility,
             group.Rooms.Select(x => x.Id).Order().ToArray(),
             recipients.Select(NormalizeEmail).Order(StringComparer.Ordinal).ToArray(),
@@ -552,7 +573,7 @@ public sealed class EndOfDayFillService(
                     v.Growers.Select(g => new NormalizedGrower(g.GrowerNumber.Trim(), g.GrowerName.Trim(), g.Bins)).ToArray())).ToArray())).ToArray());
         var json = JsonSerializer.Serialize(normalized, SnapshotJsonOptions);
         var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
-        return new(model, new ReportSnapshot(group.Name, group.Facility, recipients, rooms, json, hash));
+        return new(model, new ReportSnapshot(group.Name, group.WarehouseId, warehouseLabel, group.Facility, recipients, rooms, json, hash));
     }
 
     private static RenderedEmail RenderEmail(ReportSnapshot snapshot, int revision, DateTimeOffset nowPacific)
@@ -561,14 +582,14 @@ public sealed class EndOfDayFillService(
         var date = nowPacific.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture);
         var time = nowPacific.ToString("h:mm tt", CultureInfo.InvariantCulture);
         var revisionPrefix = revision == 0 ? "" : $"REVISION {revision} - ";
-        var subject = $"{revisionPrefix}End of Day Fill Report - {snapshot.Facility} - {date}";
+        var subject = $"{revisionPrefix}End of Day Fill Report - {snapshot.WarehouseLabel} - {date}";
         var html = new StringBuilder("<main style=\"font-family:Arial,sans-serif;max-width:720px;margin:auto\">");
         html.Append("<h1>End of Day Fill Report</h1>");
         if (revision > 0) html.Append($"<p><strong style=\"font-size:1.2em\">REVISION {revision}</strong></p>");
-        html.Append($"<p><strong>{encoder.Encode(snapshot.GroupName)} — {encoder.Encode(snapshot.Facility)}</strong><br>End of Day Fill Report as of {date} — {time} Pacific</p>");
+        html.Append($"<p><strong>{encoder.Encode(snapshot.GroupName)}</strong><br>End of Day Fill Report as of {date} — {time} Pacific</p>");
         var text = new StringBuilder("End of Day Fill Report\n");
         if (revision > 0) text.AppendLine($"REVISION {revision}");
-        text.AppendLine($"{snapshot.GroupName} — {snapshot.Facility}").AppendLine($"End of Day Fill Report as of {date} — {time} Pacific").AppendLine();
+        text.AppendLine(snapshot.GroupName).AppendLine($"End of Day Fill Report as of {date} — {time} Pacific").AppendLine();
         var summary = new EndOfDayFillRoomSummaryViewModel(snapshot.Rooms);
         html.Append("<h2>Room Summary</h2><table style=\"border-collapse:collapse;width:100%;max-width:560px\"><thead><tr>")
             .Append("<th style=\"border:1px solid #bbb;padding:8px;text-align:left\">Room</th>")
@@ -658,9 +679,9 @@ public sealed class EndOfDayFillService(
     private sealed record PreviewToken(int UserId, int GroupId, string SnapshotHash);
     private sealed record ReservationResult(EndOfDayFillReportSend? Attempt, string? Message);
     private sealed record SnapshotBuild(EndOfDayFillPreviewViewModel Model, ReportSnapshot? Snapshot);
-    private sealed record ReportSnapshot(string GroupName, string Facility, IReadOnlyList<string> Recipients, IReadOnlyList<EndOfDayFillRoomViewModel> Rooms, string Json, string Hash);
+    private sealed record ReportSnapshot(string GroupName, int WarehouseId, string WarehouseLabel, string Facility, IReadOnlyList<string> Recipients, IReadOnlyList<EndOfDayFillRoomViewModel> Rooms, string Json, string Hash);
     private sealed record RenderedEmail(string Subject, string Html, string Text);
-    private sealed record NormalizedSnapshot(int GroupId, string GroupName, string Facility, int[] ConfiguredRoomIds, string[] Recipients, NormalizedRoom[] Rooms);
+    private sealed record NormalizedSnapshot(int GroupId, string GroupName, int WarehouseId, string WarehouseLabel, string Facility, int[] ConfiguredRoomIds, string[] Recipients, NormalizedRoom[] Rooms);
     private sealed record NormalizedRoom(int RoomId, string RoomCode, string RoomName, int CapacityBins, int CurrentBins, NormalizedVariety[] Varieties);
     private sealed record NormalizedVariety(string CanonicalKey, string Name, string ProductionType, bool IsOrganic, NormalizedGrower[] Growers);
     private sealed record NormalizedGrower(string GrowerNumber, string GrowerName, int Bins);

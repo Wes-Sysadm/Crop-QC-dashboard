@@ -1,6 +1,5 @@
 @model MasterDataEditForm
 @inject CropQc.Data.CropQcDbContext DbContext
-@inject CropQc.Web.Services.IFacilityContextService FacilityContext
 @{
     var warehouses = DbContext.Warehouses.OrderBy(x => x.Code).ToList();
     var commodityOptions = (Model.CommodityOptions.Count > 0 ? Model.CommodityOptions : new[] { "Apple", "Pear" })
@@ -37,7 +36,7 @@ else if (Model.Type == "rooms")
             @foreach (var group in Model.EndOfDayFillReportGroups)
             {
                 var optionLabel = group.IsActive ? group.Name : $"{group.Name} — Inactive (current assignment)";
-                <option value="@group.Id" data-facility="@group.Facility" data-active="@group.IsActive.ToString().ToLowerInvariant()" data-current="@group.IsCurrentAssignment.ToString().ToLowerInvariant()" selected="@(Model.EndOfDayFillReportGroupId == group.Id ? "selected" : null)">@optionLabel</option>
+                <option value="@group.Id" data-warehouse-id="@group.WarehouseId" data-active="@group.IsActive.ToString().ToLowerInvariant()" data-current="@group.IsCurrentAssignment.ToString().ToLowerInvariant()" selected="@(Model.EndOfDayFillReportGroupId == group.Id ? "selected" : null)">@optionLabel</option>
             }
         </select>
         <span class="muted" data-end-of-day-fill-group-help>Only active reports for the selected room warehouse are available. This room record is the authoritative report membership.</span>
@@ -47,23 +46,22 @@ else if (Model.Type == "rooms")
             const warehouse = document.querySelector('select[name="WarehouseId"]');
             const group = document.querySelector('[data-end-of-day-fill-group]');
             const help = document.querySelector('[data-end-of-day-fill-group-help]');
-            const facilities = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(warehouses.ToDictionary(x => x.Id.ToString(), x => FacilityContext.GetOperatingCompanyFacility(x.Code, x.Name))));
             const filterGroups = () => {
-                const facility = facilities[warehouse?.value] || "";
+                const warehouseId = warehouse?.value || "";
                 [...group.options].forEach(option => {
                     if (!option.value) return;
-                    const incompatible = option.dataset.facility !== facility;
+                    const incompatible = option.dataset.warehouseId !== warehouseId;
                     option.hidden = incompatible && !option.selected;
                     option.disabled = incompatible && !option.selected;
                 });
                 const selected = group.selectedOptions[0];
-                const incompatibleSelection = selected?.value && selected.dataset.facility !== facility;
+                const incompatibleSelection = selected?.value && selected.dataset.warehouseId !== warehouseId;
                 const inactiveCurrentSelection = selected?.value && selected.dataset.active === "false" && selected.dataset.current === "true";
                 group.setCustomValidity(incompatibleSelection
-                    ? `The selected ${selected.dataset.facility} report cannot be assigned to this ${facility || "unresolved"} room.`
+                    ? "The selected report belongs to a different warehouse."
                     : "");
                 help.textContent = incompatibleSelection
-                    ? `The selected report belongs to ${selected.dataset.facility}. Choose ${facility || "the room's facility"} or Not included before saving.`
+                    ? "Choose a report for this exact warehouse or Not included before saving."
                     : inactiveCurrentSelection
                         ? "This report is inactive but remains this Room's stored assignment. Choose another active report or Not included to change it."
                     : "Only active reports for the selected room warehouse are available. This room record is the authoritative report membership.";

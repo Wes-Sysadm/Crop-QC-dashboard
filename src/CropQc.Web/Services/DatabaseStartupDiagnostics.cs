@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260812061125_AddRoomInventoryLosses";
+    public const string ExpectedSchemaMigration = "20260817075807_AddEndOfDayFillWarehouseScope";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -159,6 +159,7 @@ public static class DatabaseStartupDiagnostics
         new("RoomInventoryAdjustments.ReceiptInventoryOverrideId", "RoomInventoryAdjustments", "ReceiptInventoryOverrideId", RequireNullable: true),
         new("EndOfDayFillReportGroups", "EndOfDayFillReportGroups", null),
         new("EndOfDayFillReportGroups.Facility", "EndOfDayFillReportGroups", "Facility", RequireNotNullable: true),
+        new("EndOfDayFillReportGroups.WarehouseId", "EndOfDayFillReportGroups", "WarehouseId", RequireNotNullable: true),
         new("Rooms.EndOfDayFillReportGroupId", "Rooms", "EndOfDayFillReportGroupId", RequireNullable: true),
         new("EndOfDayFillReportRecipients", "EndOfDayFillReportRecipients", null),
         new("EndOfDayFillReportRecipients.NormalizedEmailAddress", "EndOfDayFillReportRecipients", "NormalizedEmailAddress", RequireNotNullable: true),
@@ -253,6 +254,7 @@ public static class DatabaseStartupDiagnostics
         new("IX_ReceiptInventoryOverrides_ReceiptId_CreatedAt", "ReceiptInventoryOverrides", "IX_ReceiptInventoryOverrides_ReceiptId_CreatedAt"),
         new("IX_RoomInventoryAdjustments_ReceiptInventoryOverrideId", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_ReceiptInventoryOverrideId"),
         new("IX_EndOfDayFillReportGroups_Name", "EndOfDayFillReportGroups", "IX_EndOfDayFillReportGroups_Name", RequireUnique: true),
+        new("IX_EndOfDayFillReportGroups_WarehouseId", "EndOfDayFillReportGroups", "IX_EndOfDayFillReportGroups_WarehouseId"),
         new("IX_Rooms_EndOfDayFillReportGroupId", "Rooms", "IX_Rooms_EndOfDayFillReportGroupId"),
         new("IX_EndOfDayFillReportRecipients_NormalizedEmailAddress", "EndOfDayFillReportRecipients", "IX_EndOfDayFillReportRecipients_NormalizedEmailAddress", RequireUnique: true),
         new("IX_EndOfDayFillUserGroupAssignments_UserId_ReportGroupId", "EndOfDayFillUserGroupAssignments", "IX_EndOfDayFillUserGroupAssignments_UserId_ReportGroupId", RequireUnique: true),
@@ -302,6 +304,7 @@ public static class DatabaseStartupDiagnostics
         new("FK_ReceiptInventoryOverrides_Users_AdministratorUserId", "ReceiptInventoryOverrides", "FK_ReceiptInventoryOverrides_Users_AdministratorUserId"),
         new("FK_RoomInventoryAdjustments_ReceiptOverrides_OverrideId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_ReceiptOverrides_OverrideId"),
         new("FK_Rooms_EndOfDayFillReportGroups_EndOfDayFillReportGroupId", "Rooms", "FK_Rooms_EndOfDayFillReportGroups_EndOfDayFillReportGroupId"),
+        new("FK_EndOfDayFillReportGroups_Warehouses_WarehouseId", "EndOfDayFillReportGroups", "FK_EndOfDayFillReportGroups_Warehouses_WarehouseId"),
         new("FK_EndOfDayFillUserGroupAssignments_Users_UserId", "EndOfDayFillUserGroupAssignments", "FK_EndOfDayFillUserGroupAssignments_Users_UserId"),
         new("FK_EndOfDayFillReportSends_EndOfDayFillReportGroups_ReportGroupId", "EndOfDayFillReportSends", "FK_EndOfDayFillReportSends_EndOfDayFillReportGroups_ReportGroupId"),
         new("FK_EndOfDayFillSendReservations_EndOfDayFillReportSends_SendAttemptId", "EndOfDayFillSendReservations", "FK_EndOfDayFillSendReservations_EndOfDayFillReportSends_SendAttemptId"),

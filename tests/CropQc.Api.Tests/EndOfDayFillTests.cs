@@ -168,8 +168,10 @@ public sealed class EndOfDayFillTests
         await using var fixture = await Fixture.CreateAsync();
         var group = await fixture.Db.EndOfDayFillReportGroups.SingleAsync(x => x.Id == 1);
         var room = await fixture.Db.Rooms.SingleAsync(x => x.Id == Fixture.RoomId);
+        var ebsWarehouseId = (await fixture.Db.Warehouses.SingleAsync(x => x.Code == "EBS")).Id;
         group.Facility = "EBS";
-        room.WarehouseId = (await fixture.Db.Warehouses.SingleAsync(x => x.Code == "EBS")).Id;
+        group.WarehouseId = ebsWarehouseId;
+        room.WarehouseId = ebsWarehouseId;
         await fixture.Db.SaveChangesAsync();
 
         fixture.Inventory.CanonicalName = "Honey Crisp";
@@ -336,7 +338,7 @@ public sealed class EndOfDayFillTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var admin = fixture.CreateAdminService();
-        Assert.Null(await admin.SaveGroupAsync(new EndOfDayFillGroupForm { Name = "Other WP", Facility = "WP", IsActive = true }, Fixture.SenderEmail, default));
+        Assert.Null(await admin.SaveGroupAsync(new EndOfDayFillGroupForm { Name = "Other WP", WarehouseId = 4, IsActive = false }, Fixture.SenderEmail, default));
         Assert.Equal(1, (await admin.GetPageAsync(default)).Groups.Single(x => x.Id == 1).AssignedRoomCount);
 
         var user = await fixture.Db.Users.SingleAsync(x => x.Email == Fixture.UnassignedEmail);
@@ -354,8 +356,8 @@ public sealed class EndOfDayFillTests
         Assert.Null(await admin.SaveGroupAsync(new EndOfDayFillGroupForm
         {
             Name = "Second WP scope",
-            Facility = "WP",
-            IsActive = true
+            WarehouseId = 4,
+            IsActive = false
         }, Fixture.SenderEmail, default));
         var group = await fixture.Db.EndOfDayFillReportGroups.Include(x => x.Rooms).SingleAsync(x => x.Name == "Second WP scope");
         Assert.Empty(group.Rooms);
@@ -364,7 +366,7 @@ public sealed class EndOfDayFillTests
         {
             Id = group.Id,
             Name = "Renamed WP scope",
-            Facility = "WP",
+            WarehouseId = 4,
             IsActive = false
         }, Fixture.SenderEmail, default));
         Assert.False((await fixture.Db.EndOfDayFillReportGroups.SingleAsync(x => x.Id == group.Id)).IsActive);
@@ -435,6 +437,7 @@ public sealed class EndOfDayFillTests
         var alternateGroup = new EndOfDayFillReportGroup
         {
             Name = "Alternate WP End of Day Fill",
+            WarehouseId = wp.Id,
             Facility = "WP",
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
@@ -499,7 +502,7 @@ public sealed class EndOfDayFillTests
 
         var incompatibleMove = (await masterData.GetEditFormAsync("rooms", moveCandidate.Id, default))!;
         incompatibleMove.WarehouseId = ebs.Id;
-        Assert.Contains("EBS", await masterData.SaveMasterDataAsync(incompatibleMove, Fixture.SenderEmail, default));
+        Assert.Contains("exact warehouse", await masterData.SaveMasterDataAsync(incompatibleMove, Fixture.SenderEmail, default));
         var rejectedMove = await fixture.Db.Rooms.AsNoTracking().SingleAsync(x => x.Id == moveCandidate.Id);
         Assert.Equal(wp.Id, rejectedMove.WarehouseId);
         Assert.Equal(currentGroup.Id, rejectedMove.EndOfDayFillReportGroupId);
@@ -555,6 +558,55 @@ public sealed class EndOfDayFillTests
         Assert.Equal([Fixture.RoomId, Fixture.UnconfiguredRoomId], fixture.Inventory.RequestedRoomIds);
         Assert.True((await fixture.Service.SendAsync(Fixture.SenderEmail, new EndOfDayFillSendForm { GroupId = 1, PreviewToken = changed.PreviewToken, PhysicalCountConfirmed = true }, default)).Success);
         Assert.Equal(1, (await fixture.Db.EndOfDayFillReportSends.SingleAsync(x => x.RevisionNumber == 1)).RevisionNumber);
+    }
+
+    [Fact]
+    public async Task FourWarehouseGroups_AreIndependent_UseDurableWarehouseScope_AndLoadOnlySelectedRooms()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var warehouses = await fixture.Db.Warehouses.ToDictionaryAsync(x => x.Id);
+        var sender = await fixture.Db.Users.SingleAsync(x => x.Email == Fixture.SenderEmail);
+        var wpRoom = await fixture.Db.Rooms.SingleAsync(x => x.Id == Fixture.RoomId);
+        var mcdRoom = await fixture.Db.Rooms.SingleAsync(x => x.Id == Fixture.UnconfiguredRoomId);
+        wpRoom.WarehouseId = 4;
+        wpRoom.Code = "WP-4";
+        mcdRoom.WarehouseId = 3;
+        mcdRoom.Code = "MCD-3";
+        mcdRoom.EndOfDayFillReportGroupId = 3;
+        fixture.Db.EndOfDayFillReportGroups.AddRange(
+            new EndOfDayFillReportGroup { Id = 3, WarehouseId = 3, Name = "MCD End of Day Fill", Facility = "WP", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow },
+            new EndOfDayFillReportGroup { Id = 4, WarehouseId = 2, Name = "DH End of Day Fill", Facility = "WP", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow });
+        fixture.Db.Rooms.AddRange(
+            new Room { Id = 915, WarehouseId = 2, Code = "DH-1", Name = "DH 1", CapacityBins = 400, IsActive = true, EndOfDayFillReportGroupId = 4 },
+            new Room { Id = 916, WarehouseId = 1, Code = "EVANS-7", Name = "Evans 7", CapacityBins = 500, IsActive = true, EndOfDayFillReportGroupId = 2 });
+        fixture.Db.EndOfDayFillUserGroupAssignments.AddRange(
+            new EndOfDayFillUserGroupAssignment { UserId = sender.Id, ReportGroupId = 2, CreatedAt = DateTimeOffset.UtcNow, CreatedByUserId = sender.Id },
+            new EndOfDayFillUserGroupAssignment { UserId = sender.Id, ReportGroupId = 3, CreatedAt = DateTimeOffset.UtcNow, CreatedByUserId = sender.Id },
+            new EndOfDayFillUserGroupAssignment { UserId = sender.Id, ReportGroupId = 4, CreatedAt = DateTimeOffset.UtcNow, CreatedByUserId = sender.Id });
+        await fixture.Db.SaveChangesAsync();
+        fixture.Inventory.Lots =
+        [
+            Lot(Fixture.RoomId, "WP-4", 40, "1084", "WP Grower", "Gala", "Conventional", false),
+            Lot(Fixture.UnconfiguredRoomId, "MCD-3", 30, "1084", "MCD Grower", "Gala", "Conventional", false),
+            Lot(915, "DH-1", 20, "1084", "DH Grower", "Gala", "Conventional", false),
+            Lot(916, "EVANS-7", 10, "1084", "EBS Grower", "Gala", "Conventional", false)
+        ];
+
+        var expected = new[] { (1, "WP", Fixture.RoomId, 40), (3, "MCD", Fixture.UnconfiguredRoomId, 30), (4, "DH", 915, 20), (2, "EBS", 916, 10) };
+        foreach (var (groupId, label, roomId, bins) in expected)
+        {
+            var preview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, groupId, default);
+            Assert.True(preview.CanSend);
+            Assert.Equal(["WP", "MCD", "DH", "EBS"], preview.Groups.Select(x => x.WarehouseLabel));
+            Assert.Equal(label, preview.WarehouseLabel);
+            Assert.Equal(roomId, Assert.Single(preview.Rooms).RoomId);
+            Assert.Equal(bins, preview.RoomSummary.TotalCurrentBins);
+            Assert.Equal([roomId], fixture.Inventory.RequestedRoomIds);
+        }
+
+        Assert.Equal("McDougall", warehouses[3].Code);
+        Assert.Empty(fixture.Sender.Messages);
+        Assert.Empty(await fixture.Db.EndOfDayFillReportSends.ToListAsync());
     }
 
     [Fact]

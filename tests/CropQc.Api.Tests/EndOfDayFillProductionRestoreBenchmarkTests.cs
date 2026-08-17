@@ -116,6 +116,7 @@ public sealed class EndOfDayFillProductionRestoreBenchmarkTests
         var groups = Enumerable.Range(1, concurrentGroups).Select(index => new EndOfDayFillReportGroup
         {
             Name = $"EOD disposable benchmark {index:D3}",
+            WarehouseId = warehouseId,
             Facility = "WP",
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,

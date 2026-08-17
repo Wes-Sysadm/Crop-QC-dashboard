@@ -5,7 +5,9 @@ public sealed record EndOfDayFillGroupOption(
     string Name,
     string Facility,
     bool IsActive = true,
-    bool IsCurrentAssignment = false);
+    bool IsCurrentAssignment = false,
+    int WarehouseId = 0,
+    string WarehouseLabel = "");
 
 public sealed class EndOfDayFillPreviewViewModel
 {
@@ -13,6 +15,10 @@ public sealed class EndOfDayFillPreviewViewModel
     public IReadOnlyList<EndOfDayFillGroupOption> Groups { get; set; } = [];
     public string GroupName { get; set; } = "";
     public string Facility { get; set; } = "";
+    public int? WarehouseId { get; set; }
+    public string WarehouseLabel { get; set; } = "";
+    public string WarehouseCode { get; set; } = "";
+    public string WarehouseName { get; set; } = "";
     public IReadOnlyList<string> Recipients { get; set; } = [];
     public IReadOnlyList<EndOfDayFillRoomViewModel> Rooms { get; set; } = [];
     public EndOfDayFillRoomSummaryViewModel RoomSummary => new(Rooms);
@@ -134,19 +140,21 @@ public sealed class EndOfDayFillHistoryDetailViewModel
 public sealed class EndOfDayFillAdminPageViewModel
 {
     public IReadOnlyList<EndOfDayFillAdminGroupViewModel> Groups { get; set; } = [];
+    public IReadOnlyList<EndOfDayFillWarehouseOption> Warehouses { get; set; } = [];
     public IReadOnlyList<EndOfDayFillAdminRecipientViewModel> Recipients { get; set; } = [];
     public IReadOnlyList<EndOfDayFillPendingAttemptViewModel> StaleAttempts { get; set; } = [];
 }
 
-public sealed record EndOfDayFillAdminGroupViewModel(int Id, string Name, string Facility, bool IsActive, int AssignedRoomCount, IReadOnlyList<EndOfDayFillAdminRoomViewModel> AssignedRooms);
-public sealed record EndOfDayFillAdminRoomViewModel(int Id, string Facility, string Code, string Name, string? Location, int CapacityBins);
+public sealed record EndOfDayFillWarehouseOption(int Id, string Label, string Code, string Name, string Facility, bool IsActive);
+public sealed record EndOfDayFillAdminGroupViewModel(int Id, string Name, int WarehouseId, string WarehouseLabel, string Facility, bool IsActive, int AssignedRoomCount, IReadOnlyList<EndOfDayFillAdminRoomViewModel> AssignedRooms);
+public sealed record EndOfDayFillAdminRoomViewModel(int Id, int WarehouseId, string WarehouseLabel, string Code, string Name, string? Location, int CapacityBins);
 public sealed record EndOfDayFillAdminRecipientViewModel(int Id, string Email, bool IsActive, int SortOrder);
 
 public sealed class EndOfDayFillGroupForm
 {
     public int? Id { get; set; }
     public string Name { get; set; } = "";
-    public string Facility { get; set; } = "";
+    public int WarehouseId { get; set; }
     public bool IsActive { get; set; }
 }
 

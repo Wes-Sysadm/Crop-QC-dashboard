@@ -19,7 +19,7 @@
                 <option value="">Select a report group</option>
                 @foreach (var group in Model.Groups)
                 {
-                    <option value="@group.Id" selected="@(group.Id == Model.SelectedGroupId)">@group.Name (@group.Facility)</option>
+                    <option value="@group.Id" selected="@(group.Id == Model.SelectedGroupId)">@group.Name</option>
                 }
             </select>
         </label>
@@ -30,7 +30,8 @@
 @if (Model.SelectedGroupId is not null)
 {
     <section class="panel">
-        <h2>@Model.GroupName — @Model.Facility</h2>
+        <h2>@Model.GroupName</h2>
+        <p class="muted">Warehouse @Model.WarehouseLabel · Operating Facility @Model.Facility</p>
         <p><strong>Recipients:</strong> @string.Join(", ", Model.Recipients)</p>
         <p class="muted">Empty configured rooms are validated but omitted from the email.</p>
         <a class="secondary-button" href="/EndOfDayFill?groupId=@Model.SelectedGroupId">Refresh Preview</a>

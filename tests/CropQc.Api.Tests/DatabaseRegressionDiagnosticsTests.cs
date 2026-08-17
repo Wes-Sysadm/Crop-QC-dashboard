@@ -248,10 +248,53 @@ public sealed class DatabaseRegressionDiagnosticsTests
     public void RenderUsesFailClosedLatestSchemaGateBeforeBothWebDeployments()
     {
         var blueprint = File.ReadAllText(FindRepositoryFile("render.yaml"));
-        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260812061125_AddRoomInventoryLosses";
+        var command = "preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260817075807_AddEndOfDayFillWarehouseScope";
 
         Assert.Equal(2, blueprint.Split(command, StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("dotnet ef database update", blueprint, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EndOfDayFillWarehouseCompatibilityPackage_IsBoundedAndLeavesMigrationHistoryUntouched()
+    {
+        var preflight = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "preflight-end-of-day-fill-warehouse-scope.sql"));
+        var apply = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "apply-end-of-day-fill-warehouse-scope.sql"));
+        var verify = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "verify-end-of-day-fill-warehouse-scope.sql"));
+
+        Assert.Contains("BEGIN TRANSACTION READ ONLY", preflight, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("State A", preflight);
+        Assert.Contains("State B", preflight);
+        Assert.Contains("State C", preflight);
+        Assert.DoesNotContain("CREATE TABLE", preflight, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pg_advisory_xact_lock", apply);
+        Assert.Contains("ADD COLUMN \"WarehouseId\" integer", apply);
+        Assert.Contains("SET \"WarehouseId\"=4", apply);
+        Assert.Contains("SET \"WarehouseId\"=1", apply);
+        Assert.Contains("IX_EndOfDayFillReportGroups_WarehouseId", apply);
+        Assert.Contains("FK_EndOfDayFillReportGroups_Warehouses_WarehouseId", apply);
+        Assert.Contains("cropqc.test_force_eod_fill_warehouse_failure", apply);
+        Assert.Contains("transaction will roll back", apply, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("INSERT INTO \"__EFMigrationsHistory\"", apply, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("UPDATE \"__EFMigrationsHistory\"", apply, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("migration_history_intentionally_unchanged", verify);
+        var adminView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "EndOfDayFillAdmin", "Index.cshtml"));
+        Assert.Contains("@warehouse.Label", adminView);
+        Assert.DoesNotContain("stored warehouse", adminView, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EndOfDayFillWarehousePreviewVerification_IsExplicitlyReadOnly()
+    {
+        var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
+        var commandBlock = program[program.IndexOf("--verify-end-of-day-fill-warehouse-previews", StringComparison.Ordinal)..];
+        commandBlock = commandBlock[..commandBlock.IndexOf("Tr108859DroppedBinsCorrectionConstants.CommandName", StringComparison.Ordinal)];
+
+        Assert.Contains("GetPreviewAsync", commandBlock);
+        Assert.Contains("GetCurrentLotsAsync", commandBlock);
+        Assert.Contains("includedAuthoritativeTotal", commandBlock);
+        Assert.Contains("allRoomAuthoritativeTotal", commandBlock);
+        Assert.DoesNotContain("SaveChanges", commandBlock, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SendAsync", commandBlock, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
