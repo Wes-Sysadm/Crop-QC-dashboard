@@ -58,7 +58,9 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
                 Assert.NotEmpty(preview.Rooms);
                 Assert.DoesNotContain(preview.Issues, x => x.Code == "inventory-conflict");
                 Assert.Equal(preview.RoomSummary.TotalCurrentBins, preview.Rooms.Sum(x => x.CurrentBins));
-                Assert.Equal(preview.RoomSummary.TotalCapacityBins, preview.Rooms.Sum(x => x.CapacityBins));
+                Assert.Equal(preview.RoomSummary.TotalCurrentBins, preview.RoomSummary.Rooms.Sum(x => x.CurrentBins));
+                Assert.Equal(preview.RoomSummary.TotalCapacityBins, preview.RoomSummary.Rooms.Sum(x => x.CapacityBins));
+                Assert.NotNull(preview.RoomSummary.TotalPercentFull);
                 Assert.Equal(
                     decimal.Round(preview.RoomSummary.TotalCurrentBins * 100m / preview.RoomSummary.TotalCapacityBins, 1),
                     preview.RoomSummary.TotalPercentFull);
@@ -76,15 +78,15 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
                 evidence.Add(new(
                     group.Name,
                     group.Facility,
-                    preview.Rooms.Select(x => new EndOfDayFillRoomEvidence(
+                    preview.RoomSummary.Rooms.Select(x => new EndOfDayFillRoomEvidence(
                         x.RoomCode,
                         x.CurrentBins,
                         x.CapacityBins,
-                        x.PercentFull,
+                        x.PercentFull!.Value,
                         x.Varieties.Sum(v => v.Growers.Sum(g => g.Bins)))).ToList(),
                     preview.RoomSummary.TotalCurrentBins,
                     preview.RoomSummary.TotalCapacityBins,
-                    preview.RoomSummary.TotalPercentFull));
+                    preview.RoomSummary.TotalPercentFull.Value));
             }
         }
 
@@ -263,18 +265,21 @@ public sealed class ReviewedGrowerMasterPostgreSqlHttpTests
         Assert.NotEmpty(summary);
         var bodyRows = Regex.Match(summary, "<tbody>(?<content>.*?)</tbody>", RegexOptions.Singleline)
             .Groups["content"].Value;
-        Assert.Equal(preview.Rooms.Count, Regex.Matches(bodyRows, "<tr>").Count);
+        Assert.Equal(preview.RoomSummary.Rooms.Count, Regex.Matches(bodyRows, "<tr>").Count);
 
-        foreach (var room in preview.Rooms)
+        foreach (var room in preview.RoomSummary.Rooms)
         {
+            Assert.NotNull(room.PercentFull);
             Assert.Matches(
-                $"<tr>\\s*<td>{Regex.Escape(room.RoomCode)}</td>\\s*<td class=\"numeric-cell\">{Regex.Escape(room.CurrentBins.ToString("N0"))}</td>\\s*<td class=\"numeric-cell\">{Regex.Escape(room.CapacityBins.ToString("N0"))}</td>\\s*<td class=\"numeric-cell\">{Regex.Escape(room.PercentFull.ToString("N1"))}%</td>\\s*</tr>",
+                $"<tr>\\s*<td>{Regex.Escape(room.RoomCode)}</td>\\s*<td class=\"numeric-cell\">{Regex.Escape(room.CurrentBins.ToString("N0"))}</td>\\s*<td class=\"numeric-cell\">{Regex.Escape(room.CapacityBins.ToString("N0"))}</td>\\s*<td class=\"numeric-cell\">{Regex.Escape(room.PercentFull.Value.ToString("N1"))}%</td>\\s*</tr>",
                 bodyRows);
-            Assert.Contains($"{room.CurrentBins:N0} / {room.CapacityBins:N0} bins — {room.PercentFull:N1}% full", body);
+            if (room.CurrentBins > 0)
+                Assert.Contains($"{room.CurrentBins:N0} / {room.CapacityBins:N0} bins — {room.PercentFull.Value:N1}% full", body);
         }
 
+        Assert.NotNull(preview.RoomSummary.TotalPercentFull);
         Assert.Matches(
-            $"<th>Total</th>\\s*<th class=\"numeric-cell\">{Regex.Escape(preview.RoomSummary.TotalCurrentBins.ToString("N0"))}</th>\\s*<th class=\"numeric-cell\">{Regex.Escape(preview.RoomSummary.TotalCapacityBins.ToString("N0"))}</th>\\s*<th class=\"numeric-cell\">{Regex.Escape(preview.RoomSummary.TotalPercentFull.ToString("N1"))}%</th>",
+            $"<th>Total</th>\\s*<th class=\"numeric-cell\">{Regex.Escape(preview.RoomSummary.TotalCurrentBins.ToString("N0"))}</th>\\s*<th class=\"numeric-cell\">{Regex.Escape(preview.RoomSummary.TotalCapacityBins.ToString("N0"))}</th>\\s*<th class=\"numeric-cell\">{Regex.Escape(preview.RoomSummary.TotalPercentFull.Value.ToString("N1"))}%</th>",
             summary);
     }
 

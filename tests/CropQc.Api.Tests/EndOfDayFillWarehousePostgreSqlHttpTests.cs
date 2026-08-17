@@ -63,7 +63,24 @@ public sealed class EndOfDayFillWarehousePostgreSqlHttpTests
             Assert.Equal(expectedLabels[group.WarehouseId], preview.WarehouseLabel);
             Assert.DoesNotContain(preview.Issues, x => x.Code != "gmail");
             Assert.Equal(preview.RoomSummary.TotalCurrentBins, preview.Rooms.Sum(x => x.CurrentBins));
+            Assert.Equal(group.Rooms.Count(x => x.IsActive), preview.ConfiguredRoomCount);
+            Assert.Equal(preview.Rooms.Count, preview.OccupiedRoomCount);
+            Assert.Equal(preview.RoomSummary.TotalCurrentBins, preview.RoomSummary.Rooms.Sum(x => x.CurrentBins));
+            Assert.Equal(group.Rooms.Where(x => x.IsActive).Sum(x => x.CapacityBins), preview.RoomSummary.TotalCapacityBins);
+            Assert.Equal(preview.RoomSummary.TotalCapacityBins, preview.RoomSummary.Rooms.Sum(x => x.CapacityBins));
+            Assert.Equal(
+                group.Rooms.Where(x => x.IsActive).OrderBy(x => x.SortOrder).ThenBy(x => x.Code).Select(x => x.Id),
+                preview.RoomSummary.Rooms.Select(x => x.RoomId));
+            Assert.NotNull(preview.RoomSummary.TotalPercentFull);
+            Assert.Equal(
+                decimal.Round(preview.RoomSummary.TotalCurrentBins * 100m / preview.RoomSummary.TotalCapacityBins, 1),
+                preview.RoomSummary.TotalPercentFull);
             Assert.Equal(preview.RoomSummary.TotalCurrentBins, preview.Rooms.Sum(x => x.Varieties.Sum(v => v.Growers.Sum(g => g.Bins))));
+            Assert.All(preview.RoomSummary.Rooms.Where(x => x.CurrentBins == 0), x =>
+            {
+                Assert.Equal(0m, x.PercentFull);
+                Assert.Empty(x.Varieties);
+            });
             combinedPreviewBins += preview.RoomSummary.TotalCurrentBins;
 
             var response = await client.GetAsync($"/EndOfDayFill?groupId={group.Id}");
@@ -73,6 +90,7 @@ public sealed class EndOfDayFillWarehousePostgreSqlHttpTests
             Assert.Contains($"Warehouse {expectedLabels[group.WarehouseId]}", body, StringComparison.Ordinal);
             Assert.Contains("Room Summary", body, StringComparison.Ordinal);
             Assert.Contains("Detailed Room Breakdown", body, StringComparison.Ordinal);
+            Assert.All(preview.RoomSummary.Rooms, room => Assert.Contains($">{room.RoomCode}<", body, StringComparison.Ordinal));
             AssertNoDatabaseTranslationFailure(body);
         }
 

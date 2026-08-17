@@ -20,8 +20,11 @@ public sealed class EndOfDayFillPreviewViewModel
     public string WarehouseCode { get; set; } = "";
     public string WarehouseName { get; set; } = "";
     public IReadOnlyList<string> Recipients { get; set; } = [];
+    public IReadOnlyList<EndOfDayFillRoomViewModel> RoomSummaryRows { get; set; } = [];
     public IReadOnlyList<EndOfDayFillRoomViewModel> Rooms { get; set; } = [];
-    public EndOfDayFillRoomSummaryViewModel RoomSummary => new(Rooms);
+    public EndOfDayFillRoomSummaryViewModel RoomSummary => new(RoomSummaryRows);
+    public int ConfiguredRoomCount => RoomSummaryRows.Count;
+    public int OccupiedRoomCount => Rooms.Count;
     public IReadOnlyList<EndOfDayFillValidationIssue> Issues { get; set; } = [];
     public string? PreviewToken { get; set; }
     public bool GmailReady { get; set; }
@@ -35,9 +38,10 @@ public sealed class EndOfDayFillRoomSummaryViewModel(IReadOnlyList<EndOfDayFillR
     public IReadOnlyList<EndOfDayFillRoomViewModel> Rooms { get; } = rooms;
     public int TotalCurrentBins => Rooms.Sum(x => x.CurrentBins);
     public int TotalCapacityBins => Rooms.Sum(x => x.CapacityBins);
-    public decimal TotalPercentFull => TotalCapacityBins > 0
+    public bool HasCompleteCapacity => Rooms.Count > 0 && Rooms.All(x => x.CapacityBins > 0);
+    public decimal? TotalPercentFull => HasCompleteCapacity
         ? decimal.Round(TotalCurrentBins * 100m / TotalCapacityBins, 1)
-        : 0;
+        : null;
 }
 
 public sealed record EndOfDayFillPendingAttemptViewModel(
@@ -60,7 +64,7 @@ public sealed class EndOfDayFillRoomViewModel
     public string RoomName { get; set; } = "";
     public int CurrentBins { get; set; }
     public int CapacityBins { get; set; }
-    public decimal PercentFull => CapacityBins > 0 ? decimal.Round(CurrentBins * 100m / CapacityBins, 1) : 0;
+    public decimal? PercentFull => CapacityBins > 0 ? decimal.Round(CurrentBins * 100m / CapacityBins, 1) : null;
     public IReadOnlyList<EndOfDayFillVarietyViewModel> Varieties { get; set; } = [];
 }
 

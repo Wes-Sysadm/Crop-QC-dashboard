@@ -61,9 +61,9 @@
         </section>
     }
 
-    @if (Model.Rooms.Count == 0)
+    @if (Model.RoomSummaryRows.Count == 0)
     {
-        <p class="empty-state">No occupied rooms are currently included in this report group.</p>
+        <p class="empty-state">No active rooms are currently configured for this report group.</p>
     }
     else
     {
@@ -82,7 +82,7 @@
                             <td>@room.RoomCode</td>
                             <td class="numeric-cell">@room.CurrentBins.ToString("N0")</td>
                             <td class="numeric-cell">@room.CapacityBins.ToString("N0")</td>
-                            <td class="numeric-cell">@room.PercentFull.ToString("N1")%</td>
+                            <td class="numeric-cell">@(room.PercentFull is decimal summaryRoomPercent ? $"{summaryRoomPercent:N1}%" : "Unavailable")</td>
                         </tr>
                     }
                     </tbody>
@@ -91,36 +91,44 @@
                             <th>Total</th>
                             <th class="numeric-cell">@summary.TotalCurrentBins.ToString("N0")</th>
                             <th class="numeric-cell">@summary.TotalCapacityBins.ToString("N0")</th>
-                            <th class="numeric-cell">@summary.TotalPercentFull.ToString("N1")%</th>
+                            <th class="numeric-cell">@(summary.TotalPercentFull is decimal totalPercent ? $"{totalPercent:N1}%" : "Unavailable")</th>
                         </tr>
                     </tfoot>
                 </table>
             </div>
         </section>
 
-        <h2>Detailed Room Breakdown</h2>
-        <div class="end-of-day-fill-grid">
-        @foreach (var room in Model.Rooms)
+        @if (Model.Rooms.Count == 0)
         {
-            <article class="panel end-of-day-fill-room">
-                <h2>@room.RoomCode — @room.RoomName</h2>
-                <p class="room-fill-total"><strong>@room.CurrentBins.ToString("N0") / @room.CapacityBins.ToString("N0") bins — @room.PercentFull.ToString("N1")% full</strong></p>
-                @foreach (var variety in room.Varieties)
-                {
-                    <section class="end-of-day-fill-variety @(variety.IsOrganic ? "organic-stripe" : "")" style="border-left-color:@variety.HexColor">
-                        <h3>@variety.DisplayIdentity</h3>
-                        <p><strong>@variety.Bins.ToString("N0") bins</strong></p>
-                        <ul>
-                        @foreach (var grower in variety.Growers)
-                        {
-                            <li>Grower @grower.GrowerNumber@(string.IsNullOrWhiteSpace(grower.GrowerName) ? "" : $" — {grower.GrowerName}") — @grower.Bins.ToString("N0") bins</li>
-                        }
-                        </ul>
-                    </section>
-                }
-            </article>
+            <h2>Detailed Room Breakdown</h2>
+            <p class="empty-state">No configured rooms currently contain fruit.</p>
         }
-        </div>
+        else
+        {
+            <h2>Detailed Room Breakdown</h2>
+            <div class="end-of-day-fill-grid">
+            @foreach (var room in Model.Rooms)
+            {
+                <article class="panel end-of-day-fill-room">
+                    <h2>@room.RoomCode — @room.RoomName</h2>
+                    <p class="room-fill-total"><strong>@room.CurrentBins.ToString("N0") / @room.CapacityBins.ToString("N0") bins — @(room.PercentFull is decimal detailRoomPercent ? $"{detailRoomPercent:N1}%" : "Unavailable") full</strong></p>
+                    @foreach (var variety in room.Varieties)
+                    {
+                        <section class="end-of-day-fill-variety @(variety.IsOrganic ? "organic-stripe" : "")" style="border-left-color:@variety.HexColor">
+                            <h3>@variety.DisplayIdentity</h3>
+                            <p><strong>@variety.Bins.ToString("N0") bins</strong></p>
+                            <ul>
+                            @foreach (var grower in variety.Growers)
+                            {
+                                <li>Grower @grower.GrowerNumber@(string.IsNullOrWhiteSpace(grower.GrowerName) ? "" : $" — {grower.GrowerName}") — @grower.Bins.ToString("N0") bins</li>
+                            }
+                            </ul>
+                        </section>
+                    }
+                </article>
+            }
+            </div>
+        }
     }
 
     <section class="panel">

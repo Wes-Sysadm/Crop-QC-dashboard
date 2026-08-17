@@ -55,13 +55,20 @@ public sealed class EndOfDayFillTests
 
         var preview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
 
+        Assert.Equal(["EMPTY", "A-ROOM", "DH-1", "Z-ROOM"], preview.RoomSummary.Rooms.Select(x => x.RoomCode));
         Assert.Equal(["A-ROOM", "DH-1", "Z-ROOM"], preview.Rooms.Select(x => x.RoomCode));
-        Assert.Same(preview.Rooms, preview.RoomSummary.Rooms);
         Assert.Equal(200, preview.RoomSummary.TotalCurrentBins);
-        Assert.Equal(1200, preview.RoomSummary.TotalCapacityBins);
-        Assert.Equal(16.7m, preview.RoomSummary.TotalPercentFull);
-        Assert.NotEqual(decimal.Round(preview.Rooms.Average(x => x.PercentFull), 1), preview.RoomSummary.TotalPercentFull);
+        Assert.Equal(1700, preview.RoomSummary.TotalCapacityBins);
+        Assert.Equal(11.8m, preview.RoomSummary.TotalPercentFull);
+        Assert.NotEqual(decimal.Round(preview.Rooms.Average(x => x.PercentFull!.Value), 1), preview.RoomSummary.TotalPercentFull);
+        var emptySummary = Assert.Single(preview.RoomSummary.Rooms, x => x.RoomCode == "EMPTY");
+        Assert.Equal(0, emptySummary.CurrentBins);
+        Assert.Equal(500, emptySummary.CapacityBins);
+        Assert.Equal(0m, emptySummary.PercentFull);
+        Assert.Empty(emptySummary.Varieties);
         Assert.DoesNotContain(preview.Rooms, x => x.RoomCode == "EMPTY");
+        Assert.Equal(preview.RoomSummary.TotalCurrentBins, preview.RoomSummary.Rooms.Sum(x => x.CurrentBins));
+        Assert.Equal(preview.RoomSummary.TotalCapacityBins, preview.RoomSummary.Rooms.Sum(x => x.CapacityBins));
         Assert.Equal(preview.RoomSummary.TotalCurrentBins, preview.Rooms.Sum(x => x.Varieties.Sum(v => v.Growers.Sum(g => g.Bins))));
         Assert.Equal(sendsBefore, await fixture.Db.EndOfDayFillReportSends.CountAsync());
         Assert.Equal(auditsBefore, await fixture.Db.AuditLogs.CountAsync());
@@ -73,10 +80,48 @@ public sealed class EndOfDayFillTests
         var message = Assert.Single(fixture.Sender.Messages).Message;
         Assert.True(message.HtmlBody.IndexOf("Room Summary", StringComparison.Ordinal) < message.HtmlBody.IndexOf("Detailed Room Breakdown", StringComparison.Ordinal));
         Assert.True(message.TextBody.IndexOf("Room Summary", StringComparison.Ordinal) < message.TextBody.IndexOf("Detailed Room Breakdown", StringComparison.Ordinal));
-        Assert.Contains("Total | 200 | 1,200 | 16.7%", message.TextBody);
+        Assert.Contains("EMPTY | 0 | 500 | 0.0%", message.TextBody);
+        Assert.Contains("Total | 200 | 1,700 | 11.8%", message.TextBody);
+        Assert.True(message.TextBody.IndexOf("EMPTY | 0 | 500 | 0.0%", StringComparison.Ordinal) < message.TextBody.IndexOf("A-ROOM | 100 | 200 | 50.0%", StringComparison.Ordinal));
         Assert.True(message.TextBody.IndexOf("A-ROOM | 100 | 200 | 50.0%", StringComparison.Ordinal) < message.TextBody.IndexOf("DH-1 | 45 | 900 | 5.0%", StringComparison.Ordinal));
         Assert.True(message.TextBody.IndexOf("DH-1 | 45 | 900 | 5.0%", StringComparison.Ordinal) < message.TextBody.IndexOf("Z-ROOM | 55 | 100 | 55.0%", StringComparison.Ordinal));
+        Assert.DoesNotContain("EMPTY — Empty room", message.TextBody[(message.TextBody.IndexOf("Detailed Room Breakdown", StringComparison.Ordinal))..]);
         Assert.Contains("Grower 1084 — WP ORCHARD CONV — 45 bins", message.TextBody);
+    }
+
+    [Fact]
+    public async Task WarehouseWithTwentyTwoConfiguredRooms_UsesEveryRoomCapacityWithOneOccupiedRoom()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var warehouse = await fixture.Db.Warehouses.SingleAsync(x => x.Code == "WP");
+        var existingRoom = await fixture.Db.Rooms.SingleAsync(x => x.Id == Fixture.RoomId);
+        existingRoom.SortOrder = 1;
+        for (var index = 2; index <= 22; index++)
+        {
+            fixture.Db.Rooms.Add(new Room
+            {
+                Id = 920 + index,
+                WarehouseId = warehouse.Id,
+                Code = $"CAP-{index}",
+                Name = $"Capacity room {index}",
+                CapacityBins = 100,
+                SortOrder = index,
+                IsActive = true,
+                EndOfDayFillReportGroupId = 1
+            });
+        }
+        await fixture.Db.SaveChangesAsync();
+
+        var preview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+
+        Assert.Equal(22, preview.ConfiguredRoomCount);
+        Assert.Equal(1, preview.OccupiedRoomCount);
+        Assert.Equal(145, preview.RoomSummary.TotalCurrentBins);
+        Assert.Equal(900, preview.Rooms.Sum(x => x.CapacityBins));
+        Assert.Equal(3000, preview.RoomSummary.TotalCapacityBins);
+        Assert.Equal(4.8m, preview.RoomSummary.TotalPercentFull);
+        Assert.NotEqual(16.1m, preview.RoomSummary.TotalPercentFull);
+        Assert.Equal(21, preview.RoomSummary.Rooms.Count(x => x.CurrentBins == 0));
     }
 
     [Fact]
@@ -333,6 +378,30 @@ public sealed class EndOfDayFillTests
         Assert.Contains(preview.Issues, x => x.Code == "gmail");
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-100)]
+    public async Task EmptyConfiguredRoomWithInvalidCapacity_FailsVisiblyAndDoesNotClaimWarehousePercentage(int invalidCapacity)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var emptyRoom = await fixture.Db.Rooms.SingleAsync(x => x.Id == Fixture.UnconfiguredRoomId);
+        emptyRoom.EndOfDayFillReportGroupId = 1;
+        emptyRoom.CapacityBins = invalidCapacity;
+        fixture.Inventory.IncludeUnconfiguredRoom = false;
+        await fixture.Db.SaveChangesAsync();
+
+        var preview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+
+        Assert.False(preview.CanSend);
+        var issue = Assert.Single(preview.Issues, x => x.Code == "invalid-capacity");
+        Assert.Equal(emptyRoom.Id, issue.RoomId);
+        Assert.Contains(emptyRoom.Code, issue.Message);
+        Assert.Contains("Warehouse capacity is incomplete", issue.Message);
+        Assert.Null(preview.RoomSummary.TotalPercentFull);
+        Assert.Null(Assert.Single(preview.RoomSummary.Rooms, x => x.RoomId == emptyRoom.Id).PercentFull);
+        Assert.Empty(fixture.Sender.Messages);
+    }
+
     [Fact]
     public async Task GroupConfiguration_DoesNotOwnRoomMembership_AndAuditsUserAssignments()
     {
@@ -556,8 +625,35 @@ public sealed class EndOfDayFillTests
         Assert.Single(changed.Rooms);
         Assert.NotEqual(stale.PreviewToken, changed.PreviewToken);
         Assert.Equal([Fixture.RoomId, Fixture.UnconfiguredRoomId], fixture.Inventory.RequestedRoomIds);
-        Assert.True((await fixture.Service.SendAsync(Fixture.SenderEmail, new EndOfDayFillSendForm { GroupId = 1, PreviewToken = changed.PreviewToken, PhysicalCountConfirmed = true }, default)).Success);
+        Assert.True((await fixture.Service.SendAsync(Fixture.SenderEmail, new EndOfDayFillSendForm { GroupId = 1, PreviewToken = changed.PreviewToken!, PhysicalCountConfirmed = true }, default)).Success);
         Assert.Equal(1, (await fixture.Db.EndOfDayFillReportSends.SingleAsync(x => x.RevisionNumber == 1)).RevisionNumber);
+    }
+
+    [Fact]
+    public async Task EmptyConfiguredRoomCapacityChange_InvalidatesPreviewTokenWithoutChangingInventoryOrHistory()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var emptyRoom = await fixture.Db.Rooms.SingleAsync(x => x.Id == Fixture.UnconfiguredRoomId);
+        emptyRoom.EndOfDayFillReportGroupId = 1;
+        fixture.Inventory.IncludeUnconfiguredRoom = false;
+        await fixture.Db.SaveChangesAsync();
+        var preview = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+        var sendsBefore = await fixture.Db.EndOfDayFillReportSends.AsNoTracking().ToListAsync();
+        var binsBefore = preview.RoomSummary.TotalCurrentBins;
+
+        emptyRoom.CapacityBins += 25;
+        await fixture.Db.SaveChangesAsync();
+
+        var stale = await fixture.Service.SendAsync(Fixture.SenderEmail,
+            new EndOfDayFillSendForm { GroupId = 1, PreviewToken = preview.PreviewToken!, PhysicalCountConfirmed = true }, default);
+        var refreshed = await fixture.Service.GetPreviewAsync(Fixture.SenderEmail, 1, default);
+
+        Assert.True(stale.StalePreview);
+        Assert.NotEqual(preview.PreviewToken, refreshed.PreviewToken);
+        Assert.Equal(preview.RoomSummary.TotalCapacityBins + 25, refreshed.RoomSummary.TotalCapacityBins);
+        Assert.Equal(binsBefore, refreshed.RoomSummary.TotalCurrentBins);
+        Assert.Equal(sendsBefore, await fixture.Db.EndOfDayFillReportSends.AsNoTracking().ToListAsync());
+        Assert.Empty(fixture.Sender.Messages);
     }
 
     [Fact]

@@ -464,14 +464,21 @@ public sealed class EndOfDayFillService(
         }
         var warehouseLabel = warehouseLabels.Resolve(group.WarehouseId, group.Warehouse.Code, group.Warehouse.Name);
         var operatingFacility = facilityContext.GetOperatingCompanyFacility(group.Warehouse.Code, group.Warehouse.Name);
+        var configuredRooms = group.Rooms.Where(x => x.IsActive)
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Code)
+            .ToList();
         if (!operatingFacility.Equals(group.Facility, StringComparison.OrdinalIgnoreCase))
             issues.Add(new("warehouse-facility", $"The {warehouseLabel} report operating facility does not match its warehouse configuration."));
-        if (group.Rooms.Count == 0) issues.Add(new("no-rooms", "Assign at least one room to this report group in Master Data."));
-        foreach (var room in group.Rooms)
+        if (configuredRooms.Count == 0) issues.Add(new("no-rooms", "Assign at least one active room to this report group in Master Data."));
+        foreach (var room in configuredRooms)
         {
             if (room.WarehouseId != group.WarehouseId)
             {
                 issues.Add(new("cross-warehouse-room", $"Room {room.Code} does not belong to the {warehouseLabel} warehouse.", room.Id));
+            }
+            if (room.CapacityBins <= 0)
+            {
+                issues.Add(new("invalid-capacity", $"Warehouse capacity is incomplete because room {room.Code} does not have a valid configured capacity.", room.Id));
             }
         }
         if (recipients.Count == 0) issues.Add(new("no-recipients", "Add at least one active report recipient in Master Data."));
@@ -483,11 +490,11 @@ public sealed class EndOfDayFillService(
         if (!gmailReady) issues.Add(new("gmail", "Gmail permission is required. Reconnect Google/Gmail before sending."));
 
         IReadOnlyList<RoomLotSummaryViewModel> lots = [];
-        if (group.Rooms.Count > 0 && issues.All(x => x.Code != "cross-warehouse-room"))
+        if (configuredRooms.Count > 0 && issues.All(x => x.Code != "cross-warehouse-room"))
         {
             try
             {
-                lots = await inventorySource.GetCurrentLotsAsync(group.Rooms.Select(x => x.Id).ToList(), cancellationToken);
+                lots = await inventorySource.GetCurrentLotsAsync(configuredRooms.Select(x => x.Id).ToList(), cancellationToken);
             }
             catch (InvalidOperationException ex)
             {
@@ -507,13 +514,11 @@ public sealed class EndOfDayFillService(
                 issues.Add(new("missing-grower", $"Room {lot.RoomCode} has positive inventory without an authoritative grower number.", lot.RoomId));
         }
 
+        var summaryRooms = new List<EndOfDayFillRoomViewModel>();
         var rooms = new List<EndOfDayFillRoomViewModel>();
-        foreach (var room in group.Rooms.Where(x => x.IsActive).OrderBy(x => x.SortOrder).ThenBy(x => x.Code))
+        foreach (var room in configuredRooms)
         {
             var roomLots = lots.Where(x => x.RoomId == room.Id && x.CurrentBins > 0).ToList();
-            if (roomLots.Count == 0) continue;
-            if (room.CapacityBins <= 0)
-                issues.Add(new("invalid-capacity", $"Room {room.Code} is occupied but has no valid configured capacity.", room.Id));
             var varieties = roomLots
                 .GroupBy(x => new { x.CanonicalVarietyKey, x.CanonicalVarietyName, x.ProductionType, Organic = x.IsOrganic == true, x.VarietyHexColor })
                 .Select(v => new EndOfDayFillVarietyViewModel
@@ -533,7 +538,7 @@ public sealed class EndOfDayFillService(
             var currentBins = roomLots.Sum(x => x.CurrentBins);
             if (varieties.Sum(x => x.Growers.Sum(g => g.Bins)) != currentBins)
                 issues.Add(new("room-reconciliation", $"Room {room.Code} does not reconcile to its variety/grower detail.", room.Id));
-            rooms.Add(new EndOfDayFillRoomViewModel
+            var roomModel = new EndOfDayFillRoomViewModel
             {
                 RoomId = room.Id,
                 RoomCode = room.Code,
@@ -541,7 +546,9 @@ public sealed class EndOfDayFillService(
                 CurrentBins = currentBins,
                 CapacityBins = room.CapacityBins,
                 Varieties = varieties
-            });
+            };
+            summaryRooms.Add(roomModel);
+            if (currentBins > 0) rooms.Add(roomModel);
         }
 
         var model = new EndOfDayFillPreviewViewModel
@@ -554,6 +561,7 @@ public sealed class EndOfDayFillService(
             WarehouseCode = group.Warehouse.Code,
             WarehouseName = group.Warehouse.Name,
             Recipients = recipients,
+            RoomSummaryRows = summaryRooms,
             Rooms = rooms,
             Issues = issues,
             GmailReady = gmailReady
@@ -566,14 +574,15 @@ public sealed class EndOfDayFillService(
             group.WarehouseId,
             warehouseLabel,
             group.Facility,
-            group.Rooms.Select(x => x.Id).Order().ToArray(),
+            configuredRooms.Select(x => x.Id).Order().ToArray(),
             recipients.Select(NormalizeEmail).Order(StringComparer.Ordinal).ToArray(),
+            summaryRooms.Select(room => new NormalizedRoomSummary(room.RoomId, room.RoomCode, room.RoomName, room.CapacityBins, room.CurrentBins)).ToArray(),
             rooms.Select(room => new NormalizedRoom(room.RoomId, room.RoomCode, room.RoomName, room.CapacityBins, room.CurrentBins,
                 room.Varieties.Select(v => new NormalizedVariety(v.CanonicalKey, v.Name, v.ProductionType, v.IsOrganic,
                     v.Growers.Select(g => new NormalizedGrower(g.GrowerNumber.Trim(), g.GrowerName.Trim(), g.Bins)).ToArray())).ToArray())).ToArray());
         var json = JsonSerializer.Serialize(normalized, SnapshotJsonOptions);
         var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
-        return new(model, new ReportSnapshot(group.Name, group.WarehouseId, warehouseLabel, group.Facility, recipients, rooms, json, hash));
+        return new(model, new ReportSnapshot(group.Name, group.WarehouseId, warehouseLabel, group.Facility, recipients, summaryRooms, rooms, json, hash));
     }
 
     private static RenderedEmail RenderEmail(ReportSnapshot snapshot, int revision, DateTimeOffset nowPacific)
@@ -590,7 +599,7 @@ public sealed class EndOfDayFillService(
         var text = new StringBuilder("End of Day Fill Report\n");
         if (revision > 0) text.AppendLine($"REVISION {revision}");
         text.AppendLine(snapshot.GroupName).AppendLine($"End of Day Fill Report as of {date} — {time} Pacific").AppendLine();
-        var summary = new EndOfDayFillRoomSummaryViewModel(snapshot.Rooms);
+        var summary = new EndOfDayFillRoomSummaryViewModel(snapshot.SummaryRooms);
         html.Append("<h2>Room Summary</h2><table style=\"border-collapse:collapse;width:100%;max-width:560px\"><thead><tr>")
             .Append("<th style=\"border:1px solid #bbb;padding:8px;text-align:left\">Room</th>")
             .Append("<th style=\"border:1px solid #bbb;padding:8px;text-align:right\">Current Bins</th>")
@@ -599,24 +608,27 @@ public sealed class EndOfDayFillService(
         text.AppendLine("Room Summary").AppendLine("Room | Current Bins | Capacity | Full");
         foreach (var room in summary.Rooms)
         {
+            var roomPercent = FormatPercentFull(room.PercentFull);
             html.Append($"<tr><td style=\"border:1px solid #bbb;padding:8px\">{encoder.Encode(room.RoomCode)}</td>")
                 .Append($"<td style=\"border:1px solid #bbb;padding:8px;text-align:right\">{room.CurrentBins:N0}</td>")
                 .Append($"<td style=\"border:1px solid #bbb;padding:8px;text-align:right\">{room.CapacityBins:N0}</td>")
-                .Append($"<td style=\"border:1px solid #bbb;padding:8px;text-align:right\">{room.PercentFull:N1}%</td></tr>");
-            text.AppendLine($"{room.RoomCode} | {room.CurrentBins:N0} | {room.CapacityBins:N0} | {room.PercentFull:N1}%");
+                .Append($"<td style=\"border:1px solid #bbb;padding:8px;text-align:right\">{roomPercent}</td></tr>");
+            text.AppendLine($"{room.RoomCode} | {room.CurrentBins:N0} | {room.CapacityBins:N0} | {roomPercent}");
         }
+        var totalPercent = FormatPercentFull(summary.TotalPercentFull);
         html.Append($"</tbody><tfoot><tr><th style=\"border:1px solid #bbb;padding:8px;text-align:left\">Total</th>")
             .Append($"<th style=\"border:1px solid #bbb;padding:8px;text-align:right\">{summary.TotalCurrentBins:N0}</th>")
             .Append($"<th style=\"border:1px solid #bbb;padding:8px;text-align:right\">{summary.TotalCapacityBins:N0}</th>")
-            .Append($"<th style=\"border:1px solid #bbb;padding:8px;text-align:right\">{summary.TotalPercentFull:N1}%</th></tr></tfoot></table>")
+            .Append($"<th style=\"border:1px solid #bbb;padding:8px;text-align:right\">{totalPercent}</th></tr></tfoot></table>")
             .Append("<h2>Detailed Room Breakdown</h2>");
-        text.AppendLine($"Total | {summary.TotalCurrentBins:N0} | {summary.TotalCapacityBins:N0} | {summary.TotalPercentFull:N1}%")
+        text.AppendLine($"Total | {summary.TotalCurrentBins:N0} | {summary.TotalCapacityBins:N0} | {totalPercent}")
             .AppendLine()
             .AppendLine("Detailed Room Breakdown");
         foreach (var room in snapshot.Rooms)
         {
-            html.Append($"<section style=\"border:1px solid #bbb;border-radius:8px;padding:12px;margin:12px 0\"><h2 style=\"margin:0\">{encoder.Encode(room.RoomCode)} — {encoder.Encode(room.RoomName)}</h2><p><strong>{room.CurrentBins:N0} / {room.CapacityBins:N0} bins — {room.PercentFull:N1}% full</strong></p>");
-            text.AppendLine($"{room.RoomCode} — {room.RoomName}").AppendLine($"{room.CurrentBins:N0} / {room.CapacityBins:N0} bins — {room.PercentFull:N1}% full");
+            var roomPercent = FormatPercentFull(room.PercentFull);
+            html.Append($"<section style=\"border:1px solid #bbb;border-radius:8px;padding:12px;margin:12px 0\"><h2 style=\"margin:0\">{encoder.Encode(room.RoomCode)} — {encoder.Encode(room.RoomName)}</h2><p><strong>{room.CurrentBins:N0} / {room.CapacityBins:N0} bins — {roomPercent} full</strong></p>");
+            text.AppendLine($"{room.RoomCode} — {room.RoomName}").AppendLine($"{room.CurrentBins:N0} / {room.CapacityBins:N0} bins — {roomPercent} full");
             foreach (var variety in room.Varieties)
             {
                 var identity = variety.DisplayIdentity;
@@ -664,6 +676,7 @@ public sealed class EndOfDayFillService(
     }
 
     private static string NormalizeEmail(string? email) => email?.Trim().ToLowerInvariant() ?? "";
+    private static string FormatPercentFull(decimal? percent) => percent is decimal value ? $"{value:N1}%" : "Unavailable";
     private static string SafeFailure(string? error) => string.IsNullOrWhiteSpace(error) ? "Email send failed." : error.Trim()[..Math.Min(error.Trim().Length, 2000)];
     private static AuditLog BuildAudit(int userId, string action, string entity, string key, string after) => new()
     {
@@ -679,9 +692,10 @@ public sealed class EndOfDayFillService(
     private sealed record PreviewToken(int UserId, int GroupId, string SnapshotHash);
     private sealed record ReservationResult(EndOfDayFillReportSend? Attempt, string? Message);
     private sealed record SnapshotBuild(EndOfDayFillPreviewViewModel Model, ReportSnapshot? Snapshot);
-    private sealed record ReportSnapshot(string GroupName, int WarehouseId, string WarehouseLabel, string Facility, IReadOnlyList<string> Recipients, IReadOnlyList<EndOfDayFillRoomViewModel> Rooms, string Json, string Hash);
+    private sealed record ReportSnapshot(string GroupName, int WarehouseId, string WarehouseLabel, string Facility, IReadOnlyList<string> Recipients, IReadOnlyList<EndOfDayFillRoomViewModel> SummaryRooms, IReadOnlyList<EndOfDayFillRoomViewModel> Rooms, string Json, string Hash);
     private sealed record RenderedEmail(string Subject, string Html, string Text);
-    private sealed record NormalizedSnapshot(int GroupId, string GroupName, int WarehouseId, string WarehouseLabel, string Facility, int[] ConfiguredRoomIds, string[] Recipients, NormalizedRoom[] Rooms);
+    private sealed record NormalizedSnapshot(int GroupId, string GroupName, int WarehouseId, string WarehouseLabel, string Facility, int[] ConfiguredRoomIds, string[] Recipients, NormalizedRoomSummary[] SummaryRooms, NormalizedRoom[] Rooms);
+    private sealed record NormalizedRoomSummary(int RoomId, string RoomCode, string RoomName, int CapacityBins, int CurrentBins);
     private sealed record NormalizedRoom(int RoomId, string RoomCode, string RoomName, int CapacityBins, int CurrentBins, NormalizedVariety[] Varieties);
     private sealed record NormalizedVariety(string CanonicalKey, string Name, string ProductionType, bool IsOrganic, NormalizedGrower[] Growers);
     private sealed record NormalizedGrower(string GrowerNumber, string GrowerName, int Bins);

@@ -444,15 +444,19 @@ if (args.Contains("--verify-end-of-day-fill-warehouse-previews", StringComparer.
     foreach (var group in groups)
     {
         var preview = await previewService.GetPreviewAsync(requestedBy, group.Id, CancellationToken.None);
-        var roomTotal = preview.Rooms.Sum(x => x.CurrentBins);
+        var roomTotal = preview.RoomSummary.TotalCurrentBins;
         var detailTotal = preview.Rooms.Sum(x => x.Varieties.Sum(v => v.Growers.Sum(g => g.Bins)));
         previewTotal += roomTotal;
-        var configuredRooms = group.Rooms.Where(x => x.IsActive).OrderBy(x => x.Code).ToList();
+        var configuredRooms = group.Rooms.Where(x => x.IsActive).OrderBy(x => x.SortOrder).ThenBy(x => x.Code).ToList();
+        var occupiedCapacity = preview.Rooms.Sum(x => x.CapacityBins);
+        var configuredCapacity = configuredRooms.Sum(x => x.CapacityBins);
         var previewDataIssues = preview.Issues.Where(x => x.Code != "gmail").ToArray();
         previewsAreValid &= preview.SelectedGroupId == group.Id
             && preview.WarehouseId == group.WarehouseId
             && roomTotal == detailTotal
             && configuredRooms.All(x => x.WarehouseId == group.WarehouseId)
+            && preview.RoomSummary.Rooms.Select(x => x.RoomId).SequenceEqual(configuredRooms.Select(x => x.Id))
+            && preview.RoomSummary.TotalCapacityBins == configuredCapacity
             && previewDataIssues.Length == 0;
         previewResults.Add(new
         {
@@ -468,6 +472,8 @@ if (args.Contains("--verify-end-of-day-fill-warehouse-previews", StringComparer.
             occupiedRoomCount = preview.Rooms.Count,
             currentBins = roomTotal,
             detailBins = detailTotal,
+            occupiedCapacityBins = occupiedCapacity,
+            configuredCapacityBins = configuredCapacity,
             capacityBins = preview.RoomSummary.TotalCapacityBins,
             percentFull = preview.RoomSummary.TotalPercentFull,
             dataIssues = previewDataIssues.Select(x => new { x.Code, x.Message, x.RoomId }).ToArray(),
