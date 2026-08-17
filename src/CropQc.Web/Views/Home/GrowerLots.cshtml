@@ -94,7 +94,7 @@ else
             </dl>
             <div class="table-wrap operational-table-wrap">
                 <table class="operational-table current-storage-table">
-                    <thead><tr><th>Lot</th><th>Variety</th><th>Facility</th><th>Room</th><th class="bins-in-storage-column">Bins Currently In Storage</th><th>First received</th><th>Last QC sample</th><th>Latest QC source</th><th>Latest avg pressure</th><th>Latest starch</th></tr></thead>
+                    <thead><tr><th>Lot</th><th>Variety</th><th>Facility</th><th>Room</th><th class="bins-in-storage-column">Bins Currently In Storage</th><th>Likely source receipts</th><th>First received</th><th>Last QC sample</th><th>Latest QC source</th><th>Latest avg pressure</th><th>Latest starch</th></tr></thead>
                     <tbody>
                     @foreach (var lot in grower.Lots)
                     {
@@ -104,6 +104,24 @@ else
                             <td>@lot.Warehouse</td>
                             <td>@lot.Room</td>
                             <td class="bins-in-storage-column">@lot.CurrentBins.ToString("N0")</td>
+                            <td>
+                                @if (lot.ReceiptEvidence.Count == 0)
+                                {
+                                    <span class="muted">-</span>
+                                }
+                                else
+                                {
+                                    @foreach (var receipt in lot.ReceiptEvidence.Take(4))
+                                    {
+                                        <a href="/Receipts/@receipt.ReceiptId">@receipt.DisplayReceiptId</a><br />
+                                        <span class="muted">@receipt.EvidenceType</span><br />
+                                    }
+                                    @if (lot.ReceiptEvidenceCount > 4)
+                                    {
+                                        <span class="muted">+ @(lot.ReceiptEvidenceCount - 4) more</span>
+                                    }
+                                }
+                            </td>
                             <td>@BusinessTime.FormatPacific(lot.FirstReceivedAt, empty: "Current inventory baseline")</td>
                             <td>@BusinessTime.FormatPacific(lot.LastQcSampleAt, empty: "-")</td>
                             <td>@(string.IsNullOrWhiteSpace(lot.LatestQcSource) ? "-" : lot.LatestQcSource)</td>
