@@ -246,6 +246,11 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.Name).HasMaxLength(150).IsRequired();
             entity.Property(x => x.Facility).HasMaxLength(10).IsRequired();
             entity.HasIndex(x => x.Name).IsUnique();
+            entity.HasIndex(x => x.WarehouseId);
+            entity.HasOne(x => x.Warehouse)
+                .WithMany(x => x.EndOfDayFillReportGroups)
+                .HasForeignKey(x => x.WarehouseId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.ToTable(table => table.HasCheckConstraint("CK_EndOfDayFillReportGroups_Facility", "\"Facility\" IN ('WP', 'EBS')"));
         });
 
@@ -307,8 +312,8 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         });
 
         modelBuilder.Entity<EndOfDayFillReportGroup>().HasData(
-            new EndOfDayFillReportGroup { Id = 1, Name = "WP End of Day Fill", Facility = "WP", IsActive = true, CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch },
-            new EndOfDayFillReportGroup { Id = 2, Name = "EBS End of Day Fill", Facility = "EBS", IsActive = true, CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch });
+            new EndOfDayFillReportGroup { Id = 1, WarehouseId = 4, Name = "WP End of Day Fill", Facility = "WP", IsActive = true, CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch },
+            new EndOfDayFillReportGroup { Id = 2, WarehouseId = 1, Name = "EBS End of Day Fill", Facility = "EBS", IsActive = true, CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch });
         modelBuilder.Entity<EndOfDayFillReportRecipient>().HasData(
             new EndOfDayFillReportRecipient { Id = 1, EmailAddress = "wes@fruitandland.com", NormalizedEmailAddress = "WES@FRUITANDLAND.COM", IsActive = true, SortOrder = 10, CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch },
             new EndOfDayFillReportRecipient { Id = 2, EmailAddress = "jorge@wp-packing.com", NormalizedEmailAddress = "JORGE@WP-PACKING.COM", IsActive = true, SortOrder = 20, CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch },

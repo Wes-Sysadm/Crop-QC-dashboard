@@ -23,16 +23,22 @@ public sealed class EndOfDayFillAdminService(
     CropQcDbContext dbContext,
     IFacilityContextService facilityContext,
     IBusinessTimeService businessTime,
-    IUserAccessService userAccessService) : IEndOfDayFillAdminService
+    IUserAccessService userAccessService,
+    IEndOfDayFillWarehouseLabelResolver? warehouseLabelResolver = null) : IEndOfDayFillAdminService
 {
+    private readonly IEndOfDayFillWarehouseLabelResolver warehouseLabels = warehouseLabelResolver ?? new EndOfDayFillWarehouseLabelResolver();
     public async Task<EndOfDayFillAdminPageViewModel> GetPageAsync(CancellationToken cancellationToken)
     {
         var groups = await dbContext.EndOfDayFillReportGroups.AsNoTracking()
+            .Include(x => x.Warehouse)
             .Include(x => x.Rooms).ThenInclude(x => x.Warehouse)
             .OrderBy(x => x.Name)
             .ToListAsync(cancellationToken);
         var recipients = await dbContext.EndOfDayFillReportRecipients.AsNoTracking()
             .OrderBy(x => x.SortOrder).ThenBy(x => x.EmailAddress)
+            .ToListAsync(cancellationToken);
+        var warehouses = await dbContext.Warehouses.AsNoTracking()
+            .OrderBy(x => x.Code)
             .ToListAsync(cancellationToken);
         var staleBefore = businessTime.UtcNow - EndOfDayFillRecoveryPolicy.StaleAfter;
         var reservations = await dbContext.EndOfDayFillSendReservations.AsNoTracking()
@@ -47,12 +53,21 @@ public sealed class EndOfDayFillAdminService(
             Groups = groups.Select(x => new EndOfDayFillAdminGroupViewModel(
                 x.Id,
                 x.Name,
+                x.WarehouseId,
+                warehouseLabels.Resolve(x.WarehouseId, x.Warehouse.Code, x.Warehouse.Name),
                 x.Facility,
                 x.IsActive,
                 x.Rooms.Count,
                 x.Rooms.OrderBy(r => r.Warehouse.Code).ThenBy(r => r.SortOrder).ThenBy(r => r.Code)
-                    .Select(r => new EndOfDayFillAdminRoomViewModel(r.Id, facilityContext.GetOperatingCompanyFacility(r.Warehouse.Code, r.Warehouse.Name), r.Code, r.DisplayName ?? r.Name, r.SubLocation, r.CapacityBins))
+                    .Select(r => new EndOfDayFillAdminRoomViewModel(r.Id, r.WarehouseId, warehouseLabels.Resolve(r.WarehouseId, r.Warehouse.Code, r.Warehouse.Name), r.Code, r.DisplayName ?? r.Name, r.SubLocation, r.CapacityBins))
                     .ToList())).ToList(),
+            Warehouses = warehouses.Select(x => new EndOfDayFillWarehouseOption(
+                x.Id,
+                warehouseLabels.Resolve(x.Id, x.Code, x.Name),
+                x.Code,
+                x.Name,
+                facilityContext.GetOperatingCompanyFacility(x.Code, x.Name),
+                x.IsActive)).ToList(),
             Recipients = recipients.Select(x => new EndOfDayFillAdminRecipientViewModel(x.Id, x.EmailAddress, x.IsActive, x.SortOrder)).ToList(),
             StaleAttempts = staleAttempts.Select(x => PendingView(x.SendAttempt, true)).ToList()
         };
@@ -60,17 +75,24 @@ public sealed class EndOfDayFillAdminService(
 
     public async Task<string?> SaveGroupAsync(EndOfDayFillGroupForm form, string changedByEmail, CancellationToken cancellationToken)
     {
-        var facility = form.Facility.Trim().ToUpperInvariant();
-        if (facility is not ("WP" or "EBS")) return "Facility must be WP or EBS.";
         if (string.IsNullOrWhiteSpace(form.Name) || form.Name.Trim().Length > 150) return "A report group name of 150 characters or fewer is required.";
         await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var changedBy = await FindUserAsync(changedByEmail, cancellationToken);
         if (changedBy is null) return "The administrator account could not be resolved.";
+        var warehouse = await dbContext.Warehouses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.WarehouseId, cancellationToken);
+        if (warehouse is null) return "Select a valid warehouse.";
+        if (!warehouse.IsActive && form.Id is null) return "An inactive warehouse cannot be assigned to a new report group.";
+        var facility = facilityContext.GetOperatingCompanyFacility(warehouse.Code, warehouse.Name);
+        if (facility is not ("WP" or "EBS")) return "The selected warehouse does not have a supported WP or EBS operating facility.";
+        if (form.IsActive && await dbContext.EndOfDayFillReportGroups.AsNoTracking().AnyAsync(
+                x => x.Id != (form.Id ?? 0) && x.WarehouseId == warehouse.Id && x.IsActive,
+                cancellationToken))
+            return $"{warehouseLabels.Resolve(warehouse.Id, warehouse.Code, warehouse.Name)} already has an active End of Day Fill report.";
         EndOfDayFillReportGroup group;
         string? before = null;
         if (form.Id is null)
         {
-            group = new EndOfDayFillReportGroup { Name = form.Name.Trim(), Facility = facility, IsActive = form.IsActive, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
+            group = new EndOfDayFillReportGroup { Name = form.Name.Trim(), WarehouseId = warehouse.Id, Facility = facility, IsActive = form.IsActive, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
             dbContext.EndOfDayFillReportGroups.Add(group);
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -78,16 +100,17 @@ public sealed class EndOfDayFillAdminService(
         {
             group = await dbContext.EndOfDayFillReportGroups.Include(x => x.Rooms).ThenInclude(x => x.Warehouse).SingleOrDefaultAsync(x => x.Id == form.Id.Value, cancellationToken)
                 ?? throw new InvalidOperationException("Report group was not found.");
-            var wrongFacility = group.Rooms.FirstOrDefault(x => !facilityContext.GetOperatingCompanyFacility(x.Warehouse.Code, x.Warehouse.Name).Equals(facility, StringComparison.OrdinalIgnoreCase));
-            if (wrongFacility is not null) return $"Report facility cannot change while room {wrongFacility.Code} is assigned. Update the room in Master Data first.";
-            before = JsonSerializer.Serialize(new { group.Name, group.Facility, group.IsActive, RoomIds = group.Rooms.Select(x => x.Id).Order() });
+            var wrongWarehouse = group.Rooms.FirstOrDefault(x => x.WarehouseId != warehouse.Id);
+            if (wrongWarehouse is not null) return $"Report warehouse cannot change while room {wrongWarehouse.Code} is assigned. Update the room in Master Data first.";
+            before = JsonSerializer.Serialize(new { group.Name, group.WarehouseId, group.Facility, group.IsActive, RoomIds = group.Rooms.Select(x => x.Id).Order() });
             group.Name = form.Name.Trim();
+            group.WarehouseId = warehouse.Id;
             group.Facility = facility;
             group.IsActive = form.IsActive;
             group.UpdatedAt = DateTimeOffset.UtcNow;
         }
         dbContext.AuditLogs.Add(Audit(changedBy.Id, form.Id is null ? "create" : "update", "end-of-day-fill-report-group", group.Id.ToString(), before,
-            JsonSerializer.Serialize(new { group.Name, group.Facility, group.IsActive, RoomIds = group.Rooms.Select(x => x.Id).Order() })));
+            JsonSerializer.Serialize(new { group.Name, group.WarehouseId, WarehouseLabel = warehouseLabels.Resolve(warehouse.Id, warehouse.Code, warehouse.Name), group.Facility, group.IsActive, RoomIds = group.Rooms.Select(x => x.Id).Order() })));
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return null;

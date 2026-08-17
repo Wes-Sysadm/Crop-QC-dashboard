@@ -31,7 +31,7 @@
     </section>
 }
 
-<section class="panel"><h2>Create report group</h2><form method="post" action="/MasterData/end-of-day-fill-groups/group" class="form-grid">@Html.AntiForgeryToken()<label class="field">Name<input name="Name" required maxlength="150" /></label><label class="field">Facility<select name="Facility"><option>WP</option><option>EBS</option></select></label><label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked /> Active</label><input type="hidden" name="IsActive" value="false" /><button type="submit">Create</button></form></section>
+<section class="panel"><h2>Create report group</h2><form method="post" action="/MasterData/end-of-day-fill-groups/group" class="form-grid">@Html.AntiForgeryToken()<label class="field">Name<input name="Name" required maxlength="150" /></label><label class="field">Warehouse<select name="WarehouseId" required><option value="">Select warehouse</option>@foreach (var warehouse in Model.Warehouses.Where(x => x.IsActive)){<option value="@warehouse.Id">@warehouse.Label</option>}</select></label><p class="muted">Operating Facility is derived from the selected warehouse. MCD and DH remain in the WP operating-company context.</p><label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked /> Active</label><input type="hidden" name="IsActive" value="false" /><button type="submit">Create</button></form></section>
 
 @foreach (var group in Model.Groups)
 {
@@ -39,7 +39,8 @@
         <form method="post" action="/MasterData/end-of-day-fill-groups/group">
             @Html.AntiForgeryToken()
             <input type="hidden" name="Id" value="@group.Id" />
-            <div class="form-grid"><label class="field">Name<input name="Name" value="@group.Name" required maxlength="150" /></label><label class="field">Facility<select name="Facility"><option selected="@(group.Facility == "WP")">WP</option><option selected="@(group.Facility == "EBS")">EBS</option></select></label><label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@group.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" /></div>
+            <div class="form-grid"><label class="field">Name<input name="Name" value="@group.Name" required maxlength="150" /></label><label class="field">Warehouse<select name="WarehouseId" required>@foreach (var warehouse in Model.Warehouses.Where(x => x.IsActive || x.Id == group.WarehouseId)){<option value="@warehouse.Id" selected="@(warehouse.Id == group.WarehouseId)">@warehouse.Label</option>}</select></label><label class="field">Operating Facility<input value="@group.Facility" readonly /></label><label class="checkbox-field"><input type="checkbox" name="IsActive" value="true" checked="@group.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" /></div>
+            <p class="muted">Warehouse @group.WarehouseLabel · Operating Facility @group.Facility</p>
             <h3>Rooms assigned to this report: @group.AssignedRoomCount</h3>
             @if (group.AssignedRooms.Count > 0)
             {

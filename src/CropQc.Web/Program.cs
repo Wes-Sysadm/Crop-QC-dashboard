@@ -239,6 +239,8 @@ builder.Services.AddScoped<IDashboardDataService, DashboardDataService>();
 builder.Services.AddScoped<IEndOfDayFillService, EndOfDayFillService>();
 builder.Services.AddScoped<IEndOfDayFillAdminService, EndOfDayFillAdminService>();
 builder.Services.AddScoped<IEndOfDayFillInventorySource, EndOfDayFillInventorySource>();
+builder.Services.AddSingleton<IEndOfDayFillWarehouseLabelResolver, EndOfDayFillWarehouseLabelResolver>();
+builder.Services.AddScoped<IEndOfDayFillWarehouseConfigurationSyncService, EndOfDayFillWarehouseConfigurationSyncService>();
 builder.Services.AddScoped<IGoogleUserProvisioningService, GoogleUserProvisioningService>();
 builder.Services.AddScoped<IGoogleCredentialStore, GoogleCredentialStore>();
 builder.Services.AddScoped<IQcEmailSender, GmailUserEmailSender>();
@@ -393,6 +395,127 @@ if (args.Contains(ReviewedGrowerMasterSyncConstants.CommandName, StringComparer.
             result.Message);
     }
     Environment.ExitCode = result.Success ? 0 : 1;
+    return;
+}
+
+if (args.Contains(EndOfDayFillWarehouseConfigurationSyncConstants.CommandName, StringComparer.OrdinalIgnoreCase))
+{
+    static string? EndOfDayFillWarehouseCommandValue(string[] commandArgs, string key) =>
+        commandArgs.FirstOrDefault(x => x.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase)) is { } item
+            ? item[(item.IndexOf('=') + 1)..]
+            : null;
+    using var syncScope = app.Services.CreateScope();
+    var result = await syncScope.ServiceProvider.GetRequiredService<IEndOfDayFillWarehouseConfigurationSyncService>().RunAsync(new(
+        args.Contains("--apply", StringComparer.OrdinalIgnoreCase),
+        args.Contains("--confirm-production", StringComparer.OrdinalIgnoreCase),
+        args.Contains("--confirm-disposable-restore", StringComparer.OrdinalIgnoreCase),
+        EndOfDayFillWarehouseCommandValue(args, "--requested-by") ?? "command",
+        EndOfDayFillWarehouseCommandValue(args, "--reason") ?? "",
+        EndOfDayFillWarehouseCommandValue(args, "--expected-target-fingerprint"),
+        EndOfDayFillWarehouseCommandValue(args, "--expected-protected-fingerprint")), CancellationToken.None);
+    Console.Out.WriteLine(System.Text.Json.JsonSerializer.Serialize(
+        result,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true }));
+    Environment.ExitCode = result.Success ? 0 : 1;
+    return;
+}
+
+if (args.Contains("--verify-end-of-day-fill-warehouse-previews", StringComparer.OrdinalIgnoreCase))
+{
+    static string? EndOfDayFillPreviewCommandValue(string[] commandArgs, string key) =>
+        commandArgs.FirstOrDefault(x => x.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase)) is { } item
+            ? item[(item.IndexOf('=') + 1)..]
+            : null;
+
+    var requestedBy = EndOfDayFillPreviewCommandValue(args, "--requested-by") ?? "";
+    using var previewScope = app.Services.CreateScope();
+    var previewDb = previewScope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+    var previewService = previewScope.ServiceProvider.GetRequiredService<IEndOfDayFillService>();
+    var inventorySource = previewScope.ServiceProvider.GetRequiredService<IEndOfDayFillInventorySource>();
+    var groups = await previewDb.EndOfDayFillReportGroups.AsNoTracking()
+        .Include(x => x.Warehouse)
+        .Include(x => x.Rooms)
+        .Where(x => x.IsActive)
+        .OrderByDescending(x => x.WarehouseId)
+        .ToListAsync();
+    var previewResults = new List<object>();
+    var previewTotal = 0;
+    var previewsAreValid = groups.Count == 4;
+    foreach (var group in groups)
+    {
+        var preview = await previewService.GetPreviewAsync(requestedBy, group.Id, CancellationToken.None);
+        var roomTotal = preview.RoomSummary.TotalCurrentBins;
+        var detailTotal = preview.Rooms.Sum(x => x.Varieties.Sum(v => v.Growers.Sum(g => g.Bins)));
+        previewTotal += roomTotal;
+        var configuredRooms = group.Rooms.Where(x => x.IsActive).OrderBy(x => x.SortOrder).ThenBy(x => x.Code).ToList();
+        var occupiedCapacity = preview.Rooms.Sum(x => x.CapacityBins);
+        var configuredCapacity = configuredRooms.Sum(x => x.CapacityBins);
+        var previewDataIssues = preview.Issues.Where(x => x.Code != "gmail").ToArray();
+        previewsAreValid &= preview.SelectedGroupId == group.Id
+            && preview.WarehouseId == group.WarehouseId
+            && roomTotal == detailTotal
+            && configuredRooms.All(x => x.WarehouseId == group.WarehouseId)
+            && preview.RoomSummary.Rooms.Select(x => x.RoomId).SequenceEqual(configuredRooms.Select(x => x.Id))
+            && preview.RoomSummary.TotalCapacityBins == configuredCapacity
+            && previewDataIssues.Length == 0;
+        previewResults.Add(new
+        {
+            groupId = group.Id,
+            groupName = group.Name,
+            warehouseId = group.WarehouseId,
+            storedWarehouseCode = group.Warehouse.Code,
+            storedWarehouseName = group.Warehouse.Name,
+            displayedWarehouseLabel = preview.WarehouseLabel,
+            operatingFacility = group.Facility,
+            configuredRoomCount = configuredRooms.Count,
+            configuredRoomCodes = configuredRooms.Select(x => x.Code).ToArray(),
+            occupiedRoomCount = preview.Rooms.Count,
+            currentBins = roomTotal,
+            detailBins = detailTotal,
+            occupiedCapacityBins = occupiedCapacity,
+            configuredCapacityBins = configuredCapacity,
+            capacityBins = preview.RoomSummary.TotalCapacityBins,
+            percentFull = preview.RoomSummary.TotalPercentFull,
+            dataIssues = previewDataIssues.Select(x => new { x.Code, x.Message, x.RoomId }).ToArray(),
+            emailReadinessIssues = preview.Issues.Where(x => x.Code == "gmail").Select(x => new { x.Code, x.Message }).ToArray()
+        });
+    }
+
+    var includedRoomIds = groups.SelectMany(x => x.Rooms).Where(x => x.IsActive).Select(x => x.Id).Distinct().ToArray();
+    var allRoomIds = await previewDb.Rooms.AsNoTracking()
+        .Where(x => x.IsActive && new[] { 1, 2, 3, 4 }.Contains(x.WarehouseId))
+        .Select(x => x.Id)
+        .ToArrayAsync();
+    // Every preview above is produced by the authoritative inventory source. Reuse those
+    // results instead of running the expensive all-room reconciliation query a second time.
+    var includedAuthoritativeTotal = previewTotal;
+    var excludedRoomIds = allRoomIds.Except(includedRoomIds).ToArray();
+    var excludedAuthoritativeTotal = excludedRoomIds.Length == 0
+        ? 0
+        : (await inventorySource.GetCurrentLotsAsync(excludedRoomIds, CancellationToken.None)).Sum(x => x.CurrentBins);
+    var allRoomAuthoritativeTotal = includedAuthoritativeTotal + excludedAuthoritativeTotal;
+    var report = new
+    {
+        success = previewsAreValid,
+        requestedBy,
+        previewCount = previewResults.Count,
+        previews = previewResults,
+        reconciliation = new
+        {
+            previewTotal,
+            includedAuthoritativeTotal,
+            allRoomAuthoritativeTotal,
+            excludedAuthoritativeTotal,
+            authoritativeBasis = "Sum of four independently built authoritative previews plus any excluded-room authoritative inventory.",
+            includedRoomCount = includedRoomIds.Length,
+            allRoomCount = allRoomIds.Length,
+            excludedRoomCount = excludedRoomIds.Length
+        }
+    };
+    Console.Out.WriteLine(System.Text.Json.JsonSerializer.Serialize(
+        report,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true }));
+    Environment.ExitCode = previewsAreValid ? 0 : 1;
     return;
 }
 

@@ -10,6 +10,8 @@ public static class EndOfDayFillSendStatuses
 public sealed class EndOfDayFillReportGroup
 {
     public int Id { get; set; }
+    public int WarehouseId { get; set; }
+    public Warehouse Warehouse { get; set; } = null!;
     public required string Name { get; set; }
     public required string Facility { get; set; }
     public bool IsActive { get; set; } = true;

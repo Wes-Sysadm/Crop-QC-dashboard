@@ -8,6 +8,7 @@ public sealed class Warehouse
     public bool IsActive { get; set; } = true;
     public ICollection<Room> Rooms { get; } = new List<Room>();
     public ICollection<Receipt> Receipts { get; } = new List<Receipt>();
+    public ICollection<EndOfDayFillReportGroup> EndOfDayFillReportGroups { get; } = new List<EndOfDayFillReportGroup>();
 }
 
 public sealed class Room

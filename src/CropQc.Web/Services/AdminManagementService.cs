@@ -26,10 +26,12 @@ public sealed class AdminManagementService(
     CropQcDbContext dbContext,
     IVarietyColorService varietyColorService,
     ICanonicalGrowerService? canonicalGrowerService = null,
-    IFacilityContextService? facilityContextService = null) : IAdminManagementService
+    IFacilityContextService? facilityContextService = null,
+    IEndOfDayFillWarehouseLabelResolver? endOfDayFillWarehouseLabelResolver = null) : IAdminManagementService
 {
     private static readonly IBusinessTimeService BusinessTime = new PacificBusinessTimeService(new SystemClock());
     private readonly IFacilityContextService facilityContext = facilityContextService ?? new FacilityContextService(dbContext);
+    private readonly IEndOfDayFillWarehouseLabelResolver endOfDayFillWarehouseLabelResolver = endOfDayFillWarehouseLabelResolver ?? new EndOfDayFillWarehouseLabelResolver();
     private static readonly string[] DefaultCommodityOptions = ["Apple", "Pear"];
 
     private static readonly IReadOnlyList<(string Key, string Value, string Description, string ValueType)> ConfigurationDefaults =
@@ -1251,9 +1253,8 @@ public sealed class AdminManagementService(
             var preservesCurrentInactiveAssignment = form.Id is not null && entity.EndOfDayFillReportGroupId == reportGroupId;
             if (!reportGroup.IsActive && !preservesCurrentInactiveAssignment)
                 return "The selected End of Day Fill report is inactive and cannot be newly assigned.";
-            var operatingCompany = facilityContext.GetOperatingCompanyFacility(warehouse.Code, warehouse.Name);
-            if (!reportGroup.Facility.Equals(operatingCompany, StringComparison.OrdinalIgnoreCase))
-                return $"{warehouse.Code} rooms can only be assigned to an active {operatingCompany} End of Day Fill report.";
+            if (reportGroup.WarehouseId != warehouse.Id)
+                return $"{endOfDayFillWarehouseLabelResolver.Resolve(warehouse.Id, warehouse.Code, warehouse.Name)} rooms can only be assigned to an End of Day Fill report for that exact warehouse.";
         }
         var action = form.Id is null ? "create" : "update";
         var previousGroupId = entity.EndOfDayFillReportGroupId;
@@ -1301,12 +1302,22 @@ public sealed class AdminManagementService(
     {
         if (form is null) return null;
         var currentGroupId = form.EndOfDayFillReportGroupId;
-        form.EndOfDayFillReportGroups = await dbContext.EndOfDayFillReportGroups.AsNoTracking()
+        var groups = await dbContext.EndOfDayFillReportGroups.AsNoTracking()
+            .Include(x => x.Warehouse)
             .Where(x => x.IsActive || x.Id == currentGroupId)
-            .OrderBy(x => x.Facility)
+            .OrderBy(x => x.Warehouse.Code)
             .ThenBy(x => x.Name)
-            .Select(x => new EndOfDayFillGroupOption(x.Id, x.Name, x.Facility, x.IsActive, x.Id == currentGroupId))
             .ToListAsync(ct);
+        form.EndOfDayFillReportGroups = groups
+            .Select(x => new EndOfDayFillGroupOption(
+                x.Id,
+                x.Name,
+                x.Facility,
+                x.IsActive,
+                x.Id == currentGroupId,
+                x.WarehouseId,
+                endOfDayFillWarehouseLabelResolver.Resolve(x.WarehouseId, x.Warehouse.Code, x.Warehouse.Name)))
+            .ToList();
         return form;
     }
 
