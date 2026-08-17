@@ -6951,7 +6951,10 @@ public sealed class DashboardDataService(
                 photo.CapturedAt,
                 canDelete,
                 deleteFromReceiptId is long receiptId ? $"/Receipts/{receiptId}/photos/{photo.Id}/remove" : null,
-                photo.WebUrl is not null && photo.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))).ToList()))
+                photo.WebUrl is not null && photo.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase),
+                deleteFromReceiptId is long thumbnailReceiptId && photo.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                    ? $"/Receipts/{thumbnailReceiptId}/photos/{photo.Id}/content"
+                    : null)).ToList()))
             .ToList();
 
     private async Task<FileStorageReference> SavePhotoFileOrPlaceholderAsync(AddPhotoMetadataForm form, FileStorageTargetContext context, CancellationToken cancellationToken)

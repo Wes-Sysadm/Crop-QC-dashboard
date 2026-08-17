@@ -1976,7 +1976,7 @@ public sealed class PhotoPlaceholderFormViewModel
     public string CutFruitLabel { get; set; } = "Cut Apple";
 }
 
-public sealed record PhotoMetadataViewModel(long Id, long? QcSampleId, long? DeleteFromSampleId, string PhotoType, string PhotoSource, string FileName, string ContentType, long? FileSizeBytes, string? WebUrl, DateTimeOffset CapturedAt, bool CanDelete, string? DeleteAction = null, bool DisplayAsThumbnail = false);
+public sealed record PhotoMetadataViewModel(long Id, long? QcSampleId, long? DeleteFromSampleId, string PhotoType, string PhotoSource, string FileName, string ContentType, long? FileSizeBytes, string? WebUrl, DateTimeOffset CapturedAt, bool CanDelete, string? DeleteAction = null, bool DisplayAsThumbnail = false, string? ThumbnailUrl = null);
 public sealed record PhotoGroupViewModel(string PhotoType, IReadOnlyList<PhotoMetadataViewModel> Photos);
 
 public sealed class ReadinessViewModel
