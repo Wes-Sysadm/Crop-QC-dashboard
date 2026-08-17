@@ -19,6 +19,7 @@ public sealed class ReceiptsController(
     IAdminAuthorizationService adminAuthorizationService,
     CropQcDbContext dbContext,
     IReceivingExportService exportService,
+    IFileStorageService fileStorageService,
     FileStorageOptions fileStorageOptions,
     ILogger<ReceiptsController> logger) : Controller
 {
@@ -158,6 +159,55 @@ public sealed class ReceiptsController(
     [Authorize(Policy = AccessPolicyNames.ReceiptsView)]
     public async Task<IActionResult> Details(long id, CancellationToken cancellationToken) =>
         View(await dataService.GetReceiptDetailAsync(id, cancellationToken));
+
+    [HttpGet("{id:long}/photos/{photoId:long}/content")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsView)]
+    public async Task<IActionResult> PhotoContent(long id, long photoId, CancellationToken cancellationToken)
+    {
+        var receiptExists = await dbContext.Receipts.AsNoTracking()
+            .AnyAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
+        if (!receiptExists)
+        {
+            return NotFound();
+        }
+
+        var photo = await dbContext.QcPhotos.AsNoTracking()
+            .SingleOrDefaultAsync(
+                x => x.Id == photoId
+                    && x.ReceiptId == id
+                    && !x.IsDeleted,
+                cancellationToken);
+        var key = photo?.FileId ?? photo?.SharePointItemId;
+        if (photo is null
+            || string.IsNullOrWhiteSpace(key)
+            || !photo.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var content = await fileStorageService.OpenReadAsync(key, cancellationToken);
+            if (content is null)
+            {
+                return NotFound();
+            }
+
+            Response.Headers.CacheControl = "private, max-age=300, must-revalidate";
+            Response.Headers.XContentTypeOptions = "nosniff";
+            return File(content, photo.ContentType);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Receipt photo content could not be loaded. ReceiptId: {ReceiptId}; PhotoId: {PhotoId}; StorageProvider: {StorageProvider}.",
+                id,
+                photoId,
+                photo.StorageProvider);
+            return NotFound();
+        }
+    }
 
     [Authorize(Policy = AccessPolicyNames.ReceiptEditEdit)]
     [HttpGet("{id:long}/Edit")]

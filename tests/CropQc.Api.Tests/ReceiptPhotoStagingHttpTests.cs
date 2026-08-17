@@ -105,13 +105,103 @@ public sealed class ReceiptPhotoStagingHttpTests
         var groups = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_PhotoGroups.cshtml"));
 
         Assert.Contains("photo.WebUrl is not null && photo.ContentType.StartsWith(\"image/\"", service);
+        Assert.Contains("$\"/Receipts/{thumbnailReceiptId}/photos/{photo.Id}/content\"", service);
         Assert.Contains("$\"/Receipts/{receiptId}/photos/{photo.Id}/remove\"", service);
+        Assert.Contains("photo.ThumbnailUrl", groups);
+        Assert.Contains("<a href=\"@photo.WebUrl\"", groups);
+        Assert.Contains("<img src=\"@thumbnailUrl\"", groups);
+        Assert.DoesNotContain("<img src=\"@photo.WebUrl\"", groups);
+        Assert.Contains("@photo.FileName", groups);
         Assert.Contains("aria-label=\"Remove photo\"", groups);
         Assert.Contains("title=\"Remove photo\"", groups);
         Assert.Contains("Remove this receipt photo?", groups);
         Assert.Contains("Remove this photo from the sample?", groups);
         Assert.Contains("DisplayAsThumbnail", groups);
         Assert.Contains("loading=\"lazy\"", groups);
+    }
+
+    [Fact]
+    public async Task SavedReceiptPhoto_UsesProtectedContentEndpoint_AndPreservesDriveLinkWithoutWrites()
+    {
+        await using var factory = new ReceiptPhotoFactory();
+        using var client = await factory.CreateOwnerClientAsync();
+        var create = await client.PostAsync("/Receipts/Create", ReceiptForm("PRIVATE-THUMB"));
+        Assert.Equal(HttpStatusCode.Redirect, create.StatusCode);
+
+        long receiptId;
+        long photoId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var receipt = await db.Receipts.SingleAsync(x => x.CompuTechReceiptId == "PRIVATE-THUMB");
+            receiptId = receipt.Id;
+            var photo = new QcPhoto
+            {
+                ReceiptId = receipt.Id,
+                PhotoType = "TopOfTruck",
+                PhotoSource = "OBSBOT Tiny 2 Lite",
+                FileName = "private-top.png",
+                ContentType = "image/png",
+                FileSizeBytes = 8,
+                StorageProvider = FileStorageProviders.GoogleDrive,
+                FileId = "private-drive-file",
+                SharePointDriveId = "",
+                SharePointItemId = "private-drive-file",
+                WebUrl = "https://drive.google.com/file/d/private-drive-file/view",
+                CapturedAt = DateTimeOffset.UtcNow
+            };
+            db.QcPhotos.Add(photo);
+            await db.SaveChangesAsync();
+            photoId = photo.Id;
+        }
+        factory.Storage.ReadBytes["private-drive-file"] = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+        var contentUrl = $"/Receipts/{receiptId}/photos/{photoId}/content";
+
+        int receiptsBefore;
+        int photosBefore;
+        int auditsBefore;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            receiptsBefore = await db.Receipts.CountAsync();
+            photosBefore = await db.QcPhotos.CountAsync();
+            auditsBefore = await db.AuditLogs.CountAsync();
+        }
+
+        var content = await client.GetAsync(contentUrl);
+        Assert.Equal(HttpStatusCode.OK, content.StatusCode);
+        Assert.Equal("image/png", content.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(factory.Storage.ReadBytes["private-drive-file"], await content.Content.ReadAsByteArrayAsync());
+        Assert.True(content.Headers.CacheControl?.Private);
+        Assert.Equal(TimeSpan.FromMinutes(5), content.Headers.CacheControl?.MaxAge);
+        Assert.Contains("must-revalidate", content.Headers.CacheControl?.ToString());
+        Assert.Equal(1, factory.Storage.OpenReadCount);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            Assert.Equal(receiptsBefore, await db.Receipts.CountAsync());
+            Assert.Equal(photosBefore, await db.QcPhotos.CountAsync());
+            Assert.Equal(auditsBefore, await db.AuditLogs.CountAsync());
+        }
+
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/Receipts/{receiptId + 999}/photos/{photoId}/content")).StatusCode);
+
+        factory.Storage.ReadBytes.Remove("private-drive-file");
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(contentUrl)).StatusCode);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var photo = await db.QcPhotos.SingleAsync(x => x.Id == photoId);
+            photo.IsDeleted = true;
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(contentUrl)).StatusCode);
+
+        using var anonymousClient = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymousClient.GetAsync(contentUrl)).StatusCode);
     }
 
     [Fact]
@@ -231,6 +321,66 @@ public sealed class ReceiptPhotoStagingHttpTests
         }
         Assert.Equal(2, factory.Storage.SaveCount);
         Assert.Equal(0, factory.Storage.DeleteCount);
+    }
+
+    [Fact]
+    public async Task AuthenticatedPostgreSql_Run75Photo2339UsesProtectedContentWithoutWrites_WhenConfigured()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_RECEIPT_PHOTO_RESTORED_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connectionString);
+        await using var factory = new ReceiptPhotoPostgreSqlFactory(connectionString);
+        using var client = factory.CreateOwnerClient();
+        long receiptId;
+        string fileId;
+        string webUrl;
+        string contentType;
+        int receiptsBefore;
+        int photosBefore;
+        int auditsBefore;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var receipt = await db.Receipts.SingleAsync(x => x.CompuTechReceiptId == "TR109003");
+            var photo = await db.QcPhotos.SingleAsync(x => x.Id == 2339 && x.ReceiptId == receipt.Id && !x.IsDeleted);
+            Assert.Equal(FileStorageProviders.GoogleDrive, photo.StorageProvider);
+            Assert.StartsWith("https://drive.google.com/file/d/", photo.WebUrl);
+            receiptId = receipt.Id;
+            fileId = Assert.IsType<string>(photo.FileId);
+            webUrl = Assert.IsType<string>(photo.WebUrl);
+            contentType = photo.ContentType;
+            receiptsBefore = await db.Receipts.CountAsync();
+            photosBefore = await db.QcPhotos.CountAsync();
+            auditsBefore = await db.AuditLogs.CountAsync();
+        }
+
+        var expectedBytes = new byte[] { 0xff, 0xd8, 0xff, 0xd9 };
+        factory.Storage.ReadBytes[fileId] = expectedBytes;
+        var contentUrl = $"/Receipts/{receiptId}/photos/2339/content";
+        var detail = await client.GetAsync($"/Receipts/{receiptId}");
+        var html = WebUtility.HtmlDecode(await detail.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
+        Assert.Contains($"href=\"{webUrl}\"", html);
+        Assert.Contains($"src=\"{contentUrl}\"", html);
+        Assert.DoesNotContain($"src=\"{webUrl}\"", html);
+        Assert.DoesNotContain("could not be translated", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("HTTP 500", html, StringComparison.OrdinalIgnoreCase);
+
+        var content = await client.GetAsync(contentUrl);
+        Assert.Equal(HttpStatusCode.OK, content.StatusCode);
+        Assert.Equal(contentType, content.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(expectedBytes, await content.Content.ReadAsByteArrayAsync());
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/Receipts/{receiptId + 1}/photos/2339/content")).StatusCode);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            Assert.Equal(receiptsBefore, await db.Receipts.CountAsync());
+            Assert.Equal(photosBefore, await db.QcPhotos.CountAsync());
+            Assert.Equal(auditsBefore, await db.AuditLogs.CountAsync());
+            Assert.False((await db.QcPhotos.SingleAsync(x => x.Id == 2339)).IsDeleted);
+        }
     }
 
     private static MultipartFormDataContent ReceiptForm(
@@ -421,6 +571,8 @@ public sealed class ReceiptPhotoStagingHttpTests
         public int FailuresRemaining { get; set; }
         public int SaveCount { get; private set; }
         public int DeleteCount { get; private set; }
+        public int OpenReadCount { get; private set; }
+        public Dictionary<string, byte[]> ReadBytes { get; } = [];
         public List<FileStorageSaveRequest> SavedRequests { get; } = [];
 
         public string GenerateTargetPath(FileStorageTargetContext context) =>
@@ -451,8 +603,13 @@ public sealed class ReceiptPhotoStagingHttpTests
         public Task<FileStorageReference?> GetMetadataAsync(string storageKey, CancellationToken cancellationToken = default) =>
             Task.FromResult<FileStorageReference?>(null);
 
-        public Task<Stream?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default) =>
-            Task.FromResult<Stream?>(null);
+        public Task<Stream?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default)
+        {
+            OpenReadCount++;
+            return Task.FromResult<Stream?>(ReadBytes.TryGetValue(storageKey, out var bytes)
+                ? new MemoryStream(bytes, writable: false)
+                : null);
+        }
 
         public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default)
         {
@@ -470,6 +627,11 @@ public sealed class ReceiptPhotoStagingHttpTests
 
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
+            if (!Request.Headers.Authorization.ToString().StartsWith(SchemeName, StringComparison.Ordinal))
+            {
+                return Task.FromResult(AuthenticateResult.NoResult());
+            }
+
             var identity = new ClaimsIdentity(
             [
                 new Claim(ClaimTypes.NameIdentifier, ApplicationAreas.OwnerEmail),
