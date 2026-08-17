@@ -878,7 +878,9 @@ public sealed class FieldSampleWorkflowTests
         Assert.Equal("qc@fruitandland.com, manager@example.com", preview!.Recipients);
         Assert.Contains("WP ORCHARD", preview.Subject);
         Assert.Contains("Report Block", preview.Subject);
+        Assert.Contains("Orchard</th><td>WP ORCHARD", preview.HtmlBody);
         Assert.Contains("Grower number</th><td>1080", preview.HtmlBody);
+        Assert.Contains("Canonical block</th><td>Report Block", preview.HtmlBody);
         Assert.Contains("Same-Block Trends", preview.HtmlBody);
         Assert.Contains("data:image/jpeg;base64,", preview.HtmlBody);
 
