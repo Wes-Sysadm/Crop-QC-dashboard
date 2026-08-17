@@ -143,6 +143,9 @@ public sealed class EndOfDayFillAntiforgeryHttpTests
         Assert.Contains("Grower 3040 — DL & JJ FARMS - MASON — 313 bins", previewHtml);
         Assert.Contains("Grower 9418 — MFR - Roloff Premier Organic — 288 bins", previewHtml);
         Assert.Contains("601 / 900 bins", previewHtml);
+        Assert.True(previewHtml.IndexOf("Room Summary", StringComparison.Ordinal) < previewHtml.IndexOf("Detailed Room Breakdown", StringComparison.Ordinal));
+        Assert.Contains("Current Bins", previewHtml);
+        Assert.Contains("66.8%", previewHtml);
 
         var sendResponse = await client.PostAsync("/EndOfDayFill/Send", Form(
             HiddenValue(previewHtml, "__RequestVerificationToken"),
@@ -159,6 +162,8 @@ public sealed class EndOfDayFillAntiforgeryHttpTests
             Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(stored.SnapshotJson))),
             stored.SnapshotHash);
         var message = Assert.Single(factory.EmailSender.Messages).Message;
+        Assert.True(message.HtmlBody.IndexOf("Room Summary", StringComparison.Ordinal) < message.HtmlBody.IndexOf("Detailed Room Breakdown", StringComparison.Ordinal));
+        Assert.Contains("Total | 601 | 900 | 66.8%", message.TextBody);
         Assert.Contains("Honey Crisp — Conventional — 313 bins", message.TextBody);
         Assert.Contains("Honey Crisp — Organic — 288 bins", message.TextBody);
     }

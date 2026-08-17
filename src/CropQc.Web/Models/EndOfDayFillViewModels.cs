@@ -15,12 +15,23 @@ public sealed class EndOfDayFillPreviewViewModel
     public string Facility { get; set; } = "";
     public IReadOnlyList<string> Recipients { get; set; } = [];
     public IReadOnlyList<EndOfDayFillRoomViewModel> Rooms { get; set; } = [];
+    public EndOfDayFillRoomSummaryViewModel RoomSummary => new(Rooms);
     public IReadOnlyList<EndOfDayFillValidationIssue> Issues { get; set; } = [];
     public string? PreviewToken { get; set; }
     public bool GmailReady { get; set; }
     public EndOfDayFillPendingAttemptViewModel? PendingAttempt { get; set; }
     public bool CanSend => SelectedGroupId is not null && Issues.Count == 0 && GmailReady && !string.IsNullOrWhiteSpace(PreviewToken);
     public EndOfDayFillSendForm Form { get; set; } = new();
+}
+
+public sealed class EndOfDayFillRoomSummaryViewModel(IReadOnlyList<EndOfDayFillRoomViewModel> rooms)
+{
+    public IReadOnlyList<EndOfDayFillRoomViewModel> Rooms { get; } = rooms;
+    public int TotalCurrentBins => Rooms.Sum(x => x.CurrentBins);
+    public int TotalCapacityBins => Rooms.Sum(x => x.CapacityBins);
+    public decimal TotalPercentFull => TotalCapacityBins > 0
+        ? decimal.Round(TotalCurrentBins * 100m / TotalCapacityBins, 1)
+        : 0;
 }
 
 public sealed record EndOfDayFillPendingAttemptViewModel(
