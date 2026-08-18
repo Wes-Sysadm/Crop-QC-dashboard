@@ -67,9 +67,71 @@
             </label>
         </div>
         <section class="camera-control-panel" data-camera-controls hidden aria-labelledby="@($"{panelId}-camera-controls-heading")">
-            <h3 id="@($"{panelId}-camera-controls-heading")">Logitech Camera Controls</h3>
-            <p class="muted" data-camera-controls-none hidden>Advanced image controls are not supported by this camera/driver.</p>
-            <div class="camera-control-grid">
+            <div>
+                <h3 id="@($"{panelId}-camera-controls-heading")">Camera Image Setup</h3>
+                <p><strong>Current camera:</strong> <span data-camera-current-label>Not connected</span></p>
+                <p class="muted">Changes apply to the live camera. Settings are remembered for this camera on this computer.</p>
+            </div>
+            <div class="button-row camera-quick-controls">
+                <button type="button" data-camera-use-automatic>Use Automatic Color &amp; Exposure</button>
+                <button type="button" class="secondary-button" data-camera-lock-current disabled>Lock Current Color &amp; Exposure</button>
+                <button type="button" class="secondary-button" data-camera-controls-reset>Reset Camera</button>
+            </div>
+            <p class="muted" data-camera-lock-help>Connect a camera to see whether its current color and exposure can be locked.</p>
+            <p class="muted" data-camera-controls-none hidden>This camera/driver does not provide adjustable image controls. Test photos remain available.</p>
+
+            <section class="camera-control-section" data-camera-section="lighting" hidden>
+                <h4>Lighting</h4>
+                <label class="camera-control-toggle" data-camera-control="exposureMode" hidden>
+                    <input type="checkbox" data-camera-auto-exposure />
+                    <span>Auto Exposure</span>
+                </label>
+                <label class="field camera-control-field" data-camera-control="exposureCompensation" hidden>
+                    Exposure
+                    <span class="camera-range-ends"><span>Darker</span><span>Brighter</span></span>
+                    <input type="range" data-camera-control-input="exposureCompensation" />
+                    <output data-camera-control-value="exposureCompensation"></output>
+                </label>
+                <label class="field camera-control-field" data-camera-control="exposureTime" hidden>
+                    Manual Exposure
+                    <input type="range" data-camera-control-input="exposureTime" />
+                    <output data-camera-control-value="exposureTime"></output>
+                </label>
+            </section>
+
+            <section class="camera-control-section" data-camera-section="whiteBalance" hidden>
+                <h4>Color Temperature</h4>
+                <label class="camera-control-toggle" data-camera-control="whiteBalanceMode" hidden>
+                    <input type="checkbox" data-camera-auto-white-balance />
+                    <span>Auto White Balance</span>
+                </label>
+                <label class="field camera-control-field" data-camera-control="colorTemperature" hidden>
+                    <span class="camera-range-ends"><span>Cooler</span><span>Warmer</span></span>
+                    <input type="range" data-camera-control-input="colorTemperature" />
+                    <output data-camera-control-value="colorTemperature"></output>
+                </label>
+            </section>
+
+            <section class="camera-control-section" data-camera-section="color" hidden>
+                <h4>Color</h4>
+                <div class="camera-control-grid">
+                    <label class="field camera-control-field" data-camera-control="brightness" hidden>Brightness
+                        <input type="range" data-camera-control-input="brightness" />
+                        <output data-camera-control-value="brightness"></output>
+                    </label>
+                    <label class="field camera-control-field" data-camera-control="contrast" hidden>Contrast
+                        <input type="range" data-camera-control-input="contrast" />
+                        <output data-camera-control-value="contrast"></output>
+                    </label>
+                    <label class="field camera-control-field" data-camera-control="saturation" hidden>Saturation
+                        <input type="range" data-camera-control-input="saturation" />
+                        <output data-camera-control-value="saturation"></output>
+                    </label>
+                </div>
+            </section>
+
+            <section class="camera-control-section" data-camera-section="focus" hidden>
+                <h4>Focus</h4>
                 <div class="camera-control-field" data-camera-control="focus" hidden>
                     <label class="camera-control-toggle">
                         <input type="checkbox" data-camera-auto-focus />
@@ -81,18 +143,38 @@
                         <output data-camera-control-value="focusDistance"></output>
                     </label>
                 </div>
-                <label class="field camera-control-field" data-camera-control="brightness" hidden>Brightness
-                    <input type="range" data-camera-control-input="brightness" />
-                    <output data-camera-control-value="brightness"></output>
-                </label>
-                <label class="field camera-control-field" data-camera-control="contrast" hidden>Contrast
-                    <input type="range" data-camera-control-input="contrast" />
-                    <output data-camera-control-value="contrast"></output>
-                </label>
-            </div>
-            <div class="button-row">
-                <button type="button" class="secondary-button" data-camera-controls-reset>Reset Camera Controls</button>
-            </div>
+            </section>
+
+            <section class="camera-control-section camera-test-section">
+                <h4>Test Camera Image</h4>
+                <p class="muted">Test photos stay on this computer and are not saved to the QC record.</p>
+                <div class="button-row">
+                    <button type="button" data-camera-capture-test>Capture Test Photo</button>
+                    <button type="button" class="secondary-button" data-camera-clear-tests>Clear Tests</button>
+                </div>
+                <div class="camera-test-grid" data-camera-test-grid>
+                    <div class="camera-test-empty">No test photos captured.</div>
+                </div>
+            </section>
+
+            <details class="camera-advanced" data-camera-advanced>
+                <summary>Advanced</summary>
+                <div class="camera-control-grid">
+                    <label class="field camera-control-field" data-camera-control="sharpness" hidden>Sharpness
+                        <input type="range" data-camera-control-input="sharpness" />
+                        <output data-camera-control-value="sharpness"></output>
+                    </label>
+                    <label class="field camera-control-field" data-camera-control="iso" hidden>ISO
+                        <input type="range" data-camera-control-input="iso" />
+                        <output data-camera-control-value="iso"></output>
+                    </label>
+                </div>
+                <div class="camera-details">
+                    <h4>Camera Details</h4>
+                    <pre data-camera-details></pre>
+                    <button type="button" class="secondary-button" data-camera-copy-details>Copy Camera Details</button>
+                </div>
+            </details>
             <p class="muted camera-control-message" data-camera-control-message aria-live="polite"></p>
         </section>
         <p class="muted">Manual upload and manual weight entry remain available. Device capture is optional.</p>
@@ -144,9 +226,17 @@
         const cameraControlsPanel = panel.querySelector("[data-camera-controls]");
         const cameraControlsNone = panel.querySelector("[data-camera-controls-none]");
         const cameraControlMessage = panel.querySelector("[data-camera-control-message]");
+        const currentCameraLabel = panel.querySelector("[data-camera-current-label]");
+        const useAutomaticButton = panel.querySelector("[data-camera-use-automatic]");
+        const lockCurrentButton = panel.querySelector("[data-camera-lock-current]");
+        const lockHelp = panel.querySelector("[data-camera-lock-help]");
+        const autoExposureInput = panel.querySelector("[data-camera-auto-exposure]");
+        const autoWhiteBalanceInput = panel.querySelector("[data-camera-auto-white-balance]");
         const autoFocusInput = panel.querySelector("[data-camera-auto-focus]");
         const focusModeMessage = panel.querySelector("[data-camera-focus-mode]");
         const manualFocusField = panel.querySelector("[data-camera-manual-focus]");
+        const cameraDetailsOutput = panel.querySelector("[data-camera-details]");
+        const cameraTestGrid = panel.querySelector("[data-camera-test-grid]");
         const cameraControlInputs = Object.fromEntries(
             Array.from(panel.querySelectorAll("[data-camera-control-input]"))
                 .map(input => [input.dataset.cameraControlInput, input]));
@@ -162,6 +252,7 @@
         let activeCameraDeviceId = null;
         let cameraControlSession = null;
         let cameraControlCapabilities = {};
+        const cameraTestBuffer = cameraControlsApi ? new cameraControlsApi.TestPhotoBuffer(window.URL) : null;
         const cameraControlTimers = {};
         const cameraControlVersions = {};
         const stageReceiptPhotos = panel.dataset.stageReceiptPhotos === "true";
@@ -221,7 +312,13 @@
             cameraControlSession = null;
             cameraControlCapabilities = {};
             activeCameraDeviceId = null;
-            for (const name of ["focusMode", "focusDistance", "brightness", "contrast"]) {
+            if (currentCameraLabel) currentCameraLabel.textContent = "Not connected";
+            for (const name of [
+                "exposureMode", "exposureCompensation", "exposureTime",
+                "whiteBalanceMode", "colorTemperature",
+                "brightness", "contrast", "saturation", "sharpness", "iso",
+                "focusMode", "focusDistance"
+            ]) {
                 window.clearTimeout(cameraControlTimers[name]);
                 cameraControlVersions[name] = (cameraControlVersions[name] || 0) + 1;
             }
@@ -240,13 +337,53 @@
             const applied = cameraControlsApi.clampToRange(currentValue ?? range.min, range);
             input.value = String(applied ?? range.min);
             output.value = input.value;
-            output.textContent = input.value;
+            output.textContent = name === "colorTemperature" ? input.value + " K" : input.value;
             return true;
+        }
+
+        async function captureCameraJpeg() {
+            if (cameraControlsApi?.captureJpegBlob) {
+                return cameraControlsApi.captureJpegBlob(video, canvas, 0.92);
+            }
+            const width = video.videoWidth || 1280;
+            const height = video.videoHeight || 720;
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext("2d").drawImage(video, 0, 0, width, height);
+            return new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.92));
         }
 
         function renderCameraControls(actualSettings) {
             if (!cameraControlsPanel || !cameraControlSession || !cameraControlsApi) return;
             const description = cameraControlsApi.describeCapabilities(cameraControlCapabilities);
+            const exposureModeRow = panel.querySelector("[data-camera-control='exposureMode']");
+            const canToggleExposure = description.automaticExposureSupported && description.manualExposureSupported;
+            const exposureIsManual = actualSettings.exposureMode === description.manualExposureMode;
+            if (exposureModeRow) exposureModeRow.hidden = !canToggleExposure;
+            if (autoExposureInput) {
+                autoExposureInput.checked = !exposureIsManual && description.automaticExposureSupported;
+                autoExposureInput.disabled = !canToggleExposure;
+            }
+            const hasExposureAdjustment = renderRangeControl("exposureCompensation", description.exposureCompensation, actualSettings.exposureCompensation);
+            if (cameraControlInputs.exposureCompensation) cameraControlInputs.exposureCompensation.disabled = exposureIsManual;
+            const exposureAdjustmentRow = panel.querySelector("[data-camera-control='exposureCompensation']");
+            if (exposureAdjustmentRow) exposureAdjustmentRow.hidden = !hasExposureAdjustment || exposureIsManual;
+            const hasManualExposure = renderRangeControl("exposureTime", description.exposureTime, actualSettings.exposureTime);
+            const manualExposureRow = panel.querySelector("[data-camera-control='exposureTime']");
+            if (manualExposureRow) manualExposureRow.hidden = !hasManualExposure || !description.manualExposureSupported || !exposureIsManual;
+
+            const whiteBalanceModeRow = panel.querySelector("[data-camera-control='whiteBalanceMode']");
+            const canToggleWhiteBalance = description.automaticWhiteBalanceSupported && description.manualWhiteBalanceSupported;
+            const whiteBalanceIsManual = actualSettings.whiteBalanceMode === description.manualWhiteBalanceMode;
+            if (whiteBalanceModeRow) whiteBalanceModeRow.hidden = !canToggleWhiteBalance;
+            if (autoWhiteBalanceInput) {
+                autoWhiteBalanceInput.checked = !whiteBalanceIsManual && description.automaticWhiteBalanceSupported;
+                autoWhiteBalanceInput.disabled = !canToggleWhiteBalance;
+            }
+            const hasColorTemperature = renderRangeControl("colorTemperature", description.colorTemperature, actualSettings.colorTemperature);
+            const colorTemperatureRow = panel.querySelector("[data-camera-control='colorTemperature']");
+            if (colorTemperatureRow) colorTemperatureRow.hidden = !hasColorTemperature || !description.manualWhiteBalanceSupported || !whiteBalanceIsManual;
+
             const focusRow = panel.querySelector("[data-camera-control='focus']");
             const hasFocus = Boolean(description.autoFocusMode || description.manualFocusSupported);
             if (focusRow) focusRow.hidden = !hasFocus;
@@ -269,7 +406,37 @@
 
             const hasBrightness = renderRangeControl("brightness", description.brightness, actualSettings.brightness);
             const hasContrast = renderRangeControl("contrast", description.contrast, actualSettings.contrast);
-            const anySupported = hasFocus || hasBrightness || hasContrast;
+            const hasSaturation = renderRangeControl("saturation", description.saturation, actualSettings.saturation);
+            const hasSharpness = renderRangeControl("sharpness", description.sharpness, actualSettings.sharpness);
+            const hasIso = renderRangeControl("iso", description.iso, actualSettings.iso);
+            panel.querySelector("[data-camera-section='lighting']").hidden = !(
+                canToggleExposure || hasExposureAdjustment || (hasManualExposure && description.manualExposureSupported));
+            panel.querySelector("[data-camera-section='whiteBalance']").hidden = !(
+                canToggleWhiteBalance || (hasColorTemperature && description.manualWhiteBalanceSupported));
+            panel.querySelector("[data-camera-section='color']").hidden = !(hasBrightness || hasContrast || hasSaturation);
+            panel.querySelector("[data-camera-section='focus']").hidden = !hasFocus;
+
+            const automaticValues = cameraControlsApi.automaticColorExposureValues(cameraControlCapabilities);
+            useAutomaticButton.disabled = Object.keys(automaticValues).length === 0;
+            const lock = cameraControlsApi.lockCurrentColorExposureValues(cameraControlCapabilities, actualSettings);
+            lockCurrentButton.disabled = !lock.canLock;
+            lockCurrentButton.title = lock.canLock
+                ? "Freeze the supported current exposure and white-balance values."
+                : "This camera/driver does not expose safe current manual values to lock.";
+            lockHelp.textContent = lock.canLock
+                ? "Locks the current values where supported; unsupported portions will remain unchanged."
+                : "Lock is unavailable because this camera/driver does not expose safe current manual values.";
+
+            const cameraLabel = cameraSelects.apple?.options[cameraSelects.apple.selectedIndex]?.textContent || "Camera";
+            if (currentCameraLabel) currentCameraLabel.textContent = cameraLabel;
+            if (cameraDetailsOutput) {
+                cameraDetailsOutput.textContent = JSON.stringify(
+                    cameraControlsApi.cameraDetails(cameraLabel, actualSettings, cameraControlCapabilities), null, 2);
+            }
+
+            const anySupported = canToggleExposure || hasExposureAdjustment || hasManualExposure
+                || canToggleWhiteBalance || hasColorTemperature || hasFocus
+                || hasBrightness || hasContrast || hasSaturation || hasSharpness || hasIso;
             cameraControlsNone.hidden = anySupported;
             cameraControlsPanel.hidden = false;
         }
@@ -281,9 +448,15 @@
         }
 
         function friendlyControlError(error, controlName) {
-            const label = controlName === "focusDistance" || controlName === "focusMode"
-                ? "focus"
-                : controlName;
+            const label = {
+                exposureMode: "exposure mode",
+                exposureCompensation: "exposure",
+                exposureTime: "manual exposure",
+                whiteBalanceMode: "white-balance mode",
+                colorTemperature: "color temperature",
+                focusDistance: "focus",
+                focusMode: "focus"
+            }[controlName] || controlName;
             if (error?.name === "OverconstrainedError") {
                 return "The camera did not accept that " + label + " setting. The previous setting is still in use.";
             }
@@ -301,10 +474,12 @@
                 renderCameraControls(actual);
                 persistActualCameraControls(actual);
                 setCameraControlMessage("Camera " + (controlName === "focusDistance" ? "focus" : controlName) + " updated.");
+                return true;
             } catch (error) {
                 if (version !== undefined && version !== cameraControlVersions[controlName]) return;
                 renderCameraControls(cameraControlSession.getSettings());
                 setCameraControlMessage(friendlyControlError(error, controlName), true);
+                return false;
             }
         }
 
@@ -367,6 +542,53 @@
             activeRole = null;
             video.srcObject = null;
             video.hidden = true;
+        }
+
+        function renderTestPhotos() {
+            if (!cameraTestGrid || !cameraTestBuffer) return;
+            cameraTestGrid.replaceChildren();
+            if (cameraTestBuffer.items.length === 0) {
+                const empty = document.createElement("div");
+                empty.className = "camera-test-empty";
+                empty.textContent = "No test photos captured.";
+                cameraTestGrid.appendChild(empty);
+                return;
+            }
+
+            cameraTestBuffer.items.forEach((item, index) => {
+                const figure = document.createElement("figure");
+                figure.className = "camera-test-card";
+                const image = document.createElement("img");
+                image.src = item.url;
+                image.alt = `Camera test ${index + 1}`;
+                const caption = document.createElement("figcaption");
+                const title = document.createElement("strong");
+                title.textContent = `Test ${index + 1}`;
+                caption.appendChild(title);
+                for (const setting of item.settings) {
+                    const row = document.createElement("span");
+                    row.textContent = `${setting.label}: ${setting.value}`;
+                    caption.appendChild(row);
+                }
+                figure.append(image, caption);
+                cameraTestGrid.appendChild(figure);
+            });
+        }
+
+        async function captureTestPhoto() {
+            const started = activeRole === "apple" && stream ? true : await startCamera("apple");
+            if (!started || !cameraControlSession || !cameraTestBuffer) return;
+            await new Promise(resolve => setTimeout(resolve, 150));
+            const blob = await captureCameraJpeg();
+            if (!blob) {
+                setCameraControlMessage("Could not capture a test photo. The camera preview remains available.", true);
+                return;
+            }
+            const actualSettings = cameraControlSession.getSettings();
+            const snapshot = cameraControlsApi.importantSettingsSnapshot(actualSettings, cameraControlCapabilities);
+            cameraTestBuffer.add(blob, snapshot);
+            renderTestPhotos();
+            setCameraControlMessage("Test photo captured locally. It was not uploaded or saved to the QC record.");
         }
 
         function friendlyPhotoType(photoType) {
@@ -552,12 +774,7 @@
             const started = activeRole === role && stream ? true : await startCamera(role);
             if (!started) return;
             await new Promise(resolve => setTimeout(resolve, 150));
-            const width = video.videoWidth || 1280;
-            const height = video.videoHeight || 720;
-            canvas.width = width;
-            canvas.height = height;
-            canvas.getContext("2d").drawImage(video, 0, 0, width, height);
-            const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.92));
+            const blob = await captureCameraJpeg();
             if (!blob) {
                 show("Could not capture photo from camera.", true);
                 return;
@@ -720,6 +937,68 @@
         panel.querySelector("[data-camera-test]")?.addEventListener("click", async () => {
             await startCamera(cameraSelects.apple?.value ? "apple" : "truck");
         });
+        useAutomaticButton?.addEventListener("click", async () => {
+            if (!cameraControlSession) return;
+            const values = cameraControlsApi.automaticColorExposureValues(cameraControlCapabilities);
+            if (Object.keys(values).length === 0) {
+                setCameraControlMessage("This camera/driver does not provide automatic exposure or white balance.", true);
+                return;
+            }
+            const applied = await applyCameraControl(values, "automatic color and exposure");
+            if (applied) setCameraControlMessage("Automatic color and exposure are enabled where supported.");
+        });
+        lockCurrentButton?.addEventListener("click", async () => {
+            if (!cameraControlSession) return;
+            const lock = cameraControlsApi.lockCurrentColorExposureValues(
+                cameraControlCapabilities, cameraControlSession.getSettings());
+            if (!lock.canLock) {
+                setCameraControlMessage("The camera driver does not provide safe current values to lock.", true);
+                return;
+            }
+            const applied = await applyCameraControl(lock.values, "color and exposure lock");
+            if (!applied) return;
+            const lockedText = lock.locked.join(" and ") + " locked.";
+            const unsupportedText = lock.unsupported.length > 0
+                ? " " + lock.unsupported.join(" and ") + " is not supported by this camera/driver."
+                : "";
+            setCameraControlMessage(lockedText + unsupportedText);
+        });
+        autoExposureInput?.addEventListener("change", async () => {
+            if (!cameraControlSession) return;
+            const description = cameraControlsApi.describeCapabilities(cameraControlCapabilities);
+            const targetMode = autoExposureInput.checked
+                ? description.autoExposureMode
+                : description.manualExposureMode;
+            if (!targetMode) {
+                renderCameraControls(cameraControlSession.getSettings());
+                setCameraControlMessage("The camera driver does not provide that exposure mode.", true);
+                return;
+            }
+            const values = { exposureMode: targetMode };
+            if (!autoExposureInput.checked && description.manualExposureSupported) {
+                values.exposureTime = Number(cameraControlInputs.exposureTime.value);
+            }
+            cameraControlVersions.exposureMode = (cameraControlVersions.exposureMode || 0) + 1;
+            await applyCameraControl(values, "exposureMode", cameraControlVersions.exposureMode);
+        });
+        autoWhiteBalanceInput?.addEventListener("change", async () => {
+            if (!cameraControlSession) return;
+            const description = cameraControlsApi.describeCapabilities(cameraControlCapabilities);
+            const targetMode = autoWhiteBalanceInput.checked
+                ? description.autoWhiteBalanceMode
+                : description.manualWhiteBalanceMode;
+            if (!targetMode) {
+                renderCameraControls(cameraControlSession.getSettings());
+                setCameraControlMessage("The camera driver does not provide that white-balance mode.", true);
+                return;
+            }
+            const values = { whiteBalanceMode: targetMode };
+            if (!autoWhiteBalanceInput.checked && description.manualWhiteBalanceSupported) {
+                values.colorTemperature = Number(cameraControlInputs.colorTemperature.value);
+            }
+            cameraControlVersions.whiteBalanceMode = (cameraControlVersions.whiteBalanceMode || 0) + 1;
+            await applyCameraControl(values, "whiteBalanceMode", cameraControlVersions.whiteBalanceMode);
+        });
         autoFocusInput?.addEventListener("change", async () => {
             if (!cameraControlSession) return;
             const description = cameraControlsApi.describeCapabilities(cameraControlCapabilities);
@@ -737,16 +1016,34 @@
             cameraControlVersions.focusMode = (cameraControlVersions.focusMode || 0) + 1;
             await applyCameraControl(values, "focusMode", cameraControlVersions.focusMode);
         });
-        for (const name of ["focusDistance", "brightness", "contrast"]) {
+        for (const name of [
+            "exposureCompensation", "exposureTime", "colorTemperature",
+            "brightness", "contrast", "saturation", "sharpness", "iso", "focusDistance"
+        ]) {
             cameraControlInputs[name]?.addEventListener("input", event => {
                 const output = cameraControlOutputs[name];
                 if (output) {
                     output.value = event.target.value;
-                    output.textContent = event.target.value;
+                    output.textContent = name === "colorTemperature" ? event.target.value + " K" : event.target.value;
                 }
                 scheduleCameraControl(name, Number(event.target.value));
             });
         }
+        panel.querySelector("[data-camera-capture-test]")?.addEventListener("click", captureTestPhoto);
+        panel.querySelector("[data-camera-clear-tests]")?.addEventListener("click", () => {
+            cameraTestBuffer?.clear();
+            renderTestPhotos();
+            setCameraControlMessage("Test photos cleared from this page.");
+        });
+        panel.querySelector("[data-camera-copy-details]")?.addEventListener("click", async () => {
+            if (!cameraDetailsOutput?.textContent) return;
+            try {
+                await navigator.clipboard.writeText(cameraDetailsOutput.textContent);
+                setCameraControlMessage("Camera details copied to the clipboard.");
+            } catch {
+                setCameraControlMessage("Camera details could not be copied. You can select the text manually.", true);
+            }
+        });
         panel.querySelector("[data-camera-controls-reset]")?.addEventListener("click", async () => {
             const deviceId = activeCameraDeviceId || cameraSelects.apple?.value;
             if (!deviceId || !cameraControlsApi) return;
@@ -783,6 +1080,7 @@
         panel.querySelector("[data-scale-connect]")?.addEventListener("click", connectScale);
         panel.querySelector("[data-scale-read]")?.addEventListener("click", () => captureWeight(false));
         panel.querySelector("[data-scale-next]")?.addEventListener("click", () => captureWeight(true));
+        window.addEventListener("beforeunload", () => cameraTestBuffer?.clear(), { once: true });
 
         if (storage.getItem(storageKeys.scale) && scaleSelect) {
             scaleSelect.value = storage.getItem(storageKeys.scale);
