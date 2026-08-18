@@ -109,12 +109,27 @@ public sealed class DeviceCaptureIntegrationTests
         var panel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_DeviceCapturePanel.cshtml"));
         var controls = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "js", "device-camera-controls.js"));
 
-        Assert.Contains("Logitech Camera Controls", panel);
+        Assert.Contains("Camera Image Setup", panel);
+        Assert.Contains("Current camera:", panel);
+        Assert.Contains("Settings are remembered for this camera on this computer", panel);
+        Assert.Contains("Use Automatic Color &amp; Exposure", panel);
+        Assert.Contains("Lock Current Color &amp; Exposure", panel);
+        Assert.Contains("Reset Camera", panel);
+        Assert.Contains("Lighting", panel);
+        Assert.Contains("Auto Exposure", panel);
+        Assert.Contains("Manual Exposure", panel);
+        Assert.Contains("Color Temperature", panel);
+        Assert.Contains("Auto White Balance", panel);
         Assert.Contains("Auto Focus", panel);
         Assert.Contains("Manual Focus", panel);
         Assert.Contains("Brightness", panel);
         Assert.Contains("Contrast", panel);
-        Assert.Contains("Reset Camera Controls", panel);
+        Assert.Contains("Saturation", panel);
+        Assert.Contains("Sharpness", panel);
+        Assert.Contains("ISO", panel);
+        Assert.Contains("Capture Test Photo", panel);
+        Assert.Contains("Test photos stay on this computer and are not saved to the QC record.", panel);
+        Assert.Contains("Copy Camera Details", panel);
         Assert.Contains("~/js/device-camera-controls.js", panel);
         Assert.Contains("stream.getVideoTracks?.()[0]", panel);
         Assert.Contains("new cameraControlsApi.CameraControlSession(track)", panel);
@@ -123,8 +138,16 @@ public sealed class DeviceCaptureIntegrationTests
         Assert.Contains("track.applyConstraints({ advanced: [next] })", controls);
         Assert.Contains("focusMode", controls);
         Assert.Contains("focusDistance", controls);
+        Assert.Contains("exposureMode", controls);
+        Assert.Contains("exposureCompensation", controls);
+        Assert.Contains("exposureTime", controls);
+        Assert.Contains("whiteBalanceMode", controls);
+        Assert.Contains("colorTemperature", controls);
         Assert.Contains("brightness", controls);
         Assert.Contains("contrast", controls);
+        Assert.Contains("saturation", controls);
+        Assert.Contains("sharpness", controls);
+        Assert.Contains("iso", controls);
         Assert.DoesNotContain("style.filter", panel);
         Assert.DoesNotContain("context.filter", panel);
     }
@@ -150,10 +173,52 @@ public sealed class DeviceCaptureIntegrationTests
         Assert.Contains("constraint failure preserves the stream", behaviorTests);
         Assert.Contains("rapid updates are coalesced", behaviorTests);
 
+        Assert.Contains("canvas.toBlob(resolve, \"image/jpeg\", quality)", controls);
+        Assert.Equal(2, panel.Split("await captureCameraJpeg()", StringSplitOptions.None).Length - 1);
         Assert.Contains("canvas.toBlob(resolve, \"image/jpeg\", 0.92)", panel);
         Assert.Contains("form.append(\"PhotoFile\"", panel);
         Assert.Contains("credentials: \"same-origin\"", panel);
         Assert.Contains("__RequestVerificationToken", panel);
+    }
+
+    [Fact]
+    public void CameraImageSetup_TestPhotosRemainBrowserOnlyAndRetainTwoComparisons()
+    {
+        var panel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_DeviceCapturePanel.cshtml"));
+        var controls = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "js", "device-camera-controls.js"));
+        var behaviorTests = File.ReadAllText(FindRepositoryFile("tests", "js", "device-camera-controls.test.cjs"));
+
+        Assert.Contains("new cameraControlsApi.TestPhotoBuffer(window.URL)", panel);
+        Assert.Contains("importantSettingsSnapshot(actualSettings", panel);
+        Assert.Contains("Test photo captured locally. It was not uploaded or saved to the QC record.", panel);
+        Assert.Contains("while (this.items.length > 2)", controls);
+        Assert.Contains("this.urlApi.createObjectURL(blob)", controls);
+        Assert.Contains("this.urlApi.revokeObjectURL", controls);
+        Assert.Contains("window.addEventListener(\"beforeunload\"", panel);
+        Assert.Contains("test-photo capture uses the normal direct JPEG path at quality 0.92", behaviorTests);
+        Assert.Contains("test-photo buffer keeps the newest two", behaviorTests);
+        Assert.DoesNotContain("QcPhoto", controls);
+        Assert.DoesNotContain("fetch(", controls);
+    }
+
+    [Fact]
+    public void CameraImageSetup_ModeDependenciesAndDiagnosticsStayClientSide()
+    {
+        var panel = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_DeviceCapturePanel.cshtml"));
+        var controls = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "js", "device-camera-controls.js"));
+
+        Assert.Contains("automaticColorExposureValues", controls);
+        Assert.Contains("lockCurrentColorExposureValues", controls);
+        Assert.Contains("[\"exposureTime\", \"exposureMode\"]", controls);
+        Assert.Contains("[\"colorTemperature\", \"whiteBalanceMode\"]", controls);
+        Assert.Contains("[\"focusDistance\", \"focusMode\"]", controls);
+        Assert.Contains("persistActualCameraControls(actual)", panel);
+        Assert.Contains("cameraDetails(cameraLabel, actualSettings", panel);
+        Assert.Contains("navigator.clipboard.writeText", panel);
+        Assert.DoesNotContain("deviceId", controls.Substring(controls.IndexOf("function cameraDetails", StringComparison.Ordinal),
+            controls.IndexOf("async function captureJpegBlob", StringComparison.Ordinal) - controls.IndexOf("function cameraDetails", StringComparison.Ordinal)));
+        Assert.DoesNotContain("style.filter", panel);
+        Assert.DoesNotContain("context.filter", panel);
     }
 
     [Fact]
