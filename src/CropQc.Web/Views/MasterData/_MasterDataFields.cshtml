@@ -74,11 +74,11 @@ else if (Model.Type == "rooms")
 }
 else if (Model.Type == "grower-lots")
 {
-    <div class="field wide"><label>Grower</label><input name="Name" value="@Model.Name" required /></div>
-    <div class="field"><label>Lot #</label><input name="Code" value="@Model.Code" required /></div>
+    <div class="field wide"><label>Grower Name</label><input name="Name" value="@Model.Name" required /></div>
+    <div class="field"><label>Grower Number</label><input name="Code" value="@Model.Code" required /></div>
     <div class="field"><label>Pool Start</label><input name="PoolStart" value="@Model.PoolStart" maxlength="20" /></div>
     <div class="field wide"><label>Notes</label><input name="Description" value="@Model.Description" maxlength="1000" /></div>
-    <p class="muted wide">Pool Start is the first two letters/characters of the pool and is stored for future final-results analysis.</p>
+    <p class="muted wide">Active Grower Number and Grower Name values are controlled by the reviewed Grower master. Pool Start remains operational data and is never overwritten by the alignment sync.</p>
 }
 else if (Model.Type == "canonical-growers")
 {

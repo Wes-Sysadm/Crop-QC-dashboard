@@ -261,9 +261,6 @@ public sealed class QcSummaryEmailComposer(
         AddInfoRow(html, "Received", ReportTime.FormatPacific(sample.Receipt.ReceivedAt));
         AddInfoRow(html, "Grower", sample.Receipt.GrowerName);
         AddInfoRow(html, "Grower number", sample.Receipt.GrowerNumber ?? "");
-        AddInfoRow(html, "Orchard", sample.Receipt.CanonicalOrchardBlock?.CanonicalOrchard?.OrchardName ?? sample.Receipt.CanonicalOrchardBlock?.OrchardName ?? "Not confirmed");
-        AddInfoRow(html, "Block", sample.Receipt.CanonicalOrchardBlock?.CanonicalBlockName ?? "Not confirmed");
-        AddInfoRow(html, "Lot", sample.Receipt.LotCode);
         AddInfoRow(html, "Bins received", sample.Receipt.BinCount.ToString());
         AddInfoRow(html, "Variety", sample.Receipt.FruitProfile.VarietyCode);
         AddInfoRow(html, "Sample date/time", ReportTime.FormatPacific(sample.SampleTakenAt));
@@ -370,10 +367,10 @@ public sealed class QcSummaryEmailComposer(
         text.AppendLine($"Warehouse/Room: {sample.Receipt.Warehouse.Code} / {sample.Receipt.Room.Code}");
         text.AppendLine($"Receipt ID: {sample.GetDisplayReceiptId()}");
         text.AppendLine($"Receipt type / received: {sample.Receipt.ReceiptType} / {ReportTime.FormatPacific(sample.Receipt.ReceivedAt)}");
-        text.AppendLine($"Grower/Lot/Variety: {sample.Receipt.GrowerName} / {sample.Receipt.LotCode} / {sample.Receipt.FruitProfile.VarietyCode}");
+        text.AppendLine($"Grower: {sample.Receipt.GrowerName}");
         text.AppendLine($"Grower number: {sample.Receipt.GrowerNumber}");
-        text.AppendLine($"Orchard/Block: {sample.Receipt.CanonicalOrchardBlock?.CanonicalOrchard?.OrchardName ?? sample.Receipt.CanonicalOrchardBlock?.OrchardName ?? "Not confirmed"} / {sample.Receipt.CanonicalOrchardBlock?.CanonicalBlockName ?? "Not confirmed"}");
         text.AppendLine($"Bins received: {sample.Receipt.BinCount}");
+        text.AppendLine($"Variety: {sample.Receipt.FruitProfile.VarietyCode}");
         text.AppendLine($"Sample date/time: {ReportTime.FormatPacific(sample.SampleTakenAt)}");
         text.AppendLine($"Inspector: {inspector}");
         text.AppendLine($"Target sample size: {sample.ActualSampleSize?.ToString() ?? ""}");

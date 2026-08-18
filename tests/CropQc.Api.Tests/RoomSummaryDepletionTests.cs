@@ -193,11 +193,11 @@ public sealed class RoomSummaryDepletionTests
 
         Assert.Contains("\"grower-lots\" => await GrowerLotsPage", admin);
         Assert.Contains("Grower Lots", admin);
-        Assert.Contains("Lot #", admin);
+        Assert.Contains("Grower Number", admin);
         Assert.Contains("Pool Start", admin);
-        Assert.Contains("INACTIVE", admin);
+        Assert.Contains("Inactive / historical", admin);
         Assert.Contains("Pool Start", fields);
-        Assert.Contains("Lot #", fields);
+        Assert.Contains("Grower Number", fields);
         Assert.Contains("/MasterData/grower-lots", masterData);
     }
 
@@ -223,7 +223,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("public string? PoolStart", receiptModel);
         Assert.Contains("public int? GrowerLotId", receiptModel);
         Assert.Contains("name=\"GrowerNumber\"", receiptView);
-        Assert.Contains("@lot.Grower - @lot.LotNumber", receiptView);
+        Assert.Contains("@lot.LotNumber - @lot.Grower", receiptView);
         Assert.Contains("growerLotOptions", receiptView);
         Assert.Contains("Lot # not found in Master Data", receiptView);
         Assert.DoesNotContain("name=\"PoolStart\"", receiptView);
@@ -245,7 +245,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("Grower Number", service);
         Assert.Contains("POOL Starts", service);
         Assert.Contains("Duplicate Lot #", service);
-        Assert.Contains("never deletes production rows", view);
+        Assert.Contains("Existing PoolStart values and historical rows are preserved", view);
         Assert.Contains("enctype=\"multipart/form-data\"", view);
         Assert.Contains("ImportPreview", controller);
         Assert.Contains("ImportApply", controller);

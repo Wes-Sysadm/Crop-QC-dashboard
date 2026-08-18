@@ -61,7 +61,7 @@
                 <option value="">Manual entry</option>
                 @foreach (var lot in Model.GrowerLots)
                 {
-                    <option value="@lot.Id" data-grower="@lot.Grower" data-lot="@lot.LotNumber" selected="@(form.GrowerLotId == lot.Id ? "selected" : null)">@lot.Grower - @lot.LotNumber</option>
+                    <option value="@lot.Id" data-grower="@lot.Grower" data-lot="@lot.LotNumber" selected="@(form.GrowerLotId == lot.Id ? "selected" : null)">@lot.LotNumber - @lot.Grower</option>
                 }
             </select>
         </div>
@@ -70,7 +70,7 @@
         <datalist id="editGrowerLotOptions">
             @foreach (var lot in Model.GrowerLots)
             {
-                <option value="@lot.LotNumber" label="@lot.Grower - @lot.LotNumber"></option>
+                <option value="@lot.LotNumber" label="@lot.LotNumber - @lot.Grower"></option>
             }
         </datalist>
         <div class="field"><label>Bin Count</label><input name="BinCount" type="number" min="0" value="@form.BinCount" required /></div>

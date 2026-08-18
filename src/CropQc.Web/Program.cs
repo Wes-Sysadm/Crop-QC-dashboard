@@ -290,6 +290,12 @@ builder.Services.AddSingleton<CanonicalGrowerResolutionCache>();
 builder.Services.AddScoped<ICanonicalGrowerService, CanonicalGrowerService>();
 builder.Services.AddSingleton<IReviewedGrowerMasterSource, ReviewedGrowerMasterSource>();
 builder.Services.AddScoped<IReviewedGrowerMasterSyncService, ReviewedGrowerMasterSyncService>();
+builder.Services.AddScoped<ReviewedGrowerLotSyncService>();
+builder.Services.AddScoped<IReviewedGrowerLotSyncService>(services => services.GetRequiredService<ReviewedGrowerLotSyncService>());
+if (appEnvironmentOptions.IsProduction)
+{
+    builder.Services.AddScoped<IReviewedGrowerLotPolicy>(services => services.GetRequiredService<ReviewedGrowerLotSyncService>());
+}
 builder.Services.AddScoped<IFieldSampleService, FieldSampleService>();
 builder.Services.AddScoped<IFieldSampleTrendService, FieldSampleTrendService>();
 builder.Services.AddScoped<IFieldSampleDeletionService, FieldSampleDeletionService>();
@@ -394,6 +400,34 @@ if (args.Contains(ReviewedGrowerMasterSyncConstants.CommandName, StringComparer.
             result.Preflight.SourceVersion,
             result.Message);
     }
+    Environment.ExitCode = result.Success ? 0 : 1;
+    return;
+}
+
+if (args.Contains(ReviewedGrowerLotSyncConstants.CommandName, StringComparer.OrdinalIgnoreCase))
+{
+    static string? ReviewedGrowerLotCommandValue(string[] commandArgs, string key) =>
+        commandArgs.FirstOrDefault(x => x.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase)) is { } item
+            ? item[(item.IndexOf('=') + 1)..]
+            : null;
+    var backupRunId = long.TryParse(ReviewedGrowerLotCommandValue(args, "--backup-run-id"), out var parsedBackupRunId)
+        ? parsedBackupRunId
+        : (long?)null;
+    using var syncScope = app.Services.CreateScope();
+    var result = await syncScope.ServiceProvider.GetRequiredService<IReviewedGrowerLotSyncService>().RunAsync(new(
+        args.Contains("--apply", StringComparer.OrdinalIgnoreCase),
+        args.Contains("--confirm-production", StringComparer.OrdinalIgnoreCase),
+        args.Contains("--confirm-disposable-restore", StringComparer.OrdinalIgnoreCase),
+        backupRunId,
+        ReviewedGrowerLotCommandValue(args, "--verified-backup-package-sha256"),
+        ReviewedGrowerLotCommandValue(args, "--requested-by") ?? "command",
+        ReviewedGrowerLotCommandValue(args, "--reason") ?? "",
+        ReviewedGrowerLotCommandValue(args, "--expected-target-fingerprint"),
+        ReviewedGrowerLotCommandValue(args, "--expected-protected-fingerprint"),
+        ReviewedGrowerLotCommandValue(args, "--authorization-token")), CancellationToken.None);
+    Console.Out.WriteLine(System.Text.Json.JsonSerializer.Serialize(
+        result,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true }));
     Environment.ExitCode = result.Success ? 0 : 1;
     return;
 }
