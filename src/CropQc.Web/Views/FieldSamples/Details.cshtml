@@ -252,16 +252,16 @@
                         {
                             var row = Model.FruitRows[i];
                             <tr class="fruit-row" data-row-index="@i" data-row-number="@row.RowNumber" data-field-version="@row.FieldVersion">
-                                <td>@row.RowNumber<input type="hidden" name="Rows[@i].RowNumber" value="@row.RowNumber" /></td>
-                                <td><input class="number-input" name="Rows[@i].Pressure1Lbs" data-autosave-row-field="Pressure1Lbs" type="number" step="0.01" min="0" value="@row.Pressure1Lbs" /><input type="hidden" name="Rows[@i].OriginalPressure1Lbs" value="@row.Pressure1Lbs" /></td>
-                                <td><input class="number-input" name="Rows[@i].Pressure2Lbs" data-autosave-row-field="Pressure2Lbs" type="number" step="0.01" min="0" value="@row.Pressure2Lbs" /><input type="hidden" name="Rows[@i].OriginalPressure2Lbs" value="@row.Pressure2Lbs" /></td>
-                                <td data-pressure-average>@row.PressureAverageLbs</td>
-                                <td>
-                                    <input class="number-input" name="Rows[@i].WeightGrams" data-field-weight data-autosave-row-field="WeightGrams" type="number" step="0.0001" min="0" value="@row.WeightGrams" />
+                                <td data-label="Fruit">@row.RowNumber<input type="hidden" name="Rows[@i].RowNumber" value="@row.RowNumber" /></td>
+                                <td data-label="Pressure 1"><input class="number-input" name="Rows[@i].Pressure1Lbs" data-autosave-row-field="Pressure1Lbs" type="number" inputmode="decimal" step="0.01" min="0" value="@row.Pressure1Lbs" /><input type="hidden" name="Rows[@i].OriginalPressure1Lbs" value="@row.Pressure1Lbs" /></td>
+                                <td data-label="Pressure 2"><input class="number-input" name="Rows[@i].Pressure2Lbs" data-autosave-row-field="Pressure2Lbs" type="number" inputmode="decimal" step="0.01" min="0" value="@row.Pressure2Lbs" /><input type="hidden" name="Rows[@i].OriginalPressure2Lbs" value="@row.Pressure2Lbs" /></td>
+                                <td data-label="Average" data-pressure-average>@row.PressureAverageLbs</td>
+                                <td data-label="Weight">
+                                    <input class="number-input" name="Rows[@i].WeightGrams" data-field-weight data-autosave-row-field="WeightGrams" type="number" inputmode="decimal" step="0.0001" min="0" value="@row.WeightGrams" />
                                     <input type="hidden" name="Rows[@i].OriginalWeightGrams" value="@row.WeightGrams" />
                                 </td>
-                                <td><output data-size-category aria-label="Calculated size for fruit @row.RowNumber">@(row.SizeCategory?.ToString() ?? "Not calculated")</output></td>
-                                <td>
+                                <td data-label="Size"><output data-size-category aria-label="Calculated size for fruit @row.RowNumber">@(row.SizeCategory?.ToString() ?? "Not calculated")</output></td>
+                                <td data-label="Starch">
                                     <select name="Rows[@i].StarchScaleValueId" data-autosave-row-field="StarchScaleValueId">
                                         <option value="">--</option>
                                         @foreach (var starch in Model.StarchScaleValues)
@@ -270,7 +270,7 @@
                                         }
                                     </select>
                                 </td>
-                                <td>
+                                <td data-label="Grade">
                                     <select name="Rows[@i].GradeId" data-autosave-row-field="GradeId">
                                         <option value="">--</option>
                                         @foreach (var grade in Model.Grades)
@@ -279,7 +279,7 @@
                                         }
                                     </select>
                                 </td>
-                                <td class="field-defect-cell">
+                                <td class="field-defect-cell" data-label="Defects">
                                     <details>
                                         <summary><span data-defect-indicator>@(row.Defects.Count == 0 ? "No defects found" : $"{row.Defects.Count} defect(s) found")</span></summary>
                                         <p class="muted">Inspection status is automatic: selecting any defect changes the sample to Defects found.</p>
@@ -309,7 +309,7 @@
                     </tbody>
                 </table>
             </div>
-            <div class="button-row">
+            <div class="button-row mobile-sticky-actions">
                 <button type="submit">Save Now</button>
                 <button type="button" class="secondary-button" data-add-field-row>Add fruit row</button>
             </div>
@@ -327,15 +327,15 @@
                         @foreach (var row in Model.FruitRows)
                         {
                             <tr>
-                                <td>@row.RowNumber</td>
-                                <td>@Format(row.Pressure1Lbs)</td>
-                                <td>@Format(row.Pressure2Lbs)</td>
-                                <td>@Format(row.PressureAverageLbs)</td>
-                                <td>@Format(row.WeightGrams)</td>
-                                <td>@(row.SizeCategory?.ToString() ?? "Missing")</td>
-                                <td>@StarchDisplay(row.Starch)</td>
-                                <td>@(row.Grade ?? "Missing")</td>
-                                <td>@(row.Defects.Count == 0 ? "No defects found" : string.Join(", ", row.Defects))</td>
+                                <td data-label="Fruit">@row.RowNumber</td>
+                                <td data-label="Pressure 1">@Format(row.Pressure1Lbs)</td>
+                                <td data-label="Pressure 2">@Format(row.Pressure2Lbs)</td>
+                                <td data-label="Average">@Format(row.PressureAverageLbs)</td>
+                                <td data-label="Weight">@Format(row.WeightGrams)</td>
+                                <td data-label="Size">@(row.SizeCategory?.ToString() ?? "Missing")</td>
+                                <td data-label="Starch">@StarchDisplay(row.Starch)</td>
+                                <td data-label="Grade">@(row.Grade ?? "Missing")</td>
+                                <td data-label="Defects">@(row.Defects.Count == 0 ? "No defects found" : string.Join(", ", row.Defects))</td>
                             </tr>
                         }
                     </tbody>

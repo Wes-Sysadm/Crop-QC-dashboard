@@ -103,8 +103,8 @@
         <section class="panel starch-input-panel">
                 <h2>Starch Input</h2>
                 <p class="muted">Starch values can be saved at any time. For pears, the starch reading is optional when the required starch photo is present. In-progress rows remain available for later entry.</p>
-                <div class="table-wrap">
-                    <table>
+                <div class="table-wrap starch-grid-wrap">
+                    <table class="starch-grid">
                         <thead>
                             <tr>
                                 <th>Fruit</th>
@@ -117,12 +117,12 @@
                         {
                             var row = Model.FruitRows[i];
                             <tr id="starch-row-@row.RowNumber" class="starch-entry-row @TrayClass(row)">
-                                <td>
+                                <td data-label="Fruit">
                                     @row.RowNumber
                                     <input type="hidden" name="Rows[@i].RowNumber" value="@row.RowNumber" />
                                 </td>
-                                <td>@row.EntryStatus</td>
-                                <td>
+                                <td data-label="QC Row Status">@row.EntryStatus</td>
+                                <td data-label="Starch Value">
                                     <select class="starch-input" name="Rows[@i].StarchScaleValueId" data-row-number="@row.RowNumber">
                                         <option value="">--</option>
                                         @foreach (var starch in Model.StarchScaleValues)
@@ -136,7 +136,7 @@
                         </tbody>
                     </table>
                 </div>
-                <button type="submit">Save Starch Input</button>
+                <button type="submit" class="mobile-sticky-primary">Save Starch Input</button>
         </section>
     </form>
 

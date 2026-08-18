@@ -117,9 +117,9 @@
 @if (canEditReceipts)
 {
 <h2>Add Receipt</h2>
-<form class="toolbar" id="addReceiptForm" method="post" action="/Receipts/Create" enctype="multipart/form-data" data-add-receipt-form>
+<form class="toolbar mobile-entry-form" id="addReceiptForm" method="post" action="/Receipts/Create" enctype="multipart/form-data" data-add-receipt-form>
     @Html.AntiForgeryToken()
-    <div class="field"><label>Crop Year</label><input name="CropYear" value="@Model.CurrentCropYear" required /></div>
+    <div class="field"><label>Crop Year</label><input name="CropYear" value="@Model.CurrentCropYear" inputmode="numeric" required /></div>
     <div class="field"><label>Received At (Pacific)</label><input name="ReceivedAt" type="datetime-local" value="@BusinessTime.FormatPacificInput(BusinessTime.UtcNow)" required /></div>
     <div class="field"><label>Receipt ID</label><input name="CompuTechReceiptId" required /></div>
     <div class="field"><label>Receipt Type</label><select name="ReceiptType"><option selected="@IsReceiptTypeSelected("Truck receipt")">Truck receipt</option><option selected="@IsReceiptTypeSelected("Door sample")">Door sample</option><option selected="@IsReceiptTypeSelected("Lot sample")">Lot sample</option></select></div>
@@ -140,17 +140,17 @@
     </div>
     <div class="field wide"><label>Grower Number - Grower Name</label><select id="addGrowerLotId" name="GrowerLotId" required><option value="">Select a grower</option>@foreach (var lot in Model.GrowerLots){<option value="@lot.Id" data-grower="@lot.Grower" data-lot="@lot.LotNumber">@lot.LotNumber - @lot.Grower</option>}</select></div>
     <div class="field"><label>Grower</label><input name="GrowerName" required /></div>
-    <div class="field"><label>Lot #</label><input id="addGrowerNumber" name="GrowerNumber" maxlength="50" list="growerLotOptions" required /></div>
+    <div class="field"><label>Lot #</label><input id="addGrowerNumber" name="GrowerNumber" maxlength="50" inputmode="numeric" list="growerLotOptions" required /></div>
     <datalist id="growerLotOptions">
         @foreach (var lot in Model.GrowerLots)
         {
             <option value="@lot.LotNumber" label="@lot.LotNumber - @lot.Grower"></option>
         }
     </datalist>
-    <div class="field"><label>Bin Count</label><input name="BinCount" type="number" min="0" required /></div>
+    <div class="field"><label>Bin Count</label><input name="BinCount" type="number" inputmode="numeric" min="0" required /></div>
     <label class="checkbox-field"><input type="checkbox" name="ConfirmCropYear" value="true" /> Confirm Crop Year</label><input type="hidden" name="ConfirmCropYear" value="false" />
     @await Html.PartialAsync("_StagedReceiptPhotos")
-    <button type="submit" data-receipt-submit disabled="@(!hasRequiredMasterData)">Add Receipt</button>
+    <button type="submit" class="mobile-sticky-primary" data-receipt-submit disabled="@(!hasRequiredMasterData)">Add Receipt</button>
 </form>
 
 @if (Model.CanQuickAddVariety)
