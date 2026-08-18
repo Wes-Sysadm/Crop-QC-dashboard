@@ -168,6 +168,43 @@ public sealed class QcSummaryEmailComposerTests
         Assert.All(content.InlineImages, image => Assert.EndsWith(".jpg", image.FileName, StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData("Receiving Sample")]
+    [InlineData("Door Sample")]
+    [InlineData("Lot Sample")]
+    public async Task EmailComposer_ReceiptHeader_ShowsGrowerIdentityWithoutDuplicatedLot(string sampleType)
+    {
+        var sample = BuildSample(sampleType);
+        var receipt = Assert.IsType<Receipt>(sample.Receipt);
+        receipt.GrowerName = "ROLOFF FARM-NAGLE CONV";
+        receipt.GrowerNumber = "9350";
+        receipt.LotCode = "9350";
+        var originalLotCode = receipt.LotCode;
+        var originalGrowerNumber = receipt.GrowerNumber;
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+
+        var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
+
+        Assert.Equal(1, CountOccurrences(content.HtmlBody, ">Grower number</th>"));
+        Assert.Contains(">Grower</th><td style=\"border:1px solid #cbd5e1;\">ROLOFF FARM-NAGLE CONV</td>", content.HtmlBody);
+        Assert.Contains(">Grower number</th><td style=\"border:1px solid #cbd5e1;\">9350</td>", content.HtmlBody);
+        Assert.DoesNotContain(">Lot</th>", content.HtmlBody);
+        Assert.DoesNotContain(">Orchard</th>", content.HtmlBody);
+        Assert.DoesNotContain(">Block</th>", content.HtmlBody);
+        Assert.True(content.HtmlBody.IndexOf(">Grower</th>", StringComparison.Ordinal) < content.HtmlBody.IndexOf(">Grower number</th>", StringComparison.Ordinal));
+        Assert.True(content.HtmlBody.IndexOf(">Grower number</th>", StringComparison.Ordinal) < content.HtmlBody.IndexOf(">Bins received</th>", StringComparison.Ordinal));
+        Assert.True(content.HtmlBody.IndexOf(">Bins received</th>", StringComparison.Ordinal) < content.HtmlBody.IndexOf(">Variety</th>", StringComparison.Ordinal));
+        Assert.Contains("Grower: ROLOFF FARM-NAGLE CONV", content.TextBody);
+        Assert.Contains("Grower number: 9350", content.TextBody);
+        Assert.Contains("Bins received: 42", content.TextBody);
+        Assert.Contains("Variety: 9450", content.TextBody);
+        Assert.DoesNotContain("Grower/Lot/Variety:", content.TextBody);
+        Assert.DoesNotContain(Environment.NewLine + "Lot:", content.TextBody);
+        Assert.DoesNotContain("Orchard/Block:", content.TextBody);
+        Assert.Equal(originalLotCode, receipt.LotCode);
+        Assert.Equal(originalGrowerNumber, receipt.GrowerNumber);
+    }
+
     [Fact]
     public async Task EmailComposer_EmbedsCidImagesWithoutDriveLinksForSuccessfulPhotos()
     {
@@ -462,6 +499,7 @@ public sealed class QcSummaryEmailComposerTests
             Room = room,
             FruitProfile = fruitProfile,
             GrowerName = "Reese",
+            GrowerNumber = "LOT-1",
             LotCode = "LOT-1",
             BinCount = 42
         };
