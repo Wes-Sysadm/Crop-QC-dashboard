@@ -36,8 +36,12 @@
         </div>
     }
     <header class="topbar">
-        <a class="brand" asp-controller="Home" asp-action="Index" asp-route-facility="@facilityRouteValue">Crop QC Dashboard</a>
-        <nav>
+        <a class="brand" asp-controller="Home" asp-action="Index" asp-route-facility="@facilityRouteValue">
+            <span class="brand-full">Crop QC Dashboard</span>
+            <span class="brand-mobile">Crop QC</span>
+        </a>
+        <button type="button" class="mobile-menu-button" aria-controls="primary-navigation" aria-expanded="false" data-mobile-menu-button>Menu</button>
+        <nav id="primary-navigation" data-primary-navigation>
             @if (User.Identity?.IsAuthenticated == true)
             {
                 var role = User.FindAll(ClaimTypes.Role).Select(x => x.Value).OrderBy(x => x).FirstOrDefault() ?? "Viewer";
@@ -234,6 +238,23 @@
     </dialog>
     <script>
         (() => {
+            const menuButton = document.querySelector("[data-mobile-menu-button]");
+            const navigation = document.querySelector("[data-primary-navigation]");
+            const mobileQuery = window.matchMedia("(max-width: 760px)");
+            const setMenu = open => {
+                if (!menuButton || !navigation) return;
+                navigation.dataset.mobileOpen = open ? "true" : "false";
+                menuButton.setAttribute("aria-expanded", open ? "true" : "false");
+                menuButton.textContent = open ? "Close" : "Menu";
+            };
+            menuButton?.addEventListener("click", () => setMenu(menuButton.getAttribute("aria-expanded") !== "true"));
+            navigation?.addEventListener("click", event => {
+                if (mobileQuery.matches && event.target.closest("a")) setMenu(false);
+            });
+            mobileQuery.addEventListener?.("change", event => {
+                if (!event.matches) setMenu(false);
+            });
+
             const dropdowns = document.querySelectorAll(".nav-dropdown");
             dropdowns.forEach(dropdown => {
                 let closeTimer = null;
@@ -252,6 +273,15 @@
                     });
                 });
             });
+        })();
+        (() => {
+            for (const input of document.querySelectorAll("input[type='number']")) {
+                if (input.hasAttribute("inputmode")) continue;
+                const step = (input.getAttribute("step") || "1").toLowerCase();
+                input.inputMode = step === "1" || step === "any" && input.matches("[name*='Count'], [name*='Bins']")
+                    ? "numeric"
+                    : "decimal";
+            }
         })();
         (() => {
             const bars = Array.from(document.querySelectorAll("[data-page-refresh]"));

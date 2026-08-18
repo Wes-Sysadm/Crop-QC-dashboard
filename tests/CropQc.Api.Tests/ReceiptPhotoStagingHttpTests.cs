@@ -37,6 +37,10 @@ public sealed class ReceiptPhotoStagingHttpTests
         Assert.Contains("No receipt photos selected.", html);
         Assert.Contains("data-staged-photo-list", html);
         Assert.Contains("data-stage-receipt-photos=\"true\"", html);
+        Assert.Contains("data-staged-photo-take", html);
+        Assert.Contains("Take Photo", html);
+        Assert.Contains("Choose Existing Photo", html);
+        Assert.Contains("capture=\"environment\"", html);
 
         var response = await client.PostAsync("/Receipts/Create", ReceiptForm("STAGED-ZERO"));
 

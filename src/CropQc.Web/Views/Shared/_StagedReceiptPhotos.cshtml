@@ -13,8 +13,10 @@
         </label>
     </div>
     <div class="staged-receipt-photo-drop-zone" data-staged-photo-drop-zone>
-        <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple hidden data-staged-photo-picker />
-        <button type="button" class="secondary-button" data-staged-photo-browse>Choose receipt photos</button>
+        <input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" capture="environment" hidden data-staged-photo-camera />
+        <input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden data-staged-photo-picker />
+        <button type="button" class="secondary-button mobile-photo-action" data-staged-photo-take>Take Photo</button>
+        <button type="button" class="secondary-button mobile-photo-action" data-staged-photo-browse>Choose Existing Photo</button>
         <span>or drop JPG, PNG, or WEBP images here (15 MB maximum each)</span>
     </div>
     <p class="muted" data-staged-photo-empty>No receipt photos selected.</p>

@@ -14,6 +14,9 @@
     function validationError(file) {
         if (!file || file.size <= 0) return "Choose a non-empty photo file.";
         if (file.size > maxPhotoSize) return `${file.name} is larger than 15 MB.`;
+        if (["heic", "heif"].includes(extension(file.name)) || ["image/heic", "image/heif"].includes((file.type || "").toLowerCase())) {
+            return `${file.name} is an HEIC/HEIF image, which Crop QC cannot safely preview or upload. Use Take Photo, or choose a JPG, PNG, or WEBP image.`;
+        }
         if (!allowedTypes.has((file.type || "").toLowerCase()) || !allowedExtensions.has(extension(file.name))) {
             return `${file.name} is not supported. Choose a JPG, PNG, or WEBP image.`;
         }
@@ -36,9 +39,11 @@
         if (section.dataset.initialized === "true") return;
         section.dataset.initialized = "true";
         const form = section.closest("form");
+        const cameraPicker = section.querySelector("[data-staged-photo-camera]");
         const picker = section.querySelector("[data-staged-photo-picker]");
         const typeSelect = section.querySelector("[data-staged-photo-type]");
         const browse = section.querySelector("[data-staged-photo-browse]");
+        const takePhoto = section.querySelector("[data-staged-photo-take]");
         const dropZone = section.querySelector("[data-staged-photo-drop-zone]");
         const empty = section.querySelector("[data-staged-photo-empty]");
         const list = section.querySelector("[data-staged-photo-list]");
@@ -133,14 +138,21 @@
             return true;
         }
 
-        function stageFiles(files) {
+        function stageFiles(files, photoSource = "Upload File") {
             const photoType = typeSelect.value;
-            for (const file of Array.from(files || [])) stage(file, photoType, "Upload File");
-            picker.value = "";
+            for (const file of Array.from(files || [])) stage(file, photoType, photoSource);
         }
 
+        takePhoto?.addEventListener("click", () => cameraPicker?.click());
+        cameraPicker?.addEventListener("change", () => {
+            stageFiles(cameraPicker.files, "Mobile Camera");
+            cameraPicker.value = "";
+        });
         browse.addEventListener("click", () => picker.click());
-        picker.addEventListener("change", () => stageFiles(picker.files));
+        picker.addEventListener("change", () => {
+            stageFiles(picker.files);
+            picker.value = "";
+        });
         dropZone.addEventListener("dragover", event => {
             event.preventDefault();
             dropZone.classList.add("drag-over");

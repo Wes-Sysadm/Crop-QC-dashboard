@@ -34,9 +34,14 @@
     <input type="hidden" name="WebUrl" class="photo-web-url" />
 
     <div class="source-panel upload-panel wide">
-        <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" capture="environment" class="photo-file-input" name="@Model.FileInputName" multiple="@(Model.AllowMultiple ? "multiple" : null)" hidden />
+        <input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" capture="environment" class="photo-mobile-camera-input" hidden />
+        <input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" class="photo-file-input" name="@Model.FileInputName" multiple="@(Model.AllowMultiple ? "multiple" : null)" hidden />
+        <div class="button-row mobile-photo-picker-actions">
+            <button type="button" class="secondary-button photo-take-mobile">Take Photo</button>
+            <button type="button" class="secondary-button photo-choose-existing">Choose Existing Photo</button>
+        </div>
         <button type="button" class="upload-zone">
-            <span>Drop photo here or click to browse</span>
+            <span>Drop a JPG, PNG, or WEBP photo here or click to browse</span>
         </button>
         <div class="photo-preview" aria-live="polite">
             <span>No photo selected</span>
@@ -74,10 +79,13 @@
 
         const photoType = form.querySelector(".photo-type");
         const photoSource = form.querySelector(".photo-source");
+        const mobileCameraInput = form.querySelector(".photo-mobile-camera-input");
         const fileInput = form.querySelector(".photo-file-input");
         const uploadPanel = form.querySelector(".upload-panel");
         const cameraPanel = form.querySelector(".camera-panel");
         const uploadZone = form.querySelector(".upload-zone");
+        const takeMobilePhoto = form.querySelector(".photo-take-mobile");
+        const chooseExistingPhoto = form.querySelector(".photo-choose-existing");
         const preview = form.querySelector(".photo-preview");
         const fileNameInput = form.querySelector(".photo-file-name");
         const contentTypeInput = form.querySelector(".photo-content-type");
@@ -98,7 +106,7 @@
         const validationMessage = form.querySelector(".photo-validation-message");
         let selectedUploadFiles = [];
         let cameraStream = null;
-        let previewUrl = null;
+        let previewUrls = [];
         let autosaveFlushed = false;
         const maxPhotoSize = 15 * 1024 * 1024;
         const allowedTypes = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
@@ -143,10 +151,8 @@
         }
 
         function showPreview(files) {
-            if (previewUrl) {
-                URL.revokeObjectURL(previewUrl);
-                previewUrl = null;
-            }
+            previewUrls.forEach(url => URL.revokeObjectURL(url));
+            previewUrls = [];
             preview.innerHTML = "";
             if (!files || files.length === 0) {
                 preview.appendChild(document.createTextNode("No photo selected"));
@@ -156,7 +162,9 @@
             for (const file of files) {
                 const image = document.createElement("img");
                 image.alt = `Selected photo preview: ${file.name}`;
-                image.src = URL.createObjectURL(file);
+                const url = URL.createObjectURL(file);
+                previewUrls.push(url);
+                image.src = url;
                 preview.appendChild(image);
             }
         }
@@ -165,9 +173,14 @@
             const selected = Array.from(files || []);
             const invalid = selected.find(file => !allowedTypes.has((file.type || "").toLowerCase()) || file.size > maxPhotoSize);
             if (invalid) {
+                const invalidExtension = (invalid.name || "").split(".").pop()?.toLowerCase();
+                const isHeic = ["heic", "heif"].includes(invalidExtension)
+                    || ["image/heic", "image/heif"].includes((invalid.type || "").toLowerCase());
                 validationMessage.textContent = invalid.size > maxPhotoSize
                     ? `${invalid.name} is larger than 15 MB. Choose or capture a smaller image.`
-                    : `${invalid.name} is not a supported image. Only JPG, PNG, or WEBP images are allowed.`;
+                    : isHeic
+                        ? `${invalid.name} is an HEIC/HEIF image, which Crop QC cannot safely preview or upload. Use Take Photo, or choose a JPG, PNG, or WEBP image.`
+                        : `${invalid.name} is not a supported image. Only JPG, PNG, or WEBP images are allowed.`;
                 validationMessage.hidden = false;
                 return false;
             }
@@ -240,6 +253,8 @@
 
         photoType.addEventListener("change", () => buildMetadata(photoSource.value === "USB Camera" ? null : selectedUploadFiles[0]));
         photoSource.addEventListener("change", syncSource);
+        takeMobilePhoto.addEventListener("click", () => mobileCameraInput.click());
+        chooseExistingPhoto.addEventListener("click", () => fileInput.click());
         uploadZone.addEventListener("click", () => fileInput.click());
         uploadZone.addEventListener("dragover", event => {
             event.preventDefault();
@@ -253,6 +268,10 @@
         });
         fileInput.addEventListener("change", () => {
             if (fileInput.files?.length) setUploadFiles(fileInput.files);
+        });
+        mobileCameraInput.addEventListener("change", () => {
+            if (mobileCameraInput.files?.length) setUploadFiles(mobileCameraInput.files);
+            mobileCameraInput.value = "";
         });
 
         cameraStart.addEventListener("click", startCamera);
@@ -302,7 +321,8 @@
         syncSource();
         window.addEventListener("pagehide", () => {
             stopCamera();
-            if (previewUrl) URL.revokeObjectURL(previewUrl);
+            previewUrls.forEach(url => URL.revokeObjectURL(url));
+            previewUrls = [];
         });
     })();
 </script>
