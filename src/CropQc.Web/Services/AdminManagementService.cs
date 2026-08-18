@@ -27,7 +27,8 @@ public sealed class AdminManagementService(
     IVarietyColorService varietyColorService,
     ICanonicalGrowerService? canonicalGrowerService = null,
     IFacilityContextService? facilityContextService = null,
-    IEndOfDayFillWarehouseLabelResolver? endOfDayFillWarehouseLabelResolver = null) : IAdminManagementService
+    IEndOfDayFillWarehouseLabelResolver? endOfDayFillWarehouseLabelResolver = null,
+    IReviewedGrowerLotPolicy? reviewedGrowerLotPolicy = null) : IAdminManagementService
 {
     private static readonly IBusinessTimeService BusinessTime = new PacificBusinessTimeService(new SystemClock());
     private readonly IFacilityContextService facilityContext = facilityContextService ?? new FacilityContextService(dbContext);
@@ -122,6 +123,27 @@ public sealed class AdminManagementService(
 
     public async Task<string?> DeactivateAsync(string type, int id, string changedByEmail, CancellationToken cancellationToken)
     {
+        if (reviewedGrowerLotPolicy is not null && type.Equals("grower-lots", StringComparison.OrdinalIgnoreCase))
+        {
+            var lot = await dbContext.GrowerLots.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+            if (lot is not null)
+            {
+                var reviewed = await reviewedGrowerLotPolicy.GetActiveReviewedGrowersAsync(cancellationToken);
+                if (reviewed.ContainsKey(CanonicalGrowerService.NormalizeGrowerNumber(lot.LotNumber)))
+                    return "Current Grower Lots are controlled by the reviewed Grower master and cannot be deactivated manually.";
+            }
+        }
+        if (reviewedGrowerLotPolicy is not null && type.Equals("canonical-growers", StringComparison.OrdinalIgnoreCase))
+        {
+            var reviewed = await reviewedGrowerLotPolicy.GetActiveReviewedGrowersAsync(cancellationToken);
+            var reviewedNumbers = reviewed.Keys.ToList();
+            var hasReviewedNumber = await dbContext.CanonicalGrowerNumbers.AsNoTracking().AnyAsync(
+                x => x.CanonicalGrowerId == id && x.IsActive && reviewedNumbers.Contains(x.NormalizedGrowerNumber),
+                cancellationToken);
+            if (hasReviewedNumber)
+                return "Reviewed Growers are controlled by the authoritative Grower master and cannot be deactivated manually.";
+        }
+
         object? entity = type.ToLowerInvariant() switch
         {
             "warehouses" => await dbContext.Warehouses.FindAsync([id], cancellationToken),
@@ -327,7 +349,8 @@ public sealed class AdminManagementService(
         var existingLots = await dbContext.GrowerLots.ToListAsync(cancellationToken);
         foreach (var row in preview.Rows.Where(x => x.Action is "Add" or "Update"))
         {
-            var existing = existingLots.SingleOrDefault(x => string.Equals(x.LotNumber, row.LotNumber, StringComparison.OrdinalIgnoreCase));
+            var rowNumber = CanonicalGrowerService.NormalizeGrowerNumber(row.LotNumber);
+            var existing = existingLots.SingleOrDefault(x => CanonicalGrowerService.NormalizeGrowerNumber(x.LotNumber).Equals(rowNumber, StringComparison.OrdinalIgnoreCase));
             if (existing is null)
             {
                 var now = DateTimeOffset.UtcNow;
@@ -335,8 +358,8 @@ public sealed class AdminManagementService(
                 {
                     Grower = row.Grower,
                     LotNumber = row.LotNumber,
-                    PoolStart = string.IsNullOrWhiteSpace(row.PoolStart) ? null : row.PoolStart,
-                    IsActive = !row.IsInactive,
+                    PoolStart = reviewedGrowerLotPolicy is null && !string.IsNullOrWhiteSpace(row.PoolStart) ? row.PoolStart : null,
+                    IsActive = reviewedGrowerLotPolicy is not null || !row.IsInactive,
                     CreatedAt = now,
                     UpdatedAt = now
                 };
@@ -348,8 +371,9 @@ public sealed class AdminManagementService(
 
             var before = JsonSerializer.Serialize(existing);
             existing.Grower = row.Grower;
-            existing.PoolStart = string.IsNullOrWhiteSpace(row.PoolStart) ? null : row.PoolStart;
-            existing.IsActive = !row.IsInactive;
+            if (reviewedGrowerLotPolicy is null)
+                existing.PoolStart = string.IsNullOrWhiteSpace(row.PoolStart) ? null : row.PoolStart;
+            existing.IsActive = reviewedGrowerLotPolicy is not null || !row.IsInactive;
             existing.UpdatedAt = DateTimeOffset.UtcNow;
             await AddAuditAsync("import-update", "grower-lots", existing.Id.ToString(), changedByEmail, before, JsonSerializer.Serialize(existing), cancellationToken);
         }
@@ -539,11 +563,11 @@ public sealed class AdminManagementService(
     private async Task<MasterDataPageViewModel> GrowerLotsPage(bool canEdit, CancellationToken ct)
     {
         var rows = await dbContext.GrowerLots.AsNoTracking()
-            .OrderBy(x => x.Grower)
-            .ThenBy(x => x.LotNumber)
-            .Select(x => new MasterDataEditItem(x.Id, new[] { x.Grower, x.LotNumber, x.PoolStart ?? "", x.Notes ?? "", YesNo(x.IsActive) }, x.IsActive, null))
+            .OrderBy(x => x.LotNumber)
+            .ThenBy(x => x.Grower)
+            .Select(x => new MasterDataEditItem(x.Id, new[] { x.LotNumber, x.Grower, x.PoolStart ?? "", x.IsActive ? "Active" : "Inactive" }, x.IsActive, null))
             .ToListAsync(ct);
-        return Page("Grower Lots", "grower-lots", ["Grower", "Lot #", "Pool Start", "Notes", "Active"], rows, canEdit);
+        return Page("Grower Lots", "grower-lots", ["Grower Number", "Grower Name", "Pool Start", "Status"], rows, canEdit);
     }
 
     private async Task<MasterDataPageViewModel> OrchardBlocksPage(bool canEdit, CancellationToken ct)
@@ -599,6 +623,9 @@ public sealed class AdminManagementService(
             .Select(x => new { x.GrowerName, x.GrowerNumber, x.CropYear })
             .ToListAsync(ct);
         var resolver = await growerService.LoadResolutionSetAsync(ct);
+        var reviewedGrowers = reviewedGrowerLotPolicy is null
+            ? null
+            : await reviewedGrowerLotPolicy.GetActiveReviewedGrowersAsync(ct);
         var counts = receiptSummaries
             .Select(x => new { Identity = resolver.Resolve(x.GrowerName, x.GrowerNumber), x.CropYear })
             .GroupBy(x => x.Identity.Key, StringComparer.OrdinalIgnoreCase)
@@ -614,17 +641,24 @@ public sealed class AdminManagementService(
         var rows = growers.Select(grower =>
         {
             counts.TryGetValue(grower.NormalizedKey, out var count);
+            var activeNumbers = grower.GrowerNumbers.Where(x => x.IsActive).Select(x => x.GrowerNumber).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+            var isCurrentReviewedGrower = reviewedGrowers is null
+                ? grower.IsActive
+                : grower.IsActive
+                    && activeNumbers.Count == 1
+                    && reviewedGrowers.TryGetValue(CanonicalGrowerService.NormalizeGrowerNumber(activeNumbers[0]), out var reviewed)
+                    && grower.DisplayName.Equals(reviewed.GrowerName, StringComparison.Ordinal);
             return new MasterDataEditItem(
                 grower.Id,
                 [
                     grower.DisplayName,
-                    string.Join(", ", grower.GrowerNumbers.Where(x => x.IsActive).Select(x => x.GrowerNumber).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x)),
+                    string.Join(", ", activeNumbers),
                     string.Join(", ", grower.Aliases.Where(x => x.IsActive).Select(x => x.AliasName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x)),
                     count?.Receipts.ToString() ?? "0",
                     count?.CropYears ?? "",
-                    YesNo(grower.IsActive)
+                    isCurrentReviewedGrower ? "Active" : "Inactive / historical"
                 ],
-                grower.IsActive,
+                isCurrentReviewedGrower,
                 null);
         }).ToList();
 
@@ -792,6 +826,24 @@ public sealed class AdminManagementService(
     private async Task<string?> SaveCanonicalGrower(MasterDataEditForm form, string by, CancellationToken ct)
     {
         if (Blank(form.Name)) return "Canonical grower name is required.";
+        var numberValues = ParseLines(form.GrowerNumbers).ToList();
+        var numberKeys = numberValues.Select(CanonicalGrowerService.NormalizeGrowerNumber).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (reviewedGrowerLotPolicy is not null)
+        {
+            var reviewed = await reviewedGrowerLotPolicy.GetActiveReviewedGrowersAsync(ct);
+            if (form.IsActive)
+            {
+                if (numberKeys.Count != 1 || !reviewed.TryGetValue(numberKeys[0], out var reviewedRow))
+                    return "Active Growers must use exactly one active number from the reviewed Grower master.";
+                if (!form.Name.Trim().Equals(reviewedRow.GrowerName, StringComparison.Ordinal)
+                    || !numberValues.Single().Trim().Equals(reviewedRow.GrowerNumber, StringComparison.Ordinal))
+                    return "The active Grower name and number must exactly match the reviewed Grower master.";
+            }
+            else if (numberKeys.Any(reviewed.ContainsKey))
+            {
+                return "An active reviewed Grower cannot be made inactive manually.";
+            }
+        }
         var normalizedKey = CanonicalGrowerService.NormalizeGrowerKey(form.Name);
         if (await dbContext.CanonicalGrowers.AnyAsync(x => x.NormalizedKey == normalizedKey && x.Id != (form.Id ?? 0), ct))
         {
@@ -811,8 +863,6 @@ public sealed class AdminManagementService(
             return $"Alias already belongs to another canonical grower: {string.Join(", ", existingAliasConflict)}.";
         }
 
-        var numberValues = ParseLines(form.GrowerNumbers).ToList();
-        var numberKeys = numberValues.Select(CanonicalGrowerService.NormalizeGrowerNumber).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var numberConflicts = await dbContext.CanonicalGrowerNumbers
             .Include(x => x.CanonicalGrower)
             .Where(x => x.IsActive && numberKeys.Contains(x.NormalizedGrowerNumber) && x.CanonicalGrowerId != (form.Id ?? 0))
@@ -862,9 +912,46 @@ public sealed class AdminManagementService(
         if (Blank(form.Name) || Blank(form.Code)) return "Grower and Lot # are required.";
         var grower = form.Name.Trim();
         var lotNumber = form.Code.Trim();
-        if (await dbContext.GrowerLots.AnyAsync(x => x.Grower == grower && x.LotNumber == lotNumber && x.Id != (form.Id ?? 0), ct)) return "Grower and Lot # combination must be unique.";
         var entity = form.Id is null ? new GrowerLot { Grower = "", LotNumber = "" } : await dbContext.GrowerLots.FindAsync([form.Id.Value], ct);
         if (entity is null) return "Grower lot not found.";
+        if (reviewedGrowerLotPolicy is not null)
+        {
+            var reviewed = await reviewedGrowerLotPolicy.GetActiveReviewedGrowersAsync(ct);
+            var submittedNumber = CanonicalGrowerService.NormalizeGrowerNumber(lotNumber);
+            if (form.Id is null)
+            {
+                if (!form.IsActive || !reviewed.TryGetValue(submittedNumber, out var newReviewed))
+                    return "A new active Grower Lot must use a number from the reviewed Grower master.";
+                if (await dbContext.GrowerLots.AsNoTracking().AnyAsync(x => x.LotNumber == newReviewed.GrowerNumber, ct))
+                    return "That reviewed Grower Number already has a Grower Lot. Use the alignment sync instead of creating another row.";
+                grower = newReviewed.GrowerName;
+                lotNumber = newReviewed.GrowerNumber;
+            }
+            else
+            {
+                var currentNumber = CanonicalGrowerService.NormalizeGrowerNumber(entity.LotNumber);
+                if (reviewed.TryGetValue(currentNumber, out var currentReviewed))
+                {
+                    if (!form.IsActive) return "Current Grower Lots are controlled by the reviewed Grower master and cannot be deactivated manually.";
+                    if (!submittedNumber.Equals(currentNumber, StringComparison.OrdinalIgnoreCase))
+                        return "The Grower Number of a current reviewed Grower Lot cannot be changed manually.";
+                    grower = currentReviewed.GrowerName;
+                    lotNumber = currentReviewed.GrowerNumber;
+                }
+                else
+                {
+                    if (form.IsActive) return "Legacy Grower Lots cannot be activated manually; use the reviewed alignment sync after resolving the Grower identity.";
+                    if (!grower.Equals(entity.Grower, StringComparison.Ordinal) || !lotNumber.Equals(entity.LotNumber, StringComparison.Ordinal))
+                        return "Historical Grower Lot identity cannot be renamed or renumbered. Notes and PoolStart may still be maintained.";
+                    grower = entity.Grower;
+                    lotNumber = entity.LotNumber;
+                }
+            }
+        }
+        var duplicateNumber = (await dbContext.GrowerLots.AsNoTracking().Where(x => x.Id != (form.Id ?? 0)).Select(x => x.LotNumber).ToListAsync(ct))
+            .Any(x => CanonicalGrowerService.NormalizeGrowerNumber(x).Equals(CanonicalGrowerService.NormalizeGrowerNumber(lotNumber), StringComparison.OrdinalIgnoreCase));
+        if (duplicateNumber)
+            return "Grower Number must identify exactly one Grower Lot.";
         var action = form.Id is null ? "create" : "update";
         var before = form.Id is null ? null : JsonSerializer.Serialize(entity);
         entity.Grower = grower;
@@ -1055,8 +1142,11 @@ public sealed class AdminManagementService(
             };
         }
 
+        var reviewedGrowers = reviewedGrowerLotPolicy is null
+            ? null
+            : await reviewedGrowerLotPolicy.GetActiveReviewedGrowersAsync(ct);
         var existingByLot = (await dbContext.GrowerLots.AsNoTracking().ToListAsync(ct))
-            .GroupBy(x => x.LotNumber.Trim(), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(x => reviewedGrowers is null ? x.LotNumber.Trim() : CanonicalGrowerService.NormalizeGrowerNumber(x.LotNumber), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
         var seenLots = new Dictionary<string, GrowerLotImportPreviewRow>(StringComparer.OrdinalIgnoreCase);
         var rows = new List<GrowerLotImportPreviewRow>();
@@ -1080,6 +1170,19 @@ public sealed class AdminManagementService(
                 continue;
             }
 
+            if (reviewedGrowers is not null)
+            {
+                var normalizedNumber = CanonicalGrowerService.NormalizeGrowerNumber(lotNumber);
+                if (isInactive || !reviewedGrowers.TryGetValue(normalizedNumber, out var reviewed))
+                {
+                    rows.Add(new(rowNumber, grower, lotNumber, poolStart, "Invalid", "Active Grower Lot imports may contain only active Grower Numbers from the reviewed Grower master.", isInactive));
+                    continue;
+                }
+                grower = reviewed.GrowerName;
+                lotNumber = reviewed.GrowerNumber;
+                isInactive = false;
+            }
+
             if (seenLots.TryGetValue(lotNumber, out var firstSeen)
                 && (!string.Equals(firstSeen.Grower, grower, StringComparison.OrdinalIgnoreCase)
                     || !string.Equals(firstSeen.PoolStart, poolStart, StringComparison.OrdinalIgnoreCase)))
@@ -1090,9 +1193,11 @@ public sealed class AdminManagementService(
 
             seenLots.TryAdd(lotNumber, new(rowNumber, grower, lotNumber, poolStart, "Seen", "", isInactive));
 
-            if (!existingByLot.TryGetValue(lotNumber, out var matches))
+            var lotKey = reviewedGrowers is null ? lotNumber : CanonicalGrowerService.NormalizeGrowerNumber(lotNumber);
+            if (!existingByLot.TryGetValue(lotKey, out var matches))
             {
-                rows.Add(new(rowNumber, grower, lotNumber, poolStart, "Add", isInactive ? "New inactive lot." : "New active lot.", isInactive));
+                var newPoolStart = reviewedGrowers is null ? poolStart : "";
+                rows.Add(new(rowNumber, grower, lotNumber, newPoolStart, "Add", reviewedGrowers is null ? (isInactive ? "New inactive lot." : "New active lot.") : "New reviewed Grower Lot; PoolStart remains unset until explicitly maintained.", isInactive));
                 continue;
             }
 
@@ -1104,15 +1209,16 @@ public sealed class AdminManagementService(
 
             var existing = matches[0];
             var active = !isInactive;
-            if (string.Equals(existing.Grower, grower, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(existing.PoolStart ?? "", poolStart, StringComparison.OrdinalIgnoreCase)
+            var nameMatches = string.Equals(existing.Grower, grower, reviewedGrowers is null ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+            if (nameMatches
+                && (reviewedGrowers is not null || string.Equals(existing.PoolStart ?? "", poolStart, StringComparison.OrdinalIgnoreCase))
                 && existing.IsActive == active)
             {
-                rows.Add(new(rowNumber, grower, lotNumber, poolStart, "Unchanged", "No changes.", isInactive));
+                rows.Add(new(rowNumber, grower, lotNumber, reviewedGrowers is null ? poolStart : existing.PoolStart ?? "", "Unchanged", "No changes.", isInactive));
             }
             else
             {
-                rows.Add(new(rowNumber, grower, lotNumber, poolStart, "Update", "Existing Lot # will be updated. Notes are preserved.", isInactive));
+                rows.Add(new(rowNumber, grower, lotNumber, reviewedGrowers is null ? poolStart : existing.PoolStart ?? "", "Update", reviewedGrowers is null ? "Existing Lot # will be updated. Notes are preserved." : "Current name/status will align to the reviewed Grower master. Existing ID, PoolStart, notes, and references are preserved.", isInactive));
             }
         }
 

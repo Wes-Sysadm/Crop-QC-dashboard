@@ -99,7 +99,8 @@ public sealed class DashboardDataService(
     IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null,
     IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null,
     IVarietyColorService? varietyColorService = null,
-    IRoomInventoryLossService? roomInventoryLossService = null) : IDashboardDataService
+    IRoomInventoryLossService? roomInventoryLossService = null,
+    IReviewedGrowerLotPolicy? reviewedGrowerLotPolicy = null) : IDashboardDataService
 {
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
     private const int MaximumLotEvidenceLinks = 8;
@@ -113,6 +114,16 @@ public sealed class DashboardDataService(
         inventoryDeductionInvariantService
         ?? new InventoryDeductionInvariantService(dbContext, NullLogger<InventoryDeductionInvariantService>.Instance);
     private IRoomInventoryLossService? RoomInventoryLosses { get; } = roomInventoryLossService;
+
+    private async Task<IReadOnlyList<GrowerLot>> GetReceivingGrowerLotsAsync(CancellationToken cancellationToken) =>
+        reviewedGrowerLotPolicy is null
+            ? await dbContext.GrowerLots.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Grower).ThenBy(x => x.LotNumber).ToListAsync(cancellationToken)
+            : await reviewedGrowerLotPolicy.GetAlignedActiveGrowerLotsAsync(cancellationToken);
+
+    private async Task<GrowerLot?> GetReceivingGrowerLotAsync(int id, CancellationToken cancellationToken) =>
+        reviewedGrowerLotPolicy is null
+            ? await dbContext.GrowerLots.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.IsActive, cancellationToken)
+            : (await reviewedGrowerLotPolicy.GetAlignedActiveGrowerLotsAsync(cancellationToken)).SingleOrDefault(x => x.Id == id);
 
     public async Task<HomeDashboardViewModel> GetHomeDashboardAsync(RoomSummaryFilterForm? roomSummaryFilter, CancellationToken cancellationToken)
     {
@@ -1303,7 +1314,7 @@ public sealed class DashboardDataService(
                     .ThenBy(x => x.ProductionType)
                     .ThenBy(x => x.IsOrganic)
                     .ToListAsync(cancellationToken),
-                GrowerLots = await dbContext.GrowerLots.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Grower).ThenBy(x => x.LotNumber).ToListAsync(cancellationToken),
+                GrowerLots = await GetReceivingGrowerLotsAsync(cancellationToken),
                 AvailableCropYears = await cropYearService.GetAvailableCropYearsAsync(cancellationToken),
                 CurrentCropYear = cropYearService.GetCurrentCropYear(BusinessTime.NowPacific),
                 CropYearHelpText = "Crop years use the starting-year convention by default: CropYear 2026 starts 2026-08-01 and ends 2027-07-31. Confirm crop year when season dates overlap.",
@@ -1322,6 +1333,10 @@ public sealed class DashboardDataService(
         if (string.IsNullOrWhiteSpace(form.CompuTechReceiptId) || (form.GrowerLotId is null && (string.IsNullOrWhiteSpace(form.GrowerName) || string.IsNullOrWhiteSpace(form.GrowerNumber))) || (IsInventoryReceiptType(receiptType) && form.BinCount <= 0))
         {
             return new(null, null, "Receipt ID, grower, Lot #, receipt type, and bin count for truck receipts are required.");
+        }
+        if (reviewedGrowerLotPolicy is not null && form.GrowerLotId is null)
+        {
+            return new(null, null, "Select a current Grower Number from the reviewed Grower list.");
         }
 
         var room = await dbContext.Rooms.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.RoomId, cancellationToken);
@@ -1350,7 +1365,7 @@ public sealed class DashboardDataService(
         GrowerLot? growerLot = null;
         if (form.GrowerLotId is not null)
         {
-            growerLot = await dbContext.GrowerLots.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.GrowerLotId && x.IsActive, cancellationToken);
+            growerLot = await GetReceivingGrowerLotAsync(form.GrowerLotId.Value, cancellationToken);
             if (growerLot is null)
             {
                 return new(null, null, "Selected grower lot was not found or is inactive.");
@@ -1437,7 +1452,7 @@ public sealed class DashboardDataService(
         }
 
         if (form.GrowerLotId is not null
-            && !await dbContext.GrowerLots.AsNoTracking().AnyAsync(x => x.Id == form.GrowerLotId && x.IsActive, cancellationToken))
+            && await GetReceivingGrowerLotAsync(form.GrowerLotId.Value, cancellationToken) is null)
         {
             return "Selected grower lot was not found or is inactive.";
         }
@@ -1451,7 +1466,7 @@ public sealed class DashboardDataService(
             Warehouses = await dbContext.Warehouses.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
             Rooms = await dbContext.Rooms.AsNoTracking().OrderBy(x => x.WarehouseId).ThenBy(x => x.SubLocation).ThenBy(x => x.SortOrder).ThenBy(x => x.CropQcRoomName ?? x.Code).ToListAsync(cancellationToken),
             FruitProfiles = await dbContext.FruitProfiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken),
-            GrowerLots = await dbContext.GrowerLots.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Grower).ThenBy(x => x.LotNumber).ToListAsync(cancellationToken)
+            GrowerLots = await GetReceivingGrowerLotsAsync(cancellationToken)
         };
 
     public async Task<ReceiptDetailViewModel> GetReceiptDetailAsync(long id, CancellationToken cancellationToken)
@@ -1579,7 +1594,7 @@ public sealed class DashboardDataService(
         GrowerLot? growerLot = null;
         if (form.GrowerLotId is not null)
         {
-            growerLot = await dbContext.GrowerLots.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.GrowerLotId && x.IsActive, cancellationToken);
+            growerLot = await GetReceivingGrowerLotAsync(form.GrowerLotId.Value, cancellationToken);
         }
 
         var oldReceiptBinCount = receipt.BinCount;

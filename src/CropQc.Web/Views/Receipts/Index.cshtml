@@ -138,13 +138,13 @@
         </select>
         <small>Search is case-insensitive and active profiles are shown code-first.</small>
     </div>
-    <div class="field wide"><label>Grower Lot</label><select id="addGrowerLotId" name="GrowerLotId"><option value="">Manual entry</option>@foreach (var lot in Model.GrowerLots){<option value="@lot.Id" data-grower="@lot.Grower" data-lot="@lot.LotNumber">@lot.Grower - @lot.LotNumber</option>}</select></div>
+    <div class="field wide"><label>Grower Number - Grower Name</label><select id="addGrowerLotId" name="GrowerLotId" required><option value="">Select a grower</option>@foreach (var lot in Model.GrowerLots){<option value="@lot.Id" data-grower="@lot.Grower" data-lot="@lot.LotNumber">@lot.LotNumber - @lot.Grower</option>}</select></div>
     <div class="field"><label>Grower</label><input name="GrowerName" required /></div>
     <div class="field"><label>Lot #</label><input id="addGrowerNumber" name="GrowerNumber" maxlength="50" list="growerLotOptions" required /></div>
     <datalist id="growerLotOptions">
         @foreach (var lot in Model.GrowerLots)
         {
-            <option value="@lot.LotNumber" label="@lot.Grower - @lot.LotNumber"></option>
+            <option value="@lot.LotNumber" label="@lot.LotNumber - @lot.Grower"></option>
         }
     </datalist>
     <div class="field"><label>Bin Count</label><input name="BinCount" type="number" min="0" required /></div>

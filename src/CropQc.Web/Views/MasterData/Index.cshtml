@@ -128,7 +128,7 @@
 {
     <section class="panel">
         <h2>Import Grower Lots</h2>
-        <p class="muted">Upload a CSV with <strong>Grower</strong>, <strong>Lot #</strong>, and <strong>Pool Start</strong>. Aliases like <code>Grower Number</code>, <code>#</code>, <code>Lot Number</code>, and <code>POOL Starts</code> are accepted. Import inserts or updates only; it never deletes production rows that are missing from the file.</p>
+        <p class="muted">Upload a CSV with <strong>Grower</strong>, <strong>Grower Number</strong>, and <strong>Pool Start</strong>. Only active reviewed Grower Numbers are accepted; names are taken from the reviewed Grower master. Existing PoolStart values and historical rows are preserved.</p>
         <form class="form-grid" method="post" enctype="multipart/form-data" action="/MasterData/grower-lots/ImportPreview">
             <label class="field wide">Grower lot CSV
                 <input type="file" name="CsvFile" accept=".csv,text/csv" required />
@@ -156,7 +156,7 @@
                             <th>Row</th>
                             <th>Action</th>
                             <th>Grower</th>
-                            <th>Lot #</th>
+                            <th>Grower Number</th>
                             <th>Pool Start</th>
                             <th>Message</th>
                         </tr>
