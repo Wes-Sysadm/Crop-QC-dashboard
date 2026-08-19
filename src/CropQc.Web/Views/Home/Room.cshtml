@@ -58,6 +58,10 @@
         <div class="action-bar">
             <a class="button" href="/BinsRun?RoomId=@Model.Summary.RoomId&amp;Section=Planner&amp;Facility=@Model.Summary.Warehouse">Open in Bins Run &amp; Transfers</a>
             <a class="button secondary-button" href="/Rooms/@Model.Summary.RoomId/CountBreakdown">View Count Breakdown</a>
+            @if (Model.CanApplyTreatment)
+            {
+                <a class="button" href="/Rooms/@Model.Summary.RoomId/Treatments/Apply">Apply Treatment</a>
+            }
         </div>
         @if (Model.Summary.ReviewFlags.Count > 0)
         {
@@ -87,6 +91,84 @@
         </div>
     </section>
 }
+
+<section class="panel" id="current-treatment-status">
+    <h2>Current Treatment Status</h2>
+    <p class="muted">This follows the fruit currently in the room. It is separate from treatments historically applied in this room.</p>
+    @if (Model.CurrentTreatmentStatus.Count == 0)
+    {
+        <p class="muted">No current fruit treatment segments are available.</p>
+    }
+    else
+    {
+        <div class="responsive-card-grid treatment-segment-grid">
+        @foreach (var segment in Model.CurrentTreatmentStatus)
+        {
+            <article class="subpanel treatment-segment-card">
+                <h3>@segment.GrowerNumber — @segment.GrowerName</h3>
+                <p>@segment.Variety · @segment.ProductionType · <strong>@segment.Bins.ToString("N0") bins</strong></p>
+                @if (segment.TreatmentState == TreatmentLineageStates.Untreated)
+                {
+                    <p><span class="status pending">Untreated</span></p>
+                }
+                else
+                {
+                    <p><span class="status @(segment.TreatmentState == TreatmentLineageStates.Unknown ? "review" : "ready")">@(segment.TreatmentState == TreatmentLineageStates.Unknown ? "Treatment status unknown / unconfirmed" : "Treated")</span></p>
+                    @if (segment.Treatments.Count > 0)
+                    {
+                        <ol class="compact-list treatment-list">
+                        @foreach (var treatment in segment.Treatments.OrderBy(x => x.AppliedAt))
+                        {
+                            <li>@BusinessTime.FormatPacific(treatment.AppliedAt) — @(treatment.CommonName ?? treatment.ProductName)</li>
+                        }
+                        </ol>
+                    }
+                }
+            </article>
+        }
+        </div>
+    }
+</section>
+
+<section class="panel" id="treatment-history">
+    <h2>Treatment Application History</h2>
+    <p class="muted">These are treatments physically applied in this room. Fruit carrying them may now be in another room or packed.</p>
+    @if (Model.TreatmentApplicationHistory.Count == 0)
+    {
+        <p class="muted">No treatment applications have been recorded for this room.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Applied</th><th>Treatment</th><th>Bins</th><th>Applied by</th><th>Estimated cost</th><th>Status / notes</th><th>Action</th></tr></thead>
+                <tbody>
+                @foreach (var treatment in Model.TreatmentApplicationHistory)
+                {
+                    <tr>
+                        <td>@BusinessTime.FormatPacific(treatment.AppliedAt)</td>
+                        <td>@if (!string.IsNullOrWhiteSpace(treatment.CommonName)) { <strong>@treatment.CommonName</strong><br /> }@treatment.ProductName</td>
+                        <td>@treatment.BinsAffected.ToString("N0")</td>
+                        <td>@treatment.AppliedBy</td>
+                        <td>@treatment.EstimatedCost.ToString("C2") @treatment.Currency</td>
+                        <td><span class="status @(treatment.IsReversed ? "pending" : "ready")">@(treatment.IsReversed ? "Reversed" : "Active")</span>@if (!string.IsNullOrWhiteSpace(treatment.Notes)) { <br /><span>@treatment.Notes</span> }@if (treatment.IsReversed) { <br /><span class="muted">@treatment.ReversalReason</span> }</td>
+                        <td>
+                        @if (Model.CanReverseTreatment && !treatment.IsReversed && Model.Summary is not null)
+                        {
+                            <form method="post" action="/Rooms/@Model.Summary.RoomId/Treatments/@treatment.Id/Reverse" class="stack-form" onsubmit="return confirm('This removes the treatment from current lineage calculations for the affected fruit but preserves the original application and audit history. Continue?');">
+                                @Html.AntiForgeryToken()
+                                <label>Reversal reason <input name="Reason" required maxlength="1000" /></label>
+                                <button type="submit" class="danger-button">Reverse Treatment Application</button>
+                            </form>
+                        }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
 
 @if (Model.Summary?.Status == "Empty")
 {
@@ -198,6 +280,7 @@
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="OperationKey" value="@Model.InventoryLossForm.OperationKey" />
                 <input type="hidden" name="ExpectedCurrentBins" id="dropped-expected-current" value="0" />
+                <input type="hidden" name="TreatmentSignature" id="dropped-treatment-signature" value="" />
                 <label class="field wide">Exact current inventory identity
                     <select name="InventoryAdjustmentId" id="dropped-inventory-identity" required>
                         <option value="">Select current inventory</option>
@@ -210,6 +293,7 @@
                                     data-lot="@option.Lot"
                                     data-variety="@option.Variety"
                                     data-production="@option.ProductionType"
+                                    data-treatment-signature="@option.TreatmentSignature"
                                     data-organic="@(option.IsOrganic == true ? "Organic" : option.IsOrganic == false ? "Conventional" : "Organic status unavailable")"
                                     data-current="@option.CurrentBins">@option.Label</option>
                         }
@@ -468,12 +552,14 @@
     if (!form) return;
     const select = document.getElementById('dropped-inventory-identity');
     const expected = document.getElementById('dropped-expected-current');
+    const treatmentSignature = document.getElementById('dropped-treatment-signature');
     const count = document.getElementById('dropped-bin-count');
     const summary = document.getElementById('dropped-identity-summary');
     const refresh = () => {
         const option = select.options[select.selectedIndex];
         const current = option?.dataset.current ?? '';
         expected.value = current;
+        treatmentSignature.value = option?.dataset.treatmentSignature ?? '';
         summary.hidden = !current;
         for (const field of summary.querySelectorAll('[data-loss-field]')) {
             field.textContent = field.dataset.lossField === 'current'

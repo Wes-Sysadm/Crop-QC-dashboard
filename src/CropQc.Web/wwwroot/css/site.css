@@ -1569,6 +1569,59 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 .room-more-varieties summary { cursor: pointer; font-weight: 800; }
 .card-stretched-link::after { content: ""; inset: 0; position: absolute; z-index: 2; }
 .room-card-actions a, .room-more-varieties summary, .room-more-varieties a { position: relative; z-index: 4; }
+
+.treatment-page-header,
+.treatment-confirm-actions,
+.room-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .65rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.treatment-form {
+    max-width: 48rem;
+}
+
+.treatment-product-review {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: .75rem;
+    margin: 1rem 0;
+}
+
+.treatment-product-review p,
+.treatment-segment-card {
+    overflow-wrap: anywhere;
+}
+
+.treatment-list {
+    margin-bottom: 0;
+}
+
+@media (max-width: 430px) {
+    .treatment-page-header,
+    .treatment-confirm-actions,
+    .room-card-actions {
+        align-items: stretch;
+    }
+
+    .treatment-page-header > *,
+    .treatment-confirm-actions > *,
+    .room-card-actions > * {
+        width: 100%;
+    }
+
+    .treatment-form input,
+    .treatment-form select,
+    .treatment-form textarea,
+    .treatment-form button {
+        min-height: 44px;
+        width: 100%;
+        max-width: 100%;
+    }
+}
 .receipt-card-colored { background: var(--receipt-variety-bg, #e7ecef); overflow: hidden; position: relative; }
 .receipt-card-colored.organic::after { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 8px, rgba(22,101,52,.35) 8px 13px, rgba(255,255,255,.55) 13px 21px); content: ""; inset: 0; opacity: .42; pointer-events: none; position: absolute; }
 .receipt-card-content { background: rgba(255,255,255,.92); border-radius: 5px; display: grid; gap: 12px; padding: 12px; position: relative; z-index: 1; }

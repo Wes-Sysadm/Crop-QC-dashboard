@@ -132,7 +132,97 @@ public sealed class RoomDetailViewModel
     public RoomInventoryLossForm InventoryLossForm { get; set; } = new();
     public bool CanRecordInventoryLoss { get; set; }
     public bool CanReverseInventoryLoss { get; set; }
+    public IReadOnlyList<CurrentTreatmentSegmentViewModel> CurrentTreatmentStatus { get; set; } = [];
+    public IReadOnlyList<RoomTreatmentApplicationHistoryViewModel> TreatmentApplicationHistory { get; set; } = [];
+    public bool CanApplyTreatment { get; set; }
+    public bool CanReverseTreatment { get; set; }
 }
+
+public sealed class RoomTreatmentApplyForm
+{
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public int RoomId { get; set; }
+    public int TreatmentChemicalId { get; set; }
+    public DateTimeOffset AppliedAt { get; set; } = DateTimeOffset.UtcNow;
+    public string? Notes { get; set; }
+    public bool ConfirmedReview { get; set; }
+}
+
+public sealed class ReverseRoomTreatmentApplicationForm
+{
+    public long Id { get; set; }
+    public string Reason { get; set; } = "";
+}
+
+public sealed class RoomTreatmentApplyPageViewModel
+{
+    public RoomTreatmentApplyForm Form { get; set; } = new();
+    public string Warehouse { get; set; } = "";
+    public string Room { get; set; } = "";
+    public int TotalBins { get; set; }
+    public string? Error { get; set; }
+    public bool IsReview { get; set; }
+    public TreatmentChemicalOptionViewModel? SelectedTreatment { get; set; }
+    public decimal EstimatedCost { get; set; }
+    public IReadOnlyList<TreatmentChemicalOptionViewModel> TreatmentOptions { get; set; } = [];
+    public IReadOnlyList<RoomTreatmentFruitSnapshotViewModel> Fruit { get; set; } = [];
+}
+
+public sealed record TreatmentChemicalOptionViewModel(
+    int Id,
+    string ProductName,
+    string? CommonName,
+    string Crop,
+    decimal Volume,
+    string Unit,
+    decimal UnitPrice,
+    string Currency)
+{
+    public string DisplayName => string.IsNullOrWhiteSpace(CommonName) ? ProductName : $"{CommonName} — {ProductName}";
+}
+
+public sealed record RoomTreatmentFruitSnapshotViewModel(
+    string IdentityKey,
+    string GrowerNumber,
+    string GrowerName,
+    string Variety,
+    string ProductionType,
+    bool? IsOrganic,
+    int Bins);
+
+public sealed record CurrentTreatmentSegmentViewModel(
+    long? SegmentId,
+    string IdentityKey,
+    string GrowerNumber,
+    string GrowerName,
+    string Variety,
+    string ProductionType,
+    bool? IsOrganic,
+    int Bins,
+    string TreatmentState,
+    string TreatmentSignature,
+    IReadOnlyList<TreatmentApplicationSummaryViewModel> Treatments);
+
+public sealed record TreatmentApplicationSummaryViewModel(
+    long Id,
+    DateTimeOffset AppliedAt,
+    string ProductName,
+    string? CommonName,
+    bool IsReversed);
+
+public sealed record RoomTreatmentApplicationHistoryViewModel(
+    long Id,
+    DateTimeOffset AppliedAt,
+    string ProductName,
+    string? CommonName,
+    int BinsAffected,
+    string AppliedBy,
+    decimal EstimatedCost,
+    string Currency,
+    string? Notes,
+    bool IsReversed,
+    DateTimeOffset? ReversedAt,
+    string? ReversalReason);
 
 public sealed class RoomGrowerSummaryViewModel
 {
@@ -209,6 +299,7 @@ public sealed class RoomsPageViewModel
     public IReadOnlyList<RoomSummaryItemViewModel> Rooms { get; set; } = [];
     public IReadOnlyList<string> FacilityOptions { get; set; } = ["All", "MCD", "WP", "EBS", "DH"];
     public IReadOnlyList<string> EbsLocationOptions { get; set; } = ["All EBS", "Evans", "Lamb", "BM"];
+    public bool CanApplyTreatment { get; set; }
 }
 
 public sealed class RoomLotSummaryViewModel
@@ -263,7 +354,7 @@ public sealed class RoomLotSummaryViewModel
 }
 
 public sealed record RoomReceiptOptionViewModel(long ReceiptId, string Label, int CurrentBins);
-public sealed record RoomInventoryLotOptionViewModel(string LotKey, string Label, int CurrentBins);
+public sealed record RoomInventoryLotOptionViewModel(string LotKey, string Label, int CurrentBins, string TreatmentSignature = "", string TreatmentLabel = "Untreated");
 public sealed record RoomTransferDestinationViewModel(int RoomId, string Label);
 public static class RoomReceiptEvidenceTypes
 {
@@ -331,6 +422,7 @@ public sealed class RoomDepletionForm
 
 public sealed class RoomInventoryTrueUpForm
 {
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public int RoomId { get; set; }
     public long ReceiptId { get; set; }
     public int NewBinCount { get; set; }
@@ -345,6 +437,7 @@ public sealed class RoomTransferForm
     public int FromRoomId { get; set; }
     public int ToRoomId { get; set; }
     public string SourceLotKey { get; set; } = "";
+    public string TreatmentSignature { get; set; } = "";
     public int BinCount { get; set; }
     public DateTimeOffset TransferAt { get; set; } = DateTimeOffset.UtcNow;
     public string Reason { get; set; } = "";
@@ -364,6 +457,7 @@ public sealed class RoomInventoryLossForm
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public int RoomId { get; set; }
     public long InventoryAdjustmentId { get; set; }
+    public string TreatmentSignature { get; set; } = "";
     public int ExpectedCurrentBins { get; set; }
     public int BinCount { get; set; }
     public DateTimeOffset? OccurredAt { get; set; } = DateTimeOffset.UtcNow;
@@ -387,7 +481,9 @@ public sealed record RoomInventoryLossOptionViewModel(
     string Variety,
     string ProductionType,
     bool? IsOrganic,
-    int CurrentBins);
+    int CurrentBins,
+    string TreatmentSignature = "",
+    string TreatmentLabel = "Untreated");
 
 public sealed record RoomInventoryLossHistoryViewModel(
     long Id,
@@ -607,6 +703,7 @@ public sealed class BinsRunForm
     public int? WarehouseId { get; set; }
     public int? RoomId { get; set; }
     public string InventoryKey { get; set; } = "";
+    public string TreatmentSignature { get; set; } = "";
     public int BinsRun { get; set; }
     public int ExpectedAvailableBins { get; set; }
     public DateTimeOffset RunAt { get; set; } = DateTimeOffset.UtcNow;
@@ -630,6 +727,7 @@ public sealed class ActualRunForm
 public sealed class ActualRunLineForm
 {
     public string InventoryKey { get; set; } = "";
+    public string TreatmentSignature { get; set; } = "";
     public int BinsRun { get; set; }
     public int ExpectedAvailableBins { get; set; }
     public long? RunProjectionSourceId { get; set; }
@@ -678,7 +776,9 @@ public sealed record BinsRunInventoryOptionViewModel(
     string Facility = "",
     string RoomName = "",
     int? GrowerLotId = null,
-    string SourceReference = "");
+    string SourceReference = "",
+    string TreatmentSignature = "",
+    string TreatmentLabel = "Untreated");
 
 public sealed class ActualRunHistoryItemViewModel
 {
@@ -718,6 +818,9 @@ public sealed class ActualRunHistoryLineViewModel
     public bool IsReversed { get; set; }
     public bool IsOverdrawOverride { get; set; }
     public string? OverrideReason { get; set; }
+    public string TreatmentState { get; set; } = TreatmentLineageStates.Untreated;
+    public string TreatmentSignature { get; set; } = "u";
+    public string TreatmentSummary { get; set; } = "Untreated";
 }
 
 public sealed class ActualRunOverrideRequestViewModel
@@ -1065,6 +1168,13 @@ public sealed class MasterDataEditForm
     public string GrowerAliases { get; set; } = "";
     public string GrowerNumbers { get; set; } = "";
     public string BlockAliases { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public string? CommonName { get; set; }
+    public string Crop { get; set; } = "Apples";
+    public decimal? Volume { get; set; }
+    public string Unit { get; set; } = "BIN";
+    public decimal? UnitPrice { get; set; }
+    public string Currency { get; set; } = "USD";
 }
 
 public sealed class ConfigurationPageViewModel

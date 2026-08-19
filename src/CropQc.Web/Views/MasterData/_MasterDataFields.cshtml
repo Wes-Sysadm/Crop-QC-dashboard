@@ -186,6 +186,17 @@ else if (Model.Type == "size-thresholds")
     <div class="field"><label>Minimum Weight Grams</label><input name="MinimumWeightGrams" type="number" step="0.0001" value="@Model.MinimumWeightGrams" required /></div>
     <p class="muted wide">Weights are minimum thresholds. Fruit is assigned the largest size category it qualifies for; below the smallest threshold is Undersized.</p>
 }
+else if (Model.Type == "treatment-chemicals")
+{
+    <div class="field wide"><label>Official Product Name</label><input name="ProductName" value="@Model.ProductName" required maxlength="200" /></div>
+    <div class="field wide"><label>Common Name <span class="muted">(optional)</span></label><input name="CommonName" value="@Model.CommonName" maxlength="200" /></div>
+    <div class="field"><label>Crop</label><select name="Crop" required><option value="Apples" selected="@(Model.Crop == "Apples")">Apples</option><option value="Pears" selected="@(Model.Crop == "Pears")">Pears</option></select></div>
+    <div class="field"><label>Volume</label><input name="Volume" type="number" min="0.01" step="0.01" value="@(Model.Volume?.ToString("0.00"))" required /></div>
+    <div class="field"><label>Unit</label><input name="Unit" value="@Model.Unit" required maxlength="25" /></div>
+    <div class="field"><label>Unit Price</label><input name="UnitPrice" type="number" min="0" step="0.01" value="@(Model.UnitPrice?.ToString("0.00"))" required /></div>
+    <div class="field"><label>Currency</label><input name="Currency" value="@Model.Currency" required maxlength="3" /></div>
+    <p class="muted wide">Editing this master affects future selections only. Recorded applications retain their original product and price snapshots.</p>
+}
 
 <label class="checkbox-field wide"><input type="checkbox" name="IsActive" value="true" checked="@Model.IsActive" /> Active</label><input type="hidden" name="IsActive" value="false" />
 

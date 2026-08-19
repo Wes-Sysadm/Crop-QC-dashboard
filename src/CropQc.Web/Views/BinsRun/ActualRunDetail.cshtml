@@ -44,7 +44,7 @@
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>Room</th><th>Grower</th><th>Lot</th><th>Variety</th><th>Production</th><th>Crop year</th><th>Bins</th><th>Contribution</th></tr>
+                <tr><th>Room</th><th>Grower</th><th>Lot</th><th>Variety</th><th>Production</th><th>Treatment</th><th>Crop year</th><th>Bins</th><th>Contribution</th></tr>
             </thead>
             <tbody>
             @foreach (var source in Model.Contributions)
@@ -55,6 +55,7 @@
                     <td>@source.Lot</td>
                     <td>@source.Variety</td>
                     <td>@source.ProductionType</td>
+                    <td>@source.TreatmentSummary</td>
                     <td>@source.CropYear</td>
                     <td>@source.Bins</td>
                     <td>@source.ContributionPercent.ToString("0.##")%</td>

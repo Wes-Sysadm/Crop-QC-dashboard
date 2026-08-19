@@ -79,6 +79,7 @@ public sealed class AdminManagementService(
             "orchard-blocks" => await OrchardBlocksPage(canEdit, cancellationToken),
             "starch-scale-values" => await StarchPage(canEdit, cancellationToken),
             "size-thresholds" => await SizeThresholdsPage(canEdit, cancellationToken),
+            "treatment-chemicals" => await TreatmentChemicalsPage(canEdit, cancellationToken),
             "grower-lots" => await GrowerLotsPage(canEdit, cancellationToken),
             _ => new("Master data", null, ["Page"], MasterDataLinks().Select(x => (IReadOnlyList<string>)[x.Label]).ToList(), "index", canEdit)
         };
@@ -98,6 +99,7 @@ public sealed class AdminManagementService(
             "grower-lots" => await dbContext.GrowerLots.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Grower, Code = x.LotNumber, PoolStart = x.PoolStart, Description = x.Notes, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "starch-scale-values" => await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Value = x.Value, SortOrder = x.SortOrder, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "size-thresholds" => await WithCommodityOptions(await dbContext.FruitSizeConversionThresholds.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, FruitType = x.FruitType, SizeCategory = x.SizeCategory, MinimumWeightGrams = x.MinimumWeightGrams, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken),
+            "treatment-chemicals" => await dbContext.TreatmentChemicals.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, ProductName = x.ProductName, CommonName = x.CommonName, Crop = x.Crop, Volume = x.Volume, Unit = x.Unit, UnitPrice = x.UnitPrice, Currency = x.Currency, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             _ => null
         };
     }
@@ -117,6 +119,7 @@ public sealed class AdminManagementService(
             "grower-lots" => await SaveGrowerLot(form, changedByEmail, cancellationToken),
             "starch-scale-values" => await SaveStarchValue(form, changedByEmail, cancellationToken),
             "size-thresholds" => await SaveSizeThreshold(form, changedByEmail, cancellationToken),
+            "treatment-chemicals" => await SaveTreatmentChemical(form, changedByEmail, cancellationToken),
             _ => "Unsupported master data type."
         };
     }
@@ -157,6 +160,7 @@ public sealed class AdminManagementService(
             "grower-lots" => await dbContext.GrowerLots.FindAsync([id], cancellationToken),
             "starch-scale-values" => await dbContext.StarchScaleValues.FindAsync([id], cancellationToken),
             "size-thresholds" => await dbContext.FruitSizeConversionThresholds.FindAsync([id], cancellationToken),
+            "treatment-chemicals" => await dbContext.TreatmentChemicals.FindAsync([id], cancellationToken),
             _ => null
         };
 
@@ -558,6 +562,27 @@ public sealed class AdminManagementService(
     {
         var rows = await dbContext.FruitSizeConversionThresholds.AsNoTracking().OrderBy(x => x.FruitType).ThenByDescending(x => x.MinimumWeightGrams).Select(x => new MasterDataEditItem(x.Id, new[] { x.FruitType, x.SizeCategory.ToString(), x.MinimumWeightGrams.ToString("0.0000"), YesNo(x.IsActive) }, x.IsActive, null)).ToListAsync(ct);
         return await PageWithCommodityOptions("Size thresholds", "size-thresholds", ["Commodity", "Size", "Minimum Weight (g)", "Active"], rows, canEdit, ct);
+    }
+
+    private async Task<MasterDataPageViewModel> TreatmentChemicalsPage(bool canEdit, CancellationToken ct)
+    {
+        var rows = await dbContext.TreatmentChemicals.AsNoTracking()
+            .OrderBy(x => x.Crop)
+            .ThenBy(x => x.CommonName ?? x.ProductName)
+            .ThenBy(x => x.ProductName)
+            .Select(x => new MasterDataEditItem(x.Id, new[]
+            {
+                x.CommonName ?? "",
+                x.ProductName,
+                x.Crop,
+                x.Volume.ToString("0.00"),
+                x.Unit,
+                x.UnitPrice.ToString("0.00"),
+                x.Currency,
+                x.IsActive ? "Active" : "Inactive"
+            }, x.IsActive, null))
+            .ToListAsync(ct);
+        return Page("Treatment Chemicals", "treatment-chemicals", ["Common Name", "Product Name", "Crop", "Volume", "Unit", "Unit Price", "Currency", "Status"], rows, canEdit);
     }
 
     private async Task<MasterDataPageViewModel> GrowerLotsPage(bool canEdit, CancellationToken ct)
@@ -1518,6 +1543,44 @@ public sealed class AdminManagementService(
         return null;
     }
 
+    private async Task<string?> SaveTreatmentChemical(MasterDataEditForm form, string by, CancellationToken ct)
+    {
+        if (Blank(form.ProductName) || Blank(form.Crop) || form.Volume is null || Blank(form.Unit)
+            || form.UnitPrice is null || Blank(form.Currency))
+            return "Product name, crop, volume, unit, unit price, and currency are required.";
+        if (form.ProductName.Trim().Length > 200 || form.CommonName?.Trim().Length > 200)
+            return "Product and common names cannot exceed 200 characters.";
+        if (form.Volume <= 0) return "Volume must be greater than zero.";
+        if (form.UnitPrice < 0) return "Unit price cannot be negative.";
+        var crop = form.Crop.Trim() switch { var x when x.Equals("Apple", StringComparison.OrdinalIgnoreCase) || x.Equals("Apples", StringComparison.OrdinalIgnoreCase) => "Apples", var x when x.Equals("Pear", StringComparison.OrdinalIgnoreCase) || x.Equals("Pears", StringComparison.OrdinalIgnoreCase) => "Pears", _ => "" };
+        if (crop.Length == 0) return "Crop must be Apples or Pears.";
+        var currency = form.Currency.Trim().ToUpperInvariant();
+        if (currency.Length != 3) return "Currency must be a three-letter code such as USD.";
+        if (await dbContext.TreatmentChemicals.AnyAsync(x => x.ProductName == form.ProductName.Trim() && x.Id != (form.Id ?? 0), ct))
+            return "Official product name must be unique.";
+        var actor = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Email == by, ct);
+        var entity = form.Id is null
+            ? new TreatmentChemical { ProductName = "", Crop = "", Unit = "", Currency = "", CreatedAt = BusinessTime.UtcNow, UpdatedAt = BusinessTime.UtcNow, CreatedByUserId = actor?.Id }
+            : await dbContext.TreatmentChemicals.FindAsync([form.Id.Value], ct);
+        if (entity is null) return "Treatment chemical was not found.";
+        var before = form.Id is null ? null : JsonSerializer.Serialize(entity);
+        entity.ProductName = form.ProductName.Trim();
+        entity.CommonName = Blank(form.CommonName) ? null : form.CommonName!.Trim();
+        entity.Crop = crop;
+        entity.Volume = form.Volume.Value;
+        entity.Unit = form.Unit.Trim().ToUpperInvariant();
+        entity.UnitPrice = form.UnitPrice.Value;
+        entity.Currency = currency;
+        entity.IsActive = form.IsActive;
+        entity.UpdatedAt = BusinessTime.UtcNow;
+        entity.UpdatedByUserId = actor?.Id;
+        if (form.Id is null) dbContext.TreatmentChemicals.Add(entity);
+        await dbContext.SaveChangesAsync(ct);
+        await AddAuditAsync(form.Id is null ? "create" : "update", "treatment-chemicals", entity.Id.ToString(), by, before, JsonSerializer.Serialize(entity), ct);
+        await dbContext.SaveChangesAsync(ct);
+        return null;
+    }
+
     private async Task EnsureConfigurationDefaultsAsync(CancellationToken ct)
     {
         foreach (var item in ConfigurationDefaults)
@@ -1760,6 +1823,7 @@ public sealed class AdminManagementService(
         ("Orchard Blocks", "/MasterData/orchard-blocks"),
         ("Grower Lots", "/MasterData/grower-lots"),
         ("Starch scale values", "/MasterData/starch-scale-values"),
-        ("Size thresholds", "/MasterData/size-thresholds")
+        ("Size thresholds", "/MasterData/size-thresholds"),
+        ("Treatment Chemicals", "/MasterData/treatment-chemicals")
     ];
 }

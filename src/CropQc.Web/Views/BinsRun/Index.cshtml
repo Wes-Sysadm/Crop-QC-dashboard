@@ -9,7 +9,7 @@
     var plannerVisibility = Model.Planner.SelectedDeletionStatus;
     var plannerSort = Model.Planner.SelectedSort;
     var plannerTodayUrl = $"/BinsRun?Section=Planner&PlannedDate={Model.Planner.PacificToday:yyyy-MM-dd}&RoomId={Model.Filter.RoomId}&Facility={plannerFacility}&ProjectionVisibility={plannerVisibility}&ProjectionSort={plannerSort}";
-    var editLines = Model.ActualRunForm.Lines.ToDictionary(x => x.InventoryKey, StringComparer.OrdinalIgnoreCase);
+    var editLines = Model.ActualRunForm.Lines.ToDictionary(x => $"{x.InventoryKey}|{x.TreatmentSignature}", StringComparer.OrdinalIgnoreCase);
 }
 
 <h1>Bins Run &amp; Transfers</h1>
@@ -1295,19 +1295,20 @@ else
                     <div class="table-wrap wide">
                         <table class="actual-run-ledger-table">
                             <thead>
-                                <tr><th>Use</th><th>Facility</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Production</th><th>Crop year</th><th>Current</th><th>Source / trace</th><th>Bins pulled</th><th>Projected remaining</th><th>Shortage / override</th></tr>
+                                <tr><th>Use</th><th>Facility</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Production</th><th>Treatment</th><th>Crop year</th><th>Current</th><th>Source / trace</th><th>Bins pulled</th><th>Projected remaining</th><th>Shortage / override</th></tr>
                             </thead>
                             <tbody>
                             @for (var i = 0; i < Model.AvailableInventory.Count; i++)
                             {
                                 var option = Model.AvailableInventory[i];
-                                var isSelected = editLines.TryGetValue(option.InventoryKey, out var editLine);
+                                var isSelected = editLines.TryGetValue($"{option.InventoryKey}|{option.TreatmentSignature}", out var editLine);
                                 var effectiveAvailable = option.CurrentBins + (isSelected ? editLine!.BinsRun : 0);
                                 <tr data-actual-run-row data-current-bins="@effectiveAvailable">
                                     <td>
                                         <input type="checkbox" data-actual-line-toggle aria-label="Include @option.Room @option.Lot" checked="@isSelected" />
                                         <input type="hidden" name="Lines.Index" value="@i" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].InventoryKey" value="@option.InventoryKey" data-actual-line-field disabled="@(!isSelected)" />
+                                        <input type="hidden" name="Lines[@i].TreatmentSignature" value="@option.TreatmentSignature" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].ExpectedAvailableBins" value="@effectiveAvailable" data-actual-line-field disabled="@(!isSelected)" />
                                     </td>
                                     <td>@option.Facility</td>
@@ -1315,6 +1316,7 @@ else
                                     <td><strong>@option.Lot</strong><br /><span class="muted">@option.Grower</span></td>
                                     <td>@option.Variety</td>
                                     <td>@(string.IsNullOrWhiteSpace(option.ProductionType) ? "Unknown" : option.ProductionType)</td>
+                                    <td>@option.TreatmentLabel</td>
                                     <td>@(option.CropYear?.ToString() ?? "Unknown")</td>
                                     <td>@effectiveAvailable</td>
                                     <td>
@@ -1394,12 +1396,13 @@ else
                 <form class="form-grid" method="post" action="/BinsRun/Transfer">
                     <input type="hidden" name="OperationKey" value="@Model.TransferForm.OperationKey" />
                     <input type="hidden" name="FromRoomId" value="@Model.Filter.RoomId" />
+                    <input type="hidden" name="TreatmentSignature" id="transfer-treatment-signature" value="" />
                     <label class="field wide">Source lot
                         <select name="SourceLotKey" required>
                             <option value="">Select current lot</option>
                             @foreach (var option in Model.TransferLotOptions)
                             {
-                                <option value="@option.LotKey" selected="@(option.LotKey == Model.Filter.SourceKey)">@option.Label</option>
+                                <option value="@option.LotKey" data-treatment-signature="@option.TreatmentSignature" selected="@(option.LotKey == Model.Filter.SourceKey)">@option.Label</option>
                             }
                         </select>
                     </label>
@@ -1419,6 +1422,16 @@ else
                     <label class="checkbox-field wide"><input type="checkbox" name="ConfirmOverTransfer" value="true" /> Allow explicit over-transfer correction override</label>
                     <button type="submit">Record Transfer</button>
                 </form>
+                <script>
+                (() => {
+                    const select = document.querySelector('select[name="SourceLotKey"]');
+                    const signature = document.getElementById('transfer-treatment-signature');
+                    const sync = () => { if (signature) signature.value = select?.selectedOptions[0]?.dataset.treatmentSignature ?? ''; };
+                    select?.addEventListener('change', sync);
+                    select?.closest('form')?.addEventListener('submit', sync);
+                    sync();
+                })();
+                </script>
             }
         </section>
     }
@@ -1438,6 +1451,7 @@ else
             else
             {
                 <form class="form-grid" method="post" action="/BinsRun/TrueUp">
+                    <input type="hidden" name="OperationKey" value="@Model.TrueUpForm.OperationKey" />
                     <input type="hidden" name="RoomId" value="@Model.Filter.RoomId" />
                     <label class="field wide">Current receipt-backed lot
                         <select name="ReceiptId" required>
@@ -1476,13 +1490,13 @@ else
                         <p><a href="/BinsRun/ActualRuns/@run.Id">Open Actual Run, Run Expectation, and Packout Result</a></p>
                         <div class="table-wrap">
                             <table>
-                                <thead><tr><th>Event</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Old</th><th>Bins</th><th>New</th><th>Override</th></tr></thead>
+                                <thead><tr><th>Event</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Treatment</th><th>Old</th><th>Bins</th><th>New</th><th>Override</th></tr></thead>
                                 <tbody>
                                 @foreach (var line in run.Lines)
                                 {
                                     <tr>
                                         <td>@line.TransactionType @(line.IsReversed && line.TransactionType == CropQc.Data.Entities.ActualRunTransactionTypes.Depletion ? "(reversed)" : "")</td>
-                                        <td>@line.Room</td><td>@line.Lot<br /><span class="muted">@line.Grower</span></td><td>@line.Variety</td>
+                                        <td>@line.Room</td><td>@line.Lot<br /><span class="muted">@line.Grower</span></td><td>@line.Variety</td><td>@line.TreatmentSummary</td>
                                         <td>@line.PreviousAvailableBins</td><td>@line.BinsRun</td><td>@line.NewAvailableBins</td>
                                         <td>@(line.IsOverdrawOverride ? $"Approved: {line.OverrideReason}" : "No")</td>
                                     </tr>
