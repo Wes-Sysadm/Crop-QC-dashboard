@@ -183,6 +183,42 @@ public sealed class RoomTreatmentTrackingTests
     }
 
     [Fact]
+    public async Task Cross_facility_transfer_preserves_exact_treated_segment_and_keeps_untreated_bins_distinct()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        Assert.Null((await fixture.Service.ApplyAsync(fixture.ApplyForm("cross-facility-treatment", 1), default)).Error);
+        fixture.Ledger.ReplaceCurrent(fixture.AppleSnapshot(120));
+        var source = fixture.AppleSnapshot(120);
+        var treated = (await fixture.Service.GetSelectionsAsync(source, default))
+            .Single(x => x.TreatmentState == TreatmentLineageStates.Confirmed);
+
+        var moved = await fixture.Service.MoveAsync(
+            source,
+            treated.TreatmentSignature,
+            25,
+            Fixture.Warehouse2Id,
+            Fixture.Room3Id,
+            "cross-facility-lineage",
+            TreatmentLineageMovementTypes.Transfer,
+            80,
+            null,
+            null,
+            Now,
+            Fixture.UserId,
+            default);
+
+        Assert.True(moved.Success, moved.Error);
+        var sourceSegments = await fixture.Service.GetSelectionsAsync(source with { CurrentBins = 95 }, default);
+        Assert.Contains(sourceSegments, x => x.TreatmentState == TreatmentLineageStates.Confirmed && x.CurrentBins == 75);
+        Assert.Contains(sourceSegments, x => x.TreatmentState == TreatmentLineageStates.Untreated && x.CurrentBins == 20);
+        var destination = source with { WarehouseId = Fixture.Warehouse2Id, Facility = "MCD", RoomId = Fixture.Room3Id, Room = "MCD-03", CurrentBins = 25 };
+        var destinationSegment = Assert.Single(await fixture.Service.GetSelectionsAsync(destination, default));
+        Assert.Equal(TreatmentLineageStates.Confirmed, destinationSegment.TreatmentState);
+        Assert.Equal(treated.TreatmentSignature, destinationSegment.TreatmentSignature);
+        Assert.Equal(25, destinationSegment.CurrentBins);
+    }
+
+    [Fact]
     public async Task Movement_reversal_is_auditable_idempotent_and_does_not_overdraw_destination()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -346,6 +382,8 @@ public sealed class RoomTreatmentTrackingTests
         public const int Room2Id = 9904;
         public const int AppleProfileId = 9905;
         public const int PearProfileId = 9906;
+        public const int Warehouse2Id = 9907;
+        public const int Room3Id = 9908;
         private Fixture(CropQcDbContext db, FakeLedger ledger, MutableAccess access, RoomTreatmentService service)
         {
             Db = db;
@@ -367,15 +405,18 @@ public sealed class RoomTreatmentTrackingTests
             var warehouse = new Warehouse { Id = WarehouseId, Code = "EBS-T", Name = "Treatment Test" };
             var room = new Room { Id = RoomId, WarehouseId = WarehouseId, Warehouse = warehouse, Code = "EVANS-T1", Name = "Evans Treatment 1" };
             var room2 = new Room { Id = Room2Id, WarehouseId = WarehouseId, Warehouse = warehouse, Code = "EVANS-T2", Name = "Evans Treatment 2" };
+            var warehouse2 = new Warehouse { Id = Warehouse2Id, Code = "McDougall", Name = "McDougall" };
+            var room3 = new Room { Id = Room3Id, WarehouseId = Warehouse2Id, Warehouse = warehouse2, Code = "MCD-03", Name = "MCD 03" };
             var apple = new FruitProfile { Id = AppleProfileId, Name = "Treatment Gala", VarietyCode = "TRT-GALA", FruitType = "Apple", ProductionType = "Conventional" };
             var pear = new FruitProfile { Id = PearProfileId, Name = "Treatment Bartlett", VarietyCode = "TRT-BART", FruitType = "Pear", ProductionType = "Conventional" };
             var user = new User { Id = UserId, Email = ApplicationAreas.OwnerEmail, DisplayName = "Wes", Domain = "fruitandland.com", CreatedAt = Now };
-            db.AddRange(warehouse, room, room2, apple, pear, user);
+            db.AddRange(warehouse, warehouse2, room, room2, room3, apple, pear, user);
             db.RoomTransfers.AddRange(
                 Transfer(75, 10),
                 Transfer(76, 30),
                 Transfer(77, 30),
-                Transfer(78, 30));
+                Transfer(78, 30),
+                Transfer(80, 25, Warehouse2Id, Room3Id));
             db.RoomInventoryLosses.Add(new RoomInventoryLoss
             {
                 Id = 79,
@@ -410,14 +451,14 @@ public sealed class RoomTreatmentTrackingTests
                 new PacificBusinessTimeService(new FixedClock(Now)), NullLogger<RoomTreatmentService>.Instance);
             return new Fixture(db, ledger, access, service);
 
-            RoomTransfer Transfer(long id, int bins) => new()
+            RoomTransfer Transfer(long id, int bins, int destinationWarehouseId = WarehouseId, int destinationRoomId = Room2Id) => new()
             {
                 Id = id,
                 OperationKey = $"treatment-parent-transfer-{id}",
                 SourceWarehouseId = WarehouseId,
                 SourceRoomId = RoomId,
-                DestinationWarehouseId = WarehouseId,
-                DestinationRoomId = Room2Id,
+                DestinationWarehouseId = destinationWarehouseId,
+                DestinationRoomId = destinationRoomId,
                 CropYear = 2026,
                 FruitProfileId = AppleProfileId,
                 GrowerName = "ROLOFF FARM-NAGLE CONV",

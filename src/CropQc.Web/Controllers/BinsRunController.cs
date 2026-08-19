@@ -75,7 +75,16 @@ public sealed class BinsRunController(
             model.TrueUpForm = room.TrueUpForm;
             model.TransferLotOptions = room.TransferLotOptions;
             model.TrueUpReceiptOptions = room.DepletionReceiptOptions;
+            model.TransferDestinationFacilities = room.TransferDestinationFacilities;
             model.TransferDestinationOptions = room.TransferDestinationOptions;
+            if (filter.TransferDestinationWarehouseId is int destinationWarehouseId)
+            {
+                model.TransferForm.DestinationWarehouseId = destinationWarehouseId;
+            }
+            if (filter.TransferDestinationRoomId is int destinationRoomId)
+            {
+                model.TransferForm.DestinationRoomId = destinationRoomId;
+            }
             model.InventoryActivity = room.InventoryAdjustments.Take(100).ToList();
         }
 
@@ -709,7 +718,15 @@ public sealed class BinsRunController(
     {
         var error = await dashboardDataService.CreateRoomTransferAsync(form, cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Room transfer recorded.";
-        return RedirectToAction(nameof(Index), new { RoomId = form.FromRoomId, Section = "Transfer", SourceKey = form.SourceLotKey });
+        return RedirectToAction(nameof(Index), new
+        {
+            RoomId = form.FromRoomId,
+            Section = "Transfer",
+            SourceKey = form.SourceLotKey,
+            TransferDestinationWarehouseId = error is null ? (int?)null : form.DestinationWarehouseId,
+            TransferDestinationRoomId = error is null ? (int?)null : form.DestinationRoomId,
+            TransferTreatmentSignature = error is null ? null : form.TreatmentSignature
+        });
     }
 
     [HttpPost("Transfer/{id:long}/Reverse")]

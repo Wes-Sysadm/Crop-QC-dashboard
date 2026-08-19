@@ -972,7 +972,8 @@ public sealed class BinsRunWorkflowTests
         {
             OperationKey = Guid.NewGuid().ToString("N"),
             FromRoomId = 1001,
-            ToRoomId = 1002,
+            DestinationWarehouseId = 1000,
+            DestinationRoomId = 1002,
             SourceLotKey = sourceLot.LotKey,
             BinCount = 10,
             TransferAt = DateTimeOffset.UtcNow,
@@ -1006,6 +1007,139 @@ public sealed class BinsRunWorkflowTests
             db,
             NullLogger<InventoryDeductionInvariantService>.Instance).VerifyReadinessAsync(CancellationToken.None);
         Assert.True(readiness.IsReady, string.Join("; ", readiness.Issues.Select(x => x.Code)));
+    }
+
+    [Fact]
+    public async Task RoomTransfer_DestinationFacilitiesUseDurableWarehousesAndBoundedActiveRooms()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        foreach (var existing in await db.Rooms.Where(x => x.Id != 1001 && x.Id != 1002).ToListAsync()) existing.IsActive = false;
+        var wp = await db.Warehouses.SingleAsync(x => x.Code == "WP");
+        var mcd = await db.Warehouses.SingleAsync(x => x.Code == "McDougall");
+        var dh = await db.Warehouses.SingleAsync(x => x.Code == "DH");
+        db.Rooms.AddRange(
+            new Room { Id = 1010, Warehouse = wp, WarehouseId = wp.Id, Code = "WP-02", Name = "WP 02", SortOrder = 2, IsActive = true },
+            new Room { Id = 1011, Warehouse = wp, WarehouseId = wp.Id, Code = "WP-01", Name = "WP 01", SortOrder = 1, IsActive = true },
+            new Room { Id = 1012, Warehouse = wp, WarehouseId = wp.Id, Code = "WP-OFF", Name = "WP inactive", SortOrder = 0, IsActive = false },
+            new Room { Id = 1020, Warehouse = mcd, WarehouseId = mcd.Id, Code = "MCD-03", Name = "MCD 03", SortOrder = 1, IsActive = true },
+            new Room { Id = 1030, Warehouse = dh, WarehouseId = dh.Id, Code = "DH-01", Name = "DH 01", SortOrder = 1, IsActive = true });
+        await db.SaveChangesAsync();
+
+        var page = await CreateDashboardService(db, Principal("manager@fruitandland.com"))
+            .GetRoomDetailAsync(1001, CancellationToken.None);
+
+        Assert.Equal(new[] { "WP", "MCD", "DH", "EBS" }, page.TransferDestinationFacilities.Select(x => x.Label));
+        Assert.Equal(wp.Id, page.TransferDestinationFacilities.Single(x => x.Label == "WP").WarehouseId);
+        Assert.Equal(mcd.Id, page.TransferDestinationFacilities.Single(x => x.Label == "MCD").WarehouseId);
+        Assert.Equal(dh.Id, page.TransferDestinationFacilities.Single(x => x.Label == "DH").WarehouseId);
+        Assert.Equal(1000, page.TransferDestinationFacilities.Single(x => x.Label == "EBS").WarehouseId);
+        Assert.Equal("McDougall", (await db.Warehouses.AsNoTracking().SingleAsync(x => x.Id == mcd.Id)).Code);
+        Assert.Equal(1000, page.TransferForm.DestinationWarehouseId);
+        Assert.DoesNotContain(page.TransferDestinationOptions, x => x.RoomId is 1001 or 1012);
+        Assert.Equal(new[] { 1011, 1010 }, page.TransferDestinationOptions.Where(x => x.WarehouseId == wp.Id).Select(x => x.RoomId));
+        Assert.Equal([1020], page.TransferDestinationOptions.Where(x => x.WarehouseId == mcd.Id).Select(x => x.RoomId));
+        Assert.Equal([1030], page.TransferDestinationOptions.Where(x => x.WarehouseId == dh.Id).Select(x => x.RoomId));
+        var activeRoomIds = await db.Rooms.AsNoTracking().Where(x => x.IsActive).Select(x => x.Id).ToHashSetAsync();
+        Assert.All(page.TransferDestinationOptions, x => Assert.Contains(x.RoomId, activeRoomIds));
+    }
+
+    [Fact]
+    public async Task RoomTransfer_ServerRejectsTamperedFacilityRoomInactiveAndSourceDestinationCombinations()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var mcd = await db.Warehouses.SingleAsync(x => x.Code == "McDougall");
+        var dh = await db.Warehouses.SingleAsync(x => x.Code == "DH");
+        var mcdRoom = new Room { Id = 1020, Warehouse = mcd, WarehouseId = mcd.Id, Code = "MCD-03", Name = "MCD 03", IsActive = true };
+        var inactive = new Room { Id = 1021, Warehouse = mcd, WarehouseId = mcd.Id, Code = "MCD-OFF", Name = "MCD inactive", IsActive = false };
+        db.Rooms.AddRange(mcdRoom, inactive);
+        await db.SaveChangesAsync();
+        var service = CreateDashboardService(db, Principal("manager@fruitandland.com"));
+        var source = (await service.GetRoomDetailAsync(1001, CancellationToken.None)).TransferLotOptions.First(x => x.Label.Contains("LOT-120"));
+        var beforeAdjustments = await db.RoomInventoryAdjustments.CountAsync();
+        RoomTransferForm Form(int warehouseId, int roomId, string key) => new()
+        {
+            OperationKey = key,
+            FromRoomId = 1001,
+            DestinationWarehouseId = warehouseId,
+            DestinationRoomId = roomId,
+            SourceLotKey = source.LotKey,
+            TreatmentSignature = source.TreatmentSignature,
+            BinCount = 5,
+            TransferAt = DateTimeOffset.UtcNow,
+            Reason = "Destination validation"
+        };
+
+        Assert.Contains("does not belong", await service.CreateRoomTransferAsync(Form(dh.Id, mcdRoom.Id, "mismatch"), default));
+        Assert.Contains("inactive", await service.CreateRoomTransferAsync(Form(mcd.Id, inactive.Id, "inactive"), default));
+        Assert.Contains("different", await service.CreateRoomTransferAsync(Form(1000, 1001, "same-room"), default));
+        Assert.Empty(await db.RoomTransfers.ToListAsync());
+        Assert.Equal(beforeAdjustments, await db.RoomInventoryAdjustments.CountAsync());
+    }
+
+    [Fact]
+    public async Task RoomTransfer_CrossFacilityPartialMoveAndHistoryShowBothDurableLocations()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var mcd = await db.Warehouses.SingleAsync(x => x.Code == "McDougall");
+        var destination = new Room { Id = 1020, Warehouse = mcd, WarehouseId = mcd.Id, Code = "MCD-03", Name = "MCD 03", CropQcRoomName = "MCD-03", IsActive = true };
+        db.Rooms.Add(destination);
+        await db.SaveChangesAsync();
+        var service = CreateDashboardService(db, Principal("manager@fruitandland.com"));
+        var source = (await service.GetRoomDetailAsync(1001, default)).TransferLotOptions.First(x => x.Label.Contains("LOT-120"));
+
+        var error = await service.CreateRoomTransferAsync(new RoomTransferForm
+        {
+            OperationKey = "cross-facility-partial",
+            FromRoomId = 1001,
+            DestinationWarehouseId = mcd.Id,
+            DestinationRoomId = destination.Id,
+            SourceLotKey = source.LotKey,
+            TreatmentSignature = source.TreatmentSignature,
+            BinCount = 10,
+            TransferAt = DateTimeOffset.UtcNow,
+            Reason = "Cross-facility regression"
+        }, default);
+
+        Assert.Null(error);
+        var transfer = await db.RoomTransfers.SingleAsync(x => x.OperationKey == "cross-facility-partial");
+        Assert.Equal(1000, transfer.SourceWarehouseId);
+        Assert.Equal(mcd.Id, transfer.DestinationWarehouseId);
+        Assert.Equal(110, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Equal(10, await LedgerBalanceAsync(db, destination.Id, "LOT-120"));
+        var history = (await service.GetRoomDetailAsync(1001, default)).InventoryAdjustments.Single(x => x.TransferFrom is not null);
+        Assert.Equal("EBS / Evans-12", history.TransferFrom);
+        Assert.Equal("MCD / MCD-03", history.TransferTo);
+        Assert.Equal("McDougall", (await db.Warehouses.AsNoTracking().SingleAsync(x => x.Id == mcd.Id)).Code);
+    }
+
+    [Fact]
+    public void RoomTransfer_ViewProvidesFacilityFilteringReviewAndIPhoneLayout()
+    {
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
+        var css = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css"));
+
+        Assert.Contains("Destination Facility", view);
+        Assert.Contains("name=\"DestinationWarehouseId\"", view);
+        Assert.Contains("name=\"DestinationRoomId\"", view);
+        Assert.Contains("data-warehouse-id", view);
+        Assert.Contains("option.disabled = !visible", view);
+        Assert.Contains("room.value = ''", view);
+        Assert.Contains("Fruit to transfer", view);
+        Assert.Contains("data-treatment-signature", view);
+        Assert.Contains("Review Transfer", view);
+        Assert.Contains("FirstOrDefault(x => x.WarehouseId == Model.RoomSummary?.WarehouseId)?.Label", view);
+        Assert.Contains("if (!reviewReady)", view);
+        Assert.Contains("data-review-source-facility", view);
+        Assert.Contains("data-review-destination-facility", view);
+        Assert.Contains("FROM", view);
+        Assert.Contains("TO", view);
+        Assert.Contains("@media (max-width: 430px)", css);
+        Assert.Contains(".transfer-workflow", css);
+        Assert.Contains("overflow: hidden", css);
+        Assert.Contains("grid-template-columns: minmax(0, 1fr)", css);
     }
 
     [Fact]
@@ -1106,7 +1240,8 @@ public sealed class BinsRunWorkflowTests
         {
             OperationKey = Guid.NewGuid().ToString("N"),
             FromRoomId = 1001,
-            ToRoomId = 1002,
+            DestinationWarehouseId = 1000,
+            DestinationRoomId = 1002,
             SourceLotKey = sourceLot.LotKey,
             BinCount = 10,
             TransferAt = DateTimeOffset.UtcNow,

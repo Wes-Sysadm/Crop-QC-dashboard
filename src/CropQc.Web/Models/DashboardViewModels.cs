@@ -122,6 +122,7 @@ public sealed class RoomDetailViewModel
     public IReadOnlyList<RoomSampleTimelineItemViewModel> SampleTimeline { get; set; } = [];
     public IReadOnlyList<RoomReceiptOptionViewModel> DepletionReceiptOptions { get; set; } = [];
     public IReadOnlyList<RoomInventoryLotOptionViewModel> TransferLotOptions { get; set; } = [];
+    public IReadOnlyList<RoomTransferFacilityViewModel> TransferDestinationFacilities { get; set; } = [];
     public IReadOnlyList<RoomTransferDestinationViewModel> TransferDestinationOptions { get; set; } = [];
     public RoomDepletionForm DepletionForm { get; set; } = new();
     public RoomInventoryTrueUpForm TrueUpForm { get; set; } = new();
@@ -354,8 +355,24 @@ public sealed class RoomLotSummaryViewModel
 }
 
 public sealed record RoomReceiptOptionViewModel(long ReceiptId, string Label, int CurrentBins);
-public sealed record RoomInventoryLotOptionViewModel(string LotKey, string Label, int CurrentBins, string TreatmentSignature = "", string TreatmentLabel = "Untreated");
-public sealed record RoomTransferDestinationViewModel(int RoomId, string Label);
+public sealed record RoomInventoryLotOptionViewModel(
+    string LotKey,
+    string Label,
+    int CurrentBins,
+    string TreatmentSignature = "",
+    string TreatmentLabel = "Untreated",
+    string Grower = "",
+    string Variety = "");
+public sealed record RoomTransferFacilityViewModel(
+    int WarehouseId,
+    string Label,
+    string WarehouseCode,
+    string WarehouseName);
+public sealed record RoomTransferDestinationViewModel(
+    int RoomId,
+    int WarehouseId,
+    string Label,
+    int SortOrder);
 public static class RoomReceiptEvidenceTypes
 {
     public const string Direct = "Direct";
@@ -389,6 +406,8 @@ public sealed class RoomInventoryAdjustmentListItemViewModel
     public string? Source { get; set; }
     public string? Reason { get; set; }
     public string? Notes { get; set; }
+    public string? TransferFrom { get; set; }
+    public string? TransferTo { get; set; }
     public DateTimeOffset AdjustmentAt { get; set; }
     public string CreatedBy { get; set; } = "";
 }
@@ -435,7 +454,8 @@ public sealed class RoomTransferForm
 {
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public int FromRoomId { get; set; }
-    public int ToRoomId { get; set; }
+    public int DestinationWarehouseId { get; set; }
+    public int DestinationRoomId { get; set; }
     public string SourceLotKey { get; set; } = "";
     public string TreatmentSignature { get; set; } = "";
     public int BinCount { get; set; }
@@ -647,6 +667,7 @@ public sealed class BinsRunPageViewModel
     public RoomInventoryTrueUpForm TrueUpForm { get; set; } = new();
     public IReadOnlyList<RoomInventoryLotOptionViewModel> TransferLotOptions { get; set; } = [];
     public IReadOnlyList<RoomReceiptOptionViewModel> TrueUpReceiptOptions { get; set; } = [];
+    public IReadOnlyList<RoomTransferFacilityViewModel> TransferDestinationFacilities { get; set; } = [];
     public IReadOnlyList<RoomTransferDestinationViewModel> TransferDestinationOptions { get; set; } = [];
     public IReadOnlyList<RoomInventoryAdjustmentListItemViewModel> InventoryActivity { get; set; } = [];
     public RunReportingPageViewModel RunReporting { get; set; } = new();
@@ -657,6 +678,9 @@ public sealed class BinsRunFilterForm
     public string Section { get; set; } = "Planner";
     public int? WarehouseId { get; set; }
     public int? RoomId { get; set; }
+    public int? TransferDestinationWarehouseId { get; set; }
+    public int? TransferDestinationRoomId { get; set; }
+    public string? TransferTreatmentSignature { get; set; }
     public List<int> RoomIds { get; set; } = [];
     public string SelectionMode { get; set; } = ActualRunSelectionModes.ByRoom;
     public int? FruitProfileId { get; set; }
