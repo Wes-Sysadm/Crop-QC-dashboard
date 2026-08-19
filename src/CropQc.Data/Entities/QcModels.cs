@@ -297,6 +297,9 @@ public sealed class BinsRunEntry
     public int? ReportingCropYearSnapshot { get; set; }
     public int? ReportingFruitProfileIdSnapshot { get; set; }
     public string? ReportingVarietyCodeSnapshot { get; set; }
+    public string? TreatmentStateSnapshot { get; set; }
+    public string? TreatmentSignatureSnapshot { get; set; }
+    public string? TreatmentSummarySnapshot { get; set; }
 }
 
 public static class RunFacilityAssignmentSources
@@ -432,6 +435,7 @@ public sealed class ActualRunOverrideRequestLine
     public int RequestedBins { get; set; }
     public int ShortageBins { get; set; }
     public long? RunProjectionSourceId { get; set; }
+    public string? TreatmentSignature { get; set; }
 }
 
 public sealed class QcSample

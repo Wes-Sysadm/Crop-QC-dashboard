@@ -35,7 +35,8 @@ public sealed class BinsRunService(
     IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null,
     IRunExpectationService? runExpectationService = null,
     IConfiguration? configuration = null,
-    ICanonicalGrowerService? canonicalGrowerService = null) : IBinsRunService
+    ICanonicalGrowerService? canonicalGrowerService = null,
+    IRoomTreatmentService? roomTreatmentService = null) : IBinsRunService
 {
     public const string AdjustmentType = "BinsRun";
     public const string ReversalAdjustmentType = "BinsRunReversal";
@@ -164,7 +165,7 @@ public sealed class BinsRunService(
         IReadOnlyDictionary<string, LotSampleDistribution> sampleData = isActualSection
             ? new Dictionary<string, LotSampleDistribution>(StringComparer.OrdinalIgnoreCase)
             : await GetLatestSampleDataByLotAsync(currentSnapshots, cancellationToken);
-        var options = BuildAvailableInventoryOptions(currentSnapshots, sampleData);
+        var options = await BuildAvailableInventoryOptionsAsync(currentSnapshots, sampleData, cancellationToken);
         var selectedOption = options.FirstOrDefault(x => string.Equals(x.InventoryKey, filter.SourceKey, StringComparison.OrdinalIgnoreCase))
             ?? options.FirstOrDefault();
         var roomSummary = isActualSection || filter.RoomId is null
@@ -217,10 +218,12 @@ public sealed class BinsRunService(
                         && string.Equals(y.Lot, x.Lot, StringComparison.OrdinalIgnoreCase)
                         && string.Equals(y.Variety, x.Variety, StringComparison.OrdinalIgnoreCase)
                         && (x.FruitProfileId is null || y.FruitProfileId == x.FruitProfileId)
-                        && (x.GrowerLotId is null || y.GrowerLotId == x.GrowerLotId));
+                        && (x.GrowerLotId is null || y.GrowerLotId == x.GrowerLotId)
+                        && string.Equals(y.TreatmentSignature, x.TreatmentSignature, StringComparison.Ordinal));
                     return new ActualRunLineForm
                     {
                         InventoryKey = currentOption?.InventoryKey ?? x.InventoryKey,
+                        TreatmentSignature = currentOption?.TreatmentSignature ?? x.TreatmentSignature,
                         BinsRun = x.BinsRun,
                         ExpectedAvailableBins = (currentOption?.CurrentBins ?? 0) + x.BinsRun
                     };
@@ -281,6 +284,7 @@ public sealed class BinsRunService(
                 WarehouseId = filter.WarehouseId,
                 RoomId = filter.RoomId,
                 InventoryKey = selectedOption?.InventoryKey ?? "",
+                TreatmentSignature = selectedOption?.TreatmentSignature ?? "",
                 ExpectedAvailableBins = selectedOption?.CurrentBins ?? 0,
                 RunAt = DateTimeOffset.Now,
                 RunProjectionId = filter.ProjectionId,
@@ -360,6 +364,7 @@ public sealed class BinsRunService(
                 Lot = x.LotNumber,
                 Variety = x.VarietyCode ?? "",
                 ProductionType = x.FruitProfile == null ? (x.InventoryStatus ?? "") : x.FruitProfile.ProductionType,
+                TreatmentSummary = x.TreatmentSummarySnapshot ?? "No recorded treatment history",
                 x.CropYear,
                 Bins = x.BinsRun
             })
@@ -374,6 +379,7 @@ public sealed class BinsRunService(
             x.Lot,
             x.Variety,
             x.ProductionType,
+            x.TreatmentSummary,
             x.CropYear,
             x.Bins,
             run.TotalBins <= 0 ? 0m : decimal.Round(x.Bins / (decimal)run.TotalBins * 100m, 4)))
@@ -692,6 +698,19 @@ public sealed class BinsRunService(
         entry.UpdatedAt = DateTimeOffset.UtcNow;
         await AddAuditAsync("Reverse", entry, userId, new { previousAvailableBins = previous }, new { restoredAvailableBins = restored, form.Reason }, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (roomTreatmentService is not null)
+        {
+            var lineage = await roomTreatmentService.ReverseMovementsAsync(
+                $"binsrun:{entry.Id}:treatment-reversal",
+                TreatmentLineageMovementTypes.BinsRunReversal,
+                null,
+                null,
+                entry.Id,
+                DateTimeOffset.UtcNow,
+                userId,
+                cancellationToken);
+            if (!lineage.Success) return lineage.Error;
+        }
         await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
         if (transaction is not null)
         {
@@ -772,6 +791,7 @@ public sealed class BinsRunService(
             Lines = request.Lines.Select(x => new ActualRunLineForm
             {
                 InventoryKey = LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.VarietyCode, x.FruitProfileId, x.GrowerLotId),
+                TreatmentSignature = x.TreatmentSignature ?? "",
                 BinsRun = x.RequestedBins,
                 ExpectedAvailableBins = x.AvailableBins,
                 RunProjectionSourceId = x.RunProjectionSourceId
@@ -926,7 +946,7 @@ public sealed class BinsRunService(
             return "Bins being pulled must be greater than zero for every selected room-lot row.";
         }
 
-        if (normalizedLines.Select(x => x.InventoryKey.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalizedLines.Count)
+        if (normalizedLines.Select(x => $"{x.InventoryKey.Trim()}|{x.TreatmentSignature.Trim()}").Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalizedLines.Count)
         {
             return "Each room-lot combination may appear only once in an Actual Run.";
         }
@@ -1149,7 +1169,8 @@ public sealed class BinsRunService(
                     AvailableBins = item.EffectiveAvailable,
                     RequestedBins = item.Form.BinsRun,
                     ShortageBins = Math.Max(0, item.Form.BinsRun - item.EffectiveAvailable),
-                    RunProjectionSourceId = item.Form.RunProjectionSourceId
+                    RunProjectionSourceId = item.Form.RunProjectionSourceId,
+                    TreatmentSignature = item.Form.TreatmentSignature
                 });
             }
             dbContext.ActualRunOverrideRequests.Add(request);
@@ -1247,6 +1268,10 @@ public sealed class BinsRunService(
             await ReverseEntriesAsync(run, revision, activeEntries, userId.Value, "Actual Run revision", cancellationToken);
         }
 
+        var resolvedTreatmentSelections = roomTreatmentService is null
+            ? null
+            : await roomTreatmentService.GetSelectionsAsync(resolved.Select(x => ToLedgerSnapshot(x.Snapshot)).ToList(), cancellationToken);
+
         var createdEntries = new List<BinsRunEntry>(resolved.Count);
         foreach (var item in resolved)
         {
@@ -1318,6 +1343,37 @@ public sealed class BinsRunService(
             entry.InventoryAdjustment = adjustment;
             dbContext.BinsRunEntries.Add(entry);
             await dbContext.SaveChangesAsync(cancellationToken);
+            if (roomTreatmentService is not null)
+            {
+                var ledgerSnapshot = ToLedgerSnapshot(item.Snapshot);
+                var selections = resolvedTreatmentSelections![RoomTreatmentService.SelectionLookupKey(ledgerSnapshot)];
+                var selectedTreatment = string.IsNullOrWhiteSpace(item.Form.TreatmentSignature)
+                    ? selections.Count == 1 ? selections[0] : null
+                    : selections.SingleOrDefault(x => x.TreatmentSignature == item.Form.TreatmentSignature);
+                if (selectedTreatment is null)
+                {
+                    return "This room-lot has multiple treatment histories. Select the exact segment being packed.";
+                }
+                entry.TreatmentStateSnapshot = selectedTreatment.TreatmentState;
+                entry.TreatmentSignatureSnapshot = selectedTreatment.TreatmentSignature;
+                entry.TreatmentSummarySnapshot = selectedTreatment.Label;
+                var lineage = await roomTreatmentService.MoveAsync(
+                    ledgerSnapshot,
+                    selectedTreatment.TreatmentSignature,
+                    item.Form.BinsRun,
+                    null,
+                    null,
+                    $"actualrun:{revision.OperationKey}:{entry.Id}:treatment",
+                    TreatmentLineageMovementTypes.BinsRun,
+                    null,
+                    null,
+                    entry.Id,
+                    form.RunAt,
+                    userId,
+                    cancellationToken);
+                if (!lineage.Success) return lineage.Error;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
             createdEntries.Add(entry);
         }
 
@@ -1448,6 +1504,12 @@ public sealed class BinsRunService(
                 ReportingCropYearSnapshot = entry.ReportingCropYearSnapshot,
                 ReportingFruitProfileIdSnapshot = entry.ReportingFruitProfileIdSnapshot,
                 ReportingVarietyCodeSnapshot = entry.ReportingVarietyCodeSnapshot
+                ,
+                TreatmentStateSnapshot = entry.TreatmentStateSnapshot
+                ,
+                TreatmentSignatureSnapshot = entry.TreatmentSignatureSnapshot
+                ,
+                TreatmentSummarySnapshot = entry.TreatmentSummarySnapshot
             };
             reversal.InventoryAdjustment = adjustment;
             dbContext.BinsRunEntries.Add(reversal);
@@ -1457,6 +1519,20 @@ public sealed class BinsRunService(
             entry.ReverseReason = reason;
             entry.UpdatedAt = DateTimeOffset.UtcNow;
             await dbContext.SaveChangesAsync(cancellationToken);
+
+            if (roomTreatmentService is not null)
+            {
+                var lineage = await roomTreatmentService.ReverseMovementsAsync(
+                    $"actualrun:{revision.OperationKey}:{entry.Id}:treatment-reversal",
+                    TreatmentLineageMovementTypes.BinsRunReversal,
+                    null,
+                    null,
+                    entry.Id,
+                    DateTimeOffset.UtcNow,
+                    userId,
+                    cancellationToken);
+                if (!lineage.Success) throw new InvalidOperationException(lineage.Error);
+            }
 
             snapshots = snapshots
                 .Select(x => SameInventory(entry, x) ? x with { CurrentBins = next } : x)
@@ -1658,6 +1734,19 @@ public sealed class BinsRunService(
             existing.ReversedByUserId = userId;
             existing.ReverseReason = "Replaced by a corrected Bins Run revision.";
             existing.UpdatedAt = DateTimeOffset.UtcNow;
+            if (roomTreatmentService is not null)
+            {
+                var restoreLineage = await roomTreatmentService.ReverseMovementsAsync(
+                    $"binsrun:{operationKey}:{existing.Id}:treatment-reversal",
+                    TreatmentLineageMovementTypes.BinsRunReversal,
+                    null,
+                    null,
+                    existing.Id,
+                    DateTimeOffset.UtcNow,
+                    userId,
+                    cancellationToken);
+                if (!restoreLineage.Success) return restoreLineage.Error;
+            }
         }
 
         var adjustment = CreateAdjustment(snapshot, -form.BinsRun, effectiveAvailable, newAvailable, AdjustmentType, userId, form.RunAt, form.Notes);
@@ -1705,6 +1794,23 @@ public sealed class BinsRunService(
         dbContext.BinsRunEntries.Add(entry);
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (roomTreatmentService is not null)
+        {
+            var selections = await roomTreatmentService.GetSelectionsAsync(ToLedgerSnapshot(snapshot), cancellationToken);
+            var selectedTreatment = string.IsNullOrWhiteSpace(form.TreatmentSignature)
+                ? selections.Count == 1 ? selections[0] : null
+                : selections.SingleOrDefault(x => x.TreatmentSignature == form.TreatmentSignature);
+            if (selectedTreatment is null) return "This room-lot has multiple treatment histories. Select the exact segment being packed.";
+            entry.TreatmentStateSnapshot = selectedTreatment.TreatmentState;
+            entry.TreatmentSignatureSnapshot = selectedTreatment.TreatmentSignature;
+            entry.TreatmentSummarySnapshot = selectedTreatment.Label;
+            var lineage = await roomTreatmentService.MoveAsync(
+                ToLedgerSnapshot(snapshot), selectedTreatment.TreatmentSignature, form.BinsRun,
+                null, null, $"binsrun:{operationKey}:{entry.Id}:treatment",
+                TreatmentLineageMovementTypes.BinsRun, null, null, entry.Id, form.RunAt, userId, cancellationToken);
+            if (!lineage.Success) return lineage.Error;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
         if (linkedProjection is not null && linkedProjectionSource is not null)
         {
             var previousStatus = linkedProjection.Status;
@@ -1750,30 +1856,42 @@ public sealed class BinsRunService(
         return null;
     }
 
-    private static IReadOnlyList<BinsRunInventoryOptionViewModel> BuildAvailableInventoryOptions(
+    private async Task<IReadOnlyList<BinsRunInventoryOptionViewModel>> BuildAvailableInventoryOptionsAsync(
         IReadOnlyList<InventorySnapshot> snapshots,
-        IReadOnlyDictionary<string, LotSampleDistribution> sampleData) =>
-        snapshots
+        IReadOnlyDictionary<string, LotSampleDistribution> sampleData,
+        CancellationToken cancellationToken)
+    {
+        var options = new List<BinsRunInventoryOptionViewModel>();
+        var ledgerSnapshots = snapshots.Select(ToLedgerSnapshot).ToList();
+        var treatmentSelections = roomTreatmentService is null
+            ? null
+            : await roomTreatmentService.GetSelectionsAsync(ledgerSnapshots, cancellationToken);
+        foreach (var x in snapshots
             .OrderBy(x => x.Facility)
             .ThenBy(x => x.Room)
             .ThenBy(x => x.Grower)
             .ThenBy(x => x.Variety)
-            .ThenBy(x => x.Lot)
-            .Select(x =>
+            .ThenBy(x => x.Lot))
+        {
+            sampleData.TryGetValue(QcIdentityKey(x), out var distribution);
+            var ledgerSnapshot = ToLedgerSnapshot(x);
+            var segments = roomTreatmentService is null
+                ? [new TreatmentSegmentSelection(RoomTreatmentService.IdentityKey(ledgerSnapshot), "", TreatmentLineageStates.Untreated, x.CurrentBins, "Untreated")]
+                : treatmentSelections![RoomTreatmentService.SelectionLookupKey(ledgerSnapshot)];
+            foreach (var segment in segments)
             {
-                sampleData.TryGetValue(QcIdentityKey(x), out var distribution);
-                return new BinsRunInventoryOptionViewModel(
+                options.Add(new BinsRunInventoryOptionViewModel(
                 x.InventoryKey,
                 x.ReceiptId,
                 x.InventoryAdjustmentId,
                 x.WarehouseId,
                 x.RoomId,
-                $"{x.Grower} - {x.Variety} - {x.Lot} - {x.CurrentBins} bins available",
+                $"{x.Grower} - {x.Variety} - {x.Lot} - {segment.Label} - {segment.CurrentBins} bins available",
                 x.Grower,
                 x.Lot,
                 x.Variety,
                 $"{x.Facility} / {x.Room}",
-                    x.CurrentBins,
+                    segment.CurrentBins,
                     distribution is null || distribution.GradePercentages.Count == 0 ? "No grade data" : FormatGradeSummary(distribution.GradePercentages),
                     x.ReceiptDate,
                     x.FruitProfileId,
@@ -1784,9 +1902,13 @@ public sealed class BinsRunService(
                     x.Facility,
                     x.Room,
                     x.GrowerLotId,
-                    x.ReceiptReference ?? $"Ledger adjustment #{x.InventoryAdjustmentId}");
-            })
-            .ToList();
+                    x.ReceiptReference ?? $"Ledger adjustment #{x.InventoryAdjustmentId}",
+                    segment.TreatmentSignature,
+                    segment.Label));
+            }
+        }
+        return options;
+    }
 
     private async Task<BinsRunRoomSummaryViewModel?> BuildRoomSummaryAsync(
         int roomId,
@@ -2107,7 +2229,10 @@ public sealed class BinsRunService(
                 x.NewAvailableBins,
                 x.IsReversed,
                 x.IsOverdrawOverride,
-                x.OverrideReason
+                x.OverrideReason,
+                x.TreatmentStateSnapshot,
+                x.TreatmentSignatureSnapshot,
+                x.TreatmentSummarySnapshot
             })
             .ToListAsync(cancellationToken);
         var lines = lineRows.Select(x => new
@@ -2132,7 +2257,10 @@ public sealed class BinsRunService(
                 NewAvailableBins = x.NewAvailableBins,
                 IsReversed = x.IsReversed,
                 IsOverdrawOverride = x.IsOverdrawOverride,
-                OverrideReason = x.OverrideReason
+                OverrideReason = x.OverrideReason,
+                TreatmentState = x.TreatmentStateSnapshot ?? TreatmentLineageStates.Untreated,
+                TreatmentSignature = x.TreatmentSignatureSnapshot ?? "",
+                TreatmentSummary = x.TreatmentSummarySnapshot ?? "No recorded treatment history"
             }
         }).ToList();
         var byRun = lines.GroupBy(x => x.RunId).ToDictionary(x => x.Key, x => (IReadOnlyList<ActualRunHistoryLineViewModel>)x.Select(y => y.Line).ToList());
@@ -2344,6 +2472,12 @@ public sealed class BinsRunService(
             ReportingCropYearSnapshot = original.ReportingCropYearSnapshot,
             ReportingFruitProfileIdSnapshot = original.ReportingFruitProfileIdSnapshot,
             ReportingVarietyCodeSnapshot = original.ReportingVarietyCodeSnapshot
+            ,
+            TreatmentStateSnapshot = original.TreatmentStateSnapshot
+            ,
+            TreatmentSignatureSnapshot = original.TreatmentSignatureSnapshot
+            ,
+            TreatmentSummarySnapshot = original.TreatmentSummarySnapshot
         };
 
     private async Task<IDbContextTransaction?> BeginTransactionIfSupportedAsync(CancellationToken cancellationToken)
@@ -2700,6 +2834,34 @@ public sealed class BinsRunService(
 
     private static string ReceiptLotNumber(Receipt receipt) =>
         !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode;
+
+    private static RoomInventoryLedgerSnapshot ToLedgerSnapshot(InventorySnapshot x) => new(
+        x.WarehouseId,
+        x.Facility,
+        x.RoomId,
+        x.Room,
+        "",
+        x.CropYear,
+        x.GrowerLotId,
+        x.FruitProfileId,
+        x.Grower,
+        x.GrowerNumber,
+        x.Lot,
+        x.PoolStart,
+        x.Variety,
+        x.Variety,
+        x.Variety,
+        x.FruitType,
+        x.ProductionType,
+        x.IsOrganic,
+        x.InventoryStatus,
+        0, 0, 0, 0, 0, 0, 0, 0, 0,
+        x.CurrentBins,
+        0,
+        x.ReceiptDate ?? DateTimeOffset.MinValue,
+        x.ReceiptDate ?? DateTimeOffset.MinValue,
+        x.InventoryAdjustmentId ?? 0,
+        x.ReceiptReference ?? "");
 
     private static RunProjectionInventorySource ToPlanningInventory(InventorySnapshot x) =>
         new(

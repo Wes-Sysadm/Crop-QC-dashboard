@@ -343,7 +343,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("RoomTransferForm", model);
         Assert.Contains("TransferLotOptions", model);
         Assert.DoesNotContain("Record Transfer", room);
-        Assert.Contains("Record Transfer", binsRun);
+        Assert.Contains("Review Transfer", binsRun);
+        Assert.Contains("Confirm Transfer", binsRun);
         Assert.Contains("Transfer Bins", binsRun);
     }
 

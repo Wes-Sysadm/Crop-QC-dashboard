@@ -100,6 +100,7 @@ public sealed class DashboardDataService(
     IInventoryDeductionInvariantService? inventoryDeductionInvariantService = null,
     IVarietyColorService? varietyColorService = null,
     IRoomInventoryLossService? roomInventoryLossService = null,
+    IRoomTreatmentService? roomTreatmentService = null,
     IReviewedGrowerLotPolicy? reviewedGrowerLotPolicy = null) : IDashboardDataService
 {
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
@@ -114,6 +115,7 @@ public sealed class DashboardDataService(
         inventoryDeductionInvariantService
         ?? new InventoryDeductionInvariantService(dbContext, NullLogger<InventoryDeductionInvariantService>.Instance);
     private IRoomInventoryLossService? RoomInventoryLosses { get; } = roomInventoryLossService;
+    private IRoomTreatmentService? RoomTreatments { get; } = roomTreatmentService;
 
     private async Task<IReadOnlyList<GrowerLot>> GetReceivingGrowerLotsAsync(CancellationToken cancellationToken) =>
         reviewedGrowerLotPolicy is null
@@ -232,7 +234,8 @@ public sealed class DashboardDataService(
             return new RoomsPageViewModel
             {
                 Filter = normalizedRoomFilter,
-                Rooms = rooms
+                Rooms = rooms,
+                CanApplyTreatment = await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken)
             };
         }
         catch (Exception ex)
@@ -469,6 +472,10 @@ public sealed class DashboardDataService(
             var inventoryLossData = RoomInventoryLosses is null
                 ? new RoomInventoryLossPageData([], [], false, false)
                 : await RoomInventoryLosses.GetRoomDataAsync(roomId, cancellationToken);
+            var treatmentData = RoomTreatments is null
+                ? new RoomTreatmentData([], [], false, false)
+                : await RoomTreatments.GetRoomDataAsync(roomId, cancellationToken);
+            var transferLotOptions = await BuildTreatmentTransferOptionsAsync(activeLots, roomId, cancellationToken);
 
             return new RoomDetailViewModel
             {
@@ -487,19 +494,31 @@ public sealed class DashboardDataService(
                     .Where(x => x.ReceiptId is not null)
                     .Select(x => new RoomReceiptOptionViewModel(x.ReceiptId!.Value, $"{x.DisplayReceiptId} - {x.GrowerName} {x.LotCode} {x.VarietyCode} ({x.CurrentBins} bins current)", x.CurrentBins))
                     .ToList(),
-                TransferLotOptions = activeLots
-                    .Select(x => new RoomInventoryLotOptionViewModel(RoomLotKey(x), $"{x.DisplayReceiptId} - {x.GrowerName} {x.LotCode} {x.VarietyCode} ({x.CurrentBins} bins current)", x.CurrentBins))
-                    .ToList(),
-                TransferDestinationOptions = transferDestinations,
+                TransferLotOptions = transferLotOptions,
+                TransferDestinationFacilities = transferDestinations.Facilities,
+                TransferDestinationOptions = transferDestinations.Rooms,
                 DepletionForm = new RoomDepletionForm { RoomId = roomId, DepletedAt = BusinessTime.NowPacific },
                 TrueUpForm = new RoomInventoryTrueUpForm { RoomId = roomId, AdjustmentAt = BusinessTime.NowPacific },
-                TransferForm = new RoomTransferForm { FromRoomId = roomId, TransferAt = BusinessTime.NowPacific },
+                TransferForm = new RoomTransferForm
+                {
+                    FromRoomId = roomId,
+                    DestinationWarehouseId = transferDestinations.SourceWarehouseId,
+                    TransferAt = BusinessTime.NowPacific
+                },
                 CanManageDepletions = canManage,
                 InventoryLossOptions = inventoryLossData.Options,
                 InventoryLosses = inventoryLossData.History,
                 InventoryLossForm = new RoomInventoryLossForm { RoomId = roomId, OccurredAt = BusinessTime.NowPacific },
                 CanRecordInventoryLoss = inventoryLossData.CanRecord,
                 CanReverseInventoryLoss = inventoryLossData.CanReverse
+                ,
+                CurrentTreatmentStatus = treatmentData.Current
+                ,
+                TreatmentApplicationHistory = treatmentData.History
+                ,
+                CanApplyTreatment = treatmentData.CanApply
+                ,
+                CanReverseTreatment = treatmentData.CanReverse
             };
         }
         catch (Exception ex)
@@ -826,6 +845,18 @@ public sealed class DashboardDataService(
                 cancellationToken);
             return "Inventory reductions must be recorded through Dropped Bins, Bins Run, or Transfer. The true-up was not saved.";
         }
+        await using var transaction = await BeginInventoryTransactionIfSupportedAsync(cancellationToken);
+        if (RoomTreatments is not null && delta > 0)
+        {
+            var lineage = await RoomTreatments.AddUnknownAsync(
+                matchingSnapshots[0],
+                delta,
+                $"manual-true-up:{form.OperationKey}:treatment",
+                form.AdjustmentAt,
+                currentUser?.Id,
+                cancellationToken);
+            if (!lineage.Success) return lineage.Error;
+        }
         AddRoomInventoryAdjustment(
             receipt,
             currentUser,
@@ -839,6 +870,8 @@ public sealed class DashboardDataService(
             roomDepletionId: null);
         await AddAuditAsync("BinCountChange", nameof(RoomInventoryAdjustment), receipt.Id.ToString(), currentUser?.Email ?? "unknown", null, $"ManualTrueUp changed bins from {oldCount} to {form.NewBinCount}. Reason: {form.Reason.Trim()}", cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return null;
     }
 
@@ -854,7 +887,12 @@ public sealed class DashboardDataService(
             return "Transfer bin count must be positive.";
         }
 
-        if (form.ToRoomId <= 0 || form.ToRoomId == form.FromRoomId)
+        if (form.DestinationWarehouseId <= 0)
+        {
+            return "Select a destination facility.";
+        }
+
+        if (form.DestinationRoomId <= 0 || form.DestinationRoomId == form.FromRoomId)
         {
             return "Select a different destination room.";
         }
@@ -872,9 +910,19 @@ public sealed class DashboardDataService(
         var operationKey = string.IsNullOrWhiteSpace(form.OperationKey)
             ? Guid.NewGuid().ToString("N")
             : form.OperationKey.Trim();
-        if (await dbContext.RoomTransfers.AsNoTracking().AnyAsync(x => x.OperationKey == operationKey, cancellationToken))
+        var existingTransfer = await dbContext.RoomTransfers.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.OperationKey == operationKey, cancellationToken);
+        if (existingTransfer is not null)
         {
-            return null;
+            return existingTransfer.SourceRoomId == form.FromRoomId
+                && existingTransfer.DestinationWarehouseId == form.DestinationWarehouseId
+                && existingTransfer.DestinationRoomId == form.DestinationRoomId
+                && existingTransfer.BinCount == form.BinCount
+                && existingTransfer.TransferredAt.ToUniversalTime() == form.TransferAt.ToUniversalTime()
+                && existingTransfer.Reason == form.Reason.Trim()
+                && existingTransfer.Notes == (string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim())
+                ? null
+                : "The operation key already belongs to a different room transfer.";
         }
 
         await using var transaction = await BeginInventoryTransactionIfSupportedAsync(cancellationToken);
@@ -890,11 +938,34 @@ public sealed class DashboardDataService(
             return $"Cannot transfer {form.BinCount} bins because only {sourceLot.CurrentBins} bins are currently known for this lot. Confirm override if the current bin count needs correction.";
         }
 
-        var fromRoom = await dbContext.Rooms.AsNoTracking().Include(x => x.Warehouse).SingleOrDefaultAsync(x => x.Id == form.FromRoomId, cancellationToken);
-        var toRoom = await dbContext.Rooms.AsNoTracking().Include(x => x.Warehouse).SingleOrDefaultAsync(x => x.Id == form.ToRoomId, cancellationToken);
-        if (fromRoom is null || toRoom is null)
+        var destinationWarehouse = await dbContext.Warehouses.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == form.DestinationWarehouseId && x.IsActive, cancellationToken);
+        if (destinationWarehouse is null)
         {
-            return "Source or destination room was not found.";
+            return "The selected destination facility was not found or is inactive.";
+        }
+
+        var fromRoom = await dbContext.Rooms.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .SingleOrDefaultAsync(x => x.Id == form.FromRoomId && x.IsActive && x.Warehouse.IsActive, cancellationToken);
+        var toRoom = await dbContext.Rooms.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .SingleOrDefaultAsync(x => x.Id == form.DestinationRoomId && x.IsActive, cancellationToken);
+        if (fromRoom is null)
+        {
+            return "The source room was not found or is inactive.";
+        }
+        if (toRoom is null)
+        {
+            return "The selected destination room was not found or is inactive.";
+        }
+        if (toRoom.WarehouseId != destinationWarehouse.Id)
+        {
+            return "The selected destination room does not belong to the selected destination facility.";
+        }
+        if (toRoom.Id == fromRoom.Id)
+        {
+            return "Select a destination room different from the source room.";
         }
 
         var currentUser = await GetCurrentUserAsync(cancellationToken);
@@ -916,7 +987,7 @@ public sealed class DashboardDataService(
             .OrderByDescending(x => x.IsActive)
             .ThenBy(x => x.Id)
             .FirstOrDefaultAsync(cancellationToken);
-        var destinationCurrent = (await BuildRoomLotSummariesAsync(form.ToRoomId, cancellationToken))
+        var destinationCurrent = (await BuildRoomLotSummariesAsync(form.DestinationRoomId, cancellationToken))
             .Where(x => x.CurrentBins > 0)
             .Where(x => string.Equals(x.LotCode, sourceLot.LotCode, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(x.VarietyCode, sourceLot.VarietyCode, StringComparison.OrdinalIgnoreCase)
@@ -947,6 +1018,32 @@ public sealed class DashboardDataService(
         };
         dbContext.RoomTransfers.Add(transfer);
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        if (RoomTreatments is not null)
+        {
+            var ledgerSnapshot = (await RoomInventoryLedger.GetSnapshotsAsync(fromRoom.WarehouseId, [fromRoom.Id], cancellationToken))
+                .SingleOrDefault(x => x.CropYear == transfer.CropYear
+                    && x.GrowerLotId == transfer.GrowerLotId
+                    && x.FruitProfileId == transfer.FruitProfileId
+                    && string.Equals(x.Lot, transfer.LotNumber, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(x.Variety, transfer.VarietyCode, StringComparison.OrdinalIgnoreCase));
+            if (ledgerSnapshot is null) return "The exact source inventory identity changed. Refresh before retrying.";
+            var lineage = await RoomTreatments.MoveAsync(
+                ledgerSnapshot,
+                form.TreatmentSignature,
+                form.BinCount,
+                toRoom.WarehouseId,
+                toRoom.Id,
+                $"transfer:{operationKey}:treatment",
+                TreatmentLineageMovementTypes.Transfer,
+                transfer.Id,
+                null,
+                null,
+                form.TransferAt,
+                currentUser?.Id,
+                cancellationToken);
+            if (!lineage.Success) return lineage.Error;
+        }
 
         RoomInventoryAdjustment outgoing;
         if (sourceReceipt is not null)
@@ -1119,6 +1216,20 @@ public sealed class DashboardDataService(
         };
         dbContext.RoomTransfers.Add(reversal);
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        if (RoomTreatments is not null)
+        {
+            var lineage = await RoomTreatments.ReverseMovementsAsync(
+                $"transfer:{operationKey}:treatment-reversal",
+                TreatmentLineageMovementTypes.TransferReversal,
+                original.Id,
+                null,
+                null,
+                now,
+                currentUser?.Id,
+                cancellationToken);
+            if (!lineage.Success) return lineage.Error;
+        }
 
         var outgoing = AddRoomInventoryAdjustmentRaw(
             null,
@@ -5439,32 +5550,44 @@ public sealed class DashboardDataService(
             })
             .ToListAsync(cancellationToken);
 
-    private async Task<IReadOnlyList<RoomInventoryAdjustmentListItemViewModel>> BuildRoomInventoryAdjustmentHistoryAsync(int roomId, CancellationToken cancellationToken) =>
-        await dbContext.RoomInventoryAdjustments.AsNoTracking()
+    private async Task<IReadOnlyList<RoomInventoryAdjustmentListItemViewModel>> BuildRoomInventoryAdjustmentHistoryAsync(int roomId, CancellationToken cancellationToken)
+    {
+        var rows = await dbContext.RoomInventoryAdjustments.AsNoTracking()
             .Include(x => x.Receipt)
             .Include(x => x.Room)
             .Include(x => x.CreatedByUser)
+            .Include(x => x.RoomTransfer).ThenInclude(x => x!.SourceWarehouse)
+            .Include(x => x.RoomTransfer).ThenInclude(x => x!.SourceRoom)
+            .Include(x => x.RoomTransfer).ThenInclude(x => x!.DestinationWarehouse)
+            .Include(x => x.RoomTransfer).ThenInclude(x => x!.DestinationRoom)
             .Where(x => x.RoomId == roomId)
             .OrderByDescending(x => x.AdjustmentAt)
             .ThenByDescending(x => x.Id)
             .Take(100)
-            .Select(x => new RoomInventoryAdjustmentListItemViewModel
-            {
-                Id = x.Id,
-                ReceiptId = x.ReceiptId,
-                Lot = $"{x.GrowerName} {x.LotNumber}",
-                Room = x.Room.Code,
-                OldBinCount = x.OldBinCount,
-                ChangeAmount = x.ChangeAmount,
-                NewBinCount = x.NewBinCount,
-                AdjustmentType = x.AdjustmentType,
-                Source = x.Source,
-                Reason = x.Reason,
-                Notes = x.Notes,
-                AdjustmentAt = x.AdjustmentAt,
-                CreatedBy = x.CreatedByUser == null ? "" : x.CreatedByUser.DisplayName
-            })
             .ToListAsync(cancellationToken);
+        return rows.Select(x => new RoomInventoryAdjustmentListItemViewModel
+        {
+            Id = x.Id,
+            ReceiptId = x.ReceiptId,
+            Lot = $"{x.GrowerName} {x.LotNumber}",
+            Room = x.Room.Code,
+            OldBinCount = x.OldBinCount,
+            ChangeAmount = x.ChangeAmount,
+            NewBinCount = x.NewBinCount,
+            AdjustmentType = x.AdjustmentType,
+            Source = x.Source,
+            Reason = x.Reason,
+            Notes = x.Notes,
+            TransferFrom = x.RoomTransfer is null ? null : TransferRoomLabel(x.RoomTransfer.SourceWarehouse, x.RoomTransfer.SourceRoom),
+            TransferTo = x.RoomTransfer is null ? null : TransferRoomLabel(x.RoomTransfer.DestinationWarehouse, x.RoomTransfer.DestinationRoom),
+            AdjustmentAt = x.AdjustmentAt,
+            CreatedBy = x.CreatedByUser == null ? "" : x.CreatedByUser.DisplayName
+        })
+            .ToList();
+    }
+
+    private string TransferRoomLabel(Warehouse warehouse, Room room) =>
+        $"{FacilityCode(warehouse.Code, warehouse.Name)} / {room.CropQcRoomName ?? room.DisplayName ?? room.Code}";
 
     private async Task<IReadOnlyList<ReceiptListItemViewModel>> BuildRoomLinkedReceiptsAsync(int roomId, CancellationToken cancellationToken)
     {
@@ -5485,16 +5608,59 @@ public sealed class DashboardDataService(
         return receipts.Select(x => ReceiptListItem(x)).ToList();
     }
 
-    private async Task<IReadOnlyList<RoomTransferDestinationViewModel>> BuildRoomTransferDestinationsAsync(int currentRoomId, CancellationToken cancellationToken) =>
-        await dbContext.Rooms.AsNoTracking()
-            .Include(x => x.Warehouse)
-            .Where(x => x.Id != currentRoomId && x.IsActive)
-            .OrderBy(x => x.Warehouse.Code)
-            .ThenBy(x => x.SubLocation)
-            .ThenBy(x => x.SortOrder)
-            .ThenBy(x => x.CropQcRoomName ?? x.Code)
-            .Select(x => new RoomTransferDestinationViewModel(x.Id, $"{x.Warehouse.Code} / {(x.CropQcRoomName ?? x.DisplayName ?? x.Code)}"))
+    private async Task<RoomTransferDestinationData> BuildRoomTransferDestinationsAsync(int currentRoomId, CancellationToken cancellationToken)
+    {
+        var warehouses = await dbContext.Warehouses.AsNoTracking()
+            .Where(x => x.IsActive)
+            .Select(x => new { x.Id, x.Code, x.Name })
             .ToListAsync(cancellationToken);
+        var knownFacilities = warehouses
+            .Select(x => new RoomTransferFacilityViewModel(x.Id, FacilityCode(x.Code, x.Name), x.Code, x.Name))
+            .Where(x => TransferFacilitySort(x.Label) < int.MaxValue)
+            .OrderBy(x => TransferFacilitySort(x.Label))
+            .ThenBy(x => x.WarehouseId)
+            .ToList();
+
+        var roomRows = await dbContext.Rooms.AsNoTracking()
+            .Where(x => x.IsActive && x.Warehouse.IsActive)
+            .Select(x => new
+            {
+                x.Id,
+                x.WarehouseId,
+                x.SortOrder,
+                x.Code,
+                x.CropQcRoomName,
+                x.DisplayName
+            })
+            .ToListAsync(cancellationToken);
+        var sourceWarehouseId = roomRows.SingleOrDefault(x => x.Id == currentRoomId)?.WarehouseId ?? 0;
+        var rooms = roomRows
+            .Where(x => x.Id != currentRoomId && knownFacilities.Any(facility => facility.WarehouseId == x.WarehouseId))
+            .OrderBy(x => TransferFacilitySort(knownFacilities.Single(facility => facility.WarehouseId == x.WarehouseId).Label))
+            .ThenBy(x => x.SortOrder)
+            .ThenBy(x => x.CropQcRoomName ?? x.DisplayName ?? x.Code)
+            .Select(x => new RoomTransferDestinationViewModel(
+                x.Id,
+                x.WarehouseId,
+                x.CropQcRoomName ?? x.DisplayName ?? x.Code,
+                x.SortOrder))
+            .ToList();
+        return new RoomTransferDestinationData(sourceWarehouseId, knownFacilities, rooms);
+    }
+
+    private static int TransferFacilitySort(string facility) => facility switch
+    {
+        "WP" => 0,
+        "MCD" => 1,
+        "DH" => 2,
+        "EBS" => 3,
+        _ => int.MaxValue
+    };
+
+    private sealed record RoomTransferDestinationData(
+        int SourceWarehouseId,
+        IReadOnlyList<RoomTransferFacilityViewModel> Facilities,
+        IReadOnlyList<RoomTransferDestinationViewModel> Rooms);
 
     private async Task<Dictionary<int, int>> BuildStartingSeasonBinsByRoomAsync(CancellationToken cancellationToken)
     {
@@ -5536,6 +5702,48 @@ public sealed class DashboardDataService(
             .ThenBy(x => x.Key)
             .Take(4)
             .Select(x => $"{x.Key}: {x.Sum(y => y.CurrentBins)} bins"));
+    }
+
+    private async Task<IReadOnlyList<RoomInventoryLotOptionViewModel>> BuildTreatmentTransferOptionsAsync(
+        IReadOnlyList<RoomLotSummaryViewModel> lots,
+        int roomId,
+        CancellationToken cancellationToken)
+    {
+        if (RoomTreatments is null)
+        {
+            return lots.Select(x => new RoomInventoryLotOptionViewModel(
+                RoomLotKey(x),
+                $"{x.DisplayReceiptId} - {x.GrowerName} {x.LotCode} {x.VarietyCode} ({x.CurrentBins} bins current)",
+                x.CurrentBins,
+                Grower: $"{x.GrowerName} / {x.LotCode}",
+                Variety: x.VarietyCode)).ToList();
+        }
+
+        var snapshots = await RoomInventoryLedger.GetSnapshotsAsync(null, [roomId], cancellationToken);
+        var treatmentSelections = await RoomTreatments.GetSelectionsAsync(snapshots.Where(x => x.CurrentBins > 0).ToList(), cancellationToken);
+        var options = new List<RoomInventoryLotOptionViewModel>();
+        foreach (var lot in lots)
+        {
+            var snapshot = snapshots.SingleOrDefault(x => x.CropYear == lot.CropYear
+                && x.GrowerLotId == lot.GrowerLotId
+                && x.FruitProfileId == lot.FruitProfileId
+                && string.Equals(x.Lot, lot.LotCode, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(x.Variety, lot.VarietyCode, StringComparison.OrdinalIgnoreCase));
+            if (snapshot is null) continue;
+            var segments = treatmentSelections[RoomTreatmentService.SelectionLookupKey(snapshot)];
+            foreach (var segment in segments)
+            {
+                options.Add(new RoomInventoryLotOptionViewModel(
+                    RoomLotKey(lot),
+                    $"{lot.DisplayReceiptId} - {lot.GrowerName} {lot.LotCode} {lot.VarietyCode} - {segment.Label} ({segment.CurrentBins} bins)",
+                    segment.CurrentBins,
+                    segment.TreatmentSignature,
+                    segment.Label,
+                    $"{lot.GrowerName} / {lot.LotCode}",
+                    lot.VarietyCode));
+            }
+        }
+        return options;
     }
 
     private static string RoomLotKey(RoomLotSummaryViewModel lot) =>

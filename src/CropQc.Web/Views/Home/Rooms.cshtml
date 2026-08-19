@@ -104,6 +104,10 @@ else
                 }
                 <footer class="room-card-actions card-interactive">
                     <a class="button secondary-button" href="/Rooms/@room.RoomId/CountBreakdown?Facility=@Model.Filter.Facility">Count Breakdown</a>
+                    @if (Model.CanApplyTreatment)
+                    {
+                        <a class="button" href="/Rooms/@room.RoomId/Treatments/Apply">Apply Treatment</a>
+                    }
                 </footer>
             </div>
         </article>

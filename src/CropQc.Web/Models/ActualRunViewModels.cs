@@ -35,6 +35,7 @@ public sealed record ActualRunContributionViewModel(
     string Lot,
     string Variety,
     string ProductionType,
+    string TreatmentSummary,
     int? CropYear,
     int Bins,
     decimal ContributionPercent);

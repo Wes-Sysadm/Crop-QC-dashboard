@@ -262,6 +262,7 @@ builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportServi
 builder.Services.AddScoped<IRoomInventoryLedgerQueryService, RoomInventoryLedgerQueryService>();
 builder.Services.AddScoped<IRoomInventoryReconciliationService, RoomInventoryReconciliationService>();
 builder.Services.AddScoped<IRoomInventoryLossService, RoomInventoryLossService>();
+builder.Services.AddScoped<IRoomTreatmentService, RoomTreatmentService>();
 builder.Services.AddScoped<ITr108859DroppedBinsCorrectionService, Tr108859DroppedBinsCorrectionService>();
 builder.Services.AddScoped<IEbsInventoryCleanupService, EbsInventoryCleanupService>();
 builder.Services.AddScoped<IInventoryDeductionInvariantService, InventoryDeductionInvariantService>();

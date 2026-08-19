@@ -38,6 +38,12 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<StarchScale> StarchScales => Set<StarchScale>();
     public DbSet<StarchScaleValue> StarchScaleValues => Set<StarchScaleValue>();
     public DbSet<FruitSizeConversionThreshold> FruitSizeConversionThresholds => Set<FruitSizeConversionThreshold>();
+    public DbSet<TreatmentChemical> TreatmentChemicals => Set<TreatmentChemical>();
+    public DbSet<RoomTreatmentApplication> RoomTreatmentApplications => Set<RoomTreatmentApplication>();
+    public DbSet<RoomTreatmentApplicationSource> RoomTreatmentApplicationSources => Set<RoomTreatmentApplicationSource>();
+    public DbSet<TreatmentLineageSegment> TreatmentLineageSegments => Set<TreatmentLineageSegment>();
+    public DbSet<TreatmentLineageSegmentApplication> TreatmentLineageSegmentApplications => Set<TreatmentLineageSegmentApplication>();
+    public DbSet<TreatmentLineageMovement> TreatmentLineageMovements => Set<TreatmentLineageMovement>();
     public DbSet<Receipt> Receipts => Set<Receipt>();
     public DbSet<ReceiptInventoryOverride> ReceiptInventoryOverrides => Set<ReceiptInventoryOverride>();
     public DbSet<RoomDepletion> RoomDepletions => Set<RoomDepletion>();
@@ -1253,6 +1259,21 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasIndex(x => new { x.FruitType, x.SizeCategory }).IsUnique();
             entity.HasIndex(x => new { x.FruitType, x.MinimumWeightGrams });
         });
+
+        modelBuilder.Entity<TreatmentChemical>(entity =>
+        {
+            entity.Property(x => x.ProductName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.CommonName).HasMaxLength(200);
+            entity.Property(x => x.Crop).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.Volume).HasPrecision(12, 2);
+            entity.Property(x => x.Unit).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.UnitPrice).HasPrecision(12, 2);
+            entity.Property(x => x.Currency).HasMaxLength(3).IsRequired();
+            entity.HasIndex(x => new { x.Crop, x.IsActive, x.ProductName });
+            entity.HasIndex(x => x.ProductName).IsUnique();
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
     }
 
     private static void ConfigureQc(ModelBuilder modelBuilder, bool isPostgreSqlProvider)
@@ -1470,6 +1491,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.ProductionTypeSnapshot).HasMaxLength(50);
             entity.Property(x => x.GrowerNumberSnapshot).HasMaxLength(50);
             entity.Property(x => x.ReportingVarietyCodeSnapshot).HasMaxLength(100);
+            entity.Property(x => x.TreatmentStateSnapshot).HasMaxLength(25);
+            entity.Property(x => x.TreatmentSignatureSnapshot).HasMaxLength(1000);
+            entity.Property(x => x.TreatmentSummarySnapshot).HasMaxLength(2000);
             entity.HasIndex(x => new { x.RoomId, x.RunAt });
             entity.HasIndex(x => new { x.ReceiptId, x.IsReversed });
             entity.HasIndex(x => new { x.ActualRunId, x.ActualRunRevisionId, x.TransactionType });
@@ -1629,6 +1653,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.PoolStart).HasMaxLength(20);
             entity.Property(x => x.VarietyCode).HasMaxLength(50).IsRequired();
             entity.Property(x => x.InventoryStatus).HasMaxLength(100);
+            entity.Property(x => x.TreatmentSignature).HasMaxLength(1000);
             entity.HasIndex(x => new { x.ActualRunOverrideRequestId, x.RoomId, x.LotNumber, x.VarietyCode });
             entity.HasOne(x => x.ActualRunOverrideRequest).WithMany(x => x.Lines).HasForeignKey(x => x.ActualRunOverrideRequestId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
@@ -1798,6 +1823,99 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.LastError).HasMaxLength(2000);
             entity.HasIndex(x => new { x.QcStationId, x.EntityName, x.LocalEntityId }).IsUnique();
         });
+
+        modelBuilder.Entity<RoomTreatmentApplication>(entity =>
+        {
+            entity.Property(x => x.OperationKey).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.Property(x => x.ProductNameSnapshot).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.CommonNameSnapshot).HasMaxLength(200);
+            entity.Property(x => x.CropSnapshot).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.VolumeSnapshot).HasPrecision(12, 2);
+            entity.Property(x => x.UnitSnapshot).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.UnitPriceSnapshot).HasPrecision(12, 2);
+            entity.Property(x => x.CurrencySnapshot).HasMaxLength(3).IsRequired();
+            entity.Property(x => x.EstimatedCostSnapshot).HasPrecision(14, 2);
+            entity.Property(x => x.ReversalReason).HasMaxLength(1000);
+            entity.HasIndex(x => x.OperationKey).IsUnique();
+            entity.HasIndex(x => new { x.RoomId, x.AppliedAt });
+            entity.HasIndex(x => x.TreatmentChemicalId);
+            entity.HasOne(x => x.TreatmentChemical).WithMany(x => x.Applications).HasForeignKey(x => x.TreatmentChemicalId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.AppliedByUser).WithMany().HasForeignKey(x => x.AppliedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ReversedByUser).WithMany().HasForeignKey(x => x.ReversedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<RoomTreatmentApplicationSource>(entity =>
+        {
+            entity.Property(x => x.IdentityKey).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.GrowerNumberSnapshot).HasMaxLength(50);
+            entity.Property(x => x.GrowerNameSnapshot).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.LotNumberSnapshot).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.VarietyCodeSnapshot).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.ProductionTypeSnapshot).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.InventoryStatusSnapshot).HasMaxLength(100);
+            entity.Property(x => x.PriorTreatmentSignature).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.ResultTreatmentSignature).HasMaxLength(1000).IsRequired();
+            entity.HasIndex(x => new { x.RoomTreatmentApplicationId, x.IdentityKey });
+            entity.HasIndex(x => x.GrowerLotId);
+            entity.HasOne(x => x.RoomTreatmentApplication).WithMany(x => x.Sources).HasForeignKey(x => x.RoomTreatmentApplicationId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.FruitProfile).WithMany().HasForeignKey(x => x.FruitProfileId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<TreatmentLineageSegment>(entity =>
+        {
+            entity.Property(x => x.IdentityKey).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.GrowerNumberSnapshot).HasMaxLength(50);
+            entity.Property(x => x.GrowerNameSnapshot).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.LotNumberSnapshot).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.VarietyCodeSnapshot).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.ProductionTypeSnapshot).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.InventoryStatusSnapshot).HasMaxLength(100);
+            entity.Property(x => x.TreatmentState).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.TreatmentSignature).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.ConcurrencyVersion).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.RoomId, x.IdentityKey, x.TreatmentSignature }).IsUnique();
+            entity.HasIndex(x => new { x.RoomId, x.CurrentBins });
+            entity.HasIndex(x => x.GrowerLotId);
+            entity.HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.FruitProfile).WithMany().HasForeignKey(x => x.FruitProfileId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<TreatmentLineageSegmentApplication>(entity =>
+        {
+            entity.HasKey(x => new { x.TreatmentLineageSegmentId, x.RoomTreatmentApplicationId });
+            entity.HasIndex(x => new { x.RoomTreatmentApplicationId, x.TreatmentLineageSegmentId });
+            entity.HasOne(x => x.TreatmentLineageSegment).WithMany(x => x.Applications).HasForeignKey(x => x.TreatmentLineageSegmentId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.RoomTreatmentApplication).WithMany(x => x.SegmentApplications).HasForeignKey(x => x.RoomTreatmentApplicationId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<TreatmentLineageMovement>(entity =>
+        {
+            entity.Property(x => x.OperationKey).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.MovementType).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.IdentityKey).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.TreatmentStateSnapshot).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.TreatmentSignatureSnapshot).HasMaxLength(1000).IsRequired();
+            entity.HasIndex(x => x.OperationKey).IsUnique();
+            entity.HasIndex(x => x.RoomTransferId);
+            entity.HasIndex(x => x.RoomInventoryLossId);
+            entity.HasIndex(x => x.BinsRunEntryId);
+            entity.HasIndex(x => new { x.SourceRoomId, x.OccurredAt });
+            entity.HasIndex(x => new { x.DestinationRoomId, x.OccurredAt });
+            entity.HasOne(x => x.SourceSegment).WithMany().HasForeignKey(x => x.SourceSegmentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.DestinationSegment).WithMany().HasForeignKey(x => x.DestinationSegmentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.SourceRoom).WithMany().HasForeignKey(x => x.SourceRoomId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.DestinationRoom).WithMany().HasForeignKey(x => x.DestinationRoomId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.RoomTransfer).WithMany().HasForeignKey(x => x.RoomTransferId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.RoomInventoryLoss).WithMany().HasForeignKey(x => x.RoomInventoryLossId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.BinsRunEntry).WithMany().HasForeignKey(x => x.BinsRunEntryId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ReversesTreatmentLineageMovement).WithMany(x => x.ReversalMovements).HasForeignKey(x => x.ReversesTreatmentLineageMovementId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
     }
 
     private static void ConfigureAudit(ModelBuilder modelBuilder)
@@ -1925,6 +2043,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             new SampleType { Id = 5, Name = "Field Sample", IsActive = true });
 
         SeedFruitProfiles(modelBuilder);
+        SeedTreatmentChemicals(modelBuilder, createdAt);
         SeedStarchScale(modelBuilder);
         SeedSizeThresholds(modelBuilder);
     }
@@ -1954,6 +2073,21 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             new FruitProfile { Id = 20, Name = "Organic Bosc", Description = "Organic Bosc", VarietyCode = "ORBO", FruitType = "Pear", ProductionType = "Organic", IsOrganic = true, IsActive = true },
             new FruitProfile { Id = 21, Name = "Organic D'anjou", Description = "Organic D'anjou", VarietyCode = "ORDA", FruitType = "Pear", ProductionType = "Organic", IsOrganic = true, IsActive = true },
             new FruitProfile { Id = 22, Name = "Autumn Glory", Description = "Autumn Glory", VarietyCode = "ATGL", FruitType = "Apple", ProductionType = "Conventional", IsOrganic = false, IsActive = true });
+    }
+
+    private static void SeedTreatmentChemicals(ModelBuilder modelBuilder, DateTimeOffset createdAt)
+    {
+        modelBuilder.Entity<TreatmentChemical>().HasData(
+            new TreatmentChemical { Id = 1, ProductName = "eFOG-160 PYR FOGGING", CommonName = null, Crop = "Apples", Volume = 1.00m, Unit = "BIN", UnitPrice = 5.25m, Currency = "USD", IsActive = true, CreatedAt = createdAt, UpdatedAt = createdAt },
+            new TreatmentChemical { Id = 2, ProductName = "FOGGING EF 170,SB TBZ 99, EF80", CommonName = null, Crop = "Apples", Volume = 1.00m, Unit = "BIN", UnitPrice = 5.67m, Currency = "USD", IsActive = true, CreatedAt = createdAt, UpdatedAt = createdAt },
+            new TreatmentChemical { Id = 3, ProductName = "FOGGING EF 180, TBZ 99, EF 80", CommonName = null, Crop = "Pears", Volume = 1.00m, Unit = "BIN", UnitPrice = 9.58m, Currency = "USD", IsActive = true, CreatedAt = createdAt, UpdatedAt = createdAt },
+            new TreatmentChemical { Id = 4, ProductName = "eFOG-80 FDL FOGGING", CommonName = null, Crop = "Pears", Volume = 1.00m, Unit = "BIN", UnitPrice = 5.25m, Currency = "USD", IsActive = true, CreatedAt = createdAt, UpdatedAt = createdAt },
+            new TreatmentChemical { Id = 5, ProductName = "FOGGING EF 170, EF 160", CommonName = null, Crop = "Apples", Volume = 1.00m, Unit = "BIN", UnitPrice = 5.67m, Currency = "USD", IsActive = true, CreatedAt = createdAt, UpdatedAt = createdAt },
+            new TreatmentChemical { Id = 6, ProductName = "eFOG-180 FOGGING", CommonName = null, Crop = "Pears", Volume = 1.00m, Unit = "BIN", UnitPrice = 4.95m, Currency = "USD", IsActive = true, CreatedAt = createdAt, UpdatedAt = createdAt },
+            new TreatmentChemical { Id = 7, ProductName = "FOGGING EF 170, EF 80", CommonName = null, Crop = "Apples", Volume = 1.00m, Unit = "BIN", UnitPrice = 5.67m, Currency = "USD", IsActive = true, CreatedAt = createdAt, UpdatedAt = createdAt },
+            new TreatmentChemical { Id = 8, ProductName = "FOGGING EF 180, EF 160", CommonName = null, Crop = "Pears", Volume = 1.00m, Unit = "BIN", UnitPrice = 9.27m, Currency = "USD", IsActive = true, CreatedAt = createdAt, UpdatedAt = createdAt },
+            new TreatmentChemical { Id = 9, ProductName = "FOGGING EF 170, SB TBZ 99", CommonName = null, Crop = "Apples", Volume = 1.00m, Unit = "BIN", UnitPrice = 5.25m, Currency = "USD", IsActive = true, CreatedAt = createdAt, UpdatedAt = createdAt },
+            new TreatmentChemical { Id = 10, ProductName = "eFOG-170 DPA FOGGING", CommonName = null, Crop = "Apples", Volume = 1.00m, Unit = "BIN", UnitPrice = 2.80m, Currency = "USD", IsActive = true, CreatedAt = createdAt, UpdatedAt = createdAt });
     }
 
     private static void SeedStarchScale(ModelBuilder modelBuilder)

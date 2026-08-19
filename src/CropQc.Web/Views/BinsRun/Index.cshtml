@@ -9,7 +9,7 @@
     var plannerVisibility = Model.Planner.SelectedDeletionStatus;
     var plannerSort = Model.Planner.SelectedSort;
     var plannerTodayUrl = $"/BinsRun?Section=Planner&PlannedDate={Model.Planner.PacificToday:yyyy-MM-dd}&RoomId={Model.Filter.RoomId}&Facility={plannerFacility}&ProjectionVisibility={plannerVisibility}&ProjectionSort={plannerSort}";
-    var editLines = Model.ActualRunForm.Lines.ToDictionary(x => x.InventoryKey, StringComparer.OrdinalIgnoreCase);
+    var editLines = Model.ActualRunForm.Lines.ToDictionary(x => $"{x.InventoryKey}|{x.TreatmentSignature}", StringComparer.OrdinalIgnoreCase);
 }
 
 <h1>Bins Run &amp; Transfers</h1>
@@ -1295,19 +1295,20 @@ else
                     <div class="table-wrap wide">
                         <table class="actual-run-ledger-table">
                             <thead>
-                                <tr><th>Use</th><th>Facility</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Production</th><th>Crop year</th><th>Current</th><th>Source / trace</th><th>Bins pulled</th><th>Projected remaining</th><th>Shortage / override</th></tr>
+                                <tr><th>Use</th><th>Facility</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Production</th><th>Treatment</th><th>Crop year</th><th>Current</th><th>Source / trace</th><th>Bins pulled</th><th>Projected remaining</th><th>Shortage / override</th></tr>
                             </thead>
                             <tbody>
                             @for (var i = 0; i < Model.AvailableInventory.Count; i++)
                             {
                                 var option = Model.AvailableInventory[i];
-                                var isSelected = editLines.TryGetValue(option.InventoryKey, out var editLine);
+                                var isSelected = editLines.TryGetValue($"{option.InventoryKey}|{option.TreatmentSignature}", out var editLine);
                                 var effectiveAvailable = option.CurrentBins + (isSelected ? editLine!.BinsRun : 0);
                                 <tr data-actual-run-row data-current-bins="@effectiveAvailable">
                                     <td>
                                         <input type="checkbox" data-actual-line-toggle aria-label="Include @option.Room @option.Lot" checked="@isSelected" />
                                         <input type="hidden" name="Lines.Index" value="@i" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].InventoryKey" value="@option.InventoryKey" data-actual-line-field disabled="@(!isSelected)" />
+                                        <input type="hidden" name="Lines[@i].TreatmentSignature" value="@option.TreatmentSignature" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].ExpectedAvailableBins" value="@effectiveAvailable" data-actual-line-field disabled="@(!isSelected)" />
                                     </td>
                                     <td>@option.Facility</td>
@@ -1315,6 +1316,7 @@ else
                                     <td><strong>@option.Lot</strong><br /><span class="muted">@option.Grower</span></td>
                                     <td>@option.Variety</td>
                                     <td>@(string.IsNullOrWhiteSpace(option.ProductionType) ? "Unknown" : option.ProductionType)</td>
+                                    <td>@option.TreatmentLabel</td>
                                     <td>@(option.CropYear?.ToString() ?? "Unknown")</td>
                                     <td>@effectiveAvailable</td>
                                     <td>
@@ -1391,34 +1393,132 @@ else
             }
             else
             {
-                <form class="form-grid" method="post" action="/BinsRun/Transfer">
+                <form class="form-grid transfer-workflow" method="post" action="/BinsRun/Transfer" data-transfer-workflow
+                      data-source-facility="@(Model.TransferDestinationFacilities.FirstOrDefault(x => x.WarehouseId == Model.RoomSummary?.WarehouseId)?.Label ?? Model.RoomSummary?.Facility)"
+                      data-source-room="@Model.RoomSummary?.RoomName">
                     <input type="hidden" name="OperationKey" value="@Model.TransferForm.OperationKey" />
                     <input type="hidden" name="FromRoomId" value="@Model.Filter.RoomId" />
-                    <label class="field wide">Source lot
-                        <select name="SourceLotKey" required>
-                            <option value="">Select current lot</option>
-                            @foreach (var option in Model.TransferLotOptions)
+                    <input type="hidden" name="TreatmentSignature" id="transfer-treatment-signature" value="" />
+                    <label class="field">Destination Facility
+                        <select name="DestinationWarehouseId" required data-transfer-facility>
+                            <option value="">Select destination facility...</option>
+                            @foreach (var facility in Model.TransferDestinationFacilities)
                             {
-                                <option value="@option.LotKey" selected="@(option.LotKey == Model.Filter.SourceKey)">@option.Label</option>
+                                <option value="@facility.WarehouseId" selected="@(facility.WarehouseId == Model.TransferForm.DestinationWarehouseId)">@facility.Label</option>
                             }
                         </select>
                     </label>
-                    <label class="field">Destination room
-                        <select name="ToRoomId" required>
-                            <option value="">Select destination</option>
+                    <label class="field">Destination Room
+                        <select name="DestinationRoomId" required data-transfer-room>
+                            <option value="">Select destination room...</option>
                             @foreach (var option in Model.TransferDestinationOptions)
                             {
-                                <option value="@option.RoomId">@option.Label</option>
+                                var roomVisible = option.WarehouseId == Model.TransferForm.DestinationWarehouseId;
+                                <option value="@option.RoomId" data-warehouse-id="@option.WarehouseId"
+                                        selected="@(option.RoomId == Model.TransferForm.DestinationRoomId)"
+                                        hidden="@(!roomVisible)" disabled="@(!roomVisible)">@option.Label</option>
                             }
                         </select>
                     </label>
-                    <label class="field">Bins to transfer <input type="number" min="1" name="BinCount" required /></label>
+                    <fieldset class="field wide transfer-fruit-fieldset">
+                        <legend>Fruit to transfer</legend>
+                        <div class="transfer-fruit-options">
+                            @foreach (var option in Model.TransferLotOptions)
+                            {
+                                <label class="transfer-fruit-option">
+                                    <input type="radio" name="SourceLotKey" value="@option.LotKey" required
+                                           checked="@(option.LotKey == Model.Filter.SourceKey && option.TreatmentSignature == Model.Filter.TransferTreatmentSignature)"
+                                           data-treatment-signature="@option.TreatmentSignature"
+                                           data-grower="@option.Grower" data-variety="@option.Variety"
+                                           data-treatment="@option.TreatmentLabel" data-available="@option.CurrentBins" />
+                                    <span>@option.Label</span>
+                                </label>
+                            }
+                        </div>
+                    </fieldset>
+                    <label class="field">Transfer quantity <input type="number" min="1" name="BinCount" value="@(Model.TransferForm.BinCount > 0 ? Model.TransferForm.BinCount : null)" required inputmode="numeric" /></label>
                     <label class="field">Pacific date/time <input type="datetime-local" name="TransferAt" value="@BusinessTime.FormatPacificInput(BusinessTime.UtcNow)" required /></label>
                     <label class="field wide">Reason <input name="Reason" maxlength="500" required /></label>
                     <label class="field wide">Notes <textarea name="Notes" maxlength="1000"></textarea></label>
                     <label class="checkbox-field wide"><input type="checkbox" name="ConfirmOverTransfer" value="true" /> Allow explicit over-transfer correction override</label>
-                    <button type="submit">Record Transfer</button>
+                    <button type="button" class="transfer-review-button" data-transfer-review-button>Review Transfer</button>
+                    <section class="subpanel transfer-review wide" data-transfer-review hidden aria-live="polite">
+                        <h3>Review Transfer</h3>
+                        <div class="transfer-review-sides">
+                            <div><strong>FROM</strong><dl><dt>Facility</dt><dd data-review-source-facility></dd><dt>Room</dt><dd data-review-source-room></dd></dl></div>
+                            <div><strong>TO</strong><dl><dt>Facility</dt><dd data-review-destination-facility></dd><dt>Room</dt><dd data-review-destination-room></dd></dl></div>
+                        </div>
+                        <dl class="transfer-review-fruit">
+                            <dt>Grower</dt><dd data-review-grower></dd>
+                            <dt>Variety</dt><dd data-review-variety></dd>
+                            <dt>Treatment status</dt><dd data-review-treatment></dd>
+                            <dt>Bins transferring</dt><dd data-review-bins></dd>
+                        </dl>
+                        <div class="action-bar">
+                            <button type="button" class="secondary-button" data-transfer-edit-button>Back to Transfer</button>
+                            <button type="submit">Confirm Transfer</button>
+                        </div>
+                    </section>
                 </form>
+                <script>
+                (() => {
+                    const form = document.querySelector('[data-transfer-workflow]');
+                    if (!form) return;
+                    const facility = form.querySelector('[data-transfer-facility]');
+                    const room = form.querySelector('[data-transfer-room]');
+                    const signature = form.querySelector('#transfer-treatment-signature');
+                    const review = form.querySelector('[data-transfer-review]');
+                    const reviewButton = form.querySelector('[data-transfer-review-button]');
+                    let reviewReady = false;
+                    const selectedFruit = () => form.querySelector('input[name="SourceLotKey"]:checked');
+                    const syncSignature = () => { if (signature) signature.value = selectedFruit()?.dataset.treatmentSignature ?? ''; };
+                    const hideReview = () => { reviewReady = false; if (review) review.hidden = true; };
+                    const filterRooms = () => {
+                        const warehouseId = facility?.value ?? '';
+                        let selectedIsValid = false;
+                        room?.querySelectorAll('option[data-warehouse-id]').forEach(option => {
+                            const visible = warehouseId !== '' && option.dataset.warehouseId === warehouseId;
+                            option.hidden = !visible;
+                            option.disabled = !visible;
+                            if (visible && option.selected) selectedIsValid = true;
+                        });
+                        if (room && !selectedIsValid) room.value = '';
+                        hideReview();
+                    };
+                    facility?.addEventListener('change', filterRooms);
+                    form.querySelectorAll('input, select, textarea').forEach(input => input.addEventListener('change', () => {
+                        syncSignature();
+                        hideReview();
+                    }));
+                    reviewButton?.addEventListener('click', () => {
+                        syncSignature();
+                        if (!form.reportValidity()) return;
+                        const fruit = selectedFruit();
+                        const setText = (selector, value) => { const target = form.querySelector(selector); if (target) target.textContent = value || '—'; };
+                        setText('[data-review-source-facility]', form.dataset.sourceFacility);
+                        setText('[data-review-source-room]', form.dataset.sourceRoom);
+                        setText('[data-review-destination-facility]', facility?.selectedOptions[0]?.textContent?.trim());
+                        setText('[data-review-destination-room]', room?.selectedOptions[0]?.textContent?.trim());
+                        setText('[data-review-grower]', fruit?.dataset.grower);
+                        setText('[data-review-variety]', fruit?.dataset.variety);
+                        setText('[data-review-treatment]', fruit?.dataset.treatment);
+                        setText('[data-review-bins]', form.querySelector('input[name="BinCount"]')?.value);
+                        reviewReady = true;
+                        review.hidden = false;
+                        review.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    });
+                    form.querySelector('[data-transfer-edit-button]')?.addEventListener('click', hideReview);
+                    form.addEventListener('submit', event => {
+                        syncSignature();
+                        if (!reviewReady) {
+                            event.preventDefault();
+                            reviewButton?.click();
+                        }
+                    });
+                    filterRooms();
+                    syncSignature();
+                })();
+                </script>
             }
         </section>
     }
@@ -1438,6 +1538,7 @@ else
             else
             {
                 <form class="form-grid" method="post" action="/BinsRun/TrueUp">
+                    <input type="hidden" name="OperationKey" value="@Model.TrueUpForm.OperationKey" />
                     <input type="hidden" name="RoomId" value="@Model.Filter.RoomId" />
                     <label class="field wide">Current receipt-backed lot
                         <select name="ReceiptId" required>
@@ -1476,13 +1577,13 @@ else
                         <p><a href="/BinsRun/ActualRuns/@run.Id">Open Actual Run, Run Expectation, and Packout Result</a></p>
                         <div class="table-wrap">
                             <table>
-                                <thead><tr><th>Event</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Old</th><th>Bins</th><th>New</th><th>Override</th></tr></thead>
+                                <thead><tr><th>Event</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Treatment</th><th>Old</th><th>Bins</th><th>New</th><th>Override</th></tr></thead>
                                 <tbody>
                                 @foreach (var line in run.Lines)
                                 {
                                     <tr>
                                         <td>@line.TransactionType @(line.IsReversed && line.TransactionType == CropQc.Data.Entities.ActualRunTransactionTypes.Depletion ? "(reversed)" : "")</td>
-                                        <td>@line.Room</td><td>@line.Lot<br /><span class="muted">@line.Grower</span></td><td>@line.Variety</td>
+                                        <td>@line.Room</td><td>@line.Lot<br /><span class="muted">@line.Grower</span></td><td>@line.Variety</td><td>@line.TreatmentSummary</td>
                                         <td>@line.PreviousAvailableBins</td><td>@line.BinsRun</td><td>@line.NewAvailableBins</td>
                                         <td>@(line.IsOverdrawOverride ? $"Approved: {line.OverrideReason}" : "No")</td>
                                     </tr>
@@ -1559,11 +1660,11 @@ else
             {
                 <div class="table-wrap">
                     <table>
-                        <thead><tr><th>When</th><th>Lot</th><th>Type</th><th>Old</th><th>Delta</th><th>New</th><th>Source</th><th>Reason</th><th>User</th></tr></thead>
+                        <thead><tr><th>When</th><th>Lot</th><th>Type</th><th>Transfer route</th><th>Old</th><th>Delta</th><th>New</th><th>Source</th><th>Reason</th><th>User</th></tr></thead>
                         <tbody>
                         @foreach (var item in Model.InventoryActivity)
                         {
-                            <tr><td>@BusinessTime.FormatPacific(item.AdjustmentAt)</td><td>@item.Lot</td><td>@item.AdjustmentType</td><td>@(item.OldBinCount?.ToString() ?? "-")</td><td>@item.ChangeAmount</td><td>@item.NewBinCount</td><td>@(item.Source ?? "-")</td><td>@(item.Reason ?? item.Notes ?? "-")</td><td>@item.CreatedBy</td></tr>
+                            <tr><td>@BusinessTime.FormatPacific(item.AdjustmentAt)</td><td>@item.Lot</td><td>@item.AdjustmentType</td><td>@if (item.TransferFrom is not null){<span><strong>From:</strong> @item.TransferFrom<br /><strong>To:</strong> @item.TransferTo</span>}else{<span>-</span>}</td><td>@(item.OldBinCount?.ToString() ?? "-")</td><td>@item.ChangeAmount</td><td>@item.NewBinCount</td><td>@(item.Source ?? "-")</td><td>@(item.Reason ?? item.Notes ?? "-")</td><td>@item.CreatedBy</td></tr>
                         }
                         </tbody>
                     </table>

@@ -42,7 +42,8 @@ public sealed record RoomInventoryLossCreateRequest(
     string Reason,
     string? Notes,
     long? RequiredReceiptId,
-    string AuditSource);
+    string AuditSource,
+    string? TreatmentSignature = null);
 
 public sealed record RoomInventoryLossNormalizationRequest(
     string OperationKey,
@@ -112,7 +113,8 @@ public sealed class RoomInventoryLossService(
     ICanonicalGrowerService canonicalGrowerService,
     IHttpContextAccessor httpContextAccessor,
     IBusinessTimeService businessTime,
-    ILogger<RoomInventoryLossService> logger) : IRoomInventoryLossService
+    ILogger<RoomInventoryLossService> logger,
+    IRoomTreatmentService? roomTreatmentService = null) : IRoomInventoryLossService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -120,24 +122,34 @@ public sealed class RoomInventoryLossService(
     {
         var snapshots = await ledgerQuery.GetSnapshotsAsync(null, [roomId], cancellationToken);
         var growerResolver = await canonicalGrowerService.LoadResolutionSetAsync(cancellationToken);
-        var options = snapshots
-            .Where(x => x.CurrentBins > 0)
-            .OrderBy(x => x.GrowerNumber ?? x.Grower)
-            .ThenBy(x => x.Lot)
-            .ThenBy(x => x.ProductionType)
-            .ThenBy(x => x.Variety)
-            .Select(x => new RoomInventoryLossOptionViewModel(
-                x.LatestAdjustmentId,
-                $"{growerResolver.DisplayName(x.Grower, x.GrowerNumber)} / {x.GrowerNumber ?? x.Lot} / {x.VarietyName} / {OrganicLabel(x)} ({x.CurrentBins} packable bins)",
-                x.Facility,
-                x.Room,
-                growerResolver.DisplayName(x.Grower, x.GrowerNumber),
-                x.Lot,
-                x.VarietyName,
-                x.ProductionType,
-                x.IsOrganic,
-                x.CurrentBins))
-            .ToList();
+        var options = new List<RoomInventoryLossOptionViewModel>();
+        var activeSnapshots = snapshots.Where(x => x.CurrentBins > 0).ToList();
+        var treatmentSelections = roomTreatmentService is null
+            ? null
+            : await roomTreatmentService.GetSelectionsAsync(activeSnapshots, cancellationToken);
+        foreach (var snapshot in activeSnapshots
+                     .OrderBy(x => x.GrowerNumber ?? x.Grower).ThenBy(x => x.Lot).ThenBy(x => x.ProductionType).ThenBy(x => x.Variety))
+        {
+            var segments = roomTreatmentService is null
+                ? [new TreatmentSegmentSelection(RoomTreatmentService.IdentityKey(snapshot), "", TreatmentLineageStates.Untreated, snapshot.CurrentBins, "Untreated")]
+                : treatmentSelections![RoomTreatmentService.SelectionLookupKey(snapshot)];
+            foreach (var segment in segments)
+            {
+                options.Add(new RoomInventoryLossOptionViewModel(
+                    snapshot.LatestAdjustmentId,
+                    $"{growerResolver.DisplayName(snapshot.Grower, snapshot.GrowerNumber)} / {snapshot.GrowerNumber ?? snapshot.Lot} / {snapshot.VarietyName} / {OrganicLabel(snapshot)} / {segment.Label} ({segment.CurrentBins} packable bins)",
+                    snapshot.Facility,
+                    snapshot.Room,
+                    growerResolver.DisplayName(snapshot.Grower, snapshot.GrowerNumber),
+                    snapshot.Lot,
+                    snapshot.VarietyName,
+                    snapshot.ProductionType,
+                    snapshot.IsOrganic,
+                    segment.CurrentBins,
+                    segment.TreatmentSignature,
+                    segment.Label));
+            }
+        }
         var principal = httpContextAccessor.HttpContext?.User;
         var canRecord = principal is not null
             && await userAccessService.HasAccessAsync(principal, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
@@ -187,7 +199,8 @@ public sealed class RoomInventoryLossService(
                 "Bins became unavailable for packing because they were dropped.",
                 form.Notes,
                 null,
-                "CropQc.Web room dropped-bin workflow"),
+                "CropQc.Web room dropped-bin workflow",
+                form.TreatmentSignature),
             actor,
             cancellationToken);
         return result.Success ? null : result.Error;
@@ -447,6 +460,24 @@ public sealed class RoomInventoryLossService(
             var now = businessTime.UtcNow;
             var reason = form.Reason.Trim();
             var wasReversed = loss.IsReversed;
+            if (roomTreatmentService is not null)
+            {
+                var lineage = await roomTreatmentService.ReverseMovementsAsync(
+                    $"room-inventory-loss:{operationKey}:treatment-reversal",
+                    TreatmentLineageMovementTypes.InventoryLossReversal,
+                    null,
+                    loss.Id,
+                    null,
+                    now,
+                    actor.Id,
+                    cancellationToken);
+                if (!lineage.Success) return lineage.Error;
+                if (lineage.MovementId is null)
+                {
+                    var unknown = await roomTreatmentService.AddUnknownAsync(snapshot, loss.BinCount, $"room-inventory-loss:{operationKey}:unknown-restoration", now, actor.Id, cancellationToken);
+                    if (!unknown.Success) return unknown.Error;
+                }
+            }
             var adjustment = CreateAdjustment(
                 loss,
                 actor.Id,
@@ -585,6 +616,25 @@ public sealed class RoomInventoryLossService(
             };
             dbContext.RoomInventoryLosses.Add(loss);
             await dbContext.SaveChangesAsync(cancellationToken);
+
+            if (roomTreatmentService is not null)
+            {
+                var lineage = await roomTreatmentService.MoveAsync(
+                    snapshot,
+                    request.TreatmentSignature,
+                    request.BinCount,
+                    null,
+                    null,
+                    $"room-inventory-loss:{operationKey}:treatment",
+                    TreatmentLineageMovementTypes.InventoryLoss,
+                    null,
+                    loss.Id,
+                    null,
+                    request.OccurredAt ?? now,
+                    actor.Id,
+                    cancellationToken);
+                if (!lineage.Success) return Failed(lineage.Error ?? "Treatment lineage could not be resolved for the selected loss.");
+            }
 
             var after = snapshot.CurrentBins - request.BinCount;
             var adjustment = CreateAdjustment(

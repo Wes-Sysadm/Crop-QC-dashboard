@@ -33,7 +33,8 @@ public sealed class CanonicalQcTransferTests
         {
             OperationKey = "qc-a-to-b",
             FromRoomId = 99101,
-            ToRoomId = 99102,
+            DestinationWarehouseId = 9910,
+            DestinationRoomId = 99102,
             SourceLotKey = source.LotKey,
             BinCount = 40,
             TransferAt = DateTimeOffset.Parse("2026-08-02T12:00:00Z"),
@@ -59,7 +60,8 @@ public sealed class CanonicalQcTransferTests
         {
             OperationKey = "qc-b-to-c",
             FromRoomId = 99102,
-            ToRoomId = 99103,
+            DestinationWarehouseId = 9910,
+            DestinationRoomId = 99103,
             SourceLotKey = destination.LotKey,
             BinCount = 40,
             TransferAt = DateTimeOffset.Parse("2026-08-03T12:00:00Z"),
@@ -146,7 +148,8 @@ public sealed class CanonicalQcTransferTests
         {
             OperationKey = "authoritative-name-a-to-b",
             FromRoomId = 99101,
-            ToRoomId = 99102,
+            DestinationWarehouseId = 9910,
+            DestinationRoomId = 99102,
             SourceLotKey = sourceOption.LotKey,
             BinCount = 40,
             TransferAt = DateTimeOffset.Parse("2026-08-02T12:00:00Z"),
@@ -159,7 +162,8 @@ public sealed class CanonicalQcTransferTests
         {
             OperationKey = "authoritative-name-b-to-c",
             FromRoomId = 99102,
-            ToRoomId = 99103,
+            DestinationWarehouseId = 9910,
+            DestinationRoomId = 99103,
             SourceLotKey = roomBOption.LotKey,
             BinCount = 40,
             TransferAt = DateTimeOffset.Parse("2026-08-03T12:00:00Z"),
@@ -234,7 +238,8 @@ public sealed class CanonicalQcTransferTests
         {
             OperationKey = "postgres-qc-a-to-b",
             FromRoomId = 99101,
-            ToRoomId = 99102,
+            DestinationWarehouseId = 9910,
+            DestinationRoomId = 99102,
             SourceLotKey = source.LotKey,
             BinCount = 40,
             TransferAt = DateTimeOffset.Parse("2026-08-02T12:00:00Z"),

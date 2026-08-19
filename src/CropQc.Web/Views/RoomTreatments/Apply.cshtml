@@ -1,0 +1,99 @@
+@model RoomTreatmentApplyPageViewModel
+@{
+    ViewData["Title"] = "Apply Treatment";
+}
+
+<div class="page-header treatment-page-header">
+    <div>
+        <p class="eyebrow">@Model.Warehouse</p>
+        <h1>Apply Treatment — @Model.Room</h1>
+        <p class="muted">A treatment applies only to the fruit proven to be in this room at the recorded application time.</p>
+    </div>
+    <a class="button secondary-button" href="/Rooms/@Model.Form.RoomId">Back to Room</a>
+</div>
+
+@if (Model.Error is not null)
+{
+    <p class="notice warning" role="alert">@Model.Error</p>
+}
+
+<section class="card treatment-review-card">
+    <h2>@(Model.IsReview ? "Review Treatment" : "Treatment Details")</h2>
+    <dl class="room-metrics treatment-summary">
+        <div><dt>Warehouse</dt><dd>@Model.Warehouse</dd></div>
+        <div><dt>Room</dt><dd>@Model.Room</dd></div>
+        <div><dt>Application date/time</dt><dd>@BusinessTime.FormatPacific(Model.Form.AppliedAt)</dd></div>
+        <div><dt>Current bins at application time</dt><dd>@Model.TotalBins.ToString("N0")</dd></div>
+    </dl>
+
+    @if (!Model.IsReview)
+    {
+        <form method="post" action="/Rooms/@Model.Form.RoomId/Treatments/Review" class="stacked-form treatment-form">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="RoomId" value="@Model.Form.RoomId" />
+            <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
+            <label class="field">Application date/time
+                <input type="datetime-local" name="AppliedAt" value="@Model.Form.AppliedAt.ToString("yyyy-MM-ddTHH:mm")" required />
+            </label>
+            <label class="field">Treatment
+                <select name="TreatmentChemicalId" required>
+                    <option value="">Select treatment...</option>
+                    @foreach (var item in Model.TreatmentOptions)
+                    {
+                        <option value="@item.Id" selected="@(item.Id == Model.Form.TreatmentChemicalId)">@item.DisplayName</option>
+                    }
+                </select>
+            </label>
+            <label class="field">Notes <span class="muted">(optional)</span>
+                <textarea name="Notes" maxlength="1000" rows="3">@Model.Form.Notes</textarea>
+            </label>
+            <button type="submit" disabled="@(Model.Error is not null)">Review Treatment</button>
+        </form>
+    }
+    else if (Model.SelectedTreatment is not null)
+    {
+        <div class="treatment-product-review">
+            @if (!string.IsNullOrWhiteSpace(Model.SelectedTreatment.CommonName))
+            {
+                <p><strong>Common Name</strong><br />@Model.SelectedTreatment.CommonName</p>
+            }
+            <p><strong>Official Product Name</strong><br />@Model.SelectedTreatment.ProductName</p>
+            <p><strong>Crop</strong><br />@Model.SelectedTreatment.Crop</p>
+            <p><strong>Price basis</strong><br />@Model.SelectedTreatment.UnitPrice.ToString("C2") @Model.SelectedTreatment.Currency per @Model.SelectedTreatment.Volume.ToString("0.##") @Model.SelectedTreatment.Unit</p>
+            <p><strong>Estimated Treatment Cost</strong><br />@Model.EstimatedCost.ToString("C2") @Model.SelectedTreatment.Currency</p>
+        </div>
+        <form method="post" action="/Rooms/@Model.Form.RoomId/Treatments" class="inline-actions treatment-confirm-actions">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="RoomId" value="@Model.Form.RoomId" />
+            <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
+            <input type="hidden" name="TreatmentChemicalId" value="@Model.Form.TreatmentChemicalId" />
+            <input type="hidden" name="AppliedAt" value="@Model.Form.AppliedAt.ToString("O")" />
+            <input type="hidden" name="Notes" value="@Model.Form.Notes" />
+            <input type="hidden" name="ConfirmedReview" value="true" />
+            <button type="submit">Save Treatment</button>
+            <a class="button secondary-button" href="/Rooms/@Model.Form.RoomId/Treatments/Apply">Change</a>
+        </form>
+    }
+</section>
+
+<section class="card">
+    <h2>Exact fruit affected</h2>
+    @if (Model.Fruit.Count == 0)
+    {
+        <p class="muted">No fruit was present at this application time.</p>
+    }
+    else
+    {
+        <div class="responsive-table-wrap">
+            <table>
+                <thead><tr><th>Grower number</th><th>Grower</th><th>Variety</th><th>Production</th><th>Bins</th></tr></thead>
+                <tbody>
+                @foreach (var fruit in Model.Fruit)
+                {
+                    <tr><td>@fruit.GrowerNumber</td><td>@fruit.GrowerName</td><td>@fruit.Variety</td><td>@fruit.ProductionType</td><td>@fruit.Bins.ToString("N0")</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>

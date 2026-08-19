@@ -1569,6 +1569,80 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 .room-more-varieties summary { cursor: pointer; font-weight: 800; }
 .card-stretched-link::after { content: ""; inset: 0; position: absolute; z-index: 2; }
 .room-card-actions a, .room-more-varieties summary, .room-more-varieties a { position: relative; z-index: 4; }
+
+.treatment-page-header,
+.treatment-confirm-actions,
+.room-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .65rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.treatment-form {
+    max-width: 48rem;
+}
+
+.treatment-product-review {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: .75rem;
+    margin: 1rem 0;
+}
+
+.treatment-product-review p,
+.treatment-segment-card {
+    overflow-wrap: anywhere;
+}
+
+.treatment-list {
+    margin-bottom: 0;
+}
+
+@media (max-width: 430px) {
+    .treatment-page-header,
+    .treatment-confirm-actions,
+    .room-card-actions {
+        align-items: stretch;
+    }
+
+    .treatment-page-header > *,
+    .treatment-confirm-actions > *,
+    .room-card-actions > * {
+        width: 100%;
+    }
+
+    .treatment-form input,
+    .treatment-form select,
+    .treatment-form textarea,
+    .treatment-form button {
+        min-height: 44px;
+        width: 100%;
+        max-width: 100%;
+    }
+}
+.transfer-fruit-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.transfer-fruit-fieldset legend { margin-bottom: 8px; font-weight: 700; }
+.transfer-fruit-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 8px; }
+.transfer-fruit-option { display: flex; min-width: 0; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; cursor: pointer; }
+.transfer-fruit-option:has(input:checked) { border-color: #1d5d74; box-shadow: 0 0 0 2px rgba(29,93,116,.2); }
+.transfer-fruit-option input { flex: 0 0 auto; margin-top: 3px; }
+.transfer-fruit-option span { min-width: 0; overflow-wrap: anywhere; }
+.transfer-review-button { min-height: 48px; }
+.transfer-review { margin: 0; }
+.transfer-review-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.transfer-review dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 10px; margin: 8px 0; }
+.transfer-review dt { color: #52606d; }
+.transfer-review dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 430px) {
+    .transfer-workflow { grid-template-columns: minmax(0, 1fr); overflow: hidden; }
+    .transfer-workflow > *, .transfer-workflow select, .transfer-workflow input, .transfer-workflow textarea, .transfer-workflow button { width: 100%; min-width: 0; max-width: 100%; }
+    .transfer-fruit-options, .transfer-review-sides { grid-template-columns: minmax(0, 1fr); }
+    .transfer-fruit-option { min-height: 48px; }
+    .transfer-review .action-bar { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; }
+}
 .receipt-card-colored { background: var(--receipt-variety-bg, #e7ecef); overflow: hidden; position: relative; }
 .receipt-card-colored.organic::after { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 8px, rgba(22,101,52,.35) 8px 13px, rgba(255,255,255,.55) 13px 21px); content: ""; inset: 0; opacity: .42; pointer-events: none; position: absolute; }
 .receipt-card-content { background: rgba(255,255,255,.92); border-radius: 5px; display: grid; gap: 12px; padding: 12px; position: relative; z-index: 1; }

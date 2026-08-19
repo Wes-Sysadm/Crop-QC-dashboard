@@ -15,6 +15,13 @@ public interface IRoomInventoryLedgerQueryService
         IReadOnlyCollection<int>? roomIds,
         int? fruitProfileId,
         CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsOfAsync(
+        int? warehouseId,
+        IReadOnlyCollection<int>? roomIds,
+        DateTimeOffset asOf,
+        CancellationToken cancellationToken) =>
+        GetSnapshotsAsync(warehouseId, roomIds, cancellationToken);
 }
 
 public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomInventoryLedgerQueryService
@@ -25,12 +32,27 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
         int? warehouseId,
         IReadOnlyCollection<int>? roomIds,
         CancellationToken cancellationToken) =>
-        await GetSnapshotsAsync(warehouseId, roomIds, null, cancellationToken);
+        await GetSnapshotsCoreAsync(warehouseId, roomIds, null, null, cancellationToken);
 
     public async Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsync(
         int? warehouseId,
         IReadOnlyCollection<int>? roomIds,
         int? fruitProfileId,
+        CancellationToken cancellationToken)
+        => await GetSnapshotsCoreAsync(warehouseId, roomIds, fruitProfileId, null, cancellationToken);
+
+    public async Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsOfAsync(
+        int? warehouseId,
+        IReadOnlyCollection<int>? roomIds,
+        DateTimeOffset asOf,
+        CancellationToken cancellationToken) =>
+        await GetSnapshotsCoreAsync(warehouseId, roomIds, null, asOf, cancellationToken);
+
+    private async Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsCoreAsync(
+        int? warehouseId,
+        IReadOnlyCollection<int>? roomIds,
+        int? fruitProfileId,
+        DateTimeOffset? asOf,
         CancellationToken cancellationToken)
     {
         var query = dbContext.RoomInventoryAdjustments.AsNoTracking();
@@ -44,9 +66,15 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
             query = query.Where(x => roomIds.Contains(x.RoomId));
         }
 
+        if (asOf is not null)
+        {
+            query = query.Where(x => x.AdjustmentAt <= asOf.Value);
+        }
+
         query = query
             .Where(x => !dbContext.RoomInventoryAdjustments.Any(baseline =>
                 baseline.RoomId == x.RoomId
+                && (asOf == null || baseline.AdjustmentAt <= asOf.Value)
                 && baseline.ReceiptId == null
                 && baseline.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType
                 && (x.ReceiptId != null
@@ -57,6 +85,7 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 || x.AdjustmentType != RoomInventoryImportService.StartingInventoryAdjustmentType
                 || !dbContext.RoomInventoryAdjustments.Any(newerBaselineRow =>
                     newerBaselineRow.RoomId == x.RoomId
+                    && (asOf == null || newerBaselineRow.AdjustmentAt <= asOf.Value)
                     && newerBaselineRow.ReceiptId == null
                     && newerBaselineRow.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType
                     && newerBaselineRow.AdjustmentAt == x.AdjustmentAt
