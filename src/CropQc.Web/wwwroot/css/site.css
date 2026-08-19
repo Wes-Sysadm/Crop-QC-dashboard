@@ -268,6 +268,9 @@ tr:last-child td { border-bottom: 0; }
 .summary-list { display: grid; grid-template-columns: 180px 1fr; gap: 8px 18px; margin: 0; }
 .summary-list dt { font-weight: 800; color: #2f4050; }
 .summary-list dd { margin: 0; color: #334; }
+.receipt-bin-override-review { min-width: 0; max-width: 100%; overflow: hidden; }
+.receipt-bin-override-review .summary-list { min-width: 0; }
+#reviewBinCountOverride, #applyBinCountOverride { min-height: 48px; }
 .login-panel { max-width: 520px; margin: 48px auto; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 12px; margin-top: 14px; }
 .form-grid h2, .form-grid h3, .form-grid button, .form-grid .wide { grid-column: 1 / -1; }

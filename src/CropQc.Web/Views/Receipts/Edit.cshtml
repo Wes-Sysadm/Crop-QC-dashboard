@@ -73,22 +73,31 @@
                 <option value="@lot.LotNumber" label="@lot.LotNumber - @lot.Grower"></option>
             }
         </datalist>
-        <div class="field"><label>Bin Count</label><input name="BinCount" type="number" min="0" value="@form.BinCount" required /></div>
+        <div class="field"><label>Bin Count</label><input id="editBinCount" name="BinCount" type="number" min="0" inputmode="numeric" value="@form.BinCount" data-saved-bin-count="@form.BinCount" required /></div>
         <label class="checkbox-field"><input type="checkbox" name="ConfirmCropYear" value="true" checked /> Confirm Crop Year</label><input type="hidden" name="ConfirmCropYear" value="false" />
+        @if (!Model.CanAdminOverride)
+        {
+            <p id="binCountOverridePermissionWarning" class="notice warning wide" hidden>You do not have permission to override the bin count on a saved Receipt. Restore the current bin count to save other Receipt changes.</p>
+        }
         @if (Model.CanAdminOverride && Model.AdminOverridePreview is not null)
         {
             var preview = Model.AdminOverridePreview;
-            <section id="adminInventoryOverride" class="panel danger-zone wide" hidden
+            <button id="reviewBinCountOverride" type="button" class="wide" hidden>Review Bin Count Override</button>
+            <section id="adminInventoryOverride" class="panel danger-zone wide receipt-bin-override-review" hidden
                      data-original-bins="@form.BinCount" data-original-warehouse="@form.WarehouseId"
                      data-original-room="@form.RoomId" data-original-crop-year="@form.CropYear"
                      data-original-grower-lot="@form.GrowerLotId" data-original-grower-number="@form.GrowerNumber"
-                     data-original-fruit-profile="@form.FruitProfileId" data-has-prior-override="@preview.HasPriorOverride.ToString().ToLowerInvariant()">
-                <h2>Admin Inventory Override</h2>
+                     data-original-fruit-profile="@form.FruitProfileId">
+                <h2 id="overrideReviewTitle">Admin Inventory Override</h2>
+                <p id="savedReceiptBinCountWarning" class="notice warning" hidden>Changing the bin count of a saved Receipt requires an override.</p>
                 <p class="notice warning">This is an audited inventory operation, not a normal receipt edit. Historical runs and transfers will not be rewritten.</p>
                 <dl class="summary-list">
-                    <dt>Current receipt quantity</dt><dd>@preview.ReceiptBinCount bins</dd>
-                    <dt>Proposed quantity</dt><dd><span id="overrideProposedBins">@preview.ReceiptBinCount</span> bins</dd>
-                    <dt>Quantity change</dt><dd><span id="overrideBinDelta">0</span> bins</dd>
+                    <dt>Receipt</dt><dd id="overrideReceipt">@form.CompuTechReceiptId</dd>
+                    <dt>Grower</dt><dd id="overrideGrower">@form.GrowerNumber - @form.GrowerName</dd>
+                    <dt>Room</dt><dd id="overrideRoom">@(Model.Rooms.FirstOrDefault(x => x.Id == form.RoomId)?.CropQcRoomName ?? Model.Rooms.FirstOrDefault(x => x.Id == form.RoomId)?.DisplayName ?? Model.Rooms.FirstOrDefault(x => x.Id == form.RoomId)?.Code ?? "-")</dd>
+                    <dt>Current bin count</dt><dd>@preview.ReceiptBinCount bins</dd>
+                    <dt>New bin count</dt><dd><span id="overrideProposedBins">@preview.ReceiptBinCount</span> bins</dd>
+                    <dt>Inventory adjustment</dt><dd><span id="overrideBinDelta">0</span> bins</dd>
                     <dt>Current attributable inventory</dt><dd>@preview.CurrentInventory bins</dd>
                     <dt>Net already run or consumed</dt><dd>@preview.ConsumedBins bins</dd>
                     <dt>Operational history</dt><dd>@preview.BinsRunCount Bins Run line(s), @preview.ActualRunCount Actual Run(s), @preview.TransferCount transfer(s)</dd>
@@ -109,11 +118,11 @@
                 <input type="hidden" name="ConfirmInventoryChange" value="false" />
                 <label id="negativeInventoryAcknowledgment" class="checkbox-field wide" hidden><input type="checkbox" name="AcknowledgeNegativeInventory" value="true" /> I understand this correction will create a negative inventory balance that requires review.</label>
                 <input type="hidden" name="AcknowledgeNegativeInventory" value="false" />
-                <button type="submit" formaction="/Receipts/@form.Id/AdminInventoryOverride">Apply Admin Inventory Override</button>
+                <button id="applyBinCountOverride" type="submit" formaction="/Receipts/@form.Id/AdminInventoryOverride">Apply Override</button>
             </section>
         }
         <div class="button-row">
-            <button type="submit">Save Receipt</button>
+            <button id="saveReceiptButton" type="submit">Save Receipt</button>
             <a class="button secondary-button" href="/Receipts/@form.Id">Cancel</a>
         </div>
     </form>
@@ -176,7 +185,15 @@
             }
         });
 
+        const editForm = document.querySelector("form[action$='/Edit']");
+        const binCountInput = document.getElementById("editBinCount");
+        const saveReceiptButton = document.getElementById("saveReceiptButton");
+        const permissionWarning = document.getElementById("binCountOverridePermissionWarning");
+        const originalBins = Number(binCountInput?.dataset.savedBinCount);
+        const quantityChanged = () => Number(binCountInput?.value) !== originalBins;
         const overrideSection = document.getElementById("adminInventoryOverride");
+        const reviewOverrideButton = document.getElementById("reviewBinCountOverride");
+        let overrideReviewRequested = false;
         if (overrideSection) {
             const watched = ["BinCount", "WarehouseId", "RoomId", "CropYear", "GrowerLotId", "GrowerNumber", "FruitProfileId"];
             const currentValue = name => document.querySelector(`[name='${name}']`)?.value ?? "";
@@ -184,23 +201,62 @@
             function updateOverrideVisibility() {
                 const proposed = Number(currentValue("BinCount"));
                 const original = Number(overrideSection.dataset.originalBins);
+                const binCountChanged = proposed !== original;
                 const identityChanged = Number(currentValue("WarehouseId")) !== Number(overrideSection.dataset.originalWarehouse)
                     || Number(currentValue("RoomId")) !== Number(overrideSection.dataset.originalRoom)
                     || Number(currentValue("CropYear")) !== Number(overrideSection.dataset.originalCropYear)
                     || normalize(currentValue("GrowerLotId")) !== normalize(overrideSection.dataset.originalGrowerLot)
                     || normalize(currentValue("GrowerNumber")) !== normalize(overrideSection.dataset.originalGrowerNumber)
                     || Number(currentValue("FruitProfileId")) !== Number(overrideSection.dataset.originalFruitProfile);
-                const priorOverrideRequiresAuditedIncrease = overrideSection.dataset.hasPriorOverride === "true" && proposed > original;
-                overrideSection.hidden = proposed >= original && !identityChanged && !priorOverrideRequiresAuditedIncrease;
+                reviewOverrideButton.hidden = !binCountChanged;
+                saveReceiptButton.hidden = binCountChanged || identityChanged;
+                overrideSection.hidden = binCountChanged ? !overrideReviewRequested : !identityChanged;
+                document.getElementById("overrideReviewTitle").textContent = binCountChanged ? "Bin Count Override Review" : "Admin Inventory Override";
+                document.getElementById("savedReceiptBinCountWarning").hidden = !binCountChanged;
                 document.getElementById("overrideProposedBins").textContent = Number.isFinite(proposed) ? proposed : "n/a";
-                document.getElementById("overrideBinDelta").textContent = Number.isFinite(proposed) ? proposed - original : "n/a";
-                document.getElementById("negativeInventoryAcknowledgment").hidden = @(Model.AdminOverridePreview?.CurrentInventory ?? 0) + (Number.isFinite(proposed) ? proposed - original : 0) >= 0;
+                const delta = Number.isFinite(proposed) ? proposed - original : null;
+                document.getElementById("overrideBinDelta").textContent = delta === null ? "n/a" : `${delta > 0 ? "+" : ""}${delta}`;
+                document.getElementById("overrideReceipt").textContent = currentValue("CompuTechReceiptId") || "-";
+                const growerNumber = currentValue("GrowerNumber").trim();
+                const growerName = currentValue("GrowerName").trim();
+                document.getElementById("overrideGrower").textContent = [growerNumber, growerName].filter(Boolean).join(" - ") || "-";
+                document.getElementById("overrideRoom").textContent = roomSelect?.selectedOptions[0]?.textContent?.trim() || "-";
+                const negativeAcknowledgment = document.getElementById("negativeInventoryAcknowledgment");
+                negativeAcknowledgment.hidden = @(Model.AdminOverridePreview?.CurrentInventory ?? 0) + (delta ?? 0) >= 0;
+                if (negativeAcknowledgment.hidden) negativeAcknowledgment.querySelector("input[type='checkbox']").checked = false;
             }
             for (const name of watched) {
-                document.querySelector(`[name='${name}']`)?.addEventListener("change", updateOverrideVisibility);
-                document.querySelector(`[name='${name}']`)?.addEventListener("input", updateOverrideVisibility);
+                const field = document.querySelector(`[name='${name}']`);
+                const changed = () => {
+                    overrideReviewRequested = false;
+                    updateOverrideVisibility();
+                };
+                field?.addEventListener("change", changed);
+                field?.addEventListener("input", changed);
             }
+            reviewOverrideButton?.addEventListener("click", () => {
+                if (!binCountInput?.reportValidity()) return;
+                overrideReviewRequested = true;
+                updateOverrideVisibility();
+                overrideSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            });
             updateOverrideVisibility();
+        } else if (binCountInput) {
+            const updatePermissionState = () => {
+                const changed = quantityChanged();
+                if (permissionWarning) permissionWarning.hidden = !changed;
+                saveReceiptButton.disabled = changed;
+            };
+            binCountInput.addEventListener("input", updatePermissionState);
+            binCountInput.addEventListener("change", updatePermissionState);
+            updatePermissionState();
         }
+
+        editForm?.addEventListener("submit", event => {
+            if (!quantityChanged()) return;
+            if (event.submitter?.id === "applyBinCountOverride" && !overrideSection?.hidden) return;
+            event.preventDefault();
+            reviewOverrideButton?.click();
+        });
     })();
 </script>
