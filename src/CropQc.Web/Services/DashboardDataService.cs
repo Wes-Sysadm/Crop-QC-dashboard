@@ -1725,14 +1725,11 @@ public sealed class DashboardDataService(
             receipt.BinCount
         });
         var wasInventory = IsInventoryReceiptType(receipt.ReceiptType);
-        var currentBins = wasInventory ? await GetCurrentBinsForReceiptAsync(receipt.Id, cancellationToken) : 0;
         var lotNumber = growerLot?.LotNumber ?? form.GrowerNumber.Trim();
         var suppliedGrowerName = growerLot?.Grower ?? form.GrowerName.Trim();
         var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
         var growerName = growerResolver.DisplayName(suppliedGrowerName, lotNumber);
         var hasInventoryHistory = wasInventory && await dbContext.RoomInventoryAdjustments.AsNoTracking()
-            .AnyAsync(x => x.ReceiptId == receipt.Id, cancellationToken);
-        var hasPriorInventoryOverride = hasInventoryHistory && await dbContext.ReceiptInventoryOverrides.AsNoTracking()
             .AnyAsync(x => x.ReceiptId == receipt.Id, cancellationToken);
         var quantityChanged = form.BinCount != receipt.BinCount;
         var inventoryIdentityChanged = receipt.CropYear != form.CropYear
@@ -1742,9 +1739,7 @@ public sealed class DashboardDataService(
             || receipt.GrowerLotId != growerLot?.Id
             || !string.Equals(receipt.GrowerNumber ?? receipt.LotCode, lotNumber, StringComparison.OrdinalIgnoreCase)
             || wasInventory != IsInventoryReceiptType(receiptType);
-        var requiresAdminQuantityOverride = quantityChanged
-            && (form.BinCount < receipt.BinCount || hasPriorInventoryOverride);
-        if (hasInventoryHistory && (requiresAdminQuantityOverride || inventoryIdentityChanged))
+        if (quantityChanged || (hasInventoryHistory && inventoryIdentityChanged))
         {
             var rejectingUser = await GetCurrentUserAsync(cancellationToken);
             await AuditRejectedInventoryDeductionAsync(
@@ -1753,10 +1748,21 @@ public sealed class DashboardDataService(
                 rejectingUser,
                 $"Rejected requested inventory-affecting receipt edit from {receipt.BinCount} to {form.BinCount} bins.",
                 cancellationToken);
-            return quantityChanged && form.BinCount < receipt.BinCount
-                ? "Inventory leaving a room must be recorded through Bins Run or Transfer. The receipt reduction was not saved."
-                : "Inventory-affecting receipt corrections require Receipts Admin and an explicit Admin Inventory Override. The receipt was not changed.";
+            if (quantityChanged)
+            {
+                return await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Admin, cancellationToken)
+                    ? "Changing the bin count of a saved Receipt requires an override. The Receipt was not changed."
+                    : "You do not have permission to override the bin count on a saved Receipt. The Receipt was not changed.";
+            }
+
+            return "Inventory-affecting receipt corrections require Receipts Admin and an explicit Admin Inventory Override. The receipt was not changed.";
         }
+
+        var addInventoryAdjustment = IsInventoryReceiptType(receiptType)
+            && (!wasInventory || !hasInventoryHistory || quantityChanged);
+        var currentBins = addInventoryAdjustment && wasInventory
+            ? await GetCurrentBinsForReceiptAsync(receipt.Id, cancellationToken)
+            : 0;
 
         receipt.CropYear = form.CropYear;
         receipt.ReceivedAt = form.ReceivedAt;
@@ -1775,7 +1781,7 @@ public sealed class DashboardDataService(
         receipt.ConcurrencyVersion++;
 
         var currentUser = await GetCurrentUserAsync(cancellationToken);
-        if (IsInventoryReceiptType(receiptType) && (!wasInventory || !hasInventoryHistory || quantityChanged))
+        if (addInventoryAdjustment)
         {
             var changeAmount = wasInventory ? receipt.BinCount - oldReceiptBinCount : receipt.BinCount;
             AddRoomInventoryAdjustment(

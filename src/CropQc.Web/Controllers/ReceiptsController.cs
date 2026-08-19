@@ -228,6 +228,7 @@ public sealed class ReceiptsController(
 
     [Authorize(Policy = AccessPolicyNames.ReceiptEditEdit)]
     [HttpPost("{id:long}/Edit")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Edit(long id, UpdateReceiptForm form, CancellationToken cancellationToken)
     {
         form.Id = id;

@@ -67,6 +67,21 @@ public sealed class MobileDataEntryTests
     }
 
     [Fact]
+    public void SavedReceiptOverride_UsesPhoneFriendlyVerticalReviewWithoutPageOverflow()
+    {
+        var edit = Read("src", "CropQc.Web", "Views", "Receipts", "Edit.cshtml");
+        var css = Read("src", "CropQc.Web", "wwwroot", "css", "site.css");
+
+        Assert.Contains("receipt-bin-override-review", edit);
+        Assert.Contains("id=\"reviewBinCountOverride\"", edit);
+        Assert.Contains("id=\"applyBinCountOverride\"", edit);
+        Assert.Contains("inputmode=\"numeric\"", edit);
+        Assert.Contains(".receipt-bin-override-review { min-width: 0; max-width: 100%; overflow: hidden; }", css);
+        Assert.Contains(".summary-list, .station-meta { grid-template-columns: 1fr; }", css);
+        Assert.Contains("#reviewBinCountOverride, #applyBinCountOverride { min-height: 48px; }", css);
+    }
+
+    [Fact]
     public void PhonePhotoActions_SeparateCameraAndLibraryWithImmediatePreview()
     {
         var staged = Read("src", "CropQc.Web", "Views", "Shared", "_StagedReceiptPhotos.cshtml");
