@@ -1129,6 +1129,10 @@ public sealed class BinsRunWorkflowTests
         Assert.Contains("option.disabled = !visible", view);
         Assert.Contains("room.value = ''", view);
         Assert.Contains("Fruit to transfer", view);
+        Assert.Contains("Current Room Inventory", view);
+        Assert.Contains("Available in transfer selections", view);
+        Assert.Contains("TransferInventoryReconciles", view);
+        Assert.Contains("TransferInventoryError", view);
         Assert.Contains("data-treatment-signature", view);
         Assert.Contains("Review Transfer", view);
         Assert.Contains("FirstOrDefault(x => x.WarehouseId == Model.RoomSummary?.WarehouseId)?.Label", view);
@@ -1245,7 +1249,7 @@ public sealed class BinsRunWorkflowTests
             DestinationRoomId = 1002,
             SourceLotKey = sourceLot.LotKey,
             BinCount = 10,
-            TransferAt = DateTimeOffset.UtcNow,
+            TransferAt = DateTimeOffset.Parse("2026-08-19T19:00:00Z"),
             Reason = "Disposable PostgreSQL transfer verification"
         };
         Assert.Null(await dashboard.CreateRoomTransferAsync(transferForm, CancellationToken.None));
@@ -1397,6 +1401,11 @@ public sealed class BinsRunWorkflowTests
             detail.TransferLotOptions,
             x => x.Label.Contains("1372", StringComparison.Ordinal));
         Assert.Equal(286, option.CurrentBins);
+        Assert.True(detail.TransferInventoryReconciles);
+        Assert.Equal(detail.CurrentLots.Sum(x => x.CurrentBins), detail.TransferCurrentRoomBins);
+        Assert.Equal(detail.TransferCurrentRoomBins, detail.TransferAvailableBins);
+        Assert.Equal(detail.TransferCurrentRoomBins, detail.TransferLotOptions.Sum(x => x.CurrentBins));
+        Assert.Null(detail.TransferInventoryError);
         Assert.Null(detail.DataWarning);
 
         RoomInventoryAdjustment SourceAdjustment(long id, Receipt receipt, int? growerLotId, int bins) => new()
@@ -1442,6 +1451,117 @@ public sealed class BinsRunWorkflowTests
         Assert.Empty(detail.TransferLotOptions);
         Assert.NotNull(detail.DataWarning);
         Assert.Contains("Current inventory is shown", detail.DataWarning, StringComparison.Ordinal);
+        Assert.False(detail.TransferInventoryReconciles);
+        Assert.Equal(detail.CurrentLots.Sum(x => x.CurrentBins), detail.TransferCurrentRoomBins);
+        Assert.Equal(0, detail.TransferAvailableBins);
+        Assert.Contains("does not reconcile", detail.TransferInventoryError, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RoomTransfer_TreatmentProjectionMismatchFailsClosedBeforeAnyWrite()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var principal = Principal("manager@fruitandland.com");
+        var safeDetail = await CreateDashboardService(db, principal).GetRoomDetailAsync(1001, default);
+        var source = safeDetail.TransferLotOptions.First(x => x.Label.Contains("LOT-120", StringComparison.Ordinal));
+        var beforeTransfers = await db.RoomTransfers.CountAsync();
+        var beforeAdjustments = await db.RoomInventoryAdjustments.CountAsync();
+        var beforeAudits = await db.AuditLogs.CountAsync();
+        var service = CreateDashboardService(
+            db,
+            principal,
+            new RoomInventoryLedgerQueryService(db),
+            new ShortTreatmentProjectionService());
+
+        var detail = await service.GetRoomDetailAsync(1001, default);
+        var error = await service.CreateRoomTransferAsync(new RoomTransferForm
+        {
+            OperationKey = "projection-mismatch",
+            FromRoomId = 1001,
+            DestinationWarehouseId = 1000,
+            DestinationRoomId = 1002,
+            SourceLotKey = source.LotKey,
+            TreatmentSignature = source.TreatmentSignature,
+            BinCount = 1,
+            TransferAt = DateTimeOffset.UtcNow,
+            Reason = "Must fail before writing"
+        }, default);
+
+        Assert.False(detail.TransferInventoryReconciles);
+        Assert.NotEqual(detail.TransferCurrentRoomBins, detail.TransferAvailableBins);
+        Assert.Empty(detail.TransferLotOptions);
+        Assert.Equal("Transfer inventory does not reconcile with the Room's current inventory. No transfer was recorded. Refresh or review inventory reconciliation.", error);
+        Assert.Equal(beforeTransfers, await db.RoomTransfers.CountAsync());
+        Assert.Equal(beforeAdjustments, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(beforeAudits, await db.AuditLogs.CountAsync());
+    }
+
+    [Fact]
+    public async Task RoomTransfer_ExactTreatmentSegmentCannotBeOverdrawnEvenWithLegacyOverrideFlag()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var principal = Principal("manager@fruitandland.com");
+        var service = CreateDashboardService(db, principal);
+        var detail = await service.GetRoomDetailAsync(1001, default);
+        var source = detail.TransferLotOptions.First(x => x.Label.Contains("LOT-120", StringComparison.Ordinal));
+        var beforeTransfers = await db.RoomTransfers.CountAsync();
+        var beforeAdjustments = await db.RoomInventoryAdjustments.CountAsync();
+
+        var error = await service.CreateRoomTransferAsync(new RoomTransferForm
+        {
+            OperationKey = "exact-segment-overdraw",
+            FromRoomId = 1001,
+            DestinationWarehouseId = 1000,
+            DestinationRoomId = 1002,
+            SourceLotKey = source.LotKey,
+            TreatmentSignature = source.TreatmentSignature,
+            BinCount = source.CurrentBins + 1,
+            ConfirmOverTransfer = true,
+            TransferAt = DateTimeOffset.UtcNow,
+            Reason = "Must fail closed"
+        }, default);
+
+        Assert.Contains("exact selected treatment segment", error, StringComparison.Ordinal);
+        Assert.Equal(beforeTransfers, await db.RoomTransfers.CountAsync());
+        Assert.Equal(beforeAdjustments, await db.RoomInventoryAdjustments.CountAsync());
+    }
+
+    [Fact]
+    public async Task AllActiveRooms_CardDetailCurrentInventoryAndTransferUseOneAuthoritativeTotal()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var configuration = new ConfigurationBuilder().Build();
+        var ledger = new RoomInventoryLedgerQueryService(db);
+        var dashboard = CreateDashboardService(db, Principal("manager@fruitandland.com"), ledger);
+        var currentInventory = new RoomInventoryImportService(
+            db,
+            null!,
+            new CropYearService(db, configuration),
+            ledger);
+        var cards = await dashboard.GetRoomsAsync(
+            new RoomSummaryFilterForm { Facility = "All", EbsLocation = "All EBS", RoomStatus = "All" },
+            default);
+        var currentPage = await currentInventory.GetPageAsync(new RoomInventoryImportForm { Facility = "All" }, default);
+        var activeRoomIds = await db.Rooms.AsNoTracking().Where(x => x.IsActive).Select(x => x.Id).ToListAsync();
+
+        foreach (var roomId in activeRoomIds)
+        {
+            var authoritative = (await ledger.GetSnapshotsAsync(null, [roomId], default))
+                .Where(x => x.CurrentBins > 0)
+                .Sum(x => x.CurrentBins);
+            var detail = await dashboard.GetRoomDetailAsync(roomId, default);
+
+            Assert.Equal(authoritative, cards.Rooms.Single(x => x.RoomId == roomId).CurrentBinsCount ?? 0);
+            Assert.Equal(authoritative, detail.CurrentLots.Sum(x => x.CurrentBins));
+            Assert.Equal(authoritative, currentPage.CurrentLots.Where(x => x.RoomId == roomId).Sum(x => x.CurrentBins));
+            Assert.Equal(authoritative, detail.TransferCurrentRoomBins);
+            Assert.Equal(authoritative, detail.TransferAvailableBins);
+            Assert.Equal(authoritative, detail.TransferLotOptions.Sum(x => x.CurrentBins));
+            Assert.True(detail.TransferInventoryReconciles);
+        }
     }
 
     [Fact]
@@ -1963,6 +2083,11 @@ public sealed class BinsRunWorkflowTests
         db.Users.AddRange(
             User(1000, "admin@fruitandland.com", PageAccessLevel.Admin),
             User(1001, "manager@fruitandland.com", PageAccessLevel.Edit));
+        db.Receipts.AddRange(
+            ProductionReceipt(7901, 120, "LOT-120", fruit, warehouse, room),
+            ProductionReceipt(7902, 30, "LOT-30", fruit, warehouse, room),
+            ProductionReceipt(7903, 60, "LOT-OTHER", fruit, warehouse, otherRoom),
+            ProductionReceipt(7904, 25, "LOT-120", fruit, warehouse, otherRoom));
         var adjustments = new[]
         {
             Adjustment(8001, warehouse, room, fruit, "LOT-120", 120),
@@ -2399,6 +2524,36 @@ public sealed class BinsRunWorkflowTests
         public Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetSelectionsAsync(IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<TreatmentLineageWriteResult> MoveAsync(RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, int bins, int? destinationWarehouseId, int? destinationRoomId, string operationKey, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<TreatmentLineageWriteResult> ReverseMovementsAsync(string operationKeyPrefix, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<TreatmentLineageWriteResult> AddUnknownAsync(RoomInventoryLedgerSnapshot snapshot, int bins, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class ShortTreatmentProjectionService : IRoomTreatmentService
+    {
+        public Task<RoomTreatmentData> GetRoomDataAsync(int roomId, CancellationToken cancellationToken) =>
+            Task.FromResult(new RoomTreatmentData([], [], false, false));
+
+        public Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetSelectionsAsync(
+            IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots,
+            CancellationToken cancellationToken)
+        {
+            var result = snapshots.ToDictionary(
+                RoomTreatmentService.SelectionLookupKey,
+                x => (IReadOnlyList<TreatmentSegmentSelection>)[new(
+                    RoomTreatmentService.IdentityKey(x),
+                    "u",
+                    TreatmentLineageStates.Untreated,
+                    Math.Max(0, x.CurrentBins - 1),
+                    "Untreated")],
+                StringComparer.OrdinalIgnoreCase);
+            return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>>(result);
+        }
+
+        public Task<RoomTreatmentApplyPageViewModel> GetApplyPageAsync(RoomTreatmentApplyForm form, bool review, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<(string? Error, long? ApplicationId)> ApplyAsync(RoomTreatmentApplyForm form, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<string?> ReverseAsync(ReverseRoomTreatmentApplicationForm form, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<TreatmentLineageWriteResult> MoveAsync(RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, int bins, int? destinationWarehouseId, int? destinationRoomId, string operationKey, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new InvalidOperationException("Move must not run when inventory does not reconcile.");
         public Task<TreatmentLineageWriteResult> ReverseMovementsAsync(string operationKeyPrefix, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<TreatmentLineageWriteResult> AddUnknownAsync(RoomInventoryLedgerSnapshot snapshot, int bins, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }

@@ -122,6 +122,10 @@ public sealed class RoomDetailViewModel
     public IReadOnlyList<RoomSampleTimelineItemViewModel> SampleTimeline { get; set; } = [];
     public IReadOnlyList<RoomReceiptOptionViewModel> DepletionReceiptOptions { get; set; } = [];
     public IReadOnlyList<RoomInventoryLotOptionViewModel> TransferLotOptions { get; set; } = [];
+    public int TransferCurrentRoomBins { get; set; }
+    public int TransferAvailableBins { get; set; }
+    public bool TransferInventoryReconciles { get; set; }
+    public string? TransferInventoryError { get; set; }
     public IReadOnlyList<RoomTransferFacilityViewModel> TransferDestinationFacilities { get; set; } = [];
     public IReadOnlyList<RoomTransferDestinationViewModel> TransferDestinationOptions { get; set; } = [];
     public RoomDepletionForm DepletionForm { get; set; } = new();
@@ -666,6 +670,10 @@ public sealed class BinsRunPageViewModel
     public RoomTransferForm TransferForm { get; set; } = new();
     public RoomInventoryTrueUpForm TrueUpForm { get; set; } = new();
     public IReadOnlyList<RoomInventoryLotOptionViewModel> TransferLotOptions { get; set; } = [];
+    public int TransferCurrentRoomBins { get; set; }
+    public int TransferAvailableBins { get; set; }
+    public bool TransferInventoryReconciles { get; set; }
+    public string? TransferInventoryError { get; set; }
     public IReadOnlyList<RoomReceiptOptionViewModel> TrueUpReceiptOptions { get; set; } = [];
     public IReadOnlyList<RoomTransferFacilityViewModel> TransferDestinationFacilities { get; set; } = [];
     public IReadOnlyList<RoomTransferDestinationViewModel> TransferDestinationOptions { get; set; } = [];

@@ -74,6 +74,10 @@ public sealed class BinsRunController(
             model.TransferForm = room.TransferForm;
             model.TrueUpForm = room.TrueUpForm;
             model.TransferLotOptions = room.TransferLotOptions;
+            model.TransferCurrentRoomBins = room.TransferCurrentRoomBins;
+            model.TransferAvailableBins = room.TransferAvailableBins;
+            model.TransferInventoryReconciles = room.TransferInventoryReconciles;
+            model.TransferInventoryError = room.TransferInventoryError;
             model.TrueUpReceiptOptions = room.DepletionReceiptOptions;
             model.TransferDestinationFacilities = room.TransferDestinationFacilities;
             model.TransferDestinationOptions = room.TransferDestinationOptions;

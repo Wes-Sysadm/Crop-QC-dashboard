@@ -1393,6 +1393,16 @@ else
             }
             else
             {
+                <dl class="summary-list transfer-inventory-reconciliation" aria-label="Transfer inventory reconciliation">
+                    <dt>Current Room Inventory</dt><dd>@Model.TransferCurrentRoomBins bins</dd>
+                    <dt>Available in transfer selections</dt><dd>@Model.TransferAvailableBins bins</dd>
+                </dl>
+                @if (!Model.TransferInventoryReconciles)
+                {
+                    <p class="notice warning" role="alert">@Model.TransferInventoryError</p>
+                }
+                else
+                {
                 <form class="form-grid transfer-workflow" method="post" action="/BinsRun/Transfer" data-transfer-workflow
                       data-source-facility="@(Model.TransferDestinationFacilities.FirstOrDefault(x => x.WarehouseId == Model.RoomSummary?.WarehouseId)?.Label ?? Model.RoomSummary?.Facility)"
                       data-source-room="@Model.RoomSummary?.RoomName">
@@ -1440,7 +1450,6 @@ else
                     <label class="field">Pacific date/time <input type="datetime-local" name="TransferAt" value="@BusinessTime.FormatPacificInput(BusinessTime.UtcNow)" required /></label>
                     <label class="field wide">Reason <input name="Reason" maxlength="500" required /></label>
                     <label class="field wide">Notes <textarea name="Notes" maxlength="1000"></textarea></label>
-                    <label class="checkbox-field wide"><input type="checkbox" name="ConfirmOverTransfer" value="true" /> Allow explicit over-transfer correction override</label>
                     <button type="button" class="transfer-review-button" data-transfer-review-button>Review Transfer</button>
                     <section class="subpanel transfer-review wide" data-transfer-review hidden aria-live="polite">
                         <h3>Review Transfer</h3>
@@ -1519,6 +1528,7 @@ else
                     syncSignature();
                 })();
                 </script>
+                }
             }
         </section>
     }
