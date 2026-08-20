@@ -92,6 +92,20 @@ SELECT string_agg(value,';' ORDER BY value) FROM signatures;
 '@
 }
 
+function Get-TreatmentChemicalFingerprint([string]$Database) {
+    return Invoke-Scalar $Database @'
+SELECT count(*)||'|'||md5(coalesce(string_agg(md5(to_jsonb(t)::text),',' ORDER BY md5(to_jsonb(t)::text)),''))
+FROM "TreatmentChemicals" t;
+'@
+}
+
+$productionTreatmentChemicalExtension = @'
+INSERT INTO "TreatmentChemicals" ("Id","ProductName","CommonName","Crop","Volume","Unit","UnitPrice","Currency","IsActive","CreatedAt","CreatedByUserId","UpdatedAt","UpdatedByUserId") VALUES
+(11,'SMARTFRESH INBOX FLEX/250X5G/1.25KG','MCP','Apples',1.00,'BIN',2.84,'USD',TRUE,'2026-08-20T02:02:13.864872Z',NULL,'2026-08-20T02:02:13.864931Z',NULL),
+(12,'SMARTFRESH INBOX FLEX/250X5G/1.25KG Pear','MCP','Pears',1.00,'BIN',2.84,'USD',TRUE,'2026-08-20T02:03:27.286117Z',NULL,'2026-08-20T02:09:46.543253Z',NULL);
+SELECT setval(pg_get_serial_sequence('"TreatmentChemicals"','Id'),12,true);
+'@
+
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'Docker is required.' }
 
 Push-Location $repositoryRoot
@@ -121,9 +135,15 @@ try {
     Invoke-EfUpdate $upgrade $previousMigration
     $historyBefore = Invoke-Scalar $upgrade 'select count(*)||''|''||md5(string_agg("MigrationId"||''|''||"ProductVersion",'';'' order by "MigrationId")) from "__EFMigrationsHistory";'
     Invoke-Script $upgrade 'preflight-treatment-report-attachments.sql'
+    Invoke-Sql $upgrade $productionTreatmentChemicalExtension
+    $treatmentChemicalsBefore = Get-TreatmentChemicalFingerprint $upgrade
+    if (-not $treatmentChemicalsBefore.StartsWith('12|')) { throw "Expected 12 Treatment Chemicals in production-shape regression, got $treatmentChemicalsBefore." }
+    Invoke-Script $upgrade 'preflight-treatment-report-attachments.sql'
     Invoke-Script $upgrade 'apply-treatment-report-attachments-schema.sql'
     Invoke-Script $upgrade 'apply-treatment-report-attachments-schema.sql'
     Invoke-Gate $upgrade
+    $treatmentChemicalsAfter = Get-TreatmentChemicalFingerprint $upgrade
+    if ($treatmentChemicalsAfter -ne $treatmentChemicalsBefore) { throw "Treatment Chemical master data changed during attachment compatibility apply: $treatmentChemicalsBefore -> $treatmentChemicalsAfter" }
     $historyAfter = Invoke-Scalar $upgrade 'select count(*)||''|''||md5(string_agg("MigrationId"||''|''||"ProductVersion",'';'' order by "MigrationId")) from "__EFMigrationsHistory";'
     if ($historyAfter -ne $historyBefore) { throw "Migration history changed: $historyBefore -> $historyAfter" }
     $freshSignature = Get-Signature $fresh
@@ -144,6 +164,8 @@ try {
     $rollback = 'cropqc_treatment_reports_rollback'
     New-Database $rollback
     Invoke-EfUpdate $rollback $previousMigration
+    Invoke-Sql $rollback $productionTreatmentChemicalExtension
+    $rollbackTreatmentChemicalsBefore = Get-TreatmentChemicalFingerprint $rollback
     $prior = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
@@ -153,11 +175,13 @@ try {
     finally { $ErrorActionPreference = $prior }
     if ($forcedExit -eq 0) { throw 'Forced apply failure unexpectedly passed.' }
     if ((Invoke-Scalar $rollback 'select case when to_regclass(''"RoomTreatmentApplicationAttachments"'') is null then ''absent'' else ''partial'' end;') -ne 'absent') { throw 'Forced apply failure left partial objects.' }
+    if ((Get-TreatmentChemicalFingerprint $rollback) -ne $rollbackTreatmentChemicalsBefore) { throw 'Forced apply failure changed Treatment Chemical master data.' }
 
     Write-Output 'Fresh PostgreSQL 18 EF migration and 502-object gate: PASS'
     Write-Output 'Compatibility State A/apply/verify/repeat State B and gate: PASS'
     Write-Output "EF/compatibility catalog parity: PASS ($freshSignature)"
     Write-Output "Migration history unchanged: PASS ($historyBefore)"
+    Write-Output "Production 12-row Treatment Chemical prerequisite and byte-for-byte preservation: PASS ($treatmentChemicalsBefore)"
     Write-Output 'Partial/wrong State C fail closed and forced rollback: PASS'
 }
 finally {

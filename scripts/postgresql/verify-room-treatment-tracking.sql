@@ -15,11 +15,14 @@ BEGIN
 END $verify$;
 
 SELECT count(*) AS treatment_chemical_row_count FROM "TreatmentChemicals";
+SELECT count(*) FILTER (WHERE "Id" BETWEEN 1 AND 10) AS reviewed_seed_identity_count,
+       count(*) FILTER (WHERE "Id" NOT BETWEEN 1 AND 10) AS additional_master_data_count
+FROM "TreatmentChemicals";
 SELECT count(*) AS treatment_application_row_count FROM "RoomTreatmentApplications";
 SELECT count(*) AS treatment_lineage_segment_row_count FROM "TreatmentLineageSegments";
 SELECT count(*) AS treatment_lineage_movement_row_count FROM "TreatmentLineageMovements";
 SELECT 'room_treatment_tracking_schema_verified' AS status,
        'exact_6_tables_92_columns_6_primary_keys_24_foreign_keys_30_secondary_indexes_4_snapshot_columns' AS object_state,
-       'exact_reviewed_10_row_treatment_chemical_seed' AS seed_state,
+       'reviewed_10_durable_seed_identities_present_additional_master_data_allowed' AS seed_state,
        'migration_history_intentionally_unchanged' AS migration_history;
 ROLLBACK;
