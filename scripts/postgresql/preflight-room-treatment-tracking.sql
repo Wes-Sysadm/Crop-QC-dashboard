@@ -112,17 +112,22 @@ BEGIN
         RAISE EXCEPTION 'STATE C: one or more required treatment indexes are not unique.';
     END IF;
 
-    IF (SELECT count(*) FROM "TreatmentChemicals")<>10 OR EXISTS (
-      WITH expected(id,product,crop,price) AS (VALUES
-        (1,'eFOG-160 PYR FOGGING','Apples',5.25::numeric),(2,'FOGGING EF 170,SB TBZ 99, EF80','Apples',5.67),(3,'FOGGING EF 180, TBZ 99, EF 80','Pears',9.58),(4,'eFOG-80 FDL FOGGING','Pears',5.25),(5,'FOGGING EF 170, EF 160','Apples',5.67),(6,'eFOG-180 FOGGING','Pears',4.95),(7,'FOGGING EF 170, EF 80','Apples',5.67),(8,'FOGGING EF 180, EF 160','Pears',9.27),(9,'FOGGING EF 170, SB TBZ 99','Apples',5.25),(10,'eFOG-170 DPA FOGGING','Apples',2.80)
+    IF EXISTS (
+      WITH expected(id,created_at) AS (VALUES
+        (1,'2026-05-21T00:00:00Z'::timestamptz),(2,'2026-05-21T00:00:00Z'::timestamptz),
+        (3,'2026-05-21T00:00:00Z'::timestamptz),(4,'2026-05-21T00:00:00Z'::timestamptz),
+        (5,'2026-05-21T00:00:00Z'::timestamptz),(6,'2026-05-21T00:00:00Z'::timestamptz),
+        (7,'2026-05-21T00:00:00Z'::timestamptz),(8,'2026-05-21T00:00:00Z'::timestamptz),
+        (9,'2026-05-21T00:00:00Z'::timestamptz),(10,'2026-05-21T00:00:00Z'::timestamptz)
       ) SELECT 1 FROM expected e LEFT JOIN "TreatmentChemicals" c ON c."Id"=e.id
-        WHERE (c."ProductName",c."CommonName",c."Crop",c."Volume",c."Unit",c."UnitPrice",c."Currency",c."IsActive")
-          IS DISTINCT FROM (e.product,NULL::varchar,e.crop,1.00::numeric,'BIN'::varchar,e.price,'USD'::varchar,true)
+        WHERE c."Id" IS NULL
+           OR c."CreatedAt" IS DISTINCT FROM e.created_at
+           OR c."CreatedByUserId" IS NOT NULL
     ) THEN
-        RAISE EXCEPTION 'STATE C: treatment chemical seed rows are not the exact reviewed ten-row set.';
+        RAISE EXCEPTION 'STATE C: one or more durable reviewed Treatment Chemical seed identities is missing or replaced.';
     END IF;
 
-    RAISE NOTICE 'STATE B: room treatment tracking schema and reviewed chemical seed are complete and exact; compatibility apply must be a no-op.';
+    RAISE NOTICE 'STATE B: room treatment tracking schema is complete and exact; all ten durable reviewed seed identities are present; additional or maintained Treatment Chemical master data is allowed; compatibility apply must be a no-op.';
 END $preflight$;
 
 SELECT 'room_treatment_tracking_preflight_passed' AS status,
