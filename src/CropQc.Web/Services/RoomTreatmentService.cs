@@ -343,7 +343,7 @@ public sealed class RoomTreatmentService(
         var snapshots = await ledger.GetSnapshotsAsync(null, [roomId], cancellationToken);
         var activeSnapshots = snapshots.Where(x => x.CurrentBins > 0).ToList();
         var projected = await ProjectSelectionsBatchAsync(activeSnapshots, cancellationToken);
-        var current = activeSnapshots.SelectMany(x => projected[SelectionLookupKey(x)]).ToList();
+        var current = projected.Values.SelectMany(x => x).ToList();
 
         var history = await dbContext.RoomTreatmentApplications.AsNoTracking()
             .Where(x => x.RoomId == roomId)
@@ -689,17 +689,24 @@ public sealed class RoomTreatmentService(
         IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots,
         CancellationToken cancellationToken)
     {
-        var result = snapshots.ToDictionary(x => SelectionLookupKey(x), _ => new List<CurrentTreatmentSegmentViewModel>());
-        if (snapshots.Count == 0) return result;
-        var roomIds = snapshots.Select(x => x.RoomId).Distinct().ToList();
-        var identityKeys = snapshots.Select(IdentityKey).Distinct().ToList();
+        var authoritative = snapshots
+            .Where(x => x.CurrentBins > 0)
+            .GroupBy(SelectionLookupKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                x => x.Key,
+                x => ConsolidateSelectionSnapshots(x.ToList()),
+                StringComparer.OrdinalIgnoreCase);
+        var result = authoritative.Keys.ToDictionary(x => x, _ => new List<CurrentTreatmentSegmentViewModel>(), StringComparer.OrdinalIgnoreCase);
+        if (authoritative.Count == 0) return result;
+        var roomIds = authoritative.Values.Select(x => x.RoomId).Distinct().ToList();
+        var identityKeys = authoritative.Values.Select(IdentityKey).Distinct().ToList();
         var segments = await dbContext.TreatmentLineageSegments.AsNoTracking()
             .Include(x => x.Applications)
             .ThenInclude(x => x.RoomTreatmentApplication)
             .Where(x => roomIds.Contains(x.RoomId) && identityKeys.Contains(x.IdentityKey) && x.CurrentBins > 0)
             .ToListAsync(cancellationToken);
 
-        foreach (var snapshot in snapshots)
+        foreach (var snapshot in authoritative.Values)
         {
             var key = IdentityKey(snapshot);
             var output = result[SelectionLookupKey(snapshot)];
@@ -726,6 +733,35 @@ public sealed class RoomTreatmentService(
             }
         }
         return result;
+    }
+
+    private static RoomInventoryLedgerSnapshot ConsolidateSelectionSnapshots(
+        IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots)
+    {
+        var distinct = snapshots.Distinct().ToList();
+        var latest = distinct
+            .OrderByDescending(x => x.LastTransactionAt)
+            .ThenByDescending(x => x.LatestAdjustmentId)
+            .First();
+        return latest with
+        {
+            PositiveBins = distinct.Sum(x => x.PositiveBins),
+            NegativeBins = distinct.Sum(x => x.NegativeBins),
+            ActualRunDepletionBins = distinct.Sum(x => x.ActualRunDepletionBins),
+            ActualRunReversalBins = distinct.Sum(x => x.ActualRunReversalBins),
+            LegacyBinsRunDepletionBins = distinct.Sum(x => x.LegacyBinsRunDepletionBins),
+            TransferInBins = distinct.Sum(x => x.TransferInBins),
+            TransferOutBins = distinct.Sum(x => x.TransferOutBins),
+            TrueUpBins = distinct.Sum(x => x.TrueUpBins),
+            OtherAdjustmentBins = distinct.Sum(x => x.OtherAdjustmentBins),
+            CurrentBins = distinct.Sum(x => x.CurrentBins),
+            TransactionCount = distinct.Sum(x => x.TransactionCount),
+            FirstTransactionAt = distinct.Min(x => x.FirstTransactionAt),
+            LastTransactionAt = distinct.Max(x => x.LastTransactionAt),
+            LatestAdjustmentId = distinct.Max(x => x.LatestAdjustmentId),
+            DroppedBins = distinct.Sum(x => x.DroppedBins),
+            DroppedBinsRestored = distinct.Sum(x => x.DroppedBinsRestored)
+        };
     }
 
     private async Task<TreatmentLineageSegment> GetOrCreateSegmentAsync(RoomInventoryLedgerSnapshot snapshot, string state, string signature, DateTimeOffset now, CancellationToken cancellationToken)

@@ -310,7 +310,7 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
             })
             .ToDictionaryAsync(x => x.Id, cancellationToken);
 
-        return grouped.Select(x =>
+        var snapshots = grouped.Select(x =>
         {
             var latest = metadata[x.LatestAdjustmentId];
             var otherAdjustmentBins = x.CurrentBins
@@ -360,7 +360,102 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 x.DroppedBins,
                 x.DroppedBinsRestored);
         }).ToList();
+
+        return ReconcileCompatibleSourceSnapshots(snapshots);
     }
+
+    private static IReadOnlyList<RoomInventoryLedgerSnapshot> ReconcileCompatibleSourceSnapshots(
+        IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots)
+    {
+        var result = new List<RoomInventoryLedgerSnapshot>();
+        foreach (var group in snapshots.GroupBy(CanonicalRoomLotKey, StringComparer.OrdinalIgnoreCase))
+        {
+            var rows = group.ToList();
+            if (rows.Count == 1 || !CanReconcile(rows))
+            {
+                result.AddRange(rows);
+                continue;
+            }
+
+            var latest = rows
+                .OrderByDescending(x => x.LastTransactionAt)
+                .ThenByDescending(x => x.LatestAdjustmentId)
+                .First();
+            var growerLotId = rows
+                .Where(x => x.GrowerLotId is not null)
+                .Select(x => x.GrowerLotId!.Value)
+                .Distinct()
+                .SingleOrDefault();
+            var growerNumber = rows
+                .Select(x => x.GrowerNumber?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .SingleOrDefault();
+            var sourceReferences = rows
+                .Select(x => x.SourceReference.Trim())
+                .Where(x => x.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            result.Add(latest with
+            {
+                GrowerLotId = growerLotId == 0 ? null : growerLotId,
+                GrowerNumber = growerNumber,
+                PositiveBins = rows.Sum(x => x.PositiveBins),
+                NegativeBins = rows.Sum(x => x.NegativeBins),
+                ActualRunDepletionBins = rows.Sum(x => x.ActualRunDepletionBins),
+                ActualRunReversalBins = rows.Sum(x => x.ActualRunReversalBins),
+                LegacyBinsRunDepletionBins = rows.Sum(x => x.LegacyBinsRunDepletionBins),
+                TransferInBins = rows.Sum(x => x.TransferInBins),
+                TransferOutBins = rows.Sum(x => x.TransferOutBins),
+                TrueUpBins = rows.Sum(x => x.TrueUpBins),
+                OtherAdjustmentBins = rows.Sum(x => x.OtherAdjustmentBins),
+                CurrentBins = rows.Sum(x => x.CurrentBins),
+                TransactionCount = rows.Sum(x => x.TransactionCount),
+                FirstTransactionAt = rows.Min(x => x.FirstTransactionAt),
+                LastTransactionAt = rows.Max(x => x.LastTransactionAt),
+                LatestAdjustmentId = rows.Max(x => x.LatestAdjustmentId),
+                SourceReference = sourceReferences.Count switch
+                {
+                    0 => "Multiple inventory sources",
+                    1 => sourceReferences[0],
+                    _ => $"{sourceReferences.Count} inventory sources; latest {latest.SourceReference}"
+                },
+                DroppedBins = rows.Sum(x => x.DroppedBins),
+                DroppedBinsRestored = rows.Sum(x => x.DroppedBinsRestored)
+            });
+        }
+
+        return result
+            .OrderBy(x => x.WarehouseId)
+            .ThenBy(x => x.RoomId)
+            .ThenBy(x => x.Lot)
+            .ThenBy(x => x.Variety)
+            .ToList();
+    }
+
+    private static bool CanReconcile(IReadOnlyList<RoomInventoryLedgerSnapshot> rows) =>
+        rows.Select(x => x.WarehouseId).Distinct().Count() == 1
+        && rows.Where(x => x.GrowerLotId is not null).Select(x => x.GrowerLotId).Distinct().Count() <= 1
+        && DistinctNonEmpty(rows.Select(x => x.GrowerNumber)) <= 1
+        && DistinctNonEmpty(rows.Select(x => x.InventoryStatus)) <= 1
+        && DistinctNonEmpty(rows.Select(x => x.ProductionType)) <= 1
+        && rows.Where(x => x.IsOrganic is not null).Select(x => x.IsOrganic).Distinct().Count() <= 1;
+
+    private static int DistinctNonEmpty(IEnumerable<string?> values) =>
+        values.Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+    private static string CanonicalRoomLotKey(RoomInventoryLedgerSnapshot snapshot) =>
+        string.Join('|',
+            snapshot.WarehouseId,
+            snapshot.RoomId,
+            snapshot.CropYear?.ToString() ?? "-",
+            snapshot.Lot.Trim().ToUpperInvariant(),
+            snapshot.Variety.Trim().ToUpperInvariant(),
+            snapshot.FruitProfileId?.ToString() ?? "-");
 
     private static CanonicalLedgerIdentity CanonicalIdentity(GroupedLedgerRow row) =>
         new(

@@ -158,6 +158,20 @@ public sealed class RoomTreatmentTrackingTests
     }
 
     [Fact]
+    public async Task Batch_projection_reconciles_duplicate_authoritative_selection_keys_exactly_once()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var first = fixture.AppleSnapshot(50) with { SourceReference = "Receipt A", LatestAdjustmentId = 101 };
+        var second = fixture.AppleSnapshot(40) with { SourceReference = "Receipt B", LatestAdjustmentId = 102 };
+
+        var projected = await fixture.Service.GetSelectionsAsync([first, second], default);
+
+        var selection = Assert.Single(Assert.Single(projected).Value);
+        Assert.Equal(90, selection.CurrentBins);
+        Assert.Equal(TreatmentLineageStates.Untreated, selection.TreatmentState);
+    }
+
+    [Fact]
     public async Task Mixed_treatment_identity_requires_explicit_segment_and_partial_transfer_carries_exact_signature()
     {
         await using var fixture = await Fixture.CreateAsync();

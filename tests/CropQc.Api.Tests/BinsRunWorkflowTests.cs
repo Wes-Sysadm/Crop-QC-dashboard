@@ -4,6 +4,7 @@ using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Storage;
+using CropQc.Shared.Time;
 using CropQc.Web.Auth;
 using CropQc.Web.Controllers;
 using CropQc.Web.Models;
@@ -1312,6 +1313,138 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task MCD09_CompatibleReceiptSourcesReconcileToOneExactTransferChoice()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var warehouse = await db.Warehouses.SingleAsync(x => x.Id == 1000);
+        var room = await db.Rooms.SingleAsync(x => x.Id == 1001);
+        var fruit = await db.FruitProfiles.SingleAsync(x => x.Id == 1000);
+        var linkedLot = new GrowerLot
+        {
+            Id = 448,
+            Grower = "Production-shaped grower",
+            LotNumber = "1372",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var unlinkedReceipt = new Receipt
+        {
+            Id = 99001,
+            CropYear = 2026,
+            ReceivedAt = DateTimeOffset.UtcNow.AddDays(-2),
+            CompuTechReceiptId = "MCD09-A",
+            ReceiptType = "Truck receipt",
+            Warehouse = warehouse,
+            Room = room,
+            FruitProfile = fruit,
+            GrowerName = "Production-shaped grower",
+            GrowerNumber = "1372",
+            LotCode = "1372",
+            BinCount = 158,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var linkedReceipt = new Receipt
+        {
+            Id = 99002,
+            CropYear = 2026,
+            ReceivedAt = DateTimeOffset.UtcNow.AddDays(-1),
+            CompuTechReceiptId = "MCD09-B",
+            ReceiptType = "Truck receipt",
+            Warehouse = warehouse,
+            Room = room,
+            FruitProfile = fruit,
+            GrowerLot = linkedLot,
+            GrowerLotId = linkedLot.Id,
+            GrowerName = "Production-shaped grower",
+            GrowerNumber = "1372",
+            LotCode = "1372",
+            BinCount = 128,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        db.AddRange(linkedLot, unlinkedReceipt, linkedReceipt);
+        db.RoomInventoryAdjustments.AddRange(
+            SourceAdjustment(99001, unlinkedReceipt, null, 158),
+            SourceAdjustment(99002, linkedReceipt, linkedLot.Id, 128));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var ledger = new RoomInventoryLedgerQueryService(db);
+        var canonical = Assert.Single(
+            await ledger.GetSnapshotsAsync(warehouse.Id, [room.Id], default),
+            x => x.Lot == "1372");
+        Assert.Equal(286, canonical.CurrentBins);
+        Assert.Equal(448, canonical.GrowerLotId);
+        Assert.Equal(2, canonical.TransactionCount);
+
+        var principal = Principal("manager@fruitandland.com");
+        var configuration = new ConfigurationBuilder().Build();
+        var context = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } };
+        var access = new UserAccessService(db, configuration);
+        var treatments = new RoomTreatmentService(
+            db,
+            ledger,
+            access,
+            context,
+            new PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock()),
+            NullLogger<RoomTreatmentService>.Instance);
+        var detail = await CreateDashboardService(db, principal, ledger, treatments)
+            .GetRoomDetailAsync(room.Id, default);
+        var option = Assert.Single(
+            detail.TransferLotOptions,
+            x => x.Label.Contains("1372", StringComparison.Ordinal));
+        Assert.Equal(286, option.CurrentBins);
+        Assert.Null(detail.DataWarning);
+
+        RoomInventoryAdjustment SourceAdjustment(long id, Receipt receipt, int? growerLotId, int bins) => new()
+        {
+            Id = id,
+            CropYear = 2026,
+            Receipt = receipt,
+            ReceiptId = receipt.Id,
+            Warehouse = warehouse,
+            WarehouseId = warehouse.Id,
+            Room = room,
+            RoomId = room.Id,
+            GrowerLotId = growerLotId,
+            FruitProfile = fruit,
+            FruitProfileId = fruit.Id,
+            GrowerName = receipt.GrowerName,
+            LotNumber = receipt.LotCode,
+            VarietyCode = fruit.VarietyCode,
+            ChangeAmount = bins,
+            NewBinCount = bins,
+            AdjustmentType = "ReceiptAdd",
+            AdjustmentAt = DateTimeOffset.UtcNow,
+            CreatedAt = DateTimeOffset.UtcNow,
+            InventoryInvariantVersion = 2
+        };
+    }
+
+    [Fact]
+    public async Task RoomDetail_PreservesCurrentInventoryWhenTreatmentProjectionFails()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var roomId = await db.Rooms.Select(x => x.Id).FirstAsync();
+
+        var detail = await CreateDashboardService(
+                db,
+                Principal("manager@fruitandland.com"),
+                new RoomInventoryLedgerQueryService(db),
+                new ThrowingRoomTreatmentService())
+            .GetRoomDetailAsync(roomId, default);
+
+        Assert.NotEmpty(detail.CurrentLots);
+        Assert.Empty(detail.TransferLotOptions);
+        Assert.NotNull(detail.DataWarning);
+        Assert.Contains("Current inventory is shown", detail.DataWarning, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RoomLedger_ChainedLegacyBinsRunWithoutCropYear_CanonicalizesToZeroAndIsNotSelectable()
     {
         using var db = CreateDbContext();
@@ -2255,7 +2388,26 @@ public sealed class BinsRunWorkflowTests
                 .ToList());
     }
 
-    private static DashboardDataService CreateDashboardService(CropQcDbContext db, ClaimsPrincipal principal)
+    private sealed class ThrowingRoomTreatmentService : IRoomTreatmentService
+    {
+        public Task<RoomTreatmentData> GetRoomDataAsync(int roomId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Simulated treatment projection failure.");
+
+        public Task<RoomTreatmentApplyPageViewModel> GetApplyPageAsync(RoomTreatmentApplyForm form, bool review, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<(string? Error, long? ApplicationId)> ApplyAsync(RoomTreatmentApplyForm form, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<string?> ReverseAsync(ReverseRoomTreatmentApplicationForm form, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetSelectionsAsync(IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<TreatmentLineageWriteResult> MoveAsync(RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, int bins, int? destinationWarehouseId, int? destinationRoomId, string operationKey, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<TreatmentLineageWriteResult> ReverseMovementsAsync(string operationKeyPrefix, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<TreatmentLineageWriteResult> AddUnknownAsync(RoomInventoryLedgerSnapshot snapshot, int bins, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private static DashboardDataService CreateDashboardService(
+        CropQcDbContext db,
+        ClaimsPrincipal principal,
+        IRoomInventoryLedgerQueryService? ledger = null,
+        IRoomTreatmentService? treatments = null)
     {
         var configuration = new ConfigurationBuilder().Build();
         return new DashboardDataService(
@@ -2273,7 +2425,9 @@ public sealed class BinsRunWorkflowTests
             new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } },
             configuration,
             NullLogger<DashboardDataService>.Instance,
-            new UserAccessService(db, configuration));
+            new UserAccessService(db, configuration),
+            roomInventoryLedgerQueryService: ledger,
+            roomTreatmentService: treatments);
     }
 
     private static Task<int> LedgerBalanceAsync(CropQcDbContext db, int roomId, string lot) =>
