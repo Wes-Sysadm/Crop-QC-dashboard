@@ -472,10 +472,24 @@ public sealed class DashboardDataService(
             var inventoryLossData = RoomInventoryLosses is null
                 ? new RoomInventoryLossPageData([], [], false, false)
                 : await RoomInventoryLosses.GetRoomDataAsync(roomId, cancellationToken);
-            var treatmentData = RoomTreatments is null
-                ? new RoomTreatmentData([], [], false, false)
-                : await RoomTreatments.GetRoomDataAsync(roomId, cancellationToken);
-            var transferLotOptions = await BuildTreatmentTransferOptionsAsync(activeLots, roomId, cancellationToken);
+            var treatmentData = new RoomTreatmentData([], [], false, false);
+            IReadOnlyList<RoomInventoryLotOptionViewModel> transferLotOptions = [];
+            string? treatmentWarning = null;
+            try
+            {
+                if (RoomTreatments is not null)
+                {
+                    treatmentData = await RoomTreatments.GetRoomDataAsync(roomId, cancellationToken);
+                }
+                transferLotOptions = await BuildTreatmentTransferOptionsAsync(activeLots, roomId, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                treatmentWarning = DatabaseWarning(
+                    ex,
+                    "Room treatment transfer projection",
+                    "Current inventory is shown, but exact treatment/source allocation could not be resolved. Transfer is disabled for this room until the inventory identity is reviewed.");
+            }
 
             return new RoomDetailViewModel
             {
@@ -519,6 +533,8 @@ public sealed class DashboardDataService(
                 CanApplyTreatment = treatmentData.CanApply
                 ,
                 CanReverseTreatment = treatmentData.CanReverse
+                ,
+                DataWarning = treatmentWarning
             };
         }
         catch (Exception ex)
