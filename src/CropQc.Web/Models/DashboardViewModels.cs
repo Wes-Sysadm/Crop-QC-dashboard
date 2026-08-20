@@ -810,7 +810,8 @@ public sealed record BinsRunInventoryOptionViewModel(
     int? GrowerLotId = null,
     string SourceReference = "",
     string TreatmentSignature = "",
-    string TreatmentLabel = "Untreated");
+    string TreatmentLabel = "Untreated",
+    string GrowerNumber = "");
 
 public sealed class ActualRunHistoryItemViewModel
 {

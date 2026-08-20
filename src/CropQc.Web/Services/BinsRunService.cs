@@ -148,10 +148,11 @@ public sealed class BinsRunService(
                 selectionByVariety ? filter.FruitProfileId : null,
                 cancellationToken);
         var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
-        snapshots = snapshots.Select(x => x with
-        {
-            Grower = growerResolver.DisplayName(x.Grower, x.GrowerNumber ?? x.Lot)
-        }).ToList();
+        snapshots = snapshots.Select(x => ResolveActualRunGrowerNumber(x, growerResolver))
+            .Select(x => x with
+            {
+                Grower = growerResolver.DisplayName(x.Grower, x.GrowerNumber ?? x.Lot)
+            }).ToList();
         var currentSnapshots = isActualSection
             ? snapshots.Where(x => x.CurrentBins > 0 || editInventoryRows.Any(y =>
                 y.WarehouseId == x.WarehouseId
@@ -363,7 +364,9 @@ public sealed class BinsRunService(
                 GrowerNumber = x.GrowerNumberSnapshot ?? x.LotNumber,
                 Lot = x.LotNumber,
                 Variety = x.VarietyCode ?? "",
-                ProductionType = x.FruitProfile == null ? (x.InventoryStatus ?? "") : x.FruitProfile.ProductionType,
+                ProductionType = x.ProductionTypeSnapshot ?? (x.FruitProfile == null ? (x.InventoryStatus ?? "") : x.FruitProfile.ProductionType),
+                x.IsOrganicSnapshot,
+                InventoryStatus = x.InventoryStatus ?? "",
                 TreatmentSummary = x.TreatmentSummarySnapshot ?? "No recorded treatment history",
                 x.CropYear,
                 Bins = x.BinsRun
@@ -374,11 +377,15 @@ public sealed class BinsRunService(
         run.Facility = contributionRows.Select(x => x.Facility).FirstOrDefault() ?? "";
         run.Contributions = contributionRows.Select(x => new ActualRunContributionViewModel(
             x.Id,
+            x.Facility,
             x.Room,
             growerResolver.DisplayName(x.Grower, x.GrowerNumber),
+            x.GrowerNumber,
             x.Lot,
             x.Variety,
             x.ProductionType,
+            x.IsOrganicSnapshot,
+            x.InventoryStatus,
             x.TreatmentSummary,
             x.CropYear,
             x.Bins,
@@ -1030,7 +1037,7 @@ public sealed class BinsRunService(
         var parsed = new List<(ActualRunLineForm Form, int WarehouseId, int RoomId, int? CropYear, string Lot, string Variety, int? FruitProfileId, int? GrowerLotId)>();
         foreach (var line in normalizedLines)
         {
-            if (!TryParseLedgerInventoryKey(line.InventoryKey, out var warehouseId, out var roomId, out var cropYear, out var lot, out var variety, out var fruitProfileId, out var growerLotId))
+            if (!TryParseLedgerInventoryKey(line.InventoryKey, out var warehouseId, out var roomId, out var cropYear, out var lot, out var variety, out var fruitProfileId, out var growerLotId, requireVariety: false))
             {
                 return "One or more selected inventory rows are not room-ledger inventory.";
             }
@@ -1045,7 +1052,12 @@ public sealed class BinsRunService(
 
         var roomIds = parsed.Select(x => x.RoomId).Distinct().ToList();
         var snapshots = await GetCurrentInventorySnapshotsForRoomsAsync(warehouseIds[0], roomIds, null, cancellationToken);
-        var resolved = new List<(ActualRunLineForm Form, InventorySnapshot Snapshot, int EffectiveAvailable)>();
+        var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
+        snapshots = snapshots.Select(x => ResolveActualRunGrowerNumber(x, growerResolver)).ToList();
+        var treatmentSelections = roomTreatmentService is null
+            ? null
+            : await roomTreatmentService.GetSelectionsAsync(snapshots.Select(ToLedgerSnapshot).ToList(), cancellationToken);
+        var resolved = new List<(ActualRunLineForm Form, InventorySnapshot Snapshot, TreatmentSegmentSelection Treatment, int EffectiveAvailable)>();
         foreach (var line in parsed)
         {
             var candidates = snapshots.Where(x =>
@@ -1061,42 +1073,47 @@ public sealed class BinsRunService(
                 return $"Room inventory is no longer available for lot {line.Lot} / {line.Variety}.";
             }
             var snapshot = candidates[0];
-
+            var ledgerSnapshot = ToLedgerSnapshot(snapshot);
+            var selections = roomTreatmentService is null
+                ? [new TreatmentSegmentSelection(RoomTreatmentService.IdentityKey(ledgerSnapshot), "", TreatmentLineageStates.Untreated, snapshot.CurrentBins, "Untreated")]
+                : treatmentSelections![RoomTreatmentService.SelectionLookupKey(ledgerSnapshot)];
+            var selectedTreatment = string.IsNullOrWhiteSpace(line.Form.TreatmentSignature)
+                ? selections.Count == 1 ? selections[0] : null
+                : selections.SingleOrDefault(x => string.Equals(x.TreatmentSignature, line.Form.TreatmentSignature, StringComparison.Ordinal));
+            if (selectedTreatment is null)
+            {
+                return $"{ActualRunLineLabel(snapshot)} has multiple treatment histories. Select the exact treatment segment being packed.";
+            }
             var restored = activeEntries
-                .Where(x => SameInventory(x, snapshot))
+                .Where(x => SameInventory(x, snapshot)
+                    && (roomTreatmentService is null
+                        || string.Equals(x.TreatmentSignatureSnapshot ?? "", selectedTreatment.TreatmentSignature, StringComparison.Ordinal)))
                 .Sum(x => x.BinsRun);
-            resolved.Add((line.Form, snapshot, snapshot.CurrentBins + restored));
+            resolved.Add((line.Form, snapshot, selectedTreatment, selectedTreatment.CurrentBins + restored));
         }
 
-        if (resolved.Select(x => x.Snapshot.CropYear).Distinct().Count() != 1)
+        foreach (var item in resolved)
         {
-            return "All room-lot rows in one Actual Run must have the same crop year.";
-        }
+            if (item.Snapshot.CropYear is null)
+            {
+                return $"{ActualRunLineLabel(item.Snapshot)} is missing crop year and cannot be added to an Actual Run.";
+            }
+            if (item.Snapshot.CropYear < AuthoritativeStartCropYear)
+            {
+                continue;
+            }
 
-        if (resolved.Select(x => x.Snapshot.Variety).Distinct(StringComparer.OrdinalIgnoreCase).Count() != 1)
-        {
-            return "All room-lot rows in one Actual Run must have the same variety.";
+            var missing = new List<string>();
+            if (item.Snapshot.FruitProfileId is null || string.IsNullOrWhiteSpace(item.Snapshot.Variety)) missing.Add("canonical variety/profile");
+            if (string.IsNullOrWhiteSpace(item.Snapshot.ProductionType)) missing.Add("production type");
+            if (item.Snapshot.IsOrganic is null) missing.Add("Organic/Conventional status");
+            if (string.IsNullOrWhiteSpace(item.Snapshot.GrowerNumber)) missing.Add("authoritative Grower Number");
+            if (missing.Count > 0)
+            {
+                return $"{ActualRunLineLabel(item.Snapshot)} cannot be added because it is missing {string.Join(", ", missing)}.";
+            }
         }
-
-        if (resolved.Select(x => x.Snapshot.IsOrganic).Distinct().Count() != 1)
-        {
-            return "All room-lot rows in one Actual Run must have the same Organic/Conventional status.";
-        }
-
-        var resolvedCropYear = resolved.Select(x => x.Snapshot.CropYear).Distinct().Single();
-        if (resolvedCropYear is null)
-        {
-            return "Crop year is required before an Actual Run can be recorded.";
-        }
-        var isAuthoritative = resolvedCropYear.Value >= AuthoritativeStartCropYear;
-        if (isAuthoritative && resolved.Any(x => x.Snapshot.FruitProfileId is null
-            || string.IsNullOrWhiteSpace(x.Snapshot.Variety)
-            || string.IsNullOrWhiteSpace(x.Snapshot.ProductionType)
-            || x.Snapshot.IsOrganic is null
-            || string.IsNullOrWhiteSpace(x.Snapshot.GrowerNumber)))
-        {
-            return $"Crop {resolvedCropYear} Actual Runs require canonical variety, production type, Organic/Conventional status, and an authoritative receipt grower number.";
-        }
+        var isAuthoritative = resolved.Any(x => x.Snapshot.CropYear >= AuthoritativeStartCropYear);
 
         var facilityResolution = approvedOverride is null
             ? await ResolveRunFacilityAsync(
@@ -1268,27 +1285,33 @@ public sealed class BinsRunService(
             await ReverseEntriesAsync(run, revision, activeEntries, userId.Value, "Actual Run revision", cancellationToken);
         }
 
-        var resolvedTreatmentSelections = roomTreatmentService is null
-            ? null
-            : await roomTreatmentService.GetSelectionsAsync(resolved.Select(x => ToLedgerSnapshot(x.Snapshot)).ToList(), cancellationToken);
-
         var createdEntries = new List<BinsRunEntry>(resolved.Count);
+        var canonicalBalances = resolved
+            .Select(x => x.Snapshot)
+            .DistinctBy(x => x.InventoryKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                x => x.InventoryKey,
+                x => x.CurrentBins + activeEntries.Where(entry => SameInventory(entry, x)).Sum(entry => entry.BinsRun),
+                StringComparer.OrdinalIgnoreCase);
         foreach (var item in resolved)
         {
             var previous = item.EffectiveAvailable;
             var next = previous - item.Form.BinsRun;
+            var canonicalPrevious = canonicalBalances[item.Snapshot.InventoryKey];
+            var canonicalNext = canonicalPrevious - item.Form.BinsRun;
+            canonicalBalances[item.Snapshot.InventoryKey] = canonicalNext;
             var isOverride = item.Form.BinsRun > previous;
             var adjustment = CreateAdjustment(
                 item.Snapshot,
                 -item.Form.BinsRun,
-                previous,
-                next,
+                canonicalPrevious,
+                canonicalNext,
                 AdjustmentType,
                 userId,
                 form.RunAt,
                 form.Notes);
             adjustment.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
-            adjustment.InventoryOperationKey = $"actualrun:{revision.OperationKey}:{item.Form.InventoryKey.Trim()}";
+            adjustment.InventoryOperationKey = $"actualrun:{revision.OperationKey}:line:{createdEntries.Count + 1}";
             adjustment.ActualRunId = run.Id;
             adjustment.ActualRunRevisionId = revision.Id;
             adjustment.Source = $"Actual Run #{run.Id}";
@@ -1311,9 +1334,9 @@ public sealed class BinsRunService(
                 PoolStart = item.Snapshot.PoolStart,
                 VarietyCode = item.Snapshot.Variety,
                 InventoryStatus = item.Snapshot.InventoryStatus,
-                PreviousAvailableBins = previous,
+                PreviousAvailableBins = canonicalPrevious,
                 BinsRun = item.Form.BinsRun,
-                NewAvailableBins = next,
+                NewAvailableBins = canonicalNext,
                 Notes = NormalizeOptional(form.Notes),
                 RunAt = form.RunAt,
                 CreatedByUserId = userId,
@@ -1328,11 +1351,11 @@ public sealed class BinsRunService(
                 OverrideReason = isOverride ? approvalReason : null,
                 OverrideApprovedByUserId = isOverride ? userId : null,
                 OverrideApprovedAt = isOverride ? now : null,
-                ReportingFacilityWarehouseId = isAuthoritative ? run.RunFacilityWarehouseId : null,
-                ReportingFacilityCodeSnapshot = isAuthoritative ? run.RunFacilityCodeSnapshot : null,
-                ReportingFacilityAssignmentSource = isAuthoritative ? run.RunFacilityAssignmentSource : null,
-                ReportingFacilityAssignedByUserId = isAuthoritative ? userId : null,
-                ReportingFacilityAssignedAt = isAuthoritative ? now : null,
+                ReportingFacilityWarehouseId = item.Snapshot.CropYear >= AuthoritativeStartCropYear ? run.RunFacilityWarehouseId : null,
+                ReportingFacilityCodeSnapshot = item.Snapshot.CropYear >= AuthoritativeStartCropYear ? run.RunFacilityCodeSnapshot : null,
+                ReportingFacilityAssignmentSource = item.Snapshot.CropYear >= AuthoritativeStartCropYear ? run.RunFacilityAssignmentSource : null,
+                ReportingFacilityAssignedByUserId = item.Snapshot.CropYear >= AuthoritativeStartCropYear ? userId : null,
+                ReportingFacilityAssignedAt = item.Snapshot.CropYear >= AuthoritativeStartCropYear ? now : null,
                 ProductionTypeSnapshot = item.Snapshot.ProductionType,
                 IsOrganicSnapshot = item.Snapshot.IsOrganic,
                 GrowerNumberSnapshot = item.Snapshot.GrowerNumber,
@@ -1346,20 +1369,12 @@ public sealed class BinsRunService(
             if (roomTreatmentService is not null)
             {
                 var ledgerSnapshot = ToLedgerSnapshot(item.Snapshot);
-                var selections = resolvedTreatmentSelections![RoomTreatmentService.SelectionLookupKey(ledgerSnapshot)];
-                var selectedTreatment = string.IsNullOrWhiteSpace(item.Form.TreatmentSignature)
-                    ? selections.Count == 1 ? selections[0] : null
-                    : selections.SingleOrDefault(x => x.TreatmentSignature == item.Form.TreatmentSignature);
-                if (selectedTreatment is null)
-                {
-                    return "This room-lot has multiple treatment histories. Select the exact segment being packed.";
-                }
-                entry.TreatmentStateSnapshot = selectedTreatment.TreatmentState;
-                entry.TreatmentSignatureSnapshot = selectedTreatment.TreatmentSignature;
-                entry.TreatmentSummarySnapshot = selectedTreatment.Label;
+                entry.TreatmentStateSnapshot = item.Treatment.TreatmentState;
+                entry.TreatmentSignatureSnapshot = item.Treatment.TreatmentSignature;
+                entry.TreatmentSummarySnapshot = item.Treatment.Label;
                 var lineage = await roomTreatmentService.MoveAsync(
                     ledgerSnapshot,
-                    selectedTreatment.TreatmentSignature,
+                    item.Treatment.TreatmentSignature,
                     item.Form.BinsRun,
                     null,
                     null,
@@ -1904,7 +1919,8 @@ public sealed class BinsRunService(
                     x.GrowerLotId,
                     x.ReceiptReference ?? $"Ledger adjustment #{x.InventoryAdjustmentId}",
                     segment.TreatmentSignature,
-                    segment.Label));
+                    segment.Label,
+                    x.GrowerNumber ?? ""));
             }
         }
         return options;
@@ -2336,6 +2352,24 @@ public sealed class BinsRunService(
     private static string NormalizeOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
 
+    private InventorySnapshot ResolveActualRunGrowerNumber(
+        InventorySnapshot snapshot,
+        CanonicalGrowerResolutionSet growerResolver)
+    {
+        if (snapshot.CropYear < AuthoritativeStartCropYear || !string.IsNullOrWhiteSpace(snapshot.GrowerNumber))
+        {
+            return snapshot;
+        }
+
+        var matchingNumbers = growerResolver.MatchingGrowerNumbers(snapshot.Grower);
+        return matchingNumbers.Count == 1
+            ? snapshot with { GrowerNumber = matchingNumbers[0] }
+            : snapshot;
+    }
+
+    private static string ActualRunLineLabel(InventorySnapshot snapshot) =>
+        $"Source line {snapshot.Facility} / {snapshot.Room}, Grower Number {(string.IsNullOrWhiteSpace(snapshot.GrowerNumber) ? "unresolved" : snapshot.GrowerNumber)}, lot {snapshot.Lot}, variety {(string.IsNullOrWhiteSpace(snapshot.Variety) ? "unresolved" : snapshot.Variety)}";
+
     private static string LedgerInventoryKey(
         int warehouseId,
         int roomId,
@@ -2354,7 +2388,8 @@ public sealed class BinsRunService(
         out string lot,
         out string variety,
         out int? fruitProfileId,
-        out int? growerLotId)
+        out int? growerLotId,
+        bool requireVariety = true)
     {
         warehouseId = 0;
         roomId = 0;
@@ -2398,7 +2433,7 @@ public sealed class BinsRunService(
             }
             growerLotId = parsedGrowerLotId;
         }
-        return warehouseId > 0 && roomId > 0 && lot.Length > 0 && variety.Length > 0;
+        return warehouseId > 0 && roomId > 0 && lot.Length > 0 && (!requireVariety || variety.Length > 0);
     }
 
     private static RoomInventoryAdjustment CreateAdjustment(InventorySnapshot snapshot, int changeAmount, int previous, int next, string adjustmentType, int? userId, DateTimeOffset adjustmentAt, string? notes) =>
