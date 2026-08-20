@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260818181556_AddRoomTreatmentTracking";
+    public const string ExpectedSchemaMigration = "20260819142656_AddTreatmentReportAttachments";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -327,7 +327,25 @@ public static class DatabaseStartupDiagnostics
         new("TreatmentLineageMovements.ReversesTreatmentLineageMovementId", "TreatmentLineageMovements", "ReversesTreatmentLineageMovementId", RequireNullable: true),
         new("TreatmentLineageMovements.OccurredAt", "TreatmentLineageMovements", "OccurredAt", RequireNotNullable: true),
         new("TreatmentLineageMovements.CreatedByUserId", "TreatmentLineageMovements", "CreatedByUserId", RequireNullable: true),
-        new("TreatmentLineageMovements.CreatedAt", "TreatmentLineageMovements", "CreatedAt", RequireNotNullable: true)
+        new("TreatmentLineageMovements.CreatedAt", "TreatmentLineageMovements", "CreatedAt", RequireNotNullable: true),
+        new("RoomTreatmentApplicationAttachments", "RoomTreatmentApplicationAttachments", null),
+        new("RoomTreatmentApplicationAttachments.Id", "RoomTreatmentApplicationAttachments", "Id", RequireNotNullable: true),
+        new("RoomTreatmentApplicationAttachments.RoomTreatmentApplicationId", "RoomTreatmentApplicationAttachments", "RoomTreatmentApplicationId", RequireNotNullable: true),
+        new("RoomTreatmentApplicationAttachments.OperationKey", "RoomTreatmentApplicationAttachments", "OperationKey", RequireNotNullable: true),
+        new("RoomTreatmentApplicationAttachments.FileName", "RoomTreatmentApplicationAttachments", "FileName", RequireNotNullable: true),
+        new("RoomTreatmentApplicationAttachments.ContentType", "RoomTreatmentApplicationAttachments", "ContentType", RequireNotNullable: true),
+        new("RoomTreatmentApplicationAttachments.FileSizeBytes", "RoomTreatmentApplicationAttachments", "FileSizeBytes", RequireNotNullable: true),
+        new("RoomTreatmentApplicationAttachments.StorageProvider", "RoomTreatmentApplicationAttachments", "StorageProvider", RequireNotNullable: true),
+        new("RoomTreatmentApplicationAttachments.DriveId", "RoomTreatmentApplicationAttachments", "DriveId", RequireNullable: true),
+        new("RoomTreatmentApplicationAttachments.FileId", "RoomTreatmentApplicationAttachments", "FileId", RequireNotNullable: true),
+        new("RoomTreatmentApplicationAttachments.FolderId", "RoomTreatmentApplicationAttachments", "FolderId", RequireNullable: true),
+        new("RoomTreatmentApplicationAttachments.StoragePath", "RoomTreatmentApplicationAttachments", "StoragePath", RequireNotNullable: true),
+        new("RoomTreatmentApplicationAttachments.CreatedAt", "RoomTreatmentApplicationAttachments", "CreatedAt", RequireNotNullable: true),
+        new("RoomTreatmentApplicationAttachments.CreatedByUserId", "RoomTreatmentApplicationAttachments", "CreatedByUserId", RequireNotNullable: true),
+        new("RoomTreatmentApplicationAttachments.IsDeleted", "RoomTreatmentApplicationAttachments", "IsDeleted", RequireNotNullable: true),
+        new("RoomTreatmentApplicationAttachments.DeletedAt", "RoomTreatmentApplicationAttachments", "DeletedAt", RequireNullable: true),
+        new("RoomTreatmentApplicationAttachments.DeletedByUserId", "RoomTreatmentApplicationAttachments", "DeletedByUserId", RequireNullable: true),
+        new("RoomTreatmentApplicationAttachments.DeleteReason", "RoomTreatmentApplicationAttachments", "DeleteReason", RequireNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
@@ -409,7 +427,11 @@ public static class DatabaseStartupDiagnostics
         new("IX_TreatmentLineageSegments_GrowerLotId", "TreatmentLineageSegments", "IX_TreatmentLineageSegments_GrowerLotId"),
         new("IX_TreatmentLineageSegments_RoomId_CurrentBins", "TreatmentLineageSegments", "IX_TreatmentLineageSegments_RoomId_CurrentBins"),
         new("IX_TreatmentLineageSegments_RoomId_IdentityKey_TreatmentSignature", "TreatmentLineageSegments", "IX_TreatmentLineageSegments_RoomId_IdentityKey_TreatmentSignature", RequireUnique: true),
-        new("IX_TreatmentLineageSegments_WarehouseId", "TreatmentLineageSegments", "IX_TreatmentLineageSegments_WarehouseId")
+        new("IX_TreatmentLineageSegments_WarehouseId", "TreatmentLineageSegments", "IX_TreatmentLineageSegments_WarehouseId"),
+        new("IX_RoomTreatmentApplicationAttachments_CreatedByUserId", "RoomTreatmentApplicationAttachments", "IX_RoomTreatmentApplicationAttachments_CreatedByUserId"),
+        new("IX_RoomTreatmentApplicationAttachments_DeletedByUserId", "RoomTreatmentApplicationAttachments", "IX_RoomTreatmentApplicationAttachments_DeletedByUserId"),
+        new("IX_TreatmentReportAttachments_Application_IsDeleted_CreatedAt", "RoomTreatmentApplicationAttachments", "IX_TreatmentReportAttachments_Application_IsDeleted_CreatedAt"),
+        new("UX_TreatmentReportAttachments_Application_OperationKey", "RoomTreatmentApplicationAttachments", "UX_TreatmentReportAttachments_Application_OperationKey", RequireUnique: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
@@ -475,7 +497,10 @@ public static class DatabaseStartupDiagnostics
         new("FK_RoomTreatmentApplicationSources_FruitProfiles_FruitProfileId", "RoomTreatmentApplicationSources", "FK_RoomTreatmentApplicationSources_FruitProfiles_FruitProfileId"),
         new("FK_RoomTreatmentApplicationSources_RoomTreatmentApplications_RoomTreatmentApplicationId", "RoomTreatmentApplicationSources", "FK_RoomTreatmentApplicationSources_RoomTreatmentApplications_RoomTreatmentApplicationId"),
         new("FK_TreatmentLineageSegmentApplications_RoomTreatmentApplications_RoomTreatmentApplicationId", "TreatmentLineageSegmentApplications", "FK_TreatmentLineageSegmentApplications_RoomTreatmentApplications_RoomTreatmentApplicationId"),
-        new("FK_TreatmentLineageSegmentApplications_TreatmentLineageSegments_TreatmentLineageSegmentId", "TreatmentLineageSegmentApplications", "FK_TreatmentLineageSegmentApplications_TreatmentLineageSegments_TreatmentLineageSegmentId")
+        new("FK_TreatmentLineageSegmentApplications_TreatmentLineageSegments_TreatmentLineageSegmentId", "TreatmentLineageSegmentApplications", "FK_TreatmentLineageSegmentApplications_TreatmentLineageSegments_TreatmentLineageSegmentId"),
+        new("FK_RoomTreatmentApplicationAttachments_RoomTreatmentApplications_RoomTreatmentApplicationId", "RoomTreatmentApplicationAttachments", "FK_RoomTreatmentApplicationAttachments_RoomTreatmentApplications_RoomTreatmentApplicationId"),
+        new("FK_RoomTreatmentApplicationAttachments_Users_CreatedByUserId", "RoomTreatmentApplicationAttachments", "FK_RoomTreatmentApplicationAttachments_Users_CreatedByUserId"),
+        new("FK_RoomTreatmentApplicationAttachments_Users_DeletedByUserId", "RoomTreatmentApplicationAttachments", "FK_RoomTreatmentApplicationAttachments_Users_DeletedByUserId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
@@ -498,7 +523,8 @@ public static class DatabaseStartupDiagnostics
         new("PK_RoomTreatmentApplicationSources", "RoomTreatmentApplicationSources", "PK_RoomTreatmentApplicationSources"),
         new("PK_TreatmentLineageSegments", "TreatmentLineageSegments", "PK_TreatmentLineageSegments"),
         new("PK_TreatmentLineageSegmentApplications", "TreatmentLineageSegmentApplications", "PK_TreatmentLineageSegmentApplications"),
-        new("PK_TreatmentLineageMovements", "TreatmentLineageMovements", "PK_TreatmentLineageMovements")
+        new("PK_TreatmentLineageMovements", "TreatmentLineageMovements", "PK_TreatmentLineageMovements"),
+        new("PK_RoomTreatmentApplicationAttachments", "RoomTreatmentApplicationAttachments", "PK_RoomTreatmentApplicationAttachments")
     ];
 
     public static async Task InspectAsync(

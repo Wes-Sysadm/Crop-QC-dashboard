@@ -345,15 +345,20 @@ public sealed class RoomTreatmentService(
         var projected = await ProjectSelectionsBatchAsync(activeSnapshots, cancellationToken);
         var current = projected.Values.SelectMany(x => x).ToList();
 
-        var history = await dbContext.RoomTreatmentApplications.AsNoTracking()
+        var historyRows = await dbContext.RoomTreatmentApplications.AsNoTracking()
+            .Include(x => x.AppliedByUser)
+            .Include(x => x.Attachments)
             .Where(x => x.RoomId == roomId)
             .OrderByDescending(x => x.AppliedAt).ThenByDescending(x => x.Id)
             .Take(200)
-            .Select(x => new RoomTreatmentApplicationHistoryViewModel(
+            .ToListAsync(cancellationToken);
+        var history = historyRows.Select(x => new RoomTreatmentApplicationHistoryViewModel(
                 x.Id, x.AppliedAt, x.ProductNameSnapshot, x.CommonNameSnapshot, x.TotalBinsSnapshot,
                 x.AppliedByUser.DisplayName ?? x.AppliedByUser.Email, x.EstimatedCostSnapshot, x.CurrencySnapshot,
-                x.Notes, x.ReversedAt != null, x.ReversedAt, x.ReversalReason))
-            .ToListAsync(cancellationToken);
+                x.Notes, x.ReversedAt != null, x.ReversedAt, x.ReversalReason,
+                x.Attachments.Where(a => !a.IsDeleted).OrderBy(a => a.CreatedAt).ThenBy(a => a.Id)
+                    .Select(a => new TreatmentReportAttachmentViewModel(a.Id, a.FileName, a.ContentType, a.FileSizeBytes, a.CreatedAt)).ToList()))
+            .ToList();
         var principal = httpContextAccessor.HttpContext?.User;
         var canApply = principal is not null && await access.HasAccessAsync(principal, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
         var canReverse = principal is not null && await access.HasAccessAsync(principal, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken);

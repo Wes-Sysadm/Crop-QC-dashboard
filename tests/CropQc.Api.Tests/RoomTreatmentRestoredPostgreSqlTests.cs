@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using CropQc.Data;
+using CropQc.Shared.Storage;
 using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
@@ -88,7 +89,37 @@ public sealed class RoomTreatmentRestoredPostgreSqlTests
         var roomData = await treatmentService.GetRoomDataAsync(roomId, default);
         Assert.Contains(roomData.Current, x => x.Treatments.Any(y => y.Id == application.Id));
 
-        await using var factory = new RestoreWebApplicationFactory(connectionString);
+        var storage = new RehearsalStorage();
+        var attachmentService = new TreatmentReportAttachmentService(
+            db,
+            storage,
+            new AdminAccess(),
+            new PacificBusinessTimeService(new FixedClock(RehearsalNow)),
+            NullLogger<TreatmentReportAttachmentService>.Instance);
+        var reports = await attachmentService.UploadAsync(application.Id, new TreatmentReportUploadForm
+        {
+            OperationKey = "restored-treatment-report-rehearsal-20260819",
+            Files = [ReportFile("signed-treatment-report.pdf", "application/pdf"), ReportFile("scan-page-2.jpg", "image/jpeg")]
+        }, context.User, default);
+        Assert.Equal(2, reports.Uploaded);
+        Assert.Empty(reports.Failures);
+        storage.FailSave = true;
+        var failedReport = await attachmentService.UploadAsync(application.Id, new TreatmentReportUploadForm
+        {
+            OperationKey = "restored-treatment-report-optional-failure-20260819",
+            Files = [ReportFile("optional-page.png", "image/png")]
+        }, context.User, default);
+        Assert.Single(failedReport.Failures);
+        Assert.NotNull(await db.RoomTreatmentApplications.FindAsync(application.Id));
+        storage.FailSave = false;
+        var attachmentRows = await db.RoomTreatmentApplicationAttachments.AsNoTracking()
+            .Where(x => x.RoomTreatmentApplicationId == application.Id && !x.IsDeleted)
+            .OrderBy(x => x.Id)
+            .ToListAsync();
+        Assert.Equal(2, attachmentRows.Count);
+        Assert.Equal(before, await ProtectedCountsAsync(db));
+
+        await using var factory = new RestoreWebApplicationFactory(connectionString, storage);
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthenticationHandler.SchemeName);
         var routes = new Dictionary<string, string>
@@ -114,6 +145,16 @@ public sealed class RoomTreatmentRestoredPostgreSqlTests
             Assert.DoesNotContain("Npgsql", html, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("HTTP 500", html, StringComparison.OrdinalIgnoreCase);
         }
+        var roomHistory = await client.GetStringAsync($"/Rooms/{roomId}");
+        Assert.Contains("signed-treatment-report.pdf", roomHistory);
+        Assert.Contains("scan-page-2.jpg", roomHistory);
+        foreach (var attachment in attachmentRows)
+        {
+            var content = await client.GetAsync($"/RoomTreatments/{application.Id}/Reports/{attachment.Id}/Content");
+            Assert.Equal(HttpStatusCode.OK, content.StatusCode);
+            Assert.Equal(attachment.ContentType, content.Content.Headers.ContentType?.MediaType);
+            Assert.NotEmpty(await content.Content.ReadAsByteArrayAsync());
+        }
         stopwatch.Stop();
 
         Assert.Equal(before, await ProtectedCountsAsync(db));
@@ -122,6 +163,22 @@ public sealed class RoomTreatmentRestoredPostgreSqlTests
             $"fruitRows={roomSnapshots.Count}; bins={application.TotalBinsSnapshot}; application={application.Id}; " +
             $"routes={routes.Count}; elapsedMs={stopwatch.ElapsedMilliseconds}; " +
             $"workingSetBytes={Process.GetCurrentProcess().WorkingSet64}; peakWorkingSetBytes={Process.GetCurrentProcess().PeakWorkingSet64}.");
+    }
+
+    private static FormFile ReportFile(string fileName, string contentType)
+    {
+        var bytes = contentType switch
+        {
+            "application/pdf" => "%PDF-1.7\nrestored rehearsal"u8.ToArray(),
+            "image/jpeg" => new byte[] { 0xff, 0xd8, 0xff, 0xe0, 1, 2, 3 },
+            "image/png" => new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1 },
+            _ => throw new ArgumentOutOfRangeException(nameof(contentType))
+        };
+        return new FormFile(new MemoryStream(bytes), 0, bytes.Length, "Files", fileName)
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = contentType
+        };
     }
 
     private static async Task<(int Adjustments, long AdjustmentDelta, int Receipts, int GrowerLots, int Transfers, int Losses, int BinsRuns, int ActualRuns, int QcSamples, int EodSends, int RunExpectations)> ProtectedCountsAsync(CropQcDbContext db) =>
@@ -139,7 +196,7 @@ public sealed class RoomTreatmentRestoredPostgreSqlTests
             await db.RunExpectations.CountAsync()
         );
 
-    private sealed class RestoreWebApplicationFactory(string connectionString) : WebApplicationFactory<Program>
+    private sealed class RestoreWebApplicationFactory(string connectionString, IFileStorageService storage) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -161,7 +218,9 @@ public sealed class RoomTreatmentRestoredPostgreSqlTests
             {
                 services.RemoveAll<IHostedService>();
                 services.RemoveAll<IDataProtectionProvider>();
+                services.RemoveAll<IFileStorageService>();
                 services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+                services.AddSingleton(storage);
                 services.AddAuthentication(options =>
                     {
                         options.DefaultAuthenticateScheme = TestAuthenticationHandler.SchemeName;
@@ -201,5 +260,30 @@ public sealed class RoomTreatmentRestoredPostgreSqlTests
     private sealed class FixedClock(DateTimeOffset utcNow) : IClock
     {
         public DateTimeOffset UtcNow => utcNow;
+    }
+
+    private sealed class RehearsalStorage : IFileStorageService
+    {
+        private readonly Dictionary<string, byte[]> content = [];
+        private int nextId;
+        public bool FailSave { get; set; }
+        public string GenerateTargetPath(FileStorageTargetContext context) => throw new NotSupportedException();
+        public async Task<FileStorageReference> SaveAsync(FileStorageSaveRequest request, CancellationToken cancellationToken = default)
+        {
+            if (FailSave) throw new InvalidOperationException("Simulated optional treatment-report storage failure.");
+            using var buffer = new MemoryStream();
+            await request.Content.CopyToAsync(buffer, cancellationToken);
+            var key = $"restored-treatment-report-{++nextId}";
+            content[key] = buffer.ToArray();
+            return new FileStorageReference("RestoredTest", key, request.TargetPath, request.FileName, request.ContentType, buffer.Length, FileId: key);
+        }
+        public Task<FileStorageReference?> GetMetadataAsync(string storageKey, CancellationToken cancellationToken = default) => Task.FromResult<FileStorageReference?>(null);
+        public Task<Stream?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream?>(content.TryGetValue(storageKey, out var bytes) ? new MemoryStream(bytes) : null);
+        public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default)
+        {
+            content.Remove(storageKey);
+            return Task.CompletedTask;
+        }
     }
 }

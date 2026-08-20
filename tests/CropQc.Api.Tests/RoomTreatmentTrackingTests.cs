@@ -330,7 +330,7 @@ public sealed class RoomTreatmentTrackingTests
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "RoomTreatmentsController.cs"));
         Assert.Contains("AccessPolicyNames.RoomTransactionsEdit", controller);
         Assert.Contains("AccessPolicyNames.RoomTransactionsAdmin", controller);
-        Assert.Equal(3, controller.Split("[ValidateAntiForgeryToken]", StringSplitOptions.None).Length - 1);
+        Assert.Equal(5, controller.Split("[ValidateAntiForgeryToken]", StringSplitOptions.None).Length - 1);
     }
 
     [Fact]
@@ -372,8 +372,8 @@ public sealed class RoomTreatmentTrackingTests
         Assert.Contains("pg_advisory_xact_lock", apply);
         Assert.Contains("migration_history_intentionally_unchanged", verifier);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
-        Assert.Contains("20260818181556_AddRoomTreatmentTracking", gate);
-        Assert.Equal(476, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Contains("20260819142656_AddTreatmentReportAttachments", gate);
+        Assert.Equal(502, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     private static string FindRepositoryFile(params string[] segments)

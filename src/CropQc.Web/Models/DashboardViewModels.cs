@@ -159,6 +159,17 @@ public sealed class ReverseRoomTreatmentApplicationForm
     public string Reason { get; set; } = "";
 }
 
+public sealed class TreatmentReportUploadForm
+{
+    public List<IFormFile> Files { get; set; } = [];
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+}
+
+public sealed class RemoveTreatmentReportForm
+{
+    public string Reason { get; set; } = "";
+}
+
 public sealed class RoomTreatmentApplyPageViewModel
 {
     public RoomTreatmentApplyForm Form { get; set; } = new();
@@ -227,7 +238,19 @@ public sealed record RoomTreatmentApplicationHistoryViewModel(
     string? Notes,
     bool IsReversed,
     DateTimeOffset? ReversedAt,
-    string? ReversalReason);
+    string? ReversalReason,
+    IReadOnlyList<TreatmentReportAttachmentViewModel> Attachments);
+
+public sealed record TreatmentReportAttachmentViewModel(
+    long Id,
+    string FileName,
+    string ContentType,
+    long FileSizeBytes,
+    DateTimeOffset CreatedAt)
+{
+    public bool IsImage => ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+    public bool IsPdf => string.Equals(ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase);
+}
 
 public sealed class RoomGrowerSummaryViewModel
 {

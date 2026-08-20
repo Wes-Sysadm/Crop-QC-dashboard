@@ -40,6 +40,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<FruitSizeConversionThreshold> FruitSizeConversionThresholds => Set<FruitSizeConversionThreshold>();
     public DbSet<TreatmentChemical> TreatmentChemicals => Set<TreatmentChemical>();
     public DbSet<RoomTreatmentApplication> RoomTreatmentApplications => Set<RoomTreatmentApplication>();
+    public DbSet<RoomTreatmentApplicationAttachment> RoomTreatmentApplicationAttachments => Set<RoomTreatmentApplicationAttachment>();
     public DbSet<RoomTreatmentApplicationSource> RoomTreatmentApplicationSources => Set<RoomTreatmentApplicationSource>();
     public DbSet<TreatmentLineageSegment> TreatmentLineageSegments => Set<TreatmentLineageSegment>();
     public DbSet<TreatmentLineageSegmentApplication> TreatmentLineageSegmentApplications => Set<TreatmentLineageSegmentApplication>();
@@ -1846,6 +1847,26 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.AppliedByUser).WithMany().HasForeignKey(x => x.AppliedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.ReversedByUser).WithMany().HasForeignKey(x => x.ReversedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<RoomTreatmentApplicationAttachment>(entity =>
+        {
+            entity.Property(x => x.OperationKey).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.FileName).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.ContentType).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.StorageProvider).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.DriveId).HasMaxLength(200);
+            entity.Property(x => x.FileId).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.FolderId).HasMaxLength(200);
+            entity.Property(x => x.StoragePath).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.DeleteReason).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.RoomTreatmentApplicationId, x.OperationKey })
+                .IsUnique().HasDatabaseName("UX_TreatmentReportAttachments_Application_OperationKey");
+            entity.HasIndex(x => new { x.RoomTreatmentApplicationId, x.IsDeleted, x.CreatedAt })
+                .HasDatabaseName("IX_TreatmentReportAttachments_Application_IsDeleted_CreatedAt");
+            entity.HasOne(x => x.RoomTreatmentApplication).WithMany(x => x.Attachments).HasForeignKey(x => x.RoomTreatmentApplicationId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.DeletedByUser).WithMany().HasForeignKey(x => x.DeletedByUserId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<RoomTreatmentApplicationSource>(entity =>

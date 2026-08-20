@@ -40,9 +40,12 @@ public sealed record ActualRunContributionViewModel(
     bool? IsOrganic,
     string InventoryStatus,
     string TreatmentSummary,
+    IReadOnlyList<TreatmentReportLinkViewModel> TreatmentReports,
     int? CropYear,
     int Bins,
     decimal ContributionPercent);
+
+public sealed record TreatmentReportLinkViewModel(long ApplicationId, long AttachmentId, string FileName, string ContentType);
 
 public sealed class RunExpectationViewModel
 {

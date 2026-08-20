@@ -62,7 +62,7 @@
             <p><strong>Price basis</strong><br />@Model.SelectedTreatment.UnitPrice.ToString("C2") @Model.SelectedTreatment.Currency per @Model.SelectedTreatment.Volume.ToString("0.##") @Model.SelectedTreatment.Unit</p>
             <p><strong>Estimated Treatment Cost</strong><br />@Model.EstimatedCost.ToString("C2") @Model.SelectedTreatment.Currency</p>
         </div>
-        <form method="post" action="/Rooms/@Model.Form.RoomId/Treatments" class="inline-actions treatment-confirm-actions">
+        <form method="post" enctype="multipart/form-data" action="/Rooms/@Model.Form.RoomId/Treatments" class="stacked-form treatment-confirm-actions treatment-report-form" data-treatment-report-form>
             @Html.AntiForgeryToken()
             <input type="hidden" name="RoomId" value="@Model.Form.RoomId" />
             <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
@@ -70,8 +70,26 @@
             <input type="hidden" name="AppliedAt" value="@Model.Form.AppliedAt.ToString("O")" />
             <input type="hidden" name="Notes" value="@Model.Form.Notes" />
             <input type="hidden" name="ConfirmedReview" value="true" />
-            <button type="submit">Save Treatment</button>
-            <a class="button secondary-button" href="/Rooms/@Model.Form.RoomId/Treatments/Apply">Change</a>
+            <input type="hidden" name="TreatmentReport.OperationKey" value="@Guid.NewGuid().ToString("N")" />
+            <section class="subpanel treatment-report-stage" aria-labelledby="treatment-report-heading">
+                <h3 id="treatment-report-heading">Treatment Report <span class="muted">(optional)</span></h3>
+                <p class="muted">Attach a PDF or scanned image now, or add it later from Treatment Application History. Up to 15 MB per file.</p>
+                <div class="treatment-report-picker-actions">
+                    <label class="button secondary-button file-picker-button">Scan / Take Photo
+                        <input type="file" name="TreatmentReport.Files" accept="image/jpeg,image/png,image/webp" capture="environment" multiple data-treatment-report-input />
+                    </label>
+                    <label class="button secondary-button file-picker-button">Choose File
+                        <input type="file" name="TreatmentReport.Files" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple data-treatment-report-input />
+                    </label>
+                </div>
+                <p class="field-validation" data-treatment-report-validation role="status"></p>
+                <p class="muted" data-treatment-report-empty>No treatment report selected.</p>
+                <div class="treatment-report-preview-grid" data-treatment-report-previews></div>
+            </section>
+            <div class="inline-actions">
+                <button type="submit" data-treatment-report-submit>Save Treatment</button>
+                <a class="button secondary-button" href="/Rooms/@Model.Form.RoomId/Treatments/Apply">Change</a>
+            </div>
         </form>
     }
 </section>
@@ -97,3 +115,5 @@
         </div>
     }
 </section>
+
+<script src="~/js/treatment-reports.js" asp-append-version="true"></script>

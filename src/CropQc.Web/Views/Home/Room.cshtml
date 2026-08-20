@@ -16,6 +16,10 @@
 {
     <p class="notice error">@error</p>
 }
+@if (TempData["Warning"] is string warning)
+{
+    <p class="notice warning">@warning</p>
+}
 @if (Model.DataWarning is not null)
 {
     <p class="notice warning">@Model.DataWarning</p>
@@ -145,7 +149,7 @@
                 <tbody>
                 @foreach (var treatment in Model.TreatmentApplicationHistory)
                 {
-                    <tr>
+                    <tr id="treatment-@treatment.Id">
                         <td>@BusinessTime.FormatPacific(treatment.AppliedAt)</td>
                         <td>@if (!string.IsNullOrWhiteSpace(treatment.CommonName)) { <strong>@treatment.CommonName</strong><br /> }@treatment.ProductName</td>
                         <td>@treatment.BinsAffected.ToString("N0")</td>
@@ -153,6 +157,60 @@
                         <td>@treatment.EstimatedCost.ToString("C2") @treatment.Currency</td>
                         <td><span class="status @(treatment.IsReversed ? "pending" : "ready")">@(treatment.IsReversed ? "Reversed" : "Active")</span>@if (!string.IsNullOrWhiteSpace(treatment.Notes)) { <br /><span>@treatment.Notes</span> }@if (treatment.IsReversed) { <br /><span class="muted">@treatment.ReversalReason</span> }</td>
                         <td>
+                        <div class="treatment-report-history">
+                            <strong>Treatment Report</strong>
+                            @if (treatment.Attachments.Count == 0)
+                            {
+                                <p class="muted">No treatment report attached.</p>
+                            }
+                            else
+                            {
+                                <div class="treatment-report-attachment-list">
+                                @foreach (var attachment in treatment.Attachments)
+                                {
+                                    <article class="treatment-report-attachment-card">
+                                        @if (attachment.IsImage)
+                                        {
+                                            <a href="/RoomTreatments/@treatment.Id/Reports/@attachment.Id/Content" target="_blank" rel="noopener">
+                                                <img src="/RoomTreatments/@treatment.Id/Reports/@attachment.Id/Content" alt="Treatment report @attachment.FileName" loading="lazy" />
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <span class="treatment-report-pdf" aria-hidden="true">PDF</span>
+                                        }
+                                        <div><a href="/RoomTreatments/@treatment.Id/Reports/@attachment.Id/Content" target="_blank" rel="noopener">@attachment.FileName</a><br /><small>@FormatFileSize(attachment.FileSizeBytes)</small></div>
+                                        @if (Model.CanReverseTreatment)
+                                        {
+                                            <form method="post" action="/Rooms/@Model.Summary?.RoomId/Treatments/@treatment.Id/Reports/@attachment.Id/Remove" class="stack-form" onsubmit="return confirm('Remove this treatment report attachment? The treatment application will remain unchanged.');">
+                                                @Html.AntiForgeryToken()
+                                                <label>Removal reason <input name="Reason" required maxlength="1000" /></label>
+                                                <button type="submit" class="danger-button">Remove Treatment Report</button>
+                                            </form>
+                                        }
+                                    </article>
+                                }
+                                </div>
+                            }
+                            @if (Model.CanApplyTreatment && Model.Summary is not null)
+                            {
+                                <details class="treatment-report-add-later">
+                                    <summary>Add Treatment Report</summary>
+                                    <form method="post" enctype="multipart/form-data" action="/Rooms/@Model.Summary.RoomId/Treatments/@treatment.Id/Reports" class="stacked-form treatment-report-form" data-treatment-report-form>
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" />
+                                        <div class="treatment-report-picker-actions">
+                                            <label class="button secondary-button file-picker-button">Scan / Take Photo<input type="file" name="Files" accept="image/jpeg,image/png,image/webp" capture="environment" multiple data-treatment-report-input /></label>
+                                            <label class="button secondary-button file-picker-button">Choose File<input type="file" name="Files" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple data-treatment-report-input /></label>
+                                        </div>
+                                        <p class="field-validation" data-treatment-report-validation role="status"></p>
+                                        <p class="muted" data-treatment-report-empty>No treatment report selected.</p>
+                                        <div class="treatment-report-preview-grid" data-treatment-report-previews></div>
+                                        <button type="submit" data-treatment-report-submit disabled>Upload Treatment Report</button>
+                                    </form>
+                                </details>
+                            }
+                        </div>
                         @if (Model.CanReverseTreatment && !treatment.IsReversed && Model.Summary is not null)
                         {
                             <form method="post" action="/Rooms/@Model.Summary.RoomId/Treatments/@treatment.Id/Reverse" class="stack-form" onsubmit="return confirm('This removes the treatment from current lineage calculations for the affected fruit but preserves the original application and audit history. Continue?');">
@@ -546,6 +604,7 @@
     }
 </section>
 
+<script src="~/js/treatment-reports.js" asp-append-version="true"></script>
 <script>
 (() => {
     const form = document.getElementById('dropped-bins-form');
@@ -600,6 +659,9 @@
     private static string Format(decimal? value) => value?.ToString("0.##") ?? "Unavailable";
     private static string FormatLbs(decimal? value) => value is null ? "Unavailable" : $"{value:0.##} lb";
     private static string FormatBins(int value) => value.ToString("N0");
+    private static string FormatFileSize(long value) => value >= 1024 * 1024
+        ? $"{value / (1024m * 1024m):0.#} MB"
+        : value >= 1024 ? $"{value / 1024m:0.#} KB" : $"{value} B";
     private static string Coverage(int represented, int total) => total <= 0
         ? "Coverage unavailable"
         : $"Coverage: {represented:N0} of {total:N0} current bins ({decimal.Round(represented / (decimal)total * 100m, 1):0.#}%)";

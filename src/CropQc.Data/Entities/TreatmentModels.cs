@@ -70,6 +70,31 @@ public sealed class RoomTreatmentApplication
     public string? ReversalReason { get; set; }
     public ICollection<RoomTreatmentApplicationSource> Sources { get; } = new List<RoomTreatmentApplicationSource>();
     public ICollection<TreatmentLineageSegmentApplication> SegmentApplications { get; } = new List<TreatmentLineageSegmentApplication>();
+    public ICollection<RoomTreatmentApplicationAttachment> Attachments { get; } = new List<RoomTreatmentApplicationAttachment>();
+}
+
+public sealed class RoomTreatmentApplicationAttachment
+{
+    public long Id { get; set; }
+    public long RoomTreatmentApplicationId { get; set; }
+    public RoomTreatmentApplication RoomTreatmentApplication { get; set; } = null!;
+    public required string OperationKey { get; set; }
+    public required string FileName { get; set; }
+    public required string ContentType { get; set; }
+    public long FileSizeBytes { get; set; }
+    public required string StorageProvider { get; set; }
+    public string? DriveId { get; set; }
+    public required string FileId { get; set; }
+    public string? FolderId { get; set; }
+    public required string StoragePath { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public int CreatedByUserId { get; set; }
+    public User CreatedByUser { get; set; } = null!;
+    public bool IsDeleted { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
+    public int? DeletedByUserId { get; set; }
+    public User? DeletedByUser { get; set; }
+    public string? DeleteReason { get; set; }
 }
 
 public sealed class RoomTreatmentApplicationSource
