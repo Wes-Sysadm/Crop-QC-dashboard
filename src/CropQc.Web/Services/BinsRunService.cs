@@ -368,11 +368,24 @@ public sealed class BinsRunService(
                 x.IsOrganicSnapshot,
                 InventoryStatus = x.InventoryStatus ?? "",
                 TreatmentSummary = x.TreatmentSummarySnapshot ?? "No recorded treatment history",
+                x.TreatmentSignatureSnapshot,
                 x.CropYear,
                 Bins = x.BinsRun
             })
             .Take(250)
             .ToListAsync(cancellationToken);
+        var treatmentApplicationIds = contributionRows
+            .SelectMany(x => TreatmentApplicationIds(x.TreatmentSignatureSnapshot))
+            .Distinct()
+            .ToList();
+        var treatmentReports = treatmentApplicationIds.Count == 0
+            ? []
+            : await dbContext.RoomTreatmentApplicationAttachments.AsNoTracking()
+                .Where(x => treatmentApplicationIds.Contains(x.RoomTreatmentApplicationId) && !x.IsDeleted)
+                .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+                .Select(x => new TreatmentReportLinkViewModel(x.RoomTreatmentApplicationId, x.Id, x.FileName, x.ContentType))
+                .ToListAsync(cancellationToken);
+        var reportsByApplication = treatmentReports.GroupBy(x => x.ApplicationId).ToDictionary(x => x.Key, x => x.ToList());
         run.TotalBins = contributionRows.Sum(x => x.Bins);
         run.Facility = contributionRows.Select(x => x.Facility).FirstOrDefault() ?? "";
         run.Contributions = contributionRows.Select(x => new ActualRunContributionViewModel(
@@ -387,6 +400,10 @@ public sealed class BinsRunService(
             x.IsOrganicSnapshot,
             x.InventoryStatus,
             x.TreatmentSummary,
+            TreatmentApplicationIds(x.TreatmentSignatureSnapshot)
+                .Where(reportsByApplication.ContainsKey)
+                .SelectMany(applicationId => reportsByApplication[applicationId])
+                .ToList(),
             x.CropYear,
             x.Bins,
             run.TotalBins <= 0 ? 0m : decimal.Round(x.Bins / (decimal)run.TotalBins * 100m, 4)))
@@ -2869,6 +2886,18 @@ public sealed class BinsRunService(
 
     private static string ReceiptLotNumber(Receipt receipt) =>
         !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber! : receipt.LotCode;
+
+    private static IReadOnlyList<long> TreatmentApplicationIds(string? signature)
+    {
+        if (string.IsNullOrWhiteSpace(signature)) return [];
+        var marker = signature.IndexOf("|a:", StringComparison.Ordinal);
+        if (marker < 0) return [];
+        return signature[(marker + 3)..].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(value => long.TryParse(value, out var id) ? id : 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+    }
 
     private static RoomInventoryLedgerSnapshot ToLedgerSnapshot(InventorySnapshot x) => new(
         x.WarehouseId,

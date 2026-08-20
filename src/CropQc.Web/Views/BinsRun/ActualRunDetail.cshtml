@@ -60,7 +60,19 @@
                     <td>@source.ProductionType</td>
                     <td>@(source.IsOrganic is null ? "Unknown" : source.IsOrganic.Value ? "Organic" : "Conventional")</td>
                     <td>@source.InventoryStatus</td>
-                    <td>@source.TreatmentSummary</td>
+                    <td>
+                        @source.TreatmentSummary
+                        @if (source.TreatmentReports.Count > 0)
+                        {
+                            <div class="treatment-report-run-links">
+                                <strong>Treatment Report:</strong>
+                                @foreach (var report in source.TreatmentReports)
+                                {
+                                    <a href="/RoomTreatments/@report.ApplicationId/Reports/@report.AttachmentId/Content" target="_blank" rel="noopener">@report.FileName</a>
+                                }
+                            </div>
+                        }
+                    </td>
                     <td>@source.CropYear</td>
                     <td>@source.Bins</td>
                     <td>@source.ContributionPercent.ToString("0.##")%</td>
