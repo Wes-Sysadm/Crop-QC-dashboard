@@ -1295,7 +1295,7 @@ else
                     <div class="table-wrap wide">
                         <table class="actual-run-ledger-table">
                             <thead>
-                                <tr><th>Use</th><th>Facility</th><th>Room</th><th>Lot / Grower</th><th>Variety</th><th>Production</th><th>Treatment</th><th>Crop year</th><th>Current</th><th>Source / trace</th><th>Bins pulled</th><th>Projected remaining</th><th>Shortage / override</th></tr>
+                                <tr><th>Use</th><th>Facility</th><th>Room</th><th>Grower number / lot</th><th>Grower</th><th>Variety</th><th>Production</th><th>Treatment</th><th>Crop year</th><th>Current</th><th>Source / trace</th><th>Bins pulled</th><th>Projected remaining</th><th>Shortage / override</th></tr>
                             </thead>
                             <tbody>
                             @for (var i = 0; i < Model.AvailableInventory.Count; i++)
@@ -1313,7 +1313,8 @@ else
                                     </td>
                                     <td>@option.Facility</td>
                                     <td>@option.RoomName</td>
-                                    <td><strong>@option.Lot</strong><br /><span class="muted">@option.Grower</span></td>
+                                    <td><strong>@(string.IsNullOrWhiteSpace(option.GrowerNumber) ? "Unresolved" : option.GrowerNumber)</strong><br /><span class="muted">Lot @option.Lot</span></td>
+                                    <td>@option.Grower</td>
                                     <td>@option.Variety</td>
                                     <td>@(string.IsNullOrWhiteSpace(option.ProductionType) ? "Unknown" : option.ProductionType)</td>
                                     <td>@option.TreatmentLabel</td>

@@ -25,6 +25,99 @@ namespace CropQc.Api.Tests;
 public sealed class ActualRunDetailHttpIntegrationTests
 {
     [Fact]
+    public async Task AuthenticatedPostgreSql_MultiLotRunKeepsThreeSourcesAndTwoPackoutReports_WhenConfigured()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_MULTILOT_POSTGRES_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        await using var factory = new ActualRunWebApplicationFactory(connectionString);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Email, ApplicationAreas.OwnerEmail)],
+            TestAuthenticationHandler.SchemeName));
+        var operationKey = $"postgres-multilot-{Guid.NewGuid():N}";
+        long runId;
+        int adjustmentCountAfterRun;
+        int adjustmentQuantityAfterRun;
+        string[] sourceFingerprint;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var service = scope.ServiceProvider.GetRequiredService<IBinsRunService>();
+            var ebsId = await db.Warehouses.Where(x => x.Code == EmploymentFacilities.Ebs).Select(x => x.Id).SingleAsync();
+            var page = await service.GetPageAsync(new CropQc.Web.Models.BinsRunFilterForm
+            {
+                Section = "Actual",
+                WarehouseId = 3,
+                RoomIds = [67],
+                SelectionMode = CropQc.Web.Models.ActualRunSelectionModes.ByRoom
+            }, principal, CancellationToken.None);
+            var selected = page.AvailableInventory
+                .Where(x => x.Lot is "1110" or "1511" or "1538")
+                .GroupBy(x => x.Lot)
+                .Select(x => x.First())
+                .OrderBy(x => x.Lot)
+                .ToArray();
+            Assert.Equal(3, selected.Length);
+            var error = await service.CreateActualRunAsync(new CropQc.Web.Models.ActualRunForm
+            {
+                OperationKey = operationKey,
+                RunFacilityWarehouseId = ebsId,
+                RunAt = DateTimeOffset.UtcNow,
+                Notes = "Disposable PostgreSQL multi-lot rehearsal",
+                Lines = selected.Select(x => new CropQc.Web.Models.ActualRunLineForm
+                {
+                    InventoryKey = x.InventoryKey,
+                    TreatmentSignature = x.TreatmentSignature,
+                    BinsRun = 1,
+                    ExpectedAvailableBins = x.CurrentBins
+                }).ToList()
+            }, principal, CancellationToken.None);
+            Assert.Null(error);
+            runId = await db.ActualRunRevisions.Where(x => x.OperationKey == operationKey).Select(x => x.ActualRunId).SingleAsync();
+            sourceFingerprint = await db.BinsRunEntries
+                .Where(x => x.ActualRunId == runId && x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed)
+                .OrderBy(x => x.LotNumber)
+                .Select(x => $"{x.LotNumber}|{x.GrowerNumberSnapshot}|{x.FruitProfileId}|{x.VarietyCode}|{x.ProductionTypeSnapshot}|{x.IsOrganicSnapshot}|{x.InventoryStatus}|{x.TreatmentSignatureSnapshot}|{x.BinsRun}")
+                .ToArrayAsync();
+            Assert.Equal(3, sourceFingerprint.Length);
+            Assert.Equal(3, await db.RunExpectationSources.CountAsync(x => x.RunExpectation.ActualRunId == runId));
+            adjustmentCountAfterRun = await db.RoomInventoryAdjustments.CountAsync();
+            adjustmentQuantityAfterRun = await db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount);
+        }
+
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthenticationHandler.SchemeName);
+        var detail = await client.GetAsync($"/BinsRun/ActualRuns/{runId}");
+        Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
+        var detailHtml = await detail.Content.ReadAsStringAsync();
+        Assert.Contains("<dt>Source lines</dt><dd>3</dd>", detailHtml, StringComparison.Ordinal);
+        Assert.Contains(">1511</td>", detailHtml, StringComparison.Ordinal);
+        var tokenMatch = Regex.Match(detailHtml, "name=\"__RequestVerificationToken\"[^>]*value=\"(?<token>[^\"]+)\"");
+        Assert.True(tokenMatch.Success);
+        var token = WebUtility.HtmlDecode(tokenMatch.Groups["token"].Value);
+
+        using var upload = TwoReportUpload(token);
+        var response = await client.PostAsync($"/BinsRun/ActualRuns/{runId}/Packout", upload);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var packout = await db.PackoutRuns.Include(x => x.Sources).SingleAsync(x => x.ActualRunId == runId);
+            Assert.Equal(new[] { "grower-summary-page-a.txt", "grower-summary-page-b.txt" }, packout.Sources.OrderBy(x => x.OriginalFileName).Select(x => x.OriginalFileName));
+            Assert.Equal(2, packout.Sources.Select(x => x.Sha256).Distinct().Count());
+            Assert.Equal(adjustmentCountAfterRun, await db.RoomInventoryAdjustments.CountAsync());
+            Assert.Equal(adjustmentQuantityAfterRun, await db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount));
+            var afterFingerprint = await db.BinsRunEntries
+                .Where(x => x.ActualRunId == runId && x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed)
+                .OrderBy(x => x.LotNumber)
+                .Select(x => $"{x.LotNumber}|{x.GrowerNumberSnapshot}|{x.FruitProfileId}|{x.VarietyCode}|{x.ProductionTypeSnapshot}|{x.IsOrganicSnapshot}|{x.InventoryStatus}|{x.TreatmentSignatureSnapshot}|{x.BinsRun}")
+                .ToArrayAsync();
+            Assert.Equal(sourceFingerprint, afterFingerprint);
+        }
+    }
+
+    [Fact]
     public async Task GrowerSummaryUpload_UsesAuthenticatedMvcPathWithoutDuplicatingRunOrChangingInventory()
     {
         await using var factory = new ActualRunWebApplicationFactory();
@@ -144,7 +237,7 @@ public sealed class ActualRunDetailHttpIntegrationTests
         Assert.Contains("Packout report files", detailHtml, StringComparison.Ordinal);
     }
 
-    private sealed class ActualRunWebApplicationFactory : WebApplicationFactory<Program>
+    private sealed class ActualRunWebApplicationFactory(string? postgresConnectionString = null) : WebApplicationFactory<Program>
     {
         private readonly string databaseName = $"actual-run-http-{Guid.NewGuid():N}";
 
@@ -155,7 +248,7 @@ public sealed class ActualRunDetailHttpIntegrationTests
             {
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["Database:EnsureCreatedOnStartup"] = "true",
+                    ["Database:EnsureCreatedOnStartup"] = postgresConnectionString is null ? "true" : "false",
                     ["Database:SeedMasterDataOnStartup"] = "false",
                     ["Backups:Enabled"] = "false",
                     ["EbsDailyBinsEmail:Enabled"] = "false",
@@ -169,7 +262,10 @@ public sealed class ActualRunDetailHttpIntegrationTests
                 services.RemoveAll<CropQcDbContext>();
                 services.RemoveAll<IHostedService>();
                 services.AddDbContext<CropQcDbContext>(options =>
-                    options.UseInMemoryDatabase(databaseName));
+                {
+                    if (postgresConnectionString is null) options.UseInMemoryDatabase(databaseName);
+                    else options.UseNpgsql(postgresConnectionString);
+                });
                 services.AddDataProtection().UseEphemeralDataProtectionProvider();
                 services
                     .AddAuthentication(options =>
@@ -194,6 +290,22 @@ public sealed class ActualRunDetailHttpIntegrationTests
         var report = new ByteArrayContent(Encoding.UTF8.GetBytes(GrowerSummaryFixture.Text));
         report.Headers.ContentType = new("text/plain");
         content.Add(report, "Files", "grower-summary.txt");
+        return content;
+    }
+
+    private static MultipartFormDataContent TwoReportUpload(string token)
+    {
+        var content = new MultipartFormDataContent();
+        content.Add(new StringContent(token), "__RequestVerificationToken");
+        content.Add(new StringContent("2026-08-19"), "PackingDate");
+        content.Add(new StringContent("1"), "RunNumber");
+        content.Add(new StringContent("3"), "DumpedBins");
+        var first = new ByteArrayContent(Encoding.UTF8.GetBytes(GrowerSummaryFixture.Text));
+        first.Headers.ContentType = new("text/plain");
+        content.Add(first, "Files", "grower-summary-page-a.txt");
+        var second = new ByteArrayContent(Encoding.UTF8.GetBytes(GrowerSummaryFixture.Text + "\nSECOND PAGE"));
+        second.Headers.ContentType = new("text/plain");
+        content.Add(second, "Files", "grower-summary-page-b.txt");
         return content;
     }
 

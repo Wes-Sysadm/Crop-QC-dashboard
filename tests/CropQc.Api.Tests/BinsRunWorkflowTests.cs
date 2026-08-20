@@ -591,6 +591,104 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task ActualRun_HeterogeneousSourceLinesPersistIndependentCanonicalIdentities()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        db.FruitProfiles.AddRange(
+            new FruitProfile { Id = 1003, Name = "Organic Bartlett", VarietyCode = "BART", FruitType = "Pear", ProductionType = "Organic", IsOrganic = true },
+            new FruitProfile { Id = 1004, Name = "Gala", VarietyCode = "GALA", FruitType = "Apple", ProductionType = "Conventional" });
+        await db.SaveChangesAsync();
+        var snapshots = new RoomInventoryLedgerSnapshot[]
+        {
+            new(1000, "EBS", 1001, "Evans-12", "", 2026, 501, 1000, "Grower A", "1084", "LOT-A", null, "FUJI", "FUJI", "Fuji", "Apple", "Conventional", false, "Packable", 10, 0, 0, 0, 0, 0, 0, 0, 10, 10, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 8001),
+            new(1000, "EBS", 1001, "Evans-12", "", 2026, 502, 1003, "Grower B", "1511", "LOT-B", null, "BART", "BART", "Bartlett", "Pear", "Organic", true, "Organic packable", 20, 0, 0, 0, 0, 0, 0, 0, 20, 20, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 8004),
+            new(1000, "EBS", 1001, "Evans-12", "", 2026, 503, 1004, "Grower C", "9350", "LOT-C", null, "GALA", "GALA", "Gala", "Apple", "Conventional", false, "CA storage", 30, 0, 0, 0, 0, 0, 0, 0, 30, 30, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 8005)
+        };
+        var service = CreateService(db, roomInventoryLedgerQueryService: new StaticRoomInventoryLedgerQueryService(snapshots));
+        var user = Principal("manager@fruitandland.com");
+        var page = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] },
+            user,
+            CancellationToken.None);
+        var rows = page.AvailableInventory.OrderBy(x => x.Lot).ToArray();
+
+        var error = await service.CreateActualRunAsync(GroupForm((rows[0], 1), (rows[1], 2), (rows[2], 3)), user, CancellationToken.None);
+
+        Assert.Null(error);
+        var entries = await db.BinsRunEntries.OrderBy(x => x.LotNumber).ToListAsync();
+        Assert.Equal(3, entries.Count);
+        Assert.Equal(new[] { "1084", "1511", "9350" }, entries.Select(x => x.GrowerNumberSnapshot));
+        Assert.Equal(new[] { "FUJI", "BART", "GALA" }, entries.Select(x => x.VarietyCode));
+        Assert.Equal(new[] { "Conventional", "Organic", "Conventional" }, entries.Select(x => x.ProductionTypeSnapshot));
+        Assert.Equal(new bool?[] { false, true, false }, entries.Select(x => x.IsOrganicSnapshot));
+        Assert.Equal(new[] { 1, 2, 3 }, entries.Select(x => x.BinsRun));
+        Assert.Equal(new[] { -1, -2, -3 }, await db.RoomInventoryAdjustments
+            .Where(x => x.ActualRunId != null)
+            .OrderBy(x => x.LotNumber)
+            .Select(x => x.ChangeAmount)
+            .ToArrayAsync());
+        var expectation = await db.RunExpectations.Include(x => x.Sources).SingleAsync();
+        Assert.Equal(6, expectation.TotalBins);
+        Assert.Equal(3, expectation.Sources.Count);
+        var detail = await service.GetActualRunDetailAsync(await db.ActualRuns.Select(x => x.Id).SingleAsync(), user, CancellationToken.None);
+        Assert.Equal(3, detail!.Contributions.Count);
+        Assert.Equal(new[] { "1084", "1511", "9350" }, detail.Contributions.Select(x => x.GrowerNumber));
+        Assert.Equal(new[] { "Packable", "Organic packable", "CA storage" }, detail.Contributions.Select(x => x.InventoryStatus));
+    }
+
+    [Fact]
+    public async Task ActualRun_UniqueReviewedGrowerAliasResolvesOnlyTheDeficientSourceLine()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        AddMappedGrower(db, "1511", "Porky Pears", "Porky Pears ORG CHIL");
+        await db.SaveChangesAsync();
+        var snapshots = new[]
+        {
+            new RoomInventoryLedgerSnapshot(
+                1000, "EBS", 1001, "Evans-12", "", 2026, null, 1000,
+                "Porky Pears ORG CHIL", null, "1511", null, "FUJI", "FUJI", "Fuji", "Apple", "Conventional", false, "Packable",
+                20, 0, 0, 0, 0, 0, 0, 0, 20, 20, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 8001)
+        };
+        var service = CreateService(db, roomInventoryLedgerQueryService: new StaticRoomInventoryLedgerQueryService(snapshots));
+        var user = Principal("manager@fruitandland.com");
+        var option = (await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] }, user, CancellationToken.None))
+            .AvailableInventory.Single();
+
+        Assert.Equal("1511", option.GrowerNumber);
+        Assert.Null(await service.CreateActualRunAsync(GroupForm((option, 2)), user, CancellationToken.None));
+        Assert.Equal("1511", (await db.BinsRunEntries.SingleAsync()).GrowerNumberSnapshot);
+    }
+
+    [Fact]
+    public async Task ActualRun_TreatmentSegmentsOfSameInventoryDeductExactlyOncePerLine()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var treatments = new SegmentedRoomTreatmentService();
+        var service = CreateService(db, roomTreatmentService: treatments);
+        var user = Principal("manager@fruitandland.com");
+        var options = (await service.GetPageAsync(
+                new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] }, user, CancellationToken.None))
+            .AvailableInventory.Where(x => x.Lot == "LOT-120").OrderBy(x => x.TreatmentSignature).ToArray();
+
+        Assert.Null(await service.CreateActualRunAsync(GroupForm((options[0], 2), (options[1], 3)), user, CancellationToken.None));
+
+        var entries = await db.BinsRunEntries.OrderBy(x => x.TreatmentSignatureSnapshot).ToListAsync();
+        Assert.Equal(new[] { "segment-a", "segment-b" }, entries.Select(x => x.TreatmentSignatureSnapshot));
+        Assert.Equal(new[] { 120, 118 }, entries.Select(x => x.PreviousAvailableBins));
+        Assert.Equal(new[] { 118, 115 }, entries.Select(x => x.NewAvailableBins));
+        Assert.Equal(new[] { ("segment-a", 2), ("segment-b", 3) }, treatments.Moves);
+        var adjustments = await db.RoomInventoryAdjustments.Where(x => x.ActualRunId != null).OrderBy(x => x.Id).ToListAsync();
+        Assert.Equal(new[] { -2, -3 }, adjustments.Select(x => x.ChangeAmount));
+        Assert.Equal(new int?[] { 120, 118 }, adjustments.Select(x => x.OldBinCount));
+        Assert.Equal(new[] { 118, 115 }, adjustments.Select(x => x.NewBinCount));
+        Assert.Equal(2, adjustments.Select(x => x.InventoryOperationKey).Distinct().Count());
+    }
+
+    [Fact]
     public async Task ActualRun_SharedUserSelectsReportingFacilityWithoutRestrictingSourceInventory()
     {
         using var db = CreateDbContext();
@@ -710,7 +808,25 @@ public sealed class BinsRunWorkflowTests
         Assert.Contains("[HttpGet(\"ActualRuns/{id:long}\")]", controller);
         Assert.Contains("Packout Result and supporting documents", detail);
         Assert.Contains("No Packout Result has been uploaded", detail);
+        Assert.Contains("<dt>Source lines</dt>", detail);
+        Assert.Contains("<th>Grower number</th>", detail);
+        Assert.Contains("<th>Organic / Conventional</th>", detail);
+        Assert.Contains("<th>Status</th>", detail);
         Assert.DoesNotContain("The dashboard could not complete the request", detail);
+    }
+
+    [Fact]
+    public void ActualRunPackoutUpload_PreservesEachSelectedReportAsADistinctSource()
+    {
+        var service = File.ReadAllText(FindRepositoryFile(
+            "src", "CropQc.Web", "Services", "PackoutReconciliationService.cs"));
+        var model = File.ReadAllText(FindRepositoryFile(
+            "src", "CropQc.Data", "Entities", "PackoutReconciliationModels.cs"));
+
+        Assert.Contains("for (var index = 0; index < form.Files.Count; index++)", service);
+        Assert.Contains("run.Sources.Add(source);", service);
+        Assert.Contains("PackoutReportSource = source", service);
+        Assert.Contains("ICollection<PackoutReportSource> Sources", model);
     }
 
     [Fact]
@@ -1749,7 +1865,7 @@ public sealed class BinsRunWorkflowTests
                 Principal("manager@fruitandland.com"),
                 CancellationToken.None))
             .AvailableInventory.Single(x => x.Lot == "LOT-ONLY");
-        Assert.Contains("authoritative receipt grower number", await service.CreateActualRunAsync(
+        Assert.Contains("authoritative Grower Number", await service.CreateActualRunAsync(
             GroupForm((option, 1)),
             Principal("manager@fruitandland.com"),
             CancellationToken.None));
@@ -1813,12 +1929,12 @@ public sealed class BinsRunWorkflowTests
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 8001);
         var cases = new[]
         {
-            ("crop year", complete with { CropYear = null }, "Crop year is required"),
-            ("fruit profile", complete with { FruitProfileId = null }, "canonical variety, production type"),
-            ("variety", complete with { Variety = "" }, "not room-ledger inventory"),
-            ("production type", complete with { ProductionType = "" }, "canonical variety, production type"),
+            ("crop year", complete with { CropYear = null }, "missing crop year"),
+            ("fruit profile", complete with { FruitProfileId = null }, "canonical variety/profile"),
+            ("variety", complete with { Variety = "" }, "canonical variety/profile"),
+            ("production type", complete with { ProductionType = "" }, "production type"),
             ("organic status", complete with { IsOrganic = null }, "Organic/Conventional status"),
-            ("grower number", complete with { GrowerNumber = null }, "authoritative receipt grower number")
+            ("grower number", complete with { GrowerNumber = null }, "authoritative Grower Number")
         };
         var principal = Principal("manager@fruitandland.com");
         foreach (var (field, snapshot, expectedError) in cases)
@@ -1836,6 +1952,7 @@ public sealed class BinsRunWorkflowTests
 
             Assert.NotNull(error);
             Assert.True(error.Contains(expectedError, StringComparison.OrdinalIgnoreCase), $"{field}: {error}");
+            Assert.Contains("Source line ART / Evans-12", error);
             Assert.Empty(await db.ActualRuns.ToListAsync());
         }
     }
@@ -2316,6 +2433,7 @@ public sealed class BinsRunWorkflowTests
             Lines = rows.Select(x => new ActualRunLineForm
             {
                 InventoryKey = x.Option.InventoryKey,
+                TreatmentSignature = x.Option.TreatmentSignature,
                 BinsRun = x.Bins,
                 ExpectedAvailableBins = x.Option.CurrentBins
             }).ToList()
@@ -2471,13 +2589,45 @@ public sealed class BinsRunWorkflowTests
     private static BinsRunService CreateService(
         CropQcDbContext db,
         IRunExpectationService? runExpectationService = null,
-        IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null) =>
+        IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null,
+        IRoomTreatmentService? roomTreatmentService = null) =>
         new(
             db,
             new UserAccessService(db, new ConfigurationBuilder().Build()),
             NullLogger<BinsRunService>.Instance,
             roomInventoryLedgerQueryService: roomInventoryLedgerQueryService,
-            runExpectationService: runExpectationService);
+            runExpectationService: runExpectationService,
+            roomTreatmentService: roomTreatmentService);
+
+    private static void AddMappedGrower(CropQcDbContext db, string number, string displayName, params string[] aliases)
+    {
+        var now = DateTimeOffset.Parse("2026-08-01T00:00:00Z");
+        var grower = new CanonicalGrower
+        {
+            DisplayName = displayName,
+            NormalizedKey = $"REVIEWED_GROWER_NUMBER_{number}",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        grower.GrowerNumbers.Add(new CanonicalGrowerNumber
+        {
+            GrowerNumber = number,
+            NormalizedGrowerNumber = number,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        foreach (var alias in aliases.Prepend(displayName))
+        {
+            grower.Aliases.Add(new CanonicalGrowerAlias
+            {
+                AliasName = alias,
+                NormalizedAliasKey = CanonicalGrowerService.NormalizeGrowerKey(alias),
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
+        db.CanonicalGrowers.Add(grower);
+    }
 
     private sealed class ThrowingRunExpectationService : IRunExpectationService
     {
@@ -2554,6 +2704,53 @@ public sealed class BinsRunWorkflowTests
         public Task<string?> ReverseAsync(ReverseRoomTreatmentApplicationForm form, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<TreatmentLineageWriteResult> MoveAsync(RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, int bins, int? destinationWarehouseId, int? destinationRoomId, string operationKey, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new InvalidOperationException("Move must not run when inventory does not reconcile.");
+        public Task<TreatmentLineageWriteResult> ReverseMovementsAsync(string operationKeyPrefix, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<TreatmentLineageWriteResult> AddUnknownAsync(RoomInventoryLedgerSnapshot snapshot, int bins, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class SegmentedRoomTreatmentService : IRoomTreatmentService
+    {
+        public List<(string Signature, int Bins)> Moves { get; } = [];
+
+        public Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetSelectionsAsync(
+            IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots,
+            CancellationToken cancellationToken)
+        {
+            var result = snapshots.ToDictionary(
+                RoomTreatmentService.SelectionLookupKey,
+                snapshot => (IReadOnlyList<TreatmentSegmentSelection>)
+                [
+                    new(RoomTreatmentService.IdentityKey(snapshot), "segment-a", TreatmentLineageStates.Confirmed, 50, "Treatment A"),
+                    new(RoomTreatmentService.IdentityKey(snapshot), "segment-b", TreatmentLineageStates.Confirmed, 70, "Treatment B")
+                ],
+                StringComparer.OrdinalIgnoreCase);
+            return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>>(result);
+        }
+
+        public Task<TreatmentLineageWriteResult> MoveAsync(
+            RoomInventoryLedgerSnapshot snapshot,
+            string? treatmentSignature,
+            int bins,
+            int? destinationWarehouseId,
+            int? destinationRoomId,
+            string operationKey,
+            string movementType,
+            long? roomTransferId,
+            long? roomInventoryLossId,
+            long? binsRunEntryId,
+            DateTimeOffset occurredAt,
+            int? actorUserId,
+            CancellationToken cancellationToken)
+        {
+            Moves.Add((treatmentSignature ?? "", bins));
+            return Task.FromResult(new TreatmentLineageWriteResult(true, null));
+        }
+
+        public Task<RoomTreatmentData> GetRoomDataAsync(int roomId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<RoomTreatmentApplyPageViewModel> GetApplyPageAsync(RoomTreatmentApplyForm form, bool review, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<(string? Error, long? ApplicationId)> ApplyAsync(RoomTreatmentApplyForm form, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<string?> ReverseAsync(ReverseRoomTreatmentApplicationForm form, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<TreatmentLineageWriteResult> ReverseMovementsAsync(string operationKeyPrefix, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<TreatmentLineageWriteResult> AddUnknownAsync(RoomInventoryLedgerSnapshot snapshot, int bins, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }

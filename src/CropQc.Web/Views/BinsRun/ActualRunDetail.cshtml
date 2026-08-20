@@ -30,6 +30,7 @@
         <div><dt>Run date/time</dt><dd>@Model.RunAt.ToString("f")</dd></div>
         <div><dt>Revision</dt><dd>@Model.RevisionNumber</dd></div>
         <div><dt>Total bins</dt><dd>@Model.TotalBins</dd></div>
+        <div><dt>Source lines</dt><dd>@Model.Contributions.Count</dd></div>
         <div><dt>Recorded by</dt><dd>@Model.CreatedBy</dd></div>
         <div><dt>Status</dt><dd>@Model.Status</dd></div>
     </dl>
@@ -44,17 +45,21 @@
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>Room</th><th>Grower</th><th>Lot</th><th>Variety</th><th>Production</th><th>Treatment</th><th>Crop year</th><th>Bins</th><th>Contribution</th></tr>
+                <tr><th>Facility</th><th>Room</th><th>Grower number</th><th>Grower</th><th>Lot</th><th>Variety</th><th>Production</th><th>Organic / Conventional</th><th>Status</th><th>Treatment</th><th>Crop year</th><th>Bins</th><th>Contribution</th></tr>
             </thead>
             <tbody>
             @foreach (var source in Model.Contributions)
             {
                 <tr>
+                    <td>@source.Facility</td>
                     <td>@source.Room</td>
+                    <td>@source.GrowerNumber</td>
                     <td>@source.Grower</td>
                     <td>@source.Lot</td>
                     <td>@source.Variety</td>
                     <td>@source.ProductionType</td>
+                    <td>@(source.IsOrganic is null ? "Unknown" : source.IsOrganic.Value ? "Organic" : "Conventional")</td>
+                    <td>@source.InventoryStatus</td>
                     <td>@source.TreatmentSummary</td>
                     <td>@source.CropYear</td>
                     <td>@source.Bins</td>

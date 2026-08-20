@@ -30,11 +30,15 @@ public sealed class ActualRunDetailViewModel
 
 public sealed record ActualRunContributionViewModel(
     long BinsRunEntryId,
+    string Facility,
     string Room,
     string Grower,
+    string GrowerNumber,
     string Lot,
     string Variety,
     string ProductionType,
+    bool? IsOrganic,
+    string InventoryStatus,
     string TreatmentSummary,
     int? CropYear,
     int Bins,
