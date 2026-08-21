@@ -177,6 +177,17 @@ public sealed class ReceivingTreatmentApplicationTests
     }
 
     [Fact]
+    public void Receipt_treatment_default_uses_Pacific_business_time()
+    {
+        var controller = Read("src", "CropQc.Web", "Controllers", "ReceiptsController.cs");
+        var applyTreatment = controller[controller.IndexOf("public async Task<IActionResult> ApplyTreatment", StringComparison.Ordinal)..];
+        applyTreatment = applyTreatment[..applyTreatment.IndexOf("[HttpPost", StringComparison.Ordinal)];
+
+        Assert.Contains("AppliedAt = businessTime.NowPacific", applyTreatment);
+        Assert.DoesNotContain("DateTimeOffset.UtcNow", applyTreatment);
+    }
+
+    [Fact]
     public void Migration_schema_gate_and_compatibility_packages_are_bounded_and_history_safe()
     {
         var migration = Read("src", "CropQc.Data", "Migrations", "20260820194148_AddReceivingTreatmentApplications.cs");
