@@ -270,7 +270,7 @@ public sealed class FieldSampleReportService(
         var block = sample.CanonicalOrchardBlock?.CanonicalBlockName ?? sample.FieldSampleOriginalBlockName ?? "Unknown Block";
         var variety = sample.FieldSampleFruitProfile?.Name ?? "Unknown Variety";
         var terminology = FieldSampleCommodityTerminologyService.ForFruitType(sample.FieldSampleFruitProfile?.FruitType);
-        var subject = $"Field Sample QC – {orchard} – {block} – {variety} – {ReportTime.FormatPacific(sample.SampleTakenAt, "MMMM d, yyyy", includeZone: false)}";
+        var subject = $"Field Sample QC - {orchard} - {block} - {variety} - {ReportTime.FormatPacific(sample.SampleTakenAt, "MMMM d, yyyy", includeZone: false)}";
         var html = BuildHtml(sample, detail, photos, imageIds, orchard, block, variety, terminology, sender, preview);
         var text = BuildText(sample, detail, photos, orchard, block, variety, terminology, sender, preview);
         return new QcEmailContent(subject, html, text, inlineImages);

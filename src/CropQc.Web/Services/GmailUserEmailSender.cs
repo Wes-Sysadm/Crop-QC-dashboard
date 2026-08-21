@@ -146,7 +146,7 @@ public sealed class GmailUserEmailSender(
             builder.AppendLine($"Reply-To: {message.ReplyTo}");
         }
 
-        builder.AppendLine($"Subject: {message.Subject}");
+        builder.AppendLine($"Subject: {EncodeSubjectHeader(message.Subject)}");
         builder.AppendLine("MIME-Version: 1.0");
         builder.AppendLine($"Content-Type: multipart/related; boundary=\"{relatedBoundary}\"");
         builder.AppendLine();
@@ -190,6 +190,45 @@ public sealed class GmailUserEmailSender(
         var bytes = Encoding.UTF8.GetBytes(builder.ToString());
         return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
+
+    private static string EncodeSubjectHeader(string subject)
+    {
+        if (subject.IndexOfAny(['\r', '\n']) >= 0)
+        {
+            throw new InvalidOperationException("Email subject cannot contain line breaks.");
+        }
+
+        if (subject.All(character => character <= 0x7f))
+        {
+            return subject;
+        }
+
+        const int maximumUtf8BytesPerEncodedWord = 39;
+        var encodedWords = new List<string>();
+        var currentBytes = new List<byte>(maximumUtf8BytesPerEncodedWord);
+
+        foreach (var rune in subject.EnumerateRunes())
+        {
+            var runeBytes = Encoding.UTF8.GetBytes(rune.ToString());
+            if (currentBytes.Count > 0 && currentBytes.Count + runeBytes.Length > maximumUtf8BytesPerEncodedWord)
+            {
+                encodedWords.Add(ToEncodedWord(currentBytes));
+                currentBytes.Clear();
+            }
+
+            currentBytes.AddRange(runeBytes);
+        }
+
+        if (currentBytes.Count > 0)
+        {
+            encodedWords.Add(ToEncodedWord(currentBytes));
+        }
+
+        return string.Join("\r\n ", encodedWords);
+    }
+
+    private static string ToEncodedWord(IReadOnlyCollection<byte> utf8Bytes) =>
+        $"=?UTF-8?B?{Convert.ToBase64String([.. utf8Bytes])}?=";
 
     private static string SafeGmailError(System.Net.HttpStatusCode statusCode, string responseBody)
     {

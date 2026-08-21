@@ -1,0 +1,57 @@
+@model InventoryVarietyDetailPageViewModel
+@{
+    ViewData["Title"] = $"{Model.VarietyName} Inventory";
+    ViewData["AutoRefresh"] = "true";
+}
+
+<nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="/?Facility=@Uri.EscapeDataString(Model.Facility)">Dashboard</a>
+    <span aria-hidden="true">&gt;</span>
+    <a href="/Inventory/ByVariety?Facility=@Uri.EscapeDataString(Model.Facility)">Inventory by Variety</a>
+    <span aria-hidden="true">&gt;</span>
+    <span aria-current="page">@Model.VarietyName</span>
+</nav>
+
+<h1><span class="inventory-variety-title-swatch" style="--inventory-variety-color: @Model.HexColor" aria-hidden="true"></span>@Model.VarietyName</h1>
+<p class="notice"><strong>Facility: @Model.Facility</strong> · @Model.TotalCurrentBins.ToString("N0") current bins</p>
+@await Html.PartialAsync("_PageRefreshControls")
+
+<div class="table-wrap operational-table-wrap">
+    <table class="operational-table inventory-variety-detail-table">
+        <thead>
+            <tr><th>Facility</th><th>Room</th><th>Grower</th><th>Grower Lot / Source</th><th>Production</th><th>Status</th><th>Treatment</th><th>Current Bins</th></tr>
+        </thead>
+        <tbody>
+        @foreach (var line in Model.Lines)
+        {
+            <tr>
+                <td data-label="Facility">@line.Facility</td>
+                <td data-label="Room"><a href="/Rooms/@line.RoomId?Facility=@Uri.EscapeDataString(Model.Facility)">@line.Room</a></td>
+                <td data-label="Grower">@line.GrowerNumber · @line.GrowerName</td>
+                <td data-label="Source">
+                    @if (line.ReceiptId is not null)
+                    {
+                        <a href="/Receipts/@line.ReceiptId">@(line.ReceiptNumber ?? $"Receipt {line.ReceiptId}")</a>
+                    }
+                    else if (line.GrowerLotId is not null)
+                    {
+                        <span>Grower Lot @line.GrowerLotId</span>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(line.SourceReference))
+                    {
+                        <span>@line.SourceReference</span>
+                    }
+                    else
+                    {
+                        <span class="muted">Unavailable</span>
+                    }
+                </td>
+                <td data-label="Production">@line.ProductionType · @line.OrganicStatus</td>
+                <td data-label="Status">@line.InventoryStatus</td>
+                <td data-label="Treatment">@line.TreatmentStatus</td>
+                <td data-label="Current Bins"><strong>@line.CurrentBins.ToString("N0")</strong></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
