@@ -1068,6 +1068,8 @@ public sealed class BinsRunService(
         }
 
         var roomIds = parsed.Select(x => x.RoomId).Distinct().ToList();
+        var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, roomIds, [], cancellationToken);
+        if (sealError is not null) return sealError;
         var snapshots = await GetCurrentInventorySnapshotsForRoomsAsync(warehouseIds[0], roomIds, null, cancellationToken);
         var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
         snapshots = snapshots.Select(x => ResolveActualRunGrowerNumber(x, growerResolver)).ToList();
@@ -1681,6 +1683,8 @@ public sealed class BinsRunService(
         {
             return "Selected inventory is no longer available in this room.";
         }
+        var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, [snapshot.RoomId], [], cancellationToken);
+        if (sealError is not null) return sealError;
 
         if (form.RoomId is not null && snapshot.RoomId != form.RoomId)
         {
@@ -1894,6 +1898,11 @@ public sealed class BinsRunService(
         CancellationToken cancellationToken)
     {
         var options = new List<BinsRunInventoryOptionViewModel>();
+        var roomIds = snapshots.Select(x => x.RoomId).Distinct().ToList();
+        var sealedRoomIds = await dbContext.Rooms.AsNoTracking()
+            .Where(x => roomIds.Contains(x.Id) && x.IsSealed)
+            .Select(x => x.Id)
+            .ToHashSetAsync(cancellationToken);
         var ledgerSnapshots = snapshots.Select(ToLedgerSnapshot).ToList();
         var treatmentSelections = roomTreatmentService is null
             ? null
@@ -1937,7 +1946,8 @@ public sealed class BinsRunService(
                     x.ReceiptReference ?? $"Ledger adjustment #{x.InventoryAdjustmentId}",
                     segment.TreatmentSignature,
                     segment.Label,
-                    x.GrowerNumber ?? ""));
+                    x.GrowerNumber ?? "",
+                    sealedRoomIds.Contains(x.RoomId)));
             }
         }
         return options;

@@ -17,6 +17,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<PasswordPolicy> PasswordPolicies => Set<PasswordPolicy>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<Room> Rooms => Set<Room>();
+    public DbSet<RoomSealEvent> RoomSealEvents => Set<RoomSealEvent>();
     public DbSet<GrowerLot> GrowerLots => Set<GrowerLot>();
     public DbSet<CanonicalGrower> CanonicalGrowers => Set<CanonicalGrower>();
     public DbSet<CanonicalGrowerAlias> CanonicalGrowerAliases => Set<CanonicalGrowerAlias>();
@@ -985,6 +986,34 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .WithMany(x => x.Rooms)
                 .HasForeignKey(x => x.WarehouseId)
                 .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => x.SealedByUserId);
+            entity.HasOne(x => x.SealedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.SealedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<RoomSealEvent>(entity =>
+        {
+            entity.Property(x => x.Action).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.WarehouseCodeSnapshot).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.RoomCodeSnapshot).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.Note).HasMaxLength(500);
+            entity.HasIndex(x => new { x.RoomId, x.ChangedAt });
+            entity.HasIndex(x => x.ChangedByUserId);
+            entity.HasOne(x => x.Room)
+                .WithMany(x => x.SealEvents)
+                .HasForeignKey(x => x.RoomId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ChangedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.ChangedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_RoomSealEvents_Action",
+                isPostgreSqlProvider
+                    ? "\"Action\" IN ('Seal', 'Unseal')"
+                    : "[Action] IN ('Seal', 'Unseal')"));
         });
 
         modelBuilder.Entity<GrowerLot>(entity =>

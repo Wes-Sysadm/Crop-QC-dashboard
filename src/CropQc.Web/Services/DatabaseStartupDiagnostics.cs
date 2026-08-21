@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260821031442_AddProcessorShipments";
+    public const string ExpectedSchemaMigration = "20260821140736_AddRoomSealing";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -415,7 +415,19 @@ public static class DatabaseStartupDiagnostics
         new("ProcessorShipmentPriceCorrections.CorrectedPricingBasis", "ProcessorShipmentPriceCorrections", "CorrectedPricingBasis", RequireNotNullable: true),
         new("ProcessorShipmentPriceCorrections.Reason", "ProcessorShipmentPriceCorrections", "Reason", RequireNotNullable: true),
         new("ProcessorShipmentPriceCorrections.CorrectedByUserId", "ProcessorShipmentPriceCorrections", "CorrectedByUserId", RequireNotNullable: true),
-        new("ProcessorShipmentPriceCorrections.CorrectedAt", "ProcessorShipmentPriceCorrections", "CorrectedAt", RequireNotNullable: true)
+        new("ProcessorShipmentPriceCorrections.CorrectedAt", "ProcessorShipmentPriceCorrections", "CorrectedAt", RequireNotNullable: true),
+        new("Rooms.IsSealed", "Rooms", "IsSealed", RequireNotNullable: true),
+        new("Rooms.SealedAt", "Rooms", "SealedAt", RequireNullable: true),
+        new("Rooms.SealedByUserId", "Rooms", "SealedByUserId", RequireNullable: true),
+        new("RoomSealEvents", "RoomSealEvents", null),
+        new("RoomSealEvents.Id", "RoomSealEvents", "Id", RequireNotNullable: true),
+        new("RoomSealEvents.RoomId", "RoomSealEvents", "RoomId", RequireNotNullable: true),
+        new("RoomSealEvents.Action", "RoomSealEvents", "Action", RequireNotNullable: true),
+        new("RoomSealEvents.ChangedAt", "RoomSealEvents", "ChangedAt", RequireNotNullable: true),
+        new("RoomSealEvents.ChangedByUserId", "RoomSealEvents", "ChangedByUserId", RequireNotNullable: true),
+        new("RoomSealEvents.WarehouseCodeSnapshot", "RoomSealEvents", "WarehouseCodeSnapshot", RequireNotNullable: true),
+        new("RoomSealEvents.RoomCodeSnapshot", "RoomSealEvents", "RoomCodeSnapshot", RequireNotNullable: true),
+        new("RoomSealEvents.Note", "RoomSealEvents", "Note", RequireNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
@@ -526,7 +538,10 @@ public static class DatabaseStartupDiagnostics
         new("IX_ProcessorShipments_OperationKey", "ProcessorShipments", "IX_ProcessorShipments_OperationKey", RequireUnique: true),
         new("IX_ProcessorShipments_ProcessorId", "ProcessorShipments", "IX_ProcessorShipments_ProcessorId"),
         new("IX_ProcessorShipments_ReversedByUserId", "ProcessorShipments", "IX_ProcessorShipments_ReversedByUserId"),
-        new("IX_ProcessorShipments_ShippedAt_ProcessorId", "ProcessorShipments", "IX_ProcessorShipments_ShippedAt_ProcessorId")
+        new("IX_ProcessorShipments_ShippedAt_ProcessorId", "ProcessorShipments", "IX_ProcessorShipments_ShippedAt_ProcessorId"),
+        new("IX_Rooms_SealedByUserId", "Rooms", "IX_Rooms_SealedByUserId"),
+        new("IX_RoomSealEvents_ChangedByUserId", "RoomSealEvents", "IX_RoomSealEvents_ChangedByUserId"),
+        new("IX_RoomSealEvents_RoomId_ChangedAt", "RoomSealEvents", "IX_RoomSealEvents_RoomId_ChangedAt")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
@@ -613,7 +628,10 @@ public static class DatabaseStartupDiagnostics
         new("FK_ProcessorShipmentPriceCorrections_ProcessorShipments_ProcessorShipmentId", "ProcessorShipmentPriceCorrections", "FK_ProcessorShipmentPriceCorrections_ProcessorShipments_ProcessorShipmentId"),
         new("FK_ProcessorShipmentPriceCorrections_Users_CorrectedByUserId", "ProcessorShipmentPriceCorrections", "FK_ProcessorShipmentPriceCorrections_Users_CorrectedByUserId"),
         new("FK_RoomInventoryAdjustments_ProcessorShipmentLines_ProcessorShipmentLineId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_ProcessorShipmentLines_ProcessorShipmentLineId"),
-        new("FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId", "TreatmentLineageMovements", "FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId")
+        new("FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId", "TreatmentLineageMovements", "FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId"),
+        new("FK_Rooms_Users_SealedByUserId", "Rooms", "FK_Rooms_Users_SealedByUserId"),
+        new("FK_RoomSealEvents_Rooms_RoomId", "RoomSealEvents", "FK_RoomSealEvents_Rooms_RoomId"),
+        new("FK_RoomSealEvents_Users_ChangedByUserId", "RoomSealEvents", "FK_RoomSealEvents_Users_ChangedByUserId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
@@ -641,7 +659,8 @@ public static class DatabaseStartupDiagnostics
         new("PK_Processors", "Processors", "PK_Processors"),
         new("PK_ProcessorShipments", "ProcessorShipments", "PK_ProcessorShipments"),
         new("PK_ProcessorShipmentLines", "ProcessorShipmentLines", "PK_ProcessorShipmentLines"),
-        new("PK_ProcessorShipmentPriceCorrections", "ProcessorShipmentPriceCorrections", "PK_ProcessorShipmentPriceCorrections")
+        new("PK_ProcessorShipmentPriceCorrections", "ProcessorShipmentPriceCorrections", "PK_ProcessorShipmentPriceCorrections"),
+        new("PK_RoomSealEvents", "RoomSealEvents", "PK_RoomSealEvents")
     ];
 
     public static async Task InspectAsync(

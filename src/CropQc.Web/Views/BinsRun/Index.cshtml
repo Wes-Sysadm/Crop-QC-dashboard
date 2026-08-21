@@ -1219,8 +1219,8 @@ else
                         @foreach (var room in Model.Rooms)
                         {
                             <label class="checkbox-field">
-                                <input type="checkbox" name="RoomIds" value="@room.Id" checked="@Model.Filter.RoomIds.Contains(room.Id)" />
-                                @room.Warehouse.Code / @(room.CropQcRoomName ?? room.DisplayName ?? room.Code)
+                                <input type="checkbox" name="RoomIds" value="@room.Id" checked="@Model.Filter.RoomIds.Contains(room.Id)" disabled="@room.IsSealed" />
+                                @room.Warehouse.Code / @(room.CropQcRoomName ?? room.DisplayName ?? room.Code)@(room.IsSealed ? " (Sealed)" : "")
                             </label>
                         }
                     </fieldset>
@@ -1234,7 +1234,7 @@ else
                         <option value="">Select room</option>
                         @foreach (var room in Model.Rooms)
                         {
-                            <option value="@room.Id" selected="@(Model.Filter.RoomId == room.Id)">@room.Warehouse.Code / @(room.CropQcRoomName ?? room.DisplayName ?? room.Code)</option>
+                            <option value="@room.Id" selected="@(Model.Filter.RoomId == room.Id)">@room.Warehouse.Code / @(room.CropQcRoomName ?? room.DisplayName ?? room.Code)@(room.IsSealed ? " (Sealed)" : "")</option>
                         }
                     </select>
                 </label>
@@ -1304,16 +1304,16 @@ else
                                 var option = Model.AvailableInventory[i];
                                 var isSelected = editLines.TryGetValue($"{option.InventoryKey}|{option.TreatmentSignature}", out var editLine);
                                 var effectiveAvailable = option.CurrentBins + (isSelected ? editLine!.BinsRun : 0);
-                                <tr data-actual-run-row data-current-bins="@effectiveAvailable">
+                                <tr data-actual-run-row data-current-bins="@effectiveAvailable" class="@(option.IsRoomSealed ? "sealed-inventory-row" : "")">
                                     <td>
-                                        <input type="checkbox" data-actual-line-toggle aria-label="Include @option.Room @option.Lot" checked="@isSelected" />
+                                        <input type="checkbox" data-actual-line-toggle aria-label="Include @option.Room @option.Lot" checked="@isSelected" disabled="@option.IsRoomSealed" />
                                         <input type="hidden" name="Lines.Index" value="@i" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].InventoryKey" value="@option.InventoryKey" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].TreatmentSignature" value="@option.TreatmentSignature" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].ExpectedAvailableBins" value="@effectiveAvailable" data-actual-line-field disabled="@(!isSelected)" />
                                     </td>
                                     <td>@option.Facility</td>
-                                    <td>@option.RoomName</td>
+                                    <td>@option.RoomName @if (option.IsRoomSealed) { <span class="status review">Sealed</span> }</td>
                                     <td><strong>@(string.IsNullOrWhiteSpace(option.GrowerNumber) ? "Unresolved" : option.GrowerNumber)</strong><br /><span class="muted">Lot @option.Lot</span></td>
                                     <td>@option.Grower</td>
                                     <td>@option.Variety</td>
@@ -1427,8 +1427,9 @@ else
                             {
                                 var roomVisible = option.WarehouseId == Model.TransferForm.DestinationWarehouseId;
                                 <option value="@option.RoomId" data-warehouse-id="@option.WarehouseId"
+                                        data-sealed="@option.IsSealed.ToString().ToLowerInvariant()"
                                         selected="@(option.RoomId == Model.TransferForm.DestinationRoomId)"
-                                        hidden="@(!roomVisible)" disabled="@(!roomVisible)">@option.Label</option>
+                                        hidden="@(!roomVisible)" disabled="@(!roomVisible || option.IsSealed)">@option.Label@(option.IsSealed ? " (Sealed)" : "")</option>
                             }
                         </select>
                     </label>
@@ -1490,8 +1491,9 @@ else
                         room?.querySelectorAll('option[data-warehouse-id]').forEach(option => {
                             const visible = warehouseId !== '' && option.dataset.warehouseId === warehouseId;
                             option.hidden = !visible;
-                            option.disabled = !visible;
-                            if (visible && option.selected) selectedIsValid = true;
+                            const sealed = option.dataset.sealed === 'true';
+                            option.disabled = !visible || sealed;
+                            if (visible && !sealed && option.selected) selectedIsValid = true;
                         });
                         if (room && !selectedIsValid) room.value = '';
                         hideReview();

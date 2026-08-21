@@ -265,6 +265,7 @@ builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportServi
 builder.Services.AddScoped<IRoomInventoryLedgerQueryService, RoomInventoryLedgerQueryService>();
 builder.Services.AddScoped<IRoomInventoryReconciliationService, RoomInventoryReconciliationService>();
 builder.Services.AddScoped<IRoomInventoryLossService, RoomInventoryLossService>();
+builder.Services.AddScoped<IRoomSealingService, RoomSealingService>();
 builder.Services.AddScoped<RoomTreatmentService>();
 builder.Services.AddScoped<IRoomTreatmentService>(sp => sp.GetRequiredService<RoomTreatmentService>());
 builder.Services.AddScoped<IReceivingTreatmentService>(sp => sp.GetRequiredService<RoomTreatmentService>());

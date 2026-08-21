@@ -115,6 +115,12 @@ public sealed class ProcessorShipmentService(
             var options = await GetInventoryOptionsAsync(cancellationToken);
             var selected = ResolveSelectedLines(form, options, out var error);
             if (error is not null) return new(false, false, null, error);
+            var sealError = await RoomMovementSealGuard.ValidateAsync(
+                dbContext,
+                selected.Select(x => x.Option.RoomId).Distinct().ToList(),
+                [],
+                cancellationToken);
+            if (sealError is not null) return new(false, false, null, sealError);
 
             var now = businessTime.UtcNow;
             var shipment = new ProcessorShipment
@@ -310,6 +316,12 @@ public sealed class ProcessorShipmentService(
                 .SingleOrDefaultAsync(x => x.Id == form.ShipmentId, cancellationToken);
             if (shipment is null) return "Processor Shipment was not found.";
             if (shipment.ReversedAt is not null) return "Processor Shipment was already reversed.";
+            var sealError = await RoomMovementSealGuard.ValidateAsync(
+                dbContext,
+                [],
+                shipment.Lines.Select(x => x.RoomId).Distinct().ToList(),
+                cancellationToken);
+            if (sealError is not null) return sealError;
             var operationKey = Normalize(form.OperationKey);
             if (operationKey is null) return "The reversal operation key is invalid.";
             var now = businessTime.UtcNow;
@@ -380,6 +392,11 @@ public sealed class ProcessorShipmentService(
             .Where(x => x.Key == RunProjectionSettings.ApplePoundsPerBinKey || x.Key == RunProjectionSettings.PearPoundsPerBinKey)
             .ToDictionaryAsync(x => x.Key, x => x.Value, cancellationToken);
         var result = new List<ProcessorInventoryOptionViewModel>();
+        var roomIds = snapshots.Select(x => x.RoomId).Distinct().ToList();
+        var sealedRoomIds = await dbContext.Rooms.AsNoTracking()
+            .Where(x => roomIds.Contains(x.Id) && x.IsSealed)
+            .Select(x => x.Id)
+            .ToHashSetAsync(cancellationToken);
         foreach (var snapshot in snapshots)
         {
             var selections = (await roomTreatments.GetSelectionsAsync(snapshot, cancellationToken))
@@ -400,7 +417,7 @@ public sealed class ProcessorShipmentService(
                     snapshot.FruitType, snapshot.ProductionType, snapshot.IsOrganic, snapshot.InventoryStatus,
                     selection.TreatmentState, selection.TreatmentSignature, selection.Label,
                     selection.CurrentBins, snapshot.LatestAdjustmentId,
-                    receiptId, pounds));
+                    receiptId, pounds, sealedRoomIds.Contains(snapshot.RoomId)));
             }
         }
         return result.OrderBy(x => x.Facility).ThenBy(x => x.Room).ThenBy(x => x.GrowerNumber).ThenBy(x => x.VarietyName).ThenBy(x => x.TreatmentSummary).ToList();

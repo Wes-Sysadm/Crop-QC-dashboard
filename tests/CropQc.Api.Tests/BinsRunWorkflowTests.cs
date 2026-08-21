@@ -591,6 +591,47 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task Stale_BinsRun_and_multi_source_ActualRun_fail_atomically_after_room_is_sealed()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var user = Principal("manager@fruitandland.com");
+        var page = await service.GetPageAsync(new BinsRunFilterForm
+        {
+            Section = "Actual",
+            RoomIds = [1001, 1002]
+        }, user, default);
+        var roomOne = page.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-120");
+        var roomTwo = page.AvailableInventory.Single(x => x.RoomId == 1002 && x.Lot == "LOT-120");
+        var baselineAdjustments = await db.RoomInventoryAdjustments.CountAsync();
+
+        (await db.Rooms.SingleAsync(x => x.Id == 1002)).IsSealed = true;
+        await db.SaveChangesAsync();
+        var actualRunError = await service.CreateActualRunAsync(GroupForm((roomOne, 5), (roomTwo, 5)), user, default);
+
+        Assert.Contains("sealed", actualRunError, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Lamb-17", actualRunError, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await db.ActualRuns.ToListAsync());
+        Assert.Empty(await db.BinsRunEntries.ToListAsync());
+        Assert.Equal(baselineAdjustments, await db.RoomInventoryAdjustments.CountAsync());
+
+        (await db.Rooms.SingleAsync(x => x.Id == 1001)).IsSealed = true;
+        await db.SaveChangesAsync();
+        var binsRunError = await service.CreateAsync(new BinsRunForm
+        {
+            InventoryKey = roomOne.InventoryKey,
+            BinsRun = 5,
+            ExpectedAvailableBins = roomOne.CurrentBins,
+            RunAt = DateTimeOffset.UtcNow
+        }, user, default);
+
+        Assert.Contains("sealed", binsRunError, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await db.BinsRunEntries.ToListAsync());
+        Assert.Equal(baselineAdjustments, await db.RoomInventoryAdjustments.CountAsync());
+    }
+
+    [Fact]
     public async Task ActualRun_HeterogeneousSourceLinesPersistIndependentCanonicalIdentities()
     {
         using var db = CreateDbContext();
@@ -1124,6 +1165,65 @@ public sealed class BinsRunWorkflowTests
             db,
             NullLogger<InventoryDeductionInvariantService>.Instance).VerifyReadinessAsync(CancellationToken.None);
         Assert.True(readiness.IsReady, string.Join("; ", readiness.Issues.Select(x => x.Code)));
+    }
+
+    [Fact]
+    public async Task Stale_transfer_source_destination_and_physical_reversal_honor_room_seal()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var managerService = CreateDashboardService(db, Principal("manager@fruitandland.com"));
+        var sourceLot = (await managerService.GetRoomDetailAsync(1001, default))
+            .TransferLotOptions.Single(x => x.Label.Contains("LOT-120", StringComparison.OrdinalIgnoreCase));
+        var baselineAdjustments = await db.RoomInventoryAdjustments.CountAsync();
+        RoomTransferForm Form(string key) => new()
+        {
+            OperationKey = key,
+            FromRoomId = 1001,
+            DestinationWarehouseId = 1000,
+            DestinationRoomId = 1002,
+            SourceLotKey = sourceLot.LotKey,
+            TreatmentSignature = sourceLot.TreatmentSignature,
+            BinCount = 10,
+            TransferAt = DateTimeOffset.UtcNow,
+            Reason = "Room seal regression"
+        };
+
+        var sourceRoom = await db.Rooms.SingleAsync(x => x.Id == 1001);
+        var destinationRoom = await db.Rooms.SingleAsync(x => x.Id == 1002);
+        sourceRoom.IsSealed = true;
+        await db.SaveChangesAsync();
+        Assert.Contains("sealed", await managerService.CreateRoomTransferAsync(Form("sealed-source"), default), StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await db.RoomTransfers.ToListAsync());
+        Assert.Equal(baselineAdjustments, await db.RoomInventoryAdjustments.CountAsync());
+
+        sourceRoom.IsSealed = false;
+        destinationRoom.IsSealed = true;
+        await db.SaveChangesAsync();
+        Assert.Contains("sealed", await managerService.CreateRoomTransferAsync(Form("sealed-destination"), default), StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await db.RoomTransfers.ToListAsync());
+        Assert.Equal(baselineAdjustments, await db.RoomInventoryAdjustments.CountAsync());
+
+        destinationRoom.IsSealed = false;
+        await db.SaveChangesAsync();
+        Assert.Null(await managerService.CreateRoomTransferAsync(Form("unsealed-transfer"), default));
+        var original = await db.RoomTransfers.SingleAsync();
+        var postTransferAdjustments = await db.RoomInventoryAdjustments.CountAsync();
+
+        sourceRoom.IsSealed = true;
+        await db.SaveChangesAsync();
+        var adminService = CreateDashboardService(db, Principal("admin@fruitandland.com"));
+        var reversalError = await adminService.ReverseRoomTransferAsync(new ReverseRoomTransferForm
+        {
+            Id = original.Id,
+            OperationKey = "sealed-transfer-reversal",
+            Reason = "Physical return"
+        }, default);
+
+        Assert.Contains("sealed", reversalError, StringComparison.OrdinalIgnoreCase);
+        Assert.False((await db.RoomTransfers.SingleAsync(x => x.Id == original.Id)).IsReversed);
+        Assert.Single(await db.RoomTransfers.ToListAsync());
+        Assert.Equal(postTransferAdjustments, await db.RoomInventoryAdjustments.CountAsync());
     }
 
     [Fact]
