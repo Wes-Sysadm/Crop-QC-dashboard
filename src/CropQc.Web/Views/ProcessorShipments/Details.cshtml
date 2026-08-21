@@ -1,0 +1,31 @@
+@using CropQc.Data.Entities
+@model ProcessorShipmentDetailViewModel
+@{
+    ViewData["Title"] = $"Processor Shipment {Model.Id}";
+}
+<h1>Processor Shipment #@Model.Id</h1>
+<p><a href="/ProcessorShipments">Back to Processor Shipments</a></p>
+@if (TempData["Success"] is not null) { <p class="notice success">@TempData["Success"]</p> }
+@if (TempData["Error"] is not null) { <p class="notice warning">@TempData["Error"]</p> }
+<section class="panel">
+    <dl class="detail-grid">
+        <div><dt>Processor</dt><dd>@Model.Processor</dd></div><div><dt>Shipment Date</dt><dd>@Model.ShippedAt.ToString("g")</dd></div>
+        <div><dt>Sale Rate</dt><dd>@Model.Currency @Model.SaleRate.ToString("0.00") @ProcessorPricingBases.Suffix(Model.PricingBasis)</dd></div><div><dt>Pricing Basis</dt><dd>@ProcessorPricingBases.Display(Model.PricingBasis)</dd></div>
+        <div><dt>Total Bins</dt><dd>@Model.TotalBins</dd></div><div><dt>Reference</dt><dd>@(Model.ReferenceNumber ?? "—")</dd></div>
+        <div><dt>Estimated Pounds</dt><dd>@(Model.EstimatedPounds?.ToString("N0") ?? "Unavailable")</dd></div><div><dt>Estimated Tons</dt><dd>@(Model.EstimatedTons?.ToString("N3") ?? "Unavailable")</dd></div>
+        <div><dt>Estimated Sale Value</dt><dd>@(Model.EstimatedValue is null ? "Unavailable" : $"{Model.Currency} {Model.EstimatedValue.Value:N2}")</dd></div><div><dt>Status</dt><dd>@(Model.IsReversed ? "Reversed" : "Active")</dd></div>
+        <div><dt>Created By</dt><dd>@Model.CreatedBy</dd></div><div><dt>Notes</dt><dd>@(Model.Notes ?? "—")</dd></div>
+    </dl>
+    @if (Model.IsReversed) { <p class="notice warning">Physically reversed: @Model.ReversalReason</p> }
+</section>
+<section class="panel"><h2>Exact Source Lines</h2><div class="table-wrap"><table><thead><tr><th>Facility</th><th>Room</th><th>Receipt</th><th>Grower Lot</th><th>Grower</th><th>Lot</th><th>Variety</th><th>Production</th><th>Status</th><th>Treatment</th><th>Bins</th><th>lb/bin</th><th>Est. tons</th><th>Est. value</th></tr></thead><tbody>
+@foreach(var line in Model.Lines){<tr><td>@line.Facility</td><td>@line.Room</td><td>@(line.ReceiptId?.ToString() ?? "—")</td><td>@(line.GrowerLotId?.ToString() ?? "—")</td><td>@line.GrowerNumber - @line.Grower</td><td>@line.Lot</td><td>@line.Variety</td><td>@line.Production / @line.OrganicStatus</td><td>@line.InventoryStatus</td><td>@line.Treatment</td><td>@line.Bins</td><td>@(line.PoundsPerBin?.ToString("N0") ?? "Unavailable")</td><td>@(line.EstimatedTons?.ToString("N3") ?? "Unavailable")</td><td>@(line.EstimatedValue?.ToString("N2") ?? "Unavailable")</td></tr>}
+</tbody></table></div></section>
+@if (Model.Corrections.Count > 0){<section class="panel"><h2>Price Correction History</h2><div class="table-wrap"><table><thead><tr><th>Original</th><th>Corrected</th><th>Reason</th><th>By</th><th>At</th></tr></thead><tbody>@foreach(var c in Model.Corrections){<tr><td>@c.OriginalRate.ToString("0.00") @ProcessorPricingBases.Suffix(c.OriginalBasis)</td><td>@c.CorrectedRate.ToString("0.00") @ProcessorPricingBases.Suffix(c.CorrectedBasis)</td><td>@c.Reason</td><td>@c.CorrectedBy</td><td>@c.CorrectedAt.ToString("g")</td></tr>}</tbody></table></div></section>}
+@if (Model.CanAdmin && !Model.IsReversed)
+{
+<section class="panel"><h2>Administrative Corrections</h2><div class="two-column">
+<form class="form-grid" method="post" action="/ProcessorShipments/@Model.Id/PriceCorrection">@Html.AntiForgeryToken()<input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" /><div class="field"><label>Corrected Sale Rate</label><input name="SaleRate" type="number" min="0.0001" step="0.0001" value="@Model.SaleRate" required /></div><div class="field"><label>Pricing Basis</label><select name="PricingBasis"><option value="PerTon" selected="@(Model.PricingBasis == ProcessorPricingBases.PerTon ? "selected" : null)">Per Ton</option><option value="PerBin" selected="@(Model.PricingBasis == ProcessorPricingBases.PerBin ? "selected" : null)">Per Bin</option></select></div><div class="field wide"><label>Reason</label><textarea name="Reason" required></textarea></div><button type="submit">Correct Price</button></form>
+<form class="form-grid" method="post" action="/ProcessorShipments/@Model.Id/Reverse">@Html.AntiForgeryToken()<input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" /><div class="field wide"><label>Physical Reversal Reason</label><textarea name="Reason" required></textarea></div><p class="muted">This restores every exact source line and treatment history to its original Room. It does not delete the shipment.</p><button class="danger-button" type="submit">Reverse Physical Shipment</button></form>
+</div></section>
+}

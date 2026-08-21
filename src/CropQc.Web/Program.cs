@@ -175,6 +175,9 @@ builder.Services.AddAuthorization(options =>
     AddAccessPolicy(options, AccessPolicyNames.BinsRunView, ApplicationAreas.BinsRun, PageAccessLevel.View);
     AddAccessPolicy(options, AccessPolicyNames.BinsRunEdit, ApplicationAreas.BinsRun, PageAccessLevel.Edit);
     AddAccessPolicy(options, AccessPolicyNames.BinsRunAdmin, ApplicationAreas.BinsRun, PageAccessLevel.Admin);
+    AddAccessPolicy(options, AccessPolicyNames.ProcessorShipmentsView, ApplicationAreas.ProcessorShipments, PageAccessLevel.View);
+    AddAccessPolicy(options, AccessPolicyNames.ProcessorShipmentsEdit, ApplicationAreas.ProcessorShipments, PageAccessLevel.Edit);
+    AddAccessPolicy(options, AccessPolicyNames.ProcessorShipmentsAdmin, ApplicationAreas.ProcessorShipments, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.RoomsView, ApplicationAreas.Rooms, PageAccessLevel.View);
     AddAccessPolicy(options, AccessPolicyNames.RoomTransactionsEdit, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit);
     AddAccessPolicy(options, AccessPolicyNames.RoomTransactionsAdmin, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin);
@@ -265,7 +268,9 @@ builder.Services.AddScoped<IRoomInventoryLossService, RoomInventoryLossService>(
 builder.Services.AddScoped<RoomTreatmentService>();
 builder.Services.AddScoped<IRoomTreatmentService>(sp => sp.GetRequiredService<RoomTreatmentService>());
 builder.Services.AddScoped<IReceivingTreatmentService>(sp => sp.GetRequiredService<RoomTreatmentService>());
+builder.Services.AddScoped<IProcessorTreatmentLineageService>(sp => sp.GetRequiredService<RoomTreatmentService>());
 builder.Services.AddScoped<IInventoryByVarietyService, InventoryByVarietyService>();
+builder.Services.AddScoped<IProcessorShipmentService, ProcessorShipmentService>();
 builder.Services.AddScoped<ITreatmentReportAttachmentService, TreatmentReportAttachmentService>();
 builder.Services.AddScoped<ITr108859DroppedBinsCorrectionService, Tr108859DroppedBinsCorrectionService>();
 builder.Services.AddScoped<IEbsInventoryCleanupService, EbsInventoryCleanupService>();

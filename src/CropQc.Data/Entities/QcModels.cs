@@ -141,6 +141,8 @@ public sealed class RoomInventoryAdjustment
     public ReceiptInventoryOverride? ReceiptInventoryOverride { get; set; }
     public long? RoomInventoryLossId { get; set; }
     public RoomInventoryLoss? RoomInventoryLoss { get; set; }
+    public long? ProcessorShipmentLineId { get; set; }
+    public ProcessorShipmentLine? ProcessorShipmentLine { get; set; }
     public long? ActualRunId { get; set; }
     public ActualRun? ActualRun { get; set; }
     public long? ActualRunRevisionId { get; set; }

@@ -16,7 +16,8 @@
         ("Grower Lots", "/MasterData/grower-lots"),
         ("Starch scale values", "/MasterData/starch-scale-values"),
         ("Size thresholds", "/MasterData/size-thresholds"),
-        ("Treatment Chemicals", "/MasterData/treatment-chemicals")
+        ("Treatment Chemicals", "/MasterData/treatment-chemicals"),
+        ("Processors", "/MasterData/processors")
     };
     var roomWarehouseOptions = Model.Type == "rooms"
         ? Model.Items.Select(x => x.Cells[0]).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList()

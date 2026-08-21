@@ -62,7 +62,7 @@ public sealed class InventoryDeductionInvariantService(
             blocking.AdjustmentId,
             blocking.InvariantVersion);
         throw new InventoryDeductionInvariantException(
-            $"Inventory was not changed because its required Bins Run, Transfer, Receipt Admin Override, or Room Inventory Loss relationship is invalid ({blocking.Code}).");
+            $"Inventory was not changed because its required Bins Run, Transfer, Receipt Admin Override, Room Inventory Loss, or Processor Shipment relationship is invalid ({blocking.Code}).");
     }
 
     public async Task<InventoryDeductionReadinessResult> VerifyReadinessAsync(CancellationToken cancellationToken)
@@ -157,6 +157,22 @@ public sealed class InventoryDeductionInvariantService(
             .Select(x => x.Entity)
             .ToList();
 
+        var processorLineIds = adjustments
+            .Where(x => x.ProcessorShipmentLineId is not null)
+            .Select(x => x.ProcessorShipmentLineId!.Value)
+            .Distinct()
+            .ToList();
+        var persistedProcessorLines = processorLineIds.Count == 0
+            ? []
+            : await dbContext.ProcessorShipmentLines.AsNoTracking()
+                .Include(x => x.InventoryAdjustments)
+                .Where(x => processorLineIds.Contains(x.Id))
+                .ToListAsync(cancellationToken);
+        var trackedProcessorLines = dbContext.ChangeTracker.Entries<ProcessorShipmentLine>()
+            .Where(x => x.State != EntityState.Deleted)
+            .Select(x => x.Entity)
+            .ToList();
+
         foreach (var adjustment in adjustments)
         {
             var binsParents = entryLookup
@@ -172,12 +188,15 @@ public sealed class InventoryDeductionInvariantService(
             var loss = adjustment.RoomInventoryLoss
                 ?? trackedLosses.SingleOrDefault(x => adjustment.RoomInventoryLossId == x.Id || ReferenceEquals(x, adjustment.RoomInventoryLoss))
                 ?? persistedLosses.SingleOrDefault(x => x.Id == adjustment.RoomInventoryLossId);
-            var parentCount = binsParents.Count + (transfer is null ? 0 : 1) + (receiptOverride is null ? 0 : 1) + (loss is null ? 0 : 1);
+            var processorLine = adjustment.ProcessorShipmentLine
+                ?? trackedProcessorLines.SingleOrDefault(x => adjustment.ProcessorShipmentLineId == x.Id || ReferenceEquals(x, adjustment.ProcessorShipmentLine))
+                ?? persistedProcessorLines.SingleOrDefault(x => x.Id == adjustment.ProcessorShipmentLineId);
+            var parentCount = binsParents.Count + (transfer is null ? 0 : 1) + (receiptOverride is null ? 0 : 1) + (loss is null ? 0 : 1) + (processorLine is null ? 0 : 1);
             var blocks = adjustment.InventoryInvariantVersion >= CurrentVersion;
 
             if (adjustment.ChangeAmount < 0 && parentCount == 0)
             {
-                Add("NoParent", "Negative adjustment has no persisted Bins Run, Transfer, Receipt Admin Override, or Room Inventory Loss parent.");
+                Add("NoParent", "Negative adjustment has no persisted Bins Run, Transfer, Receipt Admin Override, Room Inventory Loss, or Processor Shipment parent.");
                 continue;
             }
             if (parentCount > 1)
@@ -224,6 +243,18 @@ public sealed class InventoryDeductionInvariantService(
                     .ToList();
                 ValidateRoomInventoryLoss(adjustment, loss, lossAdjustments, Add);
             }
+            else if (processorLine is not null)
+            {
+                var processorAdjustments = processorLine.InventoryAdjustments
+                    .Concat(dbContext.ChangeTracker.Entries<RoomInventoryAdjustment>()
+                        .Where(x => x.State != EntityState.Deleted
+                            && (ReferenceEquals(x.Entity.ProcessorShipmentLine, processorLine)
+                                || x.Entity.ProcessorShipmentLineId == processorLine.Id))
+                        .Select(x => x.Entity))
+                    .DistinctBy(x => x.Id == 0 ? RuntimeHelpers.GetHashCode(x) : x.Id)
+                    .ToList();
+                ValidateProcessorShipment(adjustment, processorLine, processorAdjustments, Add);
+            }
 
             void Add(string code, string message)
             {
@@ -237,6 +268,52 @@ public sealed class InventoryDeductionInvariantService(
         }
 
         return issues;
+    }
+
+    private static void ValidateProcessorShipment(
+        RoomInventoryAdjustment adjustment,
+        ProcessorShipmentLine line,
+        IReadOnlyCollection<RoomInventoryAdjustment> operationAdjustments,
+        Action<string, string> add)
+    {
+        var shipment = operationAdjustments.Where(x => string.Equals(x.AdjustmentType, ProcessorShipmentAdjustmentTypes.Shipment, StringComparison.Ordinal)).ToList();
+        var reversal = operationAdjustments.Where(x => string.Equals(x.AdjustmentType, ProcessorShipmentAdjustmentTypes.Reversal, StringComparison.Ordinal)).ToList();
+        if (line.BinsSent <= 0 || shipment.Count != 1 || shipment[0].ChangeAmount != -line.BinsSent)
+        {
+            add("ProcessorShipmentAmountMismatch", "Processor Shipment must have exactly one deduction equal to its persisted source-line quantity.");
+        }
+        if (reversal.Count > 1 || (reversal.Count == 1 && reversal[0].ChangeAmount != line.BinsSent))
+        {
+            add("ProcessorShipmentReversalMismatch", "Processor Shipment reversal does not match its persisted source-line quantity.");
+        }
+        if (operationAdjustments.Count != shipment.Count + reversal.Count)
+        {
+            add("ProcessorShipmentAdjustmentTypeMismatch", "Processor Shipment contains an unsupported ledger adjustment type.");
+        }
+        foreach (var side in operationAdjustments)
+        {
+            if (side.WarehouseId != line.WarehouseId
+                || side.RoomId != line.RoomId
+                || side.CropYear != line.CropYear
+                || side.GrowerLotId != line.GrowerLotId
+                || side.FruitProfileId != line.FruitProfileId
+                || !Same(side.LotNumber, line.LotNumberSnapshot)
+                || !Same(side.VarietyCode, line.VarietyCodeSnapshot)
+                || !Same(side.InventoryStatus, line.InventoryStatusSnapshot))
+            {
+                add("ProcessorShipmentIdentityMismatch", "Processor Shipment ledger identity does not match its durable source line.");
+                break;
+            }
+            if (side.OldBinCount is null || side.NewBinCount != side.OldBinCount + side.ChangeAmount)
+            {
+                add("ProcessorShipmentBalanceMismatch", "Processor Shipment before/after balance does not reconcile with its quantity.");
+                break;
+            }
+        }
+        if (adjustment.ProcessorShipmentLineId is null && adjustment.ProcessorShipmentLine is null)
+        {
+            add("MissingProcessorShipmentLink", "Processor Shipment adjustment is not linked by a persisted source line ID.");
+        }
     }
 
     private static void ValidateBinsRun(

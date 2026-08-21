@@ -1,0 +1,35 @@
+param([int]$HostPort = 55453, [switch]$KeepContainer)
+$ErrorActionPreference='Stop'
+$root=Split-Path -Parent $PSScriptRoot
+$container="cropqc-processor-schema-$PID"
+$password='cropqc-disposable-processor-only'
+$previous='20260820194148_AddReceivingTreatmentApplications'
+$expected='20260821031442_AddProcessorShipments'
+$scriptRoot='/tmp/cropqc-processor'
+function Invoke-Docker { param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments) & docker @Arguments; if($LASTEXITCODE-ne 0){throw "docker failed: $($Arguments -join ' ')"} }
+function Db([string]$name){Invoke-Docker -Arguments @('exec',$container,'createdb','-U','postgres',$name)}
+function Sql([string]$db,[string]$sql){$sql|docker exec -i $container psql -X -v ON_ERROR_STOP=1 -U postgres -d $db; if($LASTEXITCODE-ne 0){throw "SQL failed: $db"}}
+function Scalar([string]$db,[string]$sql){$r=$sql|docker exec -i $container psql -X -v ON_ERROR_STOP=1 -U postgres -d $db -At;if($LASTEXITCODE-ne 0){throw "SQL scalar failed: $db"};return ($r|Select-Object -Last 1).Trim()}
+function Script([string]$db,[string]$name){docker exec $container psql -X -v ON_ERROR_STOP=1 -U postgres -d $db -f "$scriptRoot/$name";if($LASTEXITCODE-ne 0){throw "$name failed: $db"}}
+function Ef([string]$db,[string]$target){$oldP=$env:DATABASE_PROVIDER;$oldC=$env:ConnectionStrings__CropQc;try{$env:DATABASE_PROVIDER='PostgreSql';$env:ConnectionStrings__CropQc="Host=127.0.0.1;Port=$HostPort;Database=$db;Username=postgres;Password=$password";$a=@('ef','database','update');if($target){$a+=$target};$a+=@('--project','src\CropQc.Data\CropQc.Data.csproj','--startup-project','src\CropQc.Data\CropQc.Data.csproj','--no-build');dotnet @a;if($LASTEXITCODE-ne 0){throw "EF failed: $db"}}finally{$env:DATABASE_PROVIDER=$oldP;$env:ConnectionStrings__CropQc=$oldC}}
+function Gate([string]$db){$oldE=$env:ASPNETCORE_ENVIRONMENT;$oldP=$env:DATABASE_PROVIDER;$oldC=$env:ConnectionStrings__CropQc;try{$env:ASPNETCORE_ENVIRONMENT='Production';$env:DATABASE_PROVIDER='PostgreSql';$env:ConnectionStrings__CropQc="Host=127.0.0.1;Port=$HostPort;Database=$db;Username=postgres;Password=$password";dotnet 'src\CropQc.Web\bin\Debug\net9.0\CropQc.Web.dll' "--verify-schema=$expected";if($LASTEXITCODE-ne 0){throw "619-object gate failed: $db"}}finally{$env:ASPNETCORE_ENVIRONMENT=$oldE;$env:DATABASE_PROVIDER=$oldP;$env:ConnectionStrings__CropQc=$oldC}}
+function Signature([string]$db){Scalar $db @'
+WITH s AS (
+ SELECT 'c='||md5(string_agg(table_name||'|'||ordinal_position||'|'||column_name||'|'||data_type||'|'||is_nullable,';' ORDER BY table_name,ordinal_position)) v FROM information_schema.columns WHERE table_schema=current_schema() AND table_name IN ('Processors','ProcessorShipments','ProcessorShipmentLines','ProcessorShipmentPriceCorrections')
+ UNION ALL SELECT 'i='||md5(string_agg(pg_get_indexdef(i.indexrelid),';' ORDER BY c.relname)) FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_class t ON t.oid=i.indrelid JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname=current_schema() AND (t.relname LIKE 'Processor%' OR (t.relname IN ('RoomInventoryAdjustments','TreatmentLineageMovements') AND c.relname LIKE '%ProcessorShipment%'))
+ UNION ALL SELECT 'k='||md5(string_agg(c.conname||'|'||pg_get_constraintdef(c.oid),';' ORDER BY c.conname)) FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname=current_schema() AND (t.relname LIKE 'Processor%' OR c.conname LIKE '%ProcessorShipment%')) SELECT string_agg(v,';' ORDER BY v) FROM s;
+'@}
+function MustFail([string]$db,[string]$name){$old=$ErrorActionPreference;try{$ErrorActionPreference='Continue';docker exec $container psql -X -v ON_ERROR_STOP=1 -U postgres -d $db -f "$scriptRoot/$name" *> $null;$code=$LASTEXITCODE}finally{$ErrorActionPreference=$old};if($code-eq 0){throw "$name unexpectedly passed: $db"}}
+if(-not(Get-Command docker -ErrorAction SilentlyContinue)){throw 'Docker is required.'}
+Push-Location $root
+try{
+ Invoke-Docker -Arguments @('run','--rm','-d','--name',$container,'-e',"POSTGRES_PASSWORD=$password",'-p',"${HostPort}:5432",'postgres:18')
+ $ready=$false;for($i=0;$i-lt 30;$i++){docker exec $container pg_isready -U postgres *> $null;if($LASTEXITCODE-eq 0){$ready=$true;break};Start-Sleep -Milliseconds 500};if(-not$ready){throw 'PostgreSQL 18 not ready'}
+ Invoke-Docker -Arguments @('exec',$container,'mkdir','-p',$scriptRoot)
+ foreach($n in @('verify-room-treatment-tracking.sql','verify-treatment-report-attachments.sql','verify-receiving-treatment-applications.sql','preflight-processor-shipments.sql','apply-processor-shipments-schema.sql','verify-processor-shipments.sql')){Invoke-Docker -Arguments @('cp',(Join-Path $root "scripts\postgresql\$n"),"${container}:${scriptRoot}/$n")}
+ Db cropqc_processor_fresh;Ef cropqc_processor_fresh $null;Script cropqc_processor_fresh verify-processor-shipments.sql;Gate cropqc_processor_fresh;$freshSig=Signature cropqc_processor_fresh
+ Db cropqc_processor_upgrade;Ef cropqc_processor_upgrade $previous;$before=Scalar cropqc_processor_upgrade 'select count(*)||''|''||md5(string_agg("MigrationId"||''|''||"ProductVersion",'';'' order by "MigrationId")) from "__EFMigrationsHistory";';Script cropqc_processor_upgrade preflight-processor-shipments.sql;Script cropqc_processor_upgrade apply-processor-shipments-schema.sql;Script cropqc_processor_upgrade apply-processor-shipments-schema.sql;Gate cropqc_processor_upgrade;$after=Scalar cropqc_processor_upgrade 'select count(*)||''|''||md5(string_agg("MigrationId"||''|''||"ProductVersion",'';'' order by "MigrationId")) from "__EFMigrationsHistory";';if($before-ne$after){throw 'Migration history changed'};$compatSig=Signature cropqc_processor_upgrade;if($freshSig-ne$compatSig){throw "Catalog parity failed`n$freshSig`n$compatSig"}
+ Db cropqc_processor_partial;Ef cropqc_processor_partial $previous;Sql cropqc_processor_partial 'create table "Processors" ("Id" integer);';MustFail cropqc_processor_partial preflight-processor-shipments.sql
+ Db cropqc_processor_rollback;Ef cropqc_processor_rollback $previous;$old=$ErrorActionPreference;try{$ErrorActionPreference='Continue';docker exec $container psql -X -v ON_ERROR_STOP=1 -U postgres -d cropqc_processor_rollback -c "set cropqc.test_force_processor_shipment_failure='on'" -f "$scriptRoot/apply-processor-shipments-schema.sql" *> $null;$forced=$LASTEXITCODE}finally{$ErrorActionPreference=$old};if($forced-eq 0){throw 'Forced rollback unexpectedly passed'};if((Scalar cropqc_processor_rollback 'select case when to_regclass(''"Processors"'') is null then ''absent'' else ''partial'' end;')-ne'absent'){throw 'Forced rollback left objects'}
+ 'Fresh PostgreSQL 18 EF migration and 619-object gate: PASS';'Compatibility State A/apply/verify/repeat State B: PASS';"Catalog parity: PASS ($freshSig)";"Migration history unchanged: PASS ($before)";'Partial State C and forced rollback: PASS'
+}finally{Pop-Location;if(-not$KeepContainer){$old=$ErrorActionPreference;try{$ErrorActionPreference='Continue';docker rm -f $container *> $null}finally{$ErrorActionPreference=$old}}}
