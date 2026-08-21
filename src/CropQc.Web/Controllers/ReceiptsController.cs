@@ -1,6 +1,7 @@
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using CropQc.Shared.Storage;
+using CropQc.Shared.Time;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,7 @@ public sealed class ReceiptsController(
     IReceivingExportService exportService,
     IFileStorageService fileStorageService,
     FileStorageOptions fileStorageOptions,
+    IBusinessTimeService businessTime,
     ILogger<ReceiptsController> logger) : Controller
 {
     [HttpGet("")]
@@ -169,7 +171,7 @@ public sealed class ReceiptsController(
         View("ApplyTreatment", await receivingTreatmentService.GetReceiptApplyPageAsync(new ReceiptTreatmentApplyForm
         {
             ReceiptId = id,
-            AppliedAt = DateTimeOffset.UtcNow
+            AppliedAt = businessTime.NowPacific
         }, false, cancellationToken));
 
     [HttpPost("{id:long}/Treatments/Review")]
