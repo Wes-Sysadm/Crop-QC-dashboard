@@ -1266,11 +1266,12 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.ProductName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.CommonName).HasMaxLength(200);
             entity.Property(x => x.Crop).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.ApplicationLevel).HasMaxLength(25).HasDefaultValue(TreatmentApplicationLevels.Room).IsRequired();
             entity.Property(x => x.Volume).HasPrecision(12, 2);
             entity.Property(x => x.Unit).HasMaxLength(25).IsRequired();
             entity.Property(x => x.UnitPrice).HasPrecision(12, 2);
             entity.Property(x => x.Currency).HasMaxLength(3).IsRequired();
-            entity.HasIndex(x => new { x.Crop, x.IsActive, x.ProductName });
+            entity.HasIndex(x => new { x.ApplicationLevel, x.Crop, x.IsActive, x.ProductName });
             entity.HasIndex(x => x.ProductName).IsUnique();
             entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
@@ -1829,6 +1830,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         {
             entity.Property(x => x.OperationKey).HasMaxLength(100).IsRequired();
             entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.Property(x => x.ApplicationLevel).HasMaxLength(25).HasDefaultValue(TreatmentApplicationLevels.Room).IsRequired();
             entity.Property(x => x.ProductNameSnapshot).HasMaxLength(200).IsRequired();
             entity.Property(x => x.CommonNameSnapshot).HasMaxLength(200);
             entity.Property(x => x.CropSnapshot).HasMaxLength(25).IsRequired();
@@ -1840,10 +1842,12 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.ReversalReason).HasMaxLength(1000);
             entity.HasIndex(x => x.OperationKey).IsUnique();
             entity.HasIndex(x => new { x.RoomId, x.AppliedAt });
+            entity.HasIndex(x => new { x.ReceiptId, x.AppliedAt });
             entity.HasIndex(x => x.TreatmentChemicalId);
             entity.HasOne(x => x.TreatmentChemical).WithMany(x => x.Applications).HasForeignKey(x => x.TreatmentChemicalId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Receipt).WithMany().HasForeignKey(x => x.ReceiptId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.AppliedByUser).WithMany().HasForeignKey(x => x.AppliedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.ReversedByUser).WithMany().HasForeignKey(x => x.ReversedByUserId).OnDelete(DeleteBehavior.SetNull);
@@ -1881,8 +1885,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.PriorTreatmentSignature).HasMaxLength(1000).IsRequired();
             entity.Property(x => x.ResultTreatmentSignature).HasMaxLength(1000).IsRequired();
             entity.HasIndex(x => new { x.RoomTreatmentApplicationId, x.IdentityKey });
+            entity.HasIndex(x => x.ReceiptId);
             entity.HasIndex(x => x.GrowerLotId);
             entity.HasOne(x => x.RoomTreatmentApplication).WithMany(x => x.Sources).HasForeignKey(x => x.RoomTreatmentApplicationId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Receipt).WithMany().HasForeignKey(x => x.ReceiptId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.FruitProfile).WithMany().HasForeignKey(x => x.FruitProfileId).OnDelete(DeleteBehavior.SetNull);
         });
 
@@ -1898,11 +1904,20 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.TreatmentState).HasMaxLength(25).IsRequired();
             entity.Property(x => x.TreatmentSignature).HasMaxLength(1000).IsRequired();
             entity.Property(x => x.ConcurrencyVersion).IsConcurrencyToken();
-            entity.HasIndex(x => new { x.RoomId, x.IdentityKey, x.TreatmentSignature }).IsUnique();
+            entity.HasIndex(x => new { x.RoomId, x.IdentityKey, x.TreatmentSignature })
+                .HasDatabaseName("UX_TreatmentLineageSegments_Unassigned")
+                .HasFilter(isPostgreSqlProvider ? "\"ReceiptId\" IS NULL" : "[ReceiptId] IS NULL")
+                .IsUnique();
+            entity.HasIndex(x => new { x.RoomId, x.IdentityKey, x.TreatmentSignature, x.ReceiptId })
+                .HasDatabaseName("UX_TreatmentLineageSegments_Receipt")
+                .HasFilter(isPostgreSqlProvider ? "\"ReceiptId\" IS NOT NULL" : "[ReceiptId] IS NOT NULL")
+                .IsUnique();
             entity.HasIndex(x => new { x.RoomId, x.CurrentBins });
+            entity.HasIndex(x => x.ReceiptId);
             entity.HasIndex(x => x.GrowerLotId);
             entity.HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Receipt).WithMany().HasForeignKey(x => x.ReceiptId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.FruitProfile).WithMany().HasForeignKey(x => x.FruitProfileId).OnDelete(DeleteBehavior.SetNull);
         });
 
@@ -1925,6 +1940,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasIndex(x => x.RoomTransferId);
             entity.HasIndex(x => x.RoomInventoryLossId);
             entity.HasIndex(x => x.BinsRunEntryId);
+            entity.HasIndex(x => x.ReceiptId);
             entity.HasIndex(x => new { x.SourceRoomId, x.OccurredAt });
             entity.HasIndex(x => new { x.DestinationRoomId, x.OccurredAt });
             entity.HasOne(x => x.SourceSegment).WithMany().HasForeignKey(x => x.SourceSegmentId).OnDelete(DeleteBehavior.Restrict);
@@ -1934,6 +1950,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.RoomTransfer).WithMany().HasForeignKey(x => x.RoomTransferId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.RoomInventoryLoss).WithMany().HasForeignKey(x => x.RoomInventoryLossId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.BinsRunEntry).WithMany().HasForeignKey(x => x.BinsRunEntryId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Receipt).WithMany().HasForeignKey(x => x.ReceiptId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.ReversesTreatmentLineageMovement).WithMany(x => x.ReversalMovements).HasForeignKey(x => x.ReversesTreatmentLineageMovementId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
         });

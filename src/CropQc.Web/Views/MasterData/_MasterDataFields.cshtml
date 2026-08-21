@@ -191,6 +191,7 @@ else if (Model.Type == "treatment-chemicals")
     <div class="field wide"><label>Official Product Name</label><input name="ProductName" value="@Model.ProductName" required maxlength="200" /></div>
     <div class="field wide"><label>Common Name <span class="muted">(optional)</span></label><input name="CommonName" value="@Model.CommonName" maxlength="200" /></div>
     <div class="field"><label>Crop</label><select name="Crop" required><option value="Apples" selected="@(Model.Crop == "Apples")">Apples</option><option value="Pears" selected="@(Model.Crop == "Pears")">Pears</option></select></div>
+    <div class="field"><label>Application Level</label><select name="ApplicationLevel" required><option value="Room" selected="@(Model.ApplicationLevel == TreatmentApplicationLevels.Room)">Room</option><option value="Receiving" selected="@(Model.ApplicationLevel == TreatmentApplicationLevels.Receiving)">Receiving</option></select></div>
     <div class="field"><label>Volume</label><input name="Volume" type="number" min="0.01" step="0.01" value="@(Model.Volume?.ToString("0.00"))" required /></div>
     <div class="field"><label>Unit</label><input name="Unit" value="@Model.Unit" required maxlength="25" /></div>
     <div class="field"><label>Unit Price</label><input name="UnitPrice" type="number" min="0" step="0.01" value="@(Model.UnitPrice?.ToString("0.00"))" required /></div>

@@ -19,7 +19,8 @@ public sealed record TreatmentSegmentSelection(
     string TreatmentSignature,
     string TreatmentState,
     int CurrentBins,
-    string Label);
+    string Label,
+    long? ReceiptId = null);
 
 public sealed record TreatmentLineageWriteResult(bool Success, string? Error, long? MovementId = null);
 
@@ -36,16 +37,29 @@ public interface IRoomTreatmentService
     Task<TreatmentLineageWriteResult> AddUnknownAsync(RoomInventoryLedgerSnapshot snapshot, int bins, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken);
 }
 
+public interface IReceivingTreatmentService
+{
+    Task<ReceiptTreatmentApplyPageViewModel> GetReceiptApplyPageAsync(ReceiptTreatmentApplyForm form, bool review, CancellationToken cancellationToken);
+    Task<(string? Error, long? ApplicationId)> ApplyReceiptAsync(ReceiptTreatmentApplyForm form, CancellationToken cancellationToken);
+    Task<string?> ReverseReceiptAsync(ReverseRoomTreatmentApplicationForm form, CancellationToken cancellationToken);
+}
+
 public sealed class RoomTreatmentService(
     CropQcDbContext dbContext,
     IRoomInventoryLedgerQueryService ledger,
     IUserAccessService access,
     IHttpContextAccessor httpContextAccessor,
     IBusinessTimeService businessTime,
-    ILogger<RoomTreatmentService> logger) : IRoomTreatmentService
+    ILogger<RoomTreatmentService> logger) : IRoomTreatmentService, IReceivingTreatmentService
 {
     private const string SourceApplication = "CropQc.Web room treatment workflow";
     private static readonly JsonSerializerOptions AuditJson = new(JsonSerializerDefaults.Web);
+
+    private sealed record ReceiptApplicationSnapshot(
+        Receipt? Receipt,
+        RoomInventoryLedgerSnapshot? Inventory,
+        int CurrentBins,
+        string? Error);
 
     public async Task<RoomTreatmentApplyPageViewModel> GetApplyPageAsync(
         RoomTreatmentApplyForm form,
@@ -65,7 +79,7 @@ public sealed class RoomTreatmentService(
         var chemicals = crop is null
             ? []
             : await dbContext.TreatmentChemicals.AsNoTracking()
-                .Where(x => x.IsActive && x.Crop == crop)
+                .Where(x => x.IsActive && x.ApplicationLevel == TreatmentApplicationLevels.Room && x.Crop == crop)
                 .OrderBy(x => x.CommonName ?? x.ProductName)
                 .ThenBy(x => x.ProductName)
                 .Select(x => new TreatmentChemicalOptionViewModel(x.Id, x.ProductName, x.CommonName, x.Crop, x.Volume, x.Unit, x.UnitPrice, x.Currency))
@@ -97,6 +111,57 @@ public sealed class RoomTreatmentService(
             EstimatedCost = selected is null ? 0 : decimal.Round(snapshotResult.Snapshots.Sum(x => x.CurrentBins) * selected.UnitPrice, 2),
             TreatmentOptions = chemicals,
             Fruit = fruit
+        };
+    }
+
+    public async Task<ReceiptTreatmentApplyPageViewModel> GetReceiptApplyPageAsync(
+        ReceiptTreatmentApplyForm form,
+        bool review,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveReceiptApplicationSnapshotAsync(form.ReceiptId, form.AppliedAt, cancellationToken);
+        if (resolved.Receipt is null)
+        {
+            return new() { Form = form, Error = resolved.Error ?? "Receipt was not found." };
+        }
+
+        var receipt = resolved.Receipt;
+        var crop = NormalizeCrop(receipt.FruitProfile.FruitType);
+        var chemicals = crop is null
+            ? []
+            : await dbContext.TreatmentChemicals.AsNoTracking()
+                .Where(x => x.IsActive && x.ApplicationLevel == TreatmentApplicationLevels.Receiving && x.Crop == crop)
+                .OrderBy(x => x.CommonName ?? x.ProductName)
+                .ThenBy(x => x.ProductName)
+                .Select(x => new TreatmentChemicalOptionViewModel(x.Id, x.ProductName, x.CommonName, x.Crop, x.Volume, x.Unit, x.UnitPrice, x.Currency))
+                .ToListAsync(cancellationToken);
+        var selected = chemicals.SingleOrDefault(x => x.Id == form.TreatmentChemicalId);
+        var error = resolved.Error;
+        if (error is null && crop is null)
+        {
+            error = "The Receipt crop could not be resolved to Apples or Pears.";
+        }
+        else if (review && error is null && selected is null)
+        {
+            error = "Select an active Receiving treatment that is valid for this Receipt crop.";
+        }
+
+        return new ReceiptTreatmentApplyPageViewModel
+        {
+            Form = form,
+            ReceiptNumber = receipt.CompuTechReceiptId,
+            Grower = receipt.GrowerName,
+            GrowerNumber = receipt.GrowerNumber ?? receipt.LotCode,
+            Warehouse = resolved.Inventory?.Facility ?? receipt.Warehouse.Code,
+            Room = resolved.Inventory?.Room ?? receipt.Room.CropQcRoomName ?? receipt.Room.DisplayName ?? receipt.Room.Code,
+            Variety = receipt.FruitProfile.Name,
+            ProductionType = receipt.FruitProfile.ProductionType,
+            TotalBins = resolved.CurrentBins,
+            Error = error,
+            IsReview = review && error is null && selected is not null,
+            SelectedTreatment = selected,
+            EstimatedCost = selected is null ? 0 : decimal.Round(resolved.CurrentBins * selected.UnitPrice, 2),
+            TreatmentOptions = chemicals
         };
     }
 
@@ -147,7 +212,8 @@ public sealed class RoomTreatmentService(
             }
 
             var room = await dbContext.Rooms.Include(x => x.Warehouse).SingleOrDefaultAsync(x => x.Id == form.RoomId && x.IsActive, cancellationToken);
-            var chemical = await dbContext.TreatmentChemicals.SingleOrDefaultAsync(x => x.Id == form.TreatmentChemicalId && x.IsActive, cancellationToken);
+            var chemical = await dbContext.TreatmentChemicals.SingleOrDefaultAsync(x => x.Id == form.TreatmentChemicalId
+                && x.IsActive && x.ApplicationLevel == TreatmentApplicationLevels.Room, cancellationToken);
             if (room is null || chemical is null)
             {
                 return ("The room or active treatment was not found.", null);
@@ -174,6 +240,7 @@ public sealed class RoomTreatmentService(
             {
                 OperationKey = operationKey,
                 TreatmentChemicalId = chemical.Id,
+                ApplicationLevel = TreatmentApplicationLevels.Room,
                 WarehouseId = room.WarehouseId,
                 RoomId = room.Id,
                 AppliedAt = form.AppliedAt.ToUniversalTime(),
@@ -201,7 +268,7 @@ public sealed class RoomTreatmentService(
                 {
                     var treatedBins = segment.CurrentBins;
                     var resultSignature = AppendApplication(segment.TreatmentSignature, application.Id);
-                    var target = await GetOrCreateSegmentAsync(snapshot, segment.TreatmentState == TreatmentLineageStates.Unknown ? TreatmentLineageStates.Unknown : TreatmentLineageStates.Confirmed, resultSignature, now, cancellationToken);
+                    var target = await GetOrCreateSegmentAsync(snapshot, segment.TreatmentState == TreatmentLineageStates.Unknown ? TreatmentLineageStates.Unknown : TreatmentLineageStates.Confirmed, resultSignature, now, cancellationToken, segment.ReceiptId);
                     await CopyApplicationLinksAsync(segment, target, cancellationToken);
                     EnsureApplicationLink(target, application.Id);
                     target.CurrentBins += treatedBins;
@@ -213,6 +280,7 @@ public sealed class RoomTreatmentService(
                     application.Sources.Add(new RoomTreatmentApplicationSource
                     {
                         CropYear = snapshot.CropYear,
+                        ReceiptId = segment.ReceiptId,
                         GrowerLotId = snapshot.GrowerLotId,
                         FruitProfileId = snapshot.FruitProfileId,
                         IdentityKey = IdentityKey(snapshot),
@@ -263,12 +331,186 @@ public sealed class RoomTreatmentService(
         }
     }
 
-    public async Task<string?> ReverseAsync(ReverseRoomTreatmentApplicationForm form, CancellationToken cancellationToken)
+    public async Task<(string? Error, long? ApplicationId)> ApplyReceiptAsync(
+        ReceiptTreatmentApplyForm form,
+        CancellationToken cancellationToken)
     {
         var principal = httpContextAccessor.HttpContext?.User;
-        if (principal is null || !await access.HasAccessAsync(principal, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken))
+        if (principal is null || !await access.HasAccessAsync(principal, ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken))
         {
-            return "Room Transactions Admin access is required to reverse a treatment application.";
+            return ("Receipts Edit access is required to apply a Receiving treatment.", null);
+        }
+        if (!form.ConfirmedReview) return ("Review the treatment and exact Receipt snapshot before saving.", null);
+        if (string.IsNullOrWhiteSpace(form.OperationKey) || form.OperationKey.Trim().Length > 100)
+            return ("A valid treatment operation key is required.", null);
+        if (form.Notes?.Trim().Length > 1000) return ("Notes cannot exceed 1000 characters.", null);
+        var actor = await CurrentUserAsync(cancellationToken);
+        if (actor is null) return ("The active user record could not be resolved.", null);
+
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken)
+            : null;
+        try
+        {
+            var operationKey = form.OperationKey.Trim();
+            var existing = await dbContext.RoomTreatmentApplications.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.OperationKey == operationKey, cancellationToken);
+            if (existing is not null)
+            {
+                return existing.ApplicationLevel == TreatmentApplicationLevels.Receiving
+                    && existing.ReceiptId == form.ReceiptId
+                    && existing.TreatmentChemicalId == form.TreatmentChemicalId
+                    && existing.AppliedAt.ToUniversalTime() == form.AppliedAt.ToUniversalTime()
+                    && existing.Notes == Normalize(form.Notes)
+                    ? (null, existing.Id)
+                    : ("The operation key already belongs to a different treatment application.", null);
+            }
+
+            var resolved = await ResolveReceiptApplicationSnapshotAsync(form.ReceiptId, form.AppliedAt, cancellationToken);
+            if (resolved.Error is not null || resolved.Receipt is null || resolved.Inventory is null)
+                return (resolved.Error ?? "The exact Receipt inventory could not be resolved.", null);
+            var receipt = resolved.Receipt;
+            var snapshot = resolved.Inventory;
+            var crop = NormalizeCrop(receipt.FruitProfile.FruitType);
+            var chemical = await dbContext.TreatmentChemicals.SingleOrDefaultAsync(x => x.Id == form.TreatmentChemicalId
+                && x.IsActive && x.ApplicationLevel == TreatmentApplicationLevels.Receiving, cancellationToken);
+            if (chemical is null || crop is null || !string.Equals(chemical.Crop, crop, StringComparison.OrdinalIgnoreCase))
+                return ("The selected chemical is not an active Receiving treatment for this Receipt crop.", null);
+
+            var segments = await MaterializeAsync(snapshot, cancellationToken);
+            var exactSegments = segments.Where(x => x.ReceiptId == receipt.Id && x.CurrentBins > 0).ToList();
+            var exactBins = exactSegments.Sum(x => x.CurrentBins);
+            if (exactBins > resolved.CurrentBins)
+                return ("Treatment lineage for this Receipt exceeds its authoritative current inventory. No changes were made.", null);
+            var missingBins = resolved.CurrentBins - exactBins;
+            TreatmentLineageSegment? unassignedSource = null;
+            if (missingBins > 0)
+            {
+                var unassigned = segments.Where(x => x.ReceiptId == null && x.CurrentBins > 0).ToList();
+                var signatures = unassigned.Select(x => x.TreatmentSignature).Distinct(StringComparer.Ordinal).ToList();
+                if (signatures.Count != 1)
+                    return ("The Receipt shares this room identity across multiple historical treatment states. Crop QC cannot guess which bins belong to the Receipt.", null);
+                unassignedSource = unassigned.Single();
+                if (unassignedSource.CurrentBins < missingBins)
+                    return ("The room treatment lineage does not contain enough unassigned bins to prove this exact Receipt quantity.", null);
+            }
+
+            var now = businessTime.UtcNow;
+            var application = new RoomTreatmentApplication
+            {
+                OperationKey = operationKey,
+                TreatmentChemicalId = chemical.Id,
+                ApplicationLevel = TreatmentApplicationLevels.Receiving,
+                ReceiptId = receipt.Id,
+                WarehouseId = snapshot.WarehouseId,
+                RoomId = snapshot.RoomId,
+                AppliedAt = form.AppliedAt.ToUniversalTime(),
+                AppliedByUserId = actor.Id,
+                Notes = Normalize(form.Notes),
+                TotalBinsSnapshot = resolved.CurrentBins,
+                ProductNameSnapshot = chemical.ProductName,
+                CommonNameSnapshot = Normalize(chemical.CommonName),
+                CropSnapshot = chemical.Crop,
+                VolumeSnapshot = chemical.Volume,
+                UnitSnapshot = chemical.Unit,
+                UnitPriceSnapshot = chemical.UnitPrice,
+                CurrencySnapshot = chemical.Currency,
+                EstimatedCostSnapshot = decimal.Round(resolved.CurrentBins * chemical.UnitPrice, 2),
+                CreatedAt = now,
+                CreatedByUserId = actor.Id
+            };
+            dbContext.RoomTreatmentApplications.Add(application);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            var sources = exactSegments.Select(x => (Segment: x, Bins: x.CurrentBins)).ToList();
+            if (unassignedSource is not null) sources.Add((unassignedSource, missingBins));
+            foreach (var source in sources.Where(x => x.Bins > 0))
+            {
+                var resultSignature = AppendApplication(source.Segment.TreatmentSignature, application.Id);
+                var state = source.Segment.TreatmentState == TreatmentLineageStates.Unknown
+                    ? TreatmentLineageStates.Unknown
+                    : TreatmentLineageStates.Confirmed;
+                var target = await GetOrCreateSegmentAsync(snapshot, state, resultSignature, now, cancellationToken, receipt.Id);
+                await CopyApplicationLinksAsync(source.Segment, target, cancellationToken);
+                EnsureApplicationLink(target, application.Id);
+                target.CurrentBins += source.Bins;
+                target.UpdatedAt = now;
+                target.ConcurrencyVersion++;
+                source.Segment.CurrentBins -= source.Bins;
+                source.Segment.UpdatedAt = now;
+                source.Segment.ConcurrencyVersion++;
+                application.Sources.Add(new RoomTreatmentApplicationSource
+                {
+                    ReceiptId = receipt.Id,
+                    CropYear = snapshot.CropYear,
+                    GrowerLotId = snapshot.GrowerLotId,
+                    FruitProfileId = snapshot.FruitProfileId,
+                    IdentityKey = IdentityKey(snapshot),
+                    GrowerNumberSnapshot = Normalize(snapshot.GrowerNumber),
+                    GrowerNameSnapshot = snapshot.Grower,
+                    LotNumberSnapshot = snapshot.Lot,
+                    VarietyCodeSnapshot = snapshot.Variety,
+                    ProductionTypeSnapshot = snapshot.ProductionType,
+                    IsOrganicSnapshot = snapshot.IsOrganic,
+                    InventoryStatusSnapshot = Normalize(snapshot.InventoryStatus),
+                    BinsTreated = source.Bins,
+                    PriorTreatmentSignature = source.Segment.TreatmentSignature,
+                    ResultTreatmentSignature = resultSignature
+                });
+            }
+
+            dbContext.AuditLogs.Add(new AuditLog
+            {
+                UserId = actor.Id,
+                Action = "ApplyReceivingTreatment",
+                EntityName = nameof(RoomTreatmentApplication),
+                EntityKey = application.Id.ToString(),
+                AfterValuesJson = JsonSerializer.Serialize(new
+                {
+                    TreatmentApplicationId = application.Id,
+                    ReceiptId = receipt.Id,
+                    Receipt = receipt.CompuTechReceiptId,
+                    Room = $"{snapshot.Facility}/{snapshot.Room}",
+                    application.AppliedAt,
+                    Chemical = application.ProductNameSnapshot,
+                    AffectedBins = resolved.CurrentBins,
+                    InventoryDelta = 0,
+                    Actor = actor.Email
+                }, AuditJson),
+                SourceApplication = SourceApplication,
+                CreatedAt = now
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await ValidateRoomsAsync([snapshot.RoomId], cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+            return (null, application.Id);
+        }
+        catch (Exception exception)
+        {
+            if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+            dbContext.ChangeTracker.Clear();
+            logger.LogError(exception, "Receiving treatment application failed and was rolled back. ReceiptId={ReceiptId}", form.ReceiptId);
+            return ("Receiving treatment application failed and was rolled back. Review restricted logs.", null);
+        }
+    }
+
+    public Task<string?> ReverseAsync(ReverseRoomTreatmentApplicationForm form, CancellationToken cancellationToken) =>
+        ReverseCoreAsync(form, TreatmentApplicationLevels.Room, ApplicationAreas.RoomTransactions, "Room Transactions", cancellationToken);
+
+    public Task<string?> ReverseReceiptAsync(ReverseRoomTreatmentApplicationForm form, CancellationToken cancellationToken) =>
+        ReverseCoreAsync(form, TreatmentApplicationLevels.Receiving, ApplicationAreas.Receipts, "Receipts", cancellationToken);
+
+    private async Task<string?> ReverseCoreAsync(
+        ReverseRoomTreatmentApplicationForm form,
+        string applicationLevel,
+        string permissionArea,
+        string permissionLabel,
+        CancellationToken cancellationToken)
+    {
+        var principal = httpContextAccessor.HttpContext?.User;
+        if (principal is null || !await access.HasAccessAsync(principal, permissionArea, PageAccessLevel.Admin, cancellationToken))
+        {
+            return $"{permissionLabel} Admin access is required to reverse this treatment application.";
         }
         if (string.IsNullOrWhiteSpace(form.Reason)) return "A reversal reason is required.";
         if (form.Reason.Trim().Length > 1000) return "Reversal reason cannot exceed 1000 characters.";
@@ -282,6 +524,8 @@ public sealed class RoomTreatmentService(
         {
             var application = await dbContext.RoomTreatmentApplications.SingleOrDefaultAsync(x => x.Id == form.Id, cancellationToken);
             if (application is null) return "Treatment application was not found.";
+            if (application.ApplicationLevel != applicationLevel)
+                return $"This is not a {applicationLevel} treatment application.";
             if (application.ReversedAt is not null) return "Treatment application is already reversed.";
 
             var segments = await dbContext.TreatmentLineageSegments
@@ -301,7 +545,7 @@ public sealed class RoomTreatmentService(
                 var signature = remainingIds.Count == 0 ? prefix : $"{prefix}|a:{string.Join(',', remainingIds)}";
                 var snapshot = ToSnapshot(segment);
                 var state = prefix == "x" ? TreatmentLineageStates.Unknown : remainingIds.Count == 0 ? TreatmentLineageStates.Untreated : TreatmentLineageStates.Confirmed;
-                var target = await GetOrCreateSegmentAsync(snapshot, state, signature, now, cancellationToken);
+                var target = await GetOrCreateSegmentAsync(snapshot, state, signature, now, cancellationToken, segment.ReceiptId);
                 foreach (var id in remainingIds) EnsureApplicationLink(target, id);
                 target.CurrentBins += segment.CurrentBins;
                 target.UpdatedAt = now;
@@ -348,7 +592,7 @@ public sealed class RoomTreatmentService(
         var historyRows = await dbContext.RoomTreatmentApplications.AsNoTracking()
             .Include(x => x.AppliedByUser)
             .Include(x => x.Attachments)
-            .Where(x => x.RoomId == roomId)
+            .Where(x => x.RoomId == roomId && x.ApplicationLevel == TreatmentApplicationLevels.Room)
             .OrderByDescending(x => x.AppliedAt).ThenByDescending(x => x.Id)
             .Take(200)
             .ToListAsync(cancellationToken);
@@ -368,7 +612,7 @@ public sealed class RoomTreatmentService(
     public async Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken)
     {
         var projected = (await ProjectSelectionsBatchAsync([snapshot], cancellationToken))[SelectionLookupKey(snapshot)];
-        return projected.Select(x => new TreatmentSegmentSelection(x.IdentityKey, x.TreatmentSignature, x.TreatmentState, x.Bins, SegmentLabel(x))).ToList();
+        return projected.Select(x => new TreatmentSegmentSelection(x.IdentityKey, x.TreatmentSignature, x.TreatmentState, x.Bins, SegmentLabel(x), x.ReceiptId)).ToList();
     }
 
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetSelectionsAsync(
@@ -380,7 +624,7 @@ public sealed class RoomTreatmentService(
         return projected.ToDictionary(
             x => x.Key,
             x => (IReadOnlyList<TreatmentSegmentSelection>)x.Value.Select(y => new TreatmentSegmentSelection(
-                y.IdentityKey, y.TreatmentSignature, y.TreatmentState, y.Bins, SegmentLabel(y))).ToList());
+                y.IdentityKey, y.TreatmentSignature, y.TreatmentState, y.Bins, SegmentLabel(y), y.ReceiptId)).ToList());
     }
 
     public async Task<TreatmentLineageWriteResult> MoveAsync(
@@ -396,6 +640,48 @@ public sealed class RoomTreatmentService(
         long? binsRunEntryId,
         DateTimeOffset occurredAt,
         int? actorUserId,
+        CancellationToken cancellationToken)
+    {
+        long? receiptId = null;
+        if (roomInventoryLossId is not null)
+        {
+            receiptId = await dbContext.RoomInventoryLosses.AsNoTracking()
+                .Where(x => x.Id == roomInventoryLossId.Value)
+                .Select(x => x.ReceiptId)
+                .SingleOrDefaultAsync(cancellationToken);
+        }
+        else if (binsRunEntryId is not null)
+        {
+            receiptId = await dbContext.BinsRunEntries.AsNoTracking()
+                .Where(x => x.Id == binsRunEntryId.Value)
+                .Select(x => x.ReceiptId)
+                .SingleOrDefaultAsync(cancellationToken);
+        }
+        else if (roomTransferId is not null && snapshot.LatestAdjustmentId > 0)
+        {
+            receiptId = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+                .Where(x => x.Id == snapshot.LatestAdjustmentId)
+                .Select(x => x.ReceiptId)
+                .SingleOrDefaultAsync(cancellationToken);
+        }
+        return await MoveCoreAsync(snapshot, treatmentSignature, bins, destinationWarehouseId, destinationRoomId, operationKey,
+            movementType, roomTransferId, roomInventoryLossId, binsRunEntryId, occurredAt, actorUserId, receiptId, cancellationToken);
+    }
+
+    private async Task<TreatmentLineageWriteResult> MoveCoreAsync(
+        RoomInventoryLedgerSnapshot snapshot,
+        string? treatmentSignature,
+        int bins,
+        int? destinationWarehouseId,
+        int? destinationRoomId,
+        string operationKey,
+        string movementType,
+        long? roomTransferId,
+        long? roomInventoryLossId,
+        long? binsRunEntryId,
+        DateTimeOffset occurredAt,
+        int? actorUserId,
+        long? receiptId,
         CancellationToken cancellationToken)
     {
         if (bins <= 0) return new(false, "Treatment lineage movement quantity must be positive.");
@@ -424,12 +710,14 @@ public sealed class RoomTreatmentService(
                 && existingMovement.RoomTransferId == roomTransferId
                 && existingMovement.RoomInventoryLossId == roomInventoryLossId
                 && existingMovement.BinsRunEntryId == binsRunEntryId;
+            sameRequest = sameRequest && existingMovement.ReceiptId == receiptId;
             return sameRequest
                 ? new(true, null, existingMovement.Id)
                 : new(false, "The operation key already belongs to a different treatment lineage movement.");
         }
         var segments = await MaterializeAsync(snapshot, cancellationToken);
-        var available = segments.Where(x => x.CurrentBins > 0).ToList();
+        var available = segments.Where(x => x.CurrentBins > 0
+            && (receiptId == null || x.ReceiptId == receiptId || x.ReceiptId == null)).ToList();
         TreatmentLineageSegment? source;
         if (string.IsNullOrWhiteSpace(treatmentSignature))
         {
@@ -438,7 +726,13 @@ public sealed class RoomTreatmentService(
         }
         else
         {
-            source = available.SingleOrDefault(x => x.TreatmentSignature == treatmentSignature);
+            var candidates = available.Where(x => x.TreatmentSignature == treatmentSignature).ToList();
+            source = receiptId is null
+                ? candidates.SingleOrDefault()
+                : candidates.SingleOrDefault(x => x.ReceiptId == receiptId && x.CurrentBins >= bins)
+                    ?? (candidates.All(x => x.ReceiptId != receiptId)
+                        ? candidates.SingleOrDefault(x => x.ReceiptId == null && x.CurrentBins >= bins)
+                        : null);
         }
         if (source is null) return new(false, "The selected treatment segment is no longer available. Refresh before retrying.");
         if (source.CurrentBins < bins) return new(false, $"Only {source.CurrentBins} bins remain in the selected treatment segment.");
@@ -448,7 +742,7 @@ public sealed class RoomTreatmentService(
         if (destinationRoomId is not null && destinationWarehouseId is not null)
         {
             var destinationSnapshot = snapshot with { WarehouseId = destinationWarehouseId.Value, RoomId = destinationRoomId.Value };
-            destination = await GetOrCreateSegmentAsync(destinationSnapshot, source.TreatmentState, source.TreatmentSignature, now, cancellationToken);
+            destination = await GetOrCreateSegmentAsync(destinationSnapshot, source.TreatmentState, source.TreatmentSignature, now, cancellationToken, receiptId ?? source.ReceiptId);
             await CopyApplicationLinksAsync(source, destination, cancellationToken);
             destination.CurrentBins += bins;
             destination.UpdatedAt = now;
@@ -468,6 +762,7 @@ public sealed class RoomTreatmentService(
             IdentityKey = source.IdentityKey,
             TreatmentStateSnapshot = source.TreatmentState,
             TreatmentSignatureSnapshot = source.TreatmentSignature,
+            ReceiptId = receiptId ?? source.ReceiptId,
             BinCount = bins,
             RoomTransferId = roomTransferId,
             RoomInventoryLossId = roomInventoryLossId,
@@ -607,6 +902,7 @@ public sealed class RoomTreatmentService(
                 IdentityKey = original.IdentityKey,
                 TreatmentStateSnapshot = original.TreatmentStateSnapshot,
                 TreatmentSignatureSnapshot = original.TreatmentSignatureSnapshot,
+                ReceiptId = original.ReceiptId,
                 BinCount = original.BinCount,
                 RoomTransferId = roomTransferId,
                 RoomInventoryLossId = roomInventoryLossId,
@@ -668,6 +964,73 @@ public sealed class RoomTreatmentService(
         return (snapshots, null);
     }
 
+    private async Task<ReceiptApplicationSnapshot> ResolveReceiptApplicationSnapshotAsync(
+        long receiptId,
+        DateTimeOffset appliedAt,
+        CancellationToken cancellationToken)
+    {
+        var receipt = await dbContext.Receipts.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .Include(x => x.Room)
+            .Include(x => x.FruitProfile)
+            .SingleOrDefaultAsync(x => x.Id == receiptId && !x.IsDeleted, cancellationToken);
+        if (receipt is null) return new(null, null, 0, "Receipt was not found.");
+        var appliedAtUtc = appliedAt.ToUniversalTime();
+        if (appliedAtUtc > businessTime.UtcNow.AddMinutes(5))
+            return new(receipt, null, 0, "Application date/time cannot be in the future.");
+
+        var rows = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.ReceiptId == receipt.Id && x.AdjustmentAt <= appliedAtUtc)
+            .Select(x => new
+            {
+                x.WarehouseId,
+                x.RoomId,
+                CropYear = x.CropYear ?? receipt.CropYear,
+                GrowerLotId = x.GrowerLotId ?? receipt.GrowerLotId,
+                FruitProfileId = x.FruitProfileId ?? receipt.FruitProfileId,
+                Lot = x.LotNumber,
+                x.ChangeAmount
+            })
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0)
+            return new(receipt, null, 0, "This Receipt has no authoritative inventory ledger rows.");
+        var balances = rows
+            .GroupBy(x => new { x.WarehouseId, x.RoomId, x.CropYear, x.GrowerLotId, x.FruitProfileId, x.Lot })
+            .Select(x => new
+            {
+                x.Key.WarehouseId,
+                x.Key.RoomId,
+                x.Key.CropYear,
+                x.Key.GrowerLotId,
+                x.Key.FruitProfileId,
+                x.Key.Lot,
+                Bins = x.Sum(y => y.ChangeAmount)
+            })
+            .Where(x => x.Bins != 0)
+            .ToList();
+        if (balances.Any(x => x.Bins < 0) || balances.Count(x => x.Bins > 0) != 1)
+            return new(receipt, null, 0, "The Receipt is split across rooms or has conflicting inventory provenance. No treatment was allowed.");
+        var balance = balances.Single(x => x.Bins > 0);
+        var laterReceiptMovement = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .AnyAsync(x => x.ReceiptId == receipt.Id && x.AdjustmentAt > appliedAtUtc && x.AdjustmentAt <= businessTime.UtcNow, cancellationToken);
+        if (laterReceiptMovement)
+            return new(receipt, null, balance.Bins, "The Receipt moved or changed after this application time. Crop QC cannot safely reconstruct the exact treated bins.");
+
+        var snapshots = await ledger.GetSnapshotsAsOfAsync(null, [balance.RoomId], appliedAtUtc, cancellationToken);
+        var receiptLot = string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.LotCode : receipt.GrowerNumber;
+        var matches = snapshots.Where(x => x.CurrentBins > 0
+                && x.WarehouseId == balance.WarehouseId
+                && x.RoomId == balance.RoomId
+                && x.CropYear == balance.CropYear
+                && x.GrowerLotId == balance.GrowerLotId
+                && x.FruitProfileId == balance.FruitProfileId
+                && string.Equals(x.Lot, receiptLot, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (matches.Count != 1 || matches[0].CurrentBins < balance.Bins)
+            return new(receipt, null, balance.Bins, "The exact Receipt quantity does not reconcile with authoritative room inventory.");
+        return new(receipt, matches[0], balance.Bins, null);
+    }
+
     private async Task<List<TreatmentLineageSegment>> MaterializeAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken)
     {
         var key = IdentityKey(snapshot);
@@ -679,7 +1042,7 @@ public sealed class RoomTreatmentService(
         var missing = snapshot.CurrentBins - explicitBins;
         if (missing > 0)
         {
-            var untreated = segments.SingleOrDefault(x => x.TreatmentSignature == "u")
+            var untreated = segments.SingleOrDefault(x => x.TreatmentSignature == "u" && x.ReceiptId == null)
                 ?? await GetOrCreateSegmentAsync(snapshot, TreatmentLineageStates.Untreated, "u", businessTime.UtcNow, cancellationToken);
             untreated.CurrentBins += missing;
             untreated.UpdatedAt = businessTime.UtcNow;
@@ -726,7 +1089,7 @@ public sealed class RoomTreatmentService(
                 output.Add(new CurrentTreatmentSegmentViewModel(
                     segment.Id, key, snapshot.GrowerNumber ?? snapshot.Lot, snapshot.Grower, snapshot.VarietyName,
                     snapshot.ProductionType, snapshot.IsOrganic, segment.CurrentBins, segment.TreatmentState,
-                    segment.TreatmentSignature, applications));
+                    segment.TreatmentSignature, applications, segment.ReceiptId));
             }
             var implicitBins = snapshot.CurrentBins - output.Sum(x => x.Bins);
             if (implicitBins < 0) throw new InvalidOperationException($"Treatment lineage exceeds authoritative inventory for room {snapshot.RoomId}, identity {key}.");
@@ -769,16 +1132,17 @@ public sealed class RoomTreatmentService(
         };
     }
 
-    private async Task<TreatmentLineageSegment> GetOrCreateSegmentAsync(RoomInventoryLedgerSnapshot snapshot, string state, string signature, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<TreatmentLineageSegment> GetOrCreateSegmentAsync(RoomInventoryLedgerSnapshot snapshot, string state, string signature, DateTimeOffset now, CancellationToken cancellationToken, long? receiptId = null)
     {
         var key = IdentityKey(snapshot);
         var existing = await dbContext.TreatmentLineageSegments.Include(x => x.Applications)
-            .SingleOrDefaultAsync(x => x.RoomId == snapshot.RoomId && x.IdentityKey == key && x.TreatmentSignature == signature, cancellationToken);
+            .SingleOrDefaultAsync(x => x.RoomId == snapshot.RoomId && x.IdentityKey == key && x.TreatmentSignature == signature && x.ReceiptId == receiptId, cancellationToken);
         if (existing is not null) return existing;
         var segment = new TreatmentLineageSegment
         {
             WarehouseId = snapshot.WarehouseId,
             RoomId = snapshot.RoomId,
+            ReceiptId = receiptId,
             CropYear = snapshot.CropYear,
             GrowerLotId = snapshot.GrowerLotId,
             FruitProfileId = snapshot.FruitProfileId,
@@ -863,9 +1227,15 @@ public sealed class RoomTreatmentService(
     private static string CropFromProduction(string productionType) => productionType.Contains("Pear", StringComparison.OrdinalIgnoreCase) ? "Pear" : "Apple";
     private static RoomTreatmentFruitSnapshotViewModel ToFruitView(RoomInventoryLedgerSnapshot x) =>
         new(IdentityKey(x), x.GrowerNumber ?? x.Lot, x.Grower, x.VarietyName, x.ProductionType, x.IsOrganic, x.CurrentBins);
+    private static string? NormalizeCrop(string? crop) => crop?.Trim().ToLowerInvariant() switch
+    {
+        "apple" or "apples" => "Apples",
+        "pear" or "pears" => "Pears",
+        _ => null
+    };
     private static string? ResolveWholeRoomCrop(IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots)
     {
-        var crops = snapshots.Select(x => x.FruitType.Trim().ToLowerInvariant() switch { "apple" or "apples" => "Apples", "pear" or "pears" => "Pears", _ => "" })
+        var crops = snapshots.Select(x => NormalizeCrop(x.FruitType) ?? "")
             .Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         return crops.Count == 1 && snapshots.All(x => !string.IsNullOrWhiteSpace(x.FruitType)) ? crops[0] : null;
     }

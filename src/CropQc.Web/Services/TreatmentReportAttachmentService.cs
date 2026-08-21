@@ -34,15 +34,16 @@ public sealed class TreatmentReportAttachmentService(
         ClaimsPrincipal principal,
         CancellationToken cancellationToken)
     {
-        if (!await access.HasAccessAsync(principal, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken))
-        {
-            return new(0, ["Room Transactions Edit access is required to add a treatment report."]);
-        }
-
         var application = await dbContext.RoomTreatmentApplications.AsNoTracking()
             .Include(x => x.Warehouse)
             .SingleOrDefaultAsync(x => x.Id == applicationId, cancellationToken);
         if (application is null) return new(0, ["Treatment application was not found."]);
+        var permissionArea = application.ApplicationLevel == TreatmentApplicationLevels.Receiving
+            ? ApplicationAreas.Receipts
+            : ApplicationAreas.RoomTransactions;
+        var permissionLabel = application.ApplicationLevel == TreatmentApplicationLevels.Receiving ? "Receipts" : "Room Transactions";
+        if (!await access.HasAccessAsync(principal, permissionArea, PageAccessLevel.Edit, cancellationToken))
+            return new(0, [$"{permissionLabel} Edit access is required to add a treatment report."]);
         if (form.Files.Count == 0) return new(0, []);
         if (string.IsNullOrWhiteSpace(form.OperationKey) || form.OperationKey.Trim().Length > 80)
         {
@@ -163,11 +164,15 @@ public sealed class TreatmentReportAttachmentService(
         ClaimsPrincipal principal,
         CancellationToken cancellationToken)
     {
-        if (!await access.HasAccessAsync(principal, ApplicationAreas.Rooms, PageAccessLevel.View, cancellationToken))
-            return (null, null, null);
         var attachment = await dbContext.RoomTreatmentApplicationAttachments.AsNoTracking()
+            .Include(x => x.RoomTreatmentApplication)
             .SingleOrDefaultAsync(x => x.Id == attachmentId && x.RoomTreatmentApplicationId == applicationId && !x.IsDeleted, cancellationToken);
         if (attachment is null) return (null, null, null);
+        var permissionArea = attachment.RoomTreatmentApplication.ApplicationLevel == TreatmentApplicationLevels.Receiving
+            ? ApplicationAreas.Receipts
+            : ApplicationAreas.Rooms;
+        if (!await access.HasAccessAsync(principal, permissionArea, PageAccessLevel.View, cancellationToken))
+            return (null, null, null);
         try
         {
             return (await fileStorage.OpenReadAsync(attachment.FileId, cancellationToken), attachment.ContentType, attachment.FileName);
@@ -181,15 +186,20 @@ public sealed class TreatmentReportAttachmentService(
 
     public async Task<string?> RemoveAsync(long applicationId, long attachmentId, string reason, ClaimsPrincipal principal, CancellationToken cancellationToken)
     {
-        if (!await access.HasAccessAsync(principal, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken))
-            return "Room Transactions Admin access is required to remove a treatment report.";
         if (string.IsNullOrWhiteSpace(reason)) return "A removal reason is required.";
         if (reason.Trim().Length > 1000) return "Removal reason cannot exceed 1000 characters.";
-        var actor = await CurrentUserAsync(principal, cancellationToken);
-        if (actor is null) return "The active administrator could not be resolved.";
         var attachment = await dbContext.RoomTreatmentApplicationAttachments
+            .Include(x => x.RoomTreatmentApplication)
             .SingleOrDefaultAsync(x => x.Id == attachmentId && x.RoomTreatmentApplicationId == applicationId && !x.IsDeleted, cancellationToken);
         if (attachment is null) return "Treatment report attachment was not found.";
+        var permissionArea = attachment.RoomTreatmentApplication.ApplicationLevel == TreatmentApplicationLevels.Receiving
+            ? ApplicationAreas.Receipts
+            : ApplicationAreas.RoomTransactions;
+        var permissionLabel = attachment.RoomTreatmentApplication.ApplicationLevel == TreatmentApplicationLevels.Receiving ? "Receipts" : "Room Transactions";
+        if (!await access.HasAccessAsync(principal, permissionArea, PageAccessLevel.Admin, cancellationToken))
+            return $"{permissionLabel} Admin access is required to remove a treatment report.";
+        var actor = await CurrentUserAsync(principal, cancellationToken);
+        if (actor is null) return "The active administrator could not be resolved.";
         var now = businessTime.UtcNow;
         attachment.IsDeleted = true;
         attachment.DeletedAt = now;

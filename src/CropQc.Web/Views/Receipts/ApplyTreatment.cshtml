@@ -1,0 +1,94 @@
+@model ReceiptTreatmentApplyPageViewModel
+@{
+    ViewData["Title"] = "Apply Receiving Treatment";
+}
+
+<div class="page-header treatment-page-header">
+    <div>
+        <p class="eyebrow">Receipt @Model.ReceiptNumber</p>
+        <h1>Apply Receiving Treatment</h1>
+        <p class="muted">This treatment applies only to the exact current bins proven to belong to this Receipt.</p>
+    </div>
+    <a class="button secondary-button" href="/Receipts/@Model.Form.ReceiptId">Back to Receipt</a>
+</div>
+
+@if (Model.Error is not null)
+{
+    <p class="notice warning" role="alert">@Model.Error</p>
+}
+
+<section class="card treatment-review-card">
+    <h2>@(Model.IsReview ? "Review Receiving Treatment" : "Treatment Details")</h2>
+    <dl class="room-metrics treatment-summary">
+        <div><dt>Receipt</dt><dd>@Model.ReceiptNumber</dd></div>
+        <div><dt>Grower</dt><dd>@Model.GrowerNumber - @Model.Grower</dd></div>
+        <div><dt>Current location</dt><dd>@Model.Warehouse / @Model.Room</dd></div>
+        <div><dt>Variety</dt><dd>@Model.Variety - @Model.ProductionType</dd></div>
+        <div><dt>Application date/time</dt><dd>@BusinessTime.FormatPacific(Model.Form.AppliedAt)</dd></div>
+        <div><dt>Exact Receipt bins affected</dt><dd>@Model.TotalBins.ToString("N0")</dd></div>
+    </dl>
+
+    @if (!Model.IsReview)
+    {
+        <form method="post" action="/Receipts/@Model.Form.ReceiptId/Treatments/Review" class="stacked-form treatment-form">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ReceiptId" value="@Model.Form.ReceiptId" />
+            <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
+            <label class="field">Applied at
+                <input type="datetime-local" name="AppliedAt" value="@Model.Form.AppliedAt.ToString("yyyy-MM-ddTHH:mm")" required />
+            </label>
+            <label class="field">Treatment
+                <select name="TreatmentChemicalId" required>
+                    <option value="">Select Receiving treatment...</option>
+                    @foreach (var item in Model.TreatmentOptions)
+                    {
+                        <option value="@item.Id" selected="@(item.Id == Model.Form.TreatmentChemicalId)">@item.DisplayName</option>
+                    }
+                </select>
+            </label>
+            <label class="field">Notes <span class="muted">(optional)</span>
+                <textarea name="Notes" maxlength="1000" rows="3">@Model.Form.Notes</textarea>
+            </label>
+            <button type="submit" disabled="@(Model.Error is not null)">Review Treatment</button>
+        </form>
+    }
+    else if (Model.SelectedTreatment is not null)
+    {
+        <div class="treatment-product-review">
+            @if (!string.IsNullOrWhiteSpace(Model.SelectedTreatment.CommonName))
+            {
+                <p><strong>Common Name</strong><br />@Model.SelectedTreatment.CommonName</p>
+            }
+            <p><strong>Official Product Name</strong><br />@Model.SelectedTreatment.ProductName</p>
+            <p><strong>Crop</strong><br />@Model.SelectedTreatment.Crop</p>
+            <p><strong>Estimated Treatment Cost</strong><br />@Model.EstimatedCost.ToString("C2") @Model.SelectedTreatment.Currency</p>
+        </div>
+        <form method="post" enctype="multipart/form-data" action="/Receipts/@Model.Form.ReceiptId/Treatments" class="stacked-form treatment-confirm-actions treatment-report-form" data-treatment-report-form>
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ReceiptId" value="@Model.Form.ReceiptId" />
+            <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
+            <input type="hidden" name="TreatmentChemicalId" value="@Model.Form.TreatmentChemicalId" />
+            <input type="hidden" name="AppliedAt" value="@Model.Form.AppliedAt.ToString("O")" />
+            <input type="hidden" name="Notes" value="@Model.Form.Notes" />
+            <input type="hidden" name="ConfirmedReview" value="true" />
+            <input type="hidden" name="TreatmentReport.OperationKey" value="@Guid.NewGuid().ToString("N")" />
+            <section class="subpanel treatment-report-stage" aria-labelledby="receiving-treatment-report-heading">
+                <h3 id="receiving-treatment-report-heading">Treatment Report <span class="muted">(optional)</span></h3>
+                <p class="muted">Attach a PDF or scanned image now, or add it later from this Receipt. Up to 15 MB per file.</p>
+                <div class="treatment-report-picker-actions">
+                    <label class="button secondary-button file-picker-button">Scan / Take Photo<input type="file" name="TreatmentReport.Files" accept="image/jpeg,image/png,image/webp" capture="environment" multiple data-treatment-report-input /></label>
+                    <label class="button secondary-button file-picker-button">Choose File<input type="file" name="TreatmentReport.Files" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple data-treatment-report-input /></label>
+                </div>
+                <p class="field-validation" data-treatment-report-validation role="status"></p>
+                <p class="muted" data-treatment-report-empty>No treatment report selected.</p>
+                <div class="treatment-report-preview-grid" data-treatment-report-previews></div>
+            </section>
+            <div class="inline-actions">
+                <button type="submit" data-treatment-report-submit>Apply Treatment</button>
+                <a class="button secondary-button" href="/Receipts/@Model.Form.ReceiptId/Treatments/Apply">Change</a>
+            </div>
+        </form>
+    }
+</section>
+
+<script src="~/js/treatment-reports.js" asp-append-version="true"></script>

@@ -153,6 +153,16 @@ public sealed class RoomTreatmentApplyForm
     public bool ConfirmedReview { get; set; }
 }
 
+public sealed class ReceiptTreatmentApplyForm
+{
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public long ReceiptId { get; set; }
+    public int TreatmentChemicalId { get; set; }
+    public DateTimeOffset AppliedAt { get; set; } = DateTimeOffset.UtcNow;
+    public string? Notes { get; set; }
+    public bool ConfirmedReview { get; set; }
+}
+
 public sealed class ReverseRoomTreatmentApplicationForm
 {
     public long Id { get; set; }
@@ -182,6 +192,24 @@ public sealed class RoomTreatmentApplyPageViewModel
     public decimal EstimatedCost { get; set; }
     public IReadOnlyList<TreatmentChemicalOptionViewModel> TreatmentOptions { get; set; } = [];
     public IReadOnlyList<RoomTreatmentFruitSnapshotViewModel> Fruit { get; set; } = [];
+}
+
+public sealed class ReceiptTreatmentApplyPageViewModel
+{
+    public ReceiptTreatmentApplyForm Form { get; set; } = new();
+    public string ReceiptNumber { get; set; } = "";
+    public string Grower { get; set; } = "";
+    public string GrowerNumber { get; set; } = "";
+    public string Warehouse { get; set; } = "";
+    public string Room { get; set; } = "";
+    public string Variety { get; set; } = "";
+    public string ProductionType { get; set; } = "";
+    public int TotalBins { get; set; }
+    public string? Error { get; set; }
+    public bool IsReview { get; set; }
+    public TreatmentChemicalOptionViewModel? SelectedTreatment { get; set; }
+    public decimal EstimatedCost { get; set; }
+    public IReadOnlyList<TreatmentChemicalOptionViewModel> TreatmentOptions { get; set; } = [];
 }
 
 public sealed record TreatmentChemicalOptionViewModel(
@@ -217,7 +245,8 @@ public sealed record CurrentTreatmentSegmentViewModel(
     int Bins,
     string TreatmentState,
     string TreatmentSignature,
-    IReadOnlyList<TreatmentApplicationSummaryViewModel> Treatments);
+    IReadOnlyList<TreatmentApplicationSummaryViewModel> Treatments,
+    long? ReceiptId = null);
 
 public sealed record TreatmentApplicationSummaryViewModel(
     long Id,
@@ -1227,6 +1256,7 @@ public sealed class MasterDataEditForm
     public string ProductName { get; set; } = "";
     public string? CommonName { get; set; }
     public string Crop { get; set; } = "Apples";
+    public string ApplicationLevel { get; set; } = string.Empty;
     public decimal? Volume { get; set; }
     public string Unit { get; set; } = "BIN";
     public decimal? UnitPrice { get; set; }
@@ -1795,6 +1825,9 @@ public sealed class ReceiptDetailViewModel
     public IReadOnlyList<RoomInventoryLossHistoryViewModel> InventoryLosses { get; set; } = [];
     public int ActiveDroppedBins => InventoryLosses.Where(x => !x.IsReversed).Sum(x => x.BinCount);
     public int? CurrentPackableBins { get; set; }
+    public IReadOnlyList<RoomTreatmentApplicationHistoryViewModel> TreatmentApplications { get; set; } = [];
+    public bool CanApplyReceivingTreatment { get; set; }
+    public bool CanReverseReceivingTreatment { get; set; }
 }
 
 public sealed record ReceiptInventoryOverrideHistoryViewModel(
