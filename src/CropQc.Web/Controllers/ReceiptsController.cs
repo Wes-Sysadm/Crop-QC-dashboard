@@ -2,6 +2,7 @@ using CropQc.Web.Models;
 using CropQc.Web.Services;
 using CropQc.Shared.Storage;
 using CropQc.Data;
+using CropQc.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -14,6 +15,8 @@ public sealed class ReceiptsController(
     IDashboardDataService dataService,
     IReceiptPurgeService receiptPurgeService,
     IReceiptInventoryOverrideService receiptInventoryOverrideService,
+    IReceivingTreatmentService receivingTreatmentService,
+    ITreatmentReportAttachmentService treatmentReportAttachmentService,
     IUserAccessService userAccessService,
     IAdminManagementService adminManagementService,
     IAdminAuthorizationService adminAuthorizationService,
@@ -159,6 +162,103 @@ public sealed class ReceiptsController(
     [Authorize(Policy = AccessPolicyNames.ReceiptsView)]
     public async Task<IActionResult> Details(long id, CancellationToken cancellationToken) =>
         View(await dataService.GetReceiptDetailAsync(id, cancellationToken));
+
+    [HttpGet("{id:long}/Treatments/Apply")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
+    public async Task<IActionResult> ApplyTreatment(long id, CancellationToken cancellationToken) =>
+        View("ApplyTreatment", await receivingTreatmentService.GetReceiptApplyPageAsync(new ReceiptTreatmentApplyForm
+        {
+            ReceiptId = id,
+            AppliedAt = DateTimeOffset.UtcNow
+        }, false, cancellationToken));
+
+    [HttpPost("{id:long}/Treatments/Review")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReviewTreatment(long id, ReceiptTreatmentApplyForm form, CancellationToken cancellationToken)
+    {
+        form.ReceiptId = id;
+        return View("ApplyTreatment", await receivingTreatmentService.GetReceiptApplyPageAsync(form, true, cancellationToken));
+    }
+
+    [HttpPost("{id:long}/Treatments")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveTreatment(
+        long id,
+        ReceiptTreatmentApplyForm form,
+        TreatmentReportUploadForm treatmentReport,
+        CancellationToken cancellationToken)
+    {
+        form.ReceiptId = id;
+        var result = await receivingTreatmentService.ApplyReceiptAsync(form, cancellationToken);
+        if (result.Error is not null)
+        {
+            var model = await receivingTreatmentService.GetReceiptApplyPageAsync(form, true, cancellationToken);
+            model.Error = result.Error;
+            return View("ApplyTreatment", model);
+        }
+        var attachmentResult = await treatmentReportAttachmentService.UploadAsync(result.ApplicationId!.Value, treatmentReport, User, cancellationToken);
+        if (attachmentResult.Failures.Count > 0)
+        {
+            TempData["Warning"] = $"Receiving treatment was recorded, but {attachmentResult.Failures.Count} of {treatmentReport.Files.Count} report files could not be uploaded. "
+                + string.Join(" ", attachmentResult.Failures);
+        }
+        else
+        {
+            TempData["Success"] = attachmentResult.Uploaded == 0
+                ? "Receiving treatment recorded for the exact Receipt bins without changing inventory quantity."
+                : $"Receiving treatment and {attachmentResult.Uploaded} report attachment{(attachmentResult.Uploaded == 1 ? "" : "s")} recorded without changing inventory quantity.";
+        }
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost("{id:long}/Treatments/{applicationId:long}/Reports")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddTreatmentReport(long id, long applicationId, TreatmentReportUploadForm form, CancellationToken cancellationToken)
+    {
+        var belongsToReceipt = await dbContext.RoomTreatmentApplications.AsNoTracking()
+            .AnyAsync(x => x.Id == applicationId && x.ReceiptId == id && x.ApplicationLevel == TreatmentApplicationLevels.Receiving, cancellationToken);
+        if (!belongsToReceipt) return NotFound();
+        var result = await treatmentReportAttachmentService.UploadAsync(applicationId, form, User, cancellationToken);
+        TempData[result.Failures.Count == 0 ? "Success" : "Error"] = result.Failures.Count == 0
+            ? $"{result.Uploaded} treatment report attachment{(result.Uploaded == 1 ? "" : "s")} added."
+            : string.Join(" ", result.Failures);
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost("{id:long}/Treatments/{applicationId:long}/Reports/{attachmentId:long}/Remove")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptDeleteAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveTreatmentReport(
+        long id,
+        long applicationId,
+        long attachmentId,
+        RemoveTreatmentReportForm form,
+        CancellationToken cancellationToken)
+    {
+        var belongsToReceipt = await dbContext.RoomTreatmentApplications.AsNoTracking()
+            .AnyAsync(x => x.Id == applicationId && x.ReceiptId == id && x.ApplicationLevel == TreatmentApplicationLevels.Receiving, cancellationToken);
+        if (!belongsToReceipt) return NotFound();
+        var error = await treatmentReportAttachmentService.RemoveAsync(applicationId, attachmentId, form.Reason, User, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Treatment report attachment removed; treatment evidence was retained.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost("{id:long}/Treatments/{applicationId:long}/Reverse")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptDeleteAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReverseTreatment(long id, long applicationId, ReverseRoomTreatmentApplicationForm form, CancellationToken cancellationToken)
+    {
+        var belongsToReceipt = await dbContext.RoomTreatmentApplications.AsNoTracking()
+            .AnyAsync(x => x.Id == applicationId && x.ReceiptId == id && x.ApplicationLevel == TreatmentApplicationLevels.Receiving, cancellationToken);
+        if (!belongsToReceipt) return NotFound();
+        form.Id = applicationId;
+        var error = await receivingTreatmentService.ReverseReceiptAsync(form, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Receiving treatment reversed; original evidence and report attachments were retained.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
 
     [HttpGet("{id:long}/photos/{photoId:long}/content")]
     [Authorize(Policy = AccessPolicyNames.ReceiptsView)]

@@ -38,6 +38,10 @@
         </div>
         <div class="action-bar">
             <a class="button secondary-button" href="/Dashboard/Rooms/@Model.Receipt.RoomId">View Room Summary</a>
+            @if (Model.CanApplyReceivingTreatment)
+            {
+                <a class="button" href="/Receipts/@Model.Receipt.Id/Treatments/Apply">Apply Treatment</a>
+            }
             @if (canEditReceipt)
             {
                 <a class="button secondary-button" href="/Receipts/@Model.Receipt.Id/Edit">Edit Receipt</a>
@@ -108,6 +112,84 @@
             </tbody></table>
         </section>
     }
+
+    <section class="panel" id="receiving-treatment-history">
+        <h2>Receiving Treatment History</h2>
+        <p class="muted">Receiving treatments apply only to the exact bins from this Receipt and follow those bins through room transfers and packing.</p>
+        @if (Model.TreatmentApplications.Count == 0)
+        {
+            <p class="muted">No Receiving treatments have been recorded for this Receipt.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Applied</th><th>Treatment</th><th>Bins</th><th>Applied by</th><th>Status / notes</th><th>Treatment report / action</th></tr></thead>
+                    <tbody>
+                    @foreach (var treatment in Model.TreatmentApplications)
+                    {
+                        <tr id="receiving-treatment-@treatment.Id">
+                            <td>@BusinessTime.FormatPacific(treatment.AppliedAt)</td>
+                            <td>@if (!string.IsNullOrWhiteSpace(treatment.CommonName)) { <strong>@treatment.CommonName</strong><br /> }@treatment.ProductName</td>
+                            <td>@treatment.BinsAffected.ToString("N0")</td>
+                            <td>@treatment.AppliedBy</td>
+                            <td><span class="status @(treatment.IsReversed ? "pending" : "ready")">@(treatment.IsReversed ? "Reversed" : "Active")</span>@if (!string.IsNullOrWhiteSpace(treatment.Notes)) { <br /><span>@treatment.Notes</span> }@if (treatment.IsReversed) { <br /><span class="muted">@treatment.ReversalReason</span> }</td>
+                            <td>
+                                @if (treatment.Attachments.Count == 0)
+                                {
+                                    <p class="muted">No treatment report attached.</p>
+                                }
+                                else
+                                {
+                                    <ul class="compact-list">
+                                    @foreach (var attachment in treatment.Attachments)
+                                    {
+                                        <li>
+                                            <a href="/RoomTreatments/@treatment.Id/Reports/@attachment.Id/Content" target="_blank" rel="noopener">@attachment.FileName</a> (@FormatFileSize(attachment.FileSizeBytes))
+                                            @if (Model.CanReverseReceivingTreatment)
+                                            {
+                                                <form method="post" action="/Receipts/@Model.Receipt.Id/Treatments/@treatment.Id/Reports/@attachment.Id/Remove" class="inline-form" onsubmit="return confirm('Remove this treatment report attachment? The treatment application will be retained.');">
+                                                    @Html.AntiForgeryToken()
+                                                    <label class="sr-only" for="remove-treatment-report-reason-@attachment.Id">Removal reason</label>
+                                                    <input id="remove-treatment-report-reason-@attachment.Id" name="Reason" required maxlength="1000" placeholder="Removal reason" />
+                                                    <button type="submit" class="danger-button">Remove Report</button>
+                                                </form>
+                                            }
+                                        </li>
+                                    }
+                                    </ul>
+                                }
+                                @if (Model.CanApplyReceivingTreatment)
+                                {
+                                    <details>
+                                        <summary>Add Treatment Report</summary>
+                                        <form method="post" enctype="multipart/form-data" action="/Receipts/@Model.Receipt.Id/Treatments/@treatment.Id/Reports" class="stacked-form treatment-report-form" data-treatment-report-form>
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" />
+                                            <label>Report files <input type="file" name="Files" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple data-treatment-report-input /></label>
+                                            <p class="field-validation" data-treatment-report-validation role="status"></p>
+                                            <p class="muted" data-treatment-report-empty>No treatment report selected.</p>
+                                            <div class="treatment-report-preview-grid" data-treatment-report-previews></div>
+                                            <button type="submit" data-treatment-report-submit disabled>Upload Treatment Report</button>
+                                        </form>
+                                    </details>
+                                }
+                                @if (Model.CanReverseReceivingTreatment && !treatment.IsReversed)
+                                {
+                                    <form method="post" action="/Receipts/@Model.Receipt.Id/Treatments/@treatment.Id/Reverse" class="stack-form" onsubmit="return confirm('Reverse this Receiving treatment? Original evidence and reports will be retained.');">
+                                        @Html.AntiForgeryToken()
+                                        <label>Reversal reason <input name="Reason" required maxlength="1000" /></label>
+                                        <button type="submit" class="danger-button">Reverse Treatment</button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
 
     @if (canEditReceipt)
     {
@@ -219,4 +301,10 @@
     private static bool CanSendEmail(SampleListItemViewModel sample) =>
         sample.IsReady
         && !sample.EmailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase);
+
+    private static string FormatFileSize(long bytes) => bytes >= 1024 * 1024
+        ? $"{bytes / (1024d * 1024d):0.0} MB"
+        : $"{Math.Max(1, bytes / 1024d):0} KB";
 }
+
+<script src="~/js/treatment-reports.js" asp-append-version="true"></script>

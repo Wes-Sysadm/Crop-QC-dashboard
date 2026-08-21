@@ -75,7 +75,7 @@ public sealed class RoomTreatmentsController(
     }
 
     [HttpGet("/RoomTreatments/{applicationId:long}/Reports/{attachmentId:long}/Content")]
-    [Authorize(Policy = AccessPolicyNames.RoomsView)]
+    [Authorize]
     public async Task<IActionResult> ReportContent(long applicationId, long attachmentId, CancellationToken cancellationToken)
     {
         var result = await attachmentService.OpenReadAsync(applicationId, attachmentId, User, cancellationToken);

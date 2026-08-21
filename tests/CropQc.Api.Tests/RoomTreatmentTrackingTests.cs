@@ -28,6 +28,7 @@ public sealed class RoomTreatmentTrackingTests
             Assert.Equal(1.00m, x.Volume);
             Assert.Equal("BIN", x.Unit);
             Assert.Equal("USD", x.Currency);
+            Assert.Equal(TreatmentApplicationLevels.Room, x.ApplicationLevel);
         });
         Assert.Equal(new[]
         {
@@ -372,8 +373,8 @@ public sealed class RoomTreatmentTrackingTests
         Assert.Contains("pg_advisory_xact_lock", apply);
         Assert.Contains("migration_history_intentionally_unchanged", verifier);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
-        Assert.Contains("20260819142656_AddTreatmentReportAttachments", gate);
-        Assert.Equal(502, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Contains("20260820194148_AddReceivingTreatmentApplications", gate);
+        Assert.Equal(517, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     private static string FindRepositoryFile(params string[] segments)

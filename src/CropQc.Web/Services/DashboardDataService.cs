@@ -1644,6 +1644,28 @@ public sealed class DashboardDataService(
             IReadOnlyList<RoomInventoryLossHistoryViewModel> inventoryLosses = RoomInventoryLosses is null
                 ? []
                 : await RoomInventoryLosses.GetReceiptHistoryAsync(id, cancellationToken);
+            var treatmentApplications = await dbContext.RoomTreatmentApplications.AsNoTracking()
+                .Include(x => x.AppliedByUser)
+                .Include(x => x.Attachments)
+                .Where(x => x.ReceiptId == id && x.ApplicationLevel == TreatmentApplicationLevels.Receiving)
+                .OrderByDescending(x => x.AppliedAt)
+                .ThenByDescending(x => x.Id)
+                .Select(x => new RoomTreatmentApplicationHistoryViewModel(
+                    x.Id,
+                    x.AppliedAt,
+                    x.ProductNameSnapshot,
+                    x.CommonNameSnapshot,
+                    x.TotalBinsSnapshot,
+                    x.AppliedByUser.DisplayName ?? x.AppliedByUser.Email,
+                    x.EstimatedCostSnapshot,
+                    x.CurrencySnapshot,
+                    x.Notes,
+                    x.ReversedAt != null,
+                    x.ReversedAt,
+                    x.ReversalReason,
+                    x.Attachments.Where(a => !a.IsDeleted).OrderBy(a => a.CreatedAt).ThenBy(a => a.Id)
+                        .Select(a => new TreatmentReportAttachmentViewModel(a.Id, a.FileName, a.ContentType, a.FileSizeBytes, a.CreatedAt)).ToList()))
+                .ToListAsync(cancellationToken);
             var receiptLot = !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber : receipt.LotCode;
             var receiptSnapshots = await RoomInventoryLedger.GetSnapshotsAsync(receipt.WarehouseId, [receipt.RoomId], receipt.FruitProfileId, cancellationToken);
             var currentPackableBins = receiptSnapshots
@@ -1666,6 +1688,9 @@ public sealed class DashboardDataService(
                 InventoryOverrides = inventoryOverrides,
                 InventoryLosses = inventoryLosses,
                 CurrentPackableBins = currentPackableBins,
+                TreatmentApplications = treatmentApplications,
+                CanApplyReceivingTreatment = await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken),
+                CanReverseReceivingTreatment = await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Admin, cancellationToken),
                 AddPhotoForm = new AddPhotoMetadataForm
                 {
                     ReceiptId = receipt.Id,
