@@ -196,8 +196,8 @@ public sealed class ReceivingTreatmentApplicationTests
         Assert.Contains("17 AS checked_target_objects", verify);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
         Assert.DoesNotContain("__EFMigrationsHistory", config);
-        Assert.Contains("20260820194148_AddReceivingTreatmentApplications", gate);
-        Assert.Equal(517, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Contains("20260821031442_AddProcessorShipments", gate);
+        Assert.Equal(619, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     private static string Read(params string[] segments)
