@@ -1,0 +1,105 @@
+@using CropQc.Data.Entities
+@model ProcessorShipmentPageViewModel
+@{
+    ViewData["Title"] = "Processor Shipments";
+    var chosen = Model.Form.Lines.ToDictionary(x => x.SourceKey, x => x.BinsSent, StringComparer.Ordinal);
+    var selectedProcessor = Model.Processors.SingleOrDefault(x => x.Id == Model.Form.ProcessorId)?.Name ?? "Processor";
+}
+
+<h1>Processor Shipments</h1>
+<nav class="operation-tabs" aria-label="Runs and Transfers operations">
+    <a href="/BinsRun?Section=Planner">Run Planner</a>
+    <a href="/BinsRun?Section=Actual">Record Actual Run</a>
+    <a href="/BinsRun?Section=Transfer">Transfer</a>
+    <a href="/BinsRun?Section=TrueUp">True Up</a>
+    <a class="active" href="/ProcessorShipments" aria-current="page">Processor Shipments</a>
+</nav>
+
+@if (TempData["Success"] is not null) { <p class="notice success">@TempData["Success"]</p> }
+@if (TempData["Error"] is not null) { <p class="notice warning">@TempData["Error"]</p> }
+@if (Model.Error is not null) { <p class="notice warning">@Model.Error</p> }
+
+@if (Model.CanCreate)
+{
+    <section class="panel">
+        <h2>Send Bins to Processor</h2>
+        @if (Model.IsReview)
+        {
+            <h3>Review Processor Shipment</h3>
+            <dl class="detail-grid">
+                <div><dt>Processor</dt><dd>@selectedProcessor</dd></div>
+                <div><dt>Sale Price</dt><dd>@Model.Form.SaleRate?.ToString("C2") @ProcessorPricingBases.Suffix(Model.Form.PricingBasis)</dd></div>
+                <div><dt>Pricing Basis</dt><dd>@ProcessorPricingBases.Display(Model.Form.PricingBasis)</dd></div>
+                <div><dt>Shipment Date/Time</dt><dd>@Model.Form.ShippedAt.ToString("g")</dd></div>
+                <div><dt>Total Bins</dt><dd>@Model.ReviewLines.Sum(x => x.Bins)</dd></div>
+            </dl>
+            <div class="table-wrap">
+                <table><thead><tr><th>Facility</th><th>Room</th><th>Grower Number</th><th>Variety</th><th>Production</th><th>Organic / Conventional</th><th>Treatment</th><th>Bins Sent</th></tr></thead>
+                <tbody>@foreach (var line in Model.ReviewLines) { <tr><td>@line.Facility</td><td>@line.Room</td><td>@line.GrowerNumber</td><td>@line.Variety</td><td>@line.Production</td><td>@line.OrganicStatus</td><td>@line.Treatment</td><td>@line.Bins</td></tr> }</tbody></table>
+            </div>
+            <form method="post" action="/ProcessorShipments">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
+                <input type="hidden" name="ProcessorId" value="@Model.Form.ProcessorId" />
+                <input type="hidden" name="SaleRate" value="@Model.Form.SaleRate" />
+                <input type="hidden" name="PricingBasis" value="@Model.Form.PricingBasis" />
+                <input type="hidden" name="Currency" value="@Model.Form.Currency" />
+                <input type="hidden" name="ShippedAt" value="@Model.Form.ShippedAt.ToString("yyyy-MM-ddTHH:mm")" />
+                <input type="hidden" name="ReferenceNumber" value="@Model.Form.ReferenceNumber" />
+                <input type="hidden" name="Notes" value="@Model.Form.Notes" />
+                <input type="hidden" name="ConfirmedReview" value="true" />
+                @for (var i = 0; i < Model.Form.Lines.Count; i++)
+                {
+                    <input type="hidden" name="Lines[@i].SourceKey" value="@Model.Form.Lines[i].SourceKey" />
+                    <input type="hidden" name="Lines[@i].ExpectedAvailableBins" value="@Model.Form.Lines[i].ExpectedAvailableBins" />
+                    <input type="hidden" name="Lines[@i].BinsSent" value="@Model.Form.Lines[i].BinsSent" />
+                }
+                <div class="button-row"><button type="submit">Confirm and Save</button><a class="button secondary-button" href="/ProcessorShipments">Start Over</a></div>
+            </form>
+        }
+        else
+        {
+            <form method="post" action="/ProcessorShipments/Review">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
+                <div class="form-grid">
+                    <div class="field"><label>Processor</label><select name="ProcessorId" required><option value="">Select active Processor</option>@foreach (var processor in Model.Processors){<option value="@processor.Id" selected="@(Model.Form.ProcessorId == processor.Id ? "selected" : null)">@processor.Name@(string.IsNullOrWhiteSpace(processor.Code) ? "" : $" ({processor.Code})")</option>}</select></div>
+                    <div class="field"><label>Sale Price / Rate</label><input name="SaleRate" type="number" min="0.0001" step="0.0001" value="@Model.Form.SaleRate" required /></div>
+                    <div class="field"><label>Pricing Basis</label><select name="PricingBasis" required><option value="PerTon" selected="@(Model.Form.PricingBasis == ProcessorPricingBases.PerTon ? "selected" : null)">Per Ton</option><option value="PerBin" selected="@(Model.Form.PricingBasis == ProcessorPricingBases.PerBin ? "selected" : null)">Per Bin</option></select></div>
+                    <div class="field"><label>Currency</label><input name="Currency" maxlength="3" value="@Model.Form.Currency" required /></div>
+                    <div class="field"><label>Shipped / Sold At</label><input name="ShippedAt" type="datetime-local" value="@Model.Form.ShippedAt.ToString("yyyy-MM-ddTHH:mm")" required /></div>
+                    <div class="field"><label>Reference / Load Number</label><input name="ReferenceNumber" maxlength="100" value="@Model.Form.ReferenceNumber" /></div>
+                    <div class="field wide"><label>Notes</label><textarea name="Notes" maxlength="1000">@Model.Form.Notes</textarea></div>
+                </div>
+                <h3>Exact Current Inventory</h3>
+                <p class="muted">Enter bins only on the exact treated or untreated source segments being shipped.</p>
+                <div class="table-wrap"><table><thead><tr><th>Facility / Room</th><th>Grower</th><th>Variety</th><th>Production</th><th>Status</th><th>Treatment</th><th>Available</th><th>Bins Sent</th></tr></thead><tbody>
+                @for (var i = 0; i < Model.Inventory.Count; i++)
+                {
+                    var item = Model.Inventory[i];
+                    var bins = chosen.GetValueOrDefault(item.SourceKey);
+                    <tr>
+                        <td>@item.Facility / @item.Room</td><td>@item.GrowerNumber - @item.GrowerName</td><td>@item.VarietyName</td><td>@item.ProductionType</td><td>@item.InventoryStatus</td><td>@item.TreatmentSummary</td><td>@item.AvailableBins</td>
+                        <td><input type="hidden" name="Lines[@i].SourceKey" value="@item.SourceKey" /><input type="hidden" name="Lines[@i].ExpectedAvailableBins" value="@item.AvailableBins" /><input aria-label="Bins sent from @item.Room @item.GrowerNumber @item.VarietyName @item.TreatmentSummary" name="Lines[@i].BinsSent" type="number" inputmode="numeric" min="0" max="@item.AvailableBins" value="@(bins == 0 ? "" : bins)" /></td>
+                    </tr>
+                }
+                </tbody></table></div>
+                <button type="submit">Review Processor Shipment</button>
+            </form>
+        }
+    </section>
+}
+
+<section class="panel">
+    <h2>Processor Shipment History</h2>
+    <form class="form-grid" method="get" action="/ProcessorShipments">
+        <div class="field"><label>From</label><input type="date" name="from" value="@Model.FilterFrom" /></div>
+        <div class="field"><label>To</label><input type="date" name="to" value="@Model.FilterTo" /></div>
+        <div class="field"><label>Processor</label><select name="processorId"><option value="">All</option>@foreach(var p in Model.ReportProcessors){<option value="@p.Id" selected="@(p.Id == Model.FilterProcessorId ? "selected" : null)">@p.Name</option>}</select></div>
+        <div class="field"><label>Facility</label><select name="warehouseId"><option value="">All</option>@foreach(var facility in Model.Inventory.GroupBy(x => new { x.WarehouseId, x.Facility }).Select(x => x.Key).OrderBy(x => x.Facility)){<option value="@facility.WarehouseId" selected="@(facility.WarehouseId == Model.FilterWarehouseId ? "selected" : null)">@facility.Facility</option>}</select></div>
+        <button type="submit">Filter</button>
+    </form>
+    <div class="table-wrap"><table><thead><tr><th>Shipment Date</th><th>Processor</th><th>Total Bins</th><th>Sale Rate</th><th>Reference</th><th>Created By</th><th>Status</th></tr></thead><tbody>
+    @foreach(var item in Model.History){<tr><td><a href="/ProcessorShipments/@item.Id">@item.ShippedAt.ToString("g")</a></td><td>@item.Processor</td><td>@item.TotalBins</td><td>@item.Currency @item.SaleRate.ToString("0.00") @ProcessorPricingBases.Suffix(item.PricingBasis)</td><td>@item.ReferenceNumber</td><td>@item.CreatedBy</td><td>@(item.IsReversed ? "Reversed" : "Active")</td></tr>}
+    </tbody></table></div>
+</section>

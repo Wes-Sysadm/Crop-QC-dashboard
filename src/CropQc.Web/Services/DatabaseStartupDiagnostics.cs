@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260819142656_AddTreatmentReportAttachments";
+    public const string ExpectedSchemaMigration = "20260821031442_AddProcessorShipments";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -345,7 +345,71 @@ public static class DatabaseStartupDiagnostics
         new("RoomTreatmentApplicationAttachments.IsDeleted", "RoomTreatmentApplicationAttachments", "IsDeleted", RequireNotNullable: true),
         new("RoomTreatmentApplicationAttachments.DeletedAt", "RoomTreatmentApplicationAttachments", "DeletedAt", RequireNullable: true),
         new("RoomTreatmentApplicationAttachments.DeletedByUserId", "RoomTreatmentApplicationAttachments", "DeletedByUserId", RequireNullable: true),
-        new("RoomTreatmentApplicationAttachments.DeleteReason", "RoomTreatmentApplicationAttachments", "DeleteReason", RequireNullable: true)
+        new("RoomTreatmentApplicationAttachments.DeleteReason", "RoomTreatmentApplicationAttachments", "DeleteReason", RequireNullable: true),
+        new("RoomInventoryAdjustments.ProcessorShipmentLineId", "RoomInventoryAdjustments", "ProcessorShipmentLineId", RequireNullable: true),
+        new("TreatmentLineageMovements.ProcessorShipmentLineId", "TreatmentLineageMovements", "ProcessorShipmentLineId", RequireNullable: true),
+        new("Processors", "Processors", null),
+        new("Processors.Id", "Processors", "Id", RequireNotNullable: true),
+        new("Processors.Name", "Processors", "Name", RequireNotNullable: true),
+        new("Processors.Code", "Processors", "Code", RequireNullable: true),
+        new("Processors.IsActive", "Processors", "IsActive", RequireNotNullable: true),
+        new("Processors.Notes", "Processors", "Notes", RequireNullable: true),
+        new("Processors.CreatedAt", "Processors", "CreatedAt", RequireNotNullable: true),
+        new("Processors.CreatedByUserId", "Processors", "CreatedByUserId", RequireNullable: true),
+        new("Processors.UpdatedAt", "Processors", "UpdatedAt", RequireNotNullable: true),
+        new("Processors.UpdatedByUserId", "Processors", "UpdatedByUserId", RequireNullable: true),
+        new("ProcessorShipments", "ProcessorShipments", null),
+        new("ProcessorShipments.Id", "ProcessorShipments", "Id", RequireNotNullable: true),
+        new("ProcessorShipments.OperationKey", "ProcessorShipments", "OperationKey", RequireNotNullable: true),
+        new("ProcessorShipments.ProcessorId", "ProcessorShipments", "ProcessorId", RequireNotNullable: true),
+        new("ProcessorShipments.ProcessorNameSnapshot", "ProcessorShipments", "ProcessorNameSnapshot", RequireNotNullable: true),
+        new("ProcessorShipments.ShippedAt", "ProcessorShipments", "ShippedAt", RequireNotNullable: true),
+        new("ProcessorShipments.OriginalSaleRate", "ProcessorShipments", "OriginalSaleRate", RequireNotNullable: true),
+        new("ProcessorShipments.OriginalPricingBasis", "ProcessorShipments", "OriginalPricingBasis", RequireNotNullable: true),
+        new("ProcessorShipments.SaleRate", "ProcessorShipments", "SaleRate", RequireNotNullable: true),
+        new("ProcessorShipments.PricingBasis", "ProcessorShipments", "PricingBasis", RequireNotNullable: true),
+        new("ProcessorShipments.Currency", "ProcessorShipments", "Currency", RequireNotNullable: true),
+        new("ProcessorShipments.ReferenceNumber", "ProcessorShipments", "ReferenceNumber", RequireNullable: true),
+        new("ProcessorShipments.Notes", "ProcessorShipments", "Notes", RequireNullable: true),
+        new("ProcessorShipments.CreatedByUserId", "ProcessorShipments", "CreatedByUserId", RequireNotNullable: true),
+        new("ProcessorShipments.CreatedAt", "ProcessorShipments", "CreatedAt", RequireNotNullable: true),
+        new("ProcessorShipments.ReversedAt", "ProcessorShipments", "ReversedAt", RequireNullable: true),
+        new("ProcessorShipments.ReversedByUserId", "ProcessorShipments", "ReversedByUserId", RequireNullable: true),
+        new("ProcessorShipments.ReversalReason", "ProcessorShipments", "ReversalReason", RequireNullable: true),
+        new("ProcessorShipments.ConcurrencyVersion", "ProcessorShipments", "ConcurrencyVersion", RequireNotNullable: true),
+        new("ProcessorShipmentLines", "ProcessorShipmentLines", null),
+        new("ProcessorShipmentLines.Id", "ProcessorShipmentLines", "Id", RequireNotNullable: true),
+        new("ProcessorShipmentLines.ProcessorShipmentId", "ProcessorShipmentLines", "ProcessorShipmentId", RequireNotNullable: true),
+        new("ProcessorShipmentLines.WarehouseId", "ProcessorShipmentLines", "WarehouseId", RequireNotNullable: true),
+        new("ProcessorShipmentLines.RoomId", "ProcessorShipmentLines", "RoomId", RequireNotNullable: true),
+        new("ProcessorShipmentLines.CropYear", "ProcessorShipmentLines", "CropYear", RequireNullable: true),
+        new("ProcessorShipmentLines.ReceiptId", "ProcessorShipmentLines", "ReceiptId", RequireNullable: true),
+        new("ProcessorShipmentLines.SourceInventoryAdjustmentId", "ProcessorShipmentLines", "SourceInventoryAdjustmentId", RequireNullable: true),
+        new("ProcessorShipmentLines.GrowerLotId", "ProcessorShipmentLines", "GrowerLotId", RequireNullable: true),
+        new("ProcessorShipmentLines.FruitProfileId", "ProcessorShipmentLines", "FruitProfileId", RequireNullable: true),
+        new("ProcessorShipmentLines.GrowerNumberSnapshot", "ProcessorShipmentLines", "GrowerNumberSnapshot", RequireNullable: true),
+        new("ProcessorShipmentLines.GrowerNameSnapshot", "ProcessorShipmentLines", "GrowerNameSnapshot", RequireNotNullable: true),
+        new("ProcessorShipmentLines.LotNumberSnapshot", "ProcessorShipmentLines", "LotNumberSnapshot", RequireNotNullable: true),
+        new("ProcessorShipmentLines.VarietyCodeSnapshot", "ProcessorShipmentLines", "VarietyCodeSnapshot", RequireNotNullable: true),
+        new("ProcessorShipmentLines.ProductionTypeSnapshot", "ProcessorShipmentLines", "ProductionTypeSnapshot", RequireNotNullable: true),
+        new("ProcessorShipmentLines.IsOrganicSnapshot", "ProcessorShipmentLines", "IsOrganicSnapshot", RequireNullable: true),
+        new("ProcessorShipmentLines.InventoryStatusSnapshot", "ProcessorShipmentLines", "InventoryStatusSnapshot", RequireNullable: true),
+        new("ProcessorShipmentLines.TreatmentStateSnapshot", "ProcessorShipmentLines", "TreatmentStateSnapshot", RequireNotNullable: true),
+        new("ProcessorShipmentLines.TreatmentSignatureSnapshot", "ProcessorShipmentLines", "TreatmentSignatureSnapshot", RequireNotNullable: true),
+        new("ProcessorShipmentLines.TreatmentSummarySnapshot", "ProcessorShipmentLines", "TreatmentSummarySnapshot", RequireNotNullable: true),
+        new("ProcessorShipmentLines.BinsSent", "ProcessorShipmentLines", "BinsSent", RequireNotNullable: true),
+        new("ProcessorShipmentLines.PoundsPerBinSnapshot", "ProcessorShipmentLines", "PoundsPerBinSnapshot", RequireNullable: true),
+        new("ProcessorShipmentPriceCorrections", "ProcessorShipmentPriceCorrections", null),
+        new("ProcessorShipmentPriceCorrections.Id", "ProcessorShipmentPriceCorrections", "Id", RequireNotNullable: true),
+        new("ProcessorShipmentPriceCorrections.ProcessorShipmentId", "ProcessorShipmentPriceCorrections", "ProcessorShipmentId", RequireNotNullable: true),
+        new("ProcessorShipmentPriceCorrections.OperationKey", "ProcessorShipmentPriceCorrections", "OperationKey", RequireNotNullable: true),
+        new("ProcessorShipmentPriceCorrections.OriginalSaleRate", "ProcessorShipmentPriceCorrections", "OriginalSaleRate", RequireNotNullable: true),
+        new("ProcessorShipmentPriceCorrections.OriginalPricingBasis", "ProcessorShipmentPriceCorrections", "OriginalPricingBasis", RequireNotNullable: true),
+        new("ProcessorShipmentPriceCorrections.CorrectedSaleRate", "ProcessorShipmentPriceCorrections", "CorrectedSaleRate", RequireNotNullable: true),
+        new("ProcessorShipmentPriceCorrections.CorrectedPricingBasis", "ProcessorShipmentPriceCorrections", "CorrectedPricingBasis", RequireNotNullable: true),
+        new("ProcessorShipmentPriceCorrections.Reason", "ProcessorShipmentPriceCorrections", "Reason", RequireNotNullable: true),
+        new("ProcessorShipmentPriceCorrections.CorrectedByUserId", "ProcessorShipmentPriceCorrections", "CorrectedByUserId", RequireNotNullable: true),
+        new("ProcessorShipmentPriceCorrections.CorrectedAt", "ProcessorShipmentPriceCorrections", "CorrectedAt", RequireNotNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
@@ -431,7 +495,27 @@ public static class DatabaseStartupDiagnostics
         new("IX_RoomTreatmentApplicationAttachments_CreatedByUserId", "RoomTreatmentApplicationAttachments", "IX_RoomTreatmentApplicationAttachments_CreatedByUserId"),
         new("IX_RoomTreatmentApplicationAttachments_DeletedByUserId", "RoomTreatmentApplicationAttachments", "IX_RoomTreatmentApplicationAttachments_DeletedByUserId"),
         new("IX_TreatmentReportAttachments_Application_IsDeleted_CreatedAt", "RoomTreatmentApplicationAttachments", "IX_TreatmentReportAttachments_Application_IsDeleted_CreatedAt"),
-        new("UX_TreatmentReportAttachments_Application_OperationKey", "RoomTreatmentApplicationAttachments", "UX_TreatmentReportAttachments_Application_OperationKey", RequireUnique: true)
+        new("UX_TreatmentReportAttachments_Application_OperationKey", "RoomTreatmentApplicationAttachments", "UX_TreatmentReportAttachments_Application_OperationKey", RequireUnique: true),
+        new("IX_TreatmentLineageMovements_ProcessorShipmentLineId", "TreatmentLineageMovements", "IX_TreatmentLineageMovements_ProcessorShipmentLineId"),
+        new("IX_RoomInventoryAdjustments_ProcessorShipmentLineId", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_ProcessorShipmentLineId"),
+        new("IX_RoomInventoryAdjustments_ProcessorShipmentLineId_AdjustmentType", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_ProcessorShipmentLineId_AdjustmentType", RequireUnique: true),
+        new("IX_Processors_CreatedByUserId", "Processors", "IX_Processors_CreatedByUserId"),
+        new("IX_Processors_IsActive_Name", "Processors", "IX_Processors_IsActive_Name"),
+        new("IX_Processors_Name", "Processors", "IX_Processors_Name"),
+        new("IX_Processors_UpdatedByUserId", "Processors", "IX_Processors_UpdatedByUserId"),
+        new("IX_ProcessorShipmentLines_ProcessorShipmentId", "ProcessorShipmentLines", "IX_ProcessorShipmentLines_ProcessorShipmentId"),
+        new("IX_ProcessorShipmentLines_ReceiptId", "ProcessorShipmentLines", "IX_ProcessorShipmentLines_ReceiptId"),
+        new("IX_ProcessorShipmentLines_RoomId", "ProcessorShipmentLines", "IX_ProcessorShipmentLines_RoomId"),
+        new("IX_ProcessorShipmentLines_SourceInventoryAdjustmentId", "ProcessorShipmentLines", "IX_ProcessorShipmentLines_SourceInventoryAdjustmentId"),
+        new("IX_ProcessorShipmentLines_WarehouseId_RoomId", "ProcessorShipmentLines", "IX_ProcessorShipmentLines_WarehouseId_RoomId"),
+        new("IX_ProcessorShipmentPriceCorrections_CorrectedByUserId", "ProcessorShipmentPriceCorrections", "IX_ProcessorShipmentPriceCorrections_CorrectedByUserId"),
+        new("IX_ProcessorShipmentPriceCorrections_OperationKey", "ProcessorShipmentPriceCorrections", "IX_ProcessorShipmentPriceCorrections_OperationKey", RequireUnique: true),
+        new("IX_ProcessorShipmentPriceCorrections_ProcessorShipmentId_CorrectedAt", "ProcessorShipmentPriceCorrections", "IX_ProcessorShipmentPriceCorrections_ProcessorShipmentId_CorrectedAt"),
+        new("IX_ProcessorShipments_CreatedByUserId", "ProcessorShipments", "IX_ProcessorShipments_CreatedByUserId"),
+        new("IX_ProcessorShipments_OperationKey", "ProcessorShipments", "IX_ProcessorShipments_OperationKey", RequireUnique: true),
+        new("IX_ProcessorShipments_ProcessorId", "ProcessorShipments", "IX_ProcessorShipments_ProcessorId"),
+        new("IX_ProcessorShipments_ReversedByUserId", "ProcessorShipments", "IX_ProcessorShipments_ReversedByUserId"),
+        new("IX_ProcessorShipments_ShippedAt_ProcessorId", "ProcessorShipments", "IX_ProcessorShipments_ShippedAt_ProcessorId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
@@ -500,7 +584,21 @@ public static class DatabaseStartupDiagnostics
         new("FK_TreatmentLineageSegmentApplications_TreatmentLineageSegments_TreatmentLineageSegmentId", "TreatmentLineageSegmentApplications", "FK_TreatmentLineageSegmentApplications_TreatmentLineageSegments_TreatmentLineageSegmentId"),
         new("FK_RoomTreatmentApplicationAttachments_RoomTreatmentApplications_RoomTreatmentApplicationId", "RoomTreatmentApplicationAttachments", "FK_RoomTreatmentApplicationAttachments_RoomTreatmentApplications_RoomTreatmentApplicationId"),
         new("FK_RoomTreatmentApplicationAttachments_Users_CreatedByUserId", "RoomTreatmentApplicationAttachments", "FK_RoomTreatmentApplicationAttachments_Users_CreatedByUserId"),
-        new("FK_RoomTreatmentApplicationAttachments_Users_DeletedByUserId", "RoomTreatmentApplicationAttachments", "FK_RoomTreatmentApplicationAttachments_Users_DeletedByUserId")
+        new("FK_RoomTreatmentApplicationAttachments_Users_DeletedByUserId", "RoomTreatmentApplicationAttachments", "FK_RoomTreatmentApplicationAttachments_Users_DeletedByUserId"),
+        new("FK_Processors_Users_CreatedByUserId", "Processors", "FK_Processors_Users_CreatedByUserId"),
+        new("FK_Processors_Users_UpdatedByUserId", "Processors", "FK_Processors_Users_UpdatedByUserId"),
+        new("FK_ProcessorShipments_Processors_ProcessorId", "ProcessorShipments", "FK_ProcessorShipments_Processors_ProcessorId"),
+        new("FK_ProcessorShipments_Users_CreatedByUserId", "ProcessorShipments", "FK_ProcessorShipments_Users_CreatedByUserId"),
+        new("FK_ProcessorShipments_Users_ReversedByUserId", "ProcessorShipments", "FK_ProcessorShipments_Users_ReversedByUserId"),
+        new("FK_ProcessorShipmentLines_ProcessorShipments_ProcessorShipmentId", "ProcessorShipmentLines", "FK_ProcessorShipmentLines_ProcessorShipments_ProcessorShipmentId"),
+        new("FK_ProcessorShipmentLines_Receipts_ReceiptId", "ProcessorShipmentLines", "FK_ProcessorShipmentLines_Receipts_ReceiptId"),
+        new("FK_ProcessorShipmentLines_RoomInventoryAdjustments_SourceInventoryAdjustmentId", "ProcessorShipmentLines", "FK_ProcessorShipmentLines_RoomInventoryAdjustments_SourceInventoryAdjustmentId"),
+        new("FK_ProcessorShipmentLines_Rooms_RoomId", "ProcessorShipmentLines", "FK_ProcessorShipmentLines_Rooms_RoomId"),
+        new("FK_ProcessorShipmentLines_Warehouses_WarehouseId", "ProcessorShipmentLines", "FK_ProcessorShipmentLines_Warehouses_WarehouseId"),
+        new("FK_ProcessorShipmentPriceCorrections_ProcessorShipments_ProcessorShipmentId", "ProcessorShipmentPriceCorrections", "FK_ProcessorShipmentPriceCorrections_ProcessorShipments_ProcessorShipmentId"),
+        new("FK_ProcessorShipmentPriceCorrections_Users_CorrectedByUserId", "ProcessorShipmentPriceCorrections", "FK_ProcessorShipmentPriceCorrections_Users_CorrectedByUserId"),
+        new("FK_RoomInventoryAdjustments_ProcessorShipmentLines_ProcessorShipmentLineId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_ProcessorShipmentLines_ProcessorShipmentLineId"),
+        new("FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId", "TreatmentLineageMovements", "FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
@@ -524,7 +622,11 @@ public static class DatabaseStartupDiagnostics
         new("PK_TreatmentLineageSegments", "TreatmentLineageSegments", "PK_TreatmentLineageSegments"),
         new("PK_TreatmentLineageSegmentApplications", "TreatmentLineageSegmentApplications", "PK_TreatmentLineageSegmentApplications"),
         new("PK_TreatmentLineageMovements", "TreatmentLineageMovements", "PK_TreatmentLineageMovements"),
-        new("PK_RoomTreatmentApplicationAttachments", "RoomTreatmentApplicationAttachments", "PK_RoomTreatmentApplicationAttachments")
+        new("PK_RoomTreatmentApplicationAttachments", "RoomTreatmentApplicationAttachments", "PK_RoomTreatmentApplicationAttachments"),
+        new("PK_Processors", "Processors", "PK_Processors"),
+        new("PK_ProcessorShipments", "ProcessorShipments", "PK_ProcessorShipments"),
+        new("PK_ProcessorShipmentLines", "ProcessorShipmentLines", "PK_ProcessorShipmentLines"),
+        new("PK_ProcessorShipmentPriceCorrections", "ProcessorShipmentPriceCorrections", "PK_ProcessorShipmentPriceCorrections")
     ];
 
     public static async Task InspectAsync(

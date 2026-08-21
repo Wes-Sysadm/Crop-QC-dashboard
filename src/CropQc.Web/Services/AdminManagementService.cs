@@ -80,6 +80,7 @@ public sealed class AdminManagementService(
             "starch-scale-values" => await StarchPage(canEdit, cancellationToken),
             "size-thresholds" => await SizeThresholdsPage(canEdit, cancellationToken),
             "treatment-chemicals" => await TreatmentChemicalsPage(canEdit, cancellationToken),
+            "processors" => await ProcessorsPage(canEdit, cancellationToken),
             "grower-lots" => await GrowerLotsPage(canEdit, cancellationToken),
             _ => new("Master data", null, ["Page"], MasterDataLinks().Select(x => (IReadOnlyList<string>)[x.Label]).ToList(), "index", canEdit)
         };
@@ -100,6 +101,7 @@ public sealed class AdminManagementService(
             "starch-scale-values" => await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Value = x.Value, SortOrder = x.SortOrder, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "size-thresholds" => await WithCommodityOptions(await dbContext.FruitSizeConversionThresholds.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, FruitType = x.FruitType, SizeCategory = x.SizeCategory, MinimumWeightGrams = x.MinimumWeightGrams, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken),
             "treatment-chemicals" => await dbContext.TreatmentChemicals.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, ProductName = x.ProductName, CommonName = x.CommonName, Crop = x.Crop, Volume = x.Volume, Unit = x.Unit, UnitPrice = x.UnitPrice, Currency = x.Currency, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
+            "processors" => await dbContext.Processors.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, Code = x.Code ?? "", Description = x.Notes, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             _ => null
         };
     }
@@ -120,6 +122,7 @@ public sealed class AdminManagementService(
             "starch-scale-values" => await SaveStarchValue(form, changedByEmail, cancellationToken),
             "size-thresholds" => await SaveSizeThreshold(form, changedByEmail, cancellationToken),
             "treatment-chemicals" => await SaveTreatmentChemical(form, changedByEmail, cancellationToken),
+            "processors" => await SaveProcessor(form, changedByEmail, cancellationToken),
             _ => "Unsupported master data type."
         };
     }
@@ -161,13 +164,26 @@ public sealed class AdminManagementService(
             "starch-scale-values" => await dbContext.StarchScaleValues.FindAsync([id], cancellationToken),
             "size-thresholds" => await dbContext.FruitSizeConversionThresholds.FindAsync([id], cancellationToken),
             "treatment-chemicals" => await dbContext.TreatmentChemicals.FindAsync([id], cancellationToken),
+            "processors" => await dbContext.Processors.FindAsync([id], cancellationToken),
             _ => null
         };
 
         if (entity is null) return "Record not found.";
-        var before = JsonSerializer.Serialize(entity);
+        var before = entity is Processor processorBefore
+            ? JsonSerializer.Serialize(new { processorBefore.Name, processorBefore.Code, processorBefore.Notes, processorBefore.IsActive })
+            : JsonSerializer.Serialize(entity);
         entity.GetType().GetProperty("IsActive")?.SetValue(entity, false);
-        await AddAuditAsync("deactivate", type, id.ToString(), changedByEmail, before, JsonSerializer.Serialize(entity), cancellationToken);
+        if (entity is Processor processor)
+        {
+            var actor = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Email == changedByEmail, cancellationToken);
+            processor.UpdatedAt = BusinessTime.UtcNow;
+            processor.UpdatedByUserId = actor?.Id;
+        }
+        var after = entity is Processor processorAfter
+            ? JsonSerializer.Serialize(new { processorAfter.Name, processorAfter.Code, processorAfter.Notes, processorAfter.IsActive })
+            : JsonSerializer.Serialize(entity);
+        var isProcessor = type.Equals("processors", StringComparison.OrdinalIgnoreCase);
+        await AddAuditAsync(isProcessor ? "ProcessorDeactivated" : "deactivate", isProcessor ? nameof(Processor) : type, id.ToString(), changedByEmail, before, after, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         if (type == "canonical-growers")
         {
@@ -583,6 +599,15 @@ public sealed class AdminManagementService(
             }, x.IsActive, null))
             .ToListAsync(ct);
         return Page("Treatment Chemicals", "treatment-chemicals", ["Common Name", "Product Name", "Crop", "Volume", "Unit", "Unit Price", "Currency", "Status"], rows, canEdit);
+    }
+
+    private async Task<MasterDataPageViewModel> ProcessorsPage(bool canEdit, CancellationToken ct)
+    {
+        var rows = await dbContext.Processors.AsNoTracking()
+            .OrderBy(x => x.Name)
+            .Select(x => new MasterDataEditItem(x.Id, new[] { x.Name, x.Code ?? "", x.Notes ?? "", x.IsActive ? "Active" : "Inactive" }, x.IsActive, null))
+            .ToListAsync(ct);
+        return Page("Processors", "processors", ["Name", "Code / Short Name", "Notes", "Status"], rows, canEdit);
     }
 
     private async Task<MasterDataPageViewModel> GrowerLotsPage(bool canEdit, CancellationToken ct)
@@ -1581,6 +1606,30 @@ public sealed class AdminManagementService(
         return null;
     }
 
+    private async Task<string?> SaveProcessor(MasterDataEditForm form, string by, CancellationToken ct)
+    {
+        if (Blank(form.Name)) return "Processor name is required.";
+        if (form.Name.Trim().Length > 200 || form.Code.Trim().Length > 50 || form.Description?.Trim().Length > 1000)
+            return "Processor name, code, or notes are too long.";
+        var actor = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Email == by, ct);
+        var entity = form.Id is null
+            ? new Processor { Name = "", CreatedAt = BusinessTime.UtcNow, UpdatedAt = BusinessTime.UtcNow, CreatedByUserId = actor?.Id }
+            : await dbContext.Processors.FindAsync([form.Id.Value], ct);
+        if (entity is null) return "Processor was not found.";
+        var before = form.Id is null ? null : JsonSerializer.Serialize(new { entity.Name, entity.Code, entity.Notes, entity.IsActive });
+        entity.Name = form.Name.Trim();
+        entity.Code = Blank(form.Code) ? null : form.Code.Trim();
+        entity.Notes = Blank(form.Description) ? null : form.Description!.Trim();
+        entity.IsActive = form.IsActive;
+        entity.UpdatedAt = BusinessTime.UtcNow;
+        entity.UpdatedByUserId = actor?.Id;
+        if (form.Id is null) dbContext.Processors.Add(entity);
+        await dbContext.SaveChangesAsync(ct);
+        await AddAuditAsync(form.Id is null ? "ProcessorCreated" : "ProcessorUpdated", "Processor", entity.Id.ToString(), by, before, JsonSerializer.Serialize(new { entity.Name, entity.Code, entity.IsActive }), ct);
+        await dbContext.SaveChangesAsync(ct);
+        return null;
+    }
+
     private async Task EnsureConfigurationDefaultsAsync(CancellationToken ct)
     {
         foreach (var item in ConfigurationDefaults)
@@ -1824,6 +1873,7 @@ public sealed class AdminManagementService(
         ("Grower Lots", "/MasterData/grower-lots"),
         ("Starch scale values", "/MasterData/starch-scale-values"),
         ("Size thresholds", "/MasterData/size-thresholds"),
-        ("Treatment Chemicals", "/MasterData/treatment-chemicals")
+        ("Treatment Chemicals", "/MasterData/treatment-chemicals"),
+        ("Processors", "/MasterData/processors")
     ];
 }

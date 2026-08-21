@@ -72,6 +72,12 @@ else if (Model.Type == "rooms")
         })();
     </script>
 }
+else if (Model.Type == "processors")
+{
+    <div class="field"><label>Processor Name</label><input name="Name" value="@Model.Name" maxlength="200" required /></div>
+    <div class="field"><label>Code / Short Name</label><input name="Code" value="@Model.Code" maxlength="50" /></div>
+    <div class="field wide"><label>Notes</label><textarea name="Description" maxlength="1000">@Model.Description</textarea></div>
+}
 else if (Model.Type == "grower-lots")
 {
     <div class="field wide"><label>Grower Name</label><input name="Name" value="@Model.Name" required /></div>

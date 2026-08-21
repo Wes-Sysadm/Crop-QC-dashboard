@@ -30,6 +30,7 @@ public static class ApplicationAreas
     public const string ReceiptDelete = "receipt-delete";
     public const string CurrentLots = "current-lots";
     public const string BinsRun = "bins-run";
+    public const string ProcessorShipments = "processor-shipments";
     public const string Rooms = "rooms";
     public const string RoomTransactions = "room-transactions";
     public const string GrowerLots = "grower-lots";
@@ -75,6 +76,7 @@ public static class ApplicationAreas
         new(Receipts, "Receipts", "Operations", "/Receipts"),
         new(CurrentLots, "Current Lots", "Inventory", "/Admin/RoomInventory"),
         new(BinsRun, "Bins Run", "Inventory", "/BinsRun"),
+        new(ProcessorShipments, "Processor Shipments", "Operations", "/ProcessorShipments", BinsRun),
         new(ProjectionPlanner, "Projection Planner", "Planning", "/BinsRun?Section=Planner", BinsRun),
         new(ProjectionOutcome, "Planning Projection Reports", "Planning", "/BinsRun?Section=Planner", BinsRun),
         new(ActualRuns, "Actual Runs", "Operations", "/BinsRun?Section=Actual", BinsRun),
@@ -129,6 +131,9 @@ public static class AccessPolicyNames
     public const string BinsRunView = "BinsRunView";
     public const string BinsRunEdit = "BinsRunEdit";
     public const string BinsRunAdmin = "BinsRunAdmin";
+    public const string ProcessorShipmentsView = "ProcessorShipmentsView";
+    public const string ProcessorShipmentsEdit = "ProcessorShipmentsEdit";
+    public const string ProcessorShipmentsAdmin = "ProcessorShipmentsAdmin";
     public const string RoomsView = "RoomsView";
     public const string RoomTransactionsEdit = "RoomTransactionsEdit";
     public const string RoomTransactionsAdmin = "RoomTransactionsAdmin";
@@ -187,7 +192,8 @@ public static class BuiltInRoleAccessDefaults
         Grant(access, PageAccessLevel.View,
             ApplicationAreas.Dashboard, ApplicationAreas.DailyQc, ApplicationAreas.FieldSamples,
             ApplicationAreas.QcReports, ApplicationAreas.Receipts, ApplicationAreas.CurrentLots,
-            ApplicationAreas.Rooms, ApplicationAreas.Inventory, ApplicationAreas.GrowerLots);
+            ApplicationAreas.Rooms, ApplicationAreas.Inventory, ApplicationAreas.GrowerLots,
+            ApplicationAreas.ProcessorShipments);
 
         if (string.Equals(roleName, BuiltInRoleNames.Viewer, StringComparison.OrdinalIgnoreCase)) return access;
 
@@ -215,6 +221,7 @@ public static class BuiltInRoleAccessDefaults
                 ApplicationAreas.Rooms, ApplicationAreas.RoomTransactions, ApplicationAreas.GrowerLots,
                 ApplicationAreas.ProjectionPlanner, ApplicationAreas.ProjectionOutcome, ApplicationAreas.ActualRuns,
                 ApplicationAreas.PackoutResults, ApplicationAreas.Transfers, ApplicationAreas.TrueUp,
+                ApplicationAreas.ProcessorShipments,
                 ApplicationAreas.Inventory, ApplicationAreas.MasterData, ApplicationAreas.QcStations,
                 ApplicationAreas.OrchardRecipients, ApplicationAreas.OrchardManagers,
                 ApplicationAreas.Facilities, ApplicationAreas.Varieties, ApplicationAreas.Grades,

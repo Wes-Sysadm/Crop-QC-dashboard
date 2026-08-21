@@ -100,7 +100,11 @@ public sealed class MasterDataController(
     }
 
     private Task<bool> CanTypeAsync(string type, PageAccessLevel level, CancellationToken cancellationToken) =>
-        accessService.HasAccessAsync(User, AreaForType(type), level, cancellationToken);
+        accessService.HasAccessAsync(
+            User,
+            AreaForType(type),
+            type.Equals("processors", StringComparison.OrdinalIgnoreCase) && level > PageAccessLevel.View ? PageAccessLevel.Admin : level,
+            cancellationToken);
 
     private static string AreaForType(string type) => type.Trim().ToLowerInvariant() switch
     {

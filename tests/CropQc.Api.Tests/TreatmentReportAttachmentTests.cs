@@ -190,7 +190,7 @@ public sealed class TreatmentReportAttachmentTests
     }
 
     [Fact]
-    public void Migration_compatibility_and_502_object_gate_are_bounded_and_current()
+    public void Migration_compatibility_and_604_object_gate_are_bounded_and_current()
     {
         var migration = Source("src", "CropQc.Data", "Migrations", "20260819142656_AddTreatmentReportAttachments.cs");
         var preflight = Source("scripts", "postgresql", "preflight-treatment-report-attachments.sql");
@@ -207,8 +207,8 @@ public sealed class TreatmentReportAttachmentTests
         Assert.Contains("cropqc.test_force_treatment_report_failure", apply);
         Assert.DoesNotContain("INSERT INTO \"__EFMigrationsHistory\"", apply, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("26 AS checked_target_objects", verify);
-        Assert.Contains("20260819142656_AddTreatmentReportAttachments", gate);
-        Assert.Equal(502, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Contains("20260821031442_AddProcessorShipments", gate);
+        Assert.Equal(604, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     private static FormFile File(string name, string contentType, byte[]? bytes = null)

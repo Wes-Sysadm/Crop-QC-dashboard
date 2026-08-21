@@ -16,6 +16,8 @@ public static class TreatmentLineageMovementTypes
     public const string BinsRun = "BinsRun";
     public const string BinsRunReversal = "BinsRunReversal";
     public const string ManualTrueUp = "ManualTrueUp";
+    public const string ProcessorShipment = "ProcessorShipment";
+    public const string ProcessorShipmentReversal = "ProcessorShipmentReversal";
 }
 
 public sealed class TreatmentChemical
@@ -179,6 +181,8 @@ public sealed class TreatmentLineageMovement
     public RoomInventoryLoss? RoomInventoryLoss { get; set; }
     public long? BinsRunEntryId { get; set; }
     public BinsRunEntry? BinsRunEntry { get; set; }
+    public long? ProcessorShipmentLineId { get; set; }
+    public ProcessorShipmentLine? ProcessorShipmentLine { get; set; }
     public long? ReversesTreatmentLineageMovementId { get; set; }
     public TreatmentLineageMovement? ReversesTreatmentLineageMovement { get; set; }
     public DateTimeOffset OccurredAt { get; set; }

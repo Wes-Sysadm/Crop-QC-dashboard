@@ -45,6 +45,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<TreatmentLineageSegment> TreatmentLineageSegments => Set<TreatmentLineageSegment>();
     public DbSet<TreatmentLineageSegmentApplication> TreatmentLineageSegmentApplications => Set<TreatmentLineageSegmentApplication>();
     public DbSet<TreatmentLineageMovement> TreatmentLineageMovements => Set<TreatmentLineageMovement>();
+    public DbSet<Processor> Processors => Set<Processor>();
+    public DbSet<ProcessorShipment> ProcessorShipments => Set<ProcessorShipment>();
+    public DbSet<ProcessorShipmentLine> ProcessorShipmentLines => Set<ProcessorShipmentLine>();
+    public DbSet<ProcessorShipmentPriceCorrection> ProcessorShipmentPriceCorrections => Set<ProcessorShipmentPriceCorrection>();
     public DbSet<Receipt> Receipts => Set<Receipt>();
     public DbSet<ReceiptInventoryOverride> ReceiptInventoryOverrides => Set<ReceiptInventoryOverride>();
     public DbSet<RoomDepletion> RoomDepletions => Set<RoomDepletion>();
@@ -1390,6 +1394,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasIndex(x => new { x.ActualRunId, x.ActualRunRevisionId });
             entity.HasIndex(x => x.ReceiptInventoryOverrideId);
             entity.HasIndex(x => x.RoomInventoryLossId);
+            entity.HasIndex(x => x.ProcessorShipmentLineId);
             var operationKeyIndex = entity.HasIndex(x => x.InventoryOperationKey).IsUnique();
             operationKeyIndex.HasFilter(isPostgreSqlProvider
                 ? "\"InventoryOperationKey\" IS NOT NULL"
@@ -1402,6 +1407,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             lossSideIndex.HasFilter(isPostgreSqlProvider
                 ? "\"RoomInventoryLossId\" IS NOT NULL"
                 : "[RoomInventoryLossId] IS NOT NULL");
+            var processorSideIndex = entity.HasIndex(x => new { x.ProcessorShipmentLineId, x.AdjustmentType }).IsUnique();
+            processorSideIndex.HasFilter(isPostgreSqlProvider
+                ? "\"ProcessorShipmentLineId\" IS NOT NULL"
+                : "[ProcessorShipmentLineId] IS NOT NULL");
             entity.HasOne(x => x.Receipt)
                 .WithMany(x => x.RoomInventoryAdjustments)
                 .HasForeignKey(x => x.ReceiptId)
@@ -1441,6 +1450,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.RoomInventoryLoss)
                 .WithMany(x => x.InventoryAdjustments)
                 .HasForeignKey(x => x.RoomInventoryLossId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ProcessorShipmentLine)
+                .WithMany(x => x.InventoryAdjustments)
+                .HasForeignKey(x => x.ProcessorShipmentLineId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.ActualRun)
                 .WithMany()
@@ -1914,6 +1927,73 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.RoomTreatmentApplication).WithMany(x => x.SegmentApplications).HasForeignKey(x => x.RoomTreatmentApplicationId).OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<Processor>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Code).HasMaxLength(50);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.HasIndex(x => x.Name);
+            entity.HasIndex(x => new { x.IsActive, x.Name });
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ProcessorShipment>(entity =>
+        {
+            entity.Property(x => x.OperationKey).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.ProcessorNameSnapshot).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.OriginalSaleRate).HasPrecision(18, 4);
+            entity.Property(x => x.OriginalPricingBasis).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.SaleRate).HasPrecision(18, 4);
+            entity.Property(x => x.PricingBasis).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(x => x.ReferenceNumber).HasMaxLength(100);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.Property(x => x.ReversalReason).HasMaxLength(1000);
+            entity.Property(x => x.ConcurrencyVersion).IsConcurrencyToken();
+            entity.HasIndex(x => x.OperationKey).IsUnique();
+            entity.HasIndex(x => new { x.ShippedAt, x.ProcessorId });
+            entity.HasOne(x => x.Processor).WithMany(x => x.Shipments).HasForeignKey(x => x.ProcessorId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ReversedByUser).WithMany().HasForeignKey(x => x.ReversedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ProcessorShipmentLine>(entity =>
+        {
+            entity.Property(x => x.GrowerNumberSnapshot).HasMaxLength(50);
+            entity.Property(x => x.GrowerNameSnapshot).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.LotNumberSnapshot).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.VarietyCodeSnapshot).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.ProductionTypeSnapshot).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.InventoryStatusSnapshot).HasMaxLength(100);
+            entity.Property(x => x.TreatmentStateSnapshot).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.TreatmentSignatureSnapshot).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.TreatmentSummarySnapshot).HasMaxLength(2000).IsRequired();
+            entity.Property(x => x.PoundsPerBinSnapshot).HasPrecision(18, 4);
+            entity.HasIndex(x => x.ProcessorShipmentId);
+            entity.HasIndex(x => new { x.WarehouseId, x.RoomId });
+            entity.HasIndex(x => x.SourceInventoryAdjustmentId);
+            entity.HasOne(x => x.ProcessorShipment).WithMany(x => x.Lines).HasForeignKey(x => x.ProcessorShipmentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Receipt).WithMany().HasForeignKey(x => x.ReceiptId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.SourceInventoryAdjustment).WithMany().HasForeignKey(x => x.SourceInventoryAdjustmentId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ProcessorShipmentPriceCorrection>(entity =>
+        {
+            entity.Property(x => x.OperationKey).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.OriginalSaleRate).HasPrecision(18, 4);
+            entity.Property(x => x.OriginalPricingBasis).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.CorrectedSaleRate).HasPrecision(18, 4);
+            entity.Property(x => x.CorrectedPricingBasis).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+            entity.HasIndex(x => x.OperationKey).IsUnique();
+            entity.HasIndex(x => new { x.ProcessorShipmentId, x.CorrectedAt });
+            entity.HasOne(x => x.ProcessorShipment).WithMany(x => x.PriceCorrections).HasForeignKey(x => x.ProcessorShipmentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CorrectedByUser).WithMany().HasForeignKey(x => x.CorrectedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<TreatmentLineageMovement>(entity =>
         {
             entity.Property(x => x.OperationKey).HasMaxLength(200).IsRequired();
@@ -1925,6 +2005,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasIndex(x => x.RoomTransferId);
             entity.HasIndex(x => x.RoomInventoryLossId);
             entity.HasIndex(x => x.BinsRunEntryId);
+            entity.HasIndex(x => x.ProcessorShipmentLineId);
             entity.HasIndex(x => new { x.SourceRoomId, x.OccurredAt });
             entity.HasIndex(x => new { x.DestinationRoomId, x.OccurredAt });
             entity.HasOne(x => x.SourceSegment).WithMany().HasForeignKey(x => x.SourceSegmentId).OnDelete(DeleteBehavior.Restrict);
@@ -1934,6 +2015,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.RoomTransfer).WithMany().HasForeignKey(x => x.RoomTransferId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.RoomInventoryLoss).WithMany().HasForeignKey(x => x.RoomInventoryLossId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.BinsRunEntry).WithMany().HasForeignKey(x => x.BinsRunEntryId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ProcessorShipmentLine).WithMany(x => x.TreatmentLineageMovements).HasForeignKey(x => x.ProcessorShipmentLineId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.ReversesTreatmentLineageMovement).WithMany(x => x.ReversalMovements).HasForeignKey(x => x.ReversesTreatmentLineageMovementId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
         });
@@ -2198,6 +2280,17 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 });
             }
         }
+        foreach (var role in roles)
+        {
+            rows.Add(new RolePageAccess
+            {
+                Id = -200 - role.Id,
+                RoleId = role.Id,
+                AreaKey = "processor-shipments",
+                AccessLevel = BuiltInAccessLevel(role.Name, "processor-shipments"),
+                UpdatedAt = updatedAt
+            });
+        }
         return rows;
     }
 
@@ -2205,7 +2298,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     {
         if (role == BuiltInRoleNames.Admin) return "Admin";
         var viewer = area is "dashboard" or "daily-qc" or "field-samples" or "qc-reports" or "receipts"
-            or "current-lots" or "rooms" or "inventory" or "grower-lots";
+            or "current-lots" or "rooms" or "inventory" or "grower-lots" or "processor-shipments";
         if (role == BuiltInRoleNames.Viewer) return viewer ? "View" : "None";
         if (role == BuiltInRoleNames.QcTech)
             return area is "daily-qc" or "field-samples" or "receipts" ? "Create" : viewer ? "View" : "None";
