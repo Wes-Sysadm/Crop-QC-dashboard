@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace CropQc.Api.Tests;
 
@@ -124,6 +125,64 @@ public sealed class GmailUserEmailTests
         Assert.Contains("Content-Disposition: inline", decoded);
         Assert.DoesNotContain("Content-Disposition: attachment", decoded);
         Assert.DoesNotContain("drive.google.com", decoded);
+    }
+
+    [Fact]
+    public void GmailRawMessage_Rfc2047EncodesNonAsciiSubjectAndPreservesUtf8Bodies()
+    {
+        const string logicalSubject = "Field Sample QC - Café orchard - August 20, 2026";
+        var raw = GmailUserEmailSender.BuildRawMessage(new QcEmailMessage(
+            "wes@fruitandland.com",
+            "qc@fruitandland.com",
+            null,
+            logicalSubject,
+            "Résumé plain-text body",
+            "<p>Résumé HTML body</p>",
+            []));
+
+        var decodedRaw = DecodeBase64Url(raw);
+        var encodedSubject = GetHeaderValue(decodedRaw, "Subject");
+
+        Assert.StartsWith("=?UTF-8?B?", encodedSubject, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(logicalSubject, DecodeUtf8Base64EncodedWords(encodedSubject));
+        Assert.DoesNotContain(logicalSubject, encodedSubject, StringComparison.Ordinal);
+        Assert.Contains("Résumé plain-text body", decodedRaw, StringComparison.Ordinal);
+        Assert.Contains("<p>Résumé HTML body</p>", decodedRaw, StringComparison.Ordinal);
+        Assert.Contains("Content-Type: text/plain; charset=utf-8", decodedRaw, StringComparison.Ordinal);
+        Assert.Contains("Content-Type: text/html; charset=utf-8", decodedRaw, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GmailRawMessage_DoesNotDoubleEncodeAsciiEncodedWordSubject()
+    {
+        const string encodedWord = "=?UTF-8?B?Q2Fmw6k=?=";
+        var raw = GmailUserEmailSender.BuildRawMessage(new QcEmailMessage(
+            "wes@fruitandland.com",
+            "qc@fruitandland.com",
+            null,
+            encodedWord,
+            "Text",
+            "<p>HTML</p>",
+            []));
+
+        Assert.Equal(encodedWord, GetHeaderValue(DecodeBase64Url(raw), "Subject"));
+    }
+
+    [Theory]
+    [InlineData("Safe subject\r\nBcc: attacker@example.com")]
+    [InlineData("Safe subject\nBcc: attacker@example.com")]
+    public void GmailRawMessage_RejectsSubjectHeaderInjection(string subject)
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => GmailUserEmailSender.BuildRawMessage(new QcEmailMessage(
+            "wes@fruitandland.com",
+            "qc@fruitandland.com",
+            null,
+            subject,
+            "Text",
+            "<p>HTML</p>",
+            [])));
+
+        Assert.Contains("cannot contain line breaks", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -386,6 +445,29 @@ public sealed class GmailUserEmailTests
         var padded = value.Replace('-', '+').Replace('_', '/');
         padded = padded.PadRight(padded.Length + ((4 - padded.Length % 4) % 4), '=');
         return Encoding.UTF8.GetString(Convert.FromBase64String(padded));
+    }
+
+    private static string GetHeaderValue(string rawMessage, string headerName)
+    {
+        var lines = rawMessage.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        var prefix = $"{headerName}:";
+        var headerIndex = Array.FindIndex(lines, line => line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        Assert.True(headerIndex >= 0, $"Header '{headerName}' was not found.");
+
+        var value = new StringBuilder(lines[headerIndex][prefix.Length..].TrimStart());
+        for (var index = headerIndex + 1; index < lines.Length && lines[index].Length > 0 && char.IsWhiteSpace(lines[index][0]); index++)
+        {
+            value.Append(' ').Append(lines[index].Trim());
+        }
+
+        return value.ToString();
+    }
+
+    private static string DecodeUtf8Base64EncodedWords(string headerValue)
+    {
+        var matches = Regex.Matches(headerValue, @"=\?UTF-8\?B\?([^?]+)\?=", RegexOptions.IgnoreCase);
+        Assert.NotEmpty(matches);
+        return string.Concat(matches.Select(match => Encoding.UTF8.GetString(Convert.FromBase64String(match.Groups[1].Value))));
     }
 
     private static GmailUserEmailSender CreateSender(FakeCredentialStore credentialStore, FakeGmailHttpHandler httpHandler, EmailOptions? emailOptions = null) =>
