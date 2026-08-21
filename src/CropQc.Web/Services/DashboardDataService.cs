@@ -250,7 +250,7 @@ public sealed class DashboardDataService(
         var encodedFacility = Uri.EscapeDataString(FacilityContext.Normalize(facility));
         return
         [
-            new("Total Bins In Storage", currentBins, $"/GrowerLots/Current?Facility={encodedFacility}", "ready", "Deduplicated current bins across receipts and current inventory baselines."),
+            new("Total Bins In Storage", currentBins, $"/Inventory/ByVariety?Facility={encodedFacility}", "ready", "Current bins grouped by canonical variety."),
             new("Grower Lots In Storage", currentGrowerLots, $"/GrowerLots/Current?Facility={encodedFacility}", "info", "Grower lots with fruit currently left in storage."),
             new("Today's Receiving Samples", todaySamples, $"/Receipts?Facility={encodedFacility}&DateFilter=today&SampleType=Receiving", "info", "Receipts with receiving QC activity today."),
             new("Samples Ready to Email", ready, $"/DailyQc?Facility={encodedFacility}&status=ReadyToSend", "ready", "Samples with required data and photos ready for QC summary email."),

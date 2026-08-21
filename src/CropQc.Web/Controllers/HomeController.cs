@@ -8,7 +8,8 @@ namespace CropQc.Web.Controllers;
 
 public sealed class HomeController(
     IDashboardDataService dataService,
-    IRoomInventoryLossService roomInventoryLossService) : Controller
+    IRoomInventoryLossService roomInventoryLossService,
+    IInventoryByVarietyService? inventoryByVarietyService = null) : Controller
 {
     [Authorize(Policy = AccessPolicyNames.DashboardView)]
     public async Task<IActionResult> Index([FromQuery] RoomSummaryFilterForm roomSummaryFilter, CancellationToken cancellationToken) =>
@@ -18,6 +19,25 @@ public sealed class HomeController(
     [Authorize(Policy = AccessPolicyNames.GrowerLotsView)]
     public async Task<IActionResult> CurrentGrowerLots([FromQuery] CurrentGrowerLotsFilterForm filter, CancellationToken cancellationToken) =>
         View("GrowerLots", await dataService.GetCurrentGrowerLotsAsync(filter, cancellationToken));
+
+    [HttpGet("/Inventory/ByVariety")]
+    [Authorize(Policy = AccessPolicyNames.DashboardView)]
+    public async Task<IActionResult> InventoryByVariety(string? facility, CancellationToken cancellationToken) =>
+        View(await InventoryByVariety().GetSummaryAsync(facility, cancellationToken));
+
+    [HttpGet("/Inventory/ByVariety/{varietyKey}")]
+    [Authorize(Policy = AccessPolicyNames.DashboardView)]
+    public async Task<IActionResult> InventoryVarietyDetail(
+        string varietyKey,
+        string? facility,
+        CancellationToken cancellationToken)
+    {
+        var model = await InventoryByVariety().GetDetailAsync(varietyKey, facility, cancellationToken);
+        return model is null ? NotFound() : View(model);
+    }
+
+    private IInventoryByVarietyService InventoryByVariety() =>
+        inventoryByVarietyService ?? throw new InvalidOperationException("Inventory by Variety is not configured.");
 
     [HttpGet("/Rooms")]
     [Authorize(Policy = AccessPolicyNames.RoomsView)]
