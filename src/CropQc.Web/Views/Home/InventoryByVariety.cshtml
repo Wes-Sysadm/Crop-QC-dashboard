@@ -1,0 +1,61 @@
+@model InventoryByVarietyPageViewModel
+@{
+    ViewData["Title"] = "Inventory by Variety";
+    ViewData["AutoRefresh"] = "true";
+}
+
+<nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="/?Facility=@Uri.EscapeDataString(Model.Facility)">Dashboard</a>
+    <span aria-hidden="true">&gt;</span>
+    <span aria-current="page">Inventory by Variety</span>
+</nav>
+
+<h1>Inventory by Variety</h1>
+<p class="notice"><strong>Facility: @Model.Facility</strong> · @Model.TotalCurrentBins.ToString("N0") current bins</p>
+@await Html.PartialAsync("_PageRefreshControls")
+
+<form class="toolbar" method="get" action="/Inventory/ByVariety">
+    <label class="field">Facility
+        <select name="Facility">
+            @foreach (var facility in Model.FacilityOptions)
+            {
+                <option value="@facility" selected="@(facility == Model.Facility ? "selected" : null)">@facility</option>
+            }
+        </select>
+    </label>
+    <button type="submit">Apply</button>
+</form>
+
+@if (Model.Varieties.Count == 0)
+{
+    <p class="notice">No current inventory is available for this Facility.</p>
+}
+else
+{
+    <section class="room-card-grid inventory-variety-grid" aria-label="Current inventory by variety">
+    @foreach (var variety in Model.Varieties)
+    {
+        <a class="room-card inventory-variety-card" href="/Inventory/ByVariety/@Uri.EscapeDataString(variety.VarietyKey)?Facility=@Uri.EscapeDataString(Model.Facility)" style="--inventory-variety-color: @variety.HexColor">
+            <div class="inventory-variety-heading">
+                <span class="inventory-variety-swatch" aria-hidden="true"></span>
+                <h2>@variety.VarietyName</h2>
+            </div>
+            <p class="inventory-variety-total"><strong>@variety.CurrentBins.ToString("N0")</strong> current bins</p>
+            <dl class="room-metrics">
+                <div><dt>Rooms</dt><dd>@variety.RoomCount</dd></div>
+                <div><dt>Grower Numbers</dt><dd>@(variety.GrowerNumbers.Count == 0 ? "Unavailable" : string.Join(", ", variety.GrowerNumbers))</dd></div>
+            </dl>
+            @if (variety.Breakdowns.Count > 1 || variety.Breakdowns.Any(x => x.OrganicStatus != "Conventional"))
+            {
+                <ul class="compact-list inventory-variety-breakdown">
+                @foreach (var breakdown in variety.Breakdowns)
+                {
+                    <li>@breakdown.ProductionType · @breakdown.OrganicStatus: <strong>@breakdown.CurrentBins.ToString("N0") bins</strong></li>
+                }
+                </ul>
+            }
+            <span class="inline-action">View current details</span>
+        </a>
+    }
+    </section>
+}

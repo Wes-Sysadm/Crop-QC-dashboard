@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CropQc.Data.Migrations
 {
     [DbContext(typeof(CropQcDbContext))]
-    [Migration("20260821031442_AddProcessorShipments")]
-    partial class AddProcessorShipments
+    [Migration("20260820194148_AddReceivingTreatmentApplications")]
+    partial class AddReceivingTreatmentApplications
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -3821,303 +3821,6 @@ namespace CropQc.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("CropQc.Data.Entities.Processor", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Code")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("CreatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("Name");
-
-                    b.HasIndex("UpdatedByUserId");
-
-                    b.HasIndex("IsActive", "Name");
-
-                    b.ToTable("Processors");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.ProcessorShipment", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("ConcurrencyVersion")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int>("CreatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("nvarchar(3)");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<string>("OperationKey")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
-
-                    b.Property<string>("OriginalPricingBasis")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<decimal>("OriginalSaleRate")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("decimal(18,4)");
-
-                    b.Property<string>("PricingBasis")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<int>("ProcessorId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ProcessorNameSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("ReferenceNumber")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("ReversalReason")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<DateTimeOffset?>("ReversedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("ReversedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("SaleRate")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("decimal(18,4)");
-
-                    b.Property<DateTimeOffset>("ShippedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("OperationKey")
-                        .IsUnique();
-
-                    b.HasIndex("ProcessorId");
-
-                    b.HasIndex("ReversedByUserId");
-
-                    b.HasIndex("ShippedAt", "ProcessorId");
-
-                    b.ToTable("ProcessorShipments");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.ProcessorShipmentLine", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<int>("BinsSent")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("CropYear")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("FruitProfileId")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("GrowerLotId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("GrowerNameSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("GrowerNumberSnapshot")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("InventoryStatusSnapshot")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<bool?>("IsOrganicSnapshot")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("LotNumberSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<decimal?>("PoundsPerBinSnapshot")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("decimal(18,4)");
-
-                    b.Property<long>("ProcessorShipmentId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("ProductionTypeSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<long?>("ReceiptId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("RoomId")
-                        .HasColumnType("int");
-
-                    b.Property<long?>("SourceInventoryAdjustmentId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("TreatmentSignatureSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<string>("TreatmentStateSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(25)
-                        .HasColumnType("nvarchar(25)");
-
-                    b.Property<string>("TreatmentSummarySnapshot")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<string>("VarietyCodeSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<int>("WarehouseId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProcessorShipmentId");
-
-                    b.HasIndex("ReceiptId");
-
-                    b.HasIndex("RoomId");
-
-                    b.HasIndex("SourceInventoryAdjustmentId");
-
-                    b.HasIndex("WarehouseId", "RoomId");
-
-                    b.ToTable("ProcessorShipmentLines");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.ProcessorShipmentPriceCorrection", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTimeOffset>("CorrectedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int>("CorrectedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("CorrectedPricingBasis")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<decimal>("CorrectedSaleRate")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("decimal(18,4)");
-
-                    b.Property<string>("OperationKey")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
-
-                    b.Property<string>("OriginalPricingBasis")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<decimal>("OriginalSaleRate")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("decimal(18,4)");
-
-                    b.Property<long>("ProcessorShipmentId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CorrectedByUserId");
-
-                    b.HasIndex("OperationKey")
-                        .IsUnique();
-
-                    b.HasIndex("ProcessorShipmentId", "CorrectedAt");
-
-                    b.ToTable("ProcessorShipmentPriceCorrections");
-                });
-
             modelBuilder.Entity("CropQc.Data.Entities.QcFruitDefect", b =>
                 {
                     b.Property<long>("Id")
@@ -6682,46 +6385,6 @@ namespace CropQc.Data.Migrations
                             AreaKey = "data-cleanup",
                             RoleId = 5,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
-                        },
-                        new
-                        {
-                            Id = -201,
-                            AccessLevel = "Admin",
-                            AreaKey = "processor-shipments",
-                            RoleId = 1,
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
-                        },
-                        new
-                        {
-                            Id = -202,
-                            AccessLevel = "Admin",
-                            AreaKey = "processor-shipments",
-                            RoleId = 2,
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
-                        },
-                        new
-                        {
-                            Id = -203,
-                            AccessLevel = "View",
-                            AreaKey = "processor-shipments",
-                            RoleId = 3,
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
-                        },
-                        new
-                        {
-                            Id = -204,
-                            AccessLevel = "View",
-                            AreaKey = "processor-shipments",
-                            RoleId = 4,
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
-                        },
-                        new
-                        {
-                            Id = -205,
-                            AccessLevel = "View",
-                            AreaKey = "processor-shipments",
-                            RoleId = 5,
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         });
                 });
 
@@ -6973,9 +6636,6 @@ namespace CropQc.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<long?>("ProcessorShipmentLineId")
-                        .HasColumnType("bigint");
-
                     b.Property<string>("Reason")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -7031,8 +6691,6 @@ namespace CropQc.Data.Migrations
                         .IsUnique()
                         .HasFilter("[InventoryOperationKey] IS NOT NULL");
 
-                    b.HasIndex("ProcessorShipmentLineId");
-
                     b.HasIndex("ReceiptInventoryOverrideId");
 
                     b.HasIndex("RoomDepletionId");
@@ -7042,10 +6700,6 @@ namespace CropQc.Data.Migrations
                     b.HasIndex("WarehouseId");
 
                     b.HasIndex("ActualRunId", "ActualRunRevisionId");
-
-                    b.HasIndex("ProcessorShipmentLineId", "AdjustmentType")
-                        .IsUnique()
-                        .HasFilter("[ProcessorShipmentLineId] IS NOT NULL");
 
                     b.HasIndex("ReceiptId", "AdjustmentAt");
 
@@ -8931,9 +8585,6 @@ namespace CropQc.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
-                    b.Property<long?>("ProcessorShipmentLineId")
-                        .HasColumnType("bigint");
-
                     b.Property<long?>("ReceiptId")
                         .HasColumnType("bigint");
 
@@ -8972,8 +8623,6 @@ namespace CropQc.Data.Migrations
 
                     b.HasIndex("OperationKey")
                         .IsUnique();
-
-                    b.HasIndex("ProcessorShipmentLineId");
 
                     b.HasIndex("ReceiptId");
 
@@ -10332,109 +9981,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("RunExpectationSource");
                 });
 
-            modelBuilder.Entity("CropQc.Data.Entities.Processor", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.User", "UpdatedByUser")
-                        .WithMany()
-                        .HasForeignKey("UpdatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("UpdatedByUser");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.ProcessorShipment", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.Processor", "Processor")
-                        .WithMany("Shipments")
-                        .HasForeignKey("ProcessorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.User", "ReversedByUser")
-                        .WithMany()
-                        .HasForeignKey("ReversedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("Processor");
-
-                    b.Navigation("ReversedByUser");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.ProcessorShipmentLine", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.ProcessorShipment", "ProcessorShipment")
-                        .WithMany("Lines")
-                        .HasForeignKey("ProcessorShipmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.Receipt", "Receipt")
-                        .WithMany()
-                        .HasForeignKey("ReceiptId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.Room", "Room")
-                        .WithMany()
-                        .HasForeignKey("RoomId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.RoomInventoryAdjustment", "SourceInventoryAdjustment")
-                        .WithMany()
-                        .HasForeignKey("SourceInventoryAdjustmentId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.Warehouse", "Warehouse")
-                        .WithMany()
-                        .HasForeignKey("WarehouseId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("ProcessorShipment");
-
-                    b.Navigation("Receipt");
-
-                    b.Navigation("Room");
-
-                    b.Navigation("SourceInventoryAdjustment");
-
-                    b.Navigation("Warehouse");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.ProcessorShipmentPriceCorrection", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.User", "CorrectedByUser")
-                        .WithMany()
-                        .HasForeignKey("CorrectedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.ProcessorShipment", "ProcessorShipment")
-                        .WithMany("PriceCorrections")
-                        .HasForeignKey("ProcessorShipmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("CorrectedByUser");
-
-                    b.Navigation("ProcessorShipment");
-                });
-
             modelBuilder.Entity("CropQc.Data.Entities.QcFruitDefect", b =>
                 {
                     b.HasOne("CropQc.Data.Entities.DefectType", "DefectType")
@@ -10774,11 +10320,6 @@ namespace CropQc.Data.Migrations
                         .HasForeignKey("GrowerLotId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("CropQc.Data.Entities.ProcessorShipmentLine", "ProcessorShipmentLine")
-                        .WithMany("InventoryAdjustments")
-                        .HasForeignKey("ProcessorShipmentLineId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("CropQc.Data.Entities.Receipt", "Receipt")
                         .WithMany("RoomInventoryAdjustments")
                         .HasForeignKey("ReceiptId")
@@ -10825,8 +10366,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("FruitProfile");
 
                     b.Navigation("GrowerLot");
-
-                    b.Navigation("ProcessorShipmentLine");
 
                     b.Navigation("Receipt");
 
@@ -11335,11 +10874,6 @@ namespace CropQc.Data.Migrations
                         .HasForeignKey("DestinationSegmentId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("CropQc.Data.Entities.ProcessorShipmentLine", "ProcessorShipmentLine")
-                        .WithMany("TreatmentLineageMovements")
-                        .HasForeignKey("ProcessorShipmentLineId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("CropQc.Data.Entities.Receipt", "Receipt")
                         .WithMany()
                         .HasForeignKey("ReceiptId")
@@ -11377,8 +10911,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("DestinationRoom");
 
                     b.Navigation("DestinationSegment");
-
-                    b.Navigation("ProcessorShipmentLine");
 
                     b.Navigation("Receipt");
 
@@ -11635,25 +11167,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("SourceAllocations");
 
                     b.Navigation("Sources");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.Processor", b =>
-                {
-                    b.Navigation("Shipments");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.ProcessorShipment", b =>
-                {
-                    b.Navigation("Lines");
-
-                    b.Navigation("PriceCorrections");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.ProcessorShipmentLine", b =>
-                {
-                    b.Navigation("InventoryAdjustments");
-
-                    b.Navigation("TreatmentLineageMovements");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.QcFruitReading", b =>

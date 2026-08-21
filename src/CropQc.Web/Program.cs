@@ -265,8 +265,11 @@ builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportServi
 builder.Services.AddScoped<IRoomInventoryLedgerQueryService, RoomInventoryLedgerQueryService>();
 builder.Services.AddScoped<IRoomInventoryReconciliationService, RoomInventoryReconciliationService>();
 builder.Services.AddScoped<IRoomInventoryLossService, RoomInventoryLossService>();
-builder.Services.AddScoped<IRoomTreatmentService, RoomTreatmentService>();
-builder.Services.AddScoped<IProcessorTreatmentLineageService>(sp => (IProcessorTreatmentLineageService)sp.GetRequiredService<IRoomTreatmentService>());
+builder.Services.AddScoped<RoomTreatmentService>();
+builder.Services.AddScoped<IRoomTreatmentService>(sp => sp.GetRequiredService<RoomTreatmentService>());
+builder.Services.AddScoped<IReceivingTreatmentService>(sp => sp.GetRequiredService<RoomTreatmentService>());
+builder.Services.AddScoped<IProcessorTreatmentLineageService>(sp => sp.GetRequiredService<RoomTreatmentService>());
+builder.Services.AddScoped<IInventoryByVarietyService, InventoryByVarietyService>();
 builder.Services.AddScoped<IProcessorShipmentService, ProcessorShipmentService>();
 builder.Services.AddScoped<ITreatmentReportAttachmentService, TreatmentReportAttachmentService>();
 builder.Services.AddScoped<ITr108859DroppedBinsCorrectionService, Tr108859DroppedBinsCorrectionService>();

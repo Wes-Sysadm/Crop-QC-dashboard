@@ -38,7 +38,119 @@ public sealed class ProcessorShipmentTests
         Assert.Empty(await fixture.Db.PackoutRuns.ToListAsync());
         var movement = Assert.Single(await fixture.Db.TreatmentLineageMovements.Where(x => x.ProcessorShipmentLineId != null).ToListAsync());
         Assert.Equal(line.Id, movement.ProcessorShipmentLineId);
+        Assert.Equal(Fixture.ReceiptId, line.ReceiptId);
+        Assert.Equal(Fixture.ReceiptId, movement.ReceiptId);
         Assert.Equal(TreatmentLineageMovementTypes.ProcessorShipment, movement.MovementType);
+    }
+
+    [Fact]
+    public async Task Same_identity_receipt_treatments_stay_isolated_and_variety_total_deducts_once()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var db = fixture.Db;
+        var warehouse = await db.Warehouses.SingleAsync(x => x.Id == Fixture.WarehouseId);
+        var room = await db.Rooms.SingleAsync(x => x.Id == Fixture.RoomId);
+        var fruit = await db.FruitProfiles.SingleAsync(x => x.Id == 9942);
+        var actor = await db.Users.SingleAsync(x => x.Id == 9943);
+        var receiptB = Receipt(9947, "TR109501", 40);
+        var receiptC = Receipt(9949, "TR109502", 40);
+        db.AddRange(receiptB, receiptC);
+        db.RoomInventoryAdjustments.AddRange(
+            Adjustment(9948, receiptB, 40),
+            Adjustment(9950, receiptC, 40));
+        await db.SaveChangesAsync();
+
+        var authoritative = Assert.Single(await fixture.Ledger.GetSnapshotsAsync(Fixture.WarehouseId, [Fixture.RoomId], CancellationToken.None));
+        var identity = RoomTreatmentService.IdentityKey(authoritative);
+        var mcpChemical = Chemical(9951, "SMARTFRESH INBOX FLEX", "MCP", TreatmentApplicationLevels.Receiving);
+        var roomChemical = Chemical(9952, "eFOG-170 DPA FOGGING", "DPA", TreatmentApplicationLevels.Room);
+        var mcpApplication = Application(9953, "receiving-mcp-a", mcpChemical, Fixture.ReceiptId, "SMARTFRESH INBOX FLEX", "MCP", TreatmentApplicationLevels.Receiving, 100);
+        var roomApplication = Application(9954, "room-treatment-c", roomChemical, receiptC.Id, "eFOG-170 DPA FOGGING", "DPA", TreatmentApplicationLevels.Room, 40);
+        var mcp = Segment(9955, Fixture.ReceiptId, "mcp-a", TreatmentLineageStates.Confirmed, 100);
+        var untreated = Segment(9956, receiptB.Id, "u", TreatmentLineageStates.Untreated, 40);
+        var roomTreated = Segment(9957, receiptC.Id, "room-c", TreatmentLineageStates.Confirmed, 40);
+        mcp.Applications.Add(new TreatmentLineageSegmentApplication { TreatmentLineageSegment = mcp, RoomTreatmentApplication = mcpApplication, Sequence = 1 });
+        roomTreated.Applications.Add(new TreatmentLineageSegmentApplication { TreatmentLineageSegment = roomTreated, RoomTreatmentApplication = roomApplication, Sequence = 1 });
+        db.AddRange(mcpChemical, roomChemical, mcpApplication, roomApplication, mcp, untreated, roomTreated);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var varietyService = new InventoryByVarietyService(db, fixture.Ledger, fixture.Treatments, new NoWriteVarietyColors(), new FacilityContextService(db));
+        Assert.Equal(180, (await varietyService.GetSummaryAsync("All", CancellationToken.None)).TotalCurrentBins);
+        var page = await fixture.Service.GetPageAsync(null, false, null, null, null, null, CancellationToken.None);
+        Assert.Equal(3, page.Inventory.Count);
+        Assert.Contains(page.Inventory, x => x.ReceiptId == Fixture.ReceiptId && x.TreatmentSummary.Contains("MCP", StringComparison.Ordinal));
+        Assert.Contains(page.Inventory, x => x.ReceiptId == receiptB.Id && x.TreatmentState == TreatmentLineageStates.Untreated);
+        Assert.Contains(page.Inventory, x => x.ReceiptId == receiptC.Id && x.TreatmentSummary.Contains("DPA", StringComparison.Ordinal));
+        var selected = page.Inventory.Single(x => x.ReceiptId == Fixture.ReceiptId && x.TreatmentSummary.Contains("MCP", StringComparison.Ordinal));
+
+        var result = await fixture.Service.CreateAsync(new ProcessorShipmentForm
+        {
+            OperationKey = "isolated-mcp-shipment",
+            ProcessorId = 9944,
+            SaleRate = 62m,
+            PricingBasis = ProcessorPricingBases.PerTon,
+            Currency = "USD",
+            ShippedAt = DateTime.Parse("2026-08-20T10:00"),
+            ConfirmedReview = true,
+            Lines = [new() { SourceKey = selected.SourceKey, ExpectedAvailableBins = selected.AvailableBins, BinsSent = 10 }]
+        }, CancellationToken.None);
+
+        Assert.True(result.Success, result.Error);
+        var savedLine = Assert.Single(await db.ProcessorShipmentLines.AsNoTracking().ToListAsync());
+        Assert.Equal(Fixture.ReceiptId, savedLine.ReceiptId);
+        Assert.Contains("MCP", savedLine.TreatmentSummarySnapshot, StringComparison.Ordinal);
+        Assert.Equal(90, (await db.TreatmentLineageSegments.FindAsync(9955L))!.CurrentBins);
+        Assert.Equal(40, (await db.TreatmentLineageSegments.FindAsync(9956L))!.CurrentBins);
+        Assert.Equal(40, (await db.TreatmentLineageSegments.FindAsync(9957L))!.CurrentBins);
+        var movement = Assert.Single(await db.TreatmentLineageMovements.AsNoTracking().Where(x => x.ProcessorShipmentLineId == savedLine.Id).ToListAsync());
+        Assert.Equal(Fixture.ReceiptId, movement.ReceiptId);
+        Assert.Equal(170, (await varietyService.GetSummaryAsync("All", CancellationToken.None)).TotalCurrentBins);
+        Assert.Equal(170, (await fixture.Ledger.GetSnapshotsAsync(Fixture.WarehouseId, [Fixture.RoomId], CancellationToken.None)).Sum(x => x.CurrentBins));
+        Assert.Empty(await db.ActualRuns.ToListAsync());
+        Assert.Empty(await db.ActualRunRevisions.ToListAsync());
+
+        Receipt Receipt(long id, string number, int bins) => new()
+        {
+            Id = id, CropYear = 2026, CompuTechReceiptId = number, ReceivedAt = Now.AddDays(-1),
+            Warehouse = warehouse, WarehouseId = warehouse.Id, Room = room, RoomId = room.Id,
+            FruitProfile = fruit, FruitProfileId = fruit.Id, GrowerNumber = "9350",
+            GrowerName = "ROLOFF FARM-NAGLE CONV", LotCode = "9350", BinCount = bins,
+            CreatedAt = Now.AddDays(-1), UpdatedAt = Now.AddDays(-1)
+        };
+        RoomInventoryAdjustment Adjustment(long id, Receipt receipt, int bins) => new()
+        {
+            Id = id, CropYear = 2026, Receipt = receipt, ReceiptId = receipt.Id, Warehouse = warehouse,
+            WarehouseId = warehouse.Id, Room = room, RoomId = room.Id, FruitProfile = fruit,
+            FruitProfileId = fruit.Id, GrowerName = receipt.GrowerName, LotNumber = receipt.LotCode,
+            VarietyCode = fruit.VarietyCode, OldBinCount = 0, ChangeAmount = bins, NewBinCount = bins,
+            AdjustmentType = "Receipt", InventoryStatus = "Packable", AdjustmentAt = Now.AddDays(-1), CreatedAt = Now.AddDays(-1)
+        };
+        TreatmentChemical Chemical(int id, string product, string common, string level) => new()
+        {
+            Id = id, ProductName = product, CommonName = common, Crop = "Apples", ApplicationLevel = level,
+            Volume = 1, Unit = "BIN", UnitPrice = 1, Currency = "USD", CreatedAt = Now, UpdatedAt = Now
+        };
+        RoomTreatmentApplication Application(long id, string key, TreatmentChemical chemical, long? receiptId, string product, string common, string level, int bins) => new()
+        {
+            Id = id, OperationKey = key, TreatmentChemical = chemical, TreatmentChemicalId = chemical.Id,
+            ApplicationLevel = level, ReceiptId = receiptId, Warehouse = warehouse, WarehouseId = warehouse.Id,
+            Room = room, RoomId = room.Id, AppliedAt = Now.AddHours(-1), AppliedByUser = actor,
+            AppliedByUserId = actor.Id, TotalBinsSnapshot = bins, ProductNameSnapshot = product,
+            CommonNameSnapshot = common, CropSnapshot = "Apples", VolumeSnapshot = 1, UnitSnapshot = "BIN",
+            UnitPriceSnapshot = 1, CurrencySnapshot = "USD", EstimatedCostSnapshot = bins,
+            CreatedAt = Now, CreatedByUser = actor, CreatedByUserId = actor.Id
+        };
+        TreatmentLineageSegment Segment(long id, long receiptId, string signature, string state, int bins) => new()
+        {
+            Id = id, Warehouse = warehouse, WarehouseId = warehouse.Id, Room = room, RoomId = room.Id,
+            ReceiptId = receiptId, CropYear = 2026, FruitProfile = fruit, FruitProfileId = fruit.Id,
+            IdentityKey = identity, GrowerNumberSnapshot = "9350", GrowerNameSnapshot = "ROLOFF FARM-NAGLE CONV",
+            LotNumberSnapshot = "9350", VarietyCodeSnapshot = fruit.VarietyCode,
+            ProductionTypeSnapshot = fruit.ProductionType, IsOrganicSnapshot = false,
+            InventoryStatusSnapshot = "Packable", TreatmentState = state, TreatmentSignature = signature,
+            CurrentBins = bins, CreatedAt = Now, UpdatedAt = Now
+        };
     }
 
     [Fact]
@@ -316,8 +428,10 @@ public sealed class ProcessorShipmentTests
             Assert.DoesNotContain("__EFMigrationsHistory", sql, StringComparison.OrdinalIgnoreCase);
         }
         var apply = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "apply-processor-shipments-schema.sql"));
+        var preflight = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "preflight-processor-shipments.sql"));
         Assert.Contains("pg_advisory_xact_lock", apply);
         Assert.Contains("cropqc.test_force_processor_shipment_failure", apply);
+        Assert.Contains("verify-receiving-treatment-applications.sql", preflight);
     }
 
     [Fact]
@@ -327,6 +441,8 @@ public sealed class ProcessorShipmentTests
         var source = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DatabaseStartupDiagnostics.cs"));
         Assert.Contains("ProcessorShipmentLines.PoundsPerBinSnapshot", source);
         Assert.Contains("FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId", source);
+        Assert.Contains("TreatmentLineageMovements.ReceiptId", source);
+        Assert.Equal(619, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -445,16 +561,19 @@ public sealed class ProcessorShipmentTests
     {
         public const int WarehouseId = 9940;
         public const int RoomId = 9941;
-        private Fixture(CropQcDbContext db, ProcessorShipmentService service, IRoomInventoryLedgerQueryService ledger)
+        public const long ReceiptId = 9945;
+        private Fixture(CropQcDbContext db, ProcessorShipmentService service, IRoomInventoryLedgerQueryService ledger, RoomTreatmentService treatments)
         {
             Db = db;
             Service = service;
             Ledger = ledger;
+            Treatments = treatments;
         }
 
         public CropQcDbContext Db { get; }
         public ProcessorShipmentService Service { get; }
         public IRoomInventoryLedgerQueryService Ledger { get; }
+        public RoomTreatmentService Treatments { get; }
 
         public static async Task<Fixture> CreateAsync()
         {
@@ -465,7 +584,7 @@ public sealed class ProcessorShipmentTests
             var fruit = new FruitProfile { Id = 9942, Name = "Processor Gala", VarietyCode = "PROC-GALA", FruitType = "Apple", ProductionType = "Conventional" };
             var user = new User { Id = 9943, Email = ApplicationAreas.OwnerEmail, DisplayName = "Wes", Domain = "fruitandland.com", CreatedAt = Now };
             var processor = new Processor { Id = 9944, Name = "ABC Processing", Code = "ABC", IsActive = true, CreatedAt = Now, UpdatedAt = Now, CreatedByUserId = user.Id, UpdatedByUserId = user.Id };
-            var receipt = new Receipt { Id = 9945, CropYear = 2026, CompuTechReceiptId = "TR109500", ReceivedAt = Now.AddDays(-1), Warehouse = warehouse, WarehouseId = WarehouseId, Room = room, RoomId = RoomId, FruitProfile = fruit, FruitProfileId = fruit.Id, GrowerNumber = "9350", GrowerName = "ROLOFF FARM-NAGLE CONV", LotCode = "9350", BinCount = 100, CreatedAt = Now.AddDays(-1), UpdatedAt = Now.AddDays(-1) };
+            var receipt = new Receipt { Id = ReceiptId, CropYear = 2026, CompuTechReceiptId = "TR109500", ReceivedAt = Now.AddDays(-1), Warehouse = warehouse, WarehouseId = WarehouseId, Room = room, RoomId = RoomId, FruitProfile = fruit, FruitProfileId = fruit.Id, GrowerNumber = "9350", GrowerName = "ROLOFF FARM-NAGLE CONV", LotCode = "9350", BinCount = 100, CreatedAt = Now.AddDays(-1), UpdatedAt = Now.AddDays(-1) };
             db.AddRange(warehouse, room, fruit, user, processor, receipt);
             db.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment { Id = 9946, CropYear = 2026, Receipt = receipt, ReceiptId = receipt.Id, Warehouse = warehouse, WarehouseId = WarehouseId, Room = room, RoomId = RoomId, FruitProfile = fruit, FruitProfileId = fruit.Id, GrowerName = receipt.GrowerName, LotNumber = receipt.LotCode, VarietyCode = fruit.VarietyCode, OldBinCount = 0, ChangeAmount = 100, NewBinCount = 100, AdjustmentType = "Receipt", InventoryStatus = "Packable", AdjustmentAt = Now.AddDays(-1), CreatedAt = Now.AddDays(-1) });
             var appleConfig = await db.DashboardConfigurations.SingleOrDefaultAsync(x => x.Key == RunProjectionSettings.ApplePoundsPerBinKey);
@@ -485,7 +604,7 @@ public sealed class ProcessorShipmentTests
             var treatments = new RoomTreatmentService(db, ledger, access, accessor, time, NullLogger<RoomTreatmentService>.Instance);
             var invariant = new InventoryDeductionInvariantService(db, NullLogger<InventoryDeductionInvariantService>.Instance);
             var service = new ProcessorShipmentService(db, ledger, treatments, treatments, invariant, access, accessor, time);
-            return new Fixture(db, service, ledger);
+            return new Fixture(db, service, ledger, treatments);
         }
 
         public async Task<ProcessorShipmentForm> FormAsync(string operationKey, int bins, decimal rate, string basis)
@@ -503,4 +622,16 @@ public sealed class ProcessorShipmentTests
 
     private sealed class FixedClock(DateTimeOffset now) : IClock { public DateTimeOffset UtcNow { get; } = now; }
     private sealed class FixedHttpContextAccessor(HttpContext context) : IHttpContextAccessor { public HttpContext? HttpContext { get; set; } = context; }
+
+    private sealed class NoWriteVarietyColors : IVarietyColorService
+    {
+        public Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsReadOnlyAsync(IEnumerable<string> varietyKeys, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyDictionary<string, VarietyColorResolved>>(varietyKeys.Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(x => x, x => new VarietyColorResolved(x, VarietyColorService.NormalizeIdentity(x, x).Name, VarietyColorService.FallbackColor(x), false), StringComparer.OrdinalIgnoreCase));
+        public Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsAsync(IEnumerable<string> varietyKeys, CancellationToken cancellationToken) => GetResolvedColorsReadOnlyAsync(varietyKeys, cancellationToken);
+        public Task<VarietyColorsAdminViewModel> GetAdminPageAsync(bool canManage, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsForMasterDataAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<string?> SaveAsync(VarietyColorForm form, string changedByEmail, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<string?> ResetAsync(VarietyColorForm form, string changedByEmail, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
 }

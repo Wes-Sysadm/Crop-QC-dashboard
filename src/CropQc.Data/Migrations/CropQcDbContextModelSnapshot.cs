@@ -7307,6 +7307,13 @@ namespace CropQc.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<string>("ApplicationLevel")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(25)
+                        .HasColumnType("nvarchar(25)")
+                        .HasDefaultValue("Room");
+
                     b.Property<DateTimeOffset>("AppliedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -7350,6 +7357,9 @@ namespace CropQc.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<long?>("ReceiptId")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("ReversalReason")
                         .HasMaxLength(1000)
@@ -7400,6 +7410,8 @@ namespace CropQc.Data.Migrations
                     b.HasIndex("TreatmentChemicalId");
 
                     b.HasIndex("WarehouseId");
+
+                    b.HasIndex("ReceiptId", "AppliedAt");
 
                     b.HasIndex("RoomId", "AppliedAt");
 
@@ -7549,6 +7561,9 @@ namespace CropQc.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<long?>("ReceiptId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("ResultTreatmentSignature")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -7567,6 +7582,8 @@ namespace CropQc.Data.Migrations
                     b.HasIndex("FruitProfileId");
 
                     b.HasIndex("GrowerLotId");
+
+                    b.HasIndex("ReceiptId");
 
                     b.HasIndex("RoomTreatmentApplicationId", "IdentityKey");
 
@@ -8657,6 +8674,13 @@ namespace CropQc.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ApplicationLevel")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(25)
+                        .HasColumnType("nvarchar(25)")
+                        .HasDefaultValue("Room");
+
                     b.Property<string>("CommonName")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
@@ -8713,7 +8737,7 @@ namespace CropQc.Data.Migrations
 
                     b.HasIndex("UpdatedByUserId");
 
-                    b.HasIndex("Crop", "IsActive", "ProductName");
+                    b.HasIndex("ApplicationLevel", "Crop", "IsActive", "ProductName");
 
                     b.ToTable("TreatmentChemicals");
 
@@ -8721,6 +8745,7 @@ namespace CropQc.Data.Migrations
                         new
                         {
                             Id = 1,
+                            ApplicationLevel = "Room",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Crop = "Apples",
                             Currency = "USD",
@@ -8734,6 +8759,7 @@ namespace CropQc.Data.Migrations
                         new
                         {
                             Id = 2,
+                            ApplicationLevel = "Room",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Crop = "Apples",
                             Currency = "USD",
@@ -8747,6 +8773,7 @@ namespace CropQc.Data.Migrations
                         new
                         {
                             Id = 3,
+                            ApplicationLevel = "Room",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Crop = "Pears",
                             Currency = "USD",
@@ -8760,6 +8787,7 @@ namespace CropQc.Data.Migrations
                         new
                         {
                             Id = 4,
+                            ApplicationLevel = "Room",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Crop = "Pears",
                             Currency = "USD",
@@ -8773,6 +8801,7 @@ namespace CropQc.Data.Migrations
                         new
                         {
                             Id = 5,
+                            ApplicationLevel = "Room",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Crop = "Apples",
                             Currency = "USD",
@@ -8786,6 +8815,7 @@ namespace CropQc.Data.Migrations
                         new
                         {
                             Id = 6,
+                            ApplicationLevel = "Room",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Crop = "Pears",
                             Currency = "USD",
@@ -8799,6 +8829,7 @@ namespace CropQc.Data.Migrations
                         new
                         {
                             Id = 7,
+                            ApplicationLevel = "Room",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Crop = "Apples",
                             Currency = "USD",
@@ -8812,6 +8843,7 @@ namespace CropQc.Data.Migrations
                         new
                         {
                             Id = 8,
+                            ApplicationLevel = "Room",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Crop = "Pears",
                             Currency = "USD",
@@ -8825,6 +8857,7 @@ namespace CropQc.Data.Migrations
                         new
                         {
                             Id = 9,
+                            ApplicationLevel = "Room",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Crop = "Apples",
                             Currency = "USD",
@@ -8838,6 +8871,7 @@ namespace CropQc.Data.Migrations
                         new
                         {
                             Id = 10,
+                            ApplicationLevel = "Room",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Crop = "Apples",
                             Currency = "USD",
@@ -8897,6 +8931,9 @@ namespace CropQc.Data.Migrations
                     b.Property<long?>("ProcessorShipmentLineId")
                         .HasColumnType("bigint");
 
+                    b.Property<long?>("ReceiptId")
+                        .HasColumnType("bigint");
+
                     b.Property<long?>("ReversesTreatmentLineageMovementId")
                         .HasColumnType("bigint");
 
@@ -8934,6 +8971,8 @@ namespace CropQc.Data.Migrations
                         .IsUnique();
 
                     b.HasIndex("ProcessorShipmentLineId");
+
+                    b.HasIndex("ReceiptId");
 
                     b.HasIndex("ReversesTreatmentLineageMovementId");
 
@@ -9008,6 +9047,9 @@ namespace CropQc.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<long?>("ReceiptId")
+                        .HasColumnType("bigint");
+
                     b.Property<int>("RoomId")
                         .HasColumnType("int");
 
@@ -9038,12 +9080,21 @@ namespace CropQc.Data.Migrations
 
                     b.HasIndex("GrowerLotId");
 
+                    b.HasIndex("ReceiptId");
+
                     b.HasIndex("WarehouseId");
 
                     b.HasIndex("RoomId", "CurrentBins");
 
                     b.HasIndex("RoomId", "IdentityKey", "TreatmentSignature")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("UX_TreatmentLineageSegments_Unassigned")
+                        .HasFilter("[ReceiptId] IS NULL");
+
+                    b.HasIndex("RoomId", "IdentityKey", "TreatmentSignature", "ReceiptId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TreatmentLineageSegments_Receipt")
+                        .HasFilter("[ReceiptId] IS NOT NULL");
 
                     b.ToTable("TreatmentLineageSegments");
                 });
@@ -10914,6 +10965,11 @@ namespace CropQc.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("CropQc.Data.Entities.Receipt", "Receipt")
+                        .WithMany()
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CropQc.Data.Entities.User", "ReversedByUser")
                         .WithMany()
                         .HasForeignKey("ReversedByUserId")
@@ -10940,6 +10996,8 @@ namespace CropQc.Data.Migrations
                     b.Navigation("AppliedByUser");
 
                     b.Navigation("CreatedByUser");
+
+                    b.Navigation("Receipt");
 
                     b.Navigation("ReversedByUser");
 
@@ -10983,6 +11041,11 @@ namespace CropQc.Data.Migrations
                         .HasForeignKey("FruitProfileId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("CropQc.Data.Entities.Receipt", "Receipt")
+                        .WithMany()
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CropQc.Data.Entities.RoomTreatmentApplication", "RoomTreatmentApplication")
                         .WithMany("Sources")
                         .HasForeignKey("RoomTreatmentApplicationId")
@@ -10990,6 +11053,8 @@ namespace CropQc.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("FruitProfile");
+
+                    b.Navigation("Receipt");
 
                     b.Navigation("RoomTreatmentApplication");
                 });
@@ -11272,6 +11337,11 @@ namespace CropQc.Data.Migrations
                         .HasForeignKey("ProcessorShipmentLineId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("CropQc.Data.Entities.Receipt", "Receipt")
+                        .WithMany()
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CropQc.Data.Entities.TreatmentLineageMovement", "ReversesTreatmentLineageMovement")
                         .WithMany("ReversalMovements")
                         .HasForeignKey("ReversesTreatmentLineageMovementId")
@@ -11307,6 +11377,8 @@ namespace CropQc.Data.Migrations
 
                     b.Navigation("ProcessorShipmentLine");
 
+                    b.Navigation("Receipt");
+
                     b.Navigation("ReversesTreatmentLineageMovement");
 
                     b.Navigation("RoomInventoryLoss");
@@ -11325,6 +11397,11 @@ namespace CropQc.Data.Migrations
                         .HasForeignKey("FruitProfileId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("CropQc.Data.Entities.Receipt", "Receipt")
+                        .WithMany()
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CropQc.Data.Entities.Room", "Room")
                         .WithMany()
                         .HasForeignKey("RoomId")
@@ -11338,6 +11415,8 @@ namespace CropQc.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("FruitProfile");
+
+                    b.Navigation("Receipt");
 
                     b.Navigation("Room");
 

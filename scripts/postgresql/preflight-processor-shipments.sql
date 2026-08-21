@@ -1,5 +1,5 @@
 \set ON_ERROR_STOP on
-\ir verify-treatment-report-attachments.sql
+\ir verify-receiving-treatment-applications.sql
 
 BEGIN TRANSACTION READ ONLY;
 DO $preflight$

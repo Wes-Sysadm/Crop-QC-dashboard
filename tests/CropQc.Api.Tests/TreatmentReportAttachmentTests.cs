@@ -175,6 +175,7 @@ public sealed class TreatmentReportAttachmentTests
         var room = Source("src", "CropQc.Web", "Views", "Home", "Room.cshtml");
         var script = Source("src", "CropQc.Web", "wwwroot", "js", "treatment-reports.js");
         var controller = Source("src", "CropQc.Web", "Controllers", "RoomTreatmentsController.cs");
+        var service = Source("src", "CropQc.Web", "Services", "TreatmentReportAttachmentService.cs");
 
         Assert.Contains("Treatment Report", apply);
         Assert.Contains("Scan / Take Photo", apply);
@@ -185,12 +186,14 @@ public sealed class TreatmentReportAttachmentTests
         Assert.Contains("URL.createObjectURL", script);
         Assert.Contains("URL.revokeObjectURL", script);
         Assert.Contains("DataTransfer", script);
-        Assert.Contains("AccessPolicyNames.RoomsView", controller);
+        Assert.Contains("[Authorize]", controller);
+        Assert.Contains("ApplicationAreas.Rooms", service);
+        Assert.Contains("ApplicationAreas.Receipts", service);
         Assert.Contains("[ValidateAntiForgeryToken]", controller);
     }
 
     [Fact]
-    public void Migration_compatibility_and_604_object_gate_are_bounded_and_current()
+    public void Migration_compatibility_and_current_object_gate_are_bounded_and_current()
     {
         var migration = Source("src", "CropQc.Data", "Migrations", "20260819142656_AddTreatmentReportAttachments.cs");
         var preflight = Source("scripts", "postgresql", "preflight-treatment-report-attachments.sql");
@@ -208,7 +211,7 @@ public sealed class TreatmentReportAttachmentTests
         Assert.DoesNotContain("INSERT INTO \"__EFMigrationsHistory\"", apply, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("26 AS checked_target_objects", verify);
         Assert.Contains("20260821031442_AddProcessorShipments", gate);
-        Assert.Equal(604, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Equal(619, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     private static FormFile File(string name, string contentType, byte[]? bytes = null)

@@ -20,12 +20,23 @@ public static class TreatmentLineageMovementTypes
     public const string ProcessorShipmentReversal = "ProcessorShipmentReversal";
 }
 
+public static class TreatmentApplicationLevels
+{
+    public const string Room = "Room";
+    public const string Receiving = "Receiving";
+
+    public static bool IsValid(string? value) =>
+        string.Equals(value, Room, StringComparison.Ordinal)
+        || string.Equals(value, Receiving, StringComparison.Ordinal);
+}
+
 public sealed class TreatmentChemical
 {
     public int Id { get; set; }
     public required string ProductName { get; set; }
     public string? CommonName { get; set; }
     public required string Crop { get; set; }
+    public string ApplicationLevel { get; set; } = TreatmentApplicationLevels.Room;
     public decimal Volume { get; set; }
     public required string Unit { get; set; }
     public decimal UnitPrice { get; set; }
@@ -46,6 +57,9 @@ public sealed class RoomTreatmentApplication
     public required string OperationKey { get; set; }
     public int TreatmentChemicalId { get; set; }
     public TreatmentChemical TreatmentChemical { get; set; } = null!;
+    public string ApplicationLevel { get; set; } = TreatmentApplicationLevels.Room;
+    public long? ReceiptId { get; set; }
+    public Receipt? Receipt { get; set; }
     public int WarehouseId { get; set; }
     public Warehouse Warehouse { get; set; } = null!;
     public int RoomId { get; set; }
@@ -104,6 +118,8 @@ public sealed class RoomTreatmentApplicationSource
     public long Id { get; set; }
     public long RoomTreatmentApplicationId { get; set; }
     public RoomTreatmentApplication RoomTreatmentApplication { get; set; } = null!;
+    public long? ReceiptId { get; set; }
+    public Receipt? Receipt { get; set; }
     public int? CropYear { get; set; }
     public int? GrowerLotId { get; set; }
     public int? FruitProfileId { get; set; }
@@ -128,6 +144,8 @@ public sealed class TreatmentLineageSegment
     public Warehouse Warehouse { get; set; } = null!;
     public int RoomId { get; set; }
     public Room Room { get; set; } = null!;
+    public long? ReceiptId { get; set; }
+    public Receipt? Receipt { get; set; }
     public int? CropYear { get; set; }
     public int? GrowerLotId { get; set; }
     public int? FruitProfileId { get; set; }
@@ -174,6 +192,8 @@ public sealed class TreatmentLineageMovement
     public required string IdentityKey { get; set; }
     public required string TreatmentStateSnapshot { get; set; }
     public required string TreatmentSignatureSnapshot { get; set; }
+    public long? ReceiptId { get; set; }
+    public Receipt? Receipt { get; set; }
     public int BinCount { get; set; }
     public long? RoomTransferId { get; set; }
     public RoomTransfer? RoomTransfer { get; set; }

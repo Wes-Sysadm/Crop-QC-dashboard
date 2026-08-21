@@ -18,10 +18,14 @@ try{
  D -Arguments @('exec',$container,'createdb','-U','postgres',$database)
  D -Arguments @('exec',$container,'mkdir','-p',$scriptRoot)
  D -Arguments @('cp',$restore,"${container}:${scriptRoot}/restore.sql")
- foreach($n in @('preflight-room-treatment-tracking.sql','verify-room-treatment-tracking.sql','preflight-treatment-report-attachments.sql','apply-treatment-report-attachments-schema.sql','verify-treatment-report-attachments.sql','preflight-processor-shipments.sql','apply-processor-shipments-schema.sql','verify-processor-shipments.sql')){D -Arguments @('cp',(Join-Path $root "scripts\postgresql\$n"),"${container}:${scriptRoot}/$n")}
+ foreach($n in @('preflight-room-treatment-tracking.sql','verify-room-treatment-tracking.sql','preflight-treatment-report-attachments.sql','apply-treatment-report-attachments-schema.sql','verify-treatment-report-attachments.sql','preflight-receiving-treatment-applications.sql','apply-receiving-treatment-applications-schema.sql','verify-receiving-treatment-applications.sql','preflight-receiving-treatment-chemical-levels.sql','apply-receiving-treatment-chemical-levels.sql','verify-receiving-treatment-chemical-levels.sql','preflight-processor-shipments.sql','apply-processor-shipments-schema.sql','verify-processor-shipments.sql')){D -Arguments @('cp',(Join-Path $root "scripts\postgresql\$n"),"${container}:${scriptRoot}/$n")}
  & docker exec $container psql -X -v ON_ERROR_STOP=1 -U postgres -d $database -f "$scriptRoot/restore.sql" *> $null;if($LASTEXITCODE-ne 0){throw 'Run restore failed'}
  $historyBefore=Scalar 'select count(*)||''|''||md5(string_agg("MigrationId"||''|''||"ProductVersion",'';'' order by "MigrationId")) from "__EFMigrationsHistory";'
  & docker exec $container psql -X -v ON_ERROR_STOP=1 -U postgres -d $database -f "$scriptRoot/apply-treatment-report-attachments-schema.sql";if($LASTEXITCODE-ne 0){throw 'Restored prerequisite attachment compatibility apply failed'}
+ & docker exec $container psql -X -v ON_ERROR_STOP=1 -U postgres -d $database -f "$scriptRoot/preflight-receiving-treatment-applications.sql";if($LASTEXITCODE-ne 0){throw 'Restored Receiving treatment preflight failed'}
+ & docker exec $container psql -X -v ON_ERROR_STOP=1 -U postgres -d $database -f "$scriptRoot/apply-receiving-treatment-applications-schema.sql";if($LASTEXITCODE-ne 0){throw 'Restored Receiving treatment compatibility apply failed'}
+ & docker exec $container psql -X -v ON_ERROR_STOP=1 -U postgres -d $database -f "$scriptRoot/preflight-receiving-treatment-chemical-levels.sql";if($LASTEXITCODE-ne 0){throw 'Restored Receiving treatment chemical dry run failed'}
+ & docker exec $container psql -X -v ON_ERROR_STOP=1 -U postgres -d $database -f "$scriptRoot/apply-receiving-treatment-chemical-levels.sql";if($LASTEXITCODE-ne 0){throw 'Restored Receiving treatment chemical alignment failed'}
  & docker exec $container psql -X -v ON_ERROR_STOP=1 -U postgres -d $database -f "$scriptRoot/preflight-processor-shipments.sql";if($LASTEXITCODE-ne 0){throw 'Restored preflight failed'}
  & docker exec $container psql -X -v ON_ERROR_STOP=1 -U postgres -d $database -f "$scriptRoot/apply-processor-shipments-schema.sql";if($LASTEXITCODE-ne 0){throw 'Restored apply failed'}
  & docker exec $container psql -X -v ON_ERROR_STOP=1 -U postgres -d $database -f "$scriptRoot/verify-processor-shipments.sql";if($LASTEXITCODE-ne 0){throw 'Restored verify failed'}
@@ -30,7 +34,7 @@ try{
  $oldP=$env:DATABASE_PROVIDER;$oldC=$env:ConnectionStrings__CropQc;$oldE=$env:ASPNETCORE_ENVIRONMENT;$oldR=$env:PROCESSOR_SHIPMENT_RESTORE_CONNECTION_STRING
  try{
   $env:DATABASE_PROVIDER='PostgreSql';$env:ConnectionStrings__CropQc=$connection;$env:ASPNETCORE_ENVIRONMENT='Production'
-  & dotnet 'src\CropQc.Web\bin\Debug\net9.0\CropQc.Web.dll' '--verify-schema=20260821031442_AddProcessorShipments';if($LASTEXITCODE-ne 0){throw 'Restored 604-object gate failed'}
+  & dotnet 'src\CropQc.Web\bin\Debug\net9.0\CropQc.Web.dll' '--verify-schema=20260821031442_AddProcessorShipments';if($LASTEXITCODE-ne 0){throw 'Restored 619-object gate failed'}
   $env:PROCESSOR_SHIPMENT_RESTORE_CONNECTION_STRING=$connection
   & dotnet test 'tests\CropQc.Api.Tests\CropQc.Api.Tests.csproj' --no-build --filter 'FullyQualifiedName~Restored_production_postgresql_processor_workflow_when_requested' --logger 'console;verbosity=minimal';if($LASTEXITCODE-ne 0){throw 'Restored Processor Shipment workflow failed'}
  }finally{$env:DATABASE_PROVIDER=$oldP;$env:ConnectionStrings__CropQc=$oldC;$env:ASPNETCORE_ENVIRONMENT=$oldE;$env:PROCESSOR_SHIPMENT_RESTORE_CONNECTION_STRING=$oldR}

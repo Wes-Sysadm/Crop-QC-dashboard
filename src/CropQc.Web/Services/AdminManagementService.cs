@@ -100,7 +100,7 @@ public sealed class AdminManagementService(
             "grower-lots" => await dbContext.GrowerLots.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Grower, Code = x.LotNumber, PoolStart = x.PoolStart, Description = x.Notes, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "starch-scale-values" => await dbContext.StarchScaleValues.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Value = x.Value, SortOrder = x.SortOrder, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "size-thresholds" => await WithCommodityOptions(await dbContext.FruitSizeConversionThresholds.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, FruitType = x.FruitType, SizeCategory = x.SizeCategory, MinimumWeightGrams = x.MinimumWeightGrams, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken),
-            "treatment-chemicals" => await dbContext.TreatmentChemicals.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, ProductName = x.ProductName, CommonName = x.CommonName, Crop = x.Crop, Volume = x.Volume, Unit = x.Unit, UnitPrice = x.UnitPrice, Currency = x.Currency, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
+            "treatment-chemicals" => await dbContext.TreatmentChemicals.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, ProductName = x.ProductName, CommonName = x.CommonName, Crop = x.Crop, ApplicationLevel = x.ApplicationLevel, Volume = x.Volume, Unit = x.Unit, UnitPrice = x.UnitPrice, Currency = x.Currency, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "processors" => await dbContext.Processors.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, Code = x.Code ?? "", Description = x.Notes, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             _ => null
         };
@@ -591,6 +591,7 @@ public sealed class AdminManagementService(
                 x.CommonName ?? "",
                 x.ProductName,
                 x.Crop,
+                x.ApplicationLevel,
                 x.Volume.ToString("0.00"),
                 x.Unit,
                 x.UnitPrice.ToString("0.00"),
@@ -598,7 +599,7 @@ public sealed class AdminManagementService(
                 x.IsActive ? "Active" : "Inactive"
             }, x.IsActive, null))
             .ToListAsync(ct);
-        return Page("Treatment Chemicals", "treatment-chemicals", ["Common Name", "Product Name", "Crop", "Volume", "Unit", "Unit Price", "Currency", "Status"], rows, canEdit);
+        return Page("Treatment Chemicals", "treatment-chemicals", ["Common Name", "Product Name", "Crop", "Application Level", "Volume", "Unit", "Unit Price", "Currency", "Status"], rows, canEdit);
     }
 
     private async Task<MasterDataPageViewModel> ProcessorsPage(bool canEdit, CancellationToken ct)
@@ -1570,15 +1571,17 @@ public sealed class AdminManagementService(
 
     private async Task<string?> SaveTreatmentChemical(MasterDataEditForm form, string by, CancellationToken ct)
     {
-        if (Blank(form.ProductName) || Blank(form.Crop) || form.Volume is null || Blank(form.Unit)
+        if (Blank(form.ProductName) || Blank(form.Crop) || Blank(form.ApplicationLevel) || form.Volume is null || Blank(form.Unit)
             || form.UnitPrice is null || Blank(form.Currency))
-            return "Product name, crop, volume, unit, unit price, and currency are required.";
+            return "Product name, crop, application level, volume, unit, unit price, and currency are required.";
         if (form.ProductName.Trim().Length > 200 || form.CommonName?.Trim().Length > 200)
             return "Product and common names cannot exceed 200 characters.";
         if (form.Volume <= 0) return "Volume must be greater than zero.";
         if (form.UnitPrice < 0) return "Unit price cannot be negative.";
         var crop = form.Crop.Trim() switch { var x when x.Equals("Apple", StringComparison.OrdinalIgnoreCase) || x.Equals("Apples", StringComparison.OrdinalIgnoreCase) => "Apples", var x when x.Equals("Pear", StringComparison.OrdinalIgnoreCase) || x.Equals("Pears", StringComparison.OrdinalIgnoreCase) => "Pears", _ => "" };
         if (crop.Length == 0) return "Crop must be Apples or Pears.";
+        var applicationLevel = form.ApplicationLevel.Trim();
+        if (!TreatmentApplicationLevels.IsValid(applicationLevel)) return "Application level must be Room or Receiving.";
         var currency = form.Currency.Trim().ToUpperInvariant();
         if (currency.Length != 3) return "Currency must be a three-letter code such as USD.";
         if (await dbContext.TreatmentChemicals.AnyAsync(x => x.ProductName == form.ProductName.Trim() && x.Id != (form.Id ?? 0), ct))
@@ -1592,6 +1595,7 @@ public sealed class AdminManagementService(
         entity.ProductName = form.ProductName.Trim();
         entity.CommonName = Blank(form.CommonName) ? null : form.CommonName!.Trim();
         entity.Crop = crop;
+        entity.ApplicationLevel = applicationLevel;
         entity.Volume = form.Volume.Value;
         entity.Unit = form.Unit.Trim().ToUpperInvariant();
         entity.UnitPrice = form.UnitPrice.Value;

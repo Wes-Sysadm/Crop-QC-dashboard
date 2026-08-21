@@ -805,6 +805,9 @@ public sealed class FieldSampleWorkflowTests
     {
         await using var db = CreateDbContext();
         await SeedFieldSampleMasterDataAsync(db);
+        var fruitProfile = await db.FruitProfiles.SingleAsync(x => x.Id == 1);
+        fruitProfile.Name = "Organic Granny Smith";
+        fruitProfile.ProductionType = "Organic";
         db.Users.Add(new User
         {
             Id = 1,
@@ -818,12 +821,12 @@ public sealed class FieldSampleWorkflowTests
         var fieldSampleService = CreateService(db);
         var create = await fieldSampleService.CreateAsync(new FieldSampleCreateForm
         {
-            OrchardName = "WP ORCHARD",
+            OrchardName = "Phoenix orchard",
             GrowerNumber = "1080",
-            BlockName = "Report Block",
+            BlockName = "phoenix",
             FruitProfileId = 1,
             ConfirmCreateNewBlock = true,
-            SampleTakenAt = new DateTimeOffset(2026, 7, 22, 8, 30, 0, TimeSpan.Zero)
+            SampleTakenAt = new DateTimeOffset(2026, 8, 20, 8, 30, 0, TimeSpan.FromHours(-7))
         }, Owner(), CancellationToken.None);
         Assert.Null(create.Error);
         var sampleId = create.SampleId!.Value;
@@ -875,18 +878,24 @@ public sealed class FieldSampleWorkflowTests
         var (preview, previewError) = await reportService.PreviewAsync(sampleId, Owner(), CancellationToken.None);
         Assert.Null(previewError);
         Assert.NotNull(preview);
+        const string expectedSubject = "Field Sample QC - Phoenix orchard - phoenix - Organic Granny Smith - August 20, 2026";
         Assert.Equal("qc@fruitandland.com, manager@example.com", preview!.Recipients);
-        Assert.Contains("WP ORCHARD", preview.Subject);
-        Assert.Contains("Report Block", preview.Subject);
-        Assert.Contains("Orchard</th><td>WP ORCHARD", preview.HtmlBody);
+        Assert.Equal(expectedSubject, preview.Subject);
+        Assert.DoesNotContain('–', preview.Subject);
+        Assert.DoesNotContain("Ãƒ", preview.Subject, StringComparison.Ordinal);
+        Assert.DoesNotContain("Ã‚", preview.Subject, StringComparison.Ordinal);
+        Assert.DoesNotContain("Ã¯Â¿Â½", preview.Subject, StringComparison.Ordinal);
+        Assert.DoesNotContain('\uFFFD', preview.Subject);
+        Assert.Contains("Orchard</th><td>Phoenix orchard", preview.HtmlBody);
         Assert.Contains("Grower number</th><td>1080", preview.HtmlBody);
-        Assert.Contains("Canonical block</th><td>Report Block", preview.HtmlBody);
+        Assert.Contains("Canonical block</th><td>phoenix", preview.HtmlBody);
         Assert.Contains("Same-Block Trends", preview.HtmlBody);
         Assert.Contains("data:image/jpeg;base64,", preview.HtmlBody);
 
         Assert.Null(await reportService.SendAsync(sampleId, Owner(), CancellationToken.None));
         Assert.NotNull(sender.Message);
         Assert.Equal("qc@fruitandland.com, manager@example.com", sender.Message!.To);
+        Assert.Equal(preview.Subject, sender.Message.Subject);
         Assert.Single(sender.Message.InlineImages);
         var sentSample = await db.QcSamples.SingleAsync(x => x.Id == sampleId);
         Assert.Equal("Sent", sentSample.Status);
@@ -894,6 +903,7 @@ public sealed class FieldSampleWorkflowTests
         var history = await db.QcSummaryEmailLogs.SingleAsync(x => x.QcSampleId == sampleId);
         Assert.Null(history.ReceiptId);
         Assert.Equal("gmail-field-1", history.MessageId);
+        Assert.Equal(expectedSubject, history.Subject);
         Assert.False(history.IsResend);
         Assert.Equal("This Field Sample report was already sent and the sample has not changed.",
             await reportService.SendAsync(sampleId, Owner(), CancellationToken.None));
