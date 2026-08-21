@@ -112,44 +112,112 @@ public sealed class ProcessorShipmentTests
 
         Receipt Receipt(long id, string number, int bins) => new()
         {
-            Id = id, CropYear = 2026, CompuTechReceiptId = number, ReceivedAt = Now.AddDays(-1),
-            Warehouse = warehouse, WarehouseId = warehouse.Id, Room = room, RoomId = room.Id,
-            FruitProfile = fruit, FruitProfileId = fruit.Id, GrowerNumber = "9350",
-            GrowerName = "ROLOFF FARM-NAGLE CONV", LotCode = "9350", BinCount = bins,
-            CreatedAt = Now.AddDays(-1), UpdatedAt = Now.AddDays(-1)
+            Id = id,
+            CropYear = 2026,
+            CompuTechReceiptId = number,
+            ReceivedAt = Now.AddDays(-1),
+            Warehouse = warehouse,
+            WarehouseId = warehouse.Id,
+            Room = room,
+            RoomId = room.Id,
+            FruitProfile = fruit,
+            FruitProfileId = fruit.Id,
+            GrowerNumber = "9350",
+            GrowerName = "ROLOFF FARM-NAGLE CONV",
+            LotCode = "9350",
+            BinCount = bins,
+            CreatedAt = Now.AddDays(-1),
+            UpdatedAt = Now.AddDays(-1)
         };
         RoomInventoryAdjustment Adjustment(long id, Receipt receipt, int bins) => new()
         {
-            Id = id, CropYear = 2026, Receipt = receipt, ReceiptId = receipt.Id, Warehouse = warehouse,
-            WarehouseId = warehouse.Id, Room = room, RoomId = room.Id, FruitProfile = fruit,
-            FruitProfileId = fruit.Id, GrowerName = receipt.GrowerName, LotNumber = receipt.LotCode,
-            VarietyCode = fruit.VarietyCode, OldBinCount = 0, ChangeAmount = bins, NewBinCount = bins,
-            AdjustmentType = "Receipt", InventoryStatus = "Packable", AdjustmentAt = Now.AddDays(-1), CreatedAt = Now.AddDays(-1)
+            Id = id,
+            CropYear = 2026,
+            Receipt = receipt,
+            ReceiptId = receipt.Id,
+            Warehouse = warehouse,
+            WarehouseId = warehouse.Id,
+            Room = room,
+            RoomId = room.Id,
+            FruitProfile = fruit,
+            FruitProfileId = fruit.Id,
+            GrowerName = receipt.GrowerName,
+            LotNumber = receipt.LotCode,
+            VarietyCode = fruit.VarietyCode,
+            OldBinCount = 0,
+            ChangeAmount = bins,
+            NewBinCount = bins,
+            AdjustmentType = "Receipt",
+            InventoryStatus = "Packable",
+            AdjustmentAt = Now.AddDays(-1),
+            CreatedAt = Now.AddDays(-1)
         };
         TreatmentChemical Chemical(int id, string product, string common, string level) => new()
         {
-            Id = id, ProductName = product, CommonName = common, Crop = "Apples", ApplicationLevel = level,
-            Volume = 1, Unit = "BIN", UnitPrice = 1, Currency = "USD", CreatedAt = Now, UpdatedAt = Now
+            Id = id,
+            ProductName = product,
+            CommonName = common,
+            Crop = "Apples",
+            ApplicationLevel = level,
+            Volume = 1,
+            Unit = "BIN",
+            UnitPrice = 1,
+            Currency = "USD",
+            CreatedAt = Now,
+            UpdatedAt = Now
         };
         RoomTreatmentApplication Application(long id, string key, TreatmentChemical chemical, long? receiptId, string product, string common, string level, int bins) => new()
         {
-            Id = id, OperationKey = key, TreatmentChemical = chemical, TreatmentChemicalId = chemical.Id,
-            ApplicationLevel = level, ReceiptId = receiptId, Warehouse = warehouse, WarehouseId = warehouse.Id,
-            Room = room, RoomId = room.Id, AppliedAt = Now.AddHours(-1), AppliedByUser = actor,
-            AppliedByUserId = actor.Id, TotalBinsSnapshot = bins, ProductNameSnapshot = product,
-            CommonNameSnapshot = common, CropSnapshot = "Apples", VolumeSnapshot = 1, UnitSnapshot = "BIN",
-            UnitPriceSnapshot = 1, CurrencySnapshot = "USD", EstimatedCostSnapshot = bins,
-            CreatedAt = Now, CreatedByUser = actor, CreatedByUserId = actor.Id
+            Id = id,
+            OperationKey = key,
+            TreatmentChemical = chemical,
+            TreatmentChemicalId = chemical.Id,
+            ApplicationLevel = level,
+            ReceiptId = receiptId,
+            Warehouse = warehouse,
+            WarehouseId = warehouse.Id,
+            Room = room,
+            RoomId = room.Id,
+            AppliedAt = Now.AddHours(-1),
+            AppliedByUser = actor,
+            AppliedByUserId = actor.Id,
+            TotalBinsSnapshot = bins,
+            ProductNameSnapshot = product,
+            CommonNameSnapshot = common,
+            CropSnapshot = "Apples",
+            VolumeSnapshot = 1,
+            UnitSnapshot = "BIN",
+            UnitPriceSnapshot = 1,
+            CurrencySnapshot = "USD",
+            EstimatedCostSnapshot = bins,
+            CreatedAt = Now,
+            CreatedByUser = actor,
+            CreatedByUserId = actor.Id
         };
         TreatmentLineageSegment Segment(long id, long receiptId, string signature, string state, int bins) => new()
         {
-            Id = id, Warehouse = warehouse, WarehouseId = warehouse.Id, Room = room, RoomId = room.Id,
-            ReceiptId = receiptId, CropYear = 2026, FruitProfile = fruit, FruitProfileId = fruit.Id,
-            IdentityKey = identity, GrowerNumberSnapshot = "9350", GrowerNameSnapshot = "ROLOFF FARM-NAGLE CONV",
-            LotNumberSnapshot = "9350", VarietyCodeSnapshot = fruit.VarietyCode,
-            ProductionTypeSnapshot = fruit.ProductionType, IsOrganicSnapshot = false,
-            InventoryStatusSnapshot = "Packable", TreatmentState = state, TreatmentSignature = signature,
-            CurrentBins = bins, CreatedAt = Now, UpdatedAt = Now
+            Id = id,
+            Warehouse = warehouse,
+            WarehouseId = warehouse.Id,
+            Room = room,
+            RoomId = room.Id,
+            ReceiptId = receiptId,
+            CropYear = 2026,
+            FruitProfile = fruit,
+            FruitProfileId = fruit.Id,
+            IdentityKey = identity,
+            GrowerNumberSnapshot = "9350",
+            GrowerNameSnapshot = "ROLOFF FARM-NAGLE CONV",
+            LotNumberSnapshot = "9350",
+            VarietyCodeSnapshot = fruit.VarietyCode,
+            ProductionTypeSnapshot = fruit.ProductionType,
+            IsOrganicSnapshot = false,
+            InventoryStatusSnapshot = "Packable",
+            TreatmentState = state,
+            TreatmentSignature = signature,
+            CurrentBins = bins,
+            CreatedAt = Now,
+            UpdatedAt = Now
         };
     }
 
