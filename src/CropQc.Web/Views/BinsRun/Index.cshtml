@@ -9,7 +9,7 @@
     var plannerVisibility = Model.Planner.SelectedDeletionStatus;
     var plannerSort = Model.Planner.SelectedSort;
     var plannerTodayUrl = $"/BinsRun?Section=Planner&PlannedDate={Model.Planner.PacificToday:yyyy-MM-dd}&RoomId={Model.Filter.RoomId}&Facility={plannerFacility}&ProjectionVisibility={plannerVisibility}&ProjectionSort={plannerSort}";
-    var editLines = Model.ActualRunForm.Lines.ToDictionary(x => $"{x.InventoryKey}|{x.TreatmentSignature}", StringComparer.OrdinalIgnoreCase);
+    var editLines = Model.ActualRunForm.Lines.ToDictionary(x => $"{x.InventoryKey}|{x.TreatmentSignature}|{x.TreatmentSegmentId}", StringComparer.OrdinalIgnoreCase);
 }
 
 <h1>Bins Run &amp; Transfers</h1>
@@ -1302,7 +1302,7 @@ else
                             @for (var i = 0; i < Model.AvailableInventory.Count; i++)
                             {
                                 var option = Model.AvailableInventory[i];
-                                var isSelected = editLines.TryGetValue($"{option.InventoryKey}|{option.TreatmentSignature}", out var editLine);
+                                var isSelected = editLines.TryGetValue($"{option.InventoryKey}|{option.TreatmentSignature}|{option.TreatmentSegmentId}", out var editLine);
                                 var effectiveAvailable = option.CurrentBins + (isSelected ? editLine!.BinsRun : 0);
                                 <tr data-actual-run-row data-current-bins="@effectiveAvailable">
                                     <td>
@@ -1310,6 +1310,7 @@ else
                                         <input type="hidden" name="Lines.Index" value="@i" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].InventoryKey" value="@option.InventoryKey" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].TreatmentSignature" value="@option.TreatmentSignature" data-actual-line-field disabled="@(!isSelected)" />
+                                        <input type="hidden" name="Lines[@i].TreatmentSegmentId" value="@option.TreatmentSegmentId" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].ExpectedAvailableBins" value="@effectiveAvailable" data-actual-line-field disabled="@(!isSelected)" />
                                     </td>
                                     <td>@option.Facility</td>
@@ -1411,6 +1412,7 @@ else
                     <input type="hidden" name="OperationKey" value="@Model.TransferForm.OperationKey" />
                     <input type="hidden" name="FromRoomId" value="@Model.Filter.RoomId" />
                     <input type="hidden" name="TreatmentSignature" id="transfer-treatment-signature" value="" />
+                    <input type="hidden" name="TreatmentSegmentId" id="transfer-treatment-segment-id" value="" />
                     <label class="field">Destination Facility
                         <select name="DestinationWarehouseId" required data-transfer-facility>
                             <option value="">Select destination facility...</option>
@@ -1441,6 +1443,7 @@ else
                                     <input type="radio" name="SourceLotKey" value="@option.LotKey" required
                                            checked="@(option.LotKey == Model.Filter.SourceKey && option.TreatmentSignature == Model.Filter.TransferTreatmentSignature)"
                                            data-treatment-signature="@option.TreatmentSignature"
+                                           data-treatment-segment-id="@option.TreatmentSegmentId"
                                            data-grower="@option.Grower" data-variety="@option.Variety"
                                            data-treatment="@option.TreatmentLabel" data-available="@option.CurrentBins" />
                                     <span>@option.Label</span>
@@ -1478,11 +1481,15 @@ else
                     const facility = form.querySelector('[data-transfer-facility]');
                     const room = form.querySelector('[data-transfer-room]');
                     const signature = form.querySelector('#transfer-treatment-signature');
+                    const segmentId = form.querySelector('#transfer-treatment-segment-id');
                     const review = form.querySelector('[data-transfer-review]');
                     const reviewButton = form.querySelector('[data-transfer-review-button]');
                     let reviewReady = false;
                     const selectedFruit = () => form.querySelector('input[name="SourceLotKey"]:checked');
-                    const syncSignature = () => { if (signature) signature.value = selectedFruit()?.dataset.treatmentSignature ?? ''; };
+                    const syncSelection = () => {
+                        if (signature) signature.value = selectedFruit()?.dataset.treatmentSignature ?? '';
+                        if (segmentId) segmentId.value = selectedFruit()?.dataset.treatmentSegmentId ?? '';
+                    };
                     const hideReview = () => { reviewReady = false; if (review) review.hidden = true; };
                     const filterRooms = () => {
                         const warehouseId = facility?.value ?? '';
@@ -1498,11 +1505,11 @@ else
                     };
                     facility?.addEventListener('change', filterRooms);
                     form.querySelectorAll('input, select, textarea').forEach(input => input.addEventListener('change', () => {
-                        syncSignature();
+                        syncSelection();
                         hideReview();
                     }));
                     reviewButton?.addEventListener('click', () => {
-                        syncSignature();
+                        syncSelection();
                         if (!form.reportValidity()) return;
                         const fruit = selectedFruit();
                         const setText = (selector, value) => { const target = form.querySelector(selector); if (target) target.textContent = value || '—'; };
@@ -1520,14 +1527,14 @@ else
                     });
                     form.querySelector('[data-transfer-edit-button]')?.addEventListener('click', hideReview);
                     form.addEventListener('submit', event => {
-                        syncSignature();
+                        syncSelection();
                         if (!reviewReady) {
                             event.preventDefault();
                             reviewButton?.click();
                         }
                     });
                     filterRooms();
-                    syncSignature();
+                    syncSelection();
                 })();
                 </script>
                 }

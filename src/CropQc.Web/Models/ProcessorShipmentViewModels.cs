@@ -48,7 +48,7 @@ public sealed record ProcessorInventoryOptionViewModel(
     string FruitType, string ProductionType, bool? IsOrganic, string InventoryStatus,
     string TreatmentState, string TreatmentSignature, string TreatmentSummary,
     int AvailableBins, long SourceInventoryAdjustmentId, long? ReceiptId,
-    decimal? PoundsPerBin);
+    decimal? PoundsPerBin, long? TreatmentSegmentId = null, long? TreatmentReceiptId = null);
 
 public sealed record ProcessorShipmentHistoryViewModel(
     long Id, DateTimeOffset ShippedAt, string Processor, int TotalBins,

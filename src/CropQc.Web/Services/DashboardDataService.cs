@@ -939,15 +939,32 @@ public sealed class DashboardDataService(
             .SingleOrDefaultAsync(x => x.OperationKey == operationKey, cancellationToken);
         if (existingTransfer is not null)
         {
-            return existingTransfer.SourceRoomId == form.FromRoomId
+            var sameTransfer = existingTransfer.SourceRoomId == form.FromRoomId
                 && existingTransfer.DestinationWarehouseId == form.DestinationWarehouseId
                 && existingTransfer.DestinationRoomId == form.DestinationRoomId
                 && existingTransfer.BinCount == form.BinCount
                 && existingTransfer.TransferredAt.ToUniversalTime() == form.TransferAt.ToUniversalTime()
                 && existingTransfer.Reason == form.Reason.Trim()
-                && existingTransfer.Notes == (string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim())
+                && existingTransfer.Notes == (string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim());
+            if (!sameTransfer)
+            {
+                return "The operation key already belongs to a different room transfer.";
+            }
+
+            if (RoomTreatments is null)
+            {
+                return null;
+            }
+
+            var existingLineage = await dbContext.TreatmentLineageMovements.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.OperationKey == $"transfer:{operationKey}:treatment", cancellationToken);
+            var sameTreatmentSelection = existingLineage is null
+                ? form.TreatmentSegmentId is null && string.IsNullOrEmpty(form.TreatmentSignature)
+                : string.Equals(existingLineage.TreatmentSignatureSnapshot, form.TreatmentSignature ?? "", StringComparison.Ordinal)
+                    && (!form.TreatmentSegmentId.HasValue || existingLineage.SourceSegmentId == form.TreatmentSegmentId);
+            return sameTreatmentSelection
                 ? null
-                : "The operation key already belongs to a different room transfer.";
+                : "The operation key already belongs to a transfer of a different treatment segment.";
         }
 
         await using var transaction = await BeginInventoryTransactionIfSupportedAsync(cancellationToken);
@@ -960,7 +977,8 @@ public sealed class DashboardDataService(
 
         var selectedEntry = transferProjection.Entries.SingleOrDefault(x =>
             string.Equals(x.Option.LotKey, form.SourceLotKey, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(x.Option.TreatmentSignature, form.TreatmentSignature ?? "", StringComparison.Ordinal));
+            && string.Equals(x.Option.TreatmentSignature, form.TreatmentSignature ?? "", StringComparison.Ordinal)
+            && x.Option.TreatmentSegmentId == form.TreatmentSegmentId);
         if (selectedEntry is null)
         {
             return "The selected source or treatment segment is no longer available. Refresh before retrying.";
@@ -1009,9 +1027,9 @@ public sealed class DashboardDataService(
         var currentUser = await GetCurrentUserAsync(cancellationToken);
         var reason = form.Reason.Trim();
         var notes = string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim();
-        var sourceReceipt = sourceLot.ReceiptId is null
+        var sourceReceipt = selectedEntry.Option.TreatmentReceiptId is null
             ? null
-            : await dbContext.Receipts.Include(x => x.Warehouse).Include(x => x.Room).Include(x => x.FruitProfile).SingleOrDefaultAsync(x => x.Id == sourceLot.ReceiptId && !x.IsDeleted, cancellationToken);
+            : await dbContext.Receipts.Include(x => x.Warehouse).Include(x => x.Room).Include(x => x.FruitProfile).SingleOrDefaultAsync(x => x.Id == selectedEntry.Option.TreatmentReceiptId && !x.IsDeleted, cancellationToken);
         var fruitProfile = await dbContext.FruitProfiles
             .AsNoTracking()
             .Where(x => sourceLot.FruitProfileId.HasValue
@@ -1059,9 +1077,11 @@ public sealed class DashboardDataService(
 
         if (RoomTreatments is not null)
         {
-            var lineage = await RoomTreatments.MoveAsync(
+            var lineage = await RoomTreatments.MoveSelectedAsync(
                 selectedEntry.Snapshot,
                 form.TreatmentSignature,
+                form.TreatmentSegmentId,
+                selectedEntry.Option.TreatmentReceiptId,
                 form.BinCount,
                 toRoom.WarehouseId,
                 toRoom.Id,
@@ -1113,7 +1133,7 @@ public sealed class DashboardDataService(
         }
 
         var incoming = AddRoomInventoryAdjustmentRaw(
-            receiptId: sourceLot.ReceiptId,
+            receiptId: selectedEntry.Option.TreatmentReceiptId,
             warehouseId: toRoom.WarehouseId,
             roomId: toRoom.Id,
             growerLotId: sourceLot.GrowerLotId ?? sourceReceipt?.GrowerLotId,
@@ -5790,6 +5810,16 @@ public sealed class DashboardDataService(
         var treatmentSelections = RoomTreatments is null
             ? null
             : await RoomTreatments.GetSelectionsAsync(snapshots, cancellationToken);
+        var treatmentReceiptIds = treatmentSelections?.Values.SelectMany(x => x)
+            .Where(x => x.ReceiptId is not null)
+            .Select(x => x.ReceiptId!.Value)
+            .Distinct()
+            .ToList() ?? [];
+        var treatmentReceiptLabels = treatmentReceiptIds.Count == 0
+            ? new Dictionary<long, string>()
+            : await dbContext.Receipts.AsNoTracking()
+                .Where(x => treatmentReceiptIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, x => x.CompuTechReceiptId ?? $"Receipt #{x.Id}", cancellationToken);
         var entries = new List<RoomTransferInventoryEntry>();
         foreach (var snapshot in snapshots)
         {
@@ -5818,14 +5848,19 @@ public sealed class DashboardDataService(
 
             foreach (var segment in segments)
             {
+                var sourceLabel = segment.ReceiptId is long receiptId
+                    ? treatmentReceiptLabels.GetValueOrDefault(receiptId, $"Receipt #{receiptId}")
+                    : "Shared inventory";
                 var option = new RoomInventoryLotOptionViewModel(
                     RoomLotKey(lot),
-                    $"{lot.DisplayReceiptId} - {lot.GrowerName} {lot.LotCode} {lot.VarietyCode} - {segment.Label} ({segment.CurrentBins} bins)",
+                    $"{sourceLabel} - {lot.GrowerName} {lot.LotCode} {lot.VarietyCode} - {segment.Label} ({segment.CurrentBins} bins)",
                     segment.CurrentBins,
                     segment.TreatmentSignature,
                     segment.Label,
                     $"{lot.GrowerName} / {lot.LotCode}",
-                    lot.VarietyCode);
+                    lot.VarietyCode,
+                    segment.SegmentId,
+                    segment.ReceiptId);
                 entries.Add(new RoomTransferInventoryEntry(option, snapshot));
             }
         }

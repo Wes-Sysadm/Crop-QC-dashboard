@@ -89,6 +89,116 @@ public sealed class ReceivingTreatmentApplicationTests
     }
 
     [Fact]
+    public async Task Treated_and_untreated_receipt_segments_move_independently_coexist_chain_and_fail_stale_closed()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        Assert.Null((await fixture.Service.ApplyReceiptAsync(
+            fixture.ReceiptForm("transfer-receipt-a", Fixture.AppleMcpId), default)).Error);
+        var sourceSnapshot = fixture.Snapshot(100);
+        var sourceSegments = await fixture.Service.GetSelectionsAsync(sourceSnapshot, default);
+        var mcp = Assert.Single(sourceSegments, x => x.ReceiptId == Fixture.ReceiptAId
+            && x.TreatmentState == TreatmentLineageStates.Confirmed);
+        var untreated = Assert.Single(sourceSegments, x => x.TreatmentState == TreatmentLineageStates.Untreated);
+        Assert.Equal(40, mcp.CurrentBins);
+        Assert.Equal(60, untreated.CurrentBins);
+        Assert.NotNull(mcp.SegmentId);
+        Assert.NotNull(untreated.SegmentId);
+
+        const int roomBId = 90005;
+        const int roomCId = 90006;
+        var warehouse = await fixture.Db.Warehouses.SingleAsync(x => x.Id == Fixture.WarehouseId);
+        fixture.Db.Rooms.AddRange(
+            new Room { Id = roomBId, WarehouseId = warehouse.Id, Warehouse = warehouse, Code = "EVANS-9", Name = "EVANS-9" },
+            new Room { Id = roomCId, WarehouseId = warehouse.Id, Warehouse = warehouse, Code = "MCD-09", Name = "MCD-09" });
+        fixture.Db.RoomTransfers.AddRange(
+            Parent(91001, Fixture.RoomId, roomBId, 25),
+            Parent(91002, Fixture.RoomId, roomBId, 20),
+            Parent(91003, Fixture.RoomId, roomBId, 20));
+        await fixture.Db.SaveChangesAsync();
+
+        var movedMcp = await fixture.Service.MoveSelectedAsync(sourceSnapshot, mcp.TreatmentSignature,
+            mcp.SegmentId, mcp.ReceiptId, 25, Fixture.WarehouseId, roomBId, "exact-mcp-transfer",
+            TreatmentLineageMovementTypes.Transfer, 91001, null, null, Now, Fixture.UserId, default);
+        var duplicate = await fixture.Service.MoveSelectedAsync(sourceSnapshot, mcp.TreatmentSignature,
+            mcp.SegmentId, mcp.ReceiptId, 25, Fixture.WarehouseId, roomBId, "exact-mcp-transfer",
+            TreatmentLineageMovementTypes.Transfer, 91001, null, null, Now, Fixture.UserId, default);
+        var movedUntreated = await fixture.Service.MoveSelectedAsync(sourceSnapshot with { CurrentBins = 75 }, untreated.TreatmentSignature,
+            untreated.SegmentId, untreated.ReceiptId, 20, Fixture.WarehouseId, roomBId, "exact-untreated-transfer",
+            TreatmentLineageMovementTypes.Transfer, 91002, null, null, Now, Fixture.UserId, default);
+
+        Assert.True(movedMcp.Success, movedMcp.Error);
+        Assert.Equal(movedMcp.MovementId, duplicate.MovementId);
+        Assert.True(movedUntreated.Success, movedUntreated.Error);
+        Assert.Equal(2, await fixture.Db.TreatmentLineageMovements.CountAsync());
+        var sourceAfter = await fixture.Service.GetSelectionsAsync(sourceSnapshot with { CurrentBins = 55 }, default);
+        Assert.Equal(15, sourceAfter.Single(x => x.TreatmentSignature == mcp.TreatmentSignature).CurrentBins);
+        Assert.Equal(40, sourceAfter.Single(x => x.TreatmentSignature == untreated.TreatmentSignature).CurrentBins);
+        var roomBSnapshot = sourceSnapshot with { RoomId = roomBId, Room = "EVANS-9", CurrentBins = 45 };
+        var roomB = await fixture.Service.GetSelectionsAsync(roomBSnapshot, default);
+        Assert.Equal(25, roomB.Single(x => x.TreatmentSignature == mcp.TreatmentSignature).CurrentBins);
+        Assert.Equal(Fixture.ReceiptAId, roomB.Single(x => x.TreatmentSignature == mcp.TreatmentSignature).ReceiptId);
+        Assert.Equal(20, roomB.Single(x => x.TreatmentSignature == untreated.TreatmentSignature).CurrentBins);
+        Assert.Equal(45, roomB.Sum(x => x.CurrentBins));
+
+        var movementCount = await fixture.Db.TreatmentLineageMovements.CountAsync();
+        var stale = await fixture.Service.MoveSelectedAsync(sourceSnapshot with { CurrentBins = 55 }, mcp.TreatmentSignature,
+            mcp.SegmentId, mcp.ReceiptId, 20, Fixture.WarehouseId, roomBId, "stale-mcp-transfer",
+            TreatmentLineageMovementTypes.Transfer, 91003, null, null, Now, Fixture.UserId, default);
+        Assert.False(stale.Success);
+        Assert.Contains("Only 15 bins remain", stale.Error);
+        Assert.Equal(movementCount, await fixture.Db.TreatmentLineageMovements.CountAsync());
+
+        var roomBMcp = roomB.Single(x => x.TreatmentSignature == mcp.TreatmentSignature);
+        fixture.Db.RoomTransfers.Add(Parent(91004, roomBId, roomCId, 10));
+        await fixture.Db.SaveChangesAsync();
+        var chained = await fixture.Service.MoveSelectedAsync(roomBSnapshot, roomBMcp.TreatmentSignature,
+            roomBMcp.SegmentId, roomBMcp.ReceiptId, 10, Fixture.WarehouseId, roomCId, "chained-mcp-transfer",
+            TreatmentLineageMovementTypes.Transfer, 91004, null, null, Now, Fixture.UserId, default);
+        Assert.True(chained.Success, chained.Error);
+        var roomC = await fixture.Service.GetSelectionsAsync(
+            sourceSnapshot with { RoomId = roomCId, Room = "MCD-09", CurrentBins = 10 }, default);
+        var chainedMcp = Assert.Single(roomC);
+        Assert.Equal(mcp.TreatmentSignature, chainedMcp.TreatmentSignature);
+        Assert.Equal(Fixture.ReceiptAId, chainedMcp.ReceiptId);
+        Assert.Equal(10, chainedMcp.CurrentBins);
+
+        var reverseChain = await fixture.Service.ReverseMovementsAsync("reverse-chain", TreatmentLineageMovementTypes.TransferReversal,
+            91004, null, null, Now, Fixture.UserId, default);
+        var reverseMcp = await fixture.Service.ReverseMovementsAsync("reverse-mcp", TreatmentLineageMovementTypes.TransferReversal,
+            91001, null, null, Now, Fixture.UserId, default);
+        var reverseUntreated = await fixture.Service.ReverseMovementsAsync("reverse-untreated", TreatmentLineageMovementTypes.TransferReversal,
+            91002, null, null, Now, Fixture.UserId, default);
+        Assert.True(reverseChain.Success, reverseChain.Error);
+        Assert.True(reverseMcp.Success, reverseMcp.Error);
+        Assert.True(reverseUntreated.Success, reverseUntreated.Error);
+        var restored = await fixture.Service.GetSelectionsAsync(sourceSnapshot, default);
+        Assert.Equal(40, restored.Single(x => x.TreatmentSignature == mcp.TreatmentSignature).CurrentBins);
+        Assert.Equal(60, restored.Single(x => x.TreatmentSignature == untreated.TreatmentSignature).CurrentBins);
+        Assert.Equal(100, restored.Sum(x => x.CurrentBins));
+        Assert.Equal(3, await fixture.Db.TreatmentLineageMovements.CountAsync(x => x.ReversesTreatmentLineageMovementId != null));
+
+        RoomTransfer Parent(long id, int fromRoomId, int toRoomId, int bins) => new()
+        {
+            Id = id,
+            OperationKey = $"treatment-aware-transfer-{id}",
+            SourceWarehouseId = Fixture.WarehouseId,
+            SourceRoomId = fromRoomId,
+            DestinationWarehouseId = Fixture.WarehouseId,
+            DestinationRoomId = toRoomId,
+            CropYear = 2026,
+            FruitProfileId = Fixture.FruitProfileId,
+            GrowerName = "ROLOFF FARM-NAGLE CONV",
+            LotNumber = "9350",
+            VarietyCode = "GALA",
+            BinCount = bins,
+            Reason = "Treatment-aware transfer test",
+            TransferredAt = Now,
+            CreatedByUserId = Fixture.UserId,
+            CreatedAt = Now
+        };
+    }
+
+    [Fact]
     public async Task Positive_receipt_override_does_not_expand_historical_treatment()
     {
         await using var fixture = await Fixture.CreateAsync();
