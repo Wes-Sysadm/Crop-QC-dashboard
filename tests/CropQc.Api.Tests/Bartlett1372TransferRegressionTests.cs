@@ -16,9 +16,11 @@ namespace CropQc.Api.Tests;
 public sealed class Bartlett1372TransferRegressionTests
 {
     [Fact]
-    public async Task Exact_run92_Bartlett_1372_room16_to_room14_transfers_one_exact_segment_and_reverses()
+    public async Task Exact_restored_Bartlett_1372_room16_to_room14_transfers_one_exact_segment_and_reverses()
     {
-        var connectionString = Environment.GetEnvironmentVariable("BARTLETT_1372_RESTORE_CONNECTION_STRING");
+        var currentRestore = Environment.GetEnvironmentVariable("BARTLETT_1372_CURRENT_RESTORE_CONNECTION_STRING");
+        var connectionString = currentRestore
+            ?? Environment.GetEnvironmentVariable("BARTLETT_1372_RESTORE_CONNECTION_STRING");
         if (string.IsNullOrWhiteSpace(connectionString)) return;
         ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connectionString);
 
@@ -52,11 +54,17 @@ public sealed class Bartlett1372TransferRegressionTests
                 && string.Equals(x.GrowerNumber ?? x.Lot, "1372", StringComparison.OrdinalIgnoreCase))
             .ToList();
         var sourceSnapshot = Assert.Single(snapshots);
-        Assert.Equal(894, sourceSnapshot.CurrentBins);
+        var expectedSourceBins = currentRestore is null ? 894 : 1028;
+        var expectedDestinationBins = Assert.Single(
+            await ledger.GetSnapshotsAsync(sourceWarehouseId, [destinationRoomId], default),
+            x => x.CurrentBins > 0 && SameIdentity(x, sourceSnapshot)).CurrentBins;
+        if (currentRestore is null) Assert.Equal(66, expectedDestinationBins);
+        else Assert.Equal(572, expectedDestinationBins);
+        Assert.Equal(expectedSourceBins, sourceSnapshot.CurrentBins);
         Assert.Equal(448, sourceSnapshot.GrowerLotId);
 
         var treatmentSelections = await treatments.GetSelectionsAsync(snapshots, default);
-        Assert.Equal(894, treatmentSelections.Values.SelectMany(x => x).Sum(x => x.CurrentBins));
+        Assert.Equal(expectedSourceBins, treatmentSelections.Values.SelectMany(x => x).Sum(x => x.CurrentBins));
         Assert.All(treatmentSelections.Values.SelectMany(x => x), x => Assert.Equal(TreatmentLineageStates.Untreated, x.TreatmentState));
 
         var variety = new InventoryByVarietyService(
@@ -78,10 +86,21 @@ public sealed class Bartlett1372TransferRegressionTests
         Assert.True(page.TransferInventoryReconciles, page.TransferInventoryError);
         var options = page.TransferLotOptions.Where(x => x.CurrentBins > 0
             && x.Label.Contains("TOP PEAR CONV 1372 BART", StringComparison.OrdinalIgnoreCase)).ToList();
-        Assert.Equal(2, options.Count);
-        Assert.Equal(894, options.Sum(x => x.CurrentBins));
+        Assert.Equal(currentRestore is null ? 2 : 3, options.Count);
+        Assert.Equal(expectedSourceBins, options.Sum(x => x.CurrentBins));
         Assert.All(options, x => Assert.Equal("u", x.TreatmentSignature));
-        var selected = Assert.Single(options, x => x.TreatmentSegmentId is not null);
+        var selected = currentRestore is null
+            ? Assert.Single(options, x => x.TreatmentSegmentId is not null)
+            : Assert.Single(options, x => x.TreatmentReceiptId == 774);
+        if (currentRestore is not null)
+        {
+            Assert.Equal(122, selected.TreatmentSegmentId);
+            Assert.Equal(134, selected.CurrentBins);
+            Assert.NotEqual(sourceRoomId, await db.Receipts.AsNoTracking()
+                .Where(x => x.Id == selected.TreatmentReceiptId)
+                .Select(x => x.RoomId)
+                .SingleAsync());
+        }
 
         var runKey = Guid.NewGuid().ToString("N");
         var transferOperationKey = $"run92-bartlett-1372-room16-room14-{runKey}";
@@ -120,12 +139,12 @@ public sealed class Bartlett1372TransferRegressionTests
         var destinationAfter = Assert.Single(
             await ledger.GetSnapshotsAsync(sourceWarehouseId, [destinationRoomId], default),
             x => x.CurrentBins > 0 && SameIdentity(x, sourceSnapshot));
-        Assert.Equal(893, sourceAfter.CurrentBins);
-        Assert.Equal(67, destinationAfter.CurrentBins);
-        Assert.Equal(960, sourceAfter.CurrentBins + destinationAfter.CurrentBins);
+        Assert.Equal(expectedSourceBins - 1, sourceAfter.CurrentBins);
+        Assert.Equal(expectedDestinationBins + 1, destinationAfter.CurrentBins);
+        Assert.Equal(expectedSourceBins + expectedDestinationBins, sourceAfter.CurrentBins + destinationAfter.CurrentBins);
         var sourceSegmentsAfter = await treatments.GetSelectionsAsync(sourceAfter, default);
         var destinationSegmentsAfter = await treatments.GetSelectionsAsync(destinationAfter, default);
-        Assert.Equal(893, sourceSegmentsAfter.Sum(x => x.CurrentBins));
+        Assert.Equal(expectedSourceBins - 1, sourceSegmentsAfter.Sum(x => x.CurrentBins));
         Assert.All(sourceSegmentsAfter, x => Assert.Equal(selected.TreatmentSignature, x.TreatmentSignature));
         Assert.Equal(
             1,
@@ -153,10 +172,10 @@ public sealed class Bartlett1372TransferRegressionTests
         var destinationRestored = Assert.Single(
             await ledger.GetSnapshotsAsync(sourceWarehouseId, [destinationRoomId], default),
             x => x.CurrentBins > 0 && SameIdentity(x, sourceSnapshot));
-        Assert.Equal(894, sourceRestored.CurrentBins);
-        Assert.Equal(66, destinationRestored.CurrentBins);
+        Assert.Equal(expectedSourceBins, sourceRestored.CurrentBins);
+        Assert.Equal(expectedDestinationBins, destinationRestored.CurrentBins);
         var sourceSegmentsRestored = await treatments.GetSelectionsAsync(sourceRestored, default);
-        Assert.Equal(894, sourceSegmentsRestored.Sum(x => x.CurrentBins));
+        Assert.Equal(expectedSourceBins, sourceSegmentsRestored.Sum(x => x.CurrentBins));
         Assert.All(sourceSegmentsRestored, x => Assert.Equal(selected.TreatmentSignature, x.TreatmentSignature));
         Assert.Equal(globalBefore, (await ledger.GetSnapshotsAsync(null, null, default))
             .Where(x => SameIdentity(x, sourceSnapshot))
