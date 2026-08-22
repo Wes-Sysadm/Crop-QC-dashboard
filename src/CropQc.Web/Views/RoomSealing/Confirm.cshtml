@@ -1,10 +1,12 @@
 @model RoomSealConfirmationViewModel
 @{
-    ViewData["Title"] = Model.IsSealed ? "Unseal Room" : "Seal Room";
-    var targetState = !Model.IsSealed;
+    ViewData["Title"] = Model.IsSealed ? "Unseal Room" : Model.IsSealScheduled ? "Edit Scheduled Seal" : "Seal Room";
+    var dateValue = Model.Form.EffectiveDate?.ToString("yyyy-MM-dd") ?? "";
+    var timeValue = Model.Form.EffectiveTime?.ToString("HH:mm") ?? "";
+    var expectedEffectiveAt = Model.SealedAt?.ToString("O") ?? "";
 }
 
-<h1>@(targetState ? "Seal Room" : "Unseal Room")</h1>
+<h1>@(Model.IsSealed ? "Unseal Room" : Model.IsSealScheduled ? "Edit Scheduled Seal" : "Seal Room")</h1>
 
 @if (TempData["Error"] is string error)
 {
@@ -12,28 +14,59 @@
 }
 
 <section class="panel room-seal-confirmation">
-    <p class="status @(Model.IsSealed ? "review" : "ready")">@(Model.IsSealed ? "SEALED" : "Not Sealed")</p>
+    <p class="status @(Model.IsSealed ? "review" : Model.IsSealScheduled ? "pending" : "ready")">@(Model.IsSealed ? "SEALED" : Model.IsSealScheduled ? "SCHEDULED TO SEAL" : "UNSEALED")</p>
     <h2>@Model.Warehouse / @Model.Room</h2>
     @if (Model.IsSealed)
     {
-        <p>Sealed @BusinessTime.FormatPacific(Model.SealedAt) by @(Model.SealedBy ?? "unknown user").</p>
+        <p><strong>Sealed Since:</strong> @BusinessTime.FormatPacific(Model.SealedAt)</p>
+        <p><strong>Recorded By:</strong> @(Model.SealedBy ?? "unknown user")</p>
+        <p><strong>Recorded At:</strong> @BusinessTime.FormatPacific(Model.SealRecordedAt)</p>
         <p>Unsealing allows physical inventory movement into and out of this room again.</p>
+    }
+    else if (Model.IsSealScheduled)
+    {
+        <p><strong>Scheduled to Seal:</strong> @BusinessTime.FormatPacific(Model.SealedAt)</p>
+        <p><strong>Scheduled By:</strong> @(Model.SealedBy ?? "unknown user")</p>
+        <p><strong>Scheduled At:</strong> @BusinessTime.FormatPacific(Model.SealRecordedAt)</p>
+        <p>Physical inventory movement remains available until the effective seal time.</p>
     }
     else
     {
         <p>Sealing blocks physical inventory movement into and out of this room. Viewing, QC, treatment records, reporting, and administrative inventory corrections remain available.</p>
     }
 
-    <form method="post" action="/Rooms/@Model.RoomId/Seal?seal=@targetState.ToString().ToLowerInvariant()">
+    <form method="post" action="/Rooms/@Model.RoomId/Seal?seal=@((!Model.IsSealed).ToString().ToLowerInvariant())">
         @Html.AntiForgeryToken()
         <input type="hidden" name="RoomId" value="@Model.RoomId" />
-        <input type="hidden" name="ExpectedIsSealed" value="@Model.IsSealed.ToString().ToLowerInvariant()" />
+        <input type="hidden" name="ExpectedIsSealed" value="@Model.HasActiveSeal.ToString().ToLowerInvariant()" />
+        <input type="hidden" name="ExpectedEffectiveAt" value="@expectedEffectiveAt" />
+        <div class="room-seal-time-grid">
+            <label class="field">@(Model.IsSealed ? "Unseal Date" : "Seal Date")
+                <input type="date" name="EffectiveDate" value="@dateValue" required />
+            </label>
+            <label class="field">@(Model.IsSealed ? "Unseal Time" : "Seal Time")
+                <input type="time" name="EffectiveTime" value="@timeValue" required />
+            </label>
+        </div>
+        <p class="muted">Times are Pacific business time. A seal may be immediate, backdated, or scheduled for the future. A future unseal is not supported.</p>
         <label class="field">Note (optional)
             <textarea name="Note" maxlength="500" rows="3">@Model.Form.Note</textarea>
         </label>
         <div class="action-bar">
-            <button class="@(targetState ? "danger-button" : "")" type="submit">Confirm @(targetState ? "Seal Room" : "Unseal Room")</button>
+            <button class="@(!Model.IsSealed ? "danger-button" : "")" type="submit">@(Model.IsSealed ? "Unseal Room" : Model.IsSealScheduled ? "Save Scheduled Seal" : "Seal or Schedule Room")</button>
             <a class="button secondary-button" href="/Rooms/@Model.RoomId">Cancel</a>
         </div>
     </form>
+
+    @if (Model.IsSealScheduled)
+    {
+        <form method="post" action="/Rooms/@Model.RoomId/Seal?seal=false" class="room-seal-cancel-form" id="cancel-scheduled-seal">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="RoomId" value="@Model.RoomId" />
+            <input type="hidden" name="ExpectedIsSealed" value="true" />
+            <input type="hidden" name="ExpectedEffectiveAt" value="@expectedEffectiveAt" />
+            <p>Canceling keeps the Room unsealed and records who canceled the original schedule and when.</p>
+            <button class="danger-button" type="submit">Confirm Cancel Scheduled Seal</button>
+        </form>
+    }
 </section>

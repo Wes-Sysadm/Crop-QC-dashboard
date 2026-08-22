@@ -22,7 +22,7 @@ public sealed class RoomSealingController(IRoomSealingService roomSealingService
     {
         form.RoomId = roomId;
         var error = await roomSealingService.ChangeStateAsync(form, seal, User, cancellationToken);
-        TempData[error is null ? "Success" : "Error"] = error ?? (seal ? "Room sealed." : "Room unsealed.");
+        TempData[error is null ? "Success" : "Error"] = error ?? "Room seal status updated.";
         return error is null
             ? RedirectToAction("Room", "Home", new { roomId })
             : RedirectToAction(nameof(Confirm), new { roomId });
