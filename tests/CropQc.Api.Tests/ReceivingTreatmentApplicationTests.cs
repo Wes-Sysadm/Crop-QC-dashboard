@@ -140,6 +140,36 @@ public sealed class ReceivingTreatmentApplicationTests
         Assert.Equal(20, roomB.Single(x => x.TreatmentSignature == untreated.TreatmentSignature).CurrentBins);
         Assert.Equal(45, roomB.Sum(x => x.CurrentBins));
 
+        fixture.Ledger.Replace(roomBSnapshot);
+        var adjustmentCountBeforeRoomTreatment = await fixture.Db.RoomInventoryAdjustments.CountAsync();
+        var roomTreatmentForm = fixture.RoomForm("mixed-destination-room-treatment", 1);
+        roomTreatmentForm.RoomId = roomBId;
+        var roomTreatment = await fixture.Service.ApplyAsync(roomTreatmentForm, default);
+        Assert.Null(roomTreatment.Error);
+        var roomTreatmentApplication = await fixture.Db.RoomTreatmentApplications
+            .SingleAsync(x => x.OperationKey == roomTreatmentForm.OperationKey);
+        var roomBAfterTreatment = await fixture.Service.GetSelectionsAsync(roomBSnapshot, default);
+        var mcpAndRoomTreatment = Assert.Single(roomBAfterTreatment, x => x.ReceiptId == Fixture.ReceiptAId);
+        var roomTreatmentOnly = Assert.Single(roomBAfterTreatment, x => x.ReceiptId is null);
+        Assert.Equal(25, mcpAndRoomTreatment.CurrentBins);
+        Assert.StartsWith($"{mcp.TreatmentSignature},", mcpAndRoomTreatment.TreatmentSignature, StringComparison.Ordinal);
+        Assert.EndsWith($",{roomTreatmentApplication.Id}", mcpAndRoomTreatment.TreatmentSignature, StringComparison.Ordinal);
+        Assert.Equal(20, roomTreatmentOnly.CurrentBins);
+        Assert.Equal($"u|a:{roomTreatmentApplication.Id}", roomTreatmentOnly.TreatmentSignature);
+        Assert.Equal(45, roomBAfterTreatment.Sum(x => x.CurrentBins));
+
+        var roomTreatmentReversal = await fixture.Service.ReverseAsync(new ReverseRoomTreatmentApplicationForm
+        {
+            Id = roomTreatmentApplication.Id,
+            Reason = "Restore mixed destination treatment proof"
+        }, default);
+        Assert.Null(roomTreatmentReversal);
+        var roomBAfterTreatmentReversal = await fixture.Service.GetSelectionsAsync(roomBSnapshot, default);
+        Assert.Equal(25, roomBAfterTreatmentReversal.Single(x => x.TreatmentSignature == mcp.TreatmentSignature).CurrentBins);
+        Assert.Equal(20, roomBAfterTreatmentReversal.Single(x => x.TreatmentSignature == untreated.TreatmentSignature).CurrentBins);
+        Assert.Equal(45, roomBAfterTreatmentReversal.Sum(x => x.CurrentBins));
+        Assert.Equal(adjustmentCountBeforeRoomTreatment, await fixture.Db.RoomInventoryAdjustments.CountAsync());
+
         var movementCount = await fixture.Db.TreatmentLineageMovements.CountAsync();
         var stale = await fixture.Service.MoveSelectedAsync(sourceSnapshot with { CurrentBins = 55 }, mcp.TreatmentSignature,
             mcp.SegmentId, mcp.ReceiptId, 20, Fixture.WarehouseId, roomBId, "stale-mcp-transfer",
