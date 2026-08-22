@@ -1130,7 +1130,9 @@ public sealed class DashboardDataService(
                 adjustmentAt: form.TransferAt,
                 reason: reason,
                 notes: $"Transfer to {toRoom.Warehouse.Code}/{toRoom.Code}. {notes}".Trim(),
-                roomDepletionId: null);
+                roomDepletionId: null,
+                warehouseIdOverride: fromRoom.WarehouseId,
+                roomIdOverride: fromRoom.Id);
         }
         else
         {
@@ -6165,15 +6167,17 @@ public sealed class DashboardDataService(
         DateTimeOffset adjustmentAt,
         string? reason,
         string? notes,
-        long? roomDepletionId)
+        long? roomDepletionId,
+        int? warehouseIdOverride = null,
+        int? roomIdOverride = null)
     {
         var adjustment = new RoomInventoryAdjustment
         {
             CropYear = receipt.CropYear,
             ReceiptId = receipt.Id == 0 ? null : receipt.Id,
             RoomDepletionId = roomDepletionId,
-            WarehouseId = receipt.WarehouseId,
-            RoomId = receipt.RoomId,
+            WarehouseId = warehouseIdOverride ?? receipt.WarehouseId,
+            RoomId = roomIdOverride ?? receipt.RoomId,
             GrowerLotId = receipt.GrowerLotId,
             FruitProfileId = receipt.FruitProfileId,
             GrowerName = receipt.GrowerName,
