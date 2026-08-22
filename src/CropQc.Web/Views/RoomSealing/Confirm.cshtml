@@ -1,0 +1,39 @@
+@model RoomSealConfirmationViewModel
+@{
+    ViewData["Title"] = Model.IsSealed ? "Unseal Room" : "Seal Room";
+    var targetState = !Model.IsSealed;
+}
+
+<h1>@(targetState ? "Seal Room" : "Unseal Room")</h1>
+
+@if (TempData["Error"] is string error)
+{
+    <p class="notice error">@error</p>
+}
+
+<section class="panel room-seal-confirmation">
+    <p class="status @(Model.IsSealed ? "review" : "ready")">@(Model.IsSealed ? "SEALED" : "Not Sealed")</p>
+    <h2>@Model.Warehouse / @Model.Room</h2>
+    @if (Model.IsSealed)
+    {
+        <p>Sealed @BusinessTime.FormatPacific(Model.SealedAt) by @(Model.SealedBy ?? "unknown user").</p>
+        <p>Unsealing allows physical inventory movement into and out of this room again.</p>
+    }
+    else
+    {
+        <p>Sealing blocks physical inventory movement into and out of this room. Viewing, QC, treatment records, reporting, and administrative inventory corrections remain available.</p>
+    }
+
+    <form method="post" action="/Rooms/@Model.RoomId/Seal?seal=@targetState.ToString().ToLowerInvariant()">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="RoomId" value="@Model.RoomId" />
+        <input type="hidden" name="ExpectedIsSealed" value="@Model.IsSealed.ToString().ToLowerInvariant()" />
+        <label class="field">Note (optional)
+            <textarea name="Note" maxlength="500" rows="3">@Model.Form.Note</textarea>
+        </label>
+        <div class="action-bar">
+            <button class="@(targetState ? "danger-button" : "")" type="submit">Confirm @(targetState ? "Seal Room" : "Unseal Room")</button>
+            <a class="button secondary-button" href="/Rooms/@Model.RoomId">Cancel</a>
+        </div>
+    </form>
+</section>

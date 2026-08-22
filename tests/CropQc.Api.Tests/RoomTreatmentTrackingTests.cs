@@ -373,8 +373,8 @@ public sealed class RoomTreatmentTrackingTests
         Assert.Contains("pg_advisory_xact_lock", apply);
         Assert.Contains("migration_history_intentionally_unchanged", verifier);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
-        Assert.Contains("20260821031442_AddProcessorShipments", gate);
-        Assert.Equal(619, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Contains("20260821140736_AddRoomSealing", gate);
+        Assert.Equal(638, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     private static string FindRepositoryFile(params string[] segments)

@@ -17,6 +17,7 @@ public sealed class HomeDashboardViewModel
     public IReadOnlyList<string> FacilityOptions { get; set; } = ["All", "MCD", "WP", "EBS", "DH"];
     public IReadOnlyList<string> EbsLocationOptions { get; set; } = ["All EBS", "Evans", "Lamb", "BM"];
     public IReadOnlyList<StorageFacilitySummaryViewModel> StorageByFacility { get; set; } = [];
+    public bool CanManageRoomSeals { get; set; }
 }
 
 public sealed class RoomSummaryFilterForm
@@ -36,6 +37,9 @@ public sealed class RoomSummaryItemViewModel
     public string RoomName { get; set; } = "";
     public string CompuTechCode { get; set; } = "";
     public string Status { get; set; } = "Empty";
+    public bool IsSealed { get; set; }
+    public DateTimeOffset? SealedAt { get; set; }
+    public string? SealedBy { get; set; }
     public int CurrentLotsCount { get; set; }
     public int? CurrentBinsCount { get; set; }
     public int RoomCapacityBins { get; set; }
@@ -141,6 +145,8 @@ public sealed class RoomDetailViewModel
     public IReadOnlyList<RoomTreatmentApplicationHistoryViewModel> TreatmentApplicationHistory { get; set; } = [];
     public bool CanApplyTreatment { get; set; }
     public bool CanReverseTreatment { get; set; }
+    public bool CanManageRoomSeals { get; set; }
+    public IReadOnlyList<RoomSealHistoryItemViewModel> SealHistory { get; set; } = [];
 }
 
 public sealed class RoomTreatmentApplyForm
@@ -357,6 +363,7 @@ public sealed class RoomsPageViewModel
     public IReadOnlyList<string> FacilityOptions { get; set; } = ["All", "MCD", "WP", "EBS", "DH"];
     public IReadOnlyList<string> EbsLocationOptions { get; set; } = ["All EBS", "Evans", "Lamb", "BM"];
     public bool CanApplyTreatment { get; set; }
+    public bool CanManageRoomSeals { get; set; }
 }
 
 public sealed class RoomLotSummaryViewModel
@@ -430,7 +437,32 @@ public sealed record RoomTransferDestinationViewModel(
     int RoomId,
     int WarehouseId,
     string Label,
-    int SortOrder);
+    int SortOrder,
+    bool IsSealed = false);
+
+public sealed class RoomSealConfirmationViewModel
+{
+    public int RoomId { get; set; }
+    public string Warehouse { get; set; } = "";
+    public string Room { get; set; } = "";
+    public bool IsSealed { get; set; }
+    public DateTimeOffset? SealedAt { get; set; }
+    public string? SealedBy { get; set; }
+    public RoomSealForm Form { get; set; } = new();
+}
+
+public sealed class RoomSealForm
+{
+    public int RoomId { get; set; }
+    public bool ExpectedIsSealed { get; set; }
+    public string? Note { get; set; }
+}
+
+public sealed record RoomSealHistoryItemViewModel(
+    string Action,
+    DateTimeOffset ChangedAt,
+    string ChangedBy,
+    string? Note);
 public static class RoomReceiptEvidenceTypes
 {
     public const string Direct = "Direct";
@@ -871,6 +903,7 @@ public sealed record BinsRunInventoryOptionViewModel(
     string TreatmentSignature = "",
     string TreatmentLabel = "Untreated",
     string GrowerNumber = "",
+    bool IsRoomSealed = false,
     long? TreatmentSegmentId = null,
     long? TreatmentReceiptId = null);
 

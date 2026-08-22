@@ -37,6 +37,21 @@
             </div>
             <span class="status @RoomStatusClass(Model.Summary.Status)">@Model.Summary.Status</span>
         </div>
+        <div class="notice @(Model.Summary.IsSealed ? "warning" : "success") room-seal-state">
+            <strong>@(Model.Summary.IsSealed ? "SEALED" : "Not Sealed")</strong>
+            @if (Model.Summary.IsSealed)
+            {
+                <span>Sealed @BusinessTime.FormatPacific(Model.Summary.SealedAt) by @(Model.Summary.SealedBy ?? "unknown user"). Physical inventory movement is blocked.</span>
+            }
+            else
+            {
+                <span>Physical inventory movement is allowed.</span>
+            }
+            @if (Model.CanManageRoomSeals)
+            {
+                <a class="button @(Model.Summary.IsSealed ? "secondary-button" : "danger-button")" href="/Rooms/@Model.Summary.RoomId/Seal">@(Model.Summary.IsSealed ? "Unseal Room" : "Seal Room")</a>
+            }
+        </div>
         <p class="room-capacity"><strong>@FormatBins(Model.Summary.CurrentBinsCount ?? 0) bins</strong> / @(Model.Summary.IsCapacityConfigured ? $"{FormatBins(Model.Summary.RoomCapacityBins)} capacity" : "capacity not configured") · @(Model.Summary.PercentFull is null ? "percent full unavailable" : $"{Model.Summary.PercentFull:0.#}% full")</p>
         <h2>Combined QC</h2>
         <p class="muted">Current room balances are the weight. Lots missing a metric are excluded from that metric's denominator.</p>
@@ -92,6 +107,24 @@
                 <span>@Model.Summary.WeakestLotReason</span>
             </p>
         }
+        </div>
+    </section>
+}
+
+@if (Model.SealHistory.Count > 0)
+{
+    <section class="panel" id="room-seal-history">
+        <h2>Room Seal History</h2>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Action</th><th>Date</th><th>By</th><th>Note</th></tr></thead>
+                <tbody>
+                @foreach (var item in Model.SealHistory)
+                {
+                    <tr><td>@item.Action</td><td>@BusinessTime.FormatPacific(item.ChangedAt)</td><td>@item.ChangedBy</td><td>@(item.Note ?? "—")</td></tr>
+                }
+                </tbody>
+            </table>
         </div>
     </section>
 }

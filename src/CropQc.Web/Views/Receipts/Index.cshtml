@@ -4,7 +4,7 @@
 @{
     ViewData["Title"] = "Receipts";
     var warehouseCodes = Model.Warehouses.ToDictionary(x => x.Id, x => x.Code);
-    var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, warehouseCode = warehouseCodes.GetValueOrDefault(x.WarehouseId, ""), code = x.CropQcRoomName ?? x.DisplayName ?? x.Code, name = x.DisplayName ?? x.Name, subLocation = x.SubLocation ?? "", compuTech = x.CompuTechRoomCode ?? "" }));
+    var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, warehouseCode = warehouseCodes.GetValueOrDefault(x.WarehouseId, ""), code = x.CropQcRoomName ?? x.DisplayName ?? x.Code, name = x.DisplayName ?? x.Name, subLocation = x.SubLocation ?? "", compuTech = x.CompuTechRoomCode ?? "", isSealed = x.IsSealed }));
     var growerLotsJson = JsonSerializer.Serialize(Model.GrowerLots.Select(x => new { id = x.Id, grower = x.Grower, lot = x.LotNumber, label = $"{x.Grower} - {x.LotNumber}" }));
     var hasRequiredMasterData = Model.Warehouses.Count > 0 && Model.Rooms.Count > 0 && Model.FruitProfiles.Count > 0;
     var canEditReceipts = await UserAccess.HasAccessAsync(User, ApplicationAreas.Receipts, PageAccessLevel.Edit, Context.RequestAborted);
@@ -371,7 +371,10 @@
                     const prefix = room.subLocation ? `${room.subLocation} — ` : "";
                     const legacy = room.compuTech ? ` (Compu-Tech: ${room.compuTech})` : "";
                     const warehousePrefix = hasWarehouse || !room.warehouseCode ? "" : `${room.warehouseCode} — `;
-                    option.textContent = `${warehousePrefix}${prefix}${room.code}${legacy}`;
+                    option.textContent = `${warehousePrefix}${prefix}${room.code}${legacy}${room.isSealed ? " (Sealed)" : ""}`;
+                    if (!allowAllWarehouses && room.isSealed) {
+                        option.disabled = true;
+                    }
                     if (selectedRoomId && Number(selectedRoomId) === room.id) {
                         option.selected = true;
                     }

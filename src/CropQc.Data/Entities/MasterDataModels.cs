@@ -25,8 +25,33 @@ public sealed class Room
     public int SortOrder { get; set; }
     public int CapacityBins { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool IsSealed { get; set; }
+    public DateTimeOffset? SealedAt { get; set; }
+    public int? SealedByUserId { get; set; }
+    public User? SealedByUser { get; set; }
+    public ICollection<RoomSealEvent> SealEvents { get; } = new List<RoomSealEvent>();
     public int? EndOfDayFillReportGroupId { get; set; }
     public EndOfDayFillReportGroup? EndOfDayFillReportGroup { get; set; }
+}
+
+public sealed class RoomSealEvent
+{
+    public long Id { get; set; }
+    public int RoomId { get; set; }
+    public Room Room { get; set; } = null!;
+    public required string Action { get; set; }
+    public DateTimeOffset ChangedAt { get; set; }
+    public int ChangedByUserId { get; set; }
+    public User ChangedByUser { get; set; } = null!;
+    public required string WarehouseCodeSnapshot { get; set; }
+    public required string RoomCodeSnapshot { get; set; }
+    public string? Note { get; set; }
+}
+
+public static class RoomSealActions
+{
+    public const string Seal = "Seal";
+    public const string Unseal = "Unseal";
 }
 
 public sealed class GrowerLot

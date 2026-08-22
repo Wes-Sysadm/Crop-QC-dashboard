@@ -16,6 +16,39 @@ public sealed class ProcessorShipmentTests
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-08-20T18:00:00Z");
 
     [Fact]
+    public async Task Sealed_source_room_blocks_processor_shipment_with_zero_writes()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        (await fixture.Db.Rooms.SingleAsync()).IsSealed = true;
+        await fixture.Db.SaveChangesAsync();
+        var adjustmentsBefore = await fixture.Db.RoomInventoryAdjustments.CountAsync();
+
+        var result = await fixture.Service.CreateAsync(await fixture.FormAsync("sealed-source", 5, 55m, ProcessorPricingBases.PerTon), default);
+
+        Assert.False(result.Success);
+        Assert.Contains("sealed", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await fixture.Db.ProcessorShipments.ToListAsync());
+        Assert.Equal(adjustmentsBefore, await fixture.Db.RoomInventoryAdjustments.CountAsync());
+    }
+
+    [Fact]
+    public async Task Sealed_destination_room_blocks_processor_reversal_with_zero_reversal_writes()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var created = await fixture.Service.CreateAsync(await fixture.FormAsync("seal-reverse-source", 5, 55m, ProcessorPricingBases.PerTon), default);
+        Assert.True(created.Success, created.Error);
+        (await fixture.Db.Rooms.SingleAsync()).IsSealed = true;
+        await fixture.Db.SaveChangesAsync();
+        var adjustmentsBefore = await fixture.Db.RoomInventoryAdjustments.CountAsync();
+
+        var error = await fixture.Service.ReverseAsync(new() { ShipmentId = created.ShipmentId!.Value, OperationKey = "sealed-reversal", Reason = "Physical return" }, default);
+
+        Assert.Contains("sealed", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(adjustmentsBefore, await fixture.Db.RoomInventoryAdjustments.CountAsync());
+        Assert.Null((await fixture.Db.ProcessorShipments.SingleAsync()).ReversedAt);
+    }
+
+    [Fact]
     public async Task Shipment_deducts_exact_inventory_once_with_real_parent_and_no_run_rows()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -505,12 +538,12 @@ public sealed class ProcessorShipmentTests
     [Fact]
     public void Application_gate_targets_processor_migration_and_all_new_objects()
     {
-        Assert.Equal("20260821031442_AddProcessorShipments", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
+        Assert.Equal("20260821140736_AddRoomSealing", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
         var source = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DatabaseStartupDiagnostics.cs"));
         Assert.Contains("ProcessorShipmentLines.PoundsPerBinSnapshot", source);
         Assert.Contains("FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId", source);
         Assert.Contains("TreatmentLineageMovements.ReceiptId", source);
-        Assert.Equal(619, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Equal(638, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     [Fact]

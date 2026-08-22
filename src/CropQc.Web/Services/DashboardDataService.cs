@@ -185,6 +185,7 @@ public sealed class DashboardDataService(
             TodaySamples = todaySamples,
             RoomSummaryFilter = normalizedRoomFilter,
             RoomSummaries = roomSummaries,
+            CanManageRoomSeals = RoomSealingService.CanManage(httpContextAccessor.HttpContext?.User ?? new ClaimsPrincipal()),
             StorageByFacility = dashboardLots
                 .GroupBy(x => x.Facility)
                 .Select(x => new StorageFacilitySummaryViewModel
@@ -236,7 +237,8 @@ public sealed class DashboardDataService(
             {
                 Filter = normalizedRoomFilter,
                 Rooms = rooms,
-                CanApplyTreatment = await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken)
+                CanApplyTreatment = await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken),
+                CanManageRoomSeals = RoomSealingService.CanManage(httpContextAccessor.HttpContext?.User ?? new ClaimsPrincipal())
             };
         }
         catch (Exception ex)
@@ -470,6 +472,13 @@ public sealed class DashboardDataService(
             var likelySourceReceipts = await DecorateReceiptProvenanceAsync(activeLots, cancellationToken);
             var currentGrowers = BuildRoomGrowerSummaries(activeLots);
             var canManage = await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
+            var canManageRoomSeals = RoomSealingService.CanManage(httpContextAccessor.HttpContext?.User ?? new ClaimsPrincipal());
+            var sealHistory = await dbContext.RoomSealEvents.AsNoTracking()
+                .Where(x => x.RoomId == roomId)
+                .OrderByDescending(x => x.ChangedAt)
+                .Take(50)
+                .Select(x => new RoomSealHistoryItemViewModel(x.Action, x.ChangedAt, x.ChangedByUser.DisplayName, x.Note))
+                .ToListAsync(cancellationToken);
             var inventoryLossData = RoomInventoryLosses is null
                 ? new RoomInventoryLossPageData([], [], false, false)
                 : await RoomInventoryLosses.GetRoomDataAsync(roomId, cancellationToken);
@@ -542,6 +551,10 @@ public sealed class DashboardDataService(
                 CanApplyTreatment = treatmentData.CanApply
                 ,
                 CanReverseTreatment = treatmentData.CanReverse
+                ,
+                CanManageRoomSeals = canManageRoomSeals
+                ,
+                SealHistory = sealHistory
                 ,
                 DataWarning = treatmentWarning
             };
@@ -620,6 +633,8 @@ public sealed class DashboardDataService(
         }
 
         await using var transaction = await BeginInventoryTransactionIfSupportedAsync(cancellationToken);
+        var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, [form.RoomId], [], cancellationToken);
+        if (sealError is not null) return sealError;
         var receipt = await dbContext.Receipts
             .Include(x => x.Warehouse)
             .Include(x => x.Room)
@@ -968,6 +983,12 @@ public sealed class DashboardDataService(
         }
 
         await using var transaction = await BeginInventoryTransactionIfSupportedAsync(cancellationToken);
+        var sealError = await RoomMovementSealGuard.ValidateAsync(
+            dbContext,
+            [form.FromRoomId],
+            [form.DestinationRoomId],
+            cancellationToken);
+        if (sealError is not null) return sealError;
         var sourceLots = (await BuildRoomLotSummariesAsync(form.FromRoomId, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
         var transferProjection = await BuildTreatmentTransferProjectionAsync(sourceLots, form.FromRoomId, cancellationToken);
         if (!transferProjection.Reconciles)
@@ -1215,6 +1236,13 @@ public sealed class DashboardDataService(
         {
             return null;
         }
+
+        var sealError = await RoomMovementSealGuard.ValidateAsync(
+            dbContext,
+            [original.DestinationRoomId],
+            [original.SourceRoomId],
+            cancellationToken);
+        if (sealError is not null) return sealError;
 
         var snapshots = await RoomInventoryLedger.GetSnapshotsAsync(
             original.DestinationWarehouseId,
@@ -1501,6 +1529,15 @@ public sealed class DashboardDataService(
             return new(null, null, "Select a current Grower Number from the reviewed Grower list.");
         }
 
+        await using var inventoryTransaction = IsInventoryReceiptType(receiptType)
+            ? await BeginInventoryTransactionIfSupportedAsync(cancellationToken)
+            : null;
+        if (IsInventoryReceiptType(receiptType))
+        {
+            var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, [], [form.RoomId], cancellationToken);
+            if (sealError is not null) return new(null, null, sealError);
+        }
+
         var room = await dbContext.Rooms.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.RoomId, cancellationToken);
         if (room is null)
         {
@@ -1579,6 +1616,8 @@ public sealed class DashboardDataService(
             roomDepletionId: null);
         await AddAuditAsync("BinCountChange", nameof(RoomInventoryAdjustment), receipt.CompuTechReceiptId, currentUser?.Email ?? "unknown", null, $"ReceiptAdd {receipt.BinCount} bins in room {room.Code}.", cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
+        if (inventoryTransaction is not null) await inventoryTransaction.CommitAsync(cancellationToken);
         return new(receipt.Id, receipt.CompuTechReceiptId, null);
     }
 
@@ -1836,6 +1875,14 @@ public sealed class DashboardDataService(
 
         var addInventoryAdjustment = IsInventoryReceiptType(receiptType)
             && (!wasInventory || !hasInventoryHistory || quantityChanged);
+        await using var inventoryTransaction = addInventoryAdjustment
+            ? await BeginInventoryTransactionIfSupportedAsync(cancellationToken)
+            : null;
+        if (addInventoryAdjustment)
+        {
+            var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, [], [form.RoomId], cancellationToken);
+            if (sealError is not null) return sealError;
+        }
         var currentBins = addInventoryAdjustment && wasInventory
             ? await GetCurrentBinsForReceiptAsync(receipt.Id, cancellationToken)
             : 0;
@@ -1889,6 +1936,11 @@ public sealed class DashboardDataService(
             receipt.BinCount
         }), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (addInventoryAdjustment)
+        {
+            await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
+            if (inventoryTransaction is not null) await inventoryTransaction.CommitAsync(cancellationToken);
+        }
         return null;
     }
 
@@ -3314,7 +3366,7 @@ public sealed class DashboardDataService(
     private async Task<IReadOnlyList<RoomSummaryItemViewModel>> BuildRoomSummariesAsync(CancellationToken cancellationToken, int? roomId = null, RoomSummaryFilterForm? roomSummaryFilter = null)
     {
         var filter = NormalizeRoomSummaryFilter(roomSummaryFilter);
-        var roomsQuery = dbContext.Rooms.AsNoTracking().Include(x => x.Warehouse).OrderBy(x => x.Warehouse.Code).ThenBy(x => x.Code);
+        var roomsQuery = dbContext.Rooms.AsNoTracking().Include(x => x.Warehouse).Include(x => x.SealedByUser).OrderBy(x => x.Warehouse.Code).ThenBy(x => x.Code);
         var rooms = await (roomId is null ? roomsQuery : roomsQuery.Where(x => x.Id == roomId)).ToListAsync(cancellationToken);
         if (roomId is null)
         {
@@ -3382,6 +3434,9 @@ public sealed class DashboardDataService(
                 CompuTechCode = room.CompuTechRoomCode ?? "",
                 RoomCapacityBins = room.CapacityBins,
                 Status = status,
+                IsSealed = room.IsSealed,
+                SealedAt = room.SealedAt,
+                SealedBy = room.SealedByUser?.DisplayName,
                 CurrentLotsCount = roomColorLots.Count,
                 CurrentBinsCount = colorCurrentBins == 0 ? null : colorCurrentBins,
                 VarietyColorSegments = BuildRoomVarietyColorSegments(roomColorLots, colorMap),
@@ -3442,6 +3497,7 @@ public sealed class DashboardDataService(
         var occupiedRoomIds = occupiedLots.Select(x => x.RoomId).Distinct().ToList();
         var rooms = await dbContext.Rooms.AsNoTracking()
             .Include(x => x.Warehouse)
+            .Include(x => x.SealedByUser)
             .Where(x => x.IsActive && occupiedRoomIds.Contains(x.Id))
             .ToListAsync(cancellationToken);
 
@@ -3501,6 +3557,9 @@ public sealed class DashboardDataService(
                     CompuTechCode = room.CompuTechRoomCode ?? "",
                     RoomCapacityBins = room.CapacityBins,
                     Status = attention.Category,
+                    IsSealed = room.IsSealed,
+                    SealedAt = room.SealedAt,
+                    SealedBy = room.SealedByUser?.DisplayName,
                     AttentionCategory = attention.Category,
                     AttentionSort = attention.Sort,
                     RankingReason = attention.Reason,
@@ -5713,6 +5772,8 @@ public sealed class DashboardDataService(
                 x.Code,
                 x.CropQcRoomName,
                 x.DisplayName
+                ,
+                x.IsSealed
             })
             .ToListAsync(cancellationToken);
         var sourceWarehouseId = roomRows.SingleOrDefault(x => x.Id == currentRoomId)?.WarehouseId ?? 0;
@@ -5725,7 +5786,8 @@ public sealed class DashboardDataService(
                 x.Id,
                 x.WarehouseId,
                 x.CropQcRoomName ?? x.DisplayName ?? x.Code,
-                x.SortOrder))
+                x.SortOrder,
+                x.IsSealed))
             .ToList();
         return new RoomTransferDestinationData(sourceWarehouseId, knownFacilities, rooms);
     }

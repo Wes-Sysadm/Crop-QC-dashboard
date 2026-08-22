@@ -52,7 +52,7 @@ else
         var dominant = room.VarietyColorSegments.FirstOrDefault();
         var isEmpty = (room.CurrentBinsCount ?? 0) == 0;
         var cardColor = isEmpty ? "#E7ECEF" : dominant?.HexColor ?? "#607D8B";
-        <article class="room-card dedicated-room-card variety-colored @(room.IsMajorityOrganic ? "majority-organic" : "") @(isEmpty ? "empty-room-card" : "")" style="--room-variety-bg: @cardColor">
+        <article class="room-card dedicated-room-card variety-colored @(room.IsMajorityOrganic ? "majority-organic" : "") @(isEmpty ? "empty-room-card" : "") @(room.IsSealed ? "sealed-room" : "")" style="--room-variety-bg: @cardColor">
             <div class="room-card-content">
                 <header class="room-card-header">
                     <div>
@@ -62,6 +62,7 @@ else
                     </div>
                     <span class="status @RoomStatusClass(room.Status)">@(isEmpty ? "Empty" : room.Status)</span>
                 </header>
+                <p><span class="status @(room.IsSealed ? "review" : "ready")">@(room.IsSealed ? "SEALED" : "Open")</span>@if (room.IsSealed) { <span class="muted"> Sealed @BusinessTime.FormatPacific(room.SealedAt) by @(room.SealedBy ?? "unknown user")</span> }</p>
                 <p class="room-capacity"><strong>@FormatBins(room.CurrentBinsCount ?? 0) bins</strong> / @(room.IsCapacityConfigured ? $"{FormatBins(room.RoomCapacityBins)} capacity" : "capacity not configured")</p>
                 <p class="room-percent">@(room.PercentFull is null ? "Percent full unavailable" : $"{room.PercentFull:0.#}% full")</p>
                 <dl class="room-metrics compact-room-metrics">
@@ -107,6 +108,10 @@ else
                     @if (Model.CanApplyTreatment)
                     {
                         <a class="button" href="/Rooms/@room.RoomId/Treatments/Apply">Apply Treatment</a>
+                    }
+                    @if (Model.CanManageRoomSeals)
+                    {
+                        <a class="button @(room.IsSealed ? "secondary-button" : "danger-button")" href="/Rooms/@room.RoomId/Seal">@(room.IsSealed ? "Unseal Room" : "Seal Room")</a>
                     }
                 </footer>
             </div>

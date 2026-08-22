@@ -78,9 +78,9 @@
                 {
                     var item = Model.Inventory[i];
                     var bins = chosen.GetValueOrDefault(item.SourceKey);
-                    <tr>
-                        <td>@item.Facility / @item.Room</td><td>@item.GrowerNumber - @item.GrowerName</td><td>@item.VarietyName</td><td>@item.ProductionType</td><td>@item.InventoryStatus</td><td>@item.TreatmentSummary</td><td>@item.AvailableBins</td>
-                        <td><input type="hidden" name="Lines[@i].SourceKey" value="@item.SourceKey" /><input type="hidden" name="Lines[@i].ExpectedAvailableBins" value="@item.AvailableBins" /><input aria-label="Bins sent from @item.Room @item.GrowerNumber @item.VarietyName @item.TreatmentSummary" name="Lines[@i].BinsSent" type="number" inputmode="numeric" min="0" max="@item.AvailableBins" value="@(bins == 0 ? "" : bins)" /></td>
+                    <tr class="@(item.IsRoomSealed ? "sealed-inventory-row" : "")">
+                        <td>@item.Facility / @item.Room @if (item.IsRoomSealed) { <span class="status review">Sealed</span> }</td><td>@item.GrowerNumber - @item.GrowerName</td><td>@item.VarietyName</td><td>@item.ProductionType</td><td>@item.InventoryStatus</td><td>@item.TreatmentSummary</td><td>@item.AvailableBins</td>
+                        <td><input type="hidden" name="Lines[@i].SourceKey" value="@item.SourceKey" /><input type="hidden" name="Lines[@i].ExpectedAvailableBins" value="@item.AvailableBins" /><input aria-label="Bins sent from @item.Room @item.GrowerNumber @item.VarietyName @item.TreatmentSummary" name="Lines[@i].BinsSent" type="number" inputmode="numeric" min="0" max="@item.AvailableBins" value="@(bins == 0 ? "" : bins)" disabled="@item.IsRoomSealed" /></td>
                     </tr>
                 }
                 </tbody></table></div>

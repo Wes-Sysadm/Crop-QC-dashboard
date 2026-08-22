@@ -3,7 +3,7 @@
 @{
     ViewData["Title"] = "Edit Receipt";
     var form = Model.Form;
-    var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, code = x.CropQcRoomName ?? x.DisplayName ?? x.Code, name = x.DisplayName ?? x.Name, subLocation = x.SubLocation ?? "", compuTech = x.CompuTechRoomCode ?? "" }));
+    var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, code = x.CropQcRoomName ?? x.DisplayName ?? x.Code, name = x.DisplayName ?? x.Name, subLocation = x.SubLocation ?? "", compuTech = x.CompuTechRoomCode ?? "", isSealed = x.IsSealed }));
     var growerLotsJson = JsonSerializer.Serialize(Model.GrowerLots.Select(x => new { id = x.Id, grower = x.Grower, lot = x.LotNumber, label = $"{x.Grower} - {x.LotNumber}" }));
 }
 
@@ -144,7 +144,10 @@
                 option.value = room.id;
                 const prefix = room.subLocation ? `${room.subLocation} - ` : "";
                 const legacy = room.compuTech ? ` (Compu-Tech: ${room.compuTech})` : "";
-                option.textContent = `${prefix}${room.code}${legacy}`;
+                option.textContent = `${prefix}${room.code}${legacy}${room.isSealed ? " (Sealed)" : ""}`;
+                if (room.isSealed && (!selectedRoomId || Number(selectedRoomId) !== room.id)) {
+                    option.disabled = true;
+                }
                 if (selectedRoomId && Number(selectedRoomId) === room.id) {
                     option.selected = true;
                 }
