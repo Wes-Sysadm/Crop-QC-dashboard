@@ -15,6 +15,21 @@
         const empty = form.querySelector("[data-treatment-report-empty]");
         const validation = form.querySelector("[data-treatment-report-validation]");
         const submit = form.querySelector("[data-treatment-report-submit]");
+        const status = document.createElement("div");
+        status.className = "upload-feedback";
+        status.dataset.uploadFeedback = "";
+        status.setAttribute("role", "status");
+        status.setAttribute("aria-live", "polite");
+        status.hidden = true;
+        const spinner = document.createElement("span");
+        spinner.className = "upload-feedback-spinner";
+        spinner.dataset.uploadFeedbackSpinner = "";
+        spinner.setAttribute("aria-hidden", "true");
+        const statusMessage = document.createElement("span");
+        statusMessage.dataset.uploadFeedbackMessage = "";
+        status.append(spinner, statusMessage);
+        submit?.before(status);
+        let uploadFeedback = null;
         const urls = new Set();
         if (!preview || !empty) return;
 
@@ -92,8 +107,17 @@
                 render();
             });
         }
-        form.addEventListener("submit", () => {
-            if (submit) submit.disabled = true;
+        form.addEventListener("submit", event => {
+            uploadFeedback ??= window.CropQcUploadFeedback.create(form, { status });
+            const count = inputs.reduce((total, input) => total + input.files.length, 0);
+            const isUploadOnly = (submit?.textContent || "").includes("Upload");
+            const message = isUploadOnly
+                ? `Uploading ${count} treatment report${count === 1 ? "" : "s"}...`
+                : count === 0
+                    ? "Saving treatment..."
+                    : `Saving treatment and uploading ${count} report${count === 1 ? "" : "s"}...`;
+            const controls = [submit, ...form.querySelectorAll(".treatment-report-remove-stage")];
+            if (!uploadFeedback.begin(message, controls)) event.preventDefault();
         });
         render();
     }

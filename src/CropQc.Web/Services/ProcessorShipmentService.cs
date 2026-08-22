@@ -208,8 +208,8 @@ public sealed class ProcessorShipmentService(
                 dbContext.RoomInventoryAdjustments.Add(adjustment);
                 await invariant.ValidateBeforeCommitAsync(cancellationToken);
                 await dbContext.SaveChangesAsync(cancellationToken);
-                var lineageResult = await treatmentLineage.MoveToProcessorAsync(
-                    authoritativeSnapshot, option.TreatmentSignature, item.Form.BinsSent,
+                var lineageResult = await treatmentLineage.MoveSelectedToProcessorAsync(
+                    authoritativeSnapshot, option.TreatmentSignature, option.TreatmentSegmentId, option.ReceiptId, item.Form.BinsSent,
                     $"processor-shipment:{operationKey}:line:{line.Id}:treatment", line.Id,
                     shipment.ShippedAt, actor.Id, cancellationToken);
                 if (!lineageResult.Success) throw new InvalidOperationException(lineageResult.Error);
@@ -401,15 +401,12 @@ public sealed class ProcessorShipmentService(
         {
             var selections = (await roomTreatments.GetSelectionsAsync(snapshot, cancellationToken))
                 .Where(x => x.CurrentBins > 0)
-                .GroupBy(x => new { x.IdentityKey, x.TreatmentSignature, x.TreatmentState, x.Label, x.ReceiptId })
-                .Select(x => new TreatmentSegmentSelection(
-                    x.Key.IdentityKey, x.Key.TreatmentSignature, x.Key.TreatmentState, x.Sum(y => y.CurrentBins), x.Key.Label, x.Key.ReceiptId))
                 .ToList();
             var pounds = PoundsPerBin(snapshot.FruitType, weightConfig);
             foreach (var selection in selections)
             {
                 var receiptId = selection.ReceiptId ?? receiptIds.GetValueOrDefault(snapshot.LatestAdjustmentId);
-                var key = SourceKey(snapshot, selection.IdentityKey, selection.TreatmentSignature, receiptId);
+                var key = SourceKey(snapshot, selection.IdentityKey, selection.TreatmentSignature, receiptId, selection.SegmentId);
                 result.Add(new ProcessorInventoryOptionViewModel(
                     key, snapshot.WarehouseId, snapshot.Facility, snapshot.RoomId, snapshot.Room,
                     snapshot.CropYear, snapshot.GrowerLotId, snapshot.FruitProfileId, snapshot.Grower,
@@ -417,7 +414,8 @@ public sealed class ProcessorShipmentService(
                     snapshot.FruitType, snapshot.ProductionType, snapshot.IsOrganic, snapshot.InventoryStatus,
                     selection.TreatmentState, selection.TreatmentSignature, selection.Label,
                     selection.CurrentBins, snapshot.LatestAdjustmentId,
-                    receiptId, pounds, sealedRoomIds.Contains(snapshot.RoomId)));
+                    receiptId, pounds, sealedRoomIds.Contains(snapshot.RoomId),
+                    selection.SegmentId, selection.ReceiptId));
             }
         }
         return result.OrderBy(x => x.Facility).ThenBy(x => x.Room).ThenBy(x => x.GrowerNumber).ThenBy(x => x.VarietyName).ThenBy(x => x.TreatmentSummary).ToList();
@@ -502,9 +500,9 @@ public sealed class ProcessorShipmentService(
             && decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var pounds) && pounds > 0 ? pounds : null;
     }
 
-    private static string SourceKey(RoomInventoryLedgerSnapshot x, string identityKey, string signature, long? receiptId)
+    private static string SourceKey(RoomInventoryLedgerSnapshot x, string identityKey, string signature, long? receiptId, long? segmentId)
     {
-        var raw = $"{x.WarehouseId}|{x.RoomId}|{identityKey}|{signature}|{receiptId?.ToString() ?? "-"}|{x.LatestAdjustmentId}";
+        var raw = $"{x.WarehouseId}|{x.RoomId}|{identityKey}|{signature}|{receiptId?.ToString() ?? "-"}|{segmentId?.ToString() ?? "implicit"}|{x.LatestAdjustmentId}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw))).ToLowerInvariant();
     }
 

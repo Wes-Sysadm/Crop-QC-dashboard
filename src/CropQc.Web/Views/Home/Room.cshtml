@@ -372,6 +372,7 @@
                 <input type="hidden" name="OperationKey" value="@Model.InventoryLossForm.OperationKey" />
                 <input type="hidden" name="ExpectedCurrentBins" id="dropped-expected-current" value="0" />
                 <input type="hidden" name="TreatmentSignature" id="dropped-treatment-signature" value="" />
+                <input type="hidden" name="TreatmentSegmentId" id="dropped-treatment-segment-id" value="" />
                 <label class="field wide">Exact current inventory identity
                     <select name="InventoryAdjustmentId" id="dropped-inventory-identity" required>
                         <option value="">Select current inventory</option>
@@ -385,6 +386,7 @@
                                     data-variety="@option.Variety"
                                     data-production="@option.ProductionType"
                                     data-treatment-signature="@option.TreatmentSignature"
+                                    data-treatment-segment-id="@option.TreatmentSegmentId"
                                     data-organic="@(option.IsOrganic == true ? "Organic" : option.IsOrganic == false ? "Conventional" : "Organic status unavailable")"
                                     data-current="@option.CurrentBins">@option.Label</option>
                         }
@@ -645,6 +647,7 @@
     const select = document.getElementById('dropped-inventory-identity');
     const expected = document.getElementById('dropped-expected-current');
     const treatmentSignature = document.getElementById('dropped-treatment-signature');
+    const treatmentSegmentId = document.getElementById('dropped-treatment-segment-id');
     const count = document.getElementById('dropped-bin-count');
     const summary = document.getElementById('dropped-identity-summary');
     const refresh = () => {
@@ -652,6 +655,7 @@
         const current = option?.dataset.current ?? '';
         expected.value = current;
         treatmentSignature.value = option?.dataset.treatmentSignature ?? '';
+        treatmentSegmentId.value = option?.dataset.treatmentSegmentId ?? '';
         summary.hidden = !current;
         for (const field of summary.querySelectorAll('[data-loss-field]')) {
             field.textContent = field.dataset.lossField === 'current'

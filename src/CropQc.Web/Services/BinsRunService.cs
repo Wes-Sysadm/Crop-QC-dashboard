@@ -225,6 +225,7 @@ public sealed class BinsRunService(
                     {
                         InventoryKey = currentOption?.InventoryKey ?? x.InventoryKey,
                         TreatmentSignature = currentOption?.TreatmentSignature ?? x.TreatmentSignature,
+                        TreatmentSegmentId = currentOption?.TreatmentSegmentId,
                         BinsRun = x.BinsRun,
                         ExpectedAvailableBins = (currentOption?.CurrentBins ?? 0) + x.BinsRun
                     };
@@ -286,6 +287,7 @@ public sealed class BinsRunService(
                 RoomId = filter.RoomId,
                 InventoryKey = selectedOption?.InventoryKey ?? "",
                 TreatmentSignature = selectedOption?.TreatmentSignature ?? "",
+                TreatmentSegmentId = selectedOption?.TreatmentSegmentId,
                 ExpectedAvailableBins = selectedOption?.CurrentBins ?? 0,
                 RunAt = DateTimeOffset.Now,
                 RunProjectionId = filter.ProjectionId,
@@ -970,7 +972,7 @@ public sealed class BinsRunService(
             return "Bins being pulled must be greater than zero for every selected room-lot row.";
         }
 
-        if (normalizedLines.Select(x => $"{x.InventoryKey.Trim()}|{x.TreatmentSignature.Trim()}").Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalizedLines.Count)
+        if (normalizedLines.Select(x => $"{x.InventoryKey.Trim()}|{x.TreatmentSignature.Trim()}|{x.TreatmentSegmentId}").Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalizedLines.Count)
         {
             return "Each room-lot combination may appear only once in an Actual Run.";
         }
@@ -1096,9 +1098,12 @@ public sealed class BinsRunService(
             var selections = roomTreatmentService is null
                 ? [new TreatmentSegmentSelection(RoomTreatmentService.IdentityKey(ledgerSnapshot), "", TreatmentLineageStates.Untreated, snapshot.CurrentBins, "Untreated")]
                 : treatmentSelections![RoomTreatmentService.SelectionLookupKey(ledgerSnapshot)];
-            var selectedTreatment = string.IsNullOrWhiteSpace(line.Form.TreatmentSignature)
-                ? selections.Count == 1 ? selections[0] : null
-                : selections.SingleOrDefault(x => string.Equals(x.TreatmentSignature, line.Form.TreatmentSignature, StringComparison.Ordinal));
+            var selectedTreatment = line.Form.TreatmentSegmentId is not null
+                ? selections.SingleOrDefault(x => x.SegmentId == line.Form.TreatmentSegmentId
+                    && string.Equals(x.TreatmentSignature, line.Form.TreatmentSignature, StringComparison.Ordinal))
+                : string.IsNullOrWhiteSpace(line.Form.TreatmentSignature)
+                    ? selections.Count == 1 ? selections[0] : null
+                    : selections.SingleOrDefault(x => string.Equals(x.TreatmentSignature, line.Form.TreatmentSignature, StringComparison.Ordinal));
             if (selectedTreatment is null)
             {
                 return $"{ActualRunLineLabel(snapshot)} has multiple treatment histories. Select the exact treatment segment being packed.";
@@ -1391,9 +1396,11 @@ public sealed class BinsRunService(
                 entry.TreatmentStateSnapshot = item.Treatment.TreatmentState;
                 entry.TreatmentSignatureSnapshot = item.Treatment.TreatmentSignature;
                 entry.TreatmentSummarySnapshot = item.Treatment.Label;
-                var lineage = await roomTreatmentService.MoveAsync(
+                var lineage = await roomTreatmentService.MoveSelectedAsync(
                     ledgerSnapshot,
                     item.Treatment.TreatmentSignature,
+                    item.Treatment.SegmentId,
+                    item.Treatment.ReceiptId,
                     item.Form.BinsRun,
                     null,
                     null,
@@ -1833,15 +1840,18 @@ public sealed class BinsRunService(
         if (roomTreatmentService is not null)
         {
             var selections = await roomTreatmentService.GetSelectionsAsync(ToLedgerSnapshot(snapshot), cancellationToken);
-            var selectedTreatment = string.IsNullOrWhiteSpace(form.TreatmentSignature)
-                ? selections.Count == 1 ? selections[0] : null
-                : selections.SingleOrDefault(x => x.TreatmentSignature == form.TreatmentSignature);
+            var selectedTreatment = form.TreatmentSegmentId is not null
+                ? selections.SingleOrDefault(x => x.SegmentId == form.TreatmentSegmentId
+                    && x.TreatmentSignature == form.TreatmentSignature)
+                : string.IsNullOrWhiteSpace(form.TreatmentSignature)
+                    ? selections.Count == 1 ? selections[0] : null
+                    : selections.SingleOrDefault(x => x.TreatmentSignature == form.TreatmentSignature);
             if (selectedTreatment is null) return "This room-lot has multiple treatment histories. Select the exact segment being packed.";
             entry.TreatmentStateSnapshot = selectedTreatment.TreatmentState;
             entry.TreatmentSignatureSnapshot = selectedTreatment.TreatmentSignature;
             entry.TreatmentSummarySnapshot = selectedTreatment.Label;
-            var lineage = await roomTreatmentService.MoveAsync(
-                ToLedgerSnapshot(snapshot), selectedTreatment.TreatmentSignature, form.BinsRun,
+            var lineage = await roomTreatmentService.MoveSelectedAsync(
+                ToLedgerSnapshot(snapshot), selectedTreatment.TreatmentSignature, selectedTreatment.SegmentId, selectedTreatment.ReceiptId, form.BinsRun,
                 null, null, $"binsrun:{operationKey}:{entry.Id}:treatment",
                 TreatmentLineageMovementTypes.BinsRun, null, null, entry.Id, form.RunAt, userId, cancellationToken);
             if (!lineage.Success) return lineage.Error;
@@ -1947,7 +1957,9 @@ public sealed class BinsRunService(
                     segment.TreatmentSignature,
                     segment.Label,
                     x.GrowerNumber ?? "",
-                    sealedRoomIds.Contains(x.RoomId)));
+                    sealedRoomIds.Contains(x.RoomId),
+                    segment.SegmentId,
+                    segment.ReceiptId));
             }
         }
         return options;

@@ -1923,6 +1923,42 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 .inventory-variety-title-swatch { margin-right: .55rem; }
 .inventory-variety-total { font-size: 1.1rem; }
 
+.upload-feedback {
+    align-items: center;
+    display: flex;
+    gap: .6rem;
+    min-height: 1.5rem;
+    overflow-wrap: anywhere;
+}
+
+.upload-feedback[hidden] { display: none; }
+
+.upload-feedback-spinner {
+    animation: upload-feedback-spin .75s linear infinite;
+    border: 3px solid #cbd5e1;
+    border-radius: 50%;
+    border-top-color: var(--primary-color, #245c3c);
+    flex: 0 0 auto;
+    height: 1.1rem;
+    width: 1.1rem;
+}
+
+.upload-feedback-error { color: var(--danger-color, #991b1b); }
+
+.upload-workflow-busy .upload-zone,
+.upload-workflow-busy .staged-receipt-photo-drop-zone,
+.upload-workflow-busy .treatment-report-picker-actions,
+.upload-workflow-busy .file-picker-button {
+    opacity: .65;
+    pointer-events: none;
+}
+
+@keyframes upload-feedback-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .upload-feedback-spinner { animation: none; }
+}
+
 @media (max-width: 760px) {
     .inventory-variety-card { min-height: 44px; }
     .inventory-variety-detail-table,

@@ -198,7 +198,10 @@
             <button type="button" class="secondary-button" data-scale-next>Capture Next Fruit Weight</button>
         }
     </div>
-    <p class="muted device-message" data-device-message>Manual upload and manual weight entry remain available. Device capture is optional.</p>
+    <p class="muted device-message upload-feedback" data-device-message role="status" aria-live="polite">
+        <span class="upload-feedback-spinner" data-device-upload-spinner aria-hidden="true" hidden></span>
+        <span data-device-message-text>Manual upload and manual weight entry remain available. Device capture is optional.</span>
+    </p>
     <span data-device-antiforgery hidden>@Html.AntiForgeryToken()</span>
 </section>
 <script src="~/js/device-camera-controls.js" asp-append-version="true"></script>
@@ -217,6 +220,7 @@
         const video = panel.querySelector(".device-video");
         const canvas = panel.querySelector(".device-canvas");
         const message = panel.querySelector("[data-device-message]");
+        const photoUploadSpinner = panel.querySelector("[data-device-upload-spinner]");
         const disabledMessage = panel.querySelector("[data-device-disabled]");
         const actions = panel.querySelector("[data-device-actions]");
         const settings = panel.querySelector(".device-settings");
@@ -260,6 +264,10 @@
         let serialReader = null;
         let lastWeight = null;
         let nextWeightRowIndex = 0;
+        let photoCaptureBusy = false;
+        let receiptSubmissionBusy = false;
+        const photoCaptureButtons = Array.from(panel.querySelectorAll("[data-capture-photo]"));
+        const photoCaptureButtonDefaults = new Map(photoCaptureButtons.map(button => [button, button.disabled]));
         const storage = {
             getItem(key) {
                 try { return window.localStorage.getItem(key); }
@@ -296,9 +304,28 @@
             if (target) target.textContent = value;
         }
 
-        function show(messageText, warning = false) {
-            message.textContent = messageText;
+        function show(text, warning = false) {
+            panel.querySelector("[data-device-message-text]").textContent = text;
             message.classList.toggle("warning-text", warning);
+        }
+
+        function beginPhotoCapture(messageText) {
+            if (photoCaptureBusy) return false;
+            photoCaptureBusy = true;
+            panel.setAttribute("aria-busy", "true");
+            photoUploadSpinner.hidden = false;
+            photoCaptureButtons.forEach(button => { button.disabled = true; });
+            show(messageText);
+            return true;
+        }
+
+        function endPhotoCapture() {
+            photoCaptureBusy = false;
+            panel.removeAttribute("aria-busy");
+            photoUploadSpinner.hidden = true;
+            photoCaptureButtons.forEach(button => {
+                button.disabled = receiptSubmissionBusy || photoCaptureButtonDefaults.get(button) === true;
+            });
         }
 
         function setCameraControlMessage(messageText, warning = false) {
@@ -765,58 +792,71 @@
                 show("Save the receipt first to attach photos.", true);
                 return;
             }
+            const hasPendingFieldSample = window.fieldSampleAutosave?.hasPending();
+            if (!beginPhotoCapture(hasPendingFieldSample
+                ? "Saving Field Sample changes before the photo upload..."
+                : `Preparing ${friendlyPhotoType(photoType)}...`)) return;
 
-            if (window.fieldSampleAutosave?.hasPending() && !await window.fieldSampleAutosave.flush()) {
-                show("Save the pending Field Sample changes before capturing a photo. The entered values remain on this page.", true);
-                return;
+            let reloading = false;
+            try {
+                if (hasPendingFieldSample && !await window.fieldSampleAutosave.flush()) {
+                    show("Save the pending Field Sample changes before capturing a photo. The entered values remain on this page.", true);
+                    return;
+                }
+
+                show(`Preparing ${friendlyPhotoType(photoType)}...`);
+                const started = activeRole === role && stream ? true : await startCamera(role);
+                if (!started) return;
+                await new Promise(resolve => setTimeout(resolve, 150));
+                const blob = await captureCameraJpeg();
+                if (!blob) {
+                    show("Could not capture photo from camera.", true);
+                    return;
+                }
+
+                const safeType = photoType.replace(/[^A-Za-z0-9_-]/g, "");
+                const fileName = `${safeType}_${new Date().toISOString().replace(/[:.]/g, "-")}.jpg`;
+                const photoSource = role === "truck" ? "OBSBOT Tiny 2 Lite" : "Logitech Brio 4K";
+                const file = new File([blob], fileName, { type: "image/jpeg" });
+                if (shouldStage) {
+                    window.dispatchEvent(new CustomEvent("cropqc:stage-receipt-photo", {
+                        detail: { file, photoType, photoSource }
+                    }));
+                    status("last-photo", `${friendlyPhotoType(photoType)} staged`);
+                    show(`${friendlyPhotoType(photoType)} staged. Review the thumbnail before saving the receipt.`);
+                    return;
+                }
+                const form = new FormData();
+                form.append("PhotoType", photoType);
+                form.append("PhotoSource", photoSource);
+                form.append("PhotoFile", file);
+                form.append("FileName", fileName);
+                form.append("ContentType", "image/jpeg");
+                form.append("FileSizeBytes", String(blob.size));
+                const antiforgery = panel.querySelector("[data-device-antiforgery] input[name='__RequestVerificationToken']");
+                if (antiforgery) form.append("__RequestVerificationToken", antiforgery.value);
+
+                show(`Uploading ${friendlyPhotoType(photoType)}...`);
+                const response = await fetch(action, {
+                    method: "POST",
+                    body: form,
+                    credentials: "same-origin"
+                });
+
+                if (!response.ok) {
+                    show(`Photo upload failed (${response.status}). Manual upload is still available.`, true);
+                    return;
+                }
+
+                status("last-photo", `${friendlyPhotoType(photoType)} captured`);
+                show(`${friendlyPhotoType(photoType)} uploaded. Reloading...`);
+                reloading = true;
+                window.location.reload();
+            } catch {
+                show("Photo upload could not be completed. The record remains available; retry or use manual upload.", true);
+            } finally {
+                if (!reloading) endPhotoCapture();
             }
-
-            const started = activeRole === role && stream ? true : await startCamera(role);
-            if (!started) return;
-            await new Promise(resolve => setTimeout(resolve, 150));
-            const blob = await captureCameraJpeg();
-            if (!blob) {
-                show("Could not capture photo from camera.", true);
-                return;
-            }
-
-            const safeType = photoType.replace(/[^A-Za-z0-9_-]/g, "");
-            const fileName = `${safeType}_${new Date().toISOString().replace(/[:.]/g, "-")}.jpg`;
-            const photoSource = role === "truck" ? "OBSBOT Tiny 2 Lite" : "Logitech Brio 4K";
-            const file = new File([blob], fileName, { type: "image/jpeg" });
-            if (shouldStage) {
-                window.dispatchEvent(new CustomEvent("cropqc:stage-receipt-photo", {
-                    detail: { file, photoType, photoSource }
-                }));
-                status("last-photo", `${friendlyPhotoType(photoType)} staged`);
-                show(`${friendlyPhotoType(photoType)} staged. Review the thumbnail before saving the receipt.`);
-                return;
-            }
-            const form = new FormData();
-            form.append("PhotoType", photoType);
-            form.append("PhotoSource", photoSource);
-            form.append("PhotoFile", file);
-            form.append("FileName", fileName);
-            form.append("ContentType", "image/jpeg");
-            form.append("FileSizeBytes", String(blob.size));
-            const antiforgery = panel.querySelector("[data-device-antiforgery] input[name='__RequestVerificationToken']");
-            if (antiforgery) form.append("__RequestVerificationToken", antiforgery.value);
-
-            show(`Uploading ${friendlyPhotoType(photoType)}...`);
-            const response = await fetch(action, {
-                method: "POST",
-                body: form,
-                credentials: "same-origin"
-            });
-
-            if (!response.ok) {
-                show(`Photo upload failed (${response.status}). Manual upload is still available.`, true);
-                return;
-            }
-
-            status("last-photo", `${friendlyPhotoType(photoType)} captured`);
-            show(`${friendlyPhotoType(photoType)} captured. Reloading...`);
-            window.location.reload();
         }
 
         async function connectScale() {
@@ -1077,6 +1117,10 @@
         for (const button of panel.querySelectorAll("[data-capture-photo]")) {
             button.addEventListener("click", () => capturePhoto(button.dataset.capturePhoto, button.dataset.cameraRole));
         }
+        window.addEventListener("cropqc:receipt-submit-busy", () => {
+            receiptSubmissionBusy = true;
+            photoCaptureButtons.forEach(button => { button.disabled = true; });
+        });
         panel.querySelector("[data-scale-connect]")?.addEventListener("click", connectScale);
         panel.querySelector("[data-scale-read]")?.addEventListener("click", () => captureWeight(false));
         panel.querySelector("[data-scale-next]")?.addEventListener("click", () => captureWeight(true));

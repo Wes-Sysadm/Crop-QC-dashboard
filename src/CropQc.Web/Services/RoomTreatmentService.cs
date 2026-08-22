@@ -20,7 +20,8 @@ public sealed record TreatmentSegmentSelection(
     string TreatmentState,
     int CurrentBins,
     string Label,
-    long? ReceiptId = null);
+    long? ReceiptId = null,
+    long? SegmentId = null);
 
 public sealed record TreatmentLineageWriteResult(bool Success, string? Error, long? MovementId = null);
 
@@ -33,6 +34,8 @@ public interface IRoomTreatmentService
     Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken);
     Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetSelectionsAsync(IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots, CancellationToken cancellationToken);
     Task<TreatmentLineageWriteResult> MoveAsync(RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, int bins, int? destinationWarehouseId, int? destinationRoomId, string operationKey, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken);
+    Task<TreatmentLineageWriteResult> MoveSelectedAsync(RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, long? treatmentSegmentId, long? treatmentReceiptId, int bins, int? destinationWarehouseId, int? destinationRoomId, string operationKey, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) =>
+        MoveAsync(snapshot, treatmentSignature, bins, destinationWarehouseId, destinationRoomId, operationKey, movementType, roomTransferId, roomInventoryLossId, binsRunEntryId, occurredAt, actorUserId, cancellationToken);
     Task<TreatmentLineageWriteResult> ReverseMovementsAsync(string operationKeyPrefix, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken);
     Task<TreatmentLineageWriteResult> AddUnknownAsync(RoomInventoryLedgerSnapshot snapshot, int bins, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken);
 }
@@ -40,6 +43,8 @@ public interface IRoomTreatmentService
 public interface IProcessorTreatmentLineageService
 {
     Task<TreatmentLineageWriteResult> MoveToProcessorAsync(RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, int bins, string operationKey, long processorShipmentLineId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken);
+    Task<TreatmentLineageWriteResult> MoveSelectedToProcessorAsync(RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, long? treatmentSegmentId, long? treatmentReceiptId, int bins, string operationKey, long processorShipmentLineId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) =>
+        MoveToProcessorAsync(snapshot, treatmentSignature, bins, operationKey, processorShipmentLineId, occurredAt, actorUserId, cancellationToken);
     Task<TreatmentLineageWriteResult> ReverseProcessorMovementAsync(string operationKeyPrefix, long processorShipmentLineId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken);
 }
 
@@ -618,7 +623,7 @@ public sealed class RoomTreatmentService(
     public async Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken)
     {
         var projected = (await ProjectSelectionsBatchAsync([snapshot], cancellationToken))[SelectionLookupKey(snapshot)];
-        return projected.Select(x => new TreatmentSegmentSelection(x.IdentityKey, x.TreatmentSignature, x.TreatmentState, x.Bins, SegmentLabel(x), x.ReceiptId)).ToList();
+        return projected.Select(x => new TreatmentSegmentSelection(x.IdentityKey, x.TreatmentSignature, x.TreatmentState, x.Bins, SegmentLabel(x), x.ReceiptId, x.SegmentId)).ToList();
     }
 
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetSelectionsAsync(
@@ -630,7 +635,7 @@ public sealed class RoomTreatmentService(
         return projected.ToDictionary(
             x => x.Key,
             x => (IReadOnlyList<TreatmentSegmentSelection>)x.Value.Select(y => new TreatmentSegmentSelection(
-                y.IdentityKey, y.TreatmentSignature, y.TreatmentState, y.Bins, SegmentLabel(y), y.ReceiptId)).ToList());
+                y.IdentityKey, y.TreatmentSignature, y.TreatmentState, y.Bins, SegmentLabel(y), y.ReceiptId, y.SegmentId)).ToList());
     }
 
     public Task<TreatmentLineageWriteResult> MoveAsync(
@@ -642,12 +647,29 @@ public sealed class RoomTreatmentService(
             movementType, roomTransferId, roomInventoryLossId, binsRunEntryId, occurredAt, actorUserId,
             cancellationToken, null);
 
+    public Task<TreatmentLineageWriteResult> MoveSelectedAsync(
+        RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, long? treatmentSegmentId, long? treatmentReceiptId, int bins,
+        int? destinationWarehouseId, int? destinationRoomId, string operationKey, string movementType,
+        long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId,
+        DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) =>
+        MoveCoreAsync(snapshot, treatmentSignature, bins, destinationWarehouseId, destinationRoomId, operationKey,
+            movementType, roomTransferId, roomInventoryLossId, binsRunEntryId, occurredAt, actorUserId,
+            treatmentReceiptId, cancellationToken, null, treatmentSegmentId, exactSelection: true);
+
     public Task<TreatmentLineageWriteResult> MoveToProcessorAsync(
         RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, int bins, string operationKey,
         long processorShipmentLineId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) =>
         MoveCoreAsync(snapshot, treatmentSignature, bins, null, null, operationKey,
             TreatmentLineageMovementTypes.ProcessorShipment, null, null, null, occurredAt, actorUserId,
             cancellationToken, processorShipmentLineId);
+
+    public Task<TreatmentLineageWriteResult> MoveSelectedToProcessorAsync(
+        RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, long? treatmentSegmentId, long? treatmentReceiptId,
+        int bins, string operationKey, long processorShipmentLineId, DateTimeOffset occurredAt,
+        int? actorUserId, CancellationToken cancellationToken) =>
+        MoveCoreAsync(snapshot, treatmentSignature, bins, null, null, operationKey,
+            TreatmentLineageMovementTypes.ProcessorShipment, null, null, null, occurredAt, actorUserId,
+            treatmentReceiptId, cancellationToken, processorShipmentLineId, treatmentSegmentId, exactSelection: true);
 
     private async Task<TreatmentLineageWriteResult> MoveCoreAsync(
         RoomInventoryLedgerSnapshot snapshot,
@@ -714,7 +736,9 @@ public sealed class RoomTreatmentService(
         int? actorUserId,
         long? receiptId,
         CancellationToken cancellationToken,
-        long? processorShipmentLineId)
+        long? processorShipmentLineId,
+        long? treatmentSegmentId = null,
+        bool exactSelection = false)
     {
         if (bins <= 0) return new(false, "Treatment lineage movement quantity must be positive.");
         if (roomTransferId is null && roomInventoryLossId is null && binsRunEntryId is null && processorShipmentLineId is null)
@@ -744,16 +768,33 @@ public sealed class RoomTreatmentService(
                 && existingMovement.BinsRunEntryId == binsRunEntryId;
             sameRequest = sameRequest
                 && existingMovement.ProcessorShipmentLineId == processorShipmentLineId
-                && existingMovement.ReceiptId == receiptId;
+                && (!exactSelection || existingMovement.ReceiptId == receiptId)
+                && (treatmentSegmentId is null || existingMovement.SourceSegmentId == treatmentSegmentId);
             return sameRequest
                 ? new(true, null, existingMovement.Id)
                 : new(false, "The operation key already belongs to a different treatment lineage movement.");
         }
         var segments = await MaterializeAsync(snapshot, cancellationToken);
+        if (exactSelection && treatmentSegmentId is not null)
+        {
+            var selected = segments.SingleOrDefault(x => x.Id == treatmentSegmentId
+                && (string.IsNullOrWhiteSpace(treatmentSignature) || x.TreatmentSignature == treatmentSignature));
+            if (selected is not null && selected.CurrentBins < bins)
+            {
+                return new(false, $"Only {selected.CurrentBins} bins remain in the selected treatment segment. Refresh before retrying.");
+            }
+        }
         var available = segments.Where(x => x.CurrentBins > 0
-            && (receiptId == null || x.ReceiptId == receiptId || x.ReceiptId == null)).ToList();
+            && (exactSelection || receiptId == null || x.ReceiptId == receiptId || x.ReceiptId == null)).ToList();
         TreatmentLineageSegment? source;
-        if (string.IsNullOrWhiteSpace(treatmentSignature))
+        if (exactSelection)
+        {
+            var candidates = available.Where(x =>
+                (treatmentSegmentId is null || x.Id == treatmentSegmentId)
+                && (string.IsNullOrWhiteSpace(treatmentSignature) || x.TreatmentSignature == treatmentSignature)).ToList();
+            source = candidates.SingleOrDefault();
+        }
+        else if (string.IsNullOrWhiteSpace(treatmentSignature))
         {
             if (available.Count != 1) return new(false, "This fruit identity has multiple treatment histories. Select the exact treated or untreated segment.");
             source = available[0];
@@ -776,7 +817,7 @@ public sealed class RoomTreatmentService(
         if (destinationRoomId is not null && destinationWarehouseId is not null)
         {
             var destinationSnapshot = snapshot with { WarehouseId = destinationWarehouseId.Value, RoomId = destinationRoomId.Value };
-            destination = await GetOrCreateSegmentAsync(destinationSnapshot, source.TreatmentState, source.TreatmentSignature, now, cancellationToken, receiptId ?? source.ReceiptId);
+            destination = await GetOrCreateSegmentAsync(destinationSnapshot, source.TreatmentState, source.TreatmentSignature, now, cancellationToken, exactSelection ? source.ReceiptId : receiptId ?? source.ReceiptId);
             await CopyApplicationLinksAsync(source, destination, cancellationToken);
             destination.CurrentBins += bins;
             destination.UpdatedAt = now;
@@ -796,7 +837,7 @@ public sealed class RoomTreatmentService(
             IdentityKey = source.IdentityKey,
             TreatmentStateSnapshot = source.TreatmentState,
             TreatmentSignatureSnapshot = source.TreatmentSignature,
-            ReceiptId = receiptId ?? source.ReceiptId,
+            ReceiptId = exactSelection ? source.ReceiptId ?? receiptId : receiptId ?? source.ReceiptId,
             BinCount = bins,
             RoomTransferId = roomTransferId,
             RoomInventoryLossId = roomInventoryLossId,

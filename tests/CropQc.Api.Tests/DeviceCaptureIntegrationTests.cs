@@ -238,7 +238,7 @@ public sealed class DeviceCaptureIntegrationTests
         Assert.Contains("URL.revokeObjectURL(item.previewUrl)", staging);
         Assert.Contains("Remove staged photo", staging);
         Assert.Contains("stagedPhotos[${index}].PhotoFile", staging);
-        Assert.Contains("if (submitting)", staging);
+        Assert.Contains("if (!uploadFeedback.begin", staging);
         Assert.DoesNotContain("localStorage", staging, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("base64", staging, StringComparison.OrdinalIgnoreCase);
     }
