@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Photo upload feedback browser fixture</title>
+    <link rel="stylesheet" href="../../src/CropQc.Web/wwwroot/css/site.css" />
+</head>
+<body>
+    <main class="page">
+        <form class="panel form-grid photo-workflow" id="delayed-upload-form">
+            <h1>Saved Receipt Photo</h1>
+            <div class="photo-preview wide"><img id="selected-preview" alt="Selected photo preview" /></div>
+            <label class="checkbox-field wide"><input type="checkbox" id="fail-next-upload" /> Simulate upload failure</label>
+            <div class="upload-feedback wide" data-upload-feedback role="status" aria-live="polite" hidden>
+                <span class="upload-feedback-spinner" data-upload-feedback-spinner aria-hidden="true"></span>
+                <span data-upload-feedback-message></span>
+            </div>
+            <button type="submit" id="save-photo">Save Photo</button>
+        </form>
+        <p>Requests sent: <output id="request-count">0</output></p>
+    </main>
+    <script src="../../src/CropQc.Web/wwwroot/js/upload-feedback.js"></script>
+    <script>
+        (() => {
+            const form = document.getElementById("delayed-upload-form");
+            const submit = document.getElementById("save-photo");
+            const count = document.getElementById("request-count");
+            const preview = document.getElementById("selected-preview");
+            const failToggle = document.getElementById("fail-next-upload");
+            const controller = window.CropQcUploadFeedback.create(form);
+            const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="140"><rect width="240" height="140" fill="#dbeafe"/><text x="120" y="75" text-anchor="middle" font-family="sans-serif" font-size="18">Selected photo</text></svg>';
+            const previewUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+            preview.src = previewUrl;
+            let requests = 0;
+
+            form.addEventListener("submit", async event => {
+                event.preventDefault();
+                if (!controller.begin("Uploading photo...", [submit])) return;
+                requests++;
+                count.value = String(requests);
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                if (failToggle.checked) {
+                    failToggle.checked = false;
+                    controller.fail("Photo could not be uploaded. The photo is still selected; retry when ready.");
+                    return;
+                }
+                controller.release("Photo uploaded successfully.");
+            });
+
+            window.fixtureState = () => ({ requests, busy: controller.isBusy(), preview: preview.src, buttonDisabled: submit.disabled });
+            window.fixtureReady = true;
+            window.addEventListener("pagehide", () => URL.revokeObjectURL(previewUrl), { once: true });
+        })();
+    </script>
+</body>
+</html>

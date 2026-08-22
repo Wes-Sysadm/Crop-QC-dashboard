@@ -69,7 +69,11 @@
     </div>
 
     <p class="muted wide">Photos are validated, saved through the configured storage provider, and associated with this record. Maximum file size: 15 MB.</p>
-    <button type="submit">Save Photo</button>
+    <div class="upload-feedback wide" data-upload-feedback role="status" aria-live="polite" hidden>
+        <span class="upload-feedback-spinner" data-upload-feedback-spinner aria-hidden="true"></span>
+        <span data-upload-feedback-message></span>
+    </div>
+    <button type="submit" data-photo-upload-submit>Save Photo</button>
 </form>
 
 <script>
@@ -104,10 +108,13 @@
         const cameraCanvas = form.querySelector(".photo-camera-canvas");
         const cameraMessage = form.querySelector(".camera-placeholder");
         const validationMessage = form.querySelector(".photo-validation-message");
+        const submitButton = form.querySelector("[data-photo-upload-submit]");
         let selectedUploadFiles = [];
         let cameraStream = null;
         let previewUrls = [];
         let autosaveFlushed = false;
+        let autosaveContinuation = false;
+        let uploadFeedback = null;
         const maxPhotoSize = 15 * 1024 * 1024;
         const allowedTypes = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 
@@ -301,19 +308,36 @@
                 return;
             }
 
+            uploadFeedback ??= window.CropQcUploadFeedback.create(form);
+            if (uploadFeedback.isBusy() && !autosaveContinuation) {
+                event.preventDefault();
+                return;
+            }
+
             if (!autosaveFlushed && window.fieldSampleAutosave?.hasPending()) {
                 event.preventDefault();
-                validationMessage.textContent = "Saving Field Sample changes before the photo upload…";
-                validationMessage.hidden = false;
+                if (!uploadFeedback.begin("Saving Field Sample changes before the photo upload...", [submitButton])) return;
                 if (!await window.fieldSampleAutosave.flush()) {
-                    validationMessage.textContent = "Field Sample changes could not be saved. The photo remains selected; retry after the save issue is resolved.";
+                    uploadFeedback.fail("Field Sample changes could not be saved. The photo remains selected; retry after the save issue is resolved.");
                     return;
                 }
                 autosaveFlushed = true;
+                autosaveContinuation = true;
                 form.requestSubmit();
                 return;
             }
 
+            if (autosaveContinuation) {
+                autosaveContinuation = false;
+                uploadFeedback.update(selectedUploadFiles.length > 1
+                    ? `Uploading ${selectedUploadFiles.length} photos...`
+                    : "Uploading photo...");
+            } else if (!uploadFeedback.begin(selectedUploadFiles.length > 1
+                ? `Uploading ${selectedUploadFiles.length} photos...`
+                : "Uploading photo...", [submitButton])) {
+                event.preventDefault();
+                return;
+            }
             buildMetadata(photoSource.value === "USB Camera" ? null : selectedUploadFiles[0]);
         });
 

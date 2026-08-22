@@ -184,13 +184,17 @@
     {
         @if (Model.CanUploadPackout)
         {
-            <form method="post" enctype="multipart/form-data" action="/BinsRun/ActualRuns/@Model.Id/Packout" class="form-grid">
+            <form method="post" enctype="multipart/form-data" action="/BinsRun/ActualRuns/@Model.Id/Packout" class="form-grid" data-upload-feedback-form data-upload-busy-text="Uploading packout report files...">
                 @Html.AntiForgeryToken()
                 <label>Packing date<input type="date" name="PackingDate" required /></label>
                 <label>Run number<input type="number" name="RunNumber" min="1" value="1" required /></label>
                 <label>Dumped bins<input type="number" name="DumpedBins" min="0.01" step="0.01" value="@Model.TotalBins" required /></label>
                 <label class="wide">Packout report files<input type="file" name="Files" multiple required accept=".pdf,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.tif,.tiff" /></label>
                 <p class="muted wide">Files must be parts or pages of this one physical run report. Uploaded originals are removed after bounded parsing.</p>
+                <div class="upload-feedback wide" data-upload-feedback role="status" aria-live="polite" hidden>
+                    <span class="upload-feedback-spinner" data-upload-feedback-spinner aria-hidden="true"></span>
+                    <span data-upload-feedback-message></span>
+                </div>
                 <button type="submit">Upload Packout Result</button>
             </form>
         }

@@ -51,7 +51,7 @@
         const message = section.querySelector("[data-staged-photo-message]");
         const items = [];
         let nextId = 1;
-        let submitting = false;
+        let uploadFeedback = null;
 
         function showMessage(text) {
             message.textContent = text || "";
@@ -91,6 +91,7 @@
         }
 
         function stage(file, photoType, photoSource) {
+            if (uploadFeedback?.isBusy()) return false;
             const error = validationError(file);
             if (error) {
                 showMessage(error);
@@ -168,16 +169,21 @@
             if (detail.file) stage(detail.file, detail.photoType, detail.photoSource);
         });
         form?.addEventListener("submit", event => {
-            if (submitting) {
+            uploadFeedback ??= window.CropQcUploadFeedback.create(form, {
+                status: section.querySelector("[data-upload-feedback]")
+            });
+            const submit = form.querySelector("[data-receipt-submit]");
+            const controls = [submit, browse, takePhoto, typeSelect, ...section.querySelectorAll(".staged-receipt-photo-card button")];
+            const message = items.length === 0
+                ? "Saving receipt..."
+                : items.length === 1
+                    ? "Saving receipt and uploading photo..."
+                    : `Saving receipt and uploading ${items.length} photos...`;
+            if (!uploadFeedback.begin(message, controls)) {
                 event.preventDefault();
                 return;
             }
-            submitting = true;
-            const submit = form.querySelector("[data-receipt-submit]");
-            if (submit) {
-                submit.disabled = true;
-                submit.textContent = "Saving receipt...";
-            }
+            window.dispatchEvent(new CustomEvent("cropqc:receipt-submit-busy"));
         });
         window.addEventListener("pagehide", () => items.forEach(item => URL.revokeObjectURL(item.previewUrl)));
     }
