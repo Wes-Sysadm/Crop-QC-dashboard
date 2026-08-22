@@ -680,7 +680,7 @@ public sealed class BinsRunWorkflowTests
         Assert.Equal(new[] { "segment-a", "segment-b" }, entries.Select(x => x.TreatmentSignatureSnapshot));
         Assert.Equal(new[] { 120, 118 }, entries.Select(x => x.PreviousAvailableBins));
         Assert.Equal(new[] { 118, 115 }, entries.Select(x => x.NewAvailableBins));
-        Assert.Equal(new[] { ("segment-a", 2), ("segment-b", 3) }, treatments.Moves);
+        Assert.Equal(new[] { ("segment-a", 8101L, 2), ("segment-b", 8102L, 3) }, treatments.Moves);
         var adjustments = await db.RoomInventoryAdjustments.Where(x => x.ActualRunId != null).OrderBy(x => x.Id).ToListAsync();
         Assert.Equal(new[] { -2, -3 }, adjustments.Select(x => x.ChangeAmount));
         Assert.Equal(new int?[] { 120, 118 }, adjustments.Select(x => x.OldBinCount));
@@ -2710,7 +2710,7 @@ public sealed class BinsRunWorkflowTests
 
     private sealed class SegmentedRoomTreatmentService : IRoomTreatmentService
     {
-        public List<(string Signature, int Bins)> Moves { get; } = [];
+        public List<(string Signature, long SegmentId, int Bins)> Moves { get; } = [];
 
         public Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetSelectionsAsync(
             IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots,
@@ -2720,8 +2720,8 @@ public sealed class BinsRunWorkflowTests
                 RoomTreatmentService.SelectionLookupKey,
                 snapshot => (IReadOnlyList<TreatmentSegmentSelection>)
                 [
-                    new(RoomTreatmentService.IdentityKey(snapshot), "segment-a", TreatmentLineageStates.Confirmed, 50, "Treatment A"),
-                    new(RoomTreatmentService.IdentityKey(snapshot), "segment-b", TreatmentLineageStates.Confirmed, 70, "Treatment B")
+                    new(RoomTreatmentService.IdentityKey(snapshot), "segment-a", TreatmentLineageStates.Confirmed, 50, "Treatment A", SegmentId: 8101),
+                    new(RoomTreatmentService.IdentityKey(snapshot), "segment-b", TreatmentLineageStates.Confirmed, 70, "Treatment B", SegmentId: 8102)
                 ],
                 StringComparer.OrdinalIgnoreCase);
             return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>>(result);
@@ -2742,7 +2742,27 @@ public sealed class BinsRunWorkflowTests
             int? actorUserId,
             CancellationToken cancellationToken)
         {
-            Moves.Add((treatmentSignature ?? "", bins));
+            throw new InvalidOperationException("Actual Runs must move the exact selected treatment segment.");
+        }
+
+        public Task<TreatmentLineageWriteResult> MoveSelectedAsync(
+            RoomInventoryLedgerSnapshot snapshot,
+            string? treatmentSignature,
+            long? treatmentSegmentId,
+            long? treatmentReceiptId,
+            int bins,
+            int? destinationWarehouseId,
+            int? destinationRoomId,
+            string operationKey,
+            string movementType,
+            long? roomTransferId,
+            long? roomInventoryLossId,
+            long? binsRunEntryId,
+            DateTimeOffset occurredAt,
+            int? actorUserId,
+            CancellationToken cancellationToken)
+        {
+            Moves.Add((treatmentSignature ?? "", treatmentSegmentId ?? 0, bins));
             return Task.FromResult(new TreatmentLineageWriteResult(true, null));
         }
 

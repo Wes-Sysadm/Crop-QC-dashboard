@@ -43,7 +43,8 @@ public sealed record RoomInventoryLossCreateRequest(
     string? Notes,
     long? RequiredReceiptId,
     string AuditSource,
-    string? TreatmentSignature = null);
+    string? TreatmentSignature = null,
+    long? TreatmentSegmentId = null);
 
 public sealed record RoomInventoryLossNormalizationRequest(
     string OperationKey,
@@ -147,7 +148,8 @@ public sealed class RoomInventoryLossService(
                     snapshot.IsOrganic,
                     segment.CurrentBins,
                     segment.TreatmentSignature,
-                    segment.Label));
+                    segment.Label,
+                    segment.SegmentId));
             }
         }
         var principal = httpContextAccessor.HttpContext?.User;
@@ -200,7 +202,8 @@ public sealed class RoomInventoryLossService(
                 form.Notes,
                 null,
                 "CropQc.Web room dropped-bin workflow",
-                form.TreatmentSignature),
+                form.TreatmentSignature,
+                form.TreatmentSegmentId),
             actor,
             cancellationToken);
         return result.Success ? null : result.Error;
@@ -619,9 +622,11 @@ public sealed class RoomInventoryLossService(
 
             if (roomTreatmentService is not null)
             {
-                var lineage = await roomTreatmentService.MoveAsync(
+                var lineage = await roomTreatmentService.MoveSelectedAsync(
                     snapshot,
                     request.TreatmentSignature,
+                    request.TreatmentSegmentId,
+                    loss.ReceiptId,
                     request.BinCount,
                     null,
                     null,

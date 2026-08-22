@@ -418,7 +418,9 @@ public sealed record RoomInventoryLotOptionViewModel(
     string TreatmentSignature = "",
     string TreatmentLabel = "Untreated",
     string Grower = "",
-    string Variety = "");
+    string Variety = "",
+    long? TreatmentSegmentId = null,
+    long? TreatmentReceiptId = null);
 public sealed record RoomTransferFacilityViewModel(
     int WarehouseId,
     string Label,
@@ -514,6 +516,7 @@ public sealed class RoomTransferForm
     public int DestinationRoomId { get; set; }
     public string SourceLotKey { get; set; } = "";
     public string TreatmentSignature { get; set; } = "";
+    public long? TreatmentSegmentId { get; set; }
     public int BinCount { get; set; }
     public DateTimeOffset TransferAt { get; set; } = DateTimeOffset.UtcNow;
     public string Reason { get; set; } = "";
@@ -534,6 +537,7 @@ public sealed class RoomInventoryLossForm
     public int RoomId { get; set; }
     public long InventoryAdjustmentId { get; set; }
     public string TreatmentSignature { get; set; } = "";
+    public long? TreatmentSegmentId { get; set; }
     public int ExpectedCurrentBins { get; set; }
     public int BinCount { get; set; }
     public DateTimeOffset? OccurredAt { get; set; } = DateTimeOffset.UtcNow;
@@ -559,7 +563,8 @@ public sealed record RoomInventoryLossOptionViewModel(
     bool? IsOrganic,
     int CurrentBins,
     string TreatmentSignature = "",
-    string TreatmentLabel = "Untreated");
+    string TreatmentLabel = "Untreated",
+    long? TreatmentSegmentId = null);
 
 public sealed record RoomInventoryLossHistoryViewModel(
     long Id,
@@ -788,6 +793,7 @@ public sealed class BinsRunForm
     public int? RoomId { get; set; }
     public string InventoryKey { get; set; } = "";
     public string TreatmentSignature { get; set; } = "";
+    public long? TreatmentSegmentId { get; set; }
     public int BinsRun { get; set; }
     public int ExpectedAvailableBins { get; set; }
     public DateTimeOffset RunAt { get; set; } = DateTimeOffset.UtcNow;
@@ -812,6 +818,7 @@ public sealed class ActualRunLineForm
 {
     public string InventoryKey { get; set; } = "";
     public string TreatmentSignature { get; set; } = "";
+    public long? TreatmentSegmentId { get; set; }
     public int BinsRun { get; set; }
     public int ExpectedAvailableBins { get; set; }
     public long? RunProjectionSourceId { get; set; }
@@ -863,7 +870,9 @@ public sealed record BinsRunInventoryOptionViewModel(
     string SourceReference = "",
     string TreatmentSignature = "",
     string TreatmentLabel = "Untreated",
-    string GrowerNumber = "");
+    string GrowerNumber = "",
+    long? TreatmentSegmentId = null,
+    long? TreatmentReceiptId = null);
 
 public sealed class ActualRunHistoryItemViewModel
 {
