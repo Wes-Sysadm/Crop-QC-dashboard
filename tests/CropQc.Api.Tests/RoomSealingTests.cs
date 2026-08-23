@@ -313,15 +313,15 @@ public sealed class RoomSealingTests
     }
 
     [Fact]
-    public void Application_gate_targets_room_seal_effective_time_and_641_objects()
+    public void Application_gate_targets_latest_migration_and_687_objects()
     {
-        Assert.Equal("20260822152806_AddRoomSealEffectiveTime", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
+        Assert.Equal("20260823040226_AddActualRunSalesDeskAttribution", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
         var source = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DatabaseStartupDiagnostics.cs"));
         Assert.Contains("RoomSealEvents.RoomCodeSnapshot", source);
         Assert.Contains("RoomSealEvents.EffectiveAt", source);
         Assert.Contains("Rooms.SealRecordedAt", source);
         Assert.Contains("FK_Rooms_Users_SealedByUserId", source);
-        Assert.Equal(641, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Equal(687, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     [Fact]

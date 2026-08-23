@@ -1040,6 +1040,31 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
     {
         <section class="panel">
             <h2>@detail.Facility · @detail.CropYear Crop</h2>
+            @if (detail.Facility == CropQc.Data.Entities.EmploymentFacilities.Wp)
+            {
+                <form class="inline-form" method="get" action="/BinsRun">
+                    <input type="hidden" name="Section" value="RunTotals" />
+                    <input type="hidden" name="ReportFacility" value="@detail.Facility" />
+                    <input type="hidden" name="ReportCropYear" value="@detail.CropYear" />
+                    <label>Sales Desk
+                        <select name="ReportSalesDesk">
+                            @foreach (var option in detail.SalesDeskFilterOptions)
+                            {
+                                <option value="@option.Value" selected="@(detail.SelectedSalesDesk == option.Value)">@option.Label</option>
+                            }
+                        </select>
+                    </label>
+                    <button type="submit">Apply</button>
+                </form>
+                <div class="run-sales-desk-card-grid">
+                    <a class="run-sales-desk-card" href="/BinsRun?Section=RunTotals&amp;ReportFacility=WP&amp;ReportCropYear=@detail.CropYear&amp;ReportSalesDesk=All"><strong>WP Total</strong><span>@detail.SalesDeskTotals.Sum(x => x.Bins).ToString("N0") bins</span></a>
+                    @foreach (var desk in detail.SalesDeskTotals)
+                    {
+                        <a class="run-sales-desk-card @(desk.IsUnassigned ? "unassigned" : "")" href="/BinsRun?Section=RunTotals&amp;ReportFacility=WP&amp;ReportCropYear=@detail.CropYear&amp;ReportSalesDesk=@(desk.IsUnassigned ? "Unassigned" : desk.SalesDeskId)"><strong>@desk.SalesDesk</strong><span>@desk.Bins.ToString("N0") bins</span></a>
+                    }
+                </div>
+                <p class="muted">WP Total reconciles exactly to the Sales Desk cards, including Unassigned historical runs.</p>
+            }
             @if (!detail.HasAuthoritativePriorBaseline)
             {
                 <p><strong>@detail.TotalBins.ToString("N0") bins</strong> through @detail.SelectedCutoff.ToString("MMM. d, yyyy").</p>
@@ -1057,7 +1082,7 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
                     var productionLabel = variety.IsOrganic ? "Organic" : "Conventional";
                     <a class="run-variety-card @(variety.IsOrganic ? "organic" : "conventional")"
                        style="--variety-bg: @variety.ColorHex; --variety-text: @variety.TextColorHex"
-                       href="@($"/BinsRun?Section=RunTotals&ReportFacility={detail.Facility}&ReportCropYear={detail.CropYear}&ReportVarietyKey={Uri.EscapeDataString(variety.VarietyKey)}")">
+                       href="@($"/BinsRun?Section=RunTotals&ReportFacility={detail.Facility}&ReportCropYear={detail.CropYear}&ReportSalesDesk={Uri.EscapeDataString(detail.SelectedSalesDesk ?? "All")}&ReportVarietyKey={Uri.EscapeDataString(variety.VarietyKey)}")">
                         <span class="run-variety-card-content">
                             <strong>@variety.Variety</strong>
                             <span class="production-badge">@productionLabel</span>
@@ -1082,7 +1107,7 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
                     <strong>@selectedVariety.Variety</strong>
                     <span class="production-badge">@(selectedVariety.IsOrganic ? "Organic" : "Conventional")</span>
                 </div>
-                <p><a href="/BinsRun?Section=RunTotals&amp;ReportFacility=@detail.Facility&amp;ReportCropYear=@detail.CropYear">Clear variety selection</a></p>
+                <p><a href="/BinsRun?Section=RunTotals&amp;ReportFacility=@detail.Facility&amp;ReportCropYear=@detail.CropYear&amp;ReportSalesDesk=@detail.SelectedSalesDesk">Clear variety selection</a></p>
             }
             @foreach (var week in detail.Weeks)
             {
@@ -1094,7 +1119,7 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
                             <tbody>
                             @foreach (var grower in week.Growers)
                             {
-                                var supportUrl = $"/BinsRun?Section=RunTotals&ReportFacility={detail.Facility}&ReportCropYear={detail.CropYear}&ReportVarietyKey={Uri.EscapeDataString(week.VarietyKey)}&ReportWeekStart={week.WeekStart:yyyy-MM-dd}&ReportGrowerNumber={Uri.EscapeDataString(grower.GrowerNumber)}";
+                                var supportUrl = $"/BinsRun?Section=RunTotals&ReportFacility={detail.Facility}&ReportCropYear={detail.CropYear}&ReportSalesDesk={Uri.EscapeDataString(detail.SelectedSalesDesk ?? "All")}&ReportVarietyKey={Uri.EscapeDataString(week.VarietyKey)}&ReportWeekStart={week.WeekStart:yyyy-MM-dd}&ReportGrowerNumber={Uri.EscapeDataString(grower.GrowerNumber)}";
                                 <tr><td>@grower.GrowerNumber</td><td>@grower.Bins.ToString("N0")</td><td>@grower.RecordCount</td><td><a href="@supportUrl">View supporting runs</a></td></tr>
                             }
                             </tbody>
@@ -1108,14 +1133,14 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
                     <h3>Supporting records · Grower @detail.SelectedGrowerNumber</h3>
                     <div class="table-wrap">
                         <table>
-                            <thead><tr><th>Record</th><th>Run time (Pacific)</th><th>Employee</th><th>Run / Source Facility</th><th>Room / Lot</th><th>Crop / Variety</th><th>Bins</th><th>Status</th></tr></thead>
+                            <thead><tr><th>Record</th><th>Run time (Pacific)</th><th>Employee</th><th>Run / Source Facility</th><th>Sales Desk</th><th>Room / Lot</th><th>Crop / Variety</th><th>Bins</th><th>Status</th></tr></thead>
                             <tbody>
                             @foreach (var record in detail.SupportingRecords)
                             {
                                 <tr>
                                     <td><a href="@record.RecordUrl">@record.RecordType #@(record.ActualRunId ?? record.EntryId)</a></td>
                                     <td>@BusinessTime.FormatPacific(record.RunAt)</td><td>@record.RecordedEmployee</td>
-                                    <td>@record.RunFacility / @record.SourceFacility</td><td>@record.SourceRoom / @record.Lot<br />Grower @record.GrowerNumber</td>
+                                    <td>@record.RunFacility / @record.SourceFacility</td><td>@record.SalesDesk</td><td>@record.SourceRoom / @record.Lot<br />Grower @record.GrowerNumber</td>
                                     <td>@record.CropYear / @record.Variety — @record.ProductionType</td><td>@record.Bins</td><td>@record.Status</td>
                                 </tr>
                             }
@@ -1124,7 +1149,7 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
                     </div>
                     @if (detail.HasMoreSupportingRecords)
                     {
-                        <a class="button-link" href="@($"/BinsRun?Section=RunTotals&ReportFacility={detail.Facility}&ReportCropYear={detail.CropYear}&ReportVarietyKey={Uri.EscapeDataString(detail.SelectedVarietyKey!)}&ReportWeekStart={detail.SelectedWeekStart:yyyy-MM-dd}&ReportGrowerNumber={Uri.EscapeDataString(detail.SelectedGrowerNumber!)}&ReportPage={detail.SupportingPage + 1}")">Next supporting page</a>
+                        <a class="button-link" href="@($"/BinsRun?Section=RunTotals&ReportFacility={detail.Facility}&ReportCropYear={detail.CropYear}&ReportSalesDesk={Uri.EscapeDataString(detail.SelectedSalesDesk ?? "All")}&ReportVarietyKey={Uri.EscapeDataString(detail.SelectedVarietyKey!)}&ReportWeekStart={detail.SelectedWeekStart:yyyy-MM-dd}&ReportGrowerNumber={Uri.EscapeDataString(detail.SelectedGrowerNumber!)}&ReportPage={detail.SupportingPage + 1}")">Next supporting page</a>
                     }
                 </section>
             }
@@ -1282,7 +1307,7 @@ else
                                 <option value="">Select WP or EBS</option>
                                 @foreach (var facility in Model.RunFacilityOptions)
                                 {
-                                    <option value="@facility.Id">@facility.Code — @facility.Name</option>
+                                    <option value="@facility.Id" data-facility-code="@facility.Code">@facility.Code — @facility.Name</option>
                                 }
                             </select>
                             <span class="muted">Shared / Management employees must explicitly select the facility receiving production credit.</span>
@@ -1292,6 +1317,44 @@ else
                     {
                         <input type="hidden" name="RunFacilityWarehouseId" value="@Model.ForcedRunFacilityWarehouseId" />
                         <p class="notice wide"><strong>Run Facility:</strong> @Model.ForcedRunFacilityCode, assigned from your Employment Facility. Source inventory may still come from either facility.</p>
+                    }
+                    @if (Model.ActualRunForm.Id is not null)
+                    {
+                        <input type="hidden" name="SalesDeskId" value="@Model.ActualRunForm.SalesDeskId" />
+                        var existingRun = Model.ActualRuns.FirstOrDefault(x => x.Id == Model.ActualRunForm.Id);
+                        @if (existingRun?.RunFacility == CropQc.Data.Entities.EmploymentFacilities.Wp)
+                        {
+                            <p class="notice wide"><strong>Sales Desk:</strong> @existingRun.SalesDesk. Run corrections retain this attribution; administrators use the attribution-only correction on Actual Run Detail.</p>
+                        }
+                    }
+                    else if (Model.RequiresRunFacilitySelection)
+                    {
+                        <label class="field wide" data-sales-desk-field hidden>Sales Desk
+                            <select name="SalesDeskId" data-sales-desk-select>
+                                <option value="">Select Sales Desk</option>
+                                @foreach (var desk in Model.SalesDeskOptions.Where(x => x.IsActive))
+                                {
+                                    <option value="@desk.Id">@desk.Name</option>
+                                }
+                            </select>
+                            <span class="muted">Required for WP. EBS runs do not use Sales Desk attribution.</span>
+                        </label>
+                    }
+                    else if (Model.ForcedRunFacilityCode == CropQc.Data.Entities.EmploymentFacilities.Wp)
+                    {
+                        <label class="field wide">Sales Desk
+                            <select name="SalesDeskId" required>
+                                <option value="">Select Sales Desk</option>
+                                @foreach (var desk in Model.SalesDeskOptions.Where(x => x.IsActive))
+                                {
+                                    <option value="@desk.Id">@desk.Name</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    else
+                    {
+                        <p class="muted wide"><strong>Sales Desk:</strong> N/A for EBS Actual Runs.</p>
                     }
                     <div class="table-wrap wide">
                         <table class="actual-run-ledger-table">
@@ -1593,7 +1656,7 @@ else
                 @foreach (var run in Model.ActualRuns)
                 {
                     <details class="subpanel" open="@(Model.ActualRunForm.Id == run.Id)">
-                        <summary><strong>Actual Run #@run.Id</strong> · @run.RunFacility · @run.Status · revision @run.RevisionNumber · @BusinessTime.FormatPacific(run.RunAt)</summary>
+                        <summary><strong>Actual Run #@run.Id</strong> · @run.RunFacility@(run.RunFacility == CropQc.Data.Entities.EmploymentFacilities.Wp ? $" / {run.SalesDesk}" : "") · @run.Status · revision @run.RevisionNumber · @BusinessTime.FormatPacific(run.RunAt)</summary>
                         <p class="muted">@run.Notes</p>
                         <p><a href="/BinsRun/ActualRuns/@run.Id">Open Actual Run, Run Expectation, and Packout Result</a></p>
                         <div class="table-wrap">
@@ -1894,6 +1957,19 @@ else
         });
 
         const actualRunForm = document.querySelector("[data-actual-run-form]");
+        const runFacilitySelect = actualRunForm?.querySelector('select[name="RunFacilityWarehouseId"]');
+        const salesDeskField = actualRunForm?.querySelector("[data-sales-desk-field]");
+        const salesDeskSelect = actualRunForm?.querySelector("[data-sales-desk-select]");
+        const updateSalesDeskRequirement = () => {
+            if (!salesDeskField || !salesDeskSelect || !runFacilitySelect) return;
+            const isWp = runFacilitySelect.selectedOptions[0]?.dataset.facilityCode === "WP";
+            salesDeskField.hidden = !isWp;
+            salesDeskSelect.required = isWp;
+            salesDeskSelect.disabled = !isWp;
+            if (!isWp) salesDeskSelect.value = "";
+        };
+        runFacilitySelect?.addEventListener("change", updateSalesDeskRequirement);
+        updateSalesDeskRequirement();
         const updateActualRunRow = (row) => {
             const toggle = row.querySelector("[data-actual-line-toggle]");
             const selected = Boolean(toggle?.checked);

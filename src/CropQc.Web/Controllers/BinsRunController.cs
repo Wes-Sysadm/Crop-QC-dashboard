@@ -623,6 +623,21 @@ public sealed class BinsRunController(
         return RedirectToAction(nameof(Index), new { Section = "Actual" });
     }
 
+    [HttpPost("ActualRuns/{id:long}/SalesDesk")]
+    [Authorize(Policy = AccessPolicyNames.ActualRunsAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CorrectActualRunSalesDesk(long id, CorrectActualRunSalesDeskForm form, CancellationToken cancellationToken)
+    {
+        form.Id = id;
+        var error = await ExecuteActualRunOperationAsync(
+            () => binsRunService.CorrectActualRunSalesDeskAsync(form, User, cancellationToken),
+            "CorrectSalesDesk",
+            id,
+            cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Actual Run Sales Desk attribution corrected without changing inventory.";
+        return RedirectToAction(nameof(ActualRunDetail), new { id });
+    }
+
     [HttpPost("ActualRunOverrides/{id:long}/Approve")]
     [Authorize(Policy = AccessPolicyNames.ActualRunsAdmin)]
     public async Task<IActionResult> ApproveActualRunOverride(long id, ApproveActualRunOverrideForm form, CancellationToken cancellationToken)

@@ -347,8 +347,8 @@ public sealed class ReceivingTreatmentApplicationTests
         Assert.Contains("17 AS checked_target_objects", verify);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
         Assert.DoesNotContain("__EFMigrationsHistory", config);
-        Assert.Contains("20260822152806_AddRoomSealEffectiveTime", gate);
-        Assert.Equal(641, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Contains("20260823040226_AddActualRunSalesDeskAttribution", gate);
+        Assert.Equal(687, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     private static string Read(params string[] segments)

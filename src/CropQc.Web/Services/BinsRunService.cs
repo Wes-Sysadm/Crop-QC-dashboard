@@ -25,6 +25,7 @@ public interface IBinsRunService
     Task<string?> CreateActualRunAsync(ActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> UpdateActualRunAsync(long id, ActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> CancelActualRunAsync(CancelActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<string?> CorrectActualRunSalesDeskAsync(CorrectActualRunSalesDeskForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> ApproveActualRunOverrideAsync(ApproveActualRunOverrideForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
 }
 
@@ -215,6 +216,7 @@ public sealed class BinsRunService(
             RunAt = editRun?.RunAt ?? DateTimeOffset.UtcNow,
             RunProjectionId = editRun?.RunProjectionId,
             RunFacilityWarehouseId = editRun?.RunFacilityWarehouseId ?? forcedFacility?.Id,
+            SalesDeskId = editRun?.SalesDeskId,
             Notes = editRun?.Notes,
             Lines = editRun?.Lines
                 .Where(x => x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed)
@@ -327,6 +329,11 @@ public sealed class BinsRunService(
             ForcedRunFacilityCode = forcedFacility?.Code,
             RequiresRunFacilitySelection = currentEmployment == EmploymentFacilities.Shared,
             RunFacilityOptions = runFacilities,
+            SalesDeskOptions = await dbContext.SalesDesks.AsNoTracking()
+                .Where(x => x.IsActive || (editRun != null && x.Id == editRun.SalesDeskId))
+                .OrderBy(x => x.DisplayOrder).ThenBy(x => x.Name)
+                .Select(x => new SalesDeskOptionViewModel(x.Id, x.Name, x.IsActive, editRun != null && x.Id == editRun.SalesDeskId))
+                .ToListAsync(cancellationToken),
             SelectedAvailableBins = selectedOption?.CurrentBins
         };
     }
@@ -349,11 +356,35 @@ public sealed class BinsRunService(
                 Status = x.Status,
                 RevisionNumber = x.CurrentRevisionNumber,
                 RunAt = x.RunAt,
+                Facility = x.RunFacilityCodeSnapshot ?? (x.RunFacilityWarehouse == null ? "Unresolved" : x.RunFacilityWarehouse.Code),
+                ConcurrencyVersion = x.ConcurrencyVersion,
+                SalesDeskId = x.SalesDeskId,
+                SalesDesk = x.SalesDeskNameSnapshot ?? (x.SalesDesk == null ? "Unassigned" : x.SalesDesk.Name),
                 CreatedBy = x.CreatedByUser == null ? "" : x.CreatedByUser.DisplayName,
                 Notes = x.Notes
             })
             .SingleOrDefaultAsync(cancellationToken);
         if (run is null) return null;
+        run.CanCorrectSalesDesk = run.Facility == EmploymentFacilities.Wp
+            && await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken);
+        if (run.Facility == EmploymentFacilities.Wp)
+        {
+            run.SalesDeskOptions = await dbContext.SalesDesks.AsNoTracking()
+                .Where(x => x.IsActive || x.Id == run.SalesDeskId)
+                .OrderBy(x => x.DisplayOrder).ThenBy(x => x.Name)
+                .Select(x => new SalesDeskOptionViewModel(x.Id, x.Name, x.IsActive, x.Id == run.SalesDeskId))
+                .ToListAsync(cancellationToken);
+            run.SalesDeskCorrections = await dbContext.ActualRunSalesDeskCorrections.AsNoTracking()
+                .Where(x => x.ActualRunId == id)
+                .OrderBy(x => x.CorrectedAt).ThenBy(x => x.Id)
+                .Select(x => new ActualRunSalesDeskCorrectionViewModel(
+                    x.PreviousSalesDeskNameSnapshot ?? "Unassigned",
+                    x.NewSalesDeskNameSnapshot,
+                    x.Reason,
+                    x.CorrectedByUser.DisplayName,
+                    x.CorrectedAt))
+                .ToListAsync(cancellationToken);
+        }
         var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
 
         var contributionRows = await dbContext.BinsRunEntries.AsNoTracking()
@@ -396,7 +427,6 @@ public sealed class BinsRunService(
                 .ToListAsync(cancellationToken);
         var reportsByApplication = treatmentReports.GroupBy(x => x.ApplicationId).ToDictionary(x => x.Key, x => x.ToList());
         run.TotalBins = contributionRows.Sum(x => x.Bins);
-        run.Facility = contributionRows.Select(x => x.Facility).FirstOrDefault() ?? "";
         run.Contributions = contributionRows.Select(x => new ActualRunContributionViewModel(
             x.Id,
             x.Facility,
@@ -778,6 +808,86 @@ public sealed class BinsRunService(
         return await SaveActualRunAsync(form, user, null, null, cancellationToken);
     }
 
+    public async Task<string?> CorrectActualRunSalesDeskAsync(
+        CorrectActualRunSalesDeskForm form,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken))
+            return "Actual Run Admin access is required to assign or correct a Sales Desk.";
+        if (string.IsNullOrWhiteSpace(form.OperationKey) || form.OperationKey.Trim().Length > 64)
+            return "The correction request identifier is invalid. Refresh and retry.";
+        if (string.IsNullOrWhiteSpace(form.Reason)) return "A Sales Desk correction reason is required.";
+        if (form.Reason.Trim().Length > 1000) return "The Sales Desk correction reason is too long.";
+        if (form.SalesDeskId is null) return "Select the new Sales Desk.";
+
+        var userId = await CurrentUserIdAsync(user, cancellationToken);
+        if (userId is null) return "The current user account could not be resolved.";
+        await using var transaction = await BeginTransactionIfSupportedAsync(cancellationToken);
+        var operationKey = form.OperationKey.Trim();
+        var existingCorrection = await dbContext.ActualRunSalesDeskCorrections.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.OperationKey == operationKey, cancellationToken);
+        if (existingCorrection is not null)
+        {
+            if (existingCorrection.ActualRunId != form.Id
+                || existingCorrection.ExpectedConcurrencyVersion != form.ConcurrencyVersion
+                || existingCorrection.NewSalesDeskId != form.SalesDeskId
+                || !string.Equals(existingCorrection.Reason, form.Reason.Trim(), StringComparison.Ordinal))
+                return "The correction request identifier was already used for a different Sales Desk correction. Refresh and retry.";
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+            return null;
+        }
+
+        var run = await dbContext.ActualRuns.SingleOrDefaultAsync(x => x.Id == form.Id, cancellationToken);
+        if (run is null) return "Actual Run was not found.";
+        if (run.ConcurrencyVersion != form.ConcurrencyVersion)
+            return "Conflict detected: this Actual Run changed. Reload before correcting its Sales Desk.";
+        var facility = run.RunFacilityCodeSnapshot ?? await dbContext.Warehouses.AsNoTracking()
+            .Where(x => x.Id == run.RunFacilityWarehouseId).Select(x => x.Code).SingleOrDefaultAsync(cancellationToken);
+        if (facility != EmploymentFacilities.Wp)
+            return "Sales Desk attribution applies only to WP Actual Runs.";
+        var newDesk = await dbContext.SalesDesks.SingleOrDefaultAsync(x => x.Id == form.SalesDeskId && x.IsActive, cancellationToken);
+        if (newDesk is null) return "Select an active Sales Desk.";
+        if (run.SalesDeskId == newDesk.Id)
+            return "The selected Sales Desk is already assigned; no correction was written.";
+
+        var now = DateTimeOffset.UtcNow;
+        var previousConcurrencyVersion = run.ConcurrencyVersion;
+        var correction = new ActualRunSalesDeskCorrection
+        {
+            ActualRunId = run.Id,
+            OperationKey = operationKey,
+            ExpectedConcurrencyVersion = form.ConcurrencyVersion,
+            PreviousSalesDeskId = run.SalesDeskId,
+            PreviousSalesDeskNameSnapshot = run.SalesDeskNameSnapshot,
+            NewSalesDeskId = newDesk.Id,
+            NewSalesDeskNameSnapshot = newDesk.Name,
+            Reason = form.Reason.Trim(),
+            CorrectedByUserId = userId.Value,
+            CorrectedAt = now
+        };
+        dbContext.ActualRunSalesDeskCorrections.Add(correction);
+        run.SalesDeskId = newDesk.Id;
+        run.SalesDeskNameSnapshot = newDesk.Name;
+        run.ConcurrencyVersion++;
+        run.UpdatedByUserId = userId;
+        run.UpdatedAt = now;
+        dbContext.AuditLogs.Add(new AuditLog
+        {
+            Action = correction.PreviousSalesDeskId is null ? "ActualRunSalesDeskAssigned" : "ActualRunSalesDeskCorrected",
+            EntityName = nameof(ActualRun),
+            EntityKey = run.Id.ToString(),
+            UserId = userId,
+            BeforeValuesJson = JsonSerializer.Serialize(new { correction.PreviousSalesDeskId, SalesDesk = correction.PreviousSalesDeskNameSnapshot ?? "Unassigned", ConcurrencyVersion = previousConcurrencyVersion }),
+            AfterValuesJson = JsonSerializer.Serialize(new { correction.NewSalesDeskId, SalesDesk = correction.NewSalesDeskNameSnapshot, correction.Reason, InventoryDelta = 0, TreatmentDelta = 0, RunQuantityDelta = 0 }),
+            SourceApplication = SourceApplication,
+            CreatedAt = now
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        return null;
+    }
+
     public async Task<string?> ApproveActualRunOverrideAsync(
         ApproveActualRunOverrideForm form,
         ClaimsPrincipal user,
@@ -821,6 +931,7 @@ public sealed class BinsRunService(
             RunAt = request.RunAt,
             Notes = request.Notes,
             RunFacilityWarehouseId = request.RunFacilityWarehouseId,
+            SalesDeskId = request.SalesDeskId,
             Lines = request.Lines.Select(x => new ActualRunLineForm
             {
                 InventoryKey = LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.VarietyCode, x.FruitProfileId, x.GrowerLotId),
@@ -1163,6 +1274,31 @@ public sealed class BinsRunService(
             return facilityResolution.Error;
         }
 
+        SalesDesk? resolvedSalesDesk = null;
+        if (facilityResolution.Code == EmploymentFacilities.Wp)
+        {
+            if (run is not null)
+            {
+                if (form.SalesDeskId != run.SalesDeskId)
+                    return "A normal Actual Run correction must retain its Sales Desk. Use the audited Sales Desk correction workflow.";
+                if (run.SalesDeskId is int existingDeskId)
+                {
+                    resolvedSalesDesk = await dbContext.SalesDesks.SingleOrDefaultAsync(x => x.Id == existingDeskId, cancellationToken);
+                    if (resolvedSalesDesk is null) return "The Actual Run's Sales Desk no longer exists and requires review.";
+                }
+            }
+            else
+            {
+                if (form.SalesDeskId is null) return "Select a Sales Desk for this WP Actual Run.";
+                resolvedSalesDesk = await dbContext.SalesDesks.SingleOrDefaultAsync(x => x.Id == form.SalesDeskId && x.IsActive, cancellationToken);
+                if (resolvedSalesDesk is null) return "Select an active Sales Desk for this WP Actual Run.";
+            }
+        }
+        else if (facilityResolution.Code == EmploymentFacilities.Ebs && form.SalesDeskId is not null)
+        {
+            return "Sales Desk attribution is not valid for EBS Actual Runs.";
+        }
+
         var shortages = resolved
             .Where(x => x.Form.BinsRun > x.EffectiveAvailable)
             .Select(x => new
@@ -1198,7 +1334,9 @@ public sealed class BinsRunService(
                 RequestedAt = DateTimeOffset.UtcNow,
                 RunFacilityWarehouseId = facilityResolution.WarehouseId,
                 RunFacilityCodeSnapshot = facilityResolution.Code,
-                RunFacilityAssignmentSource = facilityResolution.AssignmentSource
+                RunFacilityAssignmentSource = facilityResolution.AssignmentSource,
+                SalesDeskId = resolvedSalesDesk?.Id,
+                SalesDeskNameSnapshot = resolvedSalesDesk?.Name
             };
             foreach (var item in resolved)
             {
@@ -1285,7 +1423,9 @@ public sealed class BinsRunService(
                 RunFacilityCodeSnapshot = facilityResolution.Code,
                 RunFacilityAssignmentSource = facilityResolution.AssignmentSource,
                 RunFacilityAssignedByUserId = userId,
-                RunFacilityAssignedAt = now
+                RunFacilityAssignedAt = now,
+                SalesDeskId = resolvedSalesDesk?.Id,
+                SalesDeskNameSnapshot = resolvedSalesDesk?.Name
             };
             dbContext.ActualRuns.Add(run);
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -1468,8 +1608,30 @@ public sealed class BinsRunService(
             RunExpectationId = expectation.Id,
             RunExpectationVersion = expectation.CalculationVersion,
             RunFacility = facilityResolution.Code,
-            RunFacilityAssignmentSource = facilityResolution.AssignmentSource
+            RunFacilityAssignmentSource = facilityResolution.AssignmentSource,
+            SalesDesk = resolvedSalesDesk?.Name ?? (facilityResolution.Code == EmploymentFacilities.Ebs ? "N/A" : "Unassigned")
         });
+        if (operationType == ActualRunRevisionTypes.Create && resolvedSalesDesk is not null)
+        {
+            dbContext.AuditLogs.Add(new AuditLog
+            {
+                Action = "ActualRunSalesDeskAssigned",
+                EntityName = nameof(ActualRun),
+                EntityKey = run.Id.ToString(),
+                UserId = userId,
+                AfterValuesJson = JsonSerializer.Serialize(new
+                {
+                    run.SalesDeskId,
+                    SalesDesk = run.SalesDeskNameSnapshot,
+                    Reason = "Selected while recording the WP Actual Run",
+                    InventoryDelta = 0,
+                    TreatmentDelta = 0,
+                    RunQuantityDelta = 0
+                }),
+                SourceApplication = SourceApplication,
+                CreatedAt = now
+            });
+        }
         await dbContext.SaveChangesAsync(cancellationToken);
         await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
         if (transaction is not null)
@@ -2255,6 +2417,8 @@ public sealed class BinsRunService(
                 CreatedBy = x.CreatedByUser == null ? "" : x.CreatedByUser.DisplayName,
                 RunFacilityWarehouseId = x.RunFacilityWarehouseId,
                 RunFacility = x.RunFacilityCodeSnapshot ?? (x.RunFacilityWarehouse == null ? "Unresolved" : x.RunFacilityWarehouse.Code),
+                SalesDeskId = x.SalesDeskId,
+                SalesDesk = x.SalesDeskNameSnapshot ?? (x.SalesDesk == null ? "Unassigned" : x.SalesDesk.Name),
                 CreatedAt = x.CreatedAt,
                 CanceledAt = x.CanceledAt,
                 CancellationReason = x.CancellationReason

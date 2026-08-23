@@ -750,6 +750,7 @@ public sealed class BinsRunWorkflowTests
         var wp = await db.Warehouses.Where(x => x.Code == EmploymentFacilities.Wp).OrderByDescending(x => x.Id).FirstAsync();
         var form = GroupForm((option, 10));
         form.RunFacilityWarehouseId = wp.Id;
+        form.SalesDeskId = 1;
 
         Assert.Null(await service.CreateActualRunAsync(form, principal, CancellationToken.None));
 
@@ -764,6 +765,232 @@ public sealed class BinsRunWorkflowTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         Assert.Equal(EmploymentFacilities.Wp, (await db.ActualRuns.SingleAsync()).RunFacilityCodeSnapshot);
+    }
+
+    [Fact]
+    public async Task ActualRun_NewWpRunRequiresActiveSalesDeskAndPersistsSnapshot()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var employee = await db.Users.SingleAsync(x => x.Email == "manager@fruitandland.com");
+        employee.EmploymentFacility = EmploymentFacilities.Wp;
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var principal = Principal(employee.Email);
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, principal, default))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var missing = GroupForm((option, 10));
+
+        Assert.Equal("Select a Sales Desk for this WP Actual Run.", await service.CreateActualRunAsync(missing, principal, default));
+        Assert.Empty(db.ActualRuns);
+
+        var valid = GroupForm((option, 10));
+        valid.SalesDeskId = 1;
+        Assert.Null(await service.CreateActualRunAsync(valid, principal, default));
+        var run = await db.ActualRuns.SingleAsync();
+        Assert.Equal(1, run.SalesDeskId);
+        Assert.Equal("Domex", run.SalesDeskNameSnapshot);
+        Assert.Equal(10, await db.BinsRunEntries.SumAsync(x => x.BinsRun));
+        Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "ActualRunSalesDeskAssigned");
+
+        var inactiveDesk = await db.SalesDesks.SingleAsync(x => x.Id == 2);
+        inactiveDesk.IsActive = false;
+        await db.SaveChangesAsync();
+        var inactive = GroupForm((option, 1));
+        inactive.SalesDeskId = inactiveDesk.Id;
+        Assert.Contains("active Sales Desk", await service.CreateActualRunAsync(inactive, principal, default));
+    }
+
+    [Fact]
+    public async Task ActualRun_EbsRunRejectsTamperedSalesDesk()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var principal = Principal("manager@fruitandland.com");
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, principal, default))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var form = GroupForm((option, 10));
+        form.SalesDeskId = 1;
+
+        Assert.Equal("Sales Desk attribution is not valid for EBS Actual Runs.", await service.CreateActualRunAsync(form, principal, default));
+        Assert.Empty(db.ActualRuns);
+        Assert.Empty(db.BinsRunEntries);
+    }
+
+    [Fact]
+    public async Task ActualRun_SalesDeskCorrectionIsAdminOnlyIdempotentAndInventoryNeutral()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var managerRecord = await db.Users.SingleAsync(x => x.Email == "manager@fruitandland.com");
+        managerRecord.EmploymentFacility = EmploymentFacilities.Wp;
+        var adminRecord = await db.Users.SingleAsync(x => x.Email == "admin@fruitandland.com");
+        adminRecord.EmploymentFacility = EmploymentFacilities.Wp;
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var manager = Principal(managerRecord.Email);
+        var admin = Principal(adminRecord.Email);
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, manager, default))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var create = GroupForm((option, 10));
+        create.SalesDeskId = 1;
+        Assert.Null(await service.CreateActualRunAsync(create, manager, default));
+        var run = await db.ActualRuns.SingleAsync();
+        var adjustmentFingerprint = await db.RoomInventoryAdjustments.OrderBy(x => x.Id).Select(x => new { x.Id, x.ChangeAmount, x.OldBinCount, x.NewBinCount }).ToListAsync();
+        var entryFingerprint = await db.BinsRunEntries.OrderBy(x => x.Id).Select(x => new { x.Id, x.BinsRun, x.IsReversed }).ToListAsync();
+        var expectationFingerprint = await db.RunExpectations.OrderBy(x => x.Id).Select(x => new { x.Id, x.TotalBins }).ToListAsync();
+        var operationKey = Guid.NewGuid().ToString("N");
+        var correction = new CorrectActualRunSalesDeskForm { Id = run.Id, ConcurrencyVersion = run.ConcurrencyVersion, OperationKey = operationKey, SalesDeskId = 2, Reason = "Reviewed WP sales attribution" };
+
+        Assert.Contains("Admin access", await service.CorrectActualRunSalesDeskAsync(correction, manager, default));
+        Assert.Null(await service.CorrectActualRunSalesDeskAsync(correction, admin, default));
+        Assert.Null(await service.CorrectActualRunSalesDeskAsync(correction, admin, default));
+
+        db.ChangeTracker.Clear();
+        run = await db.ActualRuns.SingleAsync();
+        Assert.Equal(2, run.SalesDeskId);
+        Assert.Equal("Honey Bear", run.SalesDeskNameSnapshot);
+        var history = await db.ActualRunSalesDeskCorrections.SingleAsync();
+        Assert.Equal("Domex", history.PreviousSalesDeskNameSnapshot);
+        Assert.Equal("Honey Bear", history.NewSalesDeskNameSnapshot);
+        Assert.Equal("Reviewed WP sales attribution", history.Reason);
+        Assert.Equal(adjustmentFingerprint, await db.RoomInventoryAdjustments.OrderBy(x => x.Id).Select(x => new { x.Id, x.ChangeAmount, x.OldBinCount, x.NewBinCount }).ToListAsync());
+        Assert.Equal(entryFingerprint, await db.BinsRunEntries.OrderBy(x => x.Id).Select(x => new { x.Id, x.BinsRun, x.IsReversed }).ToListAsync());
+        Assert.Equal(expectationFingerprint, await db.RunExpectations.OrderBy(x => x.Id).Select(x => new { x.Id, x.TotalBins }).ToListAsync());
+        Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "ActualRunSalesDeskCorrected" && x.AfterValuesJson!.Contains("RunQuantityDelta"));
+    }
+
+    [Fact]
+    public async Task ActualRun_HistoricalSalesDeskAssignmentIsAuditedAndOperationallyNeutral()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var run = new ActualRun
+        {
+            Status = ActualRunStatuses.Active,
+            CurrentRevisionNumber = 1,
+            ConcurrencyVersion = 3,
+            RunAt = DateTimeOffset.UtcNow,
+            CreatedAt = DateTimeOffset.UtcNow,
+            RunFacilityCodeSnapshot = EmploymentFacilities.Wp
+        };
+        db.ActualRuns.Add(run);
+        await db.SaveChangesAsync();
+        var operationalRowsBefore = await db.RoomInventoryAdjustments.CountAsync() + await db.BinsRunEntries.CountAsync();
+
+        Assert.Null(await CreateService(db).CorrectActualRunSalesDeskAsync(new CorrectActualRunSalesDeskForm
+        {
+            Id = run.Id,
+            ConcurrencyVersion = run.ConcurrencyVersion,
+            OperationKey = Guid.NewGuid().ToString("N"),
+            SalesDeskId = 3,
+            Reason = "Historical sales review"
+        }, Principal("admin@fruitandland.com"), default));
+
+        Assert.Equal(3, run.SalesDeskId);
+        Assert.Equal("Viva Tierra", run.SalesDeskNameSnapshot);
+        Assert.Equal(operationalRowsBefore, await db.RoomInventoryAdjustments.CountAsync() + await db.BinsRunEntries.CountAsync());
+        Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "ActualRunSalesDeskAssigned" && x.AfterValuesJson!.Contains("RunQuantityDelta"));
+    }
+
+    [Fact]
+    public async Task SalesDeskMasterLifecycleIsDynamicAndAudited()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var admin = new AdminManagementService(db, new VarietyColorService(db));
+        const string actor = "admin@fruitandland.com";
+
+        Assert.Null(await admin.SaveMasterDataAsync(new MasterDataEditForm
+        {
+            Type = "sales-desks",
+            Name = "Fourth Desk",
+            DisplayOrder = 40,
+            IsActive = true
+        }, actor, default));
+        var desk = await db.SalesDesks.SingleAsync(x => x.Name == "Fourth Desk");
+        Assert.Null(await admin.SaveMasterDataAsync(new MasterDataEditForm
+        {
+            Type = "sales-desks",
+            Id = desk.Id,
+            Name = "Fourth Desk Updated",
+            DisplayOrder = 35,
+            IsActive = true
+        }, actor, default));
+        Assert.Null(await admin.DeactivateAsync("sales-desks", desk.Id, actor, default));
+        Assert.False(desk.IsActive);
+        Assert.Null(await admin.SaveMasterDataAsync(new MasterDataEditForm
+        {
+            Type = "sales-desks",
+            Id = desk.Id,
+            Name = desk.Name,
+            DisplayOrder = desk.DisplayOrder,
+            IsActive = true
+        }, actor, default));
+        Assert.True(desk.IsActive);
+
+        var actions = await db.AuditLogs.Where(x => x.EntityName == nameof(SalesDesk)).Select(x => x.Action).ToListAsync();
+        Assert.Contains("SalesDeskCreated", actions);
+        Assert.Contains("SalesDeskUpdated", actions);
+        Assert.Contains("SalesDeskDeactivated", actions);
+        Assert.Contains("SalesDeskReactivated", actions);
+    }
+
+    [Fact]
+    public async Task ActualRun_SalesDeskCorrectionFailsClosedOnStaleRun()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var run = new ActualRun
+        {
+            Status = ActualRunStatuses.Active,
+            CurrentRevisionNumber = 1,
+            ConcurrencyVersion = 5,
+            RunAt = DateTimeOffset.UtcNow,
+            CreatedAt = DateTimeOffset.UtcNow,
+            RunFacilityCodeSnapshot = EmploymentFacilities.Wp,
+            SalesDeskId = 1,
+            SalesDeskNameSnapshot = "Domex"
+        };
+        db.ActualRuns.Add(run);
+        await db.SaveChangesAsync();
+
+        var error = await CreateService(db).CorrectActualRunSalesDeskAsync(new CorrectActualRunSalesDeskForm
+        {
+            Id = run.Id,
+            ConcurrencyVersion = 4,
+            SalesDeskId = 2,
+            Reason = "Stale attempt"
+        }, Principal("admin@fruitandland.com"), default);
+
+        Assert.Contains("Conflict detected", error);
+        Assert.Empty(db.ActualRunSalesDeskCorrections);
+        Assert.Equal(1, (await db.ActualRuns.SingleAsync()).SalesDeskId);
+    }
+
+    [Fact]
+    public void ActualRunSalesDeskUiAndSchemaPackageExposeRequiredSafetyControls()
+    {
+        var index = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
+        var detail = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "ActualRunDetail.cshtml"));
+        var master = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "MasterData", "Index.cshtml"));
+        var preflight = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "preflight-actual-run-sales-desk-attribution.sql"));
+        var apply = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "apply-actual-run-sales-desk-attribution-schema.sql"));
+        var verify = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "verify-actual-run-sales-desk-attribution.sql"));
+
+        Assert.Contains("Select Sales Desk", index);
+        Assert.Contains("N/A for EBS", index);
+        Assert.Contains("WP Total reconciles exactly", index);
+        Assert.Contains("Unassigned historical runs", index);
+        Assert.Contains("Apply Sales Desk Correction", detail);
+        Assert.Contains("Inventory, treatment lineage, run quantities, and frozen expectations are unchanged", detail);
+        Assert.Contains("Sales Desks", master);
+        Assert.Contains("State C", preflight);
+        Assert.Contains("pg_advisory_xact_lock", apply);
+        Assert.Contains("cropqc.test_force_sales_desk_failure", apply);
+        Assert.Contains("unassigned_wp_runs", verify);
+        Assert.Contains("__EFMigrationsHistory", verify);
     }
 
     [Fact]

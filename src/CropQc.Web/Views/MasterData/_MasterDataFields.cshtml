@@ -78,6 +78,11 @@ else if (Model.Type == "processors")
     <div class="field"><label>Code / Short Name</label><input name="Code" value="@Model.Code" maxlength="50" /></div>
     <div class="field wide"><label>Notes</label><textarea name="Description" maxlength="1000">@Model.Description</textarea></div>
 }
+else if (Model.Type == "sales-desks")
+{
+    <div class="field"><label>Sales Desk Name</label><input name="Name" value="@Model.Name" maxlength="100" required /></div>
+    <div class="field"><label>Display Order</label><input name="DisplayOrder" type="number" min="0" value="@Model.DisplayOrder" required /></div>
+}
 else if (Model.Type == "grower-lots")
 {
     <div class="field wide"><label>Grower Name</label><input name="Name" value="@Model.Name" required /></div>

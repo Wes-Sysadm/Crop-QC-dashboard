@@ -13,6 +13,8 @@ public sealed class ActualRunDetailViewModel
     public int RevisionNumber { get; set; }
     public DateTimeOffset RunAt { get; set; }
     public string Facility { get; set; } = "";
+    public int? SalesDeskId { get; set; }
+    public string SalesDesk { get; set; } = "Unassigned";
     public string CreatedBy { get; set; } = "";
     public string? Notes { get; set; }
     public int TotalBins { get; set; }
@@ -24,9 +26,20 @@ public sealed class ActualRunDetailViewModel
     public bool CanUploadPackout { get; set; }
     public bool CanEditPackout { get; set; }
     public bool CanAdminPackout { get; set; }
+    public bool CanCorrectSalesDesk { get; set; }
+    public long ConcurrencyVersion { get; set; }
+    public IReadOnlyList<SalesDeskOptionViewModel> SalesDeskOptions { get; set; } = [];
+    public IReadOnlyList<ActualRunSalesDeskCorrectionViewModel> SalesDeskCorrections { get; set; } = [];
     public bool OptionalDetailAvailable { get; set; } = true;
     public string? DetailWarning { get; set; }
 }
+
+public sealed record ActualRunSalesDeskCorrectionViewModel(
+    string PreviousSalesDesk,
+    string NewSalesDesk,
+    string Reason,
+    string CorrectedBy,
+    DateTimeOffset CorrectedAt);
 
 public sealed record ActualRunContributionViewModel(
     long BinsRunEntryId,

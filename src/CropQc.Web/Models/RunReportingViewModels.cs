@@ -25,6 +25,9 @@ public sealed class RunTotalsDetailViewModel
     public int CropYear { get; set; }
     public int TotalBins { get; set; }
     public int TotalReceivedBins { get; set; }
+    public IReadOnlyList<RunSalesDeskTotalViewModel> SalesDeskTotals { get; set; } = [];
+    public string? SelectedSalesDesk { get; set; }
+    public IReadOnlyList<RunSalesDeskFilterOptionViewModel> SalesDeskFilterOptions { get; set; } = [];
     public int? PriorCropYear { get; set; }
     public bool HasAuthoritativePriorBaseline => PriorCropYear is not null;
     public int PriorBins { get; set; }
@@ -43,6 +46,9 @@ public sealed class RunTotalsDetailViewModel
     public int SupportingPage { get; set; } = 1;
     public bool HasMoreSupportingRecords { get; set; }
 }
+
+public sealed record RunSalesDeskTotalViewModel(int? SalesDeskId, string SalesDesk, int Bins, int DisplayOrder, bool IsUnassigned = false);
+public sealed record RunSalesDeskFilterOptionViewModel(string Value, string Label);
 
 public sealed record RunVarietyTotalViewModel(
     string VarietyKey,
@@ -88,7 +94,8 @@ public sealed record RunSupportingRecordViewModel(
     string Variety,
     string ProductionType,
     int Bins,
-    string Status);
+    string Status,
+    string SalesDesk = "N/A");
 
 public sealed record RunReportingIssueViewModel(
     string IssueType,
