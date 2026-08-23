@@ -480,7 +480,7 @@ public sealed class RunReportingTests
     }
 
     [Fact]
-    public async Task PostgreSql_RestoredWpRunsRemainUnassignedAndDisposableDeskTotalsReconcile_WhenConfigured()
+    public async Task PostgreSql_RestoredWpAssignmentAndDisposableDeskTotalsReconcile_WhenConfigured()
     {
         var connectionString = Environment.GetEnvironmentVariable("CROPQC_SALES_DESK_RESTORE_POSTGRES");
         if (string.IsNullOrWhiteSpace(connectionString)) return;
@@ -495,7 +495,14 @@ public sealed class RunReportingTests
             .Where(x => x.RunFacilityCodeSnapshot == EmploymentFacilities.Wp)
             .ToListAsync();
         Assert.NotEmpty(historicalWpRuns);
-        Assert.All(historicalWpRuns, x =>
+        var assignedRun = Assert.Single(historicalWpRuns, x => x.SalesDeskId != null);
+        Assert.Equal(20, assignedRun.Id);
+        Assert.Equal(1, assignedRun.SalesDeskId);
+        Assert.Equal("Domex", assignedRun.SalesDeskNameSnapshot);
+        Assert.Equal(184, await AuthoritativeRunReportingQuery.ApplyValidRules(db.BinsRunEntries.AsNoTracking())
+            .Where(x => x.ActualRunId == assignedRun.Id)
+            .SumAsync(x => x.BinsRun));
+        Assert.All(historicalWpRuns.Where(x => x.Id != assignedRun.Id), x =>
         {
             Assert.Null(x.SalesDeskId);
             Assert.Null(x.SalesDeskNameSnapshot);
@@ -512,10 +519,13 @@ public sealed class RunReportingTests
                 ReportCropYear = 2026
             }, Principal(), CancellationToken.None);
         var current = Assert.IsType<RunTotalsDetailViewModel>(currentPage.Detail);
+        Assert.Equal(4247, current.TotalBins);
+        Assert.Equal(184, current.SalesDeskTotals.Single(x => x.SalesDesk == "Domex").Bins);
+        Assert.Equal(0, current.SalesDeskTotals.Single(x => x.SalesDesk == "Honey Bear").Bins);
+        Assert.Equal(0, current.SalesDeskTotals.Single(x => x.SalesDesk == "Viva Tierra").Bins);
+        Assert.Equal(4063, Assert.Single(current.SalesDeskTotals, x => x.IsUnassigned).Bins);
         Assert.Equal(current.TotalBins, current.SalesDeskTotals.Sum(x => x.Bins));
-        Assert.Equal(0, current.SalesDeskTotals.Where(x => !x.IsUnassigned).Sum(x => x.Bins));
-        Assert.Equal(current.TotalBins, Assert.Single(current.SalesDeskTotals, x => x.IsUnassigned).Bins);
-        Console.WriteLine($"Restored WP total={current.TotalBins}; assigned=0; unassigned={current.TotalBins}.");
+        Console.WriteLine("Restored WP total=4247; Domex=184; Honey Bear=0; Viva Tierra=0; Unassigned=4063.");
 
         var template = await AuthoritativeRunReportingQuery.ApplyValidRules(db.BinsRunEntries.AsNoTracking())
             .Where(x => (x.ActualRunId != null
@@ -557,6 +567,17 @@ public sealed class RunReportingTests
         };
         db.SalesDesks.Add(fourth);
         await db.SaveChangesAsync();
+
+        var zeroFourthPage = await CreateService(db, DateTimeOffset.Parse("2027-08-04T19:00:00Z"))
+            .GetAsync(new BinsRunFilterForm
+            {
+                Section = "RunTotals",
+                ReportFacility = EmploymentFacilities.Wp,
+                ReportCropYear = 2027
+            }, Principal(), CancellationToken.None);
+        var zeroFourth = Assert.IsType<RunTotalsDetailViewModel>(zeroFourthPage.Detail);
+        Assert.Equal(0, zeroFourth.SalesDeskTotals.Single(x => x.SalesDesk == "Fourth Desk").Bins);
+
         AddDisposableRun(db, template, userId, fourth, 40, "sales-desk-fourth");
         await db.SaveChangesAsync();
 
