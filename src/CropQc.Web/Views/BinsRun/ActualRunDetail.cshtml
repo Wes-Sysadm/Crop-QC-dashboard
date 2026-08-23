@@ -27,6 +27,7 @@
     <h2>Actual Run summary</h2>
     <dl class="summary-grid">
         <div><dt>Facility</dt><dd>@Model.Facility</dd></div>
+        <div><dt>Sales Desk</dt><dd>@(Model.Facility == CropQc.Data.Entities.EmploymentFacilities.Wp ? Model.SalesDesk : "N/A")</dd></div>
         <div><dt>Run date/time</dt><dd>@Model.RunAt.ToString("f")</dd></div>
         <div><dt>Revision</dt><dd>@Model.RevisionNumber</dd></div>
         <div><dt>Total bins</dt><dd>@Model.TotalBins</dd></div>
@@ -39,6 +40,48 @@
         <p><strong>Notes:</strong> @Model.Notes</p>
     }
 </section>
+
+@if (Model.Facility == CropQc.Data.Entities.EmploymentFacilities.Wp)
+{
+    <section class="panel">
+        <h2>Sales Desk attribution</h2>
+        <p><strong>Current:</strong> @Model.SalesDesk</p>
+        @if (Model.SalesDeskCorrections.Count > 0)
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Original</th><th>Corrected</th><th>Reason</th><th>By</th><th>At</th></tr></thead>
+                    <tbody>
+                    @foreach (var correction in Model.SalesDeskCorrections)
+                    {
+                        <tr><td>@correction.PreviousSalesDesk</td><td>@correction.NewSalesDesk</td><td>@correction.Reason</td><td>@correction.CorrectedBy</td><td>@correction.CorrectedAt.ToString("g")</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+        @if (Model.CanCorrectSalesDesk)
+        {
+            <form class="form-grid sales-desk-correction-form" method="post" action="/BinsRun/ActualRuns/@Model.Id/SalesDesk">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ConcurrencyVersion" value="@Model.ConcurrencyVersion" />
+                <input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" />
+                <label>New Sales Desk
+                    <select name="SalesDeskId" required>
+                        <option value="">Select Sales Desk</option>
+                        @foreach (var desk in Model.SalesDeskOptions.Where(x => x.IsActive && x.Id != Model.SalesDeskId))
+                        {
+                            <option value="@desk.Id">@desk.Name</option>
+                        }
+                    </select>
+                </label>
+                <label class="wide">Reason<textarea name="Reason" maxlength="1000" required></textarea></label>
+                <p class="muted wide">This changes reporting attribution only. Inventory, treatment lineage, run quantities, and frozen expectations are unchanged.</p>
+                <button type="submit">Apply Sales Desk Correction</button>
+            </form>
+        }
+    </section>
+}
 
 <section class="panel">
     <h2>Source contribution</h2>

@@ -753,6 +753,7 @@ public sealed class BinsRunPageViewModel
     public string? ForcedRunFacilityCode { get; set; }
     public bool RequiresRunFacilitySelection { get; set; }
     public IReadOnlyList<Warehouse> RunFacilityOptions { get; set; } = [];
+    public IReadOnlyList<SalesDeskOptionViewModel> SalesDeskOptions { get; set; } = [];
     public int? SelectedAvailableBins { get; set; }
     public string? InventorySelectionMessage { get; set; }
     public RunProjectionPlannerViewModel Planner { get; set; } = new();
@@ -796,6 +797,7 @@ public sealed class BinsRunFilterForm
     public string? ReportVarietyKey { get; set; }
     public DateOnly? ReportWeekStart { get; set; }
     public string? ReportGrowerNumber { get; set; }
+    public string? ReportSalesDesk { get; set; }
     public int ReportPage { get; set; } = 1;
 }
 
@@ -841,6 +843,7 @@ public sealed class ActualRunForm
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public long? RunProjectionId { get; set; }
     public int? RunFacilityWarehouseId { get; set; }
+    public int? SalesDeskId { get; set; }
     public DateTimeOffset RunAt { get; set; } = DateTimeOffset.UtcNow;
     public string? Notes { get; set; }
     public List<ActualRunLineForm> Lines { get; set; } = [];
@@ -863,6 +866,17 @@ public sealed class CancelActualRunForm
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public string Reason { get; set; } = "";
 }
+
+public sealed class CorrectActualRunSalesDeskForm
+{
+    public long Id { get; set; }
+    public long ConcurrencyVersion { get; set; }
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public int? SalesDeskId { get; set; }
+    public string Reason { get; set; } = "";
+}
+
+public sealed record SalesDeskOptionViewModel(int Id, string Name, bool IsActive, bool IsReferenced = false);
 
 public sealed class ApproveActualRunOverrideForm
 {
@@ -919,6 +933,8 @@ public sealed class ActualRunHistoryItemViewModel
     public string CreatedBy { get; set; } = "";
     public int? RunFacilityWarehouseId { get; set; }
     public string RunFacility { get; set; } = "Unresolved";
+    public int? SalesDeskId { get; set; }
+    public string SalesDesk { get; set; } = "Unassigned";
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? CanceledAt { get; set; }
     public string? CancellationReason { get; set; }
@@ -1280,6 +1296,7 @@ public sealed class MasterDataEditForm
     public bool IsOrganic { get; set; }
     public decimal? Value { get; set; }
     public int? SortOrder { get; set; }
+    public int DisplayOrder { get; set; }
     public int? SizeCategory { get; set; }
     public decimal? MinimumWeightGrams { get; set; }
     public string? PoolStart { get; set; }

@@ -456,7 +456,10 @@ public sealed class GrowerLotProgressService(
                 x.ReportingVarietyCodeSnapshot!,
                 x.ProductionTypeSnapshot!,
                 x.BinsRun,
-                x.ActualRunId == null ? "Legacy active" : "Active"))
+                x.ActualRunId == null ? "Legacy active" : "Active",
+                x.ActualRunId != null && x.ActualRun!.RunFacilityCodeSnapshot == EmploymentFacilities.Wp
+                    ? x.ActualRun.SalesDeskNameSnapshot ?? "Unassigned"
+                    : "N/A"))
             .ToListAsync(cancellationToken);
         selectedWeek.HasMoreSupportingRecords = records.Count > SupportingPageSize;
         selectedWeek.SupportingPage = page;

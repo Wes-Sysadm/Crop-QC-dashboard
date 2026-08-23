@@ -172,12 +172,28 @@ public sealed class RunReportingService(
         var priorStart = priorYear is int authoritativePriorYear ? PeriodStart(authoritativePriorYear) : (DateOnly?)null;
         var priorCutoff = priorYear is not null ? EquivalentPriorCutoff(selectedCutoff) : (DateOnly?)null;
 
+        var salesDeskRows = facility == EmploymentFacilities.Wp && selectedCutoff >= selectedStart
+            ? await ValidLines(cropYear, selectedCutoff)
+                .Where(x => (x.ActualRunId != null ? x.ActualRun!.RunFacilityCodeSnapshot : x.ReportingFacilityCodeSnapshot) == facility)
+                .GroupBy(x => new
+                {
+                    SalesDeskId = x.ActualRunId == null ? null : x.ActualRun!.SalesDeskId,
+                    SalesDesk = x.ActualRunId == null ? null : x.ActualRun!.SalesDeskNameSnapshot,
+                    DisplayOrder = x.ActualRunId == null || x.ActualRun!.SalesDeskId == null
+                        ? int.MaxValue
+                        : x.ActualRun.SalesDesk!.DisplayOrder
+                })
+                .Select(x => new RunSalesDeskTotalViewModel(x.Key.SalesDeskId, x.Key.SalesDesk ?? "Unassigned", x.Sum(y => y.BinsRun), x.Key.DisplayOrder, x.Key.SalesDeskId == null))
+                .ToListAsync(cancellationToken)
+            : [];
+        var selectedSalesDesk = NormalizeSalesDeskFilter(filter.ReportSalesDesk, salesDeskRows);
+
         var selectedGroups = selectedCutoff < selectedStart
             ? new List<VarietyTotalRow>()
-            : await VarietyTotalsQuery(facility, cropYear, selectedCutoff).ToListAsync(cancellationToken);
+            : await VarietyTotalsQuery(facility, cropYear, selectedCutoff, selectedSalesDesk).ToListAsync(cancellationToken);
         var priorGroups = priorYear is null || priorCutoff!.Value < priorStart!.Value
             ? new List<VarietyTotalRow>()
-            : await VarietyTotalsQuery(facility, priorYear.Value, priorCutoff!.Value).ToListAsync(cancellationToken);
+            : await VarietyTotalsQuery(facility, priorYear.Value, priorCutoff!.Value, selectedSalesDesk).ToListAsync(cancellationToken);
         var receivedGroups = await ReceiptVarietyTotalsQuery(facility, cropYear).ToListAsync(cancellationToken);
         var selectedLookup = selectedGroups.ToDictionary(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase);
         var priorLookup = priorGroups.ToDictionary(x => x.VarietyKey, x => x.Bins, StringComparer.OrdinalIgnoreCase);
@@ -218,7 +234,7 @@ public sealed class RunReportingService(
             string.Equals(x.VarietyKey, filter.ReportVarietyKey, StringComparison.OrdinalIgnoreCase));
         var sourceRows = selectedCutoff < selectedStart || selectedVariety is null
             ? []
-            : await ValidLines(cropYear, selectedCutoff)
+            : await ApplySalesDeskFilter(ValidLines(cropYear, selectedCutoff), facility, selectedSalesDesk)
                 .Where(x => (x.ActualRunId != null ? x.ActualRun!.RunFacilityCodeSnapshot : x.ReportingFacilityCodeSnapshot) == facility)
                 .Where(x => x.ReportingFruitProfileIdSnapshot == selectedVariety.FruitProfileId
                     && x.ReportingVarietyCodeSnapshot == selectedVariety.Variety
@@ -274,6 +290,11 @@ public sealed class RunReportingService(
             CropYear = cropYear,
             TotalBins = varieties.Sum(x => x.Bins),
             TotalReceivedBins = varieties.Sum(x => x.ReceivedBins),
+            SalesDeskTotals = salesDeskRows.OrderBy(x => x.DisplayOrder).ThenBy(x => x.SalesDesk).ToList(),
+            SelectedSalesDesk = selectedSalesDesk,
+            SalesDeskFilterOptions = facility == EmploymentFacilities.Wp
+                ? [new("All", "All Sales Desks"), .. salesDeskRows.Where(x => !x.IsUnassigned).OrderBy(x => x.DisplayOrder).ThenBy(x => x.SalesDesk).Select(x => new RunSalesDeskFilterOptionViewModel(x.SalesDeskId!.Value.ToString(), x.SalesDesk)), .. (salesDeskRows.Any(x => x.IsUnassigned) ? new[] { new RunSalesDeskFilterOptionViewModel("Unassigned", "Unassigned") } : [])]
+                : [],
             PriorCropYear = priorYear,
             PriorBins = priorYear is null ? 0 : priorGroups.Sum(x => x.Bins),
             SelectedStart = selectedStart,
@@ -299,6 +320,7 @@ public sealed class RunReportingService(
                 weekStart,
                 filter.ReportGrowerNumber,
                 detail.SupportingPage,
+                selectedSalesDesk,
                 cancellationToken);
             detail.HasMoreSupportingRecords = records.Count > SupportingPageSize;
             detail.SupportingRecords = records.Take(SupportingPageSize).ToList();
@@ -306,8 +328,8 @@ public sealed class RunReportingService(
         return detail;
     }
 
-    private IQueryable<VarietyTotalRow> VarietyTotalsQuery(string facility, int cropYear, DateOnly cutoff) =>
-        ValidLines(cropYear, cutoff)
+    private IQueryable<VarietyTotalRow> VarietyTotalsQuery(string facility, int cropYear, DateOnly cutoff, string? salesDesk) =>
+        ApplySalesDeskFilter(ValidLines(cropYear, cutoff), facility, salesDesk)
             .Where(x => (x.ActualRunId != null ? x.ActualRun!.RunFacilityCodeSnapshot : x.ReportingFacilityCodeSnapshot) == facility)
             .GroupBy(x => new
             {
@@ -363,6 +385,7 @@ public sealed class RunReportingService(
         DateOnly weekStart,
         string growerNumber,
         int page,
+        string? salesDesk,
         CancellationToken cancellationToken)
     {
         if (!TryParseVarietyKey(varietyKey, out var fruitProfileId, out var variety, out var productionType, out var organic))
@@ -371,7 +394,7 @@ public sealed class RunReportingService(
         }
         var weekStartUtc = UtcStart(weekStart);
         var weekEndUtc = UtcEndExclusive(weekStart.AddDays(6));
-        return await ValidLines(cropYear, cutoff)
+        return await ApplySalesDeskFilter(ValidLines(cropYear, cutoff), facility, salesDesk)
             .Where(x => (x.ActualRunId != null ? x.ActualRun!.RunFacilityCodeSnapshot : x.ReportingFacilityCodeSnapshot) == facility)
             .Where(x => x.ReportingFruitProfileIdSnapshot == fruitProfileId
                 && x.ReportingVarietyCodeSnapshot == variety
@@ -399,8 +422,30 @@ public sealed class RunReportingService(
                 x.ReportingVarietyCodeSnapshot!,
                 x.ProductionTypeSnapshot!,
                 x.BinsRun,
-                x.ActualRunId == null ? "Legacy active" : "Active"))
+                x.ActualRunId == null ? "Legacy active" : "Active",
+                facility == EmploymentFacilities.Wp
+                    ? (x.ActualRunId == null ? "Unassigned" : x.ActualRun!.SalesDeskNameSnapshot ?? "Unassigned")
+                    : "N/A"))
             .ToListAsync(cancellationToken);
+    }
+
+    private static IQueryable<BinsRunEntry> ApplySalesDeskFilter(
+        IQueryable<BinsRunEntry> query,
+        string facility,
+        string? salesDesk)
+    {
+        if (facility != EmploymentFacilities.Wp || string.IsNullOrWhiteSpace(salesDesk) || salesDesk == "All") return query;
+        if (salesDesk == "Unassigned") return query.Where(x => x.ActualRunId == null || x.ActualRun!.SalesDeskId == null);
+        return int.TryParse(salesDesk, out var id)
+            ? query.Where(x => x.ActualRunId != null && x.ActualRun!.SalesDeskId == id)
+            : query.Where(_ => false);
+    }
+
+    private static string NormalizeSalesDeskFilter(string? value, IReadOnlyList<RunSalesDeskTotalViewModel> totals)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Equals("All", StringComparison.OrdinalIgnoreCase)) return "All";
+        if (value.Equals("Unassigned", StringComparison.OrdinalIgnoreCase) && totals.Any(x => x.IsUnassigned)) return "Unassigned";
+        return int.TryParse(value, out var id) && totals.Any(x => x.SalesDeskId == id) ? id.ToString() : "All";
     }
 
     private async Task<NeedsReviewPage> GetNeedsReviewPageAsync(int page, CancellationToken cancellationToken)

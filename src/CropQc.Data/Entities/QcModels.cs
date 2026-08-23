@@ -365,10 +365,14 @@ public sealed class ActualRun
     public int? RunFacilityAssignedByUserId { get; set; }
     public User? RunFacilityAssignedByUser { get; set; }
     public DateTimeOffset? RunFacilityAssignedAt { get; set; }
+    public int? SalesDeskId { get; set; }
+    public SalesDesk? SalesDesk { get; set; }
+    public string? SalesDeskNameSnapshot { get; set; }
     public ICollection<ActualRunRevision> Revisions { get; } = new List<ActualRunRevision>();
     public ICollection<BinsRunEntry> Entries { get; } = new List<BinsRunEntry>();
     public ICollection<RunExpectation> Expectations { get; } = new List<RunExpectation>();
     public ICollection<PackoutRun> PackoutRuns { get; } = new List<PackoutRun>();
+    public ICollection<ActualRunSalesDeskCorrection> SalesDeskCorrections { get; } = new List<ActualRunSalesDeskCorrection>();
 }
 
 public sealed class ActualRunRevision
@@ -413,6 +417,9 @@ public sealed class ActualRunOverrideRequest
     public Warehouse? RunFacilityWarehouse { get; set; }
     public string? RunFacilityCodeSnapshot { get; set; }
     public string? RunFacilityAssignmentSource { get; set; }
+    public int? SalesDeskId { get; set; }
+    public SalesDesk? SalesDesk { get; set; }
+    public string? SalesDeskNameSnapshot { get; set; }
     public ICollection<ActualRunOverrideRequestLine> Lines { get; } = new List<ActualRunOverrideRequestLine>();
 }
 

@@ -50,6 +50,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<ProcessorShipment> ProcessorShipments => Set<ProcessorShipment>();
     public DbSet<ProcessorShipmentLine> ProcessorShipmentLines => Set<ProcessorShipmentLine>();
     public DbSet<ProcessorShipmentPriceCorrection> ProcessorShipmentPriceCorrections => Set<ProcessorShipmentPriceCorrection>();
+    public DbSet<SalesDesk> SalesDesks => Set<SalesDesk>();
     public DbSet<Receipt> Receipts => Set<Receipt>();
     public DbSet<ReceiptInventoryOverride> ReceiptInventoryOverrides => Set<ReceiptInventoryOverride>();
     public DbSet<RoomDepletion> RoomDepletions => Set<RoomDepletion>();
@@ -62,6 +63,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<ActualRunRevision> ActualRunRevisions => Set<ActualRunRevision>();
     public DbSet<ActualRunOverrideRequest> ActualRunOverrideRequests => Set<ActualRunOverrideRequest>();
     public DbSet<ActualRunOverrideRequestLine> ActualRunOverrideRequestLines => Set<ActualRunOverrideRequestLine>();
+    public DbSet<ActualRunSalesDeskCorrection> ActualRunSalesDeskCorrections => Set<ActualRunSalesDeskCorrection>();
     public DbSet<RunExpectation> RunExpectations => Set<RunExpectation>();
     public DbSet<RunExpectationSource> RunExpectationSources => Set<RunExpectationSource>();
     public DbSet<RunProjection> RunProjections => Set<RunProjection>();
@@ -1648,16 +1650,42 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.CancellationReason).HasMaxLength(1000);
             entity.Property(x => x.RunFacilityAssignmentSource).HasMaxLength(50);
             entity.Property(x => x.RunFacilityCodeSnapshot).HasMaxLength(25);
+            entity.Property(x => x.SalesDeskNameSnapshot).HasMaxLength(100);
             entity.Property(x => x.ConcurrencyVersion).IsConcurrencyToken();
             entity.HasIndex(x => new { x.Status, x.RunAt });
             entity.HasIndex(x => x.RunProjectionId);
             entity.HasIndex(x => new { x.RunFacilityWarehouseId, x.Status, x.RunAt });
+            entity.HasIndex(x => new { x.SalesDeskId, x.Status, x.RunAt });
             entity.HasOne(x => x.RunProjection).WithMany().HasForeignKey(x => x.RunProjectionId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.CanceledByUser).WithMany().HasForeignKey(x => x.CanceledByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.RunFacilityWarehouse).WithMany().HasForeignKey(x => x.RunFacilityWarehouseId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.RunFacilityAssignedByUser).WithMany().HasForeignKey(x => x.RunFacilityAssignedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.SalesDesk).WithMany(x => x.ActualRuns).HasForeignKey(x => x.SalesDeskId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SalesDesk>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            entity.HasIndex(x => x.Name).IsUnique();
+            entity.HasIndex(x => new { x.IsActive, x.DisplayOrder, x.Name });
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ActualRunSalesDeskCorrection>(entity =>
+        {
+            entity.Property(x => x.OperationKey).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.PreviousSalesDeskNameSnapshot).HasMaxLength(100);
+            entity.Property(x => x.NewSalesDeskNameSnapshot).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+            entity.HasIndex(x => x.OperationKey).IsUnique();
+            entity.HasIndex(x => new { x.ActualRunId, x.CorrectedAt });
+            entity.HasOne(x => x.ActualRun).WithMany(x => x.SalesDeskCorrections).HasForeignKey(x => x.ActualRunId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.PreviousSalesDesk).WithMany(x => x.PreviousCorrections).HasForeignKey(x => x.PreviousSalesDeskId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.NewSalesDesk).WithMany(x => x.NewCorrections).HasForeignKey(x => x.NewSalesDeskId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CorrectedByUser).WithMany().HasForeignKey(x => x.CorrectedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ActualRunRevision>(entity =>
@@ -1681,6 +1709,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.ApprovalReason).HasMaxLength(1000);
             entity.Property(x => x.RunFacilityCodeSnapshot).HasMaxLength(25);
             entity.Property(x => x.RunFacilityAssignmentSource).HasMaxLength(50);
+            entity.Property(x => x.SalesDeskNameSnapshot).HasMaxLength(100);
             entity.HasIndex(x => x.OperationKey).IsUnique();
             entity.HasIndex(x => new { x.Status, x.RequestedAt });
             entity.HasOne(x => x.ActualRun).WithMany().HasForeignKey(x => x.ActualRunId).OnDelete(DeleteBehavior.SetNull);
@@ -1688,6 +1717,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.RequestedByUser).WithMany().HasForeignKey(x => x.RequestedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.ApprovedByUser).WithMany().HasForeignKey(x => x.ApprovedByUserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.RunFacilityWarehouse).WithMany().HasForeignKey(x => x.RunFacilityWarehouseId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.SalesDesk).WithMany().HasForeignKey(x => x.SalesDeskId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ActualRunOverrideRequestLine>(entity =>
@@ -2160,6 +2190,11 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             new Warehouse { Id = 2, Code = "DH", Name = "DH", IsActive = true },
             new Warehouse { Id = 3, Code = "McDougall", Name = "McDougall", IsActive = true },
             new Warehouse { Id = 4, Code = "WP", Name = "WP", IsActive = true });
+
+        modelBuilder.Entity<SalesDesk>().HasData(
+            new SalesDesk { Id = 1, Name = "Domex", IsActive = true, DisplayOrder = 10, CreatedAt = createdAt, UpdatedAt = createdAt },
+            new SalesDesk { Id = 2, Name = "Honey Bear", IsActive = true, DisplayOrder = 20, CreatedAt = createdAt, UpdatedAt = createdAt },
+            new SalesDesk { Id = 3, Name = "Viva Tierra", IsActive = true, DisplayOrder = 30, CreatedAt = createdAt, UpdatedAt = createdAt });
 
         modelBuilder.Entity<Grade>().HasData(
             new Grade { Id = 1, Code = "W1", Name = "W1", IsActive = true },

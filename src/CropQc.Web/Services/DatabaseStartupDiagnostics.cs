@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260821140736_AddRoomSealing";
+    public const string ExpectedSchemaMigration = "20260823040226_AddActualRunSalesDeskAttribution";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -33,6 +33,31 @@ public static class DatabaseStartupDiagnostics
         new("ActualRunRevisions", "ActualRunRevisions", null),
         new("ActualRunOverrideRequests", "ActualRunOverrideRequests", null),
         new("ActualRunOverrideRequestLines", "ActualRunOverrideRequestLines", null),
+        new("SalesDesks", "SalesDesks", null),
+        new("SalesDesks.Id", "SalesDesks", "Id", RequireNotNullable: true),
+        new("SalesDesks.Name", "SalesDesks", "Name", RequireNotNullable: true),
+        new("SalesDesks.IsActive", "SalesDesks", "IsActive", RequireNotNullable: true),
+        new("SalesDesks.DisplayOrder", "SalesDesks", "DisplayOrder", RequireNotNullable: true),
+        new("SalesDesks.CreatedAt", "SalesDesks", "CreatedAt", RequireNotNullable: true),
+        new("SalesDesks.CreatedByUserId", "SalesDesks", "CreatedByUserId", RequireNullable: true),
+        new("SalesDesks.UpdatedAt", "SalesDesks", "UpdatedAt", RequireNotNullable: true),
+        new("SalesDesks.UpdatedByUserId", "SalesDesks", "UpdatedByUserId", RequireNullable: true),
+        new("ActualRuns.SalesDeskId", "ActualRuns", "SalesDeskId", RequireNullable: true),
+        new("ActualRuns.SalesDeskNameSnapshot", "ActualRuns", "SalesDeskNameSnapshot", RequireNullable: true),
+        new("ActualRunOverrideRequests.SalesDeskId", "ActualRunOverrideRequests", "SalesDeskId", RequireNullable: true),
+        new("ActualRunOverrideRequests.SalesDeskNameSnapshot", "ActualRunOverrideRequests", "SalesDeskNameSnapshot", RequireNullable: true),
+        new("ActualRunSalesDeskCorrections", "ActualRunSalesDeskCorrections", null),
+        new("ActualRunSalesDeskCorrections.Id", "ActualRunSalesDeskCorrections", "Id", RequireNotNullable: true),
+        new("ActualRunSalesDeskCorrections.ActualRunId", "ActualRunSalesDeskCorrections", "ActualRunId", RequireNotNullable: true),
+        new("ActualRunSalesDeskCorrections.OperationKey", "ActualRunSalesDeskCorrections", "OperationKey", RequireNotNullable: true),
+        new("ActualRunSalesDeskCorrections.ExpectedConcurrencyVersion", "ActualRunSalesDeskCorrections", "ExpectedConcurrencyVersion", RequireNotNullable: true),
+        new("ActualRunSalesDeskCorrections.PreviousSalesDeskId", "ActualRunSalesDeskCorrections", "PreviousSalesDeskId", RequireNullable: true),
+        new("ActualRunSalesDeskCorrections.PreviousSalesDeskNameSnapshot", "ActualRunSalesDeskCorrections", "PreviousSalesDeskNameSnapshot", RequireNullable: true),
+        new("ActualRunSalesDeskCorrections.NewSalesDeskId", "ActualRunSalesDeskCorrections", "NewSalesDeskId", RequireNotNullable: true),
+        new("ActualRunSalesDeskCorrections.NewSalesDeskNameSnapshot", "ActualRunSalesDeskCorrections", "NewSalesDeskNameSnapshot", RequireNotNullable: true),
+        new("ActualRunSalesDeskCorrections.Reason", "ActualRunSalesDeskCorrections", "Reason", RequireNotNullable: true),
+        new("ActualRunSalesDeskCorrections.CorrectedByUserId", "ActualRunSalesDeskCorrections", "CorrectedByUserId", RequireNotNullable: true),
+        new("ActualRunSalesDeskCorrections.CorrectedAt", "ActualRunSalesDeskCorrections", "CorrectedAt", RequireNotNullable: true),
         new("RoomInventoryAdjustments.ActualRunId", "RoomInventoryAdjustments", "ActualRunId"),
         new("RoomInventoryAdjustments.ActualRunRevisionId", "RoomInventoryAdjustments", "ActualRunRevisionId"),
         new("BinsRunEntries.ActualRunId", "BinsRunEntries", "ActualRunId"),
@@ -541,7 +566,18 @@ public static class DatabaseStartupDiagnostics
         new("IX_ProcessorShipments_ShippedAt_ProcessorId", "ProcessorShipments", "IX_ProcessorShipments_ShippedAt_ProcessorId"),
         new("IX_Rooms_SealedByUserId", "Rooms", "IX_Rooms_SealedByUserId"),
         new("IX_RoomSealEvents_ChangedByUserId", "RoomSealEvents", "IX_RoomSealEvents_ChangedByUserId"),
-        new("IX_RoomSealEvents_RoomId_ChangedAt", "RoomSealEvents", "IX_RoomSealEvents_RoomId_ChangedAt")
+        new("IX_RoomSealEvents_RoomId_ChangedAt", "RoomSealEvents", "IX_RoomSealEvents_RoomId_ChangedAt"),
+        new("IX_ActualRuns_SalesDeskId_Status_RunAt", "ActualRuns", "IX_ActualRuns_SalesDeskId_Status_RunAt"),
+        new("IX_ActualRunOverrideRequests_SalesDeskId", "ActualRunOverrideRequests", "IX_ActualRunOverrideRequests_SalesDeskId"),
+        new("IX_ActualRunSalesDeskCorrections_ActualRunId_CorrectedAt", "ActualRunSalesDeskCorrections", "IX_ActualRunSalesDeskCorrections_ActualRunId_CorrectedAt"),
+        new("IX_ActualRunSalesDeskCorrections_CorrectedByUserId", "ActualRunSalesDeskCorrections", "IX_ActualRunSalesDeskCorrections_CorrectedByUserId"),
+        new("IX_ActualRunSalesDeskCorrections_NewSalesDeskId", "ActualRunSalesDeskCorrections", "IX_ActualRunSalesDeskCorrections_NewSalesDeskId"),
+        new("IX_ActualRunSalesDeskCorrections_OperationKey", "ActualRunSalesDeskCorrections", "IX_ActualRunSalesDeskCorrections_OperationKey", RequireUnique: true),
+        new("IX_ActualRunSalesDeskCorrections_PreviousSalesDeskId", "ActualRunSalesDeskCorrections", "IX_ActualRunSalesDeskCorrections_PreviousSalesDeskId"),
+        new("IX_SalesDesks_CreatedByUserId", "SalesDesks", "IX_SalesDesks_CreatedByUserId"),
+        new("IX_SalesDesks_IsActive_DisplayOrder_Name", "SalesDesks", "IX_SalesDesks_IsActive_DisplayOrder_Name"),
+        new("IX_SalesDesks_Name", "SalesDesks", "IX_SalesDesks_Name", RequireUnique: true),
+        new("IX_SalesDesks_UpdatedByUserId", "SalesDesks", "IX_SalesDesks_UpdatedByUserId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
@@ -631,7 +667,15 @@ public static class DatabaseStartupDiagnostics
         new("FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId", "TreatmentLineageMovements", "FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId"),
         new("FK_Rooms_Users_SealedByUserId", "Rooms", "FK_Rooms_Users_SealedByUserId"),
         new("FK_RoomSealEvents_Rooms_RoomId", "RoomSealEvents", "FK_RoomSealEvents_Rooms_RoomId"),
-        new("FK_RoomSealEvents_Users_ChangedByUserId", "RoomSealEvents", "FK_RoomSealEvents_Users_ChangedByUserId")
+        new("FK_RoomSealEvents_Users_ChangedByUserId", "RoomSealEvents", "FK_RoomSealEvents_Users_ChangedByUserId"),
+        new("FK_ActualRuns_SalesDesks_SalesDeskId", "ActualRuns", "FK_ActualRuns_SalesDesks_SalesDeskId"),
+        new("FK_ActualRunOverrideRequests_SalesDesks_SalesDeskId", "ActualRunOverrideRequests", "FK_ActualRunOverrideRequests_SalesDesks_SalesDeskId"),
+        new("FK_SalesDesks_Users_CreatedByUserId", "SalesDesks", "FK_SalesDesks_Users_CreatedByUserId"),
+        new("FK_SalesDesks_Users_UpdatedByUserId", "SalesDesks", "FK_SalesDesks_Users_UpdatedByUserId"),
+        new("FK_ActualRunSalesDeskCorrections_ActualRuns_ActualRunId", "ActualRunSalesDeskCorrections", "FK_ActualRunSalesDeskCorrections_ActualRuns_ActualRunId"),
+        new("FK_ActualRunSalesDeskCorrections_SalesDesks_NewSalesDeskId", "ActualRunSalesDeskCorrections", "FK_ActualRunSalesDeskCorrections_SalesDesks_NewSalesDeskId"),
+        new("FK_ActualRunSalesDeskCorrections_SalesDesks_PreviousSalesDeskId", "ActualRunSalesDeskCorrections", "FK_ActualRunSalesDeskCorrections_SalesDesks_PreviousSalesDeskId"),
+        new("FK_ActualRunSalesDeskCorrections_Users_CorrectedByUserId", "ActualRunSalesDeskCorrections", "FK_ActualRunSalesDeskCorrections_Users_CorrectedByUserId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
@@ -660,7 +704,9 @@ public static class DatabaseStartupDiagnostics
         new("PK_ProcessorShipments", "ProcessorShipments", "PK_ProcessorShipments"),
         new("PK_ProcessorShipmentLines", "ProcessorShipmentLines", "PK_ProcessorShipmentLines"),
         new("PK_ProcessorShipmentPriceCorrections", "ProcessorShipmentPriceCorrections", "PK_ProcessorShipmentPriceCorrections"),
-        new("PK_RoomSealEvents", "RoomSealEvents", "PK_RoomSealEvents")
+        new("PK_RoomSealEvents", "RoomSealEvents", "PK_RoomSealEvents"),
+        new("PK_SalesDesks", "SalesDesks", "PK_SalesDesks"),
+        new("PK_ActualRunSalesDeskCorrections", "ActualRunSalesDeskCorrections", "PK_ActualRunSalesDeskCorrections")
     ];
 
     public static async Task InspectAsync(
