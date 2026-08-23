@@ -37,11 +37,21 @@
             </div>
             <span class="status @RoomStatusClass(Model.Summary.Status)">@Model.Summary.Status</span>
         </div>
-        <div class="notice @(Model.Summary.IsSealed ? "warning" : "success") room-seal-state">
-            <strong>@(Model.Summary.IsSealed ? "SEALED" : "Not Sealed")</strong>
+        <div class="notice @(Model.Summary.IsSealed ? "warning" : Model.Summary.IsSealScheduled ? "info" : "success") room-seal-state">
+            <strong>@(Model.Summary.IsSealed ? "SEALED" : Model.Summary.IsSealScheduled ? "SCHEDULED TO SEAL" : "UNSEALED")</strong>
             @if (Model.Summary.IsSealed)
             {
-                <span>Sealed @BusinessTime.FormatPacific(Model.Summary.SealedAt) by @(Model.Summary.SealedBy ?? "unknown user"). Physical inventory movement is blocked.</span>
+                <span><strong>Sealed Since:</strong> @BusinessTime.FormatPacific(Model.Summary.SealedAt)</span>
+                <span><strong>Recorded By:</strong> @(Model.Summary.SealedBy ?? "unknown user")</span>
+                <span><strong>Recorded At:</strong> @BusinessTime.FormatPacific(Model.Summary.SealRecordedAt)</span>
+                <span>Physical inventory movement is blocked.</span>
+            }
+            else if (Model.Summary.IsSealScheduled)
+            {
+                <span><strong>Scheduled to Seal:</strong> @BusinessTime.FormatPacific(Model.Summary.SealedAt)</span>
+                <span><strong>Scheduled By:</strong> @(Model.Summary.SealedBy ?? "unknown user")</span>
+                <span><strong>Scheduled At:</strong> @BusinessTime.FormatPacific(Model.Summary.SealRecordedAt)</span>
+                <span>Physical inventory movement remains available until the effective seal time.</span>
             }
             else
             {
@@ -49,7 +59,7 @@
             }
             @if (Model.CanManageRoomSeals)
             {
-                <a class="button @(Model.Summary.IsSealed ? "secondary-button" : "danger-button")" href="/Rooms/@Model.Summary.RoomId/Seal">@(Model.Summary.IsSealed ? "Unseal Room" : "Seal Room")</a>
+                <a class="button @(Model.Summary.IsSealed || Model.Summary.IsSealScheduled ? "secondary-button" : "danger-button")" href="/Rooms/@Model.Summary.RoomId/Seal">@(Model.Summary.IsSealed ? "Unseal Room" : Model.Summary.IsSealScheduled ? "Edit Scheduled Seal" : "Seal Room")</a>
             }
         </div>
         <p class="room-capacity"><strong>@FormatBins(Model.Summary.CurrentBinsCount ?? 0) bins</strong> / @(Model.Summary.IsCapacityConfigured ? $"{FormatBins(Model.Summary.RoomCapacityBins)} capacity" : "capacity not configured") · @(Model.Summary.PercentFull is null ? "percent full unavailable" : $"{Model.Summary.PercentFull:0.#}% full")</p>
@@ -117,11 +127,11 @@
         <h2>Room Seal History</h2>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Action</th><th>Date</th><th>By</th><th>Note</th></tr></thead>
+                <thead><tr><th>Action</th><th>Effective</th><th>Previous Effective</th><th>Recorded</th><th>By</th><th>Note</th></tr></thead>
                 <tbody>
                 @foreach (var item in Model.SealHistory)
                 {
-                    <tr><td>@item.Action</td><td>@BusinessTime.FormatPacific(item.ChangedAt)</td><td>@item.ChangedBy</td><td>@(item.Note ?? "—")</td></tr>
+                    <tr><td>@item.Action</td><td>@BusinessTime.FormatPacific(item.EffectiveAt)</td><td>@BusinessTime.FormatPacific(item.PreviousEffectiveAt)</td><td>@BusinessTime.FormatPacific(item.RecordedAt)</td><td>@item.ChangedBy</td><td>@(item.Note ?? "—")</td></tr>
                 }
                 </tbody>
             </table>

@@ -119,6 +119,7 @@ public sealed class ProcessorShipmentService(
                 dbContext,
                 selected.Select(x => x.Option.RoomId).Distinct().ToList(),
                 [],
+                businessTime,
                 cancellationToken);
             if (sealError is not null) return new(false, false, null, sealError);
 
@@ -320,6 +321,7 @@ public sealed class ProcessorShipmentService(
                 dbContext,
                 [],
                 shipment.Lines.Select(x => x.RoomId).Distinct().ToList(),
+                businessTime,
                 cancellationToken);
             if (sealError is not null) return sealError;
             var operationKey = Normalize(form.OperationKey);
@@ -394,7 +396,7 @@ public sealed class ProcessorShipmentService(
         var result = new List<ProcessorInventoryOptionViewModel>();
         var roomIds = snapshots.Select(x => x.RoomId).Distinct().ToList();
         var sealedRoomIds = await dbContext.Rooms.AsNoTracking()
-            .Where(x => roomIds.Contains(x.Id) && x.IsSealed)
+            .Where(x => roomIds.Contains(x.Id) && x.IsSealed && (x.SealedAt == null || x.SealedAt <= businessTime.UtcNow))
             .Select(x => x.Id)
             .ToHashSetAsync(cancellationToken);
         foreach (var snapshot in snapshots)

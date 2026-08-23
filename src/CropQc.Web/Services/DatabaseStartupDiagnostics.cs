@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260821140736_AddRoomSealing";
+    public const string ExpectedSchemaMigration = "20260822152806_AddRoomSealEffectiveTime";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -418,11 +418,14 @@ public static class DatabaseStartupDiagnostics
         new("ProcessorShipmentPriceCorrections.CorrectedAt", "ProcessorShipmentPriceCorrections", "CorrectedAt", RequireNotNullable: true),
         new("Rooms.IsSealed", "Rooms", "IsSealed", RequireNotNullable: true),
         new("Rooms.SealedAt", "Rooms", "SealedAt", RequireNullable: true),
+        new("Rooms.SealRecordedAt", "Rooms", "SealRecordedAt", RequireNullable: true),
         new("Rooms.SealedByUserId", "Rooms", "SealedByUserId", RequireNullable: true),
         new("RoomSealEvents", "RoomSealEvents", null),
         new("RoomSealEvents.Id", "RoomSealEvents", "Id", RequireNotNullable: true),
         new("RoomSealEvents.RoomId", "RoomSealEvents", "RoomId", RequireNotNullable: true),
         new("RoomSealEvents.Action", "RoomSealEvents", "Action", RequireNotNullable: true),
+        new("RoomSealEvents.EffectiveAt", "RoomSealEvents", "EffectiveAt", RequireNotNullable: true),
+        new("RoomSealEvents.PreviousEffectiveAt", "RoomSealEvents", "PreviousEffectiveAt", RequireNullable: true),
         new("RoomSealEvents.ChangedAt", "RoomSealEvents", "ChangedAt", RequireNotNullable: true),
         new("RoomSealEvents.ChangedByUserId", "RoomSealEvents", "ChangedByUserId", RequireNotNullable: true),
         new("RoomSealEvents.WarehouseCodeSnapshot", "RoomSealEvents", "WarehouseCodeSnapshot", RequireNotNullable: true),

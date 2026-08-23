@@ -38,7 +38,9 @@ public sealed class RoomSummaryItemViewModel
     public string CompuTechCode { get; set; } = "";
     public string Status { get; set; } = "Empty";
     public bool IsSealed { get; set; }
+    public bool IsSealScheduled { get; set; }
     public DateTimeOffset? SealedAt { get; set; }
+    public DateTimeOffset? SealRecordedAt { get; set; }
     public string? SealedBy { get; set; }
     public int CurrentLotsCount { get; set; }
     public int? CurrentBinsCount { get; set; }
@@ -446,7 +448,10 @@ public sealed class RoomSealConfirmationViewModel
     public string Warehouse { get; set; } = "";
     public string Room { get; set; } = "";
     public bool IsSealed { get; set; }
+    public bool IsSealScheduled { get; set; }
+    public bool HasActiveSeal { get; set; }
     public DateTimeOffset? SealedAt { get; set; }
+    public DateTimeOffset? SealRecordedAt { get; set; }
     public string? SealedBy { get; set; }
     public RoomSealForm Form { get; set; } = new();
 }
@@ -455,12 +460,17 @@ public sealed class RoomSealForm
 {
     public int RoomId { get; set; }
     public bool ExpectedIsSealed { get; set; }
+    public DateTimeOffset? ExpectedEffectiveAt { get; set; }
+    public DateOnly? EffectiveDate { get; set; }
+    public TimeOnly? EffectiveTime { get; set; }
     public string? Note { get; set; }
 }
 
 public sealed record RoomSealHistoryItemViewModel(
     string Action,
-    DateTimeOffset ChangedAt,
+    DateTimeOffset EffectiveAt,
+    DateTimeOffset? PreviousEffectiveAt,
+    DateTimeOffset RecordedAt,
     string ChangedBy,
     string? Note);
 public static class RoomReceiptEvidenceTypes

@@ -19,7 +19,10 @@ public sealed class ProcessorShipmentTests
     public async Task Sealed_source_room_blocks_processor_shipment_with_zero_writes()
     {
         await using var fixture = await Fixture.CreateAsync();
-        (await fixture.Db.Rooms.SingleAsync()).IsSealed = true;
+        var room = await fixture.Db.Rooms.SingleAsync();
+        room.IsSealed = true;
+        room.SealedAt = Now.AddMinutes(-1);
+        room.SealRecordedAt = Now.AddMinutes(-10);
         await fixture.Db.SaveChangesAsync();
         var adjustmentsBefore = await fixture.Db.RoomInventoryAdjustments.CountAsync();
 
@@ -538,12 +541,12 @@ public sealed class ProcessorShipmentTests
     [Fact]
     public void Application_gate_targets_processor_migration_and_all_new_objects()
     {
-        Assert.Equal("20260821140736_AddRoomSealing", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
+        Assert.Equal("20260822152806_AddRoomSealEffectiveTime", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
         var source = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DatabaseStartupDiagnostics.cs"));
         Assert.Contains("ProcessorShipmentLines.PoundsPerBinSnapshot", source);
         Assert.Contains("FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId", source);
         Assert.Contains("TreatmentLineageMovements.ReceiptId", source);
-        Assert.Equal(638, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Equal(641, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     [Fact]

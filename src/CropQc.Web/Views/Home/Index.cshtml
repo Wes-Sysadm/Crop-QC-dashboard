@@ -82,7 +82,7 @@ else
                 <div class="room-card-grid">
                 @foreach (var room in locationGroup.OrderBy(x => x.AttentionSort).ThenByDescending(x => x.QcMissingBins == 0 ? 0m : x.QcMissingBins / (decimal)(x.CurrentBinsCount ?? 1)).ThenBy(x => x.LastSampleDate ?? DateTimeOffset.MinValue).ThenBy(x => x.RoomCode))
                 {
-                    <a class="room-card @RoomStatusClass(room.Status) variety-colored @(room.IsMajorityOrganic ? "majority-organic" : "") @(room.IsSealed ? "sealed-room" : "")" href="/Dashboard/Rooms/@room.RoomId?Facility=@room.Facility" style="--room-variety-bg: @BuildVarietyBandBackground(room.VarietyColorSegments)">
+                    <a class="room-card @RoomStatusClass(room.Status) variety-colored @(room.IsMajorityOrganic ? "majority-organic" : "") @(room.IsSealed ? "sealed-room" : room.IsSealScheduled ? "scheduled-seal-room" : "")" href="/Dashboard/Rooms/@room.RoomId?Facility=@room.Facility" style="--room-variety-bg: @BuildVarietyBandBackground(room.VarietyColorSegments)">
                         <div class="room-card-content">
                             <div class="room-card-header">
                                 <div>
@@ -91,7 +91,7 @@ else
                                 </div>
                                 <span class="status @RoomStatusClass(room.Status)">@room.Status</span>
                             </div>
-                            <p><span class="status @(room.IsSealed ? "review" : "ready")">@(room.IsSealed ? "SEALED" : "Open")</span>@if (room.IsSealed) { <span class="muted"> Sealed @BusinessTime.FormatPacific(room.SealedAt) by @(room.SealedBy ?? "unknown user")</span> }</p>
+                            <p><span class="status @(room.IsSealed ? "review" : room.IsSealScheduled ? "pending" : "ready")">@(room.IsSealed ? "SEALED" : room.IsSealScheduled ? "SCHEDULED TO SEAL" : "UNSEALED")</span>@if (room.IsSealed) { <span class="muted"> Sealed since @BusinessTime.FormatPacific(room.SealedAt) by @(room.SealedBy ?? "unknown user")</span> } else if (room.IsSealScheduled) { <span class="muted"> Scheduled @BusinessTime.FormatPacific(room.SealedAt) by @(room.SealedBy ?? "unknown user")</span> }</p>
                             <dl class="room-metrics">
                                 <div>
                                     <dt>Current bins / capacity</dt>

@@ -1978,6 +1978,10 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     box-shadow: inset 0 0 0 3px #a13b2b;
 }
 
+.room-card.scheduled-seal-room {
+    box-shadow: inset 0 0 0 3px #a36a00;
+}
+
 .room-seal-state {
     display: flex;
     align-items: center;
@@ -1993,6 +1997,18 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     max-width: 46rem;
 }
 
+.room-seal-time-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.room-seal-cancel-form {
+    border-top: 1px solid #d7dde3;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+}
+
 @media (max-width: 640px) {
     .room-seal-state {
         align-items: stretch;
@@ -2001,5 +2017,9 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 
     .room-seal-state .button {
         margin-left: 0;
+    }
+
+    .room-seal-time-grid {
+        grid-template-columns: 1fr;
     }
 }
