@@ -92,6 +92,126 @@ public sealed class RunReportingTests
     }
 
     [Fact]
+    public async Task WpSalesDeskTotals_ShowEveryActiveConfiguredDeskAtZero_WithoutWritingData()
+    {
+        using var db = CreateDbContext();
+        await SeedAsync(db);
+        var beforeActualRuns = await db.ActualRuns.CountAsync();
+        var beforeEntries = await db.BinsRunEntries.CountAsync();
+        var beforeAuditLogs = await db.AuditLogs.CountAsync();
+
+        var page = await CreateService(db).GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026
+        }, Principal(), CancellationToken.None);
+
+        var detail = Assert.IsType<RunTotalsDetailViewModel>(page.Detail);
+        Assert.Equal(new[] { "Domex", "Honey Bear", "Viva Tierra", "Unassigned" }, detail.SalesDeskTotals.Select(x => x.SalesDesk));
+        Assert.All(detail.SalesDeskTotals.Where(x => !x.IsUnassigned), x => Assert.Equal(0, x.Bins));
+        Assert.Equal(60, Assert.Single(detail.SalesDeskTotals, x => x.IsUnassigned).Bins);
+        Assert.Equal(detail.TotalBins, detail.SalesDeskTotals.Sum(x => x.Bins));
+        Assert.Equal(new[] { "All Sales Desks", "Domex", "Honey Bear", "Viva Tierra", "Unassigned" }, detail.SalesDeskFilterOptions.Select(x => x.Label));
+        Assert.Equal(beforeActualRuns, await db.ActualRuns.CountAsync());
+        Assert.Equal(beforeEntries, await db.BinsRunEntries.CountAsync());
+        Assert.Equal(beforeAuditLogs, await db.AuditLogs.CountAsync());
+    }
+
+    [Fact]
+    public async Task WpSalesDeskTotals_OneAssignedRunKeepsOtherConfiguredDesksVisibleAtZero()
+    {
+        using var db = CreateDbContext();
+        await SeedAsync(db);
+        var run = await db.ActualRuns.SingleAsync(x => x.Id == 1);
+        run.SalesDeskId = 1;
+        run.SalesDeskNameSnapshot = "Domex";
+        await db.SaveChangesAsync();
+
+        var page = await CreateService(db).GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026
+        }, Principal(), CancellationToken.None);
+
+        var detail = Assert.IsType<RunTotalsDetailViewModel>(page.Detail);
+        Assert.Equal(40, detail.SalesDeskTotals.Single(x => x.SalesDesk == "Domex").Bins);
+        Assert.Equal(0, detail.SalesDeskTotals.Single(x => x.SalesDesk == "Honey Bear").Bins);
+        Assert.Equal(0, detail.SalesDeskTotals.Single(x => x.SalesDesk == "Viva Tierra").Bins);
+        Assert.Equal(20, Assert.Single(detail.SalesDeskTotals, x => x.IsUnassigned).Bins);
+        Assert.Equal(detail.TotalBins, detail.SalesDeskTotals.Sum(x => x.Bins));
+    }
+
+    [Fact]
+    public async Task WpSalesDeskTotals_InactiveAttributedDeskRemainsReportableAfterActiveDesks()
+    {
+        using var db = CreateDbContext();
+        await SeedAsync(db);
+        var historicalDesk = new SalesDesk
+        {
+            Id = 5,
+            Name = "Historical Desk",
+            IsActive = false,
+            DisplayOrder = 5,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        db.SalesDesks.Add(historicalDesk);
+        await db.SaveChangesAsync();
+        var run = await db.ActualRuns.SingleAsync(x => x.Id == 1);
+        run.SalesDesk = historicalDesk;
+        run.SalesDeskNameSnapshot = historicalDesk.Name;
+        await db.SaveChangesAsync();
+
+        var page = await CreateService(db).GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026
+        }, Principal(), CancellationToken.None);
+
+        var detail = Assert.IsType<RunTotalsDetailViewModel>(page.Detail);
+        Assert.Equal(new[] { "Domex", "Honey Bear", "Viva Tierra", "Historical Desk", "Unassigned" }, detail.SalesDeskTotals.Select(x => x.SalesDesk));
+        Assert.Equal(40, detail.SalesDeskTotals.Single(x => x.SalesDesk == "Historical Desk").Bins);
+        Assert.Contains(detail.SalesDeskFilterOptions, x => x.Label == "Historical Desk");
+        Assert.Equal(detail.TotalBins, detail.SalesDeskTotals.Sum(x => x.Bins));
+    }
+
+    [Fact]
+    public async Task WpSalesDeskTotals_HidesUnassignedAtZero_AndEbsNeverShowsWpDeskCards()
+    {
+        using var db = CreateDbContext();
+        await SeedAsync(db);
+        var legacy = await db.BinsRunEntries.SingleAsync(x => x.Id == 2);
+        db.BinsRunEntries.Remove(legacy);
+        var run = await db.ActualRuns.SingleAsync(x => x.Id == 1);
+        run.SalesDeskId = 1;
+        run.SalesDeskNameSnapshot = "Domex";
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var wpPage = await service.GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026
+        }, Principal(), CancellationToken.None);
+        var wp = Assert.IsType<RunTotalsDetailViewModel>(wpPage.Detail);
+        Assert.DoesNotContain(wp.SalesDeskTotals, x => x.IsUnassigned);
+        Assert.Equal(wp.TotalBins, wp.SalesDeskTotals.Sum(x => x.Bins));
+
+        var ebsPage = await service.GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Ebs,
+            ReportCropYear = 2026
+        }, Principal(), CancellationToken.None);
+        var ebs = Assert.IsType<RunTotalsDetailViewModel>(ebsPage.Detail);
+        Assert.Empty(ebs.SalesDeskTotals);
+        Assert.Empty(ebs.SalesDeskFilterOptions);
+    }
+
+    [Fact]
     public async Task WpSalesDeskTotals_FilterAndReconcileIncludingDynamicAndUnassignedDesks()
     {
         using var db = CreateDbContext();
@@ -132,7 +252,19 @@ public sealed class RunReportingTests
         };
         activeRun.SalesDeskId = 1;
         activeRun.SalesDeskNameSnapshot = "Domex";
-        db.AddRange(fourthDesk, fourthRun, fourthRevision);
+        db.Add(fourthDesk);
+        await db.SaveChangesAsync();
+
+        var zeroFourthPage = await CreateService(db).GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026
+        }, Principal(), CancellationToken.None);
+        var zeroFourth = Assert.IsType<RunTotalsDetailViewModel>(zeroFourthPage.Detail);
+        Assert.Equal(0, zeroFourth.SalesDeskTotals.Single(x => x.SalesDesk == "Fourth Desk").Bins);
+
+        db.AddRange(fourthRun, fourthRevision);
         db.BinsRunEntries.Add(Entry(
             30,
             40,
@@ -157,9 +289,11 @@ public sealed class RunReportingTests
         Assert.Equal(100, all.TotalBins);
         Assert.Equal(all.TotalBins, all.SalesDeskTotals.Sum(x => x.Bins));
         Assert.Contains(all.SalesDeskTotals, x => x.SalesDeskId == 1 && x.SalesDesk == "Domex" && x.Bins == 40);
+        Assert.Contains(all.SalesDeskTotals, x => x.SalesDeskId == 2 && x.SalesDesk == "Honey Bear" && x.Bins == 0);
+        Assert.Contains(all.SalesDeskTotals, x => x.SalesDeskId == 3 && x.SalesDesk == "Viva Tierra" && x.Bins == 0);
         Assert.Contains(all.SalesDeskTotals, x => x.SalesDeskId == 4 && x.SalesDesk == "Fourth Desk" && x.Bins == 40);
         Assert.Contains(all.SalesDeskTotals, x => x.IsUnassigned && x.Bins == 20);
-        Assert.Equal(new[] { "Domex", "Fourth Desk", "Unassigned" }, all.SalesDeskTotals.Select(x => x.SalesDesk));
+        Assert.Equal(new[] { "Domex", "Honey Bear", "Viva Tierra", "Fourth Desk", "Unassigned" }, all.SalesDeskTotals.Select(x => x.SalesDesk));
 
         var fourthPage = await CreateService(db).GetAsync(new BinsRunFilterForm
         {
