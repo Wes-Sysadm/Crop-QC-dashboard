@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,9 +15,12 @@ public interface IRoomSealingService
     Task<string?> ChangeStateAsync(RoomSealForm form, bool seal, ClaimsPrincipal principal, CancellationToken cancellationToken);
 }
 
-public sealed class RoomSealingService(CropQcDbContext dbContext) : IRoomSealingService
+public sealed class RoomSealingService(
+    CropQcDbContext dbContext,
+    IBusinessTimeService? businessTime = null) : IRoomSealingService
 {
     private static readonly JsonSerializerOptions AuditJson = new(JsonSerializerDefaults.Web);
+    private IBusinessTimeService BusinessTime { get; } = businessTime ?? new PacificBusinessTimeService(new SystemClock());
 
     public async Task<RoomSealConfirmationViewModel?> GetConfirmationAsync(
         int roomId,
@@ -24,19 +28,38 @@ public sealed class RoomSealingService(CropQcDbContext dbContext) : IRoomSealing
         CancellationToken cancellationToken)
     {
         EnsureManagerOrAdmin(principal);
-        return await dbContext.Rooms.AsNoTracking()
+        var room = await dbContext.Rooms.AsNoTracking()
             .Where(x => x.Id == roomId)
-            .Select(x => new RoomSealConfirmationViewModel
-            {
-                RoomId = x.Id,
-                Warehouse = x.Warehouse.Code,
-                Room = x.CropQcRoomName ?? x.DisplayName ?? x.Code,
-                IsSealed = x.IsSealed,
-                SealedAt = x.SealedAt,
-                SealedBy = x.SealedByUser == null ? null : x.SealedByUser.DisplayName,
-                Form = new RoomSealForm { RoomId = x.Id, ExpectedIsSealed = x.IsSealed }
-            })
+            .Include(x => x.Warehouse)
+            .Include(x => x.SealedByUser)
             .SingleOrDefaultAsync(cancellationToken);
+        if (room is null) return null;
+
+        var now = BusinessTime.UtcNow;
+        var scheduled = RoomSealState.IsScheduled(room, now);
+        var sealedNow = RoomSealState.IsEffectivelySealed(room, now);
+        var formTime = scheduled ? room.SealedAt!.Value : now;
+        var pacific = BusinessTime.ToPacific(formTime);
+        return new RoomSealConfirmationViewModel
+        {
+            RoomId = room.Id,
+            Warehouse = room.Warehouse.Code,
+            Room = room.CropQcRoomName ?? room.DisplayName ?? room.Code,
+            HasActiveSeal = room.IsSealed,
+            IsSealScheduled = scheduled,
+            IsSealed = sealedNow,
+            SealedAt = room.SealedAt,
+            SealRecordedAt = room.SealRecordedAt,
+            SealedBy = room.SealedByUser?.DisplayName,
+            Form = new RoomSealForm
+            {
+                RoomId = room.Id,
+                ExpectedIsSealed = room.IsSealed,
+                ExpectedEffectiveAt = room.SealedAt,
+                EffectiveDate = DateOnly.FromDateTime(pacific.DateTime),
+                EffectiveTime = TimeOnly.FromDateTime(pacific.DateTime)
+            }
+        };
     }
 
     public async Task<string?> ChangeStateAsync(
@@ -49,19 +72,30 @@ public sealed class RoomSealingService(CropQcDbContext dbContext) : IRoomSealing
         if (form.RoomId <= 0) return "Room was not found.";
         if (form.Note?.Trim().Length > 500) return "Note must be 500 characters or fewer.";
 
+        DateTimeOffset? requestedEffectiveAt = null;
+        if (form.EffectiveDate is not null && form.EffectiveTime is not null)
+        {
+            try
+            {
+                requestedEffectiveAt = BusinessTime.PacificLocalToUtc(
+                    form.EffectiveDate.Value.ToDateTime(form.EffectiveTime.Value, DateTimeKind.Unspecified));
+            }
+            catch (ArgumentException exception)
+            {
+                return exception.Message;
+            }
+        }
+
         await using var transaction = dbContext.Database.IsRelational()
             ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
             : null;
         var rooms = await RoomMovementSealGuard.LockRoomsAsync(dbContext, [form.RoomId], cancellationToken);
         var room = rooms.SingleOrDefault();
         if (room is null) return "Room was not found.";
-        if (room.IsSealed != form.ExpectedIsSealed)
+        if (room.IsSealed != form.ExpectedIsSealed
+            || (room.IsSealed && form.ExpectedEffectiveAt != room.SealedAt))
         {
             return "Room sealing state changed while this confirmation was open. Refresh and review the current state.";
-        }
-        if (room.IsSealed == seal)
-        {
-            return null;
         }
 
         var email = principal.FindFirstValue(ClaimTypes.Email)?.Trim().ToLowerInvariant();
@@ -70,16 +104,81 @@ public sealed class RoomSealingService(CropQcDbContext dbContext) : IRoomSealing
             : await dbContext.Users.SingleOrDefaultAsync(x => x.Email == email && x.IsActive, cancellationToken);
         if (actor is null) return "The current active user could not be resolved.";
 
-        var now = DateTimeOffset.UtcNow;
-        var before = new { room.IsSealed, room.SealedAt, room.SealedByUserId };
-        room.IsSealed = seal;
-        room.SealedAt = seal ? now : null;
-        room.SealedByUserId = seal ? actor.Id : null;
+        var now = BusinessTime.UtcNow;
+        var wasScheduled = RoomSealState.IsScheduled(room, now);
+        var wasEffectivelySealed = RoomSealState.IsEffectivelySealed(room, now);
+        var before = new { room.IsSealed, room.SealedAt, room.SealRecordedAt, room.SealedByUserId };
+        string action;
+        string auditAction;
+        DateTimeOffset eventEffectiveAt;
+        DateTimeOffset? previousEffectiveAt = null;
+
+        if (seal)
+        {
+            if (requestedEffectiveAt is null) return "Seal Date and Seal Time are required.";
+            if (!room.IsSealed)
+            {
+                room.IsSealed = true;
+                room.SealedAt = requestedEffectiveAt;
+                room.SealRecordedAt = now;
+                room.SealedByUserId = actor.Id;
+                action = requestedEffectiveAt > now ? RoomSealActions.SealScheduled : RoomSealActions.Seal;
+                auditAction = requestedEffectiveAt > now ? "RoomSealScheduled" : "RoomSealed";
+                eventEffectiveAt = requestedEffectiveAt.Value;
+            }
+            else
+            {
+                if (room.SealedAt == requestedEffectiveAt) return null;
+                if (!wasScheduled)
+                {
+                    return "This Room is already actively sealed. Unseal it before recording a different seal.";
+                }
+                previousEffectiveAt = room.SealedAt;
+                room.SealedAt = requestedEffectiveAt;
+                room.SealRecordedAt = now;
+                room.SealedByUserId = actor.Id;
+                action = RoomSealActions.ScheduleChanged;
+                auditAction = "RoomSealScheduleChanged";
+                eventEffectiveAt = requestedEffectiveAt.Value;
+            }
+        }
+        else if (wasScheduled)
+        {
+            eventEffectiveAt = room.SealedAt!.Value;
+            previousEffectiveAt = room.SealedAt;
+            room.IsSealed = false;
+            room.SealedAt = null;
+            room.SealRecordedAt = null;
+            room.SealedByUserId = null;
+            action = RoomSealActions.ScheduleCanceled;
+            auditAction = "RoomSealScheduleCanceled";
+        }
+        else if (wasEffectivelySealed)
+        {
+            if (requestedEffectiveAt is null) return "Unseal Date and Unseal Time are required.";
+            if (requestedEffectiveAt > now) return "A future Unseal time is not supported. Enter the current or a past Pacific time.";
+            if (room.SealedAt is not null && requestedEffectiveAt < room.SealedAt)
+                return "Unseal time cannot be earlier than the effective seal time.";
+            eventEffectiveAt = requestedEffectiveAt.Value;
+            room.IsSealed = false;
+            room.SealedAt = null;
+            room.SealRecordedAt = null;
+            room.SealedByUserId = null;
+            action = RoomSealActions.Unseal;
+            auditAction = "RoomUnsealed";
+        }
+        else
+        {
+            return null;
+        }
+
         var displayRoom = room.CropQcRoomName ?? room.DisplayName ?? room.Code;
         dbContext.RoomSealEvents.Add(new RoomSealEvent
         {
             RoomId = room.Id,
-            Action = seal ? RoomSealActions.Seal : RoomSealActions.Unseal,
+            Action = action,
+            EffectiveAt = eventEffectiveAt,
+            PreviousEffectiveAt = previousEffectiveAt,
             ChangedAt = now,
             ChangedByUserId = actor.Id,
             WarehouseCodeSnapshot = room.Warehouse.Code,
@@ -89,7 +188,7 @@ public sealed class RoomSealingService(CropQcDbContext dbContext) : IRoomSealing
         dbContext.AuditLogs.Add(new AuditLog
         {
             UserId = actor.Id,
-            Action = seal ? "RoomSealed" : "RoomUnsealed",
+            Action = auditAction,
             EntityName = nameof(Room),
             EntityKey = room.Id.ToString(),
             BeforeValuesJson = JsonSerializer.Serialize(before, AuditJson),
@@ -97,7 +196,11 @@ public sealed class RoomSealingService(CropQcDbContext dbContext) : IRoomSealing
             {
                 room.IsSealed,
                 room.SealedAt,
+                room.SealRecordedAt,
                 room.SealedByUserId,
+                EventAction = action,
+                EffectiveAt = eventEffectiveAt,
+                PreviousEffectiveAt = previousEffectiveAt,
                 Warehouse = room.Warehouse.Code,
                 Room = displayRoom,
                 Note = string.IsNullOrWhiteSpace(form.Note) ? null : form.Note.Trim()
@@ -119,12 +222,34 @@ public sealed class RoomSealingService(CropQcDbContext dbContext) : IRoomSealing
     }
 }
 
+public static class RoomSealState
+{
+    public static bool IsScheduled(Room room, DateTimeOffset utcNow) =>
+        room.IsSealed && room.SealedAt is not null && room.SealedAt > utcNow;
+
+    public static bool IsEffectivelySealed(Room room, DateTimeOffset utcNow) =>
+        room.IsSealed && (room.SealedAt is null || room.SealedAt <= utcNow);
+}
+
 public static class RoomMovementSealGuard
 {
+    public static Task<string?> ValidateAsync(
+        CropQcDbContext dbContext,
+        IReadOnlyCollection<int> sourceRoomIds,
+        IReadOnlyCollection<int> destinationRoomIds,
+        CancellationToken cancellationToken) =>
+        ValidateAsync(
+            dbContext,
+            sourceRoomIds,
+            destinationRoomIds,
+            new PacificBusinessTimeService(new SystemClock()),
+            cancellationToken);
+
     public static async Task<string?> ValidateAsync(
         CropQcDbContext dbContext,
         IReadOnlyCollection<int> sourceRoomIds,
         IReadOnlyCollection<int> destinationRoomIds,
+        IBusinessTimeService businessTime,
         CancellationToken cancellationToken)
     {
         var allIds = sourceRoomIds.Concat(destinationRoomIds).Where(x => x > 0).Distinct().OrderBy(x => x).ToList();
@@ -132,14 +257,15 @@ public static class RoomMovementSealGuard
         var rooms = await LockRoomsAsync(dbContext, allIds, cancellationToken);
         var sourceIds = sourceRoomIds.ToHashSet();
         var destinationIds = destinationRoomIds.ToHashSet();
-        foreach (var room in rooms.Where(x => x.IsSealed).OrderBy(x => x.Id))
+        foreach (var room in rooms.Where(x => RoomSealState.IsEffectivelySealed(x, businessTime.UtcNow)).OrderBy(x => x.Id))
         {
             var label = $"{room.Warehouse.Code} {room.CropQcRoomName ?? room.DisplayName ?? room.Code}";
+            var since = room.SealedAt is null ? "" : $" since {businessTime.FormatPacific(room.SealedAt, "g")}";
             if (sourceIds.Contains(room.Id) && destinationIds.Contains(room.Id))
-                return $"Room {label} is sealed and cannot be used for inventory movement.";
+                return $"Room {label} has been sealed{since} and cannot be used for inventory movement. A Manager must unseal the Room before fruit can be moved.";
             if (sourceIds.Contains(room.Id))
-                return $"Room {label} is sealed. Unseal it before moving inventory out.";
-            return $"Room {label} is sealed. Unseal it before moving inventory in.";
+                return $"Room {label} has been sealed{since}. A Manager must unseal the Room before fruit can be moved out.";
+            return $"Room {label} has been sealed{since}. A Manager must unseal the Room before fruit can be moved in.";
         }
         return null;
     }

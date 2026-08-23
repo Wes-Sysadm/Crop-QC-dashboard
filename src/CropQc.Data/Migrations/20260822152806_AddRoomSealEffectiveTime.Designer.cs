@@ -4,6 +4,7 @@ using CropQc.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CropQc.Data.Migrations
 {
     [DbContext(typeof(CropQcDbContext))]
-    partial class CropQcDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260822152806_AddRoomSealEffectiveTime")]
+    partial class AddRoomSealEffectiveTime
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -80,13 +83,6 @@ namespace CropQc.Data.Migrations
                     b.Property<long?>("RunProjectionId")
                         .HasColumnType("bigint");
 
-                    b.Property<int?>("SalesDeskId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SalesDeskNameSnapshot")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(25)
@@ -113,8 +109,6 @@ namespace CropQc.Data.Migrations
                     b.HasIndex("Status", "RunAt");
 
                     b.HasIndex("RunFacilityWarehouseId", "Status", "RunAt");
-
-                    b.HasIndex("SalesDeskId", "Status", "RunAt");
 
                     b.ToTable("ActualRuns");
                 });
@@ -180,13 +174,6 @@ namespace CropQc.Data.Migrations
                     b.Property<long?>("RunProjectionId")
                         .HasColumnType("bigint");
 
-                    b.Property<int?>("SalesDeskId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SalesDeskNameSnapshot")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(25)
@@ -206,8 +193,6 @@ namespace CropQc.Data.Migrations
                     b.HasIndex("RunFacilityWarehouseId");
 
                     b.HasIndex("RunProjectionId");
-
-                    b.HasIndex("SalesDeskId");
 
                     b.HasIndex("Status", "RequestedAt");
 
@@ -340,67 +325,6 @@ namespace CropQc.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("ActualRunRevisions");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.ActualRunSalesDeskCorrection", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("ActualRunId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("CorrectedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int>("CorrectedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<long>("ExpectedConcurrencyVersion")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("NewSalesDeskId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("NewSalesDeskNameSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("OperationKey")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<int?>("PreviousSalesDeskId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("PreviousSalesDeskNameSnapshot")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CorrectedByUserId");
-
-                    b.HasIndex("NewSalesDeskId");
-
-                    b.HasIndex("OperationKey")
-                        .IsUnique();
-
-                    b.HasIndex("PreviousSalesDeskId");
-
-                    b.HasIndex("ActualRunId", "CorrectedAt");
-
-                    b.ToTable("ActualRunSalesDeskCorrections");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.AuditLog", b =>
@@ -8588,80 +8512,6 @@ namespace CropQc.Data.Migrations
                     b.ToTable("RunProjectionSources");
                 });
 
-            modelBuilder.Entity("CropQc.Data.Entities.SalesDesk", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("CreatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("DisplayOrder")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.HasIndex("UpdatedByUserId");
-
-                    b.HasIndex("IsActive", "DisplayOrder", "Name");
-
-                    b.ToTable("SalesDesks");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            DisplayOrder = 10,
-                            IsActive = true,
-                            Name = "Domex",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
-                        },
-                        new
-                        {
-                            Id = 2,
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            DisplayOrder = 20,
-                            IsActive = true,
-                            Name = "Honey Bear",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
-                        },
-                        new
-                        {
-                            Id = 3,
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            DisplayOrder = 30,
-                            IsActive = true,
-                            Name = "Viva Tierra",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 21, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
-                        });
-                });
-
             modelBuilder.Entity("CropQc.Data.Entities.SampleType", b =>
                 {
                     b.Property<int>("Id")
@@ -9690,11 +9540,6 @@ namespace CropQc.Data.Migrations
                         .HasForeignKey("RunProjectionId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("CropQc.Data.Entities.SalesDesk", "SalesDesk")
-                        .WithMany("ActualRuns")
-                        .HasForeignKey("SalesDeskId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("CropQc.Data.Entities.User", "UpdatedByUser")
                         .WithMany()
                         .HasForeignKey("UpdatedByUserId")
@@ -9709,8 +9554,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("RunFacilityWarehouse");
 
                     b.Navigation("RunProjection");
-
-                    b.Navigation("SalesDesk");
 
                     b.Navigation("UpdatedByUser");
                 });
@@ -9743,11 +9586,6 @@ namespace CropQc.Data.Migrations
                         .HasForeignKey("RunProjectionId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("CropQc.Data.Entities.SalesDesk", "SalesDesk")
-                        .WithMany()
-                        .HasForeignKey("SalesDeskId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("ActualRun");
 
                     b.Navigation("ApprovedByUser");
@@ -9757,8 +9595,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("RunFacilityWarehouse");
 
                     b.Navigation("RunProjection");
-
-                    b.Navigation("SalesDesk");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.ActualRunOverrideRequestLine", b =>
@@ -9804,40 +9640,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("ActualRun");
 
                     b.Navigation("CreatedByUser");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.ActualRunSalesDeskCorrection", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.ActualRun", "ActualRun")
-                        .WithMany("SalesDeskCorrections")
-                        .HasForeignKey("ActualRunId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.User", "CorrectedByUser")
-                        .WithMany()
-                        .HasForeignKey("CorrectedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.SalesDesk", "NewSalesDesk")
-                        .WithMany("NewCorrections")
-                        .HasForeignKey("NewSalesDeskId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CropQc.Data.Entities.SalesDesk", "PreviousSalesDesk")
-                        .WithMany("PreviousCorrections")
-                        .HasForeignKey("PreviousSalesDeskId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("ActualRun");
-
-                    b.Navigation("CorrectedByUser");
-
-                    b.Navigation("NewSalesDesk");
-
-                    b.Navigation("PreviousSalesDesk");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.AuditLog", b =>
@@ -11568,23 +11370,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("Warehouse");
                 });
 
-            modelBuilder.Entity("CropQc.Data.Entities.SalesDesk", b =>
-                {
-                    b.HasOne("CropQc.Data.Entities.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CropQc.Data.Entities.User", "UpdatedByUser")
-                        .WithMany()
-                        .HasForeignKey("UpdatedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("UpdatedByUser");
-                });
-
             modelBuilder.Entity("CropQc.Data.Entities.StarchScale", b =>
                 {
                     b.HasOne("CropQc.Data.Entities.FruitProfile", "FruitProfile")
@@ -11856,8 +11641,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("PackoutRuns");
 
                     b.Navigation("Revisions");
-
-                    b.Navigation("SalesDeskCorrections");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.ActualRunOverrideRequest", b =>
@@ -12071,15 +11854,6 @@ namespace CropQc.Data.Migrations
                     b.Navigation("GradeResults");
 
                     b.Navigation("SizeResults");
-                });
-
-            modelBuilder.Entity("CropQc.Data.Entities.SalesDesk", b =>
-                {
-                    b.Navigation("ActualRuns");
-
-                    b.Navigation("NewCorrections");
-
-                    b.Navigation("PreviousCorrections");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.SampleType", b =>

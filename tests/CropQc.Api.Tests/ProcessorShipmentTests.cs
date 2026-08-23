@@ -19,7 +19,10 @@ public sealed class ProcessorShipmentTests
     public async Task Sealed_source_room_blocks_processor_shipment_with_zero_writes()
     {
         await using var fixture = await Fixture.CreateAsync();
-        (await fixture.Db.Rooms.SingleAsync()).IsSealed = true;
+        var room = await fixture.Db.Rooms.SingleAsync();
+        room.IsSealed = true;
+        room.SealedAt = Now.AddMinutes(-1);
+        room.SealRecordedAt = Now.AddMinutes(-10);
         await fixture.Db.SaveChangesAsync();
         var adjustmentsBefore = await fixture.Db.RoomInventoryAdjustments.CountAsync();
 
@@ -543,7 +546,7 @@ public sealed class ProcessorShipmentTests
         Assert.Contains("ProcessorShipmentLines.PoundsPerBinSnapshot", source);
         Assert.Contains("FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId", source);
         Assert.Contains("TreatmentLineageMovements.ReceiptId", source);
-        Assert.Equal(684, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Equal(687, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     [Fact]

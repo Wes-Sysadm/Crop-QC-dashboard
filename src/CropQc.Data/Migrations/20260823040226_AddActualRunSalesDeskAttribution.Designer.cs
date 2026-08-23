@@ -6875,6 +6875,9 @@ namespace CropQc.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<DateTimeOffset?>("SealRecordedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("SealedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -7281,8 +7284,8 @@ namespace CropQc.Data.Migrations
 
                     b.Property<string>("Action")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<DateTimeOffset>("ChangedAt")
                         .HasColumnType("datetimeoffset");
@@ -7290,9 +7293,15 @@ namespace CropQc.Data.Migrations
                     b.Property<int>("ChangedByUserId")
                         .HasColumnType("int");
 
+                    b.Property<DateTimeOffset>("EffectiveAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<string>("Note")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset?>("PreviousEffectiveAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("RoomCodeSnapshot")
                         .IsRequired()
@@ -7315,7 +7324,7 @@ namespace CropQc.Data.Migrations
 
                     b.ToTable("RoomSealEvents", t =>
                         {
-                            t.HasCheckConstraint("CK_RoomSealEvents_Action", "[Action] IN ('Seal', 'Unseal')");
+                            t.HasCheckConstraint("CK_RoomSealEvents_Action", "[Action] IN ('Seal', 'SealScheduled', 'ScheduleChanged', 'ScheduleCanceled', 'Unseal')");
                         });
                 });
 

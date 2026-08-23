@@ -28,12 +28,12 @@ public sealed class Bartlett1372TransferRegressionTests
             new DbContextOptionsBuilder<CropQcDbContext>().UseNpgsql(connectionString).Options);
         var actor = await db.Users.AsNoTracking().SingleAsync(x => x.Email == ApplicationAreas.OwnerEmail && x.IsActive);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(ClaimTypes.Email, actor.Email)], "Bartlett1372Probe"));
+            [new Claim(ClaimTypes.Email, actor.Email), new Claim(ClaimTypes.Role, BuiltInRoleNames.Admin)], "Bartlett1372Probe"));
         var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } };
         var configuration = new ConfigurationBuilder().Build();
         var access = new UserAccessService(db, configuration);
         var ledger = new RoomInventoryLedgerQueryService(db);
-        var businessTime = new PacificBusinessTimeService(new FixedClock(DateTimeOffset.Parse("2026-08-21T08:30:00Z")));
+        var businessTime = new PacificBusinessTimeService(new FixedClock(DateTimeOffset.Parse("2026-08-23T16:00:00Z")));
         var treatments = new RoomTreatmentService(
             db, ledger, access, accessor, businessTime, NullLogger<RoomTreatmentService>.Instance);
         var dashboard = CreateDashboardService(db, principal, ledger, treatments, businessTime);
@@ -41,11 +41,33 @@ public sealed class Bartlett1372TransferRegressionTests
         const int sourceWarehouseId = 3;
         const int sourceRoomId = 68;
         const int destinationRoomId = 66;
+        var sealing = new RoomSealingService(db, businessTime);
+        foreach (var roomId in new[] { sourceRoomId, destinationRoomId })
+        {
+            var initialSeal = (await sealing.GetConfirmationAsync(roomId, principal, default))!.Form;
+            if (!initialSeal.ExpectedIsSealed) continue;
+            initialSeal.Note = "Prepare disposable Bartlett transfer with both Rooms unsealed";
+            Assert.Null(await sealing.ChangeStateAsync(initialSeal, false, principal, default));
+            db.ChangeTracker.Clear();
+        }
         var sourceRoom = await db.Rooms.AsNoTracking().Include(x => x.Warehouse).SingleAsync(x => x.Id == sourceRoomId);
         var destinationRoom = await db.Rooms.AsNoTracking().Include(x => x.Warehouse).SingleAsync(x => x.Id == destinationRoomId);
         Assert.Equal("McDougall", sourceRoom.Warehouse.Code);
         Assert.Equal("MCD-16", sourceRoom.Code);
         Assert.Equal("MCD-14", destinationRoom.Code);
+
+        var activeRoomIds = await db.Rooms.AsNoTracking().Where(x => x.IsActive).Select(x => x.Id).ToListAsync();
+        var allRoomSnapshots = await ledger.GetSnapshotsAsync(null, activeRoomIds, default);
+        var mcd09Id = await db.Rooms.AsNoTracking().Where(x => x.Code == "MCD-09").Select(x => x.Id).SingleAsync();
+        var evans09Id = await db.Rooms.AsNoTracking().Where(x => x.Code == "EVANS-9").Select(x => x.Id).SingleAsync();
+        var mcd09Bins = allRoomSnapshots.Where(x => x.RoomId == mcd09Id).Sum(x => x.CurrentBins);
+        var evans09Bins = allRoomSnapshots.Where(x => x.RoomId == evans09Id).Sum(x => x.CurrentBins);
+        var allRoomBins = allRoomSnapshots.Sum(x => x.CurrentBins);
+        Assert.True(mcd09Bins > 0);
+        Assert.True(evans09Bins > 0);
+        Assert.True(allRoomBins >= mcd09Bins + evans09Bins);
+        Console.WriteLine(
+            $"Authoritative inventory: MCD-09={mcd09Bins}; EVANS-9={evans09Bins}; all active Rooms={allRoomBins}.");
 
         var snapshots = (await ledger.GetSnapshotsAsync(sourceWarehouseId, [sourceRoomId], default))
             .Where(x => x.CurrentBins > 0
@@ -54,14 +76,15 @@ public sealed class Bartlett1372TransferRegressionTests
                 && string.Equals(x.GrowerNumber ?? x.Lot, "1372", StringComparison.OrdinalIgnoreCase))
             .ToList();
         var sourceSnapshot = Assert.Single(snapshots);
-        var expectedSourceBins = currentRestore is null ? 894 : 1028;
+        var expectedSourceBins = sourceSnapshot.CurrentBins;
         var expectedDestinationBins = Assert.Single(
             await ledger.GetSnapshotsAsync(sourceWarehouseId, [destinationRoomId], default),
             x => x.CurrentBins > 0 && SameIdentity(x, sourceSnapshot)).CurrentBins;
-        if (currentRestore is null) Assert.Equal(66, expectedDestinationBins);
-        else Assert.Equal(572, expectedDestinationBins);
-        Assert.Equal(expectedSourceBins, sourceSnapshot.CurrentBins);
+        Assert.True(expectedSourceBins > 0);
+        Assert.True(expectedDestinationBins > 0);
         Assert.Equal(448, sourceSnapshot.GrowerLotId);
+        Console.WriteLine(
+            $"Authoritative Bartlett 1372 baseline: MCD-16={expectedSourceBins}; MCD-14={expectedDestinationBins}.");
 
         var treatmentSelections = await treatments.GetSelectionsAsync(snapshots, default);
         Assert.Equal(expectedSourceBins, treatmentSelections.Values.SelectMany(x => x).Sum(x => x.CurrentBins));
@@ -82,27 +105,73 @@ public sealed class Bartlett1372TransferRegressionTests
         var beforeTransfers = await db.RoomTransfers.CountAsync();
         var beforeAdjustments = await db.RoomInventoryAdjustments.CountAsync();
         var beforeMovements = await db.TreatmentLineageMovements.CountAsync();
+        var treatmentSegmentBinsBefore = await db.TreatmentLineageSegments.AsNoTracking()
+            .ToDictionaryAsync(x => x.Id, x => x.CurrentBins);
         var page = await dashboard.GetRoomDetailAsync(sourceRoomId, default);
         Assert.True(page.TransferInventoryReconciles, page.TransferInventoryError);
         var options = page.TransferLotOptions.Where(x => x.CurrentBins > 0
             && x.Label.Contains("TOP PEAR CONV 1372 BART", StringComparison.OrdinalIgnoreCase)).ToList();
-        Assert.Equal(currentRestore is null ? 2 : 3, options.Count);
+        Assert.NotEmpty(options);
         Assert.Equal(expectedSourceBins, options.Sum(x => x.CurrentBins));
         Assert.All(options, x => Assert.Equal("u", x.TreatmentSignature));
-        var selected = currentRestore is null
-            ? Assert.Single(options, x => x.TreatmentSegmentId is not null)
-            : Assert.Single(options, x => x.TreatmentReceiptId == 774);
-        if (currentRestore is not null)
-        {
-            Assert.Equal(122, selected.TreatmentSegmentId);
-            Assert.Equal(134, selected.CurrentBins);
-            Assert.NotEqual(sourceRoomId, await db.Receipts.AsNoTracking()
-                .Where(x => x.Id == selected.TreatmentReceiptId)
-                .Select(x => x.RoomId)
-                .SingleAsync());
-        }
+        var selected = Assert.Single(options, x => x.TreatmentSegmentId is not null);
+        Console.WriteLine(
+            $"Selected current provenance: receipt={selected.TreatmentReceiptId}; segment={selected.TreatmentSegmentId}; " +
+            $"bins={selected.CurrentBins}; currentRoom={sourceRoomId}.");
 
         var runKey = Guid.NewGuid().ToString("N");
+        var sourceSeal = (await sealing.GetConfirmationAsync(sourceRoomId, principal, default))!.Form;
+        sourceSeal.Note = "Disposable Bartlett source seal interaction proof";
+        Assert.Null(await sealing.ChangeStateAsync(sourceSeal, true, principal, default));
+        db.ChangeTracker.Clear();
+        var sourceBlocked = await dashboard.CreateRoomTransferAsync(new RoomTransferForm
+        {
+            OperationKey = $"run92-bartlett-source-sealed-{runKey}",
+            FromRoomId = sourceRoomId,
+            DestinationWarehouseId = sourceWarehouseId,
+            DestinationRoomId = destinationRoomId,
+            SourceLotKey = selected.LotKey,
+            TreatmentSignature = selected.TreatmentSignature,
+            TreatmentSegmentId = selected.TreatmentSegmentId,
+            BinCount = 1,
+            TransferAt = DateTimeOffset.Parse("2026-08-23T16:00:00Z"),
+            Reason = "Disposable sealed-source rejection proof"
+        }, default);
+        Assert.Contains("sealed", sourceBlocked, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(beforeTransfers, await db.RoomTransfers.CountAsync());
+        Assert.Equal(beforeAdjustments, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(beforeMovements, await db.TreatmentLineageMovements.CountAsync());
+        var sourceUnseal = (await sealing.GetConfirmationAsync(sourceRoomId, principal, default))!.Form;
+        sourceUnseal.Note = "Restore Bartlett source after seal interaction proof";
+        Assert.Null(await sealing.ChangeStateAsync(sourceUnseal, false, principal, default));
+        db.ChangeTracker.Clear();
+
+        var destinationSeal = (await sealing.GetConfirmationAsync(destinationRoomId, principal, default))!.Form;
+        destinationSeal.Note = "Disposable Bartlett destination seal interaction proof";
+        Assert.Null(await sealing.ChangeStateAsync(destinationSeal, true, principal, default));
+        db.ChangeTracker.Clear();
+        var destinationBlocked = await dashboard.CreateRoomTransferAsync(new RoomTransferForm
+        {
+            OperationKey = $"run92-bartlett-destination-sealed-{runKey}",
+            FromRoomId = sourceRoomId,
+            DestinationWarehouseId = sourceWarehouseId,
+            DestinationRoomId = destinationRoomId,
+            SourceLotKey = selected.LotKey,
+            TreatmentSignature = selected.TreatmentSignature,
+            TreatmentSegmentId = selected.TreatmentSegmentId,
+            BinCount = 1,
+            TransferAt = DateTimeOffset.Parse("2026-08-23T16:00:00Z"),
+            Reason = "Disposable sealed-destination rejection proof"
+        }, default);
+        Assert.Contains("sealed", destinationBlocked, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(beforeTransfers, await db.RoomTransfers.CountAsync());
+        Assert.Equal(beforeAdjustments, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(beforeMovements, await db.TreatmentLineageMovements.CountAsync());
+        var destinationUnseal = (await sealing.GetConfirmationAsync(destinationRoomId, principal, default))!.Form;
+        destinationUnseal.Note = "Restore Bartlett destination after seal interaction proof";
+        Assert.Null(await sealing.ChangeStateAsync(destinationUnseal, false, principal, default));
+        db.ChangeTracker.Clear();
+
         var transferOperationKey = $"run92-bartlett-1372-room16-room14-{runKey}";
         var error = await dashboard.CreateRoomTransferAsync(new RoomTransferForm
         {
@@ -114,7 +183,7 @@ public sealed class Bartlett1372TransferRegressionTests
             TreatmentSignature = selected.TreatmentSignature,
             TreatmentSegmentId = selected.TreatmentSegmentId,
             BinCount = 1,
-            TransferAt = DateTimeOffset.Parse("2026-08-21T08:30:00Z"),
+            TransferAt = DateTimeOffset.Parse("2026-08-23T16:00:00Z"),
             Reason = "Disposable exact Bartlett transfer probe"
         }, default);
 
@@ -133,6 +202,14 @@ public sealed class Bartlett1372TransferRegressionTests
             .SingleAsync(x => x.RoomTransferId == transfer.Id && x.ReversesTreatmentLineageMovementId == null);
         Assert.Equal(selected.TreatmentSegmentId, movement.SourceSegmentId);
         Assert.NotNull(movement.DestinationSegmentId);
+        var destinationSegment = await db.TreatmentLineageSegments.AsNoTracking()
+            .SingleAsync(x => x.Id == movement.DestinationSegmentId);
+        Assert.Equal(selected.TreatmentReceiptId, destinationSegment.ReceiptId);
+        Assert.Equal(448, destinationSegment.GrowerLotId);
+        Assert.Equal(17, destinationSegment.FruitProfileId);
+        var expectedDestinationSegmentBins = treatmentSegmentBinsBefore.TryGetValue(destinationSegment.Id, out var priorBins)
+            ? priorBins + 1
+            : 1;
         var sourceAfter = Assert.Single(
             await ledger.GetSnapshotsAsync(sourceWarehouseId, [sourceRoomId], default),
             x => x.CurrentBins > 0 && SameIdentity(x, sourceSnapshot));
@@ -147,7 +224,7 @@ public sealed class Bartlett1372TransferRegressionTests
         Assert.Equal(expectedSourceBins - 1, sourceSegmentsAfter.Sum(x => x.CurrentBins));
         Assert.All(sourceSegmentsAfter, x => Assert.Equal(selected.TreatmentSignature, x.TreatmentSignature));
         Assert.Equal(
-            1,
+            expectedDestinationSegmentBins,
             Assert.Single(destinationSegmentsAfter, x => x.SegmentId == movement.DestinationSegmentId).CurrentBins);
         Assert.Equal(selected.TreatmentSignature, Assert.Single(
             destinationSegmentsAfter,

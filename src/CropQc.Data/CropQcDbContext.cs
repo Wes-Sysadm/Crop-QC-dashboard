@@ -997,7 +997,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
 
         modelBuilder.Entity<RoomSealEvent>(entity =>
         {
-            entity.Property(x => x.Action).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Action).HasMaxLength(30).IsRequired();
             entity.Property(x => x.WarehouseCodeSnapshot).HasMaxLength(25).IsRequired();
             entity.Property(x => x.RoomCodeSnapshot).HasMaxLength(150).IsRequired();
             entity.Property(x => x.Note).HasMaxLength(500);
@@ -1014,8 +1014,8 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.ToTable(table => table.HasCheckConstraint(
                 "CK_RoomSealEvents_Action",
                 isPostgreSqlProvider
-                    ? "\"Action\" IN ('Seal', 'Unseal')"
-                    : "[Action] IN ('Seal', 'Unseal')"));
+                    ? "\"Action\" IN ('Seal', 'SealScheduled', 'ScheduleChanged', 'ScheduleCanceled', 'Unseal')"
+                    : "[Action] IN ('Seal', 'SealScheduled', 'ScheduleChanged', 'ScheduleCanceled', 'Unseal')"));
         });
 
         modelBuilder.Entity<GrowerLot>(entity =>

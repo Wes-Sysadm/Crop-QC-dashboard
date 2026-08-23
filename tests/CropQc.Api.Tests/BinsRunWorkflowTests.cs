@@ -606,7 +606,10 @@ public sealed class BinsRunWorkflowTests
         var roomTwo = page.AvailableInventory.Single(x => x.RoomId == 1002 && x.Lot == "LOT-120");
         var baselineAdjustments = await db.RoomInventoryAdjustments.CountAsync();
 
-        (await db.Rooms.SingleAsync(x => x.Id == 1002)).IsSealed = true;
+        var scheduledRoomTwo = await db.Rooms.SingleAsync(x => x.Id == 1002);
+        scheduledRoomTwo.IsSealed = true;
+        scheduledRoomTwo.SealedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        scheduledRoomTwo.SealRecordedAt = DateTimeOffset.UtcNow.AddMinutes(-10);
         await db.SaveChangesAsync();
         var actualRunError = await service.CreateActualRunAsync(GroupForm((roomOne, 5), (roomTwo, 5)), user, default);
 
@@ -616,7 +619,10 @@ public sealed class BinsRunWorkflowTests
         Assert.Empty(await db.BinsRunEntries.ToListAsync());
         Assert.Equal(baselineAdjustments, await db.RoomInventoryAdjustments.CountAsync());
 
-        (await db.Rooms.SingleAsync(x => x.Id == 1001)).IsSealed = true;
+        var scheduledRoomOne = await db.Rooms.SingleAsync(x => x.Id == 1001);
+        scheduledRoomOne.IsSealed = true;
+        scheduledRoomOne.SealedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        scheduledRoomOne.SealRecordedAt = DateTimeOffset.UtcNow.AddMinutes(-10);
         await db.SaveChangesAsync();
         var binsRunError = await service.CreateAsync(new BinsRunForm
         {
@@ -1451,6 +1457,50 @@ public sealed class BinsRunWorkflowTests
         Assert.False((await db.RoomTransfers.SingleAsync(x => x.Id == original.Id)).IsReversed);
         Assert.Single(await db.RoomTransfers.ToListAsync());
         Assert.Equal(postTransferAdjustments, await db.RoomInventoryAdjustments.CountAsync());
+    }
+
+    [Fact]
+    public async Task Future_scheduled_seal_allows_transfer_before_effective_time_then_stale_destination_fails_atomically()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateDashboardService(db, Principal("manager@fruitandland.com"));
+        var sourceLot = (await service.GetRoomDetailAsync(1001, default))
+            .TransferLotOptions.Single(x => x.Label.Contains("LOT-120", StringComparison.OrdinalIgnoreCase));
+        RoomTransferForm Form(string key) => new()
+        {
+            OperationKey = key,
+            FromRoomId = 1001,
+            DestinationWarehouseId = 1000,
+            DestinationRoomId = 1002,
+            SourceLotKey = sourceLot.LotKey,
+            TreatmentSignature = sourceLot.TreatmentSignature,
+            BinCount = 5,
+            TransferAt = DateTimeOffset.UtcNow,
+            Reason = "Scheduled seal boundary regression"
+        };
+
+        var source = await db.Rooms.SingleAsync(x => x.Id == 1001);
+        source.IsSealed = true;
+        source.SealedAt = DateTimeOffset.UtcNow.AddMinutes(30);
+        source.SealRecordedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+        Assert.Null(await service.CreateRoomTransferAsync(Form("before-scheduled-seal"), default));
+        Assert.Single(await db.RoomTransfers.ToListAsync());
+
+        var destination = await db.Rooms.SingleAsync(x => x.Id == 1002);
+        destination.IsSealed = true;
+        destination.SealedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        destination.SealRecordedAt = DateTimeOffset.UtcNow.AddMinutes(-10);
+        await db.SaveChangesAsync();
+        var transfers = await db.RoomTransfers.CountAsync();
+        var adjustments = await db.RoomInventoryAdjustments.CountAsync();
+        var treatments = await db.TreatmentLineageMovements.CountAsync();
+
+        Assert.Contains("sealed", await service.CreateRoomTransferAsync(Form("after-destination-seal"), default), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(transfers, await db.RoomTransfers.CountAsync());
+        Assert.Equal(adjustments, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(treatments, await db.TreatmentLineageMovements.CountAsync());
     }
 
     [Fact]

@@ -34,7 +34,7 @@ public sealed class RoomSealingTests
         Assert.NotNull(confirmation);
         Assert.False(confirmation!.IsSealed);
         Assert.Null(await fixture.Service.ChangeStateAsync(
-            new RoomSealForm { RoomId = Fixture.RoomId, ExpectedIsSealed = false, Note = "Closed for controlled atmosphere" },
+            fixture.Form(false, note: "Closed for controlled atmosphere"),
             true,
             principal,
             default));
@@ -50,7 +50,7 @@ public sealed class RoomSealingTests
         Assert.Contains(await fixture.Db.AuditLogs.ToListAsync(), x => x.Action == "RoomSealed" && x.EntityKey == Fixture.RoomId.ToString());
 
         Assert.Null(await fixture.Service.ChangeStateAsync(
-            new RoomSealForm { RoomId = Fixture.RoomId, ExpectedIsSealed = true, Note = "Room released" },
+            fixture.Form(true, room.SealedAt, "Room released"),
             false,
             principal,
             default));
@@ -74,7 +74,7 @@ public sealed class RoomSealingTests
     {
         await using var fixture = await Fixture.CreateAsync();
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => fixture.Service.ChangeStateAsync(
-            new RoomSealForm { RoomId = Fixture.RoomId, ExpectedIsSealed = false },
+            fixture.Form(false),
             true,
             Principal(role),
             default));
@@ -87,14 +87,161 @@ public sealed class RoomSealingTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var principal = Principal(BuiltInRoleNames.Manager);
-        Assert.Null(await fixture.Service.ChangeStateAsync(new() { RoomId = Fixture.RoomId, ExpectedIsSealed = false }, true, principal, default));
+        Assert.Null(await fixture.Service.ChangeStateAsync(fixture.Form(false), true, principal, default));
+        var effectiveAt = (await fixture.Db.Rooms.AsNoTracking().SingleAsync()).SealedAt;
         var events = await fixture.Db.RoomSealEvents.CountAsync();
         var audits = await fixture.Db.AuditLogs.CountAsync();
 
-        Assert.Null(await fixture.Service.ChangeStateAsync(new() { RoomId = Fixture.RoomId, ExpectedIsSealed = true }, true, principal, default));
-        Assert.Contains("changed", await fixture.Service.ChangeStateAsync(new() { RoomId = Fixture.RoomId, ExpectedIsSealed = false }, false, principal, default));
+        Assert.Null(await fixture.Service.ChangeStateAsync(fixture.Form(true, effectiveAt), true, principal, default));
+        Assert.Contains("changed", await fixture.Service.ChangeStateAsync(fixture.Form(false), false, principal, default));
         Assert.Equal(events, await fixture.Db.RoomSealEvents.CountAsync());
         Assert.Equal(audits, await fixture.Db.AuditLogs.CountAsync());
+    }
+
+    [Fact]
+    public async Task Confirmation_defaults_to_current_Pacific_business_date_and_time()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var page = await fixture.Service.GetConfirmationAsync(Fixture.RoomId, Principal(BuiltInRoleNames.Manager), default);
+
+        Assert.NotNull(page);
+        Assert.Equal(new DateOnly(2026, 8, 22), page!.Form.EffectiveDate);
+        Assert.Equal(new TimeOnly(13, 0), page.Form.EffectiveTime);
+        Assert.False(page.HasActiveSeal);
+        Assert.False(page.IsSealScheduled);
+        Assert.False(page.IsSealed);
+    }
+
+    [Fact]
+    public async Task Future_seal_is_scheduled_allows_movement_before_effective_time_and_blocks_at_boundary()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var principal = Principal(BuiltInRoleNames.Manager);
+        var adjustments = await fixture.Db.RoomInventoryAdjustments.CountAsync();
+        var form = fixture.Form(false, date: new DateOnly(2026, 8, 22), time: new TimeOnly(14, 0));
+
+        Assert.Null(await fixture.Service.ChangeStateAsync(form, true, principal, default));
+        fixture.Db.ChangeTracker.Clear();
+        var room = await fixture.Db.Rooms.AsNoTracking().SingleAsync();
+        Assert.True(room.IsSealed);
+        Assert.Equal(DateTimeOffset.Parse("2026-08-22T21:00:00Z"), room.SealedAt);
+        Assert.Equal(Fixture.NowUtc, room.SealRecordedAt);
+        Assert.Equal(RoomSealActions.SealScheduled, (await fixture.Db.RoomSealEvents.SingleAsync()).Action);
+
+        var before = new PacificBusinessTimeService(new FixedClock(DateTimeOffset.Parse("2026-08-22T20:59:59Z")));
+        var boundary = new PacificBusinessTimeService(new FixedClock(DateTimeOffset.Parse("2026-08-22T21:00:00Z")));
+        Assert.Null(await RoomMovementSealGuard.ValidateAsync(fixture.Db, [Fixture.RoomId], [], before, default));
+        Assert.Contains("sealed", await RoomMovementSealGuard.ValidateAsync(fixture.Db, [Fixture.RoomId], [], boundary, default), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("sealed", await RoomMovementSealGuard.ValidateAsync(fixture.Db, [], [Fixture.RoomId], boundary, default), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(adjustments, await fixture.Db.RoomInventoryAdjustments.CountAsync());
+    }
+
+    [Fact]
+    public async Task Scheduled_seal_can_be_edited_and_canceled_with_immutable_effective_time_history()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var principal = Principal(BuiltInRoleNames.Admin);
+        var original = DateTimeOffset.Parse("2026-08-22T22:00:00Z");
+        var revised = DateTimeOffset.Parse("2026-08-22T23:00:00Z");
+        Assert.Null(await fixture.Service.ChangeStateAsync(
+            fixture.Form(false, date: new DateOnly(2026, 8, 22), time: new TimeOnly(15, 0)), true, principal, default));
+        Assert.Null(await fixture.Service.ChangeStateAsync(
+            fixture.Form(true, original, "Schedule moved", new DateOnly(2026, 8, 22), new TimeOnly(16, 0)), true, principal, default));
+        Assert.Null(await fixture.Service.ChangeStateAsync(
+            fixture.Form(true, revised, "Schedule canceled"), false, principal, default));
+
+        fixture.Db.ChangeTracker.Clear();
+        var room = await fixture.Db.Rooms.AsNoTracking().SingleAsync();
+        Assert.False(room.IsSealed);
+        Assert.Null(room.SealedAt);
+        Assert.Null(room.SealRecordedAt);
+        var history = await fixture.Db.RoomSealEvents.AsNoTracking().OrderBy(x => x.Id).ToListAsync();
+        Assert.Equal([RoomSealActions.SealScheduled, RoomSealActions.ScheduleChanged, RoomSealActions.ScheduleCanceled], history.Select(x => x.Action));
+        Assert.Equal(original, history[1].PreviousEffectiveAt);
+        Assert.Equal(revised, history[1].EffectiveAt);
+        Assert.Equal(revised, history[2].PreviousEffectiveAt);
+        Assert.Equal(revised, history[2].EffectiveAt);
+        Assert.All(history, x => Assert.Equal(Fixture.NowUtc, x.ChangedAt));
+        Assert.Contains(await fixture.Db.AuditLogs.ToListAsync(), x => x.Action == "RoomSealScheduleChanged");
+        Assert.Contains(await fixture.Db.AuditLogs.ToListAsync(), x => x.Action == "RoomSealScheduleCanceled");
+    }
+
+    [Fact]
+    public async Task Backdated_seal_is_immediately_active_and_backdated_unseal_is_allowed()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var principal = Principal(BuiltInRoleNames.Manager);
+        Assert.Null(await fixture.Service.ChangeStateAsync(
+            fixture.Form(false, date: new DateOnly(2026, 8, 21), time: new TimeOnly(10, 0)), true, principal, default));
+        var room = await fixture.Db.Rooms.AsNoTracking().SingleAsync();
+        Assert.Equal(DateTimeOffset.Parse("2026-08-21T17:00:00Z"), room.SealedAt);
+        Assert.Contains("sealed", await RoomMovementSealGuard.ValidateAsync(fixture.Db, [Fixture.RoomId], [], fixture.BusinessTime, default), StringComparison.OrdinalIgnoreCase);
+
+        Assert.Null(await fixture.Service.ChangeStateAsync(
+            fixture.Form(true, room.SealedAt, "Backdated release", new DateOnly(2026, 8, 22), new TimeOnly(12, 0)), false, principal, default));
+        var events = await fixture.Db.RoomSealEvents.AsNoTracking().OrderBy(x => x.Id).ToListAsync();
+        Assert.Equal(RoomSealActions.Seal, events[0].Action);
+        Assert.Equal(RoomSealActions.Unseal, events[1].Action);
+        Assert.Equal(DateTimeOffset.Parse("2026-08-22T19:00:00Z"), events[1].EffectiveAt);
+        Assert.Equal(Fixture.NowUtc, events[1].ChangedAt);
+    }
+
+    [Fact]
+    public async Task Active_seal_cannot_be_edited_and_future_unseal_fails_with_zero_writes()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var principal = Principal(BuiltInRoleNames.Manager);
+        Assert.Null(await fixture.Service.ChangeStateAsync(fixture.Form(false), true, principal, default));
+        var room = await fixture.Db.Rooms.AsNoTracking().SingleAsync();
+        var events = await fixture.Db.RoomSealEvents.CountAsync();
+        var audits = await fixture.Db.AuditLogs.CountAsync();
+
+        Assert.Contains("already actively sealed", await fixture.Service.ChangeStateAsync(
+            fixture.Form(true, room.SealedAt, date: new DateOnly(2026, 8, 22), time: new TimeOnly(14, 0)), true, principal, default));
+        Assert.Contains("future Unseal", await fixture.Service.ChangeStateAsync(
+            fixture.Form(true, room.SealedAt, date: new DateOnly(2026, 8, 22), time: new TimeOnly(14, 0)), false, principal, default));
+        Assert.Equal(events, await fixture.Db.RoomSealEvents.CountAsync());
+        Assert.Equal(audits, await fixture.Db.AuditLogs.CountAsync());
+    }
+
+    [Fact]
+    public async Task Seal_and_unseal_require_explicit_date_and_time_and_reject_invalid_DST_time()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var principal = Principal(BuiltInRoleNames.Manager);
+        Assert.Contains("required", await fixture.Service.ChangeStateAsync(new RoomSealForm
+        {
+            RoomId = Fixture.RoomId,
+            ExpectedIsSealed = false
+        }, true, principal, default));
+        Assert.Contains("daylight-saving", await fixture.Service.ChangeStateAsync(fixture.Form(
+            false,
+            date: new DateOnly(2026, 3, 8),
+            time: new TimeOnly(2, 30)), true, principal, default));
+        Assert.Empty(await fixture.Db.RoomSealEvents.ToListAsync());
+    }
+
+    [Fact]
+    public void Room_cards_and_detail_render_all_three_states_and_separate_recorded_metadata()
+    {
+        var rooms = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Rooms.cshtml"));
+        var dashboard = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Index.cshtml"));
+        var detail = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
+        var confirmation = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "RoomSealing", "Confirm.cshtml"));
+        foreach (var source in new[] { rooms, dashboard })
+        {
+            Assert.Contains("UNSEALED", source);
+            Assert.Contains("SCHEDULED TO SEAL", source);
+            Assert.Contains("SEALED", source);
+        }
+        Assert.Contains("Scheduled At", detail);
+        Assert.Contains("Previous Effective", detail);
+        Assert.Contains("Recorded", detail);
+        Assert.Contains("Edit Scheduled Seal", confirmation);
+        Assert.Contains("Cancel Scheduled Seal", confirmation);
+        Assert.Contains("Cancel Scheduled Seal", rooms);
+        Assert.Contains("EffectiveDate", confirmation);
+        Assert.Contains("EffectiveTime", confirmation);
     }
 
     [Fact]
@@ -109,8 +256,8 @@ public sealed class RoomSealingTests
 
         var source = await RoomMovementSealGuard.ValidateAsync(fixture.Db, [Fixture.RoomId], [], default);
         var destination = await RoomMovementSealGuard.ValidateAsync(fixture.Db, [], [Fixture.RoomId], default);
-        Assert.Contains("moving inventory out", source);
-        Assert.Contains("moving inventory in", destination);
+        Assert.Contains("moved out", source);
+        Assert.Contains("moved in", destination);
     }
 
     [Fact]
@@ -151,28 +298,30 @@ public sealed class RoomSealingTests
     [Fact]
     public void Compatibility_package_is_bounded_repeatable_and_never_updates_migration_history()
     {
-        foreach (var file in new[] { "preflight-room-sealing.sql", "apply-room-sealing-schema.sql", "verify-room-sealing.sql" })
+        foreach (var file in new[] { "preflight-room-seal-effective-time.sql", "apply-room-seal-effective-time-schema.sql", "verify-room-seal-effective-time.sql" })
         {
             var sql = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", file));
             Assert.DoesNotContain("__EFMigrationsHistory", sql, StringComparison.OrdinalIgnoreCase);
         }
-        var apply = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "apply-room-sealing-schema.sql"));
-        var preflight = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "preflight-room-sealing.sql"));
+        var apply = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "apply-room-seal-effective-time-schema.sql"));
+        var preflight = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "preflight-room-seal-effective-time.sql"));
         Assert.Contains("pg_advisory_xact_lock", apply);
-        Assert.Contains("cropqc.test_force_room_sealing_failure", apply);
+        Assert.Contains("cropqc.test_force_room_seal_effective_time_failure", apply);
         Assert.Contains("State C", preflight);
         Assert.Contains("state_a_absent", preflight);
         Assert.Contains("state_b_complete_exact", preflight);
     }
 
     [Fact]
-    public void Application_gate_targets_latest_migration_and_684_objects()
+    public void Application_gate_targets_latest_migration_and_687_objects()
     {
         Assert.Equal("20260823040226_AddActualRunSalesDeskAttribution", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
         var source = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DatabaseStartupDiagnostics.cs"));
         Assert.Contains("RoomSealEvents.RoomCodeSnapshot", source);
+        Assert.Contains("RoomSealEvents.EffectiveAt", source);
+        Assert.Contains("Rooms.SealRecordedAt", source);
         Assert.Contains("FK_Rooms_Users_SealedByUserId", source);
-        Assert.Equal(684, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Equal(687, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -225,12 +374,9 @@ public sealed class RoomSealingTests
         var sealAuditsBefore = await db.AuditLogs.CountAsync(x => x.Action == "RoomSealed" || x.Action == "RoomUnsealed");
 
         var service = new RoomSealingService(db);
-        Assert.Null(await service.ChangeStateAsync(new RoomSealForm
-        {
-            RoomId = roomId,
-            ExpectedIsSealed = false,
-            Note = "Disposable run-91 restored-production rehearsal"
-        }, true, principal, default));
+        var sealForm = (await service.GetConfirmationAsync(roomId, principal, default))!.Form;
+        sealForm.Note = "Disposable run-91 restored-production rehearsal";
+        Assert.Null(await service.ChangeStateAsync(sealForm, true, principal, default));
         db.ChangeTracker.Clear();
 
         var sealedRoom = await db.Rooms.AsNoTracking().SingleAsync(x => x.Id == roomId);
@@ -276,12 +422,9 @@ public sealed class RoomSealingTests
             x => x.Treatments.Any(y => y.Id == treatmentResult.ApplicationId));
         Assert.Equal(baseline, await ProtectedStateAsync(db, ledger));
 
-        Assert.Null(await service.ChangeStateAsync(new RoomSealForm
-        {
-            RoomId = roomId,
-            ExpectedIsSealed = true,
-            Note = "Disposable rehearsal complete"
-        }, false, principal, default));
+        var unsealForm = (await service.GetConfirmationAsync(roomId, principal, default))!.Form;
+        unsealForm.Note = "Disposable rehearsal complete";
+        Assert.Null(await service.ChangeStateAsync(unsealForm, false, principal, default));
         db.ChangeTracker.Clear();
 
         Assert.False((await db.Rooms.AsNoTracking().SingleAsync(x => x.Id == roomId)).IsSealed);
@@ -398,10 +541,24 @@ public sealed class RoomSealingTests
         {
             this.connection = connection;
             Db = db;
-            Service = new RoomSealingService(db);
+            BusinessTime = new PacificBusinessTimeService(new FixedClock(NowUtc));
+            Service = new RoomSealingService(db, BusinessTime);
         }
+        public static readonly DateTimeOffset NowUtc = DateTimeOffset.Parse("2026-08-22T20:00:00Z");
         public CropQcDbContext Db { get; }
+        public IBusinessTimeService BusinessTime { get; }
         public RoomSealingService Service { get; }
+
+        public RoomSealForm Form(bool expectedIsSealed, DateTimeOffset? expectedEffectiveAt = null, string? note = null,
+            DateOnly? date = null, TimeOnly? time = null) => new()
+            {
+                RoomId = RoomId,
+                ExpectedIsSealed = expectedIsSealed,
+                ExpectedEffectiveAt = expectedEffectiveAt,
+                EffectiveDate = date ?? new DateOnly(2026, 8, 22),
+                EffectiveTime = time ?? new TimeOnly(13, 0),
+                Note = note
+            };
 
         public static async Task<Fixture> CreateAsync()
         {

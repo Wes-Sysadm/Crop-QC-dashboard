@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -37,7 +38,8 @@ public sealed class BinsRunService(
     IRunExpectationService? runExpectationService = null,
     IConfiguration? configuration = null,
     ICanonicalGrowerService? canonicalGrowerService = null,
-    IRoomTreatmentService? roomTreatmentService = null) : IBinsRunService
+    IRoomTreatmentService? roomTreatmentService = null,
+    IBusinessTimeService? businessTime = null) : IBinsRunService
 {
     public const string AdjustmentType = "BinsRun";
     public const string ReversalAdjustmentType = "BinsRunReversal";
@@ -50,6 +52,7 @@ public sealed class BinsRunService(
     private IRunExpectationService RunExpectations { get; } =
         runExpectationService
         ?? new RunExpectationService(dbContext, NullLogger<RunExpectationService>.Instance);
+    private IBusinessTimeService BusinessTime { get; } = businessTime ?? new PacificBusinessTimeService(new SystemClock());
     private int AuthoritativeStartCropYear { get; } = Math.Clamp(
         configuration?.GetValue(
             "RunReporting:AuthoritativeStartCropYear",
@@ -198,6 +201,10 @@ public sealed class BinsRunService(
             .ThenBy(x => x.SortOrder)
             .ThenBy(x => x.CropQcRoomName ?? x.DisplayName ?? x.Code)
             .ToListAsync(cancellationToken);
+        foreach (var room in rooms)
+        {
+            room.IsSealed = RoomSealState.IsEffectivelySealed(room, BusinessTime.UtcNow);
+        }
         var actualRuns = await GetActualRunHistoryAsync(filter, cancellationToken);
         var editRun = filter.EditActualRunId is long editId
             ? actualRuns.SingleOrDefault(x => x.Id == editId && x.Status == ActualRunStatuses.Active)
@@ -1181,7 +1188,7 @@ public sealed class BinsRunService(
         }
 
         var roomIds = parsed.Select(x => x.RoomId).Distinct().ToList();
-        var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, roomIds, [], cancellationToken);
+        var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, roomIds, [], BusinessTime, cancellationToken);
         if (sealError is not null) return sealError;
         var snapshots = await GetCurrentInventorySnapshotsForRoomsAsync(warehouseIds[0], roomIds, null, cancellationToken);
         var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
@@ -1852,7 +1859,7 @@ public sealed class BinsRunService(
         {
             return "Selected inventory is no longer available in this room.";
         }
-        var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, [snapshot.RoomId], [], cancellationToken);
+        var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, [snapshot.RoomId], [], BusinessTime, cancellationToken);
         if (sealError is not null) return sealError;
 
         if (form.RoomId is not null && snapshot.RoomId != form.RoomId)
@@ -2072,7 +2079,7 @@ public sealed class BinsRunService(
         var options = new List<BinsRunInventoryOptionViewModel>();
         var roomIds = snapshots.Select(x => x.RoomId).Distinct().ToList();
         var sealedRoomIds = await dbContext.Rooms.AsNoTracking()
-            .Where(x => roomIds.Contains(x.Id) && x.IsSealed)
+            .Where(x => roomIds.Contains(x.Id) && x.IsSealed && (x.SealedAt == null || x.SealedAt <= BusinessTime.UtcNow))
             .Select(x => x.Id)
             .ToHashSetAsync(cancellationToken);
         var ledgerSnapshots = snapshots.Select(ToLedgerSnapshot).ToList();

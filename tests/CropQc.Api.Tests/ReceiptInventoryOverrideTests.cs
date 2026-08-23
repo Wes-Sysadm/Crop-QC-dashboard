@@ -48,6 +48,43 @@ public sealed class ReceiptInventoryOverrideTests
         Assert.Equal((40, 40), (source.ChangeAmount, source.NewBinCount));
     }
 
+    [Fact]
+    public async Task Receiving_after_scheduled_seal_becomes_effective_fails_with_zero_writes()
+    {
+        await using var fixture = await OverrideFixture.CreateAsync();
+        var room = await fixture.Db.Rooms.SingleAsync(x => x.Id == OverrideFixture.RoomId);
+        room.IsSealed = true;
+        room.SealedAt = Now.AddMinutes(-1);
+        room.SealRecordedAt = Now.AddMinutes(-10);
+        room.SealedByUserId = OverrideFixture.AdminId;
+        await fixture.Db.SaveChangesAsync();
+        var receipts = await fixture.Db.Receipts.CountAsync();
+        var adjustments = await fixture.Db.RoomInventoryAdjustments.CountAsync();
+        var treatments = await fixture.Db.TreatmentLineageMovements.CountAsync();
+
+        var result = await fixture.Dashboard(fixture.AdminPrincipal).CreateReceiptAsync(new CreateReceiptForm
+        {
+            CropYear = 2026,
+            ConfirmCropYear = true,
+            ReceivedAt = Now,
+            CompuTechReceiptId = "SEALED-RECEIVING-TEST",
+            ReceiptType = "Truck receipt",
+            WarehouseId = OverrideFixture.WarehouseId,
+            RoomId = OverrideFixture.RoomId,
+            FruitProfileId = OverrideFixture.FruitId,
+            GrowerNumber = "G-SEALED",
+            GrowerName = "Sealed Room Grower",
+            LotCode = "G-SEALED",
+            BinCount = 10
+        }, default);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("sealed", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(receipts, await fixture.Db.Receipts.CountAsync());
+        Assert.Equal(adjustments, await fixture.Db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(treatments, await fixture.Db.TreatmentLineageMovements.CountAsync());
+    }
+
     [Theory]
     [InlineData(19)]
     [InlineData(21)]
@@ -1092,7 +1129,8 @@ public sealed class ReceiptInventoryOverrideTests
                 new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } },
                 configuration,
                 NullLogger<DashboardDataService>.Instance,
-                new UserAccessService(Db, configuration));
+                new UserAccessService(Db, configuration),
+                businessTime: new PacificBusinessTimeService(new FixedClock(Now)));
         }
 
         public ReceiptInventoryOverride MalformedOperation(Receipt receipt, User admin, int inventoryDelta, int adjustmentCount) => new()

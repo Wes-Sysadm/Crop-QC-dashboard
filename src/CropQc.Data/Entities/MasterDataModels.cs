@@ -27,6 +27,7 @@ public sealed class Room
     public bool IsActive { get; set; } = true;
     public bool IsSealed { get; set; }
     public DateTimeOffset? SealedAt { get; set; }
+    public DateTimeOffset? SealRecordedAt { get; set; }
     public int? SealedByUserId { get; set; }
     public User? SealedByUser { get; set; }
     public ICollection<RoomSealEvent> SealEvents { get; } = new List<RoomSealEvent>();
@@ -40,6 +41,8 @@ public sealed class RoomSealEvent
     public int RoomId { get; set; }
     public Room Room { get; set; } = null!;
     public required string Action { get; set; }
+    public DateTimeOffset EffectiveAt { get; set; }
+    public DateTimeOffset? PreviousEffectiveAt { get; set; }
     public DateTimeOffset ChangedAt { get; set; }
     public int ChangedByUserId { get; set; }
     public User ChangedByUser { get; set; } = null!;
@@ -51,6 +54,9 @@ public sealed class RoomSealEvent
 public static class RoomSealActions
 {
     public const string Seal = "Seal";
+    public const string SealScheduled = "SealScheduled";
+    public const string ScheduleChanged = "ScheduleChanged";
+    public const string ScheduleCanceled = "ScheduleCanceled";
     public const string Unseal = "Unseal";
 }
 
