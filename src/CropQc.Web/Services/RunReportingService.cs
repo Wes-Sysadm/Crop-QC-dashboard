@@ -172,7 +172,7 @@ public sealed class RunReportingService(
         var priorStart = priorYear is int authoritativePriorYear ? PeriodStart(authoritativePriorYear) : (DateOnly?)null;
         var priorCutoff = priorYear is not null ? EquivalentPriorCutoff(selectedCutoff) : (DateOnly?)null;
 
-        var salesDeskRows = facility == EmploymentFacilities.Wp && selectedCutoff >= selectedStart
+        var attributedSalesDeskRows = facility == EmploymentFacilities.Wp && selectedCutoff >= selectedStart
             ? await ValidLines(cropYear, selectedCutoff)
                 .Where(x => (x.ActualRunId != null ? x.ActualRun!.RunFacilityCodeSnapshot : x.ReportingFacilityCodeSnapshot) == facility)
                 .GroupBy(x => new
@@ -186,6 +186,42 @@ public sealed class RunReportingService(
                 .Select(x => new RunSalesDeskTotalViewModel(x.Key.SalesDeskId, x.Key.SalesDesk ?? "Unassigned", x.Sum(y => y.BinsRun), x.Key.DisplayOrder, x.Key.SalesDeskId == null))
                 .ToListAsync(cancellationToken)
             : [];
+        var salesDeskRows = new List<RunSalesDeskTotalViewModel>();
+        if (facility == EmploymentFacilities.Wp)
+        {
+            var configuredDesks = await dbContext.SalesDesks.AsNoTracking()
+                .OrderBy(x => x.DisplayOrder)
+                .ThenBy(x => x.Name)
+                .ToListAsync(cancellationToken);
+            var attributedByDeskId = attributedSalesDeskRows
+                .Where(x => x.SalesDeskId is not null)
+                .GroupBy(x => x.SalesDeskId!.Value)
+                .ToDictionary(x => x.Key, x => x.Sum(y => y.Bins));
+
+            salesDeskRows.AddRange(configuredDesks
+                .Where(x => x.IsActive)
+                .Select(x => new RunSalesDeskTotalViewModel(
+                    x.Id,
+                    x.Name,
+                    attributedByDeskId.GetValueOrDefault(x.Id),
+                    x.DisplayOrder,
+                    false)));
+
+            salesDeskRows.AddRange(configuredDesks
+                .Where(x => !x.IsActive && attributedByDeskId.GetValueOrDefault(x.Id) > 0)
+                .Select(x => new RunSalesDeskTotalViewModel(
+                    x.Id,
+                    x.Name,
+                    attributedByDeskId[x.Id],
+                    x.DisplayOrder,
+                    false)));
+
+            var unassignedBins = attributedSalesDeskRows.Where(x => x.IsUnassigned).Sum(x => x.Bins);
+            if (unassignedBins > 0)
+            {
+                salesDeskRows.Add(new RunSalesDeskTotalViewModel(null, "Unassigned", unassignedBins, int.MaxValue, true));
+            }
+        }
         var selectedSalesDesk = NormalizeSalesDeskFilter(filter.ReportSalesDesk, salesDeskRows);
 
         var selectedGroups = selectedCutoff < selectedStart
@@ -290,10 +326,10 @@ public sealed class RunReportingService(
             CropYear = cropYear,
             TotalBins = varieties.Sum(x => x.Bins),
             TotalReceivedBins = varieties.Sum(x => x.ReceivedBins),
-            SalesDeskTotals = salesDeskRows.OrderBy(x => x.DisplayOrder).ThenBy(x => x.SalesDesk).ToList(),
+            SalesDeskTotals = salesDeskRows,
             SelectedSalesDesk = selectedSalesDesk,
             SalesDeskFilterOptions = facility == EmploymentFacilities.Wp
-                ? [new("All", "All Sales Desks"), .. salesDeskRows.Where(x => !x.IsUnassigned).OrderBy(x => x.DisplayOrder).ThenBy(x => x.SalesDesk).Select(x => new RunSalesDeskFilterOptionViewModel(x.SalesDeskId!.Value.ToString(), x.SalesDesk)), .. (salesDeskRows.Any(x => x.IsUnassigned) ? new[] { new RunSalesDeskFilterOptionViewModel("Unassigned", "Unassigned") } : [])]
+                ? [new("All", "All Sales Desks"), .. salesDeskRows.Where(x => !x.IsUnassigned).Select(x => new RunSalesDeskFilterOptionViewModel(x.SalesDeskId!.Value.ToString(), x.SalesDesk)), .. (salesDeskRows.Any(x => x.IsUnassigned) ? new[] { new RunSalesDeskFilterOptionViewModel("Unassigned", "Unassigned") } : [])]
                 : [],
             PriorCropYear = priorYear,
             PriorBins = priorYear is null ? 0 : priorGroups.Sum(x => x.Bins),

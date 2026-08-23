@@ -26,6 +26,56 @@ namespace CropQc.Api.Tests;
 public sealed class ProductionRestoreMemoryBenchmarkTests
 {
     [Fact]
+    public async Task ProductionRestore_WpRunTotalsRenderConfiguredZeroSalesDesksReadOnly_WhenConfigured()
+    {
+        var databaseUrl = Environment.GetEnvironmentVariable("CROPQC_SALES_DESK_RESTORE_POSTGRES");
+        if (string.IsNullOrWhiteSpace(databaseUrl))
+        {
+            return;
+        }
+
+        ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(databaseUrl);
+        await using var factory = new ProductionRestoreWebApplicationFactory(databaseUrl);
+        long actualRunCount;
+        long correctionCount;
+        long binsRunEntryCount;
+        long auditLogCount;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            actualRunCount = await db.ActualRuns.AsNoTracking().LongCountAsync();
+            correctionCount = await db.ActualRunSalesDeskCorrections.AsNoTracking().LongCountAsync();
+            binsRunEntryCount = await db.BinsRunEntries.AsNoTracking().LongCountAsync();
+            auditLogCount = await db.AuditLogs.AsNoTracking().LongCountAsync();
+        }
+
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(BenchmarkAuthenticationHandler.SchemeName);
+        using var response = await client.GetAsync("/BinsRun?Section=RunTotals&ReportFacility=WP&ReportCropYear=2026");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("<strong>WP Total</strong><span>4,247 bins</span>", html, StringComparison.Ordinal);
+        Assert.Contains("<strong>Domex</strong><span>184 bins</span>", html, StringComparison.Ordinal);
+        Assert.Contains("<strong>Honey Bear</strong><span>0 bins</span>", html, StringComparison.Ordinal);
+        Assert.Contains("<strong>Viva Tierra</strong><span>0 bins</span>", html, StringComparison.Ordinal);
+        Assert.Contains("<strong>Unassigned</strong><span>4,063 bins</span>", html, StringComparison.Ordinal);
+        Assert.Contains("WP Total reconciles exactly", html, StringComparison.Ordinal);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            Assert.Equal(actualRunCount, await db.ActualRuns.AsNoTracking().LongCountAsync());
+            Assert.Equal(correctionCount, await db.ActualRunSalesDeskCorrections.AsNoTracking().LongCountAsync());
+            Assert.Equal(binsRunEntryCount, await db.BinsRunEntries.AsNoTracking().LongCountAsync());
+            Assert.Equal(auditLogCount, await db.AuditLogs.AsNoTracking().LongCountAsync());
+            var assignedRun = await db.ActualRuns.AsNoTracking().SingleAsync(x => x.SalesDeskId != null);
+            Assert.Equal(20, assignedRun.Id);
+            Assert.Equal(1, assignedRun.SalesDeskId);
+            Assert.Equal("Domex", assignedRun.SalesDeskNameSnapshot);
+        }
+    }
+
+    [Fact]
     public async Task ProductionRestore_IncidentBdb7aeaf_RoomInventoryRoutesRemainReadOnlyAndRenderWithoutWarnings_WhenConfigured()
     {
         var databaseUrl = Environment.GetEnvironmentVariable("CROPQC_PERF_DATABASE_URL");
