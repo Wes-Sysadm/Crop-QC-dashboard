@@ -736,6 +736,148 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task ActualRun_ImplicitUntreatedAndPersistedUntreated_DoesNotThrow()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var treatments = new RecordingTreatmentSelectionService(
+        [
+            new("u", TreatmentLineageStates.Untreated, 40, "Receipt-specific untreated", 7901, 123),
+            new("u", TreatmentLineageStates.Untreated, 80, "Implicit untreated remainder", null, null)
+        ]);
+        var service = CreateService(db, roomTreatmentService: treatments);
+        var user = Principal("manager@fruitandland.com");
+        var option = Assert.Single((await service.GetPageAsync(
+                new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] }, user, default))
+            .AvailableInventory, x => x.Lot == "LOT-120" && x.TreatmentSegmentId is null);
+
+        var error = await service.CreateActualRunAsync(GroupForm((option, 5)), user, default);
+
+        Assert.Null(error);
+        var move = Assert.Single(treatments.Moves);
+        Assert.Equal(("u", (long?)null, (long?)null, 5), move);
+        Assert.Equal(115, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Single(await db.ActualRuns.ToListAsync());
+        Assert.Single(await db.ActualRunRevisions.ToListAsync());
+        Assert.Single(await db.BinsRunEntries.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ActualRun_PersistedTreatmentSegment_UsesExactSegmentIdAndReceipt()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var treatments = new RecordingTreatmentSelectionService(
+        [
+            new("u", TreatmentLineageStates.Untreated, 40, "Receipt A untreated", 7901, 123),
+            new("u", TreatmentLineageStates.Untreated, 80, "Receipt B untreated", 7902, 456)
+        ]);
+        var service = CreateService(db, roomTreatmentService: treatments);
+        var user = Principal("manager@fruitandland.com");
+        var option = Assert.Single((await service.GetPageAsync(
+                new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] }, user, default))
+            .AvailableInventory, x => x.Lot == "LOT-120" && x.TreatmentSegmentId == 123);
+        var form = GroupForm((option, 5));
+        form.Lines[0].TreatmentSegmentId = option.TreatmentSegmentId;
+
+        var error = await service.CreateActualRunAsync(form, user, default);
+
+        Assert.Null(error);
+        Assert.Equal(("u", (long?)123, (long?)7901, 5), Assert.Single(treatments.Moves));
+    }
+
+    [Fact]
+    public async Task ActualRun_AmbiguousNullSegment_ReturnsValidationAndWritesNothing()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var treatments = new RecordingTreatmentSelectionService(
+        [
+            new("u", TreatmentLineageStates.Untreated, 40, "Implicit untreated A", null, null),
+            new("u", TreatmentLineageStates.Untreated, 80, "Implicit untreated B", null, null)
+        ]);
+        var service = CreateService(db, roomTreatmentService: treatments);
+        var user = Principal("manager@fruitandland.com");
+        var option = (await service.GetPageAsync(
+                new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] }, user, default))
+            .AvailableInventory.First(x => x.Lot == "LOT-120");
+        var adjustmentCount = await db.RoomInventoryAdjustments.CountAsync();
+        var auditCount = await db.AuditLogs.CountAsync();
+
+        var error = await service.CreateActualRunAsync(GroupForm((option, 5)), user, default);
+
+        Assert.Contains("multiple treatment histories", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await db.ActualRuns.ToListAsync());
+        Assert.Empty(await db.ActualRunRevisions.ToListAsync());
+        Assert.Empty(await db.BinsRunEntries.ToListAsync());
+        Assert.Empty(await db.TreatmentLineageMovements.ToListAsync());
+        Assert.Equal(adjustmentCount, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(auditCount, await db.AuditLogs.CountAsync());
+        Assert.Empty(treatments.Moves);
+    }
+
+    [Fact]
+    public async Task ActualRun_StaleTreatmentSelection_ReturnsValidationAndWritesNothing()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var treatments = new RecordingTreatmentSelectionService(
+        [
+            new("u", TreatmentLineageStates.Untreated, 40, "Receipt-specific untreated", 7901, 123),
+            new("u", TreatmentLineageStates.Untreated, 80, "Implicit untreated remainder", null, null)
+        ]);
+        var service = CreateService(db, roomTreatmentService: treatments);
+        var user = Principal("manager@fruitandland.com");
+        var option = Assert.Single((await service.GetPageAsync(
+                new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] }, user, default))
+            .AvailableInventory, x => x.Lot == "LOT-120" && x.TreatmentSegmentId is null);
+        var form = GroupForm((option, 5));
+        form.Lines[0].TreatmentSegmentId = 999;
+        var adjustmentCount = await db.RoomInventoryAdjustments.CountAsync();
+
+        var error = await service.CreateActualRunAsync(form, user, default);
+
+        Assert.Contains("multiple treatment histories", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await db.ActualRuns.ToListAsync());
+        Assert.Empty(await db.ActualRunRevisions.ToListAsync());
+        Assert.Empty(await db.BinsRunEntries.ToListAsync());
+        Assert.Equal(adjustmentCount, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Empty(treatments.Moves);
+    }
+
+    [Fact]
+    public async Task ActualRun_EditPage_DuplicateSignatureSelections_DoesNotThrow()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var treatments = new RecordingTreatmentSelectionService(
+        [
+            new("u", TreatmentLineageStates.Untreated, 40, "Receipt-specific untreated", 7901, 123),
+            new("u", TreatmentLineageStates.Untreated, 80, "Implicit untreated remainder", null, null)
+        ]);
+        var service = CreateService(db, roomTreatmentService: treatments);
+        var user = Principal("manager@fruitandland.com");
+        var option = Assert.Single((await service.GetPageAsync(
+                new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] }, user, default))
+            .AvailableInventory, x => x.Lot == "LOT-120" && x.TreatmentSegmentId is null);
+        Assert.Null(await service.CreateActualRunAsync(GroupForm((option, 5)), user, default));
+        var runId = await db.ActualRuns.Select(x => x.Id).SingleAsync();
+
+        var editPage = await service.GetPageAsync(new BinsRunFilterForm
+        {
+            Section = "Actual",
+            WarehouseId = 1000,
+            RoomIds = [1001],
+            EditActualRunId = runId
+        }, user, default);
+
+        var editLine = Assert.Single(editPage.ActualRunForm.Lines);
+        Assert.Equal("u", editLine.TreatmentSignature);
+        Assert.Null(editLine.TreatmentSegmentId);
+        Assert.Equal(85, editLine.ExpectedAvailableBins);
+    }
+
+    [Fact]
     public async Task ActualRun_SharedUserSelectsReportingFacilityWithoutRestrictingSourceInventory()
     {
         using var db = CreateDbContext();
@@ -3148,6 +3290,67 @@ public sealed class BinsRunWorkflowTests
         public Task<(string? Error, long? ApplicationId)> ApplyAsync(RoomTreatmentApplyForm form, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<string?> ReverseAsync(ReverseRoomTreatmentApplicationForm form, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<TreatmentLineageWriteResult> ReverseMovementsAsync(string operationKeyPrefix, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<TreatmentLineageWriteResult> AddUnknownAsync(RoomInventoryLedgerSnapshot snapshot, int bins, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed record TreatmentSelectionTemplate(
+        string Signature,
+        string State,
+        int Bins,
+        string Label,
+        long? ReceiptId,
+        long? SegmentId);
+
+    private sealed class RecordingTreatmentSelectionService(
+        IReadOnlyList<TreatmentSelectionTemplate> templates) : IRoomTreatmentService
+    {
+        public List<(string Signature, long? SegmentId, long? ReceiptId, int Bins)> Moves { get; } = [];
+
+        public Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetSelectionsAsync(
+            IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots,
+            CancellationToken cancellationToken)
+        {
+            var result = snapshots.ToDictionary(
+                RoomTreatmentService.SelectionLookupKey,
+                snapshot => (IReadOnlyList<TreatmentSegmentSelection>)templates.Select(x => new TreatmentSegmentSelection(
+                    RoomTreatmentService.IdentityKey(snapshot), x.Signature, x.State, x.Bins, x.Label, x.ReceiptId, x.SegmentId)).ToList(),
+                StringComparer.OrdinalIgnoreCase);
+            return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>>(result);
+        }
+
+        public Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(
+            RoomInventoryLedgerSnapshot snapshot,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TreatmentSegmentSelection>>(templates.Select(x => new TreatmentSegmentSelection(
+                RoomTreatmentService.IdentityKey(snapshot), x.Signature, x.State, x.Bins, x.Label, x.ReceiptId, x.SegmentId)).ToList());
+
+        public Task<TreatmentLineageWriteResult> MoveSelectedAsync(
+            RoomInventoryLedgerSnapshot snapshot,
+            string? treatmentSignature,
+            long? treatmentSegmentId,
+            long? treatmentReceiptId,
+            int bins,
+            int? destinationWarehouseId,
+            int? destinationRoomId,
+            string operationKey,
+            string movementType,
+            long? roomTransferId,
+            long? roomInventoryLossId,
+            long? binsRunEntryId,
+            DateTimeOffset occurredAt,
+            int? actorUserId,
+            CancellationToken cancellationToken)
+        {
+            Moves.Add((treatmentSignature ?? "", treatmentSegmentId, treatmentReceiptId, bins));
+            return Task.FromResult(new TreatmentLineageWriteResult(true, null));
+        }
+
+        public Task<RoomTreatmentData> GetRoomDataAsync(int roomId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<RoomTreatmentApplyPageViewModel> GetApplyPageAsync(RoomTreatmentApplyForm form, bool review, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<(string? Error, long? ApplicationId)> ApplyAsync(RoomTreatmentApplyForm form, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<string?> ReverseAsync(ReverseRoomTreatmentApplicationForm form, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<TreatmentLineageWriteResult> MoveAsync(RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, int bins, int? destinationWarehouseId, int? destinationRoomId, string operationKey, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new InvalidOperationException("The exact selected treatment segment must be used.");
         public Task<TreatmentLineageWriteResult> ReverseMovementsAsync(string operationKeyPrefix, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<TreatmentLineageWriteResult> AddUnknownAsync(RoomInventoryLedgerSnapshot snapshot, int bins, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }

@@ -974,6 +974,8 @@ public sealed class ActualRunHistoryLineViewModel
     public string TreatmentState { get; set; } = TreatmentLineageStates.Untreated;
     public string TreatmentSignature { get; set; } = "u";
     public string TreatmentSummary { get; set; } = "Untreated";
+    public long? TreatmentSegmentId { get; set; }
+    public long? TreatmentReceiptId { get; set; }
 }
 
 public sealed class ActualRunOverrideRequestViewModel

@@ -222,19 +222,26 @@ public sealed class BinsRunService(
                 .Where(x => x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed)
                 .Select(x =>
                 {
-                    var currentOption = options.SingleOrDefault(y =>
+                    var matchingOptions = options.Where(y =>
                         y.RoomId == x.RoomId
                         && y.CropYear == x.CropYear
                         && string.Equals(y.Lot, x.Lot, StringComparison.OrdinalIgnoreCase)
                         && string.Equals(y.Variety, x.Variety, StringComparison.OrdinalIgnoreCase)
                         && (x.FruitProfileId is null || y.FruitProfileId == x.FruitProfileId)
                         && (x.GrowerLotId is null || y.GrowerLotId == x.GrowerLotId)
-                        && string.Equals(y.TreatmentSignature, x.TreatmentSignature, StringComparison.Ordinal));
+                        && string.Equals(y.TreatmentSignature, x.TreatmentSignature, StringComparison.Ordinal))
+                        .ToList();
+                    var currentOption = ResolveTreatmentSelection(
+                        matchingOptions,
+                        x.TreatmentSegmentId,
+                        x.TreatmentSignature,
+                        y => y.TreatmentSegmentId,
+                        y => y.TreatmentSignature);
                     return new ActualRunLineForm
                     {
                         InventoryKey = currentOption?.InventoryKey ?? x.InventoryKey,
                         TreatmentSignature = currentOption?.TreatmentSignature ?? x.TreatmentSignature,
-                        TreatmentSegmentId = currentOption?.TreatmentSegmentId,
+                        TreatmentSegmentId = currentOption?.TreatmentSegmentId ?? x.TreatmentSegmentId,
                         BinsRun = x.BinsRun,
                         ExpectedAvailableBins = (currentOption?.CurrentBins ?? 0) + x.BinsRun
                     };
@@ -1216,12 +1223,12 @@ public sealed class BinsRunService(
             var selections = roomTreatmentService is null
                 ? [new TreatmentSegmentSelection(RoomTreatmentService.IdentityKey(ledgerSnapshot), "", TreatmentLineageStates.Untreated, snapshot.CurrentBins, "Untreated")]
                 : treatmentSelections![RoomTreatmentService.SelectionLookupKey(ledgerSnapshot)];
-            var selectedTreatment = line.Form.TreatmentSegmentId is not null
-                ? selections.SingleOrDefault(x => x.SegmentId == line.Form.TreatmentSegmentId
-                    && string.Equals(x.TreatmentSignature, line.Form.TreatmentSignature, StringComparison.Ordinal))
-                : string.IsNullOrWhiteSpace(line.Form.TreatmentSignature)
-                    ? selections.Count == 1 ? selections[0] : null
-                    : selections.SingleOrDefault(x => string.Equals(x.TreatmentSignature, line.Form.TreatmentSignature, StringComparison.Ordinal));
+            var selectedTreatment = ResolveTreatmentSelection(
+                selections,
+                line.Form.TreatmentSegmentId,
+                line.Form.TreatmentSignature,
+                x => x.SegmentId,
+                x => x.TreatmentSignature);
             if (selectedTreatment is null)
             {
                 return $"{ActualRunLineLabel(snapshot)} has multiple treatment histories. Select the exact treatment segment being packed.";
@@ -2009,12 +2016,12 @@ public sealed class BinsRunService(
         if (roomTreatmentService is not null)
         {
             var selections = await roomTreatmentService.GetSelectionsAsync(ToLedgerSnapshot(snapshot), cancellationToken);
-            var selectedTreatment = form.TreatmentSegmentId is not null
-                ? selections.SingleOrDefault(x => x.SegmentId == form.TreatmentSegmentId
-                    && x.TreatmentSignature == form.TreatmentSignature)
-                : string.IsNullOrWhiteSpace(form.TreatmentSignature)
-                    ? selections.Count == 1 ? selections[0] : null
-                    : selections.SingleOrDefault(x => x.TreatmentSignature == form.TreatmentSignature);
+            var selectedTreatment = ResolveTreatmentSelection(
+                selections,
+                form.TreatmentSegmentId,
+                form.TreatmentSignature,
+                x => x.SegmentId,
+                x => x.TreatmentSignature);
             if (selectedTreatment is null) return "This room-lot has multiple treatment histories. Select the exact segment being packed.";
             entry.TreatmentStateSnapshot = selectedTreatment.TreatmentState;
             entry.TreatmentSignatureSnapshot = selectedTreatment.TreatmentSignature;
@@ -2461,6 +2468,17 @@ public sealed class BinsRunService(
                 x.TreatmentSummarySnapshot
             })
             .ToListAsync(cancellationToken);
+        var lineIds = lineRows.Select(x => x.Id).ToList();
+        var treatmentSources = await dbContext.TreatmentLineageMovements.AsNoTracking()
+            .Where(x => x.BinsRunEntryId != null
+                && lineIds.Contains(x.BinsRunEntryId.Value)
+                && x.MovementType == TreatmentLineageMovementTypes.BinsRun)
+            .Select(x => new { BinsRunEntryId = x.BinsRunEntryId!.Value, x.SourceSegmentId, x.ReceiptId })
+            .ToListAsync(cancellationToken);
+        var treatmentSourceByLine = treatmentSources
+            .GroupBy(x => x.BinsRunEntryId)
+            .Where(x => x.Count() == 1)
+            .ToDictionary(x => x.Key, x => (x.Single().SourceSegmentId, x.Single().ReceiptId));
         var lines = lineRows.Select(x => new
         {
             x.RunId,
@@ -2486,7 +2504,9 @@ public sealed class BinsRunService(
                 OverrideReason = x.OverrideReason,
                 TreatmentState = x.TreatmentStateSnapshot ?? TreatmentLineageStates.Untreated,
                 TreatmentSignature = x.TreatmentSignatureSnapshot ?? "",
-                TreatmentSummary = x.TreatmentSummarySnapshot ?? "No recorded treatment history"
+                TreatmentSummary = x.TreatmentSummarySnapshot ?? "No recorded treatment history",
+                TreatmentSegmentId = treatmentSourceByLine.GetValueOrDefault(x.Id).SourceSegmentId,
+                TreatmentReceiptId = treatmentSourceByLine.GetValueOrDefault(x.Id).ReceiptId
             }
         }).ToList();
         var byRun = lines.GroupBy(x => x.RunId).ToDictionary(x => x.Key, x => (IReadOnlyList<ActualRunHistoryLineViewModel>)x.Select(y => y.Line).ToList());
@@ -2549,6 +2569,44 @@ public sealed class BinsRunService(
             CreatedAt = DateTimeOffset.UtcNow
         });
         return Task.CompletedTask;
+    }
+
+    private static T? ResolveTreatmentSelection<T>(
+        IReadOnlyList<T> selections,
+        long? treatmentSegmentId,
+        string? treatmentSignature,
+        Func<T, long?> segmentId,
+        Func<T, string?> signature)
+        where T : class
+    {
+        if (treatmentSegmentId is not null)
+        {
+            var exact = selections.Where(x => segmentId(x) == treatmentSegmentId
+                && string.Equals(signature(x), treatmentSignature, StringComparison.Ordinal)).ToList();
+            return exact.Count == 1 ? exact[0] : null;
+        }
+
+        if (string.IsNullOrWhiteSpace(treatmentSignature))
+        {
+            return selections.Count == 1 ? selections[0] : null;
+        }
+
+        var signatureMatches = selections
+            .Where(x => string.Equals(signature(x), treatmentSignature, StringComparison.Ordinal))
+            .ToList();
+        var implicitMatches = signatureMatches.Where(x => segmentId(x) is null).ToList();
+        if (implicitMatches.Count == 1)
+        {
+            return implicitMatches[0];
+        }
+        if (implicitMatches.Count > 1)
+        {
+            return null;
+        }
+
+        // Legacy forms did not post a segment id. Accept them only when the
+        // signature still identifies one and only one current provenance row.
+        return signatureMatches.Count == 1 ? signatureMatches[0] : null;
     }
 
     private static bool SameInventory(BinsRunEntry entry, InventorySnapshot snapshot) =>

@@ -789,10 +789,27 @@ public sealed class RoomTreatmentService(
         TreatmentLineageSegment? source;
         if (exactSelection)
         {
-            var candidates = available.Where(x =>
-                (treatmentSegmentId is null || x.Id == treatmentSegmentId)
-                && (string.IsNullOrWhiteSpace(treatmentSignature) || x.TreatmentSignature == treatmentSignature)).ToList();
-            source = candidates.SingleOrDefault();
+            var signatureCandidates = available.Where(x =>
+                string.IsNullOrWhiteSpace(treatmentSignature) || x.TreatmentSignature == treatmentSignature).ToList();
+            List<TreatmentLineageSegment> candidates;
+            if (treatmentSegmentId is not null)
+            {
+                candidates = signatureCandidates.Where(x => x.Id == treatmentSegmentId).ToList();
+            }
+            else
+            {
+                var receiptCandidates = signatureCandidates.Where(x => x.ReceiptId == receiptId).ToList();
+                candidates = receiptCandidates.Count > 0
+                    ? receiptCandidates
+                    : signatureCandidates.Count == 1
+                        ? signatureCandidates
+                        : [];
+            }
+            if (candidates.Count > 1)
+            {
+                return new(false, "This room-lot has multiple treatment histories. Select the exact treatment segment being packed.");
+            }
+            source = candidates.Count == 1 ? candidates[0] : null;
         }
         else if (string.IsNullOrWhiteSpace(treatmentSignature))
         {
