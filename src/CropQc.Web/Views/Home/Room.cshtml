@@ -28,7 +28,7 @@
 @if (Model.Summary is not null)
 {
     var dominant = Model.Summary.VarietyColorSegments.FirstOrDefault();
-    <section class="panel room-detail-hero @(Model.Summary.IsMajorityOrganic ? "majority-organic" : "")" style="--room-variety-bg: @(dominant?.HexColor ?? "#607D8B")">
+    <section class="panel room-detail-hero @(Model.Summary.IsMajorityOrganic ? "majority-organic" : "")" style="--room-variety-bg: @(dominant?.HexColor ?? VarietyColorService.NeutralFallbackColor)">
         <div class="room-detail-hero-content">
         <div class="room-card-header">
             <div>
@@ -80,7 +80,7 @@
         <div class="variety-legend room-detail-varieties">
             @foreach (var segment in Model.Summary.VarietyColorSegments)
             {
-                <span><i style="background: @segment.HexColor"></i>@segment.VarietyName · @IdentityLabel(segment.ProductionType, segment.OrganicLabel) — @FormatBins(segment.CurrentBins) bins (@segment.Percent.ToString("0.#")%)</span>
+                <span class="@(segment.IsOrganic == true ? "organic" : "")" style="--variety-color: @segment.HexColor"><i></i>@segment.VarietyName · @IdentityLabel(segment.ProductionType, segment.OrganicLabel) — @FormatBins(segment.CurrentBins) bins (@segment.Percent.ToString("0.#")%)</span>
             }
         </div>
         @if (Model.Summary.IsMajorityOrganic) { <p><strong>Majority organic</strong></p> }
@@ -300,7 +300,7 @@
                 <div class="variety-legend">
                 @foreach (var variety in grower.Varieties)
                 {
-                    <span><i style="background: @variety.HexColor"></i>@variety.DisplayName · @variety.OrganicLabel — @FormatBins(variety.BinCount) bins</span>
+                    <span class="@(variety.IsOrganic == true ? "organic" : "")" style="--variety-color: @variety.HexColor"><i></i>@variety.DisplayName · @variety.OrganicLabel — @FormatBins(variety.BinCount) bins</span>
                 }
                 </div>
                 <div class="responsive-card-grid room-grower-lots">

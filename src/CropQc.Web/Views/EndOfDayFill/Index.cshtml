@@ -114,7 +114,7 @@
                     <p class="room-fill-total"><strong>@room.CurrentBins.ToString("N0") / @room.CapacityBins.ToString("N0") bins — @(room.PercentFull is decimal detailRoomPercent ? $"{detailRoomPercent:N1}%" : "Unavailable") full</strong></p>
                     @foreach (var variety in room.Varieties)
                     {
-                        <section class="end-of-day-fill-variety @(variety.IsOrganic ? "organic-stripe" : "")" style="border-left-color:@variety.HexColor">
+                        <section class="end-of-day-fill-variety @(variety.IsOrganic ? "organic-stripe" : "")" style="--variety-color: @variety.HexColor">
                             <h3>@variety.DisplayIdentity</h3>
                             <p><strong>@variety.Bins.ToString("N0") bins</strong></p>
                             <ul>

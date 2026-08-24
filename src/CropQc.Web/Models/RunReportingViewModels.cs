@@ -60,7 +60,7 @@ public sealed record RunVarietyTotalViewModel(
     int ReceivedBins,
     int Bins,
     int PriorBins,
-    string ColorHex = "#2F80ED",
+    string ColorHex = "#607D8B",
     string TextColorHex = "#FFFFFF",
     bool IsColorConfigured = false)
 {
@@ -174,7 +174,7 @@ public sealed class GrowerVarietyProgressViewModel
     public int BinsRun { get; set; }
     public int ReceivedLotCount { get; set; }
     public decimal? RunPercent => BinsReceived > 0 ? BinsRun * 100m / BinsReceived : null;
-    public string ColorHex { get; set; } = "#2F80ED";
+    public string ColorHex { get; set; } = "#607D8B";
     public string TextColorHex { get; set; } = "#FFFFFF";
     public bool IsColorConfigured { get; set; }
     public bool IsExpanded { get; set; }

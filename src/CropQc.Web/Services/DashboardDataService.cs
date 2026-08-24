@@ -4029,26 +4029,8 @@ public sealed class DashboardDataService(
             return new Dictionary<string, VarietyColorResolved>(StringComparer.OrdinalIgnoreCase);
         }
 
-        var configured = await dbContext.VarietyColorConfigurations.AsNoTracking()
-            .Where(x => keys.Contains(x.VarietyKey))
-            .Select(x => new { x.VarietyKey, x.VarietyName, x.HexColor })
-            .ToListAsync(cancellationToken);
-        var configuredByKey = configured.ToDictionary(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase);
-        return keys.ToDictionary(
-            key => key,
-            key =>
-            {
-                configuredByKey.TryGetValue(key, out var color);
-                var name = color?.VarietyName
-                    ?? lots.FirstOrDefault(x => string.Equals(x.VarietyKey, key, StringComparison.OrdinalIgnoreCase))?.VarietyName
-                    ?? key;
-                return new VarietyColorResolved(
-                    key,
-                    name,
-                    color?.HexColor ?? VarietyColorService.FallbackColor(key),
-                    color is not null);
-            },
-            StringComparer.OrdinalIgnoreCase);
+        var resolver = varietyColorService ?? new VarietyColorService(dbContext);
+        return await resolver.GetResolvedColorsReadOnlyAsync(keys, cancellationToken);
     }
 
     private async Task<IReadOnlyList<SampleListItemViewModel>> BuildTodayDashboardSamplesAsync(
