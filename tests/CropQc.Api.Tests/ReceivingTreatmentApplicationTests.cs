@@ -247,6 +247,95 @@ public sealed class ReceivingTreatmentApplicationTests
     }
 
     [Fact]
+    public async Task Implicit_untreated_selection_moves_exact_unassigned_remainder_when_receipt_segment_shares_signature()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var snapshot = fixture.Snapshot(100);
+        var warehouse = await fixture.Db.Warehouses.SingleAsync(x => x.Id == Fixture.WarehouseId);
+        var destination = new Room
+        {
+            Id = 90007,
+            WarehouseId = warehouse.Id,
+            Warehouse = warehouse,
+            Code = "EVANS-8",
+            Name = "EVANS-8"
+        };
+        fixture.Db.Rooms.Add(destination);
+        fixture.Db.TreatmentLineageSegments.Add(new TreatmentLineageSegment
+        {
+            Id = 90100,
+            ReceiptId = Fixture.ReceiptAId,
+            WarehouseId = Fixture.WarehouseId,
+            RoomId = Fixture.RoomId,
+            CropYear = 2026,
+            FruitProfileId = Fixture.FruitProfileId,
+            IdentityKey = RoomTreatmentService.IdentityKey(snapshot),
+            GrowerNumberSnapshot = "9350",
+            GrowerNameSnapshot = "ROLOFF FARM-NAGLE CONV",
+            LotNumberSnapshot = "9350",
+            VarietyCodeSnapshot = "GALA",
+            ProductionTypeSnapshot = "Conventional",
+            IsOrganicSnapshot = false,
+            InventoryStatusSnapshot = "Conventional",
+            TreatmentState = TreatmentLineageStates.Untreated,
+            TreatmentSignature = "u",
+            CurrentBins = 40,
+            CreatedAt = Now,
+            UpdatedAt = Now
+        });
+        fixture.Db.RoomTransfers.Add(new RoomTransfer
+        {
+            Id = 90101,
+            OperationKey = "implicit-untreated-parent",
+            SourceWarehouseId = Fixture.WarehouseId,
+            SourceRoomId = Fixture.RoomId,
+            DestinationWarehouseId = Fixture.WarehouseId,
+            DestinationRoomId = destination.Id,
+            CropYear = 2026,
+            FruitProfileId = Fixture.FruitProfileId,
+            GrowerName = "ROLOFF FARM-NAGLE CONV",
+            LotNumber = "9350",
+            VarietyCode = "GALA",
+            BinCount = 20,
+            Reason = "Implicit untreated regression",
+            TransferredAt = Now,
+            CreatedByUserId = Fixture.UserId,
+            CreatedAt = Now
+        });
+        await fixture.Db.SaveChangesAsync();
+        var projected = await fixture.Service.GetSelectionsAsync(snapshot, default);
+        Assert.Contains(projected, x => x.SegmentId == 90100 && x.ReceiptId == Fixture.ReceiptAId && x.TreatmentSignature == "u");
+        var implicitSelection = Assert.Single(projected, x => x.SegmentId is null && x.TreatmentSignature == "u");
+        Assert.Equal(60, implicitSelection.CurrentBins);
+
+        var moved = await fixture.Service.MoveSelectedAsync(
+            snapshot,
+            implicitSelection.TreatmentSignature,
+            implicitSelection.SegmentId,
+            implicitSelection.ReceiptId,
+            20,
+            Fixture.WarehouseId,
+            destination.Id,
+            "implicit-untreated-move",
+            TreatmentLineageMovementTypes.Transfer,
+            90101,
+            null,
+            null,
+            Now,
+            Fixture.UserId,
+            default);
+
+        Assert.True(moved.Success, moved.Error);
+        var movement = await fixture.Db.TreatmentLineageMovements.SingleAsync(x => x.Id == moved.MovementId);
+        Assert.Null(movement.ReceiptId);
+        Assert.NotEqual(90100L, movement.SourceSegmentId);
+        Assert.Equal(20, movement.BinCount);
+        var sourceSegments = await fixture.Service.GetSelectionsAsync(snapshot with { CurrentBins = 80 }, default);
+        Assert.Equal(40, sourceSegments.Single(x => x.ReceiptId == Fixture.ReceiptAId).CurrentBins);
+        Assert.Equal(40, sourceSegments.Single(x => x.ReceiptId is null).CurrentBins);
+    }
+
+    [Fact]
     public async Task Receiving_application_fails_closed_when_same_identity_has_ambiguous_unassigned_history()
     {
         await using var fixture = await Fixture.CreateAsync();
