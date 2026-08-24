@@ -20,7 +20,8 @@ public sealed class RunReportingService(
     IBusinessTimeService businessTime,
     IUserAccessService userAccessService,
     IConfiguration configuration,
-    IVarietyColorService? varietyColorService = null) : IRunReportingService
+    IVarietyColorService? varietyColorService = null,
+    IRunSheetReconciliationService? runSheetReconciliationService = null) : IRunReportingService
 {
     public const int DefaultAuthoritativeStartCropYear = 2026;
     public const int MaximumWeeklySourceRows = 5000;
@@ -344,6 +345,13 @@ public sealed class RunReportingService(
             SelectedGrowerNumber = filter.ReportGrowerNumber,
             SupportingPage = Math.Max(1, filter.ReportPage)
         };
+        if (runSheetReconciliationService is not null)
+        {
+            detail.SheetReconciliation = await runSheetReconciliationService.GetAsync(
+                facility,
+                cropYear,
+                cancellationToken);
+        }
         if (!string.IsNullOrWhiteSpace(detail.SelectedVarietyKey)
             && filter.ReportWeekStart is DateOnly weekStart
             && !string.IsNullOrWhiteSpace(filter.ReportGrowerNumber))

@@ -1099,6 +1099,103 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
             </div>
             <p><a href="/RunReporting/Growers?CropYear=@detail.CropYear&amp;Facility=@detail.Facility">Open Grower &amp; Lot Progress with these filters</a></p>
         </section>
+        @if (detail.SheetReconciliation is { } reconciliation)
+        {
+            <section class="panel" aria-labelledby="run-sheet-reconciliation-heading">
+                <div class="room-card-header">
+                    <div>
+                        <h2 id="run-sheet-reconciliation-heading">Packout Master Verification</h2>
+                        <p class="muted">Read-only comparison with the independent 2026 @detail.Facility packout master. Crop QC never changes the Google Sheet.</p>
+                    </div>
+                    @if (reconciliation.LastSuccessfulRefreshAt is DateTimeOffset refreshedAt)
+                    {
+                        <p class="muted">Last successful refresh: @BusinessTime.FormatPacific(refreshedAt)</p>
+                    }
+                </div>
+                @if (reconciliation.Availability == RunSheetReconciliationStates.Loading)
+                {
+                    <p class="notice">Run verification is loading and has not completed its first Google Sheet refresh.</p>
+                }
+                else if (reconciliation.Availability == RunSheetReconciliationStates.Unavailable)
+                {
+                    <p class="notice warning"><strong>Run verification temporarily unavailable.</strong> @reconciliation.DiagnosticMessage</p>
+                }
+                else if (reconciliation.Availability == RunSheetReconciliationStates.Stale)
+                {
+                    <p class="notice warning"><strong>Run verification temporarily unavailable — stale Google Sheet snapshot.</strong> @reconciliation.DiagnosticMessage No Match, Pending, or Attention Needed results are shown until a current refresh succeeds.</p>
+                }
+                else
+                {
+                    @if (reconciliation.AttentionNeededCount > 0)
+                    {
+                        <p class="notice warning"><strong>ATTENTION NEEDED — @reconciliation.AttentionNeededCount run@(reconciliation.AttentionNeededCount == 1 ? "" : "s").</strong> Correct Crop QC or the independent packout master, then allow the next refresh to verify the result.</p>
+                    }
+                    <div class="summary-grid">
+                        <article><span>Attention Needed</span><strong>@reconciliation.AttentionNeededCount</strong></article>
+                        <article><span>Pending Sheet Verification</span><strong>@reconciliation.PendingCount</strong></article>
+                        <article><span>Verified / Matched</span><strong>@reconciliation.MatchedCount</strong></article>
+                    </div>
+                    @foreach (var item in reconciliation.Items)
+                    {
+                        var isAttention = item.State == RunSheetReconciliationStates.Attention;
+                        var stateLabel = item.State switch
+                        {
+                            RunSheetReconciliationStates.Match => "MATCH",
+                            RunSheetReconciliationStates.Pending => "PENDING SHEET VERIFICATION",
+                            _ => "ATTENTION NEEDED"
+                        };
+                        <details class="subpanel" open="@isAttention">
+                            <summary><strong>@stateLabel</strong> · @item.Facility · @(item.SheetDate?.ToString("M/d/yyyy") ?? item.CropQcDate?.ToString("M/d/yyyy") ?? "Unknown date") · @item.SheetVariety</summary>
+                            @if (item.Reasons.Count > 0)
+                            {
+                                <ul>
+                                    @foreach (var reason in item.Reasons)
+                                    {
+                                        <li><strong>@reason</strong></li>
+                                    }
+                                </ul>
+                            }
+                            <div class="table-wrap">
+                                <table>
+                                    <thead><tr><th>Value</th><th>Google Sheet</th><th>Crop QC</th></tr></thead>
+                                    <tbody>
+                                        <tr><th>Date</th><td>@(item.SheetDate?.ToString("M/d/yyyy") ?? "—")</td><td>@(item.CropQcDate?.ToString("M/d/yyyy") ?? "—")</td></tr>
+                                        <tr><th>Variety</th><td>@item.SheetVariety</td><td>@item.CropQcVariety</td></tr>
+                                        <tr><th>Production type</th><td>@item.SheetProductionType</td><td>@item.CropQcProductionType</td></tr>
+                                        @if (item.Facility == CropQc.Data.Entities.EmploymentFacilities.Wp)
+                                        {
+                                            <tr><th>Sales Desk</th><td>@item.SheetSalesDesk</td><td>@item.CropQcSalesDesk</td></tr>
+                                        }
+                                        <tr><th>Total bins</th><td>@(item.SheetBins?.ToString("N0") ?? "—")</td><td>@(item.CropQcBins?.ToString("N0") ?? "—")</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <h3>Grower allocation</h3>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead><tr><th>Grower #</th><th>Google Sheet</th><th>Crop QC</th></tr></thead>
+                                    <tbody>
+                                    @foreach (var grower in item.Growers)
+                                    {
+                                        <tr><td>@grower.GrowerNumber</td><td>@grower.SheetBins.ToString("N0")</td><td>@grower.CropQcBins.ToString("N0")</td></tr>
+                                    }
+                                    </tbody>
+                                </table>
+                            </div>
+                            @if (item.ActualRunIds.Count > 0)
+                            {
+                                <p><strong>Crop QC Actual Runs:</strong>
+                                    @foreach (var actualRunId in item.ActualRunIds)
+                                    {
+                                        <a href="/BinsRun/ActualRuns/@actualRunId">#@actualRunId</a>
+                                    }
+                                </p>
+                            }
+                        </details>
+                    }
+                }
+            </section>
+        }
         <section class="panel">
             <h2>@(string.IsNullOrWhiteSpace(detail.SelectedVarietyKey) ? "Select a variety for weekly detail" : "Weekly and Grower Drilldown")</h2>
             @if (detail.Varieties.SingleOrDefault(x => x.VarietyKey == detail.SelectedVarietyKey) is { } selectedVariety)

@@ -45,6 +45,7 @@ public sealed class RunTotalsDetailViewModel
     public string? SelectedGrowerNumber { get; set; }
     public int SupportingPage { get; set; } = 1;
     public bool HasMoreSupportingRecords { get; set; }
+    public RunSheetReconciliationViewModel? SheetReconciliation { get; set; }
 }
 
 public sealed record RunSalesDeskTotalViewModel(int? SalesDeskId, string SalesDesk, int Bins, int DisplayOrder, bool IsUnassigned = false);
