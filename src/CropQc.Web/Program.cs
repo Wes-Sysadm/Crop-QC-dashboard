@@ -280,6 +280,7 @@ builder.Services.AddScoped<IInventoryDiagnosticAcknowledgmentService, InventoryD
 builder.Services.AddScoped<IReceiptInventoryOverrideService, ReceiptInventoryOverrideService>();
 builder.Services.AddScoped<IBinsRunService, BinsRunService>();
 builder.Services.AddScoped<IRunReportingService, RunReportingService>();
+builder.Services.AddScoped<IRunSheetReconciliationService, RunSheetReconciliationService>();
 builder.Services.AddScoped<IGrowerLotProgressService, GrowerLotProgressService>();
 builder.Services.AddScoped<IRunExpectationService, RunExpectationService>();
 builder.Services.AddSingleton<IPackoutSourceAllocationService, PackoutSourceAllocationService>();
@@ -316,9 +317,13 @@ builder.Services.AddScoped<IBackupNotificationService, BackupNotificationService
 builder.Services.AddScoped<IReceiptPurgeService, ReceiptPurgeService>();
 builder.Services.AddScoped<IJuly27ActualRunNormalizationService, July27ActualRunNormalizationService>();
 builder.Services.AddScoped<IJuly28ActualRunExpectationBackfillService, July28ActualRunExpectationBackfillService>();
+builder.Services.AddSingleton(CreateRunSheetReconciliationOptions(builder.Configuration));
+builder.Services.AddSingleton<IRunSheetSnapshotStore, RunSheetSnapshotStore>();
+builder.Services.AddSingleton<IRunSheetReader, GoogleRunSheetReader>();
 builder.Services.AddHostedService<EbsDailyBinsEmailHostedService>();
 builder.Services.AddHostedService<BackupNotificationHostedService>();
 builder.Services.AddHostedService<RuntimeMemoryTelemetryHostedService>();
+builder.Services.AddHostedService<RunSheetRefreshHostedService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
 builder.Services.AddSingleton(CreateGoogleDriveStorageOptions(builder.Configuration));
 builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorageService(
@@ -856,6 +861,18 @@ static GoogleDriveStorageOptions CreateGoogleDriveStorageOptions(IConfiguration 
         ApplicationName = configuration["GoogleDrive:ApplicationName"] ?? "Crop QC Dashboard",
         BaseFolderName = configuration["GoogleDrive:BaseFolderName"] ?? "Photos"
     };
+
+static RunSheetReconciliationOptions CreateRunSheetReconciliationOptions(IConfiguration configuration)
+{
+    var options = new RunSheetReconciliationOptions();
+    configuration.GetSection("RunReconciliation").Bind(options);
+    options.SalesDeskMappings = new Dictionary<string, string>(
+        options.SalesDeskMappings
+            .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Value))
+            .Select(x => new KeyValuePair<string, string>(x.Key.Trim().ToUpperInvariant(), x.Value.Trim())),
+        StringComparer.OrdinalIgnoreCase);
+    return options;
+}
 
 static GmailOptions CreateGmailOptions(IConfiguration configuration) =>
     new()
