@@ -41,6 +41,20 @@ public sealed class RunSheetReconciliationService(
             };
         }
 
+        if (state.IsStale)
+        {
+            return new RunSheetReconciliationViewModel
+            {
+                Availability = RunSheetReconciliationStates.Stale,
+                DiagnosticMessage = state.FailureMessage
+                    is null
+                        ? "The last successful Google Sheet snapshot is stale. Current verification is temporarily unavailable."
+                        : $"The last successful Google Sheet snapshot is stale. {state.FailureMessage}",
+                LastSuccessfulRefreshAt = state.LastSuccessfulRefreshAt,
+                LastAttemptAt = state.LastAttemptAt
+            };
+        }
+
         var cropRuns = await LoadCropRunsAsync(facility, cancellationToken);
         var sheetRuns = state.Snapshot.Runs
             .Where(x => x.Facility == facility && x.Date.Year == options.CropYear)
@@ -54,10 +68,7 @@ public sealed class RunSheetReconciliationService(
 
         return new RunSheetReconciliationViewModel
         {
-            Availability = state.IsStale ? RunSheetReconciliationStates.Stale : RunSheetReconciliationStates.Available,
-            DiagnosticMessage = state.IsStale
-                ? state.FailureMessage ?? "The last successful Google Sheet snapshot is stale."
-                : null,
+            Availability = RunSheetReconciliationStates.Available,
             LastSuccessfulRefreshAt = state.LastSuccessfulRefreshAt,
             LastAttemptAt = state.LastAttemptAt,
             AttentionNeededCount = items.Count(x => x.State == RunSheetReconciliationStates.Attention),
@@ -128,7 +139,9 @@ public static class RunSheetCropRunBuilder
             })
             .ToList();
 
-        var homogeneous = atomicRuns.Where(x => x.Varieties.Count == 1 && x.ProductionTypes.Count == 1)
+        var homogeneous = atomicRuns.Where(x => x.Varieties.Count == 1
+                && x.ProductionTypes.Count == 1
+                && !IsUnassignedWpRun(x))
             .GroupBy(x => new
             {
                 x.Facility,
@@ -152,13 +165,19 @@ public static class RunSheetCropRunBuilder
             .ToList();
 
         return homogeneous
-            .Concat(atomicRuns.Where(x => x.Varieties.Count != 1 || x.ProductionTypes.Count != 1))
+            .Concat(atomicRuns.Where(x => x.Varieties.Count != 1
+                || x.ProductionTypes.Count != 1
+                || IsUnassignedWpRun(x)))
             .OrderBy(x => x.Date)
             .ThenBy(x => string.Join('/', x.Varieties), StringComparer.OrdinalIgnoreCase)
             .ThenBy(x => x.SalesDesk, StringComparer.OrdinalIgnoreCase)
             .ThenBy(x => x.ActualRunIds.First())
             .ToList();
     }
+
+    private static bool IsUnassignedWpRun(CropPhysicalRun run) =>
+        run.Facility == EmploymentFacilities.Wp
+        && string.Equals(run.SalesDesk, "Unassigned", StringComparison.OrdinalIgnoreCase);
 }
 
 public static class RunSheetMatcher
@@ -273,7 +292,17 @@ public static class RunSheetMatcher
         var exactDate = dayDifference == 0;
         var exactTotal = sheet.TotalBins == crop.TotalBins;
         var exactGrowers = DictionaryEqual(sheet.GrowerBins, crop.GrowerBins);
-        var growerOverlap = sheet.GrowerBins.Keys.Intersect(crop.GrowerBins.Keys, StringComparer.OrdinalIgnoreCase).Any();
+        var sharedGrowers = sheet.GrowerBins.Keys
+            .Intersect(crop.GrowerBins.Keys, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var sameGrowerSet = sheet.GrowerBins.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase)
+            .SetEquals(crop.GrowerBins.Keys);
+        var sharedBins = sharedGrowers.Sum(grower => Math.Min(
+            sheet.GrowerBins.GetValueOrDefault(grower),
+            crop.GrowerBins.GetValueOrDefault(grower)));
+        var materialGrowerOverlap = sharedGrowers.Count > 0
+            && (sharedGrowers.Count * 2 >= Math.Max(sheet.GrowerBins.Count, crop.GrowerBins.Count)
+                || sharedBins * 2 >= Math.Min(sheet.TotalBins, crop.TotalBins));
         var exactVariety = crop.Varieties.Count == 1
             && string.Equals(sheet.Variety, crop.Varieties[0], StringComparison.OrdinalIgnoreCase);
         var exactProduction = crop.ProductionTypes.Count == 1
@@ -282,8 +311,8 @@ public static class RunSheetMatcher
             || (sheet.UnknownSalesDeskCode is null
                 && string.Equals(sheet.SalesDesk, crop.SalesDesk, StringComparison.OrdinalIgnoreCase));
         var strongIdentity = exactGrowers
-            || (exactDate && exactVariety && exactProduction)
-            || (exactDate && exactTotal && growerOverlap);
+            || sameGrowerSet
+            || (exactTotal && materialGrowerOverlap);
         if (!strongIdentity)
         {
             return -1;
@@ -291,7 +320,7 @@ public static class RunSheetMatcher
 
         return (exactDate ? 35 : 10)
             + (exactTotal ? 25 : 0)
-            + (exactGrowers ? 45 : growerOverlap ? 10 : 0)
+            + (exactGrowers ? 45 : sameGrowerSet ? 30 : materialGrowerOverlap ? 15 : 0)
             + (exactVariety ? 20 : 0)
             + (exactProduction ? 15 : 0)
             + (exactSalesDesk ? 10 : 0);

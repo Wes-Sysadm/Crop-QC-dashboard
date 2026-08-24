@@ -15,9 +15,9 @@ WP `DAILY CHERRY/APRICOT` is deliberately excluded.
 
 The background refresher reads each configured worksheet in one bounded request using the Google Sheets `spreadsheets.readonly` scope. It reuses the established Google service-account credential-loading configuration but does not use or change the Google Drive photo-storage client.
 
-Successful reads are parsed and normalized into an in-memory snapshot. Run Totals pages compare that snapshot with a set-based query over current, active, non-reversed Actual Run revision lines using `AuthoritativeRunReportingQuery`. Page rendering never waits on a Google API request. No reconciliation table, migration, audit record, or other database write is used.
+Successful reads are parsed and normalized into an in-memory snapshot. Run Totals pages compare a current snapshot with a set-based query over current, active, non-reversed Actual Run revision lines using `AuthoritativeRunReportingQuery`. Page rendering never waits on a Google API request. No reconciliation table, migration, audit record, or other database write is used.
 
-The default refresh interval is 15 minutes. Before the first successful refresh, the site reports verification as loading or unavailable. If a later refresh fails, the last successful snapshot is explicitly marked stale; a failed Google request never fabricates Missing from Sheet alerts.
+The default refresh interval is 15 minutes. Before the first successful refresh, the site reports verification as loading or unavailable. If a later refresh fails, or the last successful snapshot exceeds the stale-age threshold, verification is explicitly marked stale and all Match, Pending, Missing, and mismatch results are suppressed until a current refresh succeeds. A stale Sheet snapshot is never compared with current Crop QC data, so a Google failure cannot fabricate actionable alerts.
 
 ## Parsing and grouping
 
@@ -33,11 +33,11 @@ Production categories normalize to Organic when the selected Apple/Pear category
 
 Unknown or blank WP Sales codes are surfaced as configuration discrepancies.
 
-Sheet physical runs group by facility, Pacific business date, variety, production type, and—at WP—Sales Desk, with totals and exact Grower # allocations. Crop QC first preserves each Actual Run as an atomic record so mixed varieties or production types remain visible, then combines only homogeneous Actual Runs sharing those same physical-run dimensions.
+Sheet physical runs group by facility, Pacific business date, variety, production type, and—at WP—Sales Desk, with totals and exact Grower # allocations. Crop QC first preserves each Actual Run as an atomic record so mixed varieties or production types remain visible, then combines only homogeneous Actual Runs sharing those same physical-run dimensions. Unassigned WP Actual Runs remain atomic because separate runs may belong to different Sheet Sales Desks; assigned WP runs and homogeneous EBS split runs may still combine.
 
 ## Matching and attention states
 
-Matching is deterministic and one-to-one. Exact matches are paired first. An otherwise exact allocation within one calendar day is a `Probable Match — Date Mismatch` attention item. Remaining strong candidates may report multiple simultaneous differences in bins, Grower # allocation, variety, production type, or WP Sales Desk. A paired candidate cannot also become a second missing-run alert.
+Matching is deterministic and one-to-one. Exact matches are paired first. An otherwise exact allocation within one calendar day is a `Probable Match — Date Mismatch` attention item. Remaining candidates require exact Grower # allocation, the same Grower # set, or an exact total with material Grower # overlap; date, variety, and production type alone never establish run identity. Strong candidates may report multiple simultaneous differences in bins, Grower # allocation, variety, production type, or WP Sales Desk. A paired candidate cannot also become a second missing-run alert.
 
 Crop QC runs without a sheet counterpart remain Pending Sheet Verification for the configured 24-hour grace period, based on the authoritative run timestamp and Pacific business date. After that window they become Missing from Sheet. Sheet-only runs are Missing from Crop QC immediately. Alerts have no dismiss or ignore action; they resolve only after a source is corrected and a subsequent refresh agrees.
 

@@ -1120,12 +1120,12 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
                 {
                     <p class="notice warning"><strong>Run verification temporarily unavailable.</strong> @reconciliation.DiagnosticMessage</p>
                 }
+                else if (reconciliation.Availability == RunSheetReconciliationStates.Stale)
+                {
+                    <p class="notice warning"><strong>Run verification temporarily unavailable — stale Google Sheet snapshot.</strong> @reconciliation.DiagnosticMessage No Match, Pending, or Attention Needed results are shown until a current refresh succeeds.</p>
+                }
                 else
                 {
-                    @if (reconciliation.HasStaleResults)
-                    {
-                        <p class="notice warning"><strong>Stale verification snapshot.</strong> @reconciliation.DiagnosticMessage Results below are from the last successful refresh.</p>
-                    }
                     @if (reconciliation.AttentionNeededCount > 0)
                     {
                         <p class="notice warning"><strong>ATTENTION NEEDED — @reconciliation.AttentionNeededCount run@(reconciliation.AttentionNeededCount == 1 ? "" : "s").</strong> Correct Crop QC or the independent packout master, then allow the next refresh to verify the result.</p>

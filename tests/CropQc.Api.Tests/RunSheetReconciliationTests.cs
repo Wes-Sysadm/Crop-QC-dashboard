@@ -124,7 +124,7 @@ public sealed class RunSheetReconciliationTests
     }
 
     [Fact]
-    public void SplitCropActualRuns_406Plus2_AggregateAndMatch408()
+    public void EbsSplit406Plus2_StillMatches408()
     {
         var time = BusinessTime(new DateTimeOffset(2026, 8, 16, 12, 0, 0, TimeSpan.Zero));
         var lines = new[]
@@ -166,7 +166,7 @@ public sealed class RunSheetReconciliationTests
     }
 
     [Fact]
-    public void WpGrowerMismatchAndMissingSalesDesk_Coexist()
+    public void WpGrowerMismatchProductionCase_StillPairs()
     {
         var sheet = External(EmploymentFacilities.Wp, new(2026, 8, 4), "BART", "Conventional", "Domex", 153,
             ("1084", 22), ("1121", 65), ("1162", 46), ("1531", 8), ("4402", 12));
@@ -181,7 +181,68 @@ public sealed class RunSheetReconciliationTests
     }
 
     [Fact]
-    public void WpMixedVarietyAndMissingSalesDesk_RemainVisible()
+    public void WpTwoUnassignedSameDayRuns_DoNotMergeAcrossSheetSalesDesks()
+    {
+        var runAt = new DateTimeOffset(2026, 8, 10, 19, 0, 0, TimeSpan.Zero);
+        var lines = new[]
+        {
+            new RunSheetCropLine(101, runAt, null, "BART", "Conventional", false, "1001", 50),
+            new RunSheetCropLine(102, runAt, null, "BART", "Conventional", false, "2002", 75)
+        };
+        var cropRuns = RunSheetCropRunBuilder.Build(EmploymentFacilities.Wp, lines, BusinessTime(runAt));
+        var sheetRuns = new[]
+        {
+            External(EmploymentFacilities.Wp, new(2026, 8, 10), "BART", "Conventional", "Domex", 50, ("1001", 50)),
+            External(EmploymentFacilities.Wp, new(2026, 8, 10), "BART", "Conventional", "Honey Bear", 75, ("2002", 75))
+        };
+
+        Assert.Equal(2, cropRuns.Count);
+        Assert.All(cropRuns, run => Assert.Single(run.ActualRunIds));
+        var items = Match(EmploymentFacilities.Wp, sheetRuns, cropRuns);
+
+        Assert.Equal(2, items.Count);
+        Assert.Equal([101], Assert.Single(items, x => x.SheetSalesDesk == "Domex").ActualRunIds);
+        Assert.Equal([102], Assert.Single(items, x => x.SheetSalesDesk == "Honey Bear").ActualRunIds);
+        Assert.All(items, item =>
+        {
+            Assert.Contains(RunSheetReconciliationReasons.SalesDeskMissing, item.Reasons);
+            Assert.DoesNotContain(RunSheetReconciliationReasons.MissingFromCropQc, item.Reasons);
+            Assert.DoesNotContain(RunSheetReconciliationReasons.BinMismatch, item.Reasons);
+            Assert.DoesNotContain(RunSheetReconciliationReasons.GrowerMismatch, item.Reasons);
+        });
+    }
+
+    [Fact]
+    public void WpCandidate_NoGrowerIdentity_DoesNotPair()
+    {
+        var sheet = External(EmploymentFacilities.Wp, new(2026, 8, 10), "BART", "Conventional", "Domex", 50,
+            ("1001", 50));
+        var crop = Crop(EmploymentFacilities.Wp, new(2026, 8, 10), ["BART"], ["Conventional"], "Honey Bear", 75, [102],
+            ("9999", 75));
+
+        var items = Match(EmploymentFacilities.Wp, [sheet], [crop]);
+
+        Assert.Equal(2, items.Count);
+        Assert.Contains(items, x => x.Reasons.Contains(RunSheetReconciliationReasons.MissingFromCropQc));
+        Assert.Contains(items, x => x.Reasons.Contains(RunSheetReconciliationReasons.MissingFromSheet));
+        Assert.DoesNotContain(items, x => x.Reasons.Contains(RunSheetReconciliationReasons.BinMismatch));
+        Assert.DoesNotContain(items, x => x.Reasons.Contains(RunSheetReconciliationReasons.GrowerMismatch));
+        Assert.DoesNotContain(items, x => x.Reasons.Contains(RunSheetReconciliationReasons.SalesDeskMismatch));
+    }
+
+    [Fact]
+    public void WpWrongDesk_ExactGrowers_StillPairs()
+    {
+        var item = Assert.Single(Match(EmploymentFacilities.Wp,
+            [External(EmploymentFacilities.Wp, new(2026, 8, 10), "BART", "Conventional", "Domex", 50, ("1001", 50))],
+            [Crop(EmploymentFacilities.Wp, new(2026, 8, 10), ["BART"], ["Conventional"], "Honey Bear", 50, [101], ("1001", 50))]));
+
+        Assert.Equal([101], item.ActualRunIds);
+        Assert.Equal([RunSheetReconciliationReasons.SalesDeskMismatch], item.Reasons);
+    }
+
+    [Fact]
+    public void WpMixedVarietyProductionCase_StillPairs()
     {
         var sheet = External(EmploymentFacilities.Wp, new(2026, 8, 18), "ORBA", "Organic", "Domex", 194,
             ("1084", 58), ("1121", 64), ("1162", 72));
@@ -364,6 +425,71 @@ public sealed class RunSheetReconciliationTests
     }
 
     [Fact]
+    public async Task StaleSnapshot_DoesNotProduceMissingFromSheet()
+    {
+        using var db = Db();
+        var clock = new FixedClock(new(2026, 8, 20, 12, 0, 0, TimeSpan.Zero));
+        var options = Options();
+        options.Enabled = true;
+        var store = new RunSheetSnapshotStore(options, clock);
+        var refreshedAt = clock.UtcNow.AddMinutes(-5);
+        store.RecordSuccess([], refreshedAt);
+        store.RecordFailure("Google Sheets is temporarily unavailable.", clock.UtcNow);
+        await SeedCurrentCropRunAsync(db, 101, 50);
+
+        var model = await new RunSheetReconciliationService(db, store, options, new PacificBusinessTimeService(clock))
+            .GetAsync(EmploymentFacilities.Wp, 2026, CancellationToken.None);
+
+        AssertNonActionableStale(model, refreshedAt);
+        Assert.DoesNotContain(model!.Items, x => x.Reasons.Contains(RunSheetReconciliationReasons.MissingFromSheet));
+    }
+
+    [Fact]
+    public async Task StaleSnapshot_DoesNotProduceNewMismatchAgainstCurrentDatabase()
+    {
+        using var db = Db();
+        var clock = new FixedClock(new(2026, 8, 20, 12, 0, 0, TimeSpan.Zero));
+        var options = Options();
+        options.Enabled = true;
+        var store = new RunSheetSnapshotStore(options, clock);
+        var refreshedAt = clock.UtcNow.AddMinutes(-5);
+        store.RecordSuccess(
+            [External(EmploymentFacilities.Wp, new(2026, 8, 10), "BART", "Conventional", "Domex", 50, ("1001", 50))],
+            refreshedAt);
+        var entry = await SeedCurrentCropRunAsync(db, 101, 50, "Domex");
+        store.RecordFailure("Quota unavailable.", clock.UtcNow);
+        entry.BinsRun = 75;
+        await db.SaveChangesAsync();
+
+        var model = await new RunSheetReconciliationService(db, store, options, new PacificBusinessTimeService(clock))
+            .GetAsync(EmploymentFacilities.Wp, 2026, CancellationToken.None);
+
+        AssertNonActionableStale(model, refreshedAt);
+        Assert.DoesNotContain(model!.Items, x => x.Reasons.Contains(RunSheetReconciliationReasons.BinMismatch));
+    }
+
+    [Fact]
+    public async Task AgeStaleSnapshot_IsNonActionable()
+    {
+        using var db = Db();
+        var clock = new FixedClock(new(2026, 8, 20, 12, 0, 0, TimeSpan.Zero));
+        var options = Options();
+        options.Enabled = true;
+        var store = new RunSheetSnapshotStore(options, clock);
+        var refreshedAt = clock.UtcNow.AddMinutes(-(options.RefreshMinutes * 2 + 1));
+        store.RecordSuccess([], refreshedAt);
+        await SeedCurrentCropRunAsync(db, 101, 50);
+
+        var model = await new RunSheetReconciliationService(db, store, options, new PacificBusinessTimeService(clock))
+            .GetAsync(EmploymentFacilities.Wp, 2026, CancellationToken.None);
+
+        AssertNonActionableStale(model, refreshedAt);
+        Assert.Equal(
+            "The last successful Google Sheet snapshot is stale. Current verification is temporarily unavailable.",
+            model!.DiagnosticMessage);
+    }
+
+    [Fact]
     public async Task ReconciliationGet_PerformsZeroDatabaseWrites()
     {
         using var db = Db();
@@ -421,7 +547,9 @@ public sealed class RunSheetReconciliationTests
         Assert.Contains("ATTENTION NEEDED", source);
         Assert.Contains("Pending Sheet Verification", source);
         Assert.Contains("Verified / Matched", source);
-        Assert.Contains("Stale verification snapshot", source);
+        Assert.Contains("stale Google Sheet snapshot", source);
+        Assert.Contains("No Match, Pending, or Attention Needed results are shown until a current refresh succeeds.", source);
+        Assert.DoesNotContain("Results below are from the last successful refresh", source);
         Assert.Contains("Google Sheet", source);
         Assert.Contains("Crop QC", source);
         Assert.Contains("Grower allocation", source);
@@ -504,6 +632,124 @@ public sealed class RunSheetReconciliationTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
             .Options;
         return new CropQcDbContext(options);
+    }
+
+    private static void AssertNonActionableStale(
+        RunSheetReconciliationViewModel? model,
+        DateTimeOffset expectedRefreshAt)
+    {
+        Assert.NotNull(model);
+        Assert.Equal(RunSheetReconciliationStates.Stale, model!.Availability);
+        Assert.Equal(expectedRefreshAt, model.LastSuccessfulRefreshAt);
+        Assert.Equal(0, model.AttentionNeededCount);
+        Assert.Equal(0, model.PendingCount);
+        Assert.Equal(0, model.MatchedCount);
+        Assert.Empty(model.Items);
+    }
+
+    private static async Task<BinsRunEntry> SeedCurrentCropRunAsync(
+        CropQcDbContext db,
+        long actualRunId,
+        int bins,
+        string? salesDesk = null)
+    {
+        var runAt = new DateTimeOffset(2026, 8, 10, 19, 0, 0, TimeSpan.Zero);
+        var warehouse = new Warehouse { Id = 1, Code = EmploymentFacilities.Wp, Name = "WP", IsActive = true };
+        var room = new Room { Id = 1, Warehouse = warehouse, Code = "WP-1", Name = "WP-1", IsActive = true };
+        var fruit = new FruitProfile
+        {
+            Id = 1,
+            Name = "Bartlett",
+            VarietyCode = "BART",
+            FruitType = "Pear",
+            ProductionType = "Conventional",
+            IsOrganic = false,
+            IsActive = true
+        };
+        var user = new User
+        {
+            Id = 1,
+            Email = "tester@example.test",
+            DisplayName = "Test User",
+            Domain = "example.test",
+            EmploymentFacility = EmploymentFacilities.Wp,
+            CreatedAt = runAt
+        };
+        var run = new ActualRun
+        {
+            Id = actualRunId,
+            Status = ActualRunStatuses.Active,
+            CurrentRevisionNumber = 1,
+            RunAt = runAt,
+            CreatedAt = runAt,
+            CreatedByUser = user,
+            RunFacilityWarehouse = warehouse,
+            RunFacilityCodeSnapshot = EmploymentFacilities.Wp,
+            RunFacilityAssignmentSource = RunFacilityAssignmentSources.Employment,
+            SalesDeskNameSnapshot = salesDesk
+        };
+        var revision = new ActualRunRevision
+        {
+            Id = actualRunId,
+            ActualRun = run,
+            RevisionNumber = 1,
+            OperationType = ActualRunRevisionTypes.Create,
+            OperationKey = $"run-sheet-test-{actualRunId}",
+            IsCurrent = true,
+            CreatedAt = runAt
+        };
+        var adjustment = new RoomInventoryAdjustment
+        {
+            Id = actualRunId,
+            CropYear = 2026,
+            Warehouse = warehouse,
+            Room = room,
+            FruitProfile = fruit,
+            GrowerName = "Grower 1001",
+            LotNumber = "1001",
+            VarietyCode = fruit.VarietyCode,
+            ChangeAmount = -bins,
+            NewBinCount = 0,
+            AdjustmentType = BinsRunService.AdjustmentType,
+            AdjustmentAt = runAt,
+            ActualRun = run,
+            ActualRunRevision = revision,
+            CreatedByUser = user,
+            CreatedAt = runAt
+        };
+        var entry = new BinsRunEntry
+        {
+            Id = actualRunId,
+            InventoryAdjustment = adjustment,
+            Warehouse = warehouse,
+            Room = room,
+            CropYear = 2026,
+            FruitProfile = fruit,
+            GrowerName = "Grower 1001",
+            LotNumber = "1001",
+            VarietyCode = fruit.VarietyCode,
+            PreviousAvailableBins = bins,
+            BinsRun = bins,
+            NewAvailableBins = 0,
+            RunAt = runAt,
+            CreatedByUser = user,
+            CreatedAt = runAt,
+            ActualRun = run,
+            ActualRunRevision = revision,
+            TransactionType = ActualRunTransactionTypes.Depletion,
+            ReportingFacilityWarehouse = warehouse,
+            ReportingFacilityCodeSnapshot = EmploymentFacilities.Wp,
+            ReportingFacilityAssignmentSource = RunFacilityAssignmentSources.Employment,
+            ReportingCropYearSnapshot = 2026,
+            ReportingFruitProfileIdSnapshot = fruit.Id,
+            ReportingVarietyCodeSnapshot = fruit.VarietyCode,
+            ProductionTypeSnapshot = fruit.ProductionType,
+            IsOrganicSnapshot = fruit.IsOrganic,
+            GrowerNumberSnapshot = "1001"
+        };
+        db.AddRange(warehouse, room, fruit, user, run, revision, adjustment, entry);
+        await db.SaveChangesAsync();
+        return entry;
     }
 
     private static string RepositoryFile(params string[] path)
