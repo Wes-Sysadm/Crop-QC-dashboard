@@ -18,7 +18,7 @@ public sealed class PhotoUploadFeedbackTests
         Assert.Contains("form.setAttribute(\"aria-busy\", \"true\")", helper);
         Assert.Contains("if (busy) return false", helper);
         Assert.Contains("control.disabled = true", helper);
-        Assert.DoesNotContain("%", helper);
+        Assert.Contains("[data-upload-feedback-form]:not([data-upload-progress-form])", helper);
     }
 
     [Fact]
@@ -79,7 +79,19 @@ public sealed class PhotoUploadFeedbackTests
         Assert.Contains("application/pdf", Source("src", "CropQc.Web", "Views", "RoomTreatments", "Apply.cshtml"));
         Assert.Contains("image/webp", Source("src", "CropQc.Web", "Views", "RoomTreatments", "Apply.cshtml"));
         Assert.Contains("data-upload-feedback-form", packout);
+        Assert.Contains("data-upload-progress-form", packout);
+        Assert.Contains("data-upload-feedback-progress", packout);
         Assert.Contains("Uploading packout report files...", packout);
+
+        var helper = Source("src", "CropQc.Web", "wwwroot", "js", "upload-feedback.js");
+        Assert.Contains("new XMLHttpRequest()", helper);
+        Assert.Contains("request.upload.addEventListener(\"progress\"", helper);
+        Assert.Contains("uploadEvent.loaded / uploadEvent.total", helper);
+        Assert.Contains("controller.setProgress(null)", helper);
+        Assert.Contains("Upload complete — processing report", helper);
+        Assert.Contains("X-Requested-With", helper);
+        Assert.Contains("if (!controller.begin", helper);
+        Assert.Contains("controller.fail", helper);
     }
 
     [Fact]

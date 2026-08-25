@@ -6,15 +6,19 @@ using System.Text;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Storage;
 using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace CropQc.Web.Services;
 
+public sealed record PackoutUploadResult(long? Id, string? Error, string? Message = null);
+
 public interface IPackoutReconciliationService
 {
-    Task<(long? Id, string? Error)> UploadAsync(PackoutUploadForm form, ClaimsPrincipal principal, CancellationToken cancellationToken);
+    Task<PackoutUploadResult> UploadAsync(PackoutUploadForm form, ClaimsPrincipal principal, CancellationToken cancellationToken);
+    Task<(Stream? Content, string? ContentType, string? FileName)> OpenSourceAsync(long packoutRunId, long sourceId, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<PackoutRunViewModel?> GetAsync(long id, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<string?> UpdateLineAsync(PackoutLineReviewForm form, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<string?> UpdateSecondaryOutputsAsync(PackoutSecondaryOutputForm form, ClaimsPrincipal principal, CancellationToken cancellationToken);
@@ -36,6 +40,7 @@ public sealed class PackoutReconciliationService(
     IConfiguration configuration,
     PackoutProcessingOptions processingOptions,
     IPackoutOperationCoordinator operationCoordinator,
+    IFileStorageService fileStorage,
     ILogger<PackoutReconciliationService> logger,
     IPackoutSourceAllocationService? sourceAllocationService = null) : IPackoutReconciliationService
 {
@@ -44,42 +49,63 @@ public sealed class PackoutReconciliationService(
     private IPackoutSourceAllocationService SourceAllocations { get; } =
         sourceAllocationService ?? new PackoutSourceAllocationService();
 
-    public async Task<(long? Id, string? Error)> UploadAsync(
+    public async Task<PackoutUploadResult> UploadAsync(
         PackoutUploadForm form,
         ClaimsPrincipal principal,
         CancellationToken cancellationToken)
     {
         if (!await CanEditAsync(principal, cancellationToken))
         {
-            return (null, "Actual Run View and Packout Result Create access are required to upload a Packout Result.");
+            return new(null, "Actual Run View and Packout Result Create access are required to upload a Packout Result.");
         }
         using var uploadOperation = operationCoordinator.TryEnter(form.ActualRunId, "upload");
         if (uploadOperation is null)
         {
-            return (null, "A Packout Result upload for this Actual Run is already being processed. Wait for it to finish before trying again.");
+            return new(null, "A Packout Result upload for this Actual Run is already being processed. Wait for it to finish before trying again.");
         }
-        if (form.DumpedBins <= 0m) return (null, "Dumped bins must be greater than zero.");
-        if (form.PackingDate == default) return (null, "Packing date is required.");
-        if (form.RunNumber <= 0) return (null, "Run number must be greater than zero.");
+        if (form.DumpedBins <= 0m) return new(null, "Dumped bins must be greater than zero.");
+        if (form.PackingDate == default) return new(null, "Packing date is required.");
+        if (form.RunNumber <= 0) return new(null, "Run number must be greater than zero.");
         var uploadLimitError = PackoutUploadLimits.Validate(form.Files.Select(x => x.Length).ToArray(), processingOptions);
         if (uploadLimitError is not null)
         {
-            return (null, uploadLimitError);
+            return new(null, uploadLimitError);
         }
 
         var actualRun = await dbContext.ActualRuns
             .SingleOrDefaultAsync(x => x.Id == form.ActualRunId, cancellationToken);
-        if (actualRun is null) return (null, "Actual Run was not found.");
-        if (actualRun.Status != ActualRunStatuses.Active) return (null, "A Packout Result can be uploaded only for an active Actual Run.");
+        if (actualRun is null) return new(null, "Actual Run was not found.");
+        if (actualRun.Status != ActualRunStatuses.Active) return new(null, "A Packout Result can be uploaded only for an active Actual Run.");
         var expectation = await dbContext.RunExpectations
             .Include(x => x.Sources)
             .SingleOrDefaultAsync(
                 x => x.ActualRunId == actualRun.Id
                     && x.RevisionNumber == actualRun.CurrentRevisionNumber,
                 cancellationToken);
-        if (expectation is null) return (null, "The current Actual Run revision does not have a frozen Run Expectation.");
-        if (expectation.Sources.Count == 0) return (null, "The Run Expectation has no source contribution rows.");
-        var facilityCode = expectation.FacilitySnapshot;
+        if (expectation is not null && expectation.Sources.Count == 0)
+            return new(null, "The Run Expectation has no source contribution rows.");
+        var currentSources = await dbContext.BinsRunEntries.AsNoTracking()
+            .Where(x => x.ActualRunId == actualRun.Id
+                && x.ActualRunRevisionId != null
+                && x.ActualRunRevision!.IsCurrent
+                && x.TransactionType == ActualRunTransactionTypes.Depletion
+                && !x.IsReversed)
+            .OrderBy(x => x.Id)
+            .Select(x => new
+            {
+                Facility = x.ReportingFacilityCodeSnapshot ?? x.Warehouse.Code,
+                CropYear = x.ReportingCropYearSnapshot ?? x.CropYear,
+                x.LotNumber,
+                Variety = x.ReportingVarietyCodeSnapshot ?? x.VarietyCode ?? "Unknown",
+                IsOrganic = x.IsOrganicSnapshot ?? (x.FruitProfile != null && x.FruitProfile.IsOrganic),
+                FruitType = x.FruitProfile == null ? null : x.FruitProfile.FruitType
+            })
+            .ToListAsync(cancellationToken);
+        if (currentSources.Count == 0)
+            return new(null, "The current Actual Run revision has no active source contribution rows.");
+        var facilityCode = expectation?.FacilitySnapshot
+            ?? actualRun.RunFacilityCodeSnapshot
+            ?? currentSources[0].Facility;
         var existingRunId = await dbContext.PackoutRuns
             .Where(x => x.ActualRunId == actualRun.Id
                 || (x.ActualRunId == null
@@ -91,13 +117,21 @@ public sealed class PackoutReconciliationService(
             .FirstOrDefaultAsync(cancellationToken);
         if (existingRunId is long existingId)
         {
-            return (existingId, "This Actual Run already has a Packout Result. Replace an unfinalized upload from its review page instead of creating a second result.");
+            return new(existingId, "This Actual Run already has a Packout Result. Replace an unfinalized upload from its review page instead of creating a second result.");
         }
 
+        var userId = await CurrentUserIdAsync(principal, cancellationToken);
+        if (userId is null) return new(null, "The active user record could not be resolved.");
+        var configuration = await LoadConfigurationAsync(cancellationToken);
+        var cropYear = expectation?.Sources.Select(x => x.CropYearSnapshot).FirstOrDefault(x => x is not null)
+            ?? currentSources.Select(x => x.CropYear).FirstOrDefault(x => x is not null)
+            ?? businessTime.PacificDate(actualRun.RunAt).Year;
+        var targetPath = string.Join('/', "Packouts", cropYear, SafePathSegment(facilityCode), $"ActualRun-{actualRun.Id}");
         var parseStopwatch = Stopwatch.StartNew();
         var parseWorkingSet = Environment.WorkingSet;
         var uploadBytes = form.Files.Sum(x => x.Length);
-        var parsed = new List<PackoutParseResult>(form.Files.Count);
+        var stored = new List<StoredPackoutUpload>(form.Files.Count);
+        var storedReferences = new List<FileStorageReference>(form.Files.Count);
         var uploadTempRoot = Path.Combine(Path.GetTempPath(), $"cropqc-packout-upload-{Guid.NewGuid():N}");
         string? currentUploadFileName = null;
         Directory.CreateDirectory(uploadTempRoot);
@@ -107,20 +141,54 @@ public sealed class PackoutReconciliationService(
             {
                 var upload = form.Files[index];
                 currentUploadFileName = Path.GetFileName(upload.FileName);
+                var validationError = PackoutReportParser.ValidateUpload(upload.FileName, upload.Length, processingOptions);
+                if (validationError is not null) throw new InvalidOperationException(validationError);
                 var stagedPath = Path.Combine(uploadTempRoot, $"upload-{index:D2}{Path.GetExtension(upload.FileName)}");
                 var stagedLength = await StageUploadAsync(upload, stagedPath, cancellationToken);
-                parsed.Add(await parser.ParseAsync(
-                    new PackoutUploadFile(
+                var sha256 = await ComputeSha256Async(stagedPath, cancellationToken);
+                var storageFileName = SafeStorageFileName(upload.FileName);
+                await using var storageContent = new FileStream(stagedPath, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                var reference = await fileStorage.SaveAsync(new FileStorageSaveRequest(
+                    storageContent,
+                    targetPath,
+                    storageFileName,
+                    upload.ContentType ?? "application/octet-stream",
+                    stagedLength), cancellationToken);
+                storedReferences.Add(reference);
+                PackoutParseResult result;
+                var parseFailed = false;
+                try
+                {
+                    result = await parser.ParseAsync(new PackoutUploadFile(
                         upload.FileName,
                         upload.ContentType ?? "application/octet-stream",
                         stagedPath,
-                        stagedLength),
-                    cancellationToken));
+                        stagedLength), cancellationToken);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    parseFailed = true;
+                    logger.LogWarning(exception, "Packout original was stored, but parsing failed. ActualRunId={ActualRunId}; FileName={FileName}", actualRun.Id, currentUploadFileName);
+                    result = new PackoutParseResult(
+                        currentUploadFileName,
+                        upload.ContentType ?? "application/octet-stream",
+                        stagedLength,
+                        sha256,
+                        "Unavailable",
+                        PackoutReportParser.ParserVersion,
+                        0m,
+                        [],
+                        $"Parsing failed: {SafeDiagnostic(exception.Message)} The original document remains available for review.");
+                }
+                stored.Add(new(reference, result with { Sha256 = sha256 }, parseFailed));
             }
         }
-        catch (Exception exception) when (exception is InvalidOperationException or IOException)
+        catch (Exception exception)
         {
-            return (null, $"{currentUploadFileName ?? "Report"}: {exception.Message}");
+            await VoidStoredAsync(storedReferences, CancellationToken.None);
+            if (exception is OperationCanceledException) throw;
+            logger.LogWarning(exception, "Packout upload could not be durably stored. ActualRunId={ActualRunId}; FileName={FileName}", actualRun.Id, currentUploadFileName);
+            return new(null, $"{currentUploadFileName ?? "Report"}: upload could not be saved to permanent storage. Retry the upload.");
         }
         finally
         {
@@ -129,7 +197,7 @@ public sealed class PackoutReconciliationService(
                 "Packout report upload parsing finished. File count {FileCount}; uploaded bytes {UploadedBytes}; parsed row count {ParsedRowCount}; elapsed ms {ElapsedMilliseconds}; working set delta bytes {WorkingSetDeltaBytes}.",
                 form.Files.Count,
                 uploadBytes,
-                parsed.Sum(x => x.Lines.Count),
+                stored.Sum(x => x.ParseResult.Lines.Count),
                 parseStopwatch.ElapsedMilliseconds,
                 Environment.WorkingSet - parseWorkingSet);
             try
@@ -145,25 +213,19 @@ public sealed class PackoutReconciliationService(
                 logger.LogWarning(exception, "Temporary packout upload files could not be removed immediately.");
             }
         }
-        if (parsed.Sum(x => x.Lines.Count) == 0)
-        {
-            return (null, "No packout rows were parsed. Nothing was saved and the uploaded originals were not retained.");
-        }
-
-        var userId = await CurrentUserIdAsync(principal, cancellationToken);
         var now = businessTime.UtcNow;
-        var configuration = await LoadConfigurationAsync(cancellationToken);
-        var firstSource = expectation.Sources.First();
-        var sourcePoundsPerBin = firstSource.BinsContributed <= 0
+        var firstSource = expectation?.Sources.FirstOrDefault();
+        var sourcePoundsPerBin = firstSource is null || firstSource.BinsContributed <= 0
             ? 0m
             : firstSource.GrossPounds / firstSource.BinsContributed;
-        var isPear = Math.Abs(sourcePoundsPerBin - configuration.PearBinWeightPounds)
-            < Math.Abs(sourcePoundsPerBin - configuration.AppleBinWeightPounds);
+        var isPear = firstSource is not null
+            ? Math.Abs(sourcePoundsPerBin - configuration.PearBinWeightPounds) < Math.Abs(sourcePoundsPerBin - configuration.AppleBinWeightPounds)
+            : currentSources.Any(x => string.Equals(x.FruitType, "Pear", StringComparison.OrdinalIgnoreCase));
         var run = new PackoutRun
         {
             RunProjectionId = null,
             ActualRunId = actualRun.Id,
-            RunExpectationId = expectation.Id,
+            RunExpectationId = expectation?.Id,
             ActualRun = actualRun,
             RunExpectation = expectation,
             BinsRunEntryId = null,
@@ -171,10 +233,10 @@ public sealed class PackoutReconciliationService(
             FacilitySnapshot = facilityCode,
             PackingDate = form.PackingDate,
             RunNumber = form.RunNumber,
-            LotNumberSnapshot = string.Join(" + ", expectation.Sources.Select(x => x.LotSnapshot).Distinct(StringComparer.OrdinalIgnoreCase)),
-            VarietySnapshot = expectation.Sources.First().VarietySnapshot,
-            IsOrganicSnapshot = expectation.Sources.First().IsOrganicSnapshot,
-            CropYearSnapshot = expectation.Sources.First().CropYearSnapshot ?? 0,
+            LotNumberSnapshot = string.Join(" + ", (expectation?.Sources.Select(x => x.LotSnapshot) ?? currentSources.Select(x => x.LotNumber)).Distinct(StringComparer.OrdinalIgnoreCase)),
+            VarietySnapshot = expectation?.Sources.First().VarietySnapshot ?? currentSources[0].Variety,
+            IsOrganicSnapshot = expectation?.Sources.First().IsOrganicSnapshot ?? currentSources[0].IsOrganic,
+            CropYearSnapshot = cropYear,
             DumpedBins = form.DumpedBins,
             PoundsPerBin = isPear ? configuration.PearBinWeightPounds : configuration.AppleBinWeightPounds,
             CreatedAt = now,
@@ -182,22 +244,36 @@ public sealed class PackoutReconciliationService(
             CreatedByUserId = userId,
             UpdatedByUserId = userId,
             CalculationVersion = PackoutReconciliationCalculationService.CurrentCalculationVersion,
-            ProjectionSnapshotJson = JsonSerializer.Serialize(ExpectationSnapshot(expectation)),
+            ProjectionSnapshotJson = expectation is null ? null : JsonSerializer.Serialize(ExpectationSnapshot(expectation)),
             ConfigurationSnapshotJson = JsonSerializer.Serialize(ConfigurationSnapshot(configuration))
         };
         var definitions = await dbContext.PackCodeDefinitions.Where(x => x.IsActive).ToListAsync(cancellationToken);
-        foreach (var result in parsed)
+        foreach (var item in stored)
         {
+            var result = item.ParseResult;
             var source = new PackoutReportSource
             {
                 OriginalFileName = result.FileName,
                 ContentType = result.ContentType,
                 FileSizeBytes = result.FileSizeBytes,
                 Sha256 = result.Sha256,
+                StorageProvider = item.Reference.StorageProvider,
+                StorageKey = item.Reference.StorageKey,
+                StoragePath = item.Reference.TargetPath,
+                DriveId = item.Reference.DriveId,
+                FileId = item.Reference.FileId,
+                FolderId = item.Reference.FolderId,
+                ParseStatus = item.ParseFailed
+                    ? PackoutReportParseStatuses.Failed
+                    : result.Lines.Count == 0 || result.Lines.Any(x => x.RequiresReview) || result.SafeDiagnostic is not null
+                        ? PackoutReportParseStatuses.Review
+                        : PackoutReportParseStatuses.Parsed,
                 ParserName = result.ParserName,
                 ParserVersion = result.ParserVersion,
                 Confidence = result.Confidence,
                 SafeDiagnostic = result.SafeDiagnostic,
+                UploadedAt = now,
+                UploadedByUserId = userId,
                 ParsedAt = now
             };
             run.Sources.Add(source);
@@ -227,21 +303,70 @@ public sealed class PackoutReconciliationService(
                 });
             }
         }
-        dbContext.PackoutRuns.Add(run);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await RecalculateAsync(run, cancellationToken);
-        AddAudit("UploadPackoutReports", run, userId, null, new
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        try
         {
-            run.ActualRunId,
-            run.RunExpectationId,
-            run.DumpedBins,
-            SourceFiles = run.Sources.Select(x => new { x.OriginalFileName, x.Sha256, x.ParserName }),
-            ParsedLines = run.Lines.Count,
-            RequiresReview = run.Lines.Count(x => x.RequiresReview),
-            OriginalFilesRetained = false
-        });
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return (run.Id, null);
+            dbContext.PackoutRuns.Add(run);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await RecalculateAsync(run, cancellationToken);
+            AddAudit("UploadPackoutReports", run, userId, null, new
+            {
+                run.ActualRunId,
+                run.RunExpectationId,
+                run.DumpedBins,
+                SourceFiles = run.Sources.Select(x => new { x.OriginalFileName, x.Sha256, x.StorageProvider, x.StoragePath, x.ParseStatus }),
+                ParsedLines = run.Lines.Count,
+                RequiresReview = run.Lines.Count(x => x.RequiresReview),
+                OriginalFilesRetained = true
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            if (transaction is not null) await transaction.RollbackAsync(CancellationToken.None);
+            await VoidStoredAsync(storedReferences, CancellationToken.None);
+            dbContext.ChangeTracker.Clear();
+            if (exception is OperationCanceledException) throw;
+            logger.LogError(exception, "Packout metadata failed after permanent upload; stored files were compensated. ActualRunId={ActualRunId}", actualRun.Id);
+            var racedId = await dbContext.PackoutRuns.AsNoTracking()
+                .Where(x => x.ActualRunId == actualRun.Id)
+                .Select(x => (long?)x.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+            return racedId is long duplicateId
+                ? new(duplicateId, "This Actual Run already has a Packout Result. The duplicate upload was not retained.")
+                : new(null, "The Packout document could not be recorded after storage. The uploaded file was removed; retry the upload.");
+        }
+        var message = expectation is null
+            ? "Packout document saved. This historical Actual Run does not have a frozen Run Expectation, so expected-vs-actual reconciliation is unavailable."
+            : stored.Any(x => x.ParseFailed || x.ParseResult.Lines.Count == 0)
+                ? "Packout document saved. The original remains available, but one or more files could not be parsed. Review the diagnostic and retry processing later."
+                : "Packout saved. Review all flagged rows before finalizing.";
+        return new(run.Id, null, message);
+    }
+
+    public async Task<(Stream? Content, string? ContentType, string? FileName)> OpenSourceAsync(
+        long packoutRunId,
+        long sourceId,
+        ClaimsPrincipal principal,
+        CancellationToken cancellationToken)
+    {
+        if (!await accessService.HasAccessAsync(principal, ApplicationAreas.PackoutResults, PageAccessLevel.View, cancellationToken))
+            return (null, null, null);
+        var source = await dbContext.PackoutReportSources.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == sourceId && x.PackoutRunId == packoutRunId, cancellationToken);
+        if (source?.StorageKey is null) return (null, null, null);
+        try
+        {
+            return (await fileStorage.OpenReadAsync(source.StorageKey, cancellationToken), source.ContentType, source.OriginalFileName);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Packout source could not be opened. PackoutRunId={PackoutRunId}; SourceId={SourceId}; Provider={Provider}", packoutRunId, sourceId, source.StorageProvider);
+            return (null, null, null);
+        }
     }
 
     public static bool RequiresLineReview(
@@ -300,6 +425,7 @@ public sealed class PackoutReconciliationService(
             ActualPackoutPercent = run.ActualPackoutPercent,
             OverallAccuracyScore = run.OverallAccuracyScore,
             IsHistoricalReconstruction = reconstruction is not null,
+            ReconciliationAvailable = run.RunExpectation is not null || run.RunProjection is not null,
             PhysicalRunAt = reconstruction?.PhysicalRunAt,
             ReconstructedAt = reconstruction?.ReconstructedAt,
             ReconciliationDifferencePounds = run.ReconciliationDifferencePounds,
@@ -321,7 +447,18 @@ public sealed class PackoutReconciliationService(
                 CurrentCropYearHistoryWeight = configuration.CurrentCropYearHistoryWeight,
                 PriorCropYearHistoryWeight = configuration.PriorCropYearHistoryWeight
             },
-            Sources = run.Sources.Select(x => new PackoutSourceViewModel(x.OriginalFileName, x.ParserName, x.Confidence, x.SafeDiagnostic, x.ParsedAt)).ToList(),
+            Sources = run.Sources.Select(x => new PackoutSourceViewModel(
+                x.Id,
+                x.OriginalFileName,
+                x.FileSizeBytes,
+                x.UploadedAt,
+                x.UploadedByUser?.DisplayName ?? x.UploadedByUser?.Email ?? "Legacy upload",
+                x.ParseStatus,
+                x.StorageKey is not null,
+                x.ParserName,
+                x.Confidence,
+                x.SafeDiagnostic,
+                x.ParsedAt)).ToList(),
             Lines = run.Lines.OrderBy(x => x.PackoutReportSourceId).ThenBy(x => x.SourceLineNumber).Select(x => new PackoutLineViewModel(
                 x.Id, x.SourceLineNumber, x.RawText, x.RawPackCode, x.Quantity, x.NetWeightPounds,
                 x.ExtendedWeightPounds, x.SizeCategory, x.GradeId, x.Grade?.Code, x.ProductCategory,
@@ -586,6 +723,10 @@ public sealed class PackoutReconciliationService(
         {
             return (run.ActualRunId ?? 0, "A reconciled Bins Run cannot be removed until the Packout Result is reopened.");
         }
+        if (run.Sources.Any(x => x.StorageKey != null))
+        {
+            return (run.ActualRunId ?? 0, "Stored Packout supporting documents are permanent records and cannot be deleted. Upload a corrected document through the supported follow-up workflow.");
+        }
 
         var userId = await CurrentUserIdAsync(principal, cancellationToken);
         var actualRunId = run.ActualRunId ?? 0;
@@ -844,7 +985,7 @@ public sealed class PackoutReconciliationService(
             .Include(x => x.RunExpectation).ThenInclude(x => x.Sources)
             .Include(x => x.SourceAllocations).ThenInclude(x => x.RunExpectationSource)
             .Include(x => x.BinsRunEntry)
-            .Include(x => x.Sources)
+            .Include(x => x.Sources).ThenInclude(x => x.UploadedByUser)
             .Include(x => x.Lines).ThenInclude(x => x.PackoutReportSource)
             .Include(x => x.Lines).ThenInclude(x => x.Grade);
         return asTracking ? query : query.AsNoTracking();
@@ -891,6 +1032,27 @@ public sealed class PackoutReconciliationService(
         }
         await output.FlushAsync(cancellationToken);
         return total;
+    }
+
+    private static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        return Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken)).ToLowerInvariant();
+    }
+
+    private async Task VoidStoredAsync(IEnumerable<FileStorageReference> references, CancellationToken cancellationToken)
+    {
+        foreach (var reference in references)
+        {
+            try
+            {
+                await fileStorage.DeleteOrVoidAsync(reference.StorageKey, cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogError(exception, "Packout storage compensation failed. Provider={Provider}; StorageKey={StorageKey}; TargetPath={TargetPath}", reference.StorageProvider, reference.StorageKey, reference.TargetPath);
+            }
+        }
     }
 
     private static Dictionary<string, decimal> WeightedProjectedSize(RunProjection projection)
@@ -1181,10 +1343,35 @@ public sealed class PackoutReconciliationService(
     private static string SafeFileName(string value) =>
         string.Concat(value.Select(x => char.IsLetterOrDigit(x) || x is '-' or '_' ? x : '-')).Trim('-');
 
+    private static string SafePathSegment(string value)
+    {
+        var safe = string.Concat(value.Trim().Select(x => char.IsLetterOrDigit(x) || x is '-' or '_' ? x : '-')).Trim('-');
+        return string.IsNullOrWhiteSpace(safe) ? "Unknown" : safe;
+    }
+
+    private static string SafeStorageFileName(string value)
+    {
+        var original = Path.GetFileName(value);
+        var invalid = Path.GetInvalidFileNameChars().ToHashSet();
+        var safe = string.Concat(original.Where(x => !invalid.Contains(x) && !char.IsControl(x))).Trim();
+        return string.IsNullOrWhiteSpace(safe) ? "packout-report" : safe;
+    }
+
+    private static string SafeDiagnostic(string value)
+    {
+        var singleLine = value.Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal).Trim();
+        return singleLine.Length <= 700 ? singleLine : singleLine[..700];
+    }
+
     private static string? SafeEmailError(string? error)
     {
         if (string.IsNullOrWhiteSpace(error)) return null;
         var singleLine = error.Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal);
         return singleLine.Length <= 1000 ? singleLine : singleLine[..1000];
     }
+
+    private sealed record StoredPackoutUpload(
+        FileStorageReference Reference,
+        PackoutParseResult ParseResult,
+        bool ParseFailed);
 }

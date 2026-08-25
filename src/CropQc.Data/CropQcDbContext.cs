@@ -558,15 +558,28 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.OriginalFileName).HasMaxLength(255).IsRequired();
             entity.Property(x => x.ContentType).HasMaxLength(150).IsRequired();
             entity.Property(x => x.Sha256).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.StorageProvider).HasMaxLength(50);
+            entity.Property(x => x.StorageKey).HasMaxLength(500);
+            entity.Property(x => x.StoragePath).HasMaxLength(1000);
+            entity.Property(x => x.DriveId).HasMaxLength(250);
+            entity.Property(x => x.FileId).HasMaxLength(250);
+            entity.Property(x => x.FolderId).HasMaxLength(250);
+            entity.Property(x => x.ParseStatus).HasMaxLength(50).IsRequired()
+                .HasDefaultValue(PackoutReportParseStatuses.Legacy);
             entity.Property(x => x.ParserName).HasMaxLength(100).IsRequired();
             entity.Property(x => x.ParserVersion).HasMaxLength(50);
             entity.Property(x => x.Confidence).HasPrecision(6, 5);
             entity.Property(x => x.SafeDiagnostic).HasMaxLength(1000);
             entity.HasIndex(x => new { x.PackoutRunId, x.Sha256 }).IsUnique();
+            entity.HasIndex(x => x.UploadedByUserId);
             entity.HasOne(x => x.PackoutRun)
                 .WithMany(x => x.Sources)
                 .HasForeignKey(x => x.PackoutRunId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.UploadedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.UploadedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<PackoutReportLine>(entity =>

@@ -3,6 +3,7 @@ using CropQc.Data.Entities;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using CropQc.Shared.Time;
+using CropQc.Shared.Storage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -39,6 +40,52 @@ public sealed class PackoutReconciliationTests
     {
         Assert.False(PackoutReportParser.IsGrowerSummary("Grower Summary Pack Type: WP"));
         Assert.False(PackoutReportParser.IsGrowerSummary("An arbitrary report containing Variety:"));
+    }
+
+    [Fact]
+    public async Task SummaryReportByGrower_UsesExplicitQuantityColumnAndMatchesGrandTotal()
+    {
+        var quantities = new[] { 288, 300, 6, 173, 2390, 85, 152, 222, 246, 67, 201, 17 };
+        var rows = quantities.Select((quantity, index) =>
+            $"WP  BART  US1  WP  {80 + index}  BRND  SPEC  LOC  9350  1  {quantity}  {index + 1}.25%  {index + 2}.50%");
+        var report = string.Join('\n', new[]
+        {
+            "WP PACKING, LLC",
+            "Summary Report By Grower",
+            "Date Type: *PACK",
+            "Date Range: 7/29/2026 - 7/29/2026",
+            "Stor  Var  Grd  Pack  Size  Brnd  Spec  Loc  Lot#  Run#  Quantity  Grd %  Var %"
+        }.Concat(rows).Concat(new[]
+        {
+            "Grade US1 Total                         4147  100.00%  100.00%",
+            "Grower 9350 Total                      4147  100.00%  100.00%",
+            "Grand Total                            4147  100.00%  100.00%"
+        }));
+
+        Assert.True(PackoutReportParser.IsSummaryReportByGrower(report));
+        var parsed = PackoutReportParser.ParseText(report);
+
+        Assert.Equal(12, parsed.Count);
+        Assert.Equal(quantities.Select(x => (decimal?)x), parsed.Select(x => x.Quantity));
+        Assert.Equal(4147m, parsed.Sum(x => x.Quantity));
+        Assert.All(parsed, row => Assert.Equal("WP", row.RawPackCode));
+        Assert.All(parsed, row => Assert.Contains('%', row.RawText));
+        Assert.DoesNotContain(parsed, row => row.RawText.Contains("Total", StringComparison.OrdinalIgnoreCase));
+
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(path, report);
+            var result = await new PackoutReportParser(new PackoutProcessingOptions(), NullLogger<PackoutReportParser>.Instance)
+                .ParseAsync(new PackoutUploadFile("summary-report.txt", "text/plain", path, new FileInfo(path).Length), default);
+            Assert.Equal("WP Summary Report By Grower", result.ParserName);
+            Assert.Null(result.SafeDiagnostic);
+            Assert.Equal(4147m, result.Lines.Sum(x => x.Quantity));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Fact]
@@ -483,6 +530,7 @@ public sealed class PackoutReconciliationTests
             configuration,
             options,
             new PackoutOperationCoordinator(),
+            new TestFileStorageService(),
             NullLogger<PackoutReconciliationService>.Instance);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim(ClaimTypes.Email, ApplicationAreas.OwnerEmail)], "Test"));
@@ -559,6 +607,107 @@ public sealed class PackoutReconciliationTests
         Assert.Equal(2026, persistedPackout.CropYearSnapshot);
         Assert.Single(await db.PackoutSourceAllocations.ToListAsync());
         Assert.Equal(inventoryCountBefore, await db.RoomInventoryAdjustments.CountAsync());
+    }
+
+    [Fact]
+    public async Task HistoricalActualRunWithoutExpectation_RetainsOriginalAndDoesNotFabricateExpectation()
+    {
+        await using var db = Db();
+        var (actualRun, now) = await SeedHistoricalActualRunWithoutExpectationAsync(db);
+        var storage = new TestFileStorageService();
+        var service = CreateService(db, storage, new ThrowingPackoutParser(), now);
+        var principal = OwnerPrincipal();
+        var bytes = Encoding.UTF8.GetBytes("unparseable scanned report bytes");
+        await using var stream = new MemoryStream(bytes);
+        var file = new FormFile(stream, 0, bytes.Length, "Files", "PACKOUT 07-29-2026_001.txt")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "text/plain"
+        };
+
+        var upload = await service.UploadAsync(new PackoutUploadForm
+        {
+            ActualRunId = actualRun.Id,
+            PackingDate = new DateOnly(2026, 7, 29),
+            RunNumber = 1,
+            DumpedBins = 155m,
+            Files = [file]
+        }, principal, default);
+
+        Assert.Null(upload.Error);
+        Assert.Contains("does not have a frozen Run Expectation", upload.Message);
+        Assert.Empty(await db.RunExpectations.ToListAsync());
+        var run = await db.PackoutRuns.Include(x => x.Sources).SingleAsync();
+        Assert.Null(run.RunExpectationId);
+        Assert.Equal(actualRun.Id, run.ActualRunId);
+        var source = Assert.Single(run.Sources);
+        Assert.Equal(PackoutReportParseStatuses.Failed, source.ParseStatus);
+        Assert.Equal("Packouts/2026/WP/ActualRun-2", source.StoragePath);
+        Assert.Equal(bytes.Length, source.FileSizeBytes);
+        Assert.Equal(64, source.Sha256.Length);
+        Assert.NotNull(source.StorageKey);
+        Assert.NotNull(source.UploadedAt);
+        Assert.NotNull(source.UploadedByUserId);
+        Assert.Single(storage.SaveRequests);
+        Assert.Empty(storage.DeletedKeys);
+
+        db.ChangeTracker.Clear();
+        var reloadedService = CreateService(db, storage, new ThrowingPackoutParser(), now.AddMinutes(1));
+        var review = await reloadedService.GetAsync(run.Id, principal, default);
+        Assert.NotNull(review);
+        Assert.False(review.ReconciliationAvailable);
+        Assert.True(Assert.Single(review.Sources).CanOpen);
+        var opened = await reloadedService.OpenSourceAsync(run.Id, source.Id, principal, default);
+        Assert.NotNull(opened.Content);
+        await using var openedContent = opened.Content;
+        using var copy = new MemoryStream();
+        await openedContent.CopyToAsync(copy);
+        Assert.Equal(bytes, copy.ToArray());
+
+        var duplicate = await reloadedService.UploadAsync(new PackoutUploadForm
+        {
+            ActualRunId = actualRun.Id,
+            PackingDate = new DateOnly(2026, 7, 29),
+            RunNumber = 1,
+            DumpedBins = 155m,
+            Files = [file]
+        }, principal, default);
+        Assert.NotNull(duplicate.Error);
+        Assert.Single(storage.SaveRequests);
+        var delete = await reloadedService.DeletePendingAsync(run.Id, run.ConcurrencyVersion, principal, default);
+        Assert.Contains("permanent records", delete.Error);
+        Assert.Empty(storage.DeletedKeys);
+        Assert.Single(await db.PackoutRuns.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PackoutStorageFailure_CreatesNoPackoutMetadata()
+    {
+        await using var db = Db();
+        var (actualRun, now) = await SeedHistoricalActualRunWithoutExpectationAsync(db);
+        var storage = new TestFileStorageService(failSave: true);
+        var service = CreateService(db, storage, new ThrowingPackoutParser(), now);
+        var bytes = Encoding.UTF8.GetBytes("report");
+        await using var stream = new MemoryStream(bytes);
+        var file = new FormFile(stream, 0, bytes.Length, "Files", "packout.txt")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "text/plain"
+        };
+
+        var upload = await service.UploadAsync(new PackoutUploadForm
+        {
+            ActualRunId = actualRun.Id,
+            PackingDate = new DateOnly(2026, 7, 29),
+            RunNumber = 1,
+            DumpedBins = 155m,
+            Files = [file]
+        }, OwnerPrincipal(), default);
+
+        Assert.Contains("could not be saved to permanent storage", upload.Error);
+        Assert.Empty(await db.PackoutRuns.ToListAsync());
+        Assert.Empty(await db.PackoutReportSources.ToListAsync());
+        Assert.Empty(storage.SaveRequests);
     }
 
     [Fact]
@@ -692,6 +841,7 @@ public sealed class PackoutReconciliationTests
             ContentType = "text/csv",
             FileSizeBytes = 100,
             Sha256 = new string('a', 64),
+            ParseStatus = PackoutReportParseStatuses.Legacy,
             ParserName = "DelimitedText",
             ParsedAt = DateTimeOffset.UtcNow
         };
@@ -807,6 +957,30 @@ public sealed class PackoutReconciliationTests
     }
 
     [Fact]
+    public void PackoutDocumentMigrationAndCompatibilityPackageAreAdditiveAndProviderSafe()
+    {
+        var migration = Read("src", "CropQc.Data", "Migrations", "20260824233548_AddPackoutDocumentStorageMetadata.cs");
+        var preflight = Read("scripts", "postgresql", "preflight-packout-document-storage.sql");
+        var apply = Read("scripts", "postgresql", "apply-packout-document-storage-schema.sql");
+        var verify = Read("scripts", "postgresql", "verify-packout-document-storage.sql");
+        var harness = Read("scripts", "test-packout-document-storage-production-schema.ps1");
+
+        Assert.Contains("MigrationProviderTypes.StoreType", migration);
+        Assert.Contains("AddColumn", migration);
+        Assert.DoesNotContain("DropTable", migration);
+        Assert.Contains("state_a_absent", preflight);
+        Assert.Contains("state_b_complete_exact", preflight);
+        Assert.Contains("State C", preflight);
+        Assert.Contains("Legacy metadata only", apply);
+        Assert.Contains("ON DELETE SET NULL", apply);
+        Assert.Contains("packout_document_storage_schema_verified", verify);
+        Assert.DoesNotContain("__EFMigrationsHistory", apply);
+        Assert.Contains("postgres:18", harness);
+        Assert.Contains("698-object gate", harness);
+        Assert.Contains("Migration history unchanged", harness);
+    }
+
+    [Fact]
     public void UserInterface_RequiresRunIdentityAndExplicitNegativeConfirmation()
     {
         var upload = Read("src", "CropQc.Web", "Views", "BinsRun", "ActualRunDetail.cshtml");
@@ -817,7 +991,8 @@ public sealed class PackoutReconciliationTests
         Assert.Contains("name=\"RunNumber\"", upload);
         Assert.DoesNotContain("name=\"PackingDate\"", projection);
         Assert.Contains("NegativeQuantityConfirmed", review);
-        Assert.Contains("Original uploads are deleted after parsing", review);
+        Assert.Contains("Original uploads are retained permanently", review);
+        Assert.Contains("Supporting Packout Documents", review);
         Assert.Contains("Packout Result Admin", Read("src", "CropQc.Web", "Services", "PackoutReconciliationService.cs"));
     }
 
@@ -899,6 +1074,128 @@ public sealed class PackoutReconciliationTests
         return File.ReadAllText(Path.Combine([root, .. parts]));
     }
 
+    private static async Task<(ActualRun ActualRun, DateTimeOffset Now)> SeedHistoricalActualRunWithoutExpectationAsync(CropQcDbContext db)
+    {
+        var now = DateTimeOffset.Parse("2026-08-24T20:00:00Z");
+        var user = new User
+        {
+            Email = ApplicationAreas.OwnerEmail,
+            DisplayName = "Historical Packout Owner",
+            IsActive = true,
+            CreatedAt = now
+        };
+        var warehouse = new Warehouse { Id = 8100, Code = "WP", Name = "WP", IsActive = true };
+        var room = new Room
+        {
+            Id = 8101,
+            WarehouseId = warehouse.Id,
+            Warehouse = warehouse,
+            Code = "WP-1",
+            Name = "WP-1",
+            CropQcRoomName = "WP-1",
+            IsActive = true
+        };
+        var actualRun = new ActualRun
+        {
+            Id = 2,
+            Status = ActualRunStatuses.Active,
+            CurrentRevisionNumber = 1,
+            RunAt = DateTimeOffset.Parse("2026-07-30T00:33:00Z"),
+            RunFacilityCodeSnapshot = "WP",
+            CreatedAt = now
+        };
+        var revision = new ActualRunRevision
+        {
+            Id = 8102,
+            ActualRunId = actualRun.Id,
+            ActualRun = actualRun,
+            RevisionNumber = 1,
+            OperationType = ActualRunRevisionTypes.Create,
+            OperationKey = "historical-packout-create",
+            IsCurrent = true,
+            CreatedAt = now
+        };
+        var adjustment = new RoomInventoryAdjustment
+        {
+            Id = 8103,
+            ActualRunId = actualRun.Id,
+            ActualRun = actualRun,
+            ActualRunRevisionId = revision.Id,
+            ActualRunRevision = revision,
+            WarehouseId = warehouse.Id,
+            Warehouse = warehouse,
+            RoomId = room.Id,
+            Room = room,
+            CropYear = 2026,
+            GrowerName = "Historical Grower",
+            LotNumber = "9350",
+            VarietyCode = "Bartlett",
+            OldBinCount = 155,
+            ChangeAmount = -155,
+            NewBinCount = 0,
+            AdjustmentType = BinsRunService.AdjustmentType,
+            Source = "Disposable historical Packout test",
+            AdjustmentAt = actualRun.RunAt,
+            CreatedAt = now,
+            InventoryInvariantVersion = 1,
+            InventoryOperationKey = "historical-packout-depletion"
+        };
+        var binsRun = new BinsRunEntry
+        {
+            Id = 8104,
+            ActualRunId = actualRun.Id,
+            ActualRun = actualRun,
+            ActualRunRevisionId = revision.Id,
+            ActualRunRevision = revision,
+            InventoryAdjustmentId = adjustment.Id,
+            InventoryAdjustment = adjustment,
+            WarehouseId = warehouse.Id,
+            Warehouse = warehouse,
+            RoomId = room.Id,
+            Room = room,
+            CropYear = 2026,
+            ReportingCropYearSnapshot = 2026,
+            ReportingFacilityCodeSnapshot = "WP",
+            GrowerName = "Historical Grower",
+            LotNumber = "9350",
+            VarietyCode = "Bartlett",
+            PreviousAvailableBins = 155,
+            BinsRun = 155,
+            NewAvailableBins = 0,
+            RunAt = actualRun.RunAt,
+            CreatedAt = now,
+            TransactionType = ActualRunTransactionTypes.Depletion
+        };
+        db.AddRange(user, warehouse, room, actualRun, revision, adjustment, binsRun);
+        await db.SaveChangesAsync();
+        return (actualRun, now);
+    }
+
+    private static PackoutReconciliationService CreateService(
+        CropQcDbContext db,
+        IFileStorageService storage,
+        IPackoutReportParser parser,
+        DateTimeOffset now)
+    {
+        var options = new PackoutProcessingOptions();
+        var configuration = new ConfigurationBuilder().Build();
+        return new PackoutReconciliationService(
+            db,
+            parser,
+            new PackoutFeedbackWorkbookService(options, NullLogger<PackoutFeedbackWorkbookService>.Instance),
+            new RecordingEmailSender(),
+            new UserAccessService(db, configuration),
+            new PacificBusinessTimeService(new FixedClock(now)),
+            configuration,
+            options,
+            new PackoutOperationCoordinator(),
+            storage,
+            NullLogger<PackoutReconciliationService>.Instance);
+    }
+
+    private static ClaimsPrincipal OwnerPrincipal() => new(new ClaimsIdentity(
+        [new Claim(ClaimTypes.Email, ApplicationAreas.OwnerEmail)], "Test"));
+
     private sealed class FixedClock(DateTimeOffset utcNow) : IClock
     {
         public DateTimeOffset UtcNow { get; } = utcNow;
@@ -912,6 +1209,52 @@ public sealed class PackoutReconciliationTests
         {
             Messages.Add(message);
             return Task.FromResult(QcEmailSendResult.Sent("packout-test-message"));
+        }
+    }
+
+    private sealed class ThrowingPackoutParser : IPackoutReportParser
+    {
+        public Task<PackoutParseResult> ParseAsync(PackoutUploadFile file, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Synthetic OCR failure.");
+    }
+
+    private sealed class TestFileStorageService(bool failSave = false) : IFileStorageService
+    {
+        private readonly Dictionary<string, byte[]> files = [];
+        public List<FileStorageSaveRequest> SaveRequests { get; } = [];
+        public List<string> DeletedKeys { get; } = [];
+
+        public string GenerateTargetPath(FileStorageTargetContext context) => "packouts";
+
+        public async Task<FileStorageReference> SaveAsync(FileStorageSaveRequest request, CancellationToken cancellationToken = default)
+        {
+            if (failSave) throw new IOException("Synthetic permanent storage failure.");
+            var key = $"{request.TargetPath}/{request.FileName}";
+            await using var buffer = new MemoryStream();
+            await request.Content.CopyToAsync(buffer, cancellationToken);
+            files[key] = buffer.ToArray();
+            SaveRequests.Add(request);
+            return new FileStorageReference(
+                FileStorageProviders.Local,
+                key,
+                request.TargetPath,
+                request.FileName,
+                request.ContentType,
+                files[key].LongLength,
+                FileId: key);
+        }
+
+        public Task<FileStorageReference?> GetMetadataAsync(string storageKey, CancellationToken cancellationToken = default) =>
+            Task.FromResult<FileStorageReference?>(null);
+
+        public Task<Stream?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream?>(files.TryGetValue(storageKey, out var bytes) ? new MemoryStream(bytes) : null);
+
+        public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default)
+        {
+            DeletedKeys.Add(storageKey);
+            files.Remove(storageKey);
+            return Task.CompletedTask;
         }
     }
 }

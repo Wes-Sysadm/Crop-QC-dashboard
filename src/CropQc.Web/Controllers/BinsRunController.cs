@@ -339,8 +339,18 @@ public sealed class BinsRunController(
     {
         form.ActualRunId = id;
         var result = await packoutReconciliationService.UploadAsync(form, User, cancellationToken);
+        var isProgressRequest = string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
         if (result.Error is not null)
         {
+            if (isProgressRequest)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = result.Error,
+                    redirectUrl = result.Id is long progressExistingId ? Url.Action(nameof(PackoutReview), new { id = progressExistingId }) : null
+                });
+            }
             TempData["Error"] = result.Error;
             return result.Id is long existingId
                 ? RedirectToAction(nameof(PackoutReview), new { id = existingId })
@@ -348,11 +358,32 @@ public sealed class BinsRunController(
         }
         if (result.Id is null)
         {
+            if (isProgressRequest) return BadRequest(new { success = false, message = "Packout report upload failed." });
             TempData["Error"] = "Packout report upload failed.";
             return RedirectToAction(nameof(ActualRunDetail), new { id });
         }
-        TempData["Success"] = "Packout Result parsed. Review all flagged rows before finalizing.";
+        var successMessage = result.Message ?? "Packout saved.";
+        TempData["Success"] = successMessage;
+        if (isProgressRequest)
+        {
+            return Ok(new
+            {
+                success = true,
+                message = successMessage,
+                redirectUrl = Url.Action(nameof(PackoutReview), new { id = result.Id.Value })
+            });
+        }
         return RedirectToAction(nameof(PackoutReview), new { id = result.Id.Value });
+    }
+
+    [HttpGet("Packout/{id:long}/Sources/{sourceId:long}/Content")]
+    [Authorize(Policy = AccessPolicyNames.PackoutResultsView)]
+    public async Task<IActionResult> PackoutSourceContent(long id, long sourceId, CancellationToken cancellationToken)
+    {
+        var result = await packoutReconciliationService.OpenSourceAsync(id, sourceId, User, cancellationToken);
+        return result.Content is null
+            ? NotFound()
+            : File(result.Content, result.ContentType ?? "application/octet-stream", enableRangeProcessing: true);
     }
 
     [HttpGet("Packout/{id:long}")]

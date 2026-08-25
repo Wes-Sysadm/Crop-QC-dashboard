@@ -7,7 +7,7 @@
     <div>
         <p class="eyebrow">Actual Run</p>
         <h1>Actual Run #@Model.Id</h1>
-        <p class="muted">@Model.Facility · @Model.RunAt.ToString("g") · Revision @Model.RevisionNumber · @Model.Status</p>
+        <p class="muted">@Model.Facility · @BusinessTime.FormatPacific(Model.RunAt) · Revision @Model.RevisionNumber · @Model.Status</p>
     </div>
     <div class="button-row">
         <a class="button secondary-button" href="/BinsRun?Section=Actual">Actual Run history</a>
@@ -28,7 +28,7 @@
     <dl class="summary-grid">
         <div><dt>Facility</dt><dd>@Model.Facility</dd></div>
         <div><dt>Sales Desk</dt><dd>@(Model.Facility == CropQc.Data.Entities.EmploymentFacilities.Wp ? Model.SalesDesk : "N/A")</dd></div>
-        <div><dt>Run date/time</dt><dd>@Model.RunAt.ToString("f")</dd></div>
+        <div><dt>Run date/time</dt><dd>@BusinessTime.FormatPacific(Model.RunAt, "dddd, MMMM d, yyyy h:mm tt")</dd></div>
         <div><dt>Revision</dt><dd>@Model.RevisionNumber</dd></div>
         <div><dt>Total bins</dt><dd>@Model.TotalBins</dd></div>
         <div><dt>Source lines</dt><dd>@Model.Contributions.Count</dd></div>
@@ -54,7 +54,7 @@
                     <tbody>
                     @foreach (var correction in Model.SalesDeskCorrections)
                     {
-                        <tr><td>@correction.PreviousSalesDesk</td><td>@correction.NewSalesDesk</td><td>@correction.Reason</td><td>@correction.CorrectedBy</td><td>@correction.CorrectedAt.ToString("g")</td></tr>
+                        <tr><td>@correction.PreviousSalesDesk</td><td>@correction.NewSalesDesk</td><td>@correction.Reason</td><td>@correction.CorrectedBy</td><td>@BusinessTime.FormatPacific(correction.CorrectedAt)</td></tr>
                     }
                     </tbody>
                 </table>
@@ -155,7 +155,7 @@
             <div><dt>@(expectation.IsHistoricalReconstruction ? "Reconstructed benchmark peeler" : "Expected peeler")</dt><dd>@expectation.ExpectedPeelerPounds.ToString("0.##") lb</dd></div>
             <div><dt>@(expectation.IsHistoricalReconstruction ? "Reconstructed benchmark waste" : "Expected waste")</dt><dd>@expectation.ExpectedWastePounds.ToString("0.##") lb</dd></div>
             <div><dt>Confidence</dt><dd>@expectation.ConfidencePercent.ToString("0.##")%</dd></div>
-            <div><dt>@(expectation.IsHistoricalReconstruction ? "Reconstructed" : "Calculated")</dt><dd>@expectation.CalculatedAt.ToString("g")</dd></div>
+            <div><dt>@(expectation.IsHistoricalReconstruction ? "Reconstructed" : "Calculated")</dt><dd>@BusinessTime.FormatPacific(expectation.CalculatedAt)</dd></div>
             <div><dt>Calculation version</dt><dd>@expectation.CalculationVersion</dd></div>
         </dl>
         <div class="grid two-column-grid">
@@ -205,7 +205,7 @@
                 <ul>
                 @foreach (var prior in Model.Expectations.Where(x => x.Id != expectation.Id))
                 {
-                    <li>Revision @prior.RevisionNumber · @prior.TotalBins bins · @prior.ExpectedPackoutPercent.ToString("0.##")% expected packout · @prior.CalculatedAt.ToString("g")</li>
+                    <li>Revision @prior.RevisionNumber · @prior.TotalBins bins · @prior.ExpectedPackoutPercent.ToString("0.##")% expected packout · @BusinessTime.FormatPacific(prior.CalculatedAt)</li>
                 }
                 </ul>
             </details>
@@ -227,16 +227,17 @@
     {
         @if (Model.CanUploadPackout)
         {
-            <form method="post" enctype="multipart/form-data" action="/BinsRun/ActualRuns/@Model.Id/Packout" class="form-grid" data-upload-feedback-form data-upload-busy-text="Uploading packout report files...">
+            <form method="post" enctype="multipart/form-data" action="/BinsRun/ActualRuns/@Model.Id/Packout" class="form-grid" data-upload-feedback-form data-upload-progress-form data-upload-busy-text="Uploading packout report files...">
                 @Html.AntiForgeryToken()
-                <label>Packing date<input type="date" name="PackingDate" required /></label>
+                <label>Packing date<input type="date" name="PackingDate" value="@BusinessTime.PacificDate(Model.RunAt).ToString("yyyy-MM-dd")" required /></label>
                 <label>Run number<input type="number" name="RunNumber" min="1" value="1" required /></label>
                 <label>Dumped bins<input type="number" name="DumpedBins" min="0.01" step="0.01" value="@Model.TotalBins" required /></label>
                 <label class="wide">Packout report files<input type="file" name="Files" multiple required accept=".pdf,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.tif,.tiff" /></label>
-                <p class="muted wide">Files must be parts or pages of this one physical run report. Uploaded originals are removed after bounded parsing.</p>
+                <p class="muted wide">Files must be parts or pages of this one physical run report. Original documents are retained permanently even when reconciliation or parsing is unavailable.</p>
                 <div class="upload-feedback wide" data-upload-feedback role="status" aria-live="polite" hidden>
                     <span class="upload-feedback-spinner" data-upload-feedback-spinner aria-hidden="true"></span>
                     <span data-upload-feedback-message></span>
+                    <progress data-upload-feedback-progress max="100" value="0" hidden></progress>
                 </div>
                 <button type="submit">Upload Packout Result</button>
             </form>
@@ -255,6 +256,32 @@
             <div><dt>Actual packout</dt><dd>@(Model.Packout.ActualPackoutPercent?.ToString("0.##") ?? "Not calculated")%</dd></div>
         </dl>
         <a class="button" href="/BinsRun/Packout/@Model.Packout.Id">Review Packout Result</a>
+        @if (Model.CurrentExpectation is null)
+        {
+            <p class="notice warning">Reconciliation unavailable — this historical run predates frozen Run Expectations.</p>
+        }
+        @if (Model.Packout.Documents.Count > 0)
+        {
+            <h3>Supporting Packout Documents</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>File</th><th>Size</th><th>Uploaded</th><th>By</th><th>Parsing</th><th>Action</th></tr></thead>
+                    <tbody>
+                    @foreach (var document in Model.Packout.Documents)
+                    {
+                        <tr>
+                            <td>@document.FileName</td>
+                            <td>@((document.FileSizeBytes / 1024d).ToString("0.#")) KB</td>
+                            <td>@BusinessTime.FormatPacific(document.UploadedAt, empty: "Legacy upload")</td>
+                            <td>@document.UploadedBy</td>
+                            <td><span>@document.ParseStatus</span>@if (!string.IsNullOrWhiteSpace(document.Diagnostic)) { <br /><span class="muted">@document.Diagnostic</span> }</td>
+                            <td>@if (document.CanOpen) { <a class="button secondary-button" target="_blank" rel="noopener" href="/BinsRun/Packout/@Model.Packout.Id/Sources/@document.Id/Content">View or download</a> } else { <span class="muted">Legacy original unavailable</span> }</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
     }
 </section>
 

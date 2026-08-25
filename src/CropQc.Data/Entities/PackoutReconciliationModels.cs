@@ -8,6 +8,14 @@ public static class PackoutRunStatuses
     public const string Reopened = "Reopened";
 }
 
+public static class PackoutReportParseStatuses
+{
+    public const string Parsed = "Parsed";
+    public const string Review = "Review required";
+    public const string Failed = "Parse failed";
+    public const string Legacy = "Legacy metadata only";
+}
+
 public static class PackoutProductCategories
 {
     public const string Packed = "Packed product";
@@ -143,10 +151,20 @@ public sealed class PackoutReportSource
     public required string ContentType { get; set; }
     public long FileSizeBytes { get; set; }
     public required string Sha256 { get; set; }
+    public string? StorageProvider { get; set; }
+    public string? StorageKey { get; set; }
+    public string? StoragePath { get; set; }
+    public string? DriveId { get; set; }
+    public string? FileId { get; set; }
+    public string? FolderId { get; set; }
+    public required string ParseStatus { get; set; } = PackoutReportParseStatuses.Legacy;
     public required string ParserName { get; set; }
     public string? ParserVersion { get; set; }
     public decimal? Confidence { get; set; }
     public string? SafeDiagnostic { get; set; }
+    public DateTimeOffset? UploadedAt { get; set; }
+    public int? UploadedByUserId { get; set; }
+    public User? UploadedByUser { get; set; }
     public DateTimeOffset ParsedAt { get; set; }
 }
 
