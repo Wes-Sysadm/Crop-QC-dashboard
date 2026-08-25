@@ -137,6 +137,46 @@ public sealed class StoragePresentationTests
     }
 
     [Fact]
+    public void SiteWideVarietySurfaces_UseSharedConfiguredColorsAndOneOrganicStripe()
+    {
+        var css = ReadRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css");
+        var dashboardService = ReadRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs");
+        var inventoryService = ReadRepositoryFile("src", "CropQc.Web", "Services", "InventoryByVarietyService.cs");
+        var reportingService = ReadRepositoryFile("src", "CropQc.Web", "Services", "RunReportingService.cs");
+        var rooms = ReadRepositoryFile("src", "CropQc.Web", "Views", "Home", "Rooms.cshtml");
+        var receipts = ReadRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Index.cshtml");
+        var endOfDay = ReadRepositoryFile("src", "CropQc.Web", "Views", "EndOfDayFill", "Index.cshtml");
+        var runTotals = ReadRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml");
+
+        Assert.Contains("resolver.GetResolvedColorsReadOnlyAsync(keys", dashboardService);
+        Assert.Contains("GetResolvedColorsReadOnlyAsync", inventoryService);
+        Assert.Contains("GetResolvedColorsReadOnlyAsync", reportingService);
+        Assert.Contains("--room-variety-bg: @cardColor", rooms);
+        Assert.Contains("--receipt-variety-bg: @BuildVarietyBandBackground", receipts);
+        Assert.Contains("--variety-color: @variety.HexColor", endOfDay);
+        Assert.Contains("--variety-bg: @variety.ColorHex", runTotals);
+
+        Assert.Contains("--variety-organic-stripe", css);
+        Assert.Equal(1, CountOccurrences(css, "repeating-linear-gradient("));
+        Assert.True(CountOccurrences(css, "var(--variety-organic-stripe)") >= 8);
+        Assert.DoesNotContain("rgba(22,101,52", css);
+    }
+
+    [Fact]
+    public void VarietyPresentation_PreservesReadableContrastNeutralFallbackAndStatusColors()
+    {
+        var css = ReadRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css");
+
+        Assert.Equal("#17212B", VarietyColorService.TextColor("#F5E66A"));
+        Assert.Equal("#FFFFFF", VarietyColorService.TextColor("#123456"));
+        Assert.Equal(VarietyColorService.NeutralFallbackColor, VarietyColorService.FallbackColor("UNKNOWN"));
+        Assert.Contains(".status.ready, .status.sent", css);
+        Assert.Contains(".status.missing, .status.pending", css);
+        Assert.Contains(".notice.warning", css);
+        Assert.Contains(".notice.error", css);
+    }
+
+    [Fact]
     public void CurrentStorageFilters_ConstrainSafeSourcesAndApplyIdentityFiltersAfterReconciliation()
     {
         var service = ReadRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs");
@@ -227,6 +267,19 @@ public sealed class StoragePresentationTests
 
     private static string ReadRepositoryFile(params string[] path) =>
         File.ReadAllText(FindRepositoryFile(path));
+
+    private static int CountOccurrences(string value, string search)
+    {
+        var count = 0;
+        var offset = 0;
+        while ((offset = value.IndexOf(search, offset, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            offset += search.Length;
+        }
+
+        return count;
+    }
 
     private static string FindRepositoryFile(params string[] path)
     {
