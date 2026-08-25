@@ -1,3 +1,6 @@
+:root {
+    --variety-organic-stripe: repeating-linear-gradient(135deg, transparent 0 8px, rgba(255,255,255,.48) 8px 13px, rgba(0,0,0,.20) 13px 18px, transparent 18px 26px);
+}
 * { box-sizing: border-box; }
 html, body { max-width: 100%; overflow-x: hidden; }
 body { margin: 0; font-family: Segoe UI, Arial, sans-serif; color: #17202a; background: #f5f7f9; }
@@ -48,8 +51,8 @@ h2 { margin: 28px 0 12px; font-size: 20px; }
 .room-card.variety-colored { position: relative; overflow: hidden; background: var(--room-variety-bg, white); border-left-color: transparent; }
 .room-card.variety-colored::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; }
 .room-card.variety-colored.majority-organic::after {
-    opacity: .28;
-    background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.75) 0 8px, rgba(22,101,52,.62) 8px 13px, rgba(255,255,255,.75) 13px 21px);
+    opacity: .72;
+    background-image: var(--variety-organic-stripe);
 }
 
 .room-multi-select {
@@ -94,7 +97,8 @@ h2 { margin: 28px 0 12px; font-size: 20px; }
 .room-lots { margin: 0; color: #4a5968; white-space: normal; overflow-wrap: break-word; word-break: normal; }
 .variety-legend { display: flex; flex-wrap: wrap; gap: 6px; }
 .variety-legend span { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 3px 7px; border-radius: 999px; background: rgba(248,250,252,.92); color: #263747; font-size: 12px; font-weight: 800; }
-.variety-legend i { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(23,32,42,.28); flex: 0 0 auto; }
+.variety-legend i { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(23,32,42,.28); flex: 0 0 auto; background-color: var(--variety-color); }
+.variety-legend .organic i, .variety-bin-chip.organic i, .variety-inline-label.organic i, .receipt-variety-label.organic i, .inventory-variety-breakdown .organic i { background-image: var(--variety-organic-stripe); }
 .toolbar { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin: 0 0 18px; padding: 14px; background: white; border: 1px solid #d9e1e8; border-radius: 6px; }
 .role-editor-selector { margin-top: 18px; border: 2px solid #2f6f8f; background: #f5fbff; }
 .role-editor-selector .field { flex: 1 1 280px; max-width: 520px; }
@@ -230,7 +234,7 @@ tr:last-child td { border-bottom: 0; }
 .run-variety-card, .grower-variety-card { position: relative; overflow: hidden; border: 1px solid rgba(23,33,43,.24); border-radius: 10px; background: var(--variety-bg); color: var(--variety-text); box-shadow: 0 2px 7px rgba(23,33,43,.12); }
 .run-variety-card { display: block; color: var(--variety-text); text-decoration: none; }
 .run-variety-card:hover, .run-variety-card:focus-visible { outline: 3px solid #1f6feb; outline-offset: 2px; }
-.run-variety-card.organic::after, .grower-variety-card.organic::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(135deg, transparent 0, transparent 11px, rgba(255,255,255,.22) 11px, rgba(255,255,255,.22) 17px); }
+.run-variety-card.organic::after, .grower-variety-card.organic::after { content: ""; position: absolute; inset: 0; pointer-events: none; background-image: var(--variety-organic-stripe); }
 .run-variety-card-content, .grower-variety-card-content { position: relative; z-index: 1; display: grid; gap: .45rem; padding: 1rem; }
 .run-variety-card-content > strong, .grower-variety-card h3 { font-size: 1.15rem; margin: 0; }
 .production-badge { display: inline-block; width: fit-content; padding: .12rem .45rem; border: 1px solid currentColor; border-radius: 999px; font-size: .8rem; font-weight: 700; background: rgba(255,255,255,.18); }
@@ -240,7 +244,7 @@ tr:last-child td { border-bottom: 0; }
 .grower-variety-card dd { margin: 0; font-weight: 700; }
 .variety-card-action { width: fit-content; color: var(--variety-text); font-weight: 700; text-decoration: underline; }
 .selected-variety-header { position: relative; overflow: hidden; display: flex; align-items: center; gap: .6rem; margin: .75rem 0; padding: .65rem .85rem; border-radius: 7px; background: var(--variety-bg); color: var(--variety-text); }
-.selected-variety-header.organic::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(135deg, transparent 0, transparent 11px, rgba(255,255,255,.22) 11px, rgba(255,255,255,.22) 17px); }
+.selected-variety-header.organic::after { content: ""; position: absolute; inset: 0; pointer-events: none; background-image: var(--variety-organic-stripe); }
 .selected-variety-header > * { position: relative; z-index: 1; }
 .grower-progress-list { display: grid; gap: 1rem; }
 .grower-progress-inline-metrics { display: flex; flex-wrap: wrap; gap: .65rem 1.35rem; }
@@ -1572,7 +1576,7 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 .variety-bin-chip i, .variety-inline-label i { background: var(--variety-color); border: 1px solid rgba(0,0,0,.24); border-radius: 50%; height: 12px; width: 12px; }
 .variety-bin-chip small { grid-column: 2; }
 .variety-bin-chip b { grid-column: 3; grid-row: 1 / span 2; white-space: nowrap; }
-.variety-bin-chip.organic, .variety-inline-label.organic, .storage-variety-legend .organic { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.15) 0 6px, rgba(22,101,52,.13) 6px 10px); }
+.variety-bin-chip.organic, .variety-inline-label.organic, .storage-variety-legend .organic { background-image: var(--variety-organic-stripe); }
 .room-more-varieties, .room-card-actions, .card-interactive { position: relative; z-index: 3; }
 .room-more-varieties summary { cursor: pointer; font-weight: 800; }
 .card-stretched-link::after { content: ""; inset: 0; position: absolute; z-index: 2; }
@@ -1652,10 +1656,10 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
     .transfer-review .action-bar { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; }
 }
 .receipt-card-colored { background: var(--receipt-variety-bg, #e7ecef); overflow: hidden; position: relative; }
-.receipt-card-colored.organic::after { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 8px, rgba(22,101,52,.35) 8px 13px, rgba(255,255,255,.55) 13px 21px); content: ""; inset: 0; opacity: .42; pointer-events: none; position: absolute; }
+.receipt-card-colored.organic::after { background-image: var(--variety-organic-stripe); content: ""; inset: 0; opacity: .72; pointer-events: none; position: absolute; }
 .receipt-card-content { background: rgba(255,255,255,.92); border-radius: 5px; display: grid; gap: 12px; padding: 12px; position: relative; z-index: 1; }
 .receipt-variety-label { align-items: center; display: inline-flex; flex-wrap: wrap; gap: 6px; margin: 0 8px 4px 0; }
-.receipt-variety-label i { border: 1px solid rgba(0,0,0,.25); border-radius: 50%; height: 14px; width: 14px; }
+.receipt-variety-label i { background-color: var(--variety-color); border: 1px solid rgba(0,0,0,.25); border-radius: 50%; height: 14px; width: 14px; }
 .bins-in-storage-column { min-width: 150px; text-align: center !important; }
 .storage-grower-grid, .room-grower-grid { display: grid; gap: 14px; }
 .storage-grower-card, .room-grower-card { background: #fff; border: 1px solid #d9e1e8; border-radius: 8px; padding: 12px 14px; }
@@ -1664,7 +1668,7 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 .storage-variety-legend, .storage-qc-metrics, .storage-grower-card .table-wrap, .room-grower-card > .room-metrics, .room-grower-card > .variety-legend, .room-grower-lots { margin-top: 12px; }
 .variety-inline-label { align-items: center; display: inline-flex; gap: 6px; padding: 3px 6px; }
 .room-detail-hero { background: var(--room-variety-bg, #607d8b); overflow: hidden; padding: 12px; position: relative; }
-.room-detail-hero.majority-organic::after { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.58) 0 8px, rgba(22,101,52,.42) 8px 13px, rgba(255,255,255,.58) 13px 21px); content: ""; inset: 0; opacity: .35; pointer-events: none; position: absolute; }
+.room-detail-hero.majority-organic::after { background-image: var(--variety-organic-stripe); content: ""; inset: 0; opacity: .72; pointer-events: none; position: absolute; }
 .room-detail-hero-content { background: rgba(255,255,255,.94); border-radius: 5px; padding: 16px; position: relative; z-index: 1; }
 .combined-qc-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .room-detail-varieties { margin: 10px 0 16px; }
@@ -1675,8 +1679,8 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 }
 
 .end-of-day-fill-room { align-self: start; }
-.end-of-day-fill-variety { border-left: 8px solid #607d8b; padding: .5rem .75rem; margin-top: .75rem; background: color-mix(in srgb, var(--surface, #fff) 92%, transparent); }
-.end-of-day-fill-variety.organic-stripe { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.32) 0 8px, transparent 8px 16px); }
+.end-of-day-fill-variety { border-left: 8px solid var(--variety-color, #607d8b); padding: .5rem .75rem; margin-top: .75rem; background-color: color-mix(in srgb, var(--variety-color, #607d8b) 16%, white); }
+.end-of-day-fill-variety.organic-stripe { background-image: var(--variety-organic-stripe); }
 .physical-count-confirmation { margin: 1rem 0; font-weight: 600; }
 .sent-email-preview { overflow-x: auto; border: 1px solid #ccc; padding: 1rem; background: #fff; color: #111; }
 
@@ -1927,11 +1931,12 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 
 .inventory-variety-title-swatch { margin-right: .55rem; }
 .inventory-variety-total { font-size: 1.1rem; }
+.inventory-variety-breakdown li { align-items: center; display: flex; gap: .45rem; }
+.inventory-variety-breakdown i { background-color: var(--variety-color); border: 1px solid rgba(0,0,0,.24); border-radius: 50%; display: inline-block; flex: 0 0 auto; height: 14px; width: 14px; }
 
 .upload-feedback {
     align-items: center;
     display: flex;
-    flex-wrap: wrap;
     gap: .6rem;
     min-height: 1.5rem;
     overflow-wrap: anywhere;
@@ -1950,13 +1955,6 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 }
 
 .upload-feedback-error { color: var(--danger-color, #991b1b); }
-
-.upload-feedback progress {
-    accent-color: var(--primary-color, #245c3c);
-    flex: 1 0 100%;
-    height: .75rem;
-    max-width: 36rem;
-}
 
 .upload-workflow-busy .upload-zone,
 .upload-workflow-busy .staged-receipt-photo-drop-zone,

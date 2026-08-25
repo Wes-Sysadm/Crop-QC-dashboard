@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using CropQc.Data;
@@ -23,6 +22,10 @@ public sealed record VarietyColorResolved(string VarietyKey, string VarietyName,
 
 public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVarietyColorService
 {
+    public const string NeutralFallbackColor = "#607D8B";
+    public const string LightTextColor = "#FFFFFF";
+    public const string DarkTextColor = "#17212B";
+
     private static readonly Regex HexColorRegex = HexColorPattern();
     private static readonly IReadOnlyDictionary<string, VarietyAlias> CanonicalVarietyAliases =
         new[]
@@ -251,15 +254,17 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
         return Regex.Replace(new string(chars), "_+", "_").Trim('_');
     }
 
-    public static string FallbackColor(string varietyKey)
+    public static string FallbackColor(string? varietyKey) => NeutralFallbackColor;
+
+    public static string TextColor(string? colorHex)
     {
-        var palette = new[]
-        {
-            "#2F80ED", "#27AE60", "#F2994A", "#9B51E0", "#EB5757", "#00A5B5",
-            "#7B61FF", "#219653", "#D97706", "#33658A", "#6C9A8B", "#A23E48"
-        };
-        var hash = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(varietyKey.ToUpperInvariant()));
-        return palette[hash[0] % palette.Length];
+        var normalized = NormalizeHex(colorHex);
+        if (!IsValidHexColor(normalized)) return LightTextColor;
+        var red = Convert.ToInt32(normalized.Substring(1, 2), 16);
+        var green = Convert.ToInt32(normalized.Substring(3, 2), 16);
+        var blue = Convert.ToInt32(normalized.Substring(5, 2), 16);
+        var luminance = (0.2126m * red + 0.7152m * green + 0.0722m * blue) / 255m;
+        return luminance > 0.55m ? DarkTextColor : LightTextColor;
     }
 
     public static string NormalizeHex(string? value)

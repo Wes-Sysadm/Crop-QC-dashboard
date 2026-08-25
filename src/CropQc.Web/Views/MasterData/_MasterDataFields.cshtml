@@ -156,7 +156,7 @@ else if (Model.Type == "fruit-profiles")
             </div>
             <label class="field">
                 <span>Picker</span>
-                <input type="color" value="@(string.IsNullOrWhiteSpace(Model.VarietyHexColor) ? "#2F80ED" : Model.VarietyHexColor)" data-master-color-picker />
+                <input type="color" value="@(string.IsNullOrWhiteSpace(Model.VarietyHexColor) ? VarietyColorService.NeutralFallbackColor : Model.VarietyHexColor)" data-master-color-picker />
             </label>
             <label class="field">
                 <span>Hex</span>
@@ -164,7 +164,7 @@ else if (Model.Type == "fruit-profiles")
             </label>
             <div class="field">
                 <label>Preview</label>
-                <span class="variety-color-preview large-preview" style="--variety-color: @(string.IsNullOrWhiteSpace(Model.VarietyHexColor) ? "#2F80ED" : Model.VarietyHexColor)" data-master-color-preview aria-label="Variety color preview"></span>
+                <span class="variety-color-preview large-preview" style="--variety-color: @(string.IsNullOrWhiteSpace(Model.VarietyHexColor) ? VarietyColorService.NeutralFallbackColor : Model.VarietyHexColor)" data-master-color-preview aria-label="Variety color preview"></span>
                 <span class="muted">Fallback @Model.VarietyFallbackColor</span>
             </div>
             <p class="muted wide" data-master-color-contrast>Text is shown over a protected content panel on room cards; use a distinct color for quick scanning.</p>

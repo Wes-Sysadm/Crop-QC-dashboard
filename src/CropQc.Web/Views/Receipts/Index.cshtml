@@ -205,7 +205,7 @@
             <dt>Variety</dt><dd>
                 @foreach (var variety in receiptVarieties)
                 {
-                    <span class="receipt-variety-label"><i style="background: @variety.HexColor"></i>@variety.DisplayName — @IdentityLabel(variety.ProductionType, variety.OrganicLabel)@($" · {variety.BinCount:N0} bins")</span>
+                    <span class="receipt-variety-label @(variety.IsOrganic == true ? "organic" : "")" style="--variety-color: @variety.HexColor"><i></i>@variety.DisplayName — @IdentityLabel(variety.ProductionType, variety.OrganicLabel)@($" · {variety.BinCount:N0} bins")</span>
                 }
             </dd>
             <dt>Bins</dt><dd>@receipt.BinCount</dd>

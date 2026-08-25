@@ -51,7 +51,7 @@ else
     {
         var dominant = room.VarietyColorSegments.FirstOrDefault();
         var isEmpty = (room.CurrentBinsCount ?? 0) == 0;
-        var cardColor = isEmpty ? "#E7ECEF" : dominant?.HexColor ?? "#607D8B";
+        var cardColor = isEmpty ? "#E7ECEF" : dominant?.HexColor ?? VarietyColorService.NeutralFallbackColor;
         <article class="room-card dedicated-room-card variety-colored @(room.IsMajorityOrganic ? "majority-organic" : "") @(isEmpty ? "empty-room-card" : "") @(room.IsSealed ? "sealed-room" : room.IsSealScheduled ? "scheduled-seal-room" : "")" style="--room-variety-bg: @cardColor">
             <div class="room-card-content">
                 <header class="room-card-header">

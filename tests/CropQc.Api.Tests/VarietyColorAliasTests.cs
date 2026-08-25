@@ -117,6 +117,66 @@ public sealed class VarietyColorAliasTests
     }
 
     [Fact]
+    public async Task OrganicAndConventionalProfiles_ResolveTheSameConfiguredBaseColor()
+    {
+        await using var db = CreateDbContext();
+        var conventional = new FruitProfile
+        {
+            Id = 900010,
+            Name = "Gala",
+            VarietyCode = "GALA",
+            FruitType = "Apple",
+            ProductionType = "Conventional",
+            IsOrganic = false,
+            IsActive = true
+        };
+        var organic = new FruitProfile
+        {
+            Id = 900011,
+            Name = "Organic Gala",
+            VarietyCode = "GALA",
+            FruitType = "Apple",
+            ProductionType = "Organic",
+            IsOrganic = true,
+            IsActive = true
+        };
+        db.FruitProfiles.AddRange(conventional, organic);
+        db.VarietyColorConfigurations.Add(Config("GALA", "Gala", "#5A2D82", DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync();
+        var service = new VarietyColorService(db);
+
+        var conventionalIdentity = VarietyColorService.IdentityFromProfile(conventional);
+        var organicIdentity = VarietyColorService.IdentityFromProfile(organic);
+        var colors = await service.GetResolvedColorsReadOnlyAsync(
+            [conventionalIdentity.Key, organicIdentity.Key], CancellationToken.None);
+
+        Assert.Equal(conventionalIdentity.Key, organicIdentity.Key);
+        var color = Assert.Single(colors).Value;
+        Assert.True(color.IsConfigured);
+        Assert.Equal("#5A2D82", color.HexColor);
+    }
+
+    [Fact]
+    public async Task ChangingConfiguredColor_ChangesAllSubsequentResolvedPresentation()
+    {
+        await using var db = CreateDbContext();
+        db.VarietyColorConfigurations.Add(Config("GALA", "Gala", "#123456", DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync();
+        var service = new VarietyColorService(db);
+
+        var before = await service.GetResolvedColorsReadOnlyAsync(["GALA"], CancellationToken.None);
+        Assert.Equal("#123456", before["GALA"].HexColor);
+
+        Assert.Null(await service.SaveAsync(
+            new VarietyColorForm { VarietyKey = "GALA", VarietyName = "Gala", HexColor = "#ABCDEF" },
+            "admin@fruitandland.com",
+            CancellationToken.None));
+
+        var after = await service.GetResolvedColorsReadOnlyAsync(["GALA"], CancellationToken.None);
+        Assert.Equal("#ABCDEF", after["GALA"].HexColor);
+    }
+
+    [Fact]
     public void MultiVarietyProportions_AreCalculatedAfterAliasNormalization()
     {
         var lots = new[]
@@ -259,12 +319,14 @@ public sealed class VarietyColorAliasTests
     }
 
     [Fact]
-    public void FallbackColors_AreDeterministicForCanonicalAliases()
+    public void UnconfiguredVarieties_UseApprovedNeutralFallbackInsteadOfGeneratedColors()
     {
         var gsmt = VarietyColorService.NormalizeIdentity("GSMT", "GSMT");
         var grannysmith = VarietyColorService.NormalizeIdentity("Grannysmith", "Grannysmith");
 
-        Assert.Equal(VarietyColorService.FallbackColor(gsmt.Key), VarietyColorService.FallbackColor(grannysmith.Key));
+        Assert.Equal(VarietyColorService.NeutralFallbackColor, VarietyColorService.FallbackColor(gsmt.Key));
+        Assert.Equal(VarietyColorService.NeutralFallbackColor, VarietyColorService.FallbackColor(grannysmith.Key));
+        Assert.Equal(VarietyColorService.FallbackColor("GALA"), VarietyColorService.FallbackColor("BART"));
     }
 
     private static CropQcDbContext CreateDbContext()

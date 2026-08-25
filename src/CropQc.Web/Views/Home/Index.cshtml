@@ -141,7 +141,7 @@ else
                             <div class="variety-legend" aria-label="Current varieties by bins">
                                 @foreach (var segment in room.VarietyColorSegments.Take(4))
                                 {
-                                    <span><i style="background: @segment.HexColor"></i>@segment.VarietyName - @segment.IdentityLabel - @segment.CurrentBins bins</span>
+                                    <span class="@(segment.IsOrganic == true ? "organic" : "")" style="--variety-color: @segment.HexColor"><i></i>@segment.VarietyName - @segment.IdentityLabel - @segment.CurrentBins bins</span>
                                 }
                             </div>
                             @if (room.IsMajorityOrganic)
