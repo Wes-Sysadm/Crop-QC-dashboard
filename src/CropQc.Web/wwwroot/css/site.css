@@ -1937,12 +1937,20 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 .upload-feedback {
     align-items: center;
     display: flex;
+    flex-wrap: wrap;
     gap: .6rem;
     min-height: 1.5rem;
     overflow-wrap: anywhere;
 }
 
 .upload-feedback[hidden] { display: none; }
+
+.upload-feedback progress {
+    accent-color: var(--primary-color, #245c3c);
+    flex: 1 0 100%;
+    height: .75rem;
+    max-width: 36rem;
+}
 
 .upload-feedback-spinner {
     animation: upload-feedback-spin .75s linear infinite;
