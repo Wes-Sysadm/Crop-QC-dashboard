@@ -115,8 +115,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("x.VarietyKey}\\u001f{x.ProductionType}\\u001f{x.IsOrganic", service);
         Assert.Contains("bins / (decimal)totalBins * 100m", service);
         Assert.Contains("organicBins / (decimal)currentBins > 0.51m", service);
-        Assert.Contains("dbContext.VarietyColorConfigurations.AsNoTracking()", service);
-        Assert.Contains("Where(x => keys.Contains(x.VarietyKey))", service);
+        Assert.Contains("resolver.GetResolvedColorsReadOnlyAsync(keys, cancellationToken)", service);
         Assert.Contains("BuildVarietyBandBackground(room.VarietyColorSegments)", dashboard);
         Assert.Contains("majority-organic", dashboard);
         Assert.Contains("Majority organic", dashboard);
@@ -124,7 +123,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("variety-legend", dashboard);
         Assert.Contains("OrganicLabel", room);
         Assert.Contains("Majority organic", room);
-        Assert.Contains("repeating-linear-gradient(135deg", css);
+        Assert.Contains("--variety-organic-stripe: repeating-linear-gradient(", css);
+        Assert.Contains("var(--variety-organic-stripe)", css);
         Assert.Contains("background: var(--room-variety-bg", css);
     }
 

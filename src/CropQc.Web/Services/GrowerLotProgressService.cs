@@ -10,7 +10,6 @@ public interface IGrowerLotProgressService
 {
     Task<GrowerLotProgressPageViewModel> GetAsync(GrowerLotProgressFilterForm filter, CancellationToken cancellationToken);
 }
-
 public sealed class GrowerLotProgressService(
     CropQcDbContext dbContext,
     IBusinessTimeService businessTime,
@@ -337,7 +336,7 @@ public sealed class GrowerLotProgressService(
                 BinsRun = matchingRuns.Sum(x => x.Bins),
                 ReceivedLotCount = matchingReceipts.Select(LotKey).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
                 ColorHex = color.HexColor,
-                TextColorHex = ReportingColorPresentation.TextColor(color.HexColor),
+                TextColorHex = VarietyColorService.TextColor(color.HexColor),
                 IsColorConfigured = color.IsConfigured,
                 IsExpanded = isExpanded,
                 Lots = isExpanded ? BuildLots(grower.GrowerNumber, color.VarietyName, identity, matchingReceipts, matchingRuns, filter) : []
@@ -719,18 +718,4 @@ public sealed class GrowerLotProgressService(
         public static VarietySelection Invalid(string message) => new(true, "", "", false, [], message);
     }
     private sealed record CanonicalProfiles(IReadOnlyList<int> ProfileIds);
-}
-
-public static class ReportingColorPresentation
-{
-    public static string TextColor(string colorHex)
-    {
-        var normalized = VarietyColorService.NormalizeHex(colorHex);
-        if (!VarietyColorService.IsValidHexColor(normalized)) return "#FFFFFF";
-        var red = Convert.ToInt32(normalized.Substring(1, 2), 16);
-        var green = Convert.ToInt32(normalized.Substring(3, 2), 16);
-        var blue = Convert.ToInt32(normalized.Substring(5, 2), 16);
-        var luminance = (0.2126m * red + 0.7152m * green + 0.0722m * blue) / 255m;
-        return luminance > 0.55m ? "#17212B" : "#FFFFFF";
-    }
 }

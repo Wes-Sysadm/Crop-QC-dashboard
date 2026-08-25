@@ -369,8 +369,8 @@ public sealed class GrowerLotProgressTests
     [Fact]
     public void ColorPresentation_UsesReadableContrastAndCanonicalFallback()
     {
-        Assert.Equal("#FFFFFF", ReportingColorPresentation.TextColor("#123456"));
-        Assert.Equal("#17212B", ReportingColorPresentation.TextColor("#F5E66A"));
+        Assert.Equal("#FFFFFF", VarietyColorService.TextColor("#123456"));
+        Assert.Equal("#17212B", VarietyColorService.TextColor("#F5E66A"));
         Assert.Equal(
             VarietyColorService.FallbackColor(VarietyColorService.NormalizeIdentity("GSMT", "GSMT").Key),
             VarietyColorService.FallbackColor(VarietyColorService.NormalizeIdentity("Grannysmith", "Grannysmith").Key));

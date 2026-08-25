@@ -50,7 +50,7 @@ else
                 <ul class="compact-list inventory-variety-breakdown">
                 @foreach (var breakdown in variety.Breakdowns)
                 {
-                    <li>@breakdown.ProductionType · @breakdown.OrganicStatus: <strong>@breakdown.CurrentBins.ToString("N0") bins</strong></li>
+                    <li class="@(breakdown.OrganicStatus == "Organic" ? "organic" : "")" style="--variety-color: @variety.HexColor"><i aria-hidden="true"></i>@breakdown.ProductionType · @breakdown.OrganicStatus: <strong>@breakdown.CurrentBins.ToString("N0") bins</strong></li>
                 }
                 </ul>
             }

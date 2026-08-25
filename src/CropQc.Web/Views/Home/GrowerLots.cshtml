@@ -85,7 +85,7 @@ else
             <div class="variety-legend storage-variety-legend">
             @foreach (var variety in grower.Varieties)
             {
-                <span class="@(variety.IsOrganic == true ? "organic" : "")"><i style="background: @variety.HexColor"></i>@variety.DisplayName · @IdentityLabel(variety.ProductionType, variety.OrganicLabel) — @variety.BinCount.ToString("N0") bins</span>
+                <span class="@(variety.IsOrganic == true ? "organic" : "")" style="--variety-color: @variety.HexColor"><i></i>@variety.DisplayName · @IdentityLabel(variety.ProductionType, variety.OrganicLabel) — @variety.BinCount.ToString("N0") bins</span>
             }
             </div>
             <dl class="room-metrics storage-qc-metrics">

@@ -260,7 +260,7 @@ public sealed class RunReportingService(
                     selectedLookup.TryGetValue(identity.VarietyKey, out var selected) ? selected.Bins : 0,
                     priorLookup.GetValueOrDefault(identity.VarietyKey),
                     color.HexColor,
-                    ReportingColorPresentation.TextColor(color.HexColor),
+                    VarietyColorService.TextColor(color.HexColor),
                     color.IsConfigured);
             })
             .OrderBy(x => x.Variety)
