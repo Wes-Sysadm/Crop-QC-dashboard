@@ -139,7 +139,6 @@ public static class SiteNavigationCatalog
             Matches: [new("/Admin/OrchardRecipients", true)]),
         new("manager-import", "admin", "Manager Import", "/Admin/OrchardRecipientImports", ApplicationAreas.ImportTools, PageAccessLevel.Admin, 170, "Master Data",
             Matches: [new("/Admin/OrchardRecipientImports", true)]),
-        new("unmatched-identities", "admin", "Unmatched Identities", "/Admin/OrchardRecipientImports#recent-review-batches", ApplicationAreas.ImportTools, PageAccessLevel.Admin, 175, "Master Data"),
         new("commercial-packs", "admin", "Commercial Packs", "/Admin/CommercialPacks", ApplicationAreas.MasterData, PageAccessLevel.Admin, 180, "Master Data",
             Matches: [new("/Admin/CommercialPacks", true)]),
         new("variety-colors", "admin", "Variety Colors", "/Admin/VarietyColors", ApplicationAreas.VarietyColors, PageAccessLevel.View, 190, "Master Data",
@@ -224,7 +223,7 @@ public sealed class SiteNavigationService(
                     .Select(item => new SiteNavigationItemViewModel(
                         item.Key,
                         item.Label,
-                        WithFacility(item.Url, item.FacilityBehavior, facility),
+                        ResolveDestinationUrl(item, facility),
                         item.Group,
                         item.Key == active?.Key))
                     .ToList();
@@ -311,6 +310,7 @@ public sealed class SiteNavigationService(
         }
 
         var category = categories.Single(x => x.Key == active.CategoryKey);
+        var activeItem = category.Items.Single(x => x.Key == active.Key);
         if (active.Key == "dashboard-home" && path == "/")
         {
             return [new("Dashboard", null, true)];
@@ -330,7 +330,8 @@ public sealed class SiteNavigationService(
                 return crumbs;
             }
 
-            crumbs.Add(new("Master Data", "/MasterData", false));
+            var masterDataUrl = category.Items.SingleOrDefault(x => x.Key == "master-data")?.Url ?? "/MasterData";
+            crumbs.Add(new("Master Data", masterDataUrl, false));
         }
 
         if (detail is null)
@@ -341,7 +342,7 @@ public sealed class SiteNavigationService(
 
         if (!(active.Key == "room-overview" && IsNumericDetail(path, "/Rooms/")))
         {
-            crumbs.Add(new(active.Label, active.Url, false));
+            crumbs.Add(new(active.Label, activeItem.Url, false));
         }
         crumbs.Add(new(detail, null, true));
         return crumbs;
@@ -386,10 +387,10 @@ public sealed class SiteNavigationService(
         return long.TryParse(segment, out _) ? segment : null;
     }
 
-    private static string WithFacility(string url, NavigationFacilityBehavior behavior, string? facility) =>
-        behavior == NavigationFacilityBehavior.Preserve && !string.IsNullOrWhiteSpace(facility)
-            ? QueryHelpers.AddQueryString(url, "Facility", facility)
-            : url;
+    private static string ResolveDestinationUrl(NavigationItemDefinition item, string? facility) =>
+        item.FacilityBehavior == NavigationFacilityBehavior.Preserve && !string.IsNullOrWhiteSpace(facility)
+            ? QueryHelpers.AddQueryString(item.Url, "Facility", facility)
+            : item.Url;
 
     private static string NormalizePath(PathString path)
     {

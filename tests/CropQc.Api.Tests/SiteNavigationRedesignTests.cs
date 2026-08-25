@@ -18,6 +18,7 @@ public sealed class SiteNavigationRedesignTests
             ["dashboard", "qc", "inventory", "receiving", "rooms", "runs", "transfers", "shipments", "growers-reports", "admin"],
             SiteNavigationCatalog.Categories.Select(x => x.Key));
         Assert.DoesNotContain(SiteNavigationCatalog.Items, x => x.Label.Contains("EBS Historical Cleanup", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(SiteNavigationCatalog.Items, x => x.Key == "unmatched-identities");
     }
 
     [Theory]
@@ -135,6 +136,71 @@ public sealed class SiteNavigationRedesignTests
         Assert.Contains("Facility=EBS", items["receipts"].Url);
         Assert.DoesNotContain("Facility=", items["processor-shipments"].Url);
         Assert.DoesNotContain("Facility=", items["configuration"].Url);
+    }
+
+    [Fact]
+    public async Task ActualRunDetailBreadcrumb_PreservesFacilityOnBothNavigableParents()
+    {
+        var model = await Service(FakeAccess.Admin()).BuildAsync(
+            Principal(ApplicationAreas.OwnerEmail), "/BinsRun/ActualRuns/2", Query(), "WP", CancellationToken.None);
+
+        Assert.Equal(["Runs", "Actual Runs", "Actual Run #2"], model.Breadcrumbs.Select(x => x.Label));
+        Assert.Contains("Section=Planner", model.Breadcrumbs[0].Url);
+        Assert.Contains("Facility=WP", model.Breadcrumbs[0].Url);
+        Assert.Contains("Section=Actual", model.Breadcrumbs[1].Url);
+        Assert.Contains("Facility=WP", model.Breadcrumbs[1].Url);
+    }
+
+    [Fact]
+    public async Task ReceiptDetailBreadcrumb_PreservesFacilityOnNavigableParents()
+    {
+        var model = await Service(FakeAccess.Admin()).BuildAsync(
+            Principal(ApplicationAreas.OwnerEmail), "/Receipts/208", Query(), "EBS", CancellationToken.None);
+
+        Assert.Equal(["Receiving", "Receipts", "Receipt #208"], model.Breadcrumbs.Select(x => x.Label));
+        Assert.All(model.Breadcrumbs.Take(2), crumb => Assert.Contains("Facility=EBS", crumb.Url));
+    }
+
+    [Fact]
+    public async Task RoomDetailBreadcrumb_PreservesFacilityOnRoomsParent()
+    {
+        var model = await Service(FakeAccess.Admin()).BuildAsync(
+            Principal(ApplicationAreas.OwnerEmail), "/Rooms/19", Query(), "WP", CancellationToken.None);
+
+        Assert.Equal(["Rooms", "Room 19"], model.Breadcrumbs.Select(x => x.Label));
+        Assert.Contains("Facility=WP", model.Breadcrumbs[0].Url);
+    }
+
+    [Theory]
+    [InlineData("/BinsRun/Projections/4", "Run Planner")]
+    [InlineData("/Inventory/ByVariety/GALA", "Inventory by Variety")]
+    public async Task FacilityAwareDetailBreadcrumbs_UseResolvedDestinationUrl(string path, string parentLabel)
+    {
+        var model = await Service(FakeAccess.Admin()).BuildAsync(
+            Principal(ApplicationAreas.OwnerEmail), path, Query(), "WP", CancellationToken.None);
+        var parent = Assert.Single(model.Breadcrumbs, x => x.Label == parentLabel);
+
+        Assert.Contains("Facility=WP", parent.Url);
+    }
+
+    [Fact]
+    public async Task LocalDetailBreadcrumb_DoesNotGainFacility()
+    {
+        var model = await Service(FakeAccess.Admin()).BuildAsync(
+            Principal(ApplicationAreas.OwnerEmail), "/ProcessorShipments/22", Query(), "WP", CancellationToken.None);
+
+        Assert.Equal(["Shipments", "Processor Shipments", "Shipment #22"], model.Breadcrumbs.Select(x => x.Label));
+        Assert.All(model.Breadcrumbs.Take(2), crumb => Assert.DoesNotContain("Facility=", crumb.Url));
+    }
+
+    [Fact]
+    public void UnmatchedIdentities_RemainsAValidPageLocalDestination()
+    {
+        var import = Read("src", "CropQc.Web", "Views", "OrchardRecipientImports", "Index.cshtml");
+
+        Assert.DoesNotContain(SiteNavigationCatalog.Items, x => x.Key == "unmatched-identities");
+        Assert.Contains("href=\"#recent-review-batches\"", import);
+        Assert.Contains("id=\"recent-review-batches\"", import);
     }
 
     [Fact]

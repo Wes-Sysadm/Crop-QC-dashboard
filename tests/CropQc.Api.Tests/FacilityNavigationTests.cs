@@ -121,7 +121,8 @@ public sealed class FacilityNavigationTests
         Assert.DoesNotContain("_MasterDataNavigation", growerLots);
         Assert.Contains("/Admin/OrchardRecipients", navigation);
         Assert.Contains("/Admin/OrchardRecipientImports", navigation);
-        Assert.Contains("Unmatched Identities", navigation);
+        Assert.DoesNotContain("Unmatched Identities", navigation);
+        Assert.Contains("recent-review-batches", Read("src", "CropQc.Web", "Views", "OrchardRecipientImports", "Index.cshtml"));
     }
 
     private static CropQcDbContext CreateDb()

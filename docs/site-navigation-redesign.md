@@ -57,7 +57,6 @@ Facility behavior is `Preserve` only where the existing destination accepts the 
 | Admin / Master Data | Treatment Chemicals | `/MasterData/treatment-chemicals` | Master Data View | Local |
 | Admin / Master Data | QC Recipients | `/Admin/OrchardRecipients` | Orchard Managers View | Local |
 | Admin / Master Data | Manager Import | `/Admin/OrchardRecipientImports` | Import Tools Admin | Local |
-| Admin / Master Data | Unmatched Identities | `/Admin/OrchardRecipientImports#recent-review-batches` | Import Tools Admin | Local |
 | Admin / Master Data | Commercial Packs | `/Admin/CommercialPacks` | Master Data Admin | Local |
 | Admin / Master Data | Variety Colors | `/Admin/VarietyColors` | Variety Colors View | Local |
 | Admin / System | Configuration | `/Admin/Configuration` | Email Configuration Admin | Local |
@@ -78,6 +77,9 @@ Facility behavior is `Preserve` only where the existing destination accepts the 
 - The facility context bar remains directly below the navy header. It preserves the current query while replacing only `Facility`.
 - The shared breadcrumb follows the facility bar, uses linked parents, marks the current item with `aria-current="page"`, and wraps on compact screens.
 - Admin is one flat panel with non-clickable group headings; there are no cascading or nested submenus.
+- Breadcrumb parent links reuse the same resolved destination URLs as menu items, including the selected facility only for destinations marked `Preserve`.
+
+`Unmatched Identities` was removed from global navigation because it is not a separate module or route; it is the Recent review batches section of Manager Import. A working page-local `Recent review batches` anchor remains on Manager Import, avoiding two global destinations that the server cannot distinguish by URL fragment.
 
 ## Contextual navigation intentionally retained
 

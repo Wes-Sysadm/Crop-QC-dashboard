@@ -205,7 +205,9 @@ public sealed class StoragePresentationTests
         Assert.DoesNotContain("_MasterDataNavigation", details);
         Assert.Contains("ApplicationAreas.OrchardManagers", navigation);
         Assert.Contains("QC Recipients", navigation);
-        Assert.Contains("Unmatched Identities", navigation);
+        Assert.DoesNotContain("Unmatched Identities", navigation);
+        Assert.Contains("href=\"#recent-review-batches\"", import);
+        Assert.Contains("id=\"recent-review-batches\"", import);
     }
 
     [Fact]
