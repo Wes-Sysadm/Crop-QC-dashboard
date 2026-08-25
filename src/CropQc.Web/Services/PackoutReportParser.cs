@@ -42,7 +42,7 @@ public interface IPackoutReportParser
 
 public sealed partial class PackoutReportParser : IPackoutReportParser
 {
-    public const string ParserVersion = "1.2";
+    public const string ParserVersion = "1.3";
     private static readonly string[] AllowedExtensions = [".pdf", ".xlsx", ".xls", ".csv", ".txt", ".jpg", ".jpeg", ".png", ".tif", ".tiff"];
     private readonly PackoutProcessingOptions options;
     private readonly ILogger<PackoutReportParser> logger;
@@ -65,13 +65,10 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
         var stopwatch = Stopwatch.StartNew();
         var startingWorkingSet = Environment.WorkingSet;
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (!AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        var validationError = ValidateUpload(file.FileName, file.Length, options);
+        if (validationError is not null)
         {
-            throw new InvalidOperationException("Upload a PDF, XLS, XLSX, CSV, TXT, JPG, PNG, or TIFF packout report.");
-        }
-        if (file.Length == 0 || file.Length > options.MaximumFileBytes)
-        {
-            throw new InvalidOperationException($"Each packout report must be between 1 byte and {options.MaximumFileBytes / 1024 / 1024} MB.");
+            throw new InvalidOperationException(validationError);
         }
 
         var actualLength = new FileInfo(file.TemporaryPath).Length;
@@ -82,6 +79,7 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
 
         IReadOnlyList<ParsedPackoutLine> lines;
         string parserName;
+        string? formatDiagnostic = null;
         int? pageCount = null;
         if (extension == ".xlsx")
         {
@@ -96,10 +94,19 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
         else if (extension == ".txt")
         {
             var text = await File.ReadAllTextAsync(file.TemporaryPath, cancellationToken);
-            lines = IsGrowerSummary(text)
-                ? ParseText(text, options.MaximumParsedRows)
-                : await ReadDelimitedAsync(file.TemporaryPath, cancellationToken);
-            parserName = "DelimitedText";
+            if (IsSummaryReportByGrower(text))
+            {
+                lines = ParseSummaryReportByGrower(text, options.MaximumParsedRows);
+                (lines, formatDiagnostic) = ValidateSummaryReportTotal(text, lines);
+                parserName = "WP Summary Report By Grower";
+            }
+            else
+            {
+                lines = IsGrowerSummary(text)
+                    ? ParseText(text, options.MaximumParsedRows)
+                    : await ReadDelimitedAsync(file.TemporaryPath, cancellationToken);
+                parserName = "DelimitedText";
+            }
         }
         else if (extension == ".csv")
         {
@@ -132,17 +139,25 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
 
             var extracted = await ExtractWithPortableOcrAsync(file.TemporaryPath, extension, pageCount, cancellationToken);
             lines = ParseText(extracted.Text, options.MaximumParsedRows);
-            parserName = extension == ".pdf"
-                ? extracted.UsedOcr ? "Poppler+Tesseract" : "PopplerText"
-                : "Tesseract";
+            if (IsSummaryReportByGrower(extracted.Text))
+            {
+                (lines, formatDiagnostic) = ValidateSummaryReportTotal(extracted.Text, lines);
+                parserName = $"{(extension == ".pdf" ? extracted.UsedOcr ? "Poppler+Tesseract" : "PopplerText" : "Tesseract")} / WP Summary Report By Grower";
+            }
+            else
+            {
+                parserName = extension == ".pdf"
+                    ? extracted.UsedOcr ? "Poppler+Tesseract" : "PopplerText"
+                    : "Tesseract";
+            }
         }
 
         var confidence = lines.Count == 0 ? 0m : decimal.Round(lines.Average(x => x.Confidence), 5);
-        var diagnostic = lines.Count == 0
-            ? "No packout detail rows could be identified. The original was not retained; correct the source file and upload it again."
+        var diagnostic = formatDiagnostic ?? (lines.Count == 0
+            ? "No packout detail rows could be identified. The original document remains available for review and reprocessing."
             : lines.Any(x => x.RequiresReview)
                 ? $"{lines.Count(x => x.RequiresReview)} parsed row(s) require review before finalization."
-                : null;
+                : null);
         await using var hashStream = new FileStream(
             file.TemporaryPath,
             FileMode.Open,
@@ -175,6 +190,7 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
     public static IReadOnlyList<ParsedPackoutLine> ParseText(string text, int maximumRows = 25_000)
     {
         if (string.IsNullOrWhiteSpace(text)) return [];
+        if (IsSummaryReportByGrower(text)) return ParseSummaryReportByGrower(text, maximumRows);
         if (IsGrowerSummary(text)) return ParseGrowerSummary(text, maximumRows);
         using var reader = new StringReader(text);
         var results = new List<ParsedPackoutLine>();
@@ -190,6 +206,107 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
             }
         }
         return results;
+    }
+
+    public static string? ValidateUpload(string fileName, long length, PackoutProcessingOptions options)
+    {
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        if (!AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            return "Upload a PDF, XLS, XLSX, CSV, TXT, JPG, PNG, or TIFF packout report.";
+        return length <= 0 || length > options.MaximumFileBytes
+            ? $"Each packout report must be between 1 byte and {options.MaximumFileBytes / 1024 / 1024} MB."
+            : null;
+    }
+
+    public static bool IsSummaryReportByGrower(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        return text.Contains("Summary Report By Grower", StringComparison.OrdinalIgnoreCase)
+            && text.Contains("Date Type:", StringComparison.OrdinalIgnoreCase)
+            && text.Contains("Quantity", StringComparison.OrdinalIgnoreCase)
+            && text.Contains("Grd %", StringComparison.OrdinalIgnoreCase)
+            && text.Contains("Var %", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<ParsedPackoutLine> ParseSummaryReportByGrower(string text, int maximumRows)
+    {
+        using var reader = new StringReader(text);
+        var results = new List<ParsedPackoutLine>();
+        var inDetails = false;
+        var lineNumber = 0;
+        while (reader.ReadLine() is { } sourceLine)
+        {
+            lineNumber++;
+            var raw = sourceLine.Trim();
+            if (raw.Contains("Quantity", StringComparison.OrdinalIgnoreCase)
+                && raw.Contains("Grd %", StringComparison.OrdinalIgnoreCase)
+                && raw.Contains("Var %", StringComparison.OrdinalIgnoreCase))
+            {
+                inDetails = true;
+                continue;
+            }
+            if (!inDetails || string.IsNullOrWhiteSpace(raw)
+                || raw.Contains(" Total", StringComparison.OrdinalIgnoreCase)
+                || raw.StartsWith("Total", StringComparison.OrdinalIgnoreCase)
+                || raw.StartsWith("Grand Total", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var columns = Regex.Split(raw, @"\t+|\s{2,}")
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .ToList();
+            string? packCode = null;
+            string? quantityText = null;
+            string? gradePercent = null;
+            string? varietyPercent = null;
+            if (columns.Count >= 13)
+            {
+                packCode = columns[3];
+                quantityText = columns[^3];
+                gradePercent = columns[^2];
+                varietyPercent = columns[^1];
+            }
+            else
+            {
+                var detail = Regex.Match(raw,
+                    @"^(?<stor>\S+)\s+(?<var>\S+)\s+(?<grd>\S+)\s+(?<pack>\S+)\s+(?<size>\S+)\s+(?<brand>\S+)\s+(?<spec>\S+)\s+(?<loc>\S+)\s+(?<lot>\S+)\s+(?<run>\S+)\s+(?<quantity>[\d,]+(?:\.\d+)?)\s+(?<gradePct>\d+(?:\.\d+)?%)\s+(?<varPct>\d+(?:\.\d+)?%)$",
+                    RegexOptions.IgnoreCase);
+                if (detail.Success)
+                {
+                    packCode = detail.Groups["pack"].Value;
+                    quantityText = detail.Groups["quantity"].Value;
+                    gradePercent = detail.Groups["gradePct"].Value;
+                    varietyPercent = detail.Groups["varPct"].Value;
+                }
+            }
+            if (string.IsNullOrWhiteSpace(packCode)
+                || gradePercent?.EndsWith('%') != true
+                || varietyPercent?.EndsWith('%') != true
+                || ParseDecimal(quantityText) is not decimal quantity)
+            {
+                continue;
+            }
+            results.Add(new(lineNumber, sourceLine, packCode, quantity, 0.98m, false));
+            if (results.Count > maximumRows)
+                throw new InvalidOperationException($"A report may contain at most {maximumRows:N0} parsed rows.");
+        }
+        return results;
+    }
+
+    private static (IReadOnlyList<ParsedPackoutLine> Lines, string? Diagnostic) ValidateSummaryReportTotal(
+        string text,
+        IReadOnlyList<ParsedPackoutLine> lines)
+    {
+        var totalMatch = Regex.Match(text, @"(?im)^\s*Grand\s+Total\D+(?<total>[\d,]+(?:\.\d+)?)\b");
+        var declared = totalMatch.Success ? ParseDecimal(totalMatch.Groups["total"].Value) : null;
+        var detailTotal = lines.Sum(x => x.Quantity ?? 0m);
+        if (declared is not null && declared.Value == detailTotal) return (lines, null);
+        var reason = declared is null
+            ? $"The report detail total is {detailTotal:0.####}, but the Grand Total could not be verified. Review the parsed rows."
+            : $"The report detail total is {detailTotal:0.####}, but the stated Grand Total is {declared:0.####}. Review the parsed rows.";
+        return (lines.Select(x => x with { RequiresReview = true }).ToList(), reason);
     }
 
     public static bool IsGrowerSummary(string text)
@@ -390,7 +507,7 @@ public sealed partial class PackoutReportParser : IPackoutReportParser
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger.LogWarning(exception, "Packout OCR failed for extension {Extension}. No uploaded file content was retained.", extension);
+            logger.LogWarning(exception, "Packout OCR failed for extension {Extension}. The upload service retains the original document independently of this parse result.", extension);
             throw new InvalidOperationException("The report image could not be read by the configured OCR tools. Check image clarity or upload a spreadsheet/CSV.", exception);
         }
         finally

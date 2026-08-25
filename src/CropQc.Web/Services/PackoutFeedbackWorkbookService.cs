@@ -150,14 +150,18 @@ public sealed class PackoutFeedbackWorkbookService(
             };
         }
         yield return Array.Empty<string?>();
-        yield return new string?[] { "Source files (original files are not retained after parsing)" };
-        yield return new string?[] { "Filename", "SHA-256", "Parser", "Confidence", "Parsed at" };
+        yield return new string?[] { "Supporting Packout documents (original files are retained independently of parsing)" };
+        yield return new string?[] { "Filename", "SHA-256", "Storage", "Path", "Parse status", "Uploaded at", "Parser", "Confidence", "Parsed at" };
         foreach (var source in run.Sources.OrderBy(x => x.Id))
         {
             yield return new string?[]
             {
                 source.OriginalFileName,
                 source.Sha256,
+                source.StorageProvider ?? "Legacy metadata only",
+                source.StoragePath,
+                source.ParseStatus,
+                source.UploadedAt?.ToString("u", CultureInfo.InvariantCulture),
                 $"{source.ParserName} {source.ParserVersion}".Trim(),
                 Format(source.Confidence is null ? null : source.Confidence * 100m),
                 source.ParsedAt.ToString("u", CultureInfo.InvariantCulture)

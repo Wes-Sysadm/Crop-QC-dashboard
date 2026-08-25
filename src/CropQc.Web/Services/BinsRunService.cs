@@ -547,6 +547,19 @@ public sealed class BinsRunService(
             if (packout is not null)
             {
                 packout.PackoutVariancePercent = packout.ActualPackoutPercent - run.CurrentExpectation?.ExpectedPackoutPercent;
+                packout.Documents = await dbContext.PackoutReportSources.AsNoTracking()
+                    .Where(x => x.PackoutRunId == packout.Id)
+                    .OrderBy(x => x.Id)
+                    .Select(x => new PackoutDocumentViewModel(
+                        x.Id,
+                        x.OriginalFileName,
+                        x.FileSizeBytes,
+                        x.UploadedAt,
+                        x.UploadedByUser == null ? "Legacy upload" : x.UploadedByUser.DisplayName,
+                        x.ParseStatus,
+                        x.SafeDiagnostic,
+                        x.StorageKey != null))
+                    .ToListAsync(cancellationToken);
                 var roomLotAllocations = await dbContext.PackoutSourceAllocations.AsNoTracking()
                     .Where(x => x.PackoutRunId == packout.Id)
                     .OrderBy(x => x.RunExpectationSource.RoomSnapshot)

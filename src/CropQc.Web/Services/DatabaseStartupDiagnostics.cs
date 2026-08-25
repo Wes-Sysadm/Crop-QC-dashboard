@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260823040226_AddActualRunSalesDeskAttribution";
+    public const string ExpectedSchemaMigration = "20260824233548_AddPackoutDocumentStorageMetadata";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -20,6 +20,15 @@ public static class DatabaseStartupDiagnostics
         new("PackoutRuns", "PackoutRuns", null),
         new("PackoutEmailAttempts", "PackoutEmailAttempts", null),
         new("PackoutReportSources", "PackoutReportSources", null),
+        new("PackoutReportSources.StorageProvider", "PackoutReportSources", "StorageProvider", RequireNullable: true),
+        new("PackoutReportSources.StorageKey", "PackoutReportSources", "StorageKey", RequireNullable: true),
+        new("PackoutReportSources.StoragePath", "PackoutReportSources", "StoragePath", RequireNullable: true),
+        new("PackoutReportSources.DriveId", "PackoutReportSources", "DriveId", RequireNullable: true),
+        new("PackoutReportSources.FileId", "PackoutReportSources", "FileId", RequireNullable: true),
+        new("PackoutReportSources.FolderId", "PackoutReportSources", "FolderId", RequireNullable: true),
+        new("PackoutReportSources.ParseStatus", "PackoutReportSources", "ParseStatus", RequireNotNullable: true),
+        new("PackoutReportSources.UploadedAt", "PackoutReportSources", "UploadedAt", RequireNullable: true),
+        new("PackoutReportSources.UploadedByUserId", "PackoutReportSources", "UploadedByUserId", RequireNullable: true),
         new("PackoutReportLines", "PackoutReportLines", null),
         new("RunProjectionSources.TotalDefectPercentageSnapshot", "RunProjectionSources", "TotalDefectPercentageSnapshot"),
         new("RunProjections.IsLocked", "RunProjections", "IsLocked"),
@@ -460,6 +469,7 @@ public static class DatabaseStartupDiagnostics
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
     [
+        new("IX_PackoutReportSources_UploadedByUserId", "PackoutReportSources", "IX_PackoutReportSources_UploadedByUserId"),
         new("IX_PackoutRuns_RunExpectationId", "PackoutRuns", "IX_PackoutRuns_RunExpectationId"),
         new("UX_PackoutRuns_ActualRunId", "PackoutRuns", "UX_PackoutRuns_ActualRunId", RequireUnique: true),
         new("IX_PackoutSourceAllocations_PackoutRunId_RunExpectationSourceId", "PackoutSourceAllocations", "IX_PackoutSourceAllocations_PackoutRunId_RunExpectationSourceId", RequireUnique: true),
@@ -585,6 +595,7 @@ public static class DatabaseStartupDiagnostics
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
     [
+        new("FK_PackoutReportSources_Users_UploadedByUserId", "PackoutReportSources", "FK_PackoutReportSources_Users_UploadedByUserId"),
         new("FK_PackoutRuns_ActualRuns_ActualRunId", "PackoutRuns", "FK_PackoutRuns_ActualRuns_ActualRunId"),
         new("FK_PackoutRuns_RunExpectations_RunExpectationId", "PackoutRuns", "FK_PackoutRuns_RunExpectations_RunExpectationId"),
         new("FK_RunExpectations_ActualRunRevisions_ActualRunRevisionId", "RunExpectations", "FK_RunExpectations_ActualRunRevisions_ActualRunRevisionId"),

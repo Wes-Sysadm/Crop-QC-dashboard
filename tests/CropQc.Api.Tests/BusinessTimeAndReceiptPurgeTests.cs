@@ -24,6 +24,25 @@ public sealed class BusinessTimeAndReceiptPurgeTests
         Assert.Equal(expectedZone, service.TimeZoneAbbreviation(actual));
     }
 
+    [Theory]
+    [InlineData("2026-07-30T00:33:00Z", "7/29/2026 5:33 PM PDT")]
+    [InlineData("2026-01-30T00:33:00Z", "1/29/2026 4:33 PM PST")]
+    public void Actual_run_user_display_converts_utc_instant_to_Pacific_across_date_boundary(
+        string utc,
+        string expected)
+    {
+        var instant = DateTimeOffset.Parse(utc);
+        var service = Service(instant);
+
+        Assert.Equal(expected, service.FormatPacific(instant, "M/d/yyyy h:mm tt"));
+        Assert.Equal(instant, instant.ToUniversalTime());
+
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "ActualRunDetail.cshtml"));
+        Assert.Contains("BusinessTime.FormatPacific(Model.RunAt", view);
+        Assert.Contains("BusinessTime.PacificDate(Model.RunAt)", view);
+        Assert.DoesNotContain("Model.RunAt.ToString", view);
+    }
+
     [Fact]
     public void Next_nightly_backup_is_one_am_Pacific_across_spring_dst()
     {

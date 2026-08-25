@@ -40,6 +40,10 @@
     {
         <p class="notice warning" role="alert">This comparison uses a benchmark reconstructed after the physical run from configuration available at reconstruction time. It is not a pre-run projection, so the displayed score is a reconstructed benchmark score rather than projection accuracy.</p>
     }
+    else if (!Model.ReconciliationAvailable)
+    {
+        <p class="notice warning" role="alert">Reconciliation unavailable — this historical run predates frozen Run Expectations. The original Packout document remains stored and available below.</p>
+    }
     <div class="room-summary-metrics">
         <div class="metric-card"><span class="metric-label">Packing run</span><strong>@Model.PackingDate.ToString("MMM d, yyyy")</strong><span>@Model.Facility · Run @Model.RunNumber</span></div>
         <div class="metric-card"><span class="metric-label">Dumped</span><strong>@Model.DumpedBins.ToString("0.##") bins</strong><span>@Model.DumpedPounds.ToString("0.##") lb</span></div>
@@ -54,14 +58,24 @@
 </section>
 
 <section class="panel">
-    <h2>Parsed source files</h2>
-    <p class="muted">Original uploads are deleted after parsing. Filename, SHA-256, parser result, corrections, and audit history are retained.</p>
+    <h2>Supporting Packout Documents</h2>
+    <p class="muted">Original uploads are retained permanently under the configured Crop QC storage root. Parsing and reconciliation status do not affect document retention.</p>
     <table class="data-table">
-        <thead><tr><th>Filename</th><th>Parser</th><th>Confidence</th><th>Diagnostic</th><th>Parsed</th></tr></thead>
+        <thead><tr><th>Filename</th><th>Size</th><th>Uploaded</th><th>By</th><th>Status</th><th>Parser</th><th>Confidence</th><th>Diagnostic</th><th>Action</th></tr></thead>
         <tbody>
         @foreach (var source in Model.Sources)
         {
-            <tr><td>@source.FileName</td><td>@source.Parser</td><td>@(source.Confidence is decimal confidence ? $"{confidence:P1}" : "—")</td><td>@(source.Diagnostic ?? "Parsed")</td><td>@source.ParsedAt.ToString("u")</td></tr>
+            <tr>
+                <td>@source.FileName</td>
+                <td>@((source.FileSizeBytes / 1024d).ToString("0.#")) KB</td>
+                <td>@BusinessTime.FormatPacific(source.UploadedAt, empty: "Legacy upload")</td>
+                <td>@source.UploadedBy</td>
+                <td>@source.ParseStatus</td>
+                <td>@source.Parser</td>
+                <td>@(source.Confidence is decimal confidence ? $"{confidence:P1}" : "—")</td>
+                <td>@(source.Diagnostic ?? "Parsed")</td>
+                <td>@if (source.CanOpen) { <a class="button secondary-button" target="_blank" rel="noopener" href="/BinsRun/Packout/@Model.Id/Sources/@source.Id/Content">View or download</a> } else { <span class="muted">Legacy original unavailable</span> }</td>
+            </tr>
         }
         </tbody>
     </table>
@@ -70,6 +84,12 @@
 <section class="panel">
     <h2>Parsed lines</h2>
     <p class="muted">Rows marked Review must be confirmed. Juice codes ending in L use the numeric code as pounds and are always classified as Juice.</p>
+    @if (Model.Lines.Count == 0)
+    {
+        <p class="notice warning">No detail rows were parsed. The original document is retained and can be opened above.</p>
+    }
+    else
+    {
     <div class="table-scroll">
         <table class="data-table">
             <thead><tr><th>Line</th><th>Raw text</th><th>Pack code</th><th>Qty</th><th>Net lb</th><th>Extended lb</th><th>Size</th><th>Grade</th><th>Category</th><th>Confidence</th><th>Status</th></tr></thead>
@@ -129,6 +149,7 @@
             </tbody>
         </table>
     </div>
+    }
 </section>
 
 @if (Model.CanEdit)
@@ -147,7 +168,7 @@
         </form>
     </section>
 
-    @if (Model.CanAdmin)
+    @if (Model.CanAdmin && Model.ReconciliationAvailable)
     {
         <section class="panel">
             <h2>Finalize feedback</h2>

@@ -102,8 +102,19 @@ public sealed class ActualRunPackoutViewModel
     public decimal? SizeAccuracyPercent { get; set; }
     public decimal? GradeAccuracyPercent { get; set; }
     public decimal? PackoutVariancePercent { get; set; }
+    public IReadOnlyList<PackoutDocumentViewModel> Documents { get; set; } = [];
     public IReadOnlyList<EstimatedAllocationViewModel> Allocations { get; set; } = [];
 }
+
+public sealed record PackoutDocumentViewModel(
+    long Id,
+    string FileName,
+    long FileSizeBytes,
+    DateTimeOffset? UploadedAt,
+    string UploadedBy,
+    string ParseStatus,
+    string? Diagnostic,
+    bool CanOpen);
 
 public sealed record EstimatedAllocationViewModel(
     string Room,

@@ -104,6 +104,7 @@ public sealed class PackoutRunViewModel
     public decimal? ActualPackoutPercent { get; set; }
     public decimal? OverallAccuracyScore { get; set; }
     public bool IsHistoricalReconstruction { get; set; }
+    public bool ReconciliationAvailable { get; set; }
     public DateTimeOffset? PhysicalRunAt { get; set; }
     public DateTimeOffset? ReconstructedAt { get; set; }
     public decimal ReconciliationDifferencePounds { get; set; }
@@ -120,7 +121,13 @@ public sealed class PackoutRunViewModel
 }
 
 public sealed record PackoutSourceViewModel(
+    long Id,
     string FileName,
+    long FileSizeBytes,
+    DateTimeOffset? UploadedAt,
+    string UploadedBy,
+    string ParseStatus,
+    bool CanOpen,
     string Parser,
     decimal? Confidence,
     string? Diagnostic,
