@@ -192,19 +192,18 @@ public sealed class StoragePresentationTests
     }
 
     [Fact]
-    public void OrchardRecipientPages_UseSharedPermissionAwareMasterDataNavigation()
+    public void OrchardRecipientPages_AreInCentralPermissionAwareNavigation()
     {
         var recipients = ReadRepositoryFile("src", "CropQc.Web", "Views", "OrchardRecipients", "Index.cshtml");
         var import = ReadRepositoryFile("src", "CropQc.Web", "Views", "OrchardRecipientImports", "Index.cshtml");
         var details = ReadRepositoryFile("src", "CropQc.Web", "Views", "OrchardRecipientImports", "Details.cshtml");
-        var navigation = ReadRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_MasterDataNavigation.cshtml");
+        var navigation = ReadRepositoryFile("src", "CropQc.Web", "Services", "SiteNavigationService.cs");
 
-        Assert.Contains("_MasterDataNavigation", recipients);
-        Assert.Contains("\"qc-recipients\"", recipients);
+        Assert.DoesNotContain("_MasterDataNavigation", recipients);
         Assert.Contains("Back to Master Data", recipients);
-        Assert.Contains("_MasterDataNavigation", import);
-        Assert.Contains("_MasterDataNavigation", details);
-        Assert.Contains("HasAccessAsync", navigation);
+        Assert.DoesNotContain("_MasterDataNavigation", import);
+        Assert.DoesNotContain("_MasterDataNavigation", details);
+        Assert.Contains("ApplicationAreas.OrchardManagers", navigation);
         Assert.Contains("QC Recipients", navigation);
         Assert.Contains("Unmatched Identities", navigation);
     }

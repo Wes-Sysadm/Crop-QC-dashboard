@@ -138,7 +138,7 @@ public sealed class RoomSummaryDepletionTests
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "AdminController.cs"));
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "VarietyColorService.cs"));
         var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Admin", "VarietyColors.cshtml"));
-        var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+        var navigation = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "SiteNavigationService.cs"));
 
         Assert.Contains("public sealed class VarietyColorConfiguration", entity);
         Assert.Contains("DbSet<VarietyColorConfiguration>", db);
@@ -148,7 +148,7 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("AccessPolicyNames.VarietyColorsAdmin", controller);
         Assert.Contains("VarietyColorsView", access);
         Assert.Contains("VarietyColorsAdmin", access);
-        Assert.DoesNotContain(">Variety Colors</a>", layout);
+        Assert.Contains("\"variety-colors\"", navigation);
         Assert.Contains("HexColorPattern", service);
         Assert.Contains("AuditLogs.Add", service);
         Assert.Contains("reset-to-default", service);
@@ -302,14 +302,15 @@ public sealed class RoomSummaryDepletionTests
     [Fact]
     public void RoomsTab_ShowsInventoryFillManagement()
     {
-        var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+        var navigation = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "SiteNavigationService.cs"));
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "HomeController.cs"));
         var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
         var rooms = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Rooms.cshtml"));
         var room = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "Room.cshtml"));
         var binsRun = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
 
-        Assert.Contains("<a asp-controller=\"Home\" asp-action=\"Rooms\" asp-route-facility=\"@facilityRouteValue\">Room Overview</a>", layout);
+        Assert.Contains("\"room-overview\"", navigation);
+        Assert.Contains("\"Room Overview\"", navigation);
         Assert.Contains("[HttpGet(\"/Rooms\")]", controller);
         Assert.Contains("[HttpGet(\"/Rooms/{roomId:int}\")]", controller);
         Assert.Contains("RoomsPageViewModel", model);
@@ -592,7 +593,7 @@ public sealed class RoomSummaryDepletionTests
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
         var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
         var partial = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_RoomLotCard.cshtml"));
-        var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+        var navigation = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "SiteNavigationService.cs"));
 
         Assert.Contains("BuildAdjustmentOnlyLotSummariesAsync", service);
         Assert.Contains("ReceiptId == null", service);
@@ -602,8 +603,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("InventoryAdjustmentId", model);
         Assert.Contains("InventoryStatus", model);
         Assert.Contains("Current inventory baseline; no receipt history yet.", partial);
-        Assert.Contains("/Admin/RoomInventory", layout);
-        Assert.Contains("Current Room Inventory", layout);
+        Assert.Contains("/Admin/RoomInventory", navigation);
+        Assert.Contains("Current Room Inventory", navigation);
     }
 
     [Fact]
@@ -633,7 +634,7 @@ public sealed class RoomSummaryDepletionTests
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
         var model = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Models", "DashboardViewModels.cs"));
         var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Home", "CropYearReview.cshtml"));
-        var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+        var navigation = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "SiteNavigationService.cs"));
 
         Assert.Contains("[HttpGet(\"/CropYearReview\")]", controller);
         Assert.Contains("wes@fruitandland.com", controller);
@@ -642,7 +643,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("PressureLossPerWeek", model);
         Assert.Contains("Pressure Loss/Week", view);
         Assert.Contains("Days Between Samples", view);
-        Assert.Contains("canAccessCropYearReview", layout);
+        Assert.Contains("NavigationSpecialAccess.OwnerOnly", navigation);
+        Assert.Contains("ApplicationAreas.CropYearReview", navigation);
     }
 
     [Fact]

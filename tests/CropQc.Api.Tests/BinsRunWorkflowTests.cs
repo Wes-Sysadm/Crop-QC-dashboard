@@ -26,6 +26,7 @@ public sealed class BinsRunWorkflowTests
     public void BinsRun_IsTopLevelPermissionedNavigation()
     {
         var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+        var navigation = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "SiteNavigationService.cs"));
         var access = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "UserAccessService.cs"));
         var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
         var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
@@ -35,8 +36,10 @@ public sealed class BinsRunWorkflowTests
         Assert.Contains("AccessPolicyNames.BinsRunView", program);
         Assert.Contains("AccessPolicyNames.BinsRunEdit", program);
         Assert.Contains("AccessPolicyNames.BinsRunAdmin", program);
-        Assert.Contains("canAccessBinsRun", layout);
-        Assert.Contains("<a asp-controller=\"BinsRun\" asp-action=\"Index\" asp-route-facility=\"@facilityRouteValue\">Runs &amp; Transfers</a>", layout);
+        Assert.Contains("ApplicationAreas.BinsRun", navigation);
+        Assert.Contains("\"run-planner\"", navigation);
+        Assert.Contains("\"actual-runs\"", navigation);
+        Assert.Contains("\"room-transfers\"", navigation);
         Assert.DoesNotContain("/BinsRun@facilityQuery", layout);
         Assert.Contains("Select Room", view);
         Assert.Contains("Run Planner", view);

@@ -259,6 +259,7 @@ builder.Services.AddScoped<IMasterDataSeeder, MasterDataSeeder>();
 builder.Services.AddScoped<IReceivingExportService, ReceivingExportService>();
 builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService>();
 builder.Services.AddScoped<IUserAccessService, UserAccessService>();
+builder.Services.AddScoped<ISiteNavigationService, SiteNavigationService>();
 builder.Services.AddScoped<IAuthorizationHandler, PageAccessAuthorizationHandler>();
 builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportService>();
