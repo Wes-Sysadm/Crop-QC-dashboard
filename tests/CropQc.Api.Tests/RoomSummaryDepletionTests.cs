@@ -159,7 +159,8 @@ public sealed class RoomSummaryDepletionTests
         Assert.Contains("FruitProfileId", entity);
         Assert.Contains("HasOne(x => x.FruitProfile)", db);
         Assert.Contains("GetResolvedColorsForMasterDataAsync", service);
-        Assert.Contains("Redirect(\"/MasterData/fruit-profiles\")", controller);
+        Assert.Contains("GetAdminPageAsync", controller);
+        Assert.Contains("RedirectToAction(nameof(VarietyColors))", controller);
         Assert.Contains("Fruit Profiles", masterDataIndex);
         Assert.Contains("Variety Codes", masterDataIndex);
         Assert.Contains("type=\"color\"", masterDataFields);

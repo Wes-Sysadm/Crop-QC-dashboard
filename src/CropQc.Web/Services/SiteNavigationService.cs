@@ -349,7 +349,9 @@ public sealed class SiteNavigationService(
     }
 
     private static bool NeedsMasterDataParent(NavigationItemDefinition item) =>
-        item.CategoryKey == "admin" && item.Group == "Master Data";
+        item.CategoryKey == "admin"
+        && item.Group == "Master Data"
+        && item.Key != "variety-colors";
 
     private static string? DetailBreadcrumb(NavigationItemDefinition active, string path)
     {

@@ -127,6 +127,15 @@ public sealed class SiteNavigationRedesignTests
     }
 
     [Fact]
+    public async Task VarietyColorsBreadcrumb_RemainsADedicatedAdminDestination()
+    {
+        var model = await Service(FakeAccess.Admin()).BuildAsync(Principal(ApplicationAreas.OwnerEmail), "/Admin/VarietyColors", Query(), null, CancellationToken.None);
+
+        Assert.Equal(["Admin", "Variety Colors"], model.Breadcrumbs.Select(x => x.Label));
+        Assert.True(model.Categories.Single(x => x.Key == "admin").Items.Single(x => x.Key == "variety-colors").IsActive);
+    }
+
+    [Fact]
     public async Task Facility_IsPreservedOnlyForCompatibleDestinations()
     {
         var model = await Service(FakeAccess.Admin()).BuildAsync(Principal(ApplicationAreas.OwnerEmail), "/BinsRun", Query("Planner"), "EBS", CancellationToken.None);
