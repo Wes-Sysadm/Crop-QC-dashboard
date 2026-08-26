@@ -7,12 +7,25 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260824233548_AddPackoutDocumentStorageMetadata";
+    public const string ExpectedSchemaMigration = "20260826063718_AddGrowerNumberQcRecipients";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
         new("CanonicalOrchards", "CanonicalOrchards", null),
         new("OrchardReportRecipients", "OrchardReportRecipients", null),
+        new("GrowerReportRecipients", "GrowerReportRecipients", null),
+        new("GrowerReportRecipients.Id", "GrowerReportRecipients", "Id", RequireNotNullable: true),
+        new("GrowerReportRecipients.CanonicalGrowerNumberId", "GrowerReportRecipients", "CanonicalGrowerNumberId", RequireNotNullable: true),
+        new("GrowerReportRecipients.EmailAddress", "GrowerReportRecipients", "EmailAddress", RequireNotNullable: true),
+        new("GrowerReportRecipients.NormalizedEmailAddress", "GrowerReportRecipients", "NormalizedEmailAddress", RequireNotNullable: true),
+        new("GrowerReportRecipients.IsActive", "GrowerReportRecipients", "IsActive", RequireNotNullable: true),
+        new("GrowerReportRecipients.IsDeleted", "GrowerReportRecipients", "IsDeleted", RequireNotNullable: true),
+        new("GrowerReportRecipients.CreatedAt", "GrowerReportRecipients", "CreatedAt", RequireNotNullable: true),
+        new("GrowerReportRecipients.CreatedByUserId", "GrowerReportRecipients", "CreatedByUserId", RequireNullable: true),
+        new("GrowerReportRecipients.UpdatedAt", "GrowerReportRecipients", "UpdatedAt", RequireNotNullable: true),
+        new("GrowerReportRecipients.UpdatedByUserId", "GrowerReportRecipients", "UpdatedByUserId", RequireNullable: true),
+        new("GrowerReportRecipients.DeletedAt", "GrowerReportRecipients", "DeletedAt", RequireNullable: true),
+        new("GrowerReportRecipients.DeletedByUserId", "GrowerReportRecipients", "DeletedByUserId", RequireNullable: true),
         new("Receipts.CanonicalOrchardBlockId", "Receipts", "CanonicalOrchardBlockId"),
         new("CanonicalOrchardBlocks.CanonicalOrchardId", "CanonicalOrchardBlocks", "CanonicalOrchardId"),
         new("PackCodeDefinitions", "PackCodeDefinitions", null),
@@ -469,6 +482,11 @@ public static class DatabaseStartupDiagnostics
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
     [
+        new("IX_GrowerReportRecipients_CanonicalGrowerNumberId_IsActive_IsDeleted", "GrowerReportRecipients", "IX_GrowerReportRecipients_CanonicalGrowerNumberId_IsActive_IsDeleted"),
+        new("IX_GrowerReportRecipients_CanonicalGrowerNumberId_NormalizedEmailAddress", "GrowerReportRecipients", "IX_GrowerReportRecipients_CanonicalGrowerNumberId_NormalizedEmailAddress", RequireUnique: true),
+        new("IX_GrowerReportRecipients_CreatedByUserId", "GrowerReportRecipients", "IX_GrowerReportRecipients_CreatedByUserId"),
+        new("IX_GrowerReportRecipients_DeletedByUserId", "GrowerReportRecipients", "IX_GrowerReportRecipients_DeletedByUserId"),
+        new("IX_GrowerReportRecipients_UpdatedByUserId", "GrowerReportRecipients", "IX_GrowerReportRecipients_UpdatedByUserId"),
         new("IX_PackoutReportSources_UploadedByUserId", "PackoutReportSources", "IX_PackoutReportSources_UploadedByUserId"),
         new("IX_PackoutRuns_RunExpectationId", "PackoutRuns", "IX_PackoutRuns_RunExpectationId"),
         new("UX_PackoutRuns_ActualRunId", "PackoutRuns", "UX_PackoutRuns_ActualRunId", RequireUnique: true),
@@ -595,6 +613,10 @@ public static class DatabaseStartupDiagnostics
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
     [
+        new("FK_GrowerReportRecipients_CanonicalGrowerNumbers_CanonicalGrowerNumberId", "GrowerReportRecipients", "FK_GrowerReportRecipients_CanonicalGrowerNumbers_CanonicalGrowerNumberId"),
+        new("FK_GrowerReportRecipients_Users_CreatedByUserId", "GrowerReportRecipients", "FK_GrowerReportRecipients_Users_CreatedByUserId"),
+        new("FK_GrowerReportRecipients_Users_DeletedByUserId", "GrowerReportRecipients", "FK_GrowerReportRecipients_Users_DeletedByUserId"),
+        new("FK_GrowerReportRecipients_Users_UpdatedByUserId", "GrowerReportRecipients", "FK_GrowerReportRecipients_Users_UpdatedByUserId"),
         new("FK_PackoutReportSources_Users_UploadedByUserId", "PackoutReportSources", "FK_PackoutReportSources_Users_UploadedByUserId"),
         new("FK_PackoutRuns_ActualRuns_ActualRunId", "PackoutRuns", "FK_PackoutRuns_ActualRuns_ActualRunId"),
         new("FK_PackoutRuns_RunExpectations_RunExpectationId", "PackoutRuns", "FK_PackoutRuns_RunExpectations_RunExpectationId"),
@@ -694,6 +716,7 @@ public static class DatabaseStartupDiagnostics
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
     [
+        new("PK_GrowerReportRecipients", "GrowerReportRecipients", "PK_GrowerReportRecipients"),
         new("PK_RunExpectations", "RunExpectations", "PK_RunExpectations"),
         new("PK_RunExpectationSources", "RunExpectationSources", "PK_RunExpectationSources"),
         new("PK_PackoutSourceAllocations", "PackoutSourceAllocations", "PK_PackoutSourceAllocations"),

@@ -112,6 +112,27 @@ public sealed class CanonicalGrowerNumber
     public bool IsActive { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    public ICollection<GrowerReportRecipient> ReportRecipients { get; } = new List<GrowerReportRecipient>();
+}
+
+public sealed class GrowerReportRecipient
+{
+    public int Id { get; set; }
+    public int CanonicalGrowerNumberId { get; set; }
+    public CanonicalGrowerNumber CanonicalGrowerNumber { get; set; } = null!;
+    public required string EmailAddress { get; set; }
+    public string NormalizedEmailAddress { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    public bool IsDeleted { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public int? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public int? UpdatedByUserId { get; set; }
+    public User? UpdatedByUser { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
+    public int? DeletedByUserId { get; set; }
+    public User? DeletedByUser { get; set; }
 }
 
 public sealed class CanonicalOrchardBlock

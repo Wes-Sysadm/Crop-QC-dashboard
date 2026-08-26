@@ -22,6 +22,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<CanonicalGrower> CanonicalGrowers => Set<CanonicalGrower>();
     public DbSet<CanonicalGrowerAlias> CanonicalGrowerAliases => Set<CanonicalGrowerAlias>();
     public DbSet<CanonicalGrowerNumber> CanonicalGrowerNumbers => Set<CanonicalGrowerNumber>();
+    public DbSet<GrowerReportRecipient> GrowerReportRecipients => Set<GrowerReportRecipient>();
     public DbSet<CanonicalOrchard> CanonicalOrchards => Set<CanonicalOrchard>();
     public DbSet<CanonicalOrchardBlock> CanonicalOrchardBlocks => Set<CanonicalOrchardBlock>();
     public DbSet<CanonicalOrchardAlias> CanonicalOrchardAliases => Set<CanonicalOrchardAlias>();
@@ -1076,6 +1077,22 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .WithMany(x => x.GrowerNumbers)
                 .HasForeignKey(x => x.CanonicalGrowerId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GrowerReportRecipient>(entity =>
+        {
+            entity.Property(x => x.EmailAddress).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.NormalizedEmailAddress).HasMaxLength(320).IsRequired();
+            var uniqueRecipient = entity.HasIndex(x => new { x.CanonicalGrowerNumberId, x.NormalizedEmailAddress }).IsUnique();
+            uniqueRecipient.HasFilter(isPostgreSqlProvider ? "\"IsDeleted\" = FALSE" : "[IsDeleted] = 0");
+            entity.HasIndex(x => new { x.CanonicalGrowerNumberId, x.IsActive, x.IsDeleted });
+            entity.HasOne(x => x.CanonicalGrowerNumber)
+                .WithMany(x => x.ReportRecipients)
+                .HasForeignKey(x => x.CanonicalGrowerNumberId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.DeletedByUser).WithMany().HasForeignKey(x => x.DeletedByUserId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<CanonicalOrchardBlock>(entity =>
