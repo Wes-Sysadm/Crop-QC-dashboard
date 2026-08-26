@@ -49,18 +49,18 @@ public sealed class FacilityNavigationTests
     public void MainNavigation_UsesRouteGenerationAndNeverEmitsTheRazorVariableName()
     {
         var layout = Read("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml");
+        var navigation = Read("src", "CropQc.Web", "Services", "SiteNavigationService.cs");
 
         Assert.DoesNotContain("facilityQuery", layout);
         Assert.DoesNotContain("/BinsRun@", layout);
-        Assert.Contains("asp-controller=\"BinsRun\" asp-action=\"Index\" asp-route-facility=\"@facilityRouteValue\"", layout);
         Assert.Contains("asp-controller=\"Home\" asp-action=\"Index\" asp-route-facility=\"@facilityRouteValue\"", layout);
-        Assert.DoesNotContain("asp-controller=\"DailyQc\" asp-action=\"Index\" asp-route-facility=\"@facilityRouteValue\"", layout);
-        Assert.Contains("asp-controller=\"Receipts\" asp-action=\"Index\" asp-route-facility=\"@facilityRouteValue\"", layout);
-        Assert.Contains("asp-controller=\"Home\" asp-action=\"Rooms\" asp-route-facility=\"@facilityRouteValue\"", layout);
-        Assert.Contains("asp-controller=\"Home\" asp-action=\"CurrentGrowerLots\" asp-route-facility=\"@facilityRouteValue\"", layout);
-        Assert.Contains("<summary>Rooms</summary>", layout);
-        Assert.Contains("<summary>Growers</summary>", layout);
-        Assert.Contains("Current Room Inventory", layout);
+        Assert.Contains("\"run-planner\"", navigation);
+        Assert.Contains("\"receipt-qc\"", navigation);
+        Assert.Contains("\"receipts\"", navigation);
+        Assert.Contains("\"room-overview\"", navigation);
+        Assert.Contains("\"grower-lots\"", navigation);
+        Assert.Contains("\"current-room-inventory\"", navigation);
+        Assert.Contains("siteNavigation.Categories", layout);
         Assert.Contains("string.IsNullOrWhiteSpace(requestedFacility) ? null : activeFacility", layout);
     }
 
@@ -105,23 +105,24 @@ public sealed class FacilityNavigationTests
     }
 
     [Fact]
-    public void NavigationCleanup_KeepsMasterDataAndMovesRecipientDiscoveryToGrowerLots()
+    public void NavigationCleanup_MovesMasterDataAndRecipientDiscoveryToTheCentralCatalog()
     {
         var layout = Read("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml");
         var masterData = Read("src", "CropQc.Web", "Views", "MasterData", "Index.cshtml");
         var growerLots = Read("src", "CropQc.Web", "Views", "Home", "GrowerLots.cshtml");
-        var masterDataNavigation = Read("src", "CropQc.Web", "Views", "Shared", "_MasterDataNavigation.cshtml");
+        var navigation = Read("src", "CropQc.Web", "Services", "SiteNavigationService.cs");
 
-        Assert.DoesNotContain(">Variety Colors</a>", layout);
-        Assert.DoesNotContain(">Orchard QC Recipients</a>", layout);
-        Assert.DoesNotContain(">Orchard Manager Import</a>", layout);
+        Assert.Contains("\"variety-colors\"", navigation);
+        Assert.Contains("QC Recipients", navigation);
+        Assert.Contains("Manager Import", navigation);
         Assert.DoesNotContain("EBS Historical Cleanup", layout);
         Assert.Contains("Fruit Profiles", masterData);
         Assert.Contains("Variety Codes", masterData);
-        Assert.Contains("_MasterDataNavigation", growerLots);
-        Assert.Contains("/Admin/OrchardRecipients", masterDataNavigation);
-        Assert.Contains("/Admin/OrchardRecipientImports", masterDataNavigation);
-        Assert.Contains("Unmatched Identities", masterDataNavigation);
+        Assert.DoesNotContain("_MasterDataNavigation", growerLots);
+        Assert.Contains("/Admin/OrchardRecipients", navigation);
+        Assert.Contains("/Admin/OrchardRecipientImports", navigation);
+        Assert.DoesNotContain("Unmatched Identities", navigation);
+        Assert.Contains("recent-review-batches", Read("src", "CropQc.Web", "Views", "OrchardRecipientImports", "Index.cshtml"));
     }
 
     private static CropQcDbContext CreateDb()

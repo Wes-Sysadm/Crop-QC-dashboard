@@ -18,24 +18,7 @@
         <h1>Grower &amp; Lot Progress</h1>
         <p class="muted">Authoritative full-bin receipts and source run quantities, grouped Grower → Variety → Lot → Week.</p>
     </div>
-    <div class="action-bar">
-        @if (filter.Facility is "WP" or "EBS")
-        {
-            <a class="button secondary-button" href="/BinsRun?Section=RunTotals&amp;ReportFacility=@filter.Facility&amp;ReportCropYear=@filter.CropYear">Run Totals</a>
-        }
-        else
-        {
-            <a class="button secondary-button" href="/BinsRun?Section=RunTotals&amp;ReportFacility=WP&amp;ReportCropYear=@filter.CropYear">WP Run Totals</a>
-            <a class="button secondary-button" href="/BinsRun?Section=RunTotals&amp;ReportFacility=EBS&amp;ReportCropYear=@filter.CropYear">EBS Run Totals</a>
-        }
-        <a class="button secondary-button" href="/BinsRun?Section=NeedsReview">Needs Review</a>
-    </div>
 </div>
-
-<nav class="operation-tabs" aria-label="Run reporting pages">
-    <a href="/BinsRun?Section=RunTotals&amp;ReportFacility=@(filter.Facility == "All" ? "WP" : filter.Facility)&amp;ReportCropYear=@filter.CropYear">Run Totals</a>
-    <a class="active" href="@PageUrl()">Grower &amp; Lot Progress</a>
-</nav>
 
 @if (!string.IsNullOrWhiteSpace(Model.FilterValidationMessage))
 {

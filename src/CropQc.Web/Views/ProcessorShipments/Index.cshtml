@@ -7,13 +7,6 @@
 }
 
 <h1>Processor Shipments</h1>
-<nav class="operation-tabs" aria-label="Runs and Transfers operations">
-    <a href="/BinsRun?Section=Planner">Run Planner</a>
-    <a href="/BinsRun?Section=Actual">Record Actual Run</a>
-    <a href="/BinsRun?Section=Transfer">Transfer</a>
-    <a href="/BinsRun?Section=TrueUp">True Up</a>
-    <a class="active" href="/ProcessorShipments" aria-current="page">Processor Shipments</a>
-</nav>
 
 @if (TempData["Success"] is not null) { <p class="notice success">@TempData["Success"]</p> }
 @if (TempData["Error"] is not null) { <p class="notice warning">@TempData["Error"]</p> }

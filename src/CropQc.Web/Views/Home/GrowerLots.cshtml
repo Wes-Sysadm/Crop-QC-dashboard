@@ -5,7 +5,6 @@
 }
 
 <h1>Grower Lots In Storage</h1>
-@await Html.PartialAsync("_MasterDataNavigation", "grower-lots")
 <p><a href="/RunReporting/Growers?Facility=@Model.Filter.Facility">Open Grower &amp; Lot Progress reporting</a></p>
 @await Html.PartialAsync("_PageRefreshControls")
 @if (Model.DataWarning is not null)

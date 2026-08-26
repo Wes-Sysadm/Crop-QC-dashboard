@@ -6,14 +6,16 @@ public sealed class MobileDataEntryTests
     public void SharedNavigation_UsesOneAuthorizedMenuForDesktopAndMobile()
     {
         var layout = Read("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml");
+        var script = Read("src", "CropQc.Web", "wwwroot", "js", "site-navigation.js");
 
         Assert.Contains("data-mobile-menu-button", layout);
         Assert.Contains("aria-controls=\"primary-navigation\"", layout);
         Assert.Contains("data-primary-navigation", layout);
-        Assert.Contains("navigation.dataset.mobileOpen", layout);
-        Assert.Contains("mobileQuery.matches", layout);
+        Assert.Contains("siteNavigation.Categories", layout);
+        Assert.Contains("navigation.dataset.mobileOpen", script);
+        Assert.Contains("compactQuery.matches", script);
         Assert.Contains("Crop QC", layout);
-        Assert.Equal(1, layout.Split("var canAccessDashboard", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, layout.Split("siteNavigation.Categories", StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("maximum-scale", layout, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("user-scalable=no", layout, StringComparison.OrdinalIgnoreCase);
     }

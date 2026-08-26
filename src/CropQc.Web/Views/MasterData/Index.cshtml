@@ -49,7 +49,6 @@
 
 @if (Model.Type is "canonical-growers" or "grower-lots" or "orchard-blocks")
 {
-    @await Html.PartialAsync("_MasterDataNavigation", Model.Type == "canonical-growers" ? "growers" : Model.Type == "orchard-blocks" ? "orchards" : "grower-lots")
 }
 
 @if (Model.Type == "rooms")

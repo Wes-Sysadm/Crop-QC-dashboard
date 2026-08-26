@@ -76,11 +76,11 @@ public sealed class AdminCleanupCropYearTests
     public void DataCleanup_UsesOnlyTheExplicitPermissionMatrix()
     {
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "AdminController.cs"));
-        var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+        var navigation = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "SiteNavigationService.cs"));
         Assert.DoesNotContain("DataCleanup:AllowedEmails", controller);
         Assert.DoesNotContain("IsDataCleanupAllowed", controller);
-        Assert.Contains("ApplicationAreas.DataCleanup", layout);
-        Assert.Contains("canAccessDataCleanup", layout);
+        Assert.Contains("ApplicationAreas.DataCleanup", navigation);
+        Assert.Contains("\"data-cleanup\"", navigation);
     }
 
     [Fact]

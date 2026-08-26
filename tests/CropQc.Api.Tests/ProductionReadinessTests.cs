@@ -85,11 +85,12 @@ public sealed class ProductionReadinessTests
     public void Admin_backups_are_admin_only_and_linked_from_layout()
     {
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "BackupsController.cs"));
+        var navigation = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "SiteNavigationService.cs"));
         var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
 
         Assert.Contains("AccessPolicyNames.BackupHistoryView", controller);
         Assert.Contains("AccessPolicyNames.BackupHistoryAdmin", controller);
-        Assert.Contains("/Admin/Backups", layout);
+        Assert.Contains("/Admin/Backups", navigation);
         Assert.Contains("STAGING - Non-production data", layout);
     }
 

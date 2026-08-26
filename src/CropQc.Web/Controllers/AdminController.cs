@@ -50,10 +50,14 @@ public sealed class AdminController(
 
     [HttpGet("VarietyColors")]
     [Authorize(Policy = AccessPolicyNames.VarietyColorsView)]
-    public IActionResult VarietyColors(CancellationToken cancellationToken)
+    public async Task<IActionResult> VarietyColors(CancellationToken cancellationToken)
     {
-        _ = userAccessService;
-        return Redirect("/MasterData/fruit-profiles");
+        var canManage = await userAccessService.HasAccessAsync(
+            User,
+            ApplicationAreas.VarietyColors,
+            PageAccessLevel.Admin,
+            cancellationToken);
+        return View(await varietyColorService.GetAdminPageAsync(canManage, cancellationToken));
     }
 
     [HttpPost("VarietyColors/Save")]
@@ -62,7 +66,7 @@ public sealed class AdminController(
     {
         var error = await varietyColorService.SaveAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Variety color saved.";
-        return Redirect("/MasterData/fruit-profiles");
+        return RedirectToAction(nameof(VarietyColors));
     }
 
     [HttpPost("VarietyColors/Reset")]
@@ -71,7 +75,7 @@ public sealed class AdminController(
     {
         var error = await varietyColorService.ResetAsync(form, authorizationService.GetEmail(User) ?? "", cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Variety color reset to default.";
-        return Redirect("/MasterData/fruit-profiles");
+        return RedirectToAction(nameof(VarietyColors));
     }
 
     [HttpGet("DataCleanup")]
