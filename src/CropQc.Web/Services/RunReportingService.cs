@@ -239,8 +239,15 @@ public sealed class RunReportingService(
             .GroupBy(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToList();
-        var colorKeys = identities
-            .Select(x => VarietyColorService.NormalizeIdentity(x.Variety, x.Variety).Key)
+        var fruitProfileIds = identities
+            .Select(x => x.FruitProfileId)
+            .Distinct()
+            .ToList();
+        var colorIdentitiesByFruitProfileId = await dbContext.FruitProfiles.AsNoTracking()
+            .Where(x => fruitProfileIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, VarietyColorService.IdentityFromProfile, cancellationToken);
+        var colorKeys = colorIdentitiesByFruitProfileId.Values
+            .Select(x => x.Key)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var colors = varietyColorService is null
@@ -249,7 +256,7 @@ public sealed class RunReportingService(
         var varieties = identities
             .Select(identity =>
             {
-                var color = ResolveColor(identity.Variety, colors);
+                var color = ResolveColor(identity, colorIdentitiesByFruitProfileId, colors);
                 return new RunVarietyTotalViewModel(
                     identity.VarietyKey,
                     identity.FruitProfileId,
@@ -412,10 +419,19 @@ public sealed class RunReportingService(
                 x.Sum(y => y.BinCount)));
 
     private static VarietyColorResolved ResolveColor(
-        string variety,
+        VarietyTotalRow reportingIdentity,
+        IReadOnlyDictionary<int, VarietyIdentity> colorIdentitiesByFruitProfileId,
         IReadOnlyDictionary<string, VarietyColorResolved> colors)
     {
-        var identity = VarietyColorService.NormalizeIdentity(variety, variety);
+        if (!colorIdentitiesByFruitProfileId.TryGetValue(reportingIdentity.FruitProfileId, out var identity))
+        {
+            return new VarietyColorResolved(
+                reportingIdentity.Variety,
+                reportingIdentity.Variety,
+                VarietyColorService.NeutralFallbackColor,
+                false);
+        }
+
         return colors.TryGetValue(identity.Key, out var resolved)
             ? resolved
             : new VarietyColorResolved(identity.Key, identity.Name, VarietyColorService.FallbackColor(identity.Key), false);

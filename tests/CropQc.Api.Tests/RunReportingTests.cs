@@ -70,8 +70,8 @@ public sealed class RunReportingTests
         await SeedAsync(db);
         db.VarietyColorConfigurations.Add(new VarietyColorConfiguration
         {
-            VarietyKey = "BART",
-            VarietyName = "BART",
+            VarietyKey = "BARTLETT",
+            VarietyName = "Bartlett",
             HexColor = "#F5E66A",
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
@@ -89,6 +89,105 @@ public sealed class RunReportingTests
         Assert.Equal("#F5E66A", variety.ColorHex);
         Assert.Equal("#17212B", variety.TextColorHex);
         Assert.True(variety.IsColorConfigured);
+    }
+
+    [Fact]
+    public async Task RunTotalsVarietyCards_ResolveProductionCodesThroughFruitProfileCanonicalIdentity()
+    {
+        using var db = CreateDbContext();
+        await SeedAsync(db);
+        var source = await db.Warehouses.SingleAsync(x => x.Id == 9000);
+        var reporting = await db.Warehouses.SingleAsync(x => x.Id == 9001);
+        var room = await db.Rooms.SingleAsync(x => x.Id == 9000);
+        var user = await db.Users.SingleAsync(x => x.Id == 9000);
+
+        var profiles = new[]
+        {
+            Profile(9101, "CONC", "CONCORDE", false),
+            Profile(9102, "DANJ", "D'Anjou", false),
+            Profile(9103, "GALA", "Gala", false),
+            Profile(9104, "ORBA", "Organic Bartlett", true),
+            Profile(9105, "ORBO", "Organic Bosc", true),
+            Profile(9106, "ORDA", "Organic D'Anjou", true),
+            Profile(9107, "ORDR", "Organic Red Danjou", true),
+            Profile(9108, "ORGA", "Organic Gala", true),
+            Profile(9109, "ORGS", "Organic Granny Smith", true),
+            Profile(9110, "ORMS", "Organic Mardi Gras", true),
+            Profile(9111, "ORRB", "Organic Red Bartlett", true)
+        };
+        db.FruitProfiles.AddRange(profiles);
+        db.VarietyColorConfigurations.AddRange(
+            Color("BARTLETT", "Bartlett", "#F5E66A"),
+            Color("CONCORDE", "CONCORDE", "#6D4C41"),
+            Color("D_ANJOU", "D'Anjou", "#2E7D32"),
+            Color("GALA", "Gala", "#C62828"),
+            Color("BOSC", "Bosc", "#8D6E63"),
+            Color("RED_DANJOU", "Red Danjou", "#AD1457"),
+            Color("GRANNY_SMITH", "Granny Smith", "#558B2F"),
+            Color("MARDI_GRAS", "Mardi Gras", "#6A1B9A"),
+            Color("RED_BARTLETT", "Red Bartlett", "#D84315"));
+        db.BinsRunEntries.AddRange(profiles.Select((profile, index) =>
+            Entry(100 + index, index + 1, 2026, "1084", source, reporting, room, profile, user)));
+        var missingProfile = Entry(200, 12, 2026, "1084", source, reporting, room,
+            await db.FruitProfiles.SingleAsync(x => x.Id == 9000), user);
+        missingProfile.ReportingFruitProfileIdSnapshot = 999999;
+        missingProfile.ReportingVarietyCodeSnapshot = "MISS";
+        db.BinsRunEntries.Add(missingProfile);
+        await db.SaveChangesAsync();
+
+        var page = await CreateService(db).GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026
+        }, Principal(), CancellationToken.None);
+
+        var detail = Assert.IsType<RunTotalsDetailViewModel>(page.Detail);
+        var cards = detail.Varieties.ToDictionary(x => x.Variety, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("#F5E66A", cards["BART"].ColorHex);
+        Assert.Equal("#6D4C41", cards["CONC"].ColorHex);
+        Assert.Equal("#2E7D32", cards["DANJ"].ColorHex);
+        Assert.Equal("#C62828", cards["GALA"].ColorHex);
+        Assert.Equal(cards["BART"].ColorHex, cards["ORBA"].ColorHex);
+        Assert.Equal("#8D6E63", cards["ORBO"].ColorHex);
+        Assert.Equal(cards["DANJ"].ColorHex, cards["ORDA"].ColorHex);
+        Assert.Equal("#AD1457", cards["ORDR"].ColorHex);
+        Assert.Equal(cards["GALA"].ColorHex, cards["ORGA"].ColorHex);
+        Assert.Equal("#558B2F", cards["ORGS"].ColorHex);
+        Assert.Equal("#6A1B9A", cards["ORMS"].ColorHex);
+        Assert.Equal("#D84315", cards["ORRB"].ColorHex);
+        Assert.Equal(VarietyColorService.NeutralFallbackColor, cards["MISS"].ColorHex);
+        Assert.False(cards["MISS"].IsColorConfigured);
+        Assert.All(new[] { "ORBA", "ORBO", "ORDA", "ORDR", "ORGA", "ORGS", "ORMS", "ORRB" },
+            code => Assert.True(cards[code].IsOrganic));
+        Assert.Equal(138, detail.TotalBins);
+        Assert.Equal(detail.TotalBins, detail.Varieties.Sum(x => x.Bins));
+        Assert.Equal(0, detail.TotalReceivedBins);
+        Assert.Equal(detail.TotalBins, detail.SalesDeskTotals.Sum(x => x.Bins));
+
+        var organicBartlett = cards["ORBA"];
+        var selectedPage = await CreateService(db).GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026,
+            ReportVarietyKey = organicBartlett.VarietyKey
+        }, Principal(), CancellationToken.None);
+        var selected = Assert.IsType<RunTotalsDetailViewModel>(selectedPage.Detail);
+        Assert.Equal(organicBartlett.VarietyKey, selected.SelectedVarietyKey);
+        Assert.Equal(4, Assert.Single(selected.Weeks).Bins);
+        Assert.Equal("ORBA", Assert.Single(selected.Weeks).Variety);
+    }
+
+    [Fact]
+    public void RunTotalsView_UsesExistingOrganicStripePresentation()
+    {
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml"));
+        var css = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css"));
+
+        Assert.Contains("@(variety.IsOrganic ? \"organic\" : \"conventional\")", view);
+        Assert.Contains(".run-variety-card.organic::after", css);
+        Assert.Contains("background-image: var(--variety-organic-stripe)", css);
     }
 
     [Fact]
@@ -647,6 +746,47 @@ public sealed class RunReportingTests
             new AllowAccess(),
             configuration,
             new VarietyColorService(db));
+    }
+
+    private static FruitProfile Profile(int id, string code, string name, bool organic) => new()
+    {
+        Id = id,
+        Name = name,
+        VarietyCode = code,
+        FruitType = name.Contains("Bartlett", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Bosc", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Anjou", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Concorde", StringComparison.OrdinalIgnoreCase)
+            ? "Pear"
+            : "Apple",
+        ProductionType = organic ? "Organic" : "Conventional",
+        IsOrganic = organic,
+        IsActive = true
+    };
+
+    private static VarietyColorConfiguration Color(string key, string name, string hex) => new()
+    {
+        VarietyKey = key,
+        VarietyName = name,
+        HexColor = hex,
+        CreatedAt = DateTimeOffset.UtcNow,
+        UpdatedAt = DateTimeOffset.UtcNow
+    };
+
+    private static string FindRepositoryFile(params string[] path)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "CropQc.sln")))
+            {
+                return Path.Combine([directory.FullName, .. path]);
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate the CropQc repository root.");
     }
 
     private static async Task SeedAsync(CropQcDbContext db)
