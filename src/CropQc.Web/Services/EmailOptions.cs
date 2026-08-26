@@ -42,6 +42,11 @@ public sealed record QcEmailRecipientResolution(
     bool OrchardCouldNotBeResolved,
     string Source)
 {
+    public int? ResolvedGrowerNumberId { get; init; }
+    public string? ResolvedGrowerNumber { get; init; }
+    public IReadOnlyList<string> ActiveGrowerNumberRecipients { get; init; } = [];
+    public bool GrowerNumberCouldNotBeResolved { get; init; }
+
     public QcEmailRecipientResolution(IReadOnlyList<string> recipients, string source)
         : this(
             recipients.FirstOrDefault() ?? QcReportEmailDefaults.RequiredRecipient,
@@ -137,19 +142,23 @@ public sealed class QcEmailRecipientResolver(
 
         int? orchardId = null;
         string? orchardName = null;
+        int? growerNumberId = null;
+        string? growerNumber = null;
         if (sampleId is not null)
         {
-            var orchard = await dbContext.QcSamples.AsNoTracking()
+            var sampleIdentity = await dbContext.QcSamples.AsNoTracking()
                 .Where(x => x.Id == sampleId.Value)
                 .Select(x => new
                 {
                     DirectId = x.CanonicalOrchardBlock == null ? (int?)null : x.CanonicalOrchardBlock.CanonicalOrchardId,
                     ReceiptId = x.Receipt == null || x.Receipt.CanonicalOrchardBlock == null
                         ? (int?)null
-                        : x.Receipt.CanonicalOrchardBlock.CanonicalOrchardId
+                        : x.Receipt.CanonicalOrchardBlock.CanonicalOrchardId,
+                    GrowerNumber = x.Receipt == null ? x.FieldSampleGrowerNumber : x.Receipt.GrowerNumber
                 })
                 .SingleOrDefaultAsync(cancellationToken);
-            orchardId = orchard?.DirectId ?? orchard?.ReceiptId;
+            orchardId = sampleIdentity?.DirectId ?? sampleIdentity?.ReceiptId;
+            growerNumber = CanonicalGrowerService.NormalizeGrowerNumber(sampleIdentity?.GrowerNumber);
             if (orchardId is not null)
             {
                 orchardName = await dbContext.CanonicalOrchards.AsNoTracking()
@@ -166,18 +175,50 @@ public sealed class QcEmailRecipientResolver(
                     orchardName = null;
                 }
             }
+
+            if (!string.IsNullOrWhiteSpace(growerNumber))
+            {
+                var matchingNumbers = await dbContext.CanonicalGrowerNumbers.AsNoTracking()
+                    .Where(x => x.IsActive
+                        && x.CanonicalGrower.IsActive
+                        && x.NormalizedGrowerNumber == growerNumber)
+                    .Select(x => x.Id)
+                    .Take(2)
+                    .ToListAsync(cancellationToken);
+                if (matchingNumbers.Count == 1)
+                {
+                    growerNumberId = matchingNumbers[0];
+                }
+                else
+                {
+                    logger.LogWarning(
+                        "QC report sample {SampleId} Grower Number {GrowerNumber} did not resolve to exactly one active canonical Grower Number; no Grower Number recipients were included.",
+                        sampleId,
+                        growerNumber);
+                }
+            }
         }
 
-        List<string> managerValues = orchardId is null
+        List<string> growerRecipientValues = growerNumberId is null
+            ? []
+            : await dbContext.GrowerReportRecipients.AsNoTracking()
+                .Where(x => x.CanonicalGrowerNumberId == growerNumberId.Value && x.IsActive && !x.IsDeleted)
+                .OrderBy(x => x.EmailAddress)
+                .Select(x => x.EmailAddress)
+                .ToListAsync(cancellationToken);
+        List<string> orchardRecipientValues = orchardId is null
             ? []
             : await dbContext.OrchardReportRecipients.AsNoTracking()
                 .Where(x => x.CanonicalOrchardId == orchardId.Value && x.IsActive && !x.IsDeleted)
                 .OrderBy(x => x.EmailAddress)
                 .Select(x => x.EmailAddress)
                 .ToListAsync(cancellationToken);
-        var managers = QcEmailRecipientParser.Parse(string.Join(';', managerValues));
+        var growerRecipients = QcEmailRecipientParser.Parse(string.Join(';', growerRecipientValues));
+        var managers = QcEmailRecipientParser.Parse(string.Join(';', orchardRecipientValues));
         var additional = QcEmailRecipientParser.Parse(string.Join(';', additionalRecipients ?? []));
-        var skipped = managers.InvalidRecipients.Concat(additional.InvalidRecipients)
+        var skipped = growerRecipients.InvalidRecipients
+            .Concat(managers.InvalidRecipients)
+            .Concat(additional.InvalidRecipients)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         if (skipped.Length > 0)
@@ -190,6 +231,7 @@ public sealed class QcEmailRecipientResolver(
         }
 
         var recipients = new[] { requiredDefault }
+            .Concat(growerRecipients.Recipients)
             .Concat(managers.Recipients)
             .Concat(additional.Recipients)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -198,7 +240,7 @@ public sealed class QcEmailRecipientResolver(
         if (sampleId is not null && unresolved)
         {
             logger.LogInformation(
-                "QC report sample {SampleId} has no confirmed canonical orchard; only the required QC recipient will be used.",
+                "QC report sample {SampleId} has no confirmed canonical orchard; Grower Number and required recipients remain eligible.",
                 sampleId);
         }
         else if (sampleId is not null && managers.Recipients.Count == 0)
@@ -219,7 +261,15 @@ public sealed class QcEmailRecipientResolver(
             skipped,
             orchardId is not null && managers.Recipients.Count == 0,
             unresolved,
-            QcEmailRecipientSources.FallbackConfiguration);
+            QcEmailRecipientSources.FallbackConfiguration)
+        {
+            ResolvedGrowerNumberId = growerNumberId,
+            ResolvedGrowerNumber = growerNumber,
+            ActiveGrowerNumberRecipients = growerRecipients.Recipients,
+            GrowerNumberCouldNotBeResolved = sampleId is not null
+                && !string.IsNullOrWhiteSpace(growerNumber)
+                && growerNumberId is null
+        };
     }
 }
 

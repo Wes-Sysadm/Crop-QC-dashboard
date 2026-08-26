@@ -16,6 +16,7 @@ public sealed class FieldSampleWorkflowTests
     public void FieldSamples_ArePermissionedAndHaveDedicatedNavigation()
     {
         var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+        var navigation = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "SiteNavigationService.cs"));
         var access = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "UserAccessService.cs"));
         var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
         var photoPolicy = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "QcPhotoRequirementPolicy.cs"));
@@ -23,8 +24,9 @@ public sealed class FieldSampleWorkflowTests
         Assert.Contains("ApplicationAreas.FieldSamples", access);
         Assert.Contains("AccessPolicyNames.FieldSamplesView", program);
         Assert.Contains("AccessPolicyNames.FieldSamplesEdit", program);
-        Assert.Contains("canAccessFieldSamples", layout);
-        Assert.Contains("<a href=\"/FieldSamples\">Field Samples</a>", layout);
+        Assert.Contains("ApplicationAreas.FieldSamples", navigation);
+        Assert.Contains("\"field-samples\"", navigation);
+        Assert.Contains("siteNavigation.Categories", layout);
         Assert.Contains("Contains(\"field\"", photoPolicy);
 
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "FieldSamplesController.cs"));

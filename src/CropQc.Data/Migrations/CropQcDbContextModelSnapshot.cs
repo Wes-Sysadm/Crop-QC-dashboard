@@ -2598,6 +2598,68 @@ namespace CropQc.Data.Migrations
                     b.ToTable("GrowerLots");
                 });
 
+            modelBuilder.Entity("CropQc.Data.Entities.GrowerReportRecipient", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CanonicalGrowerNumberId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EmailAddress")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NormalizedEmailAddress")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("DeletedByUserId");
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.HasIndex("CanonicalGrowerNumberId", "NormalizedEmailAddress")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.HasIndex("CanonicalGrowerNumberId", "IsActive", "IsDeleted");
+
+                    b.ToTable("GrowerReportRecipients");
+                });
+
             modelBuilder.Entity("CropQc.Data.Entities.InventoryDiagnosticAcknowledgment", b =>
                 {
                     b.Property<long>("Id")
@@ -10254,6 +10316,38 @@ namespace CropQc.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("CropQc.Data.Entities.GrowerReportRecipient", b =>
+                {
+                    b.HasOne("CropQc.Data.Entities.CanonicalGrowerNumber", "CanonicalGrowerNumber")
+                        .WithMany("ReportRecipients")
+                        .HasForeignKey("CanonicalGrowerNumberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CropQc.Data.Entities.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.User", "DeletedByUser")
+                        .WithMany()
+                        .HasForeignKey("DeletedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.User", "UpdatedByUser")
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CanonicalGrowerNumber");
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("DeletedByUser");
+
+                    b.Navigation("UpdatedByUser");
+                });
+
             modelBuilder.Entity("CropQc.Data.Entities.InventoryDiagnosticAcknowledgment", b =>
                 {
                     b.HasOne("CropQc.Data.Entities.User", "DismissedByUser")
@@ -11925,6 +12019,11 @@ namespace CropQc.Data.Migrations
                     b.Navigation("Aliases");
 
                     b.Navigation("GrowerNumbers");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.CanonicalGrowerNumber", b =>
+                {
+                    b.Navigation("ReportRecipients");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.CanonicalOrchard", b =>

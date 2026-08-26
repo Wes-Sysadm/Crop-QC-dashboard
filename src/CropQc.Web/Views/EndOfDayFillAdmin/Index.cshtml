@@ -1,6 +1,5 @@
 @model EndOfDayFillAdminPageViewModel
 @{ ViewData["Title"] = "End of Day Fill Report Groups"; }
-<partial name="_MasterDataNavigation" model='"end-of-day-fill"' />
 <div class="page-heading-row"><div><h1>End of Day Fill Report Groups</h1><p class="muted">Configure report definitions and the global recipient list. Room membership is authoritative on each Room master record.</p></div><a href="/MasterData">Back to Master Data</a></div>
 @if (TempData["Error"] is not null) { <p class="notice warning">@TempData["Error"]</p> }
 @if (TempData["Success"] is not null) { <p class="notice success">@TempData["Success"]</p> }

@@ -2869,6 +2869,9 @@ public sealed class DashboardDataService(
                 recipientResolution.ResolvedOrchardId,
                 recipientResolution.OrchardCouldNotBeResolved,
                 recipientResolution.OrchardHadNoConfiguredManager,
+                recipientResolution.ResolvedGrowerNumberId,
+                recipientResolution.ResolvedGrowerNumber,
+                recipientResolution.GrowerNumberCouldNotBeResolved,
                 SkippedInvalidRecipientCount = recipientResolution.SkippedInvalidAddresses.Count,
                 SampleType = originalSampleTypeName,
                 IsOverride = isOverride

@@ -12,53 +12,52 @@ public sealed class RoleNavigationAuthorizationTests
     public void Layout_ShowsManagementLinksByRole()
     {
         var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+        var navigation = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "SiteNavigationService.cs"));
 
         Assert.Contains("asp-controller=\"Home\" asp-action=\"Index\"", layout);
-        Assert.Contains("asp-controller=\"Receipts\" asp-action=\"Index\"", layout);
-        Assert.DoesNotContain("asp-controller=\"DailyQc\" asp-action=\"Index\"", layout);
-        Assert.Contains(">Receiving</a>", layout);
-        Assert.Contains(">Runs &amp; Transfers</a>", layout);
-        Assert.Contains("<summary>Rooms</summary>", layout);
-        Assert.Contains("<summary>Growers</summary>", layout);
-        Assert.Contains("Current Room Inventory", layout);
-        Assert.Contains("Inventory Reconciliation", layout);
+        Assert.Contains("siteNavigation.Categories", layout);
+        Assert.Contains("\"receiving\"", navigation);
+        Assert.Contains("\"runs\"", navigation);
+        Assert.Contains("\"transfers\"", navigation);
+        Assert.Contains("\"rooms\"", navigation);
+        Assert.Contains("\"growers-reports\"", navigation);
+        Assert.Contains("Current Room Inventory", navigation);
+        Assert.Contains("Inventory Reconciliation", navigation);
         Assert.DoesNotContain("facilityQuery", layout);
-        Assert.Contains("IUserAccessService UserAccess", layout);
-        Assert.Contains("UserAccess.HasAccessAsync", layout);
-        Assert.Contains("class=\"nav-dropdown\"", layout);
-        Assert.Contains("<summary>Admin</summary>", layout);
-        Assert.Contains("showAdminMenu", layout);
-        Assert.Contains("href=\"/MasterData\"", layout);
-        Assert.Contains("href=\"/Admin/QcStations\"", layout);
-        Assert.Contains("href=\"/Admin/Users\"", layout);
-        Assert.Contains("href=\"/Admin/Downloads\"", layout);
-        Assert.Contains("href=\"/Admin/Configuration\"", layout);
-        Assert.DoesNotContain(">Variety Colors</a>", layout);
-        Assert.Contains("href=\"/Admin/Backups\"", layout);
-        Assert.Contains("href=\"/Admin/DataCleanup\"", layout);
-        Assert.Contains("canAccessDataCleanup", layout);
-        Assert.Contains("Access &amp; Devices", layout);
-        Assert.Contains("Data Maintenance", layout);
-        Assert.DoesNotContain("EBS Historical Cleanup", layout);
+        Assert.Contains("ISiteNavigationService SiteNavigation", layout);
+        Assert.Contains("userAccess.HasAccessAsync", navigation);
+        Assert.Contains("site-nav-category", layout);
+        Assert.Contains("category.Key == \"admin\"", layout);
+        Assert.Contains("/MasterData", navigation);
+        Assert.Contains("/Admin/QcStations", navigation);
+        Assert.Contains("/Admin/Users", navigation);
+        Assert.Contains("/Admin/Downloads", navigation);
+        Assert.Contains("/Admin/Configuration", navigation);
+        Assert.Contains("/Admin/VarietyColors", navigation);
+        Assert.Contains("/Admin/Backups", navigation);
+        Assert.Contains("/Admin/DataCleanup", navigation);
+        Assert.Contains("Access & Devices", navigation);
+        Assert.Contains("Data Maintenance", navigation);
+        Assert.DoesNotContain("EBS Historical Cleanup", navigation);
         Assert.DoesNotContain("IAdminAuthorizationService", layout);
     }
 
     [Fact]
-    public void AdminDropdown_OpensOnDesktopHoverAndKeepsTouchFallback()
+    public void NavigationDropdown_UsesClickKeyboardAndResponsiveInlineFallback()
     {
         var css = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "css", "site.css"));
         var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+        var script = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "wwwroot", "js", "site-navigation.js"));
 
-        Assert.Contains("@media (hover: hover) and (pointer: fine)", css);
-        Assert.Contains(".nav-dropdown:hover .nav-dropdown-menu", css);
-        Assert.Contains(".nav-dropdown:focus-within .nav-dropdown-menu", css);
-        Assert.Contains(".nav-dropdown:not([open]) .nav-dropdown-menu", css);
-        Assert.Contains(".nav-dropdown-menu { position: absolute", css);
-        Assert.Contains("mouseenter", layout);
-        Assert.Contains("mouseleave", layout);
-        Assert.Contains("setTimeout(() => { dropdown.open = false; }, 220)", layout);
-        Assert.Contains("@media (max-width: 760px)", css);
-        Assert.Contains(".nav-dropdown { position: static", css);
+        Assert.Contains("site-nav-panel", css);
+        Assert.Contains("position: absolute", css);
+        Assert.Contains("data-nav-category", layout);
+        Assert.Contains("closeCategories(category)", script);
+        Assert.Contains("event.key !== \"Escape\"", script);
+        Assert.Contains("document.addEventListener(\"click\"", script);
+        Assert.Contains("navigationInitialized", script);
+        Assert.Contains("@media (max-width: 1180px)", css);
+        Assert.Contains("position: static", css);
     }
 
     [Fact]
@@ -115,12 +114,12 @@ public sealed class RoleNavigationAuthorizationTests
         AssertControllerPolicy<RunReportingController>(AccessPolicyNames.BinsRunView);
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "RunReportingController.cs"));
         var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "RunReporting", "Growers.cshtml"));
-        var layout = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_Layout.cshtml"));
+        var navigation = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "SiteNavigationService.cs"));
 
         Assert.Contains("[HttpGet(\"Growers\")]", controller);
         Assert.DoesNotContain("[HttpPost", controller);
         Assert.DoesNotContain("method=\"post\"", view, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("/RunReporting/Growers?Facility=All", layout);
+        Assert.Contains("/RunReporting/Growers?Facility=All", navigation);
     }
 
     [Fact]

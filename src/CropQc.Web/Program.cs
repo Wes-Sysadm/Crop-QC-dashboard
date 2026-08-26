@@ -251,6 +251,7 @@ builder.Services.AddScoped<IQcPhotoRequirementPolicy, QcPhotoRequirementPolicy>(
 builder.Services.AddScoped<IQcSummaryEmailComposer, QcSummaryEmailComposer>();
 builder.Services.AddScoped<IQcEmailRecipientResolver, QcEmailRecipientResolver>();
 builder.Services.AddScoped<IOrchardRecipientAdminService, OrchardRecipientAdminService>();
+builder.Services.AddScoped<IGrowerRecipientAdminService, GrowerRecipientAdminService>();
 builder.Services.AddScoped<IOrchardContactWorkbookParser, OrchardContactWorkbookParser>();
 builder.Services.AddScoped<IOrchardContactImportService, OrchardContactImportService>();
 builder.Services.AddScoped<IOrchardIdentityResolverService, OrchardIdentityResolverService>();
@@ -259,6 +260,7 @@ builder.Services.AddScoped<IMasterDataSeeder, MasterDataSeeder>();
 builder.Services.AddScoped<IReceivingExportService, ReceivingExportService>();
 builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService>();
 builder.Services.AddScoped<IUserAccessService, UserAccessService>();
+builder.Services.AddScoped<ISiteNavigationService, SiteNavigationService>();
 builder.Services.AddScoped<IAuthorizationHandler, PageAccessAuthorizationHandler>();
 builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportService>();

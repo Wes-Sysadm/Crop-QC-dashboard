@@ -1,9 +1,8 @@
 <!doctype html>
 @using System.Security.Claims
 @using Microsoft.AspNetCore.WebUtilities
-@inject CropQc.Web.Services.IUserAccessService UserAccess
 @inject CropQc.Web.Services.IFacilityContextService FacilityContext
-@inject CropQc.Web.Services.IEndOfDayFillService EndOfDayFill
+@inject CropQc.Web.Services.ISiteNavigationService SiteNavigation
 @inject CropQc.Web.Services.AppEnvironmentOptions AppEnvironment
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 <html lang="en">
@@ -18,6 +17,9 @@
         var requestedFacility = Context.Request.Query["facility"].FirstOrDefault();
         var activeFacility = FacilityContext.Normalize(requestedFacility);
         var facilityRouteValue = string.IsNullOrWhiteSpace(requestedFacility) ? null : activeFacility;
+        var siteNavigation = User.Identity?.IsAuthenticated == true
+            ? await SiteNavigation.BuildAsync(User, Context.Request.Path, Context.Request.Query, facilityRouteValue, Context.RequestAborted)
+            : new SiteNavigationViewModel([], []);
 
         string FacilityContextUrl(string facility)
         {
@@ -35,175 +37,57 @@
             <span>@AppEnvironment.DisplayName</span>
         </div>
     }
-    <header class="topbar">
+    <header class="topbar" data-site-header>
         <a class="brand" asp-controller="Home" asp-action="Index" asp-route-facility="@facilityRouteValue">
             <span class="brand-full">Crop QC Dashboard</span>
             <span class="brand-mobile">Crop QC</span>
         </a>
-        <button type="button" class="mobile-menu-button" aria-controls="primary-navigation" aria-expanded="false" data-mobile-menu-button>Menu</button>
-        <nav id="primary-navigation" data-primary-navigation>
+        <button type="button" class="mobile-menu-button" aria-controls="primary-navigation" aria-expanded="false" data-mobile-menu-button>
+            <span class="mobile-menu-icon" aria-hidden="true"></span>
+            <span data-mobile-menu-label>Menu</span>
+        </button>
+        <nav id="primary-navigation" data-primary-navigation aria-label="Primary navigation">
             @if (User.Identity?.IsAuthenticated == true)
             {
                 var role = User.FindAll(ClaimTypes.Role).Select(x => x.Value).OrderBy(x => x).FirstOrDefault() ?? "Viewer";
                 var currentEmail = User.FindFirstValue(ClaimTypes.Email) ?? "";
-                var canAccessDashboard = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Dashboard, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
-                var canAccessFieldSamples = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.FieldSamples, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
-                var canAccessReceipts = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Receipts, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
-                var canAccessRooms = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Rooms, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
-                var canAccessGrowerLots = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.GrowerLots, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
-                var canAccessCropYearReview = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.CropYearReview, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
-                var canAccessUsers = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Users, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
-                var canAccessQcStations = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.QcStations, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
-                var canAccessMasterData = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.MasterData, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
-                var canAdminMasterData = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.MasterData, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
-                var canAccessCurrentLots = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.CurrentLots, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
-                var canAdminCurrentLots = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.CurrentLots, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
-                var canAccessBinsRun = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.BinsRun, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
-                var canAccessDownloads = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Downloads, CropQc.Web.Services.PageAccessLevel.View, Context.RequestAborted);
-                var canAccessConfiguration = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Configuration, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
-                var canAccessBackups = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.Backups, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
-                var canAccessDataCleanup = await UserAccess.HasAccessAsync(User, CropQc.Web.Services.ApplicationAreas.DataCleanup, CropQc.Web.Services.PageAccessLevel.Admin, Context.RequestAborted);
-                var canAccessEndOfDayFill = await EndOfDayFill.HasActiveAssignmentAsync(currentEmail, Context.RequestAborted);
-                var showRoomsMenu = canAccessRooms || canAccessEndOfDayFill || canAccessCurrentLots || canAdminCurrentLots;
-                var showGrowersMenu = canAccessGrowerLots || canAccessBinsRun;
-                var showAdminAccessDevices = canAccessUsers || canAccessQcStations;
-                var showAdminMasterData = canAccessMasterData || canAdminMasterData;
-                var showAdminSystem = canAccessConfiguration || canAccessDownloads || canAccessBackups;
-                var showAdminDataMaintenance = canAccessCropYearReview || canAccessDataCleanup;
-                var showAdminMenu = showAdminAccessDevices || showAdminMasterData || showAdminSystem || showAdminDataMaintenance;
-                @if (canAccessDashboard)
+                @foreach (var category in siteNavigation.Categories)
                 {
-                    <a asp-controller="Home" asp-action="Index" asp-route-facility="@facilityRouteValue">Dashboard</a>
-                }
-                @if (canAccessFieldSamples)
-                {
-                    <a href="/FieldSamples">Field Samples</a>
-                }
-                @if (canAccessReceipts)
-                {
-                    <a asp-controller="Receipts" asp-action="Index" asp-route-facility="@facilityRouteValue">Receiving</a>
-                }
-                @if (showRoomsMenu)
-                {
-                    <details class="nav-dropdown">
-                        <summary>Rooms</summary>
-                        <div class="nav-dropdown-menu">
-                            @if (canAccessRooms)
+                    <details class="site-nav-category @(category.IsActive ? "active" : "")" data-nav-category="@category.Key">
+                        <summary aria-expanded="false">
+                            <span>@category.Label</span>
+                            <svg class="nav-chevron" width="12" height="8" viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1.5 6 6.5l5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                        </summary>
+                        <div class="site-nav-panel @(category.Key == "admin" ? "site-nav-panel-wide" : "")">
+                            @foreach (var group in category.Items.GroupBy(x => x.Group))
                             {
-                                <a asp-controller="Home" asp-action="Rooms" asp-route-facility="@facilityRouteValue">Room Overview</a>
-                            }
-                            @if (canAccessEndOfDayFill)
-                            {
-                                <a href="/EndOfDayFill">End of Day Fill</a>
-                            }
-                            @if (canAccessCurrentLots)
-                            {
-                                <a href="/Admin/RoomInventory">Current Room Inventory</a>
-                            }
-                            @if (canAdminCurrentLots)
-                            {
-                                <a href="/Admin/RoomInventory/Reconciliation">Inventory Reconciliation</a>
-                            }
-                        </div>
-                    </details>
-                }
-                @if (canAccessBinsRun)
-                {
-                    <a asp-controller="BinsRun" asp-action="Index" asp-route-facility="@facilityRouteValue">Runs &amp; Transfers</a>
-                }
-                @if (showGrowersMenu)
-                {
-                    <details class="nav-dropdown">
-                        <summary>Growers</summary>
-                        <div class="nav-dropdown-menu">
-                            @if (canAccessGrowerLots)
-                            {
-                                <a asp-controller="Home" asp-action="CurrentGrowerLots" asp-route-facility="@facilityRouteValue">Grower Lots</a>
-                            }
-                            @if (canAccessBinsRun)
-                            {
-                                <a href="/RunReporting/Growers?Facility=All">Grower &amp; Lot Progress</a>
-                            }
-                        </div>
-                    </details>
-                }
-                @if (showAdminMenu)
-                {
-                    <details class="nav-dropdown">
-                        <summary>Admin</summary>
-                        <div class="nav-dropdown-menu">
-                            @if (showAdminAccessDevices)
-                            {
-                                <div class="nav-dropdown-group">
-                                    <span class="nav-dropdown-heading">Access &amp; Devices</span>
-                                    @if (canAccessUsers)
+                                <div class="site-nav-group">
+                                    @if (!string.IsNullOrWhiteSpace(group.Key))
                                     {
-                                        <a href="/Admin/Users">Users</a>
+                                        <span class="site-nav-heading">@group.Key</span>
                                     }
-                                    @if (canAccessQcStations)
+                                    @foreach (var item in group)
                                     {
-                                        <a href="/Admin/QcStations">QC Stations</a>
-                                    }
-                                </div>
-                            }
-                            @if (showAdminMasterData)
-                            {
-                                <div class="nav-dropdown-group">
-                                    <span class="nav-dropdown-heading">Master Data</span>
-                                    @if (canAccessMasterData)
-                                    {
-                                        <a href="/MasterData">Master Data</a>
-                                    }
-                                    @if (canAdminMasterData)
-                                    {
-                                        <a href="/Admin/CommercialPacks">Commercial Packs</a>
-                                    }
-                                </div>
-                            }
-                            @if (showAdminSystem)
-                            {
-                                <div class="nav-dropdown-group">
-                                    <span class="nav-dropdown-heading">System</span>
-                                    @if (canAccessConfiguration)
-                                    {
-                                        <a href="/Admin/Configuration">Configuration</a>
-                                    }
-                                    @if (canAccessDownloads)
-                                    {
-                                        <a href="/Admin/Downloads">Downloads</a>
-                                    }
-                                    @if (canAccessBackups)
-                                    {
-                                        <a href="/Admin/Backups">Backups</a>
-                                    }
-                                </div>
-                            }
-                            @if (showAdminDataMaintenance)
-                            {
-                                <div class="nav-dropdown-group">
-                                    <span class="nav-dropdown-heading">Data Maintenance</span>
-                                    @if (canAccessCropYearReview)
-                                    {
-                                        <a href="/CropYearReview">Crop Year Review</a>
-                                    }
-                                    @if (canAccessDataCleanup)
-                                    {
-                                        <a href="/Admin/DataCleanup">Data Cleanup</a>
+                                        <a class="@(item.IsActive ? "active" : "")"
+                                           aria-current="@(item.IsActive ? "page" : null)"
+                                           href="@item.Url">@item.Label</a>
                                     }
                                 </div>
                             }
                         </div>
                     </details>
                 }
-                <span class="user-email">@currentEmail</span>
-                <span class="status">@role</span>
-                @if (AppEnvironment.IsProduction)
-                {
-                    <span class="environment-badge">@AppEnvironment.DisplayName</span>
-                }
-                <form class="logout-form" method="post" action="/Logout">
-                    <button type="submit" class="link-button">Logout</button>
-                </form>
+                <div class="account-controls">
+                    <span class="user-email">@currentEmail</span>
+                    <span class="status">@role</span>
+                    @if (AppEnvironment.IsProduction)
+                    {
+                        <span class="environment-badge">@AppEnvironment.DisplayName</span>
+                    }
+                    <form class="logout-form" method="post" action="/Logout">
+                        <button type="submit" class="link-button">Logout</button>
+                    </form>
+                </div>
             }
             else
             {
@@ -221,6 +105,26 @@
                    href="@FacilityContextUrl(facility)">@facility</a>
             }
         </nav>
+        @if (siteNavigation.Breadcrumbs.Count > 0)
+        {
+            <nav class="site-breadcrumb no-print" aria-label="Breadcrumb">
+                <ol>
+                    @foreach (var crumb in siteNavigation.Breadcrumbs)
+                    {
+                        <li>
+                            @if (crumb.IsCurrent)
+                            {
+                                <span aria-current="page">@crumb.Label</span>
+                            }
+                            else
+                            {
+                                <a href="@crumb.Url">@crumb.Label</a>
+                            }
+                        </li>
+                    }
+                </ol>
+            </nav>
+        }
     }
     <main class="page">
         @RenderBody()
@@ -236,45 +140,9 @@
             </div>
         </form>
     </dialog>
+    <script src="~/js/site-navigation.js" asp-append-version="true"></script>
     <script src="~/js/upload-feedback.js" asp-append-version="true"></script>
     <script>
-        (() => {
-            const menuButton = document.querySelector("[data-mobile-menu-button]");
-            const navigation = document.querySelector("[data-primary-navigation]");
-            const mobileQuery = window.matchMedia("(max-width: 760px)");
-            const setMenu = open => {
-                if (!menuButton || !navigation) return;
-                navigation.dataset.mobileOpen = open ? "true" : "false";
-                menuButton.setAttribute("aria-expanded", open ? "true" : "false");
-                menuButton.textContent = open ? "Close" : "Menu";
-            };
-            menuButton?.addEventListener("click", () => setMenu(menuButton.getAttribute("aria-expanded") !== "true"));
-            navigation?.addEventListener("click", event => {
-                if (mobileQuery.matches && event.target.closest("a")) setMenu(false);
-            });
-            mobileQuery.addEventListener?.("change", event => {
-                if (!event.matches) setMenu(false);
-            });
-
-            const dropdowns = document.querySelectorAll(".nav-dropdown");
-            dropdowns.forEach(dropdown => {
-                let closeTimer = null;
-                dropdown.addEventListener("mouseenter", () => {
-                    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
-                    clearTimeout(closeTimer);
-                    dropdown.open = true;
-                });
-                dropdown.addEventListener("mouseleave", () => {
-                    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
-                    closeTimer = setTimeout(() => { dropdown.open = false; }, 220);
-                });
-                dropdown.querySelector("summary")?.addEventListener("click", () => {
-                    dropdowns.forEach(other => {
-                        if (other !== dropdown) other.open = false;
-                    });
-                });
-            });
-        })();
         (() => {
             for (const input of document.querySelectorAll("input[type='number']")) {
                 if (input.hasAttribute("inputmode")) continue;

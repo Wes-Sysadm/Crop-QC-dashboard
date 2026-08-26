@@ -58,20 +58,6 @@
     </details>
 }
 
-<nav class="operation-tabs" aria-label="Bins Run and Transfers sections">
-    <a class="@(activeSection.Equals("Planner", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Planner&amp;RoomId=@Model.Filter.RoomId">Run Planner</a>
-    <a class="@(activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Actual&amp;RoomId=@Model.Filter.RoomId">Record Actual Run</a>
-    <a class="@(activeSection.Equals("Transfer", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Transfer&amp;RoomId=@Model.Filter.RoomId">Transfer</a>
-    <a class="@(activeSection.Equals("TrueUp", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=TrueUp&amp;RoomId=@Model.Filter.RoomId">True Up</a>
-    <a class="@(activeSection.Equals("Activity", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=Activity&amp;RoomId=@Model.Filter.RoomId">Recent Activity</a>
-    <a href="/ProcessorShipments">Processor Shipments</a>
-    <a class="@(activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=RunTotals&amp;ReportFacility=WP&amp;ReportCropYear=@Model.RunReporting.CurrentCropYear">Run Totals</a>
-    @if (Model.RunReporting.CanViewNeedsReview)
-    {
-        <a class="@(activeSection.Equals("NeedsReview", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/BinsRun?Section=NeedsReview">Needs Review</a>
-    }
-</nav>
-
 @if (activeSection.Equals("Planner", StringComparison.OrdinalIgnoreCase))
 {
     @if (!string.IsNullOrWhiteSpace(Model.Planner.PlannerWarning))

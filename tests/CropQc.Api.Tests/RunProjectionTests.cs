@@ -229,6 +229,7 @@ public sealed class RunProjectionTests
     public void CombinedArea_ContainsGuidedSectionsAndPlanningSafeguards()
     {
         var view = ReadRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml");
+        var navigation = ReadRepositoryFile("src", "CropQc.Web", "Services", "SiteNavigationService.cs");
         var service = ReadRepositoryFile("src", "CropQc.Web", "Services", "RunProjectionService.cs");
         var binsRun = ReadRepositoryFile("src", "CropQc.Web", "Services", "BinsRunService.cs");
 
@@ -236,7 +237,7 @@ public sealed class RunProjectionTests
         Assert.Contains("Record Actual Run", view);
         Assert.Contains("Transfer Bins", view);
         Assert.Contains("True Up Inventory", view);
-        Assert.Contains("Recent Activity", view);
+        Assert.Contains("Recent Activity", navigation);
         Assert.Contains("receipt-backed samples for the grower lot", view);
         Assert.Contains("Commercial Packs are not yet available", view);
         Assert.Contains("whole 40-pound boxes", view);
