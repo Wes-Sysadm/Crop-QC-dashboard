@@ -251,6 +251,7 @@ builder.Services.AddScoped<IQcPhotoRequirementPolicy, QcPhotoRequirementPolicy>(
 builder.Services.AddScoped<IQcSummaryEmailComposer, QcSummaryEmailComposer>();
 builder.Services.AddScoped<IQcEmailRecipientResolver, QcEmailRecipientResolver>();
 builder.Services.AddScoped<IOrchardRecipientAdminService, OrchardRecipientAdminService>();
+builder.Services.AddScoped<IGrowerRecipientAdminService, GrowerRecipientAdminService>();
 builder.Services.AddScoped<IOrchardContactWorkbookParser, OrchardContactWorkbookParser>();
 builder.Services.AddScoped<IOrchardContactImportService, OrchardContactImportService>();
 builder.Services.AddScoped<IOrchardIdentityResolverService, OrchardIdentityResolverService>();

@@ -1,51 +1,119 @@
-@model CropQc.Web.Models.OrchardRecipientMatrixViewModel
+@model CropQc.Web.Models.QcRecipientMatrixViewModel
 @{
-    ViewData["Title"] = "Orchard QC Recipients";
+    ViewData["Title"] = "QC Recipients";
 }
 
 <section class="page-header">
     <div>
-        <h1>Orchard QC Recipients</h1>
-        <p class="muted">Every QC report includes <strong>qc@fruitandland.com</strong>. Active addresses below are added only when the report has a confirmed canonical orchard.</p>
+        <h1>QC Recipients</h1>
+        <p class="muted">Every QC report includes <strong>qc@fruitandland.com</strong>. Active Grower Number and orchard-specific addresses are added when those identities match the report.</p>
     </div>
 </section>
 <p><a class="inline-action" href="/MasterData">← Back to Master Data</a></p>
 
-<section class="panel">
-    <h2>Add orchard manager</h2>
-    <form method="post" action="/Admin/OrchardRecipients/Save" class="stack-form">
-        <label>Orchard
-            <select name="CanonicalOrchardId" required>
-                <option value="">Select an orchard</option>
-                @foreach (var orchard in Model.Orchards)
+<section class="panel" aria-labelledby="add-grower-recipient-heading">
+    <h2 id="add-grower-recipient-heading">Add Grower Number recipient</h2>
+    <p class="muted">Choose any active Grower Number from the reviewed Grower master. A canonical orchard is not required.</p>
+    <form method="post" action="/Admin/OrchardRecipients/GrowerNumbers/Save" class="stack-form">
+        <label for="grower-number-filter">Find Grower Number
+            <input id="grower-number-filter" type="search" autocomplete="off" placeholder="Search number or Grower name" data-grower-number-filter />
+        </label>
+        <label for="grower-number-select">Grower Number
+            <select id="grower-number-select" name="CanonicalGrowerNumberId" size="8" required data-grower-number-select>
+                <option value="">Select a Grower Number</option>
+                @foreach (var growerNumber in Model.GrowerNumbers.GrowerNumbers)
                 {
-                    <option value="@orchard.Id">@orchard.OrchardName@(string.IsNullOrWhiteSpace(orchard.Growers) ? "" : $" — {orchard.Growers}")@(string.IsNullOrWhiteSpace(orchard.GrowerNumbers) ? "" : $" — grower # {orchard.GrowerNumbers}")</option>
+                    <option value="@growerNumber.Id" data-search="@growerNumber.SearchText">@growerNumber.Label</option>
                 }
             </select>
         </label>
-        <label>Manager email
+        <p class="muted" aria-live="polite" data-grower-number-result-count>@Model.GrowerNumbers.GrowerNumbers.Count active Grower Numbers available.</p>
+        <label>Manager / Recipient Email
             <input type="email" name="EmailAddress" maxlength="320" required />
         </label>
         <label><input type="checkbox" name="IsActive" value="true" checked /> Enabled</label>
-        <button type="submit">Add recipient</button>
+        <button type="submit">Add Recipient</button>
     </form>
 </section>
 
 <section class="panel">
     <form method="get" class="filter-row">
-        <label>Search orchard, grower, grower number, or email
+        <label>Search Grower Number, Grower, recipient email, orchard, or orchard Grower information
             <input type="search" name="search" value="@Model.Search" />
         </label>
-        <button type="submit">Search</button>
+        <button type="submit">Search configured recipients</button>
         <a class="button-link secondary-button" href="/Admin/OrchardRecipients">Clear</a>
     </form>
 </section>
 
-<section class="panel table-scroll">
+<section class="panel table-scroll" aria-labelledby="grower-recipient-matrix-heading">
+    <h2 id="grower-recipient-matrix-heading">Grower Number recipients</h2>
     <table>
-        <thead><tr><th>Orchard</th><th>Grower</th><th>Grower number</th><th>Manager email</th><th>Enabled</th><th>Last modified</th><th>Last modified by</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Grower Number</th><th>Grower</th><th>Recipient Email</th><th>Enabled</th><th>Last Modified</th><th>Last Modified By</th><th>Actions</th></tr></thead>
         <tbody>
-        @foreach (var row in Model.Rows)
+        @if (Model.GrowerNumbers.Rows.Count == 0)
+        {
+            <tr><td colspan="7" class="muted">No Grower Number recipients match this view.</td></tr>
+        }
+        @foreach (var row in Model.GrowerNumbers.Rows)
+        {
+            <tr>
+                <td>@row.GrowerNumber</td>
+                <td>@row.GrowerName</td>
+                <td>
+                    <form id="grower-recipient-@row.RecipientId" method="post" action="/Admin/OrchardRecipients/GrowerNumbers/Save" class="inline-form">
+                        <input type="hidden" name="Id" value="@row.RecipientId" />
+                        <input type="hidden" name="CanonicalGrowerNumberId" value="@row.CanonicalGrowerNumberId" />
+                        <input type="email" name="EmailAddress" value="@row.EmailAddress" maxlength="320" required aria-label="Recipient email for Grower Number @row.GrowerNumber" />
+                        <input type="hidden" name="IsActive" value="@(row.IsActive.ToString().ToLowerInvariant())" />
+                    </form>
+                </td>
+                <td>@(row.IsActive ? "Yes" : "No")</td>
+                <td>@BusinessTime.FormatPacific(row.LastModifiedAt)</td>
+                <td>@row.LastModifiedBy</td>
+                <td class="button-row">
+                    <button type="submit" form="grower-recipient-@row.RecipientId">Save</button>
+                    <form method="post" action="/Admin/OrchardRecipients/GrowerNumbers/@row.RecipientId/Enabled" class="inline-form">
+                        <input type="hidden" name="enabled" value="@((!row.IsActive).ToString().ToLowerInvariant())" />
+                        <button type="submit" class="secondary-button">@(row.IsActive ? "Disable" : "Enable")</button>
+                    </form>
+                    <form method="post" action="/Admin/OrchardRecipients/GrowerNumbers/@row.RecipientId/Delete" class="inline-form" onsubmit="return confirm('Remove this Grower Number recipient?');">
+                        <button type="submit" class="danger-button">Remove</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</section>
+
+<section class="panel" aria-labelledby="add-orchard-recipient-heading">
+    <h2 id="add-orchard-recipient-heading">Add orchard-specific recipient</h2>
+    <p class="muted">Existing orchard-scoped recipient behavior remains available for reports with a confirmed canonical orchard.</p>
+    <form method="post" action="/Admin/OrchardRecipients/Save" class="stack-form">
+        <label>Orchard
+            <select name="CanonicalOrchardId" required>
+                <option value="">Select an orchard</option>
+                @foreach (var orchard in Model.Orchards.Orchards)
+                {
+                    <option value="@orchard.Id">@orchard.OrchardName@(string.IsNullOrWhiteSpace(orchard.Growers) ? "" : $" — {orchard.Growers}")@(string.IsNullOrWhiteSpace(orchard.GrowerNumbers) ? "" : $" — grower # {orchard.GrowerNumbers}")</option>
+                }
+            </select>
+        </label>
+        <label>Manager / Recipient Email
+            <input type="email" name="EmailAddress" maxlength="320" required />
+        </label>
+        <label><input type="checkbox" name="IsActive" value="true" checked /> Enabled</label>
+        <button type="submit">Add Recipient</button>
+    </form>
+</section>
+
+<section class="panel table-scroll" aria-labelledby="orchard-recipient-matrix-heading">
+    <h2 id="orchard-recipient-matrix-heading">Orchard-specific recipients</h2>
+    <table>
+        <thead><tr><th>Orchard</th><th>Grower</th><th>Grower Number</th><th>Recipient Email</th><th>Enabled</th><th>Last Modified</th><th>Last Modified By</th><th>Actions</th></tr></thead>
+        <tbody>
+        @foreach (var row in Model.Orchards.Rows)
         {
             <tr>
                 <td>@row.OrchardName</td>
@@ -53,25 +121,25 @@
                 <td>@(string.IsNullOrWhiteSpace(row.GrowerNumbers) ? "—" : row.GrowerNumbers)</td>
                 @if (row.IsMissingConfiguration)
                 {
-                    <td colspan="5"><span class="status warning">No manager configured</span></td>
+                    <td colspan="5"><span class="status warning">No recipient configured</span></td>
                 }
                 else
                 {
                     <td>
-                        <form id="recipient-@row.RecipientId" method="post" action="/Admin/OrchardRecipients/Save" class="inline-form">
+                        <form id="orchard-recipient-@row.RecipientId" method="post" action="/Admin/OrchardRecipients/Save" class="inline-form">
                             <input type="hidden" name="Id" value="@row.RecipientId" />
                             <input type="hidden" name="CanonicalOrchardId" value="@row.CanonicalOrchardId" />
                             <input type="email" name="EmailAddress" value="@row.EmailAddress" maxlength="320" required />
-                            <input type="hidden" name="IsActive" value="@row.IsActive.ToString().ToLowerInvariant()" />
+                            <input type="hidden" name="IsActive" value="@(row.IsActive.ToString().ToLowerInvariant())" />
                         </form>
                     </td>
                     <td>@(row.IsActive ? "Yes" : "No")</td>
                     <td>@BusinessTime.FormatPacific(row.LastModifiedAt, empty: "—")</td>
                     <td>@row.LastModifiedBy</td>
                     <td class="button-row">
-                        <button type="submit" form="recipient-@row.RecipientId">Save</button>
+                        <button type="submit" form="orchard-recipient-@row.RecipientId">Save</button>
                         <form method="post" action="/Admin/OrchardRecipients/@row.RecipientId/Enabled" class="inline-form">
-                            <input type="hidden" name="enabled" value="@(!row.IsActive).ToString().ToLowerInvariant()" />
+                            <input type="hidden" name="enabled" value="@((!row.IsActive).ToString().ToLowerInvariant())" />
                             <button type="submit" class="secondary-button">@(row.IsActive ? "Disable" : "Enable")</button>
                         </form>
                         <form method="post" action="/Admin/OrchardRecipients/@row.RecipientId/Delete" class="inline-form" onsubmit="return confirm('Remove this orchard recipient?');">
@@ -84,3 +152,27 @@
         </tbody>
     </table>
 </section>
+
+<script>
+(() => {
+    const search = document.querySelector('[data-grower-number-filter]');
+    const select = document.querySelector('[data-grower-number-select]');
+    const count = document.querySelector('[data-grower-number-result-count]');
+    if (!search || !select || !count) return;
+
+    const options = Array.from(select.options).slice(1);
+    const applyFilter = () => {
+        const term = search.value.trim().toLowerCase();
+        let visible = 0;
+        options.forEach(option => {
+            const matches = term.length === 0 || (option.dataset.search || '').includes(term);
+            option.hidden = !matches;
+            if (matches) visible += 1;
+        });
+        if (select.selectedIndex > 0 && select.options[select.selectedIndex].hidden) select.selectedIndex = 0;
+        count.textContent = `${visible} active Grower Number${visible === 1 ? '' : 's'} shown.`;
+    };
+
+    search.addEventListener('input', applyFilter);
+})();
+</script>
