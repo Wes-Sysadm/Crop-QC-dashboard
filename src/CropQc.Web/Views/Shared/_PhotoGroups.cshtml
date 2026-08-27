@@ -80,7 +80,7 @@ else
                                 @if (photo.CanDelete && (!string.IsNullOrWhiteSpace(photo.DeleteAction) || photo.DeleteFromSampleId is long))
                                 {
                                     var deleteAction = photo.DeleteAction ?? $"/Samples/{photo.DeleteFromSampleId}/photos/{photo.Id}/remove";
-                                    var confirmation = deleteAction.StartsWith("/Receipts/", StringComparison.OrdinalIgnoreCase)
+                                    var confirmation = photo.QcSampleId is null
                                         ? "Remove this receipt photo?"
                                         : "Remove this photo from the sample?";
                                     <form class="inline-form" method="post" action="@deleteAction" data-requires-autosave onsubmit="return confirm('@confirmation');">
