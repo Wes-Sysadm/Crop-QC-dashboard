@@ -3,72 +3,98 @@
     var wholeSampleLabel = ViewData["WholeSampleLabel"] as string;
     var cutFruitLabel = ViewData["CutFruitLabel"] as string;
     var commodity = ViewData["Commodity"] as string;
+    var reclassifyActionBase = ViewData["PhotoReclassifyActionBase"] as string;
+    var moveTargets = ViewData["PhotoMoveTargets"] as IReadOnlyList<QcPhotoRequirementViewModel> ?? [];
+    var groups = Model.ToDictionary(x => NormalizePhotoType(x.PhotoType), StringComparer.OrdinalIgnoreCase);
+    var displayTypes = moveTargets.Select(x => NormalizePhotoType(x.PhotoType))
+        .Concat(Model.Select(x => NormalizePhotoType(x.PhotoType)))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
 }
 
-@if (Model.Count == 0)
+@if (displayTypes.Count == 0)
 {
-    <p class="muted">No photo metadata recorded.</p>
+    <p class="muted">No photos recorded.</p>
 }
-@foreach (var group in Model)
+else
 {
-    <div class="panel">
-        <h2>@FriendlyPhotoType(group.PhotoType, wholeSampleLabel, cutFruitLabel, commodity)</h2>
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>File</th><th>Source</th><th>Type</th><th>Size</th><th>Captured</th><th>Actions</th></tr></thead>
-                <tbody>
-                @foreach (var photo in group.Photos)
-                {
-                    var thumbnailUrl = photo.ThumbnailUrl ?? (photo.DisplayAsThumbnail ? photo.WebUrl : null);
-                    <tr>
-                        <td>
+    <div class="photo-group-grid" data-photo-reclassification>
+        <p class="photo-reclassification-status muted" data-photo-reclassification-status role="status" aria-live="polite"></p>
+        @foreach (var displayType in displayTypes)
+        {
+            var photos = groups.GetValueOrDefault(displayType)?.Photos ?? [];
+            <section class="panel photo-drop-zone" data-photo-drop-target="@displayType" aria-label="@FriendlyPhotoType(displayType, wholeSampleLabel, cutFruitLabel, commodity) photo group">
+                <h3>@FriendlyPhotoType(displayType, wholeSampleLabel, cutFruitLabel, commodity)</h3>
+                <p class="muted photo-empty-message" hidden="@(photos.Count > 0 ? "hidden" : null)">No photos in this category.</p>
+                <div class="photo-card-grid" data-photo-card-list>
+                    @foreach (var photo in photos)
+                    {
+                        var thumbnailUrl = photo.ThumbnailUrl ?? (photo.DisplayAsThumbnail ? photo.WebUrl : null);
+                        var canReclassify = !string.IsNullOrWhiteSpace(reclassifyActionBase) && moveTargets.Count > 1;
+                        var reclassifyAction = canReclassify ? $"{reclassifyActionBase}/{photo.Id}/reclassify" : null;
+                        <article class="photo-card" data-photo-card data-photo-id="@photo.Id" data-photo-type="@displayType"
+                                 data-reclassify-url="@reclassifyAction" draggable="@(canReclassify ? "true" : "false")">
                             @if (photo.WebUrl is not null)
                             {
-                                <a href="@photo.WebUrl" target="_blank" rel="noopener">
+                                <a href="@photo.WebUrl" target="_blank" rel="noopener" class="photo-thumbnail-link">
                                     @if (thumbnailUrl is not null)
                                     {
-                                        <img src="@thumbnailUrl" alt="@photo.FileName" style="max-width:180px;max-height:120px;width:auto;height:auto;display:block;" loading="lazy" />
+                                        <img src="@thumbnailUrl" alt="@photo.FileName" class="photo-thumbnail" loading="lazy" />
                                     }
-                                    @photo.FileName
+                                    else
+                                    {
+                                        <span class="photo-file-placeholder">@photo.FileName</span>
+                                    }
                                 </a>
                             }
                             else if (thumbnailUrl is not null)
                             {
-                                <img src="@thumbnailUrl" alt="@photo.FileName" style="max-width:180px;max-height:120px;width:auto;height:auto;display:block;" loading="lazy" />
-                                @photo.FileName
+                                <img src="@thumbnailUrl" alt="@photo.FileName" class="photo-thumbnail" loading="lazy" />
                             }
                             else
                             {
-                                @photo.FileName
+                                <span class="photo-file-placeholder">@photo.FileName</span>
                             }
-                        </td>
-                        <td>@photo.PhotoSource</td>
-                        <td>@photo.ContentType</td>
-                        <td>@photo.FileSizeBytes</td>
-                        <td>@BusinessTime.FormatPacific(photo.CapturedAt)</td>
-                        <td>
-                            @if (photo.CanDelete && (!string.IsNullOrWhiteSpace(photo.DeleteAction) || photo.DeleteFromSampleId is long))
-                            {
-                                var deleteAction = photo.DeleteAction ?? $"/Samples/{photo.DeleteFromSampleId}/photos/{photo.Id}/remove";
-                                var confirmation = deleteAction.StartsWith("/Receipts/", StringComparison.OrdinalIgnoreCase)
-                                    ? "Remove this receipt photo?"
-                                    : "Remove this photo from the sample?";
-                                <form class="inline-form" method="post" action="@deleteAction" data-requires-autosave onsubmit="return confirm('@confirmation');">
-                                    <button type="submit" class="icon-button danger-icon-button" aria-label="Remove photo" title="Remove photo">
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3h6l1 2h4v2h-1l-1 14H6L5 7H4V5h4l1-2zm-1.99 4 1 12h7.98l1-12H7.01zM10 9h2v8h-2V9zm4 0h2v8h-2V9z" /></svg>
-                                    </button>
-                                </form>
-                            }
-                            else
-                            {
-                                <span class="muted">-</span>
-                            }
-                        </td>
-                    </tr>
-                }
-                </tbody>
-            </table>
-        </div>
+                            <div class="photo-card-body">
+                                <strong>@photo.FileName</strong>
+                                <span class="muted">@(photo.QcSampleId is null ? "Receipt photo" : "QC sample photo")</span>
+                                <span class="muted">@photo.PhotoSource · @BusinessTime.FormatPacific(photo.CapturedAt)</span>
+                            </div>
+                            <div class="photo-card-actions">
+                                @if (canReclassify)
+                                {
+                                    <form method="post" action="@reclassifyAction" class="photo-move-form" data-photo-move-form data-requires-autosave>
+                                        @Html.AntiForgeryToken()
+                                        <label>
+                                            Move to
+                                            <select name="TargetPhotoType" data-photo-move-target>
+                                                @foreach (var target in moveTargets.Where(x => !string.Equals(NormalizePhotoType(x.PhotoType), displayType, StringComparison.OrdinalIgnoreCase)))
+                                                {
+                                                    <option value="@target.PhotoType">@target.FriendlyName</option>
+                                                }
+                                            </select>
+                                        </label>
+                                        <button type="submit" class="secondary-button">Move</button>
+                                    </form>
+                                }
+                                @if (photo.CanDelete && (!string.IsNullOrWhiteSpace(photo.DeleteAction) || photo.DeleteFromSampleId is long))
+                                {
+                                    var deleteAction = photo.DeleteAction ?? $"/Samples/{photo.DeleteFromSampleId}/photos/{photo.Id}/remove";
+                                    var confirmation = photo.QcSampleId is null
+                                        ? "Remove this receipt photo?"
+                                        : "Remove this photo from the sample?";
+                                    <form class="inline-form" method="post" action="@deleteAction" data-requires-autosave onsubmit="return confirm('@confirmation');">
+                                        <button type="submit" class="icon-button danger-icon-button" aria-label="Remove photo" title="Remove photo">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3h6l1 2h4v2h-1l-1 14H6L5 7H4V5h4l1-2zm-1.99 4 1 12h7.98l1-12H7.01zM10 9h2v8h-2V9zm4 0h2v8h-2V9z" /></svg>
+                                        </button>
+                                    </form>
+                                }
+                            </div>
+                        </article>
+                    }
+                </div>
+            </section>
+        }
     </div>
 }
 
@@ -85,15 +111,6 @@
         _ => photoType
     };
 
-    private static string NormalizePhotoType(string? photoType)
-    {
-        var normalized = (photoType ?? "").Trim();
-        return normalized switch
-        {
-            "TopTruck" or "TopTruckPhoto" or "TopOfTruckPhoto" => "TopOfTruck",
-            _ when normalized.Equals("Top truck photo", StringComparison.OrdinalIgnoreCase) => "TopOfTruck",
-            _ when normalized.Equals("Top of truck", StringComparison.OrdinalIgnoreCase) => "TopOfTruck",
-            _ => normalized
-        };
-    }
+    private static string NormalizePhotoType(string? photoType) =>
+        QcPhotoRequirementPolicy.NormalizePhotoType(photoType);
 }

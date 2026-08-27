@@ -1,6 +1,8 @@
 using System.Security.Claims;
+using CropQc.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
 
 namespace CropQc.Web.Services;
 
@@ -43,9 +45,8 @@ public static class SiteNavigationCatalog
     public static readonly IReadOnlyList<NavigationCategoryDefinition> Categories =
     [
         new("dashboard", "Dashboard", 10, "dashboard"),
-        new("qc", "QC", 20, "qc"),
+        new("receiving", "Receiving", 20, "receiving"),
         new("inventory", "Inventory", 30, "inventory"),
-        new("receiving", "Receiving", 40, "receiving"),
         new("rooms", "Rooms", 50, "rooms"),
         new("runs", "Runs", 60, "runs"),
         new("transfers", "Transfers", 70, "transfers"),
@@ -63,9 +64,9 @@ public static class SiteNavigationCatalog
             FacilityBehavior: NavigationFacilityBehavior.Preserve,
             Matches: [new("/Inventory/ByVariety", true)]),
 
-        new("field-samples", "qc", "Field Samples", "/FieldSamples", ApplicationAreas.FieldSamples, PageAccessLevel.View, 10,
+        new("field-samples", "receiving", "Field Samples", "/FieldSamples", ApplicationAreas.FieldSamples, PageAccessLevel.View, 30,
             Matches: [new("/FieldSamples", true)]),
-        new("receipt-qc", "qc", "Receipt QC", "/DailyQc", ApplicationAreas.DailyQc, PageAccessLevel.View, 20,
+        new("receipt-qc", "receiving", "Receipt QC", "/DailyQc", ApplicationAreas.DailyQc, PageAccessLevel.View, 20,
             FacilityBehavior: NavigationFacilityBehavior.Preserve,
             Matches: [new("/DailyQc", true), new("/Samples", true)]),
 
@@ -77,7 +78,7 @@ public static class SiteNavigationCatalog
         new("receipts", "receiving", "Receipts", "/Receipts", ApplicationAreas.Receipts, PageAccessLevel.View, 10,
             FacilityBehavior: NavigationFacilityBehavior.Preserve,
             Matches: [new("/Receipts", true)]),
-        new("voided-receipts", "receiving", "Voided Receipt Administration", "/Receipts/Admin/Voided", ApplicationAreas.ReceiptDelete, PageAccessLevel.Admin, 20,
+        new("voided-receipts", "receiving", "Voided Receipt Administration", "/Receipts/Admin/Voided", ApplicationAreas.ReceiptDelete, PageAccessLevel.Admin, 40,
             Matches: [new("/Receipts/Admin/Voided", true), new("/Receipts/Admin/Overrides", true)]),
 
         new("room-overview", "rooms", "Room Overview", "/Rooms", ApplicationAreas.Rooms, PageAccessLevel.View, 10,
@@ -194,7 +195,8 @@ public interface ISiteNavigationService
 
 public sealed class SiteNavigationService(
     IUserAccessService userAccess,
-    IEndOfDayFillService endOfDayFill) : ISiteNavigationService
+    IEndOfDayFillService endOfDayFill,
+    CropQcDbContext? dbContext = null) : ISiteNavigationService
 {
     public async Task<SiteNavigationViewModel> BuildAsync(
         ClaimsPrincipal principal,
@@ -241,7 +243,9 @@ public sealed class SiteNavigationService(
             .Cast<SiteNavigationCategoryViewModel>()
             .ToList();
 
-        return new SiteNavigationViewModel(categories, BuildBreadcrumbs(categories, active, normalizedPath));
+        return new SiteNavigationViewModel(
+            categories,
+            await BuildBreadcrumbsAsync(categories, active, normalizedPath, facility, cancellationToken));
     }
 
     private async Task<bool> CanViewAsync(
@@ -297,10 +301,12 @@ public sealed class SiteNavigationService(
         return match.Section is null || string.Equals(section, match.Section, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static IReadOnlyList<BreadcrumbViewModel> BuildBreadcrumbs(
+    private async Task<IReadOnlyList<BreadcrumbViewModel>> BuildBreadcrumbsAsync(
         IReadOnlyList<SiteNavigationCategoryViewModel> categories,
         NavigationItemDefinition? active,
-        string path)
+        string path,
+        string? facility,
+        CancellationToken cancellationToken)
     {
         if (active is null || path.Equals("/Login", StringComparison.OrdinalIgnoreCase)
             || path.Equals("/AccessDenied", StringComparison.OrdinalIgnoreCase)
@@ -316,12 +322,66 @@ public sealed class SiteNavigationService(
             return [new("Dashboard", null, true)];
         }
 
+        if (active.Key == "receipt-qc"
+            && NumericSegment(path, "/Samples/") is { } sampleId
+            && long.TryParse(sampleId, out var sampleKey)
+            && dbContext is not null)
+        {
+            var sampleIdentity = await dbContext.QcSamples.AsNoTracking()
+                .Where(x => x.Id == sampleKey && !x.IsDeleted && x.ReceiptId != null)
+                .Select(x => new
+                {
+                    x.ReceiptId,
+                    ReceiptNumber = x.Receipt!.CompuTechReceiptId,
+                    SampleType = x.SampleType.Name
+                })
+                .SingleOrDefaultAsync(cancellationToken);
+            if (sampleIdentity is not null)
+            {
+                var receivingCrumbs = new List<BreadcrumbViewModel>
+                {
+                    new(category.Label, category.Url, false)
+                };
+                var receiptsItem = category.Items.SingleOrDefault(x => x.Key == "receipts");
+                if (receiptsItem is not null)
+                {
+                    receivingCrumbs.Add(new(receiptsItem.Label, receiptsItem.Url, false));
+                    receivingCrumbs.Add(new(
+                        sampleIdentity.ReceiptNumber,
+                        ResolveDestinationUrl(
+                            new NavigationItemDefinition(
+                                "receipt-detail",
+                                "receiving",
+                                sampleIdentity.ReceiptNumber,
+                                $"/Receipts/{sampleIdentity.ReceiptId}",
+                                ApplicationAreas.Receipts,
+                                PageAccessLevel.View,
+                                0,
+                                FacilityBehavior: NavigationFacilityBehavior.Preserve),
+                            facility),
+                        false));
+                }
+                receivingCrumbs.Add(new(sampleIdentity.SampleType, null, true));
+                return receivingCrumbs;
+            }
+        }
+
         var crumbs = new List<BreadcrumbViewModel>
         {
             new(category.Label, category.Url, false)
         };
 
         var detail = DetailBreadcrumb(active, path);
+        if (active.Key == "receipts"
+            && NumericSegment(path, "/Receipts/") is { } receiptId
+            && long.TryParse(receiptId, out var receiptKey)
+            && dbContext is not null)
+        {
+            detail = await dbContext.Receipts.AsNoTracking()
+                .Where(x => x.Id == receiptKey && !x.IsDeleted)
+                .Select(x => x.CompuTechReceiptId)
+                .SingleOrDefaultAsync(cancellationToken) ?? detail;
+        }
         if (NeedsMasterDataParent(active))
         {
             if (active.Key == "master-data")

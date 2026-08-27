@@ -169,6 +169,7 @@ public sealed class ReceiptTreatmentApplyForm
     public DateTimeOffset AppliedAt { get; set; } = DateTimeOffset.UtcNow;
     public string? Notes { get; set; }
     public bool ConfirmedReview { get; set; }
+    public long? ReturnSampleId { get; set; }
 }
 
 public sealed class ReverseRoomTreatmentApplicationForm
@@ -1946,6 +1947,7 @@ public sealed class SampleDetailViewModel
 {
     public string? DataWarning { get; set; }
     public SampleListItemViewModel? Sample { get; set; }
+    public ReceiptListItemViewModel? Receipt { get; set; }
     public IReadOnlyList<SampleType> SampleTypes { get; set; } = [];
     public IReadOnlyList<FruitReadingRowViewModel> FruitRows { get; set; } = [];
     public IReadOnlyList<PhotoGroupViewModel> PhotoGroups { get; set; } = [];
@@ -1965,6 +1967,10 @@ public sealed class SampleDetailViewModel
     public SaveFruitReadingsForm FruitReadingForm { get; set; } = new();
     public AddPhotoMetadataForm AddPhotoForm { get; set; } = new();
     public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
+    public int? CurrentPackableBins { get; set; }
+    public IReadOnlyList<RoomTreatmentApplicationHistoryViewModel> TreatmentApplications { get; set; } = [];
+    public bool CanApplyReceivingTreatment { get; set; }
+    public bool CanReverseReceivingTreatment { get; set; }
 }
 
 public sealed class ReceiptReportPreviewViewModel
@@ -1991,7 +1997,20 @@ public sealed record ReceiptReportSendHistoryItem(
     bool IsOverride);
 
 public sealed record ReadinessChecklistItem(string Category, string Label, string Status, string CssClass);
-public sealed record QcPhotoRequirementViewModel(string PhotoType, string FriendlyName, bool IsRequired);
+public sealed record QcPhotoRequirementViewModel(string PhotoType, string FriendlyName, bool IsRequired, bool ReceiptLevel = false);
+
+public sealed class PhotoReclassificationForm
+{
+    public string TargetPhotoType { get; set; } = "";
+}
+
+public sealed record PhotoReclassificationResult(
+    bool Succeeded,
+    string? Error,
+    long PhotoId,
+    string? OldPhotoType = null,
+    string? NewPhotoType = null,
+    bool ReceiptLevel = false);
 
 public sealed class StarchTestViewModel
 {

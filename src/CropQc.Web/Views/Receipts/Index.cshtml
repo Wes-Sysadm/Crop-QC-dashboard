@@ -9,6 +9,7 @@
     var hasRequiredMasterData = Model.Warehouses.Count > 0 && Model.Rooms.Count > 0 && Model.FruitProfiles.Count > 0;
     var canEditReceipts = await UserAccess.HasAccessAsync(User, ApplicationAreas.Receipts, PageAccessLevel.Edit, Context.RequestAborted);
     var canAdminReceipts = await UserAccess.HasAccessAsync(User, ApplicationAreas.Receipts, PageAccessLevel.Admin, Context.RequestAborted);
+    var canViewReceiptQc = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.View, Context.RequestAborted);
     var clearFilterUrl = $"/Receipts?Facility={Uri.EscapeDataString(Model.Search.Facility)}";
     if (!string.IsNullOrWhiteSpace(Model.Search.DateFilter)) clearFilterUrl += $"&DateFilter={Uri.EscapeDataString(Model.Search.DateFilter)}";
     if (!string.IsNullOrWhiteSpace(Model.Search.SampleType)) clearFilterUrl += $"&SampleType={Uri.EscapeDataString(Model.Search.SampleType)}";
@@ -193,9 +194,18 @@
                 <p class="muted">@BusinessTime.FormatPacific(receipt.ReceivedAt) | Crop Year @receipt.CropYear | @receipt.Warehouse / @receipt.Room</p>
             </div>
             <div class="action-bar receipt-actions">
-                <a class="button secondary-button" href="/Receipts/@receipt.Id">View receipt</a>
-                <a class="button secondary-button" href="/Receipts/@receipt.Id#add-sample">Add sample</a>
-                <a class="button secondary-button" href="/Receipts/@receipt.Id#samples">View samples</a>
+                @if (canViewReceiptQc && receipt.SampleCount <= 1)
+                {
+                    <form method="post" action="/Receipts/@receipt.Id/receiving/open" class="inline-form">
+                        @Html.AntiForgeryToken()
+                        <button type="submit">Open Receiving</button>
+                    </form>
+                }
+                else if (receipt.SampleCount > 1)
+                {
+                    <span class="status review" title="Historical samples require reconciliation">QC reconciliation required</span>
+                }
+                <a class="button secondary-button" href="/Receipts/@receipt.Id">View Receipt Summary</a>
             </div>
         </div>
         <dl class="receipt-card-meta">

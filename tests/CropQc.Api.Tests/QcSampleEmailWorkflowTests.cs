@@ -82,7 +82,7 @@ public sealed class QcSampleEmailWorkflowTests
     }
 
     [Fact]
-    public async Task NonAdmin_CannotChangeSampleTypeAfterEmailSent()
+    public async Task NonAdmin_CannotChangeReceiptMappedSampleTypeAfterEmailSent()
     {
         await using var db = CreateDbContext();
         var sample = await SeedSampleAsync(db, "Lot Sample", emailStatus: "Sent", hasStarch: false);
@@ -91,13 +91,13 @@ public sealed class QcSampleEmailWorkflowTests
 
         var error = await service.UpdateSampleTypeAsync(new UpdateSampleTypeForm { SampleId = sample.Id, SampleTypeId = doorSampleTypeId }, CancellationToken.None);
 
-        Assert.Contains("Daily QC Admin access is required to change sample type after QC Summary email has been sent.", error);
+        Assert.Contains("Truck receipt must use Receiving Sample", error);
         Assert.Equal("Lot Sample", await SampleTypeNameAsync(db, sample.Id));
         Assert.Empty(await db.AuditLogs.ToListAsync());
     }
 
     [Fact]
-    public async Task Admin_CanChangeSampleTypeAfterEmailSentAndAuditIsRecorded()
+    public async Task Admin_CannotOverrideReceiptMappedSampleTypeAfterEmailSent()
     {
         await using var db = CreateDbContext();
         var sample = await SeedSampleAsync(db, "Lot Sample", emailStatus: "Sent", hasStarch: false);
@@ -106,15 +106,9 @@ public sealed class QcSampleEmailWorkflowTests
 
         var error = await service.UpdateSampleTypeAsync(new UpdateSampleTypeForm { SampleId = sample.Id, SampleTypeId = doorSampleTypeId }, CancellationToken.None);
 
-        Assert.Null(error);
-        Assert.Equal("Door Sample", await SampleTypeNameAsync(db, sample.Id));
-        var audits = await db.AuditLogs.ToListAsync();
-        var typeAudit = Assert.Single(audits, x => x.Action == "sample-type-change-after-send");
-        Assert.Equal(nameof(QcSample), typeAudit.EntityName);
-        Assert.Contains("Lot Sample", typeAudit.BeforeValuesJson);
-        Assert.Contains("Door Sample", typeAudit.AfterValuesJson);
-        var resendAudit = Assert.Single(audits, x => x.Action == "changed-after-send");
-        Assert.Contains("sample-type-change", resendAudit.AfterValuesJson);
+        Assert.Contains("Truck receipt must use Receiving Sample", error);
+        Assert.Equal("Lot Sample", await SampleTypeNameAsync(db, sample.Id));
+        Assert.Empty(await db.AuditLogs.ToListAsync());
     }
 
     [Fact]

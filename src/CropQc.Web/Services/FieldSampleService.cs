@@ -29,13 +29,15 @@ public sealed class FieldSampleService(
     IUserAccessService userAccessService,
     IConfiguration configuration,
     IBusinessTimeService? businessTime = null,
-    IFieldSampleTrendService? trendService = null) : IFieldSampleService
+    IFieldSampleTrendService? trendService = null,
+    IQcPhotoRequirementPolicy? photoRequirementPolicy = null) : IFieldSampleService
 {
     private const string FieldSampleTypeName = "Field Sample";
     private const int FieldSampleSize = 10;
     private const int MaxFieldSampleSize = 50;
     private IBusinessTimeService BusinessTime { get; } = businessTime ?? new PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock());
     private IFieldSampleTrendService TrendService { get; } = trendService ?? new FieldSampleTrendService(dbContext);
+    private IQcPhotoRequirementPolicy PhotoRequirementPolicy { get; } = photoRequirementPolicy ?? new QcPhotoRequirementPolicy();
 
     public async Task<FieldSampleIndexViewModel> GetIndexAsync(FieldSampleSearchForm search, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
@@ -425,6 +427,11 @@ public sealed class FieldSampleService(
             DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
             QcStationStatus = BuildQcStationStatus(sample.QcStation),
             PhotoGroups = GroupPhotos(photos, canDelete: await userAccessService.HasAccessAsync(user, ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken), sample.Id),
+            AvailablePhotoTypes = PhotoRequirementPolicy.GetAvailablePhotoTypes(sample.SampleType.Name, fruitType)
+                .Select(x => new QcPhotoRequirementViewModel(x.PhotoType, x.FriendlyName, x.IsRequired, x.ReceiptLevel))
+                .Append(new QcPhotoRequirementViewModel("Other", "Other", false))
+                .DistinctBy(x => x.PhotoType, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
             MetadataForm = new FieldSampleMetadataForm
             {
                 SampleId = sample.Id,

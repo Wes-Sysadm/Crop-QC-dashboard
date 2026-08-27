@@ -102,6 +102,7 @@ public sealed class FieldSampleDetailViewModel
     public DeviceCaptureSettingsViewModel DeviceCapture { get; set; } = DeviceCaptureSettingsViewModel.Disabled;
     public FieldSampleQcStationStatusViewModel QcStationStatus { get; set; } = new();
     public IReadOnlyList<PhotoGroupViewModel> PhotoGroups { get; set; } = [];
+    public IReadOnlyList<QcPhotoRequirementViewModel> AvailablePhotoTypes { get; set; } = [];
     public FieldSampleMetadataForm MetadataForm { get; set; } = new();
     public IReadOnlyList<FruitProfile> FruitProfiles { get; set; } = [];
     public IReadOnlyList<CanonicalOrchardBlock> Blocks { get; set; } = [];

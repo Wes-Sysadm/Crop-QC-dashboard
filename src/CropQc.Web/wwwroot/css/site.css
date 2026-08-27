@@ -2178,3 +2178,107 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
         grid-template-columns: 1fr;
     }
 }
+
+.photo-group-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: 1rem;
+}
+
+.photo-reclassification-status {
+    grid-column: 1 / -1;
+    min-height: 1.25rem;
+    margin: 0;
+}
+
+.photo-drop-zone {
+    min-width: 0;
+    transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.photo-drop-zone.photo-drop-valid {
+    border-style: dashed;
+    border-color: #4679a8;
+}
+
+.photo-drop-zone.photo-drop-active {
+    background: #eef7ff;
+    box-shadow: 0 0 0 3px rgba(37, 107, 168, .22);
+}
+
+.photo-card-grid {
+    display: grid;
+    gap: .75rem;
+}
+
+.photo-card {
+    display: grid;
+    grid-template-columns: minmax(96px, 160px) minmax(0, 1fr);
+    gap: .75rem;
+    align-items: start;
+    padding: .75rem;
+    border: 1px solid #d5dde4;
+    border-radius: .55rem;
+    background: #fff;
+}
+
+.photo-card[draggable="true"] {
+    cursor: grab;
+}
+
+.photo-card-saving {
+    opacity: .62;
+    pointer-events: none;
+}
+
+.photo-card-saved {
+    box-shadow: 0 0 0 3px rgba(33, 137, 85, .25);
+}
+
+.photo-thumbnail-link,
+.photo-thumbnail {
+    display: block;
+    width: 100%;
+}
+
+.photo-thumbnail {
+    max-height: 150px;
+    object-fit: contain;
+    background: #f5f7f8;
+    border-radius: .35rem;
+}
+
+.photo-file-placeholder {
+    overflow-wrap: anywhere;
+}
+
+.photo-card-body,
+.photo-card-actions,
+.photo-move-form {
+    display: grid;
+    gap: .35rem;
+    min-width: 0;
+}
+
+.photo-card-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+}
+
+.photo-move-form {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+}
+
+@media (max-width: 520px) {
+    .photo-card,
+    .photo-card-actions,
+    .photo-move-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .photo-thumbnail {
+        max-height: 220px;
+    }
+}

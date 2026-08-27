@@ -1,14 +1,15 @@
 @model ReceiptDetailViewModel
+@using CropQc.Data
 @inject IUserAccessService UserAccess
 @{
     ViewData["Title"] = "Receipt Detail";
     ViewData["AutoRefresh"] = "true";
     var canEditReceipt = await UserAccess.HasAccessAsync(User, ApplicationAreas.ReceiptEdit, PageAccessLevel.Edit, Context.RequestAborted);
     var canDeleteReceipt = await UserAccess.HasAccessAsync(User, ApplicationAreas.ReceiptDelete, PageAccessLevel.Admin, Context.RequestAborted);
-    var canCreateSample = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.Edit, Context.RequestAborted);
+    var canViewReceiptQc = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.View, Context.RequestAborted);
 }
 
-<h1>Receipt Detail</h1>
+<h1>Receipt Summary</h1>
 @await Html.PartialAsync("_PageRefreshControls")
 @if (TempData["Success"] is string success)
 {
@@ -37,11 +38,14 @@
             <div><strong>@(Model.CurrentPackableBins?.ToString() ?? "-")</strong><span>Current packable inventory</span></div>
         </div>
         <div class="action-bar">
-            <a class="button secondary-button" href="/Dashboard/Rooms/@Model.Receipt.RoomId">View Room Summary</a>
-            @if (Model.CanApplyReceivingTreatment)
+            @if (canViewReceiptQc && Model.Samples.Count <= 1)
             {
-                <a class="button" href="/Receipts/@Model.Receipt.Id/Treatments/Apply">Apply Treatment</a>
+                <form method="post" action="/Receipts/@Model.Receipt.Id/receiving/open" class="inline-form">
+                    @Html.AntiForgeryToken()
+                    <button type="submit">Open Receiving</button>
+                </form>
             }
+            <a class="button secondary-button" href="/Dashboard/Rooms/@Model.Receipt.RoomId">View Room Summary</a>
             @if (canEditReceipt)
             {
                 <a class="button secondary-button" href="/Receipts/@Model.Receipt.Id/Edit">Edit Receipt</a>
@@ -51,25 +55,9 @@
                 <a class="button danger-button" href="/Receipts/@Model.Receipt.Id/Delete">Admin Void Receipt</a>
             }
         </div>
-        @if (Model.Samples.Any())
+        @if (Model.Samples.Count > 1)
         {
-            <p class="notice warning">This receipt already has a QC sample. Creating another sample of the same type will assign the next sample sequence, such as @(Model.Receipt.CompuTechReceiptId)(2), and mark it Needs Review.</p>
-        }
-        @if (canCreateSample)
-        {
-        <form id="add-sample" method="post" action="/Receipts/@Model.Receipt.Id/samples">
-            <label class="field">
-                Sample type
-                <select name="SampleTypeId" required>
-                    @foreach (var sampleType in Model.SampleTypes)
-                    {
-                        <option value="@sampleType.Id">@sampleType.Name</option>
-                    }
-                </select>
-            </label>
-            <button type="submit">Create QC Sample</button>
-            <p class="muted">Sample types come from Master Data. Use Receiving Sample, Door Sample, or Lot Sample for receipt QC.</p>
-        </form>
+            <p class="notice warning">@ReceiptQcSampleCoordinator.HistoricalConflictMessage</p>
         }
     </section>
 
@@ -191,19 +179,12 @@
         }
     </section>
 
-    @if (canEditReceipt)
-    {
-        @await Html.PartialAsync("_DeviceCapturePanel", new DeviceCapturePanelViewModel(
-            Model.DeviceCapture,
-            ReceiptPhotoAction: $"/Receipts/{Model.Receipt.Id}/photos",
-            ShowTruckPhotos: true))
-    }
 }
 
 <div class="grid-two">
     <section id="samples">
-        <h2>Linked Samples</h2>
-        <p class="muted">Use Open in QC Station to capture FTA pressures for a sample. Weight, grade, defects, and other QC details can still be entered on the sample page. Requires Crop QC Station to be installed and station config imported.</p>
+        <h2>QC Summary</h2>
+        <p class="muted">Receiving QC is entered on the single QC Sample workspace. This table preserves the complete historical sample record for review.</p>
         <div class="table-wrap">
             <table>
                 <thead><tr><th>Sample</th><th>Type</th><th>Status</th><th>Fruit</th><th>Avg Pressure</th><th>Starch</th><th>Photos</th><th>Email</th><th>Ready</th><th>Missing</th><th>Time</th><th>Actions</th></tr></thead>
@@ -272,7 +253,8 @@
         </div>
     </section>
     <section>
-        <h2>Receipt Photos</h2>
+        <h2>Receipt &amp; QC Photos</h2>
+        <p class="muted">Receipt-level and linked QC Sample photos are grouped together for review.</p>
         @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
         @if (Model.Receipt is not null)
         {

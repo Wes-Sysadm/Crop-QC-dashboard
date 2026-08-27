@@ -44,6 +44,7 @@ public interface IDashboardDataService
     Task<string?> LogOverrideSendAsync(OverrideSendForm form, CancellationToken cancellationToken);
     Task<string?> AddPhotoMetadataAsync(AddPhotoMetadataForm form, CancellationToken cancellationToken);
     Task<string?> AddSamplePhotoMetadataAsync(long sampleId, AddPhotoMetadataForm form, CancellationToken cancellationToken);
+    Task<PhotoReclassificationResult> ReclassifySamplePhotoAsync(long sampleId, long photoId, string targetPhotoType, CancellationToken cancellationToken);
     Task<string?> RemoveReceiptPhotoAsync(long receiptId, long photoId, CancellationToken cancellationToken);
     Task<string?> RemoveSamplePhotoAsync(long sampleId, long photoId, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken);
@@ -1712,7 +1713,12 @@ public sealed class DashboardDataService(
             var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
 
             var samples = await QuerySamples().Where(x => x.ReceiptId == id).OrderBy(x => x.SampleTakenAt).ThenBy(x => x.SampleSequenceNumber).ToListAsync(cancellationToken);
-            var photos = await dbContext.QcPhotos.AsNoTracking().Where(x => x.ReceiptId == id && !x.IsDeleted).OrderByDescending(x => x.CapturedAt).ToListAsync(cancellationToken);
+            var sampleIds = samples.Select(x => x.Id).ToList();
+            var photos = await dbContext.QcPhotos.AsNoTracking()
+                .Where(x => !x.IsDeleted
+                    && (x.ReceiptId == id || (x.QcSampleId != null && sampleIds.Contains(x.QcSampleId.Value))))
+                .OrderByDescending(x => x.CapturedAt)
+                .ToListAsync(cancellationToken);
             var inventoryOverrides = await dbContext.ReceiptInventoryOverrides.AsNoTracking()
                 .Where(x => x.ReceiptId == id)
                 .OrderByDescending(x => x.CreatedAt)
@@ -1733,28 +1739,7 @@ public sealed class DashboardDataService(
             IReadOnlyList<RoomInventoryLossHistoryViewModel> inventoryLosses = RoomInventoryLosses is null
                 ? []
                 : await RoomInventoryLosses.GetReceiptHistoryAsync(id, cancellationToken);
-            var treatmentApplications = await dbContext.RoomTreatmentApplications.AsNoTracking()
-                .Include(x => x.AppliedByUser)
-                .Include(x => x.Attachments)
-                .Where(x => x.ReceiptId == id && x.ApplicationLevel == TreatmentApplicationLevels.Receiving)
-                .OrderByDescending(x => x.AppliedAt)
-                .ThenByDescending(x => x.Id)
-                .Select(x => new RoomTreatmentApplicationHistoryViewModel(
-                    x.Id,
-                    x.AppliedAt,
-                    x.ProductNameSnapshot,
-                    x.CommonNameSnapshot,
-                    x.TotalBinsSnapshot,
-                    x.AppliedByUser.DisplayName ?? x.AppliedByUser.Email,
-                    x.EstimatedCostSnapshot,
-                    x.CurrencySnapshot,
-                    x.Notes,
-                    x.ReversedAt != null,
-                    x.ReversedAt,
-                    x.ReversalReason,
-                    x.Attachments.Where(a => !a.IsDeleted).OrderBy(a => a.CreatedAt).ThenBy(a => a.Id)
-                        .Select(a => new TreatmentReportAttachmentViewModel(a.Id, a.FileName, a.ContentType, a.FileSizeBytes, a.CreatedAt)).ToList()))
-                .ToListAsync(cancellationToken);
+            var treatmentApplications = await GetReceivingTreatmentHistoryAsync(id, cancellationToken);
             var receiptLot = !string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? receipt.GrowerNumber : receipt.LotCode;
             var receiptSnapshots = await RoomInventoryLedger.GetSnapshotsAsync(receipt.WarehouseId, [receipt.RoomId], receipt.FruitProfileId, cancellationToken);
             var currentPackableBins = receiptSnapshots
@@ -1771,7 +1756,8 @@ public sealed class DashboardDataService(
                 PhotoGroups = GroupPhotos(
                     photos,
                     await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken),
-                    deleteFromReceiptId: receipt.Id),
+                    deleteFromReceiptId: receipt.Id,
+                    canDeleteSamplePhotos: await CanEditSamplesAsync(cancellationToken)),
                 CanDeleteSamples = await HasAccessAsync(ApplicationAreas.DailyQc, PageAccessLevel.Admin, cancellationToken),
                 DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
                 InventoryOverrides = inventoryOverrides,
@@ -2003,46 +1989,51 @@ public sealed class DashboardDataService(
 
     public async Task<(long? SampleId, int? SampleSequenceNumber, string? Warning, string? Error)> CreateSampleAsync(long receiptId, int sampleTypeId, CancellationToken cancellationToken)
     {
-        var receiptExists = await dbContext.Receipts.AnyAsync(x => x.Id == receiptId && !x.IsDeleted, cancellationToken);
-        if (!receiptExists)
-        {
-            return (null, null, null, "Receipt not found.");
-        }
-
-        var sampleType = await dbContext.SampleTypes
-            .SingleOrDefaultAsync(x => x.Id == sampleTypeId && x.IsActive, cancellationToken);
-        if (sampleType is null || !IsReceiptSampleTypeName(sampleType.Name))
-        {
-            return (null, null, null, "Select Receiving Sample, Door Sample, or Lot Sample.");
-        }
-
-        var existingSampleCount = await dbContext.QcSamples
-            .CountAsync(x => x.ReceiptId == receiptId && x.SampleTypeId == sampleType.Id && !x.IsDeleted, cancellationToken);
-        var nextSequenceNumber = existingSampleCount + 1;
-        var now = DateTimeOffset.UtcNow;
-        var sample = new QcSample
-        {
-            ReceiptId = receiptId,
-            SampleTypeId = sampleType.Id,
-            SampleSequenceNumber = nextSequenceNumber,
-            Status = nextSequenceNumber > 1 ? "Needs Review" : "Data Entry In Progress",
-            StarchStatus = "Starch Pending",
-            PhotoStatus = "Photo Pending",
-            EmailStatus = "Not Sent",
-            ActualSampleSize = 10,
-            SampleTakenAt = now,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-
-        dbContext.QcSamples.Add(sample);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        var warning = nextSequenceNumber > 1
-            ? $"A {sampleType.Name} already exists for this receipt. The new sample was created with the next sequence number and marked Needs Review."
-            : null;
-        return (sample.Id, nextSequenceNumber, warning, null);
+        var result = await ReceiptQcSampleCoordinator.OpenOrCreateAsync(
+            dbContext,
+            receiptId,
+            allowCreate: true,
+            requestedSampleTypeId: sampleTypeId,
+            takenByUserId: await GetCurrentUserIdAsync(cancellationToken),
+            qcStationId: null,
+            actualSampleSize: 10,
+            sampleTakenAt: null,
+            notes: null,
+            cancellationToken);
+        return result.Sample is null
+            ? (null, null, result.HistoricalConflict ? result.Error : null, result.Error)
+            : (result.Sample.Id, result.Sample.SampleSequenceNumber, null, null);
     }
+
+    private Task<List<RoomTreatmentApplicationHistoryViewModel>> GetReceivingTreatmentHistoryAsync(
+        long receiptId,
+        CancellationToken cancellationToken) =>
+        dbContext.RoomTreatmentApplications.AsNoTracking()
+            .Where(x => x.ReceiptId == receiptId && x.ApplicationLevel == TreatmentApplicationLevels.Receiving)
+            .OrderByDescending(x => x.AppliedAt)
+            .ThenByDescending(x => x.Id)
+            .Select(x => new RoomTreatmentApplicationHistoryViewModel(
+                x.Id,
+                x.AppliedAt,
+                x.ProductNameSnapshot,
+                x.CommonNameSnapshot,
+                x.TotalBinsSnapshot,
+                x.AppliedByUser.DisplayName ?? x.AppliedByUser.Email,
+                x.EstimatedCostSnapshot,
+                x.CurrencySnapshot,
+                x.Notes,
+                x.ReversedAt != null,
+                x.ReversedAt,
+                x.ReversalReason,
+                x.Attachments.Where(a => !a.IsDeleted).OrderBy(a => a.CreatedAt).ThenBy(a => a.Id)
+                    .Select(a => new TreatmentReportAttachmentViewModel(
+                        a.Id,
+                        a.FileName,
+                        a.ContentType,
+                        a.FileSizeBytes,
+                        a.CreatedAt))
+                    .ToList()))
+            .ToListAsync(cancellationToken);
 
     public async Task<SampleDetailViewModel> GetSampleDetailAsync(long id, CancellationToken cancellationToken)
     {
@@ -2070,9 +2061,24 @@ public sealed class DashboardDataService(
             var grades = await dbContext.Grades.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Id).ToListAsync(cancellationToken);
             var defectTypes = await dbContext.DefectTypes.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync(cancellationToken);
             var recipientResolution = await qcEmailRecipientResolver.ResolveForSampleAsync(sample.Id, null, cancellationToken);
+            var receiptLot = !string.IsNullOrWhiteSpace(sample.Receipt.GrowerNumber)
+                ? sample.Receipt.GrowerNumber
+                : sample.Receipt.LotCode;
+            var receiptSnapshots = await RoomInventoryLedger.GetSnapshotsAsync(
+                sample.Receipt.WarehouseId,
+                [sample.Receipt.RoomId],
+                sample.Receipt.FruitProfileId,
+                cancellationToken);
+            var currentPackableBins = receiptSnapshots
+                .Where(x => x.CropYear == sample.Receipt.CropYear
+                    && x.GrowerLotId == sample.Receipt.GrowerLotId
+                    && string.Equals(x.Lot, receiptLot, StringComparison.OrdinalIgnoreCase))
+                .Select(x => (int?)x.CurrentBins)
+                .SingleOrDefault();
             return new SampleDetailViewModel
             {
                 Sample = (await EnrichSamplesAsync([sample], cancellationToken)).Single(),
+                Receipt = ReceiptListItem(sample.Receipt),
                 SampleTypes = await GetReceiptSampleTypesAsync(cancellationToken),
                 FruitRows = rowModels,
                 PhotoGroups = GroupPhotos(photos, await CanEditSamplesAsync(cancellationToken), sample.Id),
@@ -2083,7 +2089,7 @@ public sealed class DashboardDataService(
                 EnteredFruitCount = rowModels.Count(HasEnteredData),
                 AutosaveVersion = sample.FieldSampleAutosaveVersion,
                 AvailablePhotoTypes = availablePhotoTypes
-                    .Select(x => new QcPhotoRequirementViewModel(x.PhotoType, x.FriendlyName, x.IsRequired))
+                    .Select(x => new QcPhotoRequirementViewModel(x.PhotoType, x.FriendlyName, x.IsRequired, x.ReceiptLevel))
                     .ToList(),
                 FruitType = sample.Receipt.FruitProfile.FruitType,
                 DefectInspectionStatus = sample.DefectInspectionStatus,
@@ -2096,6 +2102,10 @@ public sealed class DashboardDataService(
                     .Select(x => new FieldSampleSizeThreshold(x.SizeCategory, x.MinimumWeightGrams))
                     .ToListAsync(cancellationToken),
                 DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
+                CurrentPackableBins = currentPackableBins,
+                TreatmentApplications = await GetReceivingTreatmentHistoryAsync(sample.ReceiptId!.Value, cancellationToken),
+                CanApplyReceivingTreatment = await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken),
+                CanReverseReceivingTreatment = await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Admin, cancellationToken),
                 FruitReadingForm = new SaveFruitReadingsForm
                 {
                     SampleId = sample.Id,
@@ -2250,6 +2260,13 @@ public sealed class DashboardDataService(
         if (sampleType is null || !IsReceiptSampleTypeName(sampleType.Name))
         {
             return "Select Receiving Sample, Door Sample, or Lot Sample.";
+        }
+
+        var expectedSampleType = ReceiptQcSampleCoordinator.ExpectedSampleTypeName(sample.Receipt?.ReceiptType);
+        if (expectedSampleType is not null
+            && !string.Equals(sampleType.Name, expectedSampleType, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"This {sample.Receipt!.ReceiptType} must use {expectedSampleType}.";
         }
 
         if (sample.SampleTypeId == sampleType.Id)
@@ -3089,6 +3106,137 @@ public sealed class DashboardDataService(
         form.ReceiptId = selected?.ReceiptLevel == true ? sample.ReceiptId : null;
         form.QcSampleId = selected?.ReceiptLevel == true ? null : sample.Id;
         return await AddPhotoMetadataAsync(form, cancellationToken);
+    }
+
+    public async Task<PhotoReclassificationResult> ReclassifySamplePhotoAsync(
+        long sampleId,
+        long photoId,
+        string targetPhotoType,
+        CancellationToken cancellationToken)
+    {
+        var sample = await dbContext.QcSamples
+            .Include(x => x.SampleType)
+            .Include(x => x.Receipt).ThenInclude(x => x!.FruitProfile)
+            .Include(x => x.FieldSampleFruitProfile)
+            .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted, cancellationToken);
+        if (sample is null)
+        {
+            return new(false, "QC sample not found.", photoId);
+        }
+
+        if (sample.ReceiptId is long receiptId
+            && await dbContext.QcSamples.CountAsync(
+                x => x.ReceiptId == receiptId && !x.IsDeleted,
+                cancellationToken) > 1)
+        {
+            return new(false, ReceiptQcSampleCoordinator.HistoricalConflictMessage, photoId);
+        }
+
+        var isFieldSample = sample.ReceiptId is null
+            || sample.SampleType.Name.Contains("field", StringComparison.OrdinalIgnoreCase);
+        var canEdit = isFieldSample
+            ? await HasAccessAsync(ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken)
+            : await CanEditSamplesAsync(cancellationToken);
+        if (!canEdit)
+        {
+            return new(false, "You do not have permission to reclassify photos for this sample.", photoId);
+        }
+
+        var normalizedTarget = QcPhotoRequirementPolicy.NormalizePhotoType(targetPhotoType);
+        var fruitType = sample.Receipt?.FruitProfile.FruitType ?? sample.FieldSampleFruitProfile?.FruitType;
+        var available = photoRequirementPolicy.GetAvailablePhotoTypes(sample.SampleType.Name, fruitType);
+        var selected = available.SingleOrDefault(x =>
+            string.Equals(x.PhotoType, normalizedTarget, StringComparison.OrdinalIgnoreCase));
+        if (selected is null && !string.Equals(normalizedTarget, "Other", StringComparison.OrdinalIgnoreCase))
+        {
+            return new(false, "That photo type is not available for this sample type.", photoId);
+        }
+
+        var photo = await dbContext.QcPhotos.SingleOrDefaultAsync(
+            x => x.Id == photoId
+                && !x.IsDeleted
+                && (x.QcSampleId == sampleId
+                    || (sample.ReceiptId != null && x.ReceiptId == sample.ReceiptId)),
+            cancellationToken);
+        if (photo is null)
+        {
+            return new(false, "Photo was not found in this sample workflow.", photoId);
+        }
+
+        var receiptLevel = selected?.ReceiptLevel == true && sample.ReceiptId is not null;
+        var targetReceiptId = receiptLevel ? sample.ReceiptId : null;
+        long? targetSampleId = receiptLevel ? null : sample.Id;
+        var oldPhotoType = QcPhotoRequirementPolicy.NormalizePhotoType(photo.PhotoType);
+        if (string.Equals(oldPhotoType, normalizedTarget, StringComparison.OrdinalIgnoreCase)
+            && photo.ReceiptId == targetReceiptId
+            && photo.QcSampleId == targetSampleId)
+        {
+            return new(true, null, photo.Id, oldPhotoType, normalizedTarget, receiptLevel);
+        }
+
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+        var changedBy = GetCurrentUserEmail() ?? "unknown";
+        var oldReceiptId = photo.ReceiptId;
+        var oldSampleId = photo.QcSampleId;
+        var before = JsonSerializer.Serialize(new
+        {
+            PhotoId = photo.Id,
+            SampleId = sample.Id,
+            ReceiptId = sample.ReceiptId,
+            PhotoType = oldPhotoType,
+            OwnershipScope = oldReceiptId is not null ? "Receipt" : "Sample",
+            photo.FileId,
+            photo.StorageProvider
+        });
+
+        photo.PhotoType = normalizedTarget;
+        photo.ReceiptId = targetReceiptId;
+        photo.QcSampleId = targetSampleId;
+        await AddAuditAsync(
+            "reclassify-photo",
+            nameof(QcPhoto),
+            photo.Id.ToString(),
+            changedBy,
+            before,
+            JsonSerializer.Serialize(new
+            {
+                PhotoId = photo.Id,
+                SampleId = sample.Id,
+                ReceiptId = sample.ReceiptId,
+                OldPhotoType = oldPhotoType,
+                NewPhotoType = normalizedTarget,
+                OldOwnershipScope = oldReceiptId is not null ? "Receipt" : "Sample",
+                NewOwnershipScope = receiptLevel ? "Receipt" : "Sample",
+                ChangedBy = changedBy,
+                ChangedAt = DateTimeOffset.UtcNow,
+                photo.FileId,
+                photo.StorageProvider
+            }),
+            cancellationToken);
+
+        if (sample.ReceiptId is not null)
+        {
+            var affectedSamples = await dbContext.QcSamples
+                .Where(x => x.ReceiptId == sample.ReceiptId && !x.IsDeleted)
+                .ToListAsync(cancellationToken);
+            foreach (var affectedSample in affectedSamples)
+            {
+                await MarkSampleNeedsResendIfSentAsync(affectedSample, "photo-reclassified", changedBy, before, cancellationToken);
+                await RefreshSampleStatusesAsync(affectedSample, cancellationToken);
+            }
+        }
+        else
+        {
+            await MarkSampleNeedsResendIfSentAsync(sample, "photo-reclassified", changedBy, before, cancellationToken);
+            sample.PhotoStatus = "Optional Photos Attached";
+            sample.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        return new(true, null, photo.Id, oldPhotoType, normalizedTarget, receiptLevel);
     }
 
     public async Task<string?> RemoveSamplePhotoAsync(long sampleId, long photoId, CancellationToken cancellationToken)
@@ -7556,27 +7704,41 @@ public sealed class DashboardDataService(
         IReadOnlyList<QcPhoto> photos,
         bool canDelete,
         long? deleteFromSampleId = null,
-        long? deleteFromReceiptId = null) =>
+        long? deleteFromReceiptId = null,
+        bool canDeleteSamplePhotos = false) =>
         photos.Where(x => !x.IsDeleted)
             .GroupBy(x => QcPhotoRequirementPolicy.NormalizePhotoType(x.PhotoType))
             .OrderBy(x => x.Key)
-            .Select(x => new PhotoGroupViewModel(x.Key, x.Select(photo => new PhotoMetadataViewModel(
-                photo.Id,
-                photo.QcSampleId,
-                deleteFromSampleId,
-                QcPhotoRequirementPolicy.NormalizePhotoType(photo.PhotoType),
-                photo.PhotoSource,
-                photo.FileName,
-                photo.ContentType,
-                photo.FileSizeBytes,
-                photo.WebUrl,
-                photo.CapturedAt,
-                canDelete,
-                deleteFromReceiptId is long receiptId ? $"/Receipts/{receiptId}/photos/{photo.Id}/remove" : null,
-                photo.WebUrl is not null && photo.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase),
-                deleteFromReceiptId is long thumbnailReceiptId && photo.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
-                    ? $"/Receipts/{thumbnailReceiptId}/photos/{photo.Id}/content"
-                    : null)).ToList()))
+            .Select(group => new PhotoGroupViewModel(group.Key, group.Select(photo =>
+            {
+                var isSamplePhoto = photo.QcSampleId is not null;
+                var deleteAction = deleteFromReceiptId is long receiptId
+                    ? isSamplePhoto
+                        ? canDeleteSamplePhotos ? $"/Samples/{photo.QcSampleId}/photos/{photo.Id}/remove" : null
+                        : canDelete ? $"/Receipts/{receiptId}/photos/{photo.Id}/remove" : null
+                    : deleteFromSampleId is long sampleId && canDelete
+                        ? $"/Samples/{sampleId}/photos/{photo.Id}/remove"
+                        : null;
+                var isImage = photo.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+                var reviewContentUrl = deleteFromReceiptId is long contentReceiptId && isImage
+                    ? $"/Receipts/{contentReceiptId}/photos/{photo.Id}/content"
+                    : photo.WebUrl;
+                return new PhotoMetadataViewModel(
+                    photo.Id,
+                    photo.QcSampleId,
+                    deleteFromSampleId,
+                    QcPhotoRequirementPolicy.NormalizePhotoType(photo.PhotoType),
+                    photo.PhotoSource,
+                    photo.FileName,
+                    photo.ContentType,
+                    photo.FileSizeBytes,
+                    reviewContentUrl,
+                    photo.CapturedAt,
+                    deleteAction is not null,
+                    deleteAction,
+                    isImage && reviewContentUrl is not null,
+                    isImage ? reviewContentUrl : null);
+            }).ToList()))
             .ToList();
 
     private async Task<FileStorageReference> SavePhotoFileOrPlaceholderAsync(AddPhotoMetadataForm form, FileStorageTargetContext context, CancellationToken cancellationToken)

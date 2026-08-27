@@ -212,6 +212,27 @@ public sealed class FieldSamplesController(
         return RedirectToAction(nameof(Details), new { id });
     }
 
+    [HttpPost("{id:long}/photos/{photoId:long}/reclassify")]
+    [Authorize(Policy = AccessPolicyNames.FieldSamplesEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReclassifyPhoto(
+        long id,
+        long photoId,
+        PhotoReclassificationForm form,
+        CancellationToken cancellationToken)
+    {
+        var result = await dashboardDataService.ReclassifySamplePhotoAsync(id, photoId, form.TargetPhotoType, cancellationToken);
+        if (Request.GetTypedHeaders().Accept?.Any(x => x.MediaType.Value == "application/json") == true)
+        {
+            return result.Succeeded ? Json(result) : BadRequest(result);
+        }
+
+        TempData[result.Succeeded ? "Success" : "Error"] = result.Succeeded
+            ? $"Photo moved to {result.NewPhotoType}."
+            : result.Error;
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
     [HttpGet("{id:long}/photos/{photoId:long}/content")]
     [Authorize(Policy = AccessPolicyNames.FieldSamplesView)]
     public async Task<IActionResult> PhotoContent(long id, long photoId, CancellationToken cancellationToken)

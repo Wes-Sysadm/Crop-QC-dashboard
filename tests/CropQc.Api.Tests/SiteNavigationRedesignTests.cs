@@ -15,7 +15,7 @@ public sealed class SiteNavigationRedesignTests
         Assert.Equal(SiteNavigationCatalog.Items.Count, SiteNavigationCatalog.Items.Select(x => x.Key).Distinct().Count());
         Assert.Equal(SiteNavigationCatalog.Categories.OrderBy(x => x.SortOrder), SiteNavigationCatalog.Categories);
         Assert.Equal(
-            ["dashboard", "qc", "inventory", "receiving", "rooms", "runs", "transfers", "shipments", "growers-reports", "admin"],
+            ["dashboard", "receiving", "inventory", "rooms", "runs", "transfers", "shipments", "growers-reports", "admin"],
             SiteNavigationCatalog.Categories.Select(x => x.Key));
         Assert.DoesNotContain(SiteNavigationCatalog.Items, x => x.Label.Contains("EBS Historical Cleanup", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(SiteNavigationCatalog.Items, x => x.Key == "unmatched-identities");
@@ -101,7 +101,7 @@ public sealed class SiteNavigationRedesignTests
     [InlineData("/BinsRun/ActualRuns/2", "Runs", "Actual Runs", "Actual Run #2")]
     [InlineData("/BinsRun/Packout/15", "Runs", "Actual Runs", "Packout Result")]
     [InlineData("/Receipts/123", "Receiving", "Receipts", "Receipt #123")]
-    [InlineData("/FieldSamples/8", "QC", "Field Samples", "Field Sample #8")]
+    [InlineData("/FieldSamples/8", "Receiving", "Field Samples", "Field Sample #8")]
     public async Task Breadcrumbs_ShowLinkedParentsAndCurrentDetail(string path, params string[] labels)
     {
         var model = await Service(FakeAccess.Admin()).BuildAsync(Principal(ApplicationAreas.OwnerEmail), path, Query(), null, CancellationToken.None);

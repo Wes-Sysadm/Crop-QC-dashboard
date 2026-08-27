@@ -358,7 +358,9 @@
                 {
                     ["WholeSampleLabel"] = Model.Terminology.WholeSampleLabel,
                     ["CutFruitLabel"] = Model.Terminology.CutFruitLabel,
-                    ["Commodity"] = Model.Terminology.Commodity
+                    ["Commodity"] = Model.Terminology.Commodity,
+                    ["PhotoReclassifyActionBase"] = $"/FieldSamples/{Model.SampleId}/photos",
+                    ["PhotoMoveTargets"] = Model.AvailablePhotoTypes
                 })
             </div>
             @if (Model.CanEdit)
@@ -419,6 +421,7 @@
 }
 
 <script src="/js/field-sample-autosave.js"></script>
+<script src="/js/photo-reclassification.js"></script>
 <script>
     window.initializeFieldSampleAutosave?.({
         sampleId: @Model.SampleId,

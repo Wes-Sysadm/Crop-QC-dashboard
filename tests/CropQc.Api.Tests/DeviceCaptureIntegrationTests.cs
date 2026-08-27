@@ -76,7 +76,7 @@ public sealed class DeviceCaptureIntegrationTests
         Assert.Contains("form.append(\"PhotoFile\"", panel);
         Assert.Contains("fetch(action", panel);
         Assert.Contains("PhotoSource", panel);
-        Assert.Contains("ReceiptPhotoAction: $\"/Receipts/{Model.Receipt.Id}/photos\"", receiptView);
+        Assert.DoesNotContain("_DeviceCapturePanel", receiptView);
         Assert.Contains("SamplePhotoAction: $\"/Samples/{Model.Sample.Id}/photos\"", sampleView);
         Assert.Contains("StarchPhotoAction: $\"/Samples/{Model.Sample.Id}/Starch/photos\"", starchView);
     }
