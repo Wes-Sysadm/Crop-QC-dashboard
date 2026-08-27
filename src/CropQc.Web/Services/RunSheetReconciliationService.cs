@@ -59,12 +59,21 @@ public sealed class RunSheetReconciliationService(
         var sheetRuns = state.Snapshot.Runs
             .Where(x => x.Facility == facility && x.Date.Year == options.CropYear)
             .ToList();
-        var items = RunSheetMatcher.Reconcile(
+        var matchedItems = RunSheetMatcher.Reconcile(
             facility,
             sheetRuns,
             cropRuns,
             businessTime.UtcNow,
             options.PendingWindow);
+        var identityDiagnostics = await LoadIncompleteIdentityDiagnosticsAsync(facility, cancellationToken);
+        var items = matchedItems
+            .Concat(identityDiagnostics)
+            .OrderByDescending(x => x.State == RunSheetReconciliationStates.Attention)
+            .ThenByDescending(x => x.State == RunSheetReconciliationStates.Pending)
+            .ThenBy(x => x.SheetDate ?? x.CropQcDate)
+            .ThenBy(x => x.SheetVariety, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.ActualRunIds.FirstOrDefault())
+            .ToList();
 
         return new RunSheetReconciliationViewModel
         {
@@ -98,6 +107,53 @@ public sealed class RunSheetReconciliationService(
             .ToListAsync(cancellationToken);
 
         return RunSheetCropRunBuilder.Build(facility, lines, businessTime);
+    }
+
+    private async Task<IReadOnlyList<RunSheetReconciliationItemViewModel>> LoadIncompleteIdentityDiagnosticsAsync(
+        string facility,
+        CancellationToken cancellationToken)
+    {
+        var lines = await AuthoritativeRunReportingQuery.ApplyIncompleteGrowerLotIdentityRules(
+                AuthoritativeRunReportingQuery.ApplyActiveQuantityRules(dbContext.BinsRunEntries.AsNoTracking()))
+            .Where(x => x.ActualRunId != null
+                && x.CropYear == options.CropYear
+                && x.ActualRun!.RunFacilityCodeSnapshot == facility)
+            .Select(x => new
+            {
+                ActualRunId = x.ActualRunId!.Value,
+                x.RunAt,
+                x.BinsRun,
+                LegacyVariety = x.VarietyCode ?? x.FruitProfile!.VarietyCode
+            })
+            .ToListAsync(cancellationToken);
+
+        return lines
+            .GroupBy(x => x.ActualRunId)
+            .Select(group =>
+            {
+                var first = group.OrderBy(x => x.RunAt).First();
+                var varieties = group.Select(x => RunSheetParser.NormalizeCode(x.LegacyVariety))
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                var variety = varieties.Count == 0 ? "Legacy variety unavailable" : string.Join(" / ", varieties);
+                return new RunSheetReconciliationItemViewModel
+                {
+                    State = RunSheetReconciliationStates.Attention,
+                    Facility = facility,
+                    CropQcDate = businessTime.PacificDate(first.RunAt),
+                    CropQcVariety = variety,
+                    CropQcSalesDesk = facility == EmploymentFacilities.Wp ? "See Actual Run" : "N/A",
+                    CropQcBins = group.Sum(x => x.BinsRun),
+                    Reasons = [RunSheetReconciliationReasons.IncompleteCropQcReportingIdentity],
+                    ActualRunIds = [group.Key],
+                    DiagnosticMessage = $"Crop QC Actual Run #{group.Key} exists but has incomplete authoritative reporting identity and cannot be reconciled safely."
+                };
+            })
+            .OrderBy(x => x.CropQcDate)
+            .ThenBy(x => x.ActualRunIds[0])
+            .ToList();
     }
 }
 

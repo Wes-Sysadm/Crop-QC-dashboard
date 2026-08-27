@@ -276,6 +276,7 @@ builder.Services.AddScoped<IInventoryByVarietyService, InventoryByVarietyService
 builder.Services.AddScoped<IProcessorShipmentService, ProcessorShipmentService>();
 builder.Services.AddScoped<ITreatmentReportAttachmentService, TreatmentReportAttachmentService>();
 builder.Services.AddScoped<ITr108859DroppedBinsCorrectionService, Tr108859DroppedBinsCorrectionService>();
+builder.Services.AddScoped<IActualRun3ReportingIdentityCorrectionService, ActualRun3ReportingIdentityCorrectionService>();
 builder.Services.AddScoped<IEbsInventoryCleanupService, EbsInventoryCleanupService>();
 builder.Services.AddScoped<IInventoryDeductionInvariantService, InventoryDeductionInvariantService>();
 builder.Services.AddScoped<IInventoryDiagnosticAcknowledgmentService, InventoryDiagnosticAcknowledgmentService>();
@@ -594,6 +595,45 @@ if (args.Contains(Tr108859DroppedBinsCorrectionConstants.CommandName, StringComp
     var commandLogger = correctionScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Tr108859DroppedBinsCorrectionCommand");
     if (correction.Success) commandLogger.LogInformation("{CorrectionReport}", report); else commandLogger.LogError("{CorrectionReport}", report);
     Environment.ExitCode = correction.Success ? 0 : 1;
+    return;
+}
+
+if (args.Contains(ActualRun3ReportingIdentityCorrectionConstants.CommandName, StringComparer.OrdinalIgnoreCase))
+{
+    static string? ActualRun3CorrectionCommandValue(string[] commandArgs, string key) =>
+        commandArgs.FirstOrDefault(x => x.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase)) is { } item
+            ? item[(item.IndexOf('=') + 1)..]
+            : null;
+    var backupRunId = long.TryParse(
+        ActualRun3CorrectionCommandValue(args, "--backup-run-id"),
+        out var parsedBackupRunId)
+        ? parsedBackupRunId
+        : (long?)null;
+    using var actualRun3CorrectionScope = app.Services.CreateScope();
+    var actualRun3Correction = await actualRun3CorrectionScope.ServiceProvider
+        .GetRequiredService<IActualRun3ReportingIdentityCorrectionService>()
+        .RunAsync(new(
+            args.Contains("--apply", StringComparer.OrdinalIgnoreCase),
+            args.Contains("--confirm-production", StringComparer.OrdinalIgnoreCase),
+            args.Contains("--confirm-disposable-restore", StringComparer.OrdinalIgnoreCase),
+            backupRunId,
+            ActualRun3CorrectionCommandValue(args, "--verified-backup-package-sha256"),
+            ActualRun3CorrectionCommandValue(args, "--requested-by") ?? "command",
+            ActualRun3CorrectionCommandValue(args, "--reason") ?? "",
+            ActualRun3CorrectionCommandValue(args, "--expected-target-fingerprint"),
+            ActualRun3CorrectionCommandValue(args, "--expected-protected-fingerprint"),
+            ActualRun3CorrectionCommandValue(args, "--authorization-token")),
+            CancellationToken.None);
+    var actualRun3CorrectionReport = System.Text.Json.JsonSerializer.Serialize(
+        actualRun3Correction,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
+    var actualRun3CorrectionLogger = actualRun3CorrectionScope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("ActualRun3ReportingIdentityCorrectionCommand");
+    if (actualRun3Correction.Success)
+        actualRun3CorrectionLogger.LogInformation("{CorrectionReport}", actualRun3CorrectionReport);
+    else
+        actualRun3CorrectionLogger.LogError("{CorrectionReport}", actualRun3CorrectionReport);
+    Environment.ExitCode = actualRun3Correction.Success ? 0 : 1;
     return;
 }
 
