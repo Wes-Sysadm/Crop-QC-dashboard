@@ -20,7 +20,7 @@
         && Model.PhotoGroups.Any(x => x.PhotoType.Equals("FruitAfterStarch", StringComparison.OrdinalIgnoreCase) && x.Photos.Count > 0);
 }
 
-<h1>QC Sample Detail</h1>
+<h1>Receiving QC Workspace</h1>
 @if (TempData["Success"] is string success)
 {
     <p class="notice success">@success</p>
@@ -41,7 +41,25 @@
 {
     <section class="panel">
         <h2>@Model.Sample.DisplayReceiptId</h2>
-        <p>@Model.Sample.Warehouse | @Model.Sample.SampleType | @Model.Sample.Status | Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Defect inspection: @Model.DefectInspectionStatus | Target sample size: @Model.TargetSampleSize | Entered fruit count: @Model.EnteredFruitCount</p>
+        @if (Model.Receipt is not null)
+        {
+            <dl class="summary-list receiving-workspace-identity">
+                <dt>Receipt ID</dt><dd><a href="/Receipts/@Model.Receipt.Id">@Model.Receipt.CompuTechReceiptId</a></dd>
+                <dt>Received</dt><dd>@BusinessTime.FormatPacific(Model.Receipt.ReceivedAt)</dd>
+                <dt>Crop Year</dt><dd>@Model.Receipt.CropYear</dd>
+                <dt>Receipt Type</dt><dd>@Model.Receipt.ReceiptType</dd>
+                <dt>Facility / Room</dt><dd>@Model.Receipt.Warehouse / @Model.Receipt.Room</dd>
+                <dt>Grower Number</dt><dd>@(string.IsNullOrWhiteSpace(Model.Receipt.GrowerNumber) ? Model.Receipt.LotCode : Model.Receipt.GrowerNumber)</dd>
+                <dt>Grower Name</dt><dd>@Model.Receipt.GrowerName</dd>
+                <dt>Variety</dt><dd>@Model.Receipt.VarietyCode</dd>
+                <dt>Production Type</dt><dd>@Model.Receipt.ProductionType · @(Model.Receipt.IsOrganic == true ? "Organic" : "Conventional")</dd>
+                <dt>Received bins</dt><dd>@Model.Receipt.BinCount</dd>
+                <dt>Current packable inventory</dt><dd>@(Model.CurrentPackableBins?.ToString() ?? "Not available")</dd>
+                <dt>Sample Type</dt><dd>@Model.Sample.SampleType</dd>
+                <dt>Sample status</dt><dd>@Model.Sample.Status</dd>
+            </dl>
+        }
+        <p>Starch: @Model.Sample.StarchStatus | Photos: @Model.Sample.PhotoStatus | Email: @Model.Sample.EmailStatus | Defect inspection: @Model.DefectInspectionStatus | Target sample size: @Model.TargetSampleSize | Entered fruit count: @Model.EnteredFruitCount</p>
         @if (Model.Sample.EmailSentAt is not null)
         {
             <p class="notice success">QC Summary sent @BusinessTime.FormatPacific(Model.Sample.EmailSentAt.Value) by @(Model.Sample.EmailSentBy ?? "unknown").</p>
@@ -53,21 +71,6 @@
         <p>@(hasPearStarchPhoto && Model.Readiness.StarchMissingCount > 0
             ? "Starch status: Not entered — see photo."
             : StarchSummary(Model.Readiness))</p>
-        @if (CanChangeSampleType(Model.Sample.EmailStatus, canEditDailyQc, canAdminDailyQc))
-        {
-            <form method="post" action="/Samples/@Model.Sample.Id/sample-type" class="inline-form">
-                <label>
-                    Sample type
-                    <select name="SampleTypeId">
-                        @foreach (var sampleType in Model.SampleTypes)
-                        {
-                            <option value="@sampleType.Id" selected="@(string.Equals(sampleType.Name, Model.Sample.SampleType, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@sampleType.Name</option>
-                        }
-                    </select>
-                </label>
-                <button type="submit" class="secondary-button">Update Sample Type</button>
-            </form>
-        }
         <p>
             <a class="button" href="/Samples/@Model.Sample.Id/Starch">Starch Input</a>
             <a class="button secondary-button" href="/Samples/@Model.Sample.Id/Report" data-requires-autosave>Preview Report</a>
@@ -100,6 +103,56 @@
             ShowApplePhotos: true,
             ShowScale: true))
     }
+
+    <section class="panel" id="receiving-treatment-workspace">
+        <div class="section-heading-row">
+            <div>
+                <h2>Receiving Treatments</h2>
+                <p class="muted">Treatments remain attached to the exact Receipt bins and follow those bins through storage and packing.</p>
+            </div>
+            @if (Model.CanApplyReceivingTreatment)
+            {
+                <a class="button" href="/Receipts/@Model.Sample.ReceiptId/Treatments/Apply?returnSampleId=@Model.Sample.Id">Apply Receiving Treatment</a>
+            }
+        </div>
+        @if (Model.TreatmentApplications.Count == 0)
+        {
+            <p class="muted">No Receiving treatments have been recorded for this Receipt.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Applied</th><th>Treatment</th><th>Bins</th><th>Status</th><th>Reports</th></tr></thead>
+                    <tbody>
+                    @foreach (var treatment in Model.TreatmentApplications)
+                    {
+                        <tr>
+                            <td>@BusinessTime.FormatPacific(treatment.AppliedAt)</td>
+                            <td>@(string.IsNullOrWhiteSpace(treatment.CommonName) ? treatment.ProductName : $"{treatment.CommonName} — {treatment.ProductName}")</td>
+                            <td>@treatment.BinsAffected</td>
+                            <td><span class="status @(treatment.IsReversed ? "pending" : "ready")">@(treatment.IsReversed ? "Reversed" : "Active")</span></td>
+                            <td>
+                                @if (treatment.Attachments.Count == 0)
+                                {
+                                    <span class="muted">No report attached</span>
+                                }
+                                else
+                                {
+                                    @foreach (var attachment in treatment.Attachments)
+                                    {
+                                        <a href="/RoomTreatments/@treatment.Id/Reports/@attachment.Id/Content" target="_blank" rel="noopener">@attachment.FileName</a><br />
+                                    }
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+        <p><a href="/Receipts/@Model.Sample.ReceiptId#receiving-treatment-history">Review complete Receiving treatment history and attachments</a></p>
+    </section>
 }
 
 <section class="panel">
@@ -252,7 +305,14 @@
         <div class="grid-two">
             <div class="panel">
                 <h3>Current Photos</h3>
-                @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups)
+                @await Html.PartialAsync("_PhotoGroups", Model.PhotoGroups, new Microsoft.AspNetCore.Mvc.ViewFeatures.ViewDataDictionary(ViewData)
+                {
+                    ["PhotoReclassifyActionBase"] = $"/Samples/{Model.Sample.Id}/photos",
+                    ["PhotoMoveTargets"] = Model.AvailablePhotoTypes
+                        .Append(new QcPhotoRequirementViewModel("Other", "Other", false))
+                        .DistinctBy(x => x.PhotoType, StringComparer.OrdinalIgnoreCase)
+                        .ToList()
+                })
             </div>
             @await Html.PartialAsync("_PhotoPlaceholderForm", new PhotoPlaceholderFormViewModel
             {
@@ -563,6 +623,7 @@
 </script>
 
 <script src="/js/field-sample-autosave.js"></script>
+<script src="/js/photo-reclassification.js"></script>
 <script>
     window.initializeFruitRowAutosave?.({
         sampleId: @(Model.Sample?.Id ?? 0),
@@ -594,9 +655,6 @@
             ? "Starch status: Starch Complete."
             : $"Starch status: {readiness.StarchMissingCount} of {readiness.CompletedFruitCount} completed rows missing starch.";
     }
-
-    private static bool CanChangeSampleType(string emailStatus, bool canEditDailyQc, bool canAdminDailyQc) =>
-        canAdminDailyQc || (!emailStatus.Equals("Sent", StringComparison.OrdinalIgnoreCase) && canEditDailyQc);
 
     private static bool CanSendEmail(SampleListItemViewModel? sample) =>
         sample is not null

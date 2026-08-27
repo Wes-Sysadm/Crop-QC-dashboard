@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using System.Text.RegularExpressions;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Storage;
@@ -42,13 +43,15 @@ public sealed class ReceiptPhotoStagingHttpTests
         Assert.Contains("Choose Existing Photo", html);
         Assert.Contains("capture=\"environment\"", html);
 
-        var response = await client.PostAsync("/Receipts/Create", ReceiptForm("STAGED-ZERO"));
+        var response = await client.PostAsync("/Receipts/Create", await ReceiptFormAsync(client, "STAGED-ZERO"));
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/Receipts", response.Headers.Location?.OriginalString);
+        Assert.StartsWith("/Samples/", response.Headers.Location?.OriginalString);
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
-        Assert.NotNull(await db.Receipts.SingleOrDefaultAsync(x => x.CompuTechReceiptId == "STAGED-ZERO"));
+        var receipt = await db.Receipts.SingleAsync(x => x.CompuTechReceiptId == "STAGED-ZERO");
+        var sample = await db.QcSamples.Include(x => x.SampleType).SingleAsync(x => x.ReceiptId == receipt.Id);
+        Assert.Equal("Receiving Sample", sample.SampleType.Name);
         Assert.Empty(await db.QcPhotos.ToListAsync());
         Assert.Equal(0, factory.Storage.SaveCount);
     }
@@ -58,14 +61,14 @@ public sealed class ReceiptPhotoStagingHttpTests
     {
         await using var factory = new ReceiptPhotoFactory();
         using var client = await factory.CreateOwnerClientAsync();
-        var content = ReceiptForm("STAGED-TWO");
+        var content = await ReceiptFormAsync(client, "STAGED-TWO");
         AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "OBSBOT Tiny 2 Lite", [0xff, 0xd8, 0xff, 0xd9]);
         AddPhoto(content, 1, "top.png", "image/png", "TopOfTruck", "Upload File", [0x89, 0x50, 0x4e, 0x47]);
 
         var response = await client.PostAsync("/Receipts/Create", content);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.StartsWith("/Receipts/", response.Headers.Location?.OriginalString);
+        Assert.StartsWith("/Samples/", response.Headers.Location?.OriginalString);
         long receiptId;
         long photoId;
         await using (var scope = factory.Services.CreateAsyncScope())
@@ -103,13 +106,69 @@ public sealed class ReceiptPhotoStagingHttpTests
     }
 
     [Fact]
+    public async Task ReceiptPhoto_CanMoveToSampleAndBackWithoutStorageMutationOrOrphaning()
+    {
+        await using var factory = new ReceiptPhotoFactory();
+        using var client = await factory.CreateOwnerClientAsync();
+        var content = await ReceiptFormAsync(client, "MOVE-PHOTO");
+        AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "Upload File", [0xff, 0xd8, 0xff, 0xd9]);
+        var create = await client.PostAsync("/Receipts/Create", content);
+        Assert.Equal(HttpStatusCode.Redirect, create.StatusCode);
+
+        long sampleId;
+        long receiptId;
+        long photoId;
+        string? fileId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var receipt = await db.Receipts.SingleAsync(x => x.CompuTechReceiptId == "MOVE-PHOTO");
+            receiptId = receipt.Id;
+            sampleId = (await db.QcSamples.SingleAsync(x => x.ReceiptId == receipt.Id)).Id;
+            var photo = await db.QcPhotos.SingleAsync(x => x.ReceiptId == receipt.Id);
+            photoId = photo.Id;
+            fileId = photo.FileId;
+        }
+
+        var token = await AntiforgeryTokenAsync(client, $"/Samples/{sampleId}");
+        var moved = await ReclassifyAsync(client, sampleId, photoId, "Hectre", token);
+        Assert.Equal(HttpStatusCode.OK, moved.StatusCode);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var photo = await db.QcPhotos.SingleAsync(x => x.Id == photoId);
+            Assert.Equal("Hectre", photo.PhotoType);
+            Assert.Equal(sampleId, photo.QcSampleId);
+            Assert.Null(photo.ReceiptId);
+            Assert.Equal(fileId, photo.FileId);
+            Assert.Single(await db.AuditLogs.Where(x => x.Action == "reclassify-photo").ToListAsync());
+        }
+
+        token = await AntiforgeryTokenAsync(client, $"/Samples/{sampleId}");
+        var restored = await ReclassifyAsync(client, sampleId, photoId, "BinTruck", token);
+        Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var photo = await db.QcPhotos.SingleAsync(x => x.Id == photoId);
+            Assert.Equal("BinTruck", photo.PhotoType);
+            Assert.Equal(receiptId, photo.ReceiptId);
+            Assert.Null(photo.QcSampleId);
+            Assert.Equal(fileId, photo.FileId);
+            Assert.Equal(2, await db.AuditLogs.CountAsync(x => x.Action == "reclassify-photo"));
+        }
+        Assert.Equal(1, factory.Storage.SaveCount);
+        Assert.Equal(0, factory.Storage.DeleteCount);
+    }
+
+    [Fact]
     public void SavedReceiptPhotoPresentation_KeepsThumbnailAndUsesAccessibleContextAwareTrashcan()
     {
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
         var groups = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_PhotoGroups.cshtml"));
 
-        Assert.Contains("photo.WebUrl is not null && photo.ContentType.StartsWith(\"image/\"", service);
-        Assert.Contains("$\"/Receipts/{thumbnailReceiptId}/photos/{photo.Id}/content\"", service);
+        Assert.Contains("var isImage = photo.ContentType.StartsWith(\"image/\"", service);
+        Assert.Contains("$\"/Receipts/{contentReceiptId}/photos/{photo.Id}/content\"", service);
         Assert.Contains("$\"/Receipts/{receiptId}/photos/{photo.Id}/remove\"", service);
         Assert.Contains("photo.ThumbnailUrl", groups);
         Assert.Contains("<a href=\"@photo.WebUrl\"", groups);
@@ -129,7 +188,7 @@ public sealed class ReceiptPhotoStagingHttpTests
     {
         await using var factory = new ReceiptPhotoFactory();
         using var client = await factory.CreateOwnerClientAsync();
-        var create = await client.PostAsync("/Receipts/Create", ReceiptForm("PRIVATE-THUMB"));
+        var create = await client.PostAsync("/Receipts/Create", await ReceiptFormAsync(client, "PRIVATE-THUMB"));
         Assert.Equal(HttpStatusCode.Redirect, create.StatusCode);
 
         long receiptId;
@@ -214,7 +273,7 @@ public sealed class ReceiptPhotoStagingHttpTests
         await using var factory = new ReceiptPhotoFactory();
         using var client = await factory.CreateOwnerClientAsync();
         factory.Storage.FailuresRemaining = 1;
-        var content = ReceiptForm("STAGED-FAIL");
+        var content = await ReceiptFormAsync(client, "STAGED-FAIL");
         AddPhoto(content, 0, "truck.webp", "image/webp", "BinTruck", "Upload File", [0x52, 0x49, 0x46, 0x46]);
 
         var response = await client.PostAsync("/Receipts/Create", content);
@@ -236,7 +295,7 @@ public sealed class ReceiptPhotoStagingHttpTests
     {
         await using var factory = new ReceiptPhotoFactory();
         using var client = await factory.CreateOwnerClientAsync();
-        var content = ReceiptForm("");
+        var content = await ReceiptFormAsync(client, "");
         AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "Upload File", [0xff, 0xd8, 0xff, 0xd9]);
 
         var response = await client.PostAsync("/Receipts/Create", content);
@@ -285,7 +344,7 @@ public sealed class ReceiptPhotoStagingHttpTests
         Assert.DoesNotContain("could not be translated", pageHtml, StringComparison.OrdinalIgnoreCase);
 
         var receiptNumber = $"CODEX-PHOTO-{Guid.NewGuid():N}"[..30];
-        var content = ReceiptForm(receiptNumber, warehouseId, roomId, fruitProfileId);
+        var content = await ReceiptFormAsync(client, receiptNumber, warehouseId, roomId, fruitProfileId);
         AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "OBSBOT Tiny 2 Lite", [0xff, 0xd8, 0xff, 0xd9]);
         AddPhoto(content, 1, "top.jpg", "image/jpeg", "TopOfTruck", "OBSBOT Tiny 2 Lite", [0xff, 0xd8, 0xff, 0xd9]);
         var create = await client.PostAsync("/Receipts/Create", content);
@@ -385,6 +444,53 @@ public sealed class ReceiptPhotoStagingHttpTests
             Assert.Equal(auditsBefore, await db.AuditLogs.CountAsync());
             Assert.False((await db.QcPhotos.SingleAsync(x => x.Id == 2339)).IsDeleted);
         }
+    }
+
+    private static async Task<MultipartFormDataContent> ReceiptFormAsync(
+        HttpClient client,
+        string receiptNumber,
+        int warehouseId = ReceiptPhotoFactory.WarehouseId,
+        int roomId = ReceiptPhotoFactory.RoomId,
+        int fruitProfileId = ReceiptPhotoFactory.FruitProfileId)
+    {
+        var page = await client.GetAsync("/Receipts");
+        page.EnsureSuccessStatusCode();
+        var html = await page.Content.ReadAsStringAsync();
+        var match = Regex.Match(html, "name=\"__RequestVerificationToken\"[^>]*value=\"(?<token>[^\"]+)\"");
+        Assert.True(match.Success, "The Receipt form must render an antiforgery token.");
+        var content = ReceiptForm(receiptNumber, warehouseId, roomId, fruitProfileId);
+        Add(content, "__RequestVerificationToken", match.Groups["token"].Value);
+        return content;
+    }
+
+    private static async Task<string> AntiforgeryTokenAsync(HttpClient client, string path)
+    {
+        var page = await client.GetAsync(path);
+        page.EnsureSuccessStatusCode();
+        var html = await page.Content.ReadAsStringAsync();
+        var match = Regex.Match(html, "name=\"__RequestVerificationToken\"[^>]*value=\"(?<token>[^\"]+)\"");
+        Assert.True(match.Success, $"The page {path} must render an antiforgery token.");
+        return match.Groups["token"].Value;
+    }
+
+    private static async Task<HttpResponseMessage> ReclassifyAsync(
+        HttpClient client,
+        long sampleId,
+        long photoId,
+        string targetPhotoType,
+        string antiforgeryToken)
+    {
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["TargetPhotoType"] = targetPhotoType,
+            ["__RequestVerificationToken"] = antiforgeryToken
+        });
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/Samples/{sampleId}/photos/{photoId}/reclassify")
+        {
+            Content = form
+        };
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        return await client.SendAsync(request);
     }
 
     private static MultipartFormDataContent ReceiptForm(

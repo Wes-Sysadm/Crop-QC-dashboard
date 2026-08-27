@@ -224,15 +224,15 @@ public sealed class QcStationInstallerWorkflowTests
     }
 
     [Fact]
-    public void ReceiptDetailView_OffersOpenInQcStationForLinkedSamplesOnly()
+    public void ReceiptDetailView_UsesOpenReceivingAndKeepsStationLinkInsideLinkedSampleHistory()
     {
         var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Details.cshtml"));
 
+        Assert.Contains("Open Receiving", view);
         Assert.Contains("@foreach (var sample in Model.Samples)", view);
-        Assert.Contains("href=\"cropqcstation://sample/@sample.Id\"", view);
-        Assert.Contains("Open in QC Station", view);
-        Assert.Contains("Use Open in QC Station to capture FTA pressures for a sample", view);
+        Assert.Contains("cropqcstation://sample/@sample.Id", view);
         Assert.True(view.IndexOf("cropqcstation://sample/@sample.Id", StringComparison.Ordinal) > view.IndexOf("@foreach (var sample in Model.Samples)", StringComparison.Ordinal));
+        Assert.DoesNotContain("Use Open in QC Station to capture FTA pressures for a sample", view);
     }
 
     [Fact]

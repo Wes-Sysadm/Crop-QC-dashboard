@@ -239,6 +239,7 @@ builder.Services.AddDbContext<CropQcDbContext>((services, options) =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IDashboardDataService, DashboardDataService>();
+builder.Services.AddScoped<IReceiptQcWorkflowService, ReceiptQcWorkflowService>();
 builder.Services.AddScoped<IEndOfDayFillService, EndOfDayFillService>();
 builder.Services.AddScoped<IEndOfDayFillAdminService, EndOfDayFillAdminService>();
 builder.Services.AddScoped<IEndOfDayFillInventorySource, EndOfDayFillInventorySource>();
@@ -373,6 +374,18 @@ if (schemaVerificationCommand is not null)
 if (args.Contains("--verify-inventory-deductions", StringComparer.OrdinalIgnoreCase))
 {
     Environment.ExitCode = await VerifyInventoryDeductionReadinessAsync(app.Services) ? 0 : 1;
+    return;
+}
+
+if (args.Contains("--audit-receipt-qc-samples", StringComparer.OrdinalIgnoreCase))
+{
+    await using var auditScope = app.Services.CreateAsyncScope();
+    var auditDb = auditScope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+    var audit = await ReceiptQcSampleCoordinator.GetHistoricalDuplicateAuditAsync(auditDb, CancellationToken.None);
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(
+        audit,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true }));
+    Environment.ExitCode = 0;
     return;
 }
 

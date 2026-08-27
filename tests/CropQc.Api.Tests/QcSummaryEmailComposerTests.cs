@@ -449,15 +449,15 @@ public sealed class QcSummaryEmailComposerTests
     }
 
     [Fact]
-    public void ReceiptsCreateSample_UsesMasterDataDropdown()
+    public void ReceiptsOpenReceiving_UsesConfiguredSampleTypeWithoutManualDropdown()
     {
         var receiptView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Details.cshtml"));
         var service = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
         var seeder = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "MasterDataSeeder.cs"));
 
-        Assert.Contains("Model.SampleTypes", receiptView);
-        Assert.Contains("name=\"SampleTypeId\"", receiptView);
-        Assert.Contains("CreateSampleAsync", service);
+        Assert.DoesNotContain("Model.SampleTypes", receiptView);
+        Assert.DoesNotContain("name=\"SampleTypeId\"", receiptView);
+        Assert.Contains("ReceiptQcSampleCoordinator.OpenOrCreateAsync", service);
         Assert.Contains("\"Lot Sample\"", seeder);
     }
 

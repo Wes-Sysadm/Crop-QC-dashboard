@@ -16,6 +16,7 @@ public sealed class ReceiptsController(
     IDashboardDataService dataService,
     IReceiptPurgeService receiptPurgeService,
     IReceiptInventoryOverrideService receiptInventoryOverrideService,
+    IReceiptQcWorkflowService receiptQcWorkflowService,
     IReceivingTreatmentService receivingTreatmentService,
     ITreatmentReportAttachmentService treatmentReportAttachmentService,
     IUserAccessService userAccessService,
@@ -104,6 +105,7 @@ public sealed class ReceiptsController(
 
     [HttpPost("Create")]
     [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(
         CreateReceiptForm form,
         List<StagedReceiptPhotoForm> stagedPhotos,
@@ -113,11 +115,6 @@ public sealed class ReceiptsController(
         if (!result.Succeeded)
         {
             TempData["Error"] = result.Error;
-            return RedirectToAction(nameof(Index));
-        }
-
-        if (stagedPhotos.Count == 0)
-        {
             return RedirectToAction(nameof(Index));
         }
 
@@ -148,16 +145,35 @@ public sealed class ReceiptsController(
             }
         }
 
-        if (failures > 0)
+        if (stagedPhotos.Count > 0 && failures > 0)
         {
             TempData["Warning"] = $"Receipt {result.ReceiptNumber} was saved, but {failures} of {stagedPhotos.Count} photos could not be uploaded. You can add the missing photo from Receipt Photos.";
         }
-        else
+        else if (stagedPhotos.Count > 0)
         {
             TempData["Success"] = $"Receipt {result.ReceiptNumber} and {stagedPhotos.Count} photo{(stagedPhotos.Count == 1 ? "" : "s")} saved.";
         }
 
-        return RedirectToAction(nameof(Details), new { id = result.ReceiptId });
+        var openResult = await receiptQcWorkflowService.OpenAsync(
+            result.ReceiptId!.Value,
+            allowCreate: true,
+            User,
+            cancellationToken);
+        if (openResult.Sample is null)
+        {
+            TempData[openResult.HistoricalConflict ? "Warning" : "Error"] = openResult.Error;
+            return RedirectToAction(nameof(Details), new { id = result.ReceiptId });
+        }
+
+        TempData["Success"] ??= $"Receipt {result.ReceiptNumber} was saved and Receiving is ready.";
+        var canViewSample = await userAccessService.HasAccessAsync(
+            User,
+            ApplicationAreas.DailyQc,
+            PageAccessLevel.View,
+            cancellationToken);
+        return canViewSample
+            ? RedirectToAction("Details", "Samples", new { id = openResult.Sample.Id })
+            : RedirectToAction(nameof(Details), new { id = result.ReceiptId });
     }
 
     [HttpGet("{id:long}")]
@@ -167,11 +183,12 @@ public sealed class ReceiptsController(
 
     [HttpGet("{id:long}/Treatments/Apply")]
     [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
-    public async Task<IActionResult> ApplyTreatment(long id, CancellationToken cancellationToken) =>
+    public async Task<IActionResult> ApplyTreatment(long id, long? returnSampleId, CancellationToken cancellationToken) =>
         View("ApplyTreatment", await receivingTreatmentService.GetReceiptApplyPageAsync(new ReceiptTreatmentApplyForm
         {
             ReceiptId = id,
-            AppliedAt = businessTime.NowPacific
+            AppliedAt = businessTime.NowPacific,
+            ReturnSampleId = returnSampleId
         }, false, cancellationToken));
 
     [HttpPost("{id:long}/Treatments/Review")]
@@ -211,6 +228,13 @@ public sealed class ReceiptsController(
             TempData["Success"] = attachmentResult.Uploaded == 0
                 ? "Receiving treatment recorded for the exact Receipt bins without changing inventory quantity."
                 : $"Receiving treatment and {attachmentResult.Uploaded} report attachment{(attachmentResult.Uploaded == 1 ? "" : "s")} recorded without changing inventory quantity.";
+        }
+        if (form.ReturnSampleId is long returnSampleId
+            && await dbContext.QcSamples.AsNoTracking().AnyAsync(
+                x => x.Id == returnSampleId && x.ReceiptId == id && !x.IsDeleted,
+                cancellationToken))
+        {
+            return RedirectToAction("Details", "Samples", new { id = returnSampleId });
         }
         return RedirectToAction(nameof(Details), new { id });
     }
@@ -276,7 +300,8 @@ public sealed class ReceiptsController(
         var photo = await dbContext.QcPhotos.AsNoTracking()
             .SingleOrDefaultAsync(
                 x => x.Id == photoId
-                    && x.ReceiptId == id
+                    && (x.ReceiptId == id
+                        || (x.QcSampleId != null && x.QcSample!.ReceiptId == id))
                     && !x.IsDeleted,
                 cancellationToken);
         var key = photo?.FileId ?? photo?.SharePointItemId;
@@ -409,23 +434,28 @@ public sealed class ReceiptsController(
         return model is null ? NotFound() : View(model);
     }
 
+    [HttpPost("{id:long}/receiving/open")]
     [HttpPost("{id:long}/samples")]
-    [Authorize(Policy = AccessPolicyNames.DailyQcEdit)]
-    public async Task<IActionResult> CreateSample(long id, CreateReceiptSampleForm form, CancellationToken cancellationToken)
+    [Authorize(Policy = AccessPolicyNames.DailyQcView)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> OpenReceiving(long id, CancellationToken cancellationToken)
     {
-        var result = await dataService.CreateSampleAsync(id, form.SampleTypeId, cancellationToken);
-        if (result.Error is not null)
+        var canCreate = await userAccessService.HasAccessAsync(
+            User,
+            ApplicationAreas.DailyQc,
+            PageAccessLevel.Edit,
+            cancellationToken);
+        var result = await receiptQcWorkflowService.OpenAsync(id, canCreate, User, cancellationToken);
+        if (result.Sample is null)
         {
-            TempData["Error"] = result.Error;
+            TempData[result.HistoricalConflict ? "Warning" : "Error"] = result.Error;
             return RedirectToAction(nameof(Details), new { id });
         }
 
-        if (result.Warning is not null)
-        {
-            TempData["Warning"] = result.Warning;
-        }
-
-        return RedirectToAction("Details", "Samples", new { id = result.SampleId });
+        TempData["Success"] = result.Created
+            ? "The Receipt's QC sample was created."
+            : "The existing Receipt QC sample was opened.";
+        return RedirectToAction("Details", "Samples", new { id = result.Sample.Id });
     }
 
     [HttpPost("{id:long}/photos")]

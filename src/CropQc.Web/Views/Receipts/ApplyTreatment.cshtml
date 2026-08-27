@@ -9,7 +9,7 @@
         <h1>Apply Receiving Treatment</h1>
         <p class="muted">This treatment applies only to the exact current bins proven to belong to this Receipt.</p>
     </div>
-    <a class="button secondary-button" href="/Receipts/@Model.Form.ReceiptId">Back to Receipt</a>
+    <a class="button secondary-button" href="@(Model.Form.ReturnSampleId is long sampleId ? $"/Samples/{sampleId}" : $"/Receipts/{Model.Form.ReceiptId}")">Back to @(Model.Form.ReturnSampleId is null ? "Receipt" : "Receiving")</a>
 </div>
 
 @if (Model.Error is not null)
@@ -33,6 +33,7 @@
         <form method="post" action="/Receipts/@Model.Form.ReceiptId/Treatments/Review" class="stacked-form treatment-form">
             @Html.AntiForgeryToken()
             <input type="hidden" name="ReceiptId" value="@Model.Form.ReceiptId" />
+            <input type="hidden" name="ReturnSampleId" value="@Model.Form.ReturnSampleId" />
             <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
             <label class="field">Applied at
                 <input type="datetime-local" name="AppliedAt" value="@Model.Form.AppliedAt.ToString("yyyy-MM-ddTHH:mm")" required />
@@ -66,6 +67,7 @@
         <form method="post" enctype="multipart/form-data" action="/Receipts/@Model.Form.ReceiptId/Treatments" class="stacked-form treatment-confirm-actions treatment-report-form" data-treatment-report-form>
             @Html.AntiForgeryToken()
             <input type="hidden" name="ReceiptId" value="@Model.Form.ReceiptId" />
+            <input type="hidden" name="ReturnSampleId" value="@Model.Form.ReturnSampleId" />
             <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
             <input type="hidden" name="TreatmentChemicalId" value="@Model.Form.TreatmentChemicalId" />
             <input type="hidden" name="AppliedAt" value="@Model.Form.AppliedAt.ToString("O")" />
@@ -85,7 +87,7 @@
             </section>
             <div class="inline-actions">
                 <button type="submit" data-treatment-report-submit>Apply Treatment</button>
-                <a class="button secondary-button" href="/Receipts/@Model.Form.ReceiptId/Treatments/Apply">Change</a>
+                <a class="button secondary-button" href="/Receipts/@Model.Form.ReceiptId/Treatments/Apply?returnSampleId=@Model.Form.ReturnSampleId">Change</a>
             </div>
         </form>
     }

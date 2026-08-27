@@ -19,40 +19,38 @@ public sealed class QcSampleService(CropQcDbContext dbContext, IAuditService aud
 {
     public async Task<(QcSampleDto? Sample, string? Error)> CreateAsync(long receiptId, CreateQcSampleRequest request, CancellationToken cancellationToken)
     {
-        var receipt = await dbContext.Receipts.SingleOrDefaultAsync(x => x.Id == receiptId && !x.IsDeleted, cancellationToken);
-        if (receipt is null)
-        {
-            return (null, "Receipt not found.");
-        }
-
         if (request.SampleTypeId <= 0)
         {
             return (null, "SampleTypeId is required.");
         }
 
-        var existingCount = await dbContext.QcSamples.CountAsync(x => x.ReceiptId == receiptId && !x.IsDeleted, cancellationToken);
-        var sequence = existingCount + 1;
-        var sample = new QcSample
+        var result = await ReceiptQcSampleCoordinator.OpenOrCreateAsync(
+            dbContext,
+            receiptId,
+            allowCreate: true,
+            request.SampleTypeId,
+            request.TakenByUserId,
+            request.QcStationId,
+            request.ActualSampleSize,
+            request.SampleTakenAt,
+            request.Notes,
+            cancellationToken);
+        if (result.Sample is null || result.Receipt is null)
         {
-            ReceiptId = receiptId,
-            SampleTypeId = request.SampleTypeId,
-            SampleSequenceNumber = sequence,
-            Status = sequence > 1 ? "Needs Review" : "Data Entry In Progress",
-            StarchStatus = "Starch Pending",
-            PhotoStatus = "Photo Pending",
-            EmailStatus = "Not Sent",
-            TakenByUserId = request.TakenByUserId,
-            QcStationId = request.QcStationId,
-            ActualSampleSize = request.ActualSampleSize,
-            Notes = request.Notes,
-            SampleTakenAt = request.SampleTakenAt ?? DateTimeOffset.UtcNow,
-            CreatedAt = DateTimeOffset.UtcNow
-        };
+            return (null, result.Error);
+        }
 
-        dbContext.QcSamples.Add(sample);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await auditService.RecordAsync("Create", nameof(QcSample), sample.Id.ToString(), afterValuesJson: sequence > 1 ? "Duplicate receiving sample marked Needs Review." : "QC sample created.", cancellationToken: cancellationToken);
-        return (ToDto(sample, receipt.CompuTechReceiptId), null);
+        if (result.Created)
+        {
+            await auditService.RecordAsync(
+                "Create",
+                nameof(QcSample),
+                result.Sample.Id.ToString(),
+                afterValuesJson: $"Single receipt QC sample created as {result.Sample.SampleTypeId}.",
+                cancellationToken: cancellationToken);
+        }
+
+        return (ToDto(result.Sample, result.Receipt.CompuTechReceiptId), null);
     }
 
     public async Task<QcSampleDto?> GetAsync(long id, CancellationToken cancellationToken) =>
