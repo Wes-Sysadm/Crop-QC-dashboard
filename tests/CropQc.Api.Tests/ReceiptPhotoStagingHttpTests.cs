@@ -387,6 +387,87 @@ public sealed class ReceiptPhotoStagingHttpTests
     }
 
     [Fact]
+    public async Task AuthenticatedPostgreSql_ReceiptPhotoReclassificationPreservesStorageAndIsAudited_WhenConfigured()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_RECEIPT_PHOTO_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connectionString);
+        await using var factory = new ReceiptPhotoPostgreSqlFactory(connectionString);
+        using var client = factory.CreateOwnerClient();
+        int warehouseId;
+        int roomId;
+        int fruitProfileId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var room = await db.Rooms.AsNoTracking()
+                .Where(x => x.IsActive && x.Warehouse.IsActive)
+                .OrderBy(x => x.Warehouse.Code)
+                .ThenBy(x => x.SortOrder)
+                .FirstAsync();
+            warehouseId = room.WarehouseId;
+            roomId = room.Id;
+            fruitProfileId = await db.FruitProfiles.AsNoTracking()
+                .Where(x => x.IsActive)
+                .OrderBy(x => x.VarietyCode)
+                .Select(x => x.Id)
+                .FirstAsync();
+        }
+
+        var receiptNumber = $"CODEX-MOVE-{Guid.NewGuid():N}"[..30];
+        var content = await ReceiptFormAsync(client, receiptNumber, warehouseId, roomId, fruitProfileId);
+        AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "Upload File", [0xff, 0xd8, 0xff, 0xd9]);
+        var create = await client.PostAsync("/Receipts/Create", content);
+        Assert.Equal(HttpStatusCode.Redirect, create.StatusCode);
+
+        long sampleId;
+        long receiptId;
+        long photoId;
+        string? fileId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var receipt = await db.Receipts.SingleAsync(x => x.CompuTechReceiptId == receiptNumber);
+            receiptId = receipt.Id;
+            sampleId = (await db.QcSamples.SingleAsync(x => x.ReceiptId == receipt.Id)).Id;
+            var photo = await db.QcPhotos.SingleAsync(x => x.ReceiptId == receipt.Id);
+            photoId = photo.Id;
+            fileId = photo.FileId;
+        }
+
+        var token = await AntiforgeryTokenAsync(client, $"/Samples/{sampleId}");
+        var moved = await ReclassifyAsync(client, sampleId, photoId, "Hectre", token);
+        Assert.Equal(HttpStatusCode.OK, moved.StatusCode);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var photo = await db.QcPhotos.SingleAsync(x => x.Id == photoId);
+            Assert.Equal("Hectre", photo.PhotoType);
+            Assert.Equal(sampleId, photo.QcSampleId);
+            Assert.Null(photo.ReceiptId);
+            Assert.Equal(fileId, photo.FileId);
+            Assert.Equal(1, await db.AuditLogs.CountAsync(x => x.Action == "reclassify-photo" && x.EntityKey == photoId.ToString()));
+        }
+
+        token = await AntiforgeryTokenAsync(client, $"/Samples/{sampleId}");
+        var restored = await ReclassifyAsync(client, sampleId, photoId, "BinTruck", token);
+        Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var photo = await db.QcPhotos.SingleAsync(x => x.Id == photoId);
+            Assert.Equal("BinTruck", photo.PhotoType);
+            Assert.Equal(receiptId, photo.ReceiptId);
+            Assert.Null(photo.QcSampleId);
+            Assert.Equal(fileId, photo.FileId);
+            Assert.Equal(2, await db.AuditLogs.CountAsync(x => x.Action == "reclassify-photo" && x.EntityKey == photoId.ToString()));
+        }
+        Assert.Equal(1, factory.Storage.SaveCount);
+        Assert.Equal(0, factory.Storage.DeleteCount);
+    }
+
+    [Fact]
     public async Task AuthenticatedPostgreSql_Run75Photo2339UsesProtectedContentWithoutWrites_WhenConfigured()
     {
         var connectionString = Environment.GetEnvironmentVariable("CROPQC_RECEIPT_PHOTO_RESTORED_POSTGRES");
