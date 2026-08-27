@@ -391,6 +391,34 @@ public sealed class RunSheetReconciliationTests
     }
 
     [Fact]
+    public void ConsecutiveWpOrbaRuns_MatchIndependentlyWithoutCrossPairing()
+    {
+        var sheetRuns = new[]
+        {
+            External(EmploymentFacilities.Wp, new(2026, 7, 29), "ORBA", "Organic", "Domex", 155, ("1080", 155)),
+            External(EmploymentFacilities.Wp, new(2026, 7, 30), "ORBA", "Organic", "Domex", 173, ("1080", 173))
+        };
+        var cropRuns = new[]
+        {
+            Crop(EmploymentFacilities.Wp, new(2026, 7, 29), ["ORBA"], ["Organic"], "Domex", 155, [2], ("1080", 155)),
+            Crop(EmploymentFacilities.Wp, new(2026, 7, 30), ["ORBA"], ["Organic"], "Domex", 173, [3], ("1080", 173))
+        };
+
+        var items = Match(EmploymentFacilities.Wp, sheetRuns, cropRuns);
+
+        Assert.Equal(2, items.Count);
+        Assert.All(items, item => Assert.Equal(RunSheetReconciliationStates.Match, item.State));
+        Assert.Contains(items, item => item.SheetDate == new DateOnly(2026, 7, 29)
+            && item.CropQcDate == new DateOnly(2026, 7, 29)
+            && item.SheetBins == 155 && item.CropQcBins == 155 && item.ActualRunIds.SequenceEqual([2L]));
+        Assert.Contains(items, item => item.SheetDate == new DateOnly(2026, 7, 30)
+            && item.CropQcDate == new DateOnly(2026, 7, 30)
+            && item.SheetBins == 173 && item.CropQcBins == 173 && item.ActualRunIds.SequenceEqual([3L]));
+        Assert.DoesNotContain(items, item => item.Reasons.Contains(RunSheetReconciliationReasons.MissingFromCropQc));
+        Assert.DoesNotContain(items, item => item.Reasons.Contains(RunSheetReconciliationReasons.MissingFromSheet));
+    }
+
+    [Fact]
     public async Task SnapshotFailureWithoutCache_IsUnavailableNotMissing()
     {
         using var db = Db();
@@ -554,6 +582,8 @@ public sealed class RunSheetReconciliationTests
         Assert.Contains("Crop QC", source);
         Assert.Contains("Grower allocation", source);
         Assert.Contains("/BinsRun/ActualRuns/", source);
+        Assert.Contains("Crop QC data-integrity issue", source);
+        Assert.Contains("No reporting identity was guessed", source);
         Assert.DoesNotContain("Dismiss reconciliation", source, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Ignore reconciliation", source, StringComparison.OrdinalIgnoreCase);
     }

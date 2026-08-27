@@ -1131,7 +1131,11 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
                             _ => "ATTENTION NEEDED"
                         };
                         <details class="subpanel" open="@isAttention">
-                            <summary><strong>@stateLabel</strong> · @item.Facility · @(item.SheetDate?.ToString("M/d/yyyy") ?? item.CropQcDate?.ToString("M/d/yyyy") ?? "Unknown date") · @item.SheetVariety</summary>
+                            <summary><strong>@stateLabel</strong> · @item.Facility · @(item.SheetDate?.ToString("M/d/yyyy") ?? item.CropQcDate?.ToString("M/d/yyyy") ?? "Unknown date") · @(item.SheetVariety == "—" ? item.CropQcVariety : item.SheetVariety)</summary>
+                            @if (!string.IsNullOrWhiteSpace(item.DiagnosticMessage))
+                            {
+                                <p class="notice warning"><strong>Crop QC data-integrity issue.</strong> @item.DiagnosticMessage No reporting identity was guessed.</p>
+                            }
                             @if (item.Reasons.Count > 0)
                             {
                                 <ul>

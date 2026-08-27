@@ -23,6 +23,7 @@ public static class RunSheetReconciliationReasons
     public const string SalesDeskMissing = "Sales Desk missing";
     public const string SalesDeskMismatch = "Sales Desk mismatch";
     public const string UnknownSalesDeskCode = "Unknown Sales Desk code";
+    public const string IncompleteCropQcReportingIdentity = "IncompleteCropQcReportingIdentity";
 }
 
 public sealed class RunSheetReconciliationViewModel
@@ -56,6 +57,7 @@ public sealed class RunSheetReconciliationItemViewModel
     public IReadOnlyList<string> Reasons { get; set; } = [];
     public IReadOnlyList<long> ActualRunIds { get; set; } = [];
     public IReadOnlyList<RunSheetGrowerComparisonViewModel> Growers { get; set; } = [];
+    public string? DiagnosticMessage { get; set; }
 }
 
 public sealed record RunSheetGrowerComparisonViewModel(string GrowerNumber, int SheetBins, int CropQcBins);

@@ -38,6 +38,15 @@ public static class AuthoritativeRunReportingQuery
             && x.LotNumber != ""
             && x.Warehouse.Code != "");
 
+    public static IQueryable<BinsRunEntry> ApplyIncompleteGrowerLotIdentityRules(IQueryable<BinsRunEntry> query) =>
+        query.Where(x => x.ReportingFruitProfileIdSnapshot == null
+            || x.ReportingVarietyCodeSnapshot == null || x.ReportingVarietyCodeSnapshot == ""
+            || x.ProductionTypeSnapshot == null || x.ProductionTypeSnapshot == ""
+            || x.IsOrganicSnapshot == null
+            || x.GrowerNumberSnapshot == null || x.GrowerNumberSnapshot == ""
+            || x.LotNumber == ""
+            || x.Warehouse.Code == "");
+
     public static IQueryable<BinsRunEntry> ApplyValidRules(IQueryable<BinsRunEntry> query) =>
         ApplyCompleteGrowerLotIdentityRules(
             ApplyWpEbsRunFacilityRules(
