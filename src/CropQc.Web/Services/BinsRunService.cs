@@ -1246,6 +1246,11 @@ public sealed class BinsRunService(
             {
                 return $"{ActualRunLineLabel(snapshot)} has multiple treatment histories. Select the exact treatment segment being packed.";
             }
+            if (!selectedTreatment.IsAvailable)
+            {
+                return selectedTreatment.UnavailableReason
+                    ?? $"{ActualRunLineLabel(snapshot)} has treatment lineage that requires review and cannot be packed.";
+            }
             var restored = activeEntries
                 .Where(x => SameInventory(x, snapshot)
                     && (roomTreatmentService is null
@@ -1559,7 +1564,14 @@ public sealed class BinsRunService(
             await dbContext.SaveChangesAsync(cancellationToken);
             if (roomTreatmentService is not null)
             {
-                var ledgerSnapshot = ToLedgerSnapshot(item.Snapshot);
+                // Multiple Actual Run lines can consume different treatment segments from the
+                // same canonical inventory identity. Materialization must see the balance
+                // immediately before this line, not the stale pre-run snapshot, or a later line
+                // can recreate bins already consumed by an earlier line.
+                var ledgerSnapshot = ToLedgerSnapshot(item.Snapshot) with
+                {
+                    CurrentBins = canonicalPrevious
+                };
                 entry.TreatmentStateSnapshot = item.Treatment.TreatmentState;
                 entry.TreatmentSignatureSnapshot = item.Treatment.TreatmentSignature;
                 entry.TreatmentSummarySnapshot = item.Treatment.Label;
@@ -2147,7 +2159,9 @@ public sealed class BinsRunService(
                     x.GrowerNumber ?? "",
                     sealedRoomIds.Contains(x.RoomId),
                     segment.SegmentId,
-                    segment.ReceiptId));
+                    segment.ReceiptId,
+                    segment.IsAvailable,
+                    segment.UnavailableReason));
             }
         }
         return options;

@@ -85,6 +85,7 @@ public sealed class InterCrewTransferService(
         {
             var option = (await inventoryProvider.GetInventoryAsync(cancellationToken)).SingleOrDefault(x => x.SourceKey == form.SourceKey);
             if (option is null) return Fail("The selected current inventory is no longer available. Refresh and retry.");
+            if (!option.IsAvailable) return Fail(option.UnavailableReason ?? "The selected treatment lineage requires review and cannot be dispatched.");
             var allowed = AllowedDestinationGroups(option.Facility);
             if (!allowed.Contains(form.DestinationCustodyGroup, StringComparer.Ordinal))
                 return Fail("That source and destination must use the existing immediate internal transfer workflow.");

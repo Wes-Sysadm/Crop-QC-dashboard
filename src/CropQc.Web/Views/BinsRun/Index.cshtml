@@ -1458,9 +1458,9 @@ else
                                 var option = Model.AvailableInventory[i];
                                 var isSelected = editLines.TryGetValue($"{option.InventoryKey}|{option.TreatmentSignature}|{option.TreatmentSegmentId}", out var editLine);
                                 var effectiveAvailable = option.CurrentBins + (isSelected ? editLine!.BinsRun : 0);
-                                <tr data-actual-run-row data-current-bins="@effectiveAvailable" class="@(option.IsRoomSealed ? "sealed-inventory-row" : "")">
+                                <tr data-actual-run-row data-current-bins="@effectiveAvailable" class="@(option.IsRoomSealed || !option.IsAvailable ? "sealed-inventory-row" : "")">
                                     <td>
-                                        <input type="checkbox" data-actual-line-toggle aria-label="Include @option.Room @option.Lot" checked="@isSelected" disabled="@option.IsRoomSealed" />
+                                        <input type="checkbox" data-actual-line-toggle aria-label="Include @option.Room @option.Lot" checked="@isSelected" disabled="@(option.IsRoomSealed || !option.IsAvailable)" />
                                         <input type="hidden" name="Lines.Index" value="@i" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].InventoryKey" value="@option.InventoryKey" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].TreatmentSignature" value="@option.TreatmentSignature" data-actual-line-field disabled="@(!isSelected)" />
@@ -1473,7 +1473,7 @@ else
                                     <td>@option.Grower</td>
                                     <td>@option.Variety</td>
                                     <td>@(string.IsNullOrWhiteSpace(option.ProductionType) ? "Unknown" : option.ProductionType)</td>
-                                    <td>@option.TreatmentLabel</td>
+                                    <td>@option.TreatmentLabel@if (!option.IsAvailable) { <br /><strong class="status-warning">@option.UnavailableReason</strong> }</td>
                                     <td>@(option.CropYear?.ToString() ?? "Unknown")</td>
                                     <td>@effectiveAvailable</td>
                                     <td>
@@ -1546,12 +1546,15 @@ else
                     <a class="choice-card @(!outsideTransferMode && !interCrewTransferMode ? "selected" : "")" href="/BinsRun?Section=Transfer&amp;TransferType=Internal&amp;RoomId=@Model.Filter.RoomId">
                         <strong>Internal Room Transfer</strong><small>Move fruit between Crop QC Rooms.</small>
                     </a>
-                    <a class="choice-card @(interCrewTransferMode ? "selected" : "")" href="/BinsRun?Section=Transfer&amp;TransferType=InterCrew">
-                        <strong>Transfer to Another Crew</strong><small>Dispatch bins In Transit for WP / DH or EBS to receive.</small>
-                    </a>
-                    <a class="choice-card @(outsideTransferMode ? "selected" : "")" href="/BinsRun?Section=Transfer&amp;TransferType=Outside&amp;WarehouseId=@Model.Filter.WarehouseId&amp;RoomId=@Model.Filter.RoomId">
-                        <strong>Outside Warehouse</strong><small>Send fruit out of Crop QC current inventory for outside packing.</small>
-                    </a>
+                    @if (Model.TransferCustodyEnabled)
+                    {
+                        <a class="choice-card @(interCrewTransferMode ? "selected" : "")" href="/BinsRun?Section=Transfer&amp;TransferType=InterCrew">
+                            <strong>Transfer to Another Crew</strong><small>Dispatch bins In Transit for WP / DH or EBS to receive.</small>
+                        </a>
+                        <a class="choice-card @(outsideTransferMode ? "selected" : "")" href="/BinsRun?Section=Transfer&amp;TransferType=Outside&amp;WarehouseId=@Model.Filter.WarehouseId&amp;RoomId=@Model.Filter.RoomId">
+                            <strong>Outside Warehouse</strong><small>Send fruit out of Crop QC current inventory for outside packing.</small>
+                        </a>
+                    }
                 </div>
             </fieldset>
             @if (outsideTransferMode)

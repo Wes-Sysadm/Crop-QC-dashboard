@@ -46,7 +46,9 @@ public sealed record OutsideWarehouseInventoryOptionViewModel(
     long SourceInventoryAdjustmentId,
     long? ReceiptId,
     bool IsRoomSealed,
-    long? TreatmentSegmentId);
+    long? TreatmentSegmentId,
+    bool IsAvailable = true,
+    string? UnavailableReason = null);
 
 public sealed record OutsideWarehouseTransferHistoryViewModel(
     long Id,

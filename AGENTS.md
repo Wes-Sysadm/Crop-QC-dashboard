@@ -182,6 +182,10 @@ For browser, API, QC Station, and device-capture work:
 
 ## Pull request expectations
 
+Production releases must also follow the mandatory overnight release standard in `docs/overnight-release-standard.md`. A deploy authorization does not waive its fresh-backup, restored-rehearsal, exact-SHA, readiness, rollback, or post-deploy verification gates.
+
+Availability is the primary release gate. Test the exact frozen main SHA against a fresh production restore before maintenance, exercise every materially changed authenticated route, and keep synthetic mutations off production. Maintenance is only the final bounded execution window: a critical operational HTTP 500 triggers rollback, and unresolved post-deploy troubleshooting stops after 15 minutes with rollback/feature disable and PR reopen. Prefer additive schema and application rollback; never overwrite newer legitimate production activity with an old backup merely to undo a software release. Major operational workflows should default off behind a kill switch when practical.
+
 Every pull request should explain:
 
 - what problem was reported

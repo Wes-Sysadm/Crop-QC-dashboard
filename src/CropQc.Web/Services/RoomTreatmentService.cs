@@ -21,7 +21,10 @@ public sealed record TreatmentSegmentSelection(
     int CurrentBins,
     string Label,
     long? ReceiptId = null,
-    long? SegmentId = null);
+    long? SegmentId = null,
+    bool IsAvailable = true,
+    string? UnavailableReason = null,
+    int? ExplicitBins = null);
 
 public sealed record TreatmentLineageWriteResult(bool Success, string? Error, long? MovementId = null);
 
@@ -650,7 +653,7 @@ public sealed class RoomTreatmentService(
     public async Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken)
     {
         var projected = (await ProjectSelectionsBatchAsync([snapshot], cancellationToken))[SelectionLookupKey(snapshot)];
-        return projected.Select(x => new TreatmentSegmentSelection(x.IdentityKey, x.TreatmentSignature, x.TreatmentState, x.Bins, SegmentLabel(x), x.ReceiptId, x.SegmentId)).ToList();
+        return projected.Select(ToSelection).ToList();
     }
 
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetSelectionsAsync(
@@ -661,8 +664,7 @@ public sealed class RoomTreatmentService(
         var projected = await ProjectSelectionsBatchAsync(active, cancellationToken);
         return projected.ToDictionary(
             x => x.Key,
-            x => (IReadOnlyList<TreatmentSegmentSelection>)x.Value.Select(y => new TreatmentSegmentSelection(
-                y.IdentityKey, y.TreatmentSignature, y.TreatmentState, y.Bins, SegmentLabel(y), y.ReceiptId, y.SegmentId)).ToList());
+            x => (IReadOnlyList<TreatmentSegmentSelection>)x.Value.Select(ToSelection).ToList());
     }
 
     public Task<TreatmentLineageWriteResult> MoveAsync(
@@ -1513,8 +1515,19 @@ public sealed class RoomTreatmentService(
                     snapshot.ProductionType, snapshot.IsOrganic, segment.CurrentBins, segment.TreatmentState,
                     segment.TreatmentSignature, applications, segment.ReceiptId));
             }
-            var implicitBins = snapshot.CurrentBins - output.Sum(x => x.Bins);
-            if (implicitBins < 0) throw new InvalidOperationException($"Treatment lineage exceeds authoritative inventory for room {snapshot.RoomId}, identity {key}.");
+            var explicitBins = output.Sum(x => x.Bins);
+            var implicitBins = snapshot.CurrentBins - explicitBins;
+            if (implicitBins < 0)
+            {
+                output.Clear();
+                output.Add(new CurrentTreatmentSegmentViewModel(
+                    null, key, snapshot.GrowerNumber ?? snapshot.Lot, snapshot.Grower, snapshot.VarietyName,
+                    snapshot.ProductionType, snapshot.IsOrganic, snapshot.CurrentBins, "NeedsReview",
+                    "needs-review", [], null, false,
+                    $"Treatment lineage requires review: {explicitBins} explicit bins exceed {snapshot.CurrentBins} authoritative bins.",
+                    explicitBins));
+                continue;
+            }
             if (implicitBins > 0)
             {
                 output.Add(new CurrentTreatmentSegmentViewModel(null, key, snapshot.GrowerNumber ?? snapshot.Lot, snapshot.Grower,
@@ -1553,6 +1566,10 @@ public sealed class RoomTreatmentService(
             DroppedBinsRestored = distinct.Sum(x => x.DroppedBinsRestored)
         };
     }
+
+    private static TreatmentSegmentSelection ToSelection(CurrentTreatmentSegmentViewModel value) =>
+        new(value.IdentityKey, value.TreatmentSignature, value.TreatmentState, value.Bins, SegmentLabel(value),
+            value.ReceiptId, value.SegmentId, value.IsAvailable, value.UnavailableReason, value.ExplicitBins);
 
     private async Task<TreatmentLineageSegment> GetOrCreateSegmentAsync(RoomInventoryLedgerSnapshot snapshot, string state, string signature, DateTimeOffset now, CancellationToken cancellationToken, long? receiptId = null)
     {
@@ -1661,7 +1678,9 @@ public sealed class RoomTreatmentService(
             .Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         return crops.Count == 1 && snapshots.All(x => !string.IsNullOrWhiteSpace(x.FruitType)) ? crops[0] : null;
     }
-    private static string SegmentLabel(CurrentTreatmentSegmentViewModel x) => x.TreatmentState == TreatmentLineageStates.Untreated
+    private static string SegmentLabel(CurrentTreatmentSegmentViewModel x) => !x.IsAvailable
+        ? "Needs Review — unavailable for inventory movement"
+        : x.TreatmentState == TreatmentLineageStates.Untreated
         ? "Untreated"
         : x.TreatmentState == TreatmentLineageStates.Unknown
             ? x.Treatments.Count == 0 ? "Treatment status unknown / unconfirmed" : $"Unconfirmed prior status; {string.Join(" + ", x.Treatments.Select(t => t.CommonName ?? t.ProductName))}"

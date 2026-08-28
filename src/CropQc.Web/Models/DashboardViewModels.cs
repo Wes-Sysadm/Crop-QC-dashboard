@@ -257,7 +257,10 @@ public sealed record CurrentTreatmentSegmentViewModel(
     string TreatmentState,
     string TreatmentSignature,
     IReadOnlyList<TreatmentApplicationSummaryViewModel> Treatments,
-    long? ReceiptId = null);
+    long? ReceiptId = null,
+    bool IsAvailable = true,
+    string? UnavailableReason = null,
+    int? ExplicitBins = null);
 
 public sealed record TreatmentApplicationSummaryViewModel(
     long Id,
@@ -783,6 +786,7 @@ public sealed class BinsRunPageViewModel
     public IReadOnlyList<RoomInventoryAdjustmentListItemViewModel> InventoryActivity { get; set; } = [];
     public OutsideWarehouseTransferPageViewModel OutsideWarehouseTransfers { get; set; } = new();
     public InterCrewTransferPageViewModel InterCrewTransfers { get; set; } = new();
+    public bool TransferCustodyEnabled { get; set; }
     public RunReportingPageViewModel RunReporting { get; set; } = new();
 }
 
@@ -943,7 +947,9 @@ public sealed record BinsRunInventoryOptionViewModel(
     string GrowerNumber = "",
     bool IsRoomSealed = false,
     long? TreatmentSegmentId = null,
-    long? TreatmentReceiptId = null);
+    long? TreatmentReceiptId = null,
+    bool IsAvailable = true,
+    string? UnavailableReason = null);
 
 public sealed class ActualRunHistoryItemViewModel
 {
