@@ -33,8 +33,8 @@
                         <tbody>
                         @foreach (var item in Model.Inventory)
                         {
-                            <tr class="@(item.IsRoomSealed ? "muted" : null)">
-                                <td><input type="radio" name="SourceKey" value="@item.SourceKey" required disabled="@item.IsRoomSealed"
+                            <tr class="@(item.IsRoomSealed || !item.IsAvailable ? "muted" : null)">
+                                <td><input type="radio" name="SourceKey" value="@item.SourceKey" required disabled="@(item.IsRoomSealed || !item.IsAvailable)"
                                            checked="@(item.SourceKey == Model.Form.SourceKey)"
                                            data-available="@item.AvailableBins" data-facility="@item.Facility" data-room="@item.Room"
                                            data-grower="@item.GrowerNumber - @item.GrowerName" data-lot="@item.LotNumber"
@@ -44,7 +44,7 @@
                                 <td>@item.GrowerNumber - @item.GrowerName<br /><span class="muted">Lot @item.LotNumber</span></td>
                                 <td>@item.VarietyCode - @item.VarietyName</td>
                                 <td>@item.ProductionType</td>
-                                <td>@item.TreatmentSummary</td>
+                                <td>@item.TreatmentSummary@if (!item.IsAvailable) { <br /><strong class="status-warning">@item.UnavailableReason</strong> }</td>
                                 <td class="numeric">@item.AvailableBins</td>
                             </tr>
                         }

@@ -104,6 +104,7 @@ public sealed class OutsideWarehouseTransferService(
             Inventory = inventory,
             History = history,
             ReviewSource = selected,
+            Error = inventory.FirstOrDefault(x => !x.IsAvailable)?.UnavailableReason,
             CanCreate = await access.HasAccessAsync(principal, ApplicationAreas.Transfers, PageAccessLevel.Create, cancellationToken),
             CanAdmin = await access.HasAccessAsync(principal, ApplicationAreas.Transfers, PageAccessLevel.Admin, cancellationToken)
                 || await access.HasAccessAsync(principal, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken)
@@ -139,6 +140,8 @@ public sealed class OutsideWarehouseTransferService(
             if (outsideWarehouse is null) return new(false, false, null, "Select an active Outside Warehouse.");
             var options = await GetInventoryOptionsAsync(cancellationToken);
             var option = options.SingleOrDefault(x => x.SourceKey == form.SourceKey);
+            if (option is not null && !option.IsAvailable)
+                return new(false, false, null, option.UnavailableReason ?? "The selected treatment lineage requires review and cannot be transferred.");
             if (option is null) return new(false, false, null, "The selected current inventory is no longer available. Refresh and retry.");
             if (form.ExpectedAvailableBins != option.AvailableBins)
                 return new(false, false, null, "Source inventory changed after this page loaded. Refresh before retrying.");
@@ -462,7 +465,9 @@ public sealed class OutsideWarehouseTransferService(
                     snapshot.LatestAdjustmentId,
                     receiptId,
                     sealedRoomIds.Contains(snapshot.RoomId),
-                    segmentId));
+                    segmentId,
+                    grouped.All(x => x.IsAvailable),
+                    grouped.FirstOrDefault(x => !x.IsAvailable)?.UnavailableReason));
             }
         }
         return result.OrderBy(x => x.Facility).ThenBy(x => x.Room).ThenBy(x => x.GrowerNumber).ThenBy(x => x.VarietyName).ThenBy(x => x.TreatmentSummary).ToList();

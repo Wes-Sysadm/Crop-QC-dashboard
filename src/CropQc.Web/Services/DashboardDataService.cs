@@ -6098,6 +6098,13 @@ public sealed class DashboardDataService(
             {
                 return RoomTransferInventoryProjection.Failed(currentRoomBins, entries.Sum(x => x.Option.CurrentBins));
             }
+            if (segments.Any(x => !x.IsAvailable))
+            {
+                return RoomTransferInventoryProjection.Failed(
+                    currentRoomBins,
+                    entries.Sum(x => x.Option.CurrentBins),
+                    segments.First(x => !x.IsAvailable).UnavailableReason);
+            }
             if (segments.Any(x => x.CurrentBins <= 0) || segments.Sum(x => x.CurrentBins) != snapshot.CurrentBins)
             {
                 return RoomTransferInventoryProjection.Failed(
@@ -6148,8 +6155,8 @@ public sealed class DashboardDataService(
             ? Entries.Select(x => x.Option).ToList()
             : [];
 
-        public static RoomTransferInventoryProjection Failed(int currentRoomBins, int availableBins) =>
-            new(currentRoomBins, availableBins, false, TransferInventoryReconciliationError, []);
+        public static RoomTransferInventoryProjection Failed(int currentRoomBins, int availableBins, string? error = null) =>
+            new(currentRoomBins, availableBins, false, error ?? TransferInventoryReconciliationError, []);
     }
 
     private static string RoomLotKey(RoomLotSummaryViewModel lot) =>

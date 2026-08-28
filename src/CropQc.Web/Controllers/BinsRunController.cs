@@ -19,12 +19,20 @@ public sealed class BinsRunController(
     ILogger<BinsRunController> logger,
     IRunReportingService? runReportingService = null,
     IOutsideWarehouseTransferService outsideWarehouseTransferService = null!,
-    IInterCrewTransferService interCrewTransferService = null!) : Controller
+    IInterCrewTransferService interCrewTransferService = null!,
+    IConfiguration? configuration = null) : Controller
 {
+    private bool TransferCustodyEnabled => configuration?.GetValue<bool>("TransferCustody:Enabled") == true;
+
     [HttpGet("")]
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
     public async Task<IActionResult> Index([FromQuery] BinsRunFilterForm filter, CancellationToken cancellationToken)
     {
+        if (!TransferCustodyEnabled && (filter.TransferType.Equals("Outside", StringComparison.OrdinalIgnoreCase)
+            || filter.TransferType.Equals("InterCrew", StringComparison.OrdinalIgnoreCase)))
+        {
+            filter.TransferType = "Internal";
+        }
         var activeSection = string.IsNullOrWhiteSpace(filter.Section) ? "Planner" : filter.Section.Trim();
         var loadPlanner = activeSection.Equals("Planner", StringComparison.OrdinalIgnoreCase)
             || filter.ProjectionId is not null;
@@ -101,9 +109,13 @@ public sealed class BinsRunController(
 
         if (activeSection.Equals("Transfer", StringComparison.OrdinalIgnoreCase))
         {
-            model.OutsideWarehouseTransfers = await outsideWarehouseTransferService.GetPageAsync(filter, cancellationToken);
-            model.InterCrewTransfers = await interCrewTransferService.GetPageAsync(cancellationToken);
+            if (TransferCustodyEnabled)
+            {
+                model.OutsideWarehouseTransfers = await outsideWarehouseTransferService.GetPageAsync(filter, cancellationToken);
+                model.InterCrewTransfers = await interCrewTransferService.GetPageAsync(cancellationToken);
+            }
         }
+        model.TransferCustodyEnabled = TransferCustodyEnabled;
 
         return View(model);
     }
@@ -804,6 +816,7 @@ public sealed class BinsRunController(
     [Authorize(Policy = AccessPolicyNames.TransfersCreate)]
     public async Task<IActionResult> OutsideTransfer(OutsideWarehouseTransferForm form, CancellationToken cancellationToken)
     {
+        if (!TransferCustodyEnabled) return NotFound();
         var result = await outsideWarehouseTransferService.CreateAsync(form, cancellationToken);
         TempData[result.Success ? "Success" : "Error"] = result.Success
             ? result.AlreadyApplied ? "Outside Warehouse Transfer was already recorded." : "Outside Warehouse Transfer recorded."
@@ -817,6 +830,7 @@ public sealed class BinsRunController(
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
     public async Task<IActionResult> OutsideTransferDetails(long id, CancellationToken cancellationToken)
     {
+        if (!TransferCustodyEnabled) return NotFound();
         var model = await outsideWarehouseTransferService.GetDetailsAsync(id, cancellationToken);
         return model is null ? NotFound() : View("OutsideTransferDetails", model);
     }
@@ -828,6 +842,7 @@ public sealed class BinsRunController(
         OutsideWarehouseTransferReversalForm form,
         CancellationToken cancellationToken)
     {
+        if (!TransferCustodyEnabled) return NotFound();
         form.TransferId = id;
         var error = await outsideWarehouseTransferService.ReverseAsync(form, cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Outside Warehouse Transfer reversed and exact source inventory restored.";
@@ -838,6 +853,7 @@ public sealed class BinsRunController(
     [Authorize(Policy = AccessPolicyNames.TransfersCreate)]
     public async Task<IActionResult> DispatchInterCrewTransfer(InterCrewDispatchForm form, CancellationToken cancellationToken)
     {
+        if (!TransferCustodyEnabled) return NotFound();
         var result = await interCrewTransferService.DispatchAsync(form, cancellationToken);
         TempData[result.Success ? "Success" : "Error"] = result.Success
             ? result.AlreadyApplied ? "Transfer was already dispatched." : "Transfer dispatched and is now In Transit."
@@ -851,6 +867,7 @@ public sealed class BinsRunController(
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
     public async Task<IActionResult> InterCrewTransferDetails(long id, CancellationToken cancellationToken)
     {
+        if (!TransferCustodyEnabled) return NotFound();
         var model = await interCrewTransferService.GetDetailsAsync(id, cancellationToken);
         return model is null ? NotFound() : View(model);
     }
@@ -859,6 +876,7 @@ public sealed class BinsRunController(
     [Authorize(Policy = AccessPolicyNames.TransfersCreate)]
     public async Task<IActionResult> ReceiveInterCrewTransfer(long id, InterCrewReceiveForm form, CancellationToken cancellationToken)
     {
+        if (!TransferCustodyEnabled) return NotFound();
         form.TransferId = id;
         var result = await interCrewTransferService.ReceiveAsync(form, cancellationToken);
         TempData[result.Success ? "Success" : "Error"] = result.Success
@@ -871,6 +889,7 @@ public sealed class BinsRunController(
     [Authorize(Policy = AccessPolicyNames.TransfersAdmin)]
     public async Task<IActionResult> ReviewInterCrewTransfer(long id, InterCrewReviewForm form, CancellationToken cancellationToken)
     {
+        if (!TransferCustodyEnabled) return NotFound();
         form.TransferId = id;
         var error = await interCrewTransferService.ReviewAsync(form, cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Transfer variance reviewed.";
@@ -881,6 +900,7 @@ public sealed class BinsRunController(
     [Authorize(Policy = AccessPolicyNames.TransfersAdmin)]
     public async Task<IActionResult> ReverseInterCrewTransfer(long id, InterCrewReversalForm form, CancellationToken cancellationToken)
     {
+        if (!TransferCustodyEnabled) return NotFound();
         form.TransferId = id;
         var error = await interCrewTransferService.ReverseAsync(form, cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Inter-crew transfer reversed.";

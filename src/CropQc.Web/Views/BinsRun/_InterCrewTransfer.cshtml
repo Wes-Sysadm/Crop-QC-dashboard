@@ -16,7 +16,7 @@
                 <div class="table-wrap"><table class="compact-table"><thead><tr><th>Select</th><th>Facility / Room</th><th>Grower / Lot</th><th>Variety</th><th>Treatment</th><th>Available</th></tr></thead><tbody>
                 @foreach (var item in Model.Inventory)
                 {
-                    <tr class="@(item.IsRoomSealed ? "muted" : null)"><td><input type="radio" name="SourceKey" value="@item.SourceKey" required disabled="@item.IsRoomSealed" data-source-facility="@item.Facility" data-available="@item.AvailableBins" /></td><td>@item.Facility / @item.Room@(item.IsRoomSealed ? " (Sealed)" : "")</td><td>@item.GrowerNumber - @item.GrowerName<br /><span class="muted">Lot @item.LotNumber</span></td><td>@item.VarietyCode - @item.VarietyName<br /><span class="muted">@item.ProductionType</span></td><td>@item.TreatmentSummary</td><td class="numeric">@item.AvailableBins</td></tr>
+                    <tr class="@(item.IsRoomSealed || !item.IsAvailable ? "muted" : null)"><td><input type="radio" name="SourceKey" value="@item.SourceKey" required disabled="@(item.IsRoomSealed || !item.IsAvailable)" data-source-facility="@item.Facility" data-available="@item.AvailableBins" /></td><td>@item.Facility / @item.Room@(item.IsRoomSealed ? " (Sealed)" : "")</td><td>@item.GrowerNumber - @item.GrowerName<br /><span class="muted">Lot @item.LotNumber</span></td><td>@item.VarietyCode - @item.VarietyName<br /><span class="muted">@item.ProductionType</span></td><td>@item.TreatmentSummary@if (!item.IsAvailable) { <br /><strong class="status-warning">@item.UnavailableReason</strong> }</td><td class="numeric">@item.AvailableBins</td></tr>
                 }
                 </tbody></table></div>
             </fieldset>

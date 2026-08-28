@@ -173,6 +173,31 @@ public sealed class RoomTreatmentTrackingTests
     }
 
     [Fact]
+    public async Task Excess_explicit_lineage_is_visible_but_unavailable_and_writes_remain_fail_closed()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        Assert.Null((await fixture.Service.ApplyAsync(fixture.ApplyForm("seed-excess", 1), default)).Error);
+        var inconsistent = fixture.AppleSnapshot(92);
+
+        var selection = Assert.Single(await fixture.Service.GetSelectionsAsync(inconsistent, default));
+
+        Assert.False(selection.IsAvailable);
+        Assert.Equal("NeedsReview", selection.TreatmentState);
+        Assert.Equal(92, selection.CurrentBins);
+        Assert.Equal(100, selection.ExplicitBins);
+        Assert.Contains("100 explicit bins exceed 92 authoritative bins", selection.UnavailableReason);
+        var beforeMovements = await fixture.Db.TreatmentLineageMovements.CountAsync();
+
+        var blocked = await fixture.Service.MoveSelectedAsync(
+            inconsistent, selection.TreatmentSignature, selection.SegmentId, selection.ReceiptId, 1,
+            Fixture.WarehouseId, Fixture.Room2Id, "blocked-inconsistent-lineage",
+            TreatmentLineageMovementTypes.Transfer, 999, null, null, Now, Fixture.UserId, default);
+        Assert.False(blocked.Success);
+        Assert.False(string.IsNullOrWhiteSpace(blocked.Error));
+        Assert.Equal(beforeMovements, await fixture.Db.TreatmentLineageMovements.CountAsync());
+    }
+
+    [Fact]
     public async Task Mixed_treatment_identity_requires_explicit_segment_and_partial_transfer_carries_exact_signature()
     {
         await using var fixture = await Fixture.CreateAsync();

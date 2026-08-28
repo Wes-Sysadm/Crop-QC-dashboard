@@ -1,4 +1,5 @@
 using CropQc.Data;
+using CropQc.Data.Entities;
 using CropQc.Shared.Storage;
 using CropQc.Shared.Time;
 using CropQc.Web.Auth;
@@ -283,6 +284,8 @@ builder.Services.AddScoped<ITreatmentReportAttachmentService, TreatmentReportAtt
 builder.Services.AddScoped<ITr108859DroppedBinsCorrectionService, Tr108859DroppedBinsCorrectionService>();
 builder.Services.AddScoped<IActualRun3ReportingIdentityCorrectionService, ActualRun3ReportingIdentityCorrectionService>();
 builder.Services.AddScoped<IBinsRunReversal1820CorrectionService, BinsRunReversal1820CorrectionService>();
+builder.Services.AddScoped<ITreatmentLineage144CorrectionService, TreatmentLineage144CorrectionService>();
+builder.Services.AddScoped<ITreatmentLineageReadinessService, TreatmentLineageReadinessService>();
 builder.Services.AddScoped<IEbsInventoryCleanupService, EbsInventoryCleanupService>();
 builder.Services.AddScoped<IInventoryDeductionInvariantService, InventoryDeductionInvariantService>();
 builder.Services.AddScoped<IInventoryDiagnosticAcknowledgmentService, InventoryDiagnosticAcknowledgmentService>();
@@ -655,6 +658,86 @@ if (args.Contains(ActualRun3ReportingIdentityCorrectionConstants.CommandName, St
     return;
 }
 
+if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommandName, StringComparer.OrdinalIgnoreCase))
+{
+    const string releaseMigration = "20260828033737_AddTransferCustodyWorkflow";
+    var schemaReady = await DatabaseStartupDiagnostics.VerifyRequiredSchemaAsync(
+        app.Services, app.Configuration, app.Environment, releaseMigration);
+    await using var readinessScope = app.Services.CreateAsyncScope();
+    var inventory = await readinessScope.ServiceProvider.GetRequiredService<IInventoryDeductionInvariantService>()
+        .VerifyReadinessAsync(CancellationToken.None);
+    var treatment = await readinessScope.ServiceProvider.GetRequiredService<ITreatmentLineageReadinessService>()
+        .VerifyAsync(CancellationToken.None);
+    var readinessDb = readinessScope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+    var activeWarehouseCodes = await readinessDb.Warehouses.AsNoTracking()
+        .Where(x => x.IsActive)
+        .Select(x => x.Code)
+        .ToListAsync(CancellationToken.None);
+    var requiredWarehouseCodes = new[] { "WP", "DH", "EBS", "McDougall" };
+    var missingWarehouseCodes = requiredWarehouseCodes
+        .Where(expected => !activeWarehouseCodes.Any(actual => actual.Equals(expected, StringComparison.OrdinalIgnoreCase)))
+        .ToArray();
+    var custodyRulesReady = TransferCustodyGroups.IsValid(TransferCustodyGroups.WpDh)
+        && TransferCustodyGroups.IsValid(TransferCustodyGroups.Ebs)
+        && TransferCustodyGroups.ContainsWarehouse(TransferCustodyGroups.WpDh, "WP")
+        && TransferCustodyGroups.ContainsWarehouse(TransferCustodyGroups.WpDh, "DH")
+        && !TransferCustodyGroups.ContainsWarehouse(TransferCustodyGroups.WpDh, "EBS")
+        && !TransferCustodyGroups.ContainsWarehouse(TransferCustodyGroups.WpDh, "McDougall")
+        && TransferCustodyGroups.ContainsWarehouse(TransferCustodyGroups.Ebs, "EBS")
+        && !TransferCustodyGroups.ContainsWarehouse(TransferCustodyGroups.Ebs, "WP")
+        && !TransferCustodyGroups.ContainsWarehouse(TransferCustodyGroups.Ebs, "McDougall");
+    var invalidOutsideWarehouseMasterRows = await readinessDb.OutsideWarehouses.AsNoTracking()
+        .CountAsync(x => x.IsActive && (x.Name.Trim() == "" || x.Code.Trim() == ""), CancellationToken.None);
+    var duplicateOutsideWarehouseCodes = await readinessDb.OutsideWarehouses.AsNoTracking()
+        .Where(x => x.IsActive)
+        .GroupBy(x => x.Code.ToUpper())
+        .CountAsync(x => x.Count() > 1, CancellationToken.None);
+    var invalidInterCrew = await readinessDb.InterCrewTransfers.AsNoTracking().CountAsync(x =>
+        x.BinsLoaded <= 0
+        || (x.Status == InterCrewTransferStatuses.InTransit && (x.DestinationWarehouseId != null || x.DestinationRoomId != null || x.BinsReceived != null))
+        || ((x.Status == InterCrewTransferStatuses.Received || x.Status == InterCrewTransferStatuses.ReceivedNeedsReview)
+            && (x.DestinationWarehouseId == null || x.DestinationRoomId == null || x.BinsReceived == null)),
+        CancellationToken.None);
+    var invalidOutside = await readinessDb.OutsideWarehouseTransfers.AsNoTracking().CountAsync(x =>
+        x.BinCount <= 0 || x.OutsideWarehouseId <= 0 || x.SourceWarehouseId <= 0 || x.SourceRoomId <= 0,
+        CancellationToken.None);
+    var topologyReady = missingWarehouseCodes.Length == 0
+        && custodyRulesReady
+        && invalidOutsideWarehouseMasterRows == 0
+        && duplicateOutsideWarehouseCodes == 0
+        && invalidInterCrew == 0
+        && invalidOutside == 0;
+    var releaseReady = schemaReady && inventory.IsReady && treatment.Success && topologyReady;
+    Console.Out.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
+    {
+        success = releaseReady,
+        expectedMigration = releaseMigration,
+        expectedSchemaObjects = 836,
+        schemaReady,
+        inventory = new
+        {
+            inventory.IsReady,
+            inventory.NegativeAdjustmentCount,
+            inventory.HistoricalNegativeCount,
+            inventory.NewFormatNegativeCount,
+            blockingIssues = inventory.Issues.Where(x => x.BlocksDeployment).ToArray()
+        },
+        treatment,
+        topology = new
+        {
+            success = topologyReady,
+            missingWarehouseCodes,
+            custodyRulesReady,
+            invalidOutsideWarehouseMasterRows,
+            duplicateOutsideWarehouseCodes,
+            invalidInterCrew,
+            invalidOutside
+        }
+    }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true }));
+    Environment.ExitCode = releaseReady ? 0 : 1;
+    return;
+}
+
 if (args.Contains(BinsRunReversal1820CorrectionConstants.CommandName, StringComparer.OrdinalIgnoreCase))
 {
     static string? BinsRunReversal1820CommandValue(string[] commandArgs, string key) =>
@@ -689,6 +772,59 @@ if (args.Contains(BinsRunReversal1820CorrectionConstants.CommandName, StringComp
     if (correction.Success) commandLogger.LogInformation("{CorrectionReport}", report);
     else commandLogger.LogError("{CorrectionReport}", report);
     Environment.ExitCode = correction.Success ? 0 : 1;
+    return;
+}
+
+if (args.Contains(TreatmentLineage144CorrectionConstants.CommandName, StringComparer.OrdinalIgnoreCase))
+{
+    static string? TreatmentLineage144CommandValue(string[] commandArgs, string key) =>
+        commandArgs.FirstOrDefault(x => x.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase)) is { } item
+            ? item[(item.IndexOf('=') + 1)..]
+            : null;
+    var backupRunId = long.TryParse(
+        TreatmentLineage144CommandValue(args, "--backup-run-id"), out var parsedBackupRunId)
+        ? parsedBackupRunId
+        : (long?)null;
+    using var treatmentLineage144Scope = app.Services.CreateScope();
+    var correction = await treatmentLineage144Scope.ServiceProvider
+        .GetRequiredService<ITreatmentLineage144CorrectionService>()
+        .RunAsync(new(
+            args.Contains("--apply", StringComparer.OrdinalIgnoreCase),
+            args.Contains("--confirm-production", StringComparer.OrdinalIgnoreCase),
+            args.Contains("--confirm-disposable-restore", StringComparer.OrdinalIgnoreCase),
+            backupRunId,
+            TreatmentLineage144CommandValue(args, "--verified-backup-package-sha256"),
+            TreatmentLineage144CommandValue(args, "--requested-by") ?? "command",
+            TreatmentLineage144CommandValue(args, "--reason") ?? "",
+            TreatmentLineage144CommandValue(args, "--expected-target-fingerprint"),
+            TreatmentLineage144CommandValue(args, "--expected-protected-fingerprint"),
+            TreatmentLineage144CommandValue(args, "--authorization-token")),
+            CancellationToken.None);
+    var report = System.Text.Json.JsonSerializer.Serialize(
+        correction,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
+    var commandLogger = treatmentLineage144Scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("TreatmentLineage144CorrectionCommand");
+    if (correction.Success) commandLogger.LogInformation("{CorrectionReport}", report);
+    else commandLogger.LogError("{CorrectionReport}", report);
+    Environment.ExitCode = correction.Success ? 0 : 1;
+    return;
+}
+
+if (args.Contains(TreatmentLineage144CorrectionConstants.ReadinessCommandName, StringComparer.OrdinalIgnoreCase))
+{
+    using var treatmentLineageReadinessScope = app.Services.CreateScope();
+    var readiness = await treatmentLineageReadinessScope.ServiceProvider
+        .GetRequiredService<ITreatmentLineageReadinessService>()
+        .VerifyAsync(CancellationToken.None);
+    var report = System.Text.Json.JsonSerializer.Serialize(
+        readiness,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
+    var commandLogger = treatmentLineageReadinessScope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("TreatmentLineageReadinessCommand");
+    if (readiness.Success) commandLogger.LogInformation("{ReadinessReport}", report);
+    else commandLogger.LogError("{ReadinessReport}", report);
+    Environment.ExitCode = readiness.Success ? 0 : 1;
     return;
 }
 
