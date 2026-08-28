@@ -5,7 +5,7 @@ Status: **validated pre-merge; freeze the GitHub merge commit as `RELEASE_CANDID
 ## Immutable targets
 
 - Production baseline and application rollback target: `919b0117f0230c44e829279085ef5201178b3289`
-- Release candidate: exact merge commit of the single focused `codex/harden-transfer-release` PR; no later commit may be substituted.
+- Release candidate: exact merge commit of the single focused PR #230 (`codex/harden-transfer-release`); no later commit may be substituted.
 - Schema migration target: `20260828033737_AddTransferCustodyWorkflow`
 - Application schema gate: `836 objects PASS`
 - Production feature flag before release: `TransferCustody__Enabled=false`
