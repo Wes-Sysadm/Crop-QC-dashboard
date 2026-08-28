@@ -48,6 +48,26 @@ public interface IProcessorTreatmentLineageService
     Task<TreatmentLineageWriteResult> ReverseProcessorMovementAsync(string operationKeyPrefix, long processorShipmentLineId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken);
 }
 
+public interface IOutsideWarehouseTreatmentLineageService
+{
+    Task<TreatmentLineageWriteResult> MoveToOutsideWarehouseAsync(
+        RoomInventoryLedgerSnapshot snapshot,
+        string treatmentSignature,
+        int bins,
+        string operationKey,
+        long outsideWarehouseTransferId,
+        DateTimeOffset occurredAt,
+        int? actorUserId,
+        CancellationToken cancellationToken);
+
+    Task<TreatmentLineageWriteResult> ReverseOutsideWarehouseMovementAsync(
+        string operationKeyPrefix,
+        long outsideWarehouseTransferId,
+        DateTimeOffset occurredAt,
+        int? actorUserId,
+        CancellationToken cancellationToken);
+}
+
 public interface IReceivingTreatmentService
 {
     Task<ReceiptTreatmentApplyPageViewModel> GetReceiptApplyPageAsync(ReceiptTreatmentApplyForm form, bool review, CancellationToken cancellationToken);
@@ -61,7 +81,7 @@ public sealed class RoomTreatmentService(
     IUserAccessService access,
     IHttpContextAccessor httpContextAccessor,
     IBusinessTimeService businessTime,
-    ILogger<RoomTreatmentService> logger) : IRoomTreatmentService, IReceivingTreatmentService, IProcessorTreatmentLineageService
+    ILogger<RoomTreatmentService> logger) : IRoomTreatmentService, IReceivingTreatmentService, IProcessorTreatmentLineageService, IOutsideWarehouseTreatmentLineageService
 {
     private const string SourceApplication = "CropQc.Web room treatment workflow";
     private static readonly JsonSerializerOptions AuditJson = new(JsonSerializerDefaults.Web);
@@ -671,6 +691,44 @@ public sealed class RoomTreatmentService(
             TreatmentLineageMovementTypes.ProcessorShipment, null, null, null, occurredAt, actorUserId,
             treatmentReceiptId, cancellationToken, processorShipmentLineId, treatmentSegmentId, exactSelection: true);
 
+    public async Task<TreatmentLineageWriteResult> MoveToOutsideWarehouseAsync(
+        RoomInventoryLedgerSnapshot snapshot, string treatmentSignature, int bins,
+        string operationKey, long outsideWarehouseTransferId, DateTimeOffset occurredAt,
+        int? actorUserId, CancellationToken cancellationToken)
+    {
+        if (bins <= 0) return new(false, "Treatment lineage movement quantity must be positive.");
+        var segments = (await MaterializeAsync(snapshot, cancellationToken))
+            .Where(x => x.CurrentBins > 0 && x.TreatmentSignature == treatmentSignature)
+            .OrderBy(x => x.ReceiptId ?? long.MaxValue)
+            .ThenBy(x => x.Id)
+            .ToList();
+        if (segments.Sum(x => x.CurrentBins) < bins)
+            return new(false, "The exact treatment provenance no longer contains enough bins. Refresh before retrying.");
+
+        var remaining = bins;
+        long? lastMovementId = null;
+        foreach (var segment in segments)
+        {
+            var allocated = Math.Min(remaining, segment.CurrentBins);
+            if (allocated == 0) continue;
+            var result = await MoveCoreAsync(snapshot, treatmentSignature, allocated, null, null,
+                $"{operationKey}:{segment.Id}", TreatmentLineageMovementTypes.OutsideWarehouseTransfer,
+                null, null, null, occurredAt, actorUserId, segment.ReceiptId, cancellationToken,
+                null, segment.Id, exactSelection: true, outsideWarehouseTransferId: outsideWarehouseTransferId);
+            if (!result.Success) return result;
+            lastMovementId = result.MovementId;
+            remaining -= allocated;
+            if (remaining == 0) break;
+        }
+        if (remaining != 0) return new(false, "The exact treatment provenance allocation did not balance.");
+        var moved = await dbContext.TreatmentLineageMovements
+            .Where(x => x.OutsideWarehouseTransferId == outsideWarehouseTransferId && x.ReversesTreatmentLineageMovementId == null)
+            .SumAsync(x => x.BinCount, cancellationToken);
+        return moved == bins
+            ? new(true, null, lastMovementId)
+            : new(false, "The Outside Warehouse Transfer treatment lineage does not equal its bin count.");
+    }
+
     private async Task<TreatmentLineageWriteResult> MoveCoreAsync(
         RoomInventoryLedgerSnapshot snapshot,
         string? treatmentSignature,
@@ -685,7 +743,8 @@ public sealed class RoomTreatmentService(
         DateTimeOffset occurredAt,
         int? actorUserId,
         CancellationToken cancellationToken,
-        long? processorShipmentLineId = null)
+        long? processorShipmentLineId = null,
+        long? outsideWarehouseTransferId = null)
     {
         long? receiptId = null;
         if (roomInventoryLossId is not null)
@@ -716,9 +775,16 @@ public sealed class RoomTreatmentService(
                 .Select(x => x.ReceiptId)
                 .SingleOrDefaultAsync(cancellationToken);
         }
+        else if (outsideWarehouseTransferId is not null)
+        {
+            receiptId = await dbContext.OutsideWarehouseTransfers.AsNoTracking()
+                .Where(x => x.Id == outsideWarehouseTransferId.Value)
+                .Select(x => x.ReceiptId)
+                .SingleOrDefaultAsync(cancellationToken);
+        }
         return await MoveCoreAsync(snapshot, treatmentSignature, bins, destinationWarehouseId, destinationRoomId, operationKey,
             movementType, roomTransferId, roomInventoryLossId, binsRunEntryId, occurredAt, actorUserId, receiptId,
-            cancellationToken, processorShipmentLineId);
+            cancellationToken, processorShipmentLineId, outsideWarehouseTransferId: outsideWarehouseTransferId);
     }
 
     private async Task<TreatmentLineageWriteResult> MoveCoreAsync(
@@ -738,20 +804,21 @@ public sealed class RoomTreatmentService(
         CancellationToken cancellationToken,
         long? processorShipmentLineId,
         long? treatmentSegmentId = null,
-        bool exactSelection = false)
+        bool exactSelection = false,
+        long? outsideWarehouseTransferId = null)
     {
         if (bins <= 0) return new(false, "Treatment lineage movement quantity must be positive.");
-        if (roomTransferId is null && roomInventoryLossId is null && binsRunEntryId is null && processorShipmentLineId is null)
+        if (roomTransferId is null && roomInventoryLossId is null && binsRunEntryId is null && processorShipmentLineId is null && outsideWarehouseTransferId is null)
         {
             return new(false, "A specific parent movement is required for treatment lineage movement.");
         }
-        if ((roomTransferId is not null ? 1 : 0) + (roomInventoryLossId is not null ? 1 : 0) + (binsRunEntryId is not null ? 1 : 0) + (processorShipmentLineId is not null ? 1 : 0) != 1)
+        if ((roomTransferId is not null ? 1 : 0) + (roomInventoryLossId is not null ? 1 : 0) + (binsRunEntryId is not null ? 1 : 0) + (processorShipmentLineId is not null ? 1 : 0) + (outsideWarehouseTransferId is not null ? 1 : 0) != 1)
         {
             return new(false, "Treatment lineage movement must reference exactly one parent movement.");
         }
         var parentError = await ValidateMovementParentAsync(
             snapshot, bins, destinationWarehouseId, destinationRoomId,
-            roomTransferId, roomInventoryLossId, binsRunEntryId, cancellationToken, processorShipmentLineId);
+            roomTransferId, roomInventoryLossId, binsRunEntryId, cancellationToken, processorShipmentLineId, outsideWarehouseTransferId);
         if (parentError is not null) return new(false, parentError);
         var existingMovement = await dbContext.TreatmentLineageMovements.AsNoTracking()
             .SingleOrDefaultAsync(x => x.OperationKey == operationKey, cancellationToken);
@@ -768,6 +835,7 @@ public sealed class RoomTreatmentService(
                 && existingMovement.BinsRunEntryId == binsRunEntryId;
             sameRequest = sameRequest
                 && existingMovement.ProcessorShipmentLineId == processorShipmentLineId
+                && existingMovement.OutsideWarehouseTransferId == outsideWarehouseTransferId
                 && (!exactSelection || existingMovement.ReceiptId == receiptId)
                 && (treatmentSegmentId is null || existingMovement.SourceSegmentId == treatmentSegmentId);
             return sameRequest
@@ -860,6 +928,7 @@ public sealed class RoomTreatmentService(
             RoomInventoryLossId = roomInventoryLossId,
             BinsRunEntryId = binsRunEntryId,
             ProcessorShipmentLineId = processorShipmentLineId,
+            OutsideWarehouseTransferId = outsideWarehouseTransferId,
             OccurredAt = occurredAt,
             CreatedByUserId = actorUserId,
             CreatedAt = now
@@ -878,7 +947,8 @@ public sealed class RoomTreatmentService(
         long? roomInventoryLossId,
         long? binsRunEntryId,
         CancellationToken cancellationToken,
-        long? processorShipmentLineId)
+        long? processorShipmentLineId,
+        long? outsideWarehouseTransferId)
     {
         if (roomTransferId is not null)
         {
@@ -931,6 +1001,27 @@ public sealed class RoomTreatmentService(
             return null;
         }
 
+        if (outsideWarehouseTransferId is not null)
+        {
+            var parent = await dbContext.OutsideWarehouseTransfers.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Id == outsideWarehouseTransferId.Value, cancellationToken);
+            var alreadyMoved = await dbContext.TreatmentLineageMovements.AsNoTracking()
+                .Where(x => x.OutsideWarehouseTransferId == outsideWarehouseTransferId && x.ReversesTreatmentLineageMovementId == null)
+                .SumAsync(x => x.BinCount, cancellationToken);
+            if (parent is null
+                || parent.SourceWarehouseId != snapshot.WarehouseId
+                || parent.SourceRoomId != snapshot.RoomId
+                || destinationWarehouseId is not null
+                || destinationRoomId is not null
+                || bins <= 0
+                || alreadyMoved + bins > parent.BinCount
+                || !SameIdentity(parent.CropYear, parent.GrowerLotId, parent.FruitProfileId, parent.LotNumberSnapshot, parent.VarietyCodeSnapshot, snapshot))
+            {
+                return "The Outside Warehouse Transfer parent does not match the exact treatment lineage movement.";
+            }
+            return null;
+        }
+
         var runParent = await dbContext.BinsRunEntries.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == binsRunEntryId!.Value, cancellationToken);
         if (runParent is null
@@ -971,6 +1062,12 @@ public sealed class RoomTreatmentService(
         ReverseMovementsCoreAsync(operationKeyPrefix, TreatmentLineageMovementTypes.ProcessorShipmentReversal,
             null, null, null, occurredAt, actorUserId, cancellationToken, processorShipmentLineId);
 
+    public Task<TreatmentLineageWriteResult> ReverseOutsideWarehouseMovementAsync(
+        string operationKeyPrefix, long outsideWarehouseTransferId, DateTimeOffset occurredAt,
+        int? actorUserId, CancellationToken cancellationToken) =>
+        ReverseMovementsCoreAsync(operationKeyPrefix, TreatmentLineageMovementTypes.OutsideWarehouseTransferReversal,
+            null, null, null, occurredAt, actorUserId, cancellationToken, null, outsideWarehouseTransferId);
+
     private async Task<TreatmentLineageWriteResult> ReverseMovementsCoreAsync(
         string operationKeyPrefix,
         string movementType,
@@ -980,9 +1077,10 @@ public sealed class RoomTreatmentService(
         DateTimeOffset occurredAt,
         int? actorUserId,
         CancellationToken cancellationToken,
-        long? processorShipmentLineId = null)
+        long? processorShipmentLineId = null,
+        long? outsideWarehouseTransferId = null)
     {
-        if (roomTransferId is null && roomInventoryLossId is null && binsRunEntryId is null && processorShipmentLineId is null)
+        if (roomTransferId is null && roomInventoryLossId is null && binsRunEntryId is null && processorShipmentLineId is null && outsideWarehouseTransferId is null)
         {
             return new(false, "A specific parent movement is required for treatment lineage reversal.");
         }
@@ -991,6 +1089,7 @@ public sealed class RoomTreatmentService(
                 && (roomInventoryLossId == null || x.RoomInventoryLossId == roomInventoryLossId)
                 && (binsRunEntryId == null || x.BinsRunEntryId == binsRunEntryId)
                 && (processorShipmentLineId == null || x.ProcessorShipmentLineId == processorShipmentLineId)
+                && (outsideWarehouseTransferId == null || x.OutsideWarehouseTransferId == outsideWarehouseTransferId)
                 && x.ReversesTreatmentLineageMovementId == null)
             .ToListAsync(cancellationToken);
         long? lastMovementId = null;
@@ -1033,6 +1132,7 @@ public sealed class RoomTreatmentService(
                 RoomInventoryLossId = roomInventoryLossId,
                 BinsRunEntryId = binsRunEntryId,
                 ProcessorShipmentLineId = processorShipmentLineId,
+                OutsideWarehouseTransferId = outsideWarehouseTransferId,
                 ReversesTreatmentLineageMovementId = original.Id,
                 OccurredAt = occurredAt,
                 CreatedByUserId = actorUserId,

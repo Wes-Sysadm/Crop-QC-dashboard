@@ -210,8 +210,8 @@ public sealed class TreatmentReportAttachmentTests
         Assert.Contains("cropqc.test_force_treatment_report_failure", apply);
         Assert.DoesNotContain("INSERT INTO \"__EFMigrationsHistory\"", apply, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("26 AS checked_target_objects", verify);
-        Assert.Contains("20260826063718_AddGrowerNumberQcRecipients", gate);
-        Assert.Equal(721, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Contains("20260828012532_AddOutsideWarehouseTransfers", gate);
+        Assert.Equal(803, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     private static FormFile File(string name, string contentType, byte[]? bytes = null)

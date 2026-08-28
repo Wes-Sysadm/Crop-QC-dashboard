@@ -541,12 +541,12 @@ public sealed class ProcessorShipmentTests
     [Fact]
     public void Application_gate_targets_processor_migration_and_all_new_objects()
     {
-        Assert.Equal("20260826063718_AddGrowerNumberQcRecipients", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
+        Assert.Equal("20260828012532_AddOutsideWarehouseTransfers", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
         var source = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DatabaseStartupDiagnostics.cs"));
         Assert.Contains("ProcessorShipmentLines.PoundsPerBinSnapshot", source);
         Assert.Contains("FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId", source);
         Assert.Contains("TreatmentLineageMovements.ReceiptId", source);
-        Assert.Equal(721, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Equal(803, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
     }
 
     [Fact]

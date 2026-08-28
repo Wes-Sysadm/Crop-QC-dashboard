@@ -100,7 +100,7 @@ public static class SiteNavigationCatalog
 
         new("room-transfers", "transfers", "Room Transfers", "/BinsRun?Section=Transfer", ApplicationAreas.BinsRun, PageAccessLevel.View, 10,
             FacilityBehavior: NavigationFacilityBehavior.Preserve,
-            Matches: [new("/BinsRun", false, "Transfer")]),
+            Matches: [new("/BinsRun", false, "Transfer"), new("/BinsRun/OutsideTransfers", true)]),
         new("true-up", "transfers", "True Up", "/BinsRun?Section=TrueUp", ApplicationAreas.TrueUp, PageAccessLevel.Admin, 20,
             FacilityBehavior: NavigationFacilityBehavior.Preserve,
             Matches: [new("/BinsRun", false, "TrueUp")]),
@@ -136,6 +136,8 @@ public static class SiteNavigationCatalog
             Matches: [new("/MasterData/end-of-day-fill-groups", true)]),
         new("treatment-chemicals", "admin", "Treatment Chemicals", "/MasterData/treatment-chemicals", ApplicationAreas.MasterData, PageAccessLevel.View, 150, "Master Data",
             Matches: [new("/MasterData/treatment-chemicals", true)]),
+        new("outside-warehouses", "admin", "Outside Warehouses", "/MasterData/outside-warehouses", ApplicationAreas.MasterData, PageAccessLevel.View, 155, "Master Data",
+            Matches: [new("/MasterData/outside-warehouses", true)]),
         new("qc-recipients", "admin", "QC Recipients", "/Admin/OrchardRecipients", ApplicationAreas.OrchardManagers, PageAccessLevel.View, 160, "Master Data",
             Matches: [new("/Admin/OrchardRecipients", true)]),
         new("manager-import", "admin", "Manager Import", "/Admin/OrchardRecipientImports", ApplicationAreas.ImportTools, PageAccessLevel.Admin, 170, "Master Data",
@@ -427,6 +429,8 @@ public sealed class SiteNavigationService(
             return $"Projection #{projectionId}";
         if (active.Key == "processor-shipments" && NumericSegment(path, "/ProcessorShipments/") is { } shipmentId)
             return $"Shipment #{shipmentId}";
+        if (active.Key == "room-transfers" && NumericSegment(path, "/BinsRun/OutsideTransfers/") is { } outsideTransferId)
+            return $"Outside Transfer #{outsideTransferId}";
         if (active.Key == "field-samples" && NumericSegment(path, "/FieldSamples/") is { } fieldSampleId)
             return $"Field Sample #{fieldSampleId}";
         if (active.Key == "receipt-qc" && NumericSegment(path, "/Samples/") is { } sampleId)

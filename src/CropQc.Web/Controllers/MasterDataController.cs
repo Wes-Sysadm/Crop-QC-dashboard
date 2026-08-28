@@ -103,7 +103,9 @@ public sealed class MasterDataController(
         accessService.HasAccessAsync(
             User,
             AreaForType(type),
-            type.Equals("processors", StringComparison.OrdinalIgnoreCase) && level > PageAccessLevel.View ? PageAccessLevel.Admin : level,
+            (type.Equals("processors", StringComparison.OrdinalIgnoreCase)
+                || type.Equals("outside-warehouses", StringComparison.OrdinalIgnoreCase))
+                && level > PageAccessLevel.View ? PageAccessLevel.Admin : level,
             cancellationToken);
 
     private static string AreaForType(string type) => type.Trim().ToLowerInvariant() switch

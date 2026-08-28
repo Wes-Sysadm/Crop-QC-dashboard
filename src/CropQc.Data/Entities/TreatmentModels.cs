@@ -18,6 +18,8 @@ public static class TreatmentLineageMovementTypes
     public const string ManualTrueUp = "ManualTrueUp";
     public const string ProcessorShipment = "ProcessorShipment";
     public const string ProcessorShipmentReversal = "ProcessorShipmentReversal";
+    public const string OutsideWarehouseTransfer = "OutsideWarehouseTransfer";
+    public const string OutsideWarehouseTransferReversal = "OutsideWarehouseTransferReversal";
 }
 
 public static class TreatmentApplicationLevels
@@ -203,6 +205,8 @@ public sealed class TreatmentLineageMovement
     public BinsRunEntry? BinsRunEntry { get; set; }
     public long? ProcessorShipmentLineId { get; set; }
     public ProcessorShipmentLine? ProcessorShipmentLine { get; set; }
+    public long? OutsideWarehouseTransferId { get; set; }
+    public OutsideWarehouseTransfer? OutsideWarehouseTransfer { get; set; }
     public long? ReversesTreatmentLineageMovementId { get; set; }
     public TreatmentLineageMovement? ReversesTreatmentLineageMovement { get; set; }
     public DateTimeOffset OccurredAt { get; set; }

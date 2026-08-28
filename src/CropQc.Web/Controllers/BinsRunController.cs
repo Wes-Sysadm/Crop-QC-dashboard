@@ -17,7 +17,8 @@ public sealed class BinsRunController(
     IDashboardDataService dashboardDataService,
     IBusinessTimeService businessTime,
     ILogger<BinsRunController> logger,
-    IRunReportingService? runReportingService = null) : Controller
+    IRunReportingService? runReportingService = null,
+    IOutsideWarehouseTransferService outsideWarehouseTransferService = null!) : Controller
 {
     [HttpGet("")]
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
@@ -95,6 +96,11 @@ public sealed class BinsRunController(
         if (runReportingService is not null)
         {
             model.RunReporting = await runReportingService.GetAsync(filter, User, cancellationToken);
+        }
+
+        if (activeSection.Equals("Transfer", StringComparison.OrdinalIgnoreCase))
+        {
+            model.OutsideWarehouseTransfers = await outsideWarehouseTransferService.GetPageAsync(filter, cancellationToken);
         }
 
         return View(model);
@@ -790,6 +796,40 @@ public sealed class BinsRunController(
         var error = await dashboardDataService.ReverseRoomTransferAsync(form, cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Room transfer reversed.";
         return RedirectToAction(nameof(Index), new { Section = "Activity" });
+    }
+
+    [HttpPost("OutsideTransfers")]
+    [Authorize(Policy = AccessPolicyNames.TransfersCreate)]
+    public async Task<IActionResult> OutsideTransfer(OutsideWarehouseTransferForm form, CancellationToken cancellationToken)
+    {
+        var result = await outsideWarehouseTransferService.CreateAsync(form, cancellationToken);
+        TempData[result.Success ? "Success" : "Error"] = result.Success
+            ? result.AlreadyApplied ? "Outside Warehouse Transfer was already recorded." : "Outside Warehouse Transfer recorded."
+            : result.Error;
+        if (result.Success && result.TransferId is long transferId)
+            return RedirectToAction(nameof(OutsideTransferDetails), new { id = transferId });
+        return RedirectToAction(nameof(Index), new { Section = "Transfer", TransferType = "Outside", SourceKey = form.SourceKey });
+    }
+
+    [HttpGet("OutsideTransfers/{id:long}")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunView)]
+    public async Task<IActionResult> OutsideTransferDetails(long id, CancellationToken cancellationToken)
+    {
+        var model = await outsideWarehouseTransferService.GetDetailsAsync(id, cancellationToken);
+        return model is null ? NotFound() : View("OutsideTransferDetails", model);
+    }
+
+    [HttpPost("OutsideTransfers/{id:long}/Reverse")]
+    [Authorize(Policy = AccessPolicyNames.TransfersAdmin)]
+    public async Task<IActionResult> ReverseOutsideTransfer(
+        long id,
+        OutsideWarehouseTransferReversalForm form,
+        CancellationToken cancellationToken)
+    {
+        form.TransferId = id;
+        var error = await outsideWarehouseTransferService.ReverseAsync(form, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Outside Warehouse Transfer reversed and exact source inventory restored.";
+        return RedirectToAction(nameof(OutsideTransferDetails), new { id });
     }
 
     [HttpPost("TrueUp")]
