@@ -765,7 +765,7 @@ public sealed class BinsRunService(
         var userId = await CurrentUserIdAsync(user, cancellationToken);
         var previous = snapshot.CurrentBins;
         var restored = previous + entry.BinsRun;
-        var adjustment = CreateAdjustment(snapshot, entry.BinsRun, previous, restored, ReversalAdjustmentType, userId, DateTimeOffset.UtcNow, $"Reversal of Bins Run #{entry.Id}: {form.Reason.Trim()}");
+        var adjustment = CreateReversalAdjustment(snapshot, entry, previous, restored, userId, DateTimeOffset.UtcNow, $"Reversal of Bins Run #{entry.Id}: {form.Reason.Trim()}");
         adjustment.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
         adjustment.InventoryOperationKey = $"binsrun:{entry.Id}:reversal";
         dbContext.RoomInventoryAdjustments.Add(adjustment);
@@ -1687,7 +1687,7 @@ public sealed class BinsRunService(
             var snapshot = snapshots.Single(x => SameInventory(entry, x));
             var previous = snapshot.CurrentBins;
             var next = previous + entry.BinsRun;
-            var adjustment = CreateAdjustment(snapshot, entry.BinsRun, previous, next, ReversalAdjustmentType, userId, DateTimeOffset.UtcNow, reason);
+            var adjustment = CreateReversalAdjustment(snapshot, entry, previous, next, userId, DateTimeOffset.UtcNow, reason);
             adjustment.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
             adjustment.InventoryOperationKey = $"actualrun:{revision.OperationKey}:reversal:{entry.Id}";
             adjustment.ActualRunId = run.Id;
@@ -1941,12 +1941,11 @@ public sealed class BinsRunService(
         object? before = existing is null ? null : EntrySnapshot(existing);
         if (existing is not null)
         {
-            var reversalAdjustment = CreateAdjustment(
+            var reversalAdjustment = CreateReversalAdjustment(
                 snapshot,
-                existing.BinsRun,
+                existing,
                 snapshot.CurrentBins,
                 effectiveAvailable,
-                ReversalAdjustmentType,
                 userId,
                 DateTimeOffset.UtcNow,
                 $"Revision of Bins Run #{existing.Id}");
@@ -2742,6 +2741,31 @@ public sealed class BinsRunService(
             CreatedByUserId = userId,
             CreatedAt = DateTimeOffset.UtcNow
         };
+
+    private static RoomInventoryAdjustment CreateReversalAdjustment(
+        InventorySnapshot snapshot,
+        BinsRunEntry original,
+        int previous,
+        int next,
+        int? userId,
+        DateTimeOffset adjustmentAt,
+        string? notes)
+    {
+        var adjustment = CreateAdjustment(
+            snapshot,
+            original.BinsRun,
+            previous,
+            next,
+            ReversalAdjustmentType,
+            userId,
+            adjustmentAt,
+            notes);
+
+        // A reversal restores the persisted transaction identity. The current aggregate
+        // snapshot can carry blank or later metadata and is not authoritative here.
+        adjustment.InventoryStatus = NormalizeOptional(original.InventoryStatus);
+        return adjustment;
+    }
 
     private static BinsRunEntry CopyAsReversal(
         BinsRunEntry original,

@@ -282,6 +282,7 @@ builder.Services.AddScoped<IInterCrewTransferService, InterCrewTransferService>(
 builder.Services.AddScoped<ITreatmentReportAttachmentService, TreatmentReportAttachmentService>();
 builder.Services.AddScoped<ITr108859DroppedBinsCorrectionService, Tr108859DroppedBinsCorrectionService>();
 builder.Services.AddScoped<IActualRun3ReportingIdentityCorrectionService, ActualRun3ReportingIdentityCorrectionService>();
+builder.Services.AddScoped<IBinsRunReversal1820CorrectionService, BinsRunReversal1820CorrectionService>();
 builder.Services.AddScoped<IEbsInventoryCleanupService, EbsInventoryCleanupService>();
 builder.Services.AddScoped<IInventoryDeductionInvariantService, InventoryDeductionInvariantService>();
 builder.Services.AddScoped<IInventoryDiagnosticAcknowledgmentService, InventoryDiagnosticAcknowledgmentService>();
@@ -651,6 +652,43 @@ if (args.Contains(ActualRun3ReportingIdentityCorrectionConstants.CommandName, St
     else
         actualRun3CorrectionLogger.LogError("{CorrectionReport}", actualRun3CorrectionReport);
     Environment.ExitCode = actualRun3Correction.Success ? 0 : 1;
+    return;
+}
+
+if (args.Contains(BinsRunReversal1820CorrectionConstants.CommandName, StringComparer.OrdinalIgnoreCase))
+{
+    static string? BinsRunReversal1820CommandValue(string[] commandArgs, string key) =>
+        commandArgs.FirstOrDefault(x => x.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase)) is { } item
+            ? item[(item.IndexOf('=') + 1)..]
+            : null;
+    var backupRunId = long.TryParse(
+        BinsRunReversal1820CommandValue(args, "--backup-run-id"),
+        out var parsedBackupRunId)
+        ? parsedBackupRunId
+        : (long?)null;
+    using var binsRunReversal1820Scope = app.Services.CreateScope();
+    var correction = await binsRunReversal1820Scope.ServiceProvider
+        .GetRequiredService<IBinsRunReversal1820CorrectionService>()
+        .RunAsync(new(
+            args.Contains("--apply", StringComparer.OrdinalIgnoreCase),
+            args.Contains("--confirm-production", StringComparer.OrdinalIgnoreCase),
+            args.Contains("--confirm-disposable-restore", StringComparer.OrdinalIgnoreCase),
+            backupRunId,
+            BinsRunReversal1820CommandValue(args, "--verified-backup-package-sha256"),
+            BinsRunReversal1820CommandValue(args, "--requested-by") ?? "command",
+            BinsRunReversal1820CommandValue(args, "--reason") ?? "",
+            BinsRunReversal1820CommandValue(args, "--expected-target-fingerprint"),
+            BinsRunReversal1820CommandValue(args, "--expected-protected-fingerprint"),
+            BinsRunReversal1820CommandValue(args, "--authorization-token")),
+            CancellationToken.None);
+    var report = System.Text.Json.JsonSerializer.Serialize(
+        correction,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
+    var commandLogger = binsRunReversal1820Scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("BinsRunReversal1820CorrectionCommand");
+    if (correction.Success) commandLogger.LogInformation("{CorrectionReport}", report);
+    else commandLogger.LogError("{CorrectionReport}", report);
+    Environment.ExitCode = correction.Success ? 0 : 1;
     return;
 }
 
