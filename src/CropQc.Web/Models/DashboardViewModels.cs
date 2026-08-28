@@ -18,6 +18,8 @@ public sealed class HomeDashboardViewModel
     public IReadOnlyList<string> EbsLocationOptions { get; set; } = ["All EBS", "Evans", "Lamb", "BM"];
     public IReadOnlyList<StorageFacilitySummaryViewModel> StorageByFacility { get; set; } = [];
     public bool CanManageRoomSeals { get; set; }
+    public int InTransitTransferLoads { get; set; }
+    public int InTransitTransferBins { get; set; }
 }
 
 public sealed class RoomSummaryFilterForm
@@ -779,6 +781,8 @@ public sealed class BinsRunPageViewModel
     public IReadOnlyList<RoomTransferFacilityViewModel> TransferDestinationFacilities { get; set; } = [];
     public IReadOnlyList<RoomTransferDestinationViewModel> TransferDestinationOptions { get; set; } = [];
     public IReadOnlyList<RoomInventoryAdjustmentListItemViewModel> InventoryActivity { get; set; } = [];
+    public OutsideWarehouseTransferPageViewModel OutsideWarehouseTransfers { get; set; } = new();
+    public InterCrewTransferPageViewModel InterCrewTransfers { get; set; } = new();
     public RunReportingPageViewModel RunReporting { get; set; } = new();
 }
 
@@ -790,6 +794,15 @@ public sealed class BinsRunFilterForm
     public int? TransferDestinationWarehouseId { get; set; }
     public int? TransferDestinationRoomId { get; set; }
     public string? TransferTreatmentSignature { get; set; }
+    public string TransferType { get; set; } = "Internal";
+    public string? OutsideFrom { get; set; }
+    public string? OutsideTo { get; set; }
+    public int? OutsideWarehouseId { get; set; }
+    public int? OutsideSourceWarehouseId { get; set; }
+    public int? OutsideSourceRoomId { get; set; }
+    public string? OutsideGrowerNumber { get; set; }
+    public string? OutsideVariety { get; set; }
+    public string? OutsideStatus { get; set; }
     public List<int> RoomIds { get; set; } = [];
     public string SelectionMode { get; set; } = ActualRunSelectionModes.ByRoom;
     public int? FruitProfileId { get; set; }
@@ -1288,6 +1301,7 @@ public sealed class QcStationForm
     public string StationCode { get; set; } = "";
     public string WarehouseCode { get; set; } = "";
     public string? Description { get; set; }
+    public string? Address { get; set; }
     public string? Notes { get; set; }
     public bool IsActive { get; set; } = true;
 }
@@ -1302,6 +1316,7 @@ public sealed class MasterDataEditForm
     public string Code { get; set; } = "";
     public string Name { get; set; } = "";
     public string? Description { get; set; }
+    public string? Address { get; set; }
     public string? CompuTechCode { get; set; }
     public int CapacityBins { get; set; }
     public string FruitType { get; set; } = "Apple";

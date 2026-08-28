@@ -1649,7 +1649,7 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
-    public async Task RoomTransfer_DestinationFacilitiesUseDurableWarehousesAndBoundedActiveRooms()
+    public async Task RoomTransfer_DestinationFacilitiesAreLimitedToTheSameReceivingCrew()
     {
         using var db = CreateDbContext();
         await SeedInventoryAsync(db);
@@ -1668,17 +1668,22 @@ public sealed class BinsRunWorkflowTests
         var page = await CreateDashboardService(db, Principal("manager@fruitandland.com"))
             .GetRoomDetailAsync(1001, CancellationToken.None);
 
-        Assert.Equal(new[] { "WP", "MCD", "DH", "EBS" }, page.TransferDestinationFacilities.Select(x => x.Label));
-        Assert.Equal(wp.Id, page.TransferDestinationFacilities.Single(x => x.Label == "WP").WarehouseId);
-        Assert.Equal(mcd.Id, page.TransferDestinationFacilities.Single(x => x.Label == "MCD").WarehouseId);
-        Assert.Equal(dh.Id, page.TransferDestinationFacilities.Single(x => x.Label == "DH").WarehouseId);
+        Assert.Equal(["EBS"], page.TransferDestinationFacilities.Select(x => x.Label));
         Assert.Equal(1000, page.TransferDestinationFacilities.Single(x => x.Label == "EBS").WarehouseId);
         Assert.Equal("McDougall", (await db.Warehouses.AsNoTracking().SingleAsync(x => x.Id == mcd.Id)).Code);
         Assert.Equal(1000, page.TransferForm.DestinationWarehouseId);
         Assert.DoesNotContain(page.TransferDestinationOptions, x => x.RoomId is 1001 or 1012);
-        Assert.Equal(new[] { 1011, 1010 }, page.TransferDestinationOptions.Where(x => x.WarehouseId == wp.Id).Select(x => x.RoomId));
-        Assert.Equal([1020], page.TransferDestinationOptions.Where(x => x.WarehouseId == mcd.Id).Select(x => x.RoomId));
-        Assert.Equal([1030], page.TransferDestinationOptions.Where(x => x.WarehouseId == dh.Id).Select(x => x.RoomId));
+        Assert.Equal([1002], page.TransferDestinationOptions.Select(x => x.RoomId));
+
+        var wpPage = await CreateDashboardService(db, Principal("manager@fruitandland.com"))
+            .GetRoomDetailAsync(1011, CancellationToken.None);
+        Assert.Equal(["WP", "DH"], wpPage.TransferDestinationFacilities.Select(x => x.Label));
+        Assert.Equal([1010, 1030], wpPage.TransferDestinationOptions.Select(x => x.RoomId));
+
+        var mcdPage = await CreateDashboardService(db, Principal("manager@fruitandland.com"))
+            .GetRoomDetailAsync(1020, CancellationToken.None);
+        Assert.Equal(["MCD"], mcdPage.TransferDestinationFacilities.Select(x => x.Label));
+        Assert.Empty(mcdPage.TransferDestinationOptions);
         var activeRoomIds = await db.Rooms.AsNoTracking().Where(x => x.IsActive).Select(x => x.Id).ToHashSetAsync();
         Assert.All(page.TransferDestinationOptions, x => Assert.Contains(x.RoomId, activeRoomIds));
     }
@@ -1718,7 +1723,7 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
-    public async Task RoomTransfer_CrossFacilityPartialMoveAndHistoryShowBothDurableLocations()
+    public async Task RoomTransfer_CrossCrewDestinationFailsClosedAndRequiresCustodyWorkflow()
     {
         using var db = CreateDbContext();
         await SeedInventoryAsync(db);
@@ -1742,15 +1747,10 @@ public sealed class BinsRunWorkflowTests
             Reason = "Cross-facility regression"
         }, default);
 
-        Assert.Null(error);
-        var transfer = await db.RoomTransfers.SingleAsync(x => x.OperationKey == "cross-facility-partial");
-        Assert.Equal(1000, transfer.SourceWarehouseId);
-        Assert.Equal(mcd.Id, transfer.DestinationWarehouseId);
-        Assert.Equal(110, await LedgerBalanceAsync(db, 1001, "LOT-120"));
-        Assert.Equal(10, await LedgerBalanceAsync(db, destination.Id, "LOT-120"));
-        var history = (await service.GetRoomDetailAsync(1001, default)).InventoryAdjustments.Single(x => x.TransferFrom is not null);
-        Assert.Equal("EBS / Evans-12", history.TransferFrom);
-        Assert.Equal("MCD / MCD-03", history.TransferTo);
+        Assert.Contains("Transfer to Another Crew", error);
+        Assert.Empty(await db.RoomTransfers.ToListAsync());
+        Assert.Equal(120, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Equal(0, await LedgerBalanceAsync(db, destination.Id, "LOT-120"));
         Assert.Equal("McDougall", (await db.Warehouses.AsNoTracking().SingleAsync(x => x.Id == mcd.Id)).Code);
     }
 

@@ -81,6 +81,7 @@ public sealed class AdminManagementService(
             "size-thresholds" => await SizeThresholdsPage(canEdit, cancellationToken),
             "treatment-chemicals" => await TreatmentChemicalsPage(canEdit, cancellationToken),
             "processors" => await ProcessorsPage(canEdit, cancellationToken),
+            "outside-warehouses" => await OutsideWarehousesPage(canEdit, cancellationToken),
             "sales-desks" => await SalesDesksPage(canEdit, cancellationToken),
             "grower-lots" => await GrowerLotsPage(canEdit, cancellationToken),
             _ => new("Master data", null, ["Page"], MasterDataLinks().Select(x => (IReadOnlyList<string>)[x.Label]).ToList(), "index", canEdit)
@@ -103,6 +104,7 @@ public sealed class AdminManagementService(
             "size-thresholds" => await WithCommodityOptions(await dbContext.FruitSizeConversionThresholds.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, FruitType = x.FruitType, SizeCategory = x.SizeCategory, MinimumWeightGrams = x.MinimumWeightGrams, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken), cancellationToken),
             "treatment-chemicals" => await dbContext.TreatmentChemicals.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, ProductName = x.ProductName, CommonName = x.CommonName, Crop = x.Crop, ApplicationLevel = x.ApplicationLevel, Volume = x.Volume, Unit = x.Unit, UnitPrice = x.UnitPrice, Currency = x.Currency, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "processors" => await dbContext.Processors.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, Code = x.Code ?? "", Description = x.Notes, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
+            "outside-warehouses" => await dbContext.OutsideWarehouses.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, Code = x.Code, Address = x.Address, Description = x.Notes, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             "sales-desks" => await dbContext.SalesDesks.AsNoTracking().Where(x => x.Id == id).Select(x => new MasterDataEditForm { Type = type, Id = x.Id, Name = x.Name, DisplayOrder = x.DisplayOrder, IsActive = x.IsActive }).SingleOrDefaultAsync(cancellationToken),
             _ => null
         };
@@ -125,6 +127,7 @@ public sealed class AdminManagementService(
             "size-thresholds" => await SaveSizeThreshold(form, changedByEmail, cancellationToken),
             "treatment-chemicals" => await SaveTreatmentChemical(form, changedByEmail, cancellationToken),
             "processors" => await SaveProcessor(form, changedByEmail, cancellationToken),
+            "outside-warehouses" => await SaveOutsideWarehouse(form, changedByEmail, cancellationToken),
             "sales-desks" => await SaveSalesDesk(form, changedByEmail, cancellationToken),
             _ => "Unsupported master data type."
         };
@@ -168,6 +171,7 @@ public sealed class AdminManagementService(
             "size-thresholds" => await dbContext.FruitSizeConversionThresholds.FindAsync([id], cancellationToken),
             "treatment-chemicals" => await dbContext.TreatmentChemicals.FindAsync([id], cancellationToken),
             "processors" => await dbContext.Processors.FindAsync([id], cancellationToken),
+            "outside-warehouses" => await dbContext.OutsideWarehouses.FindAsync([id], cancellationToken),
             "sales-desks" => await dbContext.SalesDesks.FindAsync([id], cancellationToken),
             _ => null
         };
@@ -176,6 +180,7 @@ public sealed class AdminManagementService(
         var before = entity switch
         {
             Processor processorBefore => JsonSerializer.Serialize(new { processorBefore.Name, processorBefore.Code, processorBefore.Notes, processorBefore.IsActive }),
+            OutsideWarehouse outsideBefore => JsonSerializer.Serialize(new { outsideBefore.Name, outsideBefore.Code, outsideBefore.Address, outsideBefore.Notes, outsideBefore.IsActive }),
             SalesDesk salesDeskBefore => JsonSerializer.Serialize(new { salesDeskBefore.Name, salesDeskBefore.DisplayOrder, salesDeskBefore.IsActive }),
             _ => JsonSerializer.Serialize(entity)
         };
@@ -186,6 +191,12 @@ public sealed class AdminManagementService(
             processor.UpdatedAt = BusinessTime.UtcNow;
             processor.UpdatedByUserId = actor?.Id;
         }
+        if (entity is OutsideWarehouse outsideWarehouse)
+        {
+            var actor = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Email == changedByEmail, cancellationToken);
+            outsideWarehouse.UpdatedAt = BusinessTime.UtcNow;
+            outsideWarehouse.UpdatedByUserId = actor?.Id;
+        }
         if (entity is SalesDesk salesDesk)
         {
             var actor = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Email == changedByEmail, cancellationToken);
@@ -195,14 +206,16 @@ public sealed class AdminManagementService(
         var after = entity switch
         {
             Processor processorAfter => JsonSerializer.Serialize(new { processorAfter.Name, processorAfter.Code, processorAfter.Notes, processorAfter.IsActive }),
+            OutsideWarehouse outsideAfter => JsonSerializer.Serialize(new { outsideAfter.Name, outsideAfter.Code, outsideAfter.Address, outsideAfter.Notes, outsideAfter.IsActive }),
             SalesDesk salesDeskAfter => JsonSerializer.Serialize(new { salesDeskAfter.Name, salesDeskAfter.DisplayOrder, salesDeskAfter.IsActive }),
             _ => JsonSerializer.Serialize(entity)
         };
         var isProcessor = type.Equals("processors", StringComparison.OrdinalIgnoreCase);
+        var isOutsideWarehouse = type.Equals("outside-warehouses", StringComparison.OrdinalIgnoreCase);
         var isSalesDesk = type.Equals("sales-desks", StringComparison.OrdinalIgnoreCase);
         await AddAuditAsync(
-            isProcessor ? "ProcessorDeactivated" : isSalesDesk ? "SalesDeskDeactivated" : "deactivate",
-            isProcessor ? nameof(Processor) : isSalesDesk ? nameof(SalesDesk) : type,
+            isProcessor ? "ProcessorDeactivated" : isOutsideWarehouse ? "OutsideWarehouseDeactivated" : isSalesDesk ? "SalesDeskDeactivated" : "deactivate",
+            isProcessor ? nameof(Processor) : isOutsideWarehouse ? nameof(OutsideWarehouse) : isSalesDesk ? nameof(SalesDesk) : type,
             id.ToString(),
             changedByEmail,
             before,
@@ -633,6 +646,16 @@ public sealed class AdminManagementService(
             .Select(x => new MasterDataEditItem(x.Id, new[] { x.Name, x.Code ?? "", x.Notes ?? "", x.IsActive ? "Active" : "Inactive" }, x.IsActive, null))
             .ToListAsync(ct);
         return Page("Processors", "processors", ["Name", "Code / Short Name", "Notes", "Status"], rows, canEdit);
+    }
+
+    private async Task<MasterDataPageViewModel> OutsideWarehousesPage(bool canEdit, CancellationToken ct)
+    {
+        var rows = await dbContext.OutsideWarehouses.AsNoTracking()
+            .OrderBy(x => x.Name)
+            .ThenBy(x => x.Code)
+            .Select(x => new MasterDataEditItem(x.Id, new[] { x.Code, x.Name, x.Address ?? "", x.Notes ?? "", x.IsActive ? "Active" : "Inactive" }, x.IsActive, null))
+            .ToListAsync(ct);
+        return Page("Outside Warehouses", "outside-warehouses", ["Code", "Name", "Address", "Notes", "Status"], rows, canEdit);
     }
 
     private async Task<MasterDataPageViewModel> SalesDesksPage(bool canEdit, CancellationToken ct)
@@ -1667,6 +1690,40 @@ public sealed class AdminManagementService(
         return null;
     }
 
+    private async Task<string?> SaveOutsideWarehouse(MasterDataEditForm form, string by, CancellationToken ct)
+    {
+        if (Blank(form.Name)) return "Outside Warehouse name is required.";
+        if (Blank(form.Code)) return "Outside Warehouse code is required.";
+        var name = form.Name.Trim();
+        var code = form.Code.Trim().ToUpperInvariant();
+        var address = Blank(form.Address) ? null : form.Address!.Trim();
+        var notes = Blank(form.Description) ? null : form.Description!.Trim();
+        if (name.Length > 200 || code.Length > 50 || address?.Length > 500 || notes?.Length > 1000)
+            return "Outside Warehouse name, code, address, or notes are too long.";
+        if (!code.All(x => char.IsLetterOrDigit(x) || x is '-' or '_'))
+            return "Outside Warehouse code may contain only letters, numbers, hyphens, and underscores.";
+        if (await dbContext.OutsideWarehouses.AsNoTracking().AnyAsync(x => x.Id != form.Id && x.Code == code, ct))
+            return "An Outside Warehouse with this code already exists.";
+        var actor = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Email == by, ct);
+        var entity = form.Id is null
+            ? new OutsideWarehouse { Name = "", Code = "", CreatedAt = BusinessTime.UtcNow, UpdatedAt = BusinessTime.UtcNow, CreatedByUserId = actor?.Id }
+            : await dbContext.OutsideWarehouses.FindAsync([form.Id.Value], ct);
+        if (entity is null) return "Outside Warehouse was not found.";
+        var before = form.Id is null ? null : JsonSerializer.Serialize(new { entity.Name, entity.Code, entity.Address, entity.Notes, entity.IsActive });
+        entity.Name = name;
+        entity.Code = code;
+        entity.Address = address;
+        entity.Notes = notes;
+        entity.IsActive = form.IsActive;
+        entity.UpdatedAt = BusinessTime.UtcNow;
+        entity.UpdatedByUserId = actor?.Id;
+        if (form.Id is null) dbContext.OutsideWarehouses.Add(entity);
+        await dbContext.SaveChangesAsync(ct);
+        await AddAuditAsync(form.Id is null ? "OutsideWarehouseCreated" : "OutsideWarehouseUpdated", nameof(OutsideWarehouse), entity.Id.ToString(), by, before, JsonSerializer.Serialize(new { entity.Name, entity.Code, entity.Address, entity.Notes, entity.IsActive }), ct);
+        await dbContext.SaveChangesAsync(ct);
+        return null;
+    }
+
     private async Task<string?> SaveSalesDesk(MasterDataEditForm form, string by, CancellationToken ct)
     {
         if (Blank(form.Name)) return "Sales Desk name is required.";
@@ -1946,6 +2003,7 @@ public sealed class AdminManagementService(
         ("Size thresholds", "/MasterData/size-thresholds"),
         ("Treatment Chemicals", "/MasterData/treatment-chemicals"),
         ("Processors", "/MasterData/processors"),
+        ("Outside Warehouses", "/MasterData/outside-warehouses"),
         ("Sales Desks", "/MasterData/sales-desks")
     ];
 }

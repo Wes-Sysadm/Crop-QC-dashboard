@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260826063718_AddGrowerNumberQcRecipients";
+    public const string ExpectedSchemaMigration = "20260828033737_AddTransferCustodyWorkflow";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -477,7 +477,73 @@ public static class DatabaseStartupDiagnostics
         new("RoomSealEvents.ChangedByUserId", "RoomSealEvents", "ChangedByUserId", RequireNotNullable: true),
         new("RoomSealEvents.WarehouseCodeSnapshot", "RoomSealEvents", "WarehouseCodeSnapshot", RequireNotNullable: true),
         new("RoomSealEvents.RoomCodeSnapshot", "RoomSealEvents", "RoomCodeSnapshot", RequireNotNullable: true),
-        new("RoomSealEvents.Note", "RoomSealEvents", "Note", RequireNullable: true)
+        new("RoomSealEvents.Note", "RoomSealEvents", "Note", RequireNullable: true),
+        new("OutsideWarehouses", "OutsideWarehouses", null),
+        new("OutsideWarehouses.Id", "OutsideWarehouses", "Id", RequireNotNullable: true),
+        new("OutsideWarehouses.Name", "OutsideWarehouses", "Name", RequireNotNullable: true),
+        new("OutsideWarehouses.Code", "OutsideWarehouses", "Code", RequireNotNullable: true),
+        new("OutsideWarehouses.Address", "OutsideWarehouses", "Address", RequireNullable: true),
+        new("OutsideWarehouses.Notes", "OutsideWarehouses", "Notes", RequireNullable: true),
+        new("OutsideWarehouses.IsActive", "OutsideWarehouses", "IsActive", RequireNotNullable: true),
+        new("OutsideWarehouses.CreatedAt", "OutsideWarehouses", "CreatedAt", RequireNotNullable: true),
+        new("OutsideWarehouses.CreatedByUserId", "OutsideWarehouses", "CreatedByUserId", RequireNullable: true),
+        new("OutsideWarehouses.UpdatedAt", "OutsideWarehouses", "UpdatedAt", RequireNotNullable: true),
+        new("OutsideWarehouses.UpdatedByUserId", "OutsideWarehouses", "UpdatedByUserId", RequireNullable: true),
+        new("OutsideWarehouseTransfers", "OutsideWarehouseTransfers", null),
+        new("OutsideWarehouseTransfers.Id", "OutsideWarehouseTransfers", "Id", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.OperationKey", "OutsideWarehouseTransfers", "OperationKey", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.OutsideWarehouseId", "OutsideWarehouseTransfers", "OutsideWarehouseId", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.OutsideWarehouseCodeSnapshot", "OutsideWarehouseTransfers", "OutsideWarehouseCodeSnapshot", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.OutsideWarehouseNameSnapshot", "OutsideWarehouseTransfers", "OutsideWarehouseNameSnapshot", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.OutsideWarehouseAddressSnapshot", "OutsideWarehouseTransfers", "OutsideWarehouseAddressSnapshot", RequireNullable: true),
+        new("OutsideWarehouseTransfers.SourceWarehouseId", "OutsideWarehouseTransfers", "SourceWarehouseId", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.SourceRoomId", "OutsideWarehouseTransfers", "SourceRoomId", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.ReceiptId", "OutsideWarehouseTransfers", "ReceiptId", RequireNullable: true),
+        new("OutsideWarehouseTransfers.SourceInventoryAdjustmentId", "OutsideWarehouseTransfers", "SourceInventoryAdjustmentId", RequireNullable: true),
+        new("OutsideWarehouseTransfers.CropYear", "OutsideWarehouseTransfers", "CropYear", RequireNullable: true),
+        new("OutsideWarehouseTransfers.GrowerLotId", "OutsideWarehouseTransfers", "GrowerLotId", RequireNullable: true),
+        new("OutsideWarehouseTransfers.FruitProfileId", "OutsideWarehouseTransfers", "FruitProfileId", RequireNullable: true),
+        new("OutsideWarehouseTransfers.GrowerNumberSnapshot", "OutsideWarehouseTransfers", "GrowerNumberSnapshot", RequireNullable: true),
+        new("OutsideWarehouseTransfers.GrowerNameSnapshot", "OutsideWarehouseTransfers", "GrowerNameSnapshot", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.LotNumberSnapshot", "OutsideWarehouseTransfers", "LotNumberSnapshot", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.VarietyCodeSnapshot", "OutsideWarehouseTransfers", "VarietyCodeSnapshot", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.ProductionTypeSnapshot", "OutsideWarehouseTransfers", "ProductionTypeSnapshot", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.IsOrganicSnapshot", "OutsideWarehouseTransfers", "IsOrganicSnapshot", RequireNullable: true),
+        new("OutsideWarehouseTransfers.InventoryStatusSnapshot", "OutsideWarehouseTransfers", "InventoryStatusSnapshot", RequireNullable: true),
+        new("OutsideWarehouseTransfers.TreatmentStateSnapshot", "OutsideWarehouseTransfers", "TreatmentStateSnapshot", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.TreatmentSignatureSnapshot", "OutsideWarehouseTransfers", "TreatmentSignatureSnapshot", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.TreatmentSummarySnapshot", "OutsideWarehouseTransfers", "TreatmentSummarySnapshot", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.BinCount", "OutsideWarehouseTransfers", "BinCount", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.TransferredAt", "OutsideWarehouseTransfers", "TransferredAt", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.TruckLoadBolNumber", "OutsideWarehouseTransfers", "TruckLoadBolNumber", RequireNullable: true),
+        new("OutsideWarehouseTransfers.Notes", "OutsideWarehouseTransfers", "Notes", RequireNullable: true),
+        new("OutsideWarehouseTransfers.CreatedByUserId", "OutsideWarehouseTransfers", "CreatedByUserId", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.CreatedAt", "OutsideWarehouseTransfers", "CreatedAt", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.IsReversed", "OutsideWarehouseTransfers", "IsReversed", RequireNotNullable: true),
+        new("OutsideWarehouseTransfers.ReversalOperationKey", "OutsideWarehouseTransfers", "ReversalOperationKey", RequireNullable: true),
+        new("OutsideWarehouseTransfers.ReversedAt", "OutsideWarehouseTransfers", "ReversedAt", RequireNullable: true),
+        new("OutsideWarehouseTransfers.ReversedByUserId", "OutsideWarehouseTransfers", "ReversedByUserId", RequireNullable: true),
+        new("OutsideWarehouseTransfers.ReverseReason", "OutsideWarehouseTransfers", "ReverseReason", RequireNullable: true),
+        new("OutsideWarehouseTransfers.ConcurrencyVersion", "OutsideWarehouseTransfers", "ConcurrencyVersion", RequireNotNullable: true),
+        new("RoomInventoryAdjustments.OutsideWarehouseTransferId", "RoomInventoryAdjustments", "OutsideWarehouseTransferId", RequireNullable: true),
+        new("TreatmentLineageMovements.OutsideWarehouseTransferId", "TreatmentLineageMovements", "OutsideWarehouseTransferId", RequireNullable: true)
+        ,new("InterCrewTransfers", "InterCrewTransfers", null)
+        ,new("InterCrewTransfers.Id", "InterCrewTransfers", "Id", RequireNotNullable: true)
+        ,new("InterCrewTransfers.OperationKey", "InterCrewTransfers", "OperationKey", RequireNotNullable: true)
+        ,new("InterCrewTransfers.SourceWarehouseId", "InterCrewTransfers", "SourceWarehouseId", RequireNotNullable: true)
+        ,new("InterCrewTransfers.SourceRoomId", "InterCrewTransfers", "SourceRoomId", RequireNotNullable: true)
+        ,new("InterCrewTransfers.DestinationCustodyGroup", "InterCrewTransfers", "DestinationCustodyGroup", RequireNotNullable: true)
+        ,new("InterCrewTransfers.DestinationWarehouseId", "InterCrewTransfers", "DestinationWarehouseId", RequireNullable: true)
+        ,new("InterCrewTransfers.DestinationRoomId", "InterCrewTransfers", "DestinationRoomId", RequireNullable: true)
+        ,new("InterCrewTransfers.BinsLoaded", "InterCrewTransfers", "BinsLoaded", RequireNotNullable: true)
+        ,new("InterCrewTransfers.BinsReceived", "InterCrewTransfers", "BinsReceived", RequireNullable: true)
+        ,new("InterCrewTransfers.VarianceBins", "InterCrewTransfers", "VarianceBins", RequireNullable: true)
+        ,new("InterCrewTransfers.Status", "InterCrewTransfers", "Status", RequireNotNullable: true)
+        ,new("InterCrewTransfers.ReceiveOperationKey", "InterCrewTransfers", "ReceiveOperationKey", RequireNullable: true)
+        ,new("InterCrewTransfers.ReviewOperationKey", "InterCrewTransfers", "ReviewOperationKey", RequireNullable: true)
+        ,new("InterCrewTransfers.ReversalOperationKey", "InterCrewTransfers", "ReversalOperationKey", RequireNullable: true)
+        ,new("RoomInventoryAdjustments.InterCrewTransferId", "RoomInventoryAdjustments", "InterCrewTransferId", RequireNullable: true)
+        ,new("TreatmentLineageMovements.InterCrewTransferId", "TreatmentLineageMovements", "InterCrewTransferId", RequireNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
@@ -608,7 +674,35 @@ public static class DatabaseStartupDiagnostics
         new("IX_SalesDesks_CreatedByUserId", "SalesDesks", "IX_SalesDesks_CreatedByUserId"),
         new("IX_SalesDesks_IsActive_DisplayOrder_Name", "SalesDesks", "IX_SalesDesks_IsActive_DisplayOrder_Name"),
         new("IX_SalesDesks_Name", "SalesDesks", "IX_SalesDesks_Name", RequireUnique: true),
-        new("IX_SalesDesks_UpdatedByUserId", "SalesDesks", "IX_SalesDesks_UpdatedByUserId")
+        new("IX_SalesDesks_UpdatedByUserId", "SalesDesks", "IX_SalesDesks_UpdatedByUserId"),
+        new("IX_TreatmentLineageMovements_OutsideWarehouseTransferId", "TreatmentLineageMovements", "IX_TreatmentLineageMovements_OutsideWarehouseTransferId"),
+        new("IX_RoomInventoryAdjustments_OutsideWarehouseTransferId", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_OutsideWarehouseTransferId"),
+        new("IX_RoomInventoryAdjustments_OutsideWarehouseTransferId_AdjustmentType", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_OutsideWarehouseTransferId_AdjustmentType", RequireUnique: true),
+        new("IX_OutsideWarehouses_Code", "OutsideWarehouses", "IX_OutsideWarehouses_Code", RequireUnique: true),
+        new("IX_OutsideWarehouses_CreatedByUserId", "OutsideWarehouses", "IX_OutsideWarehouses_CreatedByUserId"),
+        new("IX_OutsideWarehouses_IsActive_Name", "OutsideWarehouses", "IX_OutsideWarehouses_IsActive_Name"),
+        new("IX_OutsideWarehouses_UpdatedByUserId", "OutsideWarehouses", "IX_OutsideWarehouses_UpdatedByUserId"),
+        new("IX_OutsideWarehouseTransfers_CreatedByUserId", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_CreatedByUserId"),
+        new("IX_OutsideWarehouseTransfers_FruitProfileId", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_FruitProfileId"),
+        new("IX_OutsideWarehouseTransfers_GrowerNumberSnapshot", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_GrowerNumberSnapshot"),
+        new("IX_OutsideWarehouseTransfers_OperationKey", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_OperationKey", RequireUnique: true),
+        new("IX_OutsideWarehouseTransfers_OutsideWarehouseId", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_OutsideWarehouseId"),
+        new("IX_OutsideWarehouseTransfers_ReceiptId", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_ReceiptId"),
+        new("IX_OutsideWarehouseTransfers_ReversalOperationKey", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_ReversalOperationKey", RequireUnique: true),
+        new("IX_OutsideWarehouseTransfers_ReversedByUserId", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_ReversedByUserId"),
+        new("IX_OutsideWarehouseTransfers_SourceInventoryAdjustmentId", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_SourceInventoryAdjustmentId"),
+        new("IX_OutsideWarehouseTransfers_SourceRoomId", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_SourceRoomId"),
+        new("IX_OutsideWarehouseTransfers_SourceWarehouseId_SourceRoomId_TransferredAt", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_SourceWarehouseId_SourceRoomId_TransferredAt"),
+        new("IX_OutsideWarehouseTransfers_TransferredAt_OutsideWarehouseId", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_TransferredAt_OutsideWarehouseId")
+        ,new("IX_InterCrewTransfers_OperationKey", "InterCrewTransfers", "IX_InterCrewTransfers_OperationKey", RequireUnique: true)
+        ,new("IX_InterCrewTransfers_ReceiveOperationKey", "InterCrewTransfers", "IX_InterCrewTransfers_ReceiveOperationKey", RequireUnique: true)
+        ,new("IX_InterCrewTransfers_ReviewOperationKey", "InterCrewTransfers", "IX_InterCrewTransfers_ReviewOperationKey", RequireUnique: true)
+        ,new("IX_InterCrewTransfers_ReversalOperationKey", "InterCrewTransfers", "IX_InterCrewTransfers_ReversalOperationKey", RequireUnique: true)
+        ,new("IX_InterCrewTransfers_DestinationCustodyGroup_Status_LoadedAt", "InterCrewTransfers", "IX_InterCrewTransfers_DestinationCustodyGroup_Status_LoadedAt")
+        ,new("IX_InterCrewTransfers_SourceRoomId_LoadedAt", "InterCrewTransfers", "IX_InterCrewTransfers_SourceRoomId_LoadedAt")
+        ,new("IX_RoomInventoryAdjustments_InterCrewTransferId", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_InterCrewTransferId")
+        ,new("IX_RoomInventoryAdjustments_InterCrewTransferId_AdjustmentType", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_InterCrewTransferId_AdjustmentType", RequireUnique: true)
+        ,new("IX_TreatmentLineageMovements_InterCrewTransferId", "TreatmentLineageMovements", "IX_TreatmentLineageMovements_InterCrewTransferId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
@@ -711,7 +805,25 @@ public static class DatabaseStartupDiagnostics
         new("FK_ActualRunSalesDeskCorrections_ActualRuns_ActualRunId", "ActualRunSalesDeskCorrections", "FK_ActualRunSalesDeskCorrections_ActualRuns_ActualRunId"),
         new("FK_ActualRunSalesDeskCorrections_SalesDesks_NewSalesDeskId", "ActualRunSalesDeskCorrections", "FK_ActualRunSalesDeskCorrections_SalesDesks_NewSalesDeskId"),
         new("FK_ActualRunSalesDeskCorrections_SalesDesks_PreviousSalesDeskId", "ActualRunSalesDeskCorrections", "FK_ActualRunSalesDeskCorrections_SalesDesks_PreviousSalesDeskId"),
-        new("FK_ActualRunSalesDeskCorrections_Users_CorrectedByUserId", "ActualRunSalesDeskCorrections", "FK_ActualRunSalesDeskCorrections_Users_CorrectedByUserId")
+        new("FK_ActualRunSalesDeskCorrections_Users_CorrectedByUserId", "ActualRunSalesDeskCorrections", "FK_ActualRunSalesDeskCorrections_Users_CorrectedByUserId"),
+        new("FK_OutsideWarehouses_Users_CreatedByUserId", "OutsideWarehouses", "FK_OutsideWarehouses_Users_CreatedByUserId"),
+        new("FK_OutsideWarehouses_Users_UpdatedByUserId", "OutsideWarehouses", "FK_OutsideWarehouses_Users_UpdatedByUserId"),
+        new("FK_OutsideWarehouseTransfers_FruitProfiles_FruitProfileId", "OutsideWarehouseTransfers", "FK_OutsideWarehouseTransfers_FruitProfiles_FruitProfileId"),
+        new("FK_OutsideWarehouseTransfers_OutsideWarehouses_OutsideWarehouseId", "OutsideWarehouseTransfers", "FK_OutsideWarehouseTransfers_OutsideWarehouses_OutsideWarehouseId"),
+        new("FK_OutsideWarehouseTransfers_Receipts_ReceiptId", "OutsideWarehouseTransfers", "FK_OutsideWarehouseTransfers_Receipts_ReceiptId"),
+        new("FK_OutsideWarehouseTransfers_RoomInventoryAdjustments_SourceInventoryAdjustmentId", "OutsideWarehouseTransfers", "FK_OutsideWarehouseTransfers_RoomInventoryAdjustments_SourceInventoryAdjustmentId"),
+        new("FK_OutsideWarehouseTransfers_Rooms_SourceRoomId", "OutsideWarehouseTransfers", "FK_OutsideWarehouseTransfers_Rooms_SourceRoomId"),
+        new("FK_OutsideWarehouseTransfers_Users_CreatedByUserId", "OutsideWarehouseTransfers", "FK_OutsideWarehouseTransfers_Users_CreatedByUserId"),
+        new("FK_OutsideWarehouseTransfers_Users_ReversedByUserId", "OutsideWarehouseTransfers", "FK_OutsideWarehouseTransfers_Users_ReversedByUserId"),
+        new("FK_OutsideWarehouseTransfers_Warehouses_SourceWarehouseId", "OutsideWarehouseTransfers", "FK_OutsideWarehouseTransfers_Warehouses_SourceWarehouseId"),
+        new("FK_RoomInventoryAdjustments_OutsideWarehouseTransfers_OutsideWarehouseTransferId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_OutsideWarehouseTransfers_OutsideWarehouseTransferId"),
+        new("FK_TreatmentLineageMovements_OutsideWarehouseTransfers_OutsideWarehouseTransferId", "TreatmentLineageMovements", "FK_TreatmentLineageMovements_OutsideWarehouseTransfers_OutsideWarehouseTransferId")
+        ,new("FK_InterCrewTransfers_Rooms_SourceRoomId", "InterCrewTransfers", "FK_InterCrewTransfers_Rooms_SourceRoomId")
+        ,new("FK_InterCrewTransfers_Rooms_DestinationRoomId", "InterCrewTransfers", "FK_InterCrewTransfers_Rooms_DestinationRoomId")
+        ,new("FK_InterCrewTransfers_Warehouses_SourceWarehouseId", "InterCrewTransfers", "FK_InterCrewTransfers_Warehouses_SourceWarehouseId")
+        ,new("FK_InterCrewTransfers_Warehouses_DestinationWarehouseId", "InterCrewTransfers", "FK_InterCrewTransfers_Warehouses_DestinationWarehouseId")
+        ,new("FK_RoomInventoryAdjustments_InterCrewTransfers_InterCrewTransferId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_InterCrewTransfers_InterCrewTransferId")
+        ,new("FK_TreatmentLineageMovements_InterCrewTransfers_InterCrewTransferId", "TreatmentLineageMovements", "FK_TreatmentLineageMovements_InterCrewTransfers_InterCrewTransferId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
@@ -743,7 +855,10 @@ public static class DatabaseStartupDiagnostics
         new("PK_ProcessorShipmentPriceCorrections", "ProcessorShipmentPriceCorrections", "PK_ProcessorShipmentPriceCorrections"),
         new("PK_RoomSealEvents", "RoomSealEvents", "PK_RoomSealEvents"),
         new("PK_SalesDesks", "SalesDesks", "PK_SalesDesks"),
-        new("PK_ActualRunSalesDeskCorrections", "ActualRunSalesDeskCorrections", "PK_ActualRunSalesDeskCorrections")
+        new("PK_ActualRunSalesDeskCorrections", "ActualRunSalesDeskCorrections", "PK_ActualRunSalesDeskCorrections"),
+        new("PK_OutsideWarehouses", "OutsideWarehouses", "PK_OutsideWarehouses"),
+        new("PK_OutsideWarehouseTransfers", "OutsideWarehouseTransfers", "PK_OutsideWarehouseTransfers")
+        ,new("PK_InterCrewTransfers", "InterCrewTransfers", "PK_InterCrewTransfers")
     ];
 
     public static async Task InspectAsync(

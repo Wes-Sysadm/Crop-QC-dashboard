@@ -1,0 +1,165 @@
+@model OutsideWarehouseTransferPageViewModel
+@inject CropQc.Shared.Time.IBusinessTimeService BusinessTime
+
+<div class="outside-transfer-workflow">
+    <p class="notice information"><strong>Final disposition:</strong> Outside Warehouse Transfers remove fruit from Crop QC current inventory. They do not create a destination Room or an outside inventory balance.</p>
+    @if (!string.IsNullOrWhiteSpace(Model.Error))
+    {
+        <p class="notice warning" role="alert">@Model.Error</p>
+    }
+    @if (!Model.CanCreate)
+    {
+        <p class="notice warning">Transfers Create access is required to record an Outside Warehouse Transfer.</p>
+    }
+    else if (Model.OutsideWarehouses.Count == 0)
+    {
+        <p class="notice warning">No active Outside Warehouses are configured. An administrator can add one under Master Data.</p>
+    }
+    else if (Model.Inventory.Count == 0)
+    {
+        <p class="empty-state">No current inventory is available for an Outside Warehouse Transfer.</p>
+    }
+    else
+    {
+        <form class="form-grid outside-transfer-form" method="post" action="/BinsRun/OutsideTransfers" data-outside-transfer-form>
+            <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
+            <input type="hidden" name="ExpectedAvailableBins" value="@Model.Form.ExpectedAvailableBins" data-outside-expected />
+            <input type="hidden" name="ConfirmedReview" value="false" data-outside-confirmed />
+            <fieldset class="field wide">
+                <legend>Current inventory selection</legend>
+                <div class="table-wrap">
+                    <table class="compact-table outside-inventory-table">
+                        <thead><tr><th scope="col">Select</th><th scope="col">Facility / Room</th><th scope="col">Grower / Lot</th><th scope="col">Variety</th><th scope="col">Production</th><th scope="col">Treatment</th><th scope="col" class="numeric">Available</th></tr></thead>
+                        <tbody>
+                        @foreach (var item in Model.Inventory)
+                        {
+                            <tr class="@(item.IsRoomSealed ? "muted" : null)">
+                                <td><input type="radio" name="SourceKey" value="@item.SourceKey" required disabled="@item.IsRoomSealed"
+                                           checked="@(item.SourceKey == Model.Form.SourceKey)"
+                                           data-available="@item.AvailableBins" data-facility="@item.Facility" data-room="@item.Room"
+                                           data-grower="@item.GrowerNumber - @item.GrowerName" data-lot="@item.LotNumber"
+                                           data-variety="@item.VarietyCode - @item.VarietyName" data-production="@item.ProductionType"
+                                           data-treatment="@item.TreatmentSummary" /></td>
+                                <td>@item.Facility / @item.Room@(item.IsRoomSealed ? " (Sealed)" : "")</td>
+                                <td>@item.GrowerNumber - @item.GrowerName<br /><span class="muted">Lot @item.LotNumber</span></td>
+                                <td>@item.VarietyCode - @item.VarietyName</td>
+                                <td>@item.ProductionType</td>
+                                <td>@item.TreatmentSummary</td>
+                                <td class="numeric">@item.AvailableBins</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </fieldset>
+            <label class="field">Outside Warehouse
+                <select name="OutsideWarehouseId" required data-outside-destination>
+                    <option value="">Select outside warehouse...</option>
+                    @foreach (var location in Model.OutsideWarehouses)
+                    {
+                        <option value="@location.Id" selected="@(location.Id == Model.Form.OutsideWarehouseId)">@location.Code — @location.Name</option>
+                    }
+                </select>
+            </label>
+            <label class="field">Bins to send
+                <input name="BinCount" type="number" min="1" value="@(Model.Form.BinCount > 0 ? Model.Form.BinCount : null)" required inputmode="numeric" data-outside-bins />
+            </label>
+            <label class="field">Transfer date/time (Pacific)
+                <input name="TransferredAt" type="datetime-local" value="@Model.Form.TransferredAt.ToString("yyyy-MM-ddTHH:mm")" required />
+            </label>
+            <label class="field">Truck / Load / BOL #
+                <input name="TruckLoadBolNumber" maxlength="150" value="@Model.Form.TruckLoadBolNumber" />
+            </label>
+            <label class="field wide">Notes
+                <textarea name="Notes" maxlength="1000">@Model.Form.Notes</textarea>
+            </label>
+            <button type="button" data-outside-review-button>Review Outside Transfer</button>
+            <section class="subpanel wide outside-transfer-review" data-outside-review hidden aria-live="polite">
+                <h3>Review Outside Warehouse Transfer</h3>
+                <p class="notice warning">These bins will immediately leave all Crop QC current-inventory and run-availability totals.</p>
+                <dl class="summary-list">
+                    <dt>From</dt><dd data-review-source></dd>
+                    <dt>Inventory</dt><dd data-review-identity></dd>
+                    <dt>Treatment state</dt><dd data-review-treatment></dd>
+                    <dt>Outside Warehouse</dt><dd data-review-outside></dd>
+                    <dt>Bins</dt><dd data-review-bins></dd>
+                </dl>
+                <div class="action-bar">
+                    <button type="button" class="secondary-button" data-outside-edit-button>Back to Transfer</button>
+                    <button type="submit">Confirm Outside Transfer</button>
+                </div>
+            </section>
+        </form>
+        <script>
+        (() => {
+            const form = document.querySelector('[data-outside-transfer-form]');
+            if (!form) return;
+            const review = form.querySelector('[data-outside-review]');
+            const confirmed = form.querySelector('[data-outside-confirmed]');
+            const expected = form.querySelector('[data-outside-expected]');
+            const reviewButton = form.querySelector('[data-outside-review-button]');
+            let reviewReady = false;
+            const selected = () => form.querySelector('input[name="SourceKey"]:checked');
+            const hideReview = () => { reviewReady = false; confirmed.value = 'false'; review.hidden = true; };
+            const text = (selector, value) => { const target = form.querySelector(selector); if (target) target.textContent = value || '—'; };
+            form.querySelectorAll('input, select, textarea').forEach(control => control.addEventListener('change', hideReview));
+            reviewButton?.addEventListener('click', () => {
+                if (!form.reportValidity()) return;
+                const source = selected();
+                const bins = Number(form.querySelector('[data-outside-bins]')?.value || 0);
+                const available = Number(source?.dataset.available || 0);
+                if (bins > available) {
+                    form.querySelector('[data-outside-bins]').setCustomValidity(`Only ${available} bins are currently available.`);
+                    form.reportValidity();
+                    form.querySelector('[data-outside-bins]').setCustomValidity('');
+                    return;
+                }
+                expected.value = String(available);
+                text('[data-review-source]', `${source?.dataset.facility} / ${source?.dataset.room}`);
+                text('[data-review-identity]', `${source?.dataset.grower}; Lot ${source?.dataset.lot}; ${source?.dataset.variety}; ${source?.dataset.production}`);
+                text('[data-review-treatment]', source?.dataset.treatment);
+                text('[data-review-outside]', form.querySelector('[data-outside-destination]')?.selectedOptions[0]?.textContent?.trim());
+                text('[data-review-bins]', String(bins));
+                confirmed.value = 'true';
+                reviewReady = true;
+                review.hidden = false;
+                review.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            });
+            form.querySelector('[data-outside-edit-button]')?.addEventListener('click', hideReview);
+            form.addEventListener('submit', event => {
+                if (!reviewReady) { event.preventDefault(); reviewButton?.click(); }
+            });
+        })();
+        </script>
+    }
+
+    <section class="subpanel outside-transfer-history">
+        <h3>Outside Transfer History</h3>
+        <form method="get" action="/BinsRun" class="filter-bar">
+            <input type="hidden" name="Section" value="Transfer" />
+            <input type="hidden" name="TransferType" value="Outside" />
+            <label>From <input type="date" name="OutsideFrom" /></label>
+            <label>To <input type="date" name="OutsideTo" /></label>
+            <label>Outside Warehouse
+                <select name="OutsideWarehouseId"><option value="">All</option>@foreach (var location in Model.ReportOutsideWarehouses) { <option value="@location.Id">@location.Code — @location.Name@(!location.IsActive ? " (Inactive)" : "")</option> }</select>
+            </label>
+            <label>Grower number <input name="OutsideGrowerNumber" /></label>
+            <label>Variety <input name="OutsideVariety" /></label>
+            <label>Status <select name="OutsideStatus"><option value="">All</option><option>Active</option><option>Reversed</option></select></label>
+            <button type="submit" class="secondary-button">Filter</button>
+        </form>
+        @if (Model.History.Count == 0)
+        {
+            <p class="empty-state">No Outside Warehouse Transfers match these filters.</p>
+        }
+        else
+        {
+            <div class="table-wrap"><table class="compact-table"><thead><tr><th>ID</th><th>Pacific date/time</th><th>Outside Warehouse</th><th>Source</th><th>Grower / Lot</th><th>Variety</th><th>Bins</th><th>Truck / Load / BOL</th><th>Status</th></tr></thead><tbody>
+            @foreach (var item in Model.History)
+            {
+                <tr><td><a href="/BinsRun/OutsideTransfers/@item.Id">#@item.Id</a></td><td>@BusinessTime.FormatPacific(item.TransferredAt)</td><td>@item.OutsideWarehouseCode — @item.OutsideWarehouse</td><td>@item.Facility / @item.Room</td><td>@item.GrowerNumber - @item.GrowerName<br /><span class="muted">Lot @item.Lot</span></td><td>@item.Variety<br /><span class="muted">@item.ProductionType</span></td><td>@item.Bins</td><td>@item.TruckLoadBolNumber</td><td><span class="status-pill @(item.IsReversed ? "status-muted" : "status-ok")">@(item.IsReversed ? "Reversed" : "Active")</span></td></tr>
+            }
+            </tbody></table></div>
+        }
+    </section>
+</div>

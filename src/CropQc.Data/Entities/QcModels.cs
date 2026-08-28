@@ -143,6 +143,10 @@ public sealed class RoomInventoryAdjustment
     public RoomInventoryLoss? RoomInventoryLoss { get; set; }
     public long? ProcessorShipmentLineId { get; set; }
     public ProcessorShipmentLine? ProcessorShipmentLine { get; set; }
+    public long? OutsideWarehouseTransferId { get; set; }
+    public OutsideWarehouseTransfer? OutsideWarehouseTransfer { get; set; }
+    public long? InterCrewTransferId { get; set; }
+    public InterCrewTransfer? InterCrewTransfer { get; set; }
     public long? ActualRunId { get; set; }
     public ActualRun? ActualRun { get; set; }
     public long? ActualRunRevisionId { get; set; }

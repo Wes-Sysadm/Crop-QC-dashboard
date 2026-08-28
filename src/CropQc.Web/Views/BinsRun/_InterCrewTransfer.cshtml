@@ -1,0 +1,58 @@
+@model InterCrewTransferPageViewModel
+@inject CropQc.Shared.Time.IBusinessTimeService BusinessTime
+
+<div class="inter-crew-transfer-workflow">
+    <p class="notice information"><strong>Two-step custody transfer:</strong> dispatch removes bins from the source Room and places them In Transit. The receiving crew later selects its destination Room and records the authoritative received count.</p>
+    <section class="subpanel" aria-label="In Transit summary">
+        <h3>In Transit</h3><p><strong>@Model.InTransitLoads load(s)</strong> · @Model.InTransitBins bins</p>
+    </section>
+    @if (Model.CanCreate && Model.Inventory.Count > 0)
+    {
+        <form method="post" action="/BinsRun/InterCrewTransfers" class="form-grid" data-inter-crew-form>
+            <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
+            <input type="hidden" name="ExpectedAvailableBins" value="0" data-custody-expected />
+            <input type="hidden" name="ConfirmedReview" value="false" data-custody-confirmed />
+            <fieldset class="field wide"><legend>Current inventory to load</legend>
+                <div class="table-wrap"><table class="compact-table"><thead><tr><th>Select</th><th>Facility / Room</th><th>Grower / Lot</th><th>Variety</th><th>Treatment</th><th>Available</th></tr></thead><tbody>
+                @foreach (var item in Model.Inventory)
+                {
+                    <tr class="@(item.IsRoomSealed ? "muted" : null)"><td><input type="radio" name="SourceKey" value="@item.SourceKey" required disabled="@item.IsRoomSealed" data-source-facility="@item.Facility" data-available="@item.AvailableBins" /></td><td>@item.Facility / @item.Room@(item.IsRoomSealed ? " (Sealed)" : "")</td><td>@item.GrowerNumber - @item.GrowerName<br /><span class="muted">Lot @item.LotNumber</span></td><td>@item.VarietyCode - @item.VarietyName<br /><span class="muted">@item.ProductionType</span></td><td>@item.TreatmentSummary</td><td class="numeric">@item.AvailableBins</td></tr>
+                }
+                </tbody></table></div>
+            </fieldset>
+            <label class="field">Destination receiving crew
+                <select name="DestinationCustodyGroup" required data-custody-destination><option value="">Select crew...</option><option value="WP_DH" data-group="WP_DH">WP / DH</option><option value="EBS" data-group="EBS">EBS</option></select>
+            </label>
+            <label class="field">Bins loaded<input name="BinsLoaded" type="number" min="1" inputmode="numeric" required data-custody-bins /></label>
+            <label class="field">Loaded date/time (Pacific)<input name="LoadedAt" type="datetime-local" value="@Model.Form.LoadedAt.ToString("yyyy-MM-ddTHH:mm")" required /></label>
+            <label class="field">Truck / Load / BOL #<input name="TruckLoadBolNumber" maxlength="150" /></label>
+            <label class="field wide">Notes<textarea name="Notes" maxlength="1000"></textarea></label>
+            <button type="button" data-custody-review-button>Review Dispatch</button>
+            <section class="subpanel wide" data-custody-review hidden><h3>Review Inter-Crew Dispatch</h3><p class="notice warning">The loaded bins will leave Room inventory immediately and remain visible only as In Transit until received.</p><button type="submit">Confirm Dispatch</button></section>
+        </form>
+        <script>
+        (() => {
+            const form = document.querySelector('[data-inter-crew-form]'); if (!form) return;
+            const destination = form.querySelector('[data-custody-destination]');
+            const review = form.querySelector('[data-custody-review]'); const confirmed = form.querySelector('[data-custody-confirmed]');
+            const expected = form.querySelector('[data-custody-expected]'); const bins = form.querySelector('[data-custody-bins]');
+            const allowed = facility => facility === 'EBS' ? ['WP_DH'] : (facility === 'WP' || facility === 'DH') ? ['EBS'] : ['WP_DH', 'EBS'];
+            const reset = () => { confirmed.value = 'false'; review.hidden = true; };
+            form.addEventListener('change', event => { reset(); if (event.target.name === 'SourceKey') { const groups = allowed(event.target.dataset.sourceFacility); [...destination.options].forEach(o => { if (o.dataset.group) o.disabled = !groups.includes(o.dataset.group); }); if (destination.selectedOptions[0]?.disabled) destination.value = ''; } });
+            form.querySelector('[data-custody-review-button]')?.addEventListener('click', () => { if (!form.reportValidity()) return; const source = form.querySelector('input[name="SourceKey"]:checked'); const available = Number(source?.dataset.available || 0); if (Number(bins.value) > available) { bins.setCustomValidity(`Only ${available} bins are available.`); form.reportValidity(); bins.setCustomValidity(''); return; } expected.value = String(available); confirmed.value = 'true'; review.hidden = false; });
+            form.addEventListener('submit', e => { if (confirmed.value !== 'true') { e.preventDefault(); form.querySelector('[data-custody-review-button]')?.click(); } });
+        })();
+        </script>
+    }
+    else if (!Model.CanCreate) { <p class="notice warning">Transfers Create access is required to dispatch or receive a transfer.</p> }
+    else { <p class="empty-state">No eligible current inventory is available.</p> }
+
+    <section class="subpanel"><h3>@(string.IsNullOrWhiteSpace(Model.CurrentCustodyGroup) ? "Receiving Queue" : $"{Model.CurrentCustodyGroup} Receiving Queue")</h3>
+        @if (Model.Queue.Count == 0) { <p class="empty-state">No loads are waiting for this crew.</p> }
+        else { <div class="table-wrap"><table class="compact-table"><thead><tr><th>Load</th><th>Loaded</th><th>From</th><th>To crew</th><th>Grower / Lot</th><th>Bins</th><th>BOL</th><th>Status</th></tr></thead><tbody>@foreach (var item in Model.Queue) { <tr><td><a href="/BinsRun/InterCrewTransfers/@item.Id">#@item.Id — Receive</a></td><td>@BusinessTime.FormatPacific(item.LoadedAt)</td><td>@item.Source</td><td>@item.DestinationGroup</td><td>@item.Grower<br /><span class="muted">@item.Lot / @item.Variety</span></td><td>@item.BinsLoaded</td><td>@item.Bol</td><td><span class="status-pill status-warning">In Transit</span></td></tr> }</tbody></table></div> }
+    </section>
+    <section class="subpanel"><h3>Transfer History</h3>
+        @if (Model.History.Count == 0) { <p class="empty-state">No inter-crew transfer history.</p> }
+        else { <div class="table-wrap"><table class="compact-table"><thead><tr><th>Load</th><th>From</th><th>To</th><th>Loaded</th><th>Received</th><th>Variance</th><th>Status</th></tr></thead><tbody>@foreach (var item in Model.History) { <tr><td><a href="/BinsRun/InterCrewTransfers/@item.Id">#@item.Id</a></td><td>@item.Source</td><td>@item.DestinationGroup</td><td>@item.BinsLoaded</td><td>@item.BinsReceived</td><td>@(item.Variance is null ? "—" : $"{item.Variance:+#;-#;0}")</td><td>@item.StatusLabel</td></tr> }</tbody></table></div> }
+    </section>
+</div>

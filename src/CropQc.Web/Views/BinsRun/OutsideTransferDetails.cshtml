@@ -1,0 +1,39 @@
+@model OutsideWarehouseTransferDetailViewModel
+@inject CropQc.Shared.Time.IBusinessTimeService BusinessTime
+@{
+    ViewData["Title"] = $"Outside Transfer #{Model.Id}";
+}
+
+<section class="page-header">
+    <div><p class="eyebrow">Transfers</p><h1>Outside Transfer #@Model.Id</h1><p class="muted">Permanent outbound disposition history; no outside current-inventory balance is maintained.</p></div>
+    <div class="action-bar"><a class="secondary-button" href="/BinsRun?Section=Transfer&amp;TransferType=Outside">Back to Outside Transfers</a></div>
+</section>
+
+<section class="panel">
+    <div class="panel-heading"><h2>@Model.OutsideWarehouseCode — @Model.OutsideWarehouse</h2><span class="status-pill @(Model.IsReversed ? "status-muted" : "status-ok")">@(Model.IsReversed ? "Reversed" : "Active")</span></div>
+    <dl class="summary-list">
+        <dt>Transfer date/time</dt><dd>@BusinessTime.FormatPacific(Model.TransferredAt)</dd>
+        <dt>Source Facility / Room</dt><dd>@Model.Facility / @Model.Room</dd>
+        <dt>Grower</dt><dd>@Model.GrowerNumber - @Model.GrowerName</dd>
+        <dt>Lot</dt><dd>@Model.Lot</dd>
+        <dt>Variety</dt><dd>@Model.Variety</dd>
+        <dt>Production</dt><dd>@(string.Equals(Model.ProductionType, Model.OrganicStatus, StringComparison.OrdinalIgnoreCase) ? Model.ProductionType : $"{Model.ProductionType}; {Model.OrganicStatus}")</dd>
+        <dt>Bins</dt><dd>@Model.Bins</dd>
+        <dt>Treatment state at transfer</dt><dd>@Model.Treatment</dd>
+        <dt>Truck / Load / BOL #</dt><dd>@(Model.TruckLoadBolNumber ?? "—")</dd>
+        <dt>Notes</dt><dd>@(Model.Notes ?? "—")</dd>
+        <dt>Recorded by</dt><dd>@Model.RecordedBy</dd>
+        <dt>Crop year</dt><dd>@Model.CropYear</dd>
+        <dt>Receipt provenance</dt><dd>@(Model.ReceiptId is long receiptId ? $"Receipt #{receiptId}" : "Not uniquely resolvable")</dd>
+        <dt>Source ledger record</dt><dd>@(Model.SourceInventoryAdjustmentId is long adjustmentId ? $"Adjustment #{adjustmentId}" : "—")</dd>
+    </dl>
+</section>
+
+@if (Model.IsReversed)
+{
+    <section class="panel"><h2>Administrative Reversal</h2><dl class="summary-list"><dt>Reversed at</dt><dd>@(Model.ReversedAt is DateTimeOffset reversedAt ? BusinessTime.FormatPacific(reversedAt) : "—")</dd><dt>Reversed by</dt><dd>@Model.ReversedBy</dd><dt>Reason</dt><dd>@Model.ReverseReason</dd></dl><p class="notice information">The original transfer remains immutable. The exact original source identity and treatment provenance were restored.</p></section>
+}
+else if (Model.CanAdmin)
+{
+    <section class="panel danger-zone"><h2>Reverse Incorrect Entry</h2><p class="notice warning">This is an administrative correction, not a physical return workflow. It restores exactly @Model.Bins bins to @Model.Facility / @Model.Room using the original snapshots and lineage.</p><form method="post" action="/BinsRun/OutsideTransfers/@Model.Id/Reverse" class="form-grid" onsubmit="return confirm('Reverse this Outside Warehouse Transfer and restore its exact source inventory?');"><input type="hidden" name="TransferId" value="@Model.Id" /><input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" /><label class="field wide">Required reversal reason<textarea name="Reason" maxlength="1000" required></textarea></label><button type="submit" class="danger-button">Reverse Outside Transfer</button></form></section>
+}

@@ -1286,6 +1286,10 @@ else
         <h2>@(activeSection.Equals("Actual", StringComparison.OrdinalIgnoreCase) ? "Find Current Inventory" : "Select Room")</h2>
         <form class="toolbar bins-run-filter" method="get" action="/BinsRun">
             <input type="hidden" name="Section" value="@activeSection" />
+            @if (activeSection.Equals("Transfer", StringComparison.OrdinalIgnoreCase))
+            {
+                <input type="hidden" name="TransferType" value="@Model.Filter.TransferType" />
+            }
             @if (Model.Filter.EditActualRunId is long editActualRunId)
             {
                 <input type="hidden" name="EditActualRunId" value="@editActualRunId" />
@@ -1535,6 +1539,31 @@ else
     {
         <section class="panel">
             <h2>Transfer Bins</h2>
+            @{ var outsideTransferMode = Model.Filter.TransferType.Equals("Outside", StringComparison.OrdinalIgnoreCase); var interCrewTransferMode = Model.Filter.TransferType.Equals("InterCrew", StringComparison.OrdinalIgnoreCase); }
+            <fieldset class="wide transfer-type-selector">
+                <legend>Transfer Type</legend>
+                <div class="choice-card-grid">
+                    <a class="choice-card @(!outsideTransferMode && !interCrewTransferMode ? "selected" : "")" href="/BinsRun?Section=Transfer&amp;TransferType=Internal&amp;RoomId=@Model.Filter.RoomId">
+                        <strong>Internal Room Transfer</strong><small>Move fruit between Crop QC Rooms.</small>
+                    </a>
+                    <a class="choice-card @(interCrewTransferMode ? "selected" : "")" href="/BinsRun?Section=Transfer&amp;TransferType=InterCrew">
+                        <strong>Transfer to Another Crew</strong><small>Dispatch bins In Transit for WP / DH or EBS to receive.</small>
+                    </a>
+                    <a class="choice-card @(outsideTransferMode ? "selected" : "")" href="/BinsRun?Section=Transfer&amp;TransferType=Outside&amp;WarehouseId=@Model.Filter.WarehouseId&amp;RoomId=@Model.Filter.RoomId">
+                        <strong>Outside Warehouse</strong><small>Send fruit out of Crop QC current inventory for outside packing.</small>
+                    </a>
+                </div>
+            </fieldset>
+            @if (outsideTransferMode)
+            {
+                @await Html.PartialAsync("_OutsideWarehouseTransfer", Model.OutsideWarehouseTransfers)
+            }
+            else if (interCrewTransferMode)
+            {
+                @await Html.PartialAsync("_InterCrewTransfer", Model.InterCrewTransfers)
+            }
+            else
+            {
             <p class="muted">Uses the existing audited source-neutral Transfer Out / Transfer In workflow and current quantity safeguards.</p>
             @if (!Model.CanTransfer)
             {
@@ -1690,6 +1719,7 @@ else
                 })();
                 </script>
                 }
+            }
             }
         </section>
     }
