@@ -513,6 +513,140 @@ public sealed class BinsRunWorkflowTests
         Assert.True(directReversal.InventoryAdjustment.AdjustmentAt >= reversalStartedAt);
     }
 
+    [Theory]
+    [InlineData("Conventional")]
+    [InlineData("Organic")]
+    [InlineData(null)]
+    public async Task StandaloneReversal_UsesOriginalTransactionInventoryStatus_WhenCurrentSnapshotIsBlank(string? originalStatus)
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var manager = Principal("manager@fruitandland.com");
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, manager, default))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var projection = ProjectionForActual(option, 1000);
+        db.RunProjections.Add(projection);
+        await db.SaveChangesAsync();
+        var form = ActualRunForm(option, projection);
+        form.BinsRun = 8;
+        Assert.Null(await service.CreateAsync(form, manager, default));
+        var original = await db.BinsRunEntries.SingleAsync();
+        original.InventoryStatus = originalStatus;
+        original.InventoryAdjustment.InventoryStatus = originalStatus;
+        AddBlankCurrentMetadataAdjustment(db, original, 8991);
+        await db.SaveChangesAsync();
+
+        Assert.Null(await service.ReverseAsync(
+            new ReverseBinsRunForm { Id = original.Id, Reason = "Production-shaped identity regression" },
+            Principal("admin@fruitandland.com"),
+            default));
+
+        var reversal = await db.BinsRunEntries.Include(x => x.InventoryAdjustment)
+            .SingleAsync(x => x.ReversesBinsRunEntryId == original.Id);
+        Assert.Equal(originalStatus ?? "", reversal.InventoryStatus ?? "");
+        Assert.Equal(originalStatus ?? "", reversal.InventoryAdjustment.InventoryStatus ?? "");
+        var readiness = await new InventoryDeductionInvariantService(db, NullLogger<InventoryDeductionInvariantService>.Instance)
+            .VerifyReadinessAsync(default);
+        Assert.DoesNotContain(readiness.Issues, x => x.Code == "OrganicStatusMismatch");
+    }
+
+    [Fact]
+    public async Task StandaloneRevision_UsesOriginalTransactionInventoryStatus_WhenCurrentSnapshotIsBlank()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var manager = Principal("manager@fruitandland.com");
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, manager, default))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var projection = ProjectionForActual(option, 1000);
+        db.RunProjections.Add(projection);
+        await db.SaveChangesAsync();
+        var create = ActualRunForm(option, projection);
+        create.BinsRun = 8;
+        Assert.Null(await service.CreateAsync(create, manager, default));
+        var original = await db.BinsRunEntries.SingleAsync();
+        original.InventoryStatus = "Conventional";
+        original.InventoryAdjustment.InventoryStatus = "Conventional";
+        AddBlankCurrentMetadataAdjustment(db, original, 8992);
+        await db.SaveChangesAsync();
+        var current = (await service.GetPageAsync(new BinsRunFilterForm { RoomId = 1001 }, manager, default))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+
+        Assert.Null(await service.UpdateAsync(original.Id, new BinsRunForm
+        {
+            InventoryKey = current.InventoryKey,
+            BinsRun = 7,
+            RunAt = DateTimeOffset.UtcNow
+        }, manager, default));
+
+        var reversal = await db.BinsRunEntries.Include(x => x.InventoryAdjustment)
+            .SingleAsync(x => x.ReversesBinsRunEntryId == original.Id);
+        Assert.Equal("Conventional", reversal.InventoryStatus);
+        Assert.Equal("Conventional", reversal.InventoryAdjustment.InventoryStatus);
+    }
+
+    [Fact]
+    public async Task ActualRunCancellation_UsesOriginalTransactionInventoryStatus_WhenCurrentSnapshotIsBlank()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var manager = Principal("manager@fruitandland.com");
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, manager, default))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        Assert.Null(await service.CreateActualRunAsync(GroupForm((option, 8)), manager, default));
+        var run = await db.ActualRuns.SingleAsync();
+        var original = await db.BinsRunEntries.SingleAsync();
+        original.InventoryStatus = "Conventional";
+        original.InventoryAdjustment.InventoryStatus = "Conventional";
+        AddBlankCurrentMetadataAdjustment(db, original, 8993);
+        await db.SaveChangesAsync();
+
+        Assert.Null(await service.CancelActualRunAsync(new CancelActualRunForm
+        {
+            Id = run.Id,
+            ConcurrencyVersion = run.ConcurrencyVersion,
+            OperationKey = Guid.NewGuid().ToString("N"),
+            Reason = "Production-shaped cancellation identity regression"
+        }, Principal("admin@fruitandland.com"), default));
+
+        var reversal = await db.BinsRunEntries.Include(x => x.InventoryAdjustment)
+            .SingleAsync(x => x.ReversesBinsRunEntryId == original.Id);
+        Assert.Equal("Conventional", reversal.InventoryStatus);
+        Assert.Equal("Conventional", reversal.InventoryAdjustment.InventoryStatus);
+        var readiness = await new InventoryDeductionInvariantService(db, NullLogger<InventoryDeductionInvariantService>.Instance)
+            .VerifyReadinessAsync(default);
+        Assert.DoesNotContain(readiness.Issues, x => x.Code == "OrganicStatusMismatch");
+    }
+
+    private static void AddBlankCurrentMetadataAdjustment(CropQcDbContext db, BinsRunEntry entry, long id)
+    {
+        db.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
+        {
+            Id = id,
+            CropYear = entry.CropYear,
+            WarehouseId = entry.WarehouseId,
+            RoomId = entry.RoomId,
+            GrowerLotId = entry.GrowerLotId,
+            FruitProfileId = entry.FruitProfileId,
+            GrowerName = entry.GrowerName,
+            LotNumber = entry.LotNumber,
+            PoolStart = entry.PoolStart,
+            VarietyCode = entry.VarietyCode,
+            OldBinCount = entry.NewAvailableBins,
+            ChangeAmount = 0,
+            NewBinCount = entry.NewAvailableBins,
+            AdjustmentType = "ManualTrueUp",
+            Source = "Historical aggregate metadata regression fixture",
+            InventoryStatus = null,
+            AdjustmentAt = entry.RunAt.AddMinutes(1),
+            CreatedAt = entry.RunAt.AddMinutes(1),
+            InventoryInvariantVersion = 0
+        });
+    }
+
     [Fact]
     public void ActualRunMigration_IsAdditiveAndProviderCompatible()
     {
