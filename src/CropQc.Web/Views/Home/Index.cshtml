@@ -23,6 +23,11 @@
 }
 </section>
 
+@if (Model.InTransitTransferLoads > 0)
+{
+    <p class="notice information"><strong>Transfers In Transit:</strong> <a href="/BinsRun?Section=Transfer&amp;TransferType=InterCrew">@Model.InTransitTransferLoads load(s), @Model.InTransitTransferBins bins awaiting receipt</a>. These bins are not included in Room or run-availability totals.</p>
+}
+
 <h2>Room Summary</h2>
 <p class="muted">Current room rollups count bins and lots only in each exact room. Receipts/receiving add current inventory; Door and Lot samples are observational and contribute quality trends without adding bins.</p>
 <form class="toolbar" method="get" action="/">

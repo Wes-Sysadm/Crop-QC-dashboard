@@ -189,6 +189,12 @@ public sealed class InventoryDeductionInvariantService(
             .Select(x => x.Entity)
             .ToList();
 
+        var interCrewTransferIds = adjustments.Where(x => x.InterCrewTransferId is not null).Select(x => x.InterCrewTransferId!.Value).Distinct().ToList();
+        var persistedInterCrewTransfers = interCrewTransferIds.Count == 0 ? [] : await dbContext.InterCrewTransfers.AsNoTracking()
+            .Include(x => x.InventoryAdjustments).Where(x => interCrewTransferIds.Contains(x.Id)).ToListAsync(cancellationToken);
+        var trackedInterCrewTransfers = dbContext.ChangeTracker.Entries<InterCrewTransfer>()
+            .Where(x => x.State != EntityState.Deleted).Select(x => x.Entity).ToList();
+
         foreach (var adjustment in adjustments)
         {
             var binsParents = entryLookup
@@ -210,12 +216,15 @@ public sealed class InventoryDeductionInvariantService(
             var outsideTransfer = adjustment.OutsideWarehouseTransfer
                 ?? trackedOutsideTransfers.SingleOrDefault(x => adjustment.OutsideWarehouseTransferId == x.Id || ReferenceEquals(x, adjustment.OutsideWarehouseTransfer))
                 ?? persistedOutsideTransfers.SingleOrDefault(x => x.Id == adjustment.OutsideWarehouseTransferId);
-            var parentCount = binsParents.Count + (transfer is null ? 0 : 1) + (receiptOverride is null ? 0 : 1) + (loss is null ? 0 : 1) + (processorLine is null ? 0 : 1) + (outsideTransfer is null ? 0 : 1);
+            var interCrewTransfer = adjustment.InterCrewTransfer
+                ?? trackedInterCrewTransfers.SingleOrDefault(x => adjustment.InterCrewTransferId == x.Id || ReferenceEquals(x, adjustment.InterCrewTransfer))
+                ?? persistedInterCrewTransfers.SingleOrDefault(x => x.Id == adjustment.InterCrewTransferId);
+            var parentCount = binsParents.Count + (transfer is null ? 0 : 1) + (receiptOverride is null ? 0 : 1) + (loss is null ? 0 : 1) + (processorLine is null ? 0 : 1) + (outsideTransfer is null ? 0 : 1) + (interCrewTransfer is null ? 0 : 1);
             var blocks = adjustment.InventoryInvariantVersion >= CurrentVersion;
 
             if (adjustment.ChangeAmount < 0 && parentCount == 0)
             {
-                Add("NoParent", "Negative adjustment has no persisted Bins Run, Transfer, Receipt Admin Override, Room Inventory Loss, Processor Shipment, or Outside Warehouse Transfer parent.");
+                Add("NoParent", "Negative adjustment has no persisted Bins Run, Transfer, Receipt Admin Override, Room Inventory Loss, Processor Shipment, Outside Warehouse Transfer, or Inter-Crew Transfer parent.");
                 continue;
             }
             if (parentCount > 1)
@@ -285,6 +294,18 @@ public sealed class InventoryDeductionInvariantService(
                     .DistinctBy(x => x.Id == 0 ? RuntimeHelpers.GetHashCode(x) : x.Id)
                     .ToList();
                 ValidateOutsideWarehouseTransfer(adjustment, outsideTransfer, outsideAdjustments, Add);
+            }
+            else if (interCrewTransfer is not null)
+            {
+                var persistedInterCrewTransfer = persistedInterCrewTransfers
+                    .SingleOrDefault(x => x.Id == interCrewTransfer.Id);
+                var operationAdjustments = interCrewTransfer.InventoryAdjustments
+                    .Concat(persistedInterCrewTransfer?.InventoryAdjustments ?? [])
+                    .Concat(dbContext.ChangeTracker.Entries<RoomInventoryAdjustment>()
+                        .Where(x => x.State != EntityState.Deleted && (ReferenceEquals(x.Entity.InterCrewTransfer, interCrewTransfer) || x.Entity.InterCrewTransferId == interCrewTransfer.Id))
+                        .Select(x => x.Entity))
+                    .DistinctBy(x => x.Id == 0 ? RuntimeHelpers.GetHashCode(x) : x.Id).ToList();
+                ValidateInterCrewTransfer(adjustment, interCrewTransfer, operationAdjustments, Add);
             }
 
             void Add(string code, string message)
@@ -400,6 +421,43 @@ public sealed class InventoryDeductionInvariantService(
         {
             add("MissingOutsideWarehouseTransferLink", "Outside Warehouse Transfer adjustment is not linked by a persisted transfer ID.");
         }
+    }
+
+    private static void ValidateInterCrewTransfer(
+        RoomInventoryAdjustment adjustment, InterCrewTransfer transfer,
+        IReadOnlyCollection<RoomInventoryAdjustment> operationAdjustments, Action<string, string> add)
+    {
+        var dispatch = operationAdjustments.Where(x => x.AdjustmentType == InterCrewTransferAdjustmentTypes.Dispatch).ToList();
+        var receive = operationAdjustments.Where(x => x.AdjustmentType == InterCrewTransferAdjustmentTypes.Receive).ToList();
+        var reverseDestination = operationAdjustments.Where(x => x.AdjustmentType == InterCrewTransferAdjustmentTypes.ReversalDestination).ToList();
+        var reverseSource = operationAdjustments.Where(x => x.AdjustmentType == InterCrewTransferAdjustmentTypes.ReversalSource).ToList();
+        if (transfer.BinsLoaded <= 0 || dispatch.Count != 1 || dispatch[0].ChangeAmount != -transfer.BinsLoaded)
+            add("InterCrewDispatchAmountMismatch", "Inter-crew dispatch must have exactly one source deduction equal to Bins Loaded.");
+        var received = transfer.BinsReceived is not null;
+        if ((!received && receive.Count != 0) || (received && (receive.Count != 1 || receive[0].ChangeAmount != transfer.BinsReceived)))
+            add("InterCrewReceiveAmountMismatch", "Inter-crew receiving ledger does not equal the immutable Bins Received count.");
+        var reversed = transfer.Status == InterCrewTransferStatuses.Reversed;
+        if ((!reversed && (reverseDestination.Count != 0 || reverseSource.Count != 0))
+            || (reversed && (reverseSource.Count != 1 || reverseSource[0].ChangeAmount != transfer.BinsLoaded))
+            || (reversed && received && (reverseDestination.Count != 1 || reverseDestination[0].ChangeAmount != -transfer.BinsReceived)))
+            add("InterCrewReversalMismatch", "Inter-crew reversal does not restore loaded bins and remove received bins exactly.");
+        if (operationAdjustments.Count != dispatch.Count + receive.Count + reverseDestination.Count + reverseSource.Count)
+            add("InterCrewAdjustmentTypeMismatch", "Inter-crew transfer contains an unsupported ledger adjustment type.");
+        foreach (var side in operationAdjustments)
+        {
+            var isSource = side.AdjustmentType is InterCrewTransferAdjustmentTypes.Dispatch or InterCrewTransferAdjustmentTypes.ReversalSource;
+            var expectedWarehouse = isSource ? transfer.SourceWarehouseId : transfer.DestinationWarehouseId;
+            var expectedRoom = isSource ? transfer.SourceRoomId : transfer.DestinationRoomId;
+            if (side.WarehouseId != expectedWarehouse || side.RoomId != expectedRoom || side.CropYear != transfer.CropYear
+                || side.GrowerLotId != transfer.GrowerLotId || side.FruitProfileId != transfer.FruitProfileId
+                || !Same(side.LotNumber, transfer.LotNumberSnapshot) || !Same(side.VarietyCode, transfer.VarietyCodeSnapshot)
+                || !Same(side.InventoryStatus, transfer.InventoryStatusSnapshot))
+                add("InterCrewIdentityMismatch", "Inter-crew ledger identity does not match its durable transfer snapshot.");
+            if (side.OldBinCount is null || side.NewBinCount != side.OldBinCount + side.ChangeAmount)
+                add("InterCrewBalanceMismatch", "Inter-crew before/after balance does not reconcile with its quantity.");
+        }
+        if (adjustment.InterCrewTransferId is null && adjustment.InterCrewTransfer is null)
+            add("MissingInterCrewTransferLink", "Inter-crew adjustment is not linked by a persisted transfer ID.");
     }
 
     private static void ValidateBinsRun(

@@ -18,6 +18,8 @@ public sealed class HomeDashboardViewModel
     public IReadOnlyList<string> EbsLocationOptions { get; set; } = ["All EBS", "Evans", "Lamb", "BM"];
     public IReadOnlyList<StorageFacilitySummaryViewModel> StorageByFacility { get; set; } = [];
     public bool CanManageRoomSeals { get; set; }
+    public int InTransitTransferLoads { get; set; }
+    public int InTransitTransferBins { get; set; }
 }
 
 public sealed class RoomSummaryFilterForm
@@ -780,6 +782,7 @@ public sealed class BinsRunPageViewModel
     public IReadOnlyList<RoomTransferDestinationViewModel> TransferDestinationOptions { get; set; } = [];
     public IReadOnlyList<RoomInventoryAdjustmentListItemViewModel> InventoryActivity { get; set; } = [];
     public OutsideWarehouseTransferPageViewModel OutsideWarehouseTransfers { get; set; } = new();
+    public InterCrewTransferPageViewModel InterCrewTransfers { get; set; } = new();
     public RunReportingPageViewModel RunReporting { get; set; } = new();
 }
 

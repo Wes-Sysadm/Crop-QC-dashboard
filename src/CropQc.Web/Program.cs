@@ -274,9 +274,11 @@ builder.Services.AddScoped<IRoomTreatmentService>(sp => sp.GetRequiredService<Ro
 builder.Services.AddScoped<IReceivingTreatmentService>(sp => sp.GetRequiredService<RoomTreatmentService>());
 builder.Services.AddScoped<IProcessorTreatmentLineageService>(sp => sp.GetRequiredService<RoomTreatmentService>());
 builder.Services.AddScoped<IOutsideWarehouseTreatmentLineageService>(sp => sp.GetRequiredService<RoomTreatmentService>());
+builder.Services.AddScoped<IInterCrewTreatmentLineageService>(sp => sp.GetRequiredService<RoomTreatmentService>());
 builder.Services.AddScoped<IInventoryByVarietyService, InventoryByVarietyService>();
 builder.Services.AddScoped<IProcessorShipmentService, ProcessorShipmentService>();
 builder.Services.AddScoped<IOutsideWarehouseTransferService, OutsideWarehouseTransferService>();
+builder.Services.AddScoped<IInterCrewTransferService, InterCrewTransferService>();
 builder.Services.AddScoped<ITreatmentReportAttachmentService, TreatmentReportAttachmentService>();
 builder.Services.AddScoped<ITr108859DroppedBinsCorrectionService, Tr108859DroppedBinsCorrectionService>();
 builder.Services.AddScoped<IActualRun3ReportingIdentityCorrectionService, ActualRun3ReportingIdentityCorrectionService>();

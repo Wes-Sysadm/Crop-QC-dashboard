@@ -249,15 +249,16 @@ public sealed class OutsideWarehouseTransferTests
     }
 
     [Fact]
-    public void Migration_compatibility_and_803_object_gate_are_exact_and_bounded()
+    public void Combined_migration_compatibility_and_836_object_gate_are_exact_and_bounded()
     {
-        var migration = Source("src", "CropQc.Data", "Migrations", "20260828012532_AddOutsideWarehouseTransfers.cs");
-        var preflight = Source("scripts", "postgresql", "preflight-outside-warehouse-transfers.sql");
-        var apply = Source("scripts", "postgresql", "apply-outside-warehouse-transfers-schema.sql");
-        var verify = Source("scripts", "postgresql", "verify-outside-warehouse-transfers.sql");
+        var migration = Source("src", "CropQc.Data", "Migrations", "20260828033737_AddTransferCustodyWorkflow.cs");
+        var preflight = Source("scripts", "postgresql", "preflight-transfer-custody-workflow.sql");
+        var apply = Source("scripts", "postgresql", "apply-transfer-custody-workflow-schema.sql");
+        var verify = Source("scripts", "postgresql", "verify-transfer-custody-workflow.sql");
         var gate = Source("src", "CropQc.Web", "Services", "DatabaseStartupDiagnostics.cs");
         Assert.Contains("name: \"OutsideWarehouses\"", migration);
         Assert.Contains("name: \"OutsideWarehouseTransfers\"", migration);
+        Assert.Contains("name: \"InterCrewTransfers\"", migration);
         Assert.Contains("MigrationProviderTypes.StoreType", migration);
         Assert.Contains("Npgsql:ValueGenerationStrategy", migration);
         Assert.Contains("State C", preflight);
@@ -266,9 +267,9 @@ public sealed class OutsideWarehouseTransferTests
         Assert.Contains("BEGIN;", apply);
         Assert.Contains("pg_advisory_xact_lock", apply);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
-        Assert.Contains("82 AS checked_target_objects", verify);
-        Assert.Equal("20260828012532_AddOutsideWarehouseTransfers", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
-        Assert.Equal(803, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal)));
+        Assert.Contains("162 AS checked_target_objects", verify);
+        Assert.Equal("20260828033737_AddTransferCustodyWorkflow", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
+        Assert.Equal(836, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -288,6 +289,302 @@ public sealed class OutsideWarehouseTransferTests
         Assert.DoesNotContain("Destination Room", outside);
         Assert.Contains("Required reversal reason", detail);
         Assert.Contains("Address", master);
+    }
+
+    [Fact]
+    public async Task Inter_crew_dispatch_receive_review_and_reversal_preserve_exact_custody_counts()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync();
+        var page = await service.GetPageAsync(default);
+        var source = Assert.Single(page.Inventory);
+        var dispatched = await service.DispatchAsync(new()
+        {
+            OperationKey = "crew-dispatch",
+            SourceKey = source.SourceKey,
+            ExpectedAvailableBins = source.AvailableBins,
+            DestinationCustodyGroup = TransferCustodyGroups.Ebs,
+            BinsLoaded = 70,
+            LoadedAt = DateTime.Parse("2026-08-27T10:00"),
+            TruckLoadBolNumber = "BOL-70",
+            ConfirmedReview = true
+        }, default);
+        Assert.True(dispatched.Success, dispatched.Error);
+        Assert.Equal(230, await fixture.CurrentBinsAsync());
+        var transfer = await fixture.Db.InterCrewTransfers.SingleAsync();
+        Assert.Equal(InterCrewTransferStatuses.InTransit, transfer.Status);
+        Assert.Null(transfer.DestinationRoomId);
+        Assert.Equal(-70, Assert.Single(await fixture.Db.RoomInventoryAdjustments.Where(x => x.InterCrewTransferId == transfer.Id).ToListAsync()).ChangeAmount);
+        Assert.Equal(70, await fixture.Db.TreatmentLineageMovements.Where(x => x.InterCrewTransferId == transfer.Id && x.MovementType == TreatmentLineageMovementTypes.InterCrewDispatch).SumAsync(x => x.BinCount));
+
+        // Receiving occurs in a later HTTP request with a fresh DbContext. Ensure the
+        // persisted dispatch ledger remains part of invariant validation in that shape.
+        fixture.Db.ChangeTracker.Clear();
+        var received = await service.ReceiveAsync(new()
+        {
+            TransferId = transfer.Id,
+            OperationKey = "crew-receive",
+            DestinationRoomId = ebsRoom.Id,
+            BinsReceived = 68,
+            ReceivedAt = DateTime.Parse("2026-08-27T12:00"),
+            Note = "Physical count"
+        }, default);
+        Assert.True(received.Success, received.Error);
+        fixture.Db.ChangeTracker.Clear();
+        transfer = await fixture.Db.InterCrewTransfers.SingleAsync();
+        Assert.Equal(70, transfer.BinsLoaded);
+        Assert.Equal(68, transfer.BinsReceived);
+        Assert.Equal(-2, transfer.VarianceBins);
+        Assert.Equal(InterCrewTransferStatuses.ReceivedNeedsReview, transfer.Status);
+        Assert.Equal(68, (await fixture.Ledger.GetSnapshotsAsync(ebsRoom.WarehouseId, [ebsRoom.Id], default)).Sum(x => x.CurrentBins));
+
+        Assert.Null(await service.ReviewAsync(new() { TransferId = transfer.Id, OperationKey = "crew-review", Note = "Verified against unload tally" }, default));
+        fixture.Db.ChangeTracker.Clear();
+        transfer = await fixture.Db.InterCrewTransfers.SingleAsync();
+        Assert.Equal(InterCrewTransferStatuses.Received, transfer.Status);
+        Assert.Equal(70, transfer.BinsLoaded);
+        Assert.Equal(68, transfer.BinsReceived);
+
+        Assert.Null(await service.ReverseAsync(new() { TransferId = transfer.Id, OperationKey = "crew-reverse", Reason = "Wrong truck selected" }, default));
+        fixture.Db.ChangeTracker.Clear();
+        transfer = await fixture.Db.InterCrewTransfers.SingleAsync();
+        Assert.Equal(InterCrewTransferStatuses.Reversed, transfer.Status);
+        Assert.Equal(300, await fixture.CurrentBinsAsync());
+        Assert.Equal(0, (await fixture.Ledger.GetSnapshotsAsync(ebsRoom.WarehouseId, [ebsRoom.Id], default)).Sum(x => x.CurrentBins));
+        Assert.Equal(new[] { -70, 68, -68, 70 }, await fixture.Db.RoomInventoryAdjustments.Where(x => x.InterCrewTransferId == transfer.Id).OrderBy(x => x.Id).Select(x => x.ChangeAmount).ToArrayAsync());
+        Assert.Equal(4, await fixture.Db.AuditLogs.CountAsync(x => x.EntityName == nameof(InterCrewTransfer)));
+    }
+
+    [Fact]
+    public async Task Inter_crew_dispatch_and_receive_are_idempotent_and_McDougall_is_never_a_destination()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync();
+        var source = Assert.Single((await service.GetPageAsync(default)).Inventory);
+        var form = new InterCrewDispatchForm { OperationKey = "same-dispatch", SourceKey = source.SourceKey, ExpectedAvailableBins = source.AvailableBins, DestinationCustodyGroup = TransferCustodyGroups.Ebs, BinsLoaded = 20, LoadedAt = DateTime.Parse("2026-08-27T10:00"), ConfirmedReview = true };
+        var first = await service.DispatchAsync(form, default);
+        var duplicate = await service.DispatchAsync(form, default);
+        Assert.True(first.Success, first.Error); Assert.True(duplicate.AlreadyApplied);
+        var receive = new InterCrewReceiveForm { TransferId = first.TransferId!.Value, OperationKey = "same-receive", DestinationRoomId = ebsRoom.Id, BinsReceived = 20, ReceivedAt = DateTime.Parse("2026-08-27T12:00") };
+        Assert.True((await service.ReceiveAsync(receive, default)).Success);
+        Assert.True((await service.ReceiveAsync(receive, default)).AlreadyApplied);
+        Assert.Equal(2, await fixture.Db.RoomInventoryAdjustments.CountAsync(x => x.InterCrewTransferId == first.TransferId));
+        Assert.DoesNotContain((await service.GetDetailsAsync(first.TransferId.Value, default))!.DestinationRooms, x => x.Facility.Contains("McDougall", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Inter_crew_receiving_queue_is_routed_by_employment_facility_and_unassigned_fails_closed()
+    {
+        await using var fixture = await Fixture.CreateAsync(canAdmin: false);
+        fixture.Access.CanAdmin = true;
+        var (service, _) = await fixture.CreateInterCrewServiceAsync();
+        var source = Assert.Single((await service.GetPageAsync(default)).Inventory);
+        var dispatched = await service.DispatchAsync(new()
+        {
+            OperationKey = "crew-routing",
+            SourceKey = source.SourceKey,
+            ExpectedAvailableBins = source.AvailableBins,
+            DestinationCustodyGroup = TransferCustodyGroups.Ebs,
+            BinsLoaded = 10,
+            LoadedAt = DateTime.Parse("2026-08-27T10:00"),
+            ConfirmedReview = true
+        }, default);
+        Assert.True(dispatched.Success, dispatched.Error);
+
+        fixture.Access.CanAdmin = false;
+        var user = await fixture.Db.Users.SingleAsync(x => x.Id == 8843);
+        user.EmploymentFacility = EmploymentFacilities.Wp;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Empty((await service.GetPageAsync(default)).Queue);
+        Assert.False((await service.GetDetailsAsync(dispatched.TransferId!.Value, default))!.CanReceive);
+
+        user.EmploymentFacility = EmploymentFacilities.Ebs;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Single((await service.GetPageAsync(default)).Queue);
+        Assert.True((await service.GetDetailsAsync(dispatched.TransferId.Value, default))!.CanReceive);
+
+        user.EmploymentFacility = EmploymentFacilities.Unassigned;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Empty((await service.GetPageAsync(default)).Queue);
+        Assert.False((await service.GetDetailsAsync(dispatched.TransferId.Value, default))!.CanReceive);
+
+        user.EmploymentFacility = EmploymentFacilities.Shared;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Single((await service.GetPageAsync(default)).Queue);
+    }
+
+    [Theory]
+    [InlineData("WP", TransferCustodyGroups.Ebs)]
+    [InlineData("DH", TransferCustodyGroups.Ebs)]
+    [InlineData("EBS", TransferCustodyGroups.WpDh)]
+    [InlineData("McDougall", TransferCustodyGroups.WpDh)]
+    [InlineData("McDougall", TransferCustodyGroups.Ebs)]
+    public async Task Inter_crew_dispatch_matrix_creates_only_an_in_transit_source_deduction(
+        string sourceFacility,
+        string destinationGroup)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var sourceWarehouse = await fixture.Db.Warehouses.SingleAsync(x => x.Id == Fixture.WarehouseId);
+        sourceWarehouse.Code = sourceFacility;
+        sourceWarehouse.Name = sourceFacility;
+        await fixture.Db.SaveChangesAsync();
+        var (service, _) = await fixture.CreateInterCrewServiceAsync();
+        var source = Assert.Single((await service.GetPageAsync(default)).Inventory);
+
+        var result = await service.DispatchAsync(new()
+        {
+            OperationKey = $"matrix-{sourceFacility}-{destinationGroup}",
+            SourceKey = source.SourceKey,
+            ExpectedAvailableBins = source.AvailableBins,
+            DestinationCustodyGroup = destinationGroup,
+            BinsLoaded = 54,
+            LoadedAt = DateTime.Parse("2026-08-27T10:00"),
+            ConfirmedReview = true
+        }, default);
+
+        Assert.True(result.Success, result.Error);
+        var transfer = await fixture.Db.InterCrewTransfers.SingleAsync();
+        Assert.Equal(InterCrewTransferStatuses.InTransit, transfer.Status);
+        Assert.Null(transfer.DestinationWarehouseId);
+        Assert.Null(transfer.DestinationRoomId);
+        Assert.Equal(246, await fixture.CurrentBinsAsync());
+        Assert.Equal(-54, Assert.Single(await fixture.Db.RoomInventoryAdjustments.Where(x => x.InterCrewTransferId == transfer.Id).ToListAsync()).ChangeAmount);
+    }
+
+    [Theory]
+    [InlineData("WP", TransferCustodyGroups.WpDh)]
+    [InlineData("DH", TransferCustodyGroups.WpDh)]
+    [InlineData("EBS", TransferCustodyGroups.Ebs)]
+    [InlineData("WP", "MCD")]
+    [InlineData("EBS", "McDougall")]
+    public async Task Inter_crew_dispatch_rejects_same_crew_and_McDougall_destinations_without_writes(
+        string sourceFacility,
+        string destinationGroup)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var sourceWarehouse = await fixture.Db.Warehouses.SingleAsync(x => x.Id == Fixture.WarehouseId);
+        sourceWarehouse.Code = sourceFacility;
+        sourceWarehouse.Name = sourceFacility;
+        await fixture.Db.SaveChangesAsync();
+        var (service, _) = await fixture.CreateInterCrewServiceAsync();
+        var source = Assert.Single((await service.GetPageAsync(default)).Inventory);
+
+        var result = await service.DispatchAsync(new()
+        {
+            OperationKey = $"reject-{sourceFacility}-{destinationGroup}",
+            SourceKey = source.SourceKey,
+            ExpectedAvailableBins = source.AvailableBins,
+            DestinationCustodyGroup = destinationGroup,
+            BinsLoaded = 54,
+            LoadedAt = DateTime.Parse("2026-08-27T10:00"),
+            ConfirmedReview = true
+        }, default);
+
+        Assert.False(result.Success);
+        Assert.Empty(await fixture.Db.InterCrewTransfers.ToListAsync());
+        Assert.Equal(300, await fixture.CurrentBinsAsync());
+    }
+
+    [Fact]
+    public async Task Inter_crew_receive_enforces_destination_group_and_posts_one_atomic_room_count()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync();
+        var source = Assert.Single((await service.GetPageAsync(default)).Inventory);
+        var dispatched = await service.DispatchAsync(new()
+        {
+            OperationKey = "receive-destination",
+            SourceKey = source.SourceKey,
+            ExpectedAvailableBins = source.AvailableBins,
+            DestinationCustodyGroup = TransferCustodyGroups.Ebs,
+            BinsLoaded = 70,
+            LoadedAt = DateTime.Parse("2026-08-27T10:00"),
+            ConfirmedReview = true
+        }, default);
+        Assert.True(dispatched.Success, dispatched.Error);
+
+        var wrongCrew = await service.ReceiveAsync(new()
+        {
+            TransferId = dispatched.TransferId!.Value,
+            OperationKey = "wrong-wp-room",
+            DestinationRoomId = Fixture.RoomId,
+            BinsReceived = 70,
+            ReceivedAt = DateTime.Parse("2026-08-27T12:00")
+        }, default);
+        var mcDougall = await service.ReceiveAsync(new()
+        {
+            TransferId = dispatched.TransferId.Value,
+            OperationKey = "wrong-mcd-room",
+            DestinationRoomId = 8863,
+            BinsReceived = 70,
+            ReceivedAt = DateTime.Parse("2026-08-27T12:00")
+        }, default);
+        Assert.False(wrongCrew.Success);
+        Assert.False(mcDougall.Success);
+        Assert.Single(await fixture.Db.RoomInventoryAdjustments.Where(x => x.InterCrewTransferId == dispatched.TransferId).ToListAsync());
+
+        var received = await service.ReceiveAsync(new()
+        {
+            TransferId = dispatched.TransferId.Value,
+            OperationKey = "right-ebs-room",
+            DestinationRoomId = ebsRoom.Id,
+            BinsReceived = 68,
+            ReceivedAt = DateTime.Parse("2026-08-27T12:00")
+        }, default);
+        Assert.True(received.Success, received.Error);
+        Assert.Equal(68, (await fixture.Ledger.GetSnapshotsAsync(ebsRoom.WarehouseId, [ebsRoom.Id], default)).Sum(x => x.CurrentBins));
+        Assert.Equal(2, await fixture.Db.RoomInventoryAdjustments.CountAsync(x => x.InterCrewTransferId == dispatched.TransferId));
+    }
+
+    [Fact]
+    public async Task Inter_crew_in_transit_reversal_is_admin_only_reasoned_idempotent_and_restores_loaded_bins()
+    {
+        await using var fixture = await Fixture.CreateAsync(canAdmin: false);
+        var (service, _) = await fixture.CreateInterCrewServiceAsync();
+        var source = Assert.Single((await service.GetPageAsync(default)).Inventory);
+        var dispatched = await service.DispatchAsync(new()
+        {
+            OperationKey = "reverse-in-transit",
+            SourceKey = source.SourceKey,
+            ExpectedAvailableBins = source.AvailableBins,
+            DestinationCustodyGroup = TransferCustodyGroups.Ebs,
+            BinsLoaded = 70,
+            LoadedAt = DateTime.Parse("2026-08-27T10:00"),
+            ConfirmedReview = true
+        }, default);
+        Assert.True(dispatched.Success, dispatched.Error);
+        Assert.Contains("Admin", await service.ReverseAsync(new() { TransferId = dispatched.TransferId!.Value, OperationKey = "denied", Reason = "Wrong load" }, default));
+
+        fixture.Access.CanAdmin = true;
+        Assert.Contains("reason", await service.ReverseAsync(new() { TransferId = dispatched.TransferId.Value, OperationKey = "blank", Reason = " " }, default), StringComparison.OrdinalIgnoreCase);
+        Assert.Null(await service.ReverseAsync(new() { TransferId = dispatched.TransferId.Value, OperationKey = "reverse-valid", Reason = "Wrong load" }, default));
+        var writes = await fixture.Db.RoomInventoryAdjustments.CountAsync(x => x.InterCrewTransferId == dispatched.TransferId);
+        Assert.Null(await service.ReverseAsync(new() { TransferId = dispatched.TransferId.Value, OperationKey = "reverse-valid", Reason = "Wrong load" }, default));
+        Assert.Equal(writes, await fixture.Db.RoomInventoryAdjustments.CountAsync(x => x.InterCrewTransferId == dispatched.TransferId));
+        Assert.Equal(300, await fixture.CurrentBinsAsync());
+        var saved = await fixture.Db.InterCrewTransfers.SingleAsync();
+        Assert.Equal(InterCrewTransferStatuses.Reversed, saved.Status);
+        Assert.Null(saved.DestinationRoomId);
+    }
+
+    [Fact]
+    public void Inter_crew_UI_exposes_three_modes_queue_variance_review_and_no_partial_receive()
+    {
+        var index = Source("src", "CropQc.Web", "Views", "BinsRun", "Index.cshtml");
+        var page = Source("src", "CropQc.Web", "Views", "BinsRun", "_InterCrewTransfer.cshtml");
+        var detail = Source("src", "CropQc.Web", "Views", "BinsRun", "InterCrewTransferDetails.cshtml");
+        Assert.Contains("Internal Room Transfer", index);
+        Assert.Contains("Transfer to Another Crew", index);
+        Assert.Contains("Outside Warehouse", index);
+        Assert.Contains("Receiving Queue", page);
+        Assert.Contains("In Transit", page);
+        Assert.Contains("WP / DH", page);
+        Assert.Contains("EBS", page);
+        Assert.Contains("authoritative received count", page);
+        Assert.Contains("Receive Entire Load", detail);
+        Assert.Contains("Review Count Variance", detail);
+        Assert.Contains("does not rewrite either count", detail);
+        Assert.Contains("partial receiving is not supported", detail, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string Source(params string[] segments) => File.ReadAllText(FindRepositoryFile(segments));
@@ -447,6 +744,22 @@ public sealed class OutsideWarehouseTransferTests
                 });
             await Db.SaveChangesAsync();
             Db.ChangeTracker.Clear();
+        }
+
+        public async Task<(InterCrewTransferService Service, Room EbsRoom)> CreateInterCrewServiceAsync()
+        {
+            var ebs = new Warehouse { Id = 8860, Code = "EBS", Name = "EBS" };
+            var ebsRoom = new Room { Id = 8861, Warehouse = ebs, WarehouseId = ebs.Id, Code = "EVANS-7", Name = "EVANS-7", CropQcRoomName = "EVANS-7", CapacityBins = 1000 };
+            var mcd = new Warehouse { Id = 8862, Code = "McDougall", Name = "McDougall" };
+            var mcdRoom = new Room { Id = 8863, Warehouse = mcd, WarehouseId = mcd.Id, Code = "MCD-3", Name = "MCD-3", CropQcRoomName = "MCD-3", CapacityBins = 1000 };
+            Db.AddRange(ebs, ebsRoom, mcd, mcdRoom);
+            var user = await Db.Users.SingleAsync(x => x.Id == 8843);
+            user.EmploymentFacility = EmploymentFacilities.Shared;
+            await Db.SaveChangesAsync();
+            var invariant = new InventoryDeductionInvariantService(Db, NullLogger<InventoryDeductionInvariantService>.Instance);
+            return (new InterCrewTransferService(Db, Service, Ledger, Treatments, invariant, Access,
+                new FixedHttpContextAccessor(new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, user.Email)], "Test")) }),
+                new PacificBusinessTimeService(new FixedClock(Now))), ebsRoom);
         }
 
         public async Task<int> CurrentBinsAsync() => (await Ledger.GetSnapshotsAsync(WarehouseId, [RoomId], default)).Sum(x => x.CurrentBins);

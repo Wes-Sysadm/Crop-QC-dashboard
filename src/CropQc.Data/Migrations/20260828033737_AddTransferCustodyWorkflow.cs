@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -7,14 +7,26 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CropQc.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class AddOutsideWarehouseTransfers : Migration
+    public partial class AddTransferCustodyWorkflow : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<long>(
+                name: "InterCrewTransferId",
+                table: "TreatmentLineageMovements",
+                type: "bigint",
+                nullable: true);
+
+            migrationBuilder.AddColumn<long>(
                 name: "OutsideWarehouseTransferId",
                 table: "TreatmentLineageMovements",
+                type: "bigint",
+                nullable: true);
+
+            migrationBuilder.AddColumn<long>(
+                name: "InterCrewTransferId",
+                table: "RoomInventoryAdjustments",
                 type: "bigint",
                 nullable: true);
 
@@ -23,6 +35,128 @@ namespace CropQc.Data.Migrations
                 table: "RoomInventoryAdjustments",
                 type: "bigint",
                 nullable: true);
+
+            migrationBuilder.CreateTable(
+                name: "InterCrewTransfers",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "bigint", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1")
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    OperationKey = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"), maxLength: 150, nullable: false),
+                    SourceWarehouseId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    SourceRoomId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    DestinationCustodyGroup = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(20)", "character varying(20)"), maxLength: 20, nullable: false),
+                    DestinationWarehouseId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    DestinationRoomId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    ReceiptId = table.Column<long>(type: "bigint", nullable: true),
+                    SourceInventoryAdjustmentId = table.Column<long>(type: "bigint", nullable: true),
+                    CropYear = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    GrowerLotId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    FruitProfileId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    GrowerNumberSnapshot = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: true),
+                    GrowerNameSnapshot = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(200)", "character varying(200)"), maxLength: 200, nullable: false),
+                    LotNumberSnapshot = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(100)", "character varying(100)"), maxLength: 100, nullable: false),
+                    VarietyCodeSnapshot = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    ProductionTypeSnapshot = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(50)", "character varying(50)"), maxLength: 50, nullable: false),
+                    IsOrganicSnapshot = table.Column<bool>(type: MigrationProviderTypes.StoreType(migrationBuilder, "bit", "boolean"), nullable: true),
+                    InventoryStatusSnapshot = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(100)", "character varying(100)"), maxLength: 100, nullable: true),
+                    TreatmentStateSnapshot = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(25)", "character varying(25)"), maxLength: 25, nullable: false),
+                    TreatmentSignatureSnapshot = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(1000)", "character varying(1000)"), maxLength: 1000, nullable: false),
+                    TreatmentSummarySnapshot = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(2000)", "character varying(2000)"), maxLength: 2000, nullable: false),
+                    BinsLoaded = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    LoadedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false),
+                    TruckLoadBolNumber = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"), maxLength: 150, nullable: true),
+                    Notes = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(1000)", "character varying(1000)"), maxLength: 1000, nullable: true),
+                    LoadedByUserId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: false),
+                    Status = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(30)", "character varying(30)"), maxLength: 30, nullable: false),
+                    ReceiveOperationKey = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"), maxLength: 150, nullable: true),
+                    BinsReceived = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    VarianceBins = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    ReceivedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: true),
+                    ReceivedByUserId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    ReceivingNote = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(1000)", "character varying(1000)"), maxLength: 1000, nullable: true),
+                    ReviewOperationKey = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"), maxLength: 150, nullable: true),
+                    ReviewNote = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(1000)", "character varying(1000)"), maxLength: 1000, nullable: true),
+                    ReviewedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: true),
+                    ReviewedByUserId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    ReversalOperationKey = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(150)", "character varying(150)"), maxLength: 150, nullable: true),
+                    ReversalReason = table.Column<string>(type: MigrationProviderTypes.StoreType(migrationBuilder, "nvarchar(1000)", "character varying(1000)"), maxLength: 1000, nullable: true),
+                    ReversedAt = table.Column<DateTimeOffset>(type: MigrationProviderTypes.StoreType(migrationBuilder, "datetimeoffset", "timestamp with time zone"), nullable: true),
+                    ReversedByUserId = table.Column<int>(type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"), nullable: true),
+                    ConcurrencyVersion = table.Column<long>(type: "bigint", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_InterCrewTransfers", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_InterCrewTransfers_FruitProfiles_FruitProfileId",
+                        column: x => x.FruitProfileId,
+                        principalTable: "FruitProfiles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_InterCrewTransfers_Receipts_ReceiptId",
+                        column: x => x.ReceiptId,
+                        principalTable: "Receipts",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_InterCrewTransfers_RoomInventoryAdjustments_SourceInventoryAdjustmentId",
+                        column: x => x.SourceInventoryAdjustmentId,
+                        principalTable: "RoomInventoryAdjustments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_InterCrewTransfers_Rooms_DestinationRoomId",
+                        column: x => x.DestinationRoomId,
+                        principalTable: "Rooms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_InterCrewTransfers_Rooms_SourceRoomId",
+                        column: x => x.SourceRoomId,
+                        principalTable: "Rooms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_InterCrewTransfers_Users_LoadedByUserId",
+                        column: x => x.LoadedByUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_InterCrewTransfers_Users_ReceivedByUserId",
+                        column: x => x.ReceivedByUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_InterCrewTransfers_Users_ReversedByUserId",
+                        column: x => x.ReversedByUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_InterCrewTransfers_Users_ReviewedByUserId",
+                        column: x => x.ReviewedByUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_InterCrewTransfers_Warehouses_DestinationWarehouseId",
+                        column: x => x.DestinationWarehouseId,
+                        principalTable: "Warehouses",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_InterCrewTransfers_Warehouses_SourceWarehouseId",
+                        column: x => x.SourceWarehouseId,
+                        principalTable: "Warehouses",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
 
             migrationBuilder.CreateTable(
                 name: "OutsideWarehouses",
@@ -154,9 +288,26 @@ namespace CropQc.Data.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_TreatmentLineageMovements_InterCrewTransferId",
+                table: "TreatmentLineageMovements",
+                column: "InterCrewTransferId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_TreatmentLineageMovements_OutsideWarehouseTransferId",
                 table: "TreatmentLineageMovements",
                 column: "OutsideWarehouseTransferId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RoomInventoryAdjustments_InterCrewTransferId",
+                table: "RoomInventoryAdjustments",
+                column: "InterCrewTransferId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RoomInventoryAdjustments_InterCrewTransferId_AdjustmentType",
+                table: "RoomInventoryAdjustments",
+                columns: new[] { "InterCrewTransferId", "AdjustmentType" },
+                unique: true,
+                filter: MigrationProviderTypes.Sql(migrationBuilder, "[InterCrewTransferId] IS NOT NULL", "\"InterCrewTransferId\" IS NOT NULL"));
 
             migrationBuilder.CreateIndex(
                 name: "IX_RoomInventoryAdjustments_OutsideWarehouseTransferId",
@@ -169,6 +320,93 @@ namespace CropQc.Data.Migrations
                 columns: new[] { "OutsideWarehouseTransferId", "AdjustmentType" },
                 unique: true,
                 filter: MigrationProviderTypes.Sql(migrationBuilder, "[OutsideWarehouseTransferId] IS NOT NULL", "\"OutsideWarehouseTransferId\" IS NOT NULL"));
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_DestinationCustodyGroup_Status_LoadedAt",
+                table: "InterCrewTransfers",
+                columns: new[] { "DestinationCustodyGroup", "Status", "LoadedAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_DestinationRoomId",
+                table: "InterCrewTransfers",
+                column: "DestinationRoomId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_DestinationWarehouseId",
+                table: "InterCrewTransfers",
+                column: "DestinationWarehouseId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_FruitProfileId",
+                table: "InterCrewTransfers",
+                column: "FruitProfileId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_LoadedByUserId",
+                table: "InterCrewTransfers",
+                column: "LoadedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_OperationKey",
+                table: "InterCrewTransfers",
+                column: "OperationKey",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_ReceiptId",
+                table: "InterCrewTransfers",
+                column: "ReceiptId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_ReceivedByUserId",
+                table: "InterCrewTransfers",
+                column: "ReceivedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_ReceiveOperationKey",
+                table: "InterCrewTransfers",
+                column: "ReceiveOperationKey",
+                unique: true,
+                filter: MigrationProviderTypes.Sql(migrationBuilder, "[ReceiveOperationKey] IS NOT NULL", "\"ReceiveOperationKey\" IS NOT NULL"));
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_ReversalOperationKey",
+                table: "InterCrewTransfers",
+                column: "ReversalOperationKey",
+                unique: true,
+                filter: MigrationProviderTypes.Sql(migrationBuilder, "[ReversalOperationKey] IS NOT NULL", "\"ReversalOperationKey\" IS NOT NULL"));
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_ReversedByUserId",
+                table: "InterCrewTransfers",
+                column: "ReversedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_ReviewedByUserId",
+                table: "InterCrewTransfers",
+                column: "ReviewedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_ReviewOperationKey",
+                table: "InterCrewTransfers",
+                column: "ReviewOperationKey",
+                unique: true,
+                filter: MigrationProviderTypes.Sql(migrationBuilder, "[ReviewOperationKey] IS NOT NULL", "\"ReviewOperationKey\" IS NOT NULL"));
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_SourceInventoryAdjustmentId",
+                table: "InterCrewTransfers",
+                column: "SourceInventoryAdjustmentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_SourceRoomId_LoadedAt",
+                table: "InterCrewTransfers",
+                columns: new[] { "SourceRoomId", "LoadedAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InterCrewTransfers_SourceWarehouseId",
+                table: "InterCrewTransfers",
+                column: "SourceWarehouseId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_OutsideWarehouses_Code",
@@ -255,10 +493,26 @@ namespace CropQc.Data.Migrations
                 columns: new[] { "TransferredAt", "OutsideWarehouseId" });
 
             migrationBuilder.AddForeignKey(
+                name: "FK_RoomInventoryAdjustments_InterCrewTransfers_InterCrewTransferId",
+                table: "RoomInventoryAdjustments",
+                column: "InterCrewTransferId",
+                principalTable: "InterCrewTransfers",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Restrict);
+
+            migrationBuilder.AddForeignKey(
                 name: "FK_RoomInventoryAdjustments_OutsideWarehouseTransfers_OutsideWarehouseTransferId",
                 table: "RoomInventoryAdjustments",
                 column: "OutsideWarehouseTransferId",
                 principalTable: "OutsideWarehouseTransfers",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Restrict);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_TreatmentLineageMovements_InterCrewTransfers_InterCrewTransferId",
+                table: "TreatmentLineageMovements",
+                column: "InterCrewTransferId",
+                principalTable: "InterCrewTransfers",
                 principalColumn: "Id",
                 onDelete: ReferentialAction.Restrict);
 
@@ -275,12 +529,23 @@ namespace CropQc.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(
+                name: "FK_RoomInventoryAdjustments_InterCrewTransfers_InterCrewTransferId",
+                table: "RoomInventoryAdjustments");
+
+            migrationBuilder.DropForeignKey(
                 name: "FK_RoomInventoryAdjustments_OutsideWarehouseTransfers_OutsideWarehouseTransferId",
                 table: "RoomInventoryAdjustments");
 
             migrationBuilder.DropForeignKey(
+                name: "FK_TreatmentLineageMovements_InterCrewTransfers_InterCrewTransferId",
+                table: "TreatmentLineageMovements");
+
+            migrationBuilder.DropForeignKey(
                 name: "FK_TreatmentLineageMovements_OutsideWarehouseTransfers_OutsideWarehouseTransferId",
                 table: "TreatmentLineageMovements");
+
+            migrationBuilder.DropTable(
+                name: "InterCrewTransfers");
 
             migrationBuilder.DropTable(
                 name: "OutsideWarehouseTransfers");
@@ -289,8 +554,20 @@ namespace CropQc.Data.Migrations
                 name: "OutsideWarehouses");
 
             migrationBuilder.DropIndex(
+                name: "IX_TreatmentLineageMovements_InterCrewTransferId",
+                table: "TreatmentLineageMovements");
+
+            migrationBuilder.DropIndex(
                 name: "IX_TreatmentLineageMovements_OutsideWarehouseTransferId",
                 table: "TreatmentLineageMovements");
+
+            migrationBuilder.DropIndex(
+                name: "IX_RoomInventoryAdjustments_InterCrewTransferId",
+                table: "RoomInventoryAdjustments");
+
+            migrationBuilder.DropIndex(
+                name: "IX_RoomInventoryAdjustments_InterCrewTransferId_AdjustmentType",
+                table: "RoomInventoryAdjustments");
 
             migrationBuilder.DropIndex(
                 name: "IX_RoomInventoryAdjustments_OutsideWarehouseTransferId",
@@ -301,8 +578,16 @@ namespace CropQc.Data.Migrations
                 table: "RoomInventoryAdjustments");
 
             migrationBuilder.DropColumn(
+                name: "InterCrewTransferId",
+                table: "TreatmentLineageMovements");
+
+            migrationBuilder.DropColumn(
                 name: "OutsideWarehouseTransferId",
                 table: "TreatmentLineageMovements");
+
+            migrationBuilder.DropColumn(
+                name: "InterCrewTransferId",
+                table: "RoomInventoryAdjustments");
 
             migrationBuilder.DropColumn(
                 name: "OutsideWarehouseTransferId",

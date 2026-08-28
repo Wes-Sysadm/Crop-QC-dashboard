@@ -68,6 +68,13 @@ public interface IOutsideWarehouseTreatmentLineageService
         CancellationToken cancellationToken);
 }
 
+public interface IInterCrewTreatmentLineageService
+{
+    Task<TreatmentLineageWriteResult> DispatchAsync(RoomInventoryLedgerSnapshot snapshot, string treatmentSignature, int bins, string operationKey, long transferId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken);
+    Task<TreatmentLineageWriteResult> ReceiveAsync(long transferId, int destinationWarehouseId, int destinationRoomId, int binsReceived, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken);
+    Task<TreatmentLineageWriteResult> ReverseAsync(long transferId, bool wasReceived, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken);
+}
+
 public interface IReceivingTreatmentService
 {
     Task<ReceiptTreatmentApplyPageViewModel> GetReceiptApplyPageAsync(ReceiptTreatmentApplyForm form, bool review, CancellationToken cancellationToken);
@@ -81,7 +88,7 @@ public sealed class RoomTreatmentService(
     IUserAccessService access,
     IHttpContextAccessor httpContextAccessor,
     IBusinessTimeService businessTime,
-    ILogger<RoomTreatmentService> logger) : IRoomTreatmentService, IReceivingTreatmentService, IProcessorTreatmentLineageService, IOutsideWarehouseTreatmentLineageService
+    ILogger<RoomTreatmentService> logger) : IRoomTreatmentService, IReceivingTreatmentService, IProcessorTreatmentLineageService, IOutsideWarehouseTreatmentLineageService, IInterCrewTreatmentLineageService
 {
     private const string SourceApplication = "CropQc.Web room treatment workflow";
     private static readonly JsonSerializerOptions AuditJson = new(JsonSerializerDefaults.Web);
@@ -729,6 +736,171 @@ public sealed class RoomTreatmentService(
             : new(false, "The Outside Warehouse Transfer treatment lineage does not equal its bin count.");
     }
 
+    public async Task<TreatmentLineageWriteResult> DispatchAsync(
+        RoomInventoryLedgerSnapshot snapshot, string treatmentSignature, int bins, string operationKey,
+        long transferId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken)
+    {
+        if (bins <= 0) return new(false, "Treatment lineage movement quantity must be positive.");
+        var segments = (await MaterializeAsync(snapshot, cancellationToken))
+            .Where(x => x.CurrentBins > 0 && x.TreatmentSignature == treatmentSignature)
+            .OrderBy(x => x.ReceiptId ?? long.MaxValue).ThenBy(x => x.Id).ToList();
+        if (segments.Sum(x => x.CurrentBins) < bins)
+            return new(false, "The exact treatment provenance no longer contains enough bins. Refresh before retrying.");
+        var remaining = bins;
+        long? last = null;
+        foreach (var segment in segments)
+        {
+            var allocated = Math.Min(remaining, segment.CurrentBins);
+            if (allocated == 0) continue;
+            var result = await MoveCoreAsync(snapshot, treatmentSignature, allocated, null, null,
+                $"{operationKey}:{segment.Id}", TreatmentLineageMovementTypes.InterCrewDispatch,
+                null, null, null, occurredAt, actorUserId, segment.ReceiptId, cancellationToken,
+                null, segment.Id, exactSelection: true, interCrewTransferId: transferId);
+            if (!result.Success) return result;
+            last = result.MovementId;
+            remaining -= allocated;
+            if (remaining == 0) break;
+        }
+        return remaining == 0 ? new(true, null, last) : new(false, "The inter-crew treatment allocation did not balance.");
+    }
+
+    public async Task<TreatmentLineageWriteResult> ReceiveAsync(
+        long transferId, int destinationWarehouseId, int destinationRoomId, int binsReceived,
+        string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken)
+    {
+        if (binsReceived <= 0) return new(false, "Received bins must be positive.");
+        var transfer = await dbContext.InterCrewTransfers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == transferId, cancellationToken);
+        if (transfer is null) return new(false, "The inter-crew transfer was not found.");
+        var originals = await dbContext.TreatmentLineageMovements.Include(x => x.SourceSegment).ThenInclude(x => x!.Applications)
+            .Where(x => x.InterCrewTransferId == transferId && x.MovementType == TreatmentLineageMovementTypes.InterCrewDispatch && x.ReversesTreatmentLineageMovementId == null)
+            .OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        if (originals.Count == 0) return new(false, "The dispatch treatment lineage was not found.");
+        if (await dbContext.TreatmentLineageMovements.AsNoTracking().AnyAsync(x => x.OperationKey.StartsWith(operationKey + ":"), cancellationToken))
+            return new(true, null);
+        var remaining = binsReceived;
+        long? last = null;
+        foreach (var original in originals)
+        {
+            if (remaining == 0) break;
+            var allocated = Math.Min(remaining, original.BinCount);
+            var source = original.SourceSegment!;
+            var snapshot = new RoomInventoryLedgerSnapshot(
+                transfer.SourceWarehouseId, "", transfer.SourceRoomId, "", "", transfer.CropYear,
+                transfer.GrowerLotId, transfer.FruitProfileId, transfer.GrowerNameSnapshot,
+                transfer.GrowerNumberSnapshot, transfer.LotNumberSnapshot, null, transfer.VarietyCodeSnapshot,
+                transfer.VarietyCodeSnapshot, transfer.VarietyCodeSnapshot, "", transfer.ProductionTypeSnapshot,
+                transfer.IsOrganicSnapshot, transfer.InventoryStatusSnapshot ?? "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                occurredAt, occurredAt, transfer.SourceInventoryAdjustmentId ?? 0);
+            var destinationSnapshot = snapshot with { WarehouseId = destinationWarehouseId, RoomId = destinationRoomId };
+            var destination = await GetOrCreateSegmentAsync(destinationSnapshot, source.TreatmentState, source.TreatmentSignature, businessTime.UtcNow, cancellationToken, source.ReceiptId);
+            await CopyApplicationLinksAsync(source, destination, cancellationToken);
+            destination.CurrentBins += allocated;
+            destination.UpdatedAt = businessTime.UtcNow;
+            destination.ConcurrencyVersion++;
+            var movement = new TreatmentLineageMovement
+            {
+                OperationKey = $"{operationKey}:{original.Id}",
+                MovementType = TreatmentLineageMovementTypes.InterCrewReceive,
+                SourceSegmentId = source.Id,
+                DestinationSegment = destination,
+                SourceRoomId = null,
+                DestinationRoomId = destinationRoomId,
+                IdentityKey = original.IdentityKey,
+                TreatmentStateSnapshot = original.TreatmentStateSnapshot,
+                TreatmentSignatureSnapshot = original.TreatmentSignatureSnapshot,
+                ReceiptId = original.ReceiptId,
+                BinCount = allocated,
+                InterCrewTransferId = transferId,
+                OccurredAt = occurredAt,
+                CreatedByUserId = actorUserId,
+                CreatedAt = businessTime.UtcNow
+            };
+            dbContext.TreatmentLineageMovements.Add(movement);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            last = movement.Id;
+            remaining -= allocated;
+        }
+        if (remaining > 0)
+        {
+            var template = originals[0];
+            var source = template.SourceSegment!;
+            var identitySnapshot = new RoomInventoryLedgerSnapshot(
+                destinationWarehouseId, "", destinationRoomId, "", "", transfer.CropYear, transfer.GrowerLotId,
+                transfer.FruitProfileId, transfer.GrowerNameSnapshot, transfer.GrowerNumberSnapshot,
+                transfer.LotNumberSnapshot, null, transfer.VarietyCodeSnapshot, transfer.VarietyCodeSnapshot,
+                transfer.VarietyCodeSnapshot, "", transfer.ProductionTypeSnapshot, transfer.IsOrganicSnapshot,
+                transfer.InventoryStatusSnapshot ?? "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                occurredAt, occurredAt, transfer.SourceInventoryAdjustmentId ?? 0);
+            var destination = await GetOrCreateSegmentAsync(identitySnapshot, source.TreatmentState, source.TreatmentSignature, businessTime.UtcNow, cancellationToken, null);
+            await CopyApplicationLinksAsync(source, destination, cancellationToken);
+            destination.CurrentBins += remaining;
+            destination.UpdatedAt = businessTime.UtcNow;
+            destination.ConcurrencyVersion++;
+            var movement = new TreatmentLineageMovement
+            {
+                OperationKey = $"{operationKey}:variance",
+                MovementType = TreatmentLineageMovementTypes.InterCrewReceive,
+                DestinationSegment = destination,
+                DestinationRoomId = destinationRoomId,
+                IdentityKey = template.IdentityKey,
+                TreatmentStateSnapshot = template.TreatmentStateSnapshot,
+                TreatmentSignatureSnapshot = template.TreatmentSignatureSnapshot,
+                BinCount = remaining,
+                InterCrewTransferId = transferId,
+                OccurredAt = occurredAt,
+                CreatedByUserId = actorUserId,
+                CreatedAt = businessTime.UtcNow
+            };
+            dbContext.TreatmentLineageMovements.Add(movement);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            last = movement.Id;
+        }
+        return new(true, null, last);
+    }
+
+    public async Task<TreatmentLineageWriteResult> ReverseAsync(
+        long transferId, bool wasReceived, string operationKey, DateTimeOffset occurredAt,
+        int? actorUserId, CancellationToken cancellationToken)
+    {
+        if (wasReceived)
+        {
+            var receives = await dbContext.TreatmentLineageMovements
+                .Where(x => x.InterCrewTransferId == transferId && x.MovementType == TreatmentLineageMovementTypes.InterCrewReceive && x.ReversesTreatmentLineageMovementId == null)
+                .OrderBy(x => x.Id).ToListAsync(cancellationToken);
+            foreach (var receive in receives)
+            {
+                var key = $"{operationKey}:receive:{receive.Id}";
+                if (await dbContext.TreatmentLineageMovements.AsNoTracking().AnyAsync(x => x.OperationKey == key, cancellationToken)) continue;
+                var destination = await dbContext.TreatmentLineageSegments.SingleAsync(x => x.Id == receive.DestinationSegmentId, cancellationToken);
+                if (destination.CurrentBins < receive.BinCount) return new(false, "The exact received treatment segment no longer contains enough bins to reverse.");
+                destination.CurrentBins -= receive.BinCount;
+                destination.UpdatedAt = businessTime.UtcNow;
+                destination.ConcurrencyVersion++;
+                dbContext.TreatmentLineageMovements.Add(new TreatmentLineageMovement
+                {
+                    OperationKey = key,
+                    MovementType = TreatmentLineageMovementTypes.InterCrewReversal,
+                    SourceSegment = destination,
+                    SourceRoomId = destination.RoomId,
+                    IdentityKey = receive.IdentityKey,
+                    TreatmentStateSnapshot = receive.TreatmentStateSnapshot,
+                    TreatmentSignatureSnapshot = receive.TreatmentSignatureSnapshot,
+                    ReceiptId = receive.ReceiptId,
+                    BinCount = receive.BinCount,
+                    InterCrewTransferId = transferId,
+                    ReversesTreatmentLineageMovementId = receive.Id,
+                    OccurredAt = occurredAt,
+                    CreatedByUserId = actorUserId,
+                    CreatedAt = businessTime.UtcNow
+                });
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+        return await ReverseMovementsCoreAsync(operationKey + ":dispatch", TreatmentLineageMovementTypes.InterCrewReversal,
+            null, null, null, occurredAt, actorUserId, cancellationToken, interCrewTransferId: transferId,
+            originalMovementType: TreatmentLineageMovementTypes.InterCrewDispatch);
+    }
+
     private async Task<TreatmentLineageWriteResult> MoveCoreAsync(
         RoomInventoryLedgerSnapshot snapshot,
         string? treatmentSignature,
@@ -744,7 +916,8 @@ public sealed class RoomTreatmentService(
         int? actorUserId,
         CancellationToken cancellationToken,
         long? processorShipmentLineId = null,
-        long? outsideWarehouseTransferId = null)
+        long? outsideWarehouseTransferId = null,
+        long? interCrewTransferId = null)
     {
         long? receiptId = null;
         if (roomInventoryLossId is not null)
@@ -784,7 +957,8 @@ public sealed class RoomTreatmentService(
         }
         return await MoveCoreAsync(snapshot, treatmentSignature, bins, destinationWarehouseId, destinationRoomId, operationKey,
             movementType, roomTransferId, roomInventoryLossId, binsRunEntryId, occurredAt, actorUserId, receiptId,
-            cancellationToken, processorShipmentLineId, outsideWarehouseTransferId: outsideWarehouseTransferId);
+            cancellationToken, processorShipmentLineId, outsideWarehouseTransferId: outsideWarehouseTransferId,
+            interCrewTransferId: interCrewTransferId);
     }
 
     private async Task<TreatmentLineageWriteResult> MoveCoreAsync(
@@ -805,20 +979,21 @@ public sealed class RoomTreatmentService(
         long? processorShipmentLineId,
         long? treatmentSegmentId = null,
         bool exactSelection = false,
-        long? outsideWarehouseTransferId = null)
+        long? outsideWarehouseTransferId = null,
+        long? interCrewTransferId = null)
     {
         if (bins <= 0) return new(false, "Treatment lineage movement quantity must be positive.");
-        if (roomTransferId is null && roomInventoryLossId is null && binsRunEntryId is null && processorShipmentLineId is null && outsideWarehouseTransferId is null)
+        if (roomTransferId is null && roomInventoryLossId is null && binsRunEntryId is null && processorShipmentLineId is null && outsideWarehouseTransferId is null && interCrewTransferId is null)
         {
             return new(false, "A specific parent movement is required for treatment lineage movement.");
         }
-        if ((roomTransferId is not null ? 1 : 0) + (roomInventoryLossId is not null ? 1 : 0) + (binsRunEntryId is not null ? 1 : 0) + (processorShipmentLineId is not null ? 1 : 0) + (outsideWarehouseTransferId is not null ? 1 : 0) != 1)
+        if ((roomTransferId is not null ? 1 : 0) + (roomInventoryLossId is not null ? 1 : 0) + (binsRunEntryId is not null ? 1 : 0) + (processorShipmentLineId is not null ? 1 : 0) + (outsideWarehouseTransferId is not null ? 1 : 0) + (interCrewTransferId is not null ? 1 : 0) != 1)
         {
             return new(false, "Treatment lineage movement must reference exactly one parent movement.");
         }
         var parentError = await ValidateMovementParentAsync(
             snapshot, bins, destinationWarehouseId, destinationRoomId,
-            roomTransferId, roomInventoryLossId, binsRunEntryId, cancellationToken, processorShipmentLineId, outsideWarehouseTransferId);
+            roomTransferId, roomInventoryLossId, binsRunEntryId, cancellationToken, processorShipmentLineId, outsideWarehouseTransferId, interCrewTransferId);
         if (parentError is not null) return new(false, parentError);
         var existingMovement = await dbContext.TreatmentLineageMovements.AsNoTracking()
             .SingleOrDefaultAsync(x => x.OperationKey == operationKey, cancellationToken);
@@ -836,6 +1011,7 @@ public sealed class RoomTreatmentService(
             sameRequest = sameRequest
                 && existingMovement.ProcessorShipmentLineId == processorShipmentLineId
                 && existingMovement.OutsideWarehouseTransferId == outsideWarehouseTransferId
+                && existingMovement.InterCrewTransferId == interCrewTransferId
                 && (!exactSelection || existingMovement.ReceiptId == receiptId)
                 && (treatmentSegmentId is null || existingMovement.SourceSegmentId == treatmentSegmentId);
             return sameRequest
@@ -929,6 +1105,7 @@ public sealed class RoomTreatmentService(
             BinsRunEntryId = binsRunEntryId,
             ProcessorShipmentLineId = processorShipmentLineId,
             OutsideWarehouseTransferId = outsideWarehouseTransferId,
+            InterCrewTransferId = interCrewTransferId,
             OccurredAt = occurredAt,
             CreatedByUserId = actorUserId,
             CreatedAt = now
@@ -948,7 +1125,8 @@ public sealed class RoomTreatmentService(
         long? binsRunEntryId,
         CancellationToken cancellationToken,
         long? processorShipmentLineId,
-        long? outsideWarehouseTransferId)
+        long? outsideWarehouseTransferId,
+        long? interCrewTransferId)
     {
         if (roomTransferId is not null)
         {
@@ -1022,6 +1200,19 @@ public sealed class RoomTreatmentService(
             return null;
         }
 
+        if (interCrewTransferId is not null)
+        {
+            var parent = await dbContext.InterCrewTransfers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == interCrewTransferId.Value, cancellationToken);
+            var moved = await dbContext.TreatmentLineageMovements.AsNoTracking()
+                .Where(x => x.InterCrewTransferId == interCrewTransferId && x.MovementType == TreatmentLineageMovementTypes.InterCrewDispatch && x.ReversesTreatmentLineageMovementId == null)
+                .SumAsync(x => x.BinCount, cancellationToken);
+            if (parent is null || parent.SourceWarehouseId != snapshot.WarehouseId || parent.SourceRoomId != snapshot.RoomId
+                || destinationWarehouseId is not null || destinationRoomId is not null || moved + bins > parent.BinsLoaded
+                || !SameIdentity(parent.CropYear, parent.GrowerLotId, parent.FruitProfileId, parent.LotNumberSnapshot, parent.VarietyCodeSnapshot, snapshot))
+                return "The inter-crew transfer parent does not match the exact treatment lineage movement.";
+            return null;
+        }
+
         var runParent = await dbContext.BinsRunEntries.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == binsRunEntryId!.Value, cancellationToken);
         if (runParent is null
@@ -1078,9 +1269,11 @@ public sealed class RoomTreatmentService(
         int? actorUserId,
         CancellationToken cancellationToken,
         long? processorShipmentLineId = null,
-        long? outsideWarehouseTransferId = null)
+        long? outsideWarehouseTransferId = null,
+        long? interCrewTransferId = null,
+        string? originalMovementType = null)
     {
-        if (roomTransferId is null && roomInventoryLossId is null && binsRunEntryId is null && processorShipmentLineId is null && outsideWarehouseTransferId is null)
+        if (roomTransferId is null && roomInventoryLossId is null && binsRunEntryId is null && processorShipmentLineId is null && outsideWarehouseTransferId is null && interCrewTransferId is null)
         {
             return new(false, "A specific parent movement is required for treatment lineage reversal.");
         }
@@ -1090,6 +1283,8 @@ public sealed class RoomTreatmentService(
                 && (binsRunEntryId == null || x.BinsRunEntryId == binsRunEntryId)
                 && (processorShipmentLineId == null || x.ProcessorShipmentLineId == processorShipmentLineId)
                 && (outsideWarehouseTransferId == null || x.OutsideWarehouseTransferId == outsideWarehouseTransferId)
+                && (interCrewTransferId == null || x.InterCrewTransferId == interCrewTransferId)
+                && (originalMovementType == null || x.MovementType == originalMovementType)
                 && x.ReversesTreatmentLineageMovementId == null)
             .ToListAsync(cancellationToken);
         long? lastMovementId = null;
@@ -1133,6 +1328,7 @@ public sealed class RoomTreatmentService(
                 BinsRunEntryId = binsRunEntryId,
                 ProcessorShipmentLineId = processorShipmentLineId,
                 OutsideWarehouseTransferId = outsideWarehouseTransferId,
+                InterCrewTransferId = interCrewTransferId,
                 ReversesTreatmentLineageMovementId = original.Id,
                 OccurredAt = occurredAt,
                 CreatedByUserId = actorUserId,

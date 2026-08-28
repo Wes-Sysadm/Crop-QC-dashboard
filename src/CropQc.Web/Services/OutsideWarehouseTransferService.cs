@@ -21,6 +21,8 @@ public interface IOutsideWarehouseTransferService
     Task<OutsideWarehouseTransferWriteResult> CreateAsync(OutsideWarehouseTransferForm form, CancellationToken cancellationToken);
     Task<OutsideWarehouseTransferDetailViewModel?> GetDetailsAsync(long id, CancellationToken cancellationToken);
     Task<string?> ReverseAsync(OutsideWarehouseTransferReversalForm form, CancellationToken cancellationToken);
+    Task<IReadOnlyList<OutsideWarehouseInventoryOptionViewModel>> GetInventoryAsync(CancellationToken cancellationToken);
+    Task<RoomInventoryLedgerSnapshot?> ResolveInventoryAsync(OutsideWarehouseInventoryOptionViewModel option, CancellationToken cancellationToken);
 }
 
 public sealed class OutsideWarehouseTransferService(
@@ -401,6 +403,12 @@ public sealed class OutsideWarehouseTransferService(
             return exception.Message;
         }
     }
+
+    public async Task<IReadOnlyList<OutsideWarehouseInventoryOptionViewModel>> GetInventoryAsync(CancellationToken cancellationToken) =>
+        await GetInventoryOptionsAsync(cancellationToken);
+
+    public Task<RoomInventoryLedgerSnapshot?> ResolveInventoryAsync(OutsideWarehouseInventoryOptionViewModel option, CancellationToken cancellationToken) =>
+        FindSnapshotAsync(option, cancellationToken);
 
     private async Task<List<OutsideWarehouseInventoryOptionViewModel>> GetInventoryOptionsAsync(CancellationToken cancellationToken)
     {

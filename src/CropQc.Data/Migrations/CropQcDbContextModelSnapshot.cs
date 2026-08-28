@@ -2660,6 +2660,218 @@ namespace CropQc.Data.Migrations
                     b.ToTable("GrowerReportRecipients");
                 });
 
+            modelBuilder.Entity("CropQc.Data.Entities.InterCrewTransfer", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("BinsLoaded")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("BinsReceived")
+                        .HasColumnType("int");
+
+                    b.Property<long>("ConcurrencyVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("CropYear")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DestinationCustodyGroup")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("DestinationRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DestinationWarehouseId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FruitProfileId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GrowerLotId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("GrowerNameSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("GrowerNumberSnapshot")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("InventoryStatusSnapshot")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool?>("IsOrganicSnapshot")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("LoadedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("LoadedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LotNumberSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("OperationKey")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("ProductionTypeSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<long?>("ReceiptId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ReceiveOperationKey")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<DateTimeOffset?>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("ReceivedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReceivingNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ReversalOperationKey")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("ReversalReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("ReversedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("ReversedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ReviewOperationKey")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("ReviewedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("SourceInventoryAdjustmentId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("SourceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SourceWarehouseId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("TreatmentSignatureSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("TreatmentStateSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(25)
+                        .HasColumnType("nvarchar(25)");
+
+                    b.Property<string>("TreatmentSummarySnapshot")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("TruckLoadBolNumber")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int?>("VarianceBins")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VarietyCodeSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DestinationRoomId");
+
+                    b.HasIndex("DestinationWarehouseId");
+
+                    b.HasIndex("FruitProfileId");
+
+                    b.HasIndex("LoadedByUserId");
+
+                    b.HasIndex("OperationKey")
+                        .IsUnique();
+
+                    b.HasIndex("ReceiptId");
+
+                    b.HasIndex("ReceiveOperationKey")
+                        .IsUnique()
+                        .HasFilter("[ReceiveOperationKey] IS NOT NULL");
+
+                    b.HasIndex("ReceivedByUserId");
+
+                    b.HasIndex("ReversalOperationKey")
+                        .IsUnique()
+                        .HasFilter("[ReversalOperationKey] IS NOT NULL");
+
+                    b.HasIndex("ReversedByUserId");
+
+                    b.HasIndex("ReviewOperationKey")
+                        .IsUnique()
+                        .HasFilter("[ReviewOperationKey] IS NOT NULL");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("SourceInventoryAdjustmentId");
+
+                    b.HasIndex("SourceWarehouseId");
+
+                    b.HasIndex("SourceRoomId", "LoadedAt");
+
+                    b.HasIndex("DestinationCustodyGroup", "Status", "LoadedAt");
+
+                    b.ToTable("InterCrewTransfers");
+                });
+
             modelBuilder.Entity("CropQc.Data.Entities.InventoryDiagnosticAcknowledgment", b =>
                 {
                     b.Property<long>("Id")
@@ -7359,6 +7571,9 @@ namespace CropQc.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<long?>("InterCrewTransferId")
+                        .HasColumnType("bigint");
+
                     b.Property<int>("InventoryInvariantVersion")
                         .HasColumnType("int");
 
@@ -7446,6 +7661,8 @@ namespace CropQc.Data.Migrations
 
                     b.HasIndex("GrowerLotId");
 
+                    b.HasIndex("InterCrewTransferId");
+
                     b.HasIndex("InventoryOperationKey")
                         .IsUnique()
                         .HasFilter("[InventoryOperationKey] IS NOT NULL");
@@ -7463,6 +7680,10 @@ namespace CropQc.Data.Migrations
                     b.HasIndex("WarehouseId");
 
                     b.HasIndex("ActualRunId", "ActualRunRevisionId");
+
+                    b.HasIndex("InterCrewTransferId", "AdjustmentType")
+                        .IsUnique()
+                        .HasFilter("[InterCrewTransferId] IS NOT NULL");
 
                     b.HasIndex("OutsideWarehouseTransferId", "AdjustmentType")
                         .IsUnique()
@@ -9471,6 +9692,9 @@ namespace CropQc.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<long?>("InterCrewTransferId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("MovementType")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -9525,6 +9749,8 @@ namespace CropQc.Data.Migrations
                     b.HasIndex("CreatedByUserId");
 
                     b.HasIndex("DestinationSegmentId");
+
+                    b.HasIndex("InterCrewTransferId");
 
                     b.HasIndex("OperationKey")
                         .IsUnique();
@@ -10587,6 +10813,89 @@ namespace CropQc.Data.Migrations
                     b.Navigation("UpdatedByUser");
                 });
 
+            modelBuilder.Entity("CropQc.Data.Entities.InterCrewTransfer", b =>
+                {
+                    b.HasOne("CropQc.Data.Entities.Room", "DestinationRoom")
+                        .WithMany()
+                        .HasForeignKey("DestinationRoomId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CropQc.Data.Entities.Warehouse", "DestinationWarehouse")
+                        .WithMany()
+                        .HasForeignKey("DestinationWarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CropQc.Data.Entities.FruitProfile", "FruitProfile")
+                        .WithMany()
+                        .HasForeignKey("FruitProfileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.User", "LoadedByUser")
+                        .WithMany()
+                        .HasForeignKey("LoadedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CropQc.Data.Entities.Receipt", "Receipt")
+                        .WithMany()
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.User", "ReceivedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReceivedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CropQc.Data.Entities.User", "ReversedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReversedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CropQc.Data.Entities.User", "ReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CropQc.Data.Entities.RoomInventoryAdjustment", "SourceInventoryAdjustment")
+                        .WithMany()
+                        .HasForeignKey("SourceInventoryAdjustmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CropQc.Data.Entities.Room", "SourceRoom")
+                        .WithMany()
+                        .HasForeignKey("SourceRoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CropQc.Data.Entities.Warehouse", "SourceWarehouse")
+                        .WithMany()
+                        .HasForeignKey("SourceWarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DestinationRoom");
+
+                    b.Navigation("DestinationWarehouse");
+
+                    b.Navigation("FruitProfile");
+
+                    b.Navigation("LoadedByUser");
+
+                    b.Navigation("Receipt");
+
+                    b.Navigation("ReceivedByUser");
+
+                    b.Navigation("ReversedByUser");
+
+                    b.Navigation("ReviewedByUser");
+
+                    b.Navigation("SourceInventoryAdjustment");
+
+                    b.Navigation("SourceRoom");
+
+                    b.Navigation("SourceWarehouse");
+                });
+
             modelBuilder.Entity("CropQc.Data.Entities.InventoryDiagnosticAcknowledgment", b =>
                 {
                     b.HasOne("CropQc.Data.Entities.User", "DismissedByUser")
@@ -11506,6 +11815,11 @@ namespace CropQc.Data.Migrations
                         .HasForeignKey("GrowerLotId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("CropQc.Data.Entities.InterCrewTransfer", "InterCrewTransfer")
+                        .WithMany("InventoryAdjustments")
+                        .HasForeignKey("InterCrewTransferId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CropQc.Data.Entities.OutsideWarehouseTransfer", "OutsideWarehouseTransfer")
                         .WithMany("InventoryAdjustments")
                         .HasForeignKey("OutsideWarehouseTransferId")
@@ -11562,6 +11876,8 @@ namespace CropQc.Data.Migrations
                     b.Navigation("FruitProfile");
 
                     b.Navigation("GrowerLot");
+
+                    b.Navigation("InterCrewTransfer");
 
                     b.Navigation("OutsideWarehouseTransfer");
 
@@ -12110,6 +12426,11 @@ namespace CropQc.Data.Migrations
                         .HasForeignKey("DestinationSegmentId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("CropQc.Data.Entities.InterCrewTransfer", "InterCrewTransfer")
+                        .WithMany("TreatmentLineageMovements")
+                        .HasForeignKey("InterCrewTransferId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CropQc.Data.Entities.OutsideWarehouseTransfer", "OutsideWarehouseTransfer")
                         .WithMany("TreatmentLineageMovements")
                         .HasForeignKey("OutsideWarehouseTransferId")
@@ -12157,6 +12478,8 @@ namespace CropQc.Data.Migrations
                     b.Navigation("DestinationRoom");
 
                     b.Navigation("DestinationSegment");
+
+                    b.Navigation("InterCrewTransfer");
 
                     b.Navigation("OutsideWarehouseTransfer");
 
@@ -12403,6 +12726,13 @@ namespace CropQc.Data.Migrations
             modelBuilder.Entity("CropQc.Data.Entities.FruitProfile", b =>
                 {
                     b.Navigation("Receipts");
+                });
+
+            modelBuilder.Entity("CropQc.Data.Entities.InterCrewTransfer", b =>
+                {
+                    b.Navigation("InventoryAdjustments");
+
+                    b.Navigation("TreatmentLineageMovements");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.OrchardContactImportBatch", b =>

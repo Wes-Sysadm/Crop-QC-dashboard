@@ -170,6 +170,11 @@ public sealed class DashboardDataService(
 
         var totalCurrentBins = dashboardLots.Sum(x => x.CurrentBins);
         var currentGrowerLots = dashboardLots.Select(x => CurrentDashboardLotKey(x.RoomId, x.Lot, x.Variety)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        var inTransit = await dbContext.InterCrewTransfers.AsNoTracking()
+            .Where(x => x.Status == InterCrewTransferStatuses.InTransit)
+            .GroupBy(_ => 1)
+            .Select(x => new { Loads = x.Count(), Bins = x.Sum(y => y.BinsLoaded) })
+            .SingleOrDefaultAsync(cancellationToken);
         return new HomeDashboardViewModel
         {
             ActiveCropYear = activeCropYear,
@@ -187,6 +192,8 @@ public sealed class DashboardDataService(
             RoomSummaryFilter = normalizedRoomFilter,
             RoomSummaries = roomSummaries,
             CanManageRoomSeals = RoomSealingService.CanManage(httpContextAccessor.HttpContext?.User ?? new ClaimsPrincipal()),
+            InTransitTransferLoads = inTransit?.Loads ?? 0,
+            InTransitTransferBins = inTransit?.Bins ?? 0,
             StorageByFacility = dashboardLots
                 .GroupBy(x => x.Facility)
                 .Select(x => new StorageFacilitySummaryViewModel
@@ -1051,6 +1058,10 @@ public sealed class DashboardDataService(
         if (toRoom.Id == fromRoom.Id)
         {
             return "Select a destination room different from the source room.";
+        }
+        if (!IsImmediateInternalTransferAllowed(fromRoom.Warehouse, toRoom.Warehouse))
+        {
+            return "Transfers between receiving crews must use Transfer to Another Crew.";
         }
 
         var currentUser = await GetCurrentUserAsync(cancellationToken);
@@ -5947,9 +5958,13 @@ public sealed class DashboardDataService(
             })
             .ToListAsync(cancellationToken);
         var sourceWarehouseId = roomRows.SingleOrDefault(x => x.Id == currentRoomId)?.WarehouseId ?? 0;
+        var sourceFacility = knownFacilities.SingleOrDefault(x => x.WarehouseId == sourceWarehouseId)?.Label;
+        var immediateFacilities = knownFacilities
+            .Where(x => IsImmediateInternalTransferAllowed(sourceFacility, x.Label))
+            .ToList();
         var rooms = roomRows
-            .Where(x => x.Id != currentRoomId && knownFacilities.Any(facility => facility.WarehouseId == x.WarehouseId))
-            .OrderBy(x => TransferFacilitySort(knownFacilities.Single(facility => facility.WarehouseId == x.WarehouseId).Label))
+            .Where(x => x.Id != currentRoomId && immediateFacilities.Any(facility => facility.WarehouseId == x.WarehouseId))
+            .OrderBy(x => TransferFacilitySort(immediateFacilities.Single(facility => facility.WarehouseId == x.WarehouseId).Label))
             .ThenBy(x => x.SortOrder)
             .ThenBy(x => x.CropQcRoomName ?? x.DisplayName ?? x.Code)
             .Select(x => new RoomTransferDestinationViewModel(
@@ -5959,7 +5974,19 @@ public sealed class DashboardDataService(
                 x.SortOrder,
                 x.IsSealed && (x.SealedAt == null || x.SealedAt <= BusinessTime.UtcNow)))
             .ToList();
-        return new RoomTransferDestinationData(sourceWarehouseId, knownFacilities, rooms);
+        return new RoomTransferDestinationData(sourceWarehouseId, immediateFacilities, rooms);
+    }
+
+    private bool IsImmediateInternalTransferAllowed(Warehouse source, Warehouse destination) =>
+        IsImmediateInternalTransferAllowed(
+            FacilityCode(source.Code, source.Name),
+            FacilityCode(destination.Code, destination.Name));
+
+    private static bool IsImmediateInternalTransferAllowed(string? sourceFacility, string? destinationFacility)
+    {
+        if (string.IsNullOrWhiteSpace(sourceFacility) || string.IsNullOrWhiteSpace(destinationFacility)) return false;
+        if (sourceFacility is "WP" or "DH") return destinationFacility is "WP" or "DH";
+        return string.Equals(sourceFacility, destinationFacility, StringComparison.OrdinalIgnoreCase);
     }
 
     private static int TransferFacilitySort(string facility) => facility switch

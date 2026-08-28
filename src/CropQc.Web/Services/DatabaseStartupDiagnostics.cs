@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260828012532_AddOutsideWarehouseTransfers";
+    public const string ExpectedSchemaMigration = "20260828033737_AddTransferCustodyWorkflow";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -527,6 +527,23 @@ public static class DatabaseStartupDiagnostics
         new("OutsideWarehouseTransfers.ConcurrencyVersion", "OutsideWarehouseTransfers", "ConcurrencyVersion", RequireNotNullable: true),
         new("RoomInventoryAdjustments.OutsideWarehouseTransferId", "RoomInventoryAdjustments", "OutsideWarehouseTransferId", RequireNullable: true),
         new("TreatmentLineageMovements.OutsideWarehouseTransferId", "TreatmentLineageMovements", "OutsideWarehouseTransferId", RequireNullable: true)
+        ,new("InterCrewTransfers", "InterCrewTransfers", null)
+        ,new("InterCrewTransfers.Id", "InterCrewTransfers", "Id", RequireNotNullable: true)
+        ,new("InterCrewTransfers.OperationKey", "InterCrewTransfers", "OperationKey", RequireNotNullable: true)
+        ,new("InterCrewTransfers.SourceWarehouseId", "InterCrewTransfers", "SourceWarehouseId", RequireNotNullable: true)
+        ,new("InterCrewTransfers.SourceRoomId", "InterCrewTransfers", "SourceRoomId", RequireNotNullable: true)
+        ,new("InterCrewTransfers.DestinationCustodyGroup", "InterCrewTransfers", "DestinationCustodyGroup", RequireNotNullable: true)
+        ,new("InterCrewTransfers.DestinationWarehouseId", "InterCrewTransfers", "DestinationWarehouseId", RequireNullable: true)
+        ,new("InterCrewTransfers.DestinationRoomId", "InterCrewTransfers", "DestinationRoomId", RequireNullable: true)
+        ,new("InterCrewTransfers.BinsLoaded", "InterCrewTransfers", "BinsLoaded", RequireNotNullable: true)
+        ,new("InterCrewTransfers.BinsReceived", "InterCrewTransfers", "BinsReceived", RequireNullable: true)
+        ,new("InterCrewTransfers.VarianceBins", "InterCrewTransfers", "VarianceBins", RequireNullable: true)
+        ,new("InterCrewTransfers.Status", "InterCrewTransfers", "Status", RequireNotNullable: true)
+        ,new("InterCrewTransfers.ReceiveOperationKey", "InterCrewTransfers", "ReceiveOperationKey", RequireNullable: true)
+        ,new("InterCrewTransfers.ReviewOperationKey", "InterCrewTransfers", "ReviewOperationKey", RequireNullable: true)
+        ,new("InterCrewTransfers.ReversalOperationKey", "InterCrewTransfers", "ReversalOperationKey", RequireNullable: true)
+        ,new("RoomInventoryAdjustments.InterCrewTransferId", "RoomInventoryAdjustments", "InterCrewTransferId", RequireNullable: true)
+        ,new("TreatmentLineageMovements.InterCrewTransferId", "TreatmentLineageMovements", "InterCrewTransferId", RequireNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
@@ -677,6 +694,15 @@ public static class DatabaseStartupDiagnostics
         new("IX_OutsideWarehouseTransfers_SourceRoomId", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_SourceRoomId"),
         new("IX_OutsideWarehouseTransfers_SourceWarehouseId_SourceRoomId_TransferredAt", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_SourceWarehouseId_SourceRoomId_TransferredAt"),
         new("IX_OutsideWarehouseTransfers_TransferredAt_OutsideWarehouseId", "OutsideWarehouseTransfers", "IX_OutsideWarehouseTransfers_TransferredAt_OutsideWarehouseId")
+        ,new("IX_InterCrewTransfers_OperationKey", "InterCrewTransfers", "IX_InterCrewTransfers_OperationKey", RequireUnique: true)
+        ,new("IX_InterCrewTransfers_ReceiveOperationKey", "InterCrewTransfers", "IX_InterCrewTransfers_ReceiveOperationKey", RequireUnique: true)
+        ,new("IX_InterCrewTransfers_ReviewOperationKey", "InterCrewTransfers", "IX_InterCrewTransfers_ReviewOperationKey", RequireUnique: true)
+        ,new("IX_InterCrewTransfers_ReversalOperationKey", "InterCrewTransfers", "IX_InterCrewTransfers_ReversalOperationKey", RequireUnique: true)
+        ,new("IX_InterCrewTransfers_DestinationCustodyGroup_Status_LoadedAt", "InterCrewTransfers", "IX_InterCrewTransfers_DestinationCustodyGroup_Status_LoadedAt")
+        ,new("IX_InterCrewTransfers_SourceRoomId_LoadedAt", "InterCrewTransfers", "IX_InterCrewTransfers_SourceRoomId_LoadedAt")
+        ,new("IX_RoomInventoryAdjustments_InterCrewTransferId", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_InterCrewTransferId")
+        ,new("IX_RoomInventoryAdjustments_InterCrewTransferId_AdjustmentType", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_InterCrewTransferId_AdjustmentType", RequireUnique: true)
+        ,new("IX_TreatmentLineageMovements_InterCrewTransferId", "TreatmentLineageMovements", "IX_TreatmentLineageMovements_InterCrewTransferId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
@@ -792,6 +818,12 @@ public static class DatabaseStartupDiagnostics
         new("FK_OutsideWarehouseTransfers_Warehouses_SourceWarehouseId", "OutsideWarehouseTransfers", "FK_OutsideWarehouseTransfers_Warehouses_SourceWarehouseId"),
         new("FK_RoomInventoryAdjustments_OutsideWarehouseTransfers_OutsideWarehouseTransferId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_OutsideWarehouseTransfers_OutsideWarehouseTransferId"),
         new("FK_TreatmentLineageMovements_OutsideWarehouseTransfers_OutsideWarehouseTransferId", "TreatmentLineageMovements", "FK_TreatmentLineageMovements_OutsideWarehouseTransfers_OutsideWarehouseTransferId")
+        ,new("FK_InterCrewTransfers_Rooms_SourceRoomId", "InterCrewTransfers", "FK_InterCrewTransfers_Rooms_SourceRoomId")
+        ,new("FK_InterCrewTransfers_Rooms_DestinationRoomId", "InterCrewTransfers", "FK_InterCrewTransfers_Rooms_DestinationRoomId")
+        ,new("FK_InterCrewTransfers_Warehouses_SourceWarehouseId", "InterCrewTransfers", "FK_InterCrewTransfers_Warehouses_SourceWarehouseId")
+        ,new("FK_InterCrewTransfers_Warehouses_DestinationWarehouseId", "InterCrewTransfers", "FK_InterCrewTransfers_Warehouses_DestinationWarehouseId")
+        ,new("FK_RoomInventoryAdjustments_InterCrewTransfers_InterCrewTransferId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_InterCrewTransfers_InterCrewTransferId")
+        ,new("FK_TreatmentLineageMovements_InterCrewTransfers_InterCrewTransferId", "TreatmentLineageMovements", "FK_TreatmentLineageMovements_InterCrewTransfers_InterCrewTransferId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
@@ -826,6 +858,7 @@ public static class DatabaseStartupDiagnostics
         new("PK_ActualRunSalesDeskCorrections", "ActualRunSalesDeskCorrections", "PK_ActualRunSalesDeskCorrections"),
         new("PK_OutsideWarehouses", "OutsideWarehouses", "PK_OutsideWarehouses"),
         new("PK_OutsideWarehouseTransfers", "OutsideWarehouseTransfers", "PK_OutsideWarehouseTransfers")
+        ,new("PK_InterCrewTransfers", "InterCrewTransfers", "PK_InterCrewTransfers")
     ];
 
     public static async Task InspectAsync(

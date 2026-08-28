@@ -18,7 +18,8 @@ public sealed class BinsRunController(
     IBusinessTimeService businessTime,
     ILogger<BinsRunController> logger,
     IRunReportingService? runReportingService = null,
-    IOutsideWarehouseTransferService outsideWarehouseTransferService = null!) : Controller
+    IOutsideWarehouseTransferService outsideWarehouseTransferService = null!,
+    IInterCrewTransferService interCrewTransferService = null!) : Controller
 {
     [HttpGet("")]
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
@@ -101,6 +102,7 @@ public sealed class BinsRunController(
         if (activeSection.Equals("Transfer", StringComparison.OrdinalIgnoreCase))
         {
             model.OutsideWarehouseTransfers = await outsideWarehouseTransferService.GetPageAsync(filter, cancellationToken);
+            model.InterCrewTransfers = await interCrewTransferService.GetPageAsync(cancellationToken);
         }
 
         return View(model);
@@ -830,6 +832,59 @@ public sealed class BinsRunController(
         var error = await outsideWarehouseTransferService.ReverseAsync(form, cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Outside Warehouse Transfer reversed and exact source inventory restored.";
         return RedirectToAction(nameof(OutsideTransferDetails), new { id });
+    }
+
+    [HttpPost("InterCrewTransfers")]
+    [Authorize(Policy = AccessPolicyNames.TransfersCreate)]
+    public async Task<IActionResult> DispatchInterCrewTransfer(InterCrewDispatchForm form, CancellationToken cancellationToken)
+    {
+        var result = await interCrewTransferService.DispatchAsync(form, cancellationToken);
+        TempData[result.Success ? "Success" : "Error"] = result.Success
+            ? result.AlreadyApplied ? "Transfer was already dispatched." : "Transfer dispatched and is now In Transit."
+            : result.Error;
+        return result.Success && result.TransferId is long id
+            ? RedirectToAction(nameof(InterCrewTransferDetails), new { id })
+            : RedirectToAction(nameof(Index), new { Section = "Transfer", TransferType = "InterCrew", SourceKey = form.SourceKey });
+    }
+
+    [HttpGet("InterCrewTransfers/{id:long}")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunView)]
+    public async Task<IActionResult> InterCrewTransferDetails(long id, CancellationToken cancellationToken)
+    {
+        var model = await interCrewTransferService.GetDetailsAsync(id, cancellationToken);
+        return model is null ? NotFound() : View(model);
+    }
+
+    [HttpPost("InterCrewTransfers/{id:long}/Receive")]
+    [Authorize(Policy = AccessPolicyNames.TransfersCreate)]
+    public async Task<IActionResult> ReceiveInterCrewTransfer(long id, InterCrewReceiveForm form, CancellationToken cancellationToken)
+    {
+        form.TransferId = id;
+        var result = await interCrewTransferService.ReceiveAsync(form, cancellationToken);
+        TempData[result.Success ? "Success" : "Error"] = result.Success
+            ? result.AlreadyApplied ? "Transfer was already received." : "Transfer received."
+            : result.Error;
+        return RedirectToAction(nameof(InterCrewTransferDetails), new { id });
+    }
+
+    [HttpPost("InterCrewTransfers/{id:long}/Review")]
+    [Authorize(Policy = AccessPolicyNames.TransfersAdmin)]
+    public async Task<IActionResult> ReviewInterCrewTransfer(long id, InterCrewReviewForm form, CancellationToken cancellationToken)
+    {
+        form.TransferId = id;
+        var error = await interCrewTransferService.ReviewAsync(form, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Transfer variance reviewed.";
+        return RedirectToAction(nameof(InterCrewTransferDetails), new { id });
+    }
+
+    [HttpPost("InterCrewTransfers/{id:long}/Reverse")]
+    [Authorize(Policy = AccessPolicyNames.TransfersAdmin)]
+    public async Task<IActionResult> ReverseInterCrewTransfer(long id, InterCrewReversalForm form, CancellationToken cancellationToken)
+    {
+        form.TransferId = id;
+        var error = await interCrewTransferService.ReverseAsync(form, cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error ?? "Inter-crew transfer reversed.";
+        return RedirectToAction(nameof(InterCrewTransferDetails), new { id });
     }
 
     [HttpPost("TrueUp")]
