@@ -112,7 +112,7 @@ public sealed class BinsRunController(
             if (TransferCustodyEnabled)
             {
                 model.OutsideWarehouseTransfers = await outsideWarehouseTransferService.GetPageAsync(filter, cancellationToken);
-                model.InterCrewTransfers = await interCrewTransferService.GetPageAsync(cancellationToken);
+                model.InterCrewTransfers = await interCrewTransferService.GetPageAsync(filter, cancellationToken);
             }
         }
         model.TransferCustodyEnabled = TransferCustodyEnabled;

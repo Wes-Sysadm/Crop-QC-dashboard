@@ -6,10 +6,20 @@
     <section class="subpanel" aria-label="In Transit summary">
         <h3>In Transit</h3><p><strong>@Model.InTransitLoads load(s)</strong> · @Model.InTransitBins bins</p>
     </section>
+    @if (!string.IsNullOrWhiteSpace(Model.SourceSelectionMessage))
+    {
+        <p class="notice warning" role="status">@Model.SourceSelectionMessage</p>
+    }
+    else
+    {
+        <p class="notice information" aria-label="Selected inter-crew source"><strong>Source inventory:</strong> @Model.SourceFacility / @Model.SourceRoom</p>
+    }
     @if (Model.CanCreate && Model.Inventory.Count > 0)
     {
         <form method="post" action="/BinsRun/InterCrewTransfers" class="form-grid" data-inter-crew-form>
             <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
+            <input type="hidden" name="SourceWarehouseId" value="@Model.Form.SourceWarehouseId" />
+            <input type="hidden" name="SourceRoomId" value="@Model.Form.SourceRoomId" />
             <input type="hidden" name="ExpectedAvailableBins" value="0" data-custody-expected />
             <input type="hidden" name="ConfirmedReview" value="false" data-custody-confirmed />
             <fieldset class="field wide"><legend>Current inventory to load</legend>
@@ -45,7 +55,7 @@
         </script>
     }
     else if (!Model.CanCreate) { <p class="notice warning">Transfers Create access is required to dispatch or receive a transfer.</p> }
-    else { <p class="empty-state">No eligible current inventory is available.</p> }
+    else if (string.IsNullOrWhiteSpace(Model.SourceSelectionMessage)) { <p class="empty-state">No eligible current inventory is available in the selected source Room.</p> }
 
     <section class="subpanel"><h3>@(string.IsNullOrWhiteSpace(Model.CurrentCustodyGroup) ? "Receiving Queue" : $"{Model.CurrentCustodyGroup} Receiving Queue")</h3>
         @if (Model.Queue.Count == 0) { <p class="empty-state">No loads are waiting for this crew.</p> }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using CropQc.Data;
 using CropQc.Data.Entities;
@@ -296,11 +297,13 @@ public sealed class OutsideWarehouseTransferTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync();
-        var page = await service.GetPageAsync(default);
+        var page = await service.GetPageAsync(SourceFilter(), default);
         var source = Assert.Single(page.Inventory);
         var dispatched = await service.DispatchAsync(new()
         {
             OperationKey = "crew-dispatch",
+            SourceWarehouseId = source.WarehouseId,
+            SourceRoomId = source.RoomId,
             SourceKey = source.SourceKey,
             ExpectedAvailableBins = source.AvailableBins,
             DestinationCustodyGroup = TransferCustodyGroups.Ebs,
@@ -360,8 +363,8 @@ public sealed class OutsideWarehouseTransferTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync();
-        var source = Assert.Single((await service.GetPageAsync(default)).Inventory);
-        var form = new InterCrewDispatchForm { OperationKey = "same-dispatch", SourceKey = source.SourceKey, ExpectedAvailableBins = source.AvailableBins, DestinationCustodyGroup = TransferCustodyGroups.Ebs, BinsLoaded = 20, LoadedAt = DateTime.Parse("2026-08-27T10:00"), ConfirmedReview = true };
+        var source = Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Inventory);
+        var form = new InterCrewDispatchForm { OperationKey = "same-dispatch", SourceWarehouseId = source.WarehouseId, SourceRoomId = source.RoomId, SourceKey = source.SourceKey, ExpectedAvailableBins = source.AvailableBins, DestinationCustodyGroup = TransferCustodyGroups.Ebs, BinsLoaded = 20, LoadedAt = DateTime.Parse("2026-08-27T10:00"), ConfirmedReview = true };
         var first = await service.DispatchAsync(form, default);
         var duplicate = await service.DispatchAsync(form, default);
         Assert.True(first.Success, first.Error); Assert.True(duplicate.AlreadyApplied);
@@ -373,15 +376,99 @@ public sealed class OutsideWarehouseTransferTests
     }
 
     [Fact]
+    public async Task Inter_crew_page_requires_a_source_room_and_filters_inventory_to_the_exact_room()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var sourceWarehouse = await fixture.Db.Warehouses.SingleAsync(x => x.Id == Fixture.WarehouseId);
+        sourceWarehouse.Code = "McDougall";
+        sourceWarehouse.Name = "McDougall";
+        var sourceRoom = await fixture.Db.Rooms.SingleAsync(x => x.Id == Fixture.RoomId);
+        sourceRoom.Code = "MCD-10";
+        sourceRoom.Name = "McDougall Room 10";
+        sourceRoom.CropQcRoomName = "McDougall Room 10";
+        var room9 = await fixture.AddInventoryRoomAsync(8870, "MCD-9", "McDougall Room 9", 8871, 8872, 8873, 45);
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync();
+
+        var noRoom = await service.GetPageAsync(new() { WarehouseId = Fixture.WarehouseId }, default);
+        Assert.Empty(noRoom.Inventory);
+        Assert.Contains("Select a source Facility and Room", noRoom.SourceSelectionMessage);
+
+        var room10Page = await service.GetPageAsync(new() { WarehouseId = Fixture.WarehouseId, RoomId = Fixture.RoomId }, default);
+        var room10Option = Assert.Single(room10Page.Inventory);
+        Assert.Equal(Fixture.RoomId, room10Option.RoomId);
+        Assert.Equal("McDougall", room10Page.SourceFacility);
+        Assert.Equal("McDougall Room 10", room10Page.SourceRoom);
+        Assert.Equal(Fixture.WarehouseId, room10Page.Form.SourceWarehouseId);
+        Assert.Equal(Fixture.RoomId, room10Page.Form.SourceRoomId);
+
+        var room9Page = await service.GetPageAsync(new() { WarehouseId = Fixture.WarehouseId, RoomId = room9.Id }, default);
+        Assert.All(room9Page.Inventory, x => Assert.Equal(room9.Id, x.RoomId));
+        Assert.DoesNotContain(room9Page.Inventory, x => x.RoomId == Fixture.RoomId);
+
+        var mismatch = await service.GetPageAsync(new() { WarehouseId = ebsRoom.WarehouseId, RoomId = Fixture.RoomId }, default);
+        Assert.Empty(mismatch.Inventory);
+        Assert.Contains("does not belong", mismatch.SourceSelectionMessage);
+    }
+
+    [Fact]
+    public async Task Inter_crew_dispatch_rejects_a_valid_key_from_a_different_selected_room_and_a_stale_key()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var room9 = await fixture.AddInventoryRoomAsync(8870, "MCD-9", "McDougall Room 9", 8871, 8872, 8873, 45);
+        var (service, _) = await fixture.CreateInterCrewServiceAsync();
+        var room9Source = Assert.Single((await service.GetPageAsync(new()
+        {
+            WarehouseId = Fixture.WarehouseId,
+            RoomId = room9.Id
+        }, default)).Inventory);
+
+        var crafted = await service.DispatchAsync(new()
+        {
+            OperationKey = "crafted-room-context",
+            SourceWarehouseId = Fixture.WarehouseId,
+            SourceRoomId = Fixture.RoomId,
+            SourceKey = room9Source.SourceKey,
+            ExpectedAvailableBins = room9Source.AvailableBins,
+            DestinationCustodyGroup = TransferCustodyGroups.Ebs,
+            BinsLoaded = 5,
+            LoadedAt = DateTime.Parse("2026-08-27T10:00"),
+            ConfirmedReview = true
+        }, default);
+        Assert.False(crafted.Success);
+        Assert.Empty(await fixture.Db.InterCrewTransfers.ToListAsync());
+
+        var room10Source = Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Inventory);
+        await fixture.AddMatchingReceiptAsync(1);
+        var stale = await service.DispatchAsync(new()
+        {
+            OperationKey = "stale-room-context",
+            SourceWarehouseId = room10Source.WarehouseId,
+            SourceRoomId = room10Source.RoomId,
+            SourceKey = room10Source.SourceKey,
+            ExpectedAvailableBins = room10Source.AvailableBins,
+            DestinationCustodyGroup = TransferCustodyGroups.Ebs,
+            BinsLoaded = 5,
+            LoadedAt = DateTime.Parse("2026-08-27T10:00"),
+            ConfirmedReview = true
+        }, default);
+        Assert.False(stale.Success);
+        Assert.Empty(await fixture.Db.InterCrewTransfers.ToListAsync());
+    }
+
+    [Fact]
     public async Task Inter_crew_receiving_queue_is_routed_by_employment_facility_and_unassigned_fails_closed()
     {
         await using var fixture = await Fixture.CreateAsync(canAdmin: false);
         fixture.Access.CanAdmin = true;
         var (service, _) = await fixture.CreateInterCrewServiceAsync();
-        var source = Assert.Single((await service.GetPageAsync(default)).Inventory);
+        var source = Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Inventory);
         var dispatched = await service.DispatchAsync(new()
         {
             OperationKey = "crew-routing",
+            SourceWarehouseId = source.WarehouseId,
+            SourceRoomId = source.RoomId,
             SourceKey = source.SourceKey,
             ExpectedAvailableBins = source.AvailableBins,
             DestinationCustodyGroup = TransferCustodyGroups.Ebs,
@@ -395,22 +482,22 @@ public sealed class OutsideWarehouseTransferTests
         var user = await fixture.Db.Users.SingleAsync(x => x.Id == 8843);
         user.EmploymentFacility = EmploymentFacilities.Wp;
         await fixture.Db.SaveChangesAsync();
-        Assert.Empty((await service.GetPageAsync(default)).Queue);
+        Assert.Empty((await service.GetPageAsync(SourceFilter(), default)).Queue);
         Assert.False((await service.GetDetailsAsync(dispatched.TransferId!.Value, default))!.CanReceive);
 
         user.EmploymentFacility = EmploymentFacilities.Ebs;
         await fixture.Db.SaveChangesAsync();
-        Assert.Single((await service.GetPageAsync(default)).Queue);
+        Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Queue);
         Assert.True((await service.GetDetailsAsync(dispatched.TransferId.Value, default))!.CanReceive);
 
         user.EmploymentFacility = EmploymentFacilities.Unassigned;
         await fixture.Db.SaveChangesAsync();
-        Assert.Empty((await service.GetPageAsync(default)).Queue);
+        Assert.Empty((await service.GetPageAsync(SourceFilter(), default)).Queue);
         Assert.False((await service.GetDetailsAsync(dispatched.TransferId.Value, default))!.CanReceive);
 
         user.EmploymentFacility = EmploymentFacilities.Shared;
         await fixture.Db.SaveChangesAsync();
-        Assert.Single((await service.GetPageAsync(default)).Queue);
+        Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Queue);
     }
 
     [Theory]
@@ -429,11 +516,13 @@ public sealed class OutsideWarehouseTransferTests
         sourceWarehouse.Name = sourceFacility;
         await fixture.Db.SaveChangesAsync();
         var (service, _) = await fixture.CreateInterCrewServiceAsync();
-        var source = Assert.Single((await service.GetPageAsync(default)).Inventory);
+        var source = Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Inventory);
 
         var result = await service.DispatchAsync(new()
         {
             OperationKey = $"matrix-{sourceFacility}-{destinationGroup}",
+            SourceWarehouseId = source.WarehouseId,
+            SourceRoomId = source.RoomId,
             SourceKey = source.SourceKey,
             ExpectedAvailableBins = source.AvailableBins,
             DestinationCustodyGroup = destinationGroup,
@@ -467,11 +556,13 @@ public sealed class OutsideWarehouseTransferTests
         sourceWarehouse.Name = sourceFacility;
         await fixture.Db.SaveChangesAsync();
         var (service, _) = await fixture.CreateInterCrewServiceAsync();
-        var source = Assert.Single((await service.GetPageAsync(default)).Inventory);
+        var source = Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Inventory);
 
         var result = await service.DispatchAsync(new()
         {
             OperationKey = $"reject-{sourceFacility}-{destinationGroup}",
+            SourceWarehouseId = source.WarehouseId,
+            SourceRoomId = source.RoomId,
             SourceKey = source.SourceKey,
             ExpectedAvailableBins = source.AvailableBins,
             DestinationCustodyGroup = destinationGroup,
@@ -490,10 +581,12 @@ public sealed class OutsideWarehouseTransferTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync();
-        var source = Assert.Single((await service.GetPageAsync(default)).Inventory);
+        var source = Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Inventory);
         var dispatched = await service.DispatchAsync(new()
         {
             OperationKey = "receive-destination",
+            SourceWarehouseId = source.WarehouseId,
+            SourceRoomId = source.RoomId,
             SourceKey = source.SourceKey,
             ExpectedAvailableBins = source.AvailableBins,
             DestinationCustodyGroup = TransferCustodyGroups.Ebs,
@@ -541,10 +634,12 @@ public sealed class OutsideWarehouseTransferTests
     {
         await using var fixture = await Fixture.CreateAsync(canAdmin: false);
         var (service, _) = await fixture.CreateInterCrewServiceAsync();
-        var source = Assert.Single((await service.GetPageAsync(default)).Inventory);
+        var source = Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Inventory);
         var dispatched = await service.DispatchAsync(new()
         {
             OperationKey = "reverse-in-transit",
+            SourceWarehouseId = source.WarehouseId,
+            SourceRoomId = source.RoomId,
             SourceKey = source.SourceKey,
             ExpectedAvailableBins = source.AvailableBins,
             DestinationCustodyGroup = TransferCustodyGroups.Ebs,
@@ -576,6 +671,11 @@ public sealed class OutsideWarehouseTransferTests
         Assert.Contains("Internal Room Transfer", index);
         Assert.Contains("Transfer to Another Crew", index);
         Assert.Contains("Outside Warehouse", index);
+        Assert.Contains("TransferType=Internal&amp;WarehouseId=@Model.Filter.WarehouseId&amp;RoomId=@Model.Filter.RoomId", index);
+        Assert.Contains("TransferType=InterCrew&amp;WarehouseId=@Model.Filter.WarehouseId&amp;RoomId=@Model.Filter.RoomId", index);
+        Assert.Contains("name=\"SourceWarehouseId\"", page);
+        Assert.Contains("name=\"SourceRoomId\"", page);
+        Assert.Contains("Source inventory:", page);
         Assert.Contains("Receiving Queue", page);
         Assert.Contains("In Transit", page);
         Assert.Contains("WP / DH", page);
@@ -588,6 +688,14 @@ public sealed class OutsideWarehouseTransferTests
     }
 
     private static string Source(params string[] segments) => File.ReadAllText(FindRepositoryFile(segments));
+
+    private static BinsRunFilterForm SourceFilter() => new()
+    {
+        Section = "Transfer",
+        TransferType = "InterCrew",
+        WarehouseId = Fixture.WarehouseId,
+        RoomId = Fixture.RoomId
+    };
 
     private static string FindRepositoryFile(params string[] segments)
     {
@@ -744,6 +852,98 @@ public sealed class OutsideWarehouseTransferTests
                 });
             await Db.SaveChangesAsync();
             Db.ChangeTracker.Clear();
+        }
+
+        public async Task<Room> AddInventoryRoomAsync(
+            int roomId,
+            string roomCode,
+            string roomName,
+            long receiptId,
+            long adjustmentId,
+            long segmentId,
+            int bins)
+        {
+            var warehouse = await Db.Warehouses.SingleAsync(x => x.Id == WarehouseId);
+            var fruit = await Db.FruitProfiles.SingleAsync(x => x.Id == 8842);
+            var room = new Room
+            {
+                Id = roomId,
+                Warehouse = warehouse,
+                WarehouseId = warehouse.Id,
+                Code = roomCode,
+                Name = roomName,
+                CropQcRoomName = roomName,
+                CapacityBins = 1000
+            };
+            var receipt = new Receipt
+            {
+                Id = receiptId,
+                CropYear = 2026,
+                CompuTechReceiptId = $"TR{receiptId}",
+                ReceivedAt = Now.AddHours(-8),
+                Warehouse = warehouse,
+                WarehouseId = warehouse.Id,
+                Room = room,
+                RoomId = room.Id,
+                FruitProfile = fruit,
+                FruitProfileId = fruit.Id,
+                GrowerNumber = roomId.ToString(CultureInfo.InvariantCulture),
+                GrowerName = $"ROOM {roomId} GROWER",
+                LotCode = roomId.ToString(CultureInfo.InvariantCulture),
+                BinCount = bins,
+                CreatedAt = Now.AddHours(-8),
+                UpdatedAt = Now.AddHours(-8)
+            };
+            Db.AddRange(room, receipt);
+            Db.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
+            {
+                Id = adjustmentId,
+                CropYear = 2026,
+                Receipt = receipt,
+                ReceiptId = receipt.Id,
+                Warehouse = warehouse,
+                WarehouseId = warehouse.Id,
+                Room = room,
+                RoomId = room.Id,
+                FruitProfile = fruit,
+                FruitProfileId = fruit.Id,
+                GrowerName = receipt.GrowerName,
+                LotNumber = receipt.LotCode,
+                VarietyCode = fruit.VarietyCode,
+                OldBinCount = 0,
+                ChangeAmount = bins,
+                NewBinCount = bins,
+                AdjustmentType = "Receipt",
+                InventoryStatus = "Packable",
+                AdjustmentAt = Now.AddHours(-8),
+                CreatedAt = Now.AddHours(-8)
+            });
+            await Db.SaveChangesAsync();
+            var snapshot = Assert.Single(await Ledger.GetSnapshotsAsync(warehouse.Id, [room.Id], default));
+            Db.TreatmentLineageSegments.Add(new TreatmentLineageSegment
+            {
+                Id = segmentId,
+                WarehouseId = warehouse.Id,
+                RoomId = room.Id,
+                ReceiptId = receipt.Id,
+                CropYear = 2026,
+                FruitProfileId = fruit.Id,
+                IdentityKey = RoomTreatmentService.IdentityKey(snapshot),
+                GrowerNumberSnapshot = receipt.GrowerNumber,
+                GrowerNameSnapshot = receipt.GrowerName,
+                LotNumberSnapshot = receipt.LotCode,
+                VarietyCodeSnapshot = fruit.VarietyCode,
+                ProductionTypeSnapshot = fruit.ProductionType,
+                InventoryStatusSnapshot = "Packable",
+                TreatmentState = TreatmentLineageStates.Untreated,
+                TreatmentSignature = "u",
+                CurrentBins = bins,
+                CreatedAt = Now,
+                UpdatedAt = Now
+            });
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+            return room;
         }
 
         public async Task<(InterCrewTransferService Service, Room EbsRoom)> CreateInterCrewServiceAsync()
