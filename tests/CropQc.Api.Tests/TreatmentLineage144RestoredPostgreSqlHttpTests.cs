@@ -138,6 +138,114 @@ public sealed class TreatmentLineage144RestoredPostgreSqlHttpTests
     }
 
     [Fact]
+    public async Task InterCrewSourceFilter_UsesExactRoomTransfer282ProductionShape_WhenConfigured()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_INTERCREW_FILTER_RESTORED_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connectionString);
+
+        await using var db = new CropQcDbContext(
+            new DbContextOptionsBuilder<CropQcDbContext>().UseNpgsql(connectionString).Options);
+        var before = await ProtectedCountsAsync(db);
+        var transfer = await db.RoomTransfers.AsNoTracking().SingleAsync(x => x.Id == 282);
+        Assert.Equal(3, transfer.SourceWarehouseId);
+        Assert.Equal(62, transfer.SourceRoomId);
+        Assert.Equal(3, transfer.DestinationWarehouseId);
+        Assert.Equal(59, transfer.DestinationRoomId);
+        Assert.Equal(15, transfer.BinCount);
+        Assert.Equal(502, transfer.GrowerLotId);
+        Assert.Equal("2822", transfer.LotNumber);
+        Assert.Equal("RDAN", transfer.VarietyCode);
+        Assert.False(transfer.IsReversed);
+        Assert.False(await db.InterCrewTransfers.AsNoTracking().AnyAsync(x => x.OperationKey == transfer.OperationKey));
+
+        var adjustments = await db.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.RoomTransferId == transfer.Id)
+            .OrderBy(x => x.Id)
+            .ToListAsync();
+        Assert.Equal(2, adjustments.Count);
+        Assert.Contains(adjustments, x => x.RoomId == 62 && x.ChangeAmount == -15);
+        Assert.Contains(adjustments, x => x.RoomId == 59 && x.ChangeAmount == 15);
+        var lineage = await db.TreatmentLineageMovements.AsNoTracking()
+            .Where(x => x.RoomTransferId == transfer.Id)
+            .ToListAsync();
+        Assert.NotEmpty(lineage);
+        Assert.Equal(15, lineage.Sum(x => x.BinCount));
+        Assert.All(lineage, x =>
+        {
+            Assert.Equal(62, x.SourceRoomId);
+            Assert.Equal(59, x.DestinationRoomId);
+        });
+
+        await using var factory = new RestoreWebApplicationFactory(connectionString, transferCustodyEnabled: true);
+        using var client = AuthenticatedClient(factory);
+        using var scope = factory.Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IInterCrewTransferService>();
+
+        var noRoom = await service.GetPageAsync(new BinsRunFilterForm { WarehouseId = 3 }, default);
+        Assert.Empty(noRoom.Inventory);
+        Assert.Contains("Select a source Facility and Room", noRoom.SourceSelectionMessage, StringComparison.OrdinalIgnoreCase);
+
+        var room10 = await service.GetPageAsync(new BinsRunFilterForm { WarehouseId = 3, RoomId = 62 }, default);
+        Assert.Equal("McDougall", room10.SourceFacility);
+        Assert.Equal("MCD-10", room10.SourceRoom);
+        Assert.NotEmpty(room10.Inventory);
+        Assert.All(room10.Inventory, x =>
+        {
+            Assert.Equal(3, x.WarehouseId);
+            Assert.Equal(62, x.RoomId);
+            Assert.Equal("McDougall", x.Facility);
+            Assert.Equal("MCD-10", x.Room);
+        });
+        Assert.Contains(room10.Inventory, x => x.IsAvailable);
+        Assert.DoesNotContain(room10.Inventory, x =>
+            x.GrowerLotId == 502 && x.LotNumber == "2822" && x.VarietyCode == "RDAN");
+
+        var room9 = await service.GetPageAsync(new BinsRunFilterForm { WarehouseId = 3, RoomId = 61 }, default);
+        Assert.Equal("McDougall", room9.SourceFacility);
+        Assert.Equal("MCD-09", room9.SourceRoom);
+        Assert.NotEmpty(room9.Inventory);
+        Assert.All(room9.Inventory, x =>
+        {
+            Assert.Equal(3, x.WarehouseId);
+            Assert.Equal(61, x.RoomId);
+            Assert.Equal("McDougall", x.Facility);
+            Assert.Equal("MCD-09", x.Room);
+        });
+        Assert.Empty(room10.Inventory.Select(x => x.SourceKey).Intersect(room9.Inventory.Select(x => x.SourceKey)));
+
+        var noRoomHtml = await client.GetStringAsync("/BinsRun?Section=Transfer&TransferType=InterCrew&WarehouseId=3");
+        Assert.Contains("Select a source Facility and Room", noRoomHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("data-inter-crew-form", noRoomHtml, StringComparison.OrdinalIgnoreCase);
+
+        var room10Html = await client.GetStringAsync("/BinsRun?Section=Transfer&TransferType=InterCrew&WarehouseId=3&RoomId=62");
+        var room10Form = FormHtml(room10Html);
+        Assert.Contains("Source inventory:</strong> McDougall / MCD-10", room10Html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("name=\"SourceWarehouseId\" value=\"3\"", room10Form, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("name=\"SourceRoomId\" value=\"62\"", room10Form, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("McDougall / MCD-09", room10Form, StringComparison.OrdinalIgnoreCase);
+
+        var room9Html = await client.GetStringAsync("/BinsRun?Section=Transfer&TransferType=InterCrew&WarehouseId=3&RoomId=61");
+        var room9Form = FormHtml(room9Html);
+        Assert.Contains("Source inventory:</strong> McDougall / MCD-09", room9Html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("name=\"SourceRoomId\" value=\"61\"", room9Form, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("McDougall / MCD-10", room9Form, StringComparison.OrdinalIgnoreCase);
+
+        var room10Again = await service.GetPageAsync(new BinsRunFilterForm { WarehouseId = 3, RoomId = 62 }, default);
+        Assert.Equal(room10.Inventory.Select(x => x.SourceKey), room10Again.Inventory.Select(x => x.SourceKey));
+        Assert.Equal(before, await ProtectedCountsAsync(db));
+    }
+
+    private static string FormHtml(string html)
+    {
+        var start = html.IndexOf("<form", html.IndexOf("data-inter-crew-form", StringComparison.OrdinalIgnoreCase) - 200, StringComparison.OrdinalIgnoreCase);
+        Assert.True(start >= 0, "Expected the Inter-Crew dispatch form to render.");
+        var end = html.IndexOf("</form>", start, StringComparison.OrdinalIgnoreCase);
+        Assert.True(end > start, "Expected the Inter-Crew dispatch form to close.");
+        return html[start..(end + "</form>".Length)];
+    }
+
+    [Fact]
     public async Task TransferCustody_FullSyntheticWorkflow_PassesOnCorrectedRestoredPostgreSql_WhenConfigured()
     {
         var connectionString = Environment.GetEnvironmentVariable("CROPQC_TREATMENT_LINEAGE_144_WORKFLOW_POSTGRES");
@@ -211,6 +319,8 @@ public sealed class TreatmentLineage144RestoredPostgreSqlHttpTests
         var exactDispatch = await interCrewService.DispatchAsync(new InterCrewDispatchForm
         {
             OperationKey = "release-114-exact-dispatch",
+            SourceWarehouseId = exactSource.WarehouseId,
+            SourceRoomId = exactSource.RoomId,
             SourceKey = exactSource.SourceKey,
             ExpectedAvailableBins = exactSource.AvailableBins,
             DestinationCustodyGroup = TransferCustodyGroups.Ebs,
@@ -248,6 +358,8 @@ public sealed class TreatmentLineage144RestoredPostgreSqlHttpTests
         var varianceDispatch = await interCrewService.DispatchAsync(new InterCrewDispatchForm
         {
             OperationKey = "release-114-variance-dispatch",
+            SourceWarehouseId = varianceSource.WarehouseId,
+            SourceRoomId = varianceSource.RoomId,
             SourceKey = varianceSource.SourceKey,
             ExpectedAvailableBins = varianceSource.AvailableBins,
             DestinationCustodyGroup = TransferCustodyGroups.Ebs,
@@ -292,6 +404,8 @@ public sealed class TreatmentLineage144RestoredPostgreSqlHttpTests
         var beforeReceive = await interCrewService.DispatchAsync(new InterCrewDispatchForm
         {
             OperationKey = "release-114-before-receive-dispatch",
+            SourceWarehouseId = beforeReceiveSource.WarehouseId,
+            SourceRoomId = beforeReceiveSource.RoomId,
             SourceKey = beforeReceiveSource.SourceKey,
             ExpectedAvailableBins = beforeReceiveSource.AvailableBins,
             DestinationCustodyGroup = TransferCustodyGroups.Ebs,

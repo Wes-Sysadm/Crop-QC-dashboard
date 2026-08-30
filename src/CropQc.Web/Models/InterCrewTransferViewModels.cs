@@ -3,6 +3,8 @@ namespace CropQc.Web.Models;
 public sealed class InterCrewDispatchForm
 {
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public int? SourceWarehouseId { get; set; }
+    public int? SourceRoomId { get; set; }
     public string SourceKey { get; set; } = "";
     public int ExpectedAvailableBins { get; set; }
     public string DestinationCustodyGroup { get; set; } = "";
@@ -56,6 +58,9 @@ public sealed class InterCrewTransferPageViewModel
     public bool CanCreate { get; set; }
     public bool CanAdmin { get; set; }
     public string CurrentCustodyGroup { get; set; } = "";
+    public string? SourceFacility { get; set; }
+    public string? SourceRoom { get; set; }
+    public string? SourceSelectionMessage { get; set; }
     public int InTransitLoads { get; set; }
     public int InTransitBins { get; set; }
 }

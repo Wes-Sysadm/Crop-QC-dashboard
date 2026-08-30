@@ -15,7 +15,7 @@ public sealed record InterCrewWriteResult(bool Success, bool AlreadyApplied, lon
 
 public interface IInterCrewTransferService
 {
-    Task<InterCrewTransferPageViewModel> GetPageAsync(CancellationToken cancellationToken);
+    Task<InterCrewTransferPageViewModel> GetPageAsync(BinsRunFilterForm filter, CancellationToken cancellationToken);
     Task<InterCrewWriteResult> DispatchAsync(InterCrewDispatchForm form, CancellationToken cancellationToken);
     Task<InterCrewWriteResult> ReceiveAsync(InterCrewReceiveForm form, CancellationToken cancellationToken);
     Task<string?> ReviewAsync(InterCrewReviewForm form, CancellationToken cancellationToken);
@@ -36,7 +36,9 @@ public sealed class InterCrewTransferService(
     private const string AuditSource = "CropQc.Web inter-crew transfer workflow";
     private static readonly JsonSerializerOptions AuditJson = new(JsonSerializerDefaults.Web);
 
-    public async Task<InterCrewTransferPageViewModel> GetPageAsync(CancellationToken cancellationToken)
+    public async Task<InterCrewTransferPageViewModel> GetPageAsync(
+        BinsRunFilterForm filter,
+        CancellationToken cancellationToken)
     {
         var principal = httpContextAccessor.HttpContext?.User ?? new ClaimsPrincipal();
         var actor = await GetActorAsync(cancellationToken);
@@ -48,17 +50,56 @@ public sealed class InterCrewTransferService(
             .OrderByDescending(x => x.LoadedAt).Take(500).ToListAsync(cancellationToken);
         var queue = all.Where(x => x.Status == InterCrewTransferStatuses.InTransit && CanAccessGroup(group, canAdmin, x.DestinationCustodyGroup))
             .Select(x => ListItem(x, true)).ToList();
-        var inventory = (await inventoryProvider.GetInventoryAsync(cancellationToken))
-            .Where(x => AllowedDestinationGroups(x.Facility).Count > 0).ToList();
+        var inventory = new List<OutsideWarehouseInventoryOptionViewModel>();
+        Warehouse? sourceWarehouse = null;
+        Room? sourceRoom = null;
+        string? sourceSelectionMessage = null;
+        if (filter.RoomId is not int sourceRoomId)
+        {
+            sourceSelectionMessage = "Select a source Facility and Room to view inventory for an inter-crew transfer.";
+        }
+        else
+        {
+            sourceRoom = await dbContext.Rooms.AsNoTracking()
+                .Include(x => x.Warehouse)
+                .SingleOrDefaultAsync(x => x.Id == sourceRoomId && x.IsActive && x.Warehouse.IsActive, cancellationToken);
+            if (sourceRoom is null)
+            {
+                sourceSelectionMessage = "The selected source Room is no longer active. Select another source Room.";
+            }
+            else if (filter.WarehouseId is int sourceWarehouseId && sourceRoom.WarehouseId != sourceWarehouseId)
+            {
+                sourceSelectionMessage = "The selected source Room does not belong to the selected Facility. Select the source Room again.";
+                sourceRoom = null;
+            }
+            else
+            {
+                sourceWarehouse = sourceRoom.Warehouse;
+                filter.WarehouseId = sourceRoom.WarehouseId;
+                inventory = (await inventoryProvider.GetInventoryAsync(cancellationToken))
+                    .Where(x => x.WarehouseId == sourceRoom.WarehouseId
+                        && x.RoomId == sourceRoom.Id
+                        && AllowedDestinationGroups(x.Facility).Count > 0)
+                    .ToList();
+            }
+        }
         return new InterCrewTransferPageViewModel
         {
-            Form = new() { LoadedAt = businessTime.NowPacific.DateTime },
+            Form = new()
+            {
+                SourceWarehouseId = sourceWarehouse?.Id,
+                SourceRoomId = sourceRoom?.Id,
+                LoadedAt = businessTime.NowPacific.DateTime
+            },
             Inventory = inventory,
             Queue = queue,
             History = all.Select(x => ListItem(x, false)).ToList(),
             CanCreate = canCreate,
             CanAdmin = canAdmin,
             CurrentCustodyGroup = group switch { SharedCustodyGroup => "Shared", null => "No receiving crew", _ => TransferCustodyGroups.Label(group) },
+            SourceFacility = sourceWarehouse?.Code,
+            SourceRoom = sourceRoom is null ? null : RoomLabel(sourceRoom),
+            SourceSelectionMessage = sourceSelectionMessage,
             InTransitLoads = all.Count(x => x.Status == InterCrewTransferStatuses.InTransit),
             InTransitBins = all.Where(x => x.Status == InterCrewTransferStatuses.InTransit).Sum(x => x.BinsLoaded)
         };
@@ -70,6 +111,8 @@ public sealed class InterCrewTransferService(
         if (!await access.HasAccessAsync(principal, ApplicationAreas.Transfers, PageAccessLevel.Create, cancellationToken))
             return Fail("Transfers Create access is required to dispatch an inter-crew transfer.");
         if (!form.ConfirmedReview) return Fail("Review the inter-crew transfer before dispatching it.");
+        if (form.SourceWarehouseId is null || form.SourceRoomId is null)
+            return Fail("Select the source Facility and Room again before dispatching this transfer.");
         if (!TransferCustodyGroups.IsValid(form.DestinationCustodyGroup)) return Fail("Select WP / DH or EBS as the destination crew.");
         if (form.BinsLoaded <= 0) return Fail("Bins loaded must be greater than zero.");
         if (form.LoadedAt == default) return Fail("Loaded date and time are required.");
@@ -83,7 +126,10 @@ public sealed class InterCrewTransferService(
         await using var transaction = await BeginTransactionAsync(cancellationToken);
         try
         {
-            var option = (await inventoryProvider.GetInventoryAsync(cancellationToken)).SingleOrDefault(x => x.SourceKey == form.SourceKey);
+            var option = (await inventoryProvider.GetInventoryAsync(cancellationToken)).SingleOrDefault(x =>
+                x.SourceKey == form.SourceKey
+                && x.WarehouseId == form.SourceWarehouseId
+                && x.RoomId == form.SourceRoomId);
             if (option is null) return Fail("The selected current inventory is no longer available. Refresh and retry.");
             if (!option.IsAvailable) return Fail(option.UnavailableReason ?? "The selected treatment lineage requires review and cannot be dispatched.");
             var allowed = AllowedDestinationGroups(option.Facility);
