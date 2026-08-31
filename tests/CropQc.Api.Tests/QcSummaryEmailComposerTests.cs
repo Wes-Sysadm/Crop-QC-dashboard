@@ -3,6 +3,10 @@ using CropQc.Shared.Storage;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.Extensions.Logging.Abstractions;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Metadata.Profiles.Exif;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace CropQc.Api.Tests;
 
@@ -224,6 +228,46 @@ public sealed class QcSummaryEmailComposerTests
         Assert.DoesNotContain("drive.google.com", content.HtmlBody);
         Assert.DoesNotContain("drive.google.com", content.TextBody);
         Assert.DoesNotContain("<a href=\"https://drive.google.com", content.HtmlBody);
+    }
+
+    [Fact]
+    public async Task EmailComposer_UsesActualExifNormalizedAndManualPresentationPixelsWithoutDoubleRotation()
+    {
+        var sample = BuildSample("Receiving Sample");
+        sample.Receipt.Photos.Clear();
+        sample.Photos.Clear();
+        var photo = Photo(77, "Hectre", sampleId: sample.Id);
+        var original = MarkerJpeg(6);
+        photo.FileId = "email-original";
+        photo.SharePointItemId = "email-original";
+        sample.Photos.Add(photo);
+        var storage = new KeyedPhotoStorage(new Dictionary<string, byte[]> { ["email-original"] = original });
+        var composer = new QcSummaryEmailComposer(storage, new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+
+        var automatic = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, null, false, null, CancellationToken.None);
+        var automaticImage = Assert.Single(automatic.InlineImages);
+        AssertCornerOrder(automaticImage.Bytes, "CADB");
+        using (var decoded = Image.Load(automaticImage.Bytes))
+            Assert.False(decoded.Metadata.ExifProfile?.TryGetValue(ExifTag.Orientation, out _) == true);
+
+        await using var originalStream = new MemoryStream(original, writable: false);
+        var manualPresentation = await PhotoOrientationProcessor.CreatePresentationAsync(
+            originalStream, photo.FileName, photo.ContentType, 1, CancellationToken.None);
+        storage.Bytes["email-presentation"] = manualPresentation.Bytes;
+        photo.OriginalExifOrientation = 6;
+        photo.ManualRotationQuarterTurns = 1;
+        photo.PresentationRevision = 2;
+        photo.PresentationStorageKey = "email-presentation";
+        photo.PresentationFileName = "email-presentation.jpg";
+        photo.PresentationContentType = "image/jpeg";
+        photo.PresentationFileSizeBytes = manualPresentation.Bytes.Length;
+        photo.PresentationUpdatedAt = DateTimeOffset.UtcNow;
+
+        var manual = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, null, false, null, CancellationToken.None);
+        var manualImage = Assert.Single(manual.InlineImages);
+        AssertCornerOrder(manualImage.Bytes, "DCBA");
+        using var manualDecoded = Image.Load(manualImage.Bytes);
+        Assert.False(manualDecoded.Metadata.ExifProfile?.TryGetValue(ExifTag.Orientation, out _) == true);
     }
 
     [Fact]
@@ -564,6 +608,63 @@ public sealed class QcSummaryEmailComposerTests
         FileId = $"photo-{id}",
         CapturedAt = DateTimeOffset.UtcNow
     };
+
+    private static byte[] MarkerJpeg(int orientation)
+    {
+        using var image = new Image<Rgba32>(80, 60);
+        Fill(image, 0, 0, 40, 30, Color.Red);
+        Fill(image, 40, 0, 40, 30, Color.Lime);
+        Fill(image, 0, 30, 40, 30, Color.Blue);
+        Fill(image, 40, 30, 40, 30, Color.Yellow);
+        image.Metadata.ExifProfile = new ExifProfile();
+        image.Metadata.ExifProfile.SetValue(ExifTag.Orientation, (ushort)orientation);
+        using var output = new MemoryStream();
+        image.Save(output, new JpegEncoder { Quality = 100 });
+        return output.ToArray();
+    }
+
+    private static void Fill(Image<Rgba32> image, int x, int y, int width, int height, Color color)
+    {
+        var pixel = color.ToPixel<Rgba32>();
+        for (var row = y; row < y + height; row++)
+        {
+            for (var column = x; column < x + width; column++)
+            {
+                image[column, row] = pixel;
+            }
+        }
+    }
+
+    private static void AssertCornerOrder(byte[] bytes, string expected)
+    {
+        using var image = Image.Load<Rgba32>(bytes);
+        var actual = string.Concat(
+            Marker(image[image.Width / 4, image.Height / 4]),
+            Marker(image[image.Width * 3 / 4, image.Height / 4]),
+            Marker(image[image.Width / 4, image.Height * 3 / 4]),
+            Marker(image[image.Width * 3 / 4, image.Height * 3 / 4]));
+        Assert.Equal(expected, actual);
+    }
+
+    private static char Marker(Rgba32 pixel)
+    {
+        if (pixel.R > 180 && pixel.G < 100 && pixel.B < 100) return 'A';
+        if (pixel.G > 150 && pixel.R < 100 && pixel.B < 100) return 'B';
+        if (pixel.B > 150 && pixel.R < 100 && pixel.G < 100) return 'C';
+        if (pixel.R > 150 && pixel.G > 150 && pixel.B < 100) return 'D';
+        return '?';
+    }
+
+    private sealed class KeyedPhotoStorage(Dictionary<string, byte[]> bytes) : IFileStorageService
+    {
+        public Dictionary<string, byte[]> Bytes { get; } = bytes;
+        public string GenerateTargetPath(FileStorageTargetContext context) => "unused";
+        public Task<FileStorageReference> SaveAsync(FileStorageSaveRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<FileStorageReference?> GetMetadataAsync(string storageKey, CancellationToken cancellationToken = default) => Task.FromResult<FileStorageReference?>(null);
+        public Task<Stream?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream?>(Bytes.TryGetValue(storageKey, out var value) ? new MemoryStream(value, writable: false) : null);
+        public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
 
     private sealed class FakeFileStorageService(byte[]? bytes = null) : IFileStorageService
     {

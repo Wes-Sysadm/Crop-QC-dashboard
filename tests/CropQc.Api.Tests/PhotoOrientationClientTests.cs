@@ -12,6 +12,8 @@ public sealed class PhotoOrientationClientTests
         Assert.Contains("data-photo-presentation-revision", script);
         Assert.Contains("payload.presentationRevision", script);
         Assert.Contains("url.searchParams.set(\"v\"", script);
+        Assert.Contains("a[data-photo-presentation-link]", script);
+        Assert.Contains("link.href = withRevision(link.href, revision)", script);
         Assert.Contains("payload.error", script);
         Assert.Contains("aria-live", Read("src", "CropQc.Web", "Views", "Shared", "_PhotoGroups.cshtml"));
     }
