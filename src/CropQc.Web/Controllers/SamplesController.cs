@@ -1,8 +1,10 @@
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using CropQc.Shared.Storage;
+using CropQc.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CropQc.Web.Controllers;
 
@@ -10,6 +12,8 @@ namespace CropQc.Web.Controllers;
 public sealed class SamplesController(
     IDashboardDataService dataService,
     FileStorageOptions fileStorageOptions,
+    CropQcDbContext dbContext,
+    IFileStorageService fileStorageService,
     ILogger<SamplesController> logger) : Controller
 {
     [HttpGet("{id:long}")]
@@ -168,6 +172,46 @@ public sealed class SamplesController(
             ? $"Photo moved to {result.NewPhotoType}."
             : result.Error;
         return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost("{id:long}/photos/{photoId:long}/rotate")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RotatePhoto(
+        long id,
+        long photoId,
+        PhotoRotationForm form,
+        CancellationToken cancellationToken)
+    {
+        var result = await dataService.RotateSamplePhotoAsync(id, photoId, form, cancellationToken);
+        if (Request.GetTypedHeaders().Accept?.Any(x => x.MediaType.Value == "application/json") == true)
+        {
+            return result.Succeeded ? Json(result) : result.IsConflict ? Conflict(result) : BadRequest(result);
+        }
+
+        TempData[result.Succeeded ? "Success" : "Error"] = result.Succeeded ? "Photo orientation updated." : result.Error;
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpGet("{id:long}/photos/{photoId:long}/content")]
+    [Authorize(Policy = AccessPolicyNames.DailyQcView)]
+    public async Task<IActionResult> PhotoContent(long id, long photoId, CancellationToken cancellationToken)
+    {
+        var sample = await dbContext.QcSamples.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
+        if (sample is null) return NotFound();
+        var photo = await dbContext.QcPhotos.AsNoTracking().SingleOrDefaultAsync(
+            x => x.Id == photoId
+                && !x.IsDeleted
+                && (x.QcSampleId == id || (sample.ReceiptId != null && x.ReceiptId == sample.ReceiptId)),
+            cancellationToken);
+        var key = photo is null ? null : PhotoOrientationProcessor.DisplayStorageKey(photo);
+        if (photo is null || string.IsNullOrWhiteSpace(key)) return NotFound();
+        var content = await fileStorageService.OpenReadAsync(key, cancellationToken);
+        if (content is null) return NotFound();
+        Response.Headers.CacheControl = "private, max-age=300, must-revalidate";
+        Response.Headers.XContentTypeOptions = "nosniff";
+        return File(content, PhotoOrientationProcessor.DisplayContentType(photo));
     }
 
     [HttpPost("{id:long}/photos/{photoId:long}/remove")]
