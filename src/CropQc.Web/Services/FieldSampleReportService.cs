@@ -236,7 +236,7 @@ public sealed class FieldSampleReportService(
         var totalBytes = 0;
         foreach (var photo in photos)
         {
-            var key = photo.FileId ?? photo.SharePointItemId;
+            var key = PhotoOrientationProcessor.DisplayStorageKey(photo);
             if (string.IsNullOrWhiteSpace(key))
             {
                 continue;
@@ -431,8 +431,13 @@ public sealed class FieldSampleReportService(
         }
         source.Position = 0;
         using var image = await Image.LoadAsync(source, cancellationToken);
-        image.Mutate(x => x.AutoOrient().Resize(new ResizeOptions { Mode = ResizeMode.Max, Size = new Size(900, 700) }));
+        if (string.IsNullOrWhiteSpace(photo.PresentationStorageKey))
+        {
+            image.Mutate(x => x.AutoOrient());
+            PhotoOrientationProcessor.ApplyManualRotation(image, photo.ManualRotationQuarterTurns);
+        }
         image.Metadata.ExifProfile = null;
+        image.Mutate(x => x.Resize(new ResizeOptions { Mode = ResizeMode.Max, Size = new Size(900, 700) }));
         image.Metadata.IccProfile = null;
         foreach (var quality in new[] { 78, 65, 50 })
         {

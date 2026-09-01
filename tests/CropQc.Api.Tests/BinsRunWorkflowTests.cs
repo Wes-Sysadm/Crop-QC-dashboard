@@ -1430,8 +1430,8 @@ public sealed class BinsRunWorkflowTests
 
         Assert.Contains("--verify-release-readiness", File.ReadAllText(FindRepositoryFile(
             "src", "CropQc.Web", "Services", "TreatmentLineage144CorrectionService.cs")));
-        Assert.Contains("20260828033737_AddTransferCustodyWorkflow", program);
-        Assert.Contains("expectedSchemaObjects = 836", program);
+        Assert.Contains("20260830233943_NormalizeQcPhotoOrientation", program);
+        Assert.Contains("expectedSchemaObjects = 844", program);
         Assert.Contains("VerifyReadinessAsync", program);
         Assert.Contains("topology", program);
         Assert.Contains("Environment.ExitCode = releaseReady ? 0 : 1", program);

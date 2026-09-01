@@ -304,7 +304,7 @@ public sealed class ReceiptsController(
                         || (x.QcSampleId != null && x.QcSample!.ReceiptId == id))
                     && !x.IsDeleted,
                 cancellationToken);
-        var key = photo?.FileId ?? photo?.SharePointItemId;
+        var key = photo is null ? null : PhotoOrientationProcessor.DisplayStorageKey(photo);
         if (photo is null
             || string.IsNullOrWhiteSpace(key)
             || !photo.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
@@ -322,7 +322,7 @@ public sealed class ReceiptsController(
 
             Response.Headers.CacheControl = "private, max-age=300, must-revalidate";
             Response.Headers.XContentTypeOptions = "nosniff";
-            return File(content, photo.ContentType);
+            return File(content, PhotoOrientationProcessor.DisplayContentType(photo));
         }
         catch (Exception ex)
         {
@@ -469,6 +469,25 @@ public sealed class ReceiptsController(
             ? await dataService.AddPhotoMetadataAsync(form, cancellationToken)
             : "Only truck, top-of-truck, or other photos can be added from the receipt detail page.";
         TempData[error is null ? "Success" : "Error"] = error ?? "Photo uploaded successfully.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost("{id:long}/photos/{photoId:long}/rotate")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RotatePhoto(
+        long id,
+        long photoId,
+        PhotoRotationForm form,
+        CancellationToken cancellationToken)
+    {
+        var result = await dataService.RotateReceiptPhotoAsync(id, photoId, form, cancellationToken);
+        if (Request.GetTypedHeaders().Accept?.Any(x => x.MediaType.Value == "application/json") == true)
+        {
+            return result.Succeeded ? Json(result) : result.IsConflict ? Conflict(result) : BadRequest(result);
+        }
+
+        TempData[result.Succeeded ? "Success" : "Error"] = result.Succeeded ? "Photo orientation updated." : result.Error;
         return RedirectToAction(nameof(Details), new { id });
     }
 
