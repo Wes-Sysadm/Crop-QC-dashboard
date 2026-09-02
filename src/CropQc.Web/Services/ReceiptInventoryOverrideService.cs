@@ -1,6 +1,8 @@
 using System.Data;
 using System.Globalization;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
@@ -48,6 +50,7 @@ public sealed class ReceiptInventoryOverrideService(
         if (receipt is null) return null;
 
         var state = await GetInventoryStateAsync(receipt, cancellationToken);
+        var inventoryStateToken = await GetInventoryIdentityStateTokenAsync(receipt, cancellationToken);
         var counts = await GetOperationalCountsAsync(receipt, cancellationToken);
         var hasPriorOverride = await dbContext.ReceiptInventoryOverrides.AsNoTracking()
             .AnyAsync(x => x.ReceiptId == receipt.Id, cancellationToken);
@@ -55,6 +58,7 @@ public sealed class ReceiptInventoryOverrideService(
         {
             ReceiptId = receipt.Id,
             ConcurrencyVersion = receipt.ConcurrencyVersion,
+            InventoryStateToken = inventoryStateToken,
             ReceiptBinCount = receipt.BinCount,
             CurrentInventory = state.Total,
             ConsumedBins = receipt.BinCount - state.Total,
@@ -229,6 +233,12 @@ public sealed class ReceiptInventoryOverrideService(
                     .ToListAsync(cancellationToken);
                 sourceCustody = interCrewCustody.Cast<object>().Concat(outsideCustody).ToArray();
                 sourceCustodyBins = interCrewCustody.Sum(x => x.Bins) + outsideCustody.Sum(x => x.Bins);
+                var currentStateToken = CreateInventoryStateToken(sourceIdentitySnapshots,
+                    interCrewCustody.Select(x => $"InterCrew:{x.Id}:{x.Bins}")
+                        .Concat(outsideCustody.Select(x => $"OutsideWarehouse:{x.Id}:{x.Bins}")));
+                if (string.IsNullOrWhiteSpace(form.ExpectedInventoryStateToken)
+                    || !string.Equals(form.ExpectedInventoryStateToken, currentStateToken, StringComparison.Ordinal))
+                    return await RollbackAsync(transaction, Conflict("Inventory moved or changed after this override was reviewed. Refresh the Receipt and review the correction again."), cancellationToken);
                 if (sourceIdentitySnapshots.Count == 0 && sourceCustodyBins == 0)
                     return await RollbackAsync(transaction, Failed("No current inventory remains under the obsolete identity."), cancellationToken);
                 if (sourceIdentitySnapshots.Any(x => x.CurrentBins < 0))
@@ -894,6 +904,35 @@ public sealed class ReceiptInventoryOverrideService(
     private static ReceiptInventoryBalanceViewModel ToViewModel(InventoryBalance x) => new(
         x.WarehouseId, x.Warehouse, x.RoomId, x.Room, x.CropYear, x.GrowerLotId, x.FruitProfileId,
         x.Grower, x.Lot, x.Variety, x.InventoryStatus, x.CurrentBins);
+
+    private async Task<string> GetInventoryIdentityStateTokenAsync(Receipt receipt, CancellationToken cancellationToken)
+    {
+        if (receipt.GrowerLotId is null) return "";
+        var snapshots = (await ledgerQuery.GetSnapshotsAsync(null, null, cancellationToken))
+            .Where(x => x.CropYear == receipt.CropYear && x.GrowerLotId == receipt.GrowerLotId
+                && x.FruitProfileId == receipt.FruitProfileId && x.CurrentBins != 0)
+            .ToList();
+        var interCrew = await dbContext.InterCrewTransfers.AsNoTracking()
+            .Where(x => x.Status == InterCrewTransferStatuses.InTransit && x.CropYear == receipt.CropYear
+                && x.GrowerLotId == receipt.GrowerLotId && x.FruitProfileId == receipt.FruitProfileId)
+            .Select(x => $"InterCrew:{x.Id}:{x.BinsLoaded}").ToListAsync(cancellationToken);
+        var outside = await dbContext.OutsideWarehouseTransfers.AsNoTracking()
+            .Where(x => !x.IsReversed && x.CropYear == receipt.CropYear
+                && x.GrowerLotId == receipt.GrowerLotId && x.FruitProfileId == receipt.FruitProfileId)
+            .Select(x => $"OutsideWarehouse:{x.Id}:{x.BinCount}").ToListAsync(cancellationToken);
+        return CreateInventoryStateToken(snapshots, interCrew.Concat(outside));
+    }
+
+    public static string CreateInventoryStateToken(
+        IEnumerable<RoomInventoryLedgerSnapshot> snapshots,
+        IEnumerable<string>? custody = null)
+    {
+        var state = string.Join("|", snapshots
+            .OrderBy(x => x.WarehouseId).ThenBy(x => x.RoomId)
+            .Select(x => $"R:{x.WarehouseId}:{x.RoomId}:{x.CropYear}:{x.GrowerLotId}:{x.FruitProfileId}:{x.CurrentBins}:{x.LatestAdjustmentId}")
+            .Concat((custody ?? []).OrderBy(x => x, StringComparer.Ordinal)));
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(state)));
+    }
 
     private static bool SameReceiptIdentity(InventoryBalance balance, Receipt receipt) =>
         balance.WarehouseId == receipt.WarehouseId && balance.RoomId == receipt.RoomId

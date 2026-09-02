@@ -646,6 +646,25 @@ public sealed class ReceiptInventoryOverrideTests
     }
 
     [Fact]
+    public async Task Inventory_move_after_override_preview_fails_closed_with_zero_writes()
+    {
+        await using var fixture = await OverrideFixture.CreateAsync();
+        var form = fixture.Form(100, Guid.NewGuid().ToString("D"));
+        form.FruitProfileId = OverrideFixture.SecondFruitId;
+        fixture.SetCurrentSnapshots(fixture.Snapshot(OverrideFixture.SecondRoomId, OverrideFixture.FruitId, 100));
+
+        var result = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None);
+
+        Assert.True(result.IsConflict);
+        Assert.Contains("moved or changed", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await fixture.Db.InventoryIdentityCorrections.ToListAsync());
+        Assert.Empty(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
+        Assert.Single(await fixture.Db.RoomInventoryAdjustments.ToListAsync());
+        Assert.Equal(OverrideFixture.FruitId,
+            (await fixture.Db.Receipts.FindAsync(OverrideFixture.ReceiptId))!.FruitProfileId);
+    }
+
+    [Fact]
     public async Task Operational_identity_conflict_fails_closed()
     {
         await using var fixture = await OverrideFixture.CreateAsync(includeHistory: true);
@@ -762,25 +781,21 @@ public sealed class ReceiptInventoryOverrideTests
         var roomB = new Room { Id = 93202, Warehouse = warehouse, WarehouseId = warehouse.Id, Code = "B", Name = "Room B" };
         var conventional = new FruitProfile { Id = 93301, Name = "PG Gala", VarietyCode = "PG-GALA", FruitType = "Apple", ProductionType = "Conventional" };
         var organic = new FruitProfile { Id = 93302, Name = "PG Organic Gala", VarietyCode = "PG-ORG-GALA", FruitType = "Apple", ProductionType = "Organic", IsOrganic = true };
-        var admin = new User
-        {
-            Id = 93401,
-            Email = ApplicationAreas.OwnerEmail,
-            DisplayName = "PostgreSQL Receipt Admin",
-            Domain = "example.invalid",
-            CreatedAt = Now
-        };
-        admin.PageAccesses.Add(new UserPageAccess
-        {
-            AreaKey = ApplicationAreas.Receipts,
-            AccessLevel = PageAccessLevel.Admin.ToString(),
-            UpdatedAt = Now
-        });
-        db.AddRange(warehouse, roomA, roomB, conventional, organic, admin);
+        var growerLot = new GrowerLot { Id = 93310, Grower = "PostgreSQL Grower", LotNumber = "PG-LOT", IsActive = true, CreatedAt = Now, UpdatedAt = Now };
+        var admin = await db.Users.AsNoTracking()
+            .SingleAsync(x => x.Email == ApplicationAreas.OwnerEmail && x.IsActive);
+        db.AddRange(warehouse, roomA, roomB, conventional, organic, growerLot);
         var quantityReceipt = PgReceipt(93501, "PG-OVERRIDE-QUANTITY", warehouse, roomA, conventional);
         var transferReceipt = PgReceipt(93502, "PG-OVERRIDE-TRANSFER", warehouse, roomA, conventional);
         var reclassReceipt = PgReceipt(93503, "PG-OVERRIDE-RECLASS", warehouse, roomA, conventional);
         var unresolvedReceipt = PgReceipt(93504, "PG-OVERRIDE-UNRESOLVED", warehouse, roomA, conventional);
+        foreach (var receipt in new[] { quantityReceipt, transferReceipt, reclassReceipt, unresolvedReceipt })
+        {
+            receipt.GrowerLot = growerLot;
+            receipt.GrowerLotId = growerLot.Id;
+            receipt.GrowerNumber = growerLot.LotNumber;
+            receipt.LotCode = growerLot.LotNumber;
+        }
         db.AddRange(quantityReceipt, transferReceipt, reclassReceipt, unresolvedReceipt);
         db.RoomInventoryAdjustments.AddRange(
             PgSource(93601, quantityReceipt, 100),
@@ -813,7 +828,7 @@ public sealed class ReceiptInventoryOverrideTests
             treatments,
             time,
             loggerFactory.CreateLogger<ReceiptInventoryOverrideService>());
-        var principal = Principal(ApplicationAreas.OwnerEmail);
+        var principal = Principal(admin.Email);
 
         var reductionForm = PgForm(quantityReceipt, 90, Guid.NewGuid().ToString("D"));
         var reduction = await service.ApplyEditAsync(reductionForm, principal, CancellationToken.None);
@@ -836,13 +851,18 @@ public sealed class ReceiptInventoryOverrideTests
 
         await AddPgTransferAsync(db, transferReceipt, roomA, roomB, conventional, 93701, completePair: true);
         var voidTransfer = await service.VoidAsync(PgVoid(transferReceipt, Guid.NewGuid().ToString("D")), principal, CancellationToken.None);
-        Assert.True(voidTransfer.Succeeded);
+        Assert.True(voidTransfer.Succeeded, voidTransfer.Error);
         Assert.Equal(2, await db.RoomInventoryAdjustments.CountAsync(x => x.ReceiptInventoryOverrideId == voidTransfer.OverrideId));
         Assert.Single(await db.RoomTransfers.Where(x => x.Id == 93701).ToListAsync());
 
         var reclassForm = PgForm(reclassReceipt, 100, Guid.NewGuid().ToString("D"));
         reclassForm.RoomId = roomB.Id;
         reclassForm.FruitProfileId = organic.Id;
+        reclassForm.ExpectedInventoryStateToken = ReceiptInventoryOverrideService.CreateInventoryStateToken(
+            (await ledger.GetSnapshotsAsync(null, null, CancellationToken.None))
+                .Where(x => x.CropYear == reclassReceipt.CropYear
+                    && x.GrowerLotId == reclassReceipt.GrowerLotId
+                    && x.FruitProfileId == reclassReceipt.FruitProfileId && x.CurrentBins != 0));
         var reclass = await service.ApplyEditAsync(reclassForm, principal, CancellationToken.None);
         Assert.True(reclass.Succeeded);
         Assert.Equal(0, (await db.ReceiptInventoryOverrides.SingleAsync(x => x.Id == reclass.OverrideId)).InventoryDelta);
@@ -889,6 +909,7 @@ public sealed class ReceiptInventoryOverrideTests
         WarehouseId = receipt.WarehouseId,
         RoomId = receipt.RoomId,
         FruitProfileId = receipt.FruitProfileId,
+        GrowerLotId = receipt.GrowerLotId,
         GrowerName = receipt.GrowerName,
         LotNumber = receipt.LotCode,
         VarietyCode = receipt.FruitProfile.VarietyCode,
@@ -915,6 +936,7 @@ public sealed class ReceiptInventoryOverrideTests
         WarehouseId = receipt.WarehouseId,
         RoomId = receipt.RoomId,
         FruitProfileId = receipt.FruitProfileId,
+        GrowerLotId = receipt.GrowerLotId,
         GrowerNumber = receipt.GrowerNumber ?? receipt.LotCode,
         GrowerName = receipt.GrowerName,
         LotCode = receipt.LotCode,
@@ -950,6 +972,7 @@ public sealed class ReceiptInventoryOverrideTests
             DestinationWarehouseId = destinationRoom.WarehouseId,
             DestinationRoomId = destinationRoom.Id,
             CropYear = receipt.CropYear,
+            GrowerLotId = receipt.GrowerLotId,
             FruitProfileId = fruit.Id,
             GrowerName = receipt.GrowerName,
             LotNumber = receipt.LotCode,
@@ -968,6 +991,7 @@ public sealed class ReceiptInventoryOverrideTests
             CropYear = receipt.CropYear,
             WarehouseId = sourceRoom.WarehouseId,
             RoomId = sourceRoom.Id,
+            GrowerLotId = receipt.GrowerLotId,
             FruitProfileId = fruit.Id,
             GrowerName = receipt.GrowerName,
             LotNumber = receipt.LotCode,
@@ -990,6 +1014,7 @@ public sealed class ReceiptInventoryOverrideTests
                 CropYear = receipt.CropYear,
                 WarehouseId = destinationRoom.WarehouseId,
                 RoomId = destinationRoom.Id,
+                GrowerLotId = receipt.GrowerLotId,
                 FruitProfileId = fruit.Id,
                 GrowerName = receipt.GrowerName,
                 LotNumber = receipt.LotCode,
@@ -1221,6 +1246,9 @@ public sealed class ReceiptInventoryOverrideTests
         {
             Id = ReceiptId,
             ExpectedConcurrencyVersion = 0,
+            ExpectedInventoryStateToken = ReceiptInventoryOverrideService.CreateInventoryStateToken(
+                Ledger.CurrentSnapshots.Where(x => x.CropYear == 2026
+                    && x.GrowerLotId == GrowerLotId && x.FruitProfileId == FruitId && x.CurrentBins != 0)),
             OperationKey = operationKey,
             Reason = "Correct receiving entry",
             ConfirmInventoryChange = true,
