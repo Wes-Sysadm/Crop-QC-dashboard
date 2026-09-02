@@ -1430,8 +1430,8 @@ public sealed class BinsRunWorkflowTests
 
         Assert.Contains("--verify-release-readiness", File.ReadAllText(FindRepositoryFile(
             "src", "CropQc.Web", "Services", "TreatmentLineage144CorrectionService.cs")));
-        Assert.Contains("20260828033737_AddTransferCustodyWorkflow", program);
-        Assert.Contains("expectedSchemaObjects = 836", program);
+        Assert.Contains("20260902140938_AddInventoryIdentityCorrections", program);
+        Assert.Contains("expectedSchemaObjects = 883", program);
         Assert.Contains("VerifyReadinessAsync", program);
         Assert.Contains("topology", program);
         Assert.Contains("Environment.ExitCode = releaseReady ? 0 : 1", program);
@@ -2849,23 +2849,40 @@ public sealed class BinsRunWorkflowTests
         var doorSampleType = new SampleType { Id = 1001, Name = "Door Sample", IsActive = true };
         var grade1 = new Grade { Id = 1000, Code = "W1", Name = "W1", IsActive = true };
         var grade2 = new Grade { Id = 1001, Code = "W2", Name = "W2", IsActive = true };
+        var growerLots = new[]
+        {
+            GrowerLot(1010, "LOT-120"),
+            GrowerLot(1011, "LOT-30"),
+            GrowerLot(1012, "HISTORY"),
+            GrowerLot(1013, "LOT-ZERO"),
+            GrowerLot(1014, "LOT-OTHER")
+        };
         db.Warehouses.Add(warehouse);
         db.Rooms.AddRange(room, otherRoom);
         db.FruitProfiles.Add(fruit);
+        db.GrowerLots.AddRange(growerLots);
         db.SampleTypes.AddRange(sampleType, doorSampleType);
         db.Grades.AddRange(grade1, grade2);
         db.Users.AddRange(
             User(1000, "admin@fruitandland.com", PageAccessLevel.Admin),
             User(1001, "manager@fruitandland.com", PageAccessLevel.Edit),
             User(1002, "viewer@fruitandland.com", PageAccessLevel.View));
-        db.RoomInventoryAdjustments.AddRange(
+        var inventoryAdjustments = new[]
+        {
             Adjustment(8001, warehouse, room, fruit, "LOT-120", 120),
             Adjustment(8004, warehouse, room, fruit, "LOT-30", 30),
             Adjustment(8005, warehouse, room, fruit, "HISTORY", 40),
             Adjustment(8002, warehouse, room, fruit, "LOT-ZERO", 0),
             Adjustment(8003, warehouse, otherRoom, fruit, "LOT-OTHER", 60),
-            Adjustment(8006, warehouse, otherRoom, fruit, "LOT-120", 25));
-        db.Receipts.AddRange(new Receipt
+            Adjustment(8006, warehouse, otherRoom, fruit, "LOT-120", 25)
+        };
+        foreach (var adjustment in inventoryAdjustments)
+        {
+            adjustment.GrowerLot = growerLots.Single(x => x.LotNumber == adjustment.LotNumber);
+            adjustment.GrowerLotId = adjustment.GrowerLot.Id;
+        }
+        db.RoomInventoryAdjustments.AddRange(inventoryAdjustments);
+        var receipts = new Receipt[] { new Receipt
         {
             Id = 7001,
             CropYear = 2026,
@@ -2888,7 +2905,13 @@ public sealed class BinsRunWorkflowTests
         SampleReceipt(7003, "QC-LOT-30", "LOT-30", warehouse, room, fruit),
         SampleReceipt(7004, "QC-OTHER-LOT-120", "LOT-120", warehouse, otherRoom, fruit),
         SampleReceipt(7005, "QC-LOT-OTHER", "LOT-OTHER", warehouse, otherRoom, fruit),
-        SampleReceipt(7006, "QC-HISTORY", "HISTORY", warehouse, room, fruit));
+        SampleReceipt(7006, "QC-HISTORY", "HISTORY", warehouse, room, fruit) };
+        foreach (var receipt in receipts)
+        {
+            receipt.GrowerLot = growerLots.Single(x => x.LotNumber == receipt.LotCode);
+            receipt.GrowerLotId = receipt.GrowerLot.Id;
+        }
+        db.Receipts.AddRange(receipts);
         db.QcSamples.Add(new QcSample
         {
             Id = 7101,
@@ -2911,6 +2934,16 @@ public sealed class BinsRunWorkflowTests
             FruitReading(7203, 7103, 1, 100, grade2),
             FruitReading(7204, 7103, 2, 100, grade2));
         await db.SaveChangesAsync();
+
+        static GrowerLot GrowerLot(int id, string lot) => new()
+        {
+            Id = id,
+            Grower = "Test Grower",
+            LotNumber = lot,
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
     }
 
     private static async Task SeedActualRunLedgerOnlyAsync(CropQcDbContext db)

@@ -43,6 +43,7 @@ public static class ReceiptInventoryOverrideActionTypes
 {
     public const string QuantityCorrection = "QuantityCorrection";
     public const string InventoryReclassification = "InventoryReclassification";
+    public const string LocationCorrection = "LocationCorrection";
     public const string VoidReceipt = "VoidReceipt";
 }
 
@@ -139,6 +140,8 @@ public sealed class RoomInventoryAdjustment
     public RoomTransfer? RoomTransfer { get; set; }
     public Guid? ReceiptInventoryOverrideId { get; set; }
     public ReceiptInventoryOverride? ReceiptInventoryOverride { get; set; }
+    public Guid? InventoryIdentityCorrectionId { get; set; }
+    public InventoryIdentityCorrection? InventoryIdentityCorrection { get; set; }
     public long? RoomInventoryLossId { get; set; }
     public RoomInventoryLoss? RoomInventoryLoss { get; set; }
     public long? ProcessorShipmentLineId { get; set; }

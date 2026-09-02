@@ -245,8 +245,8 @@ public sealed class GrowerReportRecipientTests
         Assert.Contains("23 AS checked_target_objects", verify);
         Assert.Contains("Fresh PostgreSQL 18 EF migration", harness);
         Assert.Contains("Migration history unchanged", harness);
-        Assert.Equal("20260828033737_AddTransferCustodyWorkflow", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
-        Assert.Equal(836, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
+        Assert.Equal("20260902140938_AddInventoryIdentityCorrections", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
+        Assert.Equal(883, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 
     [Fact]

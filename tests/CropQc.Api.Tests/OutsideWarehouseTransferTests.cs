@@ -250,7 +250,7 @@ public sealed class OutsideWarehouseTransferTests
     }
 
     [Fact]
-    public void Combined_migration_compatibility_and_836_object_gate_are_exact_and_bounded()
+    public void Combined_migration_compatibility_and_883_object_gate_are_exact_and_bounded()
     {
         var migration = Source("src", "CropQc.Data", "Migrations", "20260828033737_AddTransferCustodyWorkflow.cs");
         var preflight = Source("scripts", "postgresql", "preflight-transfer-custody-workflow.sql");
@@ -269,8 +269,8 @@ public sealed class OutsideWarehouseTransferTests
         Assert.Contains("pg_advisory_xact_lock", apply);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
         Assert.Contains("162 AS checked_target_objects", verify);
-        Assert.Equal("20260828033737_AddTransferCustodyWorkflow", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
-        Assert.Equal(836, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
+        Assert.Equal("20260902140938_AddInventoryIdentityCorrections", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
+        Assert.Equal(883, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -356,6 +356,133 @@ public sealed class OutsideWarehouseTransferTests
         Assert.Equal(0, (await fixture.Ledger.GetSnapshotsAsync(ebsRoom.WarehouseId, [ebsRoom.Id], default)).Sum(x => x.CurrentBins));
         Assert.Equal(new[] { -70, 68, -68, 70 }, await fixture.Db.RoomInventoryAdjustments.Where(x => x.InterCrewTransferId == transfer.Id).OrderBy(x => x.Id).Select(x => x.ChangeAmount).ToArrayAsync());
         Assert.Equal(4, await fixture.Db.AuditLogs.CountAsync(x => x.EntityName == nameof(InterCrewTransfer)));
+    }
+
+    [Fact]
+    public async Task Inter_crew_receive_after_in_transit_identity_correction_uses_canonical_inventory_and_treatment_identity()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var growerLot = new GrowerLot
+        {
+            Id = 98901,
+            LotNumber = "9350",
+            Grower = "TEST GROWER",
+            IsActive = true,
+            CreatedAt = Now,
+            UpdatedAt = Now
+        };
+        var targetFruit = new FruitProfile
+        {
+            Id = 98902,
+            Name = "Test Organic Gala",
+            VarietyCode = "TEST-ORGA",
+            FruitType = "Apple",
+            ProductionType = "Organic",
+            IsOrganic = true
+        };
+        var intermediateFruit = new FruitProfile
+        {
+            Id = 98903,
+            Name = "Intermediate identity",
+            VarietyCode = "TEST-MID",
+            FruitType = "Apple",
+            ProductionType = "Conventional"
+        };
+        fixture.Db.AddRange(growerLot, intermediateFruit, targetFruit);
+        var receipt = await fixture.Db.Receipts.SingleAsync(x => x.Id == 8844);
+        receipt.GrowerLot = growerLot;
+        receipt.GrowerLotId = growerLot.Id;
+        var sourceAdjustment = await fixture.Db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 8846);
+        sourceAdjustment.GrowerLot = growerLot;
+        sourceAdjustment.GrowerLotId = growerLot.Id;
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync();
+        var source = Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Inventory);
+        var dispatched = await service.DispatchAsync(new()
+        {
+            OperationKey = "corrected-custody-dispatch",
+            SourceWarehouseId = source.WarehouseId,
+            SourceRoomId = source.RoomId,
+            SourceKey = source.SourceKey,
+            ExpectedAvailableBins = source.AvailableBins,
+            DestinationCustodyGroup = TransferCustodyGroups.Ebs,
+            BinsLoaded = 40,
+            LoadedAt = DateTime.Parse("2026-08-27T10:00"),
+            ConfirmedReview = true
+        }, default);
+        Assert.True(dispatched.Success, dispatched.Error);
+        var transfer = await fixture.Db.InterCrewTransfers.SingleAsync(x => x.Id == dispatched.TransferId);
+        var actor = await fixture.Db.Users.SingleAsync(x => x.Id == 8843);
+        fixture.Db.InventoryIdentityCorrections.AddRange(
+            new InventoryIdentityCorrection
+            {
+                Id = Guid.NewGuid(),
+                OperationKey = "corrected-in-transit-a-to-b",
+                SourceCropYear = 2026,
+                SourceGrowerLotId = growerLot.Id,
+                SourceFruitProfileId = 8842,
+                TargetCropYear = 2026,
+                TargetGrowerLotId = growerLot.Id,
+                TargetFruitProfileId = intermediateFruit.Id,
+                Reason = "Reviewed first correction while in transit",
+                CreatedByUser = actor,
+                CreatedByUserId = actor.Id,
+                CreatedAt = Now,
+                SourceIdentitySnapshotJson = "{}",
+                TargetIdentitySnapshotJson = "{}",
+                IsComplete = true,
+                IsActive = true
+            },
+            new InventoryIdentityCorrection
+            {
+                Id = Guid.NewGuid(),
+                OperationKey = "corrected-in-transit-b-to-c",
+                SourceCropYear = 2026,
+                SourceGrowerLotId = growerLot.Id,
+                SourceFruitProfileId = intermediateFruit.Id,
+                TargetCropYear = 2026,
+                TargetGrowerLotId = growerLot.Id,
+                TargetFruitProfileId = targetFruit.Id,
+                Reason = "Reviewed final correction while in transit",
+                CreatedByUser = actor,
+                CreatedByUserId = actor.Id,
+                CreatedAt = Now.AddSeconds(1),
+                SourceIdentitySnapshotJson = "{}",
+                TargetIdentitySnapshotJson = "{}",
+                IsComplete = true,
+                IsActive = true
+            });
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        var custody = await service.GetPageAsync(SourceFilter(), default);
+        var queueItem = Assert.Single(custody.Queue);
+        Assert.Equal("TEST-ORGA", queueItem.Variety);
+        var historicalItem = Assert.Single(custody.History, x => x.Id == transfer.Id);
+        Assert.Equal(transfer.VarietyCodeSnapshot, historicalItem.Variety);
+
+        var received = await service.ReceiveAsync(new()
+        {
+            TransferId = transfer.Id,
+            OperationKey = "corrected-custody-receive",
+            DestinationRoomId = ebsRoom.Id,
+            BinsReceived = 40,
+            ReceivedAt = DateTime.Parse("2026-08-27T12:00")
+        }, default);
+
+        Assert.True(received.Success, received.Error);
+        var receiveAdjustment = await fixture.Db.RoomInventoryAdjustments.SingleAsync(x =>
+            x.InterCrewTransferId == transfer.Id && x.AdjustmentType == InterCrewTransferAdjustmentTypes.Receive);
+        Assert.Equal(targetFruit.Id, receiveAdjustment.FruitProfileId);
+        Assert.Equal("TEST-ORGA", receiveAdjustment.VarietyCode);
+        Assert.Equal("Organic", receiveAdjustment.InventoryStatus);
+        var destinationSegment = await fixture.Db.TreatmentLineageSegments.SingleAsync(x =>
+            x.RoomId == ebsRoom.Id && x.FruitProfileId == targetFruit.Id && x.CurrentBins == 40);
+        Assert.Contains($"|{targetFruit.Id}|", destinationSegment.IdentityKey, StringComparison.Ordinal);
+        Assert.DoesNotContain(await fixture.Db.TreatmentLineageSegments.Where(x => x.RoomId == ebsRoom.Id).ToListAsync(),
+            x => x.FruitProfileId == 8842 && x.CurrentBins > 0);
     }
 
     [Fact]
@@ -957,7 +1084,7 @@ public sealed class OutsideWarehouseTransferTests
             user.EmploymentFacility = EmploymentFacilities.Shared;
             await Db.SaveChangesAsync();
             var invariant = new InventoryDeductionInvariantService(Db, NullLogger<InventoryDeductionInvariantService>.Instance);
-            return (new InterCrewTransferService(Db, Service, Ledger, Treatments, invariant, Access,
+            return (new InterCrewTransferService(Db, Service, Ledger, Treatments, new InventoryIdentityService(Db), invariant, Access,
                 new FixedHttpContextAccessor(new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, user.Email)], "Test")) }),
                 new PacificBusinessTimeService(new FixedClock(Now))), ebsRoom);
         }

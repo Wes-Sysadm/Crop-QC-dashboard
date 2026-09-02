@@ -661,6 +661,13 @@ public sealed class DashboardDataService(
             return "Room lot was not found.";
         }
 
+        var depletionIdentityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+            dbContext, receipt.CropYear, receipt.GrowerLotId, receipt.FruitProfileId,
+            "Legacy room depletion", cancellationToken);
+        if (depletionIdentityError is not null) return depletionIdentityError;
+        if (!await HasExactCurrentReceiptProvenanceAsync(receipt, cancellationToken))
+            return "Current inventory cannot be allocated to this Receipt exactly. Use the current room inventory workflow or reconcile provenance before recording a legacy depletion.";
+
         var currentBins = await GetCurrentBinsForReceiptAsync(receipt.Id, cancellationToken);
         if (form.BinCount > currentBins && !form.ConfirmOverDepletion)
         {
@@ -885,6 +892,10 @@ public sealed class DashboardDataService(
         {
             return "The exact room inventory identity could not be resolved uniquely. Refresh the room before retrying.";
         }
+        var trueUpIdentityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+            dbContext, matchingSnapshots[0].CropYear, matchingSnapshots[0].GrowerLotId,
+            matchingSnapshots[0].FruitProfileId, "Manual inventory true-up", cancellationToken);
+        if (trueUpIdentityError is not null) return trueUpIdentityError;
 
         var currentUser = await GetCurrentUserAsync(cancellationToken);
         var oldCount = matchingSnapshots[0].CurrentBins;
@@ -927,6 +938,25 @@ public sealed class DashboardDataService(
         await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return null;
+    }
+
+    private async Task<bool> HasExactCurrentReceiptProvenanceAsync(Receipt receipt, CancellationToken cancellationToken)
+    {
+        var exactSegments = await dbContext.TreatmentLineageSegments.AsNoTracking()
+            .Where(x => x.ReceiptId == receipt.Id && x.CurrentBins > 0)
+            .Select(x => new { x.WarehouseId, x.RoomId, x.CurrentBins })
+            .ToListAsync(cancellationToken);
+        if (exactSegments.Count > 0)
+            return exactSegments.All(x => x.WarehouseId == receipt.WarehouseId && x.RoomId == receipt.RoomId)
+                && exactSegments.Sum(x => x.CurrentBins) > 0;
+
+        var hasOperationalMovement = await dbContext.RoomTransfers.AsNoTracking().AnyAsync(x =>
+                x.CropYear == receipt.CropYear && x.GrowerLotId == receipt.GrowerLotId
+                && x.FruitProfileId == receipt.FruitProfileId, cancellationToken)
+            || await dbContext.BinsRunEntries.AsNoTracking().AnyAsync(x => x.ReceiptId == receipt.Id
+                || (x.CropYear == receipt.CropYear && x.GrowerLotId == receipt.GrowerLotId
+                    && x.FruitProfileId == receipt.FruitProfileId), cancellationToken);
+        return !hasOperationalMovement;
     }
 
     public async Task<string?> CreateRoomTransferAsync(RoomTransferForm form, CancellationToken cancellationToken)
@@ -1067,27 +1097,16 @@ public sealed class DashboardDataService(
         var currentUser = await GetCurrentUserAsync(cancellationToken);
         var reason = form.Reason.Trim();
         var notes = string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim();
-        var sourceReceipt = selectedEntry.Option.TreatmentReceiptId is null
-            ? null
-            : await dbContext.Receipts.Include(x => x.Warehouse).Include(x => x.Room).Include(x => x.FruitProfile).SingleOrDefaultAsync(x => x.Id == selectedEntry.Option.TreatmentReceiptId && !x.IsDeleted, cancellationToken);
-        var fruitProfile = await dbContext.FruitProfiles
-            .AsNoTracking()
-            .Where(x => sourceLot.FruitProfileId.HasValue
-                ? x.Id == sourceLot.FruitProfileId.Value
-                : !string.IsNullOrWhiteSpace(sourceLot.VarietyCode)
-                    && !string.IsNullOrWhiteSpace(sourceLot.ProductionType)
-                    && sourceLot.IsOrganic.HasValue
-                    && x.VarietyCode == sourceLot.VarietyCode
-                    && x.ProductionType == sourceLot.ProductionType
-                    && x.IsOrganic == sourceLot.IsOrganic.Value)
-            .OrderByDescending(x => x.IsActive)
-            .ThenBy(x => x.Id)
-            .FirstOrDefaultAsync(cancellationToken);
+        if (sourceLot.CropYear is null || sourceLot.GrowerLotId is null || sourceLot.FruitProfileId is null)
+            return "The selected current inventory has incomplete canonical identity. Reconcile it before transferring bins.";
+        var transferIdentityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+            dbContext, sourceLot.CropYear, sourceLot.GrowerLotId, sourceLot.FruitProfileId,
+            "Internal room transfer", cancellationToken);
+        if (transferIdentityError is not null) return transferIdentityError;
         var destinationCurrent = (await BuildRoomLotSummariesAsync(form.DestinationRoomId, cancellationToken))
             .Where(x => x.CurrentBins > 0)
-            .Where(x => string.Equals(x.LotCode, sourceLot.LotCode, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(x.VarietyCode, sourceLot.VarietyCode, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(x.GrowerName, sourceLot.GrowerName, StringComparison.OrdinalIgnoreCase))
+            .Where(x => x.CropYear == sourceLot.CropYear && x.GrowerLotId == sourceLot.GrowerLotId
+                && x.FruitProfileId == sourceLot.FruitProfileId)
             .Sum(x => x.CurrentBins);
 
         var transfer = new RoomTransfer
@@ -1098,13 +1117,15 @@ public sealed class DashboardDataService(
             DestinationWarehouseId = toRoom.WarehouseId,
             DestinationRoomId = toRoom.Id,
             CropYear = sourceLot.CropYear,
-            GrowerLotId = sourceLot.GrowerLotId ?? sourceReceipt?.GrowerLotId,
-            FruitProfileId = sourceLot.FruitProfileId ?? fruitProfile?.Id ?? sourceReceipt?.FruitProfileId,
+            GrowerLotId = sourceLot.GrowerLotId,
+            FruitProfileId = sourceLot.FruitProfileId,
             GrowerName = sourceLot.GrowerName,
             LotNumber = sourceLot.LotCode,
             PoolStart = sourceLot.PoolStart,
             VarietyCode = sourceLot.VarietyCode,
-            InventoryStatus = sourceLot.InventoryStatus,
+            InventoryStatus = string.IsNullOrWhiteSpace(sourceLot.InventoryStatus)
+                ? sourceLot.ProductionType
+                : sourceLot.InventoryStatus,
             BinCount = form.BinCount,
             Reason = reason,
             Notes = notes,
@@ -1136,50 +1157,30 @@ public sealed class DashboardDataService(
             if (!lineage.Success) return lineage.Error;
         }
 
-        RoomInventoryAdjustment outgoing;
-        if (sourceReceipt is not null)
-        {
-            outgoing = AddRoomInventoryAdjustment(
-                sourceReceipt,
-                currentUser,
-                "TransferOut",
-                oldBinCount: sourceLot.CurrentBins,
-                changeAmount: -form.BinCount,
-                newBinCount: Math.Max(0, sourceLot.CurrentBins - form.BinCount),
-                adjustmentAt: form.TransferAt,
-                reason: reason,
-                notes: $"Transfer to {toRoom.Warehouse.Code}/{toRoom.Code}. {notes}".Trim(),
-                roomDepletionId: null,
-                warehouseIdOverride: fromRoom.WarehouseId,
-                roomIdOverride: fromRoom.Id);
-        }
-        else
-        {
-            outgoing = AddRoomInventoryAdjustmentRaw(
-                receiptId: null,
-                warehouseId: fromRoom.WarehouseId,
-                roomId: fromRoom.Id,
-                growerLotId: sourceLot.GrowerLotId,
-                fruitProfileId: sourceLot.FruitProfileId ?? fruitProfile?.Id,
-                growerName: sourceLot.GrowerName,
-                lotNumber: sourceLot.LotCode,
-                varietyCode: sourceLot.VarietyCode,
-                oldBinCount: sourceLot.CurrentBins,
-                changeAmount: -form.BinCount,
-                newBinCount: Math.Max(0, sourceLot.CurrentBins - form.BinCount),
-                adjustmentType: "TransferOut",
-                adjustmentAt: form.TransferAt,
-                currentUser: currentUser,
-                reason: reason,
-                notes: $"Transfer to {toRoom.Warehouse.Code}/{toRoom.Code}. {notes}".Trim());
-        }
+        var outgoing = AddRoomInventoryAdjustmentRaw(
+            receiptId: selectedEntry.Option.TreatmentReceiptId,
+            warehouseId: fromRoom.WarehouseId,
+            roomId: fromRoom.Id,
+            growerLotId: sourceLot.GrowerLotId,
+            fruitProfileId: sourceLot.FruitProfileId,
+            growerName: sourceLot.GrowerName,
+            lotNumber: sourceLot.LotCode,
+            varietyCode: sourceLot.VarietyCode,
+            oldBinCount: sourceLot.CurrentBins,
+            changeAmount: -form.BinCount,
+            newBinCount: Math.Max(0, sourceLot.CurrentBins - form.BinCount),
+            adjustmentType: "TransferOut",
+            adjustmentAt: form.TransferAt,
+            currentUser: currentUser,
+            reason: reason,
+            notes: $"Transfer to {toRoom.Warehouse.Code}/{toRoom.Code}. {notes}".Trim());
 
         var incoming = AddRoomInventoryAdjustmentRaw(
             receiptId: selectedEntry.Option.TreatmentReceiptId,
             warehouseId: toRoom.WarehouseId,
             roomId: toRoom.Id,
-            growerLotId: sourceLot.GrowerLotId ?? sourceReceipt?.GrowerLotId,
-            fruitProfileId: sourceLot.FruitProfileId ?? fruitProfile?.Id ?? sourceReceipt?.FruitProfileId,
+            growerLotId: sourceLot.GrowerLotId,
+            fruitProfileId: sourceLot.FruitProfileId,
             growerName: sourceLot.GrowerName,
             lotNumber: sourceLot.LotCode,
             varietyCode: sourceLot.VarietyCode,
@@ -1193,12 +1194,14 @@ public sealed class DashboardDataService(
             notes: $"Transfer from {fromRoom.Warehouse.Code}/{fromRoom.Code}. {notes}".Trim());
         outgoing.CropYear = transfer.CropYear;
         outgoing.FruitProfileId = transfer.FruitProfileId;
+        outgoing.InventoryStatus = transfer.InventoryStatus;
         outgoing.RoomTransferId = transfer.Id;
         outgoing.RoomTransfer = transfer;
         outgoing.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
         outgoing.InventoryOperationKey = $"transfer:{operationKey}:out";
         incoming.CropYear = transfer.CropYear;
         incoming.FruitProfileId = transfer.FruitProfileId;
+        incoming.InventoryStatus = transfer.InventoryStatus;
         incoming.RoomTransferId = transfer.Id;
         incoming.RoomTransfer = transfer;
         incoming.InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion;
@@ -1257,6 +1260,10 @@ public sealed class DashboardDataService(
         {
             return null;
         }
+        var identityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+            dbContext, original.CropYear, original.GrowerLotId, original.FruitProfileId,
+            $"Room Transfer #{original.Id} reversal", cancellationToken);
+        if (identityError is not null) return identityError;
 
         var sealError = await RoomMovementSealGuard.ValidateAsync(
             dbContext,
@@ -1596,6 +1603,14 @@ public sealed class DashboardDataService(
             {
                 return new(null, null, "Selected grower lot was not found or is inactive.");
             }
+        }
+        if (IsInventoryReceiptType(receiptType) && growerLot is not null)
+        {
+            var identityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+                dbContext, form.CropYear, growerLot.Id, form.FruitProfileId,
+                "New Receipt", cancellationToken);
+            if (identityError is not null)
+                return new(null, null, identityError);
         }
 
         var lotNumber = growerLot?.LotNumber ?? form.GrowerNumber.Trim();
@@ -5265,7 +5280,9 @@ public sealed class DashboardDataService(
                 .ThenInclude(x => x.Warehouse)
             .Include(x => x.Receipt)
             .Include(x => x.FruitProfile)
-            .Where(x => x.ReceiptId == null || x.AdjustmentType == "TransferIn");
+            .Where(x => x.ReceiptId == null
+                || x.AdjustmentType == "TransferIn"
+                || x.InventoryIdentityCorrectionId != null);
         if (roomId is not null)
         {
             query = query.Where(x => x.RoomId == roomId);
@@ -6188,7 +6205,8 @@ public sealed class DashboardDataService(
 
     private static bool IsAdjustmentOnlyCurrentStorageSource(RoomInventoryAdjustment adjustment) =>
         adjustment.ReceiptId == null
-        || adjustment.AdjustmentType == "TransferIn";
+        || adjustment.AdjustmentType == "TransferIn"
+        || adjustment.InventoryIdentityCorrectionId != null;
 
     private static IEnumerable<RoomInventoryAdjustment> ApplyLatestCurrentBalanceRows(IEnumerable<RoomInventoryAdjustment> adjustments) =>
         adjustments

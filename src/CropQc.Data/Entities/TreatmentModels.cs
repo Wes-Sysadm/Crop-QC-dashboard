@@ -23,6 +23,8 @@ public static class TreatmentLineageMovementTypes
     public const string InterCrewDispatch = "InterCrewDispatch";
     public const string InterCrewReceive = "InterCrewReceive";
     public const string InterCrewReversal = "InterCrewReversal";
+    public const string IdentityReclassification = "IdentityReclassification";
+    public const string ReceiptLocationCorrection = "ReceiptLocationCorrection";
 }
 
 public static class TreatmentApplicationLevels
@@ -212,6 +214,8 @@ public sealed class TreatmentLineageMovement
     public OutsideWarehouseTransfer? OutsideWarehouseTransfer { get; set; }
     public long? InterCrewTransferId { get; set; }
     public InterCrewTransfer? InterCrewTransfer { get; set; }
+    public Guid? InventoryIdentityCorrectionId { get; set; }
+    public InventoryIdentityCorrection? InventoryIdentityCorrection { get; set; }
     public long? ReversesTreatmentLineageMovementId { get; set; }
     public TreatmentLineageMovement? ReversesTreatmentLineageMovement { get; set; }
     public DateTimeOffset OccurredAt { get; set; }

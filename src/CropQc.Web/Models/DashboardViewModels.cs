@@ -1636,6 +1636,7 @@ public class UpdateReceiptForm : CreateReceiptForm
 public sealed class AdminReceiptInventoryOverrideForm : UpdateReceiptForm
 {
     public long ExpectedConcurrencyVersion { get; set; }
+    public string ExpectedInventoryStateToken { get; set; } = "";
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public string Reason { get; set; } = "";
     public bool ConfirmInventoryChange { get; set; }
@@ -1646,6 +1647,7 @@ public sealed class ReceiptInventoryOverridePreviewViewModel
 {
     public long ReceiptId { get; set; }
     public long ConcurrencyVersion { get; set; }
+    public string InventoryStateToken { get; set; } = "";
     public int ReceiptBinCount { get; set; }
     public int CurrentInventory { get; set; }
     public int ConsumedBins { get; set; }

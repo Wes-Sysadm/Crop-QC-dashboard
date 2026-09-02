@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260828033737_AddTransferCustodyWorkflow";
+    public const string ExpectedSchemaMigration = "20260902140938_AddInventoryIdentityCorrections";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -544,6 +544,28 @@ public static class DatabaseStartupDiagnostics
         ,new("InterCrewTransfers.ReversalOperationKey", "InterCrewTransfers", "ReversalOperationKey", RequireNullable: true)
         ,new("RoomInventoryAdjustments.InterCrewTransferId", "RoomInventoryAdjustments", "InterCrewTransferId", RequireNullable: true)
         ,new("TreatmentLineageMovements.InterCrewTransferId", "TreatmentLineageMovements", "InterCrewTransferId", RequireNullable: true)
+        ,new("InventoryIdentityCorrections", "InventoryIdentityCorrections", null)
+        ,new("InventoryIdentityCorrections.Id", "InventoryIdentityCorrections", "Id", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.OperationKey", "InventoryIdentityCorrections", "OperationKey", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.SourceCropYear", "InventoryIdentityCorrections", "SourceCropYear", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.SourceGrowerLotId", "InventoryIdentityCorrections", "SourceGrowerLotId", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.SourceFruitProfileId", "InventoryIdentityCorrections", "SourceFruitProfileId", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.TargetCropYear", "InventoryIdentityCorrections", "TargetCropYear", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.TargetGrowerLotId", "InventoryIdentityCorrections", "TargetGrowerLotId", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.TargetFruitProfileId", "InventoryIdentityCorrections", "TargetFruitProfileId", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.CorrectedReceiptId", "InventoryIdentityCorrections", "CorrectedReceiptId", RequireNullable: true)
+        ,new("InventoryIdentityCorrections.ReceiptInventoryOverrideId", "InventoryIdentityCorrections", "ReceiptInventoryOverrideId", RequireNullable: true)
+        ,new("InventoryIdentityCorrections.Reason", "InventoryIdentityCorrections", "Reason", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.CreatedByUserId", "InventoryIdentityCorrections", "CreatedByUserId", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.CreatedAt", "InventoryIdentityCorrections", "CreatedAt", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.SourceIdentitySnapshotJson", "InventoryIdentityCorrections", "SourceIdentitySnapshotJson", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.TargetIdentitySnapshotJson", "InventoryIdentityCorrections", "TargetIdentitySnapshotJson", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.ExpectedAdjustmentCount", "InventoryIdentityCorrections", "ExpectedAdjustmentCount", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.ExpectedTreatmentMovementCount", "InventoryIdentityCorrections", "ExpectedTreatmentMovementCount", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.IsComplete", "InventoryIdentityCorrections", "IsComplete", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.IsActive", "InventoryIdentityCorrections", "IsActive", RequireNotNullable: true)
+        ,new("RoomInventoryAdjustments.InventoryIdentityCorrectionId", "RoomInventoryAdjustments", "InventoryIdentityCorrectionId", RequireNullable: true)
+        ,new("TreatmentLineageMovements.InventoryIdentityCorrectionId", "TreatmentLineageMovements", "InventoryIdentityCorrectionId", RequireNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
@@ -703,6 +725,19 @@ public static class DatabaseStartupDiagnostics
         ,new("IX_RoomInventoryAdjustments_InterCrewTransferId", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_InterCrewTransferId")
         ,new("IX_RoomInventoryAdjustments_InterCrewTransferId_AdjustmentType", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_InterCrewTransferId_AdjustmentType", RequireUnique: true)
         ,new("IX_TreatmentLineageMovements_InterCrewTransferId", "TreatmentLineageMovements", "IX_TreatmentLineageMovements_InterCrewTransferId")
+        ,new("IX_InventoryIdentityCorrections_CorrectedReceiptId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_CorrectedReceiptId")
+        ,new("IX_InventoryIdentityCorrections_CreatedByUserId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_CreatedByUserId")
+        ,new("IX_InventoryIdentityCorrections_IsActive_CreatedAt", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_IsActive_CreatedAt")
+        ,new("IX_InventoryIdentityCorrections_OperationKey", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_OperationKey", RequireUnique: true)
+        ,new("IX_InventoryIdentityCorrections_ReceiptInventoryOverrideId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_ReceiptInventoryOverrideId", RequireUnique: true)
+        ,new("IX_InventoryIdentityCorrections_SourceCropYear_SourceGrowerLotId_SourceFruitProfileId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_SourceCropYear_SourceGrowerLotId_SourceFruitProfileId", RequireUnique: true)
+        ,new("IX_InventoryIdentityCorrections_SourceFruitProfileId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_SourceFruitProfileId")
+        ,new("IX_InventoryIdentityCorrections_SourceGrowerLotId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_SourceGrowerLotId")
+        ,new("IX_InventoryIdentityCorrections_TargetCropYear_TargetGrowerLotId_TargetFruitProfileId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_TargetCropYear_TargetGrowerLotId_TargetFruitProfileId")
+        ,new("IX_InventoryIdentityCorrections_TargetFruitProfileId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_TargetFruitProfileId")
+        ,new("IX_InventoryIdentityCorrections_TargetGrowerLotId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_TargetGrowerLotId")
+        ,new("IX_RoomInventoryAdjustments_InventoryIdentityCorrectionId", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_InventoryIdentityCorrectionId")
+        ,new("IX_TreatmentLineageMovements_InventoryIdentityCorrectionId", "TreatmentLineageMovements", "IX_TreatmentLineageMovements_InventoryIdentityCorrectionId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredForeignKeyExpectations =
@@ -824,6 +859,15 @@ public static class DatabaseStartupDiagnostics
         ,new("FK_InterCrewTransfers_Warehouses_DestinationWarehouseId", "InterCrewTransfers", "FK_InterCrewTransfers_Warehouses_DestinationWarehouseId")
         ,new("FK_RoomInventoryAdjustments_InterCrewTransfers_InterCrewTransferId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_InterCrewTransfers_InterCrewTransferId")
         ,new("FK_TreatmentLineageMovements_InterCrewTransfers_InterCrewTransferId", "TreatmentLineageMovements", "FK_TreatmentLineageMovements_InterCrewTransfers_InterCrewTransferId")
+        ,new("FK_InventoryIdentityCorrections_FruitProfiles_SourceFruitProfileId", "InventoryIdentityCorrections", "FK_InventoryIdentityCorrections_FruitProfiles_SourceFruitProfileId")
+        ,new("FK_InventoryIdentityCorrections_FruitProfiles_TargetFruitProfileId", "InventoryIdentityCorrections", "FK_InventoryIdentityCorrections_FruitProfiles_TargetFruitProfileId")
+        ,new("FK_InventoryIdentityCorrections_GrowerLots_SourceGrowerLotId", "InventoryIdentityCorrections", "FK_InventoryIdentityCorrections_GrowerLots_SourceGrowerLotId")
+        ,new("FK_InventoryIdentityCorrections_GrowerLots_TargetGrowerLotId", "InventoryIdentityCorrections", "FK_InventoryIdentityCorrections_GrowerLots_TargetGrowerLotId")
+        ,new("FK_InventoryIdentityCorrections_ReceiptInventoryOverrides_ReceiptInventoryOverrideId", "InventoryIdentityCorrections", "FK_InventoryIdentityCorrections_ReceiptInventoryOverrides_ReceiptInventoryOverrideId")
+        ,new("FK_InventoryIdentityCorrections_Receipts_CorrectedReceiptId", "InventoryIdentityCorrections", "FK_InventoryIdentityCorrections_Receipts_CorrectedReceiptId")
+        ,new("FK_InventoryIdentityCorrections_Users_CreatedByUserId", "InventoryIdentityCorrections", "FK_InventoryIdentityCorrections_Users_CreatedByUserId")
+        ,new("FK_RoomInventoryAdjustments_InventoryIdentityCorrections_InventoryIdentityCorrectionId", "RoomInventoryAdjustments", "FK_RoomInventoryAdjustments_InventoryIdentityCorrections_InventoryIdentityCorrectionId")
+        ,new("FK_TreatmentLineageMovements_InventoryIdentityCorrections_InventoryIdentityCorrectionId", "TreatmentLineageMovements", "FK_TreatmentLineageMovements_InventoryIdentityCorrections_InventoryIdentityCorrectionId")
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredPrimaryKeyExpectations =
@@ -834,6 +878,7 @@ public static class DatabaseStartupDiagnostics
         new("PK_PackoutSourceAllocations", "PackoutSourceAllocations", "PK_PackoutSourceAllocations"),
         new("PK_UserEmploymentHistory", "UserEmploymentHistory", "PK_UserEmploymentHistory"),
         new("PK_ReceiptInventoryOverrides", "ReceiptInventoryOverrides", "PK_ReceiptInventoryOverrides"),
+        new("PK_InventoryIdentityCorrections", "InventoryIdentityCorrections", "PK_InventoryIdentityCorrections"),
         new("PK_EndOfDayFillReportGroups", "EndOfDayFillReportGroups", "PK_EndOfDayFillReportGroups"),
         new("PK_EndOfDayFillReportRecipients", "EndOfDayFillReportRecipients", "PK_EndOfDayFillReportRecipients"),
         new("PK_EndOfDayFillUserGroupAssignments", "EndOfDayFillUserGroupAssignments", "PK_EndOfDayFillUserGroupAssignments"),
@@ -859,6 +904,12 @@ public static class DatabaseStartupDiagnostics
         new("PK_OutsideWarehouses", "OutsideWarehouses", "PK_OutsideWarehouses"),
         new("PK_OutsideWarehouseTransfers", "OutsideWarehouseTransfers", "PK_OutsideWarehouseTransfers")
         ,new("PK_InterCrewTransfers", "InterCrewTransfers", "PK_InterCrewTransfers")
+    ];
+
+    private static readonly SchemaNamedObjectExpectation[] RequiredCheckConstraintExpectations =
+    [
+        new("CK_InventoryIdentityCorrections_NonSelf", "InventoryIdentityCorrections", "CK_InventoryIdentityCorrections_NonSelf"),
+        new("CK_InventoryIdentityCorrections_PositiveCropYears", "InventoryIdentityCorrections", "CK_InventoryIdentityCorrections_PositiveCropYears")
     ];
 
     public static async Task InspectAsync(
@@ -1158,6 +1209,13 @@ public static class DatabaseStartupDiagnostics
                 }
             }
 
+            foreach (var expectation in RequiredCheckConstraintExpectations)
+            {
+                if (!await NamedObjectExistsAsync(connection, provider, expectation,
+                    SchemaNamedObjectKind.CheckConstraint, cancellationToken))
+                    missing.Add(expectation.DisplayName);
+            }
+
             return missing;
         }
         finally
@@ -1180,7 +1238,8 @@ public static class DatabaseStartupDiagnostics
         RequiredSchemaExpectations.Length
         + RequiredIndexExpectations.Length
         + RequiredForeignKeyExpectations.Length
-        + RequiredPrimaryKeyExpectations.Length;
+        + RequiredPrimaryKeyExpectations.Length
+        + RequiredCheckConstraintExpectations.Length;
 
     private static async Task<bool> NamedObjectExistsAsync(
         System.Data.Common.DbConnection connection,
@@ -1259,6 +1318,7 @@ public static class DatabaseStartupDiagnostics
             {
                 SchemaNamedObjectKind.ForeignKey => "SELECT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname = current_schema() AND t.relname = @tableName AND c.conname = left(@objectName, 63) AND c.contype = 'f');",
                 SchemaNamedObjectKind.PrimaryKey => "SELECT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname = current_schema() AND t.relname = @tableName AND c.conname = left(@objectName, 63) AND c.contype = 'p');",
+                SchemaNamedObjectKind.CheckConstraint => "SELECT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname = current_schema() AND t.relname = @tableName AND c.conname = left(@objectName, 63) AND c.contype = 'c');",
                 _ => "SELECT EXISTS (SELECT 1 FROM pg_class i JOIN pg_index ix ON ix.indexrelid = i.oid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname = current_schema() AND t.relname = @tableName AND i.relname = left(@objectName, 63) AND (NOT @requireUnique OR ix.indisunique));"
             };
         }
@@ -1269,6 +1329,7 @@ public static class DatabaseStartupDiagnostics
             {
                 SchemaNamedObjectKind.ForeignKey => "SELECT CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID(@tableName) AND name = @objectName) THEN 1 ELSE 0 END);",
                 SchemaNamedObjectKind.PrimaryKey => "SELECT CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM sys.key_constraints WHERE parent_object_id = OBJECT_ID(@tableName) AND name = @objectName AND type = 'PK') THEN 1 ELSE 0 END);",
+                SchemaNamedObjectKind.CheckConstraint => "SELECT CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id = OBJECT_ID(@tableName) AND name = @objectName) THEN 1 ELSE 0 END);",
                 _ => "SELECT CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(@tableName) AND name = @objectName AND (@requireUnique = 0 OR is_unique = 1)) THEN 1 ELSE 0 END);"
             };
         }
@@ -1293,6 +1354,7 @@ public static class DatabaseStartupDiagnostics
     {
         Index,
         ForeignKey,
-        PrimaryKey
+        PrimaryKey,
+        CheckConstraint
     }
 }

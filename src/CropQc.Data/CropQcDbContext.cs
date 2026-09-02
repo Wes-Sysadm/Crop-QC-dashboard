@@ -57,6 +57,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<SalesDesk> SalesDesks => Set<SalesDesk>();
     public DbSet<Receipt> Receipts => Set<Receipt>();
     public DbSet<ReceiptInventoryOverride> ReceiptInventoryOverrides => Set<ReceiptInventoryOverride>();
+    public DbSet<InventoryIdentityCorrection> InventoryIdentityCorrections => Set<InventoryIdentityCorrection>();
     public DbSet<RoomDepletion> RoomDepletions => Set<RoomDepletion>();
     public DbSet<RoomInventoryAdjustment> RoomInventoryAdjustments => Set<RoomInventoryAdjustment>();
     public DbSet<InventoryDiagnosticAcknowledgment> InventoryDiagnosticAcknowledgments => Set<InventoryDiagnosticAcknowledgment>();
@@ -1403,6 +1404,42 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<InventoryIdentityCorrection>(entity =>
+        {
+            entity.Property(x => x.OperationKey).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.SourceIdentitySnapshotJson).IsRequired();
+            entity.Property(x => x.TargetIdentitySnapshotJson).IsRequired();
+            entity.HasIndex(x => x.OperationKey).IsUnique();
+            entity.HasIndex(x => new { x.SourceCropYear, x.SourceGrowerLotId, x.SourceFruitProfileId }).IsUnique();
+            entity.HasIndex(x => new { x.TargetCropYear, x.TargetGrowerLotId, x.TargetFruitProfileId });
+            entity.HasIndex(x => x.ReceiptInventoryOverrideId).IsUnique();
+            entity.HasIndex(x => new { x.IsActive, x.CreatedAt });
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_InventoryIdentityCorrections_PositiveCropYears",
+                    "\"SourceCropYear\" > 0 AND \"TargetCropYear\" > 0");
+                table.HasCheckConstraint("CK_InventoryIdentityCorrections_NonSelf",
+                    "\"SourceCropYear\" <> \"TargetCropYear\" OR \"SourceGrowerLotId\" <> \"TargetGrowerLotId\" OR \"SourceFruitProfileId\" <> \"TargetFruitProfileId\"");
+            });
+            entity.HasOne(x => x.SourceGrowerLot).WithMany().HasForeignKey(x => x.SourceGrowerLotId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.SourceFruitProfile).WithMany().HasForeignKey(x => x.SourceFruitProfileId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.TargetGrowerLot).WithMany().HasForeignKey(x => x.TargetGrowerLotId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.TargetFruitProfile).WithMany().HasForeignKey(x => x.TargetFruitProfileId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CorrectedReceipt)
+                .WithMany()
+                .HasForeignKey(x => x.CorrectedReceiptId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ReceiptInventoryOverride)
+                .WithOne()
+                .HasForeignKey<InventoryIdentityCorrection>(x => x.ReceiptInventoryOverrideId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<RoomDepletion>(entity =>
         {
             entity.Property(x => x.GrowerName).HasMaxLength(200).IsRequired();
@@ -1458,6 +1495,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasIndex(x => new { x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.VarietyCode, x.AdjustmentAt });
             entity.HasIndex(x => new { x.ActualRunId, x.ActualRunRevisionId });
             entity.HasIndex(x => x.ReceiptInventoryOverrideId);
+            entity.HasIndex(x => x.InventoryIdentityCorrectionId);
             entity.HasIndex(x => x.RoomInventoryLossId);
             entity.HasIndex(x => x.ProcessorShipmentLineId);
             entity.HasIndex(x => x.OutsideWarehouseTransferId);
@@ -1521,6 +1559,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.ReceiptInventoryOverride)
                 .WithMany(x => x.InventoryAdjustments)
                 .HasForeignKey(x => x.ReceiptInventoryOverrideId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.InventoryIdentityCorrection)
+                .WithMany(x => x.InventoryAdjustments)
+                .HasForeignKey(x => x.InventoryIdentityCorrectionId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.RoomInventoryLoss)
                 .WithMany(x => x.InventoryAdjustments)
@@ -2223,6 +2265,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasIndex(x => x.ProcessorShipmentLineId);
             entity.HasIndex(x => x.OutsideWarehouseTransferId);
             entity.HasIndex(x => x.InterCrewTransferId);
+            entity.HasIndex(x => x.InventoryIdentityCorrectionId);
             entity.HasIndex(x => x.ReceiptId);
             entity.HasIndex(x => new { x.SourceRoomId, x.OccurredAt });
             entity.HasIndex(x => new { x.DestinationRoomId, x.OccurredAt });
@@ -2236,6 +2279,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.ProcessorShipmentLine).WithMany(x => x.TreatmentLineageMovements).HasForeignKey(x => x.ProcessorShipmentLineId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.OutsideWarehouseTransfer).WithMany(x => x.TreatmentLineageMovements).HasForeignKey(x => x.OutsideWarehouseTransferId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.InterCrewTransfer).WithMany(x => x.TreatmentLineageMovements).HasForeignKey(x => x.InterCrewTransferId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.InventoryIdentityCorrection).WithMany(x => x.TreatmentLineageMovements).HasForeignKey(x => x.InventoryIdentityCorrectionId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.Receipt).WithMany().HasForeignKey(x => x.ReceiptId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.ReversesTreatmentLineageMovement).WithMany(x => x.ReversalMovements).HasForeignKey(x => x.ReversesTreatmentLineageMovementId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
