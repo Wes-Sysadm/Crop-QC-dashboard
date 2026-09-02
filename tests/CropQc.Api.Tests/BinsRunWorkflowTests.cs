@@ -1925,6 +1925,48 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task ActualRun_MultiLineCorrection_PreservesUnchangedLineExactlyOnce()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var manager = Principal("manager@fruitandland.com");
+        var admin = Principal("admin@fruitandland.com");
+        var page = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", RoomIds = [1001, 1002] }, manager, default);
+        var changedSource = page.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-120");
+        var unchangedSource = page.AvailableInventory.Single(x => x.RoomId == 1002 && x.Lot == "LOT-OTHER");
+        Assert.Null(await service.CreateActualRunAsync(
+            GroupForm((changedSource, 40), (unchangedSource, 30)), manager, default));
+        var run = await db.ActualRuns.SingleAsync();
+        var editPage = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", EditActualRunId = run.Id }, admin, default);
+        var changedCurrent = editPage.AvailableInventory.Single(x => x.RoomId == 1001 && x.Lot == "LOT-120");
+        var unchangedCurrent = editPage.AvailableInventory.Single(x => x.RoomId == 1002 && x.Lot == "LOT-OTHER");
+        var edit = GroupForm((changedCurrent, 35), (unchangedCurrent, 30));
+        edit.Id = run.Id;
+        edit.ConcurrencyVersion = run.ConcurrencyVersion;
+        edit.CorrectionReason = "First grower line was five bins too high";
+
+        Assert.Null(await service.UpdateActualRunAsync(run.Id, edit, admin, default));
+
+        var currentLines = await db.BinsRunEntries
+            .Where(x => x.ActualRunId == run.Id
+                && x.TransactionType == ActualRunTransactionTypes.Depletion
+                && !x.IsReversed)
+            .OrderBy(x => x.RoomId)
+            .Select(x => new { x.RoomId, x.LotNumber, x.BinsRun })
+            .ToListAsync();
+        Assert.Equal(2, currentLines.Count);
+        Assert.Contains(currentLines, x => x.RoomId == 1001 && x.LotNumber == "LOT-120" && x.BinsRun == 35);
+        Assert.Single(currentLines, x => x.RoomId == 1002 && x.LotNumber == "LOT-OTHER" && x.BinsRun == 30);
+        Assert.Equal(85, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Equal(30, await LedgerBalanceAsync(db, 1002, "LOT-OTHER"));
+        Assert.Equal(65, currentLines.Sum(x => x.BinsRun));
+        Assert.Equal(2, await db.ActualRunRevisions.CountAsync());
+    }
+
+    [Fact]
     public async Task ActualRun_EditUsesReversalsThenCancelRestoresEveryRoom()
     {
         using var db = CreateDbContext();
