@@ -233,42 +233,20 @@ public sealed class FieldSamplesController(
         return RedirectToAction(nameof(Details), new { id });
     }
 
-    [HttpPost("{id:long}/photos/{photoId:long}/rotate")]
-    [Authorize(Policy = AccessPolicyNames.FieldSamplesEdit)]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> RotatePhoto(
-        long id,
-        long photoId,
-        PhotoRotationForm form,
-        CancellationToken cancellationToken)
-    {
-        var result = await dashboardDataService.RotateSamplePhotoAsync(id, photoId, form, cancellationToken);
-        if (Request.GetTypedHeaders().Accept?.Any(x => x.MediaType.Value == "application/json") == true)
-        {
-            return result.Succeeded ? Json(result) : result.IsConflict ? Conflict(result) : BadRequest(result);
-        }
-
-        TempData[result.Succeeded ? "Success" : "Error"] = result.Succeeded ? "Photo orientation updated." : result.Error;
-        return RedirectToAction(nameof(Details), new { id });
-    }
-
     [HttpGet("{id:long}/photos/{photoId:long}/content")]
     [Authorize(Policy = AccessPolicyNames.FieldSamplesView)]
     public async Task<IActionResult> PhotoContent(long id, long photoId, CancellationToken cancellationToken)
     {
         var photo = await dbContext.QcPhotos.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == photoId && x.QcSampleId == id && !x.IsDeleted, cancellationToken);
-        var key = photo is null ? null : PhotoOrientationProcessor.DisplayStorageKey(photo);
+        var key = photo?.FileId ?? photo?.SharePointItemId;
         if (photo is null || string.IsNullOrWhiteSpace(key))
         {
             return NotFound();
         }
 
         var content = await fileStorageService.OpenReadAsync(key, cancellationToken);
-        if (content is null) return NotFound();
-        Response.Headers.CacheControl = "private, max-age=300, must-revalidate";
-        Response.Headers.XContentTypeOptions = "nosniff";
-        return File(content, PhotoOrientationProcessor.DisplayContentType(photo));
+        return content is null ? NotFound() : File(content, photo.ContentType);
     }
 
     [HttpPost("{id:long}/photos/{photoId:long}/remove")]

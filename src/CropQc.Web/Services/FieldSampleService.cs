@@ -1615,16 +1615,12 @@ public sealed class FieldSampleService(
                     photo.FileName,
                     photo.ContentType,
                     photo.FileSizeBytes,
-                    $"/FieldSamples/{sampleId}/photos/{photo.Id}/content?v={photo.PresentationRevision}",
+                    $"/FieldSamples/{sampleId}/photos/{photo.Id}/content",
                     photo.CapturedAt,
                     canDelete,
                     $"/FieldSamples/{sampleId}/photos/{photo.Id}/remove",
                     true,
-                    $"/FieldSamples/{sampleId}/photos/{photo.Id}/content?v={photo.PresentationRevision}",
-                    canDelete,
-                    canDelete ? $"/FieldSamples/{sampleId}/photos/{photo.Id}/rotate" : null,
-                    photo.PresentationRevision,
-                    $"/FieldSamples/{sampleId}/photos/{photo.Id}/content?v={photo.PresentationRevision}")).ToList()))
+                    $"/FieldSamples/{sampleId}/photos/{photo.Id}/content")).ToList()))
             .ToList();
 
     private async Task RecalculatePersistedSizesAsync(long sampleId, string fruitType, ClaimsPrincipal user, string source, CancellationToken cancellationToken)

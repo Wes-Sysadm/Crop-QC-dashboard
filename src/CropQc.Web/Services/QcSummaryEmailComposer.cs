@@ -55,7 +55,7 @@ public sealed class QcSummaryEmailComposer(
 
         foreach (var photo in photos)
         {
-            var key = PhotoOrientationProcessor.DisplayStorageKey(photo);
+            var key = photo.FileId ?? photo.SharePointItemId;
             if (string.IsNullOrWhiteSpace(key))
             {
                 continue;
@@ -141,14 +141,9 @@ public sealed class QcSummaryEmailComposer(
 
         await using var source = new MemoryStream(sourceBytes);
         using var image = await Image.LoadAsync(source, cancellationToken);
-        var usesPresentation = !string.IsNullOrWhiteSpace(photo.PresentationStorageKey);
-        if (!usesPresentation)
-        {
-            image.Mutate(x => x.AutoOrient());
-            PhotoOrientationProcessor.ApplyManualRotation(image, photo.ManualRotationQuarterTurns);
-        }
         image.Metadata.ExifProfile = null;
         image.Metadata.IccProfile = null;
+        image.Mutate(x => x.AutoOrient());
 
         if (image.Width > InlineImageMaxWidth || image.Height > InlineImageMaxHeight)
         {
