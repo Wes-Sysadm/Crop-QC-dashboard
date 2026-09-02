@@ -648,7 +648,8 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("ActualRuns/{id:long}")]
-    [Authorize(Policy = AccessPolicyNames.ActualRunsCreate)]
+    [Authorize(Policy = AccessPolicyNames.ActualRunsAdmin)]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateActualRun(long id, ActualRunForm form, CancellationToken cancellationToken)
     {
         var error = await ExecuteActualRunOperationAsync(
@@ -656,7 +657,7 @@ public sealed class BinsRunController(
             "Edit",
             id,
             cancellationToken);
-        TempData[error is null ? "Success" : "Error"] = error ?? "Actual Run corrected through ledger reversals and new depletions.";
+        TempData[error is null ? "Success" : "Error"] = error ?? "Actual Run correction applied through the appropriate audited correction path.";
         return RedirectToAction(nameof(Index), new { Section = "Actual" });
     }
 

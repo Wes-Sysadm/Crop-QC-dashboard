@@ -762,6 +762,7 @@ public sealed class BinsRunPageViewModel
     public IReadOnlyList<ActualRunOverrideRequestViewModel> PendingOverrideRequests { get; set; } = [];
     public bool CanRecord { get; set; }
     public bool CanAdmin { get; set; }
+    public bool CanCorrectActualRuns { get; set; }
     public bool CanTransfer { get; set; }
     public bool CanTrueUp { get; set; }
     public string CurrentEmploymentFacility { get; set; } = EmploymentFacilities.Unassigned;
@@ -874,6 +875,7 @@ public sealed class ActualRunForm
     public int? SalesDeskId { get; set; }
     public DateTimeOffset RunAt { get; set; } = DateTimeOffset.UtcNow;
     public string? Notes { get; set; }
+    public string? CorrectionReason { get; set; }
     public List<ActualRunLineForm> Lines { get; set; } = [];
 }
 

@@ -55,7 +55,7 @@ public sealed class BinsRunWorkflowTests
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Edit), AccessPolicyNames.BinsRunEdit);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.Reverse), AccessPolicyNames.BinsRunAdmin);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.CreateActualRun), AccessPolicyNames.ActualRunsCreate);
-        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.UpdateActualRun), AccessPolicyNames.ActualRunsCreate);
+        AssertActionPolicy<BinsRunController>(nameof(BinsRunController.UpdateActualRun), AccessPolicyNames.ActualRunsAdmin);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.CancelActualRun), AccessPolicyNames.ActualRunsAdmin);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.ApproveActualRunOverride), AccessPolicyNames.ActualRunsAdmin);
         AssertActionPolicy<BinsRunController>(nameof(BinsRunController.ReverseTransfer), AccessPolicyNames.TransfersAdmin);
@@ -962,6 +962,41 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task ActualRun_LineCorrection_ReversesOldTreatmentAndUsesExactCorrectedSegment()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var treatments = new SegmentedRoomTreatmentService();
+        var service = CreateService(db, roomTreatmentService: treatments);
+        var manager = Principal("manager@fruitandland.com");
+        var admin = Principal("admin@fruitandland.com");
+        var page = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] }, manager, default);
+        var segmentA = page.AvailableInventory.Single(x => x.Lot == "LOT-120" && x.TreatmentSegmentId == 8101);
+        var create = GroupForm((segmentA, 10));
+        create.Lines[0].TreatmentSegmentId = 8101;
+        Assert.Null(await service.CreateActualRunAsync(create, manager, default));
+        var run = await db.ActualRuns.SingleAsync();
+        var editPage = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", EditActualRunId = run.Id }, admin, default);
+        var segmentB = editPage.AvailableInventory.Single(x => x.Lot == "LOT-120" && x.TreatmentSegmentId == 8102);
+        var edit = GroupForm((segmentB, 10));
+        edit.Lines[0].TreatmentSegmentId = 8102;
+        edit.Id = run.Id;
+        edit.ConcurrencyVersion = run.ConcurrencyVersion;
+        edit.CorrectionReason = "Corrected treatment segment for the selected grower source";
+
+        Assert.Null(await service.UpdateActualRunAsync(run.Id, edit, admin, default));
+
+        Assert.Equal(1, treatments.Reversals);
+        Assert.Equal(("segment-b", 8102, 10), treatments.Moves.Last());
+        Assert.Equal("segment-b", await db.BinsRunEntries
+            .Where(x => x.ActualRunId == run.Id && x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed)
+            .Select(x => x.TreatmentSignatureSnapshot)
+            .SingleAsync());
+    }
+
+    [Fact]
     public async Task ActualRun_AmbiguousNullSegment_ReturnsValidationAndWritesNothing()
     {
         using var db = CreateDbContext();
@@ -1670,6 +1705,226 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task ActualRun_UpdateWithUnchangedLines_UsesMetadataCorrectionWithoutInventoryRevision()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var manager = Principal("manager@fruitandland.com");
+        var admin = Principal("admin@fruitandland.com");
+        var option = (await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, manager, default))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        Assert.Null(await service.CreateActualRunAsync(GroupForm((option, 64)), manager, default));
+        var run = await db.ActualRuns.SingleAsync();
+        var originalEntry = await db.BinsRunEntries.SingleAsync();
+        var adjustmentCount = await db.RoomInventoryAdjustments.CountAsync();
+        var revisedAt = run.RunAt.AddDays(-1);
+        var edit = GroupForm((option, 64));
+        edit.Id = run.Id;
+        edit.ConcurrencyVersion = run.ConcurrencyVersion;
+        edit.RunAt = revisedAt;
+        edit.Notes = "Corrected date only";
+        edit.CorrectionReason = "Reviewed production paperwork";
+
+        Assert.Null(await service.UpdateActualRunAsync(run.Id, edit, admin, default));
+
+        db.ChangeTracker.Clear();
+        var corrected = await db.ActualRuns.SingleAsync();
+        Assert.Equal(revisedAt, corrected.RunAt);
+        Assert.Equal("Corrected date only", corrected.Notes);
+        Assert.Single(await db.ActualRunRevisions.ToListAsync());
+        Assert.Single(await db.ActualRunDetailCorrections.ToListAsync());
+        Assert.Equal(adjustmentCount, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.False((await db.BinsRunEntries.SingleAsync(x => x.Id == originalEntry.Id)).IsReversed);
+        Assert.Equal(56, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+    }
+
+    [Fact]
+    public async Task ActualRun_BinDecrease_UsesRevisionAndRestoresExactDifference()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var manager = Principal("manager@fruitandland.com");
+        var admin = Principal("admin@fruitandland.com");
+        var option = (await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, manager, default))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        Assert.Null(await service.CreateActualRunAsync(GroupForm((option, 64)), manager, default));
+        var run = await db.ActualRuns.SingleAsync();
+        var editPage = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", EditActualRunId = run.Id }, admin, default);
+        var current = editPage.AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var edit = GroupForm((current, 58));
+        edit.Id = run.Id;
+        edit.ConcurrencyVersion = run.ConcurrencyVersion;
+        Assert.Contains("reason is required", await service.UpdateActualRunAsync(run.Id, edit, admin, default), StringComparison.OrdinalIgnoreCase);
+        Assert.Single(await db.ActualRunRevisions.ToListAsync());
+        Assert.Equal(56, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        edit.CorrectionReason = "Operator entered 64 bins; actual count was 58";
+
+        Assert.Null(await service.UpdateActualRunAsync(run.Id, edit, admin, default));
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(62, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Equal(58, await db.BinsRunEntries
+            .Where(x => x.ActualRunId == run.Id && x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed)
+            .SumAsync(x => x.BinsRun));
+        var revision = await db.ActualRunRevisions.SingleAsync(x => x.IsCurrent);
+        Assert.Equal("Operator entered 64 bins; actual count was 58", revision.Reason);
+        Assert.Equal(2, revision.RevisionNumber);
+    }
+
+    [Fact]
+    public async Task ActualRun_GrowerAndBinCorrection_MovesExactInventoryAndIsIdempotent()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var targetBaseline = await db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 8004);
+        targetBaseline.ChangeAmount = 100;
+        targetBaseline.NewBinCount = 100;
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var manager = Principal("manager@fruitandland.com");
+        var admin = Principal("admin@fruitandland.com");
+        var createPage = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, manager, default);
+        var wrongGrower = createPage.AvailableInventory.Single(x => x.Lot == "LOT-120");
+        Assert.Null(await service.CreateActualRunAsync(GroupForm((wrongGrower, 64)), manager, default));
+        var run = await db.ActualRuns.SingleAsync();
+        var correctedAt = run.RunAt.AddDays(-1);
+        var editPage = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", EditActualRunId = run.Id }, admin, default);
+        var correctGrower = editPage.AvailableInventory.Single(x => x.Lot == "LOT-30");
+        var edit = GroupForm((correctGrower, 58));
+        edit.Id = run.Id;
+        edit.ConcurrencyVersion = run.ConcurrencyVersion;
+        edit.RunAt = correctedAt;
+        edit.CorrectionReason = "Run entered under wrong grower and wrong bin count";
+
+        Assert.Contains("Admin access", await service.UpdateActualRunAsync(run.Id, edit, manager, default));
+        Assert.Null(await service.UpdateActualRunAsync(run.Id, edit, admin, default));
+        var entryCount = await db.BinsRunEntries.CountAsync();
+        var adjustmentCount = await db.RoomInventoryAdjustments.CountAsync();
+        Assert.Null(await service.UpdateActualRunAsync(run.Id, edit, admin, default));
+
+        db.ChangeTracker.Clear();
+        var corrected = await db.ActualRuns.SingleAsync();
+        Assert.Equal(correctedAt, corrected.RunAt);
+        Assert.Equal(120, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Equal(42, await LedgerBalanceAsync(db, 1001, "LOT-30"));
+        Assert.Equal(entryCount, await db.BinsRunEntries.CountAsync());
+        Assert.Equal(adjustmentCount, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(2, await db.ActualRunRevisions.CountAsync());
+        var active = await db.BinsRunEntries.SingleAsync(x =>
+            x.ActualRunId == run.Id && x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed);
+        Assert.Equal("LOT-30", active.LotNumber);
+        Assert.Equal(58, active.BinsRun);
+        Assert.Equal(1011, active.GrowerLotId);
+        var detail = await service.GetActualRunDetailAsync(run.Id, admin, default);
+        Assert.NotNull(detail);
+        Assert.Equal(58, detail.TotalBins);
+        Assert.Equal(new[] { 1, 2 }, detail.RunRevisions.Select(x => x.RevisionNumber));
+        Assert.Equal("LOT-120", Assert.Single(detail.RunRevisions[0].Lines).Lot);
+        Assert.Equal("LOT-30", Assert.Single(detail.RunRevisions[1].Lines).Lot);
+        Assert.True(detail.RunRevisions[1].IsCurrent);
+        var reportingConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["RunReporting:AuthoritativeStartCropYear"] = "2026"
+        }).Build();
+        var reporting = new RunReportingService(
+            db,
+            new PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock()),
+            new UserAccessService(db, reportingConfiguration),
+            reportingConfiguration,
+            new VarietyColorService(db));
+        var totals = Assert.IsType<RunTotalsDetailViewModel>((await reporting.GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Ebs,
+            ReportCropYear = 2026
+        }, admin, default)).Detail);
+        Assert.Equal(58, totals.TotalBins);
+        var selectedVariety = Assert.Single(totals.Varieties, x => x.Bins == 58);
+        var growerTotals = Assert.IsType<RunTotalsDetailViewModel>((await reporting.GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Ebs,
+            ReportCropYear = 2026,
+            ReportVarietyKey = selectedVariety.VarietyKey
+        }, admin, default)).Detail);
+        Assert.Equal(58, Assert.Single(growerTotals.Weeks).Bins);
+        var correctedGrower = Assert.Single(Assert.Single(growerTotals.Weeks).Growers);
+        Assert.Equal("LOT-30", correctedGrower.GrowerNumber);
+        Assert.Equal(58, correctedGrower.Bins);
+        var readiness = await new InventoryDeductionInvariantService(
+            db,
+            NullLogger<InventoryDeductionInvariantService>.Instance).VerifyReadinessAsync(default);
+        Assert.True(readiness.IsReady, string.Join("; ", readiness.Issues.Select(x => x.Code)));
+    }
+
+    [Fact]
+    public async Task ActualRun_BinIncrease_UsesRevisionAndEnforcesAvailableInventory()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var manager = Principal("manager@fruitandland.com");
+        var admin = Principal("admin@fruitandland.com");
+        var option = (await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, manager, default))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        Assert.Null(await service.CreateActualRunAsync(GroupForm((option, 58)), manager, default));
+        var run = await db.ActualRuns.SingleAsync();
+        var editPage = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", EditActualRunId = run.Id }, admin, default);
+        var current = editPage.AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var edit = GroupForm((current, 64));
+        edit.Id = run.Id;
+        edit.ConcurrencyVersion = run.ConcurrencyVersion;
+        edit.CorrectionReason = "Physical count confirmed";
+
+        Assert.Null(await service.UpdateActualRunAsync(run.Id, edit, admin, default));
+
+        Assert.Equal(56, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Equal(64, await db.BinsRunEntries
+            .Where(x => x.ActualRunId == run.Id && x.TransactionType == ActualRunTransactionTypes.Depletion && !x.IsReversed)
+            .SumAsync(x => x.BinsRun));
+    }
+
+    [Fact]
+    public async Task ActualRun_LineCorrectionFailsClosedWhenPackoutIsFinalized()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var service = CreateService(db);
+        var manager = Principal("manager@fruitandland.com");
+        var admin = Principal("admin@fruitandland.com");
+        var option = (await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, manager, default))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        Assert.Null(await service.CreateActualRunAsync(GroupForm((option, 20)), manager, default));
+        var run = await db.ActualRuns.SingleAsync();
+        var entry = await db.BinsRunEntries.SingleAsync();
+        entry.IsReconciled = true;
+        await db.SaveChangesAsync();
+        var baselineEntries = await db.BinsRunEntries.CountAsync();
+        var baselineAdjustments = await db.RoomInventoryAdjustments.CountAsync();
+        var edit = GroupForm((option, 19));
+        edit.Id = run.Id;
+        edit.ConcurrencyVersion = run.ConcurrencyVersion;
+        edit.CorrectionReason = "Physical count reviewed";
+
+        var error = await service.UpdateActualRunAsync(run.Id, edit, admin, default);
+
+        Assert.Contains("finalized packout reconciliation", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(baselineEntries, await db.BinsRunEntries.CountAsync());
+        Assert.Equal(baselineAdjustments, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Single(await db.ActualRunRevisions.ToListAsync());
+    }
+
+    [Fact]
     public async Task ActualRun_EditUsesReversalsThenCancelRestoresEveryRoom()
     {
         using var db = CreateDbContext();
@@ -1687,7 +1942,8 @@ public sealed class BinsRunWorkflowTests
         edit.Id = run.Id;
         edit.ConcurrencyVersion = run.ConcurrencyVersion;
 
-        var editError = await service.UpdateActualRunAsync(run.Id, edit, manager, CancellationToken.None);
+        edit.CorrectionReason = "Correct source allocation";
+        var editError = await service.UpdateActualRunAsync(run.Id, edit, admin, CancellationToken.None);
 
         Assert.Null(editError);
         await db.Entry(run).ReloadAsync();
@@ -1712,7 +1968,14 @@ public sealed class BinsRunWorkflowTests
         var stale = GroupForm((roomOne, 20));
         stale.Id = run.Id;
         stale.ConcurrencyVersion = 1;
-        Assert.Contains("Conflict detected", await service.UpdateActualRunAsync(run.Id, stale, manager, CancellationToken.None));
+        stale.CorrectionReason = "Stale correction";
+        var entriesBeforeStale = await db.BinsRunEntries.CountAsync();
+        var adjustmentsBeforeStale = await db.RoomInventoryAdjustments.CountAsync();
+        var revisionsBeforeStale = await db.ActualRunRevisions.CountAsync();
+        Assert.Contains("Conflict detected", await service.UpdateActualRunAsync(run.Id, stale, admin, CancellationToken.None));
+        Assert.Equal(entriesBeforeStale, await db.BinsRunEntries.CountAsync());
+        Assert.Equal(adjustmentsBeforeStale, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(revisionsBeforeStale, await db.ActualRunRevisions.CountAsync());
 
         var cancel = new CancelActualRunForm
         {
@@ -2206,7 +2469,9 @@ public sealed class BinsRunWorkflowTests
             (editPage.AvailableInventory.Single(x => x.RoomId == 1002 && x.Lot == "LOT-120"), 7));
         edit.Id = run.Id;
         edit.ConcurrencyVersion = run.ConcurrencyVersion;
-        Assert.Null(await service.UpdateActualRunAsync(run.Id, edit, manager, CancellationToken.None));
+        edit.CorrectionReason = "Disposable PostgreSQL workflow verification";
+        var admin = Principal("admin@fruitandland.com");
+        Assert.Null(await service.UpdateActualRunAsync(run.Id, edit, admin, CancellationToken.None));
         await db.Entry(run).ReloadAsync();
         var cancel = new CancelActualRunForm
         {
@@ -2215,7 +2480,6 @@ public sealed class BinsRunWorkflowTests
             OperationKey = Guid.NewGuid().ToString("N"),
             Reason = "Disposable PostgreSQL workflow verification"
         };
-        var admin = Principal("admin@fruitandland.com");
         Assert.Null(await service.CancelActualRunAsync(cancel, admin, CancellationToken.None));
         var afterCancelEntryCount = await db.BinsRunEntries.CountAsync();
         Assert.Null(await service.CancelActualRunAsync(cancel, admin, CancellationToken.None));
@@ -3732,6 +3996,7 @@ public sealed class BinsRunWorkflowTests
     {
         public List<(string Signature, long SegmentId, int Bins)> Moves { get; } = [];
         public List<int> AuthoritativeBalances { get; } = [];
+        public int Reversals { get; private set; }
 
         public Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetSelectionsAsync(
             IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots,
@@ -3793,7 +4058,11 @@ public sealed class BinsRunWorkflowTests
         public Task<(string? Error, long? ApplicationId)> ApplyAsync(RoomTreatmentApplyForm form, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<string?> ReverseAsync(ReverseRoomTreatmentApplicationForm form, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<TreatmentLineageWriteResult> ReverseMovementsAsync(string operationKeyPrefix, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<TreatmentLineageWriteResult> ReverseMovementsAsync(string operationKeyPrefix, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken)
+        {
+            Reversals++;
+            return Task.FromResult(new TreatmentLineageWriteResult(true, null));
+        }
         public Task<TreatmentLineageWriteResult> AddUnknownAsync(RoomInventoryLedgerSnapshot snapshot, int bins, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 

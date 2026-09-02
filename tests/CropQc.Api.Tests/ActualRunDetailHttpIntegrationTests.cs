@@ -264,6 +264,9 @@ public sealed class ActualRunDetailHttpIntegrationTests
         var html = await detail.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
         Assert.Contains("Edit Run Details", html);
+        Assert.Contains("Correct Run Lines", html);
+        Assert.Contains("Review Run-Line Correction", html);
+        Assert.Contains("Actual Run Revisions", html);
         var tokenMatch = Regex.Match(html, "name=\"__RequestVerificationToken\"[^>]*value=\"(?<token>[^\"]+)\"");
         Assert.True(tokenMatch.Success);
         var response = await client.PostAsync($"/BinsRun/ActualRuns/{runId}/Details", new FormUrlEncodedContent(new Dictionary<string, string>

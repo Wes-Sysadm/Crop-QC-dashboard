@@ -28,10 +28,12 @@ public sealed class ActualRunDetailViewModel
     public bool CanAdminPackout { get; set; }
     public bool CanCorrectSalesDesk { get; set; }
     public bool CanCorrectDetails { get; set; }
+    public bool CanCorrectRunLines { get; set; }
     public long ConcurrencyVersion { get; set; }
     public IReadOnlyList<SalesDeskOptionViewModel> SalesDeskOptions { get; set; } = [];
     public IReadOnlyList<ActualRunSalesDeskCorrectionViewModel> SalesDeskCorrections { get; set; } = [];
     public IReadOnlyList<ActualRunDetailCorrectionViewModel> DetailCorrections { get; set; } = [];
+    public IReadOnlyList<ActualRunRevisionViewModel> RunRevisions { get; set; } = [];
     public bool OptionalDetailAvailable { get; set; } = true;
     public string? DetailWarning { get; set; }
 }
@@ -43,6 +45,24 @@ public sealed record ActualRunDetailCorrectionViewModel(
     string Reason,
     string CorrectedBy,
     DateTimeOffset CorrectedAt);
+
+public sealed record ActualRunRevisionViewModel(
+    int RevisionNumber,
+    bool IsCurrent,
+    string OperationType,
+    string? Reason,
+    string CorrectedBy,
+    DateTimeOffset CorrectedAt,
+    IReadOnlyList<ActualRunRevisionLineViewModel> Lines);
+
+public sealed record ActualRunRevisionLineViewModel(
+    string Room,
+    string Grower,
+    string GrowerNumber,
+    string Lot,
+    string Variety,
+    string Treatment,
+    int Bins);
 
 public sealed record ActualRunSalesDeskCorrectionViewModel(
     string PreviousSalesDesk,
