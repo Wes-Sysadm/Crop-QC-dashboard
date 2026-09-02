@@ -141,6 +141,23 @@ public sealed class InventoryDeductionInvariantService(
             .Select(x => x.Entity)
             .ToList();
 
+        var correctionIds = adjustments.Where(x => x.InventoryIdentityCorrectionId is not null)
+            .Select(x => x.InventoryIdentityCorrectionId!.Value).Distinct().ToList();
+        var persistedCorrections = correctionIds.Count == 0
+            ? []
+            : await dbContext.InventoryIdentityCorrections.AsNoTracking()
+                .Include(x => x.InventoryAdjustments)
+                .Where(x => correctionIds.Contains(x.Id))
+                .ToListAsync(cancellationToken);
+        var trackedCorrections = dbContext.ChangeTracker.Entries<InventoryIdentityCorrection>()
+            .Where(x => x.State != EntityState.Deleted).Select(x => x.Entity).ToList();
+        var canonicalCorrections = (await dbContext.InventoryIdentityCorrections.AsNoTracking()
+                .Where(x => x.IsActive && x.IsComplete)
+                .ToListAsync(cancellationToken))
+            .Concat(trackedCorrections.Where(x => x.IsActive && x.IsComplete))
+            .DistinctBy(x => x.Id)
+            .ToList();
+
         var lossIds = adjustments
             .Where(x => x.RoomInventoryLossId is not null)
             .Select(x => x.RoomInventoryLossId!.Value)
@@ -207,6 +224,9 @@ public sealed class InventoryDeductionInvariantService(
             var receiptOverride = adjustment.ReceiptInventoryOverride
                 ?? trackedOverrides.SingleOrDefault(x => adjustment.ReceiptInventoryOverrideId == x.Id || ReferenceEquals(x, adjustment.ReceiptInventoryOverride))
                 ?? persistedOverrides.SingleOrDefault(x => x.Id == adjustment.ReceiptInventoryOverrideId);
+            var identityCorrection = adjustment.InventoryIdentityCorrection
+                ?? trackedCorrections.SingleOrDefault(x => adjustment.InventoryIdentityCorrectionId == x.Id || ReferenceEquals(x, adjustment.InventoryIdentityCorrection))
+                ?? persistedCorrections.SingleOrDefault(x => x.Id == adjustment.InventoryIdentityCorrectionId);
             var loss = adjustment.RoomInventoryLoss
                 ?? trackedLosses.SingleOrDefault(x => adjustment.RoomInventoryLossId == x.Id || ReferenceEquals(x, adjustment.RoomInventoryLoss))
                 ?? persistedLosses.SingleOrDefault(x => x.Id == adjustment.RoomInventoryLossId);
@@ -219,7 +239,10 @@ public sealed class InventoryDeductionInvariantService(
             var interCrewTransfer = adjustment.InterCrewTransfer
                 ?? trackedInterCrewTransfers.SingleOrDefault(x => adjustment.InterCrewTransferId == x.Id || ReferenceEquals(x, adjustment.InterCrewTransfer))
                 ?? persistedInterCrewTransfers.SingleOrDefault(x => x.Id == adjustment.InterCrewTransferId);
-            var parentCount = binsParents.Count + (transfer is null ? 0 : 1) + (receiptOverride is null ? 0 : 1) + (loss is null ? 0 : 1) + (processorLine is null ? 0 : 1) + (outsideTransfer is null ? 0 : 1) + (interCrewTransfer is null ? 0 : 1);
+            var parentCount = binsParents.Count + (transfer is null ? 0 : 1)
+                + (receiptOverride is null && identityCorrection is null ? 0 : 1)
+                + (loss is null ? 0 : 1) + (processorLine is null ? 0 : 1)
+                + (outsideTransfer is null ? 0 : 1) + (interCrewTransfer is null ? 0 : 1);
             var blocks = adjustment.InventoryInvariantVersion >= CurrentVersion;
 
             if (adjustment.ChangeAmount < 0 && parentCount == 0)
@@ -305,7 +328,19 @@ public sealed class InventoryDeductionInvariantService(
                         .Where(x => x.State != EntityState.Deleted && (ReferenceEquals(x.Entity.InterCrewTransfer, interCrewTransfer) || x.Entity.InterCrewTransferId == interCrewTransfer.Id))
                         .Select(x => x.Entity))
                     .DistinctBy(x => x.Id == 0 ? RuntimeHelpers.GetHashCode(x) : x.Id).ToList();
-                ValidateInterCrewTransfer(adjustment, interCrewTransfer, operationAdjustments, Add);
+                ValidateInterCrewTransfer(adjustment, interCrewTransfer, operationAdjustments, canonicalCorrections, Add);
+            }
+            if (identityCorrection is not null)
+            {
+                var correctionAdjustments = identityCorrection.InventoryAdjustments
+                    .Concat(dbContext.ChangeTracker.Entries<RoomInventoryAdjustment>()
+                        .Where(x => x.State != EntityState.Deleted
+                            && (ReferenceEquals(x.Entity.InventoryIdentityCorrection, identityCorrection)
+                                || x.Entity.InventoryIdentityCorrectionId == identityCorrection.Id))
+                        .Select(x => x.Entity))
+                    .DistinctBy(x => x.Id == 0 ? RuntimeHelpers.GetHashCode(x) : x.Id)
+                    .ToList();
+                ValidateIdentityCorrection(adjustment, identityCorrection, correctionAdjustments, Add);
             }
 
             void Add(string code, string message)
@@ -320,6 +355,42 @@ public sealed class InventoryDeductionInvariantService(
         }
 
         return issues;
+    }
+
+    private static void ValidateIdentityCorrection(
+        RoomInventoryAdjustment adjustment,
+        InventoryIdentityCorrection correction,
+        IReadOnlyCollection<RoomInventoryAdjustment> operationAdjustments,
+        Action<string, string> add)
+    {
+        if (!correction.IsComplete || !correction.IsActive || correction.SourceCropYear == correction.TargetCropYear
+            && correction.SourceGrowerLotId == correction.TargetGrowerLotId
+            && correction.SourceFruitProfileId == correction.TargetFruitProfileId)
+            add("InvalidIdentityCorrection", "Inventory identity correction is incomplete, inactive, or self-referential.");
+        if (operationAdjustments.Count != correction.ExpectedAdjustmentCount || operationAdjustments.Sum(x => x.ChangeAmount) != 0)
+            add("IdentityCorrectionQuantityMismatch", "Inventory identity correction must conserve quantity and match its expected ledger rows.");
+        if (operationAdjustments.Any(x =>
+            {
+                var isSource = x.CropYear == correction.SourceCropYear
+                    && x.GrowerLotId == correction.SourceGrowerLotId
+                    && x.FruitProfileId == correction.SourceFruitProfileId;
+                var isTarget = x.CropYear == correction.TargetCropYear
+                    && x.GrowerLotId == correction.TargetGrowerLotId
+                    && x.FruitProfileId == correction.TargetFruitProfileId;
+                return !isSource && !isTarget;
+            }))
+            add("IdentityCorrectionIdentityMismatch", "Inventory identity correction rows must use only the correction parent's source or target identity.");
+        foreach (var roomGroup in operationAdjustments.GroupBy(x => new { x.WarehouseId, x.RoomId }))
+        {
+            var source = roomGroup.Where(x => x.CropYear == correction.SourceCropYear
+                && x.GrowerLotId == correction.SourceGrowerLotId && x.FruitProfileId == correction.SourceFruitProfileId).Sum(x => x.ChangeAmount);
+            var target = roomGroup.Where(x => x.CropYear == correction.TargetCropYear
+                && x.GrowerLotId == correction.TargetGrowerLotId && x.FruitProfileId == correction.TargetFruitProfileId).Sum(x => x.ChangeAmount);
+            if (source + target != 0 || source == 0)
+                add("IdentityCorrectionRoomMismatch", "Each corrected room must contain exact, quantity-conserving source and target entries.");
+        }
+        if (adjustment.InventoryIdentityCorrectionId is null && adjustment.InventoryIdentityCorrection is null)
+            add("MissingIdentityCorrectionLink", "Identity correction adjustment is not linked to its durable correction parent.");
     }
 
     private static void ValidateProcessorShipment(
@@ -425,7 +496,9 @@ public sealed class InventoryDeductionInvariantService(
 
     private static void ValidateInterCrewTransfer(
         RoomInventoryAdjustment adjustment, InterCrewTransfer transfer,
-        IReadOnlyCollection<RoomInventoryAdjustment> operationAdjustments, Action<string, string> add)
+        IReadOnlyCollection<RoomInventoryAdjustment> operationAdjustments,
+        IReadOnlyCollection<InventoryIdentityCorrection> canonicalCorrections,
+        Action<string, string> add)
     {
         var dispatch = operationAdjustments.Where(x => x.AdjustmentType == InterCrewTransferAdjustmentTypes.Dispatch).ToList();
         var receive = operationAdjustments.Where(x => x.AdjustmentType == InterCrewTransferAdjustmentTypes.Receive).ToList();
@@ -448,10 +521,19 @@ public sealed class InventoryDeductionInvariantService(
             var isSource = side.AdjustmentType is InterCrewTransferAdjustmentTypes.Dispatch or InterCrewTransferAdjustmentTypes.ReversalSource;
             var expectedWarehouse = isSource ? transfer.SourceWarehouseId : transfer.DestinationWarehouseId;
             var expectedRoom = isSource ? transfer.SourceRoomId : transfer.DestinationRoomId;
-            if (side.WarehouseId != expectedWarehouse || side.RoomId != expectedRoom || side.CropYear != transfer.CropYear
-                || side.GrowerLotId != transfer.GrowerLotId || side.FruitProfileId != transfer.FruitProfileId
-                || !Same(side.LotNumber, transfer.LotNumberSnapshot) || !Same(side.VarietyCode, transfer.VarietyCodeSnapshot)
-                || !Same(side.InventoryStatus, transfer.InventoryStatusSnapshot))
+            var exactHistoricalIdentity = side.CropYear == transfer.CropYear
+                && side.GrowerLotId == transfer.GrowerLotId && side.FruitProfileId == transfer.FruitProfileId
+                && Same(side.LotNumber, transfer.LotNumberSnapshot) && Same(side.VarietyCode, transfer.VarietyCodeSnapshot)
+                && Same(side.InventoryStatus, transfer.InventoryStatusSnapshot);
+            var canonicalReceiveIdentity = !isSource && canonicalCorrections.Any(x =>
+                transfer.CropYear == x.SourceCropYear
+                && transfer.GrowerLotId == x.SourceGrowerLotId
+                && transfer.FruitProfileId == x.SourceFruitProfileId
+                && side.CropYear == x.TargetCropYear
+                && side.GrowerLotId == x.TargetGrowerLotId
+                && side.FruitProfileId == x.TargetFruitProfileId);
+            if (side.WarehouseId != expectedWarehouse || side.RoomId != expectedRoom
+                || !exactHistoricalIdentity && !canonicalReceiveIdentity)
                 add("InterCrewIdentityMismatch", "Inter-crew ledger identity does not match its durable transfer snapshot.");
             if (side.OldBinCount is null || side.NewBinCount != side.OldBinCount + side.ChangeAmount)
                 add("InterCrewBalanceMismatch", "Inter-crew before/after balance does not reconcile with its quantity.");
@@ -725,10 +807,16 @@ public sealed class InventoryDeductionInvariantService(
             {
                 var matchesAffected = affected.Any(x => Matches(adjustment, x, compareVarietyAndStatus: true));
                 var matchesAfter = Matches(adjustment, afterIdentity, compareVarietyAndStatus: false);
+                var matchesReclassificationTarget = affected.Any(x =>
+                    x.WarehouseId == adjustment.WarehouseId && x.RoomId == adjustment.RoomId)
+                    && MatchesIdentity(adjustment, afterIdentity);
                 var valid = receiptOverride.ActionType switch
                 {
                     ReceiptInventoryOverrideActionTypes.InventoryReclassification when adjustment.ChangeAmount < 0 => matchesAffected,
-                    ReceiptInventoryOverrideActionTypes.InventoryReclassification => matchesAfter,
+                    ReceiptInventoryOverrideActionTypes.InventoryReclassification =>
+                        adjustment.InventoryIdentityCorrectionId is not null || adjustment.InventoryIdentityCorrection is not null
+                            ? matchesReclassificationTarget
+                            : matchesAfter,
                     ReceiptInventoryOverrideActionTypes.VoidReceipt => matchesAffected,
                     ReceiptInventoryOverrideActionTypes.QuantityCorrection when adjustment.ChangeAmount > 0 => matchesAfter,
                     ReceiptInventoryOverrideActionTypes.QuantityCorrection => matchesAffected || matchesAfter,
@@ -756,13 +844,16 @@ public sealed class InventoryDeductionInvariantService(
     private static bool Matches(RoomInventoryAdjustment adjustment, OverrideIdentity identity, bool compareVarietyAndStatus) =>
         adjustment.WarehouseId == identity.WarehouseId
         && adjustment.RoomId == identity.RoomId
-        && adjustment.CropYear == identity.CropYear
-        && adjustment.GrowerLotId == identity.GrowerLotId
-        && adjustment.FruitProfileId == identity.FruitProfileId
-        && Same(adjustment.LotNumber, identity.Lot)
+        && MatchesIdentity(adjustment, identity)
         && (!compareVarietyAndStatus
             || (Same(adjustment.VarietyCode, identity.Variety)
                 && Same(adjustment.InventoryStatus, identity.InventoryStatus)));
+
+    private static bool MatchesIdentity(RoomInventoryAdjustment adjustment, OverrideIdentity identity) =>
+        adjustment.CropYear == identity.CropYear
+        && adjustment.GrowerLotId == identity.GrowerLotId
+        && adjustment.FruitProfileId == identity.FruitProfileId
+        && Same(adjustment.LotNumber, identity.Lot);
 
     private sealed record OverrideIdentity(
         int WarehouseId,

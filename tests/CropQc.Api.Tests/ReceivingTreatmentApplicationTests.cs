@@ -436,8 +436,8 @@ public sealed class ReceivingTreatmentApplicationTests
         Assert.Contains("17 AS checked_target_objects", verify);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
         Assert.DoesNotContain("__EFMigrationsHistory", config);
-        Assert.Contains("20260828033737_AddTransferCustodyWorkflow", gate);
-        Assert.Equal(836, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
+        Assert.Contains("20260902011217_AddInventoryIdentityCorrections", gate);
+        Assert.Equal(858, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 
     private static string Read(params string[] segments)

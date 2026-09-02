@@ -139,6 +139,8 @@ public sealed class RoomInventoryAdjustment
     public RoomTransfer? RoomTransfer { get; set; }
     public Guid? ReceiptInventoryOverrideId { get; set; }
     public ReceiptInventoryOverride? ReceiptInventoryOverride { get; set; }
+    public Guid? InventoryIdentityCorrectionId { get; set; }
+    public InventoryIdentityCorrection? InventoryIdentityCorrection { get; set; }
     public long? RoomInventoryLossId { get; set; }
     public RoomInventoryLoss? RoomInventoryLoss { get; set; }
     public long? ProcessorShipmentLineId { get; set; }

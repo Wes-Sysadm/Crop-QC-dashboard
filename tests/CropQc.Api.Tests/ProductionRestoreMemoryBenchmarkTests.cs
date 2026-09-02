@@ -6,6 +6,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using CropQc.Data;
+using CropQc.Data.Entities;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Authentication;
@@ -116,6 +117,153 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
             Assert.Equal(adjustmentCountBefore, await db.RoomInventoryAdjustments.AsNoTracking().LongCountAsync());
             Assert.Equal(adjustmentQuantityBefore, await db.RoomInventoryAdjustments.AsNoTracking().SumAsync(x => x.ChangeAmount));
         }
+    }
+
+    [Fact]
+    public async Task ProductionRestore_InventoryIdentityAuthenticatedRouteMatrix_IsReadOnly_WhenConfigured()
+    {
+        var databaseUrl = Environment.GetEnvironmentVariable("CROPQC_INVENTORY_IDENTITY_RESTORE_POSTGRES");
+        if (string.IsNullOrWhiteSpace(databaseUrl))
+        {
+            return;
+        }
+
+        ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(databaseUrl);
+        await using var factory = new ProductionRestoreWebApplicationFactory(databaseUrl);
+        long adjustmentCount;
+        int adjustmentQuantity;
+        long auditCount;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            adjustmentCount = await db.RoomInventoryAdjustments.AsNoTracking().LongCountAsync();
+            adjustmentQuantity = await db.RoomInventoryAdjustments.AsNoTracking().SumAsync(x => x.ChangeAmount);
+            auditCount = await db.AuditLogs.AsNoTracking().LongCountAsync();
+        }
+
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(BenchmarkAuthenticationHandler.SchemeName);
+        client.Timeout = TimeSpan.FromSeconds(45);
+        var routes = new[]
+        {
+            "/?Facility=All",
+            "/Rooms?Facility=All",
+            "/Rooms/62?Facility=All",
+            "/Receipts/1229",
+            "/GrowerLots/Current?Facility=All",
+            "/Admin/RoomInventory/Reconciliation",
+            "/BinsRun?Section=Transfer&Facility=All",
+            "/BinsRun?Section=Actual&Facility=All",
+            "/BinsRun?Section=RunTotals&ReportFacility=All&ReportCropYear=2026"
+        };
+        foreach (var route in routes)
+        {
+            using var response = await client.GetAsync(route);
+            Assert.True(response.IsSuccessStatusCode, $"Authenticated route {route} returned {(int)response.StatusCode} {response.StatusCode}.");
+            var html = await response.Content.ReadAsStringAsync();
+            Assert.DoesNotContain("An unhandled exception occurred", html, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("could not be loaded", html, StringComparison.OrdinalIgnoreCase);
+        }
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            Assert.Equal(adjustmentCount, await db.RoomInventoryAdjustments.AsNoTracking().LongCountAsync());
+            Assert.Equal(adjustmentQuantity, await db.RoomInventoryAdjustments.AsNoTracking().SumAsync(x => x.ChangeAmount));
+            Assert.Equal(auditCount, await db.AuditLogs.AsNoTracking().LongCountAsync());
+        }
+    }
+
+    [Fact]
+    public async Task ProductionRestore_Tr508901CanonicalIdentity_SurvivesTransferAndReversal_WhenConfigured()
+    {
+        var databaseUrl = Environment.GetEnvironmentVariable("CROPQC_INVENTORY_IDENTITY_TRANSFER_POSTGRES");
+        if (string.IsNullOrWhiteSpace(databaseUrl))
+        {
+            return;
+        }
+
+        ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(databaseUrl);
+        await using var factory = new ProductionRestoreWebApplicationFactory(databaseUrl);
+        using var scope = factory.Services.CreateScope();
+        var services = scope.ServiceProvider;
+        var db = services.GetRequiredService<CropQcDbContext>();
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Email, ApplicationAreas.OwnerEmail)], BenchmarkAuthenticationHandler.SchemeName));
+        services.GetRequiredService<Microsoft.AspNetCore.Http.IHttpContextAccessor>().HttpContext =
+            new Microsoft.AspNetCore.Http.DefaultHttpContext { User = principal };
+        var dashboard = services.GetRequiredService<IDashboardDataService>();
+        var ledger = services.GetRequiredService<IRoomInventoryLedgerQueryService>();
+        const int sourceRoomId = 62;
+        var sourceDetail = await dashboard.GetRoomDetailAsync(sourceRoomId, CancellationToken.None);
+        Assert.True(sourceDetail.TransferLotOptions.Count > 0,
+            $"MCD-10 transfer projection is empty. Warning: {sourceDetail.DataWarning}; transfer error: {sourceDetail.TransferInventoryError}; "
+            + $"current lots: {string.Join(" | ", sourceDetail.CurrentLots.Select(x => $"{x.CropYear}/{x.GrowerLotId}/{x.FruitProfileId}/{x.LotCode}/{x.VarietyCode}/{x.CurrentBins}"))}");
+        var source = Assert.Single(sourceDetail.TransferLotOptions,
+            x => x.CurrentBins == 40
+                && x.Grower.Contains("Conconully", StringComparison.OrdinalIgnoreCase)
+                && (x.Label.Contains("ORDR", StringComparison.OrdinalIgnoreCase)
+                    || x.Variety.Contains("ORDR", StringComparison.OrdinalIgnoreCase)));
+        var destination = sourceDetail.TransferDestinationOptions.First(x =>
+            x.WarehouseId == 3 && x.RoomId != sourceRoomId && !x.IsSealed);
+        var before = await ledger.GetSnapshotsAsync(3, [sourceRoomId, destination.RoomId], CancellationToken.None);
+        var beforeSource = before.Where(IsCanonical).Sum(x => x.CurrentBins);
+        var beforeDestination = before.Where(x => x.RoomId == destination.RoomId && IsCanonical(x)).Sum(x => x.CurrentBins);
+        Assert.Equal(40, beforeSource);
+        Assert.Equal(0, (await ledger.GetSnapshotsAsync(null, null, CancellationToken.None))
+            .Where(IsObsolete).Sum(x => x.CurrentBins));
+
+        var transferKey = $"tr508901-canonical-transfer-{Guid.NewGuid():N}";
+        var transferError = await dashboard.CreateRoomTransferAsync(new RoomTransferForm
+        {
+            OperationKey = transferKey,
+            FromRoomId = sourceRoomId,
+            DestinationWarehouseId = destination.WarehouseId,
+            DestinationRoomId = destination.RoomId,
+            SourceLotKey = source.LotKey,
+            TreatmentSignature = source.TreatmentSignature,
+            TreatmentSegmentId = source.TreatmentSegmentId,
+            BinCount = 40,
+            TransferAt = DateTimeOffset.UtcNow,
+            Reason = "Disposable TR508901 canonical identity persistence proof"
+        }, CancellationToken.None);
+        Assert.Null(transferError);
+        var transfer = await db.RoomTransfers.AsNoTracking().SingleAsync(x => x.OperationKey == transferKey);
+        Assert.Equal((2026, 538, 26, "ORDR", "Organic"),
+            (transfer.CropYear, transfer.GrowerLotId, transfer.FruitProfileId, transfer.VarietyCode, transfer.InventoryStatus));
+        var moved = await ledger.GetSnapshotsAsync(3, [sourceRoomId, destination.RoomId], CancellationToken.None);
+        Assert.Equal(0, moved.Where(x => x.RoomId == sourceRoomId && IsCanonical(x)).Sum(x => x.CurrentBins));
+        Assert.Equal(beforeDestination + 40, moved.Where(x => x.RoomId == destination.RoomId && IsCanonical(x)).Sum(x => x.CurrentBins));
+        Assert.Equal(0, (await ledger.GetSnapshotsAsync(null, null, CancellationToken.None))
+            .Where(IsObsolete).Sum(x => x.CurrentBins));
+
+        var reversalError = await dashboard.ReverseRoomTransferAsync(new ReverseRoomTransferForm
+        {
+            Id = transfer.Id,
+            OperationKey = $"{transferKey}-reversal",
+            Reason = "Disposable TR508901 canonical identity reversal proof"
+        }, CancellationToken.None);
+        Assert.Null(reversalError);
+        var restored = await ledger.GetSnapshotsAsync(3, [sourceRoomId, destination.RoomId], CancellationToken.None);
+        Assert.Equal(beforeSource, restored.Where(x => x.RoomId == sourceRoomId && IsCanonical(x)).Sum(x => x.CurrentBins));
+        Assert.Equal(beforeDestination, restored.Where(x => x.RoomId == destination.RoomId && IsCanonical(x)).Sum(x => x.CurrentBins));
+        Assert.Equal(0, (await ledger.GetSnapshotsAsync(null, null, CancellationToken.None))
+            .Where(IsObsolete).Sum(x => x.CurrentBins));
+        var currentTreatment = await db.TreatmentLineageSegments.AsNoTracking()
+            .Where(x => x.RoomId == sourceRoomId && x.CropYear == 2026 && x.GrowerLotId == 538
+                && x.FruitProfileId == 26 && x.CurrentBins > 0)
+            .ToListAsync();
+        Assert.Equal(40, currentTreatment.Sum(x => x.CurrentBins));
+        Assert.All(currentTreatment, x =>
+        {
+            Assert.Equal(TreatmentLineageStates.Untreated, x.TreatmentState);
+            Assert.Equal("u", x.TreatmentSignature);
+        });
+
+        static bool IsCanonical(RoomInventoryLedgerSnapshot x) =>
+            x.CropYear == 2026 && x.GrowerLotId == 538 && x.FruitProfileId == 26;
+        static bool IsObsolete(RoomInventoryLedgerSnapshot x) =>
+            x.CropYear == 2026 && x.GrowerLotId == 538 && x.FruitProfileId == 18;
     }
 
     [Fact]

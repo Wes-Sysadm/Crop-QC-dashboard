@@ -755,6 +755,10 @@ public sealed class BinsRunService(
         {
             return "This Bins Run is locked by finalized packout reconciliation. Reopen the actual run before reversing it.";
         }
+        var identityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+            dbContext, entry.CropYear, entry.GrowerLotId, entry.FruitProfileId,
+            $"Bins Run #{entry.Id} reversal", cancellationToken);
+        if (identityError is not null) return identityError;
 
         var snapshot = await GetCurrentInventoryByEntryAsync(entry, cancellationToken);
         if (snapshot is null)
@@ -1695,6 +1699,10 @@ public sealed class BinsRunService(
             {
                 throw new InvalidOperationException($"Bins Run entry #{entry.Id} has already been reversed.");
             }
+            var identityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+                dbContext, entry.CropYear, entry.GrowerLotId, entry.FruitProfileId,
+                $"Actual Run #{run.Id} reversal", cancellationToken);
+            if (identityError is not null) throw new InvalidOperationException(identityError);
 
             var snapshot = snapshots.Single(x => SameInventory(entry, x));
             var previous = snapshot.CurrentBins;

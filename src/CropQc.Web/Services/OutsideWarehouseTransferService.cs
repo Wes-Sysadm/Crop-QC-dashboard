@@ -334,6 +334,10 @@ public sealed class OutsideWarehouseTransferService(
             if (transfer is null) return "Outside Warehouse Transfer was not found.";
             if (transfer.IsReversed) return null;
             if (await dbContext.OutsideWarehouseTransfers.AsNoTracking().AnyAsync(x => x.ReversalOperationKey == operationKey, cancellationToken)) return null;
+            var identityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+                dbContext, transfer.CropYear, transfer.GrowerLotId, transfer.FruitProfileId,
+                $"Outside Warehouse Transfer #{transfer.Id} reversal", cancellationToken);
+            if (identityError is not null) return identityError;
             var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, [], [transfer.SourceRoomId], businessTime, cancellationToken);
             if (sealError is not null) return sealError;
             var original = transfer.InventoryAdjustments.SingleOrDefault(x =>

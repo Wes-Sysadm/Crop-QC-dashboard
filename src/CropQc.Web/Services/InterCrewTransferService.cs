@@ -28,6 +28,7 @@ public sealed class InterCrewTransferService(
     IOutsideWarehouseTransferService inventoryProvider,
     IRoomInventoryLedgerQueryService ledger,
     IInterCrewTreatmentLineageService treatmentLineage,
+    IInventoryIdentityService identityService,
     IInventoryDeductionInvariantService invariant,
     IUserAccessService access,
     IHttpContextAccessor httpContextAccessor,
@@ -222,7 +223,14 @@ public sealed class InterCrewTransferService(
                 return Fail("Select a destination room belonging to the receiving crew. McDougall cannot be a destination.");
             var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, [room.Id], [], businessTime, cancellationToken);
             if (sealError is not null) return Fail(sealError);
-            var current = await FindSnapshotAsync(transfer, room.WarehouseId, room.Id, cancellationToken);
+            InventoryIdentityResolution? resolvedIdentity = null;
+            if (transfer.CropYear is not null && transfer.GrowerLotId is not null && transfer.FruitProfileId is not null)
+            {
+                resolvedIdentity = await identityService.ResolveAsync(new InventoryIdentityKey(
+                    transfer.CropYear.Value, transfer.GrowerLotId.Value, transfer.FruitProfileId.Value), cancellationToken);
+            }
+            var current = await FindSnapshotAsync(
+                transfer, room.WarehouseId, room.Id, cancellationToken, resolvedIdentity?.Canonical);
             var oldBalance = current?.CurrentBins ?? 0;
             var now = businessTime.UtcNow;
             var receivedAt = businessTime.PacificLocalToUtc(form.ReceivedAt);
@@ -239,7 +247,7 @@ public sealed class InterCrewTransferService(
             dbContext.RoomInventoryAdjustments.Add(Adjustment(transfer, room.WarehouseId, room.Id, form.BinsReceived,
                 oldBalance, InterCrewTransferAdjustmentTypes.Receive, "Inter-crew transfer receive",
                 $"Received from {transfer.SourceWarehouseId}/{transfer.SourceRoomId}; loaded {transfer.BinsLoaded}, received {form.BinsReceived}",
-                receivedAt, actor.Id, $"inter-crew-receive:{key}"));
+                receivedAt, actor.Id, $"inter-crew-receive:{key}", resolvedIdentity));
             await invariant.ValidateBeforeCommitAsync(cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
             var lineageResult = await treatmentLineage.ReceiveAsync(transfer.Id, room.WarehouseId, room.Id, form.BinsReceived,
@@ -290,6 +298,10 @@ public sealed class InterCrewTransferService(
             var transfer = await dbContext.InterCrewTransfers.Include(x => x.InventoryAdjustments).SingleOrDefaultAsync(x => x.Id == form.TransferId, cancellationToken);
             if (transfer is null) return "Inter-crew transfer was not found.";
             if (transfer.ReversalOperationKey == key || transfer.Status == InterCrewTransferStatuses.Reversed) return null;
+            var identityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+                dbContext, transfer.CropYear, transfer.GrowerLotId, transfer.FruitProfileId,
+                $"Inter-crew transfer #{transfer.Id} reversal", cancellationToken);
+            if (identityError is not null) return identityError;
             var wasReceived = transfer.BinsReceived is not null && transfer.DestinationRoomId is not null && transfer.DestinationWarehouseId is not null;
             var roomIds = wasReceived ? new[] { transfer.SourceRoomId, transfer.DestinationRoomId!.Value } : new[] { transfer.SourceRoomId };
             var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, roomIds, [], businessTime, cancellationToken);
@@ -375,34 +387,43 @@ public sealed class InterCrewTransferService(
         };
     }
 
-    private async Task<RoomInventoryLedgerSnapshot?> FindSnapshotAsync(InterCrewTransfer transfer, int warehouseId, int roomId, CancellationToken cancellationToken)
+    private async Task<RoomInventoryLedgerSnapshot?> FindSnapshotAsync(
+        InterCrewTransfer transfer,
+        int warehouseId,
+        int roomId,
+        CancellationToken cancellationToken,
+        InventoryIdentityKey? identity = null)
     {
+        var cropYear = identity?.CropYear ?? transfer.CropYear;
+        var growerLotId = identity?.GrowerLotId ?? transfer.GrowerLotId;
+        var fruitProfileId = identity?.FruitProfileId ?? transfer.FruitProfileId;
         var matches = (await ledger.GetSnapshotsAsync(warehouseId, [roomId], cancellationToken)).Where(x =>
-            x.CropYear == transfer.CropYear && x.GrowerLotId == transfer.GrowerLotId && x.FruitProfileId == transfer.FruitProfileId
-            && Same(x.Lot, transfer.LotNumberSnapshot) && Same(x.InventoryStatus, transfer.InventoryStatusSnapshot)).ToList();
+            x.CropYear == cropYear && x.GrowerLotId == growerLotId && x.FruitProfileId == fruitProfileId
+            && (identity is not null || Same(x.Lot, transfer.LotNumberSnapshot) && Same(x.InventoryStatus, transfer.InventoryStatusSnapshot))).ToList();
         if (matches.Count == 0) return null;
         var latest = matches.OrderByDescending(x => x.LastTransactionAt).ThenByDescending(x => x.LatestAdjustmentId).First();
         return latest with { CurrentBins = matches.Sum(x => x.CurrentBins), LatestAdjustmentId = matches.Max(x => x.LatestAdjustmentId) };
     }
 
     private static RoomInventoryAdjustment Adjustment(InterCrewTransfer transfer, int warehouseId, int roomId, int delta,
-        int oldBalance, string type, string source, string reason, DateTimeOffset at, int actorId, string operationKey) => new()
+        int oldBalance, string type, string source, string reason, DateTimeOffset at, int actorId, string operationKey,
+        InventoryIdentityResolution? resolvedIdentity = null) => new()
         {
-            CropYear = transfer.CropYear,
+            CropYear = resolvedIdentity?.Canonical.CropYear ?? transfer.CropYear,
             ReceiptId = transfer.ReceiptId,
             WarehouseId = warehouseId,
             RoomId = roomId,
-            GrowerLotId = transfer.GrowerLotId,
-            FruitProfileId = transfer.FruitProfileId,
-            GrowerName = transfer.GrowerNameSnapshot,
-            LotNumber = transfer.LotNumberSnapshot,
-            VarietyCode = transfer.VarietyCodeSnapshot,
+            GrowerLotId = resolvedIdentity?.Canonical.GrowerLotId ?? transfer.GrowerLotId,
+            FruitProfileId = resolvedIdentity?.Canonical.FruitProfileId ?? transfer.FruitProfileId,
+            GrowerName = resolvedIdentity?.GrowerLot.Grower ?? transfer.GrowerNameSnapshot,
+            LotNumber = resolvedIdentity?.GrowerLot.LotNumber ?? transfer.LotNumberSnapshot,
+            VarietyCode = resolvedIdentity?.FruitProfile.VarietyCode ?? transfer.VarietyCodeSnapshot,
             OldBinCount = oldBalance,
             ChangeAmount = delta,
             NewBinCount = oldBalance + delta,
             AdjustmentType = type,
             Source = source,
-            InventoryStatus = transfer.InventoryStatusSnapshot,
+            InventoryStatus = resolvedIdentity?.FruitProfile.ProductionType ?? transfer.InventoryStatusSnapshot,
             Reason = reason,
             Notes = transfer.TruckLoadBolNumber,
             AdjustmentAt = at,

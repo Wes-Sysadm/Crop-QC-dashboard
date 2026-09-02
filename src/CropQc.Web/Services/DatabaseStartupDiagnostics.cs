@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260828033737_AddTransferCustodyWorkflow";
+    public const string ExpectedSchemaMigration = "20260902011217_AddInventoryIdentityCorrections";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -544,6 +544,28 @@ public static class DatabaseStartupDiagnostics
         ,new("InterCrewTransfers.ReversalOperationKey", "InterCrewTransfers", "ReversalOperationKey", RequireNullable: true)
         ,new("RoomInventoryAdjustments.InterCrewTransferId", "RoomInventoryAdjustments", "InterCrewTransferId", RequireNullable: true)
         ,new("TreatmentLineageMovements.InterCrewTransferId", "TreatmentLineageMovements", "InterCrewTransferId", RequireNullable: true)
+        ,new("InventoryIdentityCorrections", "InventoryIdentityCorrections", null)
+        ,new("InventoryIdentityCorrections.Id", "InventoryIdentityCorrections", "Id", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.OperationKey", "InventoryIdentityCorrections", "OperationKey", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.SourceCropYear", "InventoryIdentityCorrections", "SourceCropYear", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.SourceGrowerLotId", "InventoryIdentityCorrections", "SourceGrowerLotId", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.SourceFruitProfileId", "InventoryIdentityCorrections", "SourceFruitProfileId", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.TargetCropYear", "InventoryIdentityCorrections", "TargetCropYear", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.TargetGrowerLotId", "InventoryIdentityCorrections", "TargetGrowerLotId", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.TargetFruitProfileId", "InventoryIdentityCorrections", "TargetFruitProfileId", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.CorrectedReceiptId", "InventoryIdentityCorrections", "CorrectedReceiptId", RequireNullable: true)
+        ,new("InventoryIdentityCorrections.ReceiptInventoryOverrideId", "InventoryIdentityCorrections", "ReceiptInventoryOverrideId", RequireNullable: true)
+        ,new("InventoryIdentityCorrections.Reason", "InventoryIdentityCorrections", "Reason", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.CreatedByUserId", "InventoryIdentityCorrections", "CreatedByUserId", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.CreatedAt", "InventoryIdentityCorrections", "CreatedAt", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.SourceIdentitySnapshotJson", "InventoryIdentityCorrections", "SourceIdentitySnapshotJson", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.TargetIdentitySnapshotJson", "InventoryIdentityCorrections", "TargetIdentitySnapshotJson", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.ExpectedAdjustmentCount", "InventoryIdentityCorrections", "ExpectedAdjustmentCount", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.ExpectedTreatmentMovementCount", "InventoryIdentityCorrections", "ExpectedTreatmentMovementCount", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.IsComplete", "InventoryIdentityCorrections", "IsComplete", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.IsActive", "InventoryIdentityCorrections", "IsActive", RequireNotNullable: true)
+        ,new("RoomInventoryAdjustments.InventoryIdentityCorrectionId", "RoomInventoryAdjustments", "InventoryIdentityCorrectionId", RequireNullable: true)
+        ,new("TreatmentLineageMovements.InventoryIdentityCorrectionId", "TreatmentLineageMovements", "InventoryIdentityCorrectionId", RequireNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =

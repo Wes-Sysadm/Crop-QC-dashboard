@@ -267,6 +267,10 @@ builder.Services.AddScoped<IAuthorizationHandler, PageAccessAuthorizationHandler
 builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IRoomInventoryImportService, RoomInventoryImportService>();
 builder.Services.AddScoped<IRoomInventoryLedgerQueryService, RoomInventoryLedgerQueryService>();
+builder.Services.AddScoped<IInventoryIdentityService, InventoryIdentityService>();
+builder.Services.AddScoped<IInventoryIdentityCorrectionDiagnosticService, InventoryIdentityCorrectionDiagnosticService>();
+builder.Services.AddScoped<IInventoryIdentityReadinessService, InventoryIdentityReadinessService>();
+builder.Services.AddScoped<ITr508901InventoryRepairService, Tr508901InventoryRepairService>();
 builder.Services.AddScoped<IRoomInventoryReconciliationService, RoomInventoryReconciliationService>();
 builder.Services.AddScoped<IRoomInventoryLossService, RoomInventoryLossService>();
 builder.Services.AddScoped<IRoomSealingService, RoomSealingService>();
@@ -383,6 +387,34 @@ if (schemaVerificationCommand is not null)
 if (args.Contains("--verify-inventory-deductions", StringComparer.OrdinalIgnoreCase))
 {
     Environment.ExitCode = await VerifyInventoryDeductionReadinessAsync(app.Services) ? 0 : 1;
+    return;
+}
+
+if (args.Contains("--audit-inventory-identity-corrections", StringComparer.OrdinalIgnoreCase))
+{
+    await using var diagnosticScope = app.Services.CreateAsyncScope();
+    var report = await diagnosticScope.ServiceProvider
+        .GetRequiredService<IInventoryIdentityCorrectionDiagnosticService>()
+        .AnalyzeAsync(CancellationToken.None);
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(report,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true }));
+    Environment.ExitCode = report.ConfirmedAffected + report.LikelyAffected + report.AmbiguousNeedsReview > 0 ? 2 : 0;
+    return;
+}
+
+if (args.Contains("--repair-tr508901", StringComparer.OrdinalIgnoreCase))
+{
+    static string? Tr508901CommandValue(string[] commandArgs, string key) =>
+        commandArgs.FirstOrDefault(x => x.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase)) is { } item
+            ? item[(item.IndexOf('=') + 1)..]
+            : null;
+    await using var repairScope = app.Services.CreateAsyncScope();
+    var result = await repairScope.ServiceProvider.GetRequiredService<ITr508901InventoryRepairService>()
+        .RunAsync(args.Contains("--apply", StringComparer.OrdinalIgnoreCase),
+            Tr508901CommandValue(args, "--requested-by") ?? "", CancellationToken.None);
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(result,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true }));
+    Environment.ExitCode = result.Success ? 0 : 1;
     return;
 }
 
@@ -660,7 +692,7 @@ if (args.Contains(ActualRun3ReportingIdentityCorrectionConstants.CommandName, St
 
 if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommandName, StringComparer.OrdinalIgnoreCase))
 {
-    const string releaseMigration = "20260828033737_AddTransferCustodyWorkflow";
+    const string releaseMigration = "20260902011217_AddInventoryIdentityCorrections";
     var schemaReady = await DatabaseStartupDiagnostics.VerifyRequiredSchemaAsync(
         app.Services, app.Configuration, app.Environment, releaseMigration);
     await using var readinessScope = app.Services.CreateAsyncScope();
@@ -712,7 +744,7 @@ if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommand
     {
         success = releaseReady,
         expectedMigration = releaseMigration,
-        expectedSchemaObjects = 836,
+        expectedSchemaObjects = 858,
         schemaReady,
         inventory = new
         {
@@ -1856,6 +1888,8 @@ static async Task<bool> VerifyInventoryDeductionReadinessAsync(IServiceProvider 
     using var invariantScope = services.CreateScope();
     var invariant = invariantScope.ServiceProvider.GetRequiredService<IInventoryDeductionInvariantService>();
     var result = await invariant.VerifyReadinessAsync(CancellationToken.None);
+    var identityResult = await invariantScope.ServiceProvider.GetRequiredService<IInventoryIdentityReadinessService>()
+        .VerifyAsync(CancellationToken.None);
     var invariantLogger = invariantScope.ServiceProvider
         .GetRequiredService<ILoggerFactory>()
         .CreateLogger("InventoryDeductionReadiness");
@@ -1876,7 +1910,12 @@ static async Task<bool> VerifyInventoryDeductionReadinessAsync(IServiceProvider 
             issue.BlocksDeployment);
     }
 
-    return result.IsReady;
+    foreach (var issue in identityResult.Issues)
+    {
+        invariantLogger.LogError("Inventory identity readiness blocking issue: {Issue}", issue);
+    }
+
+    return result.IsReady && identityResult.IsReady;
 }
 
 static void ConfigureDataProtection(IServiceCollection services, IConfiguration configuration)

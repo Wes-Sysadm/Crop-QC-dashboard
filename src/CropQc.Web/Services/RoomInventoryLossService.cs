@@ -452,6 +452,10 @@ public sealed class RoomInventoryLossService(
             {
                 return null;
             }
+            var identityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+                dbContext, loss.CropYear, loss.GrowerLotId, loss.FruitProfileId,
+                $"Dropped-bin record #{loss.Id} reversal", cancellationToken);
+            if (identityError is not null) return identityError;
 
             var snapshots = await ledgerQuery.GetSnapshotsAsync(loss.WarehouseId, [loss.RoomId], cancellationToken);
             var snapshot = snapshots.SingleOrDefault(x => Matches(x, loss));

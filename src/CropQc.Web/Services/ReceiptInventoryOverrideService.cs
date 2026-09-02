@@ -30,6 +30,9 @@ public sealed class ReceiptInventoryOverrideService(
     CropQcDbContext dbContext,
     IUserAccessService userAccessService,
     IInventoryDeductionInvariantService inventoryInvariantService,
+    IRoomInventoryLedgerQueryService ledgerQuery,
+    IInventoryIdentityService identityService,
+    IRoomTreatmentService roomTreatmentService,
     IBusinessTimeService businessTime,
     ILogger<ReceiptInventoryOverrideService> logger) : IReceiptInventoryOverrideService
 {
@@ -45,7 +48,7 @@ public sealed class ReceiptInventoryOverrideService(
         if (receipt is null) return null;
 
         var state = await GetInventoryStateAsync(receipt, cancellationToken);
-        var counts = await GetOperationalCountsAsync(receipt.Id, cancellationToken);
+        var counts = await GetOperationalCountsAsync(receipt, cancellationToken);
         var hasPriorOverride = await dbContext.ReceiptInventoryOverrides.AsNoTracking()
             .AnyAsync(x => x.ReceiptId == receipt.Id, cancellationToken);
         return new ReceiptInventoryOverridePreviewViewModel
@@ -145,8 +148,6 @@ public sealed class ReceiptInventoryOverrideService(
             if (administrator is null) return await RollbackAsync(transaction, Failed("The active administrator account could not be resolved."), cancellationToken);
 
             var state = await GetInventoryStateAsync(receipt, cancellationToken);
-            var lineageError = await ValidateLineageAsync(receipt.Id, state, cancellationToken);
-            if (lineageError is not null) return await RollbackAsync(transaction, Failed(lineageError), cancellationToken);
 
             var growerLot = form.GrowerLotId is null
                 ? null
@@ -192,6 +193,54 @@ public sealed class ReceiptInventoryOverrideService(
                 return await RollbackAsync(transaction, Failed("Quantity correction and inventory reclassification must be completed as separate administrator operations."), cancellationToken);
             }
 
+            IReadOnlyList<RoomInventoryLedgerSnapshot> sourceIdentitySnapshots = [];
+            var sourceCustodyBins = 0;
+            object[] sourceCustody = [];
+            InventoryIdentityCorrection? identityCorrection = null;
+            if (identityChanged)
+            {
+                if (receipt.GrowerLotId is null || form.GrowerLotId is null)
+                    return await RollbackAsync(transaction, Failed("Inventory identity reclassification requires explicit source and target Grower Lots."), cancellationToken);
+                var sourceKey = new InventoryIdentityKey(receipt.CropYear, receipt.GrowerLotId.Value, receipt.FruitProfileId);
+                var targetKey = new InventoryIdentityKey(form.CropYear, form.GrowerLotId.Value, form.FruitProfileId);
+                var correctionError = await identityService.ValidateCorrectionAsync(sourceKey, targetKey, cancellationToken);
+                if (correctionError is not null)
+                    return await RollbackAsync(transaction, Failed(correctionError), cancellationToken);
+                sourceIdentitySnapshots = (await ledgerQuery.GetSnapshotsAsync(null, null, cancellationToken))
+                    .Where(x => x.CropYear == sourceKey.CropYear
+                        && x.GrowerLotId == sourceKey.GrowerLotId
+                        && x.FruitProfileId == sourceKey.FruitProfileId
+                        && x.CurrentBins != 0)
+                    .OrderBy(x => x.WarehouseId).ThenBy(x => x.RoomId)
+                    .ToList();
+                var interCrewCustody = await dbContext.InterCrewTransfers.AsNoTracking()
+                    .Where(x => x.Status == InterCrewTransferStatuses.InTransit
+                        && x.CropYear == sourceKey.CropYear
+                        && x.GrowerLotId == sourceKey.GrowerLotId
+                        && x.FruitProfileId == sourceKey.FruitProfileId)
+                    .Select(x => new { Kind = "InterCrew", x.Id, Bins = x.BinsLoaded })
+                    .ToListAsync(cancellationToken);
+                var outsideCustody = await dbContext.OutsideWarehouseTransfers.AsNoTracking()
+                    .Where(x => !x.IsReversed
+                        && x.CropYear == sourceKey.CropYear
+                        && x.GrowerLotId == sourceKey.GrowerLotId
+                        && x.FruitProfileId == sourceKey.FruitProfileId)
+                    .Select(x => new { Kind = "OutsideWarehouse", x.Id, Bins = x.BinCount })
+                    .ToListAsync(cancellationToken);
+                sourceCustody = interCrewCustody.Cast<object>().Concat(outsideCustody).ToArray();
+                sourceCustodyBins = interCrewCustody.Sum(x => x.Bins) + outsideCustody.Sum(x => x.Bins);
+                if (sourceIdentitySnapshots.Count == 0 && sourceCustodyBins == 0)
+                    return await RollbackAsync(transaction, Failed("No current inventory remains under the obsolete identity."), cancellationToken);
+                if (sourceIdentitySnapshots.Any(x => x.CurrentBins < 0))
+                    return await RollbackAsync(transaction, Failed("Negative or ambiguous source identity inventory must be reconciled before reclassification."), cancellationToken);
+                state = new InventoryState(sourceIdentitySnapshots.Select(ToBalance).ToList(), HasExactReceiptProvenance: true);
+            }
+            else
+            {
+                var lineageError = await ValidateLineageAsync(receipt, state, cancellationToken);
+                if (lineageError is not null) return await RollbackAsync(transaction, Failed(lineageError), cancellationToken);
+            }
+
             var beforeJson = ReceiptSnapshot(receipt);
             var now = businessTime.UtcNow;
             var operation = new ReceiptInventoryOverride
@@ -205,8 +254,8 @@ public sealed class ReceiptInventoryOverrideService(
                 OldReceiptBinCount = receipt.BinCount,
                 NewReceiptBinCount = form.BinCount,
                 InventoryDelta = quantityChanged ? form.BinCount - receipt.BinCount : 0,
-                CurrentInventoryBefore = state.Total,
-                CurrentInventoryAfter = quantityChanged ? state.Total + form.BinCount - receipt.BinCount : state.Total,
+                CurrentInventoryBefore = state.Total + sourceCustodyBins,
+                CurrentInventoryAfter = quantityChanged ? state.Total + form.BinCount - receipt.BinCount : state.Total + sourceCustodyBins,
                 AdministratorUser = administrator,
                 AdministratorUserId = administrator.Id,
                 Reason = form.Reason.Trim(),
@@ -230,19 +279,66 @@ public sealed class ReceiptInventoryOverrideService(
             }
             else
             {
-                var counts = await GetOperationalCountsAsync(receipt.Id, cancellationToken);
-                if (counts.BinsRuns > 0 || counts.ActualRuns > 0 || counts.Transfers > 0)
+                var sourceKey = new InventoryIdentityKey(receipt.CropYear, receipt.GrowerLotId!.Value, receipt.FruitProfileId);
+                var targetKey = new InventoryIdentityKey(form.CropYear, form.GrowerLotId!.Value, form.FruitProfileId);
+                identityCorrection = new InventoryIdentityCorrection
                 {
-                    return await RollbackAsync(transaction, Failed("The receipt identity conflicts with linked Bins Run, Actual Run, or transfer evidence and cannot be reclassified accurately."), cancellationToken);
-                }
-                if (state.Balances.Any(x => x.CurrentBins < 0))
+                    Id = Guid.NewGuid(),
+                    OperationKey = operation.OperationKey,
+                    SourceCropYear = sourceKey.CropYear,
+                    SourceGrowerLotId = sourceKey.GrowerLotId,
+                    SourceFruitProfileId = sourceKey.FruitProfileId,
+                    TargetCropYear = targetKey.CropYear,
+                    TargetGrowerLotId = targetKey.GrowerLotId,
+                    TargetFruitProfileId = targetKey.FruitProfileId,
+                    CorrectedReceipt = receipt,
+                    CorrectedReceiptId = receipt.Id,
+                    ReceiptInventoryOverride = operation,
+                    ReceiptInventoryOverrideId = operation.Id,
+                    Reason = operation.Reason,
+                    CreatedByUser = administrator,
+                    CreatedByUserId = administrator.Id,
+                    CreatedAt = now,
+                    SourceIdentitySnapshotJson = JsonSerializer.Serialize(new
+                    {
+                        Identity = sourceKey,
+                        Custody = sourceCustody
+                    }, JsonOptions),
+                    TargetIdentitySnapshotJson = JsonSerializer.Serialize(targetKey, JsonOptions),
+                    IsComplete = false,
+                    IsActive = true
+                };
+                dbContext.InventoryIdentityCorrections.Add(identityCorrection);
+                await AddReclassificationAdjustmentsAsync(
+                    operation, identityCorrection, state, administrator, now, form,
+                    growerLot!, newGrower, newLot, fruit, cancellationToken);
+                foreach (var sourceSnapshot in sourceIdentitySnapshots)
                 {
-                    return await RollbackAsync(transaction, Failed("Negative or ambiguous receipt inventory must be reconciled before identity reclassification."), cancellationToken);
+                    var targetSnapshot = ToTargetSnapshot(sourceSnapshot, form, growerLot!, fruit);
+                    var lineage = await roomTreatmentService.ReclassifyIdentityAsync(
+                        sourceSnapshot,
+                        targetSnapshot,
+                        identityCorrection,
+                        now,
+                        administrator.Id,
+                        cancellationToken);
+                    if (!lineage.Success)
+                        return await RollbackAsync(transaction, Failed(lineage.Error ?? "Treatment identity reclassification failed."), cancellationToken);
                 }
-                AddReclassificationAdjustments(operation, receipt, state, administrator, now, form, newGrower, newLot, fruit);
+                identityCorrection.ExpectedAdjustmentCount = identityCorrection.InventoryAdjustments.Count;
+                identityCorrection.ExpectedTreatmentMovementCount = identityCorrection.TreatmentLineageMovements.Count;
+                identityCorrection.IsComplete = true;
             }
 
+            var receivingWarehouseId = receipt.WarehouseId;
+            var receivingRoomId = receipt.RoomId;
             ApplyReceiptValues(receipt, form, growerLot, newGrower, newLot);
+            if (identityChanged)
+            {
+                // Receipt location is immutable receiving provenance; current physical location comes from the ledger.
+                receipt.WarehouseId = receivingWarehouseId;
+                receipt.RoomId = receivingRoomId;
+            }
             receipt.ConcurrencyVersion++;
             receipt.UpdatedAt = now;
             operation.ExpectedAdjustmentCount = operation.InventoryAdjustments.Count;
@@ -316,7 +412,7 @@ public sealed class ReceiptInventoryOverrideService(
             var administrator = await ResolveAdministratorAsync(principal, cancellationToken);
             if (administrator is null) return await RollbackAsync(transaction, Failed("The active administrator account could not be resolved."), cancellationToken);
             var state = await GetInventoryStateAsync(receipt, cancellationToken);
-            var lineageError = await ValidateLineageAsync(receipt.Id, state, cancellationToken);
+            var lineageError = await ValidateLineageAsync(receipt, state, cancellationToken);
             if (lineageError is not null) return await RollbackAsync(transaction, Failed(lineageError), cancellationToken);
             var remaining = state.Balances.Where(x => x.CurrentBins > 0).Sum(x => x.CurrentBins);
             var after = state.Total - remaining;
@@ -411,6 +507,38 @@ public sealed class ReceiptInventoryOverrideService(
 
     private async Task<InventoryState> GetInventoryStateAsync(Receipt receipt, CancellationToken cancellationToken)
     {
+        var provenance = await dbContext.TreatmentLineageSegments.AsNoTracking()
+            .Where(x => x.ReceiptId == receipt.Id && x.CurrentBins != 0)
+            .Include(x => x.Warehouse)
+            .Include(x => x.Room)
+            .Include(x => x.FruitProfile)
+            .OrderBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        if (provenance.Count > 0)
+        {
+            var provenanceBalances = provenance
+                .GroupBy(x => new InventoryIdentity(
+                    x.WarehouseId,
+                    x.Warehouse.Code,
+                    x.RoomId,
+                    x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
+                    x.CropYear,
+                    x.GrowerLotId,
+                    x.FruitProfileId,
+                    x.GrowerNameSnapshot,
+                    x.LotNumberSnapshot,
+                    x.FruitProfile?.VarietyCode ?? x.VarietyCodeSnapshot,
+                    x.InventoryStatusSnapshot ?? x.ProductionTypeSnapshot))
+                .Select(x => new InventoryBalance(
+                    x.Key.WarehouseId, x.Key.Warehouse, x.Key.RoomId, x.Key.Room, x.Key.CropYear,
+                    x.Key.GrowerLotId, x.Key.FruitProfileId, x.Key.Grower, x.Key.Lot, x.Key.Variety,
+                    x.Key.InventoryStatus, x.Sum(y => y.CurrentBins)))
+                .Where(x => x.CurrentBins != 0)
+                .OrderBy(x => x.WarehouseId).ThenBy(x => x.RoomId).ThenBy(x => x.Lot)
+                .ToList();
+            return new InventoryState(provenanceBalances, HasExactReceiptProvenance: true);
+        }
+
         var rows = await dbContext.RoomInventoryAdjustments.AsNoTracking()
             .Where(x => x.ReceiptId == receipt.Id)
             .Include(x => x.Warehouse)
@@ -427,7 +555,7 @@ public sealed class ReceiptInventoryOverrideService(
                     receipt.CropYear, receipt.GrowerLotId, receipt.FruitProfileId, receipt.GrowerName,
                     receipt.GrowerNumber ?? receipt.LotCode, receipt.FruitProfile.VarietyCode,
                     receipt.FruitProfile.ProductionType, receipt.BinCount)
-            ]);
+            ], HasExactReceiptProvenance: false);
         }
 
         var balances = rows.GroupBy(x => new InventoryIdentity(
@@ -449,33 +577,47 @@ public sealed class ReceiptInventoryOverrideService(
             .Where(x => x.CurrentBins != 0)
             .OrderBy(x => x.WarehouseId).ThenBy(x => x.RoomId).ThenBy(x => x.Lot)
             .ToList();
-        return new InventoryState(balances);
+        return new InventoryState(balances, HasExactReceiptProvenance: false);
     }
 
-    private async Task<string?> ValidateLineageAsync(long receiptId, InventoryState state, CancellationToken cancellationToken)
+    private async Task<string?> ValidateLineageAsync(Receipt receipt, InventoryState state, CancellationToken cancellationToken)
     {
         if (state.Balances.Any(x => string.IsNullOrWhiteSpace(x.Lot) || x.FruitProfileId is null))
         {
             return "The current receipt inventory lineage has an incomplete lot or fruit identity and must be reviewed before an administrator override.";
         }
-        var transferIds = await dbContext.RoomInventoryAdjustments.AsNoTracking()
-            .Where(x => x.ReceiptId == receiptId && x.RoomTransferId != null)
-            .Select(x => x.RoomTransferId!.Value)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-        foreach (var transferId in transferIds)
+        var counts = await GetOperationalCountsAsync(receipt, cancellationToken);
+        if ((counts.Transfers > 0 || counts.BinsRuns > 0 || counts.ActualRuns > 0)
+            && !state.HasExactReceiptProvenance)
         {
-            var pair = await dbContext.RoomInventoryAdjustments.AsNoTracking()
-                .Where(x => x.RoomTransferId == transferId)
-                .Select(x => new { x.ReceiptId, x.ChangeAmount, x.AdjustmentType })
+            var transferIds = await dbContext.RoomTransfers.AsNoTracking()
+                .Where(x => x.CropYear == receipt.CropYear
+                    && x.GrowerLotId == receipt.GrowerLotId
+                    && x.FruitProfileId == receipt.FruitProfileId)
+                .Select(x => x.Id)
                 .ToListAsync(cancellationToken);
-            if (pair.Count != 2 || pair.Sum(x => x.ChangeAmount) != 0
-                || pair.Any(x => x.ReceiptId != receiptId)
-                || pair.Count(x => x.AdjustmentType == "TransferOut") != 1
-                || pair.Count(x => x.AdjustmentType == "TransferIn") != 1)
+            foreach (var transferId in transferIds)
             {
-                return $"Transfer {transferId} does not provide exact receipt inventory lineage. No changes were made.";
+                var pair = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+                    .Where(x => x.RoomTransferId == transferId)
+                    .Select(x => new { x.ChangeAmount, x.AdjustmentType, x.CropYear, x.GrowerLotId, x.FruitProfileId })
+                    .ToListAsync(cancellationToken);
+                if (pair.Count != 2 || pair.Sum(x => x.ChangeAmount) != 0
+                    || pair.Any(x => x.CropYear != receipt.CropYear
+                        || x.GrowerLotId != receipt.GrowerLotId
+                        || x.FruitProfileId != receipt.FruitProfileId)
+                    || pair.Count(x => x.AdjustmentType == "TransferOut") != 1
+                    || pair.Count(x => x.AdjustmentType == "TransferIn") != 1)
+                    return $"Transfer {transferId} does not provide exact inventory lineage. No changes were made.";
             }
+            var ambiguousRun = await dbContext.BinsRunEntries.AsNoTracking()
+                .AnyAsync(x => x.CropYear == receipt.CropYear
+                    && x.GrowerLotId == receipt.GrowerLotId
+                    && x.FruitProfileId == receipt.FruitProfileId
+                    && x.ReceiptId != receipt.Id
+                    && (x.SourceInventoryAdjustment == null || x.SourceInventoryAdjustment.ReceiptId != receipt.Id), cancellationToken);
+            if (ambiguousRun)
+                return "Operational run history cannot be allocated to this receipt exactly. No inventory change was made.";
         }
         return null;
     }
@@ -490,7 +632,11 @@ public sealed class ReceiptInventoryOverrideService(
         var delta = operation.InventoryDelta;
         if (delta > 0)
         {
+            if (state.HasExactReceiptProvenance && state.Balances.Count(x => x.CurrentBins > 0) != 1)
+                throw new InvalidOperationException("A quantity increase cannot be allocated across multiple current receipt positions. Reconcile provenance first.");
             var target = BalanceFromReceipt(receipt, state.Balances.FirstOrDefault(x => SameReceiptIdentity(x, receipt))?.CurrentBins ?? 0);
+            if (state.HasExactReceiptProvenance)
+                target = state.Balances.Single(x => x.CurrentBins > 0);
             AddAdjustment(operation, target, delta, target.CurrentBins + delta, administrator, now, "QuantityCorrection");
             return;
         }
@@ -510,26 +656,34 @@ public sealed class ReceiptInventoryOverrideService(
         }
     }
 
-    private void AddReclassificationAdjustments(
+    private async Task AddReclassificationAdjustmentsAsync(
         ReceiptInventoryOverride operation,
-        Receipt receipt,
+        InventoryIdentityCorrection correction,
         InventoryState state,
         User administrator,
         DateTimeOffset now,
         AdminReceiptInventoryOverrideForm form,
+        GrowerLot targetGrowerLot,
         string grower,
         string lot,
-        FruitProfile fruit)
+        FruitProfile fruit,
+        CancellationToken cancellationToken)
     {
-        var targetCurrent = 0;
+        var targetSnapshots = (await ledgerQuery.GetSnapshotsAsync(null, null, cancellationToken))
+            .Where(x => x.CropYear == form.CropYear
+                && x.GrowerLotId == form.GrowerLotId
+                && x.FruitProfileId == form.FruitProfileId)
+            .ToDictionary(x => (x.WarehouseId, x.RoomId), x => x.CurrentBins);
         foreach (var old in state.Balances.Where(x => x.CurrentBins > 0))
         {
-            AddAdjustment(operation, old, -old.CurrentBins, 0, administrator, now, "ReclassifyOldIdentity");
+            AddAdjustment(operation, old, -old.CurrentBins, 0, administrator, now, "ReclassifyOldIdentity", correction);
+            var existingTarget = targetSnapshots.GetValueOrDefault((old.WarehouseId, old.RoomId));
             var target = new InventoryBalance(
-                form.WarehouseId, "", form.RoomId, "", form.CropYear, form.GrowerLotId,
-                form.FruitProfileId, grower, lot, fruit.VarietyCode, fruit.ProductionType, targetCurrent);
-            targetCurrent += old.CurrentBins;
-            AddAdjustment(operation, target, old.CurrentBins, targetCurrent, administrator, now, "ReclassifyNewIdentity");
+                old.WarehouseId, old.Warehouse, old.RoomId, old.Room, form.CropYear, targetGrowerLot.Id,
+                form.FruitProfileId, grower, lot, fruit.VarietyCode, fruit.ProductionType, existingTarget);
+            AddAdjustment(operation, target, old.CurrentBins, existingTarget + old.CurrentBins,
+                administrator, now, "ReclassifyNewIdentity", correction);
+            targetSnapshots[(old.WarehouseId, old.RoomId)] = existingTarget + old.CurrentBins;
         }
     }
 
@@ -540,7 +694,8 @@ public sealed class ReceiptInventoryOverrideService(
         int newBalance,
         User administrator,
         DateTimeOffset now,
-        string side)
+        string side,
+        InventoryIdentityCorrection? correction = null)
     {
         var sequence = operation.InventoryAdjustments.Count + 1;
         var adjustment = new RoomInventoryAdjustment
@@ -570,23 +725,36 @@ public sealed class ReceiptInventoryOverrideService(
             InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion,
             InventoryOperationKey = $"receipt-override:{operation.OperationKey}:{sequence.ToString(CultureInfo.InvariantCulture)}",
             ReceiptInventoryOverrideId = operation.Id,
-            ReceiptInventoryOverride = operation
+            ReceiptInventoryOverride = operation,
+            InventoryIdentityCorrectionId = correction?.Id,
+            InventoryIdentityCorrection = correction
         };
         operation.InventoryAdjustments.Add(adjustment);
+        correction?.InventoryAdjustments.Add(adjustment);
         dbContext.RoomInventoryAdjustments.Add(adjustment);
     }
 
-    private async Task<OperationalCounts> GetOperationalCountsAsync(long receiptId, CancellationToken cancellationToken)
+    private async Task<OperationalCounts> GetOperationalCountsAsync(Receipt receipt, CancellationToken cancellationToken)
     {
-        var binsRuns = await dbContext.BinsRunEntries.AsNoTracking().CountAsync(x => x.ReceiptId == receiptId, cancellationToken);
+        var binsRuns = await dbContext.BinsRunEntries.AsNoTracking().CountAsync(x =>
+            x.ReceiptId == receipt.Id
+            || (x.CropYear == receipt.CropYear
+                && x.GrowerLotId == receipt.GrowerLotId
+                && x.FruitProfileId == receipt.FruitProfileId), cancellationToken);
         var actualRuns = await dbContext.BinsRunEntries.AsNoTracking()
-            .Where(x => x.ReceiptId == receiptId && x.ActualRunId != null)
+            .Where(x => x.ActualRunId != null
+                && (x.ReceiptId == receipt.Id
+                    || (x.CropYear == receipt.CropYear
+                        && x.GrowerLotId == receipt.GrowerLotId
+                        && x.FruitProfileId == receipt.FruitProfileId)))
             .Select(x => x.ActualRunId)
             .Distinct()
             .CountAsync(cancellationToken);
-        var transfers = await dbContext.RoomInventoryAdjustments.AsNoTracking()
-            .Where(x => x.ReceiptId == receiptId && x.RoomTransferId != null)
-            .Select(x => x.RoomTransferId)
+        var transfers = await dbContext.RoomTransfers.AsNoTracking()
+            .Where(x => x.CropYear == receipt.CropYear
+                && x.GrowerLotId == receipt.GrowerLotId
+                && x.FruitProfileId == receipt.FruitProfileId)
+            .Select(x => x.Id)
             .Distinct()
             .CountAsync(cancellationToken);
         return new OperationalCounts(binsRuns, actualRuns, transfers);
@@ -696,6 +864,33 @@ public sealed class ReceiptInventoryOverrideService(
         receipt.GrowerNumber ?? receipt.LotCode, receipt.FruitProfile.VarietyCode,
         receipt.FruitProfile.ProductionType, current);
 
+    private static InventoryBalance ToBalance(RoomInventoryLedgerSnapshot snapshot) => new(
+        snapshot.WarehouseId, snapshot.Facility, snapshot.RoomId, snapshot.Room,
+        snapshot.CropYear, snapshot.GrowerLotId, snapshot.FruitProfileId, snapshot.Grower,
+        snapshot.Lot, snapshot.Variety, snapshot.InventoryStatus, snapshot.CurrentBins);
+
+    private static RoomInventoryLedgerSnapshot ToTargetSnapshot(
+        RoomInventoryLedgerSnapshot source,
+        AdminReceiptInventoryOverrideForm form,
+        GrowerLot growerLot,
+        FruitProfile fruit) => source with
+        {
+            CropYear = form.CropYear,
+            GrowerLotId = growerLot.Id,
+            FruitProfileId = fruit.Id,
+            Grower = growerLot.Grower,
+            GrowerNumber = growerLot.LotNumber,
+            Lot = growerLot.LotNumber,
+            PoolStart = growerLot.PoolStart,
+            StoredVarietyCode = fruit.VarietyCode,
+            Variety = fruit.VarietyCode,
+            VarietyName = fruit.Name,
+            FruitType = fruit.FruitType,
+            ProductionType = fruit.ProductionType,
+            IsOrganic = fruit.IsOrganic,
+            InventoryStatus = fruit.ProductionType
+        };
+
     private static ReceiptInventoryBalanceViewModel ToViewModel(InventoryBalance x) => new(
         x.WarehouseId, x.Warehouse, x.RoomId, x.Room, x.CropYear, x.GrowerLotId, x.FruitProfileId,
         x.Grower, x.Lot, x.Variety, x.InventoryStatus, x.CurrentBins);
@@ -761,7 +956,7 @@ public sealed class ReceiptInventoryOverrideService(
         int WarehouseId, string Warehouse, int RoomId, string Room, int? CropYear,
         int? GrowerLotId, int? FruitProfileId, string Grower, string Lot, string Variety,
         string InventoryStatus, int CurrentBins);
-    private sealed record InventoryState(IReadOnlyList<InventoryBalance> Balances)
+    private sealed record InventoryState(IReadOnlyList<InventoryBalance> Balances, bool HasExactReceiptProvenance)
     {
         public int Total => Balances.Sum(x => x.CurrentBins);
     }

@@ -317,6 +317,13 @@ public sealed class ProcessorShipmentService(
                 .SingleOrDefaultAsync(x => x.Id == form.ShipmentId, cancellationToken);
             if (shipment is null) return "Processor Shipment was not found.";
             if (shipment.ReversedAt is not null) return "Processor Shipment was already reversed.";
+            foreach (var line in shipment.Lines)
+            {
+                var identityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+                    dbContext, line.CropYear, line.GrowerLotId, line.FruitProfileId,
+                    $"Processor Shipment #{shipment.Id} reversal", cancellationToken);
+                if (identityError is not null) return identityError;
+            }
             var sealError = await RoomMovementSealGuard.ValidateAsync(
                 dbContext,
                 [],
