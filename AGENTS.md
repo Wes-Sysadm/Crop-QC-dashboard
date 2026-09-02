@@ -40,7 +40,8 @@ At completion, report:
 - whether the branch required updating from newer `main`
 - restore result
 - build result
-- test count and result
+- focused test count and result
+- any broader/full-suite test result only when it was justified and actually run
 - migration/model consistency result
 - formatting and `git diff --check` results
 - GitHub Actions checks and status
@@ -107,6 +108,24 @@ Audit create, edit, delete, send, import, export, device-capture, photo, and con
 - Preserve backward compatibility unless the user explicitly approves a breaking change.
 - Resolve merge conflicts only within the requested scope; do not use conflicts as an opportunity for unrelated cleanup.
 
+## Mandatory change-scoped testing and historical-data integrity
+
+All work must follow `docs/change-scoped-testing-standard.md`.
+
+The default rule is:
+
+> Test the blast radius of the change, prove the affected data is correct, and preserve the historical record. Do not recertify unrelated parts of Crop QC.
+
+Before selecting tests, identify the changed area, directly affected records/workflows, shared dependencies actually modified, and historical evidence that must remain unchanged.
+
+For operational-data changes, the primary gate is data correctness. Prove the before/after quantities, identities, relationships, current authoritative state, and absence of unintended writes. A successful request or HTTP 200 by itself is not sufficient.
+
+Corrections must preserve historical evidence through established revisions, reversals, compensating transactions, dedicated correction records, or audited supersession whenever practical. Do not overwrite or delete history merely to make current state appear correct.
+
+Do not widen validation into unrelated Photos, Field Samples, Receiving, Transfers, reports, email, Admin screens, memory benchmarks, browser route matrices, or other areas unless the implementation materially touches them or investigation proves a real dependency. If the blast radius expands, document the dependency that justified the additional tests.
+
+A complete application test suite is not the default requirement for every change. Use focused affected-area tests during development. Run a broader/full suite only when a shared foundational dependency creates a genuinely broad risk or the user explicitly requests it; normally run it once near final review/merge rather than repeatedly.
+
 ## Normal verification
 
 Run from the repository root:
@@ -114,12 +133,15 @@ Run from the repository root:
 ```powershell
 dotnet restore CropQc.sln
 dotnet build CropQc.sln --no-restore
-dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj --no-build
 dotnet ef migrations has-pending-model-changes --project src/CropQc.Data/CropQc.Data.csproj --startup-project src/CropQc.Data/CropQc.Data.csproj --no-build
 git diff --check
 ```
 
 Also run the repository’s existing formatting verification process.
+
+Run the focused tests identified by `docs/change-scoped-testing-standard.md` for the affected area. Do **not** automatically run the complete `CropQc.Api.Tests` suite unless the blast radius justifies it.
+
+If broader/full-suite testing is warranted, report the specific shared dependency or risk that required it.
 
 If a required tool or disposable dependency is missing, report the exact limitation. Do not substitute production services or production data for a disposable test environment.
 
@@ -179,12 +201,13 @@ For browser, API, QC Station, and device-capture work:
 - Do not add a migration when the existing schema already supports the requested behavior.
 - Do not run migrations against production unless explicitly authorized.
 - Do not use runtime schema repair as a substitute for a required reviewed migration unless that is already the established design and the user requested work within it.
+- Validate schema changes according to their actual blast radius; a migration does not automatically require unrelated feature certification.
 
 ## Pull request expectations
 
-Production releases must also follow the mandatory overnight release standard in `docs/overnight-release-standard.md`. A deploy authorization does not waive its fresh-backup, restored-rehearsal, exact-SHA, readiness, rollback, or post-deploy verification gates.
+Production releases must follow both `docs/change-scoped-testing-standard.md` and the mandatory release procedure in `docs/overnight-release-standard.md`.
 
-Availability is the primary release gate. Test the exact frozen main SHA against a fresh production restore before maintenance, exercise every materially changed authenticated route, and keep synthetic mutations off production. Maintenance is only the final bounded execution window: a critical operational HTTP 500 triggers rollback, and unresolved post-deploy troubleshooting stops after 15 minutes with rollback/feature disable and PR reopen. Prefer additive schema and application rollback; never overwrite newer legitimate production activity with an old backup merely to undo a software release. Major operational workflows should default off behind a kill switch when practical.
+Availability is the primary release gate. Test the exact frozen candidate against production-shaped data when the change requires it, but keep rehearsal and smoke testing scoped to the materially affected routes, records, invariants, and rollback risk. Synthetic mutations stay off production. Maintenance is only the final bounded execution window: a critical operational HTTP 500 in an affected workflow triggers rollback, and unresolved post-deploy troubleshooting stops after 15 minutes with rollback/feature disable and PR reopen. Prefer additive schema and application rollback; never overwrite newer legitimate production activity with an old backup merely to undo a software release.
 
 Every pull request should explain:
 
@@ -192,10 +215,13 @@ Every pull request should explain:
 - root cause
 - what changed
 - user-facing behavior before and after
+- directly affected data/workflows
+- historical evidence that must remain unchanged
+- data-integrity/reconciliation proof
 - safety or synchronization safeguards
 - major files or components changed
-- tests added or updated
-- full verification results
+- focused tests added or updated
+- any broader tests and the specific reason they were required
 - database or migration impact
 - installer impact
 - known limitations
@@ -208,8 +234,10 @@ Keep the PR limited to the requested work. Do not merge it unless the user expli
 When asked to review Codex work or a pull request:
 
 1. Read this file first.
-2. Check current GitHub and branch state rather than relying on stale prompt history.
-3. Compare the implementation against the user’s requested behavior and these repository constraints.
-4. Look specifically for production-data risk, unintended scope expansion, audit gaps, stale-write risk, partial-save regressions, unsupported fruit-count assumptions, installer omissions, and unverified claims.
-5. Distinguish application defects from environment-specific issues that require onsite testing.
-6. Do not approve or merge automatically.
+2. Read `docs/change-scoped-testing-standard.md` for the mandatory testing/data-integrity scope.
+3. Check current GitHub and branch state rather than relying on stale prompt history.
+4. Compare the implementation against the user’s requested behavior and these repository constraints.
+5. Look specifically for production-data risk, unintended scope expansion, historical-data loss, audit gaps, stale-write risk, partial-save regressions, unsupported fruit-count assumptions, installer omissions, and unverified claims.
+6. Confirm the tests match the actual blast radius; do not reject focused validation merely because unrelated suites were not run.
+7. Distinguish application defects from environment-specific issues that require onsite testing.
+8. Do not approve or merge automatically.
