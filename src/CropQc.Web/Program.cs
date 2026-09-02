@@ -660,7 +660,7 @@ if (args.Contains(ActualRun3ReportingIdentityCorrectionConstants.CommandName, St
 
 if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommandName, StringComparer.OrdinalIgnoreCase))
 {
-    const string releaseMigration = "20260830233943_NormalizeQcPhotoOrientation";
+    const string releaseMigration = "20260828033737_AddTransferCustodyWorkflow";
     var schemaReady = await DatabaseStartupDiagnostics.VerifyRequiredSchemaAsync(
         app.Services, app.Configuration, app.Environment, releaseMigration);
     await using var readinessScope = app.Services.CreateAsyncScope();
@@ -712,7 +712,7 @@ if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommand
     {
         success = releaseReady,
         expectedMigration = releaseMigration,
-        expectedSchemaObjects = 844,
+        expectedSchemaObjects = 836,
         schemaReady,
         inventory = new
         {

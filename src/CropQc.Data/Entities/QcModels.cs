@@ -566,14 +566,6 @@ public sealed class QcPhoto
     public User? CapturedByUser { get; set; }
     public DateTimeOffset CapturedAt { get; set; }
     public DateTimeOffset? UploadedAt { get; set; }
-    public int? OriginalExifOrientation { get; set; }
-    public int ManualRotationQuarterTurns { get; set; }
-    public int PresentationRevision { get; set; }
-    public string? PresentationStorageKey { get; set; }
-    public string? PresentationFileName { get; set; }
-    public string? PresentationContentType { get; set; }
-    public long? PresentationFileSizeBytes { get; set; }
-    public DateTimeOffset? PresentationUpdatedAt { get; set; }
     public bool IsDeleted { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
     public int? DeletedByUserId { get; set; }

@@ -1871,12 +1871,6 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 table.HasCheckConstraint("CK_QcPhotos_ReceiptOrSample", isPostgreSqlProvider
                     ? "(\"ReceiptId\" IS NOT NULL AND \"QcSampleId\" IS NULL) OR (\"ReceiptId\" IS NULL AND \"QcSampleId\" IS NOT NULL)"
                     : "([ReceiptId] IS NOT NULL AND [QcSampleId] IS NULL) OR ([ReceiptId] IS NULL AND [QcSampleId] IS NOT NULL)");
-                table.HasCheckConstraint("CK_QcPhotos_OrientationState", isPostgreSqlProvider
-                    ? "\"ManualRotationQuarterTurns\" BETWEEN 0 AND 3 AND \"PresentationRevision\" >= 0 AND (\"OriginalExifOrientation\" IS NULL OR \"OriginalExifOrientation\" BETWEEN 1 AND 8)"
-                    : "[ManualRotationQuarterTurns] BETWEEN 0 AND 3 AND [PresentationRevision] >= 0 AND ([OriginalExifOrientation] IS NULL OR [OriginalExifOrientation] BETWEEN 1 AND 8)");
-                table.HasCheckConstraint("CK_QcPhotos_PresentationMetadata", isPostgreSqlProvider
-                    ? "(\"PresentationStorageKey\" IS NULL AND \"PresentationFileName\" IS NULL AND \"PresentationContentType\" IS NULL AND \"PresentationFileSizeBytes\" IS NULL AND \"PresentationUpdatedAt\" IS NULL) OR (\"PresentationStorageKey\" IS NOT NULL AND \"PresentationFileName\" IS NOT NULL AND \"PresentationContentType\" IS NOT NULL AND \"PresentationFileSizeBytes\" >= 0 AND \"PresentationUpdatedAt\" IS NOT NULL AND \"PresentationRevision\" > 0)"
-                    : "([PresentationStorageKey] IS NULL AND [PresentationFileName] IS NULL AND [PresentationContentType] IS NULL AND [PresentationFileSizeBytes] IS NULL AND [PresentationUpdatedAt] IS NULL) OR ([PresentationStorageKey] IS NOT NULL AND [PresentationFileName] IS NOT NULL AND [PresentationContentType] IS NOT NULL AND [PresentationFileSizeBytes] >= 0 AND [PresentationUpdatedAt] IS NOT NULL AND [PresentationRevision] > 0)");
             });
             entity.Property(x => x.PhotoType).HasMaxLength(50).IsRequired();
             entity.Property(x => x.PhotoSource).HasMaxLength(50).IsRequired();
@@ -1889,9 +1883,6 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.SharePointDriveId).HasMaxLength(200).IsRequired();
             entity.Property(x => x.SharePointItemId).HasMaxLength(200).IsRequired();
             entity.Property(x => x.WebUrl).HasMaxLength(1000);
-            entity.Property(x => x.PresentationStorageKey).HasMaxLength(1000);
-            entity.Property(x => x.PresentationFileName).HasMaxLength(260);
-            entity.Property(x => x.PresentationContentType).HasMaxLength(100);
             entity.Property(x => x.DeleteReason).HasMaxLength(1000);
             entity.HasIndex(x => new { x.SharePointDriveId, x.SharePointItemId }).IsUnique();
             entity.HasIndex(x => new { x.StorageProvider, x.FileId });

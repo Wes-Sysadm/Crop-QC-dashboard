@@ -4898,12 +4898,6 @@ namespace CropQc.Data.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<int>("ManualRotationQuarterTurns")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("OriginalExifOrientation")
-                        .HasColumnType("int");
-
                     b.Property<string>("PhotoSource")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -4913,27 +4907,6 @@ namespace CropQc.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("PresentationContentType")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("PresentationFileName")
-                        .HasMaxLength(260)
-                        .HasColumnType("nvarchar(260)");
-
-                    b.Property<long?>("PresentationFileSizeBytes")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("PresentationRevision")
-                        .HasColumnType("int");
-
-                    b.Property<string>("PresentationStorageKey")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<DateTimeOffset?>("PresentationUpdatedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<long?>("QcSampleId")
                         .HasColumnType("bigint");
@@ -4982,10 +4955,6 @@ namespace CropQc.Data.Migrations
 
                     b.ToTable("QcPhotos", t =>
                         {
-                            t.HasCheckConstraint("CK_QcPhotos_OrientationState", "[ManualRotationQuarterTurns] BETWEEN 0 AND 3 AND [PresentationRevision] >= 0 AND ([OriginalExifOrientation] IS NULL OR [OriginalExifOrientation] BETWEEN 1 AND 8)");
-
-                            t.HasCheckConstraint("CK_QcPhotos_PresentationMetadata", "([PresentationStorageKey] IS NULL AND [PresentationFileName] IS NULL AND [PresentationContentType] IS NULL AND [PresentationFileSizeBytes] IS NULL AND [PresentationUpdatedAt] IS NULL) OR ([PresentationStorageKey] IS NOT NULL AND [PresentationFileName] IS NOT NULL AND [PresentationContentType] IS NOT NULL AND [PresentationFileSizeBytes] >= 0 AND [PresentationUpdatedAt] IS NOT NULL AND [PresentationRevision] > 0)");
-
                             t.HasCheckConstraint("CK_QcPhotos_ReceiptOrSample", "([ReceiptId] IS NOT NULL AND [QcSampleId] IS NULL) OR ([ReceiptId] IS NULL AND [QcSampleId] IS NOT NULL)");
                         });
                 });
