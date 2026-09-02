@@ -175,6 +175,59 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
     }
 
     [Fact]
+    public async Task ProductionRestore_Tr508901Repair_EnforcesExactStatesA_B_and_C_WhenConfigured()
+    {
+        var databaseUrl = Environment.GetEnvironmentVariable("CROPQC_INVENTORY_IDENTITY_REPAIR_POSTGRES");
+        if (string.IsNullOrWhiteSpace(databaseUrl)) return;
+
+        ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(databaseUrl);
+        await using var factory = new ProductionRestoreWebApplicationFactory(databaseUrl);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+        var repair = scope.ServiceProvider.GetRequiredService<ITr508901InventoryRepairService>();
+
+        var stateA = await repair.RunAsync(false, ApplicationAreas.OwnerEmail, CancellationToken.None);
+        Assert.True(stateA.Success, stateA.Message);
+        Assert.Equal("State A", stateA.State);
+
+        await using (var tamper = await db.Database.BeginTransactionAsync())
+        {
+            var reviewed = await db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 2130);
+            reviewed.Notes += " tampered";
+            await db.SaveChangesAsync();
+            db.ChangeTracker.Clear();
+            var stateC = await repair.RunAsync(false, ApplicationAreas.OwnerEmail, CancellationToken.None);
+            Assert.False(stateC.Success);
+            Assert.Equal("State C", stateC.State);
+            await tamper.RollbackAsync();
+        }
+        db.ChangeTracker.Clear();
+
+        var applied = await repair.RunAsync(true, ApplicationAreas.OwnerEmail, CancellationToken.None);
+        Assert.True(applied.Success, applied.Message);
+        Assert.True(applied.Applied);
+        var stateB = await repair.RunAsync(false, ApplicationAreas.OwnerEmail, CancellationToken.None);
+        Assert.True(stateB.Success, stateB.Message);
+        Assert.True(stateB.AlreadyApplied);
+        Assert.Equal("State B", stateB.State);
+
+        db.AuditLogs.Add(new AuditLog
+        {
+            UserId = await db.Users.Where(x => x.Email == ApplicationAreas.OwnerEmail).Select(x => (int?)x.Id).SingleAsync(),
+            Action = "TR508901InventoryIdentityRepair",
+            EntityName = nameof(InventoryIdentityCorrection),
+            EntityKey = stateB.CorrectionId!.Value.ToString("D"),
+            SourceApplication = "duplicate audit tamper fixture",
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var duplicateAuditStateC = await repair.RunAsync(false, ApplicationAreas.OwnerEmail, CancellationToken.None);
+        Assert.False(duplicateAuditStateC.Success);
+        Assert.Equal("State C", duplicateAuditStateC.State);
+    }
+
+    [Fact]
     public async Task ProductionRestore_Tr508901CanonicalIdentity_SurvivesTransferAndReversal_WhenConfigured()
     {
         var databaseUrl = Environment.GetEnvironmentVariable("CROPQC_INVENTORY_IDENTITY_TRANSFER_POSTGRES");

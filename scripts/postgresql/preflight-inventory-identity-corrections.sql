@@ -20,10 +20,20 @@ BEGIN
             'IX_InventoryIdentityCorrections_OperationKey',
             'IX_InventoryIdentityCorrections_ReceiptInventoryOverrideId',
             'IX_InventoryIdentityCorrections_SourceCropYear_SourceGrowerLotId_SourceFruitProfileId',
+            'IX_InventoryIdentityCorrections_SourceFruitProfileId',
+            'IX_InventoryIdentityCorrections_SourceGrowerLotId',
             'IX_InventoryIdentityCorrections_TargetCropYear_TargetGrowerLotId_TargetFruitProfileId',
+            'IX_InventoryIdentityCorrections_TargetFruitProfileId',
+            'IX_InventoryIdentityCorrections_TargetGrowerLotId',
             'IX_RoomInventoryAdjustments_InventoryIdentityCorrectionId',
             'IX_TreatmentLineageMovements_InventoryIdentityCorrectionId'))
       + (SELECT count(*) FROM pg_constraint WHERE conname IN (
+            'CK_InventoryIdentityCorrections_NonSelf',
+            'CK_InventoryIdentityCorrections_PositiveCropYears',
+            'FK_InventoryIdentityCorrections_FruitProfiles_SourceFruitProfileId',
+            'FK_InventoryIdentityCorrections_FruitProfiles_TargetFruitProfileId',
+            'FK_InventoryIdentityCorrections_GrowerLots_SourceGrowerLotId',
+            'FK_InventoryIdentityCorrections_GrowerLots_TargetGrowerLotId',
             'FK_InventoryIdentityCorrections_ReceiptInventoryOverrides_ReceiptInventoryOverrideId',
             'FK_InventoryIdentityCorrections_Receipts_CorrectedReceiptId',
             'FK_InventoryIdentityCorrections_Users_CreatedByUserId',
@@ -35,8 +45,8 @@ BEGIN
         RAISE NOTICE 'State A: inventory identity correction schema is absent and safe to apply.';
         RETURN;
     END IF;
-    IF target_count <> 37 THEN
-        RAISE EXCEPTION 'State C: partial inventory identity correction schema detected (% of 37 target objects).', target_count;
+    IF target_count <> 47 THEN
+        RAISE EXCEPTION 'State C: partial inventory identity correction schema detected (% of 47 target objects).', target_count;
     END IF;
 
     SELECT count(*) INTO exact_columns

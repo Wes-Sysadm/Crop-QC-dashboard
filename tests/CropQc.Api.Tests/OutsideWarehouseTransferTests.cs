@@ -250,7 +250,7 @@ public sealed class OutsideWarehouseTransferTests
     }
 
     [Fact]
-    public void Combined_migration_compatibility_and_858_object_gate_are_exact_and_bounded()
+    public void Combined_migration_compatibility_and_883_object_gate_are_exact_and_bounded()
     {
         var migration = Source("src", "CropQc.Data", "Migrations", "20260828033737_AddTransferCustodyWorkflow.cs");
         var preflight = Source("scripts", "postgresql", "preflight-transfer-custody-workflow.sql");
@@ -270,7 +270,7 @@ public sealed class OutsideWarehouseTransferTests
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
         Assert.Contains("162 AS checked_target_objects", verify);
         Assert.Equal("20260902011217_AddInventoryIdentityCorrections", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
-        Assert.Equal(858, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
+        Assert.Equal(883, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -380,7 +380,15 @@ public sealed class OutsideWarehouseTransferTests
             ProductionType = "Organic",
             IsOrganic = true
         };
-        fixture.Db.AddRange(growerLot, targetFruit);
+        var intermediateFruit = new FruitProfile
+        {
+            Id = 98903,
+            Name = "Intermediate identity",
+            VarietyCode = "TEST-MID",
+            FruitType = "Apple",
+            ProductionType = "Conventional"
+        };
+        fixture.Db.AddRange(growerLot, intermediateFruit, targetFruit);
         var receipt = await fixture.Db.Receipts.SingleAsync(x => x.Id == 8844);
         receipt.GrowerLot = growerLot;
         receipt.GrowerLotId = growerLot.Id;
@@ -407,27 +415,53 @@ public sealed class OutsideWarehouseTransferTests
         Assert.True(dispatched.Success, dispatched.Error);
         var transfer = await fixture.Db.InterCrewTransfers.SingleAsync(x => x.Id == dispatched.TransferId);
         var actor = await fixture.Db.Users.SingleAsync(x => x.Id == 8843);
-        fixture.Db.InventoryIdentityCorrections.Add(new InventoryIdentityCorrection
-        {
-            Id = Guid.NewGuid(),
-            OperationKey = "corrected-in-transit-identity",
-            SourceCropYear = 2026,
-            SourceGrowerLotId = growerLot.Id,
-            SourceFruitProfileId = 8842,
-            TargetCropYear = 2026,
-            TargetGrowerLotId = growerLot.Id,
-            TargetFruitProfileId = targetFruit.Id,
-            Reason = "Reviewed correction while in transit",
-            CreatedByUser = actor,
-            CreatedByUserId = actor.Id,
-            CreatedAt = Now,
-            SourceIdentitySnapshotJson = "{}",
-            TargetIdentitySnapshotJson = "{}",
-            IsComplete = true,
-            IsActive = true
-        });
+        fixture.Db.InventoryIdentityCorrections.AddRange(
+            new InventoryIdentityCorrection
+            {
+                Id = Guid.NewGuid(),
+                OperationKey = "corrected-in-transit-a-to-b",
+                SourceCropYear = 2026,
+                SourceGrowerLotId = growerLot.Id,
+                SourceFruitProfileId = 8842,
+                TargetCropYear = 2026,
+                TargetGrowerLotId = growerLot.Id,
+                TargetFruitProfileId = intermediateFruit.Id,
+                Reason = "Reviewed first correction while in transit",
+                CreatedByUser = actor,
+                CreatedByUserId = actor.Id,
+                CreatedAt = Now,
+                SourceIdentitySnapshotJson = "{}",
+                TargetIdentitySnapshotJson = "{}",
+                IsComplete = true,
+                IsActive = true
+            },
+            new InventoryIdentityCorrection
+            {
+                Id = Guid.NewGuid(),
+                OperationKey = "corrected-in-transit-b-to-c",
+                SourceCropYear = 2026,
+                SourceGrowerLotId = growerLot.Id,
+                SourceFruitProfileId = intermediateFruit.Id,
+                TargetCropYear = 2026,
+                TargetGrowerLotId = growerLot.Id,
+                TargetFruitProfileId = targetFruit.Id,
+                Reason = "Reviewed final correction while in transit",
+                CreatedByUser = actor,
+                CreatedByUserId = actor.Id,
+                CreatedAt = Now.AddSeconds(1),
+                SourceIdentitySnapshotJson = "{}",
+                TargetIdentitySnapshotJson = "{}",
+                IsComplete = true,
+                IsActive = true
+            });
         await fixture.Db.SaveChangesAsync();
         fixture.Db.ChangeTracker.Clear();
+
+        var custody = await service.GetPageAsync(SourceFilter(), default);
+        var queueItem = Assert.Single(custody.Queue);
+        Assert.Equal("TEST-ORGA", queueItem.Variety);
+        var historicalItem = Assert.Single(custody.History, x => x.Id == transfer.Id);
+        Assert.Equal(transfer.VarietyCodeSnapshot, historicalItem.Variety);
 
         var received = await service.ReceiveAsync(new()
         {

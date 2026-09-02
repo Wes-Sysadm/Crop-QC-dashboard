@@ -48,6 +48,15 @@ public interface IRoomTreatmentService
         int actorUserId,
         CancellationToken cancellationToken) =>
         Task.FromResult(new TreatmentLineageWriteResult(false, "Treatment identity reclassification is not supported by this implementation."));
+    Task<TreatmentLineageWriteResult> CorrectReceiptLocationAsync(
+        RoomInventoryLedgerSnapshot source,
+        RoomInventoryLedgerSnapshot target,
+        long receiptId,
+        string operationKey,
+        DateTimeOffset occurredAt,
+        int actorUserId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new TreatmentLineageWriteResult(false, "Receipt location correction is not supported by this implementation."));
     Task<TreatmentLineageWriteResult> AddUnknownAsync(RoomInventoryLedgerSnapshot snapshot, int bins, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken);
 }
 
@@ -277,6 +286,13 @@ public sealed class RoomTreatmentService(
             {
                 return ("An empty room cannot receive a treatment application.", null);
             }
+            foreach (var inventory in snapshotResult.Snapshots)
+            {
+                var identityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+                    dbContext, inventory.CropYear, inventory.GrowerLotId, inventory.FruitProfileId,
+                    "Room treatment application", cancellationToken);
+                if (identityError is not null) return (identityError, null);
+            }
             var crop = ResolveWholeRoomCrop(snapshotResult.Snapshots);
             if (crop is null || !string.Equals(crop, chemical.Crop, StringComparison.OrdinalIgnoreCase))
             {
@@ -420,6 +436,10 @@ public sealed class RoomTreatmentService(
                 return (resolved.Error ?? "The exact Receipt inventory could not be resolved.", null);
             var receipt = resolved.Receipt;
             var snapshot = resolved.Inventory;
+            var identityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+                dbContext, snapshot.CropYear, snapshot.GrowerLotId, snapshot.FruitProfileId,
+                "Receipt treatment application", cancellationToken);
+            if (identityError is not null) return (identityError, null);
             var crop = NormalizeCrop(receipt.FruitProfile.FruitType);
             var chemical = await dbContext.TreatmentChemicals.SingleOrDefaultAsync(x => x.Id == form.TreatmentChemicalId
                 && x.IsActive && x.ApplicationLevel == TreatmentApplicationLevels.Receiving, cancellationToken);
@@ -720,7 +740,10 @@ public sealed class RoomTreatmentService(
         if (segments.Sum(x => x.CurrentBins) != source.CurrentBins)
             return new(false, "Treatment provenance does not exactly reconcile with the authoritative source identity.");
 
-        var now = businessTime.UtcNow;
+        // A correction is one durable operation. Keep its treatment rows and
+        // segment updates on the correction's authoritative operation time so
+        // exact State B verification is deterministic.
+        var now = occurredAt;
         foreach (var segment in segments)
         {
             var bins = segment.CurrentBins;
@@ -762,6 +785,87 @@ public sealed class RoomTreatmentService(
         }
         await dbContext.SaveChangesAsync(cancellationToken);
         return new(true, null, correction.TreatmentLineageMovements.LastOrDefault()?.Id);
+    }
+
+    public async Task<TreatmentLineageWriteResult> CorrectReceiptLocationAsync(
+        RoomInventoryLedgerSnapshot source,
+        RoomInventoryLedgerSnapshot target,
+        long receiptId,
+        string operationKey,
+        DateTimeOffset occurredAt,
+        int actorUserId,
+        CancellationToken cancellationToken)
+    {
+        if (source.WarehouseId == target.WarehouseId && source.RoomId == target.RoomId)
+            return new(false, "Receipt location correction requires a different destination room.");
+        if (IdentityKey(source) != IdentityKey(target) || source.CurrentBins <= 0 || target.CurrentBins != source.CurrentBins)
+            return new(false, "Receipt location correction requires an exact conserved inventory identity and quantity.");
+        var prefix = $"receipt-location-correction:{operationKey}:";
+        var existing = await dbContext.TreatmentLineageMovements.AsNoTracking()
+            .Where(x => x.ReceiptId == receiptId && x.MovementType == TreatmentLineageMovementTypes.ReceiptLocationCorrection
+                && x.OperationKey.StartsWith(prefix))
+            .SumAsync(x => (int?)x.BinCount, cancellationToken) ?? 0;
+        if (existing == source.CurrentBins) return new(true, null);
+        if (existing != 0) return new(false, "The Receipt location treatment movement is partially applied and requires review.");
+
+        var materialized = await MaterializeAsync(source, cancellationToken);
+        var segments = materialized
+            .Where(x => x.ReceiptId == receiptId && x.CurrentBins > 0)
+            .OrderBy(x => x.Id).ToList();
+        var allocations = segments.Select(x => (Segment: x, Bins: x.CurrentBins)).ToList();
+        if (allocations.Sum(x => x.Bins) == 0)
+        {
+            var unassigned = materialized.Where(x => x.ReceiptId is null && x.CurrentBins > 0).OrderBy(x => x.Id).ToList();
+            if (unassigned.Select(x => x.TreatmentSignature).Distinct(StringComparer.Ordinal).Count() != 1
+                || unassigned.Sum(x => x.CurrentBins) < source.CurrentBins)
+                return new(false, "Treatment provenance cannot allocate the exact Receipt bins at the original room. No location correction was made.");
+            var remaining = source.CurrentBins;
+            allocations = [];
+            foreach (var segment in unassigned)
+            {
+                var bins = Math.Min(remaining, segment.CurrentBins);
+                if (bins > 0) allocations.Add((segment, bins));
+                remaining -= bins;
+                if (remaining == 0) break;
+            }
+        }
+        if (allocations.Sum(x => x.Bins) != source.CurrentBins)
+            return new(false, "Treatment provenance cannot allocate the exact Receipt bins at the original room. No location correction was made.");
+
+        var now = businessTime.UtcNow;
+        foreach (var allocation in allocations)
+        {
+            var segment = allocation.Segment;
+            var bins = allocation.Bins;
+            var destination = await GetOrCreateSegmentAsync(target, segment.TreatmentState, segment.TreatmentSignature,
+                now, cancellationToken, receiptId);
+            await CopyApplicationLinksAsync(segment, destination, cancellationToken);
+            segment.CurrentBins -= bins;
+            segment.UpdatedAt = now;
+            segment.ConcurrencyVersion++;
+            destination.CurrentBins += bins;
+            destination.UpdatedAt = now;
+            destination.ConcurrencyVersion++;
+            dbContext.TreatmentLineageMovements.Add(new TreatmentLineageMovement
+            {
+                OperationKey = $"{prefix}{segment.Id}",
+                MovementType = TreatmentLineageMovementTypes.ReceiptLocationCorrection,
+                SourceSegment = segment,
+                DestinationSegment = destination,
+                SourceRoomId = source.RoomId,
+                DestinationRoomId = target.RoomId,
+                IdentityKey = IdentityKey(source),
+                TreatmentStateSnapshot = segment.TreatmentState,
+                TreatmentSignatureSnapshot = segment.TreatmentSignature,
+                ReceiptId = receiptId,
+                BinCount = bins,
+                OccurredAt = occurredAt,
+                CreatedByUserId = actorUserId,
+                CreatedAt = now
+            });
+        }
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new(true, null);
     }
 
     public Task<TreatmentLineageWriteResult> MoveToProcessorAsync(
@@ -1434,6 +1538,10 @@ public sealed class RoomTreatmentService(
     {
         if (bins <= 0) return new(true, null);
         if (await dbContext.TreatmentLineageMovements.AsNoTracking().AnyAsync(x => x.OperationKey == operationKey, cancellationToken)) return new(true, null);
+        var identityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+            dbContext, snapshot.CropYear, snapshot.GrowerLotId, snapshot.FruitProfileId,
+            "Treatment lineage true-up", cancellationToken);
+        if (identityError is not null) return new(false, identityError);
         var segment = await GetOrCreateSegmentAsync(snapshot, TreatmentLineageStates.Unknown, "x", businessTime.UtcNow, cancellationToken);
         segment.CurrentBins += bins;
         segment.UpdatedAt = businessTime.UtcNow;
@@ -1489,6 +1597,30 @@ public sealed class RoomTreatmentService(
         var appliedAtUtc = appliedAt.ToUniversalTime();
         if (appliedAtUtc > businessTime.UtcNow.AddMinutes(5))
             return new(receipt, null, 0, "Application date/time cannot be in the future.");
+
+        var exactSegments = await dbContext.TreatmentLineageSegments.AsNoTracking()
+            .Where(x => x.ReceiptId == receipt.Id && x.CurrentBins > 0)
+            .Select(x => new { x.WarehouseId, x.RoomId, x.IdentityKey, x.CurrentBins, x.UpdatedAt })
+            .ToListAsync(cancellationToken);
+        if (exactSegments.Count > 0)
+        {
+            if (exactSegments.Count != 1 || exactSegments[0].UpdatedAt > appliedAtUtc)
+                return new(receipt, null, exactSegments.Sum(x => x.CurrentBins), "The Receipt is split, moved, or changed after this application time. Crop QC cannot safely identify the exact treated bins.");
+            var exact = exactSegments[0];
+            var exactSnapshots = await ledger.GetSnapshotsAsOfAsync(exact.WarehouseId, [exact.RoomId], appliedAtUtc, cancellationToken);
+            var match = exactSnapshots.SingleOrDefault(x => x.CurrentBins >= exact.CurrentBins && IdentityKey(x) == exact.IdentityKey);
+            return match is null
+                ? new(receipt, null, exact.CurrentBins, "The exact Receipt treatment lineage does not reconcile with authoritative room inventory.")
+                : new(receipt, match, exact.CurrentBins, null);
+        }
+
+        var hasIdentityMovement = await dbContext.TreatmentLineageMovements.AsNoTracking()
+            .AnyAsync(x => x.OccurredAt <= businessTime.UtcNow
+                && x.SourceSegment.CropYear == receipt.CropYear
+                && x.SourceSegment.GrowerLotId == receipt.GrowerLotId
+                && x.SourceSegment.FruitProfileId == receipt.FruitProfileId, cancellationToken);
+        if (hasIdentityMovement)
+            return new(receipt, null, 0, "Current inventory can no longer be allocated to this Receipt exactly after movement. Reconcile Receipt provenance before applying a Receipt-level treatment.");
 
         var rows = await dbContext.RoomInventoryAdjustments.AsNoTracking()
             .Where(x => x.ReceiptId == receipt.Id && x.AdjustmentAt <= appliedAtUtc)

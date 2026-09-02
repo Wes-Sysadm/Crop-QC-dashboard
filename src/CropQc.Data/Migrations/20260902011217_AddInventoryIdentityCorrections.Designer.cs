@@ -3043,6 +3043,14 @@ namespace CropQc.Data.Migrations
                         .IsUnique()
                         .HasFilter("[ReceiptInventoryOverrideId] IS NOT NULL");
 
+                    b.HasIndex("SourceFruitProfileId");
+
+                    b.HasIndex("SourceGrowerLotId");
+
+                    b.HasIndex("TargetFruitProfileId");
+
+                    b.HasIndex("TargetGrowerLotId");
+
                     b.HasIndex("IsActive", "CreatedAt");
 
                     b.HasIndex("SourceCropYear", "SourceGrowerLotId", "SourceFruitProfileId")
@@ -3050,7 +3058,12 @@ namespace CropQc.Data.Migrations
 
                     b.HasIndex("TargetCropYear", "TargetGrowerLotId", "TargetFruitProfileId");
 
-                    b.ToTable("InventoryIdentityCorrections");
+                    b.ToTable("InventoryIdentityCorrections", t =>
+                        {
+                            t.HasCheckConstraint("CK_InventoryIdentityCorrections_NonSelf", "\"SourceCropYear\" <> \"TargetCropYear\" OR \"SourceGrowerLotId\" <> \"TargetGrowerLotId\" OR \"SourceFruitProfileId\" <> \"TargetFruitProfileId\"");
+
+                            t.HasCheckConstraint("CK_InventoryIdentityCorrections_PositiveCropYears", "\"SourceCropYear\" > 0 AND \"TargetCropYear\" > 0");
+                        });
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.OfflineSyncItem", b =>
@@ -11075,11 +11088,43 @@ namespace CropQc.Data.Migrations
                         .HasForeignKey("CropQc.Data.Entities.InventoryIdentityCorrection", "ReceiptInventoryOverrideId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("CropQc.Data.Entities.FruitProfile", "SourceFruitProfile")
+                        .WithMany()
+                        .HasForeignKey("SourceFruitProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CropQc.Data.Entities.GrowerLot", "SourceGrowerLot")
+                        .WithMany()
+                        .HasForeignKey("SourceGrowerLotId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CropQc.Data.Entities.FruitProfile", "TargetFruitProfile")
+                        .WithMany()
+                        .HasForeignKey("TargetFruitProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CropQc.Data.Entities.GrowerLot", "TargetGrowerLot")
+                        .WithMany()
+                        .HasForeignKey("TargetGrowerLotId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("CorrectedReceipt");
 
                     b.Navigation("CreatedByUser");
 
                     b.Navigation("ReceiptInventoryOverride");
+
+                    b.Navigation("SourceFruitProfile");
+
+                    b.Navigation("SourceGrowerLot");
+
+                    b.Navigation("TargetFruitProfile");
+
+                    b.Navigation("TargetGrowerLot");
                 });
 
             modelBuilder.Entity("CropQc.Data.Entities.OfflineSyncItem", b =>

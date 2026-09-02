@@ -30,6 +30,12 @@ BEGIN
             "IsComplete" boolean NOT NULL,
             "IsActive" boolean NOT NULL,
             CONSTRAINT "PK_InventoryIdentityCorrections" PRIMARY KEY ("Id"),
+            CONSTRAINT "CK_InventoryIdentityCorrections_PositiveCropYears" CHECK ("SourceCropYear" > 0 AND "TargetCropYear" > 0),
+            CONSTRAINT "CK_InventoryIdentityCorrections_NonSelf" CHECK ("SourceCropYear" <> "TargetCropYear" OR "SourceGrowerLotId" <> "TargetGrowerLotId" OR "SourceFruitProfileId" <> "TargetFruitProfileId"),
+            CONSTRAINT "FK_InventoryIdentityCorrections_FruitProfiles_SourceFruitProfileId" FOREIGN KEY ("SourceFruitProfileId") REFERENCES "FruitProfiles" ("Id") ON DELETE RESTRICT,
+            CONSTRAINT "FK_InventoryIdentityCorrections_FruitProfiles_TargetFruitProfileId" FOREIGN KEY ("TargetFruitProfileId") REFERENCES "FruitProfiles" ("Id") ON DELETE RESTRICT,
+            CONSTRAINT "FK_InventoryIdentityCorrections_GrowerLots_SourceGrowerLotId" FOREIGN KEY ("SourceGrowerLotId") REFERENCES "GrowerLots" ("Id") ON DELETE RESTRICT,
+            CONSTRAINT "FK_InventoryIdentityCorrections_GrowerLots_TargetGrowerLotId" FOREIGN KEY ("TargetGrowerLotId") REFERENCES "GrowerLots" ("Id") ON DELETE RESTRICT,
             CONSTRAINT "FK_InventoryIdentityCorrections_ReceiptInventoryOverrides_ReceiptInventoryOverrideId" FOREIGN KEY ("ReceiptInventoryOverrideId") REFERENCES "ReceiptInventoryOverrides" ("Id") ON DELETE RESTRICT,
             CONSTRAINT "FK_InventoryIdentityCorrections_Receipts_CorrectedReceiptId" FOREIGN KEY ("CorrectedReceiptId") REFERENCES "Receipts" ("Id") ON DELETE RESTRICT,
             CONSTRAINT "FK_InventoryIdentityCorrections_Users_CreatedByUserId" FOREIGN KEY ("CreatedByUserId") REFERENCES "Users" ("Id") ON DELETE RESTRICT);
@@ -43,7 +49,11 @@ BEGIN
         CREATE UNIQUE INDEX "IX_InventoryIdentityCorrections_OperationKey" ON "InventoryIdentityCorrections" ("OperationKey");
         CREATE UNIQUE INDEX "IX_InventoryIdentityCorrections_ReceiptInventoryOverrideId" ON "InventoryIdentityCorrections" ("ReceiptInventoryOverrideId") WHERE "ReceiptInventoryOverrideId" IS NOT NULL;
         CREATE UNIQUE INDEX "IX_InventoryIdentityCorrections_SourceCropYear_SourceGrowerLotId_SourceFruitProfileId" ON "InventoryIdentityCorrections" ("SourceCropYear", "SourceGrowerLotId", "SourceFruitProfileId");
+        CREATE INDEX "IX_InventoryIdentityCorrections_SourceFruitProfileId" ON "InventoryIdentityCorrections" ("SourceFruitProfileId");
+        CREATE INDEX "IX_InventoryIdentityCorrections_SourceGrowerLotId" ON "InventoryIdentityCorrections" ("SourceGrowerLotId");
         CREATE INDEX "IX_InventoryIdentityCorrections_TargetCropYear_TargetGrowerLotId_TargetFruitProfileId" ON "InventoryIdentityCorrections" ("TargetCropYear", "TargetGrowerLotId", "TargetFruitProfileId");
+        CREATE INDEX "IX_InventoryIdentityCorrections_TargetFruitProfileId" ON "InventoryIdentityCorrections" ("TargetFruitProfileId");
+        CREATE INDEX "IX_InventoryIdentityCorrections_TargetGrowerLotId" ON "InventoryIdentityCorrections" ("TargetGrowerLotId");
         CREATE INDEX "IX_RoomInventoryAdjustments_InventoryIdentityCorrectionId" ON "RoomInventoryAdjustments" ("InventoryIdentityCorrectionId");
         CREATE INDEX "IX_TreatmentLineageMovements_InventoryIdentityCorrectionId" ON "TreatmentLineageMovements" ("InventoryIdentityCorrectionId");
         ALTER TABLE "RoomInventoryAdjustments" ADD CONSTRAINT "FK_RoomInventoryAdjustments_InventoryIdentityCorrections_InventoryIdentityCorrectionId" FOREIGN KEY ("InventoryIdentityCorrectionId") REFERENCES "InventoryIdentityCorrections" ("Id") ON DELETE RESTRICT;

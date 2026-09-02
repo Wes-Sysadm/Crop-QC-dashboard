@@ -449,22 +449,18 @@ public sealed class ReceiptInventoryOverrideTests
 
         var result = await fixture.Service.VoidAsync(form, fixture.AdminPrincipal, CancellationToken.None);
 
-        Assert.True(result.Succeeded, $"{result.Error} {fixture.OverrideLogger.LastException}");
+        Assert.False(result.Succeeded);
+        Assert.Contains("allocated", result.Error, StringComparison.OrdinalIgnoreCase);
         var receipt = await fixture.Db.Receipts.IgnoreQueryFilters().SingleAsync(x => x.Id == OverrideFixture.ReceiptId);
-        Assert.True(receipt.IsDeleted);
+        Assert.False(receipt.IsDeleted);
         Assert.Equal(100, receipt.BinCount);
         Assert.Single(await fixture.Db.BinsRunEntries.ToListAsync());
         Assert.Single(await fixture.Db.ActualRuns.ToListAsync());
         Assert.Single(await fixture.Db.QcSamples.ToListAsync());
         Assert.Single(await fixture.Db.QcPhotos.ToListAsync());
         Assert.Single(await fixture.Db.QcSummaryEmailLogs.ToListAsync());
-        var receiptOverride = await fixture.Db.ReceiptInventoryOverrides.Include(x => x.InventoryAdjustments).SingleAsync();
-        Assert.Equal(ReceiptInventoryOverrideActionTypes.VoidReceipt, receiptOverride.ActionType);
-        Assert.Equal(-75, receiptOverride.InventoryDelta);
-        Assert.Equal(0, receiptOverride.CurrentInventoryAfter);
-        Assert.Equal(-75, Assert.Single(receiptOverride.InventoryAdjustments).ChangeAmount);
-        Assert.Single(await fixture.Db.ReceiptDeletionAudits.ToListAsync());
-        Assert.Single(await fixture.Service.GetVoidedReceiptsAsync(CancellationToken.None));
+        Assert.Empty(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
+        Assert.Empty(await fixture.Db.ReceiptDeletionAudits.ToListAsync());
     }
 
     [Fact]
@@ -506,11 +502,9 @@ public sealed class ReceiptInventoryOverrideTests
             ExpectedConcurrencyVersion = 0
         }, fixture.AdminPrincipal, CancellationToken.None);
 
-        Assert.True(result.Succeeded);
-        var rows = await fixture.Db.RoomInventoryAdjustments.Where(x => x.ReceiptInventoryOverrideId == result.OverrideId).OrderBy(x => x.RoomId).ToListAsync();
-        Assert.Equal(2, rows.Count);
-        Assert.Equal(-60, rows[0].ChangeAmount);
-        Assert.Equal(-40, rows[1].ChangeAmount);
+        Assert.False(result.Succeeded);
+        Assert.Contains("allocated", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await fixture.Db.RoomInventoryAdjustments.Where(x => x.ReceiptInventoryOverrideId != null).ToListAsync());
         Assert.Single(await fixture.Db.RoomTransfers.ToListAsync());
     }
 
@@ -544,7 +538,6 @@ public sealed class ReceiptInventoryOverrideTests
     {
         await using var fixture = await OverrideFixture.CreateAsync();
         var form = fixture.Form(100, Guid.NewGuid().ToString("D"));
-        form.RoomId = OverrideFixture.SecondRoomId;
         form.FruitProfileId = OverrideFixture.SecondFruitId;
 
         var result = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None);
@@ -569,6 +562,29 @@ public sealed class ReceiptInventoryOverrideTests
         Assert.Equal(2, correction.ExpectedAdjustmentCount);
         Assert.Single(correction.TreatmentLineageMovements);
         Assert.Equal(OverrideFixture.RoomId, (await fixture.Db.Receipts.FindAsync(OverrideFixture.ReceiptId))!.RoomId);
+    }
+
+    [Fact]
+    public async Task Room_only_correction_before_movement_moves_exact_bins_without_identity_mapping()
+    {
+        await using var fixture = await OverrideFixture.CreateAsync();
+        var form = fixture.Form(100, Guid.NewGuid().ToString("D"));
+        form.RoomId = OverrideFixture.SecondRoomId;
+
+        var result = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None);
+
+        Assert.True(result.Succeeded, $"{result.Error} {fixture.OverrideLogger.LastException}");
+        var operation = await fixture.Db.ReceiptInventoryOverrides.Include(x => x.InventoryAdjustments).SingleAsync();
+        Assert.Equal(ReceiptInventoryOverrideActionTypes.LocationCorrection, operation.ActionType);
+        Assert.Equal(2, operation.InventoryAdjustments.Count);
+        Assert.Equal(0, operation.InventoryAdjustments.Sum(x => x.ChangeAmount));
+        Assert.Contains(operation.InventoryAdjustments, x => x.RoomId == OverrideFixture.RoomId && x.ChangeAmount == -100);
+        Assert.Contains(operation.InventoryAdjustments, x => x.RoomId == OverrideFixture.SecondRoomId && x.ChangeAmount == 100);
+        Assert.Empty(await fixture.Db.InventoryIdentityCorrections.ToListAsync());
+        Assert.Equal(OverrideFixture.SecondRoomId, (await fixture.Db.Receipts.FindAsync(OverrideFixture.ReceiptId))!.RoomId);
+        var movement = await fixture.Db.TreatmentLineageMovements.SingleAsync();
+        Assert.Equal(TreatmentLineageMovementTypes.ReceiptLocationCorrection, movement.MovementType);
+        Assert.Equal(100, movement.BinCount);
     }
 
     [Fact]
@@ -665,7 +681,7 @@ public sealed class ReceiptInventoryOverrideTests
     }
 
     [Fact]
-    public async Task Operational_identity_conflict_fails_closed()
+    public async Task Room_only_receiving_provenance_correction_after_movement_does_not_teleport_inventory()
     {
         await using var fixture = await OverrideFixture.CreateAsync(includeHistory: true);
         var form = fixture.Form(100, Guid.NewGuid().ToString("D"));
@@ -674,11 +690,13 @@ public sealed class ReceiptInventoryOverrideTests
 
         var result = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None);
 
-        Assert.False(result.Succeeded);
-        Assert.Contains("different", result.Error, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
+        Assert.True(result.Succeeded, result.Error);
+        var operation = await fixture.Db.ReceiptInventoryOverrides.SingleAsync();
+        Assert.Equal(ReceiptInventoryOverrideActionTypes.LocationCorrection, operation.ActionType);
+        Assert.Equal(0, operation.ExpectedAdjustmentCount);
+        Assert.Empty(await fixture.Db.InventoryIdentityCorrections.ToListAsync());
         Assert.Equal(before, await fixture.Db.RoomInventoryAdjustments.CountAsync());
-        Assert.Equal(OverrideFixture.RoomId, (await fixture.Db.Receipts.FindAsync(OverrideFixture.ReceiptId))!.RoomId);
+        Assert.Equal(OverrideFixture.SecondRoomId, (await fixture.Db.Receipts.FindAsync(OverrideFixture.ReceiptId))!.RoomId);
     }
 
     [Fact]

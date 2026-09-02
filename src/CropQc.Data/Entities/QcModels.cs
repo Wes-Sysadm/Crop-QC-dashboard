@@ -43,6 +43,7 @@ public static class ReceiptInventoryOverrideActionTypes
 {
     public const string QuantityCorrection = "QuantityCorrection";
     public const string InventoryReclassification = "InventoryReclassification";
+    public const string LocationCorrection = "LocationCorrection";
     public const string VoidReceipt = "VoidReceipt";
 }
 

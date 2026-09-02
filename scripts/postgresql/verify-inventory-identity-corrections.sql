@@ -4,6 +4,9 @@
 BEGIN TRANSACTION READ ONLY;
 DO $verify$
 BEGIN
+    IF EXISTS (SELECT 1 FROM "InventoryIdentityCorrections" WHERE "SourceCropYear" <= 0 OR "TargetCropYear" <= 0) THEN
+        RAISE EXCEPTION 'Non-positive inventory identity correction crop year detected.';
+    END IF;
     IF EXISTS (SELECT 1 FROM "InventoryIdentityCorrections" WHERE "IsComplete" AND (
         "SourceCropYear" = "TargetCropYear" AND "SourceGrowerLotId" = "TargetGrowerLotId" AND "SourceFruitProfileId" = "TargetFruitProfileId")) THEN
         RAISE EXCEPTION 'Completed self-referential inventory identity correction detected.';

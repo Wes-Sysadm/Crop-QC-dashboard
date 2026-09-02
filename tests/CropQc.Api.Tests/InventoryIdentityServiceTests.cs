@@ -3,6 +3,7 @@ using CropQc.Data.Entities;
 using CropQc.Web.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Data;
 
 namespace CropQc.Api.Tests;
@@ -55,6 +56,58 @@ public sealed class InventoryIdentityServiceTests
             fixture.Db, 2026, 99110, 99101, "Test reversal", CancellationToken.None);
         Assert.Contains("superseded", error, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("2026/99110/99102", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Permanent_invariant_rejects_new_positive_obsolete_inventory_before_commit()
+    {
+        await using var fixture = await IdentityFixture.CreateAsync();
+        fixture.AddCorrection(99101, 99102, "a-to-b");
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
+        {
+            WarehouseId = 1,
+            RoomId = 1,
+            CropYear = 2026,
+            GrowerLotId = 99110,
+            FruitProfileId = 99101,
+            GrowerName = "Grower Ten",
+            LotNumber = "G10",
+            AdjustmentType = "SeededObsoleteWrite",
+            ChangeAmount = 5,
+            NewBinCount = 5,
+            AdjustmentAt = DateTimeOffset.UtcNow,
+            CreatedAt = DateTimeOffset.UtcNow,
+            Source = "invariant regression",
+            InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion
+        });
+
+        var exception = await Assert.ThrowsAsync<InventoryDeductionInvariantException>(() =>
+            new InventoryDeductionInvariantService(
+                    fixture.Db,
+                    NullLogger<InventoryDeductionInvariantService>.Instance)
+                .ValidateBeforeCommitAsync(CancellationToken.None));
+
+        Assert.Contains("superseded", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await fixture.Db.RoomInventoryAdjustments.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task Superseded_target_is_rejected_and_final_canonical_target_is_allowed()
+    {
+        await using var fixture = await IdentityFixture.CreateAsync();
+        fixture.AddCorrection(99102, 99103, "b-to-c");
+        await fixture.Db.SaveChangesAsync();
+        var service = new InventoryIdentityService(fixture.Db);
+
+        var blocked = await service.ValidateCorrectionAsync(
+            new(2026, 99110, 99101), new(2026, 99110, 99102), CancellationToken.None);
+        var allowed = await service.ValidateCorrectionAsync(
+            new(2026, 99110, 99101), new(2026, 99110, 99103), CancellationToken.None);
+
+        Assert.Contains("superseded", blocked, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("99103", blocked, StringComparison.Ordinal);
+        Assert.Null(allowed);
     }
 
     [Fact]

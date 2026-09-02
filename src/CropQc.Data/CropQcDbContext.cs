@@ -1415,6 +1415,17 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasIndex(x => new { x.TargetCropYear, x.TargetGrowerLotId, x.TargetFruitProfileId });
             entity.HasIndex(x => x.ReceiptInventoryOverrideId).IsUnique();
             entity.HasIndex(x => new { x.IsActive, x.CreatedAt });
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_InventoryIdentityCorrections_PositiveCropYears",
+                    "\"SourceCropYear\" > 0 AND \"TargetCropYear\" > 0");
+                table.HasCheckConstraint("CK_InventoryIdentityCorrections_NonSelf",
+                    "\"SourceCropYear\" <> \"TargetCropYear\" OR \"SourceGrowerLotId\" <> \"TargetGrowerLotId\" OR \"SourceFruitProfileId\" <> \"TargetFruitProfileId\"");
+            });
+            entity.HasOne(x => x.SourceGrowerLot).WithMany().HasForeignKey(x => x.SourceGrowerLotId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.SourceFruitProfile).WithMany().HasForeignKey(x => x.SourceFruitProfileId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.TargetGrowerLot).WithMany().HasForeignKey(x => x.TargetGrowerLotId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.TargetFruitProfile).WithMany().HasForeignKey(x => x.TargetFruitProfileId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.CorrectedReceipt)
                 .WithMany()
                 .HasForeignKey(x => x.CorrectedReceiptId)

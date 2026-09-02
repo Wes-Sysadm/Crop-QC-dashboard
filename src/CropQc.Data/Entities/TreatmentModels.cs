@@ -24,6 +24,7 @@ public static class TreatmentLineageMovementTypes
     public const string InterCrewReceive = "InterCrewReceive";
     public const string InterCrewReversal = "InterCrewReversal";
     public const string IdentityReclassification = "IdentityReclassification";
+    public const string ReceiptLocationCorrection = "ReceiptLocationCorrection";
 }
 
 public static class TreatmentApplicationLevels

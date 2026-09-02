@@ -50,6 +50,32 @@ namespace CropQc.Data.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_InventoryIdentityCorrections", x => x.Id);
+                    table.CheckConstraint("CK_InventoryIdentityCorrections_NonSelf", "\"SourceCropYear\" <> \"TargetCropYear\" OR \"SourceGrowerLotId\" <> \"TargetGrowerLotId\" OR \"SourceFruitProfileId\" <> \"TargetFruitProfileId\"");
+                    table.CheckConstraint("CK_InventoryIdentityCorrections_PositiveCropYears", "\"SourceCropYear\" > 0 AND \"TargetCropYear\" > 0");
+                    table.ForeignKey(
+                        name: "FK_InventoryIdentityCorrections_FruitProfiles_SourceFruitProfileId",
+                        column: x => x.SourceFruitProfileId,
+                        principalTable: "FruitProfiles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_InventoryIdentityCorrections_FruitProfiles_TargetFruitProfileId",
+                        column: x => x.TargetFruitProfileId,
+                        principalTable: "FruitProfiles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_InventoryIdentityCorrections_GrowerLots_SourceGrowerLotId",
+                        column: x => x.SourceGrowerLotId,
+                        principalTable: "GrowerLots",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_InventoryIdentityCorrections_GrowerLots_TargetGrowerLotId",
+                        column: x => x.TargetGrowerLotId,
+                        principalTable: "GrowerLots",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_InventoryIdentityCorrections_ReceiptInventoryOverrides_ReceiptInventoryOverrideId",
                         column: x => x.ReceiptInventoryOverrideId,
@@ -106,7 +132,8 @@ namespace CropQc.Data.Migrations
                 table: "InventoryIdentityCorrections",
                 column: "ReceiptInventoryOverrideId",
                 unique: true,
-                filter: MigrationProviderTypes.Sql(migrationBuilder,
+                filter: MigrationProviderTypes.Sql(
+                    migrationBuilder,
                     "[ReceiptInventoryOverrideId] IS NOT NULL",
                     "\"ReceiptInventoryOverrideId\" IS NOT NULL"));
 
@@ -117,9 +144,29 @@ namespace CropQc.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_InventoryIdentityCorrections_SourceFruitProfileId",
+                table: "InventoryIdentityCorrections",
+                column: "SourceFruitProfileId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InventoryIdentityCorrections_SourceGrowerLotId",
+                table: "InventoryIdentityCorrections",
+                column: "SourceGrowerLotId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_InventoryIdentityCorrections_TargetCropYear_TargetGrowerLotId_TargetFruitProfileId",
                 table: "InventoryIdentityCorrections",
                 columns: new[] { "TargetCropYear", "TargetGrowerLotId", "TargetFruitProfileId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InventoryIdentityCorrections_TargetFruitProfileId",
+                table: "InventoryIdentityCorrections",
+                column: "TargetFruitProfileId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InventoryIdentityCorrections_TargetGrowerLotId",
+                table: "InventoryIdentityCorrections",
+                column: "TargetGrowerLotId");
 
             migrationBuilder.AddForeignKey(
                 name: "FK_RoomInventoryAdjustments_InventoryIdentityCorrections_InventoryIdentityCorrectionId",

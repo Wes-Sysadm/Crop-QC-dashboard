@@ -6,10 +6,14 @@ public sealed class InventoryIdentityCorrection
     public required string OperationKey { get; set; }
     public int SourceCropYear { get; set; }
     public int SourceGrowerLotId { get; set; }
+    public GrowerLot SourceGrowerLot { get; set; } = null!;
     public int SourceFruitProfileId { get; set; }
+    public FruitProfile SourceFruitProfile { get; set; } = null!;
     public int TargetCropYear { get; set; }
     public int TargetGrowerLotId { get; set; }
+    public GrowerLot TargetGrowerLot { get; set; } = null!;
     public int TargetFruitProfileId { get; set; }
+    public FruitProfile TargetFruitProfile { get; set; } = null!;
     public long? CorrectedReceiptId { get; set; }
     public Receipt? CorrectedReceipt { get; set; }
     public Guid? ReceiptInventoryOverrideId { get; set; }

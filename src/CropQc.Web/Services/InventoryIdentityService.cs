@@ -129,6 +129,8 @@ public sealed class InventoryIdentityService(CropQcDbContext dbContext) : IInven
         var targetResolution = await ResolveAsync(target, cancellationToken);
         if (targetResolution.Canonical == source)
             return $"Inventory identity correction {source} -> {target} would create a cycle.";
+        if (targetResolution.IsSuperseded)
+            return $"Selected target inventory identity {target} has been superseded by {targetResolution.Canonical}. Select the final canonical identity.";
         return null;
     }
 
@@ -178,5 +180,28 @@ public static class InventoryIdentityWriteGuard
         return correction is null
             ? null
             : $"{operationLabel} uses a superseded inventory identity. Its canonical identity is {correction.TargetCropYear}/{correction.TargetGrowerLotId}/{correction.TargetFruitProfileId}; refresh or use a reviewed compensating correction.";
+    }
+
+    public static InventoryIdentityKey ResolveCanonical(
+        InventoryIdentityKey source,
+        IReadOnlyCollection<InventoryIdentityCorrection> corrections)
+    {
+        var bySource = corrections
+            .Where(x => x.IsActive && x.IsComplete)
+            .GroupBy(x => new InventoryIdentityKey(x.SourceCropYear, x.SourceGrowerLotId, x.SourceFruitProfileId))
+            .ToDictionary(x => x.Key, x => x.OrderBy(y => y.CreatedAt).ThenBy(y => y.Id).Single());
+        var visited = new HashSet<InventoryIdentityKey>();
+        var current = source;
+        for (var depth = 0; depth < 32; depth++)
+        {
+            if (!visited.Add(current))
+                throw new InvalidOperationException($"Inventory identity correction cycle detected at {current}.");
+            if (!bySource.TryGetValue(current, out var correction)) return current;
+            current = new InventoryIdentityKey(
+                correction.TargetCropYear,
+                correction.TargetGrowerLotId,
+                correction.TargetFruitProfileId);
+        }
+        throw new InvalidOperationException($"Inventory identity correction chain exceeded 32 mappings from {source}.");
     }
 }

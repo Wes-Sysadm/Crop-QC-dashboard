@@ -197,6 +197,8 @@ public sealed class Tr508901InventoryRepairService(
     private static readonly InventoryIdentityKey Source = new(2026, 538, 18);
     private static readonly InventoryIdentityKey Target = new(2026, 538, 26);
     private const string OperationKey = "tr508901-systemic-identity-repair-v1";
+    private const string ReviewedEvidenceFingerprint = "d56279722867fbf2d8376e00b8d50bd6";
+    private static readonly DateTimeOffset BadOverrideAt = DateTimeOffset.Parse("2026-09-01T14:22:48.979510Z", CultureInfo.InvariantCulture);
 
     public async Task<Tr508901RepairResult> RunAsync(bool apply, string requestedBy, CancellationToken cancellationToken)
     {
@@ -204,44 +206,107 @@ public sealed class Tr508901InventoryRepairService(
             .SingleOrDefaultAsync(x => x.OperationKey == OperationKey, cancellationToken);
         var receipt = await dbContext.Receipts.AsNoTracking().SingleOrDefaultAsync(x => x.Id == 1229, cancellationToken);
         if (receipt is null || receipt.CompuTechReceiptId != "TR508901" || receipt.CropYear != 2026
-            || receipt.GrowerLotId != 538 || receipt.FruitProfileId != 26 || receipt.BinCount != 40)
+            || receipt.GrowerLotId != 538 || receipt.FruitProfileId != 26
+            || receipt.GrowerNumber != "4101" || receipt.LotCode != "4101"
+            || receipt.BinCount != 40 || receipt.IsDeleted)
             return Fail("State C", "TR508901 Receipt identity or quantity differs from the reviewed evidence.");
 
         var snapshots = await ledger.GetSnapshotsAsync(null, null, cancellationToken);
-        var adjustment2094 = await dbContext.RoomInventoryAdjustments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == 2094, cancellationToken);
-        var adjustment2212 = await dbContext.RoomInventoryAdjustments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == 2212, cancellationToken);
+        var historicalAdjustments = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => new long[] { 2094, 2130, 2131, 2211, 2212, 2213, 2214 }.Contains(x.Id))
+            .OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        var adjustment2094 = historicalAdjustments.SingleOrDefault(x => x.Id == 2094);
+        var adjustment2212 = historicalAdjustments.SingleOrDefault(x => x.Id == 2212);
         var segment356 = await dbContext.TreatmentLineageSegments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == 356, cancellationToken);
-        if (adjustment2094 is null || adjustment2212 is null || segment356 is null)
-            return Fail("State C", "Required immutable TR508901 ledger or treatment evidence is absent.");
+        var transfers = await dbContext.RoomTransfers.AsNoTracking().Where(x => x.Id == 312 || x.Id == 317)
+            .OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        var movements = await dbContext.TreatmentLineageMovements.AsNoTracking().Where(x => x.Id == 245 || x.Id == 263)
+            .OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        var badOverride = await dbContext.ReceiptInventoryOverrides.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == Guid.Parse("0a94d451-b4f3-4097-9907-de3697b8f1f9"), cancellationToken);
+        var rooms = await dbContext.Rooms.AsNoTracking().Where(x => x.Id == 59 || x.Id == 60 || x.Id == 62)
+            .ToDictionaryAsync(x => x.Id,
+                x => !string.IsNullOrWhiteSpace(x.CropQcRoomName) ? x.CropQcRoomName
+                    : !string.IsNullOrWhiteSpace(x.DisplayName) ? x.DisplayName
+                    : x.Code,
+                cancellationToken);
+        var reviewedHistoryMismatch = segment356 is null
+            ? "treatment segment 356"
+            : ReviewedHistoryMismatch(historicalAdjustments, transfers, movements, badOverride, segment356,
+                existing is null ? 40 : 0, rooms);
+        if (adjustment2094 is null || adjustment2212 is null || segment356 is null
+            || reviewedHistoryMismatch is not null)
+            return Fail("State C", $"Required immutable TR508901 ledger or treatment evidence is absent ({reviewedHistoryMismatch ?? "required row"}).");
         var room8 = adjustment2094.RoomId;
         var room10 = adjustment2212.RoomId;
         int Current(int roomId, InventoryIdentityKey identity) => snapshots
             .Where(x => x.RoomId == roomId && x.CropYear == identity.CropYear
                 && x.GrowerLotId == identity.GrowerLotId && x.FruitProfileId == identity.FruitProfileId)
             .Sum(x => x.CurrentBins);
-        var stateB = existing is { IsComplete: true, IsActive: true }
+        var correctionAdjustments = existing is null ? [] : await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.InventoryIdentityCorrectionId == existing.Id).OrderBy(x => x.InventoryOperationKey).ToListAsync(cancellationToken);
+        var correctionMovements = existing is null ? [] : await dbContext.TreatmentLineageMovements.AsNoTracking()
+            .Where(x => x.InventoryIdentityCorrectionId == existing.Id).ToListAsync(cancellationToken);
+        var repairAudits = existing is null ? [] : await dbContext.AuditLogs.AsNoTracking().Where(x =>
+            x.Action == "TR508901InventoryIdentityRepair" && x.EntityName == nameof(InventoryIdentityCorrection)
+            && x.EntityKey == existing.Id.ToString("D")).ToListAsync(cancellationToken);
+        var targetTreatmentSegments = await dbContext.TreatmentLineageSegments.AsNoTracking().Where(x => x.RoomId == room10
+            && x.CropYear == 2026 && x.GrowerLotId == 538 && x.FruitProfileId == 26
+            && x.CurrentBins > 0).ToListAsync(cancellationToken);
+        var mcd06Orda = snapshots.Where(x => x.RoomId == 58 && x.CropYear == 2026 && x.GrowerLotId == 538
+            && x.FruitProfileId == 21).Sum(x => x.CurrentBins);
+        var stateB = existing is { IsComplete: true, IsActive: true, ExpectedAdjustmentCount: 4, ExpectedTreatmentMovementCount: 1 }
+            && existing.SourceCropYear == 2026 && existing.SourceGrowerLotId == 538 && existing.SourceFruitProfileId == 18
+            && existing.TargetCropYear == 2026 && existing.TargetGrowerLotId == 538 && existing.TargetFruitProfileId == 26
+            && existing.CorrectedReceiptId == 1229 && existing.ReceiptInventoryOverrideId is null
+            && existing.Reason == "Bounded TR508901 stale-room identity repair"
+            && existing.SourceIdentitySnapshotJson.Contains(ReviewedEvidenceFingerprint, StringComparison.Ordinal)
+            && CorrectionAdjustmentsAreExact(correctionAdjustments, room8, room10, existing)
+            && correctionMovements.Count == 1 && correctionMovements[0].MovementType == TreatmentLineageMovementTypes.IdentityReclassification
+            && correctionMovements[0].OperationKey == $"identity-correction:{OperationKey}:room:{room10}:356"
+            && correctionMovements[0].SourceSegmentId == 356 && correctionMovements[0].DestinationSegmentId is not null
+            && correctionMovements[0].SourceRoomId == room10 && correctionMovements[0].DestinationRoomId == room10
+            && correctionMovements[0].BinCount == 40 && correctionMovements[0].InventoryIdentityCorrectionId == existing.Id
+            && correctionMovements[0].IdentityKey == "2026|538|26|4101|4101|ORDR|ORGANIC|True|ORGANIC"
+            && correctionMovements[0].TreatmentStateSnapshot == TreatmentLineageStates.Untreated
+            && correctionMovements[0].TreatmentSignatureSnapshot == "u" && correctionMovements[0].ReceiptId is null
+            && correctionMovements[0].RoomTransferId is null && correctionMovements[0].RoomInventoryLossId is null
+            && correctionMovements[0].BinsRunEntryId is null && correctionMovements[0].ProcessorShipmentLineId is null
+            && correctionMovements[0].OutsideWarehouseTransferId is null && correctionMovements[0].InterCrewTransferId is null
+            && correctionMovements[0].ReversesTreatmentLineageMovementId is null
+            && correctionMovements[0].OccurredAt == existing.CreatedAt && correctionMovements[0].CreatedAt == existing.CreatedAt
+            && correctionMovements[0].CreatedByUserId == existing.CreatedByUserId
+            && RepairAuditIsExact(repairAudits, existing)
+            && mcd06Orda == 66
             && Current(room10, Source) == 0 && Current(room8, Source) == 0
             && Current(room10, Target) == 40 && Current(room8, Target) == 0
             && segment356.CurrentBins == 0
-            && await dbContext.TreatmentLineageSegments.AsNoTracking().AnyAsync(x => x.RoomId == room10
-                && x.CropYear == 2026 && x.GrowerLotId == 538 && x.FruitProfileId == 26
-                && x.CurrentBins == 40 && x.TreatmentState == TreatmentLineageStates.Untreated
-                && x.TreatmentSignature == "u", cancellationToken);
+            && targetTreatmentSegments.Count == 1
+            && targetTreatmentSegments[0].Id == correctionMovements[0].DestinationSegmentId
+            && targetTreatmentSegments[0].CurrentBins == 40
+            && targetTreatmentSegments[0].TreatmentState == TreatmentLineageStates.Untreated
+            && targetTreatmentSegments[0].TreatmentSignature == "u";
         if (stateB) return new("State B", true, false, true, "TR508901 repair is already applied.", existing!.Id);
         if (existing is not null) return Fail("State C", "A partial or incompatible TR508901 repair record exists.");
 
         var requiredAdjustmentIds = new long[] { 2094, 2130, 2131, 2211, 2212, 2213, 2214 };
-        var requiredRows = await dbContext.RoomInventoryAdjustments.AsNoTracking()
-            .Where(x => requiredAdjustmentIds.Contains(x.Id)).Select(x => x.Id).ToListAsync(cancellationToken);
         var noLaterMovement = !await dbContext.TreatmentLineageMovements.AsNoTracking()
-            .AnyAsync(x => x.SourceSegmentId == 356 && x.Id > 263, cancellationToken);
-        var stateA = requiredRows.Count == requiredAdjustmentIds.Length
+            .AnyAsync(x => x.Id > 263 && (x.SourceSegmentId == 356 || x.DestinationSegmentId == 356
+                || (x.OccurredAt > BadOverrideAt && x.IdentityKey == segment356.IdentityKey)), cancellationToken);
+        var noLaterLedgerOrCustody = !await dbContext.RoomInventoryAdjustments.AsNoTracking().AnyAsync(x =>
+            x.AdjustmentAt > BadOverrideAt && x.InventoryIdentityCorrectionId == null
+            && x.CropYear == 2026 && x.GrowerLotId == 538 && (x.FruitProfileId == 18 || x.FruitProfileId == 26), cancellationToken)
+            && !await dbContext.InterCrewTransfers.AsNoTracking().AnyAsync(x => x.LoadedAt > BadOverrideAt
+                && x.CropYear == 2026 && x.GrowerLotId == 538 && (x.FruitProfileId == 18 || x.FruitProfileId == 26), cancellationToken)
+            && !await dbContext.OutsideWarehouseTransfers.AsNoTracking().AnyAsync(x => x.TransferredAt > BadOverrideAt
+                && x.CropYear == 2026 && x.GrowerLotId == 538 && (x.FruitProfileId == 18 || x.FruitProfileId == 26), cancellationToken);
+        var stateA = historicalAdjustments.Count == requiredAdjustmentIds.Length
             && Current(room10, Source) == 40 && Current(room8, Source) == -40
             && Current(room10, Target) == 0 && Current(room8, Target) == 40
             && segment356.RoomId == room10 && segment356.CropYear == 2026 && segment356.GrowerLotId == 538
             && segment356.FruitProfileId == 18 && segment356.CurrentBins == 40
             && segment356.TreatmentState == TreatmentLineageStates.Untreated && segment356.TreatmentSignature == "u"
-            && noLaterMovement;
+            && noLaterMovement && noLaterLedgerOrCustody;
         if (!stateA) return Fail("State C", "TR508901 does not match the exact reviewed broken state.");
         if (!apply) return new("State A", true, false, false, "TR508901 exact broken state is Ready for bounded repair.");
 
@@ -265,7 +330,7 @@ public sealed class Tr508901InventoryRepairService(
                 Reason = "Bounded TR508901 stale-room identity repair",
                 CreatedByUserId = actor.Id,
                 CreatedAt = now,
-                SourceIdentitySnapshotJson = JsonSerializer.Serialize(Source),
+                SourceIdentitySnapshotJson = JsonSerializer.Serialize(new { Identity = Source, ReviewedEvidenceFingerprint }),
                 TargetIdentitySnapshotJson = JsonSerializer.Serialize(Target),
                 ExpectedAdjustmentCount = 4,
                 IsActive = true,
@@ -356,6 +421,187 @@ public sealed class Tr508901InventoryRepairService(
             dbContext.ChangeTracker.Clear();
             return Fail("State C", $"TR508901 repair rolled back: {exception.Message}");
         }
+    }
+
+    private static string? ReviewedHistoryMismatch(
+        IReadOnlyList<RoomInventoryAdjustment> adjustments,
+        IReadOnlyList<RoomTransfer> transfers,
+        IReadOnlyList<TreatmentLineageMovement> movements,
+        ReceiptInventoryOverride? operation,
+        TreatmentLineageSegment segment356,
+        int expectedSegment356CurrentBins,
+        IReadOnlyDictionary<int, string> rooms)
+    {
+        if (adjustments.Count != 7 || transfers.Count != 2 || movements.Count != 2
+            || !rooms.TryGetValue(60, out var room8) || room8 != "MCD-08"
+            || !rooms.TryGetValue(59, out var room7) || room7 != "MCD-07"
+            || !rooms.TryGetValue(62, out var room10) || room10 != "MCD-10") return "row counts or room codes";
+        var a = adjustments.ToDictionary(x => x.Id);
+        var reviewedOverrideId = Guid.Parse("0a94d451-b4f3-4097-9907-de3697b8f1f9");
+        var exact2094 = ExactAdjustment(a[2094], 1229, 60, 18, "ReceiptAdd", 40, null, 40,
+            null, null, "Receiving inventory added", "Receipt TR508901 added 40 bins to MCD-08.",
+            DateTimeOffset.Parse("2026-08-31T02:08:00Z", CultureInfo.InvariantCulture), null, null, null);
+        var exact2130 = ExactAdjustment(a[2130], null, 60, 18, "TransferOut", -40, 40, 0,
+            "DANJ", null, "Final Room", "Transfer to McDougall/MCD-07.",
+            DateTimeOffset.Parse("2026-08-31T18:03:00Z", CultureInfo.InvariantCulture), 312,
+            "transfer:4a83a3a423ef4c6ea505bbd69a4cc569:out", null);
+        var exact2131 = ExactAdjustment(a[2131], null, 59, 18, "TransferIn", 40, 0, 40,
+            "DANJ", null, "Final Room", "Transfer from McDougall/MCD-08.",
+            DateTimeOffset.Parse("2026-08-31T18:03:00Z", CultureInfo.InvariantCulture), 312,
+            "transfer:4a83a3a423ef4c6ea505bbd69a4cc569:in", null);
+        var exact2211 = ExactAdjustment(a[2211], null, 59, 18, "TransferOut", -40, 40, 0,
+            "DANJ", null, "Final Room", "Transfer to McDougall/MCD-10.",
+            DateTimeOffset.Parse("2026-09-01T14:20:00Z", CultureInfo.InvariantCulture), 317,
+            "transfer:48746aa715af419db89e55fbb8d26f27:out", null);
+        var exact2212 = ExactAdjustment(a[2212], null, 62, 18, "TransferIn", 40, 0, 40,
+            "DANJ", null, "Final Room", "Transfer from McDougall/MCD-07.",
+            DateTimeOffset.Parse("2026-09-01T14:20:00Z", CultureInfo.InvariantCulture), 317,
+            "transfer:48746aa715af419db89e55fbb8d26f27:in", null);
+        var exact2213 = ExactAdjustment(a[2213], 1229, 60, 18, "ReceiptAdminOverride", -40, 40, 0,
+            "DANJ", "Conventional", "Receipt Admin Override", "ReclassifyOldIdentity; override 0a94d451-b4f3-4097-9907-de3697b8f1f9.",
+            BadOverrideAt, null, "receipt-override:4917d6c0612d407882466a066bfa4cbe:1", reviewedOverrideId);
+        var exact2214 = ExactAdjustment(a[2214], 1229, 60, 26, "ReceiptAdminOverride", 40, 0, 40,
+            "ORDR", "Organic", "Receipt Admin Override", "ReclassifyNewIdentity; override 0a94d451-b4f3-4097-9907-de3697b8f1f9.",
+            BadOverrideAt, null, "receipt-override:4917d6c0612d407882466a066bfa4cbe:2", reviewedOverrideId);
+
+        var t312 = transfers.SingleOrDefault(x => x.Id == 312);
+        var t317 = transfers.SingleOrDefault(x => x.Id == 317);
+        var transfersExact = ExactTransfer(t312, 60, 59, "4a83a3a423ef4c6ea505bbd69a4cc569",
+                DateTimeOffset.Parse("2026-08-31T18:03:00Z", CultureInfo.InvariantCulture))
+            && ExactTransfer(t317, 59, 62, "48746aa715af419db89e55fbb8d26f27",
+                DateTimeOffset.Parse("2026-09-01T14:20:00Z", CultureInfo.InvariantCulture));
+        var movement245 = movements.SingleOrDefault(x => x.Id == 245);
+        var movement263 = movements.SingleOrDefault(x => x.Id == 263);
+        const string identityKey = "2026|538|18|4101|4101|DANJ|CONVENTIONAL|False|";
+        var movementsExact = ExactMovement(movement245, 342, 343, 60, 59, 312,
+                "transfer:4a83a3a423ef4c6ea505bbd69a4cc569:treatment", identityKey,
+                DateTimeOffset.Parse("2026-08-31T18:03:00Z", CultureInfo.InvariantCulture))
+            && ExactMovement(movement263, 343, 356, 59, 62, 317,
+                "transfer:48746aa715af419db89e55fbb8d26f27:treatment", identityKey,
+                DateTimeOffset.Parse("2026-09-01T14:20:00Z", CultureInfo.InvariantCulture));
+        var overrideExact = operation is
+        {
+            Id: var id,
+            ReceiptId: 1229,
+            ActionType: ReceiptInventoryOverrideActionTypes.InventoryReclassification,
+            Reason: "Wrong Variety",
+            OldReceiptBinCount: 40,
+            NewReceiptBinCount: 40,
+            InventoryDelta: 0,
+            IsComplete: true,
+            ExpectedAdjustmentCount: 2,
+            OperationKey: "4917d6c0612d407882466a066bfa4cbe"
+        } && id == reviewedOverrideId && operation.CreatedAt == BadOverrideAt
+            && operation.BeforeReceiptSnapshotJson.Contains("\"fruitProfileId\":18", StringComparison.Ordinal)
+            && operation.AfterReceiptSnapshotJson.Contains("\"fruitProfileId\":26", StringComparison.Ordinal);
+        var segmentExact = segment356.WarehouseId == 3 && segment356.RoomId == 62
+            && segment356.CropYear == 2026 && segment356.GrowerLotId == 538 && segment356.FruitProfileId == 18
+            && segment356.IdentityKey == identityKey && segment356.CurrentBins == expectedSegment356CurrentBins
+            && segment356.TreatmentState == TreatmentLineageStates.Untreated && segment356.TreatmentSignature == "u"
+            && segment356.ReceiptId is null;
+        var failures = new List<string>();
+        if (!exact2094) failures.Add("adjustment 2094");
+        if (!exact2130) failures.Add("adjustment 2130");
+        if (!exact2131) failures.Add("adjustment 2131");
+        if (!exact2211) failures.Add("adjustment 2211");
+        if (!exact2212) failures.Add("adjustment 2212");
+        if (!exact2213) failures.Add("adjustment 2213");
+        if (!exact2214) failures.Add("adjustment 2214");
+        if (!transfersExact) failures.Add("room transfers 312/317");
+        if (!movementsExact) failures.Add("treatment movements 245/263");
+        if (!overrideExact) failures.Add("receipt override");
+        if (!segmentExact) failures.Add("treatment segment 356");
+        return failures.Count == 0 ? null : string.Join(", ", failures);
+    }
+
+    private static bool ExactAdjustment(RoomInventoryAdjustment? x, long? receiptId, int roomId, int fruitProfileId,
+        string type, int change, int? oldBins, int newBins, string? variety, string? inventoryStatus,
+        string source, string notes, DateTimeOffset at, long? transferId, string? operationKey, Guid? overrideId)
+    {
+        if (x is null) return false;
+        var expectedCreatedAt = x.Id switch
+        {
+            2094 => DateTimeOffset.Parse("2026-08-31T02:09:02.139319Z", CultureInfo.InvariantCulture),
+            2130 => DateTimeOffset.Parse("2026-08-31T18:04:03.786701Z", CultureInfo.InvariantCulture),
+            2131 => DateTimeOffset.Parse("2026-08-31T18:04:03.786884Z", CultureInfo.InvariantCulture),
+            2211 => DateTimeOffset.Parse("2026-09-01T14:21:46.116844Z", CultureInfo.InvariantCulture),
+            2212 => DateTimeOffset.Parse("2026-09-01T14:21:46.116953Z", CultureInfo.InvariantCulture),
+            2213 or 2214 => BadOverrideAt,
+            _ => DateTimeOffset.MinValue
+        };
+        return x.ReceiptId == receiptId && x.WarehouseId == 3 && x.RoomId == roomId
+            && x.CropYear == 2026 && x.GrowerLotId == 538 && x.FruitProfileId == fruitProfileId
+            && x.GrowerName == "Conconully Prs ORG CHIL" && x.LotNumber == "4101"
+            && x.AdjustmentType == type && x.ChangeAmount == change && x.OldBinCount == oldBins && x.NewBinCount == newBins
+            && x.VarietyCode == variety && x.InventoryStatus == inventoryStatus && x.Source == source
+            && x.Reason == (type == "ReceiptAdminOverride" ? "Wrong Variety" : source)
+            && x.Notes == notes && x.AdjustmentAt == at && x.CreatedAt == expectedCreatedAt && x.CreatedByUserId == 1
+            && x.RoomTransferId == transferId && x.InventoryOperationKey == operationKey
+            && x.ReceiptInventoryOverrideId == overrideId;
+    }
+
+    private static bool ExactTransfer(RoomTransfer? x, int sourceRoom, int destinationRoom, string key, DateTimeOffset at) =>
+        x is not null && x.SourceWarehouseId == 3 && x.DestinationWarehouseId == 3
+        && x.SourceRoomId == sourceRoom && x.DestinationRoomId == destinationRoom
+        && x.CropYear == 2026 && x.GrowerLotId == 538 && x.FruitProfileId == 18
+        && x.LotNumber == "4101" && x.VarietyCode == "DANJ" && x.BinCount == 40
+        && x.OperationKey == key && x.TransferredAt == at && !x.IsReversed && x.ReversesRoomTransferId is null;
+
+    private static bool ExactMovement(TreatmentLineageMovement? x, long sourceSegment, long destinationSegment,
+        int sourceRoom, int destinationRoom, long transferId, string key, string identityKey, DateTimeOffset at) =>
+        x is not null && x.SourceSegmentId == sourceSegment && x.DestinationSegmentId == destinationSegment
+        && x.SourceRoomId == sourceRoom && x.DestinationRoomId == destinationRoom && x.RoomTransferId == transferId
+        && x.BinCount == 40 && x.MovementType == TreatmentLineageMovementTypes.Transfer
+        && x.OperationKey == key && x.IdentityKey == identityKey && x.OccurredAt == at
+        && x.TreatmentStateSnapshot == TreatmentLineageStates.Untreated && x.TreatmentSignatureSnapshot == "u"
+        && x.ReceiptId is null && x.ReversesTreatmentLineageMovementId is null;
+
+    private static bool CorrectionAdjustmentsAreExact(
+        IReadOnlyList<RoomInventoryAdjustment> rows,
+        int room8,
+        int room10,
+        InventoryIdentityCorrection correction)
+    {
+        var expectedKeys = Enumerable.Range(1, 4)
+            .Select(x => $"identity-correction:{OperationKey}:{x}").ToHashSet(StringComparer.Ordinal);
+        if (rows.Count != 4 || !rows.Select(x => x.InventoryOperationKey ?? "").ToHashSet(StringComparer.Ordinal).SetEquals(expectedKeys)
+            || rows.Any(x => x.InventoryIdentityCorrectionId != correction.Id
+                || x.CropYear != 2026 || x.GrowerLotId != 538
+                || x.AdjustmentType != InventoryIdentityWriteGuard.AdjustmentType
+                || x.Source != "TR508901 bounded identity repair" || x.Reason != correction.Reason
+                || x.ReceiptId != 1229 || x.WarehouseId != 3
+                || x.CreatedByUserId != correction.CreatedByUserId
+                || x.AdjustmentAt != correction.CreatedAt || x.CreatedAt != correction.CreatedAt
+                || x.InventoryInvariantVersion != InventoryDeductionInvariantService.CurrentVersion)) return false;
+        return rows.Count(x => x.RoomId == room10 && x.FruitProfileId == 18 && x.ChangeAmount == -40 && x.OldBinCount == 40 && x.NewBinCount == 0) == 1
+            && rows.Count(x => x.RoomId == room10 && x.FruitProfileId == 26 && x.ChangeAmount == 40 && x.OldBinCount == 0 && x.NewBinCount == 40) == 1
+            && rows.Count(x => x.RoomId == room8 && x.FruitProfileId == 26 && x.ChangeAmount == -40 && x.OldBinCount == 40 && x.NewBinCount == 0) == 1
+            && rows.Count(x => x.RoomId == room8 && x.FruitProfileId == 18 && x.ChangeAmount == 40 && x.OldBinCount == -40 && x.NewBinCount == 0) == 1;
+    }
+
+    private static bool RepairAuditIsExact(IReadOnlyList<AuditLog> rows, InventoryIdentityCorrection correction)
+    {
+        if (rows.Count != 1) return false;
+        var row = rows[0];
+        var expectedBefore = JsonSerializer.Serialize(new
+        {
+            MCD10FP18 = 40,
+            MCD08FP18 = -40,
+            MCD08FP26 = 40,
+            Segment356 = "FP18/40/u"
+        });
+        var expectedAfter = JsonSerializer.Serialize(new
+        {
+            MCD10FP18 = 0,
+            MCD08FP18 = 0,
+            MCD08FP26 = 0,
+            MCD10FP26 = 40,
+            Treatment = "FP26/40/u",
+            HistoricalRowsRetained = new long[] { 2094, 2130, 2131, 2211, 2212, 2213, 2214 }
+        });
+        return row.UserId == correction.CreatedByUserId && row.CreatedAt == correction.CreatedAt
+            && row.SourceApplication == "CropQc.Web bounded repair"
+            && row.BeforeValuesJson == expectedBefore && row.AfterValuesJson == expectedAfter;
     }
 
     private async Task<IDbContextTransaction?> BeginTransactionAsync(CancellationToken cancellationToken) =>

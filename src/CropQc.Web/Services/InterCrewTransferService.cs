@@ -49,8 +49,16 @@ public sealed class InterCrewTransferService(
         var all = await dbContext.InterCrewTransfers.AsNoTracking()
             .Include(x => x.SourceWarehouse).Include(x => x.SourceRoom)
             .OrderByDescending(x => x.LoadedAt).Take(500).ToListAsync(cancellationToken);
-        var queue = all.Where(x => x.Status == InterCrewTransferStatuses.InTransit && CanAccessGroup(group, canAdmin, x.DestinationCustodyGroup))
-            .Select(x => ListItem(x, true)).ToList();
+        var queue = new List<InterCrewTransferListItemViewModel>();
+        foreach (var transfer in all.Where(x => x.Status == InterCrewTransferStatuses.InTransit
+                     && CanAccessGroup(group, canAdmin, x.DestinationCustodyGroup)))
+        {
+            InventoryIdentityResolution? currentIdentity = null;
+            if (transfer.CropYear is not null && transfer.GrowerLotId is not null && transfer.FruitProfileId is not null)
+                currentIdentity = await identityService.ResolveAsync(new InventoryIdentityKey(
+                    transfer.CropYear.Value, transfer.GrowerLotId.Value, transfer.FruitProfileId.Value), cancellationToken);
+            queue.Add(ListItem(transfer, true, currentIdentity));
+        }
         var inventory = new List<OutsideWarehouseInventoryOptionViewModel>();
         Warehouse? sourceWarehouse = null;
         Room? sourceRoom = null;
@@ -481,9 +489,14 @@ public sealed class InterCrewTransferService(
     private static bool CanAccessGroup(string? userGroup, bool canAdmin, string destinationGroup) =>
         canAdmin || userGroup == SharedCustodyGroup || userGroup == destinationGroup;
     private static InterCrewWriteResult Fail(string? error) => new(false, false, null, error);
-    private static InterCrewTransferListItemViewModel ListItem(InterCrewTransfer x, bool canReceive) => new(
+    private static InterCrewTransferListItemViewModel ListItem(
+        InterCrewTransfer x,
+        bool canReceive,
+        InventoryIdentityResolution? identity = null) => new(
         x.Id, x.LoadedAt, $"{x.SourceWarehouse.Code} / {RoomLabel(x.SourceRoom)}", TransferCustodyGroups.Label(x.DestinationCustodyGroup),
-        $"{x.GrowerNumberSnapshot} - {x.GrowerNameSnapshot}", x.LotNumberSnapshot, x.VarietyCodeSnapshot,
+        identity is null ? $"{x.GrowerNumberSnapshot} - {x.GrowerNameSnapshot}" : $"{identity.GrowerLot.LotNumber} - {identity.GrowerLot.Grower}",
+        identity?.GrowerLot.LotNumber ?? x.LotNumberSnapshot,
+        identity?.FruitProfile.VarietyCode ?? x.VarietyCodeSnapshot,
         x.TreatmentSummarySnapshot, x.BinsLoaded, x.BinsReceived, x.VarianceBins, x.TruckLoadBolNumber, x.Status, canReceive);
     private static string RoomLabel(Room room) => room.CropQcRoomName ?? room.DisplayName ?? room.Code;
     private static string UserLabel(User user) => user.DisplayName ?? user.Email;

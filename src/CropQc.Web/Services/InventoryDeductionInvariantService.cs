@@ -44,6 +44,7 @@ public sealed class InventoryDeductionInvariantService(
             .Select(x => x.Entity)
             .Distinct()
             .ToList();
+        await ValidateSupersededWritesAsync(cancellationToken);
         if (adjustments.Count == 0)
         {
             return;
@@ -357,6 +358,54 @@ public sealed class InventoryDeductionInvariantService(
         return issues;
     }
 
+    private async Task ValidateSupersededWritesAsync(CancellationToken cancellationToken)
+    {
+        var added = dbContext.ChangeTracker.Entries<RoomInventoryAdjustment>()
+            .Where(x => x.State == EntityState.Added && x.Entity.InventoryInvariantVersion >= CurrentVersion)
+            .Select(x => x.Entity)
+            .ToList();
+        if (added.Count == 0) return;
+
+        var trackedCorrections = dbContext.ChangeTracker.Entries<InventoryIdentityCorrection>()
+            .Where(x => x.State != EntityState.Deleted && x.Entity.IsActive && x.Entity.IsComplete)
+            .Select(x => x.Entity);
+        var corrections = (await dbContext.InventoryIdentityCorrections.AsNoTracking()
+                .Where(x => x.IsActive && x.IsComplete)
+                .ToListAsync(cancellationToken))
+            .Concat(trackedCorrections)
+            .DistinctBy(x => x.Id)
+            .ToList();
+        if (corrections.Count == 0) return;
+
+        foreach (var adjustment in added)
+        {
+            var isAuthorizedSourceRemoval = adjustment.InventoryIdentityCorrectionId is not null
+                && adjustment.ChangeAmount < 0;
+            if (isAuthorizedSourceRemoval) continue;
+
+            if (adjustment.CropYear is null || adjustment.GrowerLotId is null || adjustment.FruitProfileId is null)
+            {
+                var intersects = corrections.Any(x =>
+                    (adjustment.CropYear is null || x.SourceCropYear == adjustment.CropYear)
+                    && (adjustment.GrowerLotId is null || x.SourceGrowerLotId == adjustment.GrowerLotId)
+                    && (adjustment.FruitProfileId is null || x.SourceFruitProfileId == adjustment.FruitProfileId));
+                if (intersects)
+                    throw new InventoryDeductionInvariantException(
+                        "A new inventory transaction has incomplete identity fields that intersect a superseded identity.");
+                continue;
+            }
+
+            var source = new InventoryIdentityKey(
+                adjustment.CropYear.Value,
+                adjustment.GrowerLotId.Value,
+                adjustment.FruitProfileId.Value);
+            var canonical = InventoryIdentityWriteGuard.ResolveCanonical(source, corrections);
+            if (canonical != source)
+                throw new InventoryDeductionInvariantException(
+                    $"A new inventory transaction cannot use superseded identity {source}; use canonical identity {canonical}.");
+        }
+    }
+
     private static void ValidateIdentityCorrection(
         RoomInventoryAdjustment adjustment,
         InventoryIdentityCorrection correction,
@@ -525,13 +574,16 @@ public sealed class InventoryDeductionInvariantService(
                 && side.GrowerLotId == transfer.GrowerLotId && side.FruitProfileId == transfer.FruitProfileId
                 && Same(side.LotNumber, transfer.LotNumberSnapshot) && Same(side.VarietyCode, transfer.VarietyCodeSnapshot)
                 && Same(side.InventoryStatus, transfer.InventoryStatusSnapshot);
-            var canonicalReceiveIdentity = !isSource && canonicalCorrections.Any(x =>
-                transfer.CropYear == x.SourceCropYear
-                && transfer.GrowerLotId == x.SourceGrowerLotId
-                && transfer.FruitProfileId == x.SourceFruitProfileId
-                && side.CropYear == x.TargetCropYear
-                && side.GrowerLotId == x.TargetGrowerLotId
-                && side.FruitProfileId == x.TargetFruitProfileId);
+            var canonicalReceiveIdentity = false;
+            if (!isSource && transfer.CropYear is not null && transfer.GrowerLotId is not null && transfer.FruitProfileId is not null
+                && side.CropYear is not null && side.GrowerLotId is not null && side.FruitProfileId is not null)
+            {
+                var historical = new InventoryIdentityKey(transfer.CropYear.Value, transfer.GrowerLotId.Value, transfer.FruitProfileId.Value);
+                var finalCanonical = InventoryIdentityWriteGuard.ResolveCanonical(historical, canonicalCorrections);
+                canonicalReceiveIdentity = side.CropYear == finalCanonical.CropYear
+                    && side.GrowerLotId == finalCanonical.GrowerLotId
+                    && side.FruitProfileId == finalCanonical.FruitProfileId;
+            }
             if (side.WarehouseId != expectedWarehouse || side.RoomId != expectedRoom
                 || !exactHistoricalIdentity && !canonicalReceiveIdentity)
                 add("InterCrewIdentityMismatch", "Inter-crew ledger identity does not match its durable transfer snapshot.");
@@ -758,6 +810,15 @@ public sealed class InventoryDeductionInvariantService(
                 add("ReceiptOverrideReclassificationMismatch", "Inventory reclassification must use exact paired old/new adjustments and preserve total inventory.");
             }
         }
+        else if (string.Equals(receiptOverride.ActionType, ReceiptInventoryOverrideActionTypes.LocationCorrection, StringComparison.Ordinal))
+        {
+            var negative = operationAdjustments.Where(x => x.ChangeAmount < 0).Sum(x => -x.ChangeAmount);
+            var positive = operationAdjustments.Where(x => x.ChangeAmount > 0).Sum(x => x.ChangeAmount);
+            if (receiptOverride.InventoryDelta != 0 || negative != positive
+                || (operationAdjustments.Count != 0 && (negative == 0 || operationAdjustments.Count != 2))
+                || receiptOverride.CurrentInventoryBefore != receiptOverride.CurrentInventoryAfter)
+                add("ReceiptOverrideLocationMismatch", "Receipt location correction must either preserve current custody or use one exact conserved room pair.");
+        }
         else if (string.Equals(receiptOverride.ActionType, ReceiptInventoryOverrideActionTypes.VoidReceipt, StringComparison.Ordinal))
         {
             if (operationAdjustments.Any(x => x.ChangeAmount > 0)
@@ -817,6 +878,8 @@ public sealed class InventoryDeductionInvariantService(
                         adjustment.InventoryIdentityCorrectionId is not null || adjustment.InventoryIdentityCorrection is not null
                             ? matchesReclassificationTarget
                             : matchesAfter,
+                    ReceiptInventoryOverrideActionTypes.LocationCorrection when adjustment.ChangeAmount < 0 => matchesAffected,
+                    ReceiptInventoryOverrideActionTypes.LocationCorrection => matchesAfter,
                     ReceiptInventoryOverrideActionTypes.VoidReceipt => matchesAffected,
                     ReceiptInventoryOverrideActionTypes.QuantityCorrection when adjustment.ChangeAmount > 0 => matchesAfter,
                     ReceiptInventoryOverrideActionTypes.QuantityCorrection => matchesAffected || matchesAfter,

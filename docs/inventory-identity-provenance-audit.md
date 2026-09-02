@@ -1,6 +1,6 @@
 # Inventory identity and provenance audit
 
-This audit documents the pre-fix architecture reviewed for the systemic inventory identity correction work. It deliberately separates current inventory identity from historical provenance.
+This audit records the final architecture for the systemic inventory identity correction work. It deliberately separates current inventory identity from historical provenance.
 
 ## Canonical concepts
 
@@ -10,26 +10,27 @@ This audit documents the pre-fix architecture reviewed for the systemic inventor
 - `GrowerLotId` is not sufficient by itself. A grower lot may legitimately contain multiple fruit profiles.
 - `ReceiptId` is provenance. It is neither a complete current-location key nor a safe current-identity resolver.
 
-## Workflow map before the fix
+## Final workflow classification
 
-| Workflow | Source of current identity | Source of provenance | Behavior after a correction before this fix | Risk |
+| Workflow | Source of current identity | Source of provenance | Post-correction behavior | Final classification |
 |---|---|---|---|---|
-| Receiving | Submitted Receipt and FruitProfile | Receipt | A later Receipt edit changes the receipt, but there is no durable obsolete-to-canonical mapping | Obsolete identity can be received again |
-| Receipt quantity override | Adjustments filtered by `ReceiptId` with Receipt fallback | Receipt-linked adjustments | Transfers with null `ReceiptId` disappear from the reconstructed state | Wrong location or ambiguous quantity correction |
-| Receipt identity override | Adjustments filtered by `ReceiptId`; target room taken from edit form/Receipt | Receipt and override audit | Reclassification can be posted in the original room after fruit moved | Confirmed TR508901 defect |
-| Receipt void | Adjustments filtered by `ReceiptId` | Receipt and override audit | Moved inventory can be missed | Can void the wrong attributable balance |
-| Manual True-Up from Receipt | Receipt room and Receipt identity | Receipt | Uses receipt-local identity/location | Can write to stale room/identity |
+| Receiving | Submitted Receipt and FruitProfile | Receipt | Superseded identities are rejected before mutation | **FIXED — explicit canonical write guard** |
+| Receipt quantity override | Exact Receipt-attributable treatment/source allocation; legacy Receipt rows only before movement | Receipt-linked adjustments and treatment allocation | Nullable-`ReceiptId` movement is rejected unless exact Receipt allocation survives | **FAILS CLOSED — no exact Receipt allocation** |
+| Receipt identity override | Every authoritative current source position | Receipt, override audit, durable correction parent | Reclassifies current positions in place and preserves historical rows | **FIXED — durable identity correction** |
+| Receipt void | Exact Receipt-attributable treatment/source allocation | Receipt and override audit | Rejects stale Receipt balance inference | **FAILS CLOSED — no exact Receipt allocation** |
+| Receipt room correction | Exact Receipt position before movement; Receipt receiving provenance after movement | Receipt and location override audit | Moves exact fruit only before movement; never teleports fruit after movement | **FIXED — distinct location correction** |
+| Manual True-Up from Receipt | Unique canonical current ledger snapshot | Receipt is provenance only | Superseded, ambiguous, or incomplete identities are rejected | **FAILS CLOSED — no unique canonical position** |
 | Current Room Inventory / Room Detail / selection lists | Aggregated RoomInventoryAdjustment ledger identity | Latest adjustment plus optional Receipt/source parent | Correct if compensating rows exist | Safe current-state source; legacy text inference remains bounded |
-| Internal Room Transfer | Current ledger snapshot, then optional Receipt/FruitProfile fallbacks | RoomTransfer, adjustment parent, treatment segment Receipt | Usually retains ledger identity; fallback can reintroduce Receipt metadata when snapshot fields are incomplete | Unsafe fallback; reversal replays historical identity |
-| Inter-Crew dispatch/receive | Current ledger snapshot copied into transfer snapshot | Source adjustment and treatment movements | Dispatch is current-state based; receive replays transfer snapshot | Safe for post-correction dispatch; pre-correction reversal/receive requires guard |
-| Outside Warehouse transfer | Current ledger snapshot copied into transfer snapshot | Source adjustment and treatment movement | New transfer is current-state based | Reversal replays historical identity |
-| Bins Run / Actual Run | Current ledger snapshot and exact source adjustment | BinsRunEntry source adjustment and treatment movement | New run is current-state based | Reversal/revision replays historical identity |
-| Room inventory loss | Current ledger snapshot | Optional reviewed Receipt, loss parent, treatment movement | New loss is current-state based | Reversal replays historical identity |
-| Processor Shipment | Current ledger snapshot | Source adjustment, shipment line, treatment movement | New shipment is current-state based | Reversal replays historical identity |
-| Treatment application | Current/as-of ledger snapshot | Treatment application and segment application link | Current-room application is ledger-based | Receipt-level treatment reconstruction uses receipt-local adjustments |
-| Treatment movement | Selected current ledger snapshot and exact active treatment segment | Segment Receipt and immutable movement chain | No identity-reclassification movement existed | Active treatment segment can remain obsolete |
+| Internal Room Transfer | Complete canonical current ledger snapshot only | RoomTransfer, adjustment parent, treatment segment Receipt | Receipt/FruitProfile mutation fallback removed; superseded writes rejected centrally | **FIXED — canonical snapshot plus invariant** |
+| Inter-Crew dispatch/receive | Current ledger snapshot; final canonical chain on receive | Immutable transfer snapshot and treatment movements | Current queue/receive show/use final canonical identity; history retains dispatch identity | **FIXED — canonical custody projection** |
+| Outside Warehouse transfer | Current ledger snapshot copied into transfer snapshot | Source adjustment and treatment movement | Terminal external custody remains immutable; superseded reversal is rejected | **BOUNDED LEGACY DISPLAY ONLY — terminal provenance cannot mutate** |
+| Bins Run / Actual Run | Current ledger snapshot and exact source adjustment | BinsRunEntry source adjustment and treatment movement | New writes are centrally guarded; obsolete historical replay is rejected | **FIXED — canonical write invariant** |
+| Room inventory loss | Current ledger snapshot | Optional reviewed Receipt, loss parent, treatment movement | New writes are centrally guarded; obsolete reversals are rejected | **FIXED — canonical write invariant** |
+| Processor Shipment | Current ledger snapshot | Source adjustment, shipment line, treatment movement | New writes are centrally guarded; obsolete reversals are rejected | **FIXED — canonical write invariant** |
+| Treatment application | Current/as-of ledger snapshot or exact Receipt-attributable active segment | Treatment application and segment application link | Receipt-level application rejects ambiguous moved fruit and obsolete identity | **FAILS CLOSED — no exact current Receipt position** |
+| Treatment movement | Selected current ledger snapshot and exact active treatment segment | Segment Receipt and immutable movement chain | Correction creates an explicit conserved treatment reclassification movement | **FIXED — linked treatment correction** |
 | Run Planner / reporting / QC attribution | Ledger snapshots, immutable reporting snapshots, Receipt/QC provenance | Source adjustment, Receipt, reporting snapshots | Historical reporting remains historical | Presentation may need canonical resolution without rewriting snapshots |
-| Inventory reconciliation/readiness | Ledger identities and parent invariants | Adjustment parents | Could detect structural parents but not durable identity supersession | Obsolete identity recreation was invisible |
+| Inventory reconciliation/readiness | Ledger identities, durable correction map, and parent invariants | Adjustment parents | Detects positive obsolete balances, chains/conflicts, and post-correction obsolete writes | **FIXED — permanent readiness diagnostic** |
 
 ## Code-search classification
 
@@ -46,22 +47,23 @@ This audit documents the pre-fix architecture reviewed for the systemic inventor
 - Inventory selection in Bins Run, Actual Run, losses, Inter-Crew, Outside Warehouse, Processor Shipments, and room transfers when all identity fields come from the selected ledger snapshot.
 - Treatment selection by exact current segment and treatment signature.
 
-### Unsafe current-identity fallbacks to fix
+### Final mutation-boundary classifications
 
-- `ReceiptInventoryOverrideService.GetInventoryStateAsync`: `RoomInventoryAdjustments.Where(x => x.ReceiptId == receipt.Id)`.
-- `ReceiptInventoryOverrideService.GetOperationalCountsAsync`: Receipt-linked Bins Run/Actual Run/transfer counts.
-- `ReceiptInventoryOverrideService.AddReclassificationAdjustments`: every target position uses the Receipt edit form's warehouse/room.
-- `DashboardDataService` Receipt manual true-up and legacy depletion paths that reconstruct identity/location directly from Receipt.
-- `DashboardDataService.CreateRoomTransferAsync`: `sourceLot` fields fall back to `sourceReceipt` for grower lot and fruit profile.
-- Receipt-level treatment application reconstruction based only on Receipt-linked adjustments.
-- Transfer, Bins Run/Actual Run, loss, Inter-Crew, Outside Warehouse, and Processor Shipment reversal paths that replay the historical parent identity without checking supersession.
-- Any new Receipt write that accepts a superseded source identity.
+- **FAILS CLOSED — Receipt quantity and void:** exact Receipt allocation is required once operational movement exists; structurally valid same-identity transfers are not Receipt attribution.
+- **FIXED — room-only Receipt correction:** before movement it uses an exact conserved room pair; after movement it changes receiving provenance without teleporting current fruit and never creates `InventoryIdentityCorrection`.
+- **FIXED — Receipt identity reclassification:** follows every authoritative current source position and cannot also change receiving room in the same operation.
+- **FAILS CLOSED — Manual True-Up and bounded legacy depletion:** reject superseded, incomplete, or ambiguous current identity before mutation.
+- **FIXED — Internal Room Transfer:** no `sourceReceipt` or text-matched FruitProfile mutation fallback remains.
+- **FAILS CLOSED — Receipt-level treatment:** requires exact active Receipt treatment allocation and rejects ambiguous post-movement reconstruction.
+- **FIXED — all new operational ledger writes:** the centralized pre-commit invariant rejects superseded identity except the correction parent's explicit compensating source removal.
+- **FAILS CLOSED — historical reversal/revision:** Transfer, Bins Run/Actual Run, loss, Inter-Crew, Outside Warehouse, and Processor Shipment cannot replay a superseded historical identity.
 
-### Bounded legacy fallbacks retained
+### Bounded legacy display-only fallbacks retained
 
-- Ledger normalization that fills missing fields for historical rows from their directly linked Receipt or BinsRun source adjustment.
-- The unique matching Receipt heuristic used only to recover a display grower number for legacy rows. It must not choose a FruitProfile or drive a mutating workflow.
-- Historical reporting snapshots remain immutable; canonical presentation may resolve through the correction map without updating historical rows.
+- **BOUNDED LEGACY DISPLAY ONLY — ledger normalization:** fills missing display fields for historical rows from a directly linked Receipt or Bins Run source adjustment and is not a mutation source.
+- **BOUNDED LEGACY DISPLAY ONLY — matching Receipt heuristic:** recovers only a display grower number and cannot choose a FruitProfile or drive a write.
+- **BOUNDED LEGACY DISPLAY ONLY — reporting snapshots:** immutable historical reporting evidence may be canonically labeled without rewriting persisted snapshots.
+- **BOUNDED LEGACY DISPLAY ONLY — Outside Warehouse:** terminal external custody is historical provenance, not current room/Inter-Crew queue inventory; any reversal is guarded.
 
 ## Provenance sufficiency decision
 
@@ -89,4 +91,3 @@ A second general-purpose provenance graph is not required for this correction. T
 ## Partial consumption and historical reporting decision
 
 Identity correction reclassifies only current remaining inventory. Already consumed bins and immutable Bins Run/Actual Run reporting snapshots remain historical evidence. Reporting may display a canonical label through the correction resolver, but the underlying snapshots are not rewritten. A reversal of a pre-correction historical transaction fails closed because replaying it would recreate the obsolete identity.
-
