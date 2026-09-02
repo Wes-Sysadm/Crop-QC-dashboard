@@ -26,8 +26,11 @@ public interface IBinsRunService
     Task<string?> UpdateActualRunAsync(long id, ActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> CancelActualRunAsync(CancelActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> CorrectActualRunSalesDeskAsync(CorrectActualRunSalesDeskForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<ActualRunDetailCorrectionResult> CorrectActualRunDetailsAsync(CorrectActualRunDetailsForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> ApproveActualRunOverrideAsync(ApproveActualRunOverrideForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
 }
+
+public sealed record ActualRunDetailCorrectionResult(string? Error, bool AlreadyApplied = false);
 
 public sealed class BinsRunService(
     CropQcDbContext dbContext,
@@ -374,6 +377,19 @@ public sealed class BinsRunService(
         if (run is null) return null;
         run.CanCorrectSalesDesk = run.Facility == EmploymentFacilities.Wp
             && await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken);
+        run.CanCorrectDetails = run.Status == ActualRunStatuses.Active
+            && await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken);
+        run.DetailCorrections = await dbContext.ActualRunDetailCorrections.AsNoTracking()
+            .Where(x => x.ActualRunId == id)
+            .OrderBy(x => x.CorrectedAt).ThenBy(x => x.Id)
+            .Select(x => new ActualRunDetailCorrectionViewModel(
+                x.PreviousRunAt,
+                x.NewRunAt,
+                x.PreviousNotes != x.NewNotes,
+                x.Reason,
+                x.CorrectedByUser.DisplayName,
+                x.CorrectedAt))
+            .ToListAsync(cancellationToken);
         if (run.Facility == EmploymentFacilities.Wp)
         {
             run.SalesDeskOptions = await dbContext.SalesDesks.AsNoTracking()
@@ -479,7 +495,8 @@ public sealed class BinsRunService(
                     x.GradeDistributionSnapshotJson,
                     x.ConfigurationSnapshotJson,
                     x.CalculationVersion,
-                    x.CalculatedAt
+                    x.CalculatedAt,
+                    x.RunAtSnapshot
                 })
                 .ToListAsync(cancellationToken);
             run.Expectations = expectationRows
@@ -504,6 +521,7 @@ public sealed class BinsRunService(
                         GradeDistribution = DeserializeDistribution(x.GradeDistributionSnapshotJson),
                         CalculationVersion = x.CalculationVersion,
                         CalculatedAt = x.CalculatedAt,
+                        RunAtSnapshot = x.RunAtSnapshot,
                         IsHistoricalReconstruction = reconstruction is not null,
                         ReconstructedAt = reconstruction?.ReconstructedAt,
                         PhysicalRunAt = reconstruction?.PhysicalRunAt,
@@ -910,6 +928,102 @@ public sealed class BinsRunService(
         await dbContext.SaveChangesAsync(cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return null;
+    }
+
+    public async Task<ActualRunDetailCorrectionResult> CorrectActualRunDetailsAsync(
+        CorrectActualRunDetailsForm form,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken))
+            return new("Actual Run Admin access is required to correct run details.");
+        if (string.IsNullOrWhiteSpace(form.OperationKey) || form.OperationKey.Trim().Length > 64)
+            return new("The correction request identifier is invalid. Refresh and retry.");
+        if (string.IsNullOrWhiteSpace(form.Reason))
+            return new("A run detail correction reason is required.");
+        var reason = form.Reason.Trim();
+        if (reason.Length > 1000) return new("The run detail correction reason is too long.");
+        var notes = string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim();
+        if (notes?.Length > 1000) return new("Run notes cannot exceed 1000 characters.");
+
+        var newRunAt = form.RunAt.ToUniversalTime();
+        if (newRunAt > BusinessTime.UtcNow.AddMinutes(5))
+            return new("Run date/time cannot be more than five minutes in the future.");
+        var userId = await CurrentUserIdAsync(user, cancellationToken);
+        if (userId is null) return new("The current user account could not be resolved.");
+
+        await using var transaction = await BeginTransactionIfSupportedAsync(cancellationToken);
+        var operationKey = form.OperationKey.Trim();
+        var existing = await dbContext.ActualRunDetailCorrections.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.OperationKey == operationKey, cancellationToken);
+        if (existing is not null)
+        {
+            if (existing.ActualRunId != form.Id
+                || existing.ExpectedConcurrencyVersion != form.ConcurrencyVersion
+                || existing.NewRunAt != newRunAt
+                || !string.Equals(existing.NewNotes, notes, StringComparison.Ordinal)
+                || !string.Equals(existing.Reason, reason, StringComparison.Ordinal))
+                return new("The correction request identifier was already used for a different run detail correction. Refresh and retry.");
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+            return new(null, true);
+        }
+
+        var run = await dbContext.ActualRuns.SingleOrDefaultAsync(x => x.Id == form.Id, cancellationToken);
+        if (run is null) return new("Actual Run was not found.");
+        if (run.Status != ActualRunStatuses.Active) return new("Only an active Actual Run can have its details corrected.");
+        if (run.ConcurrencyVersion != form.ConcurrencyVersion)
+            return new("Conflict detected: this Actual Run changed. Reload before correcting its details.");
+        if (run.RunAt == newRunAt && string.Equals(run.Notes, notes, StringComparison.Ordinal))
+            return new("No run details changed.");
+
+        var now = BusinessTime.UtcNow;
+        var previousRunAt = run.RunAt;
+        var previousNotes = run.Notes;
+        var previousConcurrencyVersion = run.ConcurrencyVersion;
+        dbContext.ActualRunDetailCorrections.Add(new ActualRunDetailCorrection
+        {
+            ActualRunId = run.Id,
+            OperationKey = operationKey,
+            ExpectedConcurrencyVersion = form.ConcurrencyVersion,
+            PreviousRunAt = previousRunAt,
+            NewRunAt = newRunAt,
+            PreviousNotes = previousNotes,
+            NewNotes = notes,
+            Reason = reason,
+            CorrectedByUserId = userId.Value,
+            CorrectedAt = now
+        });
+        run.RunAt = newRunAt;
+        run.Notes = notes;
+        run.UpdatedAt = now;
+        run.UpdatedByUserId = userId;
+        run.ConcurrencyVersion++;
+        dbContext.AuditLogs.Add(new AuditLog
+        {
+            Action = "ActualRunDetailsCorrected",
+            EntityName = nameof(ActualRun),
+            EntityKey = run.Id.ToString(),
+            UserId = userId,
+            BeforeValuesJson = JsonSerializer.Serialize(new { RunAt = previousRunAt, Notes = previousNotes, ConcurrencyVersion = previousConcurrencyVersion }),
+            AfterValuesJson = JsonSerializer.Serialize(new
+            {
+                RunAt = newRunAt,
+                Notes = notes,
+                Reason = reason,
+                ConcurrencyVersion = run.ConcurrencyVersion,
+                InventoryDelta = 0,
+                TreatmentDelta = 0,
+                RunQuantityDelta = 0,
+                RevisionDelta = 0,
+                ExpectationDelta = 0,
+                PackoutDelta = 0
+            }),
+            SourceApplication = SourceApplication,
+            CreatedAt = now
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        return new(null);
     }
 
     public async Task<string?> ApproveActualRunOverrideAsync(

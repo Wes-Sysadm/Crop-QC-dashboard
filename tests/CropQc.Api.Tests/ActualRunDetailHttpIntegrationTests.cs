@@ -237,6 +237,59 @@ public sealed class ActualRunDetailHttpIntegrationTests
         Assert.Contains("Packout report files", detailHtml, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ActualRunDetailCorrection_RequiresAntiforgeryAndUpdatesOnlyHeaderMetadata()
+    {
+        await using var factory = new ActualRunWebApplicationFactory();
+        long runId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            runId = await SeedPackoutActualRunAsync(db);
+        }
+
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthenticationHandler.SchemeName);
+        var withoutToken = await client.PostAsync($"/BinsRun/ActualRuns/{runId}/Details", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["ConcurrencyVersion"] = "1",
+            ["OperationKey"] = Guid.NewGuid().ToString("N"),
+            ["RunAt"] = "2026-07-27T09:00",
+            ["Notes"] = "Corrected",
+            ["Reason"] = "Reviewed physical run date"
+        }));
+        Assert.Equal(HttpStatusCode.BadRequest, withoutToken.StatusCode);
+
+        var detail = await client.GetAsync($"/BinsRun/ActualRuns/{runId}");
+        var html = await detail.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
+        Assert.Contains("Edit Run Details", html);
+        var tokenMatch = Regex.Match(html, "name=\"__RequestVerificationToken\"[^>]*value=\"(?<token>[^\"]+)\"");
+        Assert.True(tokenMatch.Success);
+        var response = await client.PostAsync($"/BinsRun/ActualRuns/{runId}/Details", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = WebUtility.HtmlDecode(tokenMatch.Groups["token"].Value),
+            ["ConcurrencyVersion"] = "1",
+            ["OperationKey"] = Guid.NewGuid().ToString("N"),
+            ["RunAt"] = "2026-07-27T09:00",
+            ["Notes"] = "Corrected date only",
+            ["Reason"] = "Reviewed physical run date"
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+
+        using var verificationScope = factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+        var run = await verificationDb.ActualRuns.SingleAsync(x => x.Id == runId);
+        Assert.Equal(new DateTimeOffset(2026, 7, 27, 16, 0, 0, TimeSpan.Zero), run.RunAt);
+        Assert.Equal("Corrected date only", run.Notes);
+        Assert.Equal(2, run.ConcurrencyVersion);
+        Assert.Single(await verificationDb.ActualRunDetailCorrections.ToListAsync());
+        Assert.Single(await verificationDb.ActualRunRevisions.ToListAsync());
+        Assert.Single(await verificationDb.BinsRunEntries.ToListAsync());
+        Assert.Single(await verificationDb.RoomInventoryAdjustments.ToListAsync());
+        Assert.Single(await verificationDb.RunExpectations.ToListAsync());
+    }
+
     private sealed class ActualRunWebApplicationFactory(string? postgresConnectionString = null) : WebApplicationFactory<Program>
     {
         private readonly string databaseName = $"actual-run-http-{Guid.NewGuid():N}";

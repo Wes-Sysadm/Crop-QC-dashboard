@@ -904,6 +904,16 @@ public sealed class CorrectActualRunSalesDeskForm
     public string Reason { get; set; } = "";
 }
 
+public sealed class CorrectActualRunDetailsForm
+{
+    public long Id { get; set; }
+    public long ConcurrencyVersion { get; set; }
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public DateTimeOffset RunAt { get; set; }
+    public string? Notes { get; set; }
+    public string Reason { get; set; } = "";
+}
+
 public sealed record SalesDeskOptionViewModel(int Id, string Name, bool IsActive, bool IsReferenced = false);
 
 public sealed class ApproveActualRunOverrideForm

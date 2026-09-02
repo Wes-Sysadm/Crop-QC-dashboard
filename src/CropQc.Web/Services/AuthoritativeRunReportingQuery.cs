@@ -8,6 +8,24 @@ namespace CropQc.Web.Services;
 /// </summary>
 public static class AuthoritativeRunReportingQuery
 {
+    /// <summary>
+    /// Applies a physical/business run-time range. Actual Runs use their mutable,
+    /// audited header date; legacy entries retain their immutable entry date.
+    /// This conditional is translated by EF and must not be replaced with client evaluation.
+    /// </summary>
+    public static IQueryable<BinsRunEntry> ApplyCanonicalRunAtRange(
+        IQueryable<BinsRunEntry> query,
+        DateTimeOffset startInclusive,
+        DateTimeOffset endExclusive) =>
+        query.Where(x => (x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt) >= startInclusive
+            && (x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt) < endExclusive);
+
+    public static IOrderedQueryable<BinsRunEntry> OrderByCanonicalRunAt(IQueryable<BinsRunEntry> query) =>
+        query.OrderBy(x => x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt);
+
+    public static IOrderedQueryable<BinsRunEntry> OrderByCanonicalRunAtDescending(IQueryable<BinsRunEntry> query) =>
+        query.OrderByDescending(x => x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt);
+
     public static IQueryable<BinsRunEntry> ApplyActiveQuantityRules(IQueryable<BinsRunEntry> query) =>
         query.Where(x =>
             (x.TransactionType == ActualRunTransactionTypes.Depletion
@@ -55,4 +73,8 @@ public static class AuthoritativeRunReportingQuery
     public static string RunFacility(BinsRunEntry line) => line.ActualRunId != null
         ? line.ActualRun!.RunFacilityCodeSnapshot!
         : line.ReportingFacilityCodeSnapshot!;
+
+    public static DateTimeOffset CanonicalRunAt(BinsRunEntry line) => line.ActualRunId != null
+        ? line.ActualRun!.RunAt
+        : line.RunAt;
 }

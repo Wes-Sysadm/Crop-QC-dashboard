@@ -395,10 +395,10 @@ public sealed class GrowerLotProgressService(
             cancellationToken);
         var selectedRuns = FilterLot(runs, selected, profiles.ProfileIds);
         var rows = await selectedRuns
-            .OrderBy(x => x.RunAt)
+            .OrderBy(x => x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt)
             .ThenBy(x => x.Id)
             .Take(MaximumLotRunRows + 1)
-            .Select(x => new LotRunRow(x.Id, x.ActualRunId, x.RunAt, x.BinsRun))
+            .Select(x => new LotRunRow(x.Id, x.ActualRunId, x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt, x.BinsRun))
             .ToListAsync(cancellationToken);
         if (rows.Count > MaximumLotRunRows)
         {
@@ -429,13 +429,13 @@ public sealed class GrowerLotProgressService(
         var startUtc = businessTime.UtcRangeForPacificDate(selectedWeek.WeekStart).Start;
         var endUtc = businessTime.UtcRangeForPacificDate(selectedWeek.WeekEnd.AddDays(1)).Start;
         var page = Math.Max(1, model.Filter.SupportingPage);
-        var selectedWeekRuns = selectedRuns.Where(x => x.RunAt >= startUtc && x.RunAt < endUtc);
+        var selectedWeekRuns = AuthoritativeRunReportingQuery.ApplyCanonicalRunAtRange(selectedRuns, startUtc, endUtc);
         var supportingLineCount = await selectedWeekRuns.CountAsync(cancellationToken);
         var lastPage = Math.Max(1, (int)Math.Ceiling(supportingLineCount / (decimal)SupportingPageSize));
         page = Math.Min(page, lastPage);
         model.Filter.SupportingPage = page;
         var records = await selectedWeekRuns
-            .OrderBy(x => x.RunAt)
+            .OrderBy(x => x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt)
             .ThenBy(x => x.Id)
             .Skip((page - 1) * SupportingPageSize)
             .Take(SupportingPageSize + 1)
@@ -444,7 +444,7 @@ public sealed class GrowerLotProgressService(
                 x.ActualRunId,
                 x.ActualRunId == null ? "Legacy Bins Run" : "Actual Run",
                 x.ActualRunId == null ? $"/BinsRun?Section=Activity#bins-run-{x.Id}" : $"/BinsRun/ActualRuns/{x.ActualRunId}",
-                x.RunAt,
+                x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt,
                 x.CreatedByUser == null ? "Unknown" : x.CreatedByUser.DisplayName,
                 x.ActualRunId != null ? x.ActualRun!.RunFacilityCodeSnapshot! : x.ReportingFacilityCodeSnapshot!,
                 x.Warehouse.Code,
@@ -591,7 +591,7 @@ public sealed class GrowerLotProgressService(
                     && x.ReportingFacilityCodeSnapshot != EmploymentFacilities.Ebs));
         var remainingSample = Math.Max(0, sampleLimit - receiptIssues.Count);
         var runSamples = await invalidRuns
-            .OrderByDescending(x => x.RunAt)
+            .OrderByDescending(x => x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt)
             .ThenByDescending(x => x.Id)
             .Take(Math.Max(1, remainingSample))
             .Select(x => new ExcludedIssueSample(

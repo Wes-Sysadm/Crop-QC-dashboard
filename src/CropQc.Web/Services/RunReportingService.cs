@@ -118,8 +118,11 @@ public sealed class RunReportingService(
         }
         var startUtc = UtcStart(PeriodStart(cropYear));
         var endUtc = UtcEndExclusive(cutoff > PeriodEnd(cropYear) ? PeriodEnd(cropYear) : cutoff);
-        return AuthoritativeRunReportingQuery.ApplyValidRules(dbContext.BinsRunEntries.AsNoTracking())
-            .Where(x => x.ReportingCropYearSnapshot == cropYear && x.RunAt >= startUtc && x.RunAt < endUtc);
+        return AuthoritativeRunReportingQuery.ApplyCanonicalRunAtRange(
+            AuthoritativeRunReportingQuery.ApplyValidRules(dbContext.BinsRunEntries.AsNoTracking())
+                .Where(x => x.ReportingCropYearSnapshot == cropYear),
+            startUtc,
+            endUtc);
     }
 
     private async Task<IReadOnlyList<FacilityTotal>> GetFacilityTotalsAsync(
@@ -284,7 +287,7 @@ public sealed class RunReportingService(
                     && x.ReportingVarietyCodeSnapshot == selectedVariety.Variety
                     && x.ProductionTypeSnapshot == selectedVariety.ProductionType
                     && x.IsOrganicSnapshot == selectedVariety.IsOrganic)
-                .OrderBy(x => x.RunAt)
+                .OrderBy(x => x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt)
                 .Select(x => new WeeklySourceRow(
                     x.Id,
                     x.ActualRunId,
@@ -293,7 +296,7 @@ public sealed class RunReportingService(
                     x.ProductionTypeSnapshot!,
                     x.IsOrganicSnapshot!.Value,
                     x.GrowerNumberSnapshot!,
-                    x.RunAt,
+                    x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt,
                     x.BinsRun))
                 .Take(MaximumWeeklySourceRows + 1)
                 .ToListAsync(cancellationToken);
@@ -454,15 +457,16 @@ public sealed class RunReportingService(
         }
         var weekStartUtc = UtcStart(weekStart);
         var weekEndUtc = UtcEndExclusive(weekStart.AddDays(6));
-        return await ApplySalesDeskFilter(ValidLines(cropYear, cutoff), facility, salesDesk)
+        var supporting = ApplySalesDeskFilter(ValidLines(cropYear, cutoff), facility, salesDesk)
             .Where(x => (x.ActualRunId != null ? x.ActualRun!.RunFacilityCodeSnapshot : x.ReportingFacilityCodeSnapshot) == facility)
             .Where(x => x.ReportingFruitProfileIdSnapshot == fruitProfileId
                 && x.ReportingVarietyCodeSnapshot == variety
                 && x.ProductionTypeSnapshot == productionType
                 && x.IsOrganicSnapshot == organic
-                && x.GrowerNumberSnapshot == growerNumber
-                && x.RunAt >= weekStartUtc && x.RunAt < weekEndUtc)
-            .OrderBy(x => x.RunAt)
+                && x.GrowerNumberSnapshot == growerNumber);
+        supporting = AuthoritativeRunReportingQuery.ApplyCanonicalRunAtRange(supporting, weekStartUtc, weekEndUtc);
+        return await supporting
+            .OrderBy(x => x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt)
             .ThenBy(x => x.Id)
             .Skip((page - 1) * SupportingPageSize)
             .Take(SupportingPageSize + 1)
@@ -471,7 +475,7 @@ public sealed class RunReportingService(
                 x.ActualRunId,
                 x.ActualRunId == null ? "Legacy Bins Run" : "Actual Run",
                 x.ActualRunId == null ? $"/BinsRun?Section=Activity#bins-run-{x.Id}" : $"/BinsRun/ActualRuns/{x.ActualRunId}",
-                x.RunAt,
+                x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt,
                 x.CreatedByUser == null ? "Unknown" : x.CreatedByUser.DisplayName,
                 x.ActualRunId != null ? x.ActualRun!.RunFacilityCodeSnapshot! : x.ReportingFacilityCodeSnapshot!,
                 x.Warehouse.Code,
@@ -523,7 +527,7 @@ public sealed class RunReportingService(
                                 ?? (x.SourceInventoryAdjustment == null ? null : x.SourceInventoryAdjustment.CropYear)
                                 ?? x.InventoryAdjustment.CropYear) == null
                             && x.CreatedAt >= authoritativeRecordStartUtc))))
-            .OrderByDescending(x => x.RunAt)
+            .OrderByDescending(x => x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt)
             .ThenByDescending(x => x.Id)
             .Skip((page - 1) * NeedsReviewPageSize)
             .Take(NeedsReviewPageSize + 1)
@@ -554,7 +558,8 @@ public sealed class RunReportingService(
                 ReceiptGrowerNumber = x.Receipt == null ? null : x.Receipt.GrowerNumber,
                 CreatedByUserId = x.CreatedByUserId,
                 RecordedUser = x.CreatedByUser == null ? "Unknown" : x.CreatedByUser.DisplayName,
-                RunAt = x.RunAt,
+                RunAt = x.ActualRunId != null ? x.ActualRun!.RunAt : x.RunAt,
+                LedgerRunAt = x.RunAt,
                 Bins = x.BinsRun
             })
             .ToListAsync(cancellationToken);
@@ -652,7 +657,7 @@ public sealed class RunReportingService(
                         employmentUser.CurrentFacility,
                         employmentUser.CurrentEffectiveAt,
                         employmentHistoryByUser.GetValueOrDefault(createdByUserId) ?? [],
-                        row.RunAt)
+                        row.LedgerRunAt)
                     : EmploymentFacilities.Unassigned;
             if (isQuantityLine && employment == EmploymentFacilities.Unassigned)
             {
@@ -841,6 +846,7 @@ public sealed class RunReportingService(
         public int? CreatedByUserId { get; init; }
         public string RecordedUser { get; init; } = "";
         public DateTimeOffset RunAt { get; init; }
+        public DateTimeOffset LedgerRunAt { get; init; }
         public int Bins { get; init; }
     }
 }

@@ -689,6 +689,29 @@ public sealed class BinsRunController(
         return RedirectToAction(nameof(ActualRunDetail), new { id });
     }
 
+    [HttpPost("ActualRuns/{id:long}/Details")]
+    [Authorize(Policy = AccessPolicyNames.ActualRunsAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CorrectActualRunDetails(long id, CorrectActualRunDetailsForm form, CancellationToken cancellationToken)
+    {
+        form.Id = id;
+        ActualRunDetailCorrectionResult? result = null;
+        var error = await ExecuteActualRunOperationAsync(
+            async () =>
+            {
+                result = await binsRunService.CorrectActualRunDetailsAsync(form, User, cancellationToken);
+                return result.Error;
+            },
+            "CorrectDetails",
+            id,
+            cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error
+            ?? (result?.AlreadyApplied == true
+                ? "Run detail correction was already applied."
+                : "Run details corrected. Inventory and treatment lineage were unchanged.");
+        return RedirectToAction(nameof(ActualRunDetail), new { id });
+    }
+
     [HttpPost("ActualRunOverrides/{id:long}/Approve")]
     [Authorize(Policy = AccessPolicyNames.ActualRunsAdmin)]
     public async Task<IActionResult> ApproveActualRunOverride(long id, ApproveActualRunOverrideForm form, CancellationToken cancellationToken)

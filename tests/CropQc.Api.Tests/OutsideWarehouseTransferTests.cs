@@ -250,7 +250,7 @@ public sealed class OutsideWarehouseTransferTests
     }
 
     [Fact]
-    public void Combined_migration_compatibility_and_883_object_gate_are_exact_and_bounded()
+    public void Combined_migration_compatibility_and_901_object_gate_are_exact_and_bounded()
     {
         var migration = Source("src", "CropQc.Data", "Migrations", "20260828033737_AddTransferCustodyWorkflow.cs");
         var preflight = Source("scripts", "postgresql", "preflight-transfer-custody-workflow.sql");
@@ -269,8 +269,8 @@ public sealed class OutsideWarehouseTransferTests
         Assert.Contains("pg_advisory_xact_lock", apply);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
         Assert.Contains("162 AS checked_target_objects", verify);
-        Assert.Equal("20260902140938_AddInventoryIdentityCorrections", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
-        Assert.Equal(883, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
+        Assert.Equal("20260902201338_AddActualRunDetailCorrections", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
+        Assert.Equal(901, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 
     [Fact]

@@ -380,6 +380,7 @@ public sealed class ActualRun
     public ICollection<RunExpectation> Expectations { get; } = new List<RunExpectation>();
     public ICollection<PackoutRun> PackoutRuns { get; } = new List<PackoutRun>();
     public ICollection<ActualRunSalesDeskCorrection> SalesDeskCorrections { get; } = new List<ActualRunSalesDeskCorrection>();
+    public ICollection<ActualRunDetailCorrection> DetailCorrections { get; } = new List<ActualRunDetailCorrection>();
 }
 
 public sealed class ActualRunRevision

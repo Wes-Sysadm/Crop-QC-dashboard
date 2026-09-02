@@ -64,6 +64,42 @@ public sealed class RunReportingTests
     }
 
     [Fact]
+    public async Task ActualRunUsesHeaderDateWhileLegacyEntryRetainsEntryDate()
+    {
+        using var db = CreateDbContext();
+        await SeedAsync(db);
+        var actualRun = await db.ActualRuns.SingleAsync(x => x.Id == 1);
+        var actualLine = await db.BinsRunEntries.SingleAsync(x => x.Id == 1);
+        var legacyLine = await db.BinsRunEntries.SingleAsync(x => x.Id == 2);
+        Assert.Equal(DateTimeOffset.Parse("2026-08-03T19:00:00Z"), actualLine.RunAt);
+        Assert.Equal(actualLine.RunAt, legacyLine.RunAt);
+        actualRun.RunAt = DateTimeOffset.Parse("2026-08-01T19:00:00Z");
+        await db.SaveChangesAsync();
+
+        var initial = await CreateService(db).GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026
+        }, Principal(), default);
+        var detail = Assert.IsType<RunTotalsDetailViewModel>(initial.Detail);
+        var selected = await CreateService(db).GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026,
+            ReportVarietyKey = Assert.Single(detail.Varieties).VarietyKey
+        }, Principal(), default);
+
+        var weeks = Assert.IsType<RunTotalsDetailViewModel>(selected.Detail).Weeks.OrderBy(x => x.WeekStart).ToList();
+        Assert.Equal(60, weeks.Sum(x => x.Bins));
+        Assert.Contains(weeks, x => x.WeekStart == new DateOnly(2026, 7, 26) && x.Bins == 40);
+        Assert.Contains(weeks, x => x.WeekStart == new DateOnly(2026, 8, 2) && x.Bins == 20);
+        Assert.Equal(DateTimeOffset.Parse("2026-08-03T19:00:00Z"), actualLine.RunAt);
+        Assert.Equal(DateTimeOffset.Parse("2026-08-03T19:00:00Z"), legacyLine.RunAt);
+    }
+
+    [Fact]
     public async Task RunTotalsVarietyCards_UseSharedConfiguredColorAndReadableContrast()
     {
         using var db = CreateDbContext();

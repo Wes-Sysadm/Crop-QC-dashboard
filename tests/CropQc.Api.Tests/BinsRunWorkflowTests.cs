@@ -1212,6 +1212,168 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task ActualRun_DetailCorrectionIsAdminOnlyIdempotentAndOperationallyNeutral()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var run = new ActualRun
+        {
+            Status = ActualRunStatuses.Active,
+            CurrentRevisionNumber = 1,
+            ConcurrencyVersion = 4,
+            RunAt = DateTimeOffset.Parse("2026-09-02T18:30:00Z"),
+            Notes = "Entered Tuesday",
+            CreatedAt = DateTimeOffset.Parse("2026-09-02T18:31:00Z"),
+            RunFacilityCodeSnapshot = EmploymentFacilities.Wp,
+            SalesDeskId = 1,
+            SalesDeskNameSnapshot = "Domex"
+        };
+        db.ActualRuns.Add(run);
+        await db.SaveChangesAsync();
+        var protectedCounts = new
+        {
+            Entries = await db.BinsRunEntries.CountAsync(),
+            Adjustments = await db.RoomInventoryAdjustments.CountAsync(),
+            Revisions = await db.ActualRunRevisions.CountAsync(),
+            Expectations = await db.RunExpectations.CountAsync(),
+            Packouts = await db.PackoutRuns.CountAsync(),
+            Treatments = await db.TreatmentLineageMovements.CountAsync()
+        };
+        var operationKey = Guid.NewGuid().ToString("N");
+        var form = new CorrectActualRunDetailsForm
+        {
+            Id = run.Id,
+            ConcurrencyVersion = 4,
+            OperationKey = operationKey,
+            RunAt = DateTimeOffset.Parse("2026-09-01T18:30:00Z"),
+            Notes = "Physical run was Monday",
+            Reason = "Reviewed production record"
+        };
+        var service = CreateService(db);
+
+        Assert.Contains("Admin access", (await service.CorrectActualRunDetailsAsync(form, Principal("manager@fruitandland.com"), default)).Error);
+        var applied = await service.CorrectActualRunDetailsAsync(form, Principal("admin@fruitandland.com"), default);
+        var duplicate = await service.CorrectActualRunDetailsAsync(form, Principal("admin@fruitandland.com"), default);
+        var mismatchedReuse = await service.CorrectActualRunDetailsAsync(new CorrectActualRunDetailsForm
+        {
+            Id = form.Id,
+            ConcurrencyVersion = form.ConcurrencyVersion,
+            OperationKey = form.OperationKey,
+            RunAt = form.RunAt,
+            Notes = "Different payload",
+            Reason = form.Reason
+        }, Principal("admin@fruitandland.com"), default);
+
+        Assert.Null(applied.Error);
+        Assert.False(applied.AlreadyApplied);
+        Assert.Null(duplicate.Error);
+        Assert.True(duplicate.AlreadyApplied);
+        Assert.Contains("different run detail correction", mismatchedReuse.Error);
+        db.ChangeTracker.Clear();
+        var corrected = await db.ActualRuns.SingleAsync(x => x.Id == run.Id);
+        Assert.Equal(form.RunAt, corrected.RunAt);
+        Assert.Equal(form.Notes, corrected.Notes);
+        Assert.Equal(5, corrected.ConcurrencyVersion);
+        Assert.Equal(1, corrected.CurrentRevisionNumber);
+        Assert.Equal(1, corrected.SalesDeskId);
+        Assert.Equal(EmploymentFacilities.Wp, corrected.RunFacilityCodeSnapshot);
+        var history = Assert.Single(await db.ActualRunDetailCorrections.ToListAsync());
+        Assert.Equal(DateTimeOffset.Parse("2026-09-02T18:30:00Z"), history.PreviousRunAt);
+        Assert.Equal(form.RunAt, history.NewRunAt);
+        Assert.Equal("Reviewed production record", history.Reason);
+        Assert.Single(await db.AuditLogs.Where(x => x.Action == "ActualRunDetailsCorrected").ToListAsync());
+        Assert.Equal(protectedCounts.Entries, await db.BinsRunEntries.CountAsync());
+        Assert.Equal(protectedCounts.Adjustments, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(protectedCounts.Revisions, await db.ActualRunRevisions.CountAsync());
+        Assert.Equal(protectedCounts.Expectations, await db.RunExpectations.CountAsync());
+        Assert.Equal(protectedCounts.Packouts, await db.PackoutRuns.CountAsync());
+        Assert.Equal(protectedCounts.Treatments, await db.TreatmentLineageMovements.CountAsync());
+    }
+
+    [Fact]
+    public async Task ActualRun_DetailCorrectionRejectsNoChangeStaleCanceledFutureAndOperationKeyMismatch()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var run = new ActualRun
+        {
+            Status = ActualRunStatuses.Active,
+            CurrentRevisionNumber = 1,
+            ConcurrencyVersion = 3,
+            RunAt = DateTimeOffset.Parse("2026-08-01T18:30:00Z"),
+            Notes = "Same",
+            CreatedAt = DateTimeOffset.Parse("2026-08-01T18:31:00Z")
+        };
+        db.ActualRuns.Add(run);
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var admin = Principal("admin@fruitandland.com");
+
+        var noChange = await service.CorrectActualRunDetailsAsync(new CorrectActualRunDetailsForm
+        {
+            Id = run.Id,
+            ConcurrencyVersion = 3,
+            RunAt = run.RunAt,
+            Notes = run.Notes,
+            Reason = "Reviewed"
+        }, admin, default);
+        Assert.Equal("No run details changed.", noChange.Error);
+        Assert.Empty(db.ActualRunDetailCorrections);
+
+        var stale = await service.CorrectActualRunDetailsAsync(new CorrectActualRunDetailsForm
+        {
+            Id = run.Id,
+            ConcurrencyVersion = 2,
+            RunAt = run.RunAt.AddDays(-1),
+            Reason = "Stale"
+        }, admin, default);
+        Assert.Contains("Conflict detected", stale.Error);
+
+        var future = await service.CorrectActualRunDetailsAsync(new CorrectActualRunDetailsForm
+        {
+            Id = run.Id,
+            ConcurrencyVersion = 3,
+            RunAt = DateTimeOffset.UtcNow.AddHours(1),
+            Reason = "Future"
+        }, admin, default);
+        Assert.Contains("future", future.Error, StringComparison.OrdinalIgnoreCase);
+
+        run.Status = ActualRunStatuses.Canceled;
+        await db.SaveChangesAsync();
+        var canceled = await service.CorrectActualRunDetailsAsync(new CorrectActualRunDetailsForm
+        {
+            Id = run.Id,
+            ConcurrencyVersion = 3,
+            RunAt = run.RunAt.AddDays(-1),
+            Reason = "Canceled"
+        }, admin, default);
+        Assert.Contains("active", canceled.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(db.ActualRunDetailCorrections);
+    }
+
+    [Fact]
+    public void ActualRunDetailCorrectionUiEndpointAndCompatibilityPackageExposeSafetyControls()
+    {
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "BinsRun", "ActualRunDetail.cshtml"));
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "BinsRunController.cs"));
+        var preflight = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "preflight-actual-run-detail-corrections.sql"));
+        var apply = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "apply-actual-run-detail-corrections-schema.sql"));
+        var verify = File.ReadAllText(FindRepositoryFile("scripts", "postgresql", "verify-actual-run-detail-corrections.sql"));
+
+        Assert.Contains("Edit Run Details", view);
+        Assert.Contains("Apply Run Detail Correction", view);
+        Assert.Contains("datetime-local", view);
+        Assert.Contains("The run date was corrected after this Run Expectation was frozen", view);
+        Assert.Contains("[HttpPost(\"ActualRuns/{id:long}/Details\")]", controller);
+        Assert.Contains("AccessPolicyNames.ActualRunsAdmin", controller);
+        Assert.Contains("[ValidateAntiForgeryToken]", controller);
+        Assert.Contains("State C", preflight);
+        Assert.Contains("pg_advisory_xact_lock", apply);
+        Assert.Contains("cropqc.test_force_actual_run_detail_failure", apply);
+        Assert.Contains("__EFMigrationsHistory", verify);
+    }
+
+    [Fact]
     public async Task SalesDeskMasterLifecycleIsDynamicAndAudited()
     {
         using var db = CreateDbContext();
@@ -1430,8 +1592,8 @@ public sealed class BinsRunWorkflowTests
 
         Assert.Contains("--verify-release-readiness", File.ReadAllText(FindRepositoryFile(
             "src", "CropQc.Web", "Services", "TreatmentLineage144CorrectionService.cs")));
-        Assert.Contains("20260902140938_AddInventoryIdentityCorrections", program);
-        Assert.Contains("expectedSchemaObjects = 883", program);
+        Assert.Contains("20260902201338_AddActualRunDetailCorrections", program);
+        Assert.Contains("expectedSchemaObjects = 901", program);
         Assert.Contains("VerifyReadinessAsync", program);
         Assert.Contains("topology", program);
         Assert.Contains("Environment.ExitCode = releaseReady ? 0 : 1", program);
@@ -2124,6 +2286,77 @@ public sealed class BinsRunWorkflowTests
             new RoomInventoryLedgerQueryService(db),
             invariant).GetPageAsync(new RoomInventoryReconciliationFilter { WarehouseId = 1000 }, CancellationToken.None);
         Assert.NotEmpty(reconciliation.NegativeAdjustments);
+    }
+
+    [Fact]
+    public async Task PostgreSql_ActualRunDetailCorrectionIsNeutralAndCanonicalReportingTranslates_WhenConfigured()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_ACTUAL_RUN_DETAIL_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connectionString);
+        var optionsBuilder = new DbContextOptionsBuilder<CropQcDbContext>();
+        CropQcDatabase.Configure(optionsBuilder, DatabaseProviders.PostgreSql, connectionString);
+        await using var db = new CropQcDbContext(optionsBuilder.Options);
+        Assert.True(await db.Database.EnsureCreatedAsync(), "The configured Actual Run detail PostgreSQL database must start empty.");
+        await db.FruitProfiles.ExecuteDeleteAsync();
+        await db.SampleTypes.ExecuteDeleteAsync();
+        await db.Grades.ExecuteDeleteAsync();
+        await SeedInventoryAsync(db, useSeededEbsWarehouse: true);
+        var service = CreateService(db);
+        var manager = Principal("manager@fruitandland.com");
+        var admin = Principal("admin@fruitandland.com");
+        var option = (await service.GetPageAsync(new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, manager, default))
+            .AvailableInventory.Single(x => x.Lot == "LOT-120");
+        var create = GroupForm((option, 10));
+        create.RunAt = DateTimeOffset.Parse("2026-08-03T18:30:00Z");
+        Assert.Null(await service.CreateActualRunAsync(create, manager, default));
+        var run = await db.ActualRuns.SingleAsync();
+        var entryFingerprint = await db.BinsRunEntries.Where(x => x.ActualRunId == run.Id)
+            .Select(x => new { x.Id, x.RunAt, x.BinsRun, x.InventoryAdjustmentId, x.ActualRunRevisionId }).SingleAsync();
+        var adjustmentFingerprint = await db.RoomInventoryAdjustments.Where(x => x.ActualRunId == run.Id)
+            .Select(x => new { x.Id, x.AdjustmentAt, x.ChangeAmount, x.OldBinCount, x.NewBinCount }).SingleAsync();
+        var expectationFingerprint = await db.RunExpectations.Where(x => x.ActualRunId == run.Id)
+            .Select(x => new { x.Id, x.RunAtSnapshot, x.TotalBins }).SingleAsync();
+
+        var result = await service.CorrectActualRunDetailsAsync(new CorrectActualRunDetailsForm
+        {
+            Id = run.Id,
+            ConcurrencyVersion = run.ConcurrencyVersion,
+            OperationKey = Guid.NewGuid().ToString("N"),
+            RunAt = DateTimeOffset.Parse("2026-08-01T18:30:00Z"),
+            Notes = "PostgreSQL correction proof",
+            Reason = "Physical run date reviewed"
+        }, admin, default);
+        Assert.Null(result.Error);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(entryFingerprint, await db.BinsRunEntries.Where(x => x.ActualRunId == run.Id)
+            .Select(x => new { x.Id, x.RunAt, x.BinsRun, x.InventoryAdjustmentId, x.ActualRunRevisionId }).SingleAsync());
+        Assert.Equal(adjustmentFingerprint, await db.RoomInventoryAdjustments.Where(x => x.ActualRunId == run.Id)
+            .Select(x => new { x.Id, x.AdjustmentAt, x.ChangeAmount, x.OldBinCount, x.NewBinCount }).SingleAsync());
+        Assert.Equal(expectationFingerprint, await db.RunExpectations.Where(x => x.ActualRunId == run.Id)
+            .Select(x => new { x.Id, x.RunAtSnapshot, x.TotalBins }).SingleAsync());
+        Assert.Single(await db.ActualRunDetailCorrections.ToListAsync());
+        Assert.Single(await db.AuditLogs.Where(x => x.Action == "ActualRunDetailsCorrected").ToListAsync());
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["RunReporting:AuthoritativeStartCropYear"] = "2026"
+        }).Build();
+        var reporting = new RunReportingService(
+            db,
+            new PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock()),
+            new UserAccessService(db, configuration),
+            configuration,
+            new VarietyColorService(db));
+        var page = await reporting.GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Ebs,
+            ReportCropYear = 2026
+        }, manager, default);
+        Assert.Equal(10, Assert.IsType<RunTotalsDetailViewModel>(page.Detail).TotalBins);
     }
 
     [Fact]
@@ -2835,13 +3068,19 @@ public sealed class BinsRunWorkflowTests
         return db;
     }
 
-    private static async Task SeedInventoryAsync(CropQcDbContext db)
+    private static async Task SeedInventoryAsync(CropQcDbContext db, bool useSeededEbsWarehouse = false)
     {
-        foreach (var seededEbs in await db.Warehouses.Where(x => x.Code == EmploymentFacilities.Ebs).ToListAsync())
+        var seededEbsWarehouses = await db.Warehouses
+            .Where(x => x.Code == EmploymentFacilities.Ebs)
+            .ToListAsync();
+        foreach (var seededEbs in seededEbsWarehouses)
         {
             seededEbs.IsActive = false;
         }
-        var warehouse = new Warehouse { Id = 1000, Code = "EBS", Name = "EBS", IsActive = true };
+        var warehouse = useSeededEbsWarehouse
+            ? seededEbsWarehouses.Single()
+            : new Warehouse { Id = 1000, Code = "EBS", Name = "EBS", IsActive = true };
+        warehouse.IsActive = true;
         var room = new Room { Id = 1001, WarehouseId = warehouse.Id, Warehouse = warehouse, Code = "EVANCA12", Name = "Evans 12", CropQcRoomName = "Evans-12", IsActive = true };
         var otherRoom = new Room { Id = 1002, WarehouseId = warehouse.Id, Warehouse = warehouse, Code = "LAMBCA17", Name = "Lamb 17", CropQcRoomName = "Lamb-17", IsActive = true };
         var fruit = new FruitProfile { Id = 1000, Name = "Fuji", VarietyCode = "FUJI", FruitType = "Apple", ProductionType = "Conventional", IsActive = true };
@@ -2857,7 +3096,10 @@ public sealed class BinsRunWorkflowTests
             GrowerLot(1013, "LOT-ZERO"),
             GrowerLot(1014, "LOT-OTHER")
         };
-        db.Warehouses.Add(warehouse);
+        if (!useSeededEbsWarehouse)
+        {
+            db.Warehouses.Add(warehouse);
+        }
         db.Rooms.AddRange(room, otherRoom);
         db.FruitProfiles.Add(fruit);
         db.GrowerLots.AddRange(growerLots);
@@ -2933,6 +3175,26 @@ public sealed class BinsRunWorkflowTests
             FruitReading(7202, 7102, 2, 100, grade2),
             FruitReading(7203, 7103, 1, 100, grade2),
             FruitReading(7204, 7103, 2, 100, grade2));
+        if (useSeededEbsWarehouse)
+        {
+            foreach (var entry in db.ChangeTracker.Entries<QcFruitReading>().ToList())
+            {
+                entry.State = EntityState.Detached;
+            }
+            foreach (var entry in db.ChangeTracker.Entries<QcSample>().ToList())
+            {
+                entry.State = EntityState.Detached;
+            }
+            foreach (var property in db.ChangeTracker.Entries().SelectMany(x => x.Properties))
+            {
+                if (property.Metadata.ClrType == typeof(DateTimeOffset)
+                    && property.CurrentValue is DateTimeOffset value
+                    && value.Offset != TimeSpan.Zero)
+                {
+                    property.CurrentValue = value.ToUniversalTime();
+                }
+            }
+        }
         await db.SaveChangesAsync();
 
         static GrowerLot GrowerLot(int id, string lot) => new()

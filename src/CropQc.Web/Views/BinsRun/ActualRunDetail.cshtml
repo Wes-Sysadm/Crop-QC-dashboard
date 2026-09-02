@@ -18,6 +18,56 @@
     </div>
 </section>
 
+@if (Model.DetailCorrections.Count > 0 || Model.CanCorrectDetails)
+{
+    <section class="panel">
+        <h2>Run Detail Corrections</h2>
+        @if (Model.DetailCorrections.Count > 0)
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Previous date/time</th><th>Corrected date/time</th><th>Notes</th><th>Reason</th><th>By</th><th>At</th></tr></thead>
+                    <tbody>
+                    @foreach (var correction in Model.DetailCorrections)
+                    {
+                        <tr>
+                            <td>@BusinessTime.FormatPacific(correction.PreviousRunAt)</td>
+                            <td>@BusinessTime.FormatPacific(correction.NewRunAt)</td>
+                            <td>@(correction.NotesChanged ? "Changed" : "Unchanged")</td>
+                            <td>@correction.Reason</td>
+                            <td>@correction.CorrectedBy</td>
+                            <td>@BusinessTime.FormatPacific(correction.CorrectedAt)</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+        @if (Model.CanCorrectDetails)
+        {
+            <details class="actual-run-detail-correction">
+                <summary class="button secondary-button">Edit Run Details</summary>
+                <form class="form-grid" method="post" action="/BinsRun/ActualRuns/@Model.Id/Details">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="ConcurrencyVersion" value="@Model.ConcurrencyVersion" />
+                    <input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" />
+                    <label>Run date/time (Pacific)
+                        <input type="datetime-local" name="RunAt" value="@BusinessTime.FormatPacificInput(Model.RunAt)" required />
+                    </label>
+                    <label class="wide">Notes
+                        <textarea name="Notes" maxlength="1000">@Model.Notes</textarea>
+                    </label>
+                    <label class="wide">Reason for correction
+                        <textarea name="Reason" maxlength="1000" required></textarea>
+                    </label>
+                    <p class="notice warning wide">Correcting the run date changes run reporting and historical run placement. It does not change inventory quantities, source rooms, treatment lineage, packout results, or frozen Run Expectations.</p>
+                    <button type="submit">Apply Run Detail Correction</button>
+                </form>
+            </details>
+        }
+    </section>
+}
+
 @if (!string.IsNullOrWhiteSpace(Model.DetailWarning))
 {
     <p class="notice warning" role="alert">@Model.DetailWarning</p>
@@ -139,6 +189,10 @@
     else
     {
         var expectation = Model.CurrentExpectation;
+        @if (expectation.RunAtSnapshot != Model.RunAt)
+        {
+            <p class="notice">The run date was corrected after this Run Expectation was frozen. The expectation retains its original run-date snapshot for auditability.</p>
+        }
         @if (expectation.IsHistoricalReconstruction)
         {
             <p class="notice warning" role="alert">
