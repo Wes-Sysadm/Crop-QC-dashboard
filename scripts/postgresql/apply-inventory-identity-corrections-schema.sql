@@ -4,7 +4,7 @@
 BEGIN;
 SET LOCAL lock_timeout = '15s';
 SET LOCAL statement_timeout = '10min';
-SELECT pg_advisory_xact_lock(hashtextextended('CropQc:20260902011217_AddInventoryIdentityCorrections', 0));
+SELECT pg_advisory_xact_lock(hashtextextended('CropQc:20260902140938_AddInventoryIdentityCorrections', 0));
 
 DO $apply$
 BEGIN

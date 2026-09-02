@@ -206,6 +206,15 @@ public sealed class ProductionRestoreMemoryBenchmarkTests
         var applied = await repair.RunAsync(true, ApplicationAreas.OwnerEmail, CancellationToken.None);
         Assert.True(applied.Success, applied.Message);
         Assert.True(applied.Applied);
+        var compatibilityRows = await db.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.InventoryIdentityCorrectionId == applied.CorrectionId)
+            .ToListAsync();
+        Assert.Equal(4, compatibilityRows.Count);
+        Assert.All(compatibilityRows, x => Assert.Equal(0, x.InventoryInvariantVersion));
+        var readiness = await scope.ServiceProvider.GetRequiredService<IInventoryDeductionInvariantService>()
+            .VerifyReadinessAsync(CancellationToken.None);
+        Assert.True(readiness.IsReady);
+        Assert.DoesNotContain(readiness.Issues, x => compatibilityRows.Select(row => row.Id).Contains(x.AdjustmentId));
         var stateB = await repair.RunAsync(false, ApplicationAreas.OwnerEmail, CancellationToken.None);
         Assert.True(stateB.Success, stateB.Message);
         Assert.True(stateB.AlreadyApplied);

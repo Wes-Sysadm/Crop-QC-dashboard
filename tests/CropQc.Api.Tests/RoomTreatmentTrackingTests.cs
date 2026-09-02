@@ -398,7 +398,7 @@ public sealed class RoomTreatmentTrackingTests
         Assert.Contains("pg_advisory_xact_lock", apply);
         Assert.Contains("migration_history_intentionally_unchanged", verifier);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
-        Assert.Contains("20260902011217_AddInventoryIdentityCorrections", gate);
+        Assert.Contains("20260902140938_AddInventoryIdentityCorrections", gate);
         Assert.Equal(883, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 

@@ -1123,7 +1123,9 @@ public sealed class DashboardDataService(
             LotNumber = sourceLot.LotCode,
             PoolStart = sourceLot.PoolStart,
             VarietyCode = sourceLot.VarietyCode,
-            InventoryStatus = sourceLot.InventoryStatus,
+            InventoryStatus = string.IsNullOrWhiteSpace(sourceLot.InventoryStatus)
+                ? sourceLot.ProductionType
+                : sourceLot.InventoryStatus,
             BinCount = form.BinCount,
             Reason = reason,
             Notes = notes,

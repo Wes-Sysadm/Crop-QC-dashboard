@@ -436,7 +436,7 @@ public sealed class ReceivingTreatmentApplicationTests
         Assert.Contains("17 AS checked_target_objects", verify);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
         Assert.DoesNotContain("__EFMigrationsHistory", config);
-        Assert.Contains("20260902011217_AddInventoryIdentityCorrections", gate);
+        Assert.Contains("20260902140938_AddInventoryIdentityCorrections", gate);
         Assert.Equal(883, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 

@@ -40,7 +40,10 @@ public sealed class InventoryDeductionInvariantService(
     {
         dbContext.ChangeTracker.DetectChanges();
         var adjustments = dbContext.ChangeTracker.Entries<RoomInventoryAdjustment>()
-            .Where(x => x.State != EntityState.Deleted && x.Entity.InventoryInvariantVersion >= CurrentVersion)
+            .Where(x => x.State != EntityState.Deleted
+                && (x.Entity.InventoryInvariantVersion >= CurrentVersion
+                    || x.Entity.InventoryIdentityCorrectionId is not null
+                    || x.Entity.InventoryIdentityCorrection is not null))
             .Select(x => x.Entity)
             .Distinct()
             .ToList();
@@ -75,7 +78,9 @@ public sealed class InventoryDeductionInvariantService(
             .ToListAsync(cancellationToken);
         var positiveNewFormatAdjustments = await dbContext.RoomInventoryAdjustments
             .AsNoTracking()
-            .Where(x => x.ChangeAmount >= 0 && x.InventoryInvariantVersion >= CurrentVersion)
+            .Where(x => x.ChangeAmount >= 0
+                && (x.InventoryInvariantVersion >= CurrentVersion
+                    || x.InventoryIdentityCorrectionId != null))
             .OrderBy(x => x.Id)
             .ToListAsync(cancellationToken);
         var reviewedAdjustments = negativeAdjustments

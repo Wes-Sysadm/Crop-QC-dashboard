@@ -692,7 +692,7 @@ if (args.Contains(ActualRun3ReportingIdentityCorrectionConstants.CommandName, St
 
 if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommandName, StringComparer.OrdinalIgnoreCase))
 {
-    const string releaseMigration = "20260902011217_AddInventoryIdentityCorrections";
+    const string releaseMigration = "20260902140938_AddInventoryIdentityCorrections";
     var schemaReady = await DatabaseStartupDiagnostics.VerifyRequiredSchemaAsync(
         app.Services, app.Configuration, app.Environment, releaseMigration);
     await using var readinessScope = app.Services.CreateAsyncScope();

@@ -315,7 +315,7 @@ public sealed class RoomSealingTests
     [Fact]
     public void Application_gate_targets_latest_migration_and_883_objects()
     {
-        Assert.Equal("20260902011217_AddInventoryIdentityCorrections", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
+        Assert.Equal("20260902140938_AddInventoryIdentityCorrections", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
         var source = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DatabaseStartupDiagnostics.cs"));
         Assert.Contains("RoomSealEvents.RoomCodeSnapshot", source);
         Assert.Contains("RoomSealEvents.EffectiveAt", source);

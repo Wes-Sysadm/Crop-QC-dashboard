@@ -267,7 +267,7 @@ public sealed class Tr508901InventoryRepairService(
             && correctionMovements[0].SourceSegmentId == 356 && correctionMovements[0].DestinationSegmentId is not null
             && correctionMovements[0].SourceRoomId == room10 && correctionMovements[0].DestinationRoomId == room10
             && correctionMovements[0].BinCount == 40 && correctionMovements[0].InventoryIdentityCorrectionId == existing.Id
-            && correctionMovements[0].IdentityKey == "2026|538|26|4101|4101|ORDR|ORGANIC|True|ORGANIC"
+            && correctionMovements[0].IdentityKey == "2026|538|26|4101|4101|ORDR|ORGANIC|True|"
             && correctionMovements[0].TreatmentStateSnapshot == TreatmentLineageStates.Untreated
             && correctionMovements[0].TreatmentSignatureSnapshot == "u" && correctionMovements[0].ReceiptId is null
             && correctionMovements[0].RoomTransferId is null && correctionMovements[0].RoomInventoryLossId is null
@@ -360,7 +360,11 @@ public sealed class Tr508901InventoryRepairService(
                 FruitType = targetProfile.FruitType,
                 ProductionType = targetProfile.ProductionType,
                 IsOrganic = targetProfile.IsOrganic,
-                InventoryStatus = targetProfile.ProductionType
+                // InventoryStatus is a legacy optional discriminator. FruitProfile,
+                // ProductionType, and IsOrganic carry the authoritative target identity;
+                // keep this empty to match rollback-compatible ledger rows and prevent a
+                // second treatment segment for the same canonical fruit.
+                InventoryStatus = ""
             };
             var lineage = await treatmentService.ReclassifyIdentityAsync(sourceSnapshot, targetSnapshot, correction, now, actor.Id, cancellationToken);
             if (!lineage.Success) throw new InvalidOperationException(lineage.Error);
@@ -387,7 +391,9 @@ public sealed class Tr508901InventoryRepairService(
                 var adjustment = new RoomInventoryAdjustment
                 {
                     CropYear = identity.CropYear,
-                    ReceiptId = receipt.Id,
+                    // Keep the room-only reclassification independent of the Receipt's original
+                    // room. The durable correction owns receipt provenance through CorrectedReceiptId.
+                    ReceiptId = null,
                     WarehouseId = roomId == room10 ? adjustment2212.WarehouseId : adjustment2094.WarehouseId,
                     RoomId = roomId,
                     GrowerLotId = identity.GrowerLotId,
@@ -395,7 +401,12 @@ public sealed class Tr508901InventoryRepairService(
                     GrowerName = growerLot.Grower,
                     LotNumber = growerLot.LotNumber,
                     VarietyCode = profile.VarietyCode,
-                    InventoryStatus = profile.ProductionType,
+                    // The current production transfer implementation derives canonical
+                    // Organic/Conventional identity from FruitProfile, while its legacy
+                    // raw transfer ledger rows leave InventoryStatus null. Preserve that
+                    // rollback-compatible row shape; the correction parent and profile
+                    // retain the authoritative target identity.
+                    InventoryStatus = null,
                     OldBinCount = oldBins,
                     ChangeAmount = change,
                     NewBinCount = newBins,
@@ -406,7 +417,10 @@ public sealed class Tr508901InventoryRepairService(
                     AdjustmentAt = now,
                     CreatedByUserId = actor.Id,
                     CreatedAt = now,
-                    InventoryInvariantVersion = InventoryDeductionInvariantService.CurrentVersion,
+                    // The current production rollback binary predates the durable identity-correction
+                    // parent. Keep these bounded repair rows nonblocking there while the new binary
+                    // still validates every correction-linked row explicitly.
+                    InventoryInvariantVersion = 0,
                     InventoryOperationKey = $"identity-correction:{OperationKey}:{correction.InventoryAdjustments.Count + 1}",
                     InventoryIdentityCorrection = correction,
                     InventoryIdentityCorrectionId = correction.Id
@@ -569,10 +583,10 @@ public sealed class Tr508901InventoryRepairService(
                 || x.CropYear != 2026 || x.GrowerLotId != 538
                 || x.AdjustmentType != InventoryIdentityWriteGuard.AdjustmentType
                 || x.Source != "TR508901 bounded identity repair" || x.Reason != correction.Reason
-                || x.ReceiptId != 1229 || x.WarehouseId != 3
+                || x.ReceiptId is not null || x.WarehouseId != 3
                 || x.CreatedByUserId != correction.CreatedByUserId
                 || x.AdjustmentAt != correction.CreatedAt || x.CreatedAt != correction.CreatedAt
-                || x.InventoryInvariantVersion != InventoryDeductionInvariantService.CurrentVersion)) return false;
+                || x.InventoryInvariantVersion != 0 || x.InventoryStatus is not null)) return false;
         return rows.Count(x => x.RoomId == room10 && x.FruitProfileId == 18 && x.ChangeAmount == -40 && x.OldBinCount == 40 && x.NewBinCount == 0) == 1
             && rows.Count(x => x.RoomId == room10 && x.FruitProfileId == 26 && x.ChangeAmount == 40 && x.OldBinCount == 0 && x.NewBinCount == 40) == 1
             && rows.Count(x => x.RoomId == room8 && x.FruitProfileId == 26 && x.ChangeAmount == -40 && x.OldBinCount == 40 && x.NewBinCount == 0) == 1

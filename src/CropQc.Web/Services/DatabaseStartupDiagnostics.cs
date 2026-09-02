@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260902011217_AddInventoryIdentityCorrections";
+    public const string ExpectedSchemaMigration = "20260902140938_AddInventoryIdentityCorrections";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
