@@ -173,6 +173,72 @@ public sealed class RoomTreatmentTrackingTests
     }
 
     [Fact]
+    public async Task Actual_run_correction_restores_exact_zero_balance_source_from_immutable_movement()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var source = await SeedActualRunRestorationAsync(fixture, 7001, currentBins: 0, binsRun: 15);
+
+        var projected = await fixture.Service.GetActualRunCorrectionSelectionsAsync(
+            [source.Snapshot], [source], default);
+
+        var selection = Assert.Single(Assert.Single(projected).Value);
+        Assert.True(selection.IsAvailable);
+        Assert.Equal(source.TreatmentSignature, selection.TreatmentSignature);
+        Assert.Equal(source.TreatmentState, selection.TreatmentState);
+        Assert.Equal(15, selection.CurrentBins);
+        Assert.NotNull(selection.SegmentId);
+    }
+
+    [Fact]
+    public async Task Actual_run_correction_adds_restored_bins_to_partial_current_source_once()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var source = await SeedActualRunRestorationAsync(fixture, 7002, currentBins: 4, binsRun: 11);
+
+        var projected = await fixture.Service.GetActualRunCorrectionSelectionsAsync(
+            [source.Snapshot], [source], default);
+
+        var selection = Assert.Single(Assert.Single(projected).Value);
+        Assert.True(selection.IsAvailable);
+        Assert.Equal(15, selection.CurrentBins);
+        Assert.NotNull(selection.SegmentId);
+    }
+
+    [Fact]
+    public async Task Actual_run_correction_missing_lineage_is_controlled_unavailable_not_untreated()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var snapshot = fixture.AppleSnapshot(0);
+        var source = new ActualRunTreatmentRestorationSource(
+            7003, snapshot, "treated-signature", TreatmentLineageStates.Confirmed, "Treatment applied", 8);
+
+        var projected = await fixture.Service.GetActualRunCorrectionSelectionsAsync(
+            [snapshot], [source], default);
+
+        var selection = Assert.Single(Assert.Single(projected).Value);
+        Assert.False(selection.IsAvailable);
+        Assert.Equal("treated-signature", selection.TreatmentSignature);
+        Assert.Equal(TreatmentLineageStates.Confirmed, selection.TreatmentState);
+        Assert.Equal(0, selection.CurrentBins);
+        Assert.Contains("could not be resolved exactly", selection.UnavailableReason);
+    }
+
+    [Fact]
+    public async Task Actual_run_correction_ambiguous_lineage_is_controlled_unavailable()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var source = await SeedActualRunRestorationAsync(fixture, 7004, currentBins: 0, binsRun: 9, duplicateMovement: true);
+
+        var projected = await fixture.Service.GetActualRunCorrectionSelectionsAsync(
+            [source.Snapshot], [source], default);
+
+        var selection = Assert.Single(Assert.Single(projected).Value);
+        Assert.False(selection.IsAvailable);
+        Assert.Equal(0, selection.CurrentBins);
+        Assert.Contains("could not be resolved exactly", selection.UnavailableReason);
+    }
+
+    [Fact]
     public async Task Excess_explicit_lineage_is_visible_but_unavailable_and_writes_remain_fail_closed()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -412,6 +478,71 @@ public sealed class RoomTreatmentTrackingTests
             directory = directory.Parent;
         }
         throw new FileNotFoundException(string.Join(Path.DirectorySeparatorChar, segments));
+    }
+
+    private static async Task<ActualRunTreatmentRestorationSource> SeedActualRunRestorationAsync(
+        Fixture fixture,
+        long binsRunEntryId,
+        int currentBins,
+        int binsRun,
+        bool duplicateMovement = false)
+    {
+        var snapshot = fixture.AppleSnapshot(currentBins);
+        var identityKey = RoomTreatmentService.IdentityKey(snapshot);
+        var segment = new TreatmentLineageSegment
+        {
+            WarehouseId = snapshot.WarehouseId,
+            RoomId = snapshot.RoomId,
+            CropYear = snapshot.CropYear,
+            GrowerLotId = snapshot.GrowerLotId,
+            FruitProfileId = snapshot.FruitProfileId,
+            IdentityKey = identityKey,
+            GrowerNumberSnapshot = snapshot.GrowerNumber,
+            GrowerNameSnapshot = snapshot.Grower,
+            LotNumberSnapshot = snapshot.Lot,
+            VarietyCodeSnapshot = snapshot.Variety,
+            ProductionTypeSnapshot = snapshot.ProductionType,
+            IsOrganicSnapshot = snapshot.IsOrganic,
+            InventoryStatusSnapshot = snapshot.InventoryStatus,
+            TreatmentState = TreatmentLineageStates.Confirmed,
+            TreatmentSignature = "a:4242",
+            CurrentBins = currentBins,
+            CreatedAt = Now.AddHours(-2),
+            UpdatedAt = Now.AddHours(-1)
+        };
+        fixture.Db.TreatmentLineageSegments.Add(segment);
+        await fixture.Db.SaveChangesAsync();
+
+        fixture.Db.TreatmentLineageMovements.Add(CreateMovement("actual-run-source"));
+        if (duplicateMovement)
+        {
+            fixture.Db.TreatmentLineageMovements.Add(CreateMovement("actual-run-source-duplicate"));
+        }
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        return new ActualRunTreatmentRestorationSource(
+            binsRunEntryId,
+            snapshot,
+            segment.TreatmentSignature,
+            segment.TreatmentState,
+            "eFOG treatment",
+            binsRun);
+
+        TreatmentLineageMovement CreateMovement(string operationKey) => new()
+        {
+            OperationKey = operationKey,
+            MovementType = TreatmentLineageMovementTypes.BinsRun,
+            SourceSegmentId = segment.Id,
+            SourceRoomId = snapshot.RoomId,
+            IdentityKey = identityKey,
+            TreatmentStateSnapshot = segment.TreatmentState,
+            TreatmentSignatureSnapshot = segment.TreatmentSignature,
+            BinCount = binsRun,
+            BinsRunEntryId = binsRunEntryId,
+            OccurredAt = Now.AddMinutes(-30),
+            CreatedAt = Now.AddMinutes(-30)
+        };
     }
 
     private sealed class Fixture : IAsyncDisposable

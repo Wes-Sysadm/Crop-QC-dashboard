@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
 using System.Text;
+using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Web.Services;
@@ -18,12 +19,157 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace CropQc.Api.Tests;
 
 public sealed class ActualRunDetailHttpIntegrationTests
 {
+    [Fact]
+    public async Task AuthenticatedPostgreSql_Run73ZeroBalanceEditorIsReadOnlyAndRestoresExactTreatment_WhenConfigured()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_ACTUAL_RUN_ZERO_BALANCE_GET_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        await using var factory = new ActualRunWebApplicationFactory(connectionString);
+        var before = await FingerprintRun73Async(factory.Services);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            HandleCookies = true
+        });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthenticationHandler.SchemeName);
+
+        var response = await client.GetAsync("/BinsRun?Section=Actual&EditActualRunId=73");
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.DoesNotContain("KeyNotFoundException", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("An unhandled exception occurred", html, StringComparison.OrdinalIgnoreCase);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IBinsRunService>();
+            var page = await service.GetPageAsync(
+                new CropQc.Web.Models.BinsRunFilterForm { Section = "Actual", EditActualRunId = 73 },
+                OwnerPrincipal(),
+                default);
+            var source = Assert.Single(page.AvailableInventory, x =>
+                x.RoomId == 7
+                && x.GrowerLotId == 581
+                && x.FruitProfileId == 2
+                && x.GrowerNumber == "9362"
+                && x.Lot == "9362"
+                && x.Variety == "GALA"
+                && x.TreatmentSegmentId == 400);
+            Assert.Equal(113, source.CurrentBins);
+            Assert.Equal("u", source.TreatmentSignature);
+            Assert.True(source.IsAvailable);
+            var line = Assert.Single(page.ActualRunForm.Lines, x => x.InventoryKey == source.InventoryKey);
+            Assert.Equal(113, line.ExpectedAvailableBins);
+            Assert.Equal(113, line.BinsRun);
+            Assert.Equal(400, line.TreatmentSegmentId);
+            var partiallyDepletedAlternate = Assert.Single(page.AvailableInventory, x =>
+                x.RoomId == 7
+                && x.GrowerLotId == 642
+                && x.FruitProfileId == 2
+                && x.GrowerNumber == "9682"
+                && x.TreatmentSegmentId == 401);
+            Assert.Equal(111, partiallyDepletedAlternate.CurrentBins);
+            Assert.Equal("u", partiallyDepletedAlternate.TreatmentSignature);
+            Assert.True(partiallyDepletedAlternate.IsAvailable);
+            Assert.Equal(6, page.ActualRunForm.Lines.Count);
+            Assert.All(page.ActualRunForm.Lines, lineItem =>
+                Assert.Single(page.AvailableInventory, option =>
+                    option.InventoryKey == lineItem.InventoryKey
+                    && option.TreatmentSegmentId == lineItem.TreatmentSegmentId));
+        }
+        Assert.Equal(before, await FingerprintRun73Async(factory.Services));
+    }
+
+    [Fact]
+    public async Task PostgreSql_Run73ZeroBalanceCorrectionReversesAndReappliesExactTreatment_WhenConfigured()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_ACTUAL_RUN_ZERO_BALANCE_POST_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        await using var factory = new ActualRunWebApplicationFactory(connectionString);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+        var service = scope.ServiceProvider.GetRequiredService<IBinsRunService>();
+        var originalRevision = await db.ActualRunRevisions.AsNoTracking()
+            .SingleAsync(x => x.ActualRunId == 73 && x.IsCurrent);
+        var originalEntryIds = await db.BinsRunEntries.AsNoTracking()
+            .Where(x => x.ActualRunId == 73
+                && x.TransactionType == ActualRunTransactionTypes.Depletion
+                && !x.IsReversed)
+            .OrderBy(x => x.Id)
+            .Select(x => x.Id)
+            .ToArrayAsync();
+        Assert.Equal(6, originalEntryIds.Length);
+        var page = await service.GetPageAsync(
+            new CropQc.Web.Models.BinsRunFilterForm { Section = "Actual", EditActualRunId = 73 },
+            OwnerPrincipal(),
+            default);
+        var affectedOption = Assert.Single(page.AvailableInventory, x =>
+            x.RoomId == 7
+            && x.GrowerLotId == 581
+            && x.FruitProfileId == 2
+            && x.GrowerNumber == "9362"
+            && x.TreatmentSegmentId == 400);
+        var affectedLine = Assert.Single(page.ActualRunForm.Lines, x =>
+            x.InventoryKey == affectedOption.InventoryKey
+            && x.TreatmentSegmentId == affectedOption.TreatmentSegmentId);
+        affectedLine.BinsRun = 112;
+        page.ActualRunForm.CorrectionReason = "Disposable Run #73 zero-balance treatment source proof";
+
+        var error = await service.UpdateActualRunAsync(73, page.ActualRunForm, OwnerPrincipal(), default);
+
+        Assert.Null(error);
+        db.ChangeTracker.Clear();
+        var run = await db.ActualRuns.SingleAsync(x => x.Id == 73);
+        Assert.Equal(2, run.CurrentRevisionNumber);
+        Assert.Equal(2, run.ConcurrencyVersion);
+        Assert.Equal(2, await db.ActualRunRevisions.CountAsync(x => x.ActualRunId == 73));
+        var preservedOriginalRevision = await db.ActualRunRevisions.SingleAsync(x => x.Id == originalRevision.Id);
+        Assert.False(preservedOriginalRevision.IsCurrent);
+        Assert.All(await db.BinsRunEntries.Where(x => originalEntryIds.Contains(x.Id)).ToListAsync(), x => Assert.True(x.IsReversed));
+        var currentEntries = await db.BinsRunEntries
+            .Where(x => x.ActualRunId == 73
+                && x.TransactionType == ActualRunTransactionTypes.Depletion
+                && !x.IsReversed)
+            .OrderBy(x => x.Id)
+            .ToListAsync();
+        Assert.Equal(6, currentEntries.Count);
+        var correctedEntry = Assert.Single(currentEntries, x =>
+            x.RoomId == 7 && x.GrowerLotId == 581 && x.FruitProfileId == 2 && x.GrowerNumberSnapshot == "9362");
+        Assert.Equal(112, correctedEntry.BinsRun);
+        Assert.Equal("u", correctedEntry.TreatmentSignatureSnapshot);
+        Assert.Equal(400, (await db.TreatmentLineageMovements.SingleAsync(x =>
+            x.BinsRunEntryId == correctedEntry.Id
+            && x.MovementType == TreatmentLineageMovementTypes.BinsRun
+            && x.ReversesTreatmentLineageMovementId == null)).SourceSegmentId);
+        Assert.Equal(1, (await db.TreatmentLineageSegments.SingleAsync(x => x.Id == 400)).CurrentBins);
+        Assert.Equal(6, await db.TreatmentLineageMovements.CountAsync(x =>
+            x.BinsRunEntryId != null
+            && originalEntryIds.Contains(x.BinsRunEntryId.Value)
+            && x.ReversesTreatmentLineageMovementId != null));
+        Assert.Equal(6, await db.BinsRunEntries.CountAsync(x =>
+            x.ActualRunId == 73 && x.TransactionType == ActualRunTransactionTypes.Reversal));
+        var ledger = scope.ServiceProvider.GetRequiredService<IRoomInventoryLedgerQueryService>();
+        var current = Assert.Single(await ledger.GetSnapshotsAsync(1, [7], default), x =>
+            x.GrowerLotId == 581
+            && x.FruitProfileId == 2
+            && x.GrowerNumber == "9362"
+            && x.Lot == "9362"
+            && x.Variety == "GALA"
+            && x.InventoryStatus == "Conventional");
+        Assert.Equal(1, current.CurrentBins);
+        var readiness = await new InventoryDeductionInvariantService(
+            db, NullLogger<InventoryDeductionInvariantService>.Instance).VerifyReadinessAsync(default);
+        Assert.True(readiness.IsReady, string.Join("; ", readiness.Issues.Select(x => x.Code)));
+    }
+
     [Fact]
     public async Task AuthenticatedPostgreSql_MultiLotRunKeepsThreeSourcesAndTwoPackoutReports_WhenConfigured()
     {
@@ -334,6 +480,33 @@ public sealed class ActualRunDetailHttpIntegrationTests
                         _ => { });
             });
         }
+    }
+
+    private static ClaimsPrincipal OwnerPrincipal() => new(new ClaimsIdentity(
+        [new Claim(ClaimTypes.Email, ApplicationAreas.OwnerEmail)],
+        TestAuthenticationHandler.SchemeName));
+
+    private static async Task<string> FingerprintRun73Async(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+        return JsonSerializer.Serialize(new
+        {
+            ActualRuns = await db.ActualRuns.AsNoTracking().Where(x => x.Id == 73)
+                .Select(x => new { x.Id, x.Status, x.CurrentRevisionNumber, x.ConcurrencyVersion, x.UpdatedAt }).ToListAsync(),
+            Revisions = await db.ActualRunRevisions.AsNoTracking().Where(x => x.ActualRunId == 73).OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.RevisionNumber, x.OperationType, x.OperationKey, x.IsCurrent, x.Reason }).ToListAsync(),
+            Entries = await db.BinsRunEntries.AsNoTracking().Where(x => x.ActualRunId == 73).OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.InventoryAdjustmentId, x.BinsRun, x.IsReversed, x.TransactionType, x.TreatmentSignatureSnapshot }).ToListAsync(),
+            Adjustments = await db.RoomInventoryAdjustments.AsNoTracking().OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.ChangeAmount, x.NewBinCount, x.InventoryOperationKey }).ToListAsync(),
+            Segments = await db.TreatmentLineageSegments.AsNoTracking().OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.CurrentBins, x.TreatmentSignature, x.ConcurrencyVersion }).ToListAsync(),
+            Movements = await db.TreatmentLineageMovements.AsNoTracking().OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.BinsRunEntryId, x.SourceSegmentId, x.DestinationSegmentId, x.BinCount, x.ReversesTreatmentLineageMovementId }).ToListAsync(),
+            Audits = await db.AuditLogs.AsNoTracking().OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.Action, x.EntityName, x.EntityKey, x.BeforeValuesJson, x.AfterValuesJson }).ToListAsync()
+        });
     }
 
     private static MultipartFormDataContent GrowerSummaryUpload(string token)

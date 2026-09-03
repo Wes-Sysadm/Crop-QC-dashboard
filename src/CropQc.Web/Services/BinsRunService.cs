@@ -102,16 +102,6 @@ public sealed class BinsRunService(
                 .Where(x => x.ActualRunId == requestedRunId
                     && x.TransactionType == ActualRunTransactionTypes.Depletion
                     && !x.IsReversed)
-                .Select(x => new
-                {
-                    x.WarehouseId,
-                    x.RoomId,
-                    x.CropYear,
-                    x.GrowerLotId,
-                    x.LotNumber,
-                    Variety = x.VarietyCode ?? "",
-                    x.FruitProfileId
-                })
                 .ToListAsync(cancellationToken)
             : [];
         if (editInventoryRows.Count > 0 && filter.RoomIds.Count == 0)
@@ -170,21 +160,21 @@ public sealed class BinsRunService(
             ? snapshots.Where(x =>
                 (editInventoryRows.Count == 0 || editInventoryRows.Any(y =>
                     y.WarehouseId == x.WarehouseId
-                    && string.Equals(y.Variety, x.Variety, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(y.VarietyCode ?? "", x.Variety, StringComparison.OrdinalIgnoreCase)
                     && (y.FruitProfileId is null || y.FruitProfileId == x.FruitProfileId)))
                 && (x.CurrentBins > 0 || editInventoryRows.Any(y =>
                     y.WarehouseId == x.WarehouseId
                     && y.RoomId == x.RoomId
                     && y.CropYear == x.CropYear
                     && string.Equals(y.LotNumber, x.Lot, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(y.Variety, x.Variety, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(y.VarietyCode ?? "", x.Variety, StringComparison.OrdinalIgnoreCase)
                     && (y.FruitProfileId is null || y.FruitProfileId == x.FruitProfileId)
                     && (y.GrowerLotId is null || y.GrowerLotId == x.GrowerLotId)))).ToList()
             : snapshots.Where(x => x.CurrentBins > 0).ToList();
         IReadOnlyDictionary<string, LotSampleDistribution> sampleData = isActualSection
             ? new Dictionary<string, LotSampleDistribution>(StringComparer.OrdinalIgnoreCase)
             : await GetLatestSampleDataByLotAsync(currentSnapshots, cancellationToken);
-        var options = await BuildAvailableInventoryOptionsAsync(currentSnapshots, sampleData, cancellationToken);
+        var options = await BuildAvailableInventoryOptionsAsync(currentSnapshots, sampleData, editInventoryRows, cancellationToken);
         var selectedOption = options.FirstOrDefault(x => string.Equals(x.InventoryKey, filter.SourceKey, StringComparison.OrdinalIgnoreCase))
             ?? options.FirstOrDefault();
         var roomSummary = isActualSection || filter.RoomId is null
@@ -257,7 +247,7 @@ public sealed class BinsRunService(
                         TreatmentSignature = currentOption?.TreatmentSignature ?? x.TreatmentSignature,
                         TreatmentSegmentId = currentOption?.TreatmentSegmentId ?? x.TreatmentSegmentId,
                         BinsRun = x.BinsRun,
-                        ExpectedAvailableBins = (currentOption?.CurrentBins ?? 0) + x.BinsRun
+                        ExpectedAvailableBins = currentOption?.CurrentBins ?? 0
                     };
                 })
                 .ToList() ?? []
@@ -1389,9 +1379,7 @@ public sealed class BinsRunService(
         var snapshots = await GetCurrentInventorySnapshotsForRoomsAsync(warehouseIds[0], roomIds, null, cancellationToken);
         var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
         snapshots = snapshots.Select(x => ResolveActualRunGrowerNumber(x, growerResolver)).ToList();
-        var treatmentSelections = roomTreatmentService is null
-            ? null
-            : await roomTreatmentService.GetSelectionsAsync(snapshots.Select(ToLedgerSnapshot).ToList(), cancellationToken);
+        var treatmentSelections = await BuildActualRunCorrectionTreatmentPlanAsync(snapshots, activeEntries, cancellationToken);
         var resolved = new List<(ActualRunLineForm Form, InventorySnapshot Snapshot, TreatmentSegmentSelection Treatment, int EffectiveAvailable)>();
         foreach (var line in parsed)
         {
@@ -1409,9 +1397,10 @@ public sealed class BinsRunService(
             }
             var snapshot = candidates[0];
             var ledgerSnapshot = ToLedgerSnapshot(snapshot);
-            var selections = roomTreatmentService is null
-                ? [new TreatmentSegmentSelection(RoomTreatmentService.IdentityKey(ledgerSnapshot), "", TreatmentLineageStates.Untreated, snapshot.CurrentBins, "Untreated")]
-                : treatmentSelections![RoomTreatmentService.SelectionLookupKey(ledgerSnapshot)];
+            if (!treatmentSelections.TryGetValue(RoomTreatmentService.SelectionLookupKey(ledgerSnapshot), out var selections))
+            {
+                return $"{ActualRunLineLabel(snapshot)} has treatment lineage that could not be resolved for correction.";
+            }
             var selectedTreatment = ResolveTreatmentSelection(
                 selections,
                 line.Form.TreatmentSegmentId,
@@ -1427,12 +1416,7 @@ public sealed class BinsRunService(
                 return selectedTreatment.UnavailableReason
                     ?? $"{ActualRunLineLabel(snapshot)} has treatment lineage that requires review and cannot be packed.";
             }
-            var restored = activeEntries
-                .Where(x => SameInventory(x, snapshot)
-                    && (roomTreatmentService is null
-                        || string.Equals(x.TreatmentSignatureSnapshot ?? "", selectedTreatment.TreatmentSignature, StringComparison.Ordinal)))
-                .Sum(x => x.BinsRun);
-            resolved.Add((line.Form, snapshot, selectedTreatment, selectedTreatment.CurrentBins + restored));
+            resolved.Add((line.Form, snapshot, selectedTreatment, selectedTreatment.CurrentBins));
         }
 
         foreach (var item in resolved)
@@ -2336,6 +2320,7 @@ public sealed class BinsRunService(
     private async Task<IReadOnlyList<BinsRunInventoryOptionViewModel>> BuildAvailableInventoryOptionsAsync(
         IReadOnlyList<InventorySnapshot> snapshots,
         IReadOnlyDictionary<string, LotSampleDistribution> sampleData,
+        IReadOnlyList<BinsRunEntry> activeActualRunEntries,
         CancellationToken cancellationToken)
     {
         var options = new List<BinsRunInventoryOptionViewModel>();
@@ -2344,10 +2329,7 @@ public sealed class BinsRunService(
             .Where(x => roomIds.Contains(x.Id) && x.IsSealed && (x.SealedAt == null || x.SealedAt <= BusinessTime.UtcNow))
             .Select(x => x.Id)
             .ToHashSetAsync(cancellationToken);
-        var ledgerSnapshots = snapshots.Select(ToLedgerSnapshot).ToList();
-        var treatmentSelections = roomTreatmentService is null
-            ? null
-            : await roomTreatmentService.GetSelectionsAsync(ledgerSnapshots, cancellationToken);
+        var treatmentSelections = await BuildActualRunCorrectionTreatmentPlanAsync(snapshots, activeActualRunEntries, cancellationToken);
         foreach (var x in snapshots
             .OrderBy(x => x.Facility)
             .ThenBy(x => x.Room)
@@ -2357,9 +2339,10 @@ public sealed class BinsRunService(
         {
             sampleData.TryGetValue(QcIdentityKey(x), out var distribution);
             var ledgerSnapshot = ToLedgerSnapshot(x);
-            var segments = roomTreatmentService is null
-                ? [new TreatmentSegmentSelection(RoomTreatmentService.IdentityKey(ledgerSnapshot), "", TreatmentLineageStates.Untreated, x.CurrentBins, "Untreated")]
-                : treatmentSelections![RoomTreatmentService.SelectionLookupKey(ledgerSnapshot)];
+            if (!treatmentSelections.TryGetValue(RoomTreatmentService.SelectionLookupKey(ledgerSnapshot), out var segments))
+            {
+                continue;
+            }
             foreach (var segment in segments)
             {
                 options.Add(new BinsRunInventoryOptionViewModel(
@@ -2396,6 +2379,57 @@ public sealed class BinsRunService(
             }
         }
         return options;
+    }
+
+    private async Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> BuildActualRunCorrectionTreatmentPlanAsync(
+        IReadOnlyList<InventorySnapshot> snapshots,
+        IReadOnlyList<BinsRunEntry> activeEntries,
+        CancellationToken cancellationToken)
+    {
+        var ledgerSnapshots = snapshots.Select(ToLedgerSnapshot).ToList();
+        var restorationSources = activeEntries.Select(entry =>
+            {
+                var snapshot = snapshots.SingleOrDefault(x => SameInventory(entry, x));
+                return snapshot is null
+                    ? null
+                    : new ActualRunTreatmentRestorationSource(
+                        entry.Id,
+                        ToLedgerSnapshot(snapshot),
+                        entry.TreatmentSignatureSnapshot ?? "",
+                        entry.TreatmentStateSnapshot ?? TreatmentLineageStates.Untreated,
+                        entry.TreatmentSummarySnapshot ?? "No recorded treatment history",
+                        entry.BinsRun);
+            })
+            .Where(x => x is not null)
+            .Cast<ActualRunTreatmentRestorationSource>()
+            .ToList();
+
+        if (roomTreatmentService is not null)
+        {
+            return await roomTreatmentService.GetActualRunCorrectionSelectionsAsync(
+                ledgerSnapshots,
+                restorationSources,
+                cancellationToken);
+        }
+
+        return ledgerSnapshots.ToDictionary(
+            RoomTreatmentService.SelectionLookupKey,
+            snapshot =>
+            {
+                var restored = restorationSources
+                    .Where(x => RoomTreatmentService.SelectionLookupKey(x.Snapshot) == RoomTreatmentService.SelectionLookupKey(snapshot))
+                    .Sum(x => x.Bins);
+                return (IReadOnlyList<TreatmentSegmentSelection>)
+                [
+                    new TreatmentSegmentSelection(
+                        RoomTreatmentService.IdentityKey(snapshot),
+                        "",
+                        TreatmentLineageStates.Untreated,
+                        snapshot.CurrentBins + restored,
+                        "Untreated")
+                ];
+            },
+            StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task<BinsRunRoomSummaryViewModel?> BuildRoomSummaryAsync(
