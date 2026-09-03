@@ -26,6 +26,14 @@ public sealed record TreatmentSegmentSelection(
     string? UnavailableReason = null,
     int? ExplicitBins = null);
 
+public sealed record ActualRunTreatmentRestorationSource(
+    long BinsRunEntryId,
+    RoomInventoryLedgerSnapshot Snapshot,
+    string TreatmentSignature,
+    string TreatmentState,
+    string TreatmentSummary,
+    int Bins);
+
 public sealed record TreatmentLineageWriteResult(bool Success, string? Error, long? MovementId = null);
 
 public interface IRoomTreatmentService
@@ -36,6 +44,61 @@ public interface IRoomTreatmentService
     Task<RoomTreatmentData> GetRoomDataAsync(int roomId, CancellationToken cancellationToken);
     Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken);
     Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetSelectionsAsync(IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots, CancellationToken cancellationToken);
+    async Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetActualRunCorrectionSelectionsAsync(
+        IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots,
+        IReadOnlyList<ActualRunTreatmentRestorationSource> restorationSources,
+        CancellationToken cancellationToken)
+    {
+        var result = (await GetSelectionsAsync(snapshots, cancellationToken))
+            .ToDictionary(x => x.Key, x => x.Value.ToList(), StringComparer.OrdinalIgnoreCase);
+        foreach (var source in restorationSources)
+        {
+            var key = RoomTreatmentService.SelectionLookupKey(source.Snapshot);
+            if (!result.TryGetValue(key, out var selections))
+            {
+                result[key] =
+                [
+                    new TreatmentSegmentSelection(
+                        RoomTreatmentService.IdentityKey(source.Snapshot),
+                        source.TreatmentSignature,
+                        source.TreatmentState,
+                        0,
+                        "Needs Review — unavailable for Actual Run correction",
+                        IsAvailable: false,
+                        UnavailableReason: $"Treatment provenance for Actual Run entry #{source.BinsRunEntryId} could not be resolved exactly.")
+                ];
+                continue;
+            }
+
+            var matches = selections.Where(x =>
+                    string.Equals(x.TreatmentSignature, source.TreatmentSignature, StringComparison.Ordinal))
+                .ToList();
+            if (matches.Count > 1)
+            {
+                var implicitMatch = matches.Where(x => x.SegmentId is null && x.ReceiptId is null).ToList();
+                if (implicitMatch.Count == 1)
+                {
+                    matches = implicitMatch;
+                }
+            }
+            if (matches.Count != 1)
+            {
+                selections.Add(new TreatmentSegmentSelection(
+                    RoomTreatmentService.IdentityKey(source.Snapshot),
+                    source.TreatmentSignature,
+                    source.TreatmentState,
+                    0,
+                    "Needs Review — unavailable for Actual Run correction",
+                    IsAvailable: false,
+                    UnavailableReason: $"Treatment provenance for Actual Run entry #{source.BinsRunEntryId} could not be resolved exactly."));
+                continue;
+            }
+
+            var match = matches[0];
+            selections[selections.IndexOf(match)] = match with { CurrentBins = match.CurrentBins + source.Bins };
+        }
+        return result.ToDictionary(x => x.Key, x => (IReadOnlyList<TreatmentSegmentSelection>)x.Value, StringComparer.OrdinalIgnoreCase);
+    }
     Task<TreatmentLineageWriteResult> MoveAsync(RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, int bins, int? destinationWarehouseId, int? destinationRoomId, string operationKey, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken);
     Task<TreatmentLineageWriteResult> MoveSelectedAsync(RoomInventoryLedgerSnapshot snapshot, string? treatmentSignature, long? treatmentSegmentId, long? treatmentReceiptId, int bins, int? destinationWarehouseId, int? destinationRoomId, string operationKey, string movementType, long? roomTransferId, long? roomInventoryLossId, long? binsRunEntryId, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) =>
         MoveAsync(snapshot, treatmentSignature, bins, destinationWarehouseId, destinationRoomId, operationKey, movementType, roomTransferId, roomInventoryLossId, binsRunEntryId, occurredAt, actorUserId, cancellationToken);
@@ -693,6 +756,94 @@ public sealed class RoomTreatmentService(
         return projected.ToDictionary(
             x => x.Key,
             x => (IReadOnlyList<TreatmentSegmentSelection>)x.Value.Select(ToSelection).ToList());
+    }
+
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>> GetActualRunCorrectionSelectionsAsync(
+        IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots,
+        IReadOnlyList<ActualRunTreatmentRestorationSource> restorationSources,
+        CancellationToken cancellationToken)
+    {
+        var result = (await GetSelectionsAsync(snapshots, cancellationToken))
+            .ToDictionary(x => x.Key, x => x.Value.ToList(), StringComparer.OrdinalIgnoreCase);
+        if (restorationSources.Count == 0)
+        {
+            return result.ToDictionary(x => x.Key, x => (IReadOnlyList<TreatmentSegmentSelection>)x.Value, StringComparer.OrdinalIgnoreCase);
+        }
+
+        var entryIds = restorationSources.Select(x => x.BinsRunEntryId).Distinct().ToList();
+        var movements = await dbContext.TreatmentLineageMovements.AsNoTracking()
+            .Include(x => x.SourceSegment)
+            .Where(x => x.BinsRunEntryId != null
+                && entryIds.Contains(x.BinsRunEntryId.Value)
+                && x.MovementType == TreatmentLineageMovementTypes.BinsRun
+                && x.ReversesTreatmentLineageMovementId == null)
+            .ToListAsync(cancellationToken);
+
+        foreach (var source in restorationSources)
+        {
+            var selectionKey = SelectionLookupKey(source.Snapshot);
+            if (!result.TryGetValue(selectionKey, out var selections))
+            {
+                selections = [];
+                result[selectionKey] = selections;
+            }
+
+            var sourceMovements = movements.Where(x => x.BinsRunEntryId == source.BinsRunEntryId).ToList();
+            var movement = sourceMovements.Count == 1 ? sourceMovements[0] : null;
+            var segment = movement?.SourceSegment;
+            var identityKey = IdentityKey(source.Snapshot);
+            var exact = movement is not null
+                && segment is not null
+                && movement.SourceSegmentId is not null
+                && movement.BinCount == source.Bins
+                && movement.SourceRoomId == source.Snapshot.RoomId
+                && movement.IdentityKey == identityKey
+                && movement.TreatmentSignatureSnapshot == source.TreatmentSignature
+                && movement.TreatmentStateSnapshot == source.TreatmentState
+                && segment.WarehouseId == source.Snapshot.WarehouseId
+                && segment.RoomId == source.Snapshot.RoomId
+                && segment.IdentityKey == identityKey
+                && segment.TreatmentSignature == source.TreatmentSignature
+                && segment.TreatmentState == source.TreatmentState
+                && segment.ReceiptId == movement.ReceiptId;
+            if (!exact)
+            {
+                selections.Add(new TreatmentSegmentSelection(
+                    identityKey,
+                    source.TreatmentSignature,
+                    source.TreatmentState,
+                    0,
+                    "Needs Review — unavailable for Actual Run correction",
+                    movement?.ReceiptId,
+                    movement?.SourceSegmentId,
+                    false,
+                    $"Treatment provenance for Actual Run entry #{source.BinsRunEntryId} could not be resolved exactly."));
+                continue;
+            }
+
+            var exactMovement = movement!;
+            var existing = selections.SingleOrDefault(x =>
+                x.SegmentId == exactMovement.SourceSegmentId
+                && x.ReceiptId == exactMovement.ReceiptId
+                && string.Equals(x.TreatmentSignature, exactMovement.TreatmentSignatureSnapshot, StringComparison.Ordinal));
+            if (existing is null)
+            {
+                selections.Add(new TreatmentSegmentSelection(
+                    identityKey,
+                    exactMovement.TreatmentSignatureSnapshot,
+                    exactMovement.TreatmentStateSnapshot,
+                    exactMovement.BinCount,
+                    source.TreatmentSummary,
+                    exactMovement.ReceiptId,
+                    exactMovement.SourceSegmentId));
+            }
+            else
+            {
+                selections[selections.IndexOf(existing)] = existing with { CurrentBins = existing.CurrentBins + exactMovement.BinCount };
+            }
+        }
+
+        return result.ToDictionary(x => x.Key, x => (IReadOnlyList<TreatmentSegmentSelection>)x.Value, StringComparer.OrdinalIgnoreCase);
     }
 
     public Task<TreatmentLineageWriteResult> MoveAsync(

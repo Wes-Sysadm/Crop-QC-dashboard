@@ -997,6 +997,88 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task ActualRun_ZeroBalanceCorrectionPageAndPostUseExactPostReversalTreatmentState()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var ledger = new RoomInventoryLedgerQueryService(db);
+        var configuration = new ConfigurationBuilder().Build();
+        var principal = Principal("manager@fruitandland.com");
+        var context = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } };
+        var treatments = new RoomTreatmentService(
+            db,
+            ledger,
+            new UserAccessService(db, configuration),
+            context,
+            new PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock()),
+            NullLogger<RoomTreatmentService>.Instance);
+        var service = CreateService(db, roomInventoryLedgerQueryService: ledger, roomTreatmentService: treatments);
+        var createPage = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", WarehouseId = 1000, RoomIds = [1001] }, principal, default);
+        var original = createPage.AvailableInventory.Single(x => x.Lot == "LOT-120");
+        Assert.Equal(120, original.CurrentBins);
+        Assert.Null(await service.CreateActualRunAsync(GroupForm((original, 120)), principal, default));
+        var run = await db.ActualRuns.SingleAsync();
+        var originalEntry = await db.BinsRunEntries.SingleAsync(x => !x.IsReversed);
+        var originalMovement = await db.TreatmentLineageMovements.SingleAsync(x =>
+            x.BinsRunEntryId == originalEntry.Id && x.ReversesTreatmentLineageMovementId == null);
+        Assert.Equal(0, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+
+        var beforeGet = new
+        {
+            ActualRuns = await db.ActualRuns.CountAsync(),
+            ActualRunRevisions = await db.ActualRunRevisions.CountAsync(),
+            BinsRunEntries = await db.BinsRunEntries.CountAsync(),
+            Adjustments = await db.RoomInventoryAdjustments.CountAsync(),
+            Segments = await db.TreatmentLineageSegments.CountAsync(),
+            Movements = await db.TreatmentLineageMovements.CountAsync(),
+            Audits = await db.AuditLogs.CountAsync()
+        };
+
+        var editPage = await service.GetPageAsync(
+            new BinsRunFilterForm { Section = "Actual", EditActualRunId = run.Id },
+            Principal("admin@fruitandland.com"),
+            default);
+
+        var correctedSource = Assert.Single(editPage.AvailableInventory, x =>
+            x.Lot == "LOT-120" && x.TreatmentSegmentId == originalMovement.SourceSegmentId);
+        Assert.Equal(120, correctedSource.CurrentBins);
+        Assert.Equal(originalEntry.TreatmentSignatureSnapshot, correctedSource.TreatmentSignature);
+        Assert.Equal(originalMovement.TreatmentSignatureSnapshot, correctedSource.TreatmentSignature);
+        Assert.Equal(beforeGet.ActualRuns, await db.ActualRuns.CountAsync());
+        Assert.Equal(beforeGet.ActualRunRevisions, await db.ActualRunRevisions.CountAsync());
+        Assert.Equal(beforeGet.BinsRunEntries, await db.BinsRunEntries.CountAsync());
+        Assert.Equal(beforeGet.Adjustments, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(beforeGet.Segments, await db.TreatmentLineageSegments.CountAsync());
+        Assert.Equal(beforeGet.Movements, await db.TreatmentLineageMovements.CountAsync());
+        Assert.Equal(beforeGet.Audits, await db.AuditLogs.CountAsync());
+
+        var correction = GroupForm((correctedSource, 110));
+        correction.Id = run.Id;
+        correction.ConcurrencyVersion = run.ConcurrencyVersion;
+        correction.CorrectionReason = "Production-shaped zero-balance correction proof";
+        Assert.Null(await service.UpdateActualRunAsync(
+            run.Id, correction, Principal("admin@fruitandland.com"), default));
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(10, await LedgerBalanceAsync(db, 1001, "LOT-120"));
+        Assert.Equal(2, await db.ActualRunRevisions.CountAsync());
+        Assert.True((await db.BinsRunEntries.SingleAsync(x => x.Id == originalEntry.Id)).IsReversed);
+        var activeEntry = await db.BinsRunEntries.SingleAsync(x =>
+            x.ActualRunId == run.Id
+            && x.TransactionType == ActualRunTransactionTypes.Depletion
+            && !x.IsReversed);
+        Assert.Equal(110, activeEntry.BinsRun);
+        Assert.Equal(originalEntry.TreatmentSignatureSnapshot, activeEntry.TreatmentSignatureSnapshot);
+        Assert.Equal(3, await db.TreatmentLineageMovements.CountAsync(x =>
+            x.BinsRunEntryId == originalEntry.Id || x.BinsRunEntryId == activeEntry.Id));
+        var currentSnapshot = Assert.Single(await ledger.GetSnapshotsAsync(1000, [1001], default), x => x.Lot == "LOT-120");
+        var currentTreatment = Assert.Single(await treatments.GetSelectionsAsync(currentSnapshot, default));
+        Assert.Equal(10, currentTreatment.CurrentBins);
+        Assert.Equal(originalEntry.TreatmentSignatureSnapshot, currentTreatment.TreatmentSignature);
+    }
+
+    [Fact]
     public async Task ActualRun_AmbiguousNullSegment_ReturnsValidationAndWritesNothing()
     {
         using var db = CreateDbContext();
@@ -1791,7 +1873,8 @@ public sealed class BinsRunWorkflowTests
         var createPage = await service.GetPageAsync(
             new BinsRunFilterForm { Section = "Actual", RoomIds = [1001] }, manager, default);
         var wrongGrower = createPage.AvailableInventory.Single(x => x.Lot == "LOT-120");
-        Assert.Null(await service.CreateActualRunAsync(GroupForm((wrongGrower, 64)), manager, default));
+        Assert.Null(await service.CreateActualRunAsync(GroupForm((wrongGrower, 120)), manager, default));
+        Assert.Equal(0, await LedgerBalanceAsync(db, 1001, "LOT-120"));
         var run = await db.ActualRuns.SingleAsync();
         var correctedAt = run.RunAt.AddDays(-1);
         var editPage = await service.GetPageAsync(
