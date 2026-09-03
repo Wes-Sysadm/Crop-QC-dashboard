@@ -1366,7 +1366,7 @@ else
             <p class="muted">Current room inventory ledger balances are the source of truth. Select exact room-lot rows and enter bins pulled from each room. Receipts are not used.</p>
             @if (!Model.CanRecord)
             {
-                <p class="notice warning">Actual Run Create access is required.</p>
+                <p class="notice warning">@(Model.ActualRunForm.Id is null ? "Actual Run Create access is required." : "Actual Run Admin access is required to correct run lines.")</p>
             }
             else if (Model.ActualRunForm.Id is null && Model.CurrentEmploymentFacility == CropQc.Data.Entities.EmploymentFacilities.Unassigned)
             {
@@ -1383,6 +1383,7 @@ else
                     <p class="notice warning">Saving a correction restores every active depletion with permanent reversal transactions, then records the corrected rows atomically.</p>
                 }
                 <form class="form-grid" method="post" action="@(Model.ActualRunForm.Id is long runId ? $"/BinsRun/ActualRuns/{runId}" : "/BinsRun/ActualRuns")" data-actual-run-form>
+                    @Html.AntiForgeryToken()
                     <input type="hidden" name="Id" value="@Model.ActualRunForm.Id" />
                     <input type="hidden" name="ConcurrencyVersion" value="@Model.ActualRunForm.ConcurrencyVersion" />
                     <input type="hidden" name="OperationKey" value="@Model.ActualRunForm.OperationKey" />
@@ -1496,6 +1497,12 @@ else
                     <label class="field wide">Notes
                         <textarea name="Notes" maxlength="1000">@Model.ActualRunForm.Notes</textarea>
                     </label>
+                    @if (Model.ActualRunForm.Id is not null)
+                    {
+                        <label class="field wide">Reason for run-line correction
+                            <textarea name="CorrectionReason" maxlength="1000" required></textarea>
+                        </label>
+                    }
                     <p class="muted wide">A shortage creates a pending request showing available, requested, and shortage bins. A different Bins Run administrator must enter an override reason before inventory can go negative.</p>
                     <button type="submit">@(Model.ActualRunForm.Id is null ? "Save Actual Run and Deplete Rooms" : "Save Correction with Reversals")</button>
                     @if (Model.ActualRunForm.Id is not null)
@@ -1798,7 +1805,7 @@ else
                         @if (run.Status == CropQc.Data.Entities.ActualRunStatuses.Active)
                         {
                             <div class="inline-form">
-                                @if (Model.CanRecord)
+                                @if (Model.CanCorrectActualRuns)
                                 {
                                     <a class="button-link" href="/BinsRun?Section=Actual&amp;EditActualRunId=@run.Id">Correct with Reversals</a>
                                 }

@@ -69,6 +69,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<ActualRunOverrideRequest> ActualRunOverrideRequests => Set<ActualRunOverrideRequest>();
     public DbSet<ActualRunOverrideRequestLine> ActualRunOverrideRequestLines => Set<ActualRunOverrideRequestLine>();
     public DbSet<ActualRunSalesDeskCorrection> ActualRunSalesDeskCorrections => Set<ActualRunSalesDeskCorrection>();
+    public DbSet<ActualRunDetailCorrection> ActualRunDetailCorrections => Set<ActualRunDetailCorrection>();
     public DbSet<RunExpectation> RunExpectations => Set<RunExpectation>();
     public DbSet<RunExpectationSource> RunExpectationSources => Set<RunExpectationSource>();
     public DbSet<RunProjection> RunProjections => Set<RunProjection>();
@@ -1778,6 +1779,18 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.HasOne(x => x.ActualRun).WithMany(x => x.SalesDeskCorrections).HasForeignKey(x => x.ActualRunId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.PreviousSalesDesk).WithMany(x => x.PreviousCorrections).HasForeignKey(x => x.PreviousSalesDeskId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.NewSalesDesk).WithMany(x => x.NewCorrections).HasForeignKey(x => x.NewSalesDeskId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.CorrectedByUser).WithMany().HasForeignKey(x => x.CorrectedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ActualRunDetailCorrection>(entity =>
+        {
+            entity.Property(x => x.OperationKey).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.PreviousNotes).HasMaxLength(1000);
+            entity.Property(x => x.NewNotes).HasMaxLength(1000);
+            entity.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+            entity.HasIndex(x => x.OperationKey).IsUnique();
+            entity.HasIndex(x => new { x.ActualRunId, x.CorrectedAt });
+            entity.HasOne(x => x.ActualRun).WithMany(x => x.DetailCorrections).HasForeignKey(x => x.ActualRunId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.CorrectedByUser).WithMany().HasForeignKey(x => x.CorrectedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
 

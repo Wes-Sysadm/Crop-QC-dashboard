@@ -64,6 +64,75 @@ public sealed class RunReportingTests
     }
 
     [Fact]
+    public async Task ActualRunUsesHeaderDateWhileLegacyEntryRetainsEntryDate()
+    {
+        using var db = CreateDbContext();
+        await SeedAsync(db);
+        var actualRun = await db.ActualRuns.SingleAsync(x => x.Id == 1);
+        var actualLine = await db.BinsRunEntries.SingleAsync(x => x.Id == 1);
+        var legacyLine = await db.BinsRunEntries.SingleAsync(x => x.Id == 2);
+        Assert.Equal(DateTimeOffset.Parse("2026-08-03T19:00:00Z"), actualLine.RunAt);
+        Assert.Equal(actualLine.RunAt, legacyLine.RunAt);
+        var service = CreateService(db);
+        var principal = Principal();
+        var beforeSummary = await service.GetAsync(new BinsRunFilterForm(), principal, default);
+        var beforePage = await service.GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026
+        }, principal, default);
+        var beforeDetail = Assert.IsType<RunTotalsDetailViewModel>(beforePage.Detail);
+        var varietyKey = Assert.Single(beforeDetail.Varieties).VarietyKey;
+        var beforeSelected = Assert.IsType<RunTotalsDetailViewModel>((await service.GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026,
+            ReportVarietyKey = varietyKey
+        }, principal, default)).Detail);
+        var beforeFacilityBins = beforeSummary.FacilitySummaries.Single(x => x.Facility == EmploymentFacilities.Wp)
+            .CropYears.Single(x => x.CropYear == 2026).Bins;
+        var beforeVarietyBins = Assert.Single(beforeDetail.Varieties).Bins;
+        var beforeGrowerBins = beforeSelected.Weeks.SelectMany(x => x.Growers).Sum(x => x.Bins);
+        var beforeSalesDeskBins = beforeDetail.SalesDeskTotals.Sum(x => x.Bins);
+        actualRun.RunAt = DateTimeOffset.Parse("2026-08-01T19:00:00Z");
+        await db.SaveChangesAsync();
+
+        var afterSummary = await service.GetAsync(new BinsRunFilterForm(), principal, default);
+        var initial = await service.GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026
+        }, principal, default);
+        var detail = Assert.IsType<RunTotalsDetailViewModel>(initial.Detail);
+        var selected = await service.GetAsync(new BinsRunFilterForm
+        {
+            Section = "RunTotals",
+            ReportFacility = EmploymentFacilities.Wp,
+            ReportCropYear = 2026,
+            ReportVarietyKey = varietyKey
+        }, principal, default);
+
+        var weeks = Assert.IsType<RunTotalsDetailViewModel>(selected.Detail).Weeks.OrderBy(x => x.WeekStart).ToList();
+        Assert.Equal(60, beforeFacilityBins);
+        Assert.Equal(beforeFacilityBins, afterSummary.FacilitySummaries.Single(x => x.Facility == EmploymentFacilities.Wp)
+            .CropYears.Single(x => x.CropYear == 2026).Bins);
+        Assert.Equal(60, beforeVarietyBins);
+        Assert.Equal(beforeVarietyBins, Assert.Single(detail.Varieties).Bins);
+        Assert.Equal(60, beforeGrowerBins);
+        Assert.Equal(beforeGrowerBins, weeks.SelectMany(x => x.Growers).Sum(x => x.Bins));
+        Assert.Equal(60, beforeSalesDeskBins);
+        Assert.Equal(beforeSalesDeskBins, detail.SalesDeskTotals.Sum(x => x.Bins));
+        Assert.Equal(60, weeks.Sum(x => x.Bins));
+        Assert.Contains(weeks, x => x.WeekStart == new DateOnly(2026, 7, 26) && x.Bins == 40);
+        Assert.Contains(weeks, x => x.WeekStart == new DateOnly(2026, 8, 2) && x.Bins == 20);
+        Assert.Equal(DateTimeOffset.Parse("2026-08-03T19:00:00Z"), actualLine.RunAt);
+        Assert.Equal(DateTimeOffset.Parse("2026-08-03T19:00:00Z"), legacyLine.RunAt);
+    }
+
+    [Fact]
     public async Task RunTotalsVarietyCards_UseSharedConfiguredColorAndReadableContrast()
     {
         using var db = CreateDbContext();

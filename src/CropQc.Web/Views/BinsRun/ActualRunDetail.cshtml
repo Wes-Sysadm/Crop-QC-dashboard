@@ -18,6 +18,96 @@
     </div>
 </section>
 
+@if (Model.DetailCorrections.Count > 0 || Model.CanCorrectDetails)
+{
+    <section class="panel">
+        <h2>Run Detail Corrections</h2>
+        @if (Model.DetailCorrections.Count > 0)
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Previous date/time</th><th>Corrected date/time</th><th>Notes</th><th>Reason</th><th>By</th><th>At</th></tr></thead>
+                    <tbody>
+                    @foreach (var correction in Model.DetailCorrections)
+                    {
+                        <tr>
+                            <td>@BusinessTime.FormatPacific(correction.PreviousRunAt)</td>
+                            <td>@BusinessTime.FormatPacific(correction.NewRunAt)</td>
+                            <td>@(correction.NotesChanged ? "Changed" : "Unchanged")</td>
+                            <td>@correction.Reason</td>
+                            <td>@correction.CorrectedBy</td>
+                            <td>@BusinessTime.FormatPacific(correction.CorrectedAt)</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+        @if (Model.CanCorrectDetails)
+        {
+            <details class="actual-run-detail-correction">
+                <summary class="button secondary-button">Edit Run Details</summary>
+                <form class="form-grid" method="post" action="/BinsRun/ActualRuns/@Model.Id/Details">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="ConcurrencyVersion" value="@Model.ConcurrencyVersion" />
+                    <input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" />
+                    <label>Run date/time (Pacific)
+                        <input type="datetime-local" name="RunAt" value="@BusinessTime.FormatPacificInput(Model.RunAt)" required />
+                    </label>
+                    <label class="wide">Notes
+                        <textarea name="Notes" maxlength="1000">@Model.Notes</textarea>
+                    </label>
+                    <label class="wide">Reason for correction
+                        <textarea name="Reason" maxlength="1000" required></textarea>
+                    </label>
+                    <p class="notice warning wide">Correcting the run date changes run reporting and historical run placement. It does not change inventory quantities, source rooms, treatment lineage, packout results, or frozen Run Expectations.</p>
+                    <button type="submit">Apply Run Detail Correction</button>
+                </form>
+            </details>
+        }
+    </section>
+}
+
+@if (Model.CanCorrectRunLines)
+{
+    <section class="panel">
+        <h2>Correct Run Lines</h2>
+        <p>Correct the Grower/Grower Lot source or bins pulled when the recorded Actual Run does not match the physical run.</p>
+        <p class="notice warning">This inventory-affecting correction restores every current depletion, then creates a new audited Actual Run revision from exact current inventory and treatment segments. Run Facility and Sales Desk remain fixed; candidate sources stay limited to compatible fruit profiles, and exact room and treatment selection is required.</p>
+        <a class="button" href="/BinsRun?Section=Actual&amp;EditActualRunId=@Model.Id">Review Run-Line Correction</a>
+    </section>
+}
+
+@if (Model.RunRevisions.Count > 0)
+{
+    <section class="panel">
+        <h2>Actual Run Revisions</h2>
+        <p class="muted">Inventory-affecting revisions remain immutable. Only the revision marked Current contributes to current Actual Run reporting.</p>
+        @foreach (var revision in Model.RunRevisions)
+        {
+            <article class="subpanel">
+                <h3>Revision @revision.RevisionNumber @(revision.IsCurrent ? "(Current)" : "")</h3>
+                <p><strong>@revision.OperationType</strong> · @BusinessTime.FormatPacific(revision.CorrectedAt) · @revision.CorrectedBy</p>
+                @if (!string.IsNullOrWhiteSpace(revision.Reason))
+                {
+                    <p><strong>Correction reason:</strong> @revision.Reason</p>
+                }
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Room</th><th>Grower number</th><th>Grower</th><th>Lot</th><th>Variety</th><th>Treatment</th><th>Bins</th></tr></thead>
+                        <tbody>
+                        @foreach (var line in revision.Lines)
+                        {
+                            <tr><td>@line.Room</td><td>@line.GrowerNumber</td><td>@line.Grower</td><td>@line.Lot</td><td>@line.Variety</td><td>@line.Treatment</td><td>@line.Bins</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+        }
+    </section>
+}
+
 @if (!string.IsNullOrWhiteSpace(Model.DetailWarning))
 {
     <p class="notice warning" role="alert">@Model.DetailWarning</p>
@@ -139,6 +229,10 @@
     else
     {
         var expectation = Model.CurrentExpectation;
+        @if (expectation.RunAtSnapshot != Model.RunAt)
+        {
+            <p class="notice">The run date was corrected after this Run Expectation was frozen. The expectation retains its original run-date snapshot for auditability.</p>
+        }
         @if (expectation.IsHistoricalReconstruction)
         {
             <p class="notice warning" role="alert">

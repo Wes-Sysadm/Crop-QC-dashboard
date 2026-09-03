@@ -97,7 +97,7 @@ public sealed class RunSheetReconciliationService(
                 && x.ActualRun!.RunFacilityCodeSnapshot == facility)
             .Select(x => new RunSheetCropLine(
                 x.ActualRunId!.Value,
-                x.RunAt,
+                x.ActualRun!.RunAt,
                 x.ActualRun!.SalesDeskNameSnapshot,
                 x.ReportingVarietyCodeSnapshot!,
                 x.ProductionTypeSnapshot!,
@@ -121,7 +121,7 @@ public sealed class RunSheetReconciliationService(
             .Select(x => new
             {
                 ActualRunId = x.ActualRunId!.Value,
-                x.RunAt,
+                RunAt = x.ActualRun!.RunAt,
                 x.BinsRun,
                 LegacyVariety = x.VarietyCode ?? x.FruitProfile!.VarietyCode
             })

@@ -648,7 +648,8 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("ActualRuns/{id:long}")]
-    [Authorize(Policy = AccessPolicyNames.ActualRunsCreate)]
+    [Authorize(Policy = AccessPolicyNames.ActualRunsAdmin)]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateActualRun(long id, ActualRunForm form, CancellationToken cancellationToken)
     {
         var error = await ExecuteActualRunOperationAsync(
@@ -656,7 +657,7 @@ public sealed class BinsRunController(
             "Edit",
             id,
             cancellationToken);
-        TempData[error is null ? "Success" : "Error"] = error ?? "Actual Run corrected through ledger reversals and new depletions.";
+        TempData[error is null ? "Success" : "Error"] = error ?? "Actual Run correction applied through the appropriate audited correction path.";
         return RedirectToAction(nameof(Index), new { Section = "Actual" });
     }
 
@@ -686,6 +687,29 @@ public sealed class BinsRunController(
             id,
             cancellationToken);
         TempData[error is null ? "Success" : "Error"] = error ?? "Actual Run Sales Desk attribution corrected without changing inventory.";
+        return RedirectToAction(nameof(ActualRunDetail), new { id });
+    }
+
+    [HttpPost("ActualRuns/{id:long}/Details")]
+    [Authorize(Policy = AccessPolicyNames.ActualRunsAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CorrectActualRunDetails(long id, CorrectActualRunDetailsForm form, CancellationToken cancellationToken)
+    {
+        form.Id = id;
+        ActualRunDetailCorrectionResult? result = null;
+        var error = await ExecuteActualRunOperationAsync(
+            async () =>
+            {
+                result = await binsRunService.CorrectActualRunDetailsAsync(form, User, cancellationToken);
+                return result.Error;
+            },
+            "CorrectDetails",
+            id,
+            cancellationToken);
+        TempData[error is null ? "Success" : "Error"] = error
+            ?? (result?.AlreadyApplied == true
+                ? "Run detail correction was already applied."
+                : "Run details corrected. Inventory and treatment lineage were unchanged.");
         return RedirectToAction(nameof(ActualRunDetail), new { id });
     }
 

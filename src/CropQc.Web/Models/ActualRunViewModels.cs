@@ -27,12 +27,42 @@ public sealed class ActualRunDetailViewModel
     public bool CanEditPackout { get; set; }
     public bool CanAdminPackout { get; set; }
     public bool CanCorrectSalesDesk { get; set; }
+    public bool CanCorrectDetails { get; set; }
+    public bool CanCorrectRunLines { get; set; }
     public long ConcurrencyVersion { get; set; }
     public IReadOnlyList<SalesDeskOptionViewModel> SalesDeskOptions { get; set; } = [];
     public IReadOnlyList<ActualRunSalesDeskCorrectionViewModel> SalesDeskCorrections { get; set; } = [];
+    public IReadOnlyList<ActualRunDetailCorrectionViewModel> DetailCorrections { get; set; } = [];
+    public IReadOnlyList<ActualRunRevisionViewModel> RunRevisions { get; set; } = [];
     public bool OptionalDetailAvailable { get; set; } = true;
     public string? DetailWarning { get; set; }
 }
+
+public sealed record ActualRunDetailCorrectionViewModel(
+    DateTimeOffset PreviousRunAt,
+    DateTimeOffset NewRunAt,
+    bool NotesChanged,
+    string Reason,
+    string CorrectedBy,
+    DateTimeOffset CorrectedAt);
+
+public sealed record ActualRunRevisionViewModel(
+    int RevisionNumber,
+    bool IsCurrent,
+    string OperationType,
+    string? Reason,
+    string CorrectedBy,
+    DateTimeOffset CorrectedAt,
+    IReadOnlyList<ActualRunRevisionLineViewModel> Lines);
+
+public sealed record ActualRunRevisionLineViewModel(
+    string Room,
+    string Grower,
+    string GrowerNumber,
+    string Lot,
+    string Variety,
+    string Treatment,
+    int Bins);
 
 public sealed record ActualRunSalesDeskCorrectionViewModel(
     string PreviousSalesDesk,
@@ -80,6 +110,7 @@ public sealed class RunExpectationViewModel
         new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
     public string CalculationVersion { get; set; } = "";
     public DateTimeOffset CalculatedAt { get; set; }
+    public DateTimeOffset RunAtSnapshot { get; set; }
     public bool IsHistoricalReconstruction { get; set; }
     public DateTimeOffset? ReconstructedAt { get; set; }
     public DateTimeOffset? PhysicalRunAt { get; set; }

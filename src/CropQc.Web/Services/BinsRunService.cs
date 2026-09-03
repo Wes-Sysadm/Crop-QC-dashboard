@@ -26,8 +26,11 @@ public interface IBinsRunService
     Task<string?> UpdateActualRunAsync(long id, ActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> CancelActualRunAsync(CancelActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> CorrectActualRunSalesDeskAsync(CorrectActualRunSalesDeskForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
+    Task<ActualRunDetailCorrectionResult> CorrectActualRunDetailsAsync(CorrectActualRunDetailsForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<string?> ApproveActualRunOverrideAsync(ApproveActualRunOverrideForm form, ClaimsPrincipal user, CancellationToken cancellationToken);
 }
+
+public sealed record ActualRunDetailCorrectionResult(string? Error, bool AlreadyApplied = false);
 
 public sealed class BinsRunService(
     CropQcDbContext dbContext,
@@ -84,8 +87,14 @@ public sealed class BinsRunService(
         var canRecord = facilityConfigurationValid
             && (await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Edit, cancellationToken)
                 || await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Edit, cancellationToken));
+        var canCorrectActualRuns = await userAccessService.HasAccessAsync(
+            user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken);
         var canAdmin = await userAccessService.HasAccessAsync(user, ApplicationAreas.BinsRun, PageAccessLevel.Admin, cancellationToken)
-            || await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken);
+            || canCorrectActualRuns;
+        if (filter.EditActualRunId is not null)
+        {
+            canRecord = facilityConfigurationValid && canCorrectActualRuns;
+        }
         var canTransfer = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
         var canTrueUp = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken);
         var editInventoryRows = filter.EditActualRunId is long requestedRunId
@@ -158,14 +167,19 @@ public sealed class BinsRunService(
                 Grower = growerResolver.DisplayName(x.Grower, x.GrowerNumber ?? x.Lot)
             }).ToList();
         var currentSnapshots = isActualSection
-            ? snapshots.Where(x => x.CurrentBins > 0 || editInventoryRows.Any(y =>
-                y.WarehouseId == x.WarehouseId
-                && y.RoomId == x.RoomId
-                && y.CropYear == x.CropYear
-                && string.Equals(y.LotNumber, x.Lot, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(y.Variety, x.Variety, StringComparison.OrdinalIgnoreCase)
-                && (y.FruitProfileId is null || y.FruitProfileId == x.FruitProfileId)
-                && (y.GrowerLotId is null || y.GrowerLotId == x.GrowerLotId))).ToList()
+            ? snapshots.Where(x =>
+                (editInventoryRows.Count == 0 || editInventoryRows.Any(y =>
+                    y.WarehouseId == x.WarehouseId
+                    && string.Equals(y.Variety, x.Variety, StringComparison.OrdinalIgnoreCase)
+                    && (y.FruitProfileId is null || y.FruitProfileId == x.FruitProfileId)))
+                && (x.CurrentBins > 0 || editInventoryRows.Any(y =>
+                    y.WarehouseId == x.WarehouseId
+                    && y.RoomId == x.RoomId
+                    && y.CropYear == x.CropYear
+                    && string.Equals(y.LotNumber, x.Lot, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(y.Variety, x.Variety, StringComparison.OrdinalIgnoreCase)
+                    && (y.FruitProfileId is null || y.FruitProfileId == x.FruitProfileId)
+                    && (y.GrowerLotId is null || y.GrowerLotId == x.GrowerLotId)))).ToList()
             : snapshots.Where(x => x.CurrentBins > 0).ToList();
         IReadOnlyDictionary<string, LotSampleDistribution> sampleData = isActualSection
             ? new Dictionary<string, LotSampleDistribution>(StringComparer.OrdinalIgnoreCase)
@@ -329,6 +343,7 @@ public sealed class BinsRunService(
                 : [],
             CanRecord = canRecord,
             CanAdmin = canAdmin,
+            CanCorrectActualRuns = canCorrectActualRuns,
             CanTransfer = canTransfer,
             CanTrueUp = canTrueUp,
             CurrentEmploymentFacility = currentEmployment,
@@ -374,6 +389,48 @@ public sealed class BinsRunService(
         if (run is null) return null;
         run.CanCorrectSalesDesk = run.Facility == EmploymentFacilities.Wp
             && await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken);
+        run.CanCorrectDetails = run.Status == ActualRunStatuses.Active
+            && await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken);
+        run.CanCorrectRunLines = run.CanCorrectDetails;
+        var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
+        run.DetailCorrections = await dbContext.ActualRunDetailCorrections.AsNoTracking()
+            .Where(x => x.ActualRunId == id)
+            .OrderBy(x => x.CorrectedAt).ThenBy(x => x.Id)
+            .Select(x => new ActualRunDetailCorrectionViewModel(
+                x.PreviousRunAt,
+                x.NewRunAt,
+                x.PreviousNotes != x.NewNotes,
+                x.Reason,
+                x.CorrectedByUser.DisplayName,
+                x.CorrectedAt))
+            .ToListAsync(cancellationToken);
+        var revisions = await dbContext.ActualRunRevisions.AsNoTracking()
+            .Where(x => x.ActualRunId == id)
+            .Include(x => x.CreatedByUser)
+            .Include(x => x.Entries)
+                .ThenInclude(x => x.Room)
+            .OrderBy(x => x.RevisionNumber)
+            .ToListAsync(cancellationToken);
+        run.RunRevisions = revisions.Select(revision => new ActualRunRevisionViewModel(
+            revision.RevisionNumber,
+            revision.IsCurrent,
+            revision.OperationType,
+            revision.Reason,
+            revision.CreatedByUser?.DisplayName ?? "",
+            revision.CreatedAt,
+            revision.Entries
+                .Where(x => x.TransactionType == ActualRunTransactionTypes.Depletion)
+                .OrderBy(x => x.Id)
+                .Select(x => new ActualRunRevisionLineViewModel(
+                    x.Room.CropQcRoomName ?? x.Room.DisplayName ?? x.Room.Code,
+                    growerResolver.DisplayName(x.GrowerName, x.GrowerNumberSnapshot ?? x.LotNumber),
+                    x.GrowerNumberSnapshot ?? x.LotNumber,
+                    x.LotNumber,
+                    x.VarietyCode ?? "",
+                    x.TreatmentSummarySnapshot ?? "No recorded treatment history",
+                    x.BinsRun))
+                .ToList()))
+            .ToList();
         if (run.Facility == EmploymentFacilities.Wp)
         {
             run.SalesDeskOptions = await dbContext.SalesDesks.AsNoTracking()
@@ -392,8 +449,6 @@ public sealed class BinsRunService(
                     x.CorrectedAt))
                 .ToListAsync(cancellationToken);
         }
-        var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
-
         var contributionRows = await dbContext.BinsRunEntries.AsNoTracking()
             .Where(x => x.ActualRunId == id
                 && x.ActualRunRevisionId != null
@@ -479,7 +534,8 @@ public sealed class BinsRunService(
                     x.GradeDistributionSnapshotJson,
                     x.ConfigurationSnapshotJson,
                     x.CalculationVersion,
-                    x.CalculatedAt
+                    x.CalculatedAt,
+                    x.RunAtSnapshot
                 })
                 .ToListAsync(cancellationToken);
             run.Expectations = expectationRows
@@ -504,6 +560,7 @@ public sealed class BinsRunService(
                         GradeDistribution = DeserializeDistribution(x.GradeDistributionSnapshotJson),
                         CalculationVersion = x.CalculationVersion,
                         CalculatedAt = x.CalculatedAt,
+                        RunAtSnapshot = x.RunAtSnapshot,
                         IsHistoricalReconstruction = reconstruction is not null,
                         ReconstructedAt = reconstruction?.ReconstructedAt,
                         PhysicalRunAt = reconstruction?.PhysicalRunAt,
@@ -822,13 +879,32 @@ public sealed class BinsRunService(
 
     public async Task<string?> UpdateActualRunAsync(long id, ActualRunForm form, ClaimsPrincipal user, CancellationToken cancellationToken)
     {
-        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Edit, cancellationToken))
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken))
         {
-            return "Actual Run Create access is required to edit an Actual Run.";
+            return "Actual Run Admin access is required to correct an Actual Run.";
         }
 
         form.Id = id;
         form.RunProjectionId = null;
+        if (!string.IsNullOrWhiteSpace(form.OperationKey)
+            && await dbContext.ActualRunRevisions.AsNoTracking()
+                .AnyAsync(x => x.OperationKey == form.OperationKey.Trim() && x.ActualRunId == id, cancellationToken))
+        {
+            return null;
+        }
+        if (!await HasActualRunLineChangesAsync(id, form.Lines, cancellationToken))
+        {
+            var result = await CorrectActualRunDetailsAsync(new CorrectActualRunDetailsForm
+            {
+                Id = id,
+                ConcurrencyVersion = form.ConcurrencyVersion,
+                OperationKey = form.OperationKey,
+                RunAt = form.RunAt,
+                Notes = form.Notes,
+                Reason = form.CorrectionReason ?? ""
+            }, user, cancellationToken);
+            return result.Error;
+        }
         return await SaveActualRunAsync(form, user, null, null, cancellationToken);
     }
 
@@ -912,6 +988,102 @@ public sealed class BinsRunService(
         return null;
     }
 
+    public async Task<ActualRunDetailCorrectionResult> CorrectActualRunDetailsAsync(
+        CorrectActualRunDetailsForm form,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        if (!await userAccessService.HasAccessAsync(user, ApplicationAreas.ActualRuns, PageAccessLevel.Admin, cancellationToken))
+            return new("Actual Run Admin access is required to correct run details.");
+        if (string.IsNullOrWhiteSpace(form.OperationKey) || form.OperationKey.Trim().Length > 64)
+            return new("The correction request identifier is invalid. Refresh and retry.");
+        if (string.IsNullOrWhiteSpace(form.Reason))
+            return new("A run detail correction reason is required.");
+        var reason = form.Reason.Trim();
+        if (reason.Length > 1000) return new("The run detail correction reason is too long.");
+        var notes = string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim();
+        if (notes?.Length > 1000) return new("Run notes cannot exceed 1000 characters.");
+
+        var newRunAt = form.RunAt.ToUniversalTime();
+        if (newRunAt > BusinessTime.UtcNow.AddMinutes(5))
+            return new("Run date/time cannot be more than five minutes in the future.");
+        var userId = await CurrentUserIdAsync(user, cancellationToken);
+        if (userId is null) return new("The current user account could not be resolved.");
+
+        await using var transaction = await BeginTransactionIfSupportedAsync(cancellationToken);
+        var operationKey = form.OperationKey.Trim();
+        var existing = await dbContext.ActualRunDetailCorrections.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.OperationKey == operationKey, cancellationToken);
+        if (existing is not null)
+        {
+            if (existing.ActualRunId != form.Id
+                || existing.ExpectedConcurrencyVersion != form.ConcurrencyVersion
+                || existing.NewRunAt != newRunAt
+                || !string.Equals(existing.NewNotes, notes, StringComparison.Ordinal)
+                || !string.Equals(existing.Reason, reason, StringComparison.Ordinal))
+                return new("The correction request identifier was already used for a different run detail correction. Refresh and retry.");
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+            return new(null, true);
+        }
+
+        var run = await dbContext.ActualRuns.SingleOrDefaultAsync(x => x.Id == form.Id, cancellationToken);
+        if (run is null) return new("Actual Run was not found.");
+        if (run.Status != ActualRunStatuses.Active) return new("Only an active Actual Run can have its details corrected.");
+        if (run.ConcurrencyVersion != form.ConcurrencyVersion)
+            return new("Conflict detected: this Actual Run changed. Reload before correcting its details.");
+        if (run.RunAt == newRunAt && string.Equals(run.Notes, notes, StringComparison.Ordinal))
+            return new("No run details changed.");
+
+        var now = BusinessTime.UtcNow;
+        var previousRunAt = run.RunAt;
+        var previousNotes = run.Notes;
+        var previousConcurrencyVersion = run.ConcurrencyVersion;
+        dbContext.ActualRunDetailCorrections.Add(new ActualRunDetailCorrection
+        {
+            ActualRunId = run.Id,
+            OperationKey = operationKey,
+            ExpectedConcurrencyVersion = form.ConcurrencyVersion,
+            PreviousRunAt = previousRunAt,
+            NewRunAt = newRunAt,
+            PreviousNotes = previousNotes,
+            NewNotes = notes,
+            Reason = reason,
+            CorrectedByUserId = userId.Value,
+            CorrectedAt = now
+        });
+        run.RunAt = newRunAt;
+        run.Notes = notes;
+        run.UpdatedAt = now;
+        run.UpdatedByUserId = userId;
+        run.ConcurrencyVersion++;
+        dbContext.AuditLogs.Add(new AuditLog
+        {
+            Action = "ActualRunDetailsCorrected",
+            EntityName = nameof(ActualRun),
+            EntityKey = run.Id.ToString(),
+            UserId = userId,
+            BeforeValuesJson = JsonSerializer.Serialize(new { RunAt = previousRunAt, Notes = previousNotes, ConcurrencyVersion = previousConcurrencyVersion }),
+            AfterValuesJson = JsonSerializer.Serialize(new
+            {
+                RunAt = newRunAt,
+                Notes = notes,
+                Reason = reason,
+                ConcurrencyVersion = run.ConcurrencyVersion,
+                InventoryDelta = 0,
+                TreatmentDelta = 0,
+                RunQuantityDelta = 0,
+                RevisionDelta = 0,
+                ExpectationDelta = 0,
+                PackoutDelta = 0
+            }),
+            SourceApplication = SourceApplication,
+            CreatedAt = now
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        return new(null);
+    }
+
     public async Task<string?> ApproveActualRunOverrideAsync(
         ApproveActualRunOverrideForm form,
         ClaimsPrincipal user,
@@ -954,6 +1126,7 @@ public sealed class BinsRunService(
             RunProjectionId = null,
             RunAt = request.RunAt,
             Notes = request.Notes,
+            CorrectionReason = form.Reason.Trim(),
             RunFacilityWarehouseId = request.RunFacilityWarehouseId,
             SalesDeskId = request.SalesDeskId,
             Lines = request.Lines.Select(x => new ActualRunLineForm
@@ -1100,6 +1273,19 @@ public sealed class BinsRunService(
         {
             return "The save request identifier is required.";
         }
+        var correctionReason = NormalizeOptional(form.CorrectionReason);
+        if (form.Id is not null && string.IsNullOrWhiteSpace(correctionReason))
+        {
+            return "A correction reason is required when changing Actual Run lines.";
+        }
+        if (correctionReason?.Length > 1000)
+        {
+            return "The Actual Run correction reason is too long.";
+        }
+        if (form.Id is not null && form.RunAt.ToUniversalTime() > BusinessTime.UtcNow.AddMinutes(5))
+        {
+            return "Run date/time cannot be more than five minutes in the future.";
+        }
 
         var normalizedLines = form.Lines
             .Where(x => !string.IsNullOrWhiteSpace(x.InventoryKey) || x.BinsRun != 0)
@@ -1143,7 +1329,9 @@ public sealed class BinsRunService(
             .SingleOrDefaultAsync(cancellationToken);
         if (duplicateRevision is not null)
         {
-            return null;
+            return form.Id is null || duplicateRevision == form.Id
+                ? null
+                : "The save request identifier was already used for a different Actual Run.";
         }
 
         ActualRun? run = null;
@@ -1166,22 +1354,6 @@ public sealed class BinsRunService(
 
             if (run.ConcurrencyVersion != form.ConcurrencyVersion)
             {
-                dbContext.AuditLogs.Add(new AuditLog
-                {
-                    Action = "ConcurrencyConflict",
-                    EntityName = nameof(ActualRun),
-                    EntityKey = run.Id.ToString(),
-                    UserId = userId,
-                    BeforeValuesJson = JsonSerializer.Serialize(new { ExpectedVersion = form.ConcurrencyVersion }),
-                    AfterValuesJson = JsonSerializer.Serialize(new { CurrentVersion = run.ConcurrencyVersion, Operation = "Edit" }),
-                    SourceApplication = SourceApplication,
-                    CreatedAt = DateTimeOffset.UtcNow
-                });
-                await dbContext.SaveChangesAsync(cancellationToken);
-                if (transaction is not null)
-                {
-                    await transaction.CommitAsync(cancellationToken);
-                }
                 return "Conflict detected: another user changed this Actual Run. Reload and review the current room balances.";
             }
 
@@ -1398,6 +1570,7 @@ public sealed class BinsRunService(
                 AfterValuesJson = JsonSerializer.Serialize(new
                 {
                     ActualRunId = run?.Id,
+                    CorrectionReason = correctionReason,
                     Rows = shortages.Select(x => new
                     {
                         x.Snapshot.RoomId,
@@ -1470,6 +1643,7 @@ public sealed class BinsRunService(
             OperationType = operationType,
             OperationKey = form.OperationKey.Trim(),
             IsCurrent = true,
+            Reason = operationType == ActualRunRevisionTypes.Edit ? approvalReason ?? correctionReason : null,
             CreatedByUserId = userId,
             CreatedAt = now
         };
@@ -1482,7 +1656,7 @@ public sealed class BinsRunService(
 
         if (activeEntries.Count > 0)
         {
-            await ReverseEntriesAsync(run, revision, activeEntries, userId.Value, "Actual Run revision", cancellationToken);
+            await ReverseEntriesAsync(run, revision, activeEntries, userId.Value, revision.Reason ?? "Actual Run revision", cancellationToken);
         }
 
         var createdEntries = new List<BinsRunEntry>(resolved.Count);
@@ -1641,6 +1815,7 @@ public sealed class BinsRunService(
             OverdrawApproved = approvedOverride is not null,
             OverrideRequestId = approvedOverride?.Id,
             OverrideReason = approvalReason,
+            CorrectionReason = revision.Reason,
             RunExpectationId = expectation.Id,
             RunExpectationVersion = expectation.CalculationVersion,
             RunFacility = facilityResolution.Code,
@@ -1676,6 +1851,54 @@ public sealed class BinsRunService(
         }
 
         return null;
+    }
+
+    private async Task<bool> HasActualRunLineChangesAsync(
+        long actualRunId,
+        IReadOnlyList<ActualRunLineForm> submittedLines,
+        CancellationToken cancellationToken)
+    {
+        var activeEntries = await dbContext.BinsRunEntries.AsNoTracking()
+            .Where(x => x.ActualRunId == actualRunId
+                && x.TransactionType == ActualRunTransactionTypes.Depletion
+                && !x.IsReversed)
+            .Select(x => new
+            {
+                x.Id,
+                x.WarehouseId,
+                x.RoomId,
+                x.CropYear,
+                x.LotNumber,
+                Variety = x.VarietyCode ?? "",
+                x.FruitProfileId,
+                x.GrowerLotId,
+                TreatmentSignature = x.TreatmentSignatureSnapshot ?? "",
+                x.BinsRun
+            })
+            .ToListAsync(cancellationToken);
+        var entryIds = activeEntries.Select(x => x.Id).ToList();
+        var sourceSegmentRows = await dbContext.TreatmentLineageMovements.AsNoTracking()
+            .Where(x => x.BinsRunEntryId != null
+                && entryIds.Contains(x.BinsRunEntryId.Value)
+                && x.MovementType == TreatmentLineageMovementTypes.BinsRun)
+            .Select(x => new { BinsRunEntryId = x.BinsRunEntryId!.Value, x.SourceSegmentId })
+            .ToListAsync(cancellationToken);
+        var sourceSegments = sourceSegmentRows
+            .GroupBy(x => x.BinsRunEntryId)
+            .ToDictionary(
+                x => x.Key,
+                x => x.Select(y => y.SourceSegmentId).Distinct().ToList() is { Count: 1 } ids ? ids[0] : null);
+
+        var existing = activeEntries.Select(x =>
+                $"{LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.Variety, x.FruitProfileId, x.GrowerLotId)}|{x.TreatmentSignature}|{sourceSegments.GetValueOrDefault(x.Id)}|{x.BinsRun}")
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var submitted = submittedLines
+            .Where(x => !string.IsNullOrWhiteSpace(x.InventoryKey) || x.BinsRun != 0)
+            .Select(x => $"{x.InventoryKey.Trim()}|{x.TreatmentSignature.Trim()}|{x.TreatmentSegmentId}|{x.BinsRun}")
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return !existing.SequenceEqual(submitted, StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task ReverseEntriesAsync(

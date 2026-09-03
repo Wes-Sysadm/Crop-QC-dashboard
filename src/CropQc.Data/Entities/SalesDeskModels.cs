@@ -35,3 +35,20 @@ public sealed class ActualRunSalesDeskCorrection
     public User CorrectedByUser { get; set; } = null!;
     public DateTimeOffset CorrectedAt { get; set; }
 }
+
+public sealed class ActualRunDetailCorrection
+{
+    public long Id { get; set; }
+    public long ActualRunId { get; set; }
+    public ActualRun ActualRun { get; set; } = null!;
+    public required string OperationKey { get; set; }
+    public long ExpectedConcurrencyVersion { get; set; }
+    public DateTimeOffset PreviousRunAt { get; set; }
+    public DateTimeOffset NewRunAt { get; set; }
+    public string? PreviousNotes { get; set; }
+    public string? NewNotes { get; set; }
+    public required string Reason { get; set; }
+    public int CorrectedByUserId { get; set; }
+    public User CorrectedByUser { get; set; } = null!;
+    public DateTimeOffset CorrectedAt { get; set; }
+}

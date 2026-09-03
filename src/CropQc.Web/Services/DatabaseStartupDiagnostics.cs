@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260902140938_AddInventoryIdentityCorrections";
+    public const string ExpectedSchemaMigration = "20260902201338_AddActualRunDetailCorrections";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -80,6 +80,18 @@ public static class DatabaseStartupDiagnostics
         new("ActualRunSalesDeskCorrections.Reason", "ActualRunSalesDeskCorrections", "Reason", RequireNotNullable: true),
         new("ActualRunSalesDeskCorrections.CorrectedByUserId", "ActualRunSalesDeskCorrections", "CorrectedByUserId", RequireNotNullable: true),
         new("ActualRunSalesDeskCorrections.CorrectedAt", "ActualRunSalesDeskCorrections", "CorrectedAt", RequireNotNullable: true),
+        new("ActualRunDetailCorrections", "ActualRunDetailCorrections", null),
+        new("ActualRunDetailCorrections.Id", "ActualRunDetailCorrections", "Id", RequireNotNullable: true),
+        new("ActualRunDetailCorrections.ActualRunId", "ActualRunDetailCorrections", "ActualRunId", RequireNotNullable: true),
+        new("ActualRunDetailCorrections.OperationKey", "ActualRunDetailCorrections", "OperationKey", RequireNotNullable: true),
+        new("ActualRunDetailCorrections.ExpectedConcurrencyVersion", "ActualRunDetailCorrections", "ExpectedConcurrencyVersion", RequireNotNullable: true),
+        new("ActualRunDetailCorrections.PreviousRunAt", "ActualRunDetailCorrections", "PreviousRunAt", RequireNotNullable: true),
+        new("ActualRunDetailCorrections.NewRunAt", "ActualRunDetailCorrections", "NewRunAt", RequireNotNullable: true),
+        new("ActualRunDetailCorrections.PreviousNotes", "ActualRunDetailCorrections", "PreviousNotes", RequireNullable: true),
+        new("ActualRunDetailCorrections.NewNotes", "ActualRunDetailCorrections", "NewNotes", RequireNullable: true),
+        new("ActualRunDetailCorrections.Reason", "ActualRunDetailCorrections", "Reason", RequireNotNullable: true),
+        new("ActualRunDetailCorrections.CorrectedByUserId", "ActualRunDetailCorrections", "CorrectedByUserId", RequireNotNullable: true),
+        new("ActualRunDetailCorrections.CorrectedAt", "ActualRunDetailCorrections", "CorrectedAt", RequireNotNullable: true),
         new("RoomInventoryAdjustments.ActualRunId", "RoomInventoryAdjustments", "ActualRunId"),
         new("RoomInventoryAdjustments.ActualRunRevisionId", "RoomInventoryAdjustments", "ActualRunRevisionId"),
         new("BinsRunEntries.ActualRunId", "BinsRunEntries", "ActualRunId"),
@@ -693,6 +705,9 @@ public static class DatabaseStartupDiagnostics
         new("IX_ActualRunSalesDeskCorrections_NewSalesDeskId", "ActualRunSalesDeskCorrections", "IX_ActualRunSalesDeskCorrections_NewSalesDeskId"),
         new("IX_ActualRunSalesDeskCorrections_OperationKey", "ActualRunSalesDeskCorrections", "IX_ActualRunSalesDeskCorrections_OperationKey", RequireUnique: true),
         new("IX_ActualRunSalesDeskCorrections_PreviousSalesDeskId", "ActualRunSalesDeskCorrections", "IX_ActualRunSalesDeskCorrections_PreviousSalesDeskId"),
+        new("IX_ActualRunDetailCorrections_ActualRunId_CorrectedAt", "ActualRunDetailCorrections", "IX_ActualRunDetailCorrections_ActualRunId_CorrectedAt"),
+        new("IX_ActualRunDetailCorrections_CorrectedByUserId", "ActualRunDetailCorrections", "IX_ActualRunDetailCorrections_CorrectedByUserId"),
+        new("IX_ActualRunDetailCorrections_OperationKey", "ActualRunDetailCorrections", "IX_ActualRunDetailCorrections_OperationKey", RequireUnique: true),
         new("IX_SalesDesks_CreatedByUserId", "SalesDesks", "IX_SalesDesks_CreatedByUserId"),
         new("IX_SalesDesks_IsActive_DisplayOrder_Name", "SalesDesks", "IX_SalesDesks_IsActive_DisplayOrder_Name"),
         new("IX_SalesDesks_Name", "SalesDesks", "IX_SalesDesks_Name", RequireUnique: true),
@@ -841,6 +856,8 @@ public static class DatabaseStartupDiagnostics
         new("FK_ActualRunSalesDeskCorrections_SalesDesks_NewSalesDeskId", "ActualRunSalesDeskCorrections", "FK_ActualRunSalesDeskCorrections_SalesDesks_NewSalesDeskId"),
         new("FK_ActualRunSalesDeskCorrections_SalesDesks_PreviousSalesDeskId", "ActualRunSalesDeskCorrections", "FK_ActualRunSalesDeskCorrections_SalesDesks_PreviousSalesDeskId"),
         new("FK_ActualRunSalesDeskCorrections_Users_CorrectedByUserId", "ActualRunSalesDeskCorrections", "FK_ActualRunSalesDeskCorrections_Users_CorrectedByUserId"),
+        new("FK_ActualRunDetailCorrections_ActualRuns_ActualRunId", "ActualRunDetailCorrections", "FK_ActualRunDetailCorrections_ActualRuns_ActualRunId"),
+        new("FK_ActualRunDetailCorrections_Users_CorrectedByUserId", "ActualRunDetailCorrections", "FK_ActualRunDetailCorrections_Users_CorrectedByUserId"),
         new("FK_OutsideWarehouses_Users_CreatedByUserId", "OutsideWarehouses", "FK_OutsideWarehouses_Users_CreatedByUserId"),
         new("FK_OutsideWarehouses_Users_UpdatedByUserId", "OutsideWarehouses", "FK_OutsideWarehouses_Users_UpdatedByUserId"),
         new("FK_OutsideWarehouseTransfers_FruitProfiles_FruitProfileId", "OutsideWarehouseTransfers", "FK_OutsideWarehouseTransfers_FruitProfiles_FruitProfileId"),
@@ -901,6 +918,7 @@ public static class DatabaseStartupDiagnostics
         new("PK_RoomSealEvents", "RoomSealEvents", "PK_RoomSealEvents"),
         new("PK_SalesDesks", "SalesDesks", "PK_SalesDesks"),
         new("PK_ActualRunSalesDeskCorrections", "ActualRunSalesDeskCorrections", "PK_ActualRunSalesDeskCorrections"),
+        new("PK_ActualRunDetailCorrections", "ActualRunDetailCorrections", "PK_ActualRunDetailCorrections"),
         new("PK_OutsideWarehouses", "OutsideWarehouses", "PK_OutsideWarehouses"),
         new("PK_OutsideWarehouseTransfers", "OutsideWarehouseTransfers", "PK_OutsideWarehouseTransfers")
         ,new("PK_InterCrewTransfers", "InterCrewTransfers", "PK_InterCrewTransfers")

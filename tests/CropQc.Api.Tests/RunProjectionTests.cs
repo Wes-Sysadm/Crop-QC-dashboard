@@ -1604,6 +1604,9 @@ public sealed class RunProjectionTests
         public Task<string?> CorrectActualRunSalesDeskAsync(CorrectActualRunSalesDeskForm form, ClaimsPrincipal user, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
+        public Task<ActualRunDetailCorrectionResult> CorrectActualRunDetailsAsync(CorrectActualRunDetailsForm form, ClaimsPrincipal user, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
         public Task<string?> ApproveActualRunOverrideAsync(ApproveActualRunOverrideForm form, ClaimsPrincipal user, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }
