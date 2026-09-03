@@ -121,6 +121,17 @@ public interface IRoomTreatmentService
         CancellationToken cancellationToken) =>
         Task.FromResult(new TreatmentLineageWriteResult(false, "Receipt location correction is not supported by this implementation."));
     Task<TreatmentLineageWriteResult> AddUnknownAsync(RoomInventoryLedgerSnapshot snapshot, int bins, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken);
+    Task<TreatmentLineageWriteResult> AddReceiptTrueUpAsync(
+        RoomInventoryLedgerSnapshot snapshot,
+        long? treatmentSegmentId,
+        string treatmentSignature,
+        long receiptId,
+        int bins,
+        string operationKey,
+        DateTimeOffset occurredAt,
+        int actorUserId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new TreatmentLineageWriteResult(false, "Receipt treatment-lineage true-up is not supported by this implementation."));
 }
 
 public interface IProcessorTreatmentLineageService
@@ -1713,6 +1724,79 @@ public sealed class RoomTreatmentService(
         });
         await dbContext.SaveChangesAsync(cancellationToken);
         return new(true, null);
+    }
+
+    public async Task<TreatmentLineageWriteResult> AddReceiptTrueUpAsync(
+        RoomInventoryLedgerSnapshot snapshot,
+        long? treatmentSegmentId,
+        string treatmentSignature,
+        long receiptId,
+        int bins,
+        string operationKey,
+        DateTimeOffset occurredAt,
+        int actorUserId,
+        CancellationToken cancellationToken)
+    {
+        if (bins <= 0) return new(false, "Receipt inventory true-up bins must be positive.");
+        if (await dbContext.TreatmentLineageMovements.AsNoTracking()
+            .AnyAsync(x => x.OperationKey == operationKey, cancellationToken))
+            return new(true, null);
+
+        var identityError = await InventoryIdentityWriteGuard.RejectSupersededAsync(
+            dbContext, snapshot.CropYear, snapshot.GrowerLotId, snapshot.FruitProfileId,
+            "Receipt inventory true-up", cancellationToken);
+        if (identityError is not null) return new(false, identityError);
+
+        var selections = await GetSelectionsAsync(snapshot, cancellationToken);
+        var matches = selections.Where(x => x.IsAvailable
+                && x.CurrentBins > 0
+                && x.SegmentId == treatmentSegmentId
+                && string.Equals(x.TreatmentSignature, treatmentSignature, StringComparison.Ordinal))
+            .ToList();
+        if (matches.Count != 1)
+            return new(false, "The selected treatment segment changed or is no longer available. Refresh and review the true-up again.");
+
+        var selected = matches[0];
+        TreatmentLineageSegment? source = null;
+        if (selected.SegmentId is not null)
+        {
+            source = await dbContext.TreatmentLineageSegments.Include(x => x.Applications)
+                .SingleOrDefaultAsync(x => x.Id == selected.SegmentId.Value
+                    && x.RoomId == snapshot.RoomId
+                    && x.IdentityKey == selected.IdentityKey
+                    && x.TreatmentSignature == selected.TreatmentSignature
+                    && x.CurrentBins > 0, cancellationToken);
+            if (source is null)
+                return new(false, "The selected treatment segment changed or is no longer available. Refresh and review the true-up again.");
+        }
+
+        var now = businessTime.UtcNow;
+        var destination = await GetOrCreateSegmentAsync(
+            snapshot, selected.TreatmentState, selected.TreatmentSignature, now, cancellationToken, receiptId);
+        if (source is not null && source.Id != destination.Id)
+            await CopyApplicationLinksAsync(source, destination, cancellationToken);
+        destination.CurrentBins += bins;
+        destination.UpdatedAt = now;
+        destination.ConcurrencyVersion++;
+
+        var movement = new TreatmentLineageMovement
+        {
+            OperationKey = operationKey,
+            MovementType = TreatmentLineageMovementTypes.ManualTrueUp,
+            DestinationSegment = destination,
+            DestinationRoomId = destination.RoomId,
+            IdentityKey = destination.IdentityKey,
+            TreatmentStateSnapshot = destination.TreatmentState,
+            TreatmentSignatureSnapshot = destination.TreatmentSignature,
+            ReceiptId = receiptId,
+            BinCount = bins,
+            OccurredAt = occurredAt,
+            CreatedByUserId = actorUserId,
+            CreatedAt = now
+        };
+        dbContext.TreatmentLineageMovements.Add(movement);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new(true, null, movement.Id);
     }
 
     private async Task<(IReadOnlyList<RoomInventoryLedgerSnapshot> Snapshots, string? Error)> ResolveApplicationSnapshotAsync(int roomId, DateTimeOffset appliedAt, CancellationToken cancellationToken)

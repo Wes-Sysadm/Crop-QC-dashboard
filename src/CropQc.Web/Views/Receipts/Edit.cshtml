@@ -111,8 +111,59 @@
                     }
                     </tbody></table>
                 }
+                <section id="positiveTrueUpAllocation" class="wide" hidden>
+                    <h3>Where is the additional inventory now?</h3>
+                    <p>The additional bins will be added to the current canonical inventory position. The original receiving room and historical movements will not be rewritten.</p>
+                    <p><strong>Current canonical inventory:</strong> @preview.CurrentCanonicalInventory bins</p>
+                    @if (preview.TrueUpPositions.Count == 0)
+                    {
+                        <p class="notice warning">No current matching inventory or custody position was found. This true-up cannot be placed automatically.</p>
+                    }
+                    else
+                    {
+                        var eligiblePositions = preview.TrueUpPositions.Where(x => x.IsEligible).ToList();
+                        var requiresExplicitAllocation = preview.TrueUpPositions.Count > 1;
+                        @if (eligiblePositions.Count == 1 && !requiresExplicitAllocation)
+                        {
+                            var position = eligiblePositions[0];
+                            <p class="notice"><strong>Automatic destination:</strong> @position.Facility / @position.Location — @position.Treatment</p>
+                        }
+                        else if (eligiblePositions.Count > 0)
+                        {
+                            <p class="notice warning">Inventory is split across current positions or treatment segments. Allocate the full positive change below.</p>
+                        }
+                        <table class="data-table">
+                            <thead><tr><th>Custody</th><th>Facility</th><th>Location</th><th>Current bins</th><th>Treatment</th><th>Added bins</th></tr></thead>
+                            <tbody>
+                            @for (var index = 0; index < preview.TrueUpPositions.Count; index++)
+                            {
+                                var position = preview.TrueUpPositions[index];
+                                <tr>
+                                    <td>@position.PositionType</td>
+                                    <td>@position.Facility</td>
+                                    <td>@position.Location</td>
+                                    <td>@position.CurrentBins</td>
+                                    <td>@position.Treatment@if (!position.IsEligible && position.UnavailableReason is not null) { <br /><span class="muted">@position.UnavailableReason</span> }</td>
+                                    <td>
+                                        @if (position.IsEligible && requiresExplicitAllocation)
+                                        {
+                                            <input type="hidden" name="TrueUpAllocations[@index].TargetKey" value="@position.TargetKey" />
+                                            <input class="true-up-allocation" name="TrueUpAllocations[@index].Bins" type="number" min="0" inputmode="numeric" value="0" aria-label="Additional bins at @position.Facility @position.Location @position.Treatment" />
+                                        }
+                                        else
+                                        {
+                                            <span>—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    }
+                </section>
                 <input type="hidden" name="ExpectedConcurrencyVersion" value="@preview.ConcurrencyVersion" />
                 <input type="hidden" name="ExpectedInventoryStateToken" value="@preview.InventoryStateToken" />
+                <input type="hidden" name="ExpectedPositiveTrueUpStateToken" value="@preview.PositiveTrueUpStateToken" />
                 <input type="hidden" name="OperationKey" value="@preview.OperationKey" />
                 <div class="field wide"><label for="adminOverrideReason">Required override reason</label><textarea id="adminOverrideReason" name="Reason" maxlength="1000"></textarea></div>
                 <label class="checkbox-field wide"><input type="checkbox" name="ConfirmInventoryChange" value="true" /> I confirm that this correction will change inventory and create a durable Receipt Admin Override.</label>
@@ -220,6 +271,11 @@
                 document.getElementById("overrideProposedBins").textContent = Number.isFinite(proposed) ? proposed : "n/a";
                 const delta = Number.isFinite(proposed) ? proposed - original : null;
                 document.getElementById("overrideBinDelta").textContent = delta === null ? "n/a" : `${delta > 0 ? "+" : ""}${delta}`;
+                const positiveTrueUp = document.getElementById("positiveTrueUpAllocation");
+                if (positiveTrueUp) positiveTrueUp.hidden = !(delta > 0);
+                for (const allocation of document.querySelectorAll(".true-up-allocation")) {
+                    allocation.disabled = !(delta > 0);
+                }
                 document.getElementById("overrideReceipt").textContent = currentValue("CompuTechReceiptId") || "-";
                 const growerNumber = currentValue("GrowerNumber").trim();
                 const growerName = currentValue("GrowerName").trim();
