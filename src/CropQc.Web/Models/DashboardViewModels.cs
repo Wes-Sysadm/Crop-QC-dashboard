@@ -2039,6 +2039,20 @@ public sealed class PhotoReclassificationForm
     public string TargetPhotoType { get; set; } = "";
 }
 
+public sealed class PhotoRotationForm
+{
+    public string Direction { get; set; } = "";
+    public int ExpectedPresentationRevision { get; set; }
+}
+
+public sealed record PhotoRotationResult(
+    bool Succeeded,
+    string? Error,
+    long PhotoId,
+    int PresentationRevision = 0,
+    int ManualRotationQuarterTurns = 0,
+    bool IsConflict = false);
+
 public sealed record PhotoReclassificationResult(
     bool Succeeded,
     string? Error,
@@ -2320,7 +2334,7 @@ public sealed class PhotoPlaceholderFormViewModel
     public string CutFruitLabel { get; set; } = "Cut Apple";
 }
 
-public sealed record PhotoMetadataViewModel(long Id, long? QcSampleId, long? DeleteFromSampleId, string PhotoType, string PhotoSource, string FileName, string ContentType, long? FileSizeBytes, string? WebUrl, DateTimeOffset CapturedAt, bool CanDelete, string? DeleteAction = null, bool DisplayAsThumbnail = false, string? ThumbnailUrl = null);
+public sealed record PhotoMetadataViewModel(long Id, long? QcSampleId, long? DeleteFromSampleId, string PhotoType, string PhotoSource, string FileName, string ContentType, long? FileSizeBytes, string? WebUrl, DateTimeOffset CapturedAt, bool CanDelete, string? DeleteAction = null, bool DisplayAsThumbnail = false, string? ThumbnailUrl = null, bool CanRotate = false, string? RotateAction = null, int PresentationRevision = 0);
 public sealed record PhotoGroupViewModel(string PhotoType, IReadOnlyList<PhotoMetadataViewModel> Photos);
 
 public sealed class ReadinessViewModel

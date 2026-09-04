@@ -20,6 +20,7 @@ else
 {
     <div class="photo-group-grid" data-photo-reclassification>
         <p class="photo-reclassification-status muted" data-photo-reclassification-status role="status" aria-live="polite"></p>
+        <p class="photo-orientation-status muted" data-photo-orientation-status role="status" aria-live="polite"></p>
         @foreach (var displayType in displayTypes)
         {
             var photos = groups.GetValueOrDefault(displayType)?.Photos ?? [];
@@ -61,6 +62,19 @@ else
                                 <span class="muted">@photo.PhotoSource · @BusinessTime.FormatPacific(photo.CapturedAt)</span>
                             </div>
                             <div class="photo-card-actions">
+                                @if (photo.CanRotate && !string.IsNullOrWhiteSpace(photo.RotateAction))
+                                {
+                                    <form method="post" action="@photo.RotateAction" class="photo-rotate-form" data-photo-rotate-form>
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="ExpectedPresentationRevision" value="@photo.PresentationRevision" data-photo-presentation-revision />
+                                        <button type="submit" name="Direction" value="left" class="secondary-button photo-rotate-button" aria-label="Rotate photo left" title="Rotate Left">
+                                            <span aria-hidden="true">&#8630;</span> Rotate Left
+                                        </button>
+                                        <button type="submit" name="Direction" value="right" class="secondary-button photo-rotate-button" aria-label="Rotate photo right" title="Rotate Right">
+                                            Rotate Right <span aria-hidden="true">&#8631;</span>
+                                        </button>
+                                    </form>
+                                }
                                 @if (canReclassify)
                                 {
                                     <form method="post" action="@reclassifyAction" class="photo-move-form" data-photo-move-form data-requires-autosave>

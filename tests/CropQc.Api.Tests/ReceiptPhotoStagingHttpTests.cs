@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
@@ -20,6 +21,11 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.Formats.Webp;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace CropQc.Api.Tests;
 
@@ -62,8 +68,8 @@ public sealed class ReceiptPhotoStagingHttpTests
         await using var factory = new ReceiptPhotoFactory();
         using var client = await factory.CreateOwnerClientAsync();
         var content = await ReceiptFormAsync(client, "STAGED-TWO");
-        AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "OBSBOT Tiny 2 Lite", [0xff, 0xd8, 0xff, 0xd9]);
-        AddPhoto(content, 1, "top.png", "image/png", "TopOfTruck", "Upload File", [0x89, 0x50, 0x4e, 0x47]);
+        AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "OBSBOT Tiny 2 Lite", TestPhotoBytes("truck.jpg"));
+        AddPhoto(content, 1, "top.png", "image/png", "TopOfTruck", "Upload File", TestPhotoBytes("top.png"));
 
         var response = await client.PostAsync("/Receipts/Create", content);
 
@@ -87,8 +93,8 @@ public sealed class ReceiptPhotoStagingHttpTests
             Assert.Equal(["BinTruck", "TopOfTruck"], photos.Select(x => x.PhotoType));
             photoId = photos[0].Id;
         }
-        Assert.Equal(2, factory.Storage.SaveCount);
-        Assert.Equal(2, factory.Storage.SavedRequests.Count);
+        Assert.Equal(4, factory.Storage.SaveCount);
+        Assert.Equal(4, factory.Storage.SavedRequests.Count);
 
         var remove = await client.PostAsync($"/Receipts/{receiptId}/photos/{photoId}/remove", new FormUrlEncodedContent([]));
         Assert.Equal(HttpStatusCode.Redirect, remove.StatusCode);
@@ -102,7 +108,7 @@ public sealed class ReceiptPhotoStagingHttpTests
             Assert.Single(await db.QcPhotos.Where(x => !x.IsDeleted).ToListAsync());
             Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "remove-photo" && x.EntityKey == photoId.ToString());
         }
-        Assert.Equal(0, factory.Storage.DeleteCount);
+        Assert.Equal(1, factory.Storage.DeleteCount);
     }
 
     [Fact]
@@ -111,7 +117,7 @@ public sealed class ReceiptPhotoStagingHttpTests
         await using var factory = new ReceiptPhotoFactory();
         using var client = await factory.CreateOwnerClientAsync();
         var content = await ReceiptFormAsync(client, "MOVE-PHOTO");
-        AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "Upload File", [0xff, 0xd8, 0xff, 0xd9]);
+        AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "Upload File", TestPhotoBytes("truck.jpg"));
         var create = await client.PostAsync("/Receipts/Create", content);
         Assert.Equal(HttpStatusCode.Redirect, create.StatusCode);
 
@@ -157,8 +163,135 @@ public sealed class ReceiptPhotoStagingHttpTests
             Assert.Equal(fileId, photo.FileId);
             Assert.Equal(2, await db.AuditLogs.CountAsync(x => x.Action == "reclassify-photo"));
         }
-        Assert.Equal(1, factory.Storage.SaveCount);
+        Assert.Equal(2, factory.Storage.SaveCount);
         Assert.Equal(0, factory.Storage.DeleteCount);
+    }
+
+    [Fact]
+    public async Task ReceiptPhoto_RotationPreservesOriginal_IsAudited_CacheBusted_AndRejectsStaleOrForgedRequests()
+    {
+        await using var factory = new ReceiptPhotoFactory();
+        using var client = await factory.CreateOwnerClientAsync();
+        var content = await ReceiptFormAsync(client, "ROTATE-PHOTO");
+        AddPhoto(content, 0, "phone.jpg", "image/jpeg", "BinTruck", "Upload File", TestPhotoBytes("phone.jpg"));
+        var create = await client.PostAsync("/Receipts/Create", content);
+        Assert.Equal(HttpStatusCode.Redirect, create.StatusCode);
+
+        long receiptId;
+        long photoId;
+        string originalKey;
+        byte[] originalHash;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var receipt = await db.Receipts.SingleAsync(x => x.CompuTechReceiptId == "ROTATE-PHOTO");
+            var photo = await db.QcPhotos.SingleAsync(x => x.ReceiptId == receipt.Id);
+            receiptId = receipt.Id;
+            photoId = photo.Id;
+            originalKey = photo.FileId!;
+            originalHash = SHA256.HashData(factory.Storage.ReadBytes[originalKey]);
+            Assert.Equal(1, photo.PresentationRevision);
+            Assert.Equal(0, photo.ManualRotationQuarterTurns);
+        }
+
+        var token = await AntiforgeryTokenAsync(client, create.Headers.Location!.OriginalString);
+        var rotated = await RotateReceiptAsync(client, receiptId, photoId, "right", 1, token);
+        Assert.Equal(HttpStatusCode.OK, rotated.StatusCode);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var photo = await db.QcPhotos.SingleAsync(x => x.Id == photoId);
+            Assert.Equal(1, photo.ManualRotationQuarterTurns);
+            Assert.Equal(2, photo.PresentationRevision);
+            Assert.NotNull(photo.PresentationStorageKey);
+            Assert.Equal(originalHash, SHA256.HashData(factory.Storage.ReadBytes[originalKey]));
+            var audit = await db.AuditLogs.SingleAsync(x => x.Action == "rotate-photo-right" && x.EntityKey == photoId.ToString());
+            Assert.Contains("OldManualRotationQuarterTurns", audit.AfterValuesJson);
+            Assert.Contains("NewManualRotationQuarterTurns", audit.AfterValuesJson);
+        }
+        Assert.Equal(3, factory.Storage.SaveCount);
+        Assert.Equal(1, factory.Storage.DeleteCount);
+
+        var stale = await RotateReceiptAsync(client, receiptId, photoId, "right", 1, token);
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        Assert.Equal(3, factory.Storage.SaveCount);
+
+        var forged = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Direction"] = "left",
+            ["ExpectedPresentationRevision"] = "2"
+        });
+        var rejected = await client.PostAsync($"/Receipts/{receiptId}/photos/{photoId}/rotate", forged);
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+
+        using var anonymous = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var unauthenticated = await anonymous.PostAsync(
+            $"/Receipts/{receiptId}/photos/{photoId}/rotate",
+            new FormUrlEncodedContent([]));
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
+    }
+
+    [Fact]
+    public async Task LegacyFieldSamplePhoto_CanBeRotatedLazily_OnlyThroughItsExactParent()
+    {
+        await using var factory = new ReceiptPhotoFactory();
+        using var client = await factory.CreateOwnerClientAsync();
+        var original = TestPhotoBytes("legacy-field.jpg");
+        factory.Storage.ReadBytes["legacy-field"] = original;
+        long sampleId;
+        long photoId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var sampleType = await db.SampleTypes.SingleAsync(x => x.Name == "Field Sample");
+            var sample = new QcSample
+            {
+                SampleType = sampleType,
+                FieldSampleFruitProfileId = ReceiptPhotoFactory.FruitProfileId,
+                FieldSampleGrowerName = "Field Grower",
+                Status = "In Progress",
+                StarchStatus = "Not Required",
+                PhotoStatus = "Optional Photos Attached",
+                EmailStatus = "Not Sent",
+                SampleTakenAt = DateTimeOffset.UtcNow,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            var photo = new QcPhoto
+            {
+                QcSample = sample,
+                PhotoType = "Hectre",
+                PhotoSource = "Legacy Upload",
+                FileName = "legacy-field.jpg",
+                ContentType = "image/jpeg",
+                FileSizeBytes = original.Length,
+                StorageProvider = "Local",
+                FileId = "legacy-field",
+                SharePointDriveId = "legacy",
+                SharePointItemId = "legacy-field",
+                CapturedAt = DateTimeOffset.UtcNow
+            };
+            db.Add(photo);
+            await db.SaveChangesAsync();
+            sampleId = sample.Id;
+            photoId = photo.Id;
+        }
+
+        var token = await AntiforgeryTokenAsync(client, "/Receipts");
+        var wrongParent = await RotateFieldAsync(client, sampleId + 999, photoId, "left", 0, token);
+        Assert.Equal(HttpStatusCode.BadRequest, wrongParent.StatusCode);
+        Assert.Equal(0, factory.Storage.SaveCount);
+
+        var rotated = await RotateFieldAsync(client, sampleId, photoId, "left", 0, token);
+        Assert.Equal(HttpStatusCode.OK, rotated.StatusCode);
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+        var updated = await verifyDb.QcPhotos.SingleAsync(x => x.Id == photoId);
+        Assert.Equal(3, updated.ManualRotationQuarterTurns);
+        Assert.Equal(1, updated.PresentationRevision);
+        Assert.NotNull(updated.PresentationStorageKey);
+        Assert.Equal(SHA256.HashData(original), SHA256.HashData(factory.Storage.ReadBytes["legacy-field"]));
+        Assert.Contains(await verifyDb.AuditLogs.ToListAsync(), x => x.Action == "rotate-photo-left" && x.EntityKey == photoId.ToString());
     }
 
     [Fact]
@@ -168,7 +301,7 @@ public sealed class ReceiptPhotoStagingHttpTests
         var groups = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Shared", "_PhotoGroups.cshtml"));
 
         Assert.Contains("var isImage = photo.ContentType.StartsWith(\"image/\"", service);
-        Assert.Contains("$\"/Receipts/{contentReceiptId}/photos/{photo.Id}/content\"", service);
+        Assert.Contains("$\"/Receipts/{contentReceiptId}/photos/{photo.Id}/content?v={photo.PresentationRevision}\"", service);
         Assert.Contains("$\"/Receipts/{receiptId}/photos/{photo.Id}/remove\"", service);
         Assert.Contains("photo.ThumbnailUrl", groups);
         Assert.Contains("<a href=\"@photo.WebUrl\"", groups);
@@ -181,6 +314,10 @@ public sealed class ReceiptPhotoStagingHttpTests
         Assert.Contains("Remove this photo from the sample?", groups);
         Assert.Contains("DisplayAsThumbnail", groups);
         Assert.Contains("loading=\"lazy\"", groups);
+        Assert.Contains("aria-label=\"Rotate photo left\"", groups);
+        Assert.Contains("aria-label=\"Rotate photo right\"", groups);
+        Assert.Contains("ExpectedPresentationRevision", groups);
+        Assert.Contains("?v={photo.PresentationRevision}", service);
     }
 
     [Fact]
@@ -274,7 +411,7 @@ public sealed class ReceiptPhotoStagingHttpTests
         using var client = await factory.CreateOwnerClientAsync();
         factory.Storage.FailuresRemaining = 1;
         var content = await ReceiptFormAsync(client, "STAGED-FAIL");
-        AddPhoto(content, 0, "truck.webp", "image/webp", "BinTruck", "Upload File", [0x52, 0x49, 0x46, 0x46]);
+        AddPhoto(content, 0, "truck.webp", "image/webp", "BinTruck", "Upload File", TestPhotoBytes("truck.webp"));
 
         var response = await client.PostAsync("/Receipts/Create", content);
 
@@ -296,7 +433,7 @@ public sealed class ReceiptPhotoStagingHttpTests
         await using var factory = new ReceiptPhotoFactory();
         using var client = await factory.CreateOwnerClientAsync();
         var content = await ReceiptFormAsync(client, "");
-        AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "Upload File", [0xff, 0xd8, 0xff, 0xd9]);
+        AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "Upload File", TestPhotoBytes("truck.jpg"));
 
         var response = await client.PostAsync("/Receipts/Create", content);
 
@@ -345,8 +482,8 @@ public sealed class ReceiptPhotoStagingHttpTests
 
         var receiptNumber = $"CODEX-PHOTO-{Guid.NewGuid():N}"[..30];
         var content = await ReceiptFormAsync(client, receiptNumber, warehouseId, roomId, fruitProfileId);
-        AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "OBSBOT Tiny 2 Lite", [0xff, 0xd8, 0xff, 0xd9]);
-        AddPhoto(content, 1, "top.jpg", "image/jpeg", "TopOfTruck", "OBSBOT Tiny 2 Lite", [0xff, 0xd8, 0xff, 0xd9]);
+        AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "OBSBOT Tiny 2 Lite", TestPhotoBytes("truck.jpg"));
+        AddPhoto(content, 1, "top.jpg", "image/jpeg", "TopOfTruck", "OBSBOT Tiny 2 Lite", TestPhotoBytes("top.jpg"));
         var create = await client.PostAsync("/Receipts/Create", content);
         Assert.Equal(HttpStatusCode.Redirect, create.StatusCode);
 
@@ -382,8 +519,8 @@ public sealed class ReceiptPhotoStagingHttpTests
             Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "remove-photo" && x.EntityKey == removedPhotoId.ToString());
             Assert.Single(await db.QcPhotos.Where(x => x.ReceiptId == receiptId && !x.IsDeleted).ToListAsync());
         }
-        Assert.Equal(2, factory.Storage.SaveCount);
-        Assert.Equal(0, factory.Storage.DeleteCount);
+        Assert.Equal(4, factory.Storage.SaveCount);
+        Assert.Equal(1, factory.Storage.DeleteCount);
     }
 
     [Fact]
@@ -417,7 +554,7 @@ public sealed class ReceiptPhotoStagingHttpTests
 
         var receiptNumber = $"CODEX-MOVE-{Guid.NewGuid():N}"[..30];
         var content = await ReceiptFormAsync(client, receiptNumber, warehouseId, roomId, fruitProfileId);
-        AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "Upload File", [0xff, 0xd8, 0xff, 0xd9]);
+        AddPhoto(content, 0, "truck.jpg", "image/jpeg", "BinTruck", "Upload File", TestPhotoBytes("truck.jpg"));
         var create = await client.PostAsync("/Receipts/Create", content);
         Assert.Equal(HttpStatusCode.Redirect, create.StatusCode);
 
@@ -463,7 +600,7 @@ public sealed class ReceiptPhotoStagingHttpTests
             Assert.Equal(fileId, photo.FileId);
             Assert.Equal(2, await db.AuditLogs.CountAsync(x => x.Action == "reclassify-photo" && x.EntityKey == photoId.ToString()));
         }
-        Assert.Equal(1, factory.Storage.SaveCount);
+        Assert.Equal(2, factory.Storage.SaveCount);
         Assert.Equal(0, factory.Storage.DeleteCount);
     }
 
@@ -574,6 +711,50 @@ public sealed class ReceiptPhotoStagingHttpTests
         return await client.SendAsync(request);
     }
 
+    private static async Task<HttpResponseMessage> RotateReceiptAsync(
+        HttpClient client,
+        long receiptId,
+        long photoId,
+        string direction,
+        int expectedRevision,
+        string antiforgeryToken)
+    {
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Direction"] = direction,
+            ["ExpectedPresentationRevision"] = expectedRevision.ToString(),
+            ["__RequestVerificationToken"] = antiforgeryToken
+        });
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/Receipts/{receiptId}/photos/{photoId}/rotate")
+        {
+            Content = form
+        };
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> RotateFieldAsync(
+        HttpClient client,
+        long sampleId,
+        long photoId,
+        string direction,
+        int expectedRevision,
+        string antiforgeryToken)
+    {
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Direction"] = direction,
+            ["ExpectedPresentationRevision"] = expectedRevision.ToString(),
+            ["__RequestVerificationToken"] = antiforgeryToken
+        });
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/FieldSamples/{sampleId}/photos/{photoId}/rotate")
+        {
+            Content = form
+        };
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        return await client.SendAsync(request);
+    }
+
     private static MultipartFormDataContent ReceiptForm(
         string receiptNumber,
         int warehouseId = ReceiptPhotoFactory.WarehouseId,
@@ -613,6 +794,25 @@ public sealed class ReceiptPhotoStagingHttpTests
         content.Add(file, $"stagedPhotos[{index}].PhotoFile", fileName);
         Add(content, $"stagedPhotos[{index}].PhotoType", photoType);
         Add(content, $"stagedPhotos[{index}].PhotoSource", photoSource);
+    }
+
+    private static byte[] TestPhotoBytes(string fileName)
+    {
+        using var image = new Image<Rgba32>(8, 6, Color.CornflowerBlue);
+        using var stream = new MemoryStream();
+        switch (Path.GetExtension(fileName).ToLowerInvariant())
+        {
+            case ".png":
+                image.Save(stream, new PngEncoder());
+                break;
+            case ".webp":
+                image.Save(stream, new WebpEncoder());
+                break;
+            default:
+                image.Save(stream, new JpegEncoder { Quality = 95 });
+                break;
+        }
+        return stream.ToArray();
     }
 
     private static string FindRepositoryFile(params string[] pathParts)
@@ -779,6 +979,9 @@ public sealed class ReceiptPhotoStagingHttpTests
             }
             SavedRequests.Add(request);
             var key = $"{request.TargetPath}/{request.FileName}";
+            using var copy = new MemoryStream();
+            request.Content.CopyTo(copy);
+            ReadBytes[$"photo-{SaveCount}"] = copy.ToArray();
             return Task.FromResult(new FileStorageReference(
                 "Local",
                 key,
