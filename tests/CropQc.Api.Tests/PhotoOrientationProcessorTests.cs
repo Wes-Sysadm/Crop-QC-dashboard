@@ -1,5 +1,8 @@
 using System.Security.Cryptography;
+using CropQc.Data;
+using CropQc.Data.Entities;
 using CropQc.Web.Services;
+using Microsoft.EntityFrameworkCore;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Formats.Png;
@@ -10,6 +13,47 @@ namespace CropQc.Api.Tests;
 
 public sealed class PhotoOrientationProcessorTests
 {
+    [Fact]
+    public async Task PostgreSql_fresh_model_contains_exact_orientation_schema_WhenConfigured()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CROPQC_PHOTO_SCHEMA_POSTGRES");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connectionString);
+        var options = new DbContextOptionsBuilder<CropQcDbContext>();
+        CropQcDatabase.Configure(options, DatabaseProviders.PostgreSql, connectionString);
+        await using var db = new CropQcDbContext(options.Options);
+        Assert.True(await db.Database.EnsureCreatedAsync(), "The configured photo schema PostgreSQL database must start empty.");
+
+        await db.Database.OpenConnectionAsync();
+        await using var command = db.Database.GetDbConnection().CreateCommand();
+        command.CommandText = """
+            SELECT
+                (SELECT count(*) FROM information_schema.columns
+                 WHERE table_schema = current_schema() AND table_name = 'QcPhotos'
+                   AND column_name IN ('OriginalExifOrientation','ManualRotationQuarterTurns','PresentationRevision','PresentationStorageKey','PresentationFileName','PresentationContentType','PresentationFileSizeBytes','PresentationUpdatedAt'))
+                +
+                (SELECT count(*) FROM pg_constraint c
+                 JOIN pg_class t ON t.oid = c.conrelid
+                 JOIN pg_namespace n ON n.oid = t.relnamespace
+                 WHERE n.nspname = current_schema() AND t.relname = 'QcPhotos'
+                   AND c.conname IN ('CK_QcPhotos_OrientationState','CK_QcPhotos_PresentationMetadata'))
+            """;
+        Assert.Equal(10L, Convert.ToInt64(await command.ExecuteScalarAsync()));
+
+        db.Rooms.Add(new Room
+        {
+            Id = 99001,
+            WarehouseId = 4,
+            Code = "PHOTO-TEST",
+            Name = "Photo Test Room",
+            SortOrder = 1,
+            CapacityBins = 1000,
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+    }
+
     public static TheoryData<int, string, bool> ExifCases => new()
     {
         { 1, "ABCD", false },
