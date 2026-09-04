@@ -886,7 +886,7 @@ public sealed class InventoryDeductionInvariantService(
                     ReceiptInventoryOverrideActionTypes.LocationCorrection when adjustment.ChangeAmount < 0 => matchesAffected,
                     ReceiptInventoryOverrideActionTypes.LocationCorrection => matchesAfter,
                     ReceiptInventoryOverrideActionTypes.VoidReceipt => matchesAffected,
-                    ReceiptInventoryOverrideActionTypes.QuantityCorrection when adjustment.ChangeAmount > 0 => matchesAfter,
+                    ReceiptInventoryOverrideActionTypes.QuantityCorrection when adjustment.ChangeAmount > 0 => matchesAffected || matchesAfter,
                     ReceiptInventoryOverrideActionTypes.QuantityCorrection => matchesAffected || matchesAfter,
                     _ => false
                 };

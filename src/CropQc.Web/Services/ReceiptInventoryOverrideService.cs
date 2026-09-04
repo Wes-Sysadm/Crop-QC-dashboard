@@ -51,6 +51,7 @@ public sealed class ReceiptInventoryOverrideService(
 
         var state = await GetInventoryStateAsync(receipt, cancellationToken);
         var inventoryStateToken = await GetInventoryIdentityStateTokenAsync(receipt, cancellationToken);
+        var trueUpState = await GetPositiveTrueUpStateAsync(receipt, cancellationToken);
         var counts = await GetOperationalCountsAsync(receipt, cancellationToken);
         var hasPriorOverride = await dbContext.ReceiptInventoryOverrides.AsNoTracking()
             .AnyAsync(x => x.ReceiptId == receipt.Id, cancellationToken);
@@ -59,6 +60,7 @@ public sealed class ReceiptInventoryOverrideService(
             ReceiptId = receipt.Id,
             ConcurrencyVersion = receipt.ConcurrencyVersion,
             InventoryStateToken = inventoryStateToken,
+            PositiveTrueUpStateToken = trueUpState.StateToken,
             ReceiptBinCount = receipt.BinCount,
             CurrentInventory = state.Total,
             ConsumedBins = receipt.BinCount - state.Total,
@@ -66,7 +68,9 @@ public sealed class ReceiptInventoryOverrideService(
             BinsRunCount = counts.BinsRuns,
             ActualRunCount = counts.ActualRuns,
             TransferCount = counts.Transfers,
-            HasPriorOverride = hasPriorOverride
+            HasPriorOverride = hasPriorOverride,
+            CurrentCanonicalInventory = trueUpState.TotalBins,
+            TrueUpPositions = trueUpState.Positions.Select(ToViewModel).ToList()
         };
     }
 
@@ -205,6 +209,7 @@ public sealed class ReceiptInventoryOverrideService(
             var sourceCustodyBins = 0;
             object[] sourceCustody = [];
             InventoryIdentityCorrection? identityCorrection = null;
+            IReadOnlyList<TrueUpAllocation> positiveAllocations = [];
             if (identityChanged)
             {
                 if (receipt.GrowerLotId is null || form.GrowerLotId is null)
@@ -251,8 +256,24 @@ public sealed class ReceiptInventoryOverrideService(
             }
             else if (quantityChanged)
             {
-                var lineageError = await ValidateLineageAsync(receipt, state, cancellationToken);
-                if (lineageError is not null) return await RollbackAsync(transaction, Failed(lineageError), cancellationToken);
+                if (form.BinCount > receipt.BinCount)
+                {
+                    var trueUpState = await GetPositiveTrueUpStateAsync(receipt, cancellationToken);
+                    if (string.IsNullOrWhiteSpace(form.ExpectedPositiveTrueUpStateToken)
+                        || !string.Equals(form.ExpectedPositiveTrueUpStateToken, trueUpState.StateToken, StringComparison.Ordinal))
+                        return await RollbackAsync(transaction, Conflict("Inventory custody or treatment changed after this true-up was reviewed. Refresh the Receipt and review the correction again."), cancellationToken);
+                    var allocationResult = ResolvePositiveAllocations(form, trueUpState, form.BinCount - receipt.BinCount);
+                    if (allocationResult.Error is not null)
+                        return await RollbackAsync(transaction, Failed(allocationResult.Error), cancellationToken);
+                    positiveAllocations = allocationResult.Allocations;
+                    sourceCustodyBins = trueUpState.CustodyBins;
+                    state = new InventoryState(trueUpState.RoomSnapshots.Select(ToBalance).ToList(), HasExactReceiptProvenance: true);
+                }
+                else
+                {
+                    var lineageError = await ValidateLineageAsync(receipt, state, cancellationToken);
+                    if (lineageError is not null) return await RollbackAsync(transaction, Failed(lineageError), cancellationToken);
+                }
             }
             else if (locationChanged)
             {
@@ -289,7 +310,9 @@ public sealed class ReceiptInventoryOverrideService(
                 NewReceiptBinCount = form.BinCount,
                 InventoryDelta = quantityChanged ? form.BinCount - receipt.BinCount : 0,
                 CurrentInventoryBefore = state.Total + sourceCustodyBins,
-                CurrentInventoryAfter = quantityChanged ? state.Total + form.BinCount - receipt.BinCount : state.Total + sourceCustodyBins,
+                CurrentInventoryAfter = quantityChanged
+                    ? state.Total + sourceCustodyBins + form.BinCount - receipt.BinCount
+                    : state.Total + sourceCustodyBins,
                 AdministratorUser = administrator,
                 AdministratorUserId = administrator.Id,
                 Reason = form.Reason.Trim(),
@@ -298,7 +321,10 @@ public sealed class ReceiptInventoryOverrideService(
                 NegativeInventoryAcknowledged = form.AcknowledgeNegativeInventory,
                 BeforeReceiptSnapshotJson = beforeJson,
                 AfterReceiptSnapshotJson = "{}",
-                AffectedInventorySnapshotJson = JsonSerializer.Serialize(state.Balances.Select(ToViewModel), JsonOptions),
+                AffectedInventorySnapshotJson = JsonSerializer.Serialize(
+                    positiveAllocations.Count > 0
+                        ? positiveAllocations.Select(ToAuditSnapshot)
+                        : state.Balances.Select(x => (object)ToViewModel(x)), JsonOptions),
                 IsComplete = false
             };
             dbContext.ReceiptInventoryOverrides.Add(operation);
@@ -309,7 +335,17 @@ public sealed class ReceiptInventoryOverrideService(
                 {
                     return await RollbackAsync(transaction, Failed("This correction would create negative inventory. Select the separate negative-inventory acknowledgment before saving."), cancellationToken);
                 }
-                AddQuantityAdjustments(operation, receipt, state, administrator, now);
+                if (operation.InventoryDelta > 0)
+                {
+                    var lineageError = await AddPositiveTrueUpAsync(
+                        operation, receipt, positiveAllocations, administrator, now, cancellationToken);
+                    if (lineageError is not null)
+                        return await RollbackAsync(transaction, Failed(lineageError), cancellationToken);
+                }
+                else
+                {
+                    AddQuantityAdjustments(operation, receipt, state, administrator, now);
+                }
             }
             else if (identityChanged)
             {
@@ -659,6 +695,207 @@ public sealed class ReceiptInventoryOverrideService(
         return null;
     }
 
+    private async Task<PositiveTrueUpState> GetPositiveTrueUpStateAsync(
+        Receipt receipt,
+        CancellationToken cancellationToken)
+    {
+        if (receipt.GrowerLotId is null)
+            return new([], [], [], 0, CreateInventoryStateToken([]),
+                "This Receipt has no canonical Grower Lot identity. Reconcile its identity before adding inventory.");
+
+        var resolution = await identityService.ResolveAsync(
+            new InventoryIdentityKey(receipt.CropYear, receipt.GrowerLotId.Value, receipt.FruitProfileId),
+            cancellationToken);
+        var snapshots = (await ledgerQuery.GetSnapshotsAsync(null, null, cancellationToken))
+            .Where(x => x.CurrentBins > 0
+                && x.CropYear == resolution.Canonical.CropYear
+                && x.GrowerLotId == resolution.Canonical.GrowerLotId
+                && x.FruitProfileId == resolution.Canonical.FruitProfileId)
+            .OrderBy(x => x.WarehouseId).ThenBy(x => x.RoomId)
+            .ToList();
+
+        var positions = new List<TrueUpPosition>();
+        var treatmentByIdentity = await roomTreatmentService.GetSelectionsAsync(snapshots, cancellationToken);
+        foreach (var snapshot in snapshots)
+        {
+            var lookupKey = RoomTreatmentService.SelectionLookupKey(snapshot);
+            var selections = treatmentByIdentity.GetValueOrDefault(lookupKey) ?? [];
+            if (selections.Count == 0)
+            {
+                positions.Add(TrueUpPosition.UnavailableRoom(snapshot,
+                    "Treatment lineage could not be determined for this current room position."));
+                continue;
+            }
+            foreach (var selection in selections.Where(x => x.CurrentBins > 0))
+            {
+                var unavailable = selection.IsAvailable
+                    ? null
+                    : selection.UnavailableReason ?? "Treatment lineage requires review.";
+                positions.Add(new TrueUpPosition(
+                    CreateTrueUpTargetKey(snapshot, selection),
+                    "Room",
+                    snapshot.Facility,
+                    snapshot.Room,
+                    selection.CurrentBins,
+                    selection.Label,
+                    selection.TreatmentSignature,
+                    selection.TreatmentState,
+                    selection.SegmentId,
+                    selection.ReceiptId,
+                    unavailable is null,
+                    unavailable,
+                    snapshot));
+            }
+        }
+
+        var interCrewRows = await dbContext.InterCrewTransfers.AsNoTracking()
+            .Where(x => x.Status == InterCrewTransferStatuses.InTransit
+                && x.CropYear != null && x.GrowerLotId != null && x.FruitProfileId != null)
+            .Select(x => new
+            {
+                x.Id,
+                x.BinsLoaded,
+                x.DestinationCustodyGroup,
+                CropYear = x.CropYear!.Value,
+                GrowerLotId = x.GrowerLotId!.Value,
+                FruitProfileId = x.FruitProfileId!.Value
+            })
+            .ToListAsync(cancellationToken);
+        var interCrew = new List<(long Id, int BinsLoaded, string DestinationCustodyGroup)>();
+        foreach (var item in interCrewRows)
+        {
+            var custodyIdentity = await identityService.ResolveAsync(
+                new InventoryIdentityKey(item.CropYear, item.GrowerLotId, item.FruitProfileId), cancellationToken);
+            if (custodyIdentity.Canonical == resolution.Canonical)
+                interCrew.Add((item.Id, item.BinsLoaded, item.DestinationCustodyGroup));
+        }
+        foreach (var item in interCrew)
+        {
+            positions.Add(TrueUpPosition.UnavailableCustody(
+                $"C:InterCrew:{item.Id}", "Inter-Crew transit",
+                TransferCustodyGroups.Label(item.DestinationCustodyGroup), item.BinsLoaded,
+                "Inventory in transit cannot be increased without rewriting the historical dispatch. Use a separately reviewed custody reconciliation."));
+        }
+
+        var outsideRows = await dbContext.OutsideWarehouseTransfers.AsNoTracking()
+            .Where(x => !x.IsReversed
+                && x.CropYear != null && x.GrowerLotId != null && x.FruitProfileId != null)
+            .Select(x => new
+            {
+                x.Id,
+                x.BinCount,
+                x.OutsideWarehouseCodeSnapshot,
+                x.OutsideWarehouseNameSnapshot,
+                CropYear = x.CropYear!.Value,
+                GrowerLotId = x.GrowerLotId!.Value,
+                FruitProfileId = x.FruitProfileId!.Value
+            })
+            .ToListAsync(cancellationToken);
+        var outside = new List<(long Id, int BinCount, string OutsideWarehouseCodeSnapshot, string OutsideWarehouseNameSnapshot)>();
+        foreach (var item in outsideRows)
+        {
+            var custodyIdentity = await identityService.ResolveAsync(
+                new InventoryIdentityKey(item.CropYear, item.GrowerLotId, item.FruitProfileId), cancellationToken);
+            if (custodyIdentity.Canonical == resolution.Canonical)
+                outside.Add((item.Id, item.BinCount, item.OutsideWarehouseCodeSnapshot, item.OutsideWarehouseNameSnapshot));
+        }
+        foreach (var item in outside)
+        {
+            positions.Add(TrueUpPosition.UnavailableCustody(
+                $"C:OutsideWarehouse:{item.Id}", "Outside Warehouse",
+                $"{item.OutsideWarehouseCodeSnapshot} - {item.OutsideWarehouseNameSnapshot}", item.BinCount,
+                "Outside-warehouse custody cannot be increased without rewriting the historical transfer. Use a separately reviewed custody reconciliation."));
+        }
+
+        var custodyTokens = interCrew.Select(x => $"InterCrew:{x.Id}:{x.BinsLoaded}:{x.DestinationCustodyGroup}")
+            .Concat(outside.Select(x => $"OutsideWarehouse:{x.Id}:{x.BinCount}"));
+        var treatmentTokens = positions.Where(x => x.PositionType == "Room")
+            .Select(x => $"Treatment:{x.TargetKey}:{x.CurrentBins}:{x.IsEligible}");
+        var stateToken = CreateInventoryStateToken(snapshots, custodyTokens.Concat(treatmentTokens)
+            .Concat(resolution.CorrectionChain.Select(x => $"IdentityCorrection:{x:D}")));
+        var custodyBins = interCrew.Sum(x => x.BinsLoaded) + outside.Sum(x => x.BinCount);
+        var error = snapshots.Count == 0 && custodyBins == 0
+            ? "No current matching inventory or custody position exists. The additional inventory cannot be placed in the original receiving room automatically."
+            : null;
+        return new(snapshots, positions, resolution.CorrectionChain, custodyBins, stateToken, error);
+    }
+
+    private static PositiveAllocationResult ResolvePositiveAllocations(
+        AdminReceiptInventoryOverrideForm form,
+        PositiveTrueUpState state,
+        int delta)
+    {
+        if (state.Error is not null) return new([], state.Error);
+        var eligible = state.Positions.Where(x => x.IsEligible && x.Snapshot is not null).ToList();
+        if (eligible.Count == 0)
+        {
+            var custody = state.Positions.Any(x => x.PositionType != "Room")
+                ? " Matching inventory is currently in transfer custody, which this override cannot safely rewrite."
+                : "";
+            return new([], "No eligible current room position has exact treatment lineage." + custody);
+        }
+        if (eligible.Count == 1 && state.Positions.Count == 1)
+            return new([new TrueUpAllocation(eligible[0], delta)], null);
+
+        var requested = form.TrueUpAllocations.Where(x => x.Bins > 0).ToList();
+        if (requested.Count == 0)
+            return new([], "Where is the additional inventory now? Allocate the positive correction across the current positions before applying the override.");
+        if (requested.GroupBy(x => x.TargetKey, StringComparer.Ordinal).Any(x => x.Count() != 1))
+            return new([], "Each current inventory position may be selected only once.");
+        if (requested.Sum(x => x.Bins) != delta)
+            return new([], $"Current-position allocations must total exactly {delta} bin(s).");
+
+        var byKey = eligible.ToDictionary(x => x.TargetKey, StringComparer.Ordinal);
+        var allocations = new List<TrueUpAllocation>();
+        foreach (var item in requested)
+        {
+            if (!byKey.TryGetValue(item.TargetKey, out var position))
+                return new([], "A selected current inventory position changed or is no longer eligible. Refresh and review the true-up again.");
+            allocations.Add(new(position, item.Bins));
+        }
+        return new(allocations, null);
+    }
+
+    private async Task<string?> AddPositiveTrueUpAsync(
+        ReceiptInventoryOverride operation,
+        Receipt receipt,
+        IReadOnlyList<TrueUpAllocation> allocations,
+        User administrator,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var roomBalances = allocations
+            .GroupBy(x => (x.Position.Snapshot!.WarehouseId, x.Position.Snapshot.RoomId))
+            .ToDictionary(x => x.Key, x => x.First().Position.Snapshot!.CurrentBins);
+        var sequence = 0;
+        foreach (var allocation in allocations)
+        {
+            sequence++;
+            var snapshot = allocation.Position.Snapshot!;
+            var roomKey = (snapshot.WarehouseId, snapshot.RoomId);
+            var oldBins = roomBalances[roomKey];
+            var lineageSnapshot = snapshot with { CurrentBins = oldBins };
+            var balance = ToBalance(lineageSnapshot);
+            AddAdjustment(operation, balance, allocation.Bins, oldBins + allocation.Bins,
+                administrator, now, "PositiveQuantityTrueUp");
+            roomBalances[roomKey] = oldBins + allocation.Bins;
+
+            var lineage = await roomTreatmentService.AddReceiptTrueUpAsync(
+                lineageSnapshot,
+                allocation.Position.TreatmentSegmentId,
+                allocation.Position.TreatmentSignature,
+                receipt.Id,
+                allocation.Bins,
+                $"receipt-override:{operation.OperationKey}:treatment:{sequence.ToString(CultureInfo.InvariantCulture)}",
+                now,
+                administrator.Id,
+                cancellationToken);
+            if (!lineage.Success)
+                return lineage.Error ?? "Treatment lineage could not be assigned to the positive Receipt true-up.";
+        }
+        return null;
+    }
+
     private void AddQuantityAdjustments(
         ReceiptInventoryOverride operation,
         Receipt receipt,
@@ -669,13 +906,7 @@ public sealed class ReceiptInventoryOverrideService(
         var delta = operation.InventoryDelta;
         if (delta > 0)
         {
-            if (state.HasExactReceiptProvenance && state.Balances.Count(x => x.CurrentBins > 0) != 1)
-                throw new InvalidOperationException("A quantity increase cannot be allocated across multiple current receipt positions. Reconcile provenance first.");
-            var target = BalanceFromReceipt(receipt, state.Balances.FirstOrDefault(x => SameReceiptIdentity(x, receipt))?.CurrentBins ?? 0);
-            if (state.HasExactReceiptProvenance)
-                target = state.Balances.Single(x => x.CurrentBins > 0);
-            AddAdjustment(operation, target, delta, target.CurrentBins + delta, administrator, now, "QuantityCorrection");
-            return;
+            throw new InvalidOperationException("Positive quantity corrections must use current-custody allocation.");
         }
 
         var remaining = -delta;
@@ -866,6 +1097,7 @@ public sealed class ReceiptInventoryOverrideService(
                 operation.CurrentInventoryAfter,
                 operation.NegativeInventoryAcknowledged,
                 operation.Reason,
+                operation.AffectedInventorySnapshotJson,
                 LedgerAdjustments = operation.InventoryAdjustments.Select(x => new { x.WarehouseId, x.RoomId, x.ChangeAmount, x.NewBinCount })
             }, JsonOptions),
             SourceApplication = "CropQc.Web",
@@ -930,6 +1162,36 @@ public sealed class ReceiptInventoryOverrideService(
         x.WarehouseId, x.Warehouse, x.RoomId, x.Room, x.CropYear, x.GrowerLotId, x.FruitProfileId,
         x.Grower, x.Lot, x.Variety, x.InventoryStatus, x.CurrentBins);
 
+    private static ReceiptInventoryTrueUpPositionViewModel ToViewModel(TrueUpPosition x) => new(
+        x.TargetKey, x.PositionType, x.Facility, x.Location, x.CurrentBins,
+        x.Treatment, x.TreatmentSignature, x.TreatmentSegmentId, x.IsEligible, x.UnavailableReason);
+
+    private static object ToAuditSnapshot(TrueUpAllocation allocation)
+    {
+        var snapshot = allocation.Position.Snapshot!;
+        return new
+        {
+            allocation.Position.TargetKey,
+            snapshot.WarehouseId,
+            Warehouse = snapshot.Facility,
+            snapshot.RoomId,
+            Room = snapshot.Room,
+            snapshot.CropYear,
+            snapshot.GrowerLotId,
+            snapshot.FruitProfileId,
+            snapshot.Grower,
+            Lot = snapshot.Lot,
+            Variety = snapshot.Variety,
+            InventoryStatus = snapshot.InventoryStatus,
+            CurrentBins = snapshot.CurrentBins,
+            AllocatedBins = allocation.Bins,
+            allocation.Position.TreatmentSegmentId,
+            allocation.Position.TreatmentState,
+            allocation.Position.TreatmentSignature,
+            allocation.Position.Treatment
+        };
+    }
+
     private async Task<string> GetInventoryIdentityStateTokenAsync(Receipt receipt, CancellationToken cancellationToken)
     {
         if (receipt.GrowerLotId is null) return "";
@@ -946,6 +1208,15 @@ public sealed class ReceiptInventoryOverrideService(
                 && x.GrowerLotId == receipt.GrowerLotId && x.FruitProfileId == receipt.FruitProfileId)
             .Select(x => $"OutsideWarehouse:{x.Id}:{x.BinCount}").ToListAsync(cancellationToken);
         return CreateInventoryStateToken(snapshots, interCrew.Concat(outside));
+    }
+
+    private static string CreateTrueUpTargetKey(
+        RoomInventoryLedgerSnapshot snapshot,
+        TreatmentSegmentSelection selection)
+    {
+        var treatmentKey = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            $"{selection.TreatmentSignature}|{selection.SegmentId}|{selection.ReceiptId}")))[..16];
+        return $"R:{snapshot.WarehouseId}:{snapshot.RoomId}:{treatmentKey}";
     }
 
     public static string CreateInventoryStateToken(
@@ -998,11 +1269,24 @@ public sealed class ReceiptInventoryOverrideService(
         {
             using var snapshot = JsonDocument.Parse(existing.AfterReceiptSnapshotJson);
             var root = snapshot.RootElement;
-            return root.GetProperty("warehouseId").GetInt32() == form.WarehouseId
+            var receiptValuesMatch = root.GetProperty("warehouseId").GetInt32() == form.WarehouseId
                 && root.GetProperty("roomId").GetInt32() == form.RoomId
                 && root.GetProperty("cropYear").GetInt32() == form.CropYear
                 && root.GetProperty("fruitProfileId").GetInt32() == form.FruitProfileId
                 && string.Equals(root.GetProperty("growerNumber").GetString(), form.GrowerNumber.Trim(), StringComparison.OrdinalIgnoreCase);
+            if (!receiptValuesMatch) return false;
+            var requestedAllocations = form.TrueUpAllocations.Where(x => x.Bins > 0)
+                .OrderBy(x => x.TargetKey, StringComparer.Ordinal)
+                .Select(x => $"{x.TargetKey}:{x.Bins}")
+                .ToList();
+            if (requestedAllocations.Count == 0) return true;
+            using var affected = JsonDocument.Parse(existing.AffectedInventorySnapshotJson);
+            var persistedAllocations = affected.RootElement.EnumerateArray()
+                .Where(x => x.TryGetProperty("targetKey", out _) && x.TryGetProperty("allocatedBins", out _))
+                .OrderBy(x => x.GetProperty("targetKey").GetString(), StringComparer.Ordinal)
+                .Select(x => $"{x.GetProperty("targetKey").GetString()}:{x.GetProperty("allocatedBins").GetInt32()}")
+                .ToList();
+            return requestedAllocations.SequenceEqual(persistedAllocations, StringComparer.Ordinal);
         }
         catch (JsonException)
         {
@@ -1023,6 +1307,42 @@ public sealed class ReceiptInventoryOverrideService(
     private sealed record InventoryState(IReadOnlyList<InventoryBalance> Balances, bool HasExactReceiptProvenance)
     {
         public int Total => Balances.Sum(x => x.CurrentBins);
+    }
+    private sealed record TrueUpPosition(
+        string TargetKey,
+        string PositionType,
+        string Facility,
+        string Location,
+        int CurrentBins,
+        string Treatment,
+        string TreatmentSignature,
+        string TreatmentState,
+        long? TreatmentSegmentId,
+        long? TreatmentReceiptId,
+        bool IsEligible,
+        string? UnavailableReason,
+        RoomInventoryLedgerSnapshot? Snapshot)
+    {
+        public static TrueUpPosition UnavailableRoom(RoomInventoryLedgerSnapshot snapshot, string reason) =>
+            new($"R:{snapshot.WarehouseId}:{snapshot.RoomId}:unavailable", "Room", snapshot.Facility, snapshot.Room,
+                snapshot.CurrentBins, "Needs Review", "needs-review", "NeedsReview", null, null, false, reason, snapshot);
+
+        public static TrueUpPosition UnavailableCustody(
+            string key, string kind, string location, int bins, string reason) =>
+            new(key, kind, "Custody", location, bins, "Preserved custody treatment", "custody", "Custody",
+                null, null, false, reason, null);
+    }
+    private sealed record TrueUpAllocation(TrueUpPosition Position, int Bins);
+    private sealed record PositiveAllocationResult(IReadOnlyList<TrueUpAllocation> Allocations, string? Error);
+    private sealed record PositiveTrueUpState(
+        IReadOnlyList<RoomInventoryLedgerSnapshot> RoomSnapshots,
+        IReadOnlyList<TrueUpPosition> Positions,
+        IReadOnlyList<Guid> CorrectionChain,
+        int CustodyBins,
+        string StateToken,
+        string? Error)
+    {
+        public int TotalBins => RoomSnapshots.Sum(x => x.CurrentBins) + CustodyBins;
     }
     private sealed record OperationalCounts(int BinsRuns, int ActualRuns, int Transfers);
 }

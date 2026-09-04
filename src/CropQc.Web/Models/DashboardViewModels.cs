@@ -1649,10 +1649,18 @@ public sealed class AdminReceiptInventoryOverrideForm : UpdateReceiptForm
 {
     public long ExpectedConcurrencyVersion { get; set; }
     public string ExpectedInventoryStateToken { get; set; } = "";
+    public string ExpectedPositiveTrueUpStateToken { get; set; } = "";
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public string Reason { get; set; } = "";
     public bool ConfirmInventoryChange { get; set; }
     public bool AcknowledgeNegativeInventory { get; set; }
+    public List<ReceiptInventoryTrueUpAllocationForm> TrueUpAllocations { get; set; } = [];
+}
+
+public sealed class ReceiptInventoryTrueUpAllocationForm
+{
+    public string TargetKey { get; set; } = "";
+    public int Bins { get; set; }
 }
 
 public sealed class ReceiptInventoryOverridePreviewViewModel
@@ -1660,6 +1668,7 @@ public sealed class ReceiptInventoryOverridePreviewViewModel
     public long ReceiptId { get; set; }
     public long ConcurrencyVersion { get; set; }
     public string InventoryStateToken { get; set; } = "";
+    public string PositiveTrueUpStateToken { get; set; } = "";
     public int ReceiptBinCount { get; set; }
     public int CurrentInventory { get; set; }
     public int ConsumedBins { get; set; }
@@ -1669,7 +1678,21 @@ public sealed class ReceiptInventoryOverridePreviewViewModel
     public int ActualRunCount { get; set; }
     public int TransferCount { get; set; }
     public bool HasPriorOverride { get; set; }
+    public int CurrentCanonicalInventory { get; set; }
+    public IReadOnlyList<ReceiptInventoryTrueUpPositionViewModel> TrueUpPositions { get; set; } = [];
 }
+
+public sealed record ReceiptInventoryTrueUpPositionViewModel(
+    string TargetKey,
+    string PositionType,
+    string Facility,
+    string Location,
+    int CurrentBins,
+    string Treatment,
+    string TreatmentSignature,
+    long? TreatmentSegmentId,
+    bool IsEligible,
+    string? UnavailableReason);
 
 public sealed record ReceiptInventoryBalanceViewModel(
     int WarehouseId,
