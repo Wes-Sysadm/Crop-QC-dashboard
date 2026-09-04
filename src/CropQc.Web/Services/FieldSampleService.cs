@@ -1623,7 +1623,8 @@ public sealed class FieldSampleService(
                     $"/FieldSamples/{sampleId}/photos/{photo.Id}/content?v={photo.PresentationRevision}",
                     canDelete,
                     canDelete ? $"/FieldSamples/{sampleId}/photos/{photo.Id}/rotate" : null,
-                    photo.PresentationRevision)).ToList()))
+                    photo.PresentationRevision,
+                    $"/FieldSamples/{sampleId}/photos/{photo.Id}/content?v={photo.PresentationRevision}")).ToList()))
             .ToList();
 
     private async Task RecalculatePersistedSizesAsync(long sampleId, string fruitType, ClaimsPrincipal user, string source, CancellationToken cancellationToken)

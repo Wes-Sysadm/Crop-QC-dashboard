@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Storage;
@@ -7,6 +8,10 @@ using CropQc.Web.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Metadata.Profiles.Exif;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace CropQc.Api.Tests;
 
@@ -853,9 +858,9 @@ public sealed class FieldSampleWorkflowTests
             QcSampleId = sampleId,
             PhotoType = "SampleBeforeCutting",
             PhotoSource = "Test",
-            FileName = "field-sample.png",
-            ContentType = "image/png",
-            FileSizeBytes = FieldSamplePng.Length,
+            FileName = "field-sample.jpg",
+            ContentType = "image/jpeg",
+            FileSizeBytes = FieldSampleExifJpeg.Length,
             StorageProvider = "Test",
             FileId = "field-photo-1",
             SharePointDriveId = "",
@@ -868,13 +873,17 @@ public sealed class FieldSampleWorkflowTests
         var access = new UserAccessService(db, new ConfigurationBuilder().Build());
         var resolver = new QcEmailRecipientResolver(db, new EmailOptions(), NullLogger<QcEmailRecipientResolver>.Instance);
         var sender = new CapturingFieldSampleEmailSender();
+        var photoStorage = new FieldSamplePhotoStorageService(new Dictionary<string, byte[]>
+        {
+            ["field-photo-1"] = FieldSampleExifJpeg
+        });
         var reportService = new FieldSampleReportService(
             db,
             fieldSampleService,
             access,
             resolver,
             sender,
-            new FieldSamplePhotoStorageService(),
+            photoStorage,
             NullLogger<FieldSampleReportService>.Instance);
 
         var (preview, previewError) = await reportService.PreviewAsync(sampleId, Owner(), CancellationToken.None);
@@ -893,12 +902,36 @@ public sealed class FieldSampleWorkflowTests
         Assert.Contains("Canonical block</th><td>phoenix", preview.HtmlBody);
         Assert.Contains("Same-Block Trends", preview.HtmlBody);
         Assert.Contains("data:image/jpeg;base64,", preview.HtmlBody);
+        AssertReportCornerOrder(preview.HtmlBody, "CADB");
+
+        await using (var original = new MemoryStream(FieldSampleExifJpeg, writable: false))
+        {
+            var presentation = await PhotoOrientationProcessor.CreatePresentationAsync(
+                original, "field-sample.jpg", "image/jpeg", 1, CancellationToken.None);
+            photoStorage.Bytes["field-photo-presentation"] = presentation.Bytes;
+            var photo = await db.QcPhotos.SingleAsync(x => x.QcSampleId == sampleId);
+            photo.OriginalExifOrientation = 6;
+            photo.ManualRotationQuarterTurns = 1;
+            photo.PresentationRevision = 2;
+            photo.PresentationStorageKey = "field-photo-presentation";
+            photo.PresentationFileName = "field-photo-presentation.jpg";
+            photo.PresentationContentType = "image/jpeg";
+            photo.PresentationFileSizeBytes = presentation.Bytes.Length;
+            photo.PresentationUpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        var (manualPreview, manualPreviewError) = await reportService.PreviewAsync(sampleId, Owner(), CancellationToken.None);
+        Assert.Null(manualPreviewError);
+        Assert.NotNull(manualPreview);
+        AssertReportCornerOrder(manualPreview!.HtmlBody, "DCBA");
 
         Assert.Null(await reportService.SendAsync(sampleId, Owner(), CancellationToken.None));
         Assert.NotNull(sender.Message);
         Assert.Equal("qc@fruitandland.com, manager@example.com", sender.Message!.To);
         Assert.Equal(preview.Subject, sender.Message.Subject);
         Assert.Single(sender.Message.InlineImages);
+        AssertCornerOrder(sender.Message.InlineImages.Single().Bytes, "DCBA");
         var sentSample = await db.QcSamples.SingleAsync(x => x.Id == sampleId);
         Assert.Equal("Sent", sentSample.Status);
         Assert.Equal("Sent", sentSample.EmailStatus);
@@ -1021,18 +1054,71 @@ public sealed class FieldSampleWorkflowTests
         }
     }
 
-    private static readonly byte[] FieldSamplePng = Convert.FromBase64String(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+    private static readonly byte[] FieldSampleExifJpeg = MarkerJpeg(6);
 
-    private sealed class FieldSamplePhotoStorageService : IFileStorageService
+    private static byte[] MarkerJpeg(int orientation)
     {
+        using var image = new Image<Rgba32>(80, 60);
+        Fill(image, 0, 0, 40, 30, Color.Red);
+        Fill(image, 40, 0, 40, 30, Color.Lime);
+        Fill(image, 0, 30, 40, 30, Color.Blue);
+        Fill(image, 40, 30, 40, 30, Color.Yellow);
+        image.Metadata.ExifProfile = new ExifProfile();
+        image.Metadata.ExifProfile.SetValue(ExifTag.Orientation, (ushort)orientation);
+        using var output = new MemoryStream();
+        image.Save(output, new JpegEncoder { Quality = 100 });
+        return output.ToArray();
+    }
+
+    private static void Fill(Image<Rgba32> image, int x, int y, int width, int height, Color color)
+    {
+        var pixel = color.ToPixel<Rgba32>();
+        for (var row = y; row < y + height; row++)
+        {
+            for (var column = x; column < x + width; column++)
+            {
+                image[column, row] = pixel;
+            }
+        }
+    }
+
+    private static void AssertReportCornerOrder(string html, string expected)
+    {
+        var match = Regex.Match(html, "data:image/jpeg;base64,(?<bytes>[^\\\"]+)");
+        Assert.True(match.Success);
+        AssertCornerOrder(Convert.FromBase64String(match.Groups["bytes"].Value), expected);
+    }
+
+    private static void AssertCornerOrder(byte[] bytes, string expected)
+    {
+        using var image = Image.Load<Rgba32>(bytes);
+        var actual = string.Concat(
+            Marker(image[image.Width / 4, image.Height / 4]),
+            Marker(image[image.Width * 3 / 4, image.Height / 4]),
+            Marker(image[image.Width / 4, image.Height * 3 / 4]),
+            Marker(image[image.Width * 3 / 4, image.Height * 3 / 4]));
+        Assert.Equal(expected, actual);
+    }
+
+    private static char Marker(Rgba32 pixel)
+    {
+        if (pixel.R > 180 && pixel.G < 100 && pixel.B < 100) return 'A';
+        if (pixel.G > 150 && pixel.R < 100 && pixel.B < 100) return 'B';
+        if (pixel.B > 150 && pixel.R < 100 && pixel.G < 100) return 'C';
+        if (pixel.R > 150 && pixel.G > 150 && pixel.B < 100) return 'D';
+        return '?';
+    }
+
+    private sealed class FieldSamplePhotoStorageService(Dictionary<string, byte[]> bytes) : IFileStorageService
+    {
+        public Dictionary<string, byte[]> Bytes { get; } = bytes;
         public string GenerateTargetPath(FileStorageTargetContext context) => "unused";
         public Task<FileStorageReference> SaveAsync(FileStorageSaveRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
         public Task<FileStorageReference?> GetMetadataAsync(string storageKey, CancellationToken cancellationToken = default) =>
             Task.FromResult<FileStorageReference?>(null);
         public Task<Stream?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default) =>
-            Task.FromResult<Stream?>(storageKey == "field-photo-1" ? new MemoryStream(FieldSamplePng, writable: false) : null);
+            Task.FromResult<Stream?>(Bytes.TryGetValue(storageKey, out var value) ? new MemoryStream(value, writable: false) : null);
         public Task DeleteOrVoidAsync(string storageKey, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
     }

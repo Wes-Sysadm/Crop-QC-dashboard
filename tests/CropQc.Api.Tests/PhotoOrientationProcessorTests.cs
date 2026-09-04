@@ -99,6 +99,65 @@ public sealed class PhotoOrientationProcessorTests
         await AssertCornerOrderAsync(result.Bytes, "ABCD");
     }
 
+    [Theory]
+    [InlineData(40, 80)]
+    [InlineData(80, 40)]
+    public async Task Normal_portrait_and_landscape_jpegs_without_orientation_remain_physical(int width, int height)
+    {
+        using var image = new Image<Rgba32>(width, height, Color.CornflowerBlue);
+        await using var encoded = new MemoryStream();
+        await image.SaveAsJpegAsync(encoded, new JpegEncoder { Quality = 100 });
+        var original = encoded.ToArray();
+        var originalHash = SHA256.HashData(original);
+        await using var input = new MemoryStream(original, writable: false);
+
+        var result = await PhotoOrientationProcessor.CreatePresentationAsync(
+            input, "normal.jpg", "image/jpeg", 0, CancellationToken.None);
+
+        Assert.Equal(1, result.OriginalExifOrientation);
+        Assert.Equal(width, result.Width);
+        Assert.Equal(height, result.Height);
+        Assert.Equal(originalHash, SHA256.HashData(original));
+    }
+
+    [Fact]
+    public async Task Out_of_range_orientation_is_treated_as_normal_and_remains_manually_rotatable()
+    {
+        var original = await CreateJpegAsync(9);
+        var originalHash = SHA256.HashData(original);
+        await using var input = new MemoryStream(original, writable: false);
+
+        var result = await PhotoOrientationProcessor.CreatePresentationAsync(
+            input, "invalid-orientation.jpg", "image/jpeg", 1, CancellationToken.None);
+
+        Assert.Equal(1, result.OriginalExifOrientation);
+        await AssertCornerOrderAsync(result.Bytes, "CADB");
+        Assert.Equal(originalHash, SHA256.HashData(original));
+    }
+
+    [Fact]
+    public async Task Malformed_exif_header_is_ignored_without_partial_or_nondeterministic_processing()
+    {
+        var original = await CreateJpegAsync(6);
+        var exifOffset = original.AsSpan().IndexOf("Exif\0\0"u8);
+        Assert.True(exifOffset >= 0);
+        original[exifOffset + 6] = (byte)'Z';
+        original[exifOffset + 7] = (byte)'Z';
+        var originalHash = SHA256.HashData(original);
+
+        await using var firstInput = new MemoryStream(original, writable: false);
+        await using var secondInput = new MemoryStream(original, writable: false);
+        var first = await PhotoOrientationProcessor.CreatePresentationAsync(
+            firstInput, "malformed-exif.jpg", "image/jpeg", 1, CancellationToken.None);
+        var second = await PhotoOrientationProcessor.CreatePresentationAsync(
+            secondInput, "malformed-exif.jpg", "image/jpeg", 1, CancellationToken.None);
+
+        Assert.Equal(1, first.OriginalExifOrientation);
+        Assert.Equal(first.Bytes, second.Bytes);
+        await AssertCornerOrderAsync(first.Bytes, "CADB");
+        Assert.Equal(originalHash, SHA256.HashData(original));
+    }
+
     [Fact]
     public async Task Corrupt_image_is_rejected_cleanly()
     {

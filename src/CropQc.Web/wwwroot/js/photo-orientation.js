@@ -14,7 +14,7 @@
         for (const image of card.querySelectorAll("img.photo-thumbnail")) {
             image.src = withRevision(image.src, revision);
         }
-        for (const link of card.querySelectorAll("a.photo-thumbnail-link")) {
+        for (const link of card.querySelectorAll("a[data-photo-presentation-link]")) {
             link.href = withRevision(link.href, revision);
         }
     }

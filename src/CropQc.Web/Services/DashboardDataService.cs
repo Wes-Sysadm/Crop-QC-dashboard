@@ -3481,6 +3481,10 @@ public sealed class DashboardDataService(
             : null;
         try
         {
+            if (transaction is not null)
+            {
+                await LockPhotoForRotationAsync(photo.Id, cancellationToken);
+            }
             await dbContext.Entry(photo).ReloadAsync(cancellationToken);
             if (photo.IsDeleted
                 || photo.PresentationRevision != form.ExpectedPresentationRevision
@@ -3549,9 +3553,30 @@ public sealed class DashboardDataService(
         }
         catch (Exception ex)
         {
+            var isConcurrencyConflict = IsPhotoRotationConcurrencyConflict(ex);
             if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
             dbContext.ChangeTracker.Clear();
             await SafeDeleteStorageAsync(newPresentationKey, "failed photo rotation", cancellationToken);
+            if (isConcurrencyConflict)
+            {
+                var current = await dbContext.QcPhotos
+                    .AsNoTracking()
+                    .Where(x => x.Id == photo.Id)
+                    .Select(x => new { x.PresentationRevision, x.ManualRotationQuarterTurns })
+                    .SingleOrDefaultAsync(cancellationToken);
+                logger.LogWarning(
+                    ex,
+                    "Concurrent photo rotation lost the serializable race and its derivative was cleaned. PhotoId: {PhotoId}; CurrentRevision: {CurrentRevision}.",
+                    photo.Id,
+                    current?.PresentationRevision);
+                return new(
+                    false,
+                    "This photo was rotated in another tab. Refresh and try again.",
+                    photo.Id,
+                    current?.PresentationRevision ?? oldRevision,
+                    current?.ManualRotationQuarterTurns ?? oldTurns,
+                    true);
+            }
             logger.LogError(ex, "Photo rotation database mutation failed and the new derivative was cleaned. PhotoId: {PhotoId}.", photo.Id);
             return new(false, "The photo rotation could not be saved. The original photo was not changed.", photo.Id, oldRevision, oldTurns);
         }
@@ -3563,6 +3588,41 @@ public sealed class DashboardDataService(
         }
 
         return new(true, null, photo.Id, newRevision, newTurns);
+    }
+
+    private static bool IsPhotoRotationConcurrencyConflict(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is DbUpdateConcurrencyException
+                || current is Npgsql.PostgresException
+                {
+                    SqlState: Npgsql.PostgresErrorCodes.SerializationFailure
+                        or Npgsql.PostgresErrorCodes.DeadlockDetected
+                })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task LockPhotoForRotationAsync(long photoId, CancellationToken cancellationToken)
+    {
+        var provider = dbContext.Database.ProviderName;
+        if (provider?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT \"Id\" FROM \"QcPhotos\" WHERE \"Id\" = {photoId} FOR UPDATE",
+                cancellationToken);
+        }
+        else if (provider?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT [Id] FROM [QcPhotos] WITH (UPDLOCK, ROWLOCK) WHERE [Id] = {photoId}",
+                cancellationToken);
+        }
     }
 
     public async Task<string?> RemoveSamplePhotoAsync(long sampleId, long photoId, CancellationToken cancellationToken)
@@ -8098,7 +8158,7 @@ public sealed class DashboardDataService(
                     photo.FileName,
                     photo.ContentType,
                     photo.FileSizeBytes,
-                    reviewContentUrl,
+                    photo.WebUrl,
                     photo.CapturedAt,
                     deleteAction is not null,
                     deleteAction,
@@ -8106,7 +8166,8 @@ public sealed class DashboardDataService(
                     isImage ? reviewContentUrl : null,
                     isImage && rotateAction is not null,
                     rotateAction,
-                    photo.PresentationRevision);
+                    photo.PresentationRevision,
+                    isImage ? reviewContentUrl : null);
             }).ToList()))
             .ToList();
 

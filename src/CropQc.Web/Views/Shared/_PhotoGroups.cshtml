@@ -30,14 +30,15 @@ else
                 <div class="photo-card-grid" data-photo-card-list>
                     @foreach (var photo in photos)
                     {
-                        var thumbnailUrl = photo.ThumbnailUrl ?? (photo.DisplayAsThumbnail ? photo.WebUrl : null);
+                        var thumbnailUrl = photo.ThumbnailUrl ?? (photo.DisplayAsThumbnail ? photo.PresentationUrl : null);
+                        var primaryViewUrl = photo.PresentationUrl ?? photo.WebUrl;
                         var canReclassify = !string.IsNullOrWhiteSpace(reclassifyActionBase) && moveTargets.Count > 1;
                         var reclassifyAction = canReclassify ? $"{reclassifyActionBase}/{photo.Id}/reclassify" : null;
                         <article class="photo-card" data-photo-card data-photo-id="@photo.Id" data-photo-type="@displayType"
                                  data-reclassify-url="@reclassifyAction" draggable="@(canReclassify ? "true" : "false")">
-                            @if (photo.WebUrl is not null)
+                            @if (primaryViewUrl is not null)
                             {
-                                <a href="@photo.WebUrl" target="_blank" rel="noopener" class="photo-thumbnail-link">
+                                <a href="@primaryViewUrl" target="_blank" rel="noopener" class="photo-thumbnail-link" data-photo-presentation-link>
                                     @if (thumbnailUrl is not null)
                                     {
                                         <img src="@thumbnailUrl" alt="@photo.FileName" class="photo-thumbnail" loading="lazy" />
