@@ -3,7 +3,7 @@ services:
     name: crop-qc-dashboard
     runtime: docker
     dockerfilePath: ./Dockerfile
-    preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260902201338_AddActualRunDetailCorrections
+    preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260904030132_ReintroduceQcPhotoOrientation
     healthCheckPath: /health
     disks:
       - name: crop-qc-dashboard-data
@@ -161,7 +161,7 @@ services:
     name: crop-qc-dashboard-staging
     runtime: docker
     dockerfilePath: ./Dockerfile
-    preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260902201338_AddActualRunDetailCorrections
+    preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260904030132_ReintroduceQcPhotoOrientation
     healthCheckPath: /health
     disks:
       - name: crop-qc-dashboard-staging-data

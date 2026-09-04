@@ -45,6 +45,8 @@ public interface IDashboardDataService
     Task<string?> AddPhotoMetadataAsync(AddPhotoMetadataForm form, CancellationToken cancellationToken);
     Task<string?> AddSamplePhotoMetadataAsync(long sampleId, AddPhotoMetadataForm form, CancellationToken cancellationToken);
     Task<PhotoReclassificationResult> ReclassifySamplePhotoAsync(long sampleId, long photoId, string targetPhotoType, CancellationToken cancellationToken);
+    Task<PhotoRotationResult> RotateSamplePhotoAsync(long sampleId, long photoId, PhotoRotationForm form, CancellationToken cancellationToken);
+    Task<PhotoRotationResult> RotateReceiptPhotoAsync(long receiptId, long photoId, PhotoRotationForm form, CancellationToken cancellationToken);
     Task<string?> RemoveReceiptPhotoAsync(long receiptId, long photoId, CancellationToken cancellationToken);
     Task<string?> RemoveSamplePhotoAsync(long sampleId, long photoId, CancellationToken cancellationToken);
     Task<DailyQcDashboardViewModel> GetDailyQcDashboardAsync(int? warehouseId, string? status, CancellationToken cancellationToken);
@@ -2996,10 +2998,10 @@ public sealed class DashboardDataService(
             return "Receipt or Field Sample context is required for photo storage.";
         }
 
-        FileStorageReference reference;
+        StoredPhotoFiles stored;
         try
         {
-            reference = await SavePhotoFileOrPlaceholderAsync(form, storageContext, cancellationToken);
+            stored = await SavePhotoFileOrPlaceholderAsync(form, storageContext, cancellationToken);
         }
         catch (InvalidOperationException ex)
         {
@@ -3030,9 +3032,9 @@ public sealed class DashboardDataService(
             "QcPhoto metadata insert started. ReceiptId: {ReceiptId}. QcSampleId: {QcSampleId}. StorageProvider: {StorageProvider}. FileId: {FileId}. FolderId: {FolderId}.",
             form.ReceiptId,
             form.QcSampleId,
-            reference.StorageProvider,
-            reference.FileId ?? reference.StorageKey,
-            reference.FolderId ?? reference.TargetPath);
+            stored.Original.StorageProvider,
+            stored.Original.FileId ?? stored.Original.StorageKey,
+            stored.Original.FolderId ?? stored.Original.TargetPath);
 
         var photo = new QcPhoto
         {
@@ -3040,65 +3042,103 @@ public sealed class DashboardDataService(
             QcSampleId = form.QcSampleId,
             PhotoType = QcPhotoRequirementPolicy.NormalizePhotoType(form.PhotoType),
             PhotoSource = form.PhotoSource.Trim(),
-            FileName = reference.FileName,
-            ContentType = reference.ContentType,
-            FileSizeBytes = reference.FileSizeBytes,
-            StorageProvider = reference.StorageProvider,
-            DriveId = reference.DriveId,
-            FileId = reference.FileId,
-            FolderId = reference.FolderId,
-            SharePointDriveId = reference.DriveId ?? reference.FolderId ?? reference.TargetPath,
-            SharePointItemId = reference.FileId ?? reference.StorageKey,
-            WebUrl = reference.WebUrl,
+            FileName = stored.Original.FileName,
+            ContentType = stored.Original.ContentType,
+            FileSizeBytes = stored.Original.FileSizeBytes,
+            StorageProvider = stored.Original.StorageProvider,
+            DriveId = stored.Original.DriveId,
+            FileId = stored.Original.FileId,
+            FolderId = stored.Original.FolderId,
+            SharePointDriveId = stored.Original.DriveId ?? stored.Original.FolderId ?? stored.Original.TargetPath,
+            SharePointItemId = stored.Original.FileId ?? stored.Original.StorageKey,
+            WebUrl = stored.Original.WebUrl,
             CapturedByUserId = capturedByUserId,
             CapturedAt = capturedAt,
-            UploadedAt = form.PhotoFile is null ? null : capturedAt
+            UploadedAt = form.PhotoFile is null ? null : capturedAt,
+            OriginalExifOrientation = stored.Presentation?.OriginalExifOrientation,
+            PresentationRevision = stored.PresentationReference is null ? 0 : 1,
+            PresentationStorageKey = stored.PresentationReference?.FileId ?? stored.PresentationReference?.StorageKey,
+            PresentationFileName = stored.PresentationReference?.FileName,
+            PresentationContentType = stored.PresentationReference?.ContentType,
+            PresentationFileSizeBytes = stored.PresentationReference?.FileSizeBytes,
+            PresentationUpdatedAt = stored.PresentationReference is null ? null : capturedAt
         };
-        dbContext.QcPhotos.Add(photo);
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await AddAuditAsync(
-            "add-photo",
-            nameof(QcPhoto),
-            photo.Id.ToString(),
-            GetCurrentUserEmail() ?? "unknown",
-            null,
-            JsonSerializer.Serialize(new { photo.Id, photo.ReceiptId, photo.QcSampleId, photo.PhotoType, photo.FileName, photo.StorageProvider, photo.FileId }),
-            cancellationToken);
-        logger.LogInformation(
-            "QcPhoto metadata insert succeeded. QcPhotoId: {QcPhotoId}. StorageProvider: {StorageProvider}. FileId: {FileId}. FolderId: {FolderId}.",
-            photo.Id,
-            photo.StorageProvider,
-            photo.FileId ?? photo.SharePointItemId,
-            photo.FolderId ?? photo.SharePointDriveId);
-        if (sample is not null)
+        await using var photoTransaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        try
         {
-            if (sample.ReceiptId is null)
-            {
-                await MarkSampleNeedsResendIfSentAsync(sample, "photo-added", GetCurrentUserEmail() ?? "unknown", null, cancellationToken);
-                sample.PhotoStatus = "Optional Photos Attached";
-                sample.UpdatedAt = DateTimeOffset.UtcNow;
-            }
-            else
-            {
-                await MarkSampleNeedsResendIfSentAsync(sample, "photo-added", GetCurrentUserEmail() ?? "unknown", null, cancellationToken);
-                await RefreshSampleStatusesAsync(sample, cancellationToken);
-            }
+            dbContext.QcPhotos.Add(photo);
             await dbContext.SaveChangesAsync(cancellationToken);
+            await AddAuditAsync(
+                "add-photo",
+                nameof(QcPhoto),
+                photo.Id.ToString(),
+                GetCurrentUserEmail() ?? "unknown",
+                null,
+                JsonSerializer.Serialize(new
+                {
+                    photo.Id,
+                    photo.ReceiptId,
+                    photo.QcSampleId,
+                    photo.PhotoType,
+                    photo.FileName,
+                    photo.StorageProvider,
+                    photo.FileId,
+                    photo.OriginalExifOrientation,
+                    photo.ManualRotationQuarterTurns,
+                    photo.PresentationRevision,
+                    photo.PresentationStorageKey
+                }),
+                cancellationToken);
+            logger.LogInformation(
+                "QcPhoto metadata insert succeeded. QcPhotoId: {QcPhotoId}. StorageProvider: {StorageProvider}. FileId: {FileId}. FolderId: {FolderId}.",
+                photo.Id,
+                photo.StorageProvider,
+                photo.FileId ?? photo.SharePointItemId,
+                photo.FolderId ?? photo.SharePointDriveId);
+            if (sample is not null)
+            {
+                if (sample.ReceiptId is null)
+                {
+                    await MarkSampleNeedsResendIfSentAsync(sample, "photo-added", GetCurrentUserEmail() ?? "unknown", null, cancellationToken);
+                    sample.PhotoStatus = "Optional Photos Attached";
+                    sample.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+                else
+                {
+                    await MarkSampleNeedsResendIfSentAsync(sample, "photo-added", GetCurrentUserEmail() ?? "unknown", null, cancellationToken);
+                    await RefreshSampleStatusesAsync(sample, cancellationToken);
+                }
+            }
+            else if (form.ReceiptId is not null)
+            {
+                var receiptSamples = await dbContext.QcSamples.Where(x => x.ReceiptId == form.ReceiptId).ToListAsync(cancellationToken);
+                foreach (var receiptSample in receiptSamples)
+                {
+                    await MarkSampleNeedsResendIfSentAsync(receiptSample, "receipt-photo-added", GetCurrentUserEmail() ?? "unknown", null, cancellationToken);
+                    await RefreshSampleStatusesAsync(receiptSample, cancellationToken);
+                }
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            if (photoTransaction is not null)
+            {
+                await photoTransaction.CommitAsync(cancellationToken);
+            }
+            return null;
         }
-        else if (form.ReceiptId is not null)
+        catch (Exception ex)
         {
-            var receiptSamples = await dbContext.QcSamples.Where(x => x.ReceiptId == form.ReceiptId).ToListAsync(cancellationToken);
-            foreach (var receiptSample in receiptSamples)
+            if (photoTransaction is not null)
             {
-                await MarkSampleNeedsResendIfSentAsync(receiptSample, "receipt-photo-added", GetCurrentUserEmail() ?? "unknown", null, cancellationToken);
-                await RefreshSampleStatusesAsync(receiptSample, cancellationToken);
+                await photoTransaction.RollbackAsync(cancellationToken);
             }
-
-            await dbContext.SaveChangesAsync(cancellationToken);
+            dbContext.ChangeTracker.Clear();
+            await CleanupFailedStoredPhotoAsync(stored, cancellationToken);
+            logger.LogError(ex, "Photo database mutation failed after storage upload; uploaded files were cleaned. ReceiptId: {ReceiptId}; QcSampleId: {QcSampleId}.", form.ReceiptId, form.QcSampleId);
+            return "The photo could not be saved. No photo record or file was retained.";
         }
-
-        return null;
     }
 
     public async Task<string?> AddSamplePhotoMetadataAsync(long sampleId, AddPhotoMetadataForm form, CancellationToken cancellationToken)
@@ -3265,6 +3305,326 @@ public sealed class DashboardDataService(
         return new(true, null, photo.Id, oldPhotoType, normalizedTarget, receiptLevel);
     }
 
+    public async Task<PhotoRotationResult> RotateSamplePhotoAsync(
+        long sampleId,
+        long photoId,
+        PhotoRotationForm form,
+        CancellationToken cancellationToken)
+    {
+        var sample = await dbContext.QcSamples
+            .Include(x => x.SampleType)
+            .Include(x => x.Receipt).ThenInclude(x => x!.Warehouse)
+            .SingleOrDefaultAsync(x => x.Id == sampleId && !x.IsDeleted, cancellationToken);
+        if (sample is null)
+        {
+            return new(false, "QC sample not found.", photoId);
+        }
+
+        var isFieldSample = sample.ReceiptId is null
+            || sample.SampleType.Name.Contains("field", StringComparison.OrdinalIgnoreCase);
+        var canEdit = isFieldSample
+            ? await HasAccessAsync(ApplicationAreas.FieldSamples, PageAccessLevel.Edit, cancellationToken)
+            : await CanEditSamplesAsync(cancellationToken);
+        if (!canEdit)
+        {
+            return new(false, "You do not have permission to rotate photos for this sample.", photoId);
+        }
+
+        var photo = await dbContext.QcPhotos.SingleOrDefaultAsync(
+            x => x.Id == photoId
+                && !x.IsDeleted
+                && (x.QcSampleId == sampleId
+                    || (sample.ReceiptId != null && x.ReceiptId == sample.ReceiptId)),
+            cancellationToken);
+        if (photo is null)
+        {
+            return new(false, "Photo was not found in this sample workflow.", photoId);
+        }
+
+        var context = sample.Receipt is not null
+            ? new FileStorageTargetContext(
+                sample.Receipt.CropYear,
+                sample.Receipt.Warehouse.Code,
+                sample.Receipt.CompuTechReceiptId,
+                photo.PhotoType,
+                DateTimeOffset.UtcNow)
+            : new FileStorageTargetContext(
+                sample.SampleTakenAt.Year,
+                "FIELD",
+                $"FieldSample-{sample.Id}",
+                photo.PhotoType,
+                DateTimeOffset.UtcNow);
+        return await RotatePhotoAsync(photo, sample, context, form, cancellationToken);
+    }
+
+    public async Task<PhotoRotationResult> RotateReceiptPhotoAsync(
+        long receiptId,
+        long photoId,
+        PhotoRotationForm form,
+        CancellationToken cancellationToken)
+    {
+        if (!await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken))
+        {
+            return new(false, "You do not have permission to rotate receipt photos.", photoId);
+        }
+
+        var receipt = await dbContext.Receipts
+            .Include(x => x.Warehouse)
+            .SingleOrDefaultAsync(x => x.Id == receiptId && !x.IsDeleted, cancellationToken);
+        if (receipt is null)
+        {
+            return new(false, "Receipt not found.", photoId);
+        }
+
+        var photo = await dbContext.QcPhotos.SingleOrDefaultAsync(
+            x => x.Id == photoId
+                && x.ReceiptId == receiptId
+                && x.QcSampleId == null
+                && !x.IsDeleted,
+            cancellationToken);
+        if (photo is null)
+        {
+            return new(false, "Receipt photo was not found.", photoId);
+        }
+
+        var context = new FileStorageTargetContext(
+            receipt.CropYear,
+            receipt.Warehouse.Code,
+            receipt.CompuTechReceiptId,
+            photo.PhotoType,
+            DateTimeOffset.UtcNow);
+        return await RotatePhotoAsync(photo, null, context, form, cancellationToken);
+    }
+
+    private async Task<PhotoRotationResult> RotatePhotoAsync(
+        QcPhoto photo,
+        QcSample? sample,
+        FileStorageTargetContext context,
+        PhotoRotationForm form,
+        CancellationToken cancellationToken)
+    {
+        var direction = form.Direction.Trim().ToLowerInvariant();
+        var delta = direction switch
+        {
+            "right" => 1,
+            "left" => -1,
+            _ => 0
+        };
+        if (delta == 0)
+        {
+            return new(false, "Choose Rotate Left or Rotate Right.", photo.Id, photo.PresentationRevision, photo.ManualRotationQuarterTurns);
+        }
+
+        if (photo.PresentationRevision != form.ExpectedPresentationRevision)
+        {
+            return new(false, "This photo was rotated in another tab. Refresh and try again.", photo.Id, photo.PresentationRevision, photo.ManualRotationQuarterTurns, true);
+        }
+
+        var originalKey = PhotoOrientationProcessor.OriginalStorageKey(photo);
+        if (string.IsNullOrWhiteSpace(originalKey))
+        {
+            return new(false, "The immutable original photo is unavailable, so it cannot be rotated.", photo.Id, photo.PresentationRevision, photo.ManualRotationQuarterTurns);
+        }
+
+        var newTurns = PhotoOrientationProcessor.NormalizeQuarterTurns(photo.ManualRotationQuarterTurns + delta);
+        PreparedPhotoPresentation presentation;
+        try
+        {
+            await using var original = await fileStorageService.OpenReadAsync(originalKey, cancellationToken);
+            if (original is null)
+            {
+                return new(false, "The immutable original photo is unavailable, so it cannot be rotated.", photo.Id, photo.PresentationRevision, photo.ManualRotationQuarterTurns);
+            }
+            presentation = await PhotoOrientationProcessor.CreatePresentationAsync(
+                original,
+                photo.FileName,
+                photo.ContentType,
+                newTurns,
+                cancellationToken);
+        }
+        catch (PhotoProcessingException ex)
+        {
+            return new(false, ex.Message, photo.Id, photo.PresentationRevision, photo.ManualRotationQuarterTurns);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Photo rotation could not read the immutable original. PhotoId: {PhotoId}.", photo.Id);
+            return new(false, "The original photo could not be read. No rotation was saved.", photo.Id, photo.PresentationRevision, photo.ManualRotationQuarterTurns);
+        }
+
+        var newRevision = photo.PresentationRevision + 1;
+        FileStorageReference presentationReference;
+        try
+        {
+            var targetPath = $"{fileStorageService.GenerateTargetPath(context)}/Presentation";
+            var presentationName = $"{Path.GetFileNameWithoutExtension(photo.FileName)}-presentation-v{newRevision}-{Guid.NewGuid():N}{presentation.Extension}";
+            await using var presentationStream = new MemoryStream(presentation.Bytes, writable: false);
+            presentationReference = await fileStorageService.SaveAsync(new FileStorageSaveRequest(
+                presentationStream,
+                targetPath,
+                presentationName,
+                presentation.ContentType,
+                presentation.Bytes.LongLength), cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Photo rotation presentation upload failed. PhotoId: {PhotoId}; Revision: {Revision}.", photo.Id, newRevision);
+            return new(false, "The rotated presentation could not be saved. The original photo was not changed.", photo.Id, photo.PresentationRevision, photo.ManualRotationQuarterTurns);
+        }
+
+        var newPresentationKey = presentationReference.FileId ?? presentationReference.StorageKey;
+        var oldPresentationKey = photo.PresentationStorageKey;
+        var oldTurns = photo.ManualRotationQuarterTurns;
+        var oldRevision = photo.PresentationRevision;
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+        try
+        {
+            if (transaction is not null)
+            {
+                await LockPhotoForRotationAsync(photo.Id, cancellationToken);
+            }
+            await dbContext.Entry(photo).ReloadAsync(cancellationToken);
+            if (photo.IsDeleted
+                || photo.PresentationRevision != form.ExpectedPresentationRevision
+                || photo.ManualRotationQuarterTurns != oldTurns)
+            {
+                if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+                await SafeDeleteStorageAsync(newPresentationKey, "stale photo rotation", cancellationToken);
+                return new(false, "This photo was rotated or removed in another tab. Refresh and try again.", photo.Id, photo.PresentationRevision, photo.ManualRotationQuarterTurns, true);
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var actor = GetCurrentUserEmail() ?? "unknown";
+            photo.OriginalExifOrientation ??= presentation.OriginalExifOrientation;
+            photo.ManualRotationQuarterTurns = newTurns;
+            photo.PresentationRevision = newRevision;
+            photo.PresentationStorageKey = newPresentationKey;
+            photo.PresentationFileName = presentationReference.FileName;
+            photo.PresentationContentType = presentationReference.ContentType;
+            photo.PresentationFileSizeBytes = presentationReference.FileSizeBytes;
+            photo.PresentationUpdatedAt = now;
+            await AddAuditAsync(
+                direction == "right" ? "rotate-photo-right" : "rotate-photo-left",
+                nameof(QcPhoto),
+                photo.Id.ToString(),
+                actor,
+                JsonSerializer.Serialize(new
+                {
+                    PhotoId = photo.Id,
+                    photo.ReceiptId,
+                    photo.QcSampleId,
+                    ManualRotationQuarterTurns = oldTurns,
+                    PresentationRevision = oldRevision
+                }),
+                JsonSerializer.Serialize(new
+                {
+                    PhotoId = photo.Id,
+                    photo.ReceiptId,
+                    photo.QcSampleId,
+                    Direction = direction,
+                    OldManualRotationQuarterTurns = oldTurns,
+                    NewManualRotationQuarterTurns = newTurns,
+                    OldPresentationRevision = oldRevision,
+                    NewPresentationRevision = newRevision,
+                    Actor = actor,
+                    RotatedAt = now
+                }),
+                cancellationToken);
+
+            if (photo.ReceiptId is long receiptId)
+            {
+                var affectedSamples = await dbContext.QcSamples
+                    .Where(x => x.ReceiptId == receiptId && !x.IsDeleted)
+                    .ToListAsync(cancellationToken);
+                foreach (var affectedSample in affectedSamples)
+                {
+                    await MarkSampleNeedsResendIfSentAsync(affectedSample, "photo-rotated", actor, null, cancellationToken);
+                }
+            }
+            else if (sample is not null)
+            {
+                await MarkSampleNeedsResendIfSentAsync(sample, "photo-rotated", actor, null, cancellationToken);
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            var isConcurrencyConflict = IsPhotoRotationConcurrencyConflict(ex);
+            if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+            dbContext.ChangeTracker.Clear();
+            await SafeDeleteStorageAsync(newPresentationKey, "failed photo rotation", cancellationToken);
+            if (isConcurrencyConflict)
+            {
+                var current = await dbContext.QcPhotos
+                    .AsNoTracking()
+                    .Where(x => x.Id == photo.Id)
+                    .Select(x => new { x.PresentationRevision, x.ManualRotationQuarterTurns })
+                    .SingleOrDefaultAsync(cancellationToken);
+                logger.LogWarning(
+                    ex,
+                    "Concurrent photo rotation lost the serializable race and its derivative was cleaned. PhotoId: {PhotoId}; CurrentRevision: {CurrentRevision}.",
+                    photo.Id,
+                    current?.PresentationRevision);
+                return new(
+                    false,
+                    "This photo was rotated in another tab. Refresh and try again.",
+                    photo.Id,
+                    current?.PresentationRevision ?? oldRevision,
+                    current?.ManualRotationQuarterTurns ?? oldTurns,
+                    true);
+            }
+            logger.LogError(ex, "Photo rotation database mutation failed and the new derivative was cleaned. PhotoId: {PhotoId}.", photo.Id);
+            return new(false, "The photo rotation could not be saved. The original photo was not changed.", photo.Id, oldRevision, oldTurns);
+        }
+
+        if (!string.IsNullOrWhiteSpace(oldPresentationKey)
+            && !string.Equals(oldPresentationKey, newPresentationKey, StringComparison.Ordinal))
+        {
+            await SafeDeleteStorageAsync(oldPresentationKey, "obsolete photo presentation", cancellationToken);
+        }
+
+        return new(true, null, photo.Id, newRevision, newTurns);
+    }
+
+    private static bool IsPhotoRotationConcurrencyConflict(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is DbUpdateConcurrencyException
+                || current is Npgsql.PostgresException
+                {
+                    SqlState: Npgsql.PostgresErrorCodes.SerializationFailure
+                        or Npgsql.PostgresErrorCodes.DeadlockDetected
+                })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task LockPhotoForRotationAsync(long photoId, CancellationToken cancellationToken)
+    {
+        var provider = dbContext.Database.ProviderName;
+        if (provider?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT \"Id\" FROM \"QcPhotos\" WHERE \"Id\" = {photoId} FOR UPDATE",
+                cancellationToken);
+        }
+        else if (provider?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT [Id] FROM [QcPhotos] WITH (UPDLOCK, ROWLOCK) WHERE [Id] = {photoId}",
+                cancellationToken);
+        }
+    }
+
     public async Task<string?> RemoveSamplePhotoAsync(long sampleId, long photoId, CancellationToken cancellationToken)
     {
         var sample = await dbContext.QcSamples
@@ -3292,6 +3652,7 @@ public sealed class DashboardDataService(
         }
 
         var changedBy = GetCurrentUserEmail() ?? "unknown";
+        var presentationKey = photo.PresentationStorageKey;
         var before = System.Text.Json.JsonSerializer.Serialize(new
         {
             photo.Id,
@@ -3344,6 +3705,7 @@ public sealed class DashboardDataService(
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await SafeDeleteStorageAsync(presentationKey, "removed photo presentation", cancellationToken);
         return null;
     }
 
@@ -3370,6 +3732,7 @@ public sealed class DashboardDataService(
         }
 
         var changedBy = GetCurrentUserEmail() ?? "unknown";
+        var presentationKey = photo.PresentationStorageKey;
         var before = JsonSerializer.Serialize(new
         {
             photo.Id,
@@ -3405,6 +3768,7 @@ public sealed class DashboardDataService(
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await SafeDeleteStorageAsync(presentationKey, "removed receipt photo presentation", cancellationToken);
         return null;
     }
 
@@ -7772,9 +8136,19 @@ public sealed class DashboardDataService(
                         ? $"/Samples/{sampleId}/photos/{photo.Id}/remove"
                         : null;
                 var isImage = photo.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
-                var reviewContentUrl = deleteFromReceiptId is long contentReceiptId && isImage
-                    ? $"/Receipts/{contentReceiptId}/photos/{photo.Id}/content"
-                    : photo.WebUrl;
+                var contentUrl = deleteFromReceiptId is long contentReceiptId
+                    ? $"/Receipts/{contentReceiptId}/photos/{photo.Id}/content?v={photo.PresentationRevision}"
+                    : deleteFromSampleId is long contentSampleId
+                        ? $"/Samples/{contentSampleId}/photos/{photo.Id}/content?v={photo.PresentationRevision}"
+                        : null;
+                var reviewContentUrl = isImage ? contentUrl ?? photo.WebUrl : photo.WebUrl;
+                var rotateAction = deleteFromReceiptId is long rotateReceiptId
+                    ? isSamplePhoto
+                        ? canDeleteSamplePhotos ? $"/Samples/{photo.QcSampleId}/photos/{photo.Id}/rotate" : null
+                        : canDelete ? $"/Receipts/{rotateReceiptId}/photos/{photo.Id}/rotate" : null
+                    : deleteFromSampleId is long rotateSampleId && canDelete
+                        ? $"/Samples/{rotateSampleId}/photos/{photo.Id}/rotate"
+                        : null;
                 return new PhotoMetadataViewModel(
                     photo.Id,
                     photo.QcSampleId,
@@ -7784,16 +8158,20 @@ public sealed class DashboardDataService(
                     photo.FileName,
                     photo.ContentType,
                     photo.FileSizeBytes,
-                    reviewContentUrl,
+                    photo.WebUrl,
                     photo.CapturedAt,
                     deleteAction is not null,
                     deleteAction,
                     isImage && reviewContentUrl is not null,
+                    isImage ? reviewContentUrl : null,
+                    isImage && rotateAction is not null,
+                    rotateAction,
+                    photo.PresentationRevision,
                     isImage ? reviewContentUrl : null);
             }).ToList()))
             .ToList();
 
-    private async Task<FileStorageReference> SavePhotoFileOrPlaceholderAsync(AddPhotoMetadataForm form, FileStorageTargetContext context, CancellationToken cancellationToken)
+    private async Task<StoredPhotoFiles> SavePhotoFileOrPlaceholderAsync(AddPhotoMetadataForm form, FileStorageTargetContext context, CancellationToken cancellationToken)
     {
         var targetPath = fileStorageService.GenerateTargetPath(context);
         logger.LogInformation(
@@ -7826,7 +8204,7 @@ public sealed class DashboardDataService(
                 placeholderReference.StorageProvider,
                 placeholderReference.FileId ?? placeholderReference.StorageKey,
                 placeholderReference.FolderId ?? placeholderReference.TargetPath);
-            return placeholderReference;
+            return new StoredPhotoFiles(placeholderReference, null, null);
         }
 
         var extension = Path.GetExtension(form.PhotoFile.FileName);
@@ -7836,25 +8214,49 @@ public sealed class DashboardDataService(
         }
 
         var fileName = GeneratePhotoFileName(context.ReceiptId, form.PhotoType, context.CapturedAt, extension);
-        await using var stream = form.PhotoFile.OpenReadStream();
+        PreparedPhotoPresentation presentation;
+        await using (var processingStream = form.PhotoFile.OpenReadStream())
+        {
+            presentation = await PhotoOrientationProcessor.CreatePresentationAsync(
+                processingStream,
+                form.PhotoFile.FileName,
+                form.PhotoFile.ContentType,
+                0,
+                cancellationToken);
+        }
+
+        FileStorageReference? originalReference = null;
         try
         {
-            var reference = await fileStorageService.SaveAsync(new FileStorageSaveRequest(
-                stream,
+            await using var originalStream = form.PhotoFile.OpenReadStream();
+            originalReference = await fileStorageService.SaveAsync(new FileStorageSaveRequest(
+                originalStream,
                 targetPath,
                 fileName,
-                string.IsNullOrWhiteSpace(form.PhotoFile.ContentType) ? "application/octet-stream" : form.PhotoFile.ContentType,
+                form.PhotoFile.ContentType,
                 form.PhotoFile.Length), cancellationToken);
+            var presentationFileName = $"{Path.GetFileNameWithoutExtension(fileName)}-presentation-v1-{Guid.NewGuid():N}{presentation.Extension}";
+            await using var presentationStream = new MemoryStream(presentation.Bytes, writable: false);
+            var presentationReference = await fileStorageService.SaveAsync(new FileStorageSaveRequest(
+                presentationStream,
+                $"{targetPath}/Presentation",
+                presentationFileName,
+                presentation.ContentType,
+                presentation.Bytes.LongLength), cancellationToken);
             logger.LogInformation(
-                "Storage save succeeded. Provider: {StorageProvider}. FileId: {FileId}. FolderId: {FolderId}. WebUrlPresent: {WebUrlPresent}.",
-                reference.StorageProvider,
-                reference.FileId ?? reference.StorageKey,
-                reference.FolderId ?? reference.TargetPath,
-                !string.IsNullOrWhiteSpace(reference.WebUrl));
-            return reference;
+                "Original and normalized presentation save succeeded. Provider: {StorageProvider}. OriginalFileId: {OriginalFileId}. PresentationFileId: {PresentationFileId}. OriginalExifOrientation: {OriginalExifOrientation}.",
+                originalReference.StorageProvider,
+                originalReference.FileId ?? originalReference.StorageKey,
+                presentationReference.FileId ?? presentationReference.StorageKey,
+                presentation.OriginalExifOrientation);
+            return new StoredPhotoFiles(originalReference, presentationReference, presentation);
         }
         catch (Exception ex)
         {
+            if (originalReference is not null)
+            {
+                await SafeDeleteStorageAsync(originalReference.FileId ?? originalReference.StorageKey, "failed original upload", cancellationToken);
+            }
             logger.LogError(
                 ex,
                 "Storage save failed with exception message: {Message}. Provider: {StorageProvider}. TargetPath: {TargetPath}. FileName: {FileName}.",
@@ -7865,6 +8267,33 @@ public sealed class DashboardDataService(
             throw;
         }
     }
+
+    private async Task CleanupFailedStoredPhotoAsync(StoredPhotoFiles stored, CancellationToken cancellationToken)
+    {
+        if (stored.PresentationReference is not null)
+        {
+            await SafeDeleteStorageAsync(stored.PresentationReference.FileId ?? stored.PresentationReference.StorageKey, "failed photo presentation", cancellationToken);
+        }
+        await SafeDeleteStorageAsync(stored.Original.FileId ?? stored.Original.StorageKey, "failed original photo", cancellationToken);
+    }
+
+    private async Task SafeDeleteStorageAsync(string? storageKey, string scope, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(storageKey)) return;
+        try
+        {
+            await fileStorageService.DeleteOrVoidAsync(storageKey, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not clean {Scope} storage object after a failed photo operation.", scope);
+        }
+    }
+
+    private sealed record StoredPhotoFiles(
+        FileStorageReference Original,
+        FileStorageReference? PresentationReference,
+        PreparedPhotoPresentation? Presentation);
 
     private async Task<int?> GetCurrentUserIdAsync(CancellationToken cancellationToken)
     {
@@ -7950,6 +8379,11 @@ public sealed class DashboardDataService(
     {
         var message = SafeErrorMessage(exception);
         if (string.Equals(message, "No photo file was selected.", StringComparison.Ordinal))
+        {
+            return message;
+        }
+
+        if (exception is PhotoProcessingException)
         {
             return message;
         }

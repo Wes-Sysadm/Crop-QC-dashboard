@@ -464,8 +464,8 @@ public sealed class RoomTreatmentTrackingTests
         Assert.Contains("pg_advisory_xact_lock", apply);
         Assert.Contains("migration_history_intentionally_unchanged", verifier);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
-        Assert.Contains("20260902201338_AddActualRunDetailCorrections", gate);
-        Assert.Equal(901, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
+        Assert.Contains("20260904030132_ReintroduceQcPhotoOrientation", gate);
+        Assert.Equal(909, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 
     private static string FindRepositoryFile(params string[] segments)

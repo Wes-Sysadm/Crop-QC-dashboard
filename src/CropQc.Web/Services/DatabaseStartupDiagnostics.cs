@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260902201338_AddActualRunDetailCorrections";
+    public const string ExpectedSchemaMigration = "20260904030132_ReintroduceQcPhotoOrientation";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -578,6 +578,14 @@ public static class DatabaseStartupDiagnostics
         ,new("InventoryIdentityCorrections.IsActive", "InventoryIdentityCorrections", "IsActive", RequireNotNullable: true)
         ,new("RoomInventoryAdjustments.InventoryIdentityCorrectionId", "RoomInventoryAdjustments", "InventoryIdentityCorrectionId", RequireNullable: true)
         ,new("TreatmentLineageMovements.InventoryIdentityCorrectionId", "TreatmentLineageMovements", "InventoryIdentityCorrectionId", RequireNullable: true)
+        ,new("QcPhotos.OriginalExifOrientation", "QcPhotos", "OriginalExifOrientation", RequireNullable: true)
+        ,new("QcPhotos.ManualRotationQuarterTurns", "QcPhotos", "ManualRotationQuarterTurns", RequireNotNullable: true)
+        ,new("QcPhotos.PresentationRevision", "QcPhotos", "PresentationRevision", RequireNotNullable: true)
+        ,new("QcPhotos.PresentationStorageKey", "QcPhotos", "PresentationStorageKey", RequireNullable: true)
+        ,new("QcPhotos.PresentationFileName", "QcPhotos", "PresentationFileName", RequireNullable: true)
+        ,new("QcPhotos.PresentationContentType", "QcPhotos", "PresentationContentType", RequireNullable: true)
+        ,new("QcPhotos.PresentationFileSizeBytes", "QcPhotos", "PresentationFileSizeBytes", RequireNullable: true)
+        ,new("QcPhotos.PresentationUpdatedAt", "QcPhotos", "PresentationUpdatedAt", RequireNullable: true)
     ];
 
     private static readonly SchemaNamedObjectExpectation[] RequiredIndexExpectations =
