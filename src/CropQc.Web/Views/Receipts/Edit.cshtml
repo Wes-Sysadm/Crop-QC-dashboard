@@ -123,6 +123,7 @@
                     {
                         var eligiblePositions = preview.TrueUpPositions.Where(x => x.IsEligible).ToList();
                         var requiresExplicitAllocation = preview.TrueUpPositions.Count > 1;
+                        var allocationIndex = 0;
                         @if (eligiblePositions.Count == 1 && !requiresExplicitAllocation)
                         {
                             var position = eligiblePositions[0];
@@ -147,8 +148,9 @@
                                     <td>
                                         @if (position.IsEligible && requiresExplicitAllocation)
                                         {
-                                            <input type="hidden" name="TrueUpAllocations[@index].TargetKey" value="@position.TargetKey" />
-                                            <input class="true-up-allocation" name="TrueUpAllocations[@index].Bins" type="number" min="0" inputmode="numeric" value="0" aria-label="Additional bins at @position.Facility @position.Location @position.Treatment" />
+                                            var bindingIndex = allocationIndex++;
+                                            <input type="hidden" name="TrueUpAllocations[@bindingIndex].TargetKey" value="@position.TargetKey" />
+                                            <input class="true-up-allocation" name="TrueUpAllocations[@bindingIndex].Bins" type="number" min="0" inputmode="numeric" value="0" aria-label="Additional bins at @position.Facility @position.Location @position.Treatment" />
                                         }
                                         else
                                         {

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Net.Http.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Storage;
@@ -7,9 +8,14 @@ using CropQc.Web.Auth;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
@@ -223,6 +229,74 @@ public sealed class ReceiptInventoryOverrideTests
         var conflictingRerun = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None);
         Assert.False(conflictingRerun.Succeeded);
         Assert.Contains("different", conflictingRerun.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Positive_true_up_contiguous_http_binding_skips_unavailable_display_position_and_applies_eligible_allocation()
+    {
+        await using var fixture = await OverrideFixture.CreateAsync(initialBins: 27);
+        await fixture.AddTransferAsync(17, completePair: true);
+        var unavailableSnapshot = fixture.Snapshot(OverrideFixture.RoomId, OverrideFixture.FruitId, 10);
+        var eligibleSnapshot = fixture.Snapshot(OverrideFixture.SecondRoomId, OverrideFixture.FruitId, 17);
+        fixture.Db.TreatmentLineageSegments.Add(
+            fixture.TreatmentSegment(8890, unavailableSnapshot, TreatmentLineageStates.Untreated, "u", 11));
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        fixture.SetCurrentSnapshots(unavailableSnapshot, eligibleSnapshot);
+
+        var preview = await fixture.Service.GetPreviewAsync(OverrideFixture.ReceiptId, CancellationToken.None);
+        Assert.False(preview!.TrueUpPositions[0].IsEligible);
+        var eligible = Assert.Single(preview.TrueUpPositions.Skip(1), x => x.IsEligible);
+        var historicalAdjustments = await fixture.Db.RoomInventoryAdjustments.AsNoTracking()
+            .OrderBy(x => x.Id)
+            .Select(x => new { x.Id, x.RoomId, x.ChangeAmount, x.AdjustmentType, x.RoomTransferId })
+            .ToListAsync();
+
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Services.AddControllers().AddApplicationPart(typeof(TrueUpAllocationBindingProbeController).Assembly);
+        await using var app = builder.Build();
+        app.MapControllers();
+        await app.StartAsync();
+        using var client = app.GetTestClient();
+        using var response = await client.PostAsync("/_tests/receipt-true-up-binding", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["TrueUpAllocations[0].TargetKey"] = eligible.TargetKey,
+            ["TrueUpAllocations[0].Bins"] = "1"
+        }));
+        response.EnsureSuccessStatusCode();
+        var bound = await response.Content.ReadFromJsonAsync<AdminReceiptInventoryOverrideForm>();
+        var allocation = Assert.Single(bound!.TrueUpAllocations);
+        Assert.Equal((eligible.TargetKey, 1), (allocation.TargetKey, allocation.Bins));
+
+        var form = await fixture.PositiveFormAsync(28, Guid.NewGuid().ToString("D"));
+        form.TrueUpAllocations = bound.TrueUpAllocations;
+        var result = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error);
+        var correction = Assert.Single(await fixture.Db.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.ReceiptInventoryOverrideId == result.OverrideId).ToListAsync());
+        Assert.Equal((OverrideFixture.SecondRoomId, 1), (correction.RoomId, correction.ChangeAmount));
+        Assert.DoesNotContain(await fixture.Db.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.ReceiptInventoryOverrideId == result.OverrideId).ToListAsync(),
+            x => x.RoomId == OverrideFixture.RoomId);
+        Assert.Equal(11, (await fixture.Db.TreatmentLineageSegments.AsNoTracking().SingleAsync(x => x.Id == 8890)).CurrentBins);
+        var treatment = await fixture.Db.TreatmentLineageSegments.AsNoTracking()
+            .SingleAsync(x => x.ReceiptId == OverrideFixture.ReceiptId && x.RoomId == OverrideFixture.SecondRoomId);
+        Assert.Equal((1, "u", TreatmentLineageStates.Untreated),
+            (treatment.CurrentBins, treatment.TreatmentSignature, treatment.TreatmentState));
+        Assert.Equal(historicalAdjustments, await fixture.Db.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.ReceiptInventoryOverrideId == null)
+            .OrderBy(x => x.Id)
+            .Select(x => new { x.Id, x.RoomId, x.ChangeAmount, x.AdjustmentType, x.RoomTransferId })
+            .ToListAsync());
+        var readiness = await fixture.Invariant.VerifyReadinessAsync(CancellationToken.None);
+        Assert.True(readiness.IsReady, string.Join("; ", readiness.Issues.Where(x => x.BlocksDeployment).Select(x => x.Code)));
+
+        var view = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Receipts", "Edit.cshtml"));
+        Assert.Contains("var bindingIndex = allocationIndex++;", view);
+        Assert.Contains("TrueUpAllocations[@bindingIndex].TargetKey", view);
+        Assert.DoesNotContain("TrueUpAllocations[@index].TargetKey", view);
     }
 
     [Fact]
@@ -1806,4 +1880,11 @@ public sealed class ReceiptInventoryOverrideTests
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
             Func<TState, Exception?, string> formatter) => LastException = exception;
     }
+}
+
+[Route("_tests/receipt-true-up-binding")]
+public sealed class TrueUpAllocationBindingProbeController : ControllerBase
+{
+    [HttpPost]
+    public ActionResult<AdminReceiptInventoryOverrideForm> Bind([FromForm] AdminReceiptInventoryOverrideForm form) => Ok(form);
 }
