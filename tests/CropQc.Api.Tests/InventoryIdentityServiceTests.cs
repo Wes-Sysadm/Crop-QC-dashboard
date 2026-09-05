@@ -11,6 +11,33 @@ namespace CropQc.Api.Tests;
 public sealed class InventoryIdentityServiceTests
 {
     [Fact]
+    public void Receipt_scoped_correction_never_reclassifies_unrelated_global_inventory()
+    {
+        var correction = new InventoryIdentityCorrection
+        {
+            Id = Guid.NewGuid(),
+            OperationKey = "receipt-scoped",
+            SourceCropYear = 2026,
+            SourceGrowerLotId = 10,
+            SourceFruitProfileId = 20,
+            TargetCropYear = 2026,
+            TargetGrowerLotId = 11,
+            TargetFruitProfileId = 21,
+            CorrectedReceiptId = 142,
+            Reason = "receipt only",
+            CreatedByUserId = 1,
+            CreatedAt = DateTimeOffset.UtcNow,
+            SourceIdentitySnapshotJson = "{}",
+            TargetIdentitySnapshotJson = "{}",
+            IsComplete = true,
+            IsActive = true
+        };
+
+        var source = new InventoryIdentityKey(2026, 10, 20);
+        Assert.Equal(source, InventoryIdentityWriteGuard.ResolveCanonical(source, [correction]));
+    }
+
+    [Fact]
     public async Task Correction_chain_resolves_to_final_canonical_identity()
     {
         await using var fixture = await IdentityFixture.CreateAsync();

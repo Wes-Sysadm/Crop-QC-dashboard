@@ -5,8 +5,8 @@ public sealed class InventoryIdentityCorrection
     public Guid Id { get; set; }
     public required string OperationKey { get; set; }
     public int SourceCropYear { get; set; }
-    public int SourceGrowerLotId { get; set; }
-    public GrowerLot SourceGrowerLot { get; set; } = null!;
+    public int? SourceGrowerLotId { get; set; }
+    public GrowerLot? SourceGrowerLot { get; set; }
     public int SourceFruitProfileId { get; set; }
     public FruitProfile SourceFruitProfile { get; set; } = null!;
     public int TargetCropYear { get; set; }

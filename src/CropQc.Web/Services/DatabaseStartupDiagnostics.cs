@@ -7,7 +7,7 @@ namespace CropQc.Web.Services;
 
 public static class DatabaseStartupDiagnostics
 {
-    public const string ExpectedSchemaMigration = "20260904030132_ReintroduceQcPhotoOrientation";
+    public const string ExpectedSchemaMigration = "20260905012129_ScopeInventoryIdentityCorrectionsToReceipts";
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
@@ -560,7 +560,7 @@ public static class DatabaseStartupDiagnostics
         ,new("InventoryIdentityCorrections.Id", "InventoryIdentityCorrections", "Id", RequireNotNullable: true)
         ,new("InventoryIdentityCorrections.OperationKey", "InventoryIdentityCorrections", "OperationKey", RequireNotNullable: true)
         ,new("InventoryIdentityCorrections.SourceCropYear", "InventoryIdentityCorrections", "SourceCropYear", RequireNotNullable: true)
-        ,new("InventoryIdentityCorrections.SourceGrowerLotId", "InventoryIdentityCorrections", "SourceGrowerLotId", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.SourceGrowerLotId", "InventoryIdentityCorrections", "SourceGrowerLotId", RequireNullable: true)
         ,new("InventoryIdentityCorrections.SourceFruitProfileId", "InventoryIdentityCorrections", "SourceFruitProfileId", RequireNotNullable: true)
         ,new("InventoryIdentityCorrections.TargetCropYear", "InventoryIdentityCorrections", "TargetCropYear", RequireNotNullable: true)
         ,new("InventoryIdentityCorrections.TargetGrowerLotId", "InventoryIdentityCorrections", "TargetGrowerLotId", RequireNotNullable: true)
@@ -748,12 +748,12 @@ public static class DatabaseStartupDiagnostics
         ,new("IX_RoomInventoryAdjustments_InterCrewTransferId", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_InterCrewTransferId")
         ,new("IX_RoomInventoryAdjustments_InterCrewTransferId_AdjustmentType", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_InterCrewTransferId_AdjustmentType", RequireUnique: true)
         ,new("IX_TreatmentLineageMovements_InterCrewTransferId", "TreatmentLineageMovements", "IX_TreatmentLineageMovements_InterCrewTransferId")
-        ,new("IX_InventoryIdentityCorrections_CorrectedReceiptId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_CorrectedReceiptId")
+        ,new("UX_InventoryIdentityCorrections_ReceiptSource", "InventoryIdentityCorrections", "UX_InventoryIdentityCorrections_ReceiptSource", RequireUnique: true)
         ,new("IX_InventoryIdentityCorrections_CreatedByUserId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_CreatedByUserId")
         ,new("IX_InventoryIdentityCorrections_IsActive_CreatedAt", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_IsActive_CreatedAt")
         ,new("IX_InventoryIdentityCorrections_OperationKey", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_OperationKey", RequireUnique: true)
         ,new("IX_InventoryIdentityCorrections_ReceiptInventoryOverrideId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_ReceiptInventoryOverrideId", RequireUnique: true)
-        ,new("IX_InventoryIdentityCorrections_SourceCropYear_SourceGrowerLotId_SourceFruitProfileId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_SourceCropYear_SourceGrowerLotId_SourceFruitProfileId", RequireUnique: true)
+        ,new("UX_InventoryIdentityCorrections_GlobalSource", "InventoryIdentityCorrections", "UX_InventoryIdentityCorrections_GlobalSource", RequireUnique: true)
         ,new("IX_InventoryIdentityCorrections_SourceFruitProfileId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_SourceFruitProfileId")
         ,new("IX_InventoryIdentityCorrections_SourceGrowerLotId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_SourceGrowerLotId")
         ,new("IX_InventoryIdentityCorrections_TargetCropYear_TargetGrowerLotId_TargetFruitProfileId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_TargetCropYear_TargetGrowerLotId_TargetFruitProfileId")

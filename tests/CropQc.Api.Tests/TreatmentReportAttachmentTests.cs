@@ -210,7 +210,7 @@ public sealed class TreatmentReportAttachmentTests
         Assert.Contains("cropqc.test_force_treatment_report_failure", apply);
         Assert.DoesNotContain("INSERT INTO \"__EFMigrationsHistory\"", apply, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("26 AS checked_target_objects", verify);
-        Assert.Contains("20260904030132_ReintroduceQcPhotoOrientation", gate);
+        Assert.Contains("20260905012129_ScopeInventoryIdentityCorrectionsToReceipts", gate);
         Assert.Equal(909, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 

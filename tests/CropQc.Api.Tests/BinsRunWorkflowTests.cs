@@ -1709,7 +1709,7 @@ public sealed class BinsRunWorkflowTests
 
         Assert.Contains("--verify-release-readiness", File.ReadAllText(FindRepositoryFile(
             "src", "CropQc.Web", "Services", "TreatmentLineage144CorrectionService.cs")));
-        Assert.Contains("20260904030132_ReintroduceQcPhotoOrientation", program);
+        Assert.Contains("20260905012129_ScopeInventoryIdentityCorrectionsToReceipts", program);
         Assert.Contains("expectedSchemaObjects = 909", program);
         Assert.Contains("VerifyReadinessAsync", program);
         Assert.Contains("topology", program);
@@ -2521,7 +2521,8 @@ public sealed class BinsRunWorkflowTests
         Assert.Contains("room.value = ''", view);
         Assert.Contains("Fruit to transfer", view);
         Assert.Contains("Current Room Inventory", view);
-        Assert.Contains("Available in transfer selections", view);
+        Assert.Contains("Operable bins", view);
+        Assert.Contains("Needs reconciliation", view);
         Assert.Contains("TransferInventoryReconciles", view);
         Assert.Contains("TransferInventoryError", view);
         Assert.Contains("data-treatment-signature", view);
@@ -2780,7 +2781,7 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
-    public async Task MCD09_CompatibleReceiptSourcesReconcileToOneExactTransferChoice()
+    public async Task MCD09_LegacyMissingGrowerLotIsIsolatedWhileExactPositionRemainsTransferable()
     {
         using var db = CreateDbContext();
         await SeedInventoryAsync(db);
@@ -2840,12 +2841,12 @@ public sealed class BinsRunWorkflowTests
         db.ChangeTracker.Clear();
 
         var ledger = new RoomInventoryLedgerQueryService(db);
-        var canonical = Assert.Single(
-            await ledger.GetSnapshotsAsync(warehouse.Id, [room.Id], default),
-            x => x.Lot == "1372");
-        Assert.Equal(286, canonical.CurrentBins);
-        Assert.Equal(448, canonical.GrowerLotId);
-        Assert.Equal(2, canonical.TransactionCount);
+        var positions = (await ledger.GetSnapshotsAsync(warehouse.Id, [room.Id], default))
+            .Where(x => x.Lot == "1372").ToList();
+        Assert.Equal(2, positions.Count);
+        Assert.Equal(286, positions.Sum(x => x.CurrentBins));
+        Assert.Equal(158, Assert.Single(positions, x => x.GrowerLotId is null).CurrentBins);
+        Assert.Equal(128, Assert.Single(positions, x => x.GrowerLotId == 448).CurrentBins);
 
         var principal = Principal("manager@fruitandland.com");
         var configuration = new ConfigurationBuilder().Build();
@@ -2860,15 +2861,21 @@ public sealed class BinsRunWorkflowTests
             NullLogger<RoomTreatmentService>.Instance);
         var detail = await CreateDashboardService(db, principal, ledger, treatments)
             .GetRoomDetailAsync(room.Id, default);
-        var option = Assert.Single(
-            detail.TransferLotOptions,
-            x => x.Label.Contains("1372", StringComparison.Ordinal));
-        Assert.Equal(286, option.CurrentBins);
+        var options = detail.TransferLotOptions
+            .Where(x => x.Label.Contains("1372", StringComparison.Ordinal)).ToList();
+        Assert.Equal(2, options.Count);
+        var unavailable = Assert.Single(options, x => !x.IsAvailable);
+        Assert.Equal(158, unavailable.CurrentBins);
+        Assert.Contains("Grower Lot", unavailable.UnavailableReason, StringComparison.OrdinalIgnoreCase);
+        var option = Assert.Single(options, x => x.IsAvailable);
+        Assert.Equal(128, option.CurrentBins);
         Assert.True(detail.TransferInventoryReconciles);
         Assert.Equal(detail.CurrentLots.Sum(x => x.CurrentBins), detail.TransferCurrentRoomBins);
-        Assert.Equal(detail.TransferCurrentRoomBins, detail.TransferAvailableBins);
+        Assert.Equal(detail.TransferCurrentRoomBins - 158, detail.TransferAvailableBins);
+        Assert.Equal(158, detail.TransferNeedsReconciliationBins);
         Assert.Equal(detail.TransferCurrentRoomBins, detail.TransferLotOptions.Sum(x => x.CurrentBins));
         Assert.Null(detail.TransferInventoryError);
+        Assert.NotNull(detail.TransferInventoryNotice);
         Assert.Null(detail.DataWarning);
 
         RoomInventoryAdjustment SourceAdjustment(long id, Receipt receipt, int? growerLotId, int bins) => new()
@@ -2897,6 +2904,75 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task Historical_adjustment_identity_is_not_reinterpreted_after_receipt_edit()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var warehouse = await db.Warehouses.SingleAsync(x => x.Id == 1000);
+        var room = await db.Rooms.SingleAsync(x => x.Id == 1001);
+        var fruit = await db.FruitProfiles.SingleAsync(x => x.Id == 1000);
+        var historicalLot = new GrowerLot
+        {
+            Id = 9910,
+            Grower = "Historical Grower",
+            LotNumber = "1080",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var receipt = new Receipt
+        {
+            Id = 9911,
+            CropYear = 2026,
+            ReceivedAt = DateTimeOffset.UtcNow,
+            CompuTechReceiptId = "DRIFT-PROOF",
+            ReceiptType = "Truck receipt",
+            Warehouse = warehouse,
+            Room = room,
+            FruitProfile = fruit,
+            GrowerLot = historicalLot,
+            GrowerName = "Historical Grower",
+            GrowerNumber = "1080",
+            LotCode = "1080",
+            BinCount = 64,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var adjustment = new RoomInventoryAdjustment
+        {
+            Id = 9912,
+            Receipt = receipt,
+            CropYear = 2026,
+            Warehouse = warehouse,
+            Room = room,
+            GrowerLot = historicalLot,
+            FruitProfile = fruit,
+            GrowerName = "Historical Grower",
+            LotNumber = "1080",
+            ChangeAmount = 64,
+            NewBinCount = 64,
+            AdjustmentType = "ReceiptAdd",
+            AdjustmentAt = DateTimeOffset.UtcNow,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        db.AddRange(historicalLot, receipt, adjustment);
+        await db.SaveChangesAsync();
+        receipt.GrowerLotId = null;
+        receipt.GrowerNumber = "1531";
+        receipt.LotCode = "1531";
+        receipt.GrowerName = "Current Receipt Grower";
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var position = Assert.Single(await new RoomInventoryLedgerQueryService(db)
+            .GetSnapshotsAsync(warehouse.Id, [room.Id], default), x => x.LatestAdjustmentId == adjustment.Id);
+        Assert.Equal(9910, position.GrowerLotId);
+        Assert.Equal("1080", position.GrowerNumber);
+        Assert.Equal("1080", position.Lot);
+        Assert.Equal(64, position.CurrentBins);
+    }
+
+    [Fact]
     public async Task RoomDetail_PreservesCurrentInventoryWhenTreatmentProjectionFails()
     {
         using var db = CreateDbContext();
@@ -2921,7 +2997,7 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
-    public async Task RoomTransfer_TreatmentProjectionMismatchFailsClosedBeforeAnyWrite()
+    public async Task RoomTransfer_TreatmentProjectionMismatchIsolatesUnavailablePositionsBeforeAnyWrite()
     {
         using var db = CreateDbContext();
         await SeedInventoryAsync(db);
@@ -2951,10 +3027,11 @@ public sealed class BinsRunWorkflowTests
             Reason = "Must fail before writing"
         }, default);
 
-        Assert.False(detail.TransferInventoryReconciles);
-        Assert.NotEqual(detail.TransferCurrentRoomBins, detail.TransferAvailableBins);
-        Assert.Empty(detail.TransferLotOptions);
-        Assert.Equal("Transfer inventory does not reconcile with the Room's current inventory. No transfer was recorded. Refresh or review inventory reconciliation.", error);
+        Assert.True(detail.TransferInventoryReconciles);
+        Assert.Equal(detail.TransferCurrentRoomBins, detail.TransferNeedsReconciliationBins);
+        Assert.Equal(0, detail.TransferAvailableBins);
+        Assert.All(detail.TransferLotOptions, x => Assert.False(x.IsAvailable));
+        Assert.Contains("Needs Reconciliation", error, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(beforeTransfers, await db.RoomTransfers.CountAsync());
         Assert.Equal(beforeAdjustments, await db.RoomInventoryAdjustments.CountAsync());
         Assert.Equal(beforeAudits, await db.AuditLogs.CountAsync());
@@ -3046,7 +3123,10 @@ public sealed class BinsRunWorkflowTests
 
         var snapshots = await new RoomInventoryLedgerQueryService(db)
             .GetSnapshotsAsync(1000, [1001], CancellationToken.None);
-        var canonical = snapshots.Single(x => x.Lot == "LOT-120");
+        var candidates = snapshots.Where(x => x.Lot == "LOT-120").ToList();
+        Assert.True(candidates.Count == 1, string.Join("; ", candidates.Select(x =>
+            $"id={x.LatestAdjustmentId},crop={x.CropYear},gl={x.GrowerLotId},grower={x.GrowerNumber},bins={x.CurrentBins}")));
+        var canonical = candidates[0];
         Assert.Equal(2026, canonical.CropYear);
         Assert.Equal(0, canonical.CurrentBins);
         Assert.Equal(3, canonical.TransactionCount);
@@ -3609,11 +3689,22 @@ public sealed class BinsRunWorkflowTests
         db.Users.AddRange(
             User(1000, "admin@fruitandland.com", PageAccessLevel.Admin),
             User(1001, "manager@fruitandland.com", PageAccessLevel.Edit));
-        db.Receipts.AddRange(
+        var lot120 = new GrowerLot { Id = 1011, Grower = "WP ORCHARD", LotNumber = "LOT-120", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
+        var lot30 = new GrowerLot { Id = 1012, Grower = "WP ORCHARD", LotNumber = "LOT-30", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
+        var lotOther = new GrowerLot { Id = 1013, Grower = "WP ORCHARD", LotNumber = "LOT-OTHER", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
+        db.GrowerLots.AddRange(lot120, lot30, lotOther);
+        var receipts = new[]
+        {
             ProductionReceipt(7901, 120, "LOT-120", fruit, warehouse, room),
             ProductionReceipt(7902, 30, "LOT-30", fruit, warehouse, room),
             ProductionReceipt(7903, 60, "LOT-OTHER", fruit, warehouse, otherRoom),
-            ProductionReceipt(7904, 25, "LOT-120", fruit, warehouse, otherRoom));
+            ProductionReceipt(7904, 25, "LOT-120", fruit, warehouse, otherRoom)
+        };
+        foreach (var receipt in receipts)
+        {
+            receipt.GrowerLot = receipt.LotCode == "LOT-120" ? lot120 : receipt.LotCode == "LOT-30" ? lot30 : lotOther;
+        }
+        db.Receipts.AddRange(receipts);
         var adjustments = new[]
         {
             Adjustment(8001, warehouse, room, fruit, "LOT-120", 120),
@@ -3624,6 +3715,7 @@ public sealed class BinsRunWorkflowTests
         foreach (var adjustment in adjustments)
         {
             adjustment.AdjustmentAt = adjustment.AdjustmentAt.ToUniversalTime();
+            adjustment.GrowerLot = adjustment.LotNumber == "LOT-120" ? lot120 : adjustment.LotNumber == "LOT-30" ? lot30 : lotOther;
         }
         db.RoomInventoryAdjustments.AddRange(adjustments);
         await db.SaveChangesAsync();

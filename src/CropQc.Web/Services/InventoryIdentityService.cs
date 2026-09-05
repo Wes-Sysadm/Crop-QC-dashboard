@@ -22,6 +22,10 @@ public sealed record InventoryIdentityResolution(
 public interface IInventoryIdentityService
 {
     Task<InventoryIdentityResolution> ResolveAsync(InventoryIdentityKey source, CancellationToken cancellationToken);
+    Task<InventoryIdentityResolution> ResolveForReceiptAsync(
+        InventoryIdentityKey source,
+        long receiptId,
+        CancellationToken cancellationToken) => ResolveAsync(source, cancellationToken);
     Task<RoomInventoryLedgerSnapshot> ResolveSnapshotAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken);
     Task<string?> ValidateCorrectionAsync(InventoryIdentityKey source, InventoryIdentityKey target, CancellationToken cancellationToken);
     Task<string?> RejectSupersededWriteAsync(InventoryIdentityKey source, string operationLabel, CancellationToken cancellationToken);
@@ -33,14 +37,33 @@ public sealed class InventoryIdentityService(CropQcDbContext dbContext) : IInven
 
     public async Task<InventoryIdentityResolution> ResolveAsync(
         InventoryIdentityKey source,
+        CancellationToken cancellationToken) =>
+        await ResolveCoreAsync(source, null, cancellationToken);
+
+    public async Task<InventoryIdentityResolution> ResolveForReceiptAsync(
+        InventoryIdentityKey source,
+        long receiptId,
+        CancellationToken cancellationToken) =>
+        await ResolveCoreAsync(source, receiptId, cancellationToken);
+
+    private async Task<InventoryIdentityResolution> ResolveCoreAsync(
+        InventoryIdentityKey source,
+        long? receiptId,
         CancellationToken cancellationToken)
     {
         var mappings = await dbContext.InventoryIdentityCorrections.AsNoTracking()
-            .Where(x => x.IsActive && x.IsComplete)
+            .Where(x => x.IsActive && x.IsComplete
+                && (x.CorrectedReceiptId == null || x.CorrectedReceiptId == receiptId))
             .ToListAsync(cancellationToken);
-        mappings = mappings.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).ToList();
-        var bySource = mappings.ToDictionary(
-            x => new InventoryIdentityKey(x.SourceCropYear, x.SourceGrowerLotId, x.SourceFruitProfileId));
+        var bySource = mappings
+            .Where(x => x.SourceGrowerLotId is not null)
+            .GroupBy(x => new InventoryIdentityKey(x.SourceCropYear, x.SourceGrowerLotId!.Value, x.SourceFruitProfileId))
+            .ToDictionary(
+                x => x.Key,
+                x => x.OrderByDescending(y => receiptId is not null && y.CorrectedReceiptId == receiptId)
+                    .ThenBy(y => y.CreatedAt)
+                    .ThenBy(y => y.Id)
+                    .First());
         var visited = new HashSet<InventoryIdentityKey>();
         var chain = new List<Guid>();
         var current = source;
@@ -158,7 +181,7 @@ public static class InventoryIdentityWriteGuard
         CancellationToken cancellationToken)
     {
         var corrections = dbContext.InventoryIdentityCorrections.AsNoTracking()
-            .Where(x => x.IsActive && x.IsComplete);
+            .Where(x => x.IsActive && x.IsComplete && x.CorrectedReceiptId == null);
         if (cropYear is not null) corrections = corrections.Where(x => x.SourceCropYear == cropYear.Value);
         if (growerLotId is not null) corrections = corrections.Where(x => x.SourceGrowerLotId == growerLotId.Value);
         if (fruitProfileId is not null) corrections = corrections.Where(x => x.SourceFruitProfileId == fruitProfileId.Value);
@@ -187,8 +210,8 @@ public static class InventoryIdentityWriteGuard
         IReadOnlyCollection<InventoryIdentityCorrection> corrections)
     {
         var bySource = corrections
-            .Where(x => x.IsActive && x.IsComplete)
-            .GroupBy(x => new InventoryIdentityKey(x.SourceCropYear, x.SourceGrowerLotId, x.SourceFruitProfileId))
+            .Where(x => x.IsActive && x.IsComplete && x.CorrectedReceiptId == null && x.SourceGrowerLotId is not null)
+            .GroupBy(x => new InventoryIdentityKey(x.SourceCropYear, x.SourceGrowerLotId!.Value, x.SourceFruitProfileId))
             .ToDictionary(x => x.Key, x => x.OrderBy(y => y.CreatedAt).ThenBy(y => y.Id).Single());
         var visited = new HashSet<InventoryIdentityKey>();
         var current = source;

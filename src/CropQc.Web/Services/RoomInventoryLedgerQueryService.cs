@@ -101,7 +101,22 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
             x.Id,
             x.WarehouseId,
             x.RoomId,
-            x.GrowerLotId,
+            GrowerLotId = x.GrowerLotId
+                ?? dbContext.BinsRunEntries
+                    .Where(entry => entry.InventoryAdjustmentId == x.Id)
+                    .Select(entry => entry.GrowerLotId
+                        ?? (entry.SourceInventoryAdjustment == null ? null : entry.SourceInventoryAdjustment.GrowerLotId)
+                        ?? (entry.SourceInventoryAdjustment == null || entry.SourceInventoryAdjustment.Receipt == null
+                            || entry.SourceInventoryAdjustment.Receipt.GrowerLotId == null
+                            || (entry.SourceInventoryAdjustment.LotNumber != entry.SourceInventoryAdjustment.Receipt.GrowerNumber
+                                && entry.SourceInventoryAdjustment.LotNumber != entry.SourceInventoryAdjustment.Receipt.LotCode)
+                            ? null
+                            : entry.SourceInventoryAdjustment.Receipt.GrowerLotId))
+                    .FirstOrDefault()
+                ?? (x.Receipt == null || x.Receipt.GrowerLotId == null
+                    || (x.LotNumber != x.Receipt.GrowerNumber && x.LotNumber != x.Receipt.LotCode)
+                    ? null
+                    : x.Receipt.GrowerLotId),
             CropYear = x.CropYear
                 ?? (x.Receipt == null ? null : (int?)x.Receipt.CropYear)
                 ?? dbContext.BinsRunEntries
@@ -119,16 +134,25 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                     ? ""
                     : x.Receipt.GrowerNumber ?? x.Receipt.LotCode,
             FruitProfileId = x.FruitProfileId ?? (x.Receipt == null ? null : (int?)x.Receipt.FruitProfileId),
-            GrowerNumber = x.Receipt != null
-                ? x.Receipt.GrowerNumber
-                : dbContext.BinsRunEntries
+            // Historical adjustment identity is immutable. Prefer identity persisted on
+            // the adjustment (including its persisted Grower Lot) and only consult the
+            // current Receipt when it cannot contradict that evidence.
+            GrowerNumber = x.ReceiptId != null && x.LotNumber != ""
+                    ? x.LotNumber
+                    : x.RoomTransfer != null && x.RoomTransfer.LotNumber != ""
+                    ? x.RoomTransfer.LotNumber
+                    : dbContext.BinsRunEntries
                     .Where(entry => entry.InventoryAdjustmentId == x.Id)
-                    .Select(entry => entry.Receipt != null
-                        ? entry.Receipt.GrowerNumber
-                        : entry.SourceInventoryAdjustment != null && entry.SourceInventoryAdjustment.Receipt != null
-                            ? entry.SourceInventoryAdjustment.Receipt.GrowerNumber
-                            : null)
+                    .Select(entry => entry.GrowerNumberSnapshot
+                        ?? (entry.SourceInventoryAdjustment == null
+                            ? null
+                            : entry.SourceInventoryAdjustment.GrowerLot != null
+                                ? entry.SourceInventoryAdjustment.ReceiptId != null
+                                    ? entry.SourceInventoryAdjustment.LotNumber
+                                    : null
+                                : entry.SourceInventoryAdjustment.LotNumber))
                     .FirstOrDefault()
+                    ?? (x.Receipt == null ? null : x.Receipt.GrowerNumber ?? x.Receipt.LotCode)
                     ?? (dbContext.Receipts
                             .Where(receipt => receipt.WarehouseId == x.WarehouseId
                                 && receipt.RoomId == x.RoomId
@@ -151,11 +175,13 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                             .Select(receipt => receipt.GrowerNumber)
                             .FirstOrDefault()
                         : null),
-            VarietyCode = x.FruitProfile != null
-                ? x.FruitProfile.VarietyCode
-                : x.Receipt != null
+            VarietyCode = x.VarietyCode != null && x.VarietyCode != ""
+                ? x.VarietyCode
+                : x.FruitProfile != null
+                    ? x.FruitProfile.VarietyCode
+                    : x.Receipt != null
                     ? x.Receipt.FruitProfile.VarietyCode
-                    : x.VarietyCode ?? "",
+                    : "",
             ChangeAmount = x.ReceiptId == null
                 && x.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType
                     ? x.NewBinCount
@@ -361,17 +387,39 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                 x.DroppedBinsRestored);
         }).ToList();
 
-        return ReconcileCompatibleSourceSnapshots(snapshots);
+        // Reconcile only rows that already share the same persisted Grower Lot
+        // identity. A legacy null-GrowerLot position must never be folded into a
+        // canonical position merely because their display fields happen to match.
+        var lineageQuery = dbContext.BinsRunEntries.AsNoTracking()
+            .Where(x => x.SourceInventoryAdjustmentId != null);
+        if (warehouseId is not null)
+        {
+            lineageQuery = lineageQuery.Where(x => x.WarehouseId == warehouseId.Value);
+        }
+        if (roomIds is { Count: > 0 })
+        {
+            lineageQuery = lineageQuery.Where(x => roomIds.Contains(x.RoomId));
+        }
+        if (asOf is not null)
+        {
+            lineageQuery = lineageQuery.Where(x => x.RunAt <= asOf.Value);
+        }
+        var lineageEdges = await lineageQuery
+            .Select(x => new { Source = x.SourceInventoryAdjustmentId!.Value, Destination = x.InventoryAdjustmentId })
+            .ToListAsync(cancellationToken);
+        return ReconcileCompatibleSourceSnapshots(snapshots, BuildLineageComponents(
+            lineageEdges.Select(x => (x.Source, x.Destination))));
     }
 
     private static IReadOnlyList<RoomInventoryLedgerSnapshot> ReconcileCompatibleSourceSnapshots(
-        IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots)
+        IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots,
+        IReadOnlyDictionary<long, long> lineageComponents)
     {
         var result = new List<RoomInventoryLedgerSnapshot>();
         foreach (var group in snapshots.GroupBy(CanonicalRoomLotKey, StringComparer.OrdinalIgnoreCase))
         {
             var rows = group.ToList();
-            if (rows.Count == 1 || !CanReconcile(rows))
+            if (rows.Count == 1 || !CanReconcile(rows, lineageComponents))
             {
                 result.AddRange(rows);
                 continue;
@@ -384,6 +432,11 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
             var growerLotId = rows
                 .Where(x => x.GrowerLotId is not null)
                 .Select(x => x.GrowerLotId!.Value)
+                .Distinct()
+                .SingleOrDefault();
+            var cropYear = rows
+                .Where(x => x.CropYear is not null)
+                .Select(x => x.CropYear!.Value)
                 .Distinct()
                 .SingleOrDefault();
             var growerNumber = rows
@@ -399,6 +452,7 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
 
             result.Add(latest with
             {
+                CropYear = cropYear == 0 ? null : cropYear,
                 GrowerLotId = growerLotId == 0 ? null : growerLotId,
                 GrowerNumber = growerNumber,
                 PositiveBins = rows.Sum(x => x.PositiveBins),
@@ -434,13 +488,42 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
             .ToList();
     }
 
-    private static bool CanReconcile(IReadOnlyList<RoomInventoryLedgerSnapshot> rows) =>
+    private static bool CanReconcile(
+        IReadOnlyList<RoomInventoryLedgerSnapshot> rows,
+        IReadOnlyDictionary<long, long> lineageComponents) =>
         rows.Select(x => x.WarehouseId).Distinct().Count() == 1
-        && rows.Where(x => x.GrowerLotId is not null).Select(x => x.GrowerLotId).Distinct().Count() <= 1
+        && rows.Where(x => x.CropYear is not null).Select(x => x.CropYear).Distinct().Count() <= 1
+        && (rows.Select(x => x.GrowerLotId).Distinct().Count() == 1
+            || rows.Select(x => lineageComponents.GetValueOrDefault(x.LatestAdjustmentId, x.LatestAdjustmentId)).Distinct().Count() == 1)
         && DistinctNonEmpty(rows.Select(x => x.GrowerNumber)) <= 1
         && DistinctNonEmpty(rows.Select(x => x.InventoryStatus)) <= 1
         && DistinctNonEmpty(rows.Select(x => x.ProductionType)) <= 1
         && rows.Where(x => x.IsOrganic is not null).Select(x => x.IsOrganic).Distinct().Count() <= 1;
+
+    private static IReadOnlyDictionary<long, long> BuildLineageComponents(
+        IEnumerable<(long Source, long Destination)> edges)
+    {
+        var parent = new Dictionary<long, long>();
+        long Find(long id)
+        {
+            if (!parent.TryGetValue(id, out var value))
+            {
+                parent[id] = id;
+                return id;
+            }
+            if (value == id) return id;
+            return parent[id] = Find(value);
+        }
+
+        foreach (var (source, destination) in edges)
+        {
+            var sourceRoot = Find(source);
+            var destinationRoot = Find(destination);
+            if (sourceRoot != destinationRoot) parent[destinationRoot] = sourceRoot;
+        }
+        foreach (var id in parent.Keys.ToList()) parent[id] = Find(id);
+        return parent;
+    }
 
     private static int DistinctNonEmpty(IEnumerable<string?> values) =>
         values.Where(x => !string.IsNullOrWhiteSpace(x))
@@ -452,7 +535,6 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
         string.Join('|',
             snapshot.WarehouseId,
             snapshot.RoomId,
-            snapshot.CropYear?.ToString() ?? "-",
             snapshot.Lot.Trim().ToUpperInvariant(),
             snapshot.Variety.Trim().ToUpperInvariant(),
             snapshot.FruitProfileId?.ToString() ?? "-");
