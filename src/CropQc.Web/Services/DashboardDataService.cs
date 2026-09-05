@@ -507,7 +507,7 @@ public sealed class DashboardDataService(
                 {
                     treatmentData = await RoomTreatments.GetRoomDataAsync(roomId, cancellationToken);
                 }
-                transferProjection = await BuildTreatmentTransferProjectionAsync(activeLots, roomId, cancellationToken);
+                transferProjection = await BuildTreatmentTransferProjectionAsync(roomId, cancellationToken);
                 if (!transferProjection.Reconciles)
                 {
                     treatmentWarning = transferProjection.Error;
@@ -1039,7 +1039,7 @@ public sealed class DashboardDataService(
             cancellationToken);
         if (sealError is not null) return sealError;
         var sourceLots = (await BuildRoomLotSummariesAsync(form.FromRoomId, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
-        var transferProjection = await BuildTreatmentTransferProjectionAsync(sourceLots, form.FromRoomId, cancellationToken);
+        var transferProjection = await BuildTreatmentTransferProjectionAsync(form.FromRoomId, cancellationToken);
         if (!transferProjection.Reconciles)
         {
             return TransferInventoryReconciliationError;
@@ -5081,6 +5081,7 @@ public sealed class DashboardDataService(
         {
             ledgerSnapshots = ledgerSnapshots.Where(varietyFilter.Matches).ToList();
         }
+        AddMissingLedgerLotSummaries(lotSummaries, ledgerSnapshots);
         ApplyLedgerBalances(lotSummaries, ledgerSnapshots);
 
         foreach (var group in lotSummaries.Where(x => x.CurrentBins > 0).GroupBy(x => x.RoomId))
@@ -5093,6 +5094,69 @@ public sealed class DashboardDataService(
         }
 
         return lotSummaries;
+    }
+
+    // The ledger is authoritative. A legacy receipt/projection row may be absent while a
+    // positive canonical ledger position remains; surface that position rather than silently
+    // omitting its bins from the room page. Transfer availability remains identity- and
+    // treatment-scoped in the separate transfer projection.
+    private static void AddMissingLedgerLotSummaries(
+        ICollection<RoomLotSummaryViewModel> lotSummaries,
+        IReadOnlyList<RoomInventoryLedgerSnapshot> ledgerSnapshots)
+    {
+        var representedKeys = lotSummaries
+            .Select(x => LedgerLotKey(x.RoomId, x.CropYear, x.LotCode, x.VarietyCode, x.FruitProfileId))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in ledgerSnapshots
+                     .Where(x => x.CurrentBins > 0)
+                     .GroupBy(x => LedgerLotKey(x.RoomId, x.CropYear, x.Lot, x.Variety, x.FruitProfileId), StringComparer.OrdinalIgnoreCase)
+                     .Where(x => !representedKeys.Contains(x.Key)))
+        {
+            var snapshots = group.ToList();
+            var representative = snapshots
+                .OrderByDescending(x => x.LastTransactionAt)
+                .ThenByDescending(x => x.LatestAdjustmentId)
+                .First();
+            var variety = VarietyColorService.NormalizeIdentity(representative.VarietyName, representative.Variety);
+            var currentBins = snapshots.Sum(x => x.CurrentBins);
+            var positiveBins = snapshots.Sum(x => x.PositiveBins);
+
+            lotSummaries.Add(new RoomLotSummaryViewModel
+            {
+                InventoryKey = OperationalInventoryPosition.Key(representative),
+                InventoryAdjustmentId = representative.LatestAdjustmentId,
+                RoomId = representative.RoomId,
+                CropYear = representative.CropYear,
+                FruitProfileId = representative.FruitProfileId,
+                GrowerLotId = representative.GrowerLotId,
+                Warehouse = representative.Facility,
+                Facility = representative.Facility,
+                LocationGroup = representative.LocationGroup,
+                RoomCode = representative.Room,
+                DisplayReceiptId = representative.SourceReference,
+                GrowerNumber = representative.GrowerNumber ?? representative.Lot,
+                PoolStart = representative.PoolStart ?? "",
+                GrowerName = representative.Grower,
+                LotCode = representative.Lot,
+                VarietyCode = representative.Variety,
+                CanonicalVarietyKey = variety.Key,
+                CanonicalVarietyName = variety.Name,
+                ProductionType = representative.ProductionType,
+                IsOrganic = representative.IsOrganic,
+                InventoryStatus = representative.InventoryStatus,
+                FirstReceivedAt = snapshots.Min(x => x.FirstTransactionAt),
+                OriginalBins = Math.Max(currentBins, positiveBins),
+                DepletedBins = Math.Max(0, positiveBins - currentBins),
+                CurrentBins = currentBins,
+                DefectSummary = "None",
+                DepletionStatus = "Current",
+                ReviewFlags = [],
+                ReceiptEvidence = [],
+                Samples = []
+            });
+            representedKeys.Add(group.Key);
+        }
     }
 
     private void ApplyLedgerBalances(
@@ -6433,7 +6497,6 @@ public sealed class DashboardDataService(
     }
 
     private async Task<RoomTransferInventoryProjection> BuildTreatmentTransferProjectionAsync(
-        IReadOnlyList<RoomLotSummaryViewModel> lots,
         int roomId,
         CancellationToken cancellationToken)
     {
@@ -6441,11 +6504,6 @@ public sealed class DashboardDataService(
             .Where(x => x.CurrentBins > 0)
             .ToList();
         var currentRoomBins = snapshots.Sum(x => x.CurrentBins);
-        var displayedRoomBins = lots.Where(x => x.CurrentBins > 0).Sum(x => x.CurrentBins);
-        if (displayedRoomBins != currentRoomBins)
-            return RoomTransferInventoryProjection.Failed(currentRoomBins, 0, 0,
-                $"Room quantity does not reconcile: authoritative inventory is {currentRoomBins} bins, while the room projection represents {displayedRoomBins} bins.");
-
         var treatmentSelections = RoomTreatments is null
             ? null
             : await RoomTreatments.GetSelectionsAsync(snapshots, cancellationToken);
@@ -6480,21 +6538,22 @@ public sealed class DashboardDataService(
                     "Needs Reconciliation — treatment lineage is missing for this canonical inventory position."));
                 continue;
             }
-            if (segments.Any(x => !x.IsAvailable))
+            var positiveSegments = segments.Where(x => x.CurrentBins > 0).ToList();
+            if (segments.Any(x => !x.IsAvailable) && positiveSegments.All(x => !x.IsAvailable))
             {
                 entries.Add(UnavailableTransferEntry(snapshot,
                     segments.First(x => !x.IsAvailable).UnavailableReason
                     ?? "Needs Reconciliation — treatment lineage is unavailable for this position."));
                 continue;
             }
-            if (segments.Any(x => x.CurrentBins <= 0) || segments.Sum(x => x.CurrentBins) != snapshot.CurrentBins)
+            if (positiveSegments.Sum(x => x.CurrentBins) != snapshot.CurrentBins)
             {
                 entries.Add(UnavailableTransferEntry(snapshot,
                     $"Needs Reconciliation — treatment segments total {segments.Where(x => x.CurrentBins > 0).Sum(x => x.CurrentBins)} bins but canonical inventory contains {snapshot.CurrentBins} bins."));
                 continue;
             }
 
-            foreach (var segment in segments)
+            foreach (var segment in positiveSegments)
             {
                 var sourceLabel = segment.ReceiptId is long receiptId
                     ? treatmentReceiptLabels.GetValueOrDefault(receiptId, $"Receipt #{receiptId}")
@@ -6508,7 +6567,9 @@ public sealed class DashboardDataService(
                     $"{snapshot.Grower} / {snapshot.GrowerNumber ?? snapshot.Lot}",
                     snapshot.Variety,
                     segment.SegmentId,
-                    segment.ReceiptId);
+                    segment.ReceiptId,
+                    segment.IsAvailable,
+                    segment.UnavailableReason);
                 entries.Add(new RoomTransferInventoryEntry(option, snapshot));
             }
         }
@@ -6641,7 +6702,16 @@ public sealed class DashboardDataService(
 
     private static string ReceiptDedupeKey(Receipt receipt) =>
         !string.IsNullOrWhiteSpace(receipt.CompuTechReceiptId)
-            ? $"Receipt:{receipt.CompuTechReceiptId.Trim()}"
+            ? string.Join(':',
+                "Receipt",
+                receipt.CompuTechReceiptId.Trim().ToUpperInvariant(),
+                receipt.RoomId,
+                receipt.CropYear,
+                receipt.GrowerLotId?.ToString(CultureInfo.InvariantCulture) ?? "-",
+                (receipt.GrowerNumber ?? receipt.LotCode).Trim().ToUpperInvariant(),
+                receipt.FruitProfileId,
+                receipt.FruitProfile.ProductionType.Trim().ToUpperInvariant(),
+                receipt.FruitProfile.IsOrganic)
             : $"Lot:{receipt.RoomId}:{(receipt.GrowerNumber ?? receipt.LotCode).Trim()}:{receipt.FruitProfileId}:{receipt.BinCount}:{receipt.ReceivedAt:O}";
 
     private static int CurrentReceiptBins(

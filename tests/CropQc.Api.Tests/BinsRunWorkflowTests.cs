@@ -2904,6 +2904,111 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
+    public async Task RoomDetail_DoesNotCollapseSameReceiptNumberAcrossCanonicalFruitIdentities()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var warehouse = await db.Warehouses.SingleAsync(x => x.Id == 1000);
+        var room = await db.Rooms.SingleAsync(x => x.Id == 1001);
+        var organicAnjou = new FruitProfile
+        {
+            Id = 2990,
+            Name = "Organic D'Anjou",
+            VarietyCode = "ORDA",
+            FruitType = "Pear",
+            ProductionType = "Organic",
+            IsOrganic = true,
+            IsActive = true
+        };
+        var organicRed = new FruitProfile
+        {
+            Id = 2991,
+            Name = "Organic Red Anjou",
+            VarietyCode = "ORDR",
+            FruitType = "Pear",
+            ProductionType = "Organic",
+            IsOrganic = true,
+            IsActive = true
+        };
+        var growerLot = new GrowerLot
+        {
+            Id = 2990,
+            Grower = "DL & JJ FARMS-HOME ORG",
+            LotNumber = "166",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var receipts = new[]
+        {
+            Receipt(2990, organicAnjou, 4),
+            Receipt(2991, organicRed, 1)
+        };
+        db.AddRange(organicAnjou, organicRed, growerLot, receipts[0], receipts[1]);
+        db.RoomInventoryAdjustments.AddRange(
+            SourceAdjustment(3990, receipts[0], organicAnjou, 4),
+            SourceAdjustment(3991, receipts[1], organicRed, 1));
+        await db.SaveChangesAsync();
+
+        var detail = await CreateDashboardService(db, Principal("manager@fruitandland.com"))
+            .GetRoomDetailAsync(room.Id, default);
+        var receiptLots = detail.CurrentLots
+            .Where(x => x.DisplayReceiptId == "TR508968")
+            .OrderBy(x => x.FruitProfileId)
+            .ToList();
+
+        Assert.Equal(2, receiptLots.Count);
+        Assert.Equal(new[] { 4, 1 }, receiptLots.Select(x => x.CurrentBins).ToArray());
+        Assert.Equal(5, receiptLots.Sum(x => x.CurrentBins));
+        Assert.Equal(5, detail.TransferLotOptions.Where(x => x.Grower.Contains("166", StringComparison.Ordinal)).Sum(x => x.CurrentBins));
+
+        Receipt Receipt(long id, FruitProfile fruit, int bins) => new()
+        {
+            Id = id,
+            CropYear = 2026,
+            ReceivedAt = DateTimeOffset.UtcNow,
+            CompuTechReceiptId = "TR508968",
+            ReceiptType = "Truck receipt",
+            Warehouse = warehouse,
+            Room = room,
+            FruitProfile = fruit,
+            GrowerLot = growerLot,
+            GrowerLotId = growerLot.Id,
+            GrowerName = growerLot.Grower,
+            GrowerNumber = growerLot.LotNumber,
+            LotCode = growerLot.LotNumber,
+            BinCount = bins,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+
+        RoomInventoryAdjustment SourceAdjustment(long id, Receipt receipt, FruitProfile fruit, int bins) => new()
+        {
+            Id = id,
+            CropYear = 2026,
+            Receipt = receipt,
+            ReceiptId = receipt.Id,
+            Warehouse = warehouse,
+            WarehouseId = warehouse.Id,
+            Room = room,
+            RoomId = room.Id,
+            GrowerLot = growerLot,
+            GrowerLotId = growerLot.Id,
+            FruitProfile = fruit,
+            FruitProfileId = fruit.Id,
+            GrowerName = receipt.GrowerName,
+            LotNumber = receipt.LotCode,
+            VarietyCode = fruit.VarietyCode,
+            ChangeAmount = bins,
+            NewBinCount = bins,
+            AdjustmentType = "ReceiptAdd",
+            AdjustmentAt = DateTimeOffset.UtcNow,
+            CreatedAt = DateTimeOffset.UtcNow,
+            InventoryInvariantVersion = 2
+        };
+    }
+
+    [Fact]
     public async Task Historical_adjustment_identity_is_not_reinterpreted_after_receipt_edit()
     {
         using var db = CreateDbContext();
@@ -3035,6 +3140,30 @@ public sealed class BinsRunWorkflowTests
         Assert.Equal(beforeTransfers, await db.RoomTransfers.CountAsync());
         Assert.Equal(beforeAdjustments, await db.RoomInventoryAdjustments.CountAsync());
         Assert.Equal(beforeAudits, await db.AuditLogs.CountAsync());
+    }
+
+    [Fact]
+    public async Task RoomTransfer_PartiallyUnavailableTreatmentKeepsExactAvailableSegmentTransferable()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var principal = Principal("manager@fruitandland.com");
+        var service = CreateDashboardService(
+            db,
+            principal,
+            new RoomInventoryLedgerQueryService(db),
+            new ShortTreatmentProjectionService(partiallyUnavailable: true));
+
+        var detail = await service.GetRoomDetailAsync(1001, default);
+        var options = detail.TransferLotOptions.Where(x => x.Label.Contains("LOT-120", StringComparison.Ordinal)).ToList();
+        var unavailable = Assert.Single(options, x => !x.IsAvailable);
+        var available = Assert.Single(options, x => x.IsAvailable);
+
+        Assert.True(detail.TransferInventoryReconciles);
+        Assert.Equal(1, unavailable.CurrentBins);
+        Assert.Equal(119, available.CurrentBins);
+        Assert.Equal(detail.TransferCurrentRoomBins, detail.TransferAvailableBins + detail.TransferNeedsReconciliationBins);
+        Assert.Equal(detail.TransferCurrentRoomBins, detail.TransferLotOptions.Sum(x => x.CurrentBins));
     }
 
     [Fact]
@@ -3296,6 +3425,38 @@ public sealed class BinsRunWorkflowTests
             GroupForm((option, 1)),
             Principal("manager@fruitandland.com"),
             CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RoomLedger_UsesMatchingPersistedGrowerLotNumberForAdjustmentOnlyIdentity()
+    {
+        using var db = CreateDbContext();
+        await SeedInventoryAsync(db);
+        var warehouse = await db.Warehouses.SingleAsync(x => x.Id == 1000);
+        var room = await db.Rooms.SingleAsync(x => x.Id == 1001);
+        var fruit = await db.FruitProfiles.SingleAsync(x => x.Id == 1000);
+        var growerLot = new GrowerLot
+        {
+            Id = 9901,
+            Grower = "Adjustment-only grower",
+            LotNumber = "4101",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var adjustment = Adjustment(9901, warehouse, room, fruit, "4101", 40);
+        adjustment.GrowerLot = growerLot;
+        adjustment.GrowerLotId = growerLot.Id;
+        db.AddRange(growerLot, adjustment);
+        await db.SaveChangesAsync();
+
+        var snapshot = (await new RoomInventoryLedgerQueryService(db)
+                .GetSnapshotsAsync(warehouse.Id, [room.Id], fruit.Id, CancellationToken.None))
+            .Single(x => x.LatestAdjustmentId == adjustment.Id);
+
+        Assert.Equal("4101", snapshot.GrowerNumber);
+        Assert.Equal(growerLot.Id, snapshot.GrowerLotId);
+        Assert.Equal(40, snapshot.CurrentBins);
     }
 
     [Fact]
@@ -4179,7 +4340,7 @@ public sealed class BinsRunWorkflowTests
         public Task<TreatmentLineageWriteResult> AddUnknownAsync(RoomInventoryLedgerSnapshot snapshot, int bins, string operationKey, DateTimeOffset occurredAt, int? actorUserId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
-    private sealed class ShortTreatmentProjectionService : IRoomTreatmentService
+    private sealed class ShortTreatmentProjectionService(bool partiallyUnavailable = false) : IRoomTreatmentService
     {
         public Task<RoomTreatmentData> GetRoomDataAsync(int roomId, CancellationToken cancellationToken) =>
             Task.FromResult(new RoomTreatmentData([], [], false, false));
@@ -4190,12 +4351,20 @@ public sealed class BinsRunWorkflowTests
         {
             var result = snapshots.ToDictionary(
                 RoomTreatmentService.SelectionLookupKey,
-                x => (IReadOnlyList<TreatmentSegmentSelection>)[new(
-                    RoomTreatmentService.IdentityKey(x),
-                    "u",
-                    TreatmentLineageStates.Untreated,
-                    Math.Max(0, x.CurrentBins - 1),
-                    "Untreated")],
+                x => partiallyUnavailable
+                    ? (IReadOnlyList<TreatmentSegmentSelection>)
+                    [
+                        new(RoomTreatmentService.IdentityKey(x), "review", "NeedsReview", 1,
+                            "Needs review", IsAvailable: false, UnavailableReason: "Needs Reconciliation - test segment."),
+                        new(RoomTreatmentService.IdentityKey(x), "u", TreatmentLineageStates.Untreated,
+                            Math.Max(0, x.CurrentBins - 1), "Untreated")
+                    ]
+                    : [new(
+                        RoomTreatmentService.IdentityKey(x),
+                        "u",
+                        TreatmentLineageStates.Untreated,
+                        Math.Max(0, x.CurrentBins - 1),
+                        "Untreated")],
                 StringComparer.OrdinalIgnoreCase);
             return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>>(result);
         }

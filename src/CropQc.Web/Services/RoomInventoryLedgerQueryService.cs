@@ -137,7 +137,12 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
             // Historical adjustment identity is immutable. Prefer identity persisted on
             // the adjustment (including its persisted Grower Lot) and only consult the
             // current Receipt when it cannot contradict that evidence.
-            GrowerNumber = x.ReceiptId != null && x.LotNumber != ""
+            GrowerNumber = x.GrowerLot != null && x.LotNumber != "" && x.LotNumber == x.GrowerLot.LotNumber
+                    ? x.GrowerLot.LotNumber
+                    : x.Receipt != null && x.Receipt.GrowerNumber != null && x.Receipt.GrowerNumber != ""
+                        && (x.LotNumber == "" || x.LotNumber == x.Receipt.LotCode)
+                    ? x.Receipt.GrowerNumber
+                    : x.ReceiptId != null && x.LotNumber != ""
                     ? x.LotNumber
                     : x.RoomTransfer != null && x.RoomTransfer.LotNumber != ""
                     ? x.RoomTransfer.LotNumber
