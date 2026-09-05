@@ -15,6 +15,7 @@ public static class LegacyGrowerLotReconciliationClassifications
 {
     public const string AutoResolvableReviewedGrowerLot = "AutoResolvableReviewedGrowerLot";
     public const string NeedsReconciliation = "NeedsReconciliation";
+    public const string HistoricalOnlyWarning = "HistoricalOnlyWarning";
 }
 
 public sealed record LegacyGrowerLotReconciliationCandidate(
@@ -99,7 +100,41 @@ public sealed class LegacyGrowerLotReconciliationService(
         var activeLots = await dbContext.GrowerLots.AsNoTracking().Where(x => x.IsActive).ToListAsync(cancellationToken);
         var result = new List<LegacyGrowerLotReconciliationCandidate>(snapshots.Count);
         foreach (var snapshot in snapshots)
-            result.Add(await ResolveCandidateAsync(snapshot, resolver, activeLots, snapshots, cancellationToken));
+        {
+            var candidate = await ResolveCandidateAsync(snapshot, resolver, activeLots, snapshots, cancellationToken);
+            // The reconciliation queue is for positive *current* positions. A
+            // completed identity chain with no current bins is audit-only, even
+            // when older labels conflict. It cannot block current room work.
+            if (snapshot.CurrentBins == 0 || await IsHistoricalOnlyAsync(snapshot, cancellationToken))
+            {
+                if (candidate.Classification == LegacyGrowerLotReconciliationClassifications.NeedsReconciliation)
+                {
+                    result.Add(candidate with
+                    {
+                        Classification = LegacyGrowerLotReconciliationClassifications.HistoricalOnlyWarning,
+                        Reason = "Historical identity disagreement has zero current inventory and is retained for audit only.",
+                        CurrentBins = 0
+                    });
+                }
+                continue;
+            }
+            result.Add(candidate);
+        }
+        foreach (var snapshot in await GetHistoricalZeroSnapshotsAsync(cancellationToken))
+        {
+            if (result.Any(x => x.WarehouseId == snapshot.WarehouseId && x.RoomId == snapshot.RoomId
+                && x.FruitProfileId == snapshot.FruitProfileId && Normalize(x.Lot) == Normalize(snapshot.Lot))) continue;
+            var candidate = await ResolveCandidateAsync(snapshot, resolver, activeLots, snapshots, cancellationToken);
+            if (candidate.Classification == LegacyGrowerLotReconciliationClassifications.NeedsReconciliation)
+            {
+                result.Add(candidate with
+                {
+                    Classification = LegacyGrowerLotReconciliationClassifications.HistoricalOnlyWarning,
+                    Reason = "Historical identity disagreement has zero current inventory and is retained for audit only.",
+                    CurrentBins = 0
+                });
+            }
+        }
         var resolvable = result.Where(x => x.Classification == LegacyGrowerLotReconciliationClassifications.AutoResolvableReviewedGrowerLot).ToList();
         var ambiguous = result.Where(x => x.Classification == LegacyGrowerLotReconciliationClassifications.NeedsReconciliation).ToList();
         return new(resolvable.Count, resolvable.Sum(x => x.CurrentBins), ambiguous.Count, ambiguous.Sum(x => x.CurrentBins), result);
@@ -154,10 +189,15 @@ public sealed class LegacyGrowerLotReconciliationService(
                 .SingleAsync(x => x.Id == request.TargetGrowerLotId && x.IsActive, cancellationToken);
             var profile = await dbContext.FruitProfiles.AsNoTracking()
                 .SingleAsync(x => x.Id == request.FruitProfileId && x.IsActive, cancellationToken);
-            var existingTargetBins = (await ledger.GetSnapshotsAsync(request.WarehouseId, [request.RoomId], request.FruitProfileId, cancellationToken))
-                .Where(x => x.CurrentBins > 0 && x.CropYear == request.CropYear
-                    && x.GrowerLotId == request.TargetGrowerLotId)
-                .Sum(x => x.CurrentBins);
+            // Keep the target's independently persisted balance separate from
+            // the legacy source. The presentation ledger may intentionally merge
+            // direct lineage components, which is not valid evidence for deciding
+            // whether a treatment segment is already consolidated.
+            var existingTargetBins = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+                .Where(x => x.WarehouseId == request.WarehouseId && x.RoomId == request.RoomId
+                    && x.CropYear == request.CropYear && x.GrowerLotId == request.TargetGrowerLotId
+                    && x.FruitProfileId == request.FruitProfileId)
+                .SumAsync(x => (int?)x.ChangeAmount, cancellationToken) ?? 0;
             var now = businessTime.UtcNow;
             var correction = new InventoryIdentityCorrection
             {
@@ -226,7 +266,8 @@ public sealed class LegacyGrowerLotReconciliationService(
                 InventoryStatus = source.InventoryStatus,
                 CurrentBins = source.CurrentBins
             };
-            var lineage = await treatmentService.ReclassifyIdentityAsync(source, target, correction, now, actor.Id, cancellationToken);
+            var lineage = await treatmentService.ReclassifyIdentityAsync(source, target, correction, now, actor.Id, cancellationToken,
+                existingTargetBins);
             if (!lineage.Success) throw new InvalidOperationException(lineage.Error);
             correction.ExpectedTreatmentMovementCount = correction.TreatmentLineageMovements.Count;
             correction.IsComplete = true;
@@ -329,7 +370,7 @@ public sealed class LegacyGrowerLotReconciliationService(
         var canonical = resolver.Resolve(snapshot.Grower, snapshot.GrowerNumber);
         if (!canonical.IsMapped || canonical.CanonicalGrowerId is null)
             return Needs("The Grower Number does not resolve to one reviewed active canonical grower.");
-        if (!HistoricalNameMatchesReviewedGrower(snapshot.Grower, canonical, resolver))
+        if (!HistoricalNameIsCompatibleWithReviewedGrower(snapshot.Grower, canonical, resolver))
             return Needs("The source grower name conflicts with the reviewed Grower Number mapping.");
         var candidates = activeLots.Where(x => Normalize(x.LotNumber) == Normalize(snapshot.Lot)).ToList();
         if (candidates.Count != 1)
@@ -345,12 +386,14 @@ public sealed class LegacyGrowerLotReconciliationService(
             || !string.IsNullOrWhiteSpace(snapshot.InventoryStatus)
                 && !string.Equals(profile.ProductionType, snapshot.InventoryStatus, StringComparison.OrdinalIgnoreCase))
             return Needs("Fruit Profile and Organic/Conventional identity conflict.");
-        if (positiveIds.Count == 0 || positiveIds.Any(x => x.ReceiptId is null
-                || Normalize(x.ReceiptGrowerNumber) != Normalize(snapshot.GrowerNumber)
-                || Normalize(x.ReceiptLot) != Normalize(snapshot.Lot)
-                || Normalize(x.LotNumber) != Normalize(snapshot.Lot)
-                || !HistoricalNameMatchesReviewedGrower(x.GrowerName, canonical, resolver)
-                || !HistoricalNameMatchesReviewedGrower(x.ReceiptGrowerName, canonical, resolver)))
+        if (positiveIds.Count == 0 || positiveIds.Any(x =>
+                Normalize(x.LotNumber) != Normalize(snapshot.Lot)
+                || x.ReceiptId is not null
+                    && (Normalize(x.ReceiptGrowerNumber) != Normalize(snapshot.GrowerNumber)
+                        || Normalize(x.ReceiptLot) != Normalize(snapshot.Lot))
+                || !HistoricalNameIsCompatibleWithReviewedGrower(x.GrowerName, canonical, resolver)
+                || x.ReceiptId is not null
+                    && !HistoricalNameIsCompatibleWithReviewedGrower(x.ReceiptGrowerName, canonical, resolver)))
             return Needs("Positive source provenance contains missing or conflicting grower evidence.");
         var conflictingCurrent = allMissingGrowerLotSnapshots.Any(x => x != snapshot
             && x.RoomId == snapshot.RoomId && x.CropYear == snapshot.CropYear
@@ -364,6 +407,52 @@ public sealed class LegacyGrowerLotReconciliationService(
             snapshot.CropYear.Value, snapshot.GrowerNumber, snapshot.Lot, snapshot.FruitProfileId.Value,
             snapshot.Variety, snapshot.ProductionType, snapshot.IsOrganic.Value, snapshot.CurrentBins,
             target.Id, target.Grower, token, positiveIds.Select(x => x.Id).OrderBy(x => x).ToArray());
+    }
+
+    private async Task<bool> IsHistoricalOnlyAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        if (snapshot.GrowerLotId is not null) return false;
+        var rows = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.WarehouseId == snapshot.WarehouseId && x.RoomId == snapshot.RoomId
+                && x.GrowerLotId == null && x.FruitProfileId == snapshot.FruitProfileId)
+            .Select(x => new { x.CropYear, x.LotNumber, x.ChangeAmount })
+            .ToListAsync(cancellationToken);
+        return rows.Where(x => x.CropYear == snapshot.CropYear
+                && Normalize(x.LotNumber) == Normalize(snapshot.Lot))
+            .Sum(x => x.ChangeAmount) == 0;
+    }
+
+    private async Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetHistoricalZeroSnapshotsAsync(CancellationToken cancellationToken)
+    {
+        var rows = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Include(x => x.Warehouse).Include(x => x.Room).Include(x => x.FruitProfile)
+            .Where(x => x.GrowerLotId == null && x.FruitProfileId != null && x.CropYear != null)
+            .ToListAsync(cancellationToken);
+        return rows.GroupBy(x => new
+        {
+            x.WarehouseId,
+            x.RoomId,
+            x.CropYear,
+            x.FruitProfileId,
+            Lot = Normalize(x.LotNumber),
+            Organic = string.Equals(x.InventoryStatus, "Organic", StringComparison.OrdinalIgnoreCase)
+        })
+            .Where(x => x.Sum(row => row.ChangeAmount) == 0)
+            .Select(group =>
+            {
+                var latest = group.OrderByDescending(x => x.AdjustmentAt).ThenByDescending(x => x.Id).First();
+                var profile = latest.FruitProfile!;
+                return new RoomInventoryLedgerSnapshot(latest.WarehouseId, latest.Warehouse.Code, latest.RoomId, latest.Room.Code,
+                    latest.Room.Code, latest.CropYear, null, latest.FruitProfileId, latest.GrowerName, latest.LotNumber,
+                    latest.LotNumber, latest.PoolStart, latest.VarietyCode ?? profile.VarietyCode, profile.VarietyCode, profile.Name,
+                    profile.FruitType, profile.ProductionType, profile.IsOrganic, latest.InventoryStatus ?? profile.ProductionType,
+                    group.Where(x => x.ChangeAmount > 0).Sum(x => x.ChangeAmount), group.Where(x => x.ChangeAmount < 0).Sum(x => x.ChangeAmount),
+                    0, 0, 0, 0, 0, 0, 0, 0, group.Count(), group.Min(x => x.AdjustmentAt), group.Max(x => x.AdjustmentAt), latest.Id)
+                {
+                    SourceReference = "Historical zero-current inventory chain"
+                };
+            })
+            .ToList();
     }
 
     private async Task<LegacyGrowerLotReconciliationResult> VerifyAlreadyAppliedAsync(
@@ -420,23 +509,24 @@ public sealed class LegacyGrowerLotReconciliationService(
     private static string Normalize(string? value) =>
         CanonicalGrowerService.NormalizeGrowerNumber(value);
 
-    private static bool HistoricalNameMatchesReviewedGrower(
+    private static bool HistoricalNameIsCompatibleWithReviewedGrower(
         string? historicalName,
         CanonicalGrowerIdentity reviewedGrower,
         CanonicalGrowerResolutionSet resolver)
     {
         if (string.IsNullOrWhiteSpace(historicalName)) return false;
         var resolved = resolver.Resolve(historicalName, null);
-        if (resolved.IsMapped && resolved.CanonicalGrowerId == reviewedGrower.CanonicalGrowerId) return true;
-
-        // Older receipts sometimes retained the base grower name before Organic/Conventional
-        // and origin qualifiers were added. A word-boundary prefix is acceptable only after the
-        // immutable grower number has uniquely resolved the reviewed canonical grower.
+        // The immutable grower number establishes the canonical identity. Older receipt and
+        // transfer rows can retain a historical label that is no longer in the reviewed master.
+        // An unknown label is therefore compatible, but a label mapped to a different canonical
+        // grower is accepted only when it is a word-boundary historical prefix of the reviewed
+        // name; a wholly different canonical label is never accepted.
         var historicalKey = CanonicalGrowerService.NormalizeGrowerKey(historicalName);
         var reviewedKey = CanonicalGrowerService.NormalizeGrowerKey(reviewedGrower.DisplayName);
-        return historicalKey.Length >= 5
-            && (reviewedKey.StartsWith(historicalKey + "_", StringComparison.Ordinal)
-                || historicalKey.StartsWith(reviewedKey + "_", StringComparison.Ordinal));
+        if (resolved.IsMapped && resolved.CanonicalGrowerId == reviewedGrower.CanonicalGrowerId) return true;
+        var isHistoricalPrefix = reviewedKey.StartsWith(historicalKey + "_", StringComparison.Ordinal)
+            || historicalKey.StartsWith(reviewedKey + "_", StringComparison.Ordinal);
+        return isHistoricalPrefix || !resolved.IsMapped && historicalKey.Length >= 5;
     }
 
     private async Task<IDbContextTransaction?> BeginTransactionAsync(CancellationToken cancellationToken) =>
