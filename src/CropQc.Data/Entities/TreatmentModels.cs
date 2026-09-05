@@ -25,6 +25,7 @@ public static class TreatmentLineageMovementTypes
     public const string InterCrewReversal = "InterCrewReversal";
     public const string IdentityReclassification = "IdentityReclassification";
     public const string IdentityReclassificationRetirement = "IdentityReclassificationRetirement";
+    public const string IdentityReclassificationUntreatedBackfill = "IdentityReclassificationUntreatedBackfill";
     public const string ReceiptLocationCorrection = "ReceiptLocationCorrection";
 }
 

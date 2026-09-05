@@ -243,6 +243,115 @@ public sealed class LegacyGrowerLotReconciliationTests
     }
 
     [Fact]
+    public async Task Proven_untreated_lineage_gap_backfills_exact_coverage_without_a_treatment_application()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ConfigureEvans7UntreatedGapAsync();
+        var historyBefore = await fixture.HistoryFingerprintAsync();
+        var candidate = Assert.Single((await fixture.Service.AnalyzeAsync(CancellationToken.None)).Positions,
+            x => x.RoomId == Fixture.Wp4RoomId);
+
+        var result = await fixture.Service.RunAsync(fixture.Request(candidate, "evans7-untreated-gap-v1"), CancellationToken.None);
+        var rerun = await fixture.Service.RunAsync(fixture.Request(candidate, "evans7-untreated-gap-v1"), CancellationToken.None);
+
+        Assert.True(result.Applied, result.Message);
+        Assert.True(rerun.AlreadyApplied, rerun.Message);
+        var balances = await fixture.Ledger.GetSnapshotsAsync(null, [Fixture.Wp4RoomId], CancellationToken.None);
+        Assert.Equal(170, Assert.Single(balances, x => x.GrowerLotId == 474).CurrentBins);
+        Assert.DoesNotContain(balances, x => x.GrowerLotId is null && x.CurrentBins > 0);
+        var treatment = await fixture.Db.TreatmentLineageSegments.Where(x => x.RoomId == Fixture.Wp4RoomId).ToListAsync();
+        Assert.Equal(0, Assert.Single(treatment, x => x.GrowerLotId is null).CurrentBins);
+        var canonical = Assert.Single(treatment, x => x.GrowerLotId == 474);
+        Assert.Equal(170, canonical.CurrentBins);
+        Assert.Equal(TreatmentLineageStates.Untreated, canonical.TreatmentState);
+        Assert.Equal("u", canonical.TreatmentSignature);
+        Assert.Empty(await fixture.Db.RoomTreatmentApplications.ToListAsync());
+        var backfill = Assert.Single(await fixture.Db.TreatmentLineageMovements
+            .Where(x => x.MovementType == TreatmentLineageMovementTypes.IdentityReclassificationUntreatedBackfill).ToListAsync());
+        Assert.Equal(75, backfill.BinCount);
+        Assert.Equal(historyBefore, await fixture.HistoryFingerprintAsync());
+    }
+
+    [Fact]
+    public async Task Later_source_room_treatment_does_not_retroactively_block_proven_untreated_lineage_backfill()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ConfigureEvans7UntreatedGapAsync();
+        await fixture.AddLaterSourceRoomTreatmentApplicationAsync();
+        var candidate = Assert.Single((await fixture.Service.AnalyzeAsync(CancellationToken.None)).Positions,
+            x => x.RoomId == Fixture.Wp4RoomId);
+
+        var result = await fixture.Service.RunAsync(fixture.Request(candidate, "evans7-later-source-treatment-v1"), CancellationToken.None);
+
+        Assert.True(result.Applied, result.Message);
+        Assert.Empty(await fixture.Db.RoomTreatmentApplications
+            .Where(x => x.RoomId == Fixture.Wp4RoomId).ToListAsync());
+        var canonical = Assert.Single(await fixture.Db.TreatmentLineageSegments
+            .Where(x => x.RoomId == Fixture.Wp4RoomId && x.GrowerLotId == 474).ToListAsync());
+        Assert.Equal(170, canonical.CurrentBins);
+        Assert.Equal(TreatmentLineageStates.Untreated, canonical.TreatmentState);
+    }
+
+    [Fact]
+    public async Task Fully_exited_historical_receipt_does_not_block_proven_untreated_lineage_backfill()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ConfigureEvans7UntreatedGapAsync();
+        await fixture.AddFullyExitedHistoricalReceiptAsync();
+        var candidate = Assert.Single((await fixture.Service.AnalyzeAsync(CancellationToken.None)).Positions,
+            x => x.RoomId == Fixture.Wp4RoomId);
+
+        var result = await fixture.Service.RunAsync(fixture.Request(candidate, "evans7-fully-exited-receipt-v1"), CancellationToken.None);
+
+        Assert.True(result.Applied, result.Message);
+        var canonical = Assert.Single(await fixture.Db.TreatmentLineageSegments
+            .Where(x => x.RoomId == Fixture.Wp4RoomId && x.GrowerLotId == 474).ToListAsync());
+        Assert.Equal(170, canonical.CurrentBins);
+        Assert.Equal(TreatmentLineageStates.Untreated, canonical.TreatmentState);
+    }
+
+    [Fact]
+    public async Task Stale_inventory_status_treatment_projection_is_normalized_as_part_of_proven_untreated_backfill()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ConfigureEvans7UntreatedGapAsync();
+        await fixture.MakeCanonicalTreatmentSegmentInventoryStatusStaleAsync();
+        var candidate = Assert.Single((await fixture.Service.AnalyzeAsync(CancellationToken.None)).Positions,
+            x => x.RoomId == Fixture.Wp4RoomId);
+
+        var result = await fixture.Service.RunAsync(fixture.Request(candidate, "evans7-stale-status-v1"), CancellationToken.None);
+
+        Assert.True(result.Applied, result.Message);
+        var treatment = await fixture.Db.TreatmentLineageSegments
+            .Where(x => x.RoomId == Fixture.Wp4RoomId && x.GrowerLotId == 474).ToListAsync();
+        Assert.Equal(170, treatment.Sum(x => x.CurrentBins));
+        Assert.Equal(0, Assert.Single(treatment, x => x.InventoryStatusSnapshot == "CONVENTIONAL").CurrentBins);
+        Assert.Empty(await fixture.Db.RoomTreatmentApplications.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("application")]
+    [InlineData("mixed-signature")]
+    [InlineData("unexplained-gap")]
+    public async Task Untreated_lineage_backfill_fails_closed_without_exact_provenance(string condition)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ConfigureEvans7UntreatedGapAsync();
+        if (condition == "application") await fixture.AddApplicableRoomTreatmentApplicationAsync();
+        if (condition == "mixed-signature") await fixture.MakeEvansTreatmentSignatureMixedAsync();
+        if (condition == "unexplained-gap") await fixture.MakeEvansGapUnexplainedAsync();
+        var candidate = Assert.Single((await fixture.Service.AnalyzeAsync(CancellationToken.None)).Positions,
+            x => x.RoomId == Fixture.Wp4RoomId);
+
+        var result = await fixture.Service.RunAsync(fixture.Request(candidate, $"evans7-{condition}-v1"), CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Empty(await fixture.Db.InventoryIdentityCorrections.ToListAsync());
+        Assert.Empty(await fixture.Db.TreatmentLineageMovements
+            .Where(x => x.MovementType == TreatmentLineageMovementTypes.IdentityReclassificationUntreatedBackfill).ToListAsync());
+    }
+
+    [Fact]
     public async Task Stale_state_token_refuses_reconciliation_with_zero_writes()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -508,6 +617,173 @@ public sealed class LegacyGrowerLotReconciliationTests
             Db.ChangeTracker.Clear();
         }
 
+        public async Task ConfigureEvans7UntreatedGapAsync()
+        {
+            var sourceAdd = await Db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 101);
+            var sourceTransfer = await Db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 102);
+            var targetTransfer = await Db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 103);
+            var target = await Db.GrowerLots.SingleAsync(x => x.Id == 474);
+            sourceAdd.ChangeAmount = 6;
+            sourceAdd.NewBinCount = 6;
+            sourceAdd.AdjustmentType = "TransferIn";
+            sourceAdd.RoomTransferId = 137;
+            sourceTransfer.ChangeAmount = 27;
+            sourceTransfer.NewBinCount = 33;
+            sourceTransfer.AdjustmentType = "TransferIn";
+            sourceTransfer.RoomTransferId = 174;
+            targetTransfer.ChangeAmount = 27;
+            targetTransfer.NewBinCount = 27;
+            targetTransfer.AdjustmentType = "TransferIn";
+            targetTransfer.RoomTransferId = 145;
+            var receiptAddition = Adjustment(104, Wp4Room, Profile, target, target.Grower, "1531", 42, "ReceiptAdd");
+            receiptAddition.ReceiptId = 683;
+            var transfer160 = Adjustment(105, Wp4Room, Profile, target, target.Grower, "1531", 44, "TransferIn");
+            transfer160.RoomTransferId = 160;
+            var transfer167 = Adjustment(106, Wp4Room, Profile, target, target.Grower, "1531", 24, "TransferIn");
+            transfer167.RoomTransferId = 167;
+            foreach (var addition in new[] { receiptAddition, transfer160, transfer167 })
+            {
+                addition.Warehouse = null!;
+                addition.Room = null!;
+                addition.GrowerLot = null;
+                addition.FruitProfile = null;
+                addition.WarehouseId = 1;
+                addition.RoomId = Wp4RoomId;
+                addition.GrowerLotId = target.Id;
+                addition.FruitProfileId = Profile.Id;
+            }
+            Db.RoomInventoryAdjustments.AddRange(receiptAddition, transfer160, transfer167);
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+            await SeedTreatmentSegmentsAsync();
+            await ConfigureWp4TreatmentAsync(27, 68);
+            var source = await Db.TreatmentLineageSegments.SingleAsync(x => x.RoomId == Wp4RoomId && x.GrowerLotId == null);
+            var canonical = await Db.TreatmentLineageSegments.SingleAsync(x => x.RoomId == Wp4RoomId && x.GrowerLotId == 474);
+            Db.TreatmentLineageMovements.AddRange(
+                UntreatedMovement(160, 44, canonical),
+                UntreatedMovement(167, 24, canonical),
+                UntreatedMovement(174, 27, source));
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        public async Task AddApplicableRoomTreatmentApplicationAsync()
+        {
+            Db.RoomTreatmentApplications.Add(new RoomTreatmentApplication
+            {
+                Id = 999,
+                OperationKey = "test-applicable-treatment",
+                TreatmentChemicalId = 1,
+                ApplicationLevel = TreatmentApplicationLevels.Room,
+                WarehouseId = 1,
+                RoomId = Wp4RoomId,
+                AppliedAt = Now.AddDays(-3),
+                AppliedByUserId = 1,
+                ProductNameSnapshot = "Test chemical",
+                CropSnapshot = "Pear",
+                UnitSnapshot = "gal",
+                CurrencySnapshot = "USD",
+                CreatedAt = Now.AddDays(-3),
+                CreatedByUserId = 1
+            });
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        public async Task AddLaterSourceRoomTreatmentApplicationAsync()
+        {
+            Db.RoomTransfers.Add(new RoomTransfer
+            {
+                Id = 137,
+                OperationKey = "test-evans7-source-transfer",
+                SourceWarehouseId = 1,
+                SourceRoomId = Wp8RoomId,
+                DestinationWarehouseId = 1,
+                DestinationRoomId = Wp4RoomId,
+                CropYear = 2026,
+                GrowerLotId = null,
+                FruitProfileId = Profile.Id,
+                GrowerName = "Legacy grower",
+                LotNumber = "1531",
+                BinCount = 6,
+                Reason = "Test transfer",
+                TransferredAt = Now.AddDays(-2).AddMinutes(101),
+                CreatedAt = Now.AddDays(-2).AddMinutes(101)
+            });
+            Db.RoomTreatmentApplications.Add(new RoomTreatmentApplication
+            {
+                Id = 998,
+                OperationKey = "test-later-source-treatment",
+                TreatmentChemicalId = 1,
+                ApplicationLevel = TreatmentApplicationLevels.Room,
+                WarehouseId = 1,
+                RoomId = Wp8RoomId,
+                AppliedAt = Now.AddDays(-1),
+                AppliedByUserId = 1,
+                ProductNameSnapshot = "Test chemical",
+                CropSnapshot = "Pear",
+                UnitSnapshot = "gal",
+                CurrencySnapshot = "USD",
+                CreatedAt = Now.AddDays(-1),
+                CreatedByUserId = 1
+            });
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        public async Task AddFullyExitedHistoricalReceiptAsync()
+        {
+            var target = await Db.GrowerLots.SingleAsync(x => x.Id == 474);
+            var receiptAddition = Adjustment(107, Wp4Room, Profile, target, target.Grower, "1531", 20, "ReceiptAdd");
+            var depletion = Adjustment(108, Wp4Room, Profile, target, target.Grower, "1531", -16, "BinsRun");
+            var transferIn = Adjustment(109, Wp4Room, Profile, target, target.Grower, "1531", 16, "TransferIn");
+            var transferOut = Adjustment(110, Wp4Room, Profile, target, target.Grower, "1531", -20, "TransferOut");
+            receiptAddition.ReceiptId = 701;
+            transferIn.ReceiptId = 702;
+            transferIn.RoomTransferId = 777;
+            foreach (var row in new[] { receiptAddition, depletion, transferIn, transferOut })
+            {
+                row.AdjustmentAt = Now.AddDays(-10).AddMinutes(row.Id);
+                row.CreatedAt = row.AdjustmentAt;
+                row.Warehouse = null!;
+                row.Room = null!;
+                row.GrowerLot = null;
+                row.FruitProfile = null;
+                row.WarehouseId = 1;
+                row.RoomId = Wp4RoomId;
+                row.GrowerLotId = target.Id;
+                row.FruitProfileId = Profile.Id;
+            }
+            Db.RoomInventoryAdjustments.AddRange(receiptAddition, depletion, transferIn, transferOut);
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        public async Task MakeCanonicalTreatmentSegmentInventoryStatusStaleAsync()
+        {
+            var canonical = await Db.TreatmentLineageSegments.SingleAsync(x => x.RoomId == Wp4RoomId && x.GrowerLotId == 474);
+            canonical.InventoryStatusSnapshot = "CONVENTIONAL";
+            canonical.IdentityKey = $"{canonical.IdentityKey}|CONVENTIONAL";
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        public async Task MakeEvansTreatmentSignatureMixedAsync()
+        {
+            var source = await Db.TreatmentLineageSegments.SingleAsync(x => x.RoomId == Wp4RoomId && x.GrowerLotId == null);
+            source.TreatmentSignature = "u|a:999";
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        public async Task MakeEvansGapUnexplainedAsync()
+        {
+            var addition = await Db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 105);
+            addition.ChangeAmount = 43;
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
         public async Task ConfigureWp4TreatmentAsync(int sourceBins, int targetBins)
         {
             var source = await Db.TreatmentLineageSegments.SingleAsync(x => x.RoomId == Wp4RoomId && x.GrowerLotId == null);
@@ -530,6 +806,29 @@ public sealed class LegacyGrowerLotReconciliationTests
                 .ToListAsync();
             return string.Join(';', rows);
         }
+
+        public async Task<string> RoomHistoryFingerprintAsync()
+        {
+            var rows = await Db.RoomInventoryAdjustments.AsNoTracking().Where(x => x.RoomId == Wp4RoomId)
+                .OrderBy(x => x.Id).Select(x => $"{x.Id}|{x.GrowerLotId}|{x.ChangeAmount}|{x.AdjustmentType}|{x.RoomTransferId}|{x.ReceiptId}")
+                .ToListAsync();
+            return string.Join(';', rows);
+        }
+
+        private TreatmentLineageMovement UntreatedMovement(long transferId, int bins, TreatmentLineageSegment destination) => new()
+        {
+            OperationKey = $"test-transfer-{transferId}",
+            MovementType = TreatmentLineageMovementTypes.Transfer,
+            DestinationSegment = destination,
+            DestinationRoomId = Wp4RoomId,
+            IdentityKey = destination.IdentityKey,
+            TreatmentStateSnapshot = TreatmentLineageStates.Untreated,
+            TreatmentSignatureSnapshot = "u",
+            RoomTransferId = transferId,
+            BinCount = bins,
+            OccurredAt = Now.AddDays(-1),
+            CreatedAt = Now.AddDays(-1)
+        };
 
         private static RoomInventoryAdjustment Adjustment(long id, Room room, FruitProfile profile,
             GrowerLot? growerLot, string grower, string lot, int change, string type, Receipt? receipt = null) => new()

@@ -893,8 +893,10 @@ public sealed class RoomTreatmentService(
         var existing = await dbContext.TreatmentLineageMovements.AsNoTracking()
             .Where(x => x.InventoryIdentityCorrectionId == correction.Id && x.OperationKey.StartsWith(prefix))
             .SumAsync(x => (int?)x.BinCount, cancellationToken) ?? 0;
-        if (existing == source.CurrentBins) return new(true, null);
-        if (existing != 0) return new(false, "The treatment identity correction is partially applied and requires review.");
+        if (existing != 0)
+            return correction.IsComplete
+                ? new(true, null)
+                : new(false, "The treatment identity correction is partially applied and requires review.");
 
         // Do not materialize either identity before deciding whether the target
         // already contains the consolidated treatment balance. Materialization
@@ -912,6 +914,17 @@ public sealed class RoomTreatmentService(
             .OrderBy(x => x.ReceiptId ?? long.MaxValue)
             .ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);
+        var staleTargetSegments = (await dbContext.TreatmentLineageSegments
+                .Include(x => x.Applications)
+                .Where(x => x.RoomId == target.RoomId && x.CropYear == target.CropYear
+                    && x.GrowerLotId == target.GrowerLotId && x.FruitProfileId == target.FruitProfileId
+                    && x.CurrentBins > 0 && x.IdentityKey != IdentityKey(target))
+                .OrderBy(x => x.ReceiptId ?? long.MaxValue)
+                .ThenBy(x => x.Id)
+                .ToListAsync(cancellationToken))
+            .Where(x => IsStaleInventoryStatusProjection(x, target))
+            .ToList();
+        targetSegments.AddRange(staleTargetSegments);
         var sourceTreatmentBins = sourceSegments.Sum(x => x.CurrentBins);
         var targetTreatmentBins = targetSegments.Sum(x => x.CurrentBins);
         var targetAlreadyRepresentsConsolidatedInventory = targetExistingCurrentBins is not null
@@ -923,9 +936,13 @@ public sealed class RoomTreatmentService(
         // source representation used by normal room operations; there is no
         // partial treatment evidence to reinterpret or discard.
         var noRecordedTreatmentLineage = sourceSegments.Count == 0 && targetSegments.Count == 0;
+        var provenUntreatedGapBins = targetExistingCurrentBins is null
+            ? null
+            : await GetProvenUntreatedLineageGapAsync(source, target, targetExistingCurrentBins.Value,
+                sourceSegments, targetSegments, cancellationToken);
 
         if (!targetAlreadyRepresentsConsolidatedInventory && !sourceAndTargetTreatmentsMatchSeparateInventories
-            && !noRecordedTreatmentLineage)
+            && !noRecordedTreatmentLineage && provenUntreatedGapBins is null)
             return new(false, "Treatment provenance does not match either the separate or the consolidated authoritative inventory identities.");
 
         // A correction is one durable operation. Keep its treatment rows and
@@ -940,7 +957,8 @@ public sealed class RoomTreatmentService(
             // incrementing the canonical segment would create phantom treatment.
             foreach (var segment in sourceSegments)
             {
-                var destinations = targetSegments.Where(x => x.TreatmentState == segment.TreatmentState
+                var destinations = targetSegments.Where(x => x.IdentityKey == IdentityKey(target)
+                    && x.TreatmentState == segment.TreatmentState
                     && x.TreatmentSignature == segment.TreatmentSignature).ToList();
                 if (destinations.Count != 1)
                     return new(false, "The consolidated treatment identity does not have one exact canonical segment for the stale source segment.");
@@ -971,9 +989,82 @@ public sealed class RoomTreatmentService(
                 correction.TreatmentLineageMovements.Add(movement);
                 dbContext.TreatmentLineageMovements.Add(movement);
             }
+            await NormalizeStaleTargetSegmentsAsync(staleTargetSegments, target, correction, occurredAt, actorUserId,
+                cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
             return new(true, null, correction.TreatmentLineageMovements.LastOrDefault()?.Id);
         }
+
+        if (provenUntreatedGapBins is not null)
+        {
+            // The gap is not an inferred treatment state: its exact quantity is
+            // accounted for by current additions with no lineage movement and no
+            // applicable treatment application. Consolidate the tracked untreated
+            // source first, then add only that audited missing coverage.
+            foreach (var segment in sourceSegments.Concat(staleTargetSegments))
+            {
+                var bins = segment.CurrentBins;
+                var destination = await GetOrCreateSegmentAsync(target, segment.TreatmentState,
+                    segment.TreatmentSignature, now, cancellationToken, segment.ReceiptId);
+                await CopyApplicationLinksAsync(segment, destination, cancellationToken);
+                segment.CurrentBins = 0;
+                segment.UpdatedAt = now;
+                segment.ConcurrencyVersion++;
+                destination.CurrentBins += bins;
+                destination.UpdatedAt = now;
+                destination.ConcurrencyVersion++;
+                var movement = new TreatmentLineageMovement
+                {
+                    OperationKey = $"{prefix}{segment.Id}",
+                    MovementType = TreatmentLineageMovementTypes.IdentityReclassification,
+                    SourceSegment = segment,
+                    DestinationSegment = destination,
+                    SourceRoomId = segment.RoomId,
+                    DestinationRoomId = target.RoomId,
+                    IdentityKey = IdentityKey(target),
+                    TreatmentStateSnapshot = segment.TreatmentState,
+                    TreatmentSignatureSnapshot = segment.TreatmentSignature,
+                    ReceiptId = segment.ReceiptId,
+                    BinCount = bins,
+                    InventoryIdentityCorrection = correction,
+                    InventoryIdentityCorrectionId = correction.Id,
+                    OccurredAt = occurredAt,
+                    CreatedByUserId = actorUserId,
+                    CreatedAt = now
+                };
+                correction.TreatmentLineageMovements.Add(movement);
+                dbContext.TreatmentLineageMovements.Add(movement);
+            }
+            var backfill = await GetOrCreateSegmentAsync(target, TreatmentLineageStates.Untreated, "u", now,
+                cancellationToken, null);
+            backfill.CurrentBins += provenUntreatedGapBins.Value;
+            backfill.UpdatedAt = now;
+            backfill.ConcurrencyVersion++;
+            var backfillMovement = new TreatmentLineageMovement
+            {
+                OperationKey = $"{prefix}untreated-backfill",
+                MovementType = TreatmentLineageMovementTypes.IdentityReclassificationUntreatedBackfill,
+                DestinationSegment = backfill,
+                SourceRoomId = source.RoomId,
+                DestinationRoomId = target.RoomId,
+                IdentityKey = IdentityKey(target),
+                TreatmentStateSnapshot = TreatmentLineageStates.Untreated,
+                TreatmentSignatureSnapshot = "u",
+                BinCount = provenUntreatedGapBins.Value,
+                InventoryIdentityCorrection = correction,
+                InventoryIdentityCorrectionId = correction.Id,
+                OccurredAt = occurredAt,
+                CreatedByUserId = actorUserId,
+                CreatedAt = now
+            };
+            correction.TreatmentLineageMovements.Add(backfillMovement);
+            dbContext.TreatmentLineageMovements.Add(backfillMovement);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return new(true, null, backfillMovement.Id);
+        }
+
+        await NormalizeStaleTargetSegmentsAsync(staleTargetSegments, target, correction, occurredAt, actorUserId,
+            cancellationToken);
 
         var segments = (await MaterializeAsync(source, cancellationToken))
             .Where(x => x.CurrentBins > 0)
@@ -1022,6 +1113,176 @@ public sealed class RoomTreatmentService(
         }
         await dbContext.SaveChangesAsync(cancellationToken);
         return new(true, null, correction.TreatmentLineageMovements.LastOrDefault()?.Id);
+    }
+
+    private async Task<int?> GetProvenUntreatedLineageGapAsync(
+        RoomInventoryLedgerSnapshot source,
+        RoomInventoryLedgerSnapshot target,
+        int targetExistingCurrentBins,
+        IReadOnlyList<TreatmentLineageSegment> sourceSegments,
+        IReadOnlyList<TreatmentLineageSegment> targetSegments,
+        CancellationToken cancellationToken)
+    {
+        var authoritativeBins = source.CurrentBins + targetExistingCurrentBins;
+        var trackedBins = sourceSegments.Sum(x => x.CurrentBins) + targetSegments.Sum(x => x.CurrentBins);
+        if (trackedBins <= 0 || trackedBins >= authoritativeBins
+            || sourceSegments.Concat(targetSegments).Any(x => x.TreatmentState != TreatmentLineageStates.Untreated
+                || x.TreatmentSignature != "u" || x.Applications.Count != 0))
+        {
+            logger.LogInformation("Untreated lineage backfill proof failed at treatment-state validation for room {RoomId}.", source.RoomId);
+            return null;
+        }
+
+        var rows = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.WarehouseId == source.WarehouseId && x.RoomId == source.RoomId
+                && x.CropYear == source.CropYear && x.FruitProfileId == source.FruitProfileId
+                && (x.GrowerLotId == null || x.GrowerLotId == target.GrowerLotId))
+            .Select(x => new { x.Id, x.GrowerLotId, x.LotNumber, x.ChangeAmount, x.ReceiptId, x.RoomTransferId, x.AdjustmentAt })
+            .ToListAsync(cancellationToken);
+        var identityRows = rows.Where(x => Normalize(x.LotNumber) == Normalize(source.Lot))
+            .OrderBy(x => x.AdjustmentAt).ThenBy(x => x.Id).ToList();
+        var additions = new List<(long? ReceiptId, long? TransferId, DateTimeOffset AddedAt, int Bins)>();
+        foreach (var row in identityRows)
+        {
+            if (row.ChangeAmount > 0)
+            {
+                additions.Add((row.ReceiptId, row.RoomTransferId, row.AdjustmentAt, row.ChangeAmount));
+                continue;
+            }
+            if (row.ChangeAmount == 0) continue;
+
+            var deductionRemaining = -row.ChangeAmount;
+            for (var index = 0; index < additions.Count && deductionRemaining > 0; index++)
+            {
+                var addition = additions[index];
+                if (addition.Bins == 0) continue;
+                var allocated = Math.Min(deductionRemaining, addition.Bins);
+                additions[index] = addition with { Bins = addition.Bins - allocated };
+                deductionRemaining -= allocated;
+            }
+            if (deductionRemaining != 0)
+            {
+                logger.LogInformation("Untreated lineage backfill proof failed at inventory underflow for room {RoomId}.", source.RoomId);
+                return null;
+            }
+        }
+        additions = additions.Where(x => x.Bins > 0).ToList();
+        if (additions.Count == 0 || additions.Sum(x => x.Bins) != authoritativeBins)
+        {
+            logger.LogInformation("Untreated lineage backfill proof failed at current inventory accounting for room {RoomId}.", source.RoomId);
+            return null;
+        }
+
+        var transferIds = additions.Where(x => x.TransferId is not null).Select(x => x.TransferId!.Value).Distinct().ToList();
+        var receiptIds = additions.Where(x => x.ReceiptId is not null).Select(x => x.ReceiptId!.Value).Distinct().ToList();
+        var movements = await dbContext.TreatmentLineageMovements.AsNoTracking()
+            .Where(x => x.DestinationRoomId == source.RoomId
+                && ((x.RoomTransferId != null && transferIds.Contains(x.RoomTransferId.Value))
+                    || (x.ReceiptId != null && receiptIds.Contains(x.ReceiptId.Value))))
+            .Select(x => new { x.RoomTransferId, x.ReceiptId, x.BinCount, x.TreatmentStateSnapshot, x.TreatmentSignatureSnapshot, x.ReversesTreatmentLineageMovementId })
+            .ToListAsync(cancellationToken);
+        if (movements.Any(x => x.TreatmentStateSnapshot != TreatmentLineageStates.Untreated
+                || x.TreatmentSignatureSnapshot != "u" || x.ReversesTreatmentLineageMovementId is not null))
+        {
+            logger.LogInformation("Untreated lineage backfill proof failed at treatment movement validation for room {RoomId}.", source.RoomId);
+            return null;
+        }
+
+        var coveredBins = 0;
+        var missing = new List<(long? ReceiptId, long? TransferId, DateTimeOffset AddedAt, int Bins)>();
+        foreach (var addition in additions)
+        {
+            var covered = movements.Where(x => addition.TransferId is not null
+                    ? x.RoomTransferId == addition.TransferId
+                    : addition.ReceiptId is not null && x.ReceiptId == addition.ReceiptId)
+                .Sum(x => x.BinCount);
+            if (covered != 0 && covered != addition.Bins)
+            {
+                logger.LogInformation("Untreated lineage backfill proof failed at treatment movement quantity validation for room {RoomId}.", source.RoomId);
+                return null;
+            }
+            if (covered == 0) missing.Add(addition);
+            coveredBins += covered;
+        }
+        var gap = authoritativeBins - trackedBins;
+        if (coveredBins != trackedBins || missing.Sum(x => x.Bins) != gap)
+        {
+            logger.LogInformation("Untreated lineage backfill proof failed at coverage accounting for room {RoomId}: covered {CoveredBins}, tracked {TrackedBins}, missing {MissingBins}, gap {GapBins}.",
+                source.RoomId, coveredBins, trackedBins, missing.Sum(x => x.Bins), gap);
+            return null;
+        }
+
+        var missingReceiptIds = missing.Where(x => x.ReceiptId is not null).Select(x => x.ReceiptId!.Value).Distinct().ToList();
+        var missingTransferIds = missing.Where(x => x.TransferId is not null).Select(x => x.TransferId!.Value).Distinct().ToList();
+        var transferSources = await dbContext.RoomTransfers.AsNoTracking()
+            .Where(x => missingTransferIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.SourceRoomId })
+            .ToListAsync(cancellationToken);
+        var sourceRoomIds = transferSources.Select(x => x.SourceRoomId).Distinct().ToList();
+        var latestMissingArrival = missing.Max(x => x.AddedAt);
+        var hasApplicableApplication = await dbContext.RoomTreatmentApplications.AsNoTracking()
+            .AnyAsync(x => x.ReversedAt == null &&
+                ((x.RoomId == source.RoomId && x.AppliedAt <= latestMissingArrival)
+                    || (x.ReceiptId != null && missingReceiptIds.Contains(x.ReceiptId.Value))
+                    || (sourceRoomIds.Contains(x.RoomId) && x.AppliedAt <= latestMissingArrival)), cancellationToken);
+        if (hasApplicableApplication)
+        {
+            logger.LogInformation("Untreated lineage backfill proof failed at treatment-application validation for room {RoomId}.", source.RoomId);
+            return null;
+        }
+        return gap;
+    }
+
+    private async Task NormalizeStaleTargetSegmentsAsync(
+        IReadOnlyCollection<TreatmentLineageSegment> staleSegments,
+        RoomInventoryLedgerSnapshot target,
+        InventoryIdentityCorrection correction,
+        DateTimeOffset occurredAt,
+        int actorUserId,
+        CancellationToken cancellationToken)
+    {
+        foreach (var segment in staleSegments)
+        {
+            if (segment.CurrentBins <= 0) continue;
+            var bins = segment.CurrentBins;
+            var destination = await GetOrCreateSegmentAsync(target, segment.TreatmentState, segment.TreatmentSignature,
+                occurredAt, cancellationToken, segment.ReceiptId);
+            await CopyApplicationLinksAsync(segment, destination, cancellationToken);
+            segment.CurrentBins = 0;
+            segment.UpdatedAt = occurredAt;
+            segment.ConcurrencyVersion++;
+            destination.CurrentBins += bins;
+            destination.UpdatedAt = occurredAt;
+            destination.ConcurrencyVersion++;
+            var movement = new TreatmentLineageMovement
+            {
+                OperationKey = $"identity-correction:{correction.OperationKey}:room:{target.RoomId}:stale-status:{segment.Id}",
+                MovementType = TreatmentLineageMovementTypes.IdentityReclassification,
+                SourceSegment = segment,
+                DestinationSegment = destination,
+                SourceRoomId = segment.RoomId,
+                DestinationRoomId = target.RoomId,
+                IdentityKey = IdentityKey(target),
+                TreatmentStateSnapshot = segment.TreatmentState,
+                TreatmentSignatureSnapshot = segment.TreatmentSignature,
+                ReceiptId = segment.ReceiptId,
+                BinCount = bins,
+                InventoryIdentityCorrection = correction,
+                InventoryIdentityCorrectionId = correction.Id,
+                OccurredAt = occurredAt,
+                CreatedByUserId = actorUserId,
+                CreatedAt = occurredAt
+            };
+            correction.TreatmentLineageMovements.Add(movement);
+            dbContext.TreatmentLineageMovements.Add(movement);
+        }
+    }
+
+    private static bool IsStaleInventoryStatusProjection(TreatmentLineageSegment segment,
+        RoomInventoryLedgerSnapshot target)
+    {
+        var canonicalized = ToSnapshot(segment) with { InventoryStatus = target.InventoryStatus };
+        return IdentityKey(canonicalized) == IdentityKey(target);
     }
 
     public async Task<TreatmentLineageWriteResult> CorrectReceiptLocationAsync(
