@@ -329,7 +329,7 @@ public sealed class LegacyGrowerLotReconciliationService(
         var canonical = resolver.Resolve(snapshot.Grower, snapshot.GrowerNumber);
         if (!canonical.IsMapped || canonical.CanonicalGrowerId is null)
             return Needs("The Grower Number does not resolve to one reviewed active canonical grower.");
-        if (!HistoricalNameMatchesReviewedGrower(snapshot.Grower, canonical, resolver))
+        if (!HistoricalNameIsCompatibleWithReviewedGrower(snapshot.Grower, canonical, resolver))
             return Needs("The source grower name conflicts with the reviewed Grower Number mapping.");
         var candidates = activeLots.Where(x => Normalize(x.LotNumber) == Normalize(snapshot.Lot)).ToList();
         if (candidates.Count != 1)
@@ -345,12 +345,14 @@ public sealed class LegacyGrowerLotReconciliationService(
             || !string.IsNullOrWhiteSpace(snapshot.InventoryStatus)
                 && !string.Equals(profile.ProductionType, snapshot.InventoryStatus, StringComparison.OrdinalIgnoreCase))
             return Needs("Fruit Profile and Organic/Conventional identity conflict.");
-        if (positiveIds.Count == 0 || positiveIds.Any(x => x.ReceiptId is null
-                || Normalize(x.ReceiptGrowerNumber) != Normalize(snapshot.GrowerNumber)
-                || Normalize(x.ReceiptLot) != Normalize(snapshot.Lot)
-                || Normalize(x.LotNumber) != Normalize(snapshot.Lot)
-                || !HistoricalNameMatchesReviewedGrower(x.GrowerName, canonical, resolver)
-                || !HistoricalNameMatchesReviewedGrower(x.ReceiptGrowerName, canonical, resolver)))
+        if (positiveIds.Count == 0 || positiveIds.Any(x =>
+                Normalize(x.LotNumber) != Normalize(snapshot.Lot)
+                || x.ReceiptId is not null
+                    && (Normalize(x.ReceiptGrowerNumber) != Normalize(snapshot.GrowerNumber)
+                        || Normalize(x.ReceiptLot) != Normalize(snapshot.Lot))
+                || !HistoricalNameIsCompatibleWithReviewedGrower(x.GrowerName, canonical, resolver)
+                || x.ReceiptId is not null
+                    && !HistoricalNameIsCompatibleWithReviewedGrower(x.ReceiptGrowerName, canonical, resolver)))
             return Needs("Positive source provenance contains missing or conflicting grower evidence.");
         var conflictingCurrent = allMissingGrowerLotSnapshots.Any(x => x != snapshot
             && x.RoomId == snapshot.RoomId && x.CropYear == snapshot.CropYear
@@ -420,23 +422,24 @@ public sealed class LegacyGrowerLotReconciliationService(
     private static string Normalize(string? value) =>
         CanonicalGrowerService.NormalizeGrowerNumber(value);
 
-    private static bool HistoricalNameMatchesReviewedGrower(
+    private static bool HistoricalNameIsCompatibleWithReviewedGrower(
         string? historicalName,
         CanonicalGrowerIdentity reviewedGrower,
         CanonicalGrowerResolutionSet resolver)
     {
         if (string.IsNullOrWhiteSpace(historicalName)) return false;
         var resolved = resolver.Resolve(historicalName, null);
-        if (resolved.IsMapped && resolved.CanonicalGrowerId == reviewedGrower.CanonicalGrowerId) return true;
-
-        // Older receipts sometimes retained the base grower name before Organic/Conventional
-        // and origin qualifiers were added. A word-boundary prefix is acceptable only after the
-        // immutable grower number has uniquely resolved the reviewed canonical grower.
+        // The immutable grower number establishes the canonical identity. Older receipt and
+        // transfer rows can retain a historical label that is no longer in the reviewed master.
+        // An unknown label is therefore compatible, but a label mapped to a different canonical
+        // grower is accepted only when it is a word-boundary historical prefix of the reviewed
+        // name; a wholly different canonical label is never accepted.
         var historicalKey = CanonicalGrowerService.NormalizeGrowerKey(historicalName);
         var reviewedKey = CanonicalGrowerService.NormalizeGrowerKey(reviewedGrower.DisplayName);
-        return historicalKey.Length >= 5
-            && (reviewedKey.StartsWith(historicalKey + "_", StringComparison.Ordinal)
-                || historicalKey.StartsWith(reviewedKey + "_", StringComparison.Ordinal));
+        if (resolved.IsMapped && resolved.CanonicalGrowerId == reviewedGrower.CanonicalGrowerId) return true;
+        var isHistoricalPrefix = reviewedKey.StartsWith(historicalKey + "_", StringComparison.Ordinal)
+            || historicalKey.StartsWith(reviewedKey + "_", StringComparison.Ordinal);
+        return isHistoricalPrefix || !resolved.IsMapped && historicalKey.Length >= 5;
     }
 
     private async Task<IDbContextTransaction?> BeginTransactionAsync(CancellationToken cancellationToken) =>

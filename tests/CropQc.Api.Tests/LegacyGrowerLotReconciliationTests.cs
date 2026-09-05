@@ -87,6 +87,40 @@ public sealed class LegacyGrowerLotReconciliationTests
     }
 
     [Fact]
+    public async Task Non_receipt_positive_transfer_with_unknown_historical_label_is_auto_resolvable()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Db.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
+        {
+            Id = 104,
+            WarehouseId = 1,
+            RoomId = Fixture.Wp4RoomId,
+            CropYear = 2026,
+            FruitProfileId = 19,
+            GrowerName = "Legacy Baldwin label",
+            LotNumber = "1531",
+            VarietyCode = fixture.Profile.VarietyCode,
+            InventoryStatus = fixture.Profile.ProductionType,
+            ChangeAmount = 20,
+            NewBinCount = 20,
+            AdjustmentType = "RoomTransfer",
+            Source = "RoomTransfer",
+            Reason = "Historical transfer identity",
+            AdjustmentAt = Now,
+            CreatedAt = Now,
+            InventoryInvariantVersion = 0
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var diagnostic = await fixture.Service.AnalyzeAsync(CancellationToken.None);
+        var candidate = Assert.Single(diagnostic.Positions, x => x.RoomId == Fixture.Wp4RoomId);
+
+        Assert.Equal(LegacyGrowerLotReconciliationClassifications.AutoResolvableReviewedGrowerLot, candidate.Classification);
+        Assert.Equal(203, candidate.CurrentBins);
+        Assert.Contains(104, candidate.PositiveSourceAdjustmentIds);
+    }
+
+    [Fact]
     public async Task Aggregate_WP4_and_WP8_reconciliation_conserves_quantity_treatment_and_history_and_is_idempotent()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -154,10 +188,14 @@ public sealed class LegacyGrowerLotReconciliationTests
         public RoomInventoryLedgerQueryService Ledger { get; }
         public InventoryDeductionInvariantService Invariant { get; }
         public LegacyGrowerLotReconciliationService Service { get; }
+        public Room Wp4Room { get; }
+        public FruitProfile Profile { get; }
 
-        private Fixture(CropQcDbContext db)
+        private Fixture(CropQcDbContext db, Room wp4Room, FruitProfile profile)
         {
             Db = db;
+            Wp4Room = wp4Room;
+            Profile = profile;
             Ledger = new RoomInventoryLedgerQueryService(db);
             Invariant = new InventoryDeductionInvariantService(db, NullLogger<InventoryDeductionInvariantService>.Instance);
             var time = new PacificBusinessTimeService(new FixedClock(Now));
@@ -282,7 +320,7 @@ public sealed class LegacyGrowerLotReconciliationTests
                 Adjustment(202, room8, profile, null, "Baldwin Pears ORG CHILEAN", "1531", -280, "BinsRun"));
             await db.SaveChangesAsync();
             db.ChangeTracker.Clear();
-            return new Fixture(db);
+            return new Fixture(db, room4, profile);
         }
 
         public LegacyGrowerLotReconciliationRequest Request(
