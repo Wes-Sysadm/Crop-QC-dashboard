@@ -109,7 +109,8 @@ public interface IRoomTreatmentService
         InventoryIdentityCorrection correction,
         DateTimeOffset occurredAt,
         int actorUserId,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken,
+        int? targetExistingCurrentBins = null) =>
         Task.FromResult(new TreatmentLineageWriteResult(false, "Treatment identity reclassification is not supported by this implementation."));
     Task<TreatmentLineageWriteResult> CorrectReceiptLocationAsync(
         RoomInventoryLedgerSnapshot source,
@@ -881,7 +882,8 @@ public sealed class RoomTreatmentService(
         InventoryIdentityCorrection correction,
         DateTimeOffset occurredAt,
         int actorUserId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? targetExistingCurrentBins = null)
     {
         if (source.RoomId != target.RoomId || source.WarehouseId != target.WarehouseId)
             return new(false, "Inventory identity correction cannot move fruit between rooms or facilities.");
@@ -894,18 +896,91 @@ public sealed class RoomTreatmentService(
         if (existing == source.CurrentBins) return new(true, null);
         if (existing != 0) return new(false, "The treatment identity correction is partially applied and requires review.");
 
-        var segments = (await MaterializeAsync(source, cancellationToken))
-            .Where(x => x.CurrentBins > 0)
+        // Do not materialize either identity before deciding whether the target
+        // already contains the consolidated treatment balance. Materialization
+        // creates implicit untreated balance for operational selection and would
+        // erase the distinction between a stale segment and a missing segment.
+        var sourceSegments = await dbContext.TreatmentLineageSegments
+            .Include(x => x.Applications)
+            .Where(x => x.RoomId == source.RoomId && x.IdentityKey == IdentityKey(source) && x.CurrentBins > 0)
             .OrderBy(x => x.ReceiptId ?? long.MaxValue)
             .ThenBy(x => x.Id)
-            .ToList();
-        if (segments.Sum(x => x.CurrentBins) != source.CurrentBins)
-            return new(false, "Treatment provenance does not exactly reconcile with the authoritative source identity.");
+            .ToListAsync(cancellationToken);
+        var targetSegments = await dbContext.TreatmentLineageSegments
+            .Include(x => x.Applications)
+            .Where(x => x.RoomId == target.RoomId && x.IdentityKey == IdentityKey(target) && x.CurrentBins > 0)
+            .OrderBy(x => x.ReceiptId ?? long.MaxValue)
+            .ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var sourceTreatmentBins = sourceSegments.Sum(x => x.CurrentBins);
+        var targetTreatmentBins = targetSegments.Sum(x => x.CurrentBins);
+        var targetAlreadyRepresentsConsolidatedInventory = targetExistingCurrentBins is not null
+            && targetTreatmentBins == targetExistingCurrentBins.Value + source.CurrentBins;
+        var sourceAndTargetTreatmentsMatchSeparateInventories = sourceTreatmentBins == source.CurrentBins
+            && (targetExistingCurrentBins is null || targetTreatmentBins == targetExistingCurrentBins.Value);
+        // Older rooms can have no persisted lineage at all. In that specific
+        // case the existing MaterializeAsync path creates the same untreated
+        // source representation used by normal room operations; there is no
+        // partial treatment evidence to reinterpret or discard.
+        var noRecordedTreatmentLineage = sourceSegments.Count == 0 && targetSegments.Count == 0;
+
+        if (!targetAlreadyRepresentsConsolidatedInventory && !sourceAndTargetTreatmentsMatchSeparateInventories
+            && !noRecordedTreatmentLineage)
+            return new(false, "Treatment provenance does not match either the separate or the consolidated authoritative inventory identities.");
 
         // A correction is one durable operation. Keep its treatment rows and
         // segment updates on the correction's authoritative operation time so
         // exact State B verification is deterministic.
         var now = occurredAt;
+        if (targetAlreadyRepresentsConsolidatedInventory)
+        {
+            // Historical transfers can leave a stale source segment after a later
+            // operation has already synchronized the canonical segment to the
+            // consolidated inventory total. Retire only that duplicate segment:
+            // incrementing the canonical segment would create phantom treatment.
+            foreach (var segment in sourceSegments)
+            {
+                var destinations = targetSegments.Where(x => x.TreatmentState == segment.TreatmentState
+                    && x.TreatmentSignature == segment.TreatmentSignature).ToList();
+                if (destinations.Count != 1)
+                    return new(false, "The consolidated treatment identity does not have one exact canonical segment for the stale source segment.");
+                var destination = destinations[0];
+                var bins = segment.CurrentBins;
+                segment.CurrentBins = 0;
+                segment.UpdatedAt = now;
+                segment.ConcurrencyVersion++;
+                var movement = new TreatmentLineageMovement
+                {
+                    OperationKey = $"{prefix}retire:{segment.Id}",
+                    MovementType = TreatmentLineageMovementTypes.IdentityReclassificationRetirement,
+                    SourceSegment = segment,
+                    DestinationSegment = destination,
+                    SourceRoomId = source.RoomId,
+                    DestinationRoomId = target.RoomId,
+                    IdentityKey = IdentityKey(target),
+                    TreatmentStateSnapshot = segment.TreatmentState,
+                    TreatmentSignatureSnapshot = segment.TreatmentSignature,
+                    ReceiptId = segment.ReceiptId,
+                    BinCount = bins,
+                    InventoryIdentityCorrection = correction,
+                    InventoryIdentityCorrectionId = correction.Id,
+                    OccurredAt = occurredAt,
+                    CreatedByUserId = actorUserId,
+                    CreatedAt = now
+                };
+                correction.TreatmentLineageMovements.Add(movement);
+                dbContext.TreatmentLineageMovements.Add(movement);
+            }
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return new(true, null, correction.TreatmentLineageMovements.LastOrDefault()?.Id);
+        }
+
+        var segments = (await MaterializeAsync(source, cancellationToken))
+            .Where(x => x.CurrentBins > 0)
+            .OrderBy(x => x.ReceiptId ?? long.MaxValue)
+            .ThenBy(x => x.Id)
+            .ToList();
+
         foreach (var segment in segments)
         {
             var bins = segment.CurrentBins;

@@ -421,7 +421,15 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
         IReadOnlyDictionary<long, long> lineageComponents)
     {
         var result = new List<RoomInventoryLedgerSnapshot>();
-        foreach (var group in snapshots.GroupBy(CanonicalRoomLotKey, StringComparer.OrdinalIgnoreCase))
+        foreach (var group in snapshots.GroupBy(snapshot =>
+        {
+            // A Bins Run entry is immutable source/destination custody evidence.
+            // Prefer it over conflicting legacy display labels so a fully depleted
+            // receipt cannot be rendered as a new positive inventory position.
+            return lineageComponents.TryGetValue(snapshot.LatestAdjustmentId, out var component)
+                ? $"lineage|{component}"
+                : $"identity|{CanonicalRoomLotKey(snapshot)}";
+        }, StringComparer.OrdinalIgnoreCase))
         {
             var rows = group.ToList();
             if (rows.Count == 1 || !CanReconcile(rows, lineageComponents))
@@ -495,15 +503,24 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
 
     private static bool CanReconcile(
         IReadOnlyList<RoomInventoryLedgerSnapshot> rows,
-        IReadOnlyDictionary<long, long> lineageComponents) =>
-        rows.Select(x => x.WarehouseId).Distinct().Count() == 1
-        && rows.Where(x => x.CropYear is not null).Select(x => x.CropYear).Distinct().Count() <= 1
-        && (rows.Select(x => x.GrowerLotId).Distinct().Count() == 1
-            || rows.Select(x => lineageComponents.GetValueOrDefault(x.LatestAdjustmentId, x.LatestAdjustmentId)).Distinct().Count() == 1)
-        && DistinctNonEmpty(rows.Select(x => x.GrowerNumber)) <= 1
-        && DistinctNonEmpty(rows.Select(x => x.InventoryStatus)) <= 1
-        && DistinctNonEmpty(rows.Select(x => x.ProductionType)) <= 1
-        && rows.Where(x => x.IsOrganic is not null).Select(x => x.IsOrganic).Distinct().Count() <= 1;
+        IReadOnlyDictionary<long, long> lineageComponents)
+    {
+        var sameBinsRunLineage = rows
+            .Select(x => lineageComponents.GetValueOrDefault(x.LatestAdjustmentId, x.LatestAdjustmentId))
+            .Distinct()
+            .Count() == 1;
+        // A direct Bins Run source/destination chain is stronger evidence than
+        // a stale historical display label. Keep its quantity together even
+        // when older rows disagree about the canonical Grower Lot/name; this
+        // prevents a fully depleted receipt from reappearing as current stock.
+        return rows.Select(x => x.WarehouseId).Distinct().Count() == 1
+            && rows.Where(x => x.CropYear is not null).Select(x => x.CropYear).Distinct().Count() <= 1
+            && (rows.Select(x => x.GrowerLotId).Distinct().Count() == 1 || sameBinsRunLineage)
+            && (sameBinsRunLineage || DistinctNonEmpty(rows.Select(x => x.GrowerNumber)) <= 1)
+            && DistinctNonEmpty(rows.Select(x => x.InventoryStatus)) <= 1
+            && DistinctNonEmpty(rows.Select(x => x.ProductionType)) <= 1
+            && rows.Where(x => x.IsOrganic is not null).Select(x => x.IsOrganic).Distinct().Count() <= 1;
+    }
 
     private static IReadOnlyDictionary<long, long> BuildLineageComponents(
         IEnumerable<(long Source, long Destination)> edges)

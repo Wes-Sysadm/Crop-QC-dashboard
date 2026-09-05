@@ -163,6 +163,85 @@ public sealed class LegacyGrowerLotReconciliationTests
         Assert.True(readiness.IsReady, string.Join("; ", readiness.Issues.Where(x => x.BlocksDeployment).Select(x => x.Code)));
     }
 
+    [Theory]
+    [InlineData("LAMB-14", 15, 70, 15, 85)]
+    [InlineData("MCD-16", 582, 312, 516, 894)]
+    public async Task Consolidated_canonical_treatment_retires_stale_legacy_segment_without_double_counting(
+        string scenario, int sourceInventory, int targetInventory, int sourceTreatment, int targetTreatment)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ConfigureWp4BalancesAsync(sourceInventory, targetInventory);
+        await fixture.SeedTreatmentSegmentsAsync();
+        await fixture.ConfigureWp4TreatmentAsync(sourceTreatment, targetTreatment);
+        var historyBefore = await fixture.HistoryFingerprintAsync();
+        var candidate = Assert.Single((await fixture.Service.AnalyzeAsync(CancellationToken.None)).Positions,
+            x => x.RoomId == Fixture.Wp4RoomId);
+
+        var result = await fixture.Service.RunAsync(fixture.Request(candidate, $"{scenario}-stale-treatment-v1"), CancellationToken.None);
+
+        Assert.True(result.Applied, result.Message);
+        var balances = await fixture.Ledger.GetSnapshotsAsync(null, [Fixture.Wp4RoomId], CancellationToken.None);
+        Assert.DoesNotContain(balances, x => x.GrowerLotId is null && x.CurrentBins > 0);
+        Assert.Equal(sourceInventory + targetInventory,
+            Assert.Single(balances, x => x.GrowerLotId == 474).CurrentBins);
+        var treatment = await fixture.Db.TreatmentLineageSegments
+            .Where(x => x.RoomId == Fixture.Wp4RoomId).OrderBy(x => x.Id).ToListAsync();
+        Assert.Equal(0, Assert.Single(treatment, x => x.GrowerLotId == null).CurrentBins);
+        Assert.Equal(targetTreatment, Assert.Single(treatment, x => x.GrowerLotId == 474).CurrentBins);
+        Assert.Equal(historyBefore, await fixture.HistoryFingerprintAsync());
+        var movement = Assert.Single(await fixture.Db.TreatmentLineageMovements.ToListAsync());
+        Assert.Equal(TreatmentLineageMovementTypes.IdentityReclassificationRetirement, movement.MovementType);
+        Assert.Equal(sourceTreatment, movement.BinCount);
+    }
+
+    [Fact]
+    public async Task Ambiguous_treatment_totals_fail_closed_with_zero_writes()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ConfigureWp4BalancesAsync(15, 70);
+        await fixture.SeedTreatmentSegmentsAsync();
+        await fixture.ConfigureWp4TreatmentAsync(15, 84);
+        var candidate = Assert.Single((await fixture.Service.AnalyzeAsync(CancellationToken.None)).Positions,
+            x => x.RoomId == Fixture.Wp4RoomId);
+
+        var result = await fixture.Service.RunAsync(fixture.Request(candidate, "ambiguous-treatment-v1"), CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Empty(await fixture.Db.InventoryIdentityCorrections.ToListAsync());
+        Assert.Empty(await fixture.Db.TreatmentLineageMovements.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Zero_current_receipt_identity_conflict_is_historical_warning_not_a_current_blocker()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ConfigureTr508352ShapeAsync();
+
+        var diagnostic = await fixture.Service.AnalyzeAsync(CancellationToken.None);
+        var warning = Assert.Single(diagnostic.Positions, x => x.RoomId == Fixture.Wp4RoomId);
+
+        Assert.Equal(LegacyGrowerLotReconciliationClassifications.HistoricalOnlyWarning, warning.Classification);
+        Assert.Equal(0, warning.CurrentBins);
+        Assert.Equal(0, diagnostic.NeedsReconciliationPositions);
+        Assert.Equal(0, diagnostic.NeedsReconciliationBins);
+        Assert.Contains(101, warning.PositiveSourceAdjustmentIds);
+    }
+
+    [Fact]
+    public async Task Unique_current_identity_without_recorded_treatment_lineage_materializes_untreated_once()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var candidate = Assert.Single((await fixture.Service.AnalyzeAsync(CancellationToken.None)).Positions,
+            x => x.RoomId == Fixture.Wp4RoomId);
+
+        var result = await fixture.Service.RunAsync(fixture.Request(candidate, "no-treatment-lineage-v1"), CancellationToken.None);
+
+        Assert.True(result.Applied, result.Message);
+        var segments = await fixture.Db.TreatmentLineageSegments.Where(x => x.RoomId == Fixture.Wp4RoomId).ToListAsync();
+        Assert.Equal(0, Assert.Single(segments, x => x.GrowerLotId == null).CurrentBins);
+        Assert.Equal(candidate.CurrentBins, Assert.Single(segments, x => x.GrowerLotId == 474).CurrentBins);
+    }
+
     [Fact]
     public async Task Stale_state_token_refuses_reconciliation_with_zero_writes()
     {
@@ -357,6 +436,84 @@ public sealed class LegacyGrowerLotReconciliationTests
                     UpdatedAt = Now.AddDays(-1)
                 });
             }
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        public async Task ConfigureWp4BalancesAsync(int sourceBins, int targetBins)
+        {
+            var sourceAdd = await Db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 101);
+            var sourceDepletion = await Db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 102);
+            var target = await Db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 103);
+            sourceAdd.ChangeAmount = sourceBins;
+            sourceAdd.NewBinCount = sourceBins;
+            sourceDepletion.ChangeAmount = 0;
+            sourceDepletion.NewBinCount = sourceBins;
+            target.ChangeAmount = targetBins;
+            target.NewBinCount = targetBins;
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        public async Task ConfigureTr508352ShapeAsync()
+        {
+            var sourceAdd = await Db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 101);
+            var runDepletion = await Db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 102);
+            var canonical = await Db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 103);
+            sourceAdd.GrowerName = "Ridpath ORG CHIL";
+            sourceAdd.ChangeAmount = 6;
+            sourceAdd.NewBinCount = 6;
+            runDepletion.ChangeAmount = -6;
+            runDepletion.NewBinCount = 0;
+            canonical.ChangeAmount = 0;
+            canonical.NewBinCount = 0;
+            var ridpath = new CanonicalGrower
+            {
+                Id = 99,
+                DisplayName = "Ridpath ORG CHIL",
+                NormalizedKey = CanonicalGrowerService.NormalizeGrowerKey("Ridpath ORG CHIL"),
+                IsActive = true,
+                CreatedAt = Now,
+                UpdatedAt = Now
+            };
+            ridpath.GrowerNumbers.Add(new CanonicalGrowerNumber
+            {
+                Id = 99,
+                GrowerNumber = "4701",
+                NormalizedGrowerNumber = "4701",
+                IsActive = true,
+                CreatedAt = Now,
+                UpdatedAt = Now
+            });
+            Db.CanonicalGrowers.Add(ridpath);
+            Db.BinsRunEntries.Add(new BinsRunEntry
+            {
+                Id = 286,
+                SourceInventoryAdjustmentId = sourceAdd.Id,
+                InventoryAdjustmentId = runDepletion.Id,
+                WarehouseId = 1,
+                RoomId = Wp4RoomId,
+                CropYear = 2026,
+                FruitProfileId = Profile.Id,
+                GrowerName = sourceAdd.GrowerName,
+                LotNumber = "1531",
+                PreviousAvailableBins = 6,
+                BinsRun = 6,
+                NewAvailableBins = 0,
+                RunAt = Now.AddDays(-1),
+                CreatedAt = Now.AddDays(-1),
+                TransactionType = ActualRunTransactionTypes.Depletion
+            });
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        public async Task ConfigureWp4TreatmentAsync(int sourceBins, int targetBins)
+        {
+            var source = await Db.TreatmentLineageSegments.SingleAsync(x => x.RoomId == Wp4RoomId && x.GrowerLotId == null);
+            var target = await Db.TreatmentLineageSegments.SingleAsync(x => x.RoomId == Wp4RoomId && x.GrowerLotId == 474);
+            source.CurrentBins = sourceBins;
+            target.CurrentBins = targetBins;
             await Db.SaveChangesAsync();
             Db.ChangeTracker.Clear();
         }
