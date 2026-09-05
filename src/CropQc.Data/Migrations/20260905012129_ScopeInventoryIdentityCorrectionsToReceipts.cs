@@ -10,6 +10,14 @@ namespace CropQc.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AlterColumn<int>(
+                name: "SourceGrowerLotId",
+                table: "InventoryIdentityCorrections",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"),
+                nullable: true,
+                oldClrType: typeof(int),
+                oldType: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"));
+
             migrationBuilder.DropIndex(
                 name: "IX_InventoryIdentityCorrections_CorrectedReceiptId",
                 table: "InventoryIdentityCorrections");
@@ -54,6 +62,16 @@ namespace CropQc.Data.Migrations
                 table: "InventoryIdentityCorrections",
                 columns: new[] { "SourceCropYear", "SourceGrowerLotId", "SourceFruitProfileId" },
                 unique: true);
+
+            migrationBuilder.AlterColumn<int>(
+                name: "SourceGrowerLotId",
+                table: "InventoryIdentityCorrections",
+                type: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"),
+                nullable: false,
+                defaultValue: 0,
+                oldClrType: typeof(int),
+                oldType: MigrationProviderTypes.StoreType(migrationBuilder, "int", "integer"),
+                oldNullable: true);
         }
     }
 }

@@ -5,11 +5,20 @@ DO $preflight$
 DECLARE
     old_receipt_index boolean := to_regclass(format('%I.%I', current_schema(), 'IX_InventoryIdentityCorrections_CorrectedReceiptId')) IS NOT NULL;
     scoped_index boolean := to_regclass(format('%I.%I', current_schema(), 'UX_InventoryIdentityCorrections_ReceiptSource')) IS NOT NULL;
+    source_grower_lot_nullable boolean;
     source_definition text;
     scoped_definition text;
 BEGIN
     IF to_regclass(format('%I.%I', current_schema(), 'InventoryIdentityCorrections')) IS NULL THEN
         RAISE EXCEPTION 'State C: InventoryIdentityCorrections predecessor table is missing';
+    END IF;
+
+    SELECT is_nullable = 'YES' INTO source_grower_lot_nullable
+    FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'InventoryIdentityCorrections'
+      AND column_name = 'SourceGrowerLotId';
+    IF source_grower_lot_nullable IS NULL THEN
+        RAISE EXCEPTION 'State C: SourceGrowerLotId column is missing';
     END IF;
 
     SELECT lower(indexdef) INTO source_definition
@@ -28,10 +37,12 @@ BEGIN
           AND c.relname = 'UX_InventoryIdentityCorrections_ReceiptSource';
     END IF;
 
-    IF old_receipt_index AND NOT scoped_index AND source_definition NOT LIKE '% where %' THEN
+    IF old_receipt_index AND NOT scoped_index AND source_definition NOT LIKE '% where %'
+       AND NOT source_grower_lot_nullable THEN
         RETURN;
     END IF;
     IF NOT old_receipt_index AND scoped_index
+       AND source_grower_lot_nullable
        AND source_definition LIKE '%where ("correctedreceiptid" is null)%'
        AND scoped_definition LIKE 'create unique index%'
        AND scoped_definition LIKE '%("correctedreceiptid", "sourcecropyear", "sourcegrowerlotid", "sourcefruitprofileid")%'

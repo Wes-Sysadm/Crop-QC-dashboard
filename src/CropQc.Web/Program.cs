@@ -270,6 +270,7 @@ builder.Services.AddScoped<IRoomInventoryLedgerQueryService, RoomInventoryLedger
 builder.Services.AddScoped<IInventoryIdentityService, InventoryIdentityService>();
 builder.Services.AddScoped<IInventoryIdentityCorrectionDiagnosticService, InventoryIdentityCorrectionDiagnosticService>();
 builder.Services.AddScoped<IInventoryIdentityReadinessService, InventoryIdentityReadinessService>();
+builder.Services.AddScoped<ILegacyGrowerLotReconciliationService, LegacyGrowerLotReconciliationService>();
 builder.Services.AddScoped<IReceiptInventoryProvenanceResolver, ReceiptInventoryProvenanceResolver>();
 builder.Services.AddScoped<ITr508901InventoryRepairService, Tr508901InventoryRepairService>();
 builder.Services.AddScoped<IRoomInventoryReconciliationService, RoomInventoryReconciliationService>();
@@ -400,6 +401,45 @@ if (args.Contains("--audit-inventory-identity-corrections", StringComparer.Ordin
     Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(report,
         new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true }));
     Environment.ExitCode = report.ConfirmedAffected + report.LikelyAffected + report.AmbiguousNeedsReview > 0 ? 2 : 0;
+    return;
+}
+
+if (args.Contains("--reconcile-legacy-grower-lot", StringComparer.OrdinalIgnoreCase))
+{
+    static string? LegacyGrowerLotValue(string[] commandArgs, string key) =>
+        commandArgs.FirstOrDefault(x => x.StartsWith($"{key}=", StringComparison.OrdinalIgnoreCase)) is { } item
+            ? item[(item.IndexOf('=') + 1)..]
+            : null;
+    await using var reconciliationScope = app.Services.CreateAsyncScope();
+    var service = reconciliationScope.ServiceProvider.GetRequiredService<ILegacyGrowerLotReconciliationService>();
+    if (args.Contains("--diagnostic", StringComparer.OrdinalIgnoreCase))
+    {
+        var diagnostic = await service.AnalyzeAsync(CancellationToken.None);
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(diagnostic,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true }));
+        Environment.ExitCode = 0;
+        return;
+    }
+    static int IntValue(string[] commandArgs, string key) =>
+        int.TryParse(LegacyGrowerLotValue(commandArgs, key), out var value) ? value : 0;
+    var result = await service.RunAsync(new(
+        args.Contains("--apply", StringComparer.OrdinalIgnoreCase),
+        IntValue(args, "--warehouse-id"),
+        IntValue(args, "--room-id"),
+        IntValue(args, "--crop-year"),
+        LegacyGrowerLotValue(args, "--grower-number") ?? "",
+        LegacyGrowerLotValue(args, "--lot") ?? "",
+        IntValue(args, "--fruit-profile-id"),
+        bool.TryParse(LegacyGrowerLotValue(args, "--is-organic"), out var isOrganic) && isOrganic,
+        IntValue(args, "--target-grower-lot-id"),
+        IntValue(args, "--expected-current-bins"),
+        LegacyGrowerLotValue(args, "--expected-state-token") ?? "",
+        LegacyGrowerLotValue(args, "--operation-key") ?? "",
+        LegacyGrowerLotValue(args, "--requested-by") ?? "",
+        LegacyGrowerLotValue(args, "--reason") ?? ""), CancellationToken.None);
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(result,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true }));
+    Environment.ExitCode = result.Success ? 0 : 1;
     return;
 }
 

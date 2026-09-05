@@ -3066,7 +3066,7 @@ namespace CropQc.Data.Migrations
                     b.Property<int>("SourceFruitProfileId")
                         .HasColumnType("int");
 
-                    b.Property<int>("SourceGrowerLotId")
+                    b.Property<int?>("SourceGrowerLotId")
                         .HasColumnType("int");
 
                     b.Property<string>("SourceIdentitySnapshotJson")
@@ -11177,8 +11177,7 @@ namespace CropQc.Data.Migrations
                     b.HasOne("CropQc.Data.Entities.GrowerLot", "SourceGrowerLot")
                         .WithMany()
                         .HasForeignKey("SourceGrowerLotId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("CropQc.Data.Entities.FruitProfile", "TargetFruitProfile")
                         .WithMany()

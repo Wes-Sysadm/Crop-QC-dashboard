@@ -560,7 +560,7 @@ public static class DatabaseStartupDiagnostics
         ,new("InventoryIdentityCorrections.Id", "InventoryIdentityCorrections", "Id", RequireNotNullable: true)
         ,new("InventoryIdentityCorrections.OperationKey", "InventoryIdentityCorrections", "OperationKey", RequireNotNullable: true)
         ,new("InventoryIdentityCorrections.SourceCropYear", "InventoryIdentityCorrections", "SourceCropYear", RequireNotNullable: true)
-        ,new("InventoryIdentityCorrections.SourceGrowerLotId", "InventoryIdentityCorrections", "SourceGrowerLotId", RequireNotNullable: true)
+        ,new("InventoryIdentityCorrections.SourceGrowerLotId", "InventoryIdentityCorrections", "SourceGrowerLotId", RequireNullable: true)
         ,new("InventoryIdentityCorrections.SourceFruitProfileId", "InventoryIdentityCorrections", "SourceFruitProfileId", RequireNotNullable: true)
         ,new("InventoryIdentityCorrections.TargetCropYear", "InventoryIdentityCorrections", "TargetCropYear", RequireNotNullable: true)
         ,new("InventoryIdentityCorrections.TargetGrowerLotId", "InventoryIdentityCorrections", "TargetGrowerLotId", RequireNotNullable: true)

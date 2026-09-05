@@ -60,7 +60,9 @@ public sealed record OperationalInventoryDiagnostic(
     int RoomsPreventedFromTransfer,
     int RoomsPartiallyOperable,
     IReadOnlyList<OperationalInventoryRoomDiagnostic> Rooms,
-    IReadOnlyList<string> PositionIssues);
+    IReadOnlyList<string> PositionIssues,
+    int AutoResolvableReviewedGrowerLotPositions = 0,
+    int AutoResolvableReviewedGrowerLotBins = 0);
 
 public sealed record OperationalInventoryRoomDiagnostic(
     string Facility,
@@ -90,7 +92,8 @@ public sealed class InventoryIdentityReadinessService(
     CropQcDbContext dbContext,
     IRoomInventoryLedgerQueryService ledger,
     IInventoryIdentityService identities,
-    IRoomTreatmentService? roomTreatments = null) : IInventoryIdentityReadinessService
+    IRoomTreatmentService? roomTreatments = null,
+    ILegacyGrowerLotReconciliationService? legacyGrowerLotReconciliation = null) : IInventoryIdentityReadinessService
 {
     public async Task<InventoryIdentityReadinessResult> VerifyAsync(CancellationToken cancellationToken)
     {
@@ -101,22 +104,27 @@ public sealed class InventoryIdentityReadinessService(
         var snapshots = await ledger.GetSnapshotsAsync(null, null, cancellationToken);
         foreach (var correction in corrections)
         {
-            var source = new InventoryIdentityKey(correction.SourceCropYear, correction.SourceGrowerLotId, correction.SourceFruitProfileId);
-            try
+            InventoryIdentityKey? source = correction.SourceGrowerLotId is int sourceGrowerLotId
+                ? new(correction.SourceCropYear, sourceGrowerLotId, correction.SourceFruitProfileId)
+                : null;
+            if (source is not null)
             {
-                var resolution = correction.CorrectedReceiptId is long receiptId
-                    ? await identities.ResolveForReceiptAsync(source, receiptId, cancellationToken)
-                    : await identities.ResolveAsync(source, cancellationToken);
-                if (!resolution.IsSuperseded) issues.Add($"Correction {correction.Id} does not resolve away from its source.");
-            }
-            catch (InvalidOperationException exception)
-            {
-                issues.Add(exception.Message);
+                try
+                {
+                    var resolution = correction.CorrectedReceiptId is long receiptId
+                        ? await identities.ResolveForReceiptAsync(source, receiptId, cancellationToken)
+                        : await identities.ResolveAsync(source, cancellationToken);
+                    if (!resolution.IsSuperseded) issues.Add($"Correction {correction.Id} does not resolve away from its source.");
+                }
+                catch (InvalidOperationException exception)
+                {
+                    issues.Add(exception.Message);
+                }
             }
             if (!correction.IsComplete || correction.InventoryAdjustments.Count != correction.ExpectedAdjustmentCount
                 || correction.TreatmentLineageMovements.Count != correction.ExpectedTreatmentMovementCount)
                 issues.Add($"Correction {correction.Id} is incomplete or has a parent-count mismatch.");
-            if (correction.CorrectedReceiptId is null)
+            if (correction.CorrectedReceiptId is null && source is not null)
             {
                 var obsoleteBins = snapshots.Where(x => x.CropYear == source.CropYear
                     && x.GrowerLotId == source.GrowerLotId && x.FruitProfileId == source.FruitProfileId && x.CurrentBins > 0)
@@ -128,7 +136,7 @@ public sealed class InventoryIdentityReadinessService(
                     .SumAsync(x => (int?)x.CurrentBins, cancellationToken) ?? 0;
                 if (obsoleteTreatment > 0) issues.Add($"Correction {correction.Id} leaves {obsoleteTreatment} treatment-lineage bins on obsolete identity {source}.");
             }
-            if (correction.CorrectedReceiptId is null
+            if (correction.CorrectedReceiptId is null && source is not null
                 && await dbContext.RoomInventoryAdjustments.AsNoTracking().AnyAsync(x => x.AdjustmentAt > correction.CreatedAt
                     && x.CropYear == source.CropYear && x.GrowerLotId == source.GrowerLotId
                     && x.FruitProfileId == source.FruitProfileId && x.ChangeAmount > 0
@@ -227,6 +235,9 @@ public sealed class InventoryIdentityReadinessService(
                 room.Count(x => string.IsNullOrWhiteSpace(x.GrowerNumber)),
                 room.Count(x => treatmentMismatchPositions.Contains(OperationalInventoryPosition.Key(x))), status);
         }).OrderBy(x => x.Facility).ThenBy(x => x.Room).ToList();
+        var legacyDiagnostic = legacyGrowerLotReconciliation is null
+            ? null
+            : await legacyGrowerLotReconciliation.AnalyzeAsync(cancellationToken);
         var operational = new OperationalInventoryDiagnostic(
             positive.Count,
             positive.Sum(x => x.CurrentBins),
@@ -244,7 +255,9 @@ public sealed class InventoryIdentityReadinessService(
             rooms.Count(x => x.Any(y => available.Contains(OperationalInventoryPosition.Key(y)))
                 && x.Any(y => !available.Contains(OperationalInventoryPosition.Key(y)))),
             roomDiagnostics,
-            positionIssues);
+            positionIssues,
+            legacyDiagnostic?.AutoResolvableReviewedPositions ?? 0,
+            legacyDiagnostic?.AutoResolvableReviewedBins ?? 0);
         return new(issues.Count == 0, issues, operational);
     }
 }

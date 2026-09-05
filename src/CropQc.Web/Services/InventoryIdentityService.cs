@@ -56,7 +56,8 @@ public sealed class InventoryIdentityService(CropQcDbContext dbContext) : IInven
                 && (x.CorrectedReceiptId == null || x.CorrectedReceiptId == receiptId))
             .ToListAsync(cancellationToken);
         var bySource = mappings
-            .GroupBy(x => new InventoryIdentityKey(x.SourceCropYear, x.SourceGrowerLotId, x.SourceFruitProfileId))
+            .Where(x => x.SourceGrowerLotId is not null)
+            .GroupBy(x => new InventoryIdentityKey(x.SourceCropYear, x.SourceGrowerLotId!.Value, x.SourceFruitProfileId))
             .ToDictionary(
                 x => x.Key,
                 x => x.OrderByDescending(y => receiptId is not null && y.CorrectedReceiptId == receiptId)
@@ -209,8 +210,8 @@ public static class InventoryIdentityWriteGuard
         IReadOnlyCollection<InventoryIdentityCorrection> corrections)
     {
         var bySource = corrections
-            .Where(x => x.IsActive && x.IsComplete && x.CorrectedReceiptId == null)
-            .GroupBy(x => new InventoryIdentityKey(x.SourceCropYear, x.SourceGrowerLotId, x.SourceFruitProfileId))
+            .Where(x => x.IsActive && x.IsComplete && x.CorrectedReceiptId == null && x.SourceGrowerLotId is not null)
+            .GroupBy(x => new InventoryIdentityKey(x.SourceCropYear, x.SourceGrowerLotId!.Value, x.SourceFruitProfileId))
             .ToDictionary(x => x.Key, x => x.OrderBy(y => y.CreatedAt).ThenBy(y => y.Id).Single());
         var visited = new HashSet<InventoryIdentityKey>();
         var current = source;

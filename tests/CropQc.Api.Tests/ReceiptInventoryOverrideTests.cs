@@ -1462,6 +1462,26 @@ public sealed class ReceiptInventoryOverrideTests
         var treatmentBinsBefore = await db.TreatmentLineageSegments.AsNoTracking()
             .Where(x => x.RoomId == receipt.RoomId && x.FruitProfileId == receipt.FruitProfileId)
             .SumAsync(x => (int?)x.CurrentBins) ?? 0;
+        var legacy1531History = await db.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.CropYear == 2026 && x.FruitProfileId == 19 && x.GrowerLotId == null
+                && x.LotNumber == "1531" && x.InventoryIdentityCorrectionId == null)
+            .OrderBy(x => x.Id)
+            .Select(x => new
+            {
+                x.Id,
+                x.ReceiptId,
+                x.RoomId,
+                x.GrowerLotId,
+                x.FruitProfileId,
+                x.LotNumber,
+                x.ChangeAmount,
+                x.AdjustmentType,
+                x.AdjustmentAt,
+                x.CreatedAt,
+                x.InventoryOperationKey
+            })
+            .ToListAsync();
+        var treatmentApplicationsBefore = await db.RoomTreatmentApplications.CountAsync();
 
         using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Error));
         var invariant = new InventoryDeductionInvariantService(db, loggerFactory.CreateLogger<InventoryDeductionInvariantService>());
@@ -1520,6 +1540,85 @@ public sealed class ReceiptInventoryOverrideTests
         Assert.Null(OperationalInventoryPosition.UnavailableReason(Assert.Single(balances, x => x.GrowerLotId == targetGrowerLot.Id)));
         Assert.Contains("Grower Lot", OperationalInventoryPosition.UnavailableReason(
             Assert.Single(balances, x => x.GrowerLotId is null && x.Lot == "1531")));
+
+        var canonicalGrowers = new CanonicalGrowerService(db);
+        var legacyService = new LegacyGrowerLotReconciliationService(
+            db, ledger, canonicalGrowers, treatments, invariant, time);
+        var diagnostic = await legacyService.AnalyzeAsync(CancellationToken.None);
+        var legacy1531 = diagnostic.Positions.Where(x => x.GrowerNumber == "1531"
+            && x.Lot == "1531" && x.FruitProfileId == 19).OrderBy(x => x.Room).ToList();
+        Assert.Equal(2, legacy1531.Count);
+        var wp4 = Assert.Single(legacy1531, x => x.Room == "WP-4");
+        var wp8 = Assert.Single(legacy1531, x => x.Room == "WP-8");
+        Assert.Equal(183, wp4.CurrentBins);
+        Assert.Equal(124, wp8.CurrentBins);
+        Assert.All(legacy1531, x =>
+        {
+            Assert.Equal(LegacyGrowerLotReconciliationClassifications.AutoResolvableReviewedGrowerLot, x.Classification);
+            Assert.Equal(474, x.TargetGrowerLotId);
+        });
+        var treatmentSelectionsBefore = await treatments.GetSelectionsAsync(
+            (await ledger.GetSnapshotsAsync(null, null, 19, CancellationToken.None))
+                .Where(x => x.CurrentBins > 0 && x.Lot == "1531").ToList(), CancellationToken.None);
+        var treatmentPositionBinsBefore = treatmentSelectionsBefore.Values.SelectMany(x => x).Sum(x => x.CurrentBins);
+
+        LegacyGrowerLotReconciliationRequest LegacyRequest(LegacyGrowerLotReconciliationCandidate x, string key, bool apply) =>
+            new(apply, x.WarehouseId, x.RoomId, x.CropYear, x.GrowerNumber, x.Lot, x.FruitProfileId,
+                x.IsOrganic, 474, x.CurrentBins, x.StateToken, key, ApplicationAreas.OwnerEmail,
+                "Reviewed unique canonical 1531 / GrowerLot 474 evidence");
+        var wp4DryRun = await legacyService.RunAsync(LegacyRequest(wp4, "legacy-1531-wp4-v1", false), CancellationToken.None);
+        var wp8DryRun = await legacyService.RunAsync(LegacyRequest(wp8, "legacy-1531-wp8-v1", false), CancellationToken.None);
+        Assert.Equal("State A", wp4DryRun.State);
+        Assert.Equal("State A", wp8DryRun.State);
+        var wp4Apply = await legacyService.RunAsync(LegacyRequest(wp4, "legacy-1531-wp4-v1", true), CancellationToken.None);
+        var wp8Apply = await legacyService.RunAsync(LegacyRequest(wp8, "legacy-1531-wp8-v1", true), CancellationToken.None);
+        var wp4Again = await legacyService.RunAsync(LegacyRequest(wp4, "legacy-1531-wp4-v1", true), CancellationToken.None);
+        var wp8Again = await legacyService.RunAsync(LegacyRequest(wp8, "legacy-1531-wp8-v1", true), CancellationToken.None);
+        Assert.True(wp4Apply.Applied, wp4Apply.Message);
+        Assert.True(wp8Apply.Applied, wp8Apply.Message);
+        Assert.True(wp4Again.AlreadyApplied, wp4Again.Message);
+        Assert.True(wp8Again.AlreadyApplied, wp8Again.Message);
+
+        var final = (await ledger.GetSnapshotsAsync(null, null, 19, CancellationToken.None))
+            .Where(x => x.CurrentBins > 0 && (x.GrowerLotId == 394 || x.Lot == "1531"))
+            .ToList();
+        Assert.Equal(177, Assert.Single(final, x => x.Room == "WP-4" && x.GrowerLotId == 394).CurrentBins);
+        Assert.Equal(247, Assert.Single(final, x => x.Room == "WP-4" && x.GrowerLotId == 474).CurrentBins);
+        Assert.Equal(124, Assert.Single(final, x => x.Room == "WP-8" && x.GrowerLotId == 474).CurrentBins);
+        Assert.Equal(371, final.Where(x => x.GrowerLotId == 474).Sum(x => x.CurrentBins));
+        Assert.DoesNotContain(final, x => x.GrowerLotId is null && x.Lot == "1531");
+        Assert.All(final.Where(x => x.GrowerLotId == 474),
+            x => Assert.Null(OperationalInventoryPosition.UnavailableReason(x)));
+        Assert.Equal(legacy1531History, await db.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.CropYear == 2026 && x.FruitProfileId == 19 && x.GrowerLotId == null
+                && x.LotNumber == "1531" && x.InventoryIdentityCorrectionId == null)
+            .OrderBy(x => x.Id)
+            .Select(x => new
+            {
+                x.Id,
+                x.ReceiptId,
+                x.RoomId,
+                x.GrowerLotId,
+                x.FruitProfileId,
+                x.LotNumber,
+                x.ChangeAmount,
+                x.AdjustmentType,
+                x.AdjustmentAt,
+                x.CreatedAt,
+                x.InventoryOperationKey
+            })
+            .ToListAsync());
+        Assert.Equal(treatmentApplicationsBefore, await db.RoomTreatmentApplications.CountAsync());
+        var treatmentSelectionsAfter = await treatments.GetSelectionsAsync(
+            (await ledger.GetSnapshotsAsync(null, null, 19, CancellationToken.None))
+                .Where(x => x.CurrentBins > 0 && x.Lot == "1531").ToList(), CancellationToken.None);
+        Assert.Equal(treatmentPositionBinsBefore,
+            treatmentSelectionsAfter.Values.SelectMany(x => x).Sum(x => x.CurrentBins));
+        var postDiagnostic = await legacyService.AnalyzeAsync(CancellationToken.None);
+        Assert.DoesNotContain(postDiagnostic.Positions, x => x.GrowerNumber == "1531" && x.FruitProfileId == 19);
+        var deductionReadiness = await invariant.VerifyReadinessAsync(CancellationToken.None);
+        Assert.True(deductionReadiness.IsReady,
+            string.Join("; ", deductionReadiness.Issues.Where(x => x.BlocksDeployment).Select(x => x.Code)));
     }
 
     private static Receipt PgReceipt(long id, string number, Warehouse warehouse, Room room, FruitProfile fruit) => new()

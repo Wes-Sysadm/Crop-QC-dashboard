@@ -22,6 +22,12 @@ BEGIN
        OR scoped_definition NOT LIKE '%where ("correctedreceiptid" is not null)%' THEN
         RAISE EXCEPTION 'Receipt-scoped inventory identity index contract is not exact';
     END IF;
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'InventoryIdentityCorrections'
+          AND column_name = 'SourceGrowerLotId' AND is_nullable <> 'YES') THEN
+        RAISE EXCEPTION 'SourceGrowerLotId must permit reviewed legacy-position corrections';
+    END IF;
 END $verify$;
 
 SELECT 'receipt_scoped_inventory_identity_indexes_verified' AS status,
