@@ -541,8 +541,10 @@ public sealed class DashboardDataService(
                 TransferLotOptions = transferProjection.Options,
                 TransferCurrentRoomBins = transferProjection.CurrentRoomBins,
                 TransferAvailableBins = transferProjection.AvailableBins,
+                TransferNeedsReconciliationBins = transferProjection.NeedsReconciliationBins,
                 TransferInventoryReconciles = transferProjection.Reconciles,
                 TransferInventoryError = transferProjection.Error,
+                TransferInventoryNotice = transferProjection.Notice,
                 TransferDestinationFacilities = transferDestinations.Facilities,
                 TransferDestinationOptions = transferDestinations.Rooms,
                 DepletionForm = new RoomDepletionForm { RoomId = roomId, DepletedAt = BusinessTime.NowPacific },
@@ -1047,20 +1049,17 @@ public sealed class DashboardDataService(
             string.Equals(x.Option.LotKey, form.SourceLotKey, StringComparison.OrdinalIgnoreCase)
             && string.Equals(x.Option.TreatmentSignature, form.TreatmentSignature ?? "", StringComparison.Ordinal)
             && x.Option.TreatmentSegmentId == form.TreatmentSegmentId);
-        if (selectedEntry is null)
+        if (selectedEntry is null || !selectedEntry.Option.IsAvailable)
         {
-            return "The selected source or treatment segment is no longer available. Refresh before retrying.";
+            return selectedEntry?.Option.UnavailableReason
+                ?? "The selected source or treatment segment is no longer available. Refresh before retrying.";
         }
         if (form.BinCount > selectedEntry.Option.CurrentBins)
         {
             return $"Cannot transfer {form.BinCount} bins because only {selectedEntry.Option.CurrentBins} bins remain in the exact selected treatment segment. Refresh before retrying.";
         }
 
-        var sourceLot = sourceLots.SingleOrDefault(x => string.Equals(RoomLotKey(x), form.SourceLotKey, StringComparison.OrdinalIgnoreCase));
-        if (sourceLot is null)
-        {
-            return "Source lot was not found in this room.";
-        }
+        var sourceLot = TransferSourceLot(selectedEntry.Snapshot);
 
         var destinationWarehouse = await dbContext.Warehouses.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == form.DestinationWarehouseId && x.IsActive, cancellationToken);
@@ -1105,10 +1104,10 @@ public sealed class DashboardDataService(
             dbContext, sourceLot.CropYear, sourceLot.GrowerLotId, sourceLot.FruitProfileId,
             "Internal room transfer", cancellationToken);
         if (transferIdentityError is not null) return transferIdentityError;
-        var destinationCurrent = (await BuildRoomLotSummariesAsync(form.DestinationRoomId, cancellationToken))
-            .Where(x => x.CurrentBins > 0)
-            .Where(x => x.CropYear == sourceLot.CropYear && x.GrowerLotId == sourceLot.GrowerLotId
-                && x.FruitProfileId == sourceLot.FruitProfileId)
+        var destinationCurrent = (await RoomInventoryLedger.GetSnapshotsAsync(
+                form.DestinationWarehouseId, [form.DestinationRoomId], cancellationToken))
+            .Where(x => OperationalInventoryPosition.CanonicalIdentityKey(x)
+                == OperationalInventoryPosition.CanonicalIdentityKey(selectedEntry.Snapshot))
             .Sum(x => x.CurrentBins);
 
         var transfer = new RoomTransfer
@@ -1282,9 +1281,10 @@ public sealed class DashboardDataService(
         var destinationSnapshot = snapshots.SingleOrDefault(x =>
             x.RoomId == original.DestinationRoomId
             && x.CropYear == original.CropYear
+            && x.GrowerLotId == original.GrowerLotId
             && x.FruitProfileId == original.FruitProfileId
             && string.Equals(x.Lot, original.LotNumber, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(x.InventoryStatus, original.InventoryStatus ?? "", StringComparison.OrdinalIgnoreCase));
+            && MatchesTransferStatus(x, original.InventoryStatus));
         if (destinationSnapshot is null || destinationSnapshot.CurrentBins < original.BinCount)
         {
             var available = destinationSnapshot?.CurrentBins ?? 0;
@@ -1293,9 +1293,10 @@ public sealed class DashboardDataService(
         var sourceCurrent = snapshots
             .Where(x => x.RoomId == original.SourceRoomId
                 && x.CropYear == original.CropYear
+                && x.GrowerLotId == original.GrowerLotId
                 && x.FruitProfileId == original.FruitProfileId
                 && string.Equals(x.Lot, original.LotNumber, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(x.InventoryStatus, original.InventoryStatus ?? "", StringComparison.OrdinalIgnoreCase))
+                && MatchesTransferStatus(x, original.InventoryStatus))
             .Sum(x => x.CurrentBins);
 
         var currentUser = await GetCurrentUserAsync(cancellationToken);
@@ -1405,6 +1406,11 @@ public sealed class DashboardDataService(
         }
         return null;
     }
+
+    private static bool MatchesTransferStatus(RoomInventoryLedgerSnapshot snapshot, string? recordedStatus) =>
+        string.Equals(snapshot.InventoryStatus, recordedStatus ?? "", StringComparison.OrdinalIgnoreCase)
+        || (string.IsNullOrWhiteSpace(snapshot.InventoryStatus)
+            && string.Equals(snapshot.ProductionType, recordedStatus ?? "", StringComparison.OrdinalIgnoreCase));
 
     public async Task<MasterDataPageViewModel> GetMasterDataPageAsync(string type, CancellationToken cancellationToken)
     {
@@ -6435,18 +6441,11 @@ public sealed class DashboardDataService(
             .Where(x => x.CurrentBins > 0)
             .ToList();
         var currentRoomBins = snapshots.Sum(x => x.CurrentBins);
-        var snapshotsByDisplayKey = snapshots
-            .GroupBy(x => LedgerLotKey(x.RoomId, x.CropYear, x.Lot, x.Variety, x.FruitProfileId), StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        if (snapshotsByDisplayKey.Any(x => x.Count() != 1))
-        {
-            return RoomTransferInventoryProjection.Failed(currentRoomBins, 0);
-        }
+        var displayedRoomBins = lots.Where(x => x.CurrentBins > 0).Sum(x => x.CurrentBins);
+        if (displayedRoomBins != currentRoomBins)
+            return RoomTransferInventoryProjection.Failed(currentRoomBins, 0, 0,
+                $"Room quantity does not reconcile: authoritative inventory is {currentRoomBins} bins, while the room projection represents {displayedRoomBins} bins.");
 
-        var lotsByDisplayKey = lots
-            .Where(x => x.CurrentBins > 0)
-            .GroupBy(x => LedgerLotKey(x.RoomId, x.CropYear, x.LotCode, x.VarietyCode, x.FruitProfileId), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
         var treatmentSelections = RoomTreatments is null
             ? null
             : await RoomTreatments.GetSelectionsAsync(snapshots, cancellationToken);
@@ -6463,13 +6462,13 @@ public sealed class DashboardDataService(
         var entries = new List<RoomTransferInventoryEntry>();
         foreach (var snapshot in snapshots)
         {
-            var displayKey = LedgerLotKey(snapshot.RoomId, snapshot.CropYear, snapshot.Lot, snapshot.Variety, snapshot.FruitProfileId);
-            if (!lotsByDisplayKey.TryGetValue(displayKey, out var matchingLots) || matchingLots.Count != 1)
+            var identityReason = OperationalInventoryPosition.UnavailableReason(snapshot);
+            if (identityReason is not null)
             {
-                return RoomTransferInventoryProjection.Failed(currentRoomBins, entries.Sum(x => x.Option.CurrentBins));
+                entries.Add(UnavailableTransferEntry(snapshot, identityReason));
+                continue;
             }
 
-            var lot = matchingLots[0];
             IReadOnlyList<TreatmentSegmentSelection> segments;
             if (treatmentSelections is null)
             {
@@ -6477,20 +6476,22 @@ public sealed class DashboardDataService(
             }
             else if (!treatmentSelections.TryGetValue(RoomTreatmentService.SelectionLookupKey(snapshot), out segments!))
             {
-                return RoomTransferInventoryProjection.Failed(currentRoomBins, entries.Sum(x => x.Option.CurrentBins));
+                entries.Add(UnavailableTransferEntry(snapshot,
+                    "Needs Reconciliation — treatment lineage is missing for this canonical inventory position."));
+                continue;
             }
             if (segments.Any(x => !x.IsAvailable))
             {
-                return RoomTransferInventoryProjection.Failed(
-                    currentRoomBins,
-                    entries.Sum(x => x.Option.CurrentBins),
-                    segments.First(x => !x.IsAvailable).UnavailableReason);
+                entries.Add(UnavailableTransferEntry(snapshot,
+                    segments.First(x => !x.IsAvailable).UnavailableReason
+                    ?? "Needs Reconciliation — treatment lineage is unavailable for this position."));
+                continue;
             }
             if (segments.Any(x => x.CurrentBins <= 0) || segments.Sum(x => x.CurrentBins) != snapshot.CurrentBins)
             {
-                return RoomTransferInventoryProjection.Failed(
-                    currentRoomBins,
-                    entries.Sum(x => x.Option.CurrentBins) + segments.Where(x => x.CurrentBins > 0).Sum(x => x.CurrentBins));
+                entries.Add(UnavailableTransferEntry(snapshot,
+                    $"Needs Reconciliation — treatment segments total {segments.Where(x => x.CurrentBins > 0).Sum(x => x.CurrentBins)} bins but canonical inventory contains {snapshot.CurrentBins} bins."));
+                continue;
             }
 
             foreach (var segment in segments)
@@ -6499,27 +6500,43 @@ public sealed class DashboardDataService(
                     ? treatmentReceiptLabels.GetValueOrDefault(receiptId, $"Receipt #{receiptId}")
                     : "Shared inventory";
                 var option = new RoomInventoryLotOptionViewModel(
-                    RoomLotKey(lot),
-                    $"{sourceLabel} - {lot.GrowerName} {lot.LotCode} {lot.VarietyCode} - {segment.Label} ({segment.CurrentBins} bins)",
+                    OperationalInventoryPosition.Key(snapshot),
+                    $"{sourceLabel} - {snapshot.Grower} {snapshot.GrowerNumber ?? snapshot.Lot} {snapshot.Variety} - {segment.Label} ({segment.CurrentBins} bins)",
                     segment.CurrentBins,
                     segment.TreatmentSignature,
                     segment.Label,
-                    $"{lot.GrowerName} / {lot.LotCode}",
-                    lot.VarietyCode,
+                    $"{snapshot.Grower} / {snapshot.GrowerNumber ?? snapshot.Lot}",
+                    snapshot.Variety,
                     segment.SegmentId,
                     segment.ReceiptId);
                 entries.Add(new RoomTransferInventoryEntry(option, snapshot));
             }
         }
 
-        var availableBins = entries.Sum(x => x.Option.CurrentBins);
-        if (availableBins != currentRoomBins || lots.Sum(x => x.CurrentBins) != currentRoomBins)
+        var availableBins = entries.Where(x => x.Option.IsAvailable).Sum(x => x.Option.CurrentBins);
+        var needsReconciliationBins = entries.Where(x => !x.Option.IsAvailable).Sum(x => x.Option.CurrentBins);
+        if (availableBins + needsReconciliationBins != currentRoomBins)
         {
-            return RoomTransferInventoryProjection.Failed(currentRoomBins, availableBins);
+            return RoomTransferInventoryProjection.Failed(currentRoomBins, availableBins, needsReconciliationBins);
         }
 
-        return new RoomTransferInventoryProjection(currentRoomBins, availableBins, true, null, entries);
+        var notice = needsReconciliationBins == 0
+            ? null
+            : $"{needsReconciliationBins} bin(s) need reconciliation and are unavailable. Exact positions containing {availableBins} bin(s) remain transferable.";
+        return new RoomTransferInventoryProjection(
+            currentRoomBins, availableBins, needsReconciliationBins, true, null, notice, entries);
     }
+
+    private static RoomTransferInventoryEntry UnavailableTransferEntry(
+        RoomInventoryLedgerSnapshot snapshot,
+        string reason) =>
+        new(new RoomInventoryLotOptionViewModel(
+                OperationalInventoryPosition.Key(snapshot),
+                $"Needs Reconciliation - {snapshot.Grower} {snapshot.GrowerNumber ?? snapshot.Lot} {snapshot.Variety} ({snapshot.CurrentBins} bins)",
+                snapshot.CurrentBins,
+                IsAvailable: false,
+                UnavailableReason: reason),
+            snapshot);
 
     private sealed record RoomTransferInventoryEntry(
         RoomInventoryLotOptionViewModel Option,
@@ -6528,17 +6545,47 @@ public sealed class DashboardDataService(
     private sealed record RoomTransferInventoryProjection(
         int CurrentRoomBins,
         int AvailableBins,
+        int NeedsReconciliationBins,
         bool Reconciles,
         string? Error,
+        string? Notice,
         IReadOnlyList<RoomTransferInventoryEntry> Entries)
     {
         public IReadOnlyList<RoomInventoryLotOptionViewModel> Options => Reconciles
             ? Entries.Select(x => x.Option).ToList()
             : [];
 
-        public static RoomTransferInventoryProjection Failed(int currentRoomBins, int availableBins, string? error = null) =>
-            new(currentRoomBins, availableBins, false, error ?? TransferInventoryReconciliationError, []);
+        public static RoomTransferInventoryProjection Failed(
+            int currentRoomBins,
+            int availableBins,
+            int needsReconciliationBins = 0,
+            string? error = null) =>
+            new(currentRoomBins, availableBins, needsReconciliationBins, false,
+                error ?? TransferInventoryReconciliationError, null, []);
     }
+
+    private static RoomLotSummaryViewModel TransferSourceLot(RoomInventoryLedgerSnapshot snapshot) => new()
+    {
+        InventoryKey = OperationalInventoryPosition.Key(snapshot),
+        InventoryAdjustmentId = snapshot.LatestAdjustmentId,
+        RoomId = snapshot.RoomId,
+        CropYear = snapshot.CropYear,
+        FruitProfileId = snapshot.FruitProfileId,
+        GrowerLotId = snapshot.GrowerLotId,
+        Warehouse = snapshot.Facility,
+        Facility = snapshot.Facility,
+        LocationGroup = snapshot.LocationGroup,
+        RoomCode = snapshot.Room,
+        GrowerNumber = snapshot.GrowerNumber ?? snapshot.Lot,
+        PoolStart = snapshot.PoolStart ?? "",
+        GrowerName = snapshot.Grower,
+        LotCode = snapshot.Lot,
+        VarietyCode = snapshot.Variety,
+        ProductionType = snapshot.ProductionType,
+        IsOrganic = snapshot.IsOrganic,
+        InventoryStatus = snapshot.InventoryStatus,
+        CurrentBins = snapshot.CurrentBins
+    };
 
     private static string RoomLotKey(RoomLotSummaryViewModel lot) =>
         lot.ReceiptId is not null

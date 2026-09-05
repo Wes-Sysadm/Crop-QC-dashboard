@@ -44,7 +44,42 @@ public interface IInventoryIdentityCorrectionDiagnosticService
     Task<InventoryIdentityDiagnosticReport> AnalyzeAsync(CancellationToken cancellationToken);
 }
 
-public sealed record InventoryIdentityReadinessResult(bool IsReady, IReadOnlyList<string> Issues);
+public sealed record OperationalInventoryDiagnostic(
+    int PositivePositions,
+    int PositiveBins,
+    int OperablePositions,
+    int OperableBins,
+    int NeedsReconciliationPositions,
+    int NeedsReconciliationBins,
+    int UnresolvedGrowers,
+    int MissingGrowerLots,
+    int DisplayKeyCollisions,
+    int ReceiptIdentityDriftRows,
+    int TreatmentMismatches,
+    int RoomQuantityMismatches,
+    int RoomsPreventedFromTransfer,
+    int RoomsPartiallyOperable,
+    IReadOnlyList<OperationalInventoryRoomDiagnostic> Rooms,
+    IReadOnlyList<string> PositionIssues);
+
+public sealed record OperationalInventoryRoomDiagnostic(
+    string Facility,
+    int RoomId,
+    string Room,
+    int CurrentBins,
+    int OperableBins,
+    int NeedsReconciliationBins,
+    int CanonicalPositions,
+    int DisplayKeyCollisions,
+    int MissingGrowerLots,
+    int UnresolvedGrowers,
+    int TreatmentMismatches,
+    string TransferProjectionStatus);
+
+public sealed record InventoryIdentityReadinessResult(
+    bool IsReady,
+    IReadOnlyList<string> Issues,
+    OperationalInventoryDiagnostic? OperationalInventory = null);
 
 public interface IInventoryIdentityReadinessService
 {
@@ -54,7 +89,8 @@ public interface IInventoryIdentityReadinessService
 public sealed class InventoryIdentityReadinessService(
     CropQcDbContext dbContext,
     IRoomInventoryLedgerQueryService ledger,
-    IInventoryIdentityService identities) : IInventoryIdentityReadinessService
+    IInventoryIdentityService identities,
+    IRoomTreatmentService? roomTreatments = null) : IInventoryIdentityReadinessService
 {
     public async Task<InventoryIdentityReadinessResult> VerifyAsync(CancellationToken cancellationToken)
     {
@@ -68,7 +104,9 @@ public sealed class InventoryIdentityReadinessService(
             var source = new InventoryIdentityKey(correction.SourceCropYear, correction.SourceGrowerLotId, correction.SourceFruitProfileId);
             try
             {
-                var resolution = await identities.ResolveAsync(source, cancellationToken);
+                var resolution = correction.CorrectedReceiptId is long receiptId
+                    ? await identities.ResolveForReceiptAsync(source, receiptId, cancellationToken)
+                    : await identities.ResolveAsync(source, cancellationToken);
                 if (!resolution.IsSuperseded) issues.Add($"Correction {correction.Id} does not resolve away from its source.");
             }
             catch (InvalidOperationException exception)
@@ -78,22 +116,136 @@ public sealed class InventoryIdentityReadinessService(
             if (!correction.IsComplete || correction.InventoryAdjustments.Count != correction.ExpectedAdjustmentCount
                 || correction.TreatmentLineageMovements.Count != correction.ExpectedTreatmentMovementCount)
                 issues.Add($"Correction {correction.Id} is incomplete or has a parent-count mismatch.");
-            var obsoleteBins = snapshots.Where(x => x.CropYear == source.CropYear
-                && x.GrowerLotId == source.GrowerLotId && x.FruitProfileId == source.FruitProfileId && x.CurrentBins > 0)
-                .Sum(x => x.CurrentBins);
-            if (obsoleteBins > 0) issues.Add($"Correction {correction.Id} leaves {obsoleteBins} current bins on obsolete identity {source}.");
-            var obsoleteTreatment = await dbContext.TreatmentLineageSegments.AsNoTracking()
-                .Where(x => x.CurrentBins > 0 && x.CropYear == source.CropYear
-                    && x.GrowerLotId == source.GrowerLotId && x.FruitProfileId == source.FruitProfileId)
-                .SumAsync(x => (int?)x.CurrentBins, cancellationToken) ?? 0;
-            if (obsoleteTreatment > 0) issues.Add($"Correction {correction.Id} leaves {obsoleteTreatment} treatment-lineage bins on obsolete identity {source}.");
-            if (await dbContext.RoomInventoryAdjustments.AsNoTracking().AnyAsync(x => x.AdjustmentAt > correction.CreatedAt
-                && x.CropYear == source.CropYear && x.GrowerLotId == source.GrowerLotId
-                && x.FruitProfileId == source.FruitProfileId && x.ChangeAmount > 0
-                && x.InventoryIdentityCorrectionId != correction.Id, cancellationToken))
+            if (correction.CorrectedReceiptId is null)
+            {
+                var obsoleteBins = snapshots.Where(x => x.CropYear == source.CropYear
+                    && x.GrowerLotId == source.GrowerLotId && x.FruitProfileId == source.FruitProfileId && x.CurrentBins > 0)
+                    .Sum(x => x.CurrentBins);
+                if (obsoleteBins > 0) issues.Add($"Correction {correction.Id} leaves {obsoleteBins} current bins on obsolete identity {source}.");
+                var obsoleteTreatment = await dbContext.TreatmentLineageSegments.AsNoTracking()
+                    .Where(x => x.CurrentBins > 0 && x.CropYear == source.CropYear
+                        && x.GrowerLotId == source.GrowerLotId && x.FruitProfileId == source.FruitProfileId)
+                    .SumAsync(x => (int?)x.CurrentBins, cancellationToken) ?? 0;
+                if (obsoleteTreatment > 0) issues.Add($"Correction {correction.Id} leaves {obsoleteTreatment} treatment-lineage bins on obsolete identity {source}.");
+            }
+            if (correction.CorrectedReceiptId is null
+                && await dbContext.RoomInventoryAdjustments.AsNoTracking().AnyAsync(x => x.AdjustmentAt > correction.CreatedAt
+                    && x.CropYear == source.CropYear && x.GrowerLotId == source.GrowerLotId
+                    && x.FruitProfileId == source.FruitProfileId && x.ChangeAmount > 0
+                    && x.InventoryIdentityCorrectionId != correction.Id, cancellationToken))
                 issues.Add($"Obsolete identity {source} was recreated after correction {correction.Id}.");
         }
-        return new(issues.Count == 0, issues);
+        var positive = snapshots.Where(x => x.CurrentBins > 0).ToList();
+        var positionIssues = new List<string>();
+        var available = new HashSet<string>(StringComparer.Ordinal);
+        var treatmentMismatchPositions = new HashSet<string>(StringComparer.Ordinal);
+        var treatmentMismatches = 0;
+        IReadOnlyDictionary<string, IReadOnlyList<TreatmentSegmentSelection>>? treatmentSelections = null;
+        if (roomTreatments is not null && positive.Count > 0)
+            treatmentSelections = await roomTreatments.GetSelectionsAsync(positive, cancellationToken);
+
+        foreach (var snapshot in positive)
+        {
+            var reason = OperationalInventoryPosition.UnavailableReason(snapshot);
+            if (reason is null && treatmentSelections is not null)
+            {
+                if (!treatmentSelections.TryGetValue(RoomTreatmentService.SelectionLookupKey(snapshot), out var segments)
+                    || segments.Any(x => !x.IsAvailable || x.CurrentBins <= 0)
+                    || segments.Sum(x => x.CurrentBins) != snapshot.CurrentBins)
+                {
+                    treatmentMismatches++;
+                    treatmentMismatchPositions.Add(OperationalInventoryPosition.Key(snapshot));
+                    reason = "Needs Reconciliation — treatment segments do not equal canonical position bins.";
+                }
+            }
+            if (reason is null)
+                available.Add(OperationalInventoryPosition.Key(snapshot));
+            else
+                positionIssues.Add($"{snapshot.Facility}/{snapshot.Room}: {snapshot.CurrentBins} bins; {snapshot.GrowerNumber ?? snapshot.Lot}/{snapshot.Variety}; adjustment {snapshot.LatestAdjustmentId}; {reason}");
+        }
+
+        var driftRows = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.ReceiptId != null && x.ChangeAmount > 0)
+            .Select(x => new
+            {
+                x.Id,
+                x.GrowerLotId,
+                x.FruitProfileId,
+                x.CropYear,
+                x.LotNumber,
+                ReceiptId = x.ReceiptId!.Value,
+                ReceiptNumber = x.Receipt!.CompuTechReceiptId,
+                ReceiptGrowerLotId = x.Receipt!.GrowerLotId,
+                ReceiptFruitProfileId = (int?)x.Receipt.FruitProfileId,
+                ReceiptCropYear = (int?)x.Receipt.CropYear,
+                ReceiptGrowerNumber = x.Receipt.GrowerNumber,
+                ReceiptLot = x.Receipt.LotCode
+            })
+            .ToListAsync(cancellationToken);
+        var identityDrift = driftRows.Where(x =>
+            x.GrowerLotId != x.ReceiptGrowerLotId
+            || x.FruitProfileId != x.ReceiptFruitProfileId
+            || x.CropYear != x.ReceiptCropYear
+            || (!string.IsNullOrWhiteSpace(x.LotNumber)
+                && !string.Equals(x.LotNumber, x.ReceiptGrowerNumber ?? x.ReceiptLot, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        var receiptIdentityDriftRows = identityDrift.Count;
+        positionIssues.AddRange(identityDrift.Select(x =>
+            $"Receipt identity drift contributor: {x.ReceiptNumber} / adjustment {x.Id}; historical lot {x.LotNumber}, GL {x.GrowerLotId?.ToString() ?? "none"}, FP {x.FruitProfileId?.ToString() ?? "none"}, crop {x.CropYear?.ToString() ?? "none"}; current Receipt lot {x.ReceiptGrowerNumber ?? x.ReceiptLot}, GL {x.ReceiptGrowerLotId?.ToString() ?? "none"}, FP {x.ReceiptFruitProfileId}, crop {x.ReceiptCropYear}."));
+
+        var displayCollisions = positive
+            .GroupBy(x => string.Join('|', x.RoomId, x.CropYear, x.Lot.Trim().ToUpperInvariant(),
+                x.Variety.Trim().ToUpperInvariant(), x.FruitProfileId))
+            .Count(x => x.Select(OperationalInventoryPosition.CanonicalIdentityKey).Distinct(StringComparer.Ordinal).Count() > 1);
+        var rooms = positive.GroupBy(x => x.RoomId).ToList();
+        var roomQuantityMismatches = rooms.Count(x =>
+            x.Where(y => available.Contains(OperationalInventoryPosition.Key(y))).Sum(y => y.CurrentBins)
+            + x.Where(y => !available.Contains(OperationalInventoryPosition.Key(y))).Sum(y => y.CurrentBins)
+            != x.Sum(y => y.CurrentBins));
+        if (roomQuantityMismatches > 0)
+            issues.Add($"{roomQuantityMismatches} room(s) have an operational-position quantity mismatch.");
+        var operable = positive.Where(x => available.Contains(OperationalInventoryPosition.Key(x))).ToList();
+        var unavailable = positive.Where(x => !available.Contains(OperationalInventoryPosition.Key(x))).ToList();
+        var roomDiagnostics = rooms.Select(room =>
+        {
+            var roomOperableBins = room.Where(x => available.Contains(OperationalInventoryPosition.Key(x))).Sum(x => x.CurrentBins);
+            var roomNeedsBins = room.Sum(x => x.CurrentBins) - roomOperableBins;
+            var roomDisplayCollisions = room
+                .GroupBy(x => string.Join('|', x.CropYear, x.Lot.Trim().ToUpperInvariant(),
+                    x.Variety.Trim().ToUpperInvariant(), x.FruitProfileId))
+                .Count(x => x.Select(OperationalInventoryPosition.CanonicalIdentityKey)
+                    .Distinct(StringComparer.Ordinal).Count() > 1);
+            var status = roomOperableBins == 0
+                ? "Blocked - every current position needs reconciliation"
+                : roomNeedsBins == 0
+                    ? "Operable"
+                    : "Partially operable - exact positions remain available";
+            var first = room.First();
+            return new OperationalInventoryRoomDiagnostic(
+                first.Facility, first.RoomId, first.Room, room.Sum(x => x.CurrentBins), roomOperableBins,
+                roomNeedsBins, room.Count(), roomDisplayCollisions, room.Count(x => x.GrowerLotId is null),
+                room.Count(x => string.IsNullOrWhiteSpace(x.GrowerNumber)),
+                room.Count(x => treatmentMismatchPositions.Contains(OperationalInventoryPosition.Key(x))), status);
+        }).OrderBy(x => x.Facility).ThenBy(x => x.Room).ToList();
+        var operational = new OperationalInventoryDiagnostic(
+            positive.Count,
+            positive.Sum(x => x.CurrentBins),
+            operable.Count,
+            operable.Sum(x => x.CurrentBins),
+            unavailable.Count,
+            unavailable.Sum(x => x.CurrentBins),
+            positive.Count(x => string.IsNullOrWhiteSpace(x.GrowerNumber)),
+            positive.Count(x => x.GrowerLotId is null),
+            displayCollisions,
+            receiptIdentityDriftRows,
+            treatmentMismatches,
+            roomQuantityMismatches,
+            rooms.Count(x => x.All(y => !available.Contains(OperationalInventoryPosition.Key(y)))),
+            rooms.Count(x => x.Any(y => available.Contains(OperationalInventoryPosition.Key(y)))
+                && x.Any(y => !available.Contains(OperationalInventoryPosition.Key(y)))),
+            roomDiagnostics,
+            positionIssues);
+        return new(issues.Count == 0, issues, operational);
     }
 }
 

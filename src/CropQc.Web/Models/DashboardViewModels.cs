@@ -132,8 +132,10 @@ public sealed class RoomDetailViewModel
     public IReadOnlyList<RoomInventoryLotOptionViewModel> TransferLotOptions { get; set; } = [];
     public int TransferCurrentRoomBins { get; set; }
     public int TransferAvailableBins { get; set; }
+    public int TransferNeedsReconciliationBins { get; set; }
     public bool TransferInventoryReconciles { get; set; }
     public string? TransferInventoryError { get; set; }
+    public string? TransferInventoryNotice { get; set; }
     public IReadOnlyList<RoomTransferFacilityViewModel> TransferDestinationFacilities { get; set; } = [];
     public IReadOnlyList<RoomTransferDestinationViewModel> TransferDestinationOptions { get; set; } = [];
     public RoomDepletionForm DepletionForm { get; set; } = new();
@@ -435,7 +437,9 @@ public sealed record RoomInventoryLotOptionViewModel(
     string Grower = "",
     string Variety = "",
     long? TreatmentSegmentId = null,
-    long? TreatmentReceiptId = null);
+    long? TreatmentReceiptId = null,
+    bool IsAvailable = true,
+    string? UnavailableReason = null);
 public sealed record RoomTransferFacilityViewModel(
     int WarehouseId,
     string Label,
@@ -779,8 +783,10 @@ public sealed class BinsRunPageViewModel
     public IReadOnlyList<RoomInventoryLotOptionViewModel> TransferLotOptions { get; set; } = [];
     public int TransferCurrentRoomBins { get; set; }
     public int TransferAvailableBins { get; set; }
+    public int TransferNeedsReconciliationBins { get; set; }
     public bool TransferInventoryReconciles { get; set; }
     public string? TransferInventoryError { get; set; }
+    public string? TransferInventoryNotice { get; set; }
     public IReadOnlyList<RoomReceiptOptionViewModel> TrueUpReceiptOptions { get; set; } = [];
     public IReadOnlyList<RoomTransferFacilityViewModel> TransferDestinationFacilities { get; set; } = [];
     public IReadOnlyList<RoomTransferDestinationViewModel> TransferDestinationOptions { get; set; } = [];

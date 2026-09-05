@@ -1412,7 +1412,14 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.SourceIdentitySnapshotJson).IsRequired();
             entity.Property(x => x.TargetIdentitySnapshotJson).IsRequired();
             entity.HasIndex(x => x.OperationKey).IsUnique();
-            entity.HasIndex(x => new { x.SourceCropYear, x.SourceGrowerLotId, x.SourceFruitProfileId }).IsUnique();
+            entity.HasIndex(x => new { x.SourceCropYear, x.SourceGrowerLotId, x.SourceFruitProfileId })
+                .IsUnique()
+                .HasFilter("\"CorrectedReceiptId\" IS NULL")
+                .HasDatabaseName("UX_InventoryIdentityCorrections_GlobalSource");
+            entity.HasIndex(x => new { x.CorrectedReceiptId, x.SourceCropYear, x.SourceGrowerLotId, x.SourceFruitProfileId })
+                .IsUnique()
+                .HasFilter("\"CorrectedReceiptId\" IS NOT NULL")
+                .HasDatabaseName("UX_InventoryIdentityCorrections_ReceiptSource");
             entity.HasIndex(x => new { x.TargetCropYear, x.TargetGrowerLotId, x.TargetFruitProfileId });
             entity.HasIndex(x => x.ReceiptInventoryOverrideId).IsUnique();
             entity.HasIndex(x => new { x.IsActive, x.CreatedAt });

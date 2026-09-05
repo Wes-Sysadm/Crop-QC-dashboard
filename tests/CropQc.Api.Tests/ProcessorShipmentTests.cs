@@ -541,7 +541,7 @@ public sealed class ProcessorShipmentTests
     [Fact]
     public void Application_gate_targets_processor_migration_and_all_new_objects()
     {
-        Assert.Equal("20260904030132_ReintroduceQcPhotoOrientation", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
+        Assert.Equal("20260905012129_ScopeInventoryIdentityCorrectionsToReceipts", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
         var source = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DatabaseStartupDiagnostics.cs"));
         Assert.Contains("ProcessorShipmentLines.PoundsPerBinSnapshot", source);
         Assert.Contains("FK_TreatmentLineageMovements_ProcessorShipmentLines_ProcessorShipmentLineId", source);

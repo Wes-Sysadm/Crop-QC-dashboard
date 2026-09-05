@@ -270,6 +270,7 @@ builder.Services.AddScoped<IRoomInventoryLedgerQueryService, RoomInventoryLedger
 builder.Services.AddScoped<IInventoryIdentityService, InventoryIdentityService>();
 builder.Services.AddScoped<IInventoryIdentityCorrectionDiagnosticService, InventoryIdentityCorrectionDiagnosticService>();
 builder.Services.AddScoped<IInventoryIdentityReadinessService, InventoryIdentityReadinessService>();
+builder.Services.AddScoped<IReceiptInventoryProvenanceResolver, ReceiptInventoryProvenanceResolver>();
 builder.Services.AddScoped<ITr508901InventoryRepairService, Tr508901InventoryRepairService>();
 builder.Services.AddScoped<IRoomInventoryReconciliationService, RoomInventoryReconciliationService>();
 builder.Services.AddScoped<IRoomInventoryLossService, RoomInventoryLossService>();
@@ -692,7 +693,7 @@ if (args.Contains(ActualRun3ReportingIdentityCorrectionConstants.CommandName, St
 
 if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommandName, StringComparer.OrdinalIgnoreCase))
 {
-    const string releaseMigration = "20260904030132_ReintroduceQcPhotoOrientation";
+    const string releaseMigration = "20260905012129_ScopeInventoryIdentityCorrectionsToReceipts";
     var schemaReady = await DatabaseStartupDiagnostics.VerifyRequiredSchemaAsync(
         app.Services, app.Configuration, app.Environment, releaseMigration);
     await using var readinessScope = app.Services.CreateAsyncScope();
@@ -1913,6 +1914,26 @@ static async Task<bool> VerifyInventoryDeductionReadinessAsync(IServiceProvider 
     foreach (var issue in identityResult.Issues)
     {
         invariantLogger.LogError("Inventory identity readiness blocking issue: {Issue}", issue);
+    }
+    if (identityResult.OperationalInventory is { } operational)
+    {
+        invariantLogger.LogInformation(
+            "Operational inventory readiness inspected {PositivePositions} positive positions / {PositiveBins} bins: {OperablePositions} operable / {OperableBins} bins; {NeedsPositions} Needs Reconciliation / {NeedsBins} bins; unresolved growers {UnresolvedGrowers}; missing Grower Lots {MissingGrowerLots}; display-key collisions {DisplayKeyCollisions}; Receipt identity drift rows {ReceiptIdentityDriftRows}; treatment mismatches {TreatmentMismatches}; room quantity mismatches {RoomQuantityMismatches}; fully blocked rooms {BlockedRooms}; partially operable rooms {PartiallyOperableRooms}.",
+            operational.PositivePositions, operational.PositiveBins,
+            operational.OperablePositions, operational.OperableBins,
+            operational.NeedsReconciliationPositions, operational.NeedsReconciliationBins,
+            operational.UnresolvedGrowers, operational.MissingGrowerLots,
+            operational.DisplayKeyCollisions, operational.ReceiptIdentityDriftRows,
+            operational.TreatmentMismatches, operational.RoomQuantityMismatches,
+            operational.RoomsPreventedFromTransfer, operational.RoomsPartiallyOperable);
+        foreach (var issue in operational.PositionIssues)
+            invariantLogger.LogWarning("Operational inventory position Needs Reconciliation: {Issue}", issue);
+        foreach (var room in operational.Rooms)
+            invariantLogger.LogInformation(
+                "Operational inventory room {Facility}/{Room}: current {CurrentBins}; operable {OperableBins}; Needs Reconciliation {NeedsBins}; canonical positions {Positions}; display-key collisions {DisplayCollisions}; missing Grower Lots {MissingGrowerLots}; unresolved growers {UnresolvedGrowers}; treatment mismatches {TreatmentMismatches}; status {Status}.",
+                room.Facility, room.Room, room.CurrentBins, room.OperableBins, room.NeedsReconciliationBins,
+                room.CanonicalPositions, room.DisplayKeyCollisions, room.MissingGrowerLots, room.UnresolvedGrowers,
+                room.TreatmentMismatches, room.TransferProjectionStatus);
     }
 
     return result.IsReady && identityResult.IsReady;

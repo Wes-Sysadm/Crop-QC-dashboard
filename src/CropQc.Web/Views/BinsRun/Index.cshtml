@@ -1587,7 +1587,8 @@ else
             {
                 <dl class="summary-list transfer-inventory-reconciliation" aria-label="Transfer inventory reconciliation">
                     <dt>Current Room Inventory</dt><dd>@Model.TransferCurrentRoomBins bins</dd>
-                    <dt>Available in transfer selections</dt><dd>@Model.TransferAvailableBins bins</dd>
+                    <dt>Operable bins</dt><dd>@Model.TransferAvailableBins bins</dd>
+                    <dt>Needs reconciliation</dt><dd>@Model.TransferNeedsReconciliationBins bins</dd>
                 </dl>
                 @if (!Model.TransferInventoryReconciles)
                 {
@@ -1595,6 +1596,10 @@ else
                 }
                 else
                 {
+                @if (!string.IsNullOrWhiteSpace(Model.TransferInventoryNotice))
+                {
+                    <p class="notice warning" role="status">@Model.TransferInventoryNotice</p>
+                }
                 <form class="form-grid transfer-workflow" method="post" action="/BinsRun/Transfer" data-transfer-workflow
                       data-source-facility="@(Model.TransferDestinationFacilities.FirstOrDefault(x => x.WarehouseId == Model.RoomSummary?.WarehouseId)?.Label ?? Model.RoomSummary?.Facility)"
                       data-source-room="@Model.RoomSummary?.RoomName">
@@ -1631,12 +1636,13 @@ else
                             {
                                 <label class="transfer-fruit-option">
                                     <input type="radio" name="SourceLotKey" value="@option.LotKey" required
+                                           disabled="@(!option.IsAvailable)"
                                            checked="@(option.LotKey == Model.Filter.SourceKey && option.TreatmentSignature == Model.Filter.TransferTreatmentSignature)"
                                            data-treatment-signature="@option.TreatmentSignature"
                                            data-treatment-segment-id="@option.TreatmentSegmentId"
                                            data-grower="@option.Grower" data-variety="@option.Variety"
                                            data-treatment="@option.TreatmentLabel" data-available="@option.CurrentBins" />
-                                    <span>@option.Label</span>
+                                    <span>@option.Label@if (!option.IsAvailable && !string.IsNullOrWhiteSpace(option.UnavailableReason)) { <small class="muted"> — @option.UnavailableReason</small> }</span>
                                 </label>
                             }
                         </div>
