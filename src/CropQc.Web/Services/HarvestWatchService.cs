@@ -17,6 +17,7 @@ public interface IHarvestWatchService
     Task<string?> RetireAsync(int roomId, long deploymentId, HarvestWatchRetireForm form, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<HarvestWatchInboundResult> ProcessInboundReplyAsync(HarvestWatchInboundReply reply, CancellationToken cancellationToken);
     Task ProcessPendingOutboundEmailsAsync(IReadOnlyCollection<long>? deploymentIds, CancellationToken cancellationToken);
+    Task ResumeBlockedOutboundEmailsAsync(CancellationToken cancellationToken);
 }
 
 public sealed record HarvestWatchOperationResult(bool Success, string? Error, IReadOnlyList<long> DeploymentIds)
@@ -73,7 +74,7 @@ public sealed class HarvestWatchEmailDispatcher(CropQcDbContext dbContext, IQcEm
             """;
         var mailbox = await SystemMailboxAsync(cancellationToken);
         if (mailbox is null) return QcEmailSendResult.Failed("The dedicated HarvestWatch mailbox is unavailable.", reconnectRequired: true);
-        return await emailSender.SendAsync(mailbox, new QcEmailMessage(
+        return await emailSender.SendMailboxAsync(mailbox, new QcEmailMessage(
             mailbox.Email,
             HarvestWatchConstants.VerificationRecipient,
             mailbox.Email,
@@ -100,7 +101,7 @@ public sealed class HarvestWatchEmailDispatcher(CropQcDbContext dbContext, IQcEm
             """;
         var mailbox = await SystemMailboxAsync(cancellationToken);
         if (mailbox is null) return QcEmailSendResult.Failed("The dedicated HarvestWatch mailbox is unavailable.", reconnectRequired: true);
-        return await emailSender.SendAsync(mailbox, new QcEmailMessage(
+        return await emailSender.SendMailboxAsync(mailbox, new QcEmailMessage(
             mailbox.Email,
             deployment.DeployerEmailSnapshot,
             mailbox.Email,
@@ -119,6 +120,7 @@ public static class HarvestWatchConstants
 {
     public const string VerificationRecipient = "wes@fruitandland.com";
     public const string MailboxAuthenticationScheme = "HarvestWatchMailboxGoogle";
+    public const string MailboxExternalCookieScheme = "HarvestWatchMailboxExternal";
     public static readonly IReadOnlySet<string> EligibleFacilities = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "DH", "EBS" };
 }
 
@@ -330,46 +332,65 @@ public sealed class HarvestWatchService(
         if (deployment is not null && !deployment.IsActive)
             dbContext.AuditLogs.Add(Audit(deployment.DeployedByUserId, "HarvestWatchVerificationIgnored", deployment.Id, new { deployment.Status, deployment.IsActive }, new { Sender = sender, reply.MessageId, Outcome = outcome }, now));
         var enteringError = false;
+        var statusChanged = false;
         if (deployment is not null && parsed is not null && deployment.Status != parsed)
         {
             var old = deployment.Status;
-            enteringError = HarvestWatchStatuses.IsError(parsed) && !HarvestWatchStatuses.IsError(old);
+            enteringError = HarvestWatchStatuses.IsError(parsed);
             deployment.Status = parsed; deployment.VerifiedAt = reply.ReceivedAt; deployment.VerifiedByEmail = sender; deployment.LastReplyMessageId = reply.MessageId; deployment.UpdatedAt = now;
             dbContext.HarvestWatchStatusHistories.Add(new HarvestWatchStatusHistory { HarvestWatchDeploymentId = deployment.Id, PreviousStatus = old, NewStatus = parsed, Source = "EmailReply", ChangedAt = now, InboundMessageId = reply.MessageId, ChangedByEmail = sender });
             dbContext.AuditLogs.Add(Audit(deployment.DeployedByUserId, "HarvestWatchVerificationReceived", deployment.Id, new { Status = old }, new { Status = parsed, Sender = sender, reply.MessageId }, now));
             if (enteringError) QueueOutboundEmail(deployment, "ErrorNotification", now);
+            statusChanged = true;
             outcome = "StatusUpdated";
         }
         await dbContext.SaveChangesAsync(cancellationToken);
-        if (deployment is not null && enteringError) await ProcessPendingOutboundEmailsAsync([deployment.Id], cancellationToken);
+        if (deployment is not null && statusChanged) await ProcessPendingOutboundEmailsAsync([deployment.Id], cancellationToken);
         return new HarvestWatchInboundResult(outcome, deployment?.Id);
     }
 
     public async Task ProcessPendingOutboundEmailsAsync(IReadOnlyCollection<long>? deploymentIds, CancellationToken cancellationToken)
+        => await ProcessPendingOutboundEmailsAsync(deploymentIds, resumeBlockedCredentials: false, cancellationToken);
+
+    public async Task ResumeBlockedOutboundEmailsAsync(CancellationToken cancellationToken)
+        => await ProcessPendingOutboundEmailsAsync(null, resumeBlockedCredentials: true, cancellationToken);
+
+    private async Task ProcessPendingOutboundEmailsAsync(IReadOnlyCollection<long>? deploymentIds, bool resumeBlockedCredentials, CancellationToken cancellationToken)
     {
         var now = businessTime.UtcNow;
-        var query = dbContext.HarvestWatchDeployments.Include(x => x.DeployedByUser).AsQueryable();
-        if (deploymentIds is { Count: > 0 }) query = query.Where(x => deploymentIds.Contains(x.Id));
-        var deployments = await query.OrderBy(x => x.Id).Take(100).ToListAsync(cancellationToken);
-        if (deployments.Count == 0) return;
-        var workRows = await dbContext.HarvestWatchStatusHistories
-            .Where(x => deployments.Select(deployment => deployment.Id).Contains(x.HarvestWatchDeploymentId) && x.Source == "OutboundEmail")
-            .OrderBy(x => x.Id).ToListAsync(cancellationToken);
-        var pending = workRows.Select(row => new { Row = row, Work = DeserializeWork(row.Note) })
-            .Where(x => x.Work is not null && IsDue(x.Work!, now)).Take(25).ToList();
-        foreach (var item in pending)
+        var requestedDeploymentIds = deploymentIds?.Distinct().ToArray() ?? [];
+        var processed = 0;
+        long afterId = 0;
+        while (processed < 25)
         {
-            var deployment = deployments.Single(x => x.Id == item.Row.HarvestWatchDeploymentId);
-            if (item.Work!.Type == "ErrorNotification" && !HarvestWatchStatuses.IsError(deployment.Status))
+            var workRows = await dbContext.HarvestWatchStatusHistories.AsTracking()
+                .Where(x => x.Source == "OutboundEmail" && x.Id > afterId
+                    && (requestedDeploymentIds.Length == 0 || requestedDeploymentIds.Contains(x.HarvestWatchDeploymentId)))
+                .OrderBy(x => x.Id).Take(100).ToListAsync(cancellationToken);
+            if (workRows.Count == 0) break;
+            afterId = workRows[^1].Id;
+            var deploymentIdsInPage = workRows.Select(x => x.HarvestWatchDeploymentId).Distinct().ToList();
+            var deployments = await dbContext.HarvestWatchDeployments.Include(x => x.DeployedByUser)
+                .Where(x => deploymentIdsInPage.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+            foreach (var row in workRows)
             {
-                item.Work.Status = "Superseded";
-                item.Work.NextRetryAt = null;
-                item.Work.LastError = "Superseded by a later non-error verification reply.";
-                item.Row.Note = SerializeWork(item.Work);
-                await dbContext.SaveChangesAsync(cancellationToken);
-                continue;
+                if (processed >= 25 || !deployments.TryGetValue(row.HarvestWatchDeploymentId, out var deployment)) break;
+                var work = DeserializeWork(row.Note);
+                if (work is null) continue;
+                if (work.Type == "ErrorNotification" && work.Status is not "Sent" and not "Superseded" && !HarvestWatchStatuses.IsError(deployment.Status))
+                {
+                    work.Status = "Superseded";
+                    work.NextRetryAt = null;
+                    work.LastError = "Superseded by a later non-error verification reply.";
+                    row.Note = SerializeWork(work);
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    processed++;
+                    continue;
+                }
+                if (!IsDue(work, now, resumeBlockedCredentials)) continue;
+                await DeliverAsync(deployment, row, work, cancellationToken);
+                processed++;
             }
-            await DeliverAsync(deployment, item.Row, item.Work, cancellationToken);
         }
     }
 
@@ -383,7 +404,7 @@ public sealed class HarvestWatchService(
         work.AttemptCount++;
         work.LastAttemptAt = now;
         work.Status = DeliveryStatus(result);
-        work.LastError = result.Success ? null : Truncate(result.Error, 1000);
+        work.LastError = result.Success ? null : Truncate(result.Error, 400);
         work.NextRetryAt = result.Success || result.ReconnectRequired ? null : NextRetry(now, work.AttemptCount);
         if (result.Success) { work.SentAt = now; work.MessageId = result.MessageId; }
         if (verification)
@@ -401,12 +422,21 @@ public sealed class HarvestWatchService(
     }
 
     private void QueueOutboundEmail(HarvestWatchDeployment deployment, string type, DateTimeOffset now) => dbContext.HarvestWatchStatusHistories.Add(new HarvestWatchStatusHistory { HarvestWatchDeploymentId = deployment.Id, NewStatus = deployment.Status, Source = "OutboundEmail", ChangedAt = now, Note = SerializeWork(new HarvestWatchOutboundEmailWork { Type = type, Status = "Pending", NextRetryAt = now }) });
-    private static bool IsDue(HarvestWatchOutboundEmailWork work, DateTimeOffset now) => (work.Status == "Pending" || work.Status == "FailedRetryable") && (work.NextRetryAt == null || work.NextRetryAt <= now);
-    private static string DeliveryStatus(QcEmailSendResult result) => result.Success ? "Sent" : result.ReconnectRequired ? "PermanentFailure" : "FailedRetryable";
+    private static bool IsDue(HarvestWatchOutboundEmailWork work, DateTimeOffset now, bool resumeBlockedCredentials) => (work.Status == "Pending" || work.Status == "FailedRetryable" || (work.Status == "BlockedCredential" && resumeBlockedCredentials)) && (work.NextRetryAt == null || work.NextRetryAt <= now);
+    private static string DeliveryStatus(QcEmailSendResult result) => result.Success ? "Sent" : result.ReconnectRequired ? "BlockedCredential" : "FailedRetryable";
     private static DateTimeOffset NextRetry(DateTimeOffset now, int attempts) => now.AddMinutes(Math.Min(60, Math.Pow(2, Math.Min(attempts, 6))));
     private static HarvestWatchOutboundEmailWork? DeserializeWork(string? value) { try { return string.IsNullOrWhiteSpace(value) ? null : JsonSerializer.Deserialize<HarvestWatchOutboundEmailWork>(value, AuditJson); } catch (JsonException) { return null; } }
-    private static string SerializeWork(HarvestWatchOutboundEmailWork work) => JsonSerializer.Serialize(work, AuditJson);
-
+    private static string SerializeWork(HarvestWatchOutboundEmailWork work) => JsonSerializer.Serialize(new HarvestWatchOutboundEmailWork
+    {
+        Type = Truncate(work.Type, 32) ?? "Unknown",
+        Status = Truncate(work.Status, 32) ?? "Unknown",
+        AttemptCount = work.AttemptCount,
+        LastAttemptAt = work.LastAttemptAt,
+        NextRetryAt = work.NextRetryAt,
+        LastError = Truncate(work.LastError, 400),
+        SentAt = work.SentAt,
+        MessageId = Truncate(work.MessageId, 128)
+    }, AuditJson);
     private async Task<string> GetVarietySnapshotAsync(Room room, CancellationToken cancellationToken)
     {
         var varieties = (await ledger.GetSnapshotsAsync(room.WarehouseId, [room.Id], cancellationToken)).Where(x => x.CurrentBins > 0).Select(x => string.IsNullOrWhiteSpace(x.VarietyName) ? x.Variety : x.VarietyName).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();

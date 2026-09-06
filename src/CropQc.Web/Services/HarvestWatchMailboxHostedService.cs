@@ -38,7 +38,10 @@ public sealed class HarvestWatchMailboxHostedService(
         if (!string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase)) return;
         var wes = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Email == HarvestWatchConstants.VerificationRecipient && x.IsActive, cancellationToken);
         if (wes is null) return;
-        var scopeValue = await db.UserGoogleCredentials.AsNoTracking().Where(x => x.UserId == wes.Id && x.Provider == "Google").Select(x => x.Scope).SingleOrDefaultAsync(cancellationToken);
+        var scopeValue = await db.UserGoogleCredentials.AsNoTracking()
+            .Where(x => x.UserId == wes.Id && x.Provider == GoogleCredentialStore.HarvestWatchMailboxProviderName)
+            .Select(x => x.Scope)
+            .SingleOrDefaultAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(scopeValue) || !GoogleCredentialStore.HasGmailReadScope(scopeValue))
         {
             logger.LogInformation("HarvestWatch mailbox polling is waiting for {Email} to reconnect Google/Gmail with read permission.", HarvestWatchConstants.VerificationRecipient);

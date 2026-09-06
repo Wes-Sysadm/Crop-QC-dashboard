@@ -153,6 +153,7 @@ if (googleAuthOptions.IsGoogleConfigured)
             return Task.CompletedTask;
         };
     });
+    authenticationBuilder.AddCookie(HarvestWatchConstants.MailboxExternalCookieScheme);
     authenticationBuilder.AddGoogle(HarvestWatchConstants.MailboxAuthenticationScheme, options =>
     {
         options.ClientId = googleAuthOptions.ClientId!;
@@ -162,6 +163,7 @@ if (googleAuthOptions.IsGoogleConfigured)
         options.Scope.Add(gmailOptions.SendScope);
         options.Scope.Add(gmailOptions.ReadScope);
         options.AccessType = "offline";
+        options.SignInScheme = HarvestWatchConstants.MailboxExternalCookieScheme;
         options.Events.OnCreatingTicket = async context =>
         {
             var email = context.Principal?.FindFirstValue(ClaimTypes.Email)?.Trim().ToLowerInvariant();
@@ -174,7 +176,9 @@ if (googleAuthOptions.IsGoogleConfigured)
             var user = await dbContext.Users.SingleOrDefaultAsync(x => x.Email == email && x.IsActive, context.HttpContext.RequestAborted);
             if (user is null) { context.Fail("The dedicated HarvestWatch mailbox is not an active Crop QC user."); return; }
             await context.HttpContext.RequestServices.GetRequiredService<IGoogleCredentialStore>()
-                .SaveFromAuthenticationPropertiesAsync(user, context.Properties, context.HttpContext.RequestAborted);
+                .SaveMailboxFromAuthenticationPropertiesAsync(user, context.Properties, context.HttpContext.RequestAborted);
+            await context.HttpContext.RequestServices.GetRequiredService<IHarvestWatchService>()
+                .ResumeBlockedOutboundEmailsAsync(context.HttpContext.RequestAborted);
             context.Properties.StoreTokens(Array.Empty<AuthenticationToken>());
         };
     });

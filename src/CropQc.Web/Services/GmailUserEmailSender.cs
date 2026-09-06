@@ -10,6 +10,7 @@ namespace CropQc.Web.Services;
 public interface IQcEmailSender
 {
     Task<QcEmailSendResult> SendAsync(User sender, QcEmailMessage message, CancellationToken cancellationToken);
+    Task<QcEmailSendResult> SendMailboxAsync(User sender, QcEmailMessage message, CancellationToken cancellationToken) => SendAsync(sender, message, cancellationToken);
 }
 
 public sealed record QcEmailMessage(
@@ -43,7 +44,11 @@ public sealed class GmailUserEmailSender(
 {
     public const long MaxInlineImageBytesPerMessage = 15_000_000;
 
-    public async Task<QcEmailSendResult> SendAsync(User sender, QcEmailMessage message, CancellationToken cancellationToken)
+    public Task<QcEmailSendResult> SendAsync(User sender, QcEmailMessage message, CancellationToken cancellationToken) => SendInternalAsync(sender, message, mailboxCredential: false, cancellationToken);
+
+    public Task<QcEmailSendResult> SendMailboxAsync(User sender, QcEmailMessage message, CancellationToken cancellationToken) => SendInternalAsync(sender, message, mailboxCredential: true, cancellationToken);
+
+    private async Task<QcEmailSendResult> SendInternalAsync(User sender, QcEmailMessage message, bool mailboxCredential, CancellationToken cancellationToken)
     {
         if (!string.Equals(emailOptions.Provider, EmailProviders.GmailUser, StringComparison.OrdinalIgnoreCase))
         {
@@ -69,7 +74,9 @@ public sealed class GmailUserEmailSender(
         GoogleAccessTokenResult token;
         try
         {
-            token = await credentialStore.GetAccessTokenAsync(sender, cancellationToken);
+            token = mailboxCredential
+                ? await credentialStore.GetMailboxAccessTokenAsync(sender, cancellationToken)
+                : await credentialStore.GetAccessTokenAsync(sender, cancellationToken);
         }
         catch (InvalidOperationException ex)
         {

@@ -3,8 +3,11 @@ using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Time;
+using CropQc.Web.Auth;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -211,6 +214,29 @@ public sealed class HarvestWatchServiceTests
     }
 
     [Fact]
+    public async Task Ordinary_and_dedicated_mailbox_credentials_are_stored_and_read_independently()
+    {
+        await using var db = new CropQcDbContext(new DbContextOptionsBuilder<CropQcDbContext>().UseInMemoryDatabase($"harvestwatch-credential-separation-{Guid.NewGuid():N}").Options);
+        var wes = new User { Id = 1, Email = HarvestWatchConstants.VerificationRecipient, DisplayName = "Wes", Domain = "fruitandland.com", IsActive = true, CreatedAt = DateTimeOffset.UtcNow };
+        db.Users.Add(wes);
+        await db.SaveChangesAsync();
+        var store = new GoogleCredentialStore(db, new EphemeralDataProtectionProvider(), new GoogleAuthenticationOptions(), new StaticHttpClientFactory(), NullLogger<GoogleCredentialStore>.Instance, new PerformanceExternalCallCounter());
+
+        await store.SaveFromAuthenticationPropertiesAsync(wes, OAuthProperties("ordinary-token", GmailScopes.Send), default);
+        await store.SaveMailboxFromAuthenticationPropertiesAsync(wes, OAuthProperties("mailbox-token", $"{GmailScopes.Send} {GmailScopes.Readonly}"), default);
+
+        Assert.Equal(2, await db.UserGoogleCredentials.CountAsync());
+        Assert.Equal("ordinary-token", (await store.GetAccessTokenAsync(wes, default)).AccessToken);
+        Assert.Equal("mailbox-token", (await store.GetMailboxAccessTokenAsync(wes, default)).AccessToken);
+
+        await store.SaveFromAuthenticationPropertiesAsync(wes, OAuthProperties("ordinary-token-updated", GmailScopes.Send), default);
+        Assert.Equal("ordinary-token-updated", (await store.GetAccessTokenAsync(wes, default)).AccessToken);
+        Assert.Equal("mailbox-token", (await store.GetMailboxAccessTokenAsync(wes, default)).AccessToken);
+        Assert.Equal(1, await db.UserGoogleCredentials.CountAsync(x => x.Provider == GoogleCredentialStore.OrdinaryProviderName));
+        Assert.Equal(1, await db.UserGoogleCredentials.CountAsync(x => x.Provider == GoogleCredentialStore.HarvestWatchMailboxProviderName));
+    }
+
+    [Fact]
     public void Mailbox_polling_paginates_and_uses_the_dedicated_read_token()
     {
         var worker = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "HarvestWatchMailboxHostedService.cs"));
@@ -218,6 +244,41 @@ public sealed class HarvestWatchServiceTests
         Assert.Contains("NextPageToken", worker);
         Assert.Contains("while (!string.IsNullOrWhiteSpace(pageToken))", worker);
         Assert.Contains("cursor will not advance", worker);
+        Assert.Contains("GoogleCredentialStore.HarvestWatchMailboxProviderName", worker);
+    }
+
+    [Fact]
+    public void Dedicated_mailbox_oauth_uses_an_isolated_external_cookie_and_keeps_the_existing_authorization_policy()
+    {
+        var program = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Program.cs"));
+        var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "HarvestWatchMailboxController.cs"));
+        Assert.Contains("AddCookie(HarvestWatchConstants.MailboxExternalCookieScheme)", program);
+        Assert.Contains("options.SignInScheme = HarvestWatchConstants.MailboxExternalCookieScheme", program);
+        Assert.Contains("AccessPolicyNames.EmailConfigurationAdmin", controller);
+        Assert.Contains("HarvestWatchConstants.VerificationRecipient", controller);
+    }
+
+    [Fact]
+    public async Task Ordinary_and_HarvestWatch_Gmail_sends_select_their_respective_credential_purposes()
+    {
+        var credentials = new PurposeCredentialStore();
+        var handler = new RecordingGmailHandler();
+        var sender = new GmailUserEmailSender(
+            new EmailOptions { Provider = EmailProviders.GmailUser },
+            new GoogleAuthenticationOptions { AllowedDomains = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "fruitandland.com" } },
+            credentials,
+            new HandlerHttpClientFactory(handler),
+            NullLogger<GmailUserEmailSender>.Instance,
+            new PerformanceExternalCallCounter());
+        var wes = new User { Email = HarvestWatchConstants.VerificationRecipient, DisplayName = "Wes", Domain = "fruitandland.com", IsActive = true, CreatedAt = DateTimeOffset.UtcNow };
+        var message = new QcEmailMessage(wes.Email, wes.Email, wes.Email, "subject", "text", "<p>text</p>", []);
+
+        Assert.True((await sender.SendAsync(wes, message, default)).Success);
+        Assert.True((await sender.SendMailboxAsync(wes, message, default)).Success);
+
+        Assert.Equal(["ordinary-token", "mailbox-token"], handler.AccessTokens);
+        Assert.Equal(1, credentials.OrdinaryRequests);
+        Assert.Equal(1, credentials.MailboxRequests);
     }
 
     [Fact]
@@ -235,6 +296,149 @@ public sealed class HarvestWatchServiceTests
         Assert.Equal(wes.Email, sender.Message!.From);
         Assert.Equal(wes.Email, sender.Message.ReplyTo);
         Assert.Contains("[HW:12:abcdefghijklmnop]", sender.Message.Subject);
+        Assert.True(sender.UsedMailboxCredential);
+    }
+
+    [Fact]
+    public async Task Reconnect_required_work_is_blocked_then_automatically_retried_after_dedicated_mailbox_authorization()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Dispatcher.FailVerificationReconnect = true;
+        Assert.True((await fixture.Service.DeployAsync(fixture.Form("12345"), fixture.Manager, default)).Success);
+        var deployment = await fixture.Db.HarvestWatchDeployments.SingleAsync();
+        var workRow = await fixture.Db.HarvestWatchStatusHistories.SingleAsync(x => x.HarvestWatchDeploymentId == deployment.Id && x.Source == "OutboundEmail");
+        Assert.Equal("BlockedCredential", DeserializeWork(workRow.Note)!.Status);
+
+        await fixture.EnableDedicatedMailboxAsync();
+        fixture.Dispatcher.FailVerificationReconnect = false;
+        await fixture.Service.ResumeBlockedOutboundEmailsAsync(default);
+
+        fixture.Db.ChangeTracker.Clear();
+        workRow = await fixture.Db.HarvestWatchStatusHistories.SingleAsync(x => x.Id == workRow.Id);
+        Assert.Equal("Sent", DeserializeWork(workRow.Note)!.Status);
+        Assert.Equal(2, fixture.Dispatcher.Verifications.Count);
+    }
+
+    [Fact]
+    public async Task Revoked_dedicated_credential_blocks_error_notification_until_reconnect_then_sends_once()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.EnableDedicatedMailboxAsync();
+        await fixture.Service.DeployAsync(fixture.Form("12345"), fixture.Manager, default);
+        var deployment = await fixture.Db.HarvestWatchDeployments.SingleAsync();
+        fixture.Dispatcher.FailErrorNotificationReconnect = true;
+        var marker = $"[HW:{deployment.Id}:{deployment.CorrelationToken}]";
+        await fixture.Service.ProcessInboundReplyAsync(new HarvestWatchInboundReply("revoked", HarvestWatchConstants.VerificationRecipient, marker, "Error - Low Reading", fixture.Now), default);
+        var workRow = await fixture.Db.HarvestWatchStatusHistories.SingleAsync(x => x.HarvestWatchDeploymentId == deployment.Id && x.Source == "OutboundEmail" && x.Note!.Contains("ErrorNotification"));
+        Assert.Equal("BlockedCredential", DeserializeWork(workRow.Note)!.Status);
+
+        await fixture.Service.ProcessPendingOutboundEmailsAsync(null, default);
+        Assert.Single(fixture.Dispatcher.ErrorNotifications);
+        fixture.Dispatcher.FailErrorNotificationReconnect = false;
+        await fixture.Service.ResumeBlockedOutboundEmailsAsync(default);
+
+        fixture.Db.ChangeTracker.Clear();
+        workRow = await fixture.Db.HarvestWatchStatusHistories.SingleAsync(x => x.Id == workRow.Id);
+        Assert.Equal("Sent", DeserializeWork(workRow.Note)!.Status);
+        Assert.Equal(2, fixture.Dispatcher.ErrorNotifications.Count);
+    }
+
+    [Fact]
+    public async Task Global_retry_paging_reaches_due_work_after_more_than_one_hundred_historical_rows()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        for (var index = 1; index <= 101; index++)
+        {
+            var deployment = new HarvestWatchDeployment
+            {
+                Id = index,
+                RoomId = 1,
+                WarehouseId = 1,
+                HarvestWatchCode = (10000 + index).ToString(),
+                Status = HarvestWatchStatuses.PendingVerification,
+                DeployedAt = fixture.Now,
+                DeployedByUserId = 1,
+                DeployerEmailSnapshot = "manager@fruitandland.com",
+                WarehouseCodeSnapshot = "DH",
+                RoomCodeSnapshot = "D1",
+                VarietySnapshot = "Gala",
+                CorrelationToken = $"token{index:D11}",
+                CreatedAt = fixture.Now,
+                UpdatedAt = fixture.Now
+            };
+            fixture.Db.HarvestWatchDeployments.Add(deployment);
+            fixture.Db.HarvestWatchStatusHistories.Add(new HarvestWatchStatusHistory
+            {
+                HarvestWatchDeploymentId = deployment.Id,
+                NewStatus = deployment.Status,
+                Source = "OutboundEmail",
+                ChangedAt = fixture.Now,
+                Note = JsonSerializer.Serialize(new HarvestWatchOutboundEmailWork
+                {
+                    Type = "Verification",
+                    Status = index == 101 ? "FailedRetryable" : "Sent",
+                    NextRetryAt = index == 101 ? fixture.Now : null
+                }, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+            });
+        }
+        await fixture.Db.SaveChangesAsync();
+
+        await fixture.Service.ProcessPendingOutboundEmailsAsync(null, default);
+
+        Assert.Equal([101L], fixture.Dispatcher.Verifications);
+    }
+
+    [Fact]
+    public async Task Every_distinct_error_transition_queues_one_notification_while_replays_do_not_duplicate_it()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.Service.DeployAsync(fixture.Form("12345"), fixture.Manager, default);
+        var deployment = await fixture.Db.HarvestWatchDeployments.SingleAsync();
+        var marker = $"[HW:{deployment.Id}:{deployment.CorrelationToken}]";
+
+        await fixture.Service.ProcessInboundReplyAsync(new HarvestWatchInboundReply("error-a", HarvestWatchConstants.VerificationRecipient, marker, "Error - Failed to Read", fixture.Now), default);
+        await fixture.Service.ProcessInboundReplyAsync(new HarvestWatchInboundReply("error-b", HarvestWatchConstants.VerificationRecipient, marker, "Error - Low Reading", fixture.Now), default);
+        await fixture.Service.ProcessInboundReplyAsync(new HarvestWatchInboundReply("same-status", HarvestWatchConstants.VerificationRecipient, marker, "Error - Low Reading", fixture.Now), default);
+        await fixture.Service.ProcessInboundReplyAsync(new HarvestWatchInboundReply("working", HarvestWatchConstants.VerificationRecipient, marker, "Working", fixture.Now), default);
+        await fixture.Service.ProcessInboundReplyAsync(new HarvestWatchInboundReply("error-c", HarvestWatchConstants.VerificationRecipient, marker, "Error - Failed to Read", fixture.Now), default);
+
+        Assert.Equal(3, fixture.Dispatcher.ErrorNotifications.Count);
+        Assert.Equal(3, await fixture.Db.HarvestWatchStatusHistories.CountAsync(x => x.HarvestWatchDeploymentId == deployment.Id && x.Source == "OutboundEmail" && x.Note!.Contains("ErrorNotification")));
+    }
+
+    [Fact]
+    public async Task Working_immediately_supersedes_unsent_error_work_and_a_later_error_queues_fresh_work()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Dispatcher.FailErrorNotificationReconnect = true;
+        await fixture.Service.DeployAsync(fixture.Form("12345"), fixture.Manager, default);
+        var deployment = await fixture.Db.HarvestWatchDeployments.SingleAsync();
+        var marker = $"[HW:{deployment.Id}:{deployment.CorrelationToken}]";
+        await fixture.Service.ProcessInboundReplyAsync(new HarvestWatchInboundReply("error", HarvestWatchConstants.VerificationRecipient, marker, "Error - Failed to Read", fixture.Now), default);
+        await fixture.Service.ProcessInboundReplyAsync(new HarvestWatchInboundReply("working", HarvestWatchConstants.VerificationRecipient, marker, "Working", fixture.Now), default);
+
+        var superseded = await fixture.Db.HarvestWatchStatusHistories.SingleAsync(x => x.HarvestWatchDeploymentId == deployment.Id && x.Source == "OutboundEmail" && x.Note!.Contains("ErrorNotification"));
+        Assert.Equal("Superseded", DeserializeWork(superseded.Note)!.Status);
+        fixture.Dispatcher.FailErrorNotificationReconnect = false;
+        await fixture.Service.ProcessInboundReplyAsync(new HarvestWatchInboundReply("later-error", HarvestWatchConstants.VerificationRecipient, marker, "Error - Low Reading", fixture.Now), default);
+
+        Assert.Equal(2, await fixture.Db.HarvestWatchStatusHistories.CountAsync(x => x.HarvestWatchDeploymentId == deployment.Id && x.Source == "OutboundEmail" && x.Note!.Contains("ErrorNotification")));
+        Assert.Equal(2, fixture.Dispatcher.ErrorNotifications.Count);
+    }
+
+    [Fact]
+    public async Task Long_Gmail_errors_are_bounded_inside_the_status_history_note()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Dispatcher.FailErrorNotification = true;
+        fixture.Dispatcher.ErrorMessage = new string('x', 20_000);
+        await fixture.Service.DeployAsync(fixture.Form("12345"), fixture.Manager, default);
+        var deployment = await fixture.Db.HarvestWatchDeployments.SingleAsync();
+        await fixture.Service.ProcessInboundReplyAsync(new HarvestWatchInboundReply("long-error", HarvestWatchConstants.VerificationRecipient, $"[HW:{deployment.Id}:{deployment.CorrelationToken}]", "Error - Low Reading", fixture.Now), default);
+
+        var row = await fixture.Db.HarvestWatchStatusHistories.SingleAsync(x => x.HarvestWatchDeploymentId == deployment.Id && x.Source == "OutboundEmail" && x.Note!.Contains("ErrorNotification"));
+        Assert.True(row.Note!.Length <= 1000);
+        Assert.Equal(400, DeserializeWork(row.Note)!.LastError!.Length);
     }
 
     [Fact]
@@ -255,6 +459,7 @@ public sealed class HarvestWatchServiceTests
         public DateTimeOffset Now { get; } = DateTimeOffset.Parse("2026-09-06T02:00:00Z");
         public CropQcDbContext Db { get; private init; } = null!;
         public Warehouse Warehouse { get; private init; } = null!;
+        public User Wes { get; private init; } = null!;
         public HarvestWatchService Service { get; private init; } = null!;
         public RecordingDispatcher Dispatcher { get; private init; } = null!;
         public ClaimsPrincipal Manager { get; private init; } = null!;
@@ -264,24 +469,40 @@ public sealed class HarvestWatchServiceTests
             var db = new CropQcDbContext(new DbContextOptionsBuilder<CropQcDbContext>().UseInMemoryDatabase($"harvestwatch-{Guid.NewGuid():N}").Options);
             var warehouse = new Warehouse { Id = 1, Code = facility, Name = facility };
             var user = new User { Id = 1, Email = "manager@fruitandland.com", DisplayName = "Manager", Domain = "fruitandland.com", CreatedAt = DateTimeOffset.UtcNow };
-            db.Warehouses.Add(warehouse); db.Users.Add(user); db.Rooms.Add(new Room { Id = 1, WarehouseId = 1, Warehouse = warehouse, Code = "D1", Name = "DH Room 1", IsSealed = sealedRoom, SealedAt = sealedRoom ? DateTimeOffset.Parse("2026-09-06T01:00:00Z") : null });
+            var wes = new User { Id = 2, Email = HarvestWatchConstants.VerificationRecipient, DisplayName = "Wes", Domain = "fruitandland.com", IsActive = true, CreatedAt = DateTimeOffset.UtcNow };
+            db.Warehouses.Add(warehouse); db.Users.AddRange(user, wes); db.Rooms.Add(new Room { Id = 1, WarehouseId = 1, Warehouse = warehouse, Code = "D1", Name = "DH Room 1", IsSealed = sealedRoom, SealedAt = sealedRoom ? DateTimeOffset.Parse("2026-09-06T01:00:00Z") : null });
             await db.SaveChangesAsync();
             var dispatcher = new RecordingDispatcher();
             var time = new PacificBusinessTimeService(new FixedClock(DateTimeOffset.Parse("2026-09-06T02:00:00Z")));
-            return new Fixture { Db = db, Warehouse = warehouse, Dispatcher = dispatcher, Service = new HarvestWatchService(db, new EmptyLedger(), dispatcher, time, NullLogger<HarvestWatchService>.Instance), Manager = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, user.Email), new Claim(ClaimTypes.Role, BuiltInRoleNames.Manager)])) };
+            return new Fixture { Db = db, Warehouse = warehouse, Wes = wes, Dispatcher = dispatcher, Service = new HarvestWatchService(db, new EmptyLedger(), dispatcher, time, NullLogger<HarvestWatchService>.Instance), Manager = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, user.Email), new Claim(ClaimTypes.Role, BuiltInRoleNames.Manager)])) };
         }
         public HarvestWatchDeployForm Form(params string[] codes) => new() { RoomId = 1, Codes = codes.ToList() };
+        public async Task EnableDedicatedMailboxAsync()
+        {
+            Db.UserGoogleCredentials.Add(new UserGoogleCredential
+            {
+                UserId = Wes.Id,
+                Provider = GoogleCredentialStore.HarvestWatchMailboxProviderName,
+                Scope = $"{GmailScopes.Send} {GmailScopes.Readonly}",
+                CreatedAt = Now,
+                UpdatedAt = Now
+            });
+            await Db.SaveChangesAsync();
+        }
         public ValueTask DisposeAsync() => Db.DisposeAsync();
     }
 
     private sealed class RecordingDispatcher : IHarvestWatchEmailDispatcher
     {
         public bool FailVerification { get; set; }
+        public bool FailVerificationReconnect { get; set; }
         public bool FailErrorNotification { get; set; }
+        public bool FailErrorNotificationReconnect { get; set; }
+        public string ErrorMessage { get; set; } = "temporary";
         public List<long> Verifications { get; } = [];
         public List<long> ErrorNotifications { get; } = [];
-        public Task<QcEmailSendResult> SendVerificationAsync(HarvestWatchDeployment deployment, CancellationToken cancellationToken) { Verifications.Add(deployment.Id); return Task.FromResult(FailVerification ? QcEmailSendResult.Failed("temporary") : QcEmailSendResult.Sent($"v{deployment.Id}")); }
-        public Task<QcEmailSendResult> SendErrorNotificationAsync(HarvestWatchDeployment deployment, CancellationToken cancellationToken) { ErrorNotifications.Add(deployment.Id); return Task.FromResult(FailErrorNotification ? QcEmailSendResult.Failed("temporary") : QcEmailSendResult.Sent($"e{deployment.Id}")); }
+        public Task<QcEmailSendResult> SendVerificationAsync(HarvestWatchDeployment deployment, CancellationToken cancellationToken) { Verifications.Add(deployment.Id); return Task.FromResult(FailVerificationReconnect ? QcEmailSendResult.Failed(ErrorMessage, reconnectRequired: true) : FailVerification ? QcEmailSendResult.Failed(ErrorMessage) : QcEmailSendResult.Sent($"v{deployment.Id}")); }
+        public Task<QcEmailSendResult> SendErrorNotificationAsync(HarvestWatchDeployment deployment, CancellationToken cancellationToken) { ErrorNotifications.Add(deployment.Id); return Task.FromResult(FailErrorNotificationReconnect ? QcEmailSendResult.Failed(ErrorMessage, reconnectRequired: true) : FailErrorNotification ? QcEmailSendResult.Failed(ErrorMessage) : QcEmailSendResult.Sent($"e{deployment.Id}")); }
     }
     private sealed class EmptyLedger : IRoomInventoryLedgerQueryService
     {
@@ -293,6 +514,45 @@ public sealed class HarvestWatchServiceTests
         public User? Sender { get; private set; }
         public QcEmailMessage? Message { get; private set; }
         public Task<QcEmailSendResult> SendAsync(User sender, QcEmailMessage message, CancellationToken cancellationToken) { Sender = sender; Message = message; return Task.FromResult(QcEmailSendResult.Sent("sent")); }
+        public Task<QcEmailSendResult> SendMailboxAsync(User sender, QcEmailMessage message, CancellationToken cancellationToken) { UsedMailboxCredential = true; return SendAsync(sender, message, cancellationToken); }
+        public bool UsedMailboxCredential { get; private set; }
+    }
+    private static AuthenticationProperties OAuthProperties(string accessToken, string scope)
+    {
+        var properties = new AuthenticationProperties();
+        properties.StoreTokens([
+            new AuthenticationToken { Name = "access_token", Value = accessToken },
+            new AuthenticationToken { Name = "expires_at", Value = DateTimeOffset.UtcNow.AddHours(1).ToString("O") },
+            new AuthenticationToken { Name = "scope", Value = scope }
+        ]);
+        return properties;
+    }
+    private sealed class StaticHttpClientFactory : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new();
+    }
+    private sealed class PurposeCredentialStore : IGoogleCredentialStore
+    {
+        public int OrdinaryRequests { get; private set; }
+        public int MailboxRequests { get; private set; }
+        public Task SaveFromAuthenticationPropertiesAsync(User user, AuthenticationProperties properties, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task SaveMailboxFromAuthenticationPropertiesAsync(User user, AuthenticationProperties properties, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<GoogleAccessTokenResult> GetAccessTokenAsync(User user, CancellationToken cancellationToken) { OrdinaryRequests++; return Task.FromResult(GoogleAccessTokenResult.Success("ordinary-token")); }
+        public Task<GoogleAccessTokenResult> GetMailboxAccessTokenAsync(User user, CancellationToken cancellationToken) { MailboxRequests++; return Task.FromResult(GoogleAccessTokenResult.Success("mailbox-token")); }
+        public Task<GoogleCredentialDiagnostic> GetDiagnosticAsync(User user, CancellationToken cancellationToken) => Task.FromResult(new GoogleCredentialDiagnostic(true, true, true));
+    }
+    private sealed class HandlerHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+    private sealed class RecordingGmailHandler : HttpMessageHandler
+    {
+        public List<string> AccessTokens { get; } = [];
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            AccessTokens.Add(request.Headers.Authorization?.Parameter ?? "");
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"id\":\"gmail-message\"}") });
+        }
     }
     private static string FindRepositoryFile(params string[] pathParts)
     {
