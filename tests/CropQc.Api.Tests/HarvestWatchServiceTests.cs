@@ -148,6 +148,7 @@ public sealed class HarvestWatchServiceTests
         var delayed = await fixture.Service.ProcessInboundReplyAsync(new HarvestWatchInboundReply("retired", "wes@fruitandland.com", oldMarker, "Working", fixture.Now), default);
         Assert.Equal("IgnoredInactiveDeployment", delayed.Outcome);
         Assert.Equal(HarvestWatchStatuses.Removed, (await fixture.Db.HarvestWatchDeployments.SingleAsync(x => x.Id == retired.Id)).Status);
+        Assert.Contains(await fixture.Db.AuditLogs.ToListAsync(), x => x.Action == "HarvestWatchVerificationIgnored" && x.EntityKey == retired.Id.ToString());
         Assert.True((await fixture.Service.DeployAsync(fixture.Form("12345"), fixture.Manager, default)).Success);
         var replacement = await fixture.Db.HarvestWatchDeployments.OrderByDescending(x => x.Id).FirstAsync();
         Assert.NotEqual(retired.CorrelationToken, replacement.CorrelationToken);

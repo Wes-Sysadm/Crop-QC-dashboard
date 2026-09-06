@@ -327,6 +327,8 @@ public sealed class HarvestWatchService(
         if (deployment is not null && deployment.IsActive && parsed is null) outcome = "IgnoredAmbiguousOrUnknownStatus";
         var now = businessTime.UtcNow;
         dbContext.HarvestWatchInboundMessages.Add(new HarvestWatchInboundMessage { GmailMessageId = reply.MessageId, HarvestWatchDeploymentId = deployment?.Id, SenderEmail = sender, Subject = Truncate(reply.Subject, 1000), BodyExcerpt = Truncate(reply.Body, 4000), ReceivedAt = reply.ReceivedAt, Outcome = outcome, ProcessedAt = now });
+        if (deployment is not null && !deployment.IsActive)
+            dbContext.AuditLogs.Add(Audit(deployment.DeployedByUserId, "HarvestWatchVerificationIgnored", deployment.Id, new { deployment.Status, deployment.IsActive }, new { Sender = sender, reply.MessageId, Outcome = outcome }, now));
         var enteringError = false;
         if (deployment is not null && parsed is not null && deployment.Status != parsed)
         {
