@@ -13,6 +13,7 @@ public interface IGoogleCredentialStore
 {
     Task SaveFromAuthenticationPropertiesAsync(User user, AuthenticationProperties properties, CancellationToken cancellationToken);
     Task<GoogleAccessTokenResult> GetAccessTokenAsync(User user, CancellationToken cancellationToken);
+    Task<GoogleAccessTokenResult> GetMailboxAccessTokenAsync(User user, CancellationToken cancellationToken) => GetAccessTokenAsync(user, cancellationToken);
     Task<GoogleCredentialDiagnostic> GetDiagnosticAsync(User user, CancellationToken cancellationToken);
 }
 
@@ -118,6 +119,16 @@ public sealed class GoogleCredentialStore(
         credential.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
         return GoogleAccessTokenResult.Success(refreshed.AccessToken);
+    }
+
+    public async Task<GoogleAccessTokenResult> GetMailboxAccessTokenAsync(User user, CancellationToken cancellationToken)
+    {
+        await EnsureSchemaAsync(cancellationToken);
+        var scope = await dbContext.UserGoogleCredentials.AsNoTracking()
+            .Where(x => x.UserId == user.Id && x.Provider == ProviderName).Select(x => x.Scope)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (!HasGmailReadScope(scope)) return GoogleAccessTokenResult.Reconnect("HarvestWatch mailbox read permission is required. Please reconnect the dedicated mailbox.");
+        return await GetAccessTokenAsync(user, cancellationToken);
     }
 
     public async Task<GoogleCredentialDiagnostic> GetDiagnosticAsync(User user, CancellationToken cancellationToken)

@@ -91,7 +91,6 @@ if (googleAuthOptions.IsGoogleConfigured)
         options.CallbackPath = "/signin-google";
         options.SaveTokens = true;
         options.Scope.Add(gmailOptions.SendScope);
-        options.Scope.Add(gmailOptions.ReadScope);
         options.AccessType = "offline";
         options.Events.OnCreatingTicket = async context =>
         {
@@ -152,6 +151,31 @@ if (googleAuthOptions.IsGoogleConfigured)
                 : $"{context.RedirectUri}{separator}prompt=consent";
             context.Response.Redirect(redirectUri);
             return Task.CompletedTask;
+        };
+    });
+    authenticationBuilder.AddGoogle(HarvestWatchConstants.MailboxAuthenticationScheme, options =>
+    {
+        options.ClientId = googleAuthOptions.ClientId!;
+        options.ClientSecret = googleAuthOptions.ClientSecret!;
+        options.CallbackPath = "/signin-harvestwatch-mailbox";
+        options.SaveTokens = true;
+        options.Scope.Add(gmailOptions.SendScope);
+        options.Scope.Add(gmailOptions.ReadScope);
+        options.AccessType = "offline";
+        options.Events.OnCreatingTicket = async context =>
+        {
+            var email = context.Principal?.FindFirstValue(ClaimTypes.Email)?.Trim().ToLowerInvariant();
+            if (!string.Equals(email, HarvestWatchConstants.VerificationRecipient, StringComparison.OrdinalIgnoreCase))
+            {
+                context.Fail("Only the dedicated HarvestWatch mailbox can grant Gmail read access.");
+                return;
+            }
+            var dbContext = context.HttpContext.RequestServices.GetRequiredService<CropQcDbContext>();
+            var user = await dbContext.Users.SingleOrDefaultAsync(x => x.Email == email && x.IsActive, context.HttpContext.RequestAborted);
+            if (user is null) { context.Fail("The dedicated HarvestWatch mailbox is not an active Crop QC user."); return; }
+            await context.HttpContext.RequestServices.GetRequiredService<IGoogleCredentialStore>()
+                .SaveFromAuthenticationPropertiesAsync(user, context.Properties, context.HttpContext.RequestAborted);
+            context.Properties.StoreTokens(Array.Empty<AuthenticationToken>());
         };
     });
 }
@@ -346,6 +370,7 @@ builder.Services.AddHostedService<BackupNotificationHostedService>();
 builder.Services.AddHostedService<RuntimeMemoryTelemetryHostedService>();
 builder.Services.AddHostedService<RunSheetRefreshHostedService>();
 builder.Services.AddHostedService<HarvestWatchMailboxHostedService>();
+builder.Services.AddHostedService<HarvestWatchOutboundEmailHostedService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
 builder.Services.AddSingleton(CreateGoogleDriveStorageOptions(builder.Configuration));
 builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorageService(

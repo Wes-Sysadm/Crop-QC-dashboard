@@ -159,7 +159,7 @@
         }
         @if (Model.HarvestWatch.CanManage)
         {
-            <form method="post" action="/Rooms/@Model.Summary?.RoomId/HarvestWatch/Deploy" class="stack-form" id="harvestwatch-deploy-form">
+            <form method="post" action="/Rooms/@Model.Summary?.RoomId/HarvestWatch/Deploy" class="stack-form" id="harvestwatch-deploy-form" data-active-deployments="@Model.HarvestWatch.ActiveDeploymentCount">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="RoomId" value="@Model.HarvestWatch.Form.RoomId" />
                 <div id="harvestwatch-code-rows">
@@ -173,7 +173,7 @@
                 <button class="button" type="submit">Deploy HarvestWatch</button>
             </form>
             <script>
-            (() => { const rows = document.getElementById('harvestwatch-code-rows'); const add = document.getElementById('harvestwatch-add-code'); const warning = document.getElementById('harvestwatch-warning'); if (!rows || !add || !warning) return; const update = () => warning.hidden = rows.querySelectorAll('input').length < 4; add.addEventListener('click', () => { const index = rows.querySelectorAll('input').length; const label = document.createElement('label'); label.textContent = `HarvestWatch code ${index + 1} `; const input = document.createElement('input'); input.name = `Codes[${index}]`; input.inputMode = 'numeric'; input.pattern = '[0-9]{5}'; input.maxLength = 5; label.append(input); rows.append(label); update(); }); update(); })();
+            (() => { const form = document.getElementById('harvestwatch-deploy-form'); const rows = document.getElementById('harvestwatch-code-rows'); const add = document.getElementById('harvestwatch-add-code'); const warning = document.getElementById('harvestwatch-warning'); const confirmation = warning?.querySelector('input[type="checkbox"]'); if (!form || !rows || !add || !warning || !confirmation) return; const active = Number(form.dataset.activeDeployments || 0); const update = () => { const validNew = [...rows.querySelectorAll('input')].filter(input => /^\d{5}$/.test(input.value.trim())).length; const requiresConfirmation = active + validNew > 3; warning.hidden = !requiresConfirmation; if (!requiresConfirmation) confirmation.checked = false; }; add.addEventListener('click', () => { const index = rows.querySelectorAll('input').length; const label = document.createElement('label'); label.textContent = `HarvestWatch code ${index + 1} `; const input = document.createElement('input'); input.name = `Codes[${index}]`; input.inputMode = 'numeric'; input.pattern = '[0-9]{5}'; input.maxLength = 5; input.addEventListener('input', update); label.append(input); rows.append(label); update(); }); rows.querySelectorAll('input').forEach(input => input.addEventListener('input', update)); update(); })();
             </script>
         }
     </section>

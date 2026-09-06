@@ -162,6 +162,7 @@ public sealed class HarvestWatchRoomViewModel
     public bool CanManage { get; set; }
     public string? IneligibleReason { get; set; }
     public IReadOnlyList<HarvestWatchDeploymentViewModel> Deployments { get; set; } = [];
+    public int ActiveDeploymentCount { get; set; }
     public HarvestWatchDeployForm Form { get; set; } = new();
 }
 
